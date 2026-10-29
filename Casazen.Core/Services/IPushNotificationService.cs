@@ -88,6 +88,14 @@ public static class PushDeliveryKeys
         $"service-request:{serviceRequestId:N}:proposal-{(accepted ? "accepted" : "rejected")}:{proposedAtUtc:yyyyMMddHHmmss}";
 
     /// <summary>
+    /// What happened to the quote sent at <paramref name="quoteSentAtUtc"/> (SP-04b): <paramref name="outcome"/> is <c>sent</c> (to the host),
+    /// <c>accepted</c>, <c>rejected</c> or <c>expired</c> (to the supplier). A request can be quoted again, so the instant of the quote is part of
+    /// the key: a retry of the job is one push, the next quote is another.
+    /// </summary>
+    public static string ServiceRequestQuote(Guid serviceRequestId, DateTime quoteSentAtUtc, string outcome) =>
+        $"service-request:{serviceRequestId:N}:quote-{outcome}:{quoteSentAtUtc.Ticks}";
+
+    /// <summary>
     /// The customer of a supplier's public showcase moved a new request to another time, to the supplier (SP-11). A request can be
     /// moved more than once, so the instant is part of the key: a retry of the job is one push, the next move is another.
     /// </summary>
@@ -155,6 +163,18 @@ public static class PushTypes
 
     /// <summary>The customer of the public showcase moved a new request to another time (SP-11): pushed to the supplier org.</summary>
     public const string ServiceRequestRescheduled = "service-request-rescheduled";
+
+    /// <summary>The supplier sent a quote (SP-04b): pushed to the hosts of the property (a showcase customer has no app: it gets an e-mail).</summary>
+    public const string ServiceRequestQuoteSent = "service-request-quote-sent";
+
+    /// <summary>The host, or the customer of a showcase request, accepted the quote (SP-04b): pushed to the supplier org.</summary>
+    public const string ServiceRequestQuoteAccepted = "service-request-quote-accepted";
+
+    /// <summary>The host, or the customer of a showcase request, turned the quote down (SP-04b): pushed to the supplier org.</summary>
+    public const string ServiceRequestQuoteRejected = "service-request-quote-rejected";
+
+    /// <summary>The customer of a showcase request did not answer the quote in time and the request was cancelled (SP-04b): pushed to the supplier org.</summary>
+    public const string ServiceRequestQuoteExpired = "service-request-quote-expired";
     public const string NewBooking = "new-booking";
 
     /// <summary>The guest of a direct booking wrote a message: pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its thread.</summary>

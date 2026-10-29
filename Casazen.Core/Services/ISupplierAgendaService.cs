@@ -45,6 +45,9 @@ public sealed record SupplierClosedDay(DateOnly Date, SupplierAvailabilitySource
 /// True while a time the supplier proposed has no answer (the <see cref="Phase"/> is then <c>proposal_pending</c>). Filled by both
 /// reads, like <paramref name="Source"/>.
 /// </param>
+/// <param name="HasPendingQuote">
+/// True while a quote the supplier sent has no answer (SP-04b; the <see cref="Phase"/> is then <c>quote_pending</c>). Filled by both reads.
+/// </param>
 public sealed record SupplierAgendaRequest(
     Guid Id,
     DateOnly Date,
@@ -57,13 +60,14 @@ public sealed record SupplierAgendaRequest(
     string? ClientLabel = null,
     string? Comune = null,
     string Source = SupplierRequestSources.CasaZen,
-    bool HasPendingProposal = false)
+    bool HasPendingProposal = false,
+    bool HasPendingQuote = false)
 {
     /// <summary>True when the request has hours of its own (<see cref="StartUtc"/> and <see cref="EndUtc"/>).</summary>
     public bool HasHours => StartUtc is not null && EndUtc is not null;
 
     /// <summary>The phase of the request (<see cref="SupplierRequestPhases"/>): derived in one place, never stored.</summary>
-    public string Phase => SupplierRequestPhases.Of(Status, HasPendingProposal);
+    public string Phase => SupplierRequestPhases.Of(Status, HasPendingProposal, HasPendingQuote);
 }
 
 /// <summary>

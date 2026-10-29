@@ -498,6 +498,106 @@ public class ServiceRequestsController(
         HostActionAsync(id, hostOrgId => serviceRequestService.RejectProposalAsync(id, hostOrgId, cancellationToken), cancellationToken);
 
     /// <summary>
+    /// The supplier answers a new request with a quote (SP-04b): lines (1 to 20, each a description and an amount in cents), a note, and
+    /// optionally another time instead of the one the request has. The request stays <c>Richiesto</c> with the quote waiting for the customer
+    /// (<c>quote</c> in the answer, with <c>sentAt</c> to send back when answering it), and the host is told. A new quote replaces the one
+    /// that waited and the proposed time (one offer at a time); the quote holds no slot. 400 <c>validation_error</c> for a malformed body, 422
+    /// <c>service_request_quote_invalid</c> for lines or a total outside the limits, <c>service_request_invalid_transition</c> unless the
+    /// request is new, <c>service_request_time_invalid</c>; 409 <c>supplier_slot_unavailable</c> / <c>supplier_commitment_conflict</c> for
+    /// another time the supplier cannot do. Same errors as <see cref="Take"/>.
+    /// </summary>
+    [HttpPost("{id:guid}/quote")]
+    [Authorize(Policy = CasazenPolicies.Supplier)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServiceRequestDto>> SendQuote(
+        Guid id,
+        [FromBody] SendServiceRequestQuoteRequest request,
+        CancellationToken cancellationToken)
+    {
+        var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        var userId = User.GetUserId();
+        if (supplierOrgId is null || userId is null) return NotFound();
+
+        var updated = await serviceRequestService.SendQuoteAsync(
+            id,
+            supplierOrgId.Value,
+            userId,
+            new SendServiceRequestQuoteCommand(
+                (request.Lines ?? []).Select(line => new ServiceRequestQuoteLine(line.Label, line.AmountCents)).ToList(),
+                request.Note,
+                request.ScheduledStartUtc,
+                request.ScheduledEndUtc),
+            cancellationToken);
+        return Ok(MapDtoForSupplier(updated));
+    }
+
+    /// <summary>
+    /// The supplier takes its quote back (SP-04b): the request is "to answer" again. 422 <c>service_request_no_quote</c> when none waits.
+    /// Same errors as <see cref="Take"/>.
+    /// </summary>
+    [HttpPost("{id:guid}/quote/withdraw")]
+    [Authorize(Policy = CasazenPolicies.Supplier)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServiceRequestDto>> WithdrawQuote(Guid id, CancellationToken cancellationToken)
+    {
+        var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        if (supplierOrgId is null) return NotFound();
+
+        var updated = await serviceRequestService.WithdrawQuoteAsync(id, supplierOrgId.Value, cancellationToken);
+        return Ok(MapDtoForSupplier(updated));
+    }
+
+    /// <summary>
+    /// The host accepts the quote the supplier sent (SP-04b): the request is taken on the supplier's behalf at the time of the quote,
+    /// with its total as the price agreed and its lines as the price lines (kind <c>quote</c>); the supplier is told. <c>property.write</c>
+    /// on the property. The body repeats <c>quote.sentAt</c> as read: another quote is 409 <c>service_request_quote_changed</c>, nothing
+    /// changes. The time is checked again with the supplier's agenda: 409 <c>supplier_slot_unavailable</c> / <c>supplier_commitment_conflict</c>
+    /// and the quote stays. 422 <c>service_request_no_quote</c> when none waits; 404 <c>service_request_not_found</c> outside the caller's scope.
+    /// </summary>
+    [HttpPost("{id:guid}/quote/accept")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult<ServiceRequestDto>> AcceptQuote(
+        Guid id,
+        [FromBody] AnswerServiceRequestQuoteRequest request,
+        CancellationToken cancellationToken) =>
+        HostActionAsync(
+            id, hostOrgId => serviceRequestService.AcceptQuoteAsync(id, hostOrgId, request.QuoteSentAt!.Value, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// The host turns the quote down (SP-04b): it goes, the request stays <c>Richiesto</c> as it was and the supplier is told, who can send
+    /// another quote, propose another time, take it as it is or reject it. Same errors as <see cref="AcceptQuote"/>, but for the time.
+    /// </summary>
+    [HttpPost("{id:guid}/quote/reject")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult<ServiceRequestDto>> RejectQuote(
+        Guid id,
+        [FromBody] AnswerServiceRequestQuoteRequest request,
+        CancellationToken cancellationToken) =>
+        HostActionAsync(
+            id, hostOrgId => serviceRequestService.RejectQuoteAsync(id, hostOrgId, request.QuoteSentAt!.Value, cancellationToken), cancellationToken);
+
+    /// <summary>
     /// The host reminds the supplier to answer a new request (SP-04): the supplier is told by email and push. At most one
     /// reminder every 6 hours (422 <c>service_request_remind_too_soon</c>); only while the request is new and the supplier has
     /// not proposed a time (422 <c>service_request_invalid_transition</c>). <c>property.write</c> on the property.
@@ -751,6 +851,7 @@ public class ServiceRequestsController(
             CompletionNotes = r.CompletionNotes,
             WorkPhotos = ServiceRequestDtoParts.ToPhotoDtos(r.Id, ServiceRequestJson.ReadPhotos(r.WorkPhotosJson), photosPath),
             Proposal = ServiceRequestDtoParts.ToProposalDto(r.ProposedStartUtc, r.ProposedEndUtc, r.ProposedAt, r.ProposalMessage),
+            Quote = ServiceRequestDtoParts.ToQuoteDto(ServiceRequestQuoteRules.PendingOf(r)),
             LastRemindedAt = r.LastRemindedAt,
             PaymentMode = r.PaymentMode.ToString(),
             AutoAccepted = r.AutoAccepted,

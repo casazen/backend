@@ -151,6 +151,56 @@ public class ProposeServiceRequestTimeRequest
     public string? Message { get; set; }
 }
 
+/// <summary>One line of a quote (SP-04b): what it is for and how much, in cents of euro.</summary>
+public class ServiceRequestQuoteLineRequest
+{
+    /// <summary>What the line is for: required, at most 120 characters.</summary>
+    [Required(ErrorMessage = "ServiceRequestQuoteLineLabelRequired")]
+    [MaxLength(ServiceRequestLimits.QuoteLineLabelMaxLength, ErrorMessage = "ServiceRequestQuoteLineLabelTooLong")]
+    public string Label { get; set; } = string.Empty;
+
+    /// <summary>The amount in cents of euro (1 to 10,000,000), gross as declared.</summary>
+    [Range(1, ServiceRequestLimits.MaxAmountCents, ErrorMessage = "ServiceRequestAmountOutOfRange")]
+    public int AmountCents { get; set; }
+}
+
+/// <summary>
+/// Body of <c>POST api/service-requests/{id}/quote</c> (SP-04b): the supplier answers a new request with a quote. A new quote replaces the
+/// one that waits.
+/// </summary>
+public class SendServiceRequestQuoteRequest
+{
+    /// <summary>The lines of the quote, from 1 to 20; their sum is the total.</summary>
+    [Required(ErrorMessage = "ServiceRequestQuoteLinesRequired")]
+    [MinLength(1, ErrorMessage = "ServiceRequestQuoteLinesRequired")]
+    [MaxLength(ServiceRequestLimits.MaxQuoteLines, ErrorMessage = "ServiceRequestQuoteTooManyLines")]
+    public List<ServiceRequestQuoteLineRequest>? Lines { get; set; }
+
+    /// <summary>An optional note for the customer: at most 500 characters.</summary>
+    [MaxLength(ServiceRequestLimits.QuoteNoteMaxLength, ErrorMessage = "ServiceRequestQuoteNoteTooLong")]
+    public string? Note { get; set; }
+
+    /// <summary>
+    /// Another time for the work, instead of the one the request already has (optional): it replaces it only if the customer accepts, and
+    /// is checked with the supplier's agenda (409 <c>supplier_slot_unavailable</c>). It does not hold the slot.
+    /// </summary>
+    public DateTime? ScheduledStartUtc { get; set; }
+
+    /// <summary>The end of that other time; when left out, the start plus the duration of the request's service.</summary>
+    public DateTime? ScheduledEndUtc { get; set; }
+}
+
+/// <summary>
+/// Body of <c>POST api/service-requests/{id}/quote/accept</c> and <c>…/quote/reject</c> (and the long-rent twins), SP-04b: the quote the
+/// host read, by the instant the supplier sent it (<c>quote.sentAt</c> of the request, repeated as it was given). If the supplier replaced
+/// the quote meanwhile the answer is 409 <c>service_request_quote_changed</c> and nothing changes.
+/// </summary>
+public class AnswerServiceRequestQuoteRequest
+{
+    [Required(ErrorMessage = "ServiceRequestQuoteSentAtRequired")]
+    public DateTime? QuoteSentAt { get; set; }
+}
+
 /// <summary>
 /// Body of <c>POST api/service-requests/match-supplier</c>. No free text: the host's notes are not accepted, so they
 /// can never reach an AI prompt (A8-15); the category is one of the known codes (A8-01).
@@ -286,6 +336,12 @@ public class ServiceRequestDto
     /// <summary>The time the supplier proposed, waiting for the host's answer; <c>null</c> when there is none.</summary>
     public ServiceRequestProposalDto? Proposal { get; set; }
 
+    /// <summary>
+    /// The quote the supplier sent, waiting for the customer's answer (SP-04b); <c>null</c> when there is none. The host accepts or rejects
+    /// it with <c>POST …/quote/accept</c> or <c>…/quote/reject</c>, sending back <c>quote.sentAt</c>.
+    /// </summary>
+    public ServiceRequestQuoteDto? Quote { get; set; }
+
     /// <summary>When the host last reminded the supplier (a new reminder is possible 6 hours later).</summary>
     public DateTime? LastRemindedAt { get; set; }
 
@@ -334,10 +390,48 @@ public class ServiceRequestPriceDto
     public IEnumerable<ServiceRequestPriceLineDto> Lines { get; set; } = [];
 }
 
-/// <summary>One line of the final price: <c>base</c> (the agreed price) or <c>extra</c>.</summary>
+/// <summary>
+/// One line of the price: <c>base</c> (the agreed price), <c>quote</c> (a line of the quote the customer accepted, SP-04b: the lines add up
+/// to the agreed price) or <c>extra</c>. <b>An open set</b>: show a line of a kind you do not know as it comes.
+/// </summary>
 public class ServiceRequestPriceLineDto
 {
     public string Kind { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public int AmountCents { get; set; }
+}
+
+/// <summary>
+/// The quote a supplier sent on a new request and the customer has not answered (SP-04b). The request keeps its own time until the
+/// customer accepts: <see cref="ScheduledStart"/> is another time the quote offers, if it does.
+/// </summary>
+public class ServiceRequestQuoteDto
+{
+    /// <summary>When the supplier sent it: the version of the quote, which an answer repeats (<see cref="AnswerServiceRequestQuoteRequest.QuoteSentAt"/>).</summary>
+    public DateTime SentAt { get; set; }
+
+    /// <summary>The lines of the quote, as the supplier wrote them.</summary>
+    public IEnumerable<ServiceRequestQuoteLineDto> Lines { get; set; } = [];
+
+    /// <summary>What the lines add up to, in cents of euro: the price agreed if the quote is accepted.</summary>
+    public int TotalCents { get; set; }
+
+    /// <summary>The note of the supplier for the customer.</summary>
+    public string? Note { get; set; }
+
+    /// <summary>Start of another time the quote offers instead of the request's own (UTC); <c>null</c> when it leans on the request's time. It is not held.</summary>
+    public DateTime? ScheduledStart { get; set; }
+
+    /// <summary>End of that other time (UTC).</summary>
+    public DateTime? ScheduledEnd { get; set; }
+
+    /// <summary>Until when the customer of a showcase request can answer (after it the request is cancelled); <c>null</c> for a host, who has no deadline.</summary>
+    public DateTime? AnswerBy { get; set; }
+}
+
+/// <summary>One line of a quote.</summary>
+public class ServiceRequestQuoteLineDto
+{
     public string Label { get; set; } = string.Empty;
     public int AmountCents { get; set; }
 }
@@ -396,6 +490,23 @@ public static class ServiceRequestDtoParts
             }).ToList(),
         };
     }
+
+    /// <summary>The quote that waits for an answer as the API gives it (SP-04b); <c>null</c> when there is none.</summary>
+    public static ServiceRequestQuoteDto? ToQuoteDto(ServiceRequestQuote? quote) =>
+        quote is null
+            ? null
+            : new ServiceRequestQuoteDto
+            {
+                SentAt = AsUtc(quote.SentAt),
+                Lines = quote.Lines.Select(line => new ServiceRequestQuoteLineDto { Label = line.Label, AmountCents = line.AmountCents }).ToList(),
+                TotalCents = quote.TotalCents,
+                Note = quote.Note,
+                ScheduledStart = quote.ScheduledStartUtc is { } start ? AsUtc(start) : null,
+                ScheduledEnd = quote.ScheduledEndUtc is { } end ? AsUtc(end) : null,
+                AnswerBy = quote.AnswerBy is { } answerBy ? AsUtc(answerBy) : null,
+            };
+
+    private static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
 
     public static ServiceRequestProposalDto? ToProposalDto(DateTime? startUtc, DateTime? endUtc, DateTime? proposedAt, string? message) =>
         startUtc is { } start && endUtc is { } end && proposedAt is { } at
