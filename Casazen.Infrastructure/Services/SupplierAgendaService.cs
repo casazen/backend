@@ -295,6 +295,38 @@ public class SupplierAgendaService(
         return ToView(settings);
     }
 
+    public async Task SetOnlineBookingEnabledAsync(Guid supplierOrgId, bool enabled, CancellationToken cancellationToken = default)
+    {
+        // The row is shared with the rules, the settings and the working hours: the same lock. Inside the transaction of the caller (the
+        // showcase content service takes its own lock first, then this one) it joins it and the caller commits.
+        await using var transaction = await LockAgendaAsync(supplierOrgId, cancellationToken);
+
+        var now = Now();
+        SupplierSettings? settings;
+        if (enabled)
+        {
+            settings = await EnsureSettingsAsync(supplierOrgId, now, cancellationToken);
+        }
+        else
+        {
+            // Closing what was never opened writes nothing, not even a row.
+            settings = await SettingsOf(supplierOrgId).FirstOrDefaultAsync(cancellationToken);
+            if (settings is null)
+                return;
+        }
+
+        if (settings.OnlineBookingEnabled == enabled)
+            return;
+
+        settings.OnlineBookingEnabled = enabled;
+        settings.UpdatedAt = now;
+
+        await db.SaveChangesAsync(cancellationToken);
+        await CommitAsync(transaction, cancellationToken);
+
+        logger.LogInformation("Supplier {OrgId}: online bookings of the showcase turned {State}", supplierOrgId, enabled ? "on" : "off");
+    }
+
     // ─── Urgent requests (SP-04c) ────────────────────────────────────────────────
 
     public async Task<SupplierUrgentSettings> GetUrgentAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>

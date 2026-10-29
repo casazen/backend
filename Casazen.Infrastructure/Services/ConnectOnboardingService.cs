@@ -201,7 +201,11 @@ public class ConnectOnboardingService(
 
         var canReceivePayments = SupplierVerification.CanReceivePayments(
             org.StripeConnectedAccountId, org.ConnectChargesEnabled, org.ConnectPayoutsEnabled);
-        return new ConnectAccountUpdate(org.Id, org.OrgType == OrgType.Supplier && !couldReceivePayments && canReceivePayments);
+        var isSupplier = org.OrgType == OrgType.Supplier;
+        return new ConnectAccountUpdate(
+            org.Id,
+            isSupplier && !couldReceivePayments && canReceivePayments,
+            isSupplier && couldReceivePayments != canReceivePayments);
     }
 
     /// <summary>
