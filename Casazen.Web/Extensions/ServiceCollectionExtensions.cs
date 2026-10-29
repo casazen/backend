@@ -716,7 +716,8 @@ public static class ServiceCollectionExtensions
             // Without the key no header is set and ConcordatoFacileApiClient.IsConfigured is false: the status service does not ask
             // ConcordatoFacile and says once (CF-BE) that the key is missing. This delegate runs at every creation of the client, so it
             // must not log: it used to warn at every request that reached the controller, checkout and access included.
-            var apiKey = configuration["ConcordatoFacile:StatusApiKey"];
+            // A person pastes the key in Railway: a blank or a line break at its edge is not part of it and would make every read fail.
+            var apiKey = configuration["ConcordatoFacile:StatusApiKey"]?.Trim();
             if (!string.IsNullOrWhiteSpace(apiKey))
             {
                 client.DefaultRequestHeaders.Authorization =

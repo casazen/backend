@@ -1,0 +1,14 @@
+{
+  "leaseId": "7e570000-5eed-4000-8000-000000000008",
+  "practices": [
+    {
+      "practiceId": "P-7e57000000000008",
+      "status": "Suspended",
+      "statusChangedAt": "2026-09-27T21:38:00Z",
+      "submittedAt": "2026-08-18T21:38:00Z",
+      "comune": "Limbiate",
+      "comuneDiffersFromLink": false,
+      "closeReason": null
+    }
+  ]
+}
