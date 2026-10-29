@@ -15,7 +15,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-10-25.1";
+    public const string Version = "2026-10-29.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -39,6 +39,24 @@ public static class DemoShowcaseCatalog
         public const string CampaignDraft = "campaign-draft";
         public const string CampaignApproved = "campaign-approved";
         public const string CampaignSent = "campaign-sent";
+        public const string AgencyPropertiesCrossRegion = "agency-properties-cross-region";
+        public const string OwnerShares = "owner-shares";
+        public const string OwnerMandate = "owner-mandate";
+        public const string StaffCollaborator = "staff-collaborator";
+        public const string TrustedSupplier = "trusted-supplier";
+        public const string BookingOtaIcal = "booking-ota-ical";
+        public const string CheckInPending = "checkin-pending";
+        public const string CheckInBiometricPassed = "checkin-biometric-passed";
+        public const string CheckInOperatorVerified = "checkin-operator-verified";
+        public const string CheckInRejected = "checkin-rejected";
+        public const string AlloggiatiSentReceiptPending = "alloggiati-sent-receipt-pending";
+        public const string AlloggiatiRegistered = "alloggiati-registered";
+        public const string StatementPublished = "statement-published";
+        public const string WithholdingSummary = "withholding-summary";
+        public const string F24Record = "f24-record";
+        public const string WireBatchGenerated = "wire-batch-generated";
+        public const string RoutineActive = "routine-active";
+        public const string RoutineTestMode = "routine-test-mode";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -59,6 +77,24 @@ public static class DemoShowcaseCatalog
         Scenario.CampaignDraft,
         Scenario.CampaignApproved,
         Scenario.CampaignSent,
+        Scenario.AgencyPropertiesCrossRegion,
+        Scenario.OwnerShares,
+        Scenario.OwnerMandate,
+        Scenario.StaffCollaborator,
+        Scenario.TrustedSupplier,
+        Scenario.BookingOtaIcal,
+        Scenario.CheckInPending,
+        Scenario.CheckInBiometricPassed,
+        Scenario.CheckInOperatorVerified,
+        Scenario.CheckInRejected,
+        Scenario.AlloggiatiSentReceiptPending,
+        Scenario.AlloggiatiRegistered,
+        Scenario.StatementPublished,
+        Scenario.WithholdingSummary,
+        Scenario.F24Record,
+        Scenario.WireBatchGenerated,
+        Scenario.RoutineActive,
+        Scenario.RoutineTestMode,
     ];
 
     /// <summary>
@@ -73,13 +109,19 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
-    /// Property owners of the agency demo (ADR-012): one owner with fiscal code and IBAN to exercise the
-    /// encryption, the list endpoint with masked IBAN, and the financial read endpoint.
+    /// Property owners of the agency demo (ADR-012): multiple owners with fiscal code and IBAN to exercise the
+    /// encryption, ownership shares, mandates with commission rates, the list endpoint with masked IBAN, and the financial read endpoint.
     /// </summary>
     public static IReadOnlyList<DemoPropertyOwnerTemplate> PropertyOwners { get; } =
     [
         new("mario-rossi", "Mario", "Rossi", "proprietario.demo@example.com", "+39 333 1234567",
-            "RSSMRA70A01H501X", "IT60X0542811101000000123456", OwnerTaxRegime.Private, Scenario.PropertyOwnerAgency),
+            "RSSMRA70A01H501X", "IT60X0542811101000000123456", OwnerTaxRegime.Private, 100m, 15m, Scenario.PropertyOwnerAgency),
+        new("giulia-bianchi", "Giulia", "Bianchi", "giulia.proprietario@example.com", "+39 334 9876543",
+            "BNCGLI75C42F205Z", "IT28W8000000292100645211151", OwnerTaxRegime.Private, 50m, 12m, Scenario.OwnerShares),
+        new("luca-verdi", "Luca", "Verdi", "luca.proprietario@example.com", "+39 335 1122334",
+            "VRDLCU80D15F205A", "IT10J0200805017000105432100", OwnerTaxRegime.Private, 50m, 12m, Scenario.OwnerShares),
+        new("anna-ferrari", "Anna", "Ferrari", "anna.proprietario@example.com", "+39 336 5544332",
+            "FRRNNA85E50H501B", "IT07X0300203280284975071923", OwnerTaxRegime.VatHolder, 100m, 18m, Scenario.OwnerMandate),
     ];
 
     /// <summary>
@@ -179,8 +221,11 @@ public static class DemoShowcaseCatalog
             NightlyRate: 160m,
             CleaningFee: 35m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLazio],
-            Bookings: []),
+            Scenarios: [Scenario.PublishedLazio, Scenario.AlloggiatiRegistered],
+            Bookings:
+            [
+                new("past-guest-roma", "Francesca", "Romano", "francesca.demo@example.com", -15, 5, BookingStatus.CheckedOut, Scenario.AlloggiatiRegistered),
+            ]),
         new(
             Key: "bilocale-navigli",
             Name: "Bilocale Navigli (demo)",
@@ -211,6 +256,185 @@ public static class DemoShowcaseCatalog
             Cadastral: null,
             Scenarios: [Scenario.ActivationPending],
             Bookings: []),
+        new(
+            Key: "attico-firenze",
+            Name: "Attico Firenze (demo)",
+            Place: new DemoPlace("Firenze", "048017", "TOS", "50122", "Via dei Calzaiuoli 8"),
+            Description: "Annuncio di dimostrazione a Firenze. Dati, CIN e documenti sono inventati e segnati come test.",
+            Mode: RentalMode.Short,
+            Publish: true,
+            Bedrooms: 2,
+            Bathrooms: 2,
+            MaxGuests: 5,
+            NightlyRate: 200m,
+            CleaningFee: 45m,
+            Cadastral: null,
+            Scenarios: [Scenario.AgencyPropertiesCrossRegion],
+            Bookings:
+            [
+                new("airbnb-ical", "Thomas", "Schmidt", "thomas.demo@example.com", 7, 3, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.Airbnb),
+            ]),
+        new(
+            Key: "loft-torino",
+            Name: "Loft Torino (demo)",
+            Place: new DemoPlace("Torino", "001272", "PIE", "10123", "Via Garibaldi 25"),
+            Description: "Annuncio di dimostrazione a Torino. Dati, CIN e documenti sono inventati e segnati come test.",
+            Mode: RentalMode.Short,
+            Publish: true,
+            Bedrooms: 1,
+            Bathrooms: 1,
+            MaxGuests: 2,
+            NightlyRate: 120m,
+            CleaningFee: 25m,
+            Cadastral: null,
+            Scenarios: [Scenario.AgencyPropertiesCrossRegion, Scenario.CheckInRejected],
+            Bookings:
+            [
+                new("rejected-guest", "Paolo", "Neri", "paolo.demo@example.com", -5, 2, BookingStatus.CheckedOut, Scenario.CheckInRejected),
+            ]),
+        new(
+            Key: "villa-lugano",
+            Name: "Villa Lugano (demo)",
+            Place: new DemoPlace("Lugano", "999999", "TIC", "6900", "Via Nassa 15"),
+            Description: "Annuncio di dimostrazione a Lugano, Ticino. Dati, CIN e documenti sono inventati e segnati come test.",
+            Mode: RentalMode.Short,
+            Publish: true,
+            Bedrooms: 4,
+            Bathrooms: 3,
+            MaxGuests: 8,
+            NightlyRate: 250m,
+            CleaningFee: 60m,
+            Cadastral: null,
+            Scenarios: [Scenario.AgencyPropertiesCrossRegion],
+            Bookings: []),
+        new(
+            Key: "chalet-locarno",
+            Name: "Chalet Locarno (demo)",
+            Place: new DemoPlace("Locarno", "999998", "TIC", "6600", "Via della Motta 8"),
+            Description: "Annuncio di dimostrazione a Locarno, Ticino. Dati, CIN e documenti sono inventati e segnati come test.",
+            Mode: RentalMode.Short,
+            Publish: true,
+            Bedrooms: 3,
+            Bathrooms: 2,
+            MaxGuests: 6,
+            NightlyRate: 190m,
+            CleaningFee: 50m,
+            Cadastral: null,
+            Scenarios: [Scenario.AgencyPropertiesCrossRegion],
+            Bookings: []),
+        new(
+            Key: "appartamento-napoli",
+            Name: "Appartamento Napoli (demo)",
+            Place: new DemoPlace("Napoli", "063049", "CAM", "80134", "Via Toledo 156"),
+            Description: "Annuncio di dimostrazione a Napoli. Dati, CIN e documenti sono inventati e segnati come test.",
+            Mode: RentalMode.Short,
+            Publish: true,
+            Bedrooms: 2,
+            Bathrooms: 1,
+            MaxGuests: 4,
+            NightlyRate: 150m,
+            CleaningFee: 35m,
+            Cadastral: null,
+            Scenarios: [Scenario.AgencyPropertiesCrossRegion],
+            Bookings: []),
+        new(
+            Key: "villa-amalfi",
+            Name: "Villa Amalfi (demo)",
+            Place: new DemoPlace("Amalfi", "065006", "CAM", "84011", "Via Lorenzo d'Amalfi 3"),
+            Description: "Annuncio di dimostrazione ad Amalfi. Dati, CIN e documenti sono inventati e segnati come test.",
+            Mode: RentalMode.Short,
+            Publish: true,
+            Bedrooms: 3,
+            Bathrooms: 2,
+            MaxGuests: 6,
+            NightlyRate: 220m,
+            CleaningFee: 55m,
+            Cadastral: null,
+            Scenarios: [Scenario.AgencyPropertiesCrossRegion],
+            Bookings:
+            [
+                new("booking-com-ical", "Marie", "Dubois", "marie.demo@example.com", 21, 5, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.BookingCom),
+            ]),
+    ];
+
+    /// <summary>
+    /// Staff members of the agency demo: collaborators who handle guests and properties.
+    /// </summary>
+    public static IReadOnlyList<DemoStaffTemplate> StaffMembers { get; } =
+    [
+        new("sofia-conte", "Sofia", "Conte", "sofia.staff@example.com", "+39 340 1234567", OrgRole.Collaborator, Scenario.StaffCollaborator),
+        new("marco-galli", "Marco", "Galli", "marco.staff@example.com", "+39 341 7654321", OrgRole.Collaborator, Scenario.StaffCollaborator),
+    ];
+
+    /// <summary>
+    /// Trusted suppliers of the agency demo: one trusted supplier to demonstrate supplier management.
+    /// </summary>
+    public static IReadOnlyList<DemoSupplierTemplate> Suppliers { get; } =
+    [
+        new("pulizie-express", "Pulizie Express DEMO", "Servizio pulizie di fiducia (DEMO)", "info@pulizieexpress.example.com",
+            "+39 342 9988776", true, Scenario.TrustedSupplier),
+    ];
+
+    /// <summary>
+    /// Check-in verifications demo: all verification states to demonstrate the biometric and operator verification flow.
+    /// No real faces - only recorded biometric outcomes.
+    /// </summary>
+    public static IReadOnlyList<DemoCheckInTemplate> CheckIns { get; } =
+    [
+        new("pending-verification", "villa-lago", "arrivo", "Pending", null, false, false, Scenario.CheckInPending),
+        new("biometric-passed", "attico-firenze", "airbnb-ical", "Completed", BiometricOutcome.Accept, true, false, Scenario.CheckInBiometricPassed),
+        new("operator-verified", "villa-amalfi", "booking-com-ical", "Completed", BiometricOutcome.Escalate, true, true, Scenario.CheckInOperatorVerified),
+        new("rejected", "loft-torino", "rejected-guest", "Rejected", BiometricOutcome.Reject, false, false, Scenario.CheckInRejected),
+    ];
+
+    /// <summary>
+    /// Alloggiati reports demo: reports in all states including SentReceiptPending with a fake receipt.
+    /// </summary>
+    public static IReadOnlyList<DemoAlloggiatiTemplate> AlloggiatiReports { get; } =
+    [
+        new("sent-receipt-pending", "villa-lago", "partito", RegistrationStatus.SentToProvider, true, false, Scenario.AlloggiatiSentReceiptPending),
+        new("registered", "casa-trastevere", "past-guest-roma", RegistrationStatus.Registered, true, true, Scenario.AlloggiatiRegistered),
+    ];
+
+    /// <summary>
+    /// Published owner statements demo (ADR-017): one published statement to demonstrate the statement lifecycle.
+    /// </summary>
+    public static IReadOnlyList<DemoStatementTemplate> Statements { get; } =
+    [
+        new("statement-2026-09", "mario-rossi", 9, 2026, StatementStatus.Published, 2500.00m, 375.00m, 2125.00m, Scenario.StatementPublished),
+    ];
+
+    /// <summary>
+    /// Withholding summaries demo: one summary to demonstrate the withholding tax calculation.
+    /// </summary>
+    public static IReadOnlyList<DemoWithholdingTemplate> WithholdingSummaries { get; } =
+    [
+        new("withholding-2026-q3", "mario-rossi", 3, 2026, 1200.00m, 240.00m, Scenario.WithholdingSummary),
+    ];
+
+    /// <summary>
+    /// F24 records demo: one F24 record to demonstrate the F24 tax payment flow.
+    /// </summary>
+    public static IReadOnlyList<DemoF24Template> F24Records { get; } =
+    [
+        new("f24-2026-09", "mario-rossi", 9, 2026, 240.00m, "1001", Scenario.F24Record),
+    ];
+
+    /// <summary>
+    /// Wire batches demo: one generated batch to demonstrate the wire transfer batch lifecycle.
+    /// </summary>
+    public static IReadOnlyList<DemoWireBatchTemplate> WireBatches { get; } =
+    [
+        new("batch-2026-10", 10, 2026, WireBatchStatus.Generated, 4, 8500.00m, Scenario.WireBatchGenerated),
+    ];
+
+    /// <summary>
+    /// Automation routines demo: one active and one test-mode routine to demonstrate the routine engine.
+    /// </summary>
+    public static IReadOnlyList<DemoRoutineTemplate> Routines { get; } =
+    [
+        new("welcome-message", "Messaggio di benvenuto (DEMO)", RoutineEventType.BeforeCheckin, 1, RoutineActionType.MessageToGuest, false, Scenario.RoutineActive),
+        new("checkout-reminder", "Promemoria checkout (TEST)", RoutineEventType.BeforeCheckout, 1, RoutineActionType.MessageToGuest, true, Scenario.RoutineTestMode),
     ];
 }
 
@@ -269,7 +493,10 @@ public sealed record DemoHostInviteTemplate(
     DemoHostInviteState State,
     string Scenario);
 
-/// <summary>A property owner of the agency demo (ADR-012): fiscal code and IBAN are test data, encrypted at rest.</summary>
+/// <summary>
+/// A property owner of the agency demo (ADR-012): fiscal code and IBAN are test data, encrypted at rest.
+/// Includes ownership share percentage and mandate commission rate.
+/// </summary>
 public sealed record DemoPropertyOwnerTemplate(
     string Key,
     string FirstName,
@@ -279,6 +506,8 @@ public sealed record DemoPropertyOwnerTemplate(
     string FiscalCode,
     string Iban,
     OwnerTaxRegime TaxRegime,
+    decimal OwnershipSharePercent,
+    decimal CommissionRate,
     string Scenario);
 
 /// <summary>A guest segment for demo campaigns (NF-24): condition is empty to match all consented guests.</summary>
@@ -313,4 +542,100 @@ public sealed record DemoAgencyInvoiceTemplate(
     int Year,
     decimal TaxableBase,
     decimal VatRate,
+    string Scenario);
+
+/// <summary>A staff member of the agency demo: collaborator role to demonstrate staff management.</summary>
+public sealed record DemoStaffTemplate(
+    string Key,
+    string FirstName,
+    string LastName,
+    string Email,
+    string? Phone,
+    OrgRole Role,
+    string Scenario);
+
+/// <summary>A trusted supplier of the agency demo: demonstrates supplier management and service requests.</summary>
+public sealed record DemoSupplierTemplate(
+    string Key,
+    string Name,
+    string Description,
+    string Email,
+    string? Phone,
+    bool IsTrusted,
+    string Scenario);
+
+/// <summary>
+/// A check-in verification demo: demonstrates all verification states.
+/// No real faces - only recorded biometric outcomes.
+/// </summary>
+public sealed record DemoCheckInTemplate(
+    string Key,
+    string PropertyKey,
+    string BookingKey,
+    string VerificationStatus,
+    BiometricOutcome? BiometricOutcome,
+    bool HasConsent,
+    bool OperatorVerified,
+    string Scenario);
+
+/// <summary>An alloggiati report demo: demonstrates report states including SentReceiptPending with fake receipt.</summary>
+public sealed record DemoAlloggiatiTemplate(
+    string Key,
+    string PropertyKey,
+    string BookingKey,
+    RegistrationStatus Status,
+    bool HasFakeReceipt,
+    bool IsRegistered,
+    string Scenario);
+
+/// <summary>A published owner statement demo (ADR-017): demonstrates the statement lifecycle.</summary>
+public sealed record DemoStatementTemplate(
+    string Key,
+    string OwnerKey,
+    int Month,
+    int Year,
+    StatementStatus Status,
+    decimal GrossRevenue,
+    decimal Commission,
+    decimal NetAmount,
+    string Scenario);
+
+/// <summary>A withholding summary demo: demonstrates the withholding tax calculation.</summary>
+public sealed record DemoWithholdingTemplate(
+    string Key,
+    string OwnerKey,
+    int Quarter,
+    int Year,
+    decimal TaxableBase,
+    decimal WithholdingAmount,
+    string Scenario);
+
+/// <summary>An F24 record demo: demonstrates the F24 tax payment flow.</summary>
+public sealed record DemoF24Template(
+    string Key,
+    string OwnerKey,
+    int Month,
+    int Year,
+    decimal Amount,
+    string TaxCode,
+    string Scenario);
+
+/// <summary>A wire batch demo: demonstrates the wire transfer batch lifecycle (ADR-017).</summary>
+public sealed record DemoWireBatchTemplate(
+    string Key,
+    int Month,
+    int Year,
+    WireBatchStatus Status,
+    int TransferCount,
+    decimal TotalAmount,
+    string Scenario);
+
+/// <summary>An automation routine demo (NF-26): demonstrates active and test-mode routines.</summary>
+public sealed record DemoRoutineTemplate(
+    string Key,
+    string Name,
+    RoutineEventType EventType,
+    int DaysBefore,
+    RoutineActionType ActionType,
+    bool IsTestMode,
     string Scenario);
