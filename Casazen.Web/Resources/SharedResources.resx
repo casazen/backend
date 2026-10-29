@@ -528,6 +528,21 @@
   <data name="LeaseLetterUnavailable" xml:space="preserve">
     <value>Il testo di questa lettera non è disponibile in questo momento. Riprova più tardi o scrivi all'assistenza.</value>
   </data>
+  <data name="LeaseRenewalEndInvalid" xml:space="preserve">
+    <value>Il periodo concordato deve finire dopo la fine del periodo in corso: scegli un giorno dal {0:d MMM yyyy} al {1:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalBlockedByNotice" xml:space="preserve">
+    <value>Hai registrato una disdetta, quindi il contratto non si rinnova. Se le parti hanno deciso di rinnovarlo, togli prima la disdetta.</value>
+  </data>
+  <data name="LeaseRenewalNotYet" xml:space="preserve">
+    <value>Il rinnovo si registra nell'ultimo tratto prima della scadenza, dal {0:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalPeriodOver" xml:space="preserve">
+    <value>Il periodo del contratto è già finito: il contratto si rinnova da solo e il rinnovo lo registra CasaZen.</value>
+  </data>
+  <data name="LeaseLetterNotApplicable" xml:space="preserve">
+    <value>Questa lettera non riguarda questo contratto.</value>
+  </data>
   <data name="LeasePeriodOverlaps" xml:space="preserve">
     <value>Per questo immobile c'è già un contratto dal {0:d MMM yyyy} al {1:d MMM yyyy}. Due contratti non possono coprire gli stessi giorni: apri quello esistente o cambia le date.</value>
   </data>

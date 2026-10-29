@@ -43,6 +43,21 @@ public static class LeaseLifecycleCodes
     /// <summary>422: the notice at the first expiry must state one of the reasons of the law, and none was chosen (LR-OPS-1).</summary>
     public const string DisdettaReasonRequired = "lease_disdetta_reason_required";
 
+    /// <summary>422: the last day of an extension the parties agreed on is not after the end of the period the lease is in, or is too far (LR-OPS-1).</summary>
+    public const string RenewalEndInvalid = "lease_renewal_end_invalid";
+
+    /// <summary>422: the stretch before the end of the period has not begun, so a renewal cannot be recorded yet (LR-OPS-1).</summary>
+    public const string RenewalNotYet = "lease_renewal_not_yet";
+
+    /// <summary>409: the period of the lease is over, so a renewal cannot be recorded any more: the lease renews by itself and the hourly job writes it (LR-OPS-1).</summary>
+    public const string RenewalPeriodOver = "lease_renewal_period_over";
+
+    /// <summary>409: a notice is recorded, so the lease cannot be renewed until the notice is taken back (LR-OPS-1).</summary>
+    public const string RenewalBlockedByNotice = "lease_renewal_blocked_by_notice";
+
+    /// <summary>422: this letter does not apply to this lease (not a transitory lease, the need is the tenant's, a type that does not renew…) (LR-OPS-1).</summary>
+    public const string LetterNotApplicable = "lease_letter_not_applicable";
+
     /// <summary>422: the text of the letter cannot be used (its file is missing or broken): a problem of the deployment, never of the person (LR-OPS-1).</summary>
     public const string LetterUnavailable = "lease_letter_unavailable";
 

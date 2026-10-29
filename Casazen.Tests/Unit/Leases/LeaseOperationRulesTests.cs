@@ -88,4 +88,60 @@ public class LeaseOperationRulesTests
         Assert.Equal(LongRentDeadlineRules.NoticeMonthsBeforeEnd, LeaseOperationRules.WithdrawalNoticeMonths(TenantWithdrawalReason.ContractualFaculty, null));
         Assert.Equal(3, LeaseOperationRules.WithdrawalNoticeMonths(TenantWithdrawalReason.ContractualFaculty, 3));
     }
+
+    [Fact]
+    public void Renewal_IsOfferedWhileThePeriodRuns_WithTheStandardEndOfTheType_AndNotWhenItCannotBeRecorded()
+    {
+        var today = new DateOnly(2026, 10, 10);
+
+        var libero = LeaseOperationRules.Renewal(Lease(LeaseContractType.Libero, Utc(2026, 10, 31)), today);
+        Assert.True(libero.Available);
+        Assert.Equal(new DateOnly(2026, 11, 1), libero.StartsOn);
+        Assert.Equal(new DateOnly(2030, 10, 31), libero.StandardEnd);
+        Assert.Equal(LongRentRules.LiberoRenewalMonths, libero.StandardMonths);
+        Assert.Equal(new DateOnly(2026, 4, 30), libero.OpensOn); // the last day to give notice: from then the parties decide
+
+        // Before that stretch there is nothing to formalize: a renewal moves the end forward, so it cannot be recorded twice in a row.
+        var early = LeaseOperationRules.Renewal(Lease(LeaseContractType.Libero, Utc(2029, 10, 31)), today);
+        Assert.False(early.Available);
+        Assert.Equal(new DateOnly(2029, 4, 30), early.OpensOn);
+
+        var concordato = LeaseOperationRules.Renewal(Lease(LeaseContractType.Concordato, Utc(2026, 10, 31)), today);
+        Assert.Equal(new DateOnly(2028, 10, 31), concordato.StandardEnd);
+        Assert.Equal(LongRentRules.ConcordatoRenewalMonths, concordato.StandardMonths);
+
+        // A transitory lease never renews; a notice has to be taken back first; a period that is over is the hourly job's; an ended lease is ended.
+        Assert.False(LeaseOperationRules.Renewal(Lease(LeaseContractType.Transitorio, Utc(2026, 12, 31)), today).Available);
+        var withNotice = Lease(LeaseContractType.Libero, Utc(2026, 10, 31));
+        withNotice.NoticeOn = Utc(2026, 4, 1);
+        withNotice.NoticeFrom = LeaseNoticeParty.Landlord;
+        Assert.False(LeaseOperationRules.Renewal(withNotice, today).Available);
+        Assert.False(LeaseOperationRules.Renewal(Lease(LeaseContractType.Libero, Utc(2026, 9, 30)), today).Available);
+        var ended = Lease(LeaseContractType.Libero, Utc(2026, 10, 31));
+        ended.TerminatedOn = Utc(2026, 8, 31);
+        Assert.False(LeaseOperationRules.Renewal(ended, today).Available);
+    }
+
+    [Fact]
+    public void TransitoryConfirmation_IsTheLandlordsOnlyWhenTheNeedIsHis_AndHasToBeSentBeforeTheLastDay()
+    {
+        var today = new DateOnly(2026, 10, 10);
+        var lease = Lease(LeaseContractType.Transitorio, Utc(2026, 12, 31));
+        lease.TransitoryParty = PartyRole.Landlord;
+
+        var landlords = LeaseOperationRules.TransitoryConfirmation(lease, today);
+        Assert.True(landlords.Applies);
+        Assert.True(landlords.Available);
+        Assert.Equal(PartyRole.Landlord, landlords.Holder);
+        Assert.Equal(new DateOnly(2026, 12, 31), landlords.ConfirmBy);
+
+        // When the need is the tenant's the tenant confirms it: the lease applies, the landlord has no letter.
+        lease.TransitoryParty = PartyRole.Tenant;
+        var tenants = LeaseOperationRules.TransitoryConfirmation(lease, today);
+        Assert.True(tenants.Applies);
+        Assert.False(tenants.Available);
+
+        // A libero lease has no need to confirm.
+        Assert.False(LeaseOperationRules.TransitoryConfirmation(Lease(LeaseContractType.Libero, Utc(2029, 10, 31)), today).Applies);
+    }
 }

@@ -528,6 +528,21 @@
   <data name="LeaseLetterUnavailable" xml:space="preserve">
     <value>The text of this letter is not available right now. Try again later or write to support.</value>
   </data>
+  <data name="LeaseRenewalEndInvalid" xml:space="preserve">
+    <value>The agreed period must end after the end of the current period: choose a day from {0:d MMM yyyy} to {1:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalBlockedByNotice" xml:space="preserve">
+    <value>A notice is recorded, so the lease does not renew. If the parties decided to renew it, take the notice back first.</value>
+  </data>
+  <data name="LeaseRenewalNotYet" xml:space="preserve">
+    <value>A renewal is recorded in the last stretch before the end, from {0:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalPeriodOver" xml:space="preserve">
+    <value>The period of the contract is already over: the lease renews by itself and CasaZen records the renewal.</value>
+  </data>
+  <data name="LeaseLetterNotApplicable" xml:space="preserve">
+    <value>This letter does not apply to this contract.</value>
+  </data>
   <data name="LeasePeriodOverlaps" xml:space="preserve">
     <value>This property already has a lease from {0:d MMM yyyy} to {1:d MMM yyyy}. Two leases cannot cover the same days: open the existing one or change the dates.</value>
   </data>
