@@ -51,7 +51,7 @@ and production never block each other.
 | `rent-collection` (LT-06: payment links of the rent installments coming due, payments in flight read again, see [§12](#12-rent-collection-lt-06)) | 07:00 | `RentCollectionJob.ExecuteAsync` (plus a PostgreSQL advisory lock per lease) | 300 s |
 | `checkout-hold-expiry` (BK-21 and BK-06, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
 | `service-request-expiry` (SP-10: deletes the booking holds past their expiry, cancels the showcase requests nobody answered and tells the customer; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | `*/5` | `ServiceRequestExpiryJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 60 s |
-| `service-request-reminders` (SP-10: the reminder to the customer of a showcase request, 18:00 Rome of the day before; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | hourly | `ServiceRequestReminderJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 300 s |
+| `service-request-reminders` (SP-10: the reminder to the customer of a showcase request, and SP-16d: to the supplier of any taken request, 18:00 Rome of the day before; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | hourly | `ServiceRequestReminderJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 300 s |
 | `service-request-auto-cancel` (SP-04, D8: cancels the new service requests nobody answered; only with `Features:SupplierRequestAutoCancel=true`, otherwise removed at startup, see [suppliers.md](suppliers.md) § 21.8) | `*/10` | `ServiceRequestAutoCancelJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 requests per run) | 60 s |
 | `service-payment-sync` (SP-15b: reads again the payments Stripe is processing and the refunds it has not completed; always scheduled, see [§14](#14-service-payments-sp-15b)) | `*/15` | `ServicePaymentSyncJob.ExecuteAsync` (plus the payment lock of each request) | 60 s |
 | `service-payment-reminders` (SP-15b: flags the late payments, sends the pending requests and the reminders at +2 and +7 days with `Features:SupplierOnlinePayments` on; always scheduled, see [§14](#14-service-payments-sp-15b)) | 07:30 | `ServicePaymentRemindersJob.ExecuteAsync` (plus the payment lock of each request) | 300 s |
@@ -595,7 +595,10 @@ reminded of, also after the flag is turned off (with it off, a run finds nothing
   reminder to those for which 18:00 Europe/Rome of the day before has come and the work has not started, **if the supplier took the
   request before that time** (the mail of the take promised the reminder only then). The request is marked **before** the mail is
   queued: a crash or a repeated run sends it once or not at all, never twice. At the change of the clocks the hour follows the wall
-  clock of Rome.
+  clock of Rome. **Second pass (SP-16d, `SupplierDayBeforeReminders`), under the same lock:** the requests taken in **any context** with no
+  `SupplierReminderSentAt` get the reminder to the **supplier** (e-mail and push, once per request) at the same hour, unless it turned
+  «Promemoria del giorno prima» off or is suspended (the request is then marked all the same and not read again); at most 500 rows per pass; the
+  run counts `SupplierSent` and `SupplierFailed` next to the customers' ([suppliers.md § 35](suppliers.md)).
 - Failure: a row that fails is logged by id and retried at the next run (expiry) or not retried (reminder: at most once); a run that
   fails entirely is retried by Hangfire; nothing personal is in the logs.
 

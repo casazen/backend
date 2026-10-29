@@ -1755,4 +1755,31 @@
   <data name="Push_ServiceRequestQuoteExpired_Body" xml:space="preserve">
     <value>{0} in {1}: the customer did not answer, the request is cancelled.</value>
   </data>
+  <data name="ServiceRequestDayBefore_Subject" xml:space="preserve">
+    <value>Tomorrow: {0} in {1}</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Body" xml:space="preserve">
+    <value>A reminder of tomorrow's job: &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestDayBefore_When" xml:space="preserve">
+    <value>When: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Hint" xml:space="preserve">
+    <value>The customer's address and contact details are in the request, in your console.</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Cta" xml:space="preserve">
+    <value>Open the request</value>
+  </data>
+  <data name="Push_ServiceRequestDayBefore_Title" xml:space="preserve">
+    <value>You have a job tomorrow</value>
+  </data>
+  <data name="Push_ServiceRequestDayBefore_Body" xml:space="preserve">
+    <value>{0} in {1}, at {2}.</value>
+  </data>
+  <data name="Push_ServicePaymentReceived_Title" xml:space="preserve">
+    <value>Payment received</value>
+  </data>
+  <data name="Push_ServicePaymentReceived_Body" xml:space="preserve">
+    <value>{0}: {1} net to you, before Stripe's fees.</value>
+  </data>
 </root>

@@ -97,6 +97,7 @@ internal sealed class ServiceRequestTestKit : IDisposable
             db,
             Gateway,
             Emails,
+            Push,
             links,
             Flags,
             Microsoft.Extensions.Options.Options.Create(PaymentOptions),

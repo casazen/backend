@@ -6630,6 +6630,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("SupplierOrgId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("SupplierReminderSentAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("TakenAt")
                         .HasColumnType("timestamp with time zone");
 

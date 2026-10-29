@@ -175,7 +175,7 @@ public partial class ServiceRequestService(
         }
 
         if (!request.AutoAccepted)
-            notifier.QueueCreated(request, supplier.Email, supplierEmail, comune);
+            await notifier.QueueCreatedAsync(request, supplier.Email, supplierEmail, comune, cancellationToken);
 
         logger.LogInformation(
             "ServiceRequest {Id} ({RentalContext}) created by {UserId} for property {PropertyId} booking {BookingId} supplier {SupplierOrgId}",
