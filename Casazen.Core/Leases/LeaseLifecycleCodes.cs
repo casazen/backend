@@ -31,6 +31,21 @@ public static class LeaseLifecycleCodes
     /// <summary>409: somebody else is changing the lease right now (the row is locked for more than a few seconds); nothing was written, try again.</summary>
     public const string Busy = "lease_busy";
 
+    /// <summary>422: the day a withdrawal of the tenant was received is before the start of the lease or after today (LR-OPS-1).</summary>
+    public const string WithdrawalDateInvalid = "lease_withdrawal_date_invalid";
+
+    /// <summary>422: the notice of a withdrawal by contractual faculty is not a whole number of months between 1 and <see cref="LeaseOperationRules.MaxContractualNoticeMonths"/> (LR-OPS-1).</summary>
+    public const string WithdrawalNoticeInvalid = "lease_withdrawal_notice_invalid";
+
+    /// <summary>422: the day a letter was sent is before the start of the lease or after today (LR-OPS-1).</summary>
+    public const string LetterDateInvalid = "lease_letter_date_invalid";
+
+    /// <summary>422: the notice at the first expiry must state one of the reasons of the law, and none was chosen (LR-OPS-1).</summary>
+    public const string DisdettaReasonRequired = "lease_disdetta_reason_required";
+
+    /// <summary>422: the text of the letter cannot be used (its file is missing or broken): a problem of the deployment, never of the person (LR-OPS-1).</summary>
+    public const string LetterUnavailable = "lease_letter_unavailable";
+
     /// <summary>
     /// Not an error: <c>noticeWarning</c> of the lease detail when the notice was given after the last day to give it. CasaZen records
     /// it and says so; it does not judge whether the notice is valid in law (decision LR-D29).

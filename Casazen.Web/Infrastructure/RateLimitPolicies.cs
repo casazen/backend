@@ -123,4 +123,11 @@ public static class RateLimitPolicies
     /// the erasure cannot be taken back. Nobody asks for more than a few in ten minutes.
     /// </summary>
     public const string TenantPrivacy = "TenantPrivacy";
+
+    /// <summary>
+    /// The autosave of the showcase editor (<c>PATCH api/supplier/showcase/content</c>, SP-13a). A policy of a signed-in endpoint, like
+    /// <see cref="GlobalSearch"/>: it is partitioned by <b>person</b>, not by IP, because the editor saves at every pause in typing and the
+    /// people of one office share an address. The body is small and bounded; the limit keeps a script from rewriting a draft in a loop.
+    /// </summary>
+    public const string SupplierShowcaseSave = "SupplierShowcaseSave";
 }

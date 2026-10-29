@@ -392,6 +392,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IVerificationQueueService, VerificationQueueService>();
         // NF-13: Property access codes with encryption and verification gating (E06/F03/US01/T01).
         services.AddScoped<IAccessCodeService, AccessCodeService>();
+        // NF-15: Swiss compliance files of the Ticino properties (ADR-016, E08): police notification XML, OTR overnight CSV and the
+        // archive of the receipts the cantonal portal gives back. Used by SwissComplianceController.
+        services.AddScoped<ITicinoNotificationService, TicinoNotificationService>();
+        services.AddScoped<IOtrTaxService, OtrTaxService>();
+        services.AddScoped<ISwissComplianceReceiptService, SwissComplianceReceiptService>();
         services.AddOptions<Casazen.Core.Options.GdprOptions>()
             .BindConfiguration(Casazen.Core.Options.GdprOptions.SectionName);
         // NF-05: Marketing suppression list with blind index (SHA-256) for one-click unsubscribe (ADR-007-R18, R22).
@@ -569,6 +574,9 @@ public static class ServiceCollectionExtensions
         // The supplier's agenda (SP-03): hours, time off, blocks, rules, calendar and the input of the slot planner. Rows keyed
         // by the supplier org, not tenant-filtered; every write under the SupplierCalendarSync lock.
         services.AddScoped<ISupplierAgendaService, SupplierAgendaService>();
+        // The content of the supplier's showcase (SP-13a): the draft, the published version, and the changes between them. Rows keyed
+        // by the supplier org, not tenant-filtered; every change under the SupplierShowcaseContent lock.
+        services.AddScoped<ISupplierShowcaseContentService, SupplierShowcaseContentService>();
         // The anonymous read side of the supplier showcase (SP-09): services, free slots and price estimate, behind the flag
         // SupplierShowcaseBooking. The slot plans are kept 30 seconds per replica (a singleton: not tied to a request).
         services.AddSingleton<PublicSupplierSlotCache>();

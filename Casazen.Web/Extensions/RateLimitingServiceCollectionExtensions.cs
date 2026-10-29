@@ -63,6 +63,9 @@ public static class RateLimitingServiceCollectionExtensions
 
         // The copy of a tenant's data and the erasure request (LR-09): per signed-in person, a handful in ten minutes is plenty.
         new(RateLimitPolicies.TenantPrivacy, 10, TimeSpan.FromMinutes(10), PartitionByUser: true),
+
+        // The autosave of the showcase editor (SP-13a): per signed-in person as well, since the editor saves at every pause in typing.
+        new(RateLimitPolicies.SupplierShowcaseSave, 120, OneMinute, PartitionByUser: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)
