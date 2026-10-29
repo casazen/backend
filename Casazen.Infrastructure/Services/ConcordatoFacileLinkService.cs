@@ -100,7 +100,8 @@ public sealed class ConcordatoFacileLinkService(
         var signature = ComputeHmacSignature(leaseId, expiresAt);
 
         // ADR-007-R6: Build URL with URL-encoded parameters (encoding AFTER signature calculation)
-        var url = BuildSignedUrl(FormBaseUrl(options.Value), leaseId, expiresAt, signature, comune.Name, comune.ProvinceCode);
+        var url = BuildSignedUrl(
+            FormBaseUrl(options.Value), leaseId, expiresAt, signature, comune.Name, comune.ProvinceCode, TestModuleBypassSecret(options.Value));
 
         // ADR-007-R8: Record LeaseEvent (NO URL or signature in payload)
         db.LeaseEvents.Add(new LeaseEvent
@@ -162,8 +163,22 @@ public sealed class ConcordatoFacileLinkService(
     }
 
     /// <summary>
+    /// CF-BYPASS: the secret that lets a browser through the protection of the test module of ConcordatoFacile (a Vercel deployment),
+    /// only when the link opens that module (<c>FormUrl</c> set, not the simulator); in any other case none, whatever is configured, so
+    /// that the real module never receives it. The startup refuses the secret in Production besides.
+    /// </summary>
+    private static string? TestModuleBypassSecret(ConcordatoFacileOptions concordatoFacile) =>
+        concordatoFacile.FormMode != ConcordatoFacileFormMode.Simulated
+        && !string.IsNullOrWhiteSpace(concordatoFacile.FormUrl)
+        && !string.IsNullOrWhiteSpace(concordatoFacile.FormBypassSecret)
+            ? concordatoFacile.FormBypassSecret.Trim()
+            : null;
+
+    /// <summary>
     /// Builds the signed URL per ADR-007-R6.
-    /// Each parameter value is URL-encoded individually AFTER signature calculation.
+    /// Each parameter value is URL-encoded individually AFTER signature calculation. With a <paramref name="bypassSecret"/> (the test
+    /// module only) the two parameters of Vercel follow, outside the signature: the secret of the protection and the request to keep it
+    /// in a cookie, so that the next pages of the module open too.
     /// </summary>
     private static string BuildSignedUrl(
         string baseUrl,
@@ -171,9 +186,10 @@ public sealed class ConcordatoFacileLinkService(
         string expiresAt,
         string signature,
         string comuneName,
-        string provinciaCode)
+        string provinciaCode,
+        string? bypassSecret)
     {
-        var queryParams = new[]
+        var queryParams = new List<string>
         {
             $"partner={HttpUtility.UrlEncode("casazen")}",
             $"leaseId={HttpUtility.UrlEncode(leaseId.ToString().ToLowerInvariant())}",
@@ -182,6 +198,12 @@ public sealed class ConcordatoFacileLinkService(
             $"comune={HttpUtility.UrlEncode(comuneName)}",
             $"provincia={HttpUtility.UrlEncode(provinciaCode)}"
         };
+
+        if (bypassSecret is not null)
+        {
+            queryParams.Add($"x-vercel-protection-bypass={HttpUtility.UrlEncode(bypassSecret)}");
+            queryParams.Add("x-vercel-set-bypass-cookie=true");
+        }
 
         return $"{baseUrl}?{string.Join("&", queryParams)}";
     }

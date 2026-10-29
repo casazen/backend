@@ -130,22 +130,76 @@ public sealed class LeaseTermService(
         logger.LogInformation("Lease notice of non-renewal taken back. LeaseId={LeaseId}", lease.Id);
     }
 
-    public async Task TerminateAsync(Guid leaseId, DateOnly on, CancellationToken cancellationToken = default)
+    public Task TerminateAsync(Guid leaseId, DateOnly on, CancellationToken cancellationToken = default) =>
+        EndEarlyAsync(leaseId, _ => on, withdrawal: null, cancellationToken);
+
+    public async Task RecordWithdrawalAsync(
+        Guid leaseId, DateOnly receivedOn, TenantWithdrawalReason reason, int? noticeMonths, CancellationToken cancellationToken = default)
+    {
+        if (!Enum.IsDefined(reason))
+            throw new ArgumentOutOfRangeException(nameof(reason), reason, "Unknown reason");
+
+        // Serious reasons: the notice of the rules, whatever was typed. The contractual faculty: the notice the contract gives.
+        var months = LeaseOperationRules.WithdrawalNoticeMonths(reason, noticeMonths);
+        if (months is < 1 or > LeaseOperationRules.MaxContractualNoticeMonths)
+        {
+            throw new DomainRuleException(
+                LeaseLifecycleCodes.WithdrawalNoticeInvalid, "LeaseWithdrawalNoticeInvalid", LeaseOperationRules.MaxContractualNoticeMonths);
+        }
+
+        var effectiveOn = LeaseOperationRules.WithdrawalEffectiveOn(receivedOn, months);
+        await EndEarlyAsync(
+            leaseId,
+            lease =>
+            {
+                // The letter of the tenant was received on a day that has come, and not before the lease began.
+                if (receivedOn > _clock.TodayInRomeAsDateOnly() || receivedOn < RomeCalendar.DateInRome(lease.StartDate))
+                    throw new DomainRuleException(LeaseLifecycleCodes.WithdrawalDateInvalid, "LeaseWithdrawalDateInvalid");
+
+                return effectiveOn;
+            },
+            new TenantWithdrawal(reason, receivedOn, effectiveOn, months),
+            cancellationToken);
+    }
+
+    /// <summary>The withdrawal of the tenant an early termination carries: what the history writes next to the <c>Terminated</c> event.</summary>
+    private sealed record TenantWithdrawal(TenantWithdrawalReason Reason, DateOnly ReceivedOn, DateOnly EffectiveOn, int NoticeMonths);
+
+    /// <summary>
+    /// The early termination (LR-TERM), whoever asks for it: <paramref name="lastDay"/> gives the last day of the lease once the row is
+    /// locked and read (it may refuse), the day is checked against the rules of the termination, and the lease and its rent plan change in one
+    /// transaction. A withdrawal of the tenant writes its own event beside <c>Terminated</c>.
+    /// </summary>
+    private async Task EndEarlyAsync(
+        Guid leaseId, Func<LeaseContract, DateOnly> lastDay, TenantWithdrawal? withdrawal, CancellationToken cancellationToken)
     {
         IReadOnlyList<RentPaymentNotice> notices;
         int cancelled;
+        DateOnly on;
         await using (var transaction = await BeginLockedAsync(leaseId, lockRent: true, cancellationToken))
         {
             var lease = await LoadForUpdateAsync(leaseId, ignoreTenant: false, cancellationToken);
             EnsureInForce(lease);
             EnsureNotTerminated(lease);
 
+            on = lastDay(lease);
             EnsureTerminationDate(lease, on);
 
             var now = UtcNow;
             lease.TerminatedOn = ToStoredDate(on);
             lease.CurrentTermEndDate = lease.TerminatedOn.Value;
             lease.UpdatedAt = now;
+            if (withdrawal is not null)
+            {
+                db.LeaseEvents.Add(new LeaseEvent
+                {
+                    LeaseContractId = lease.Id,
+                    EventType = LeaseEventType.WithdrawalRecorded,
+                    OccurredAt = now,
+                    Payload = $"{withdrawal.Reason}:{Format(withdrawal.ReceivedOn)}:{Format(withdrawal.EffectiveOn)}:{withdrawal.NoticeMonths.ToString(CultureInfo.InvariantCulture)}",
+                });
+            }
+
             db.LeaseEvents.Add(new LeaseEvent
             {
                 LeaseContractId = lease.Id,
@@ -168,6 +222,8 @@ public sealed class LeaseTermService(
             await rentBilling.CompleteAsync(notice, cancellationToken);
 
         logger.LogInformation("Lease ended early. LeaseId={LeaseId} LastDay={LastDay} InstallmentsCancelled={Cancelled}", leaseId, Format(on), cancelled);
+        if (withdrawal is not null)
+            logger.LogInformation("Lease withdrawal of the tenant recorded. LeaseId={LeaseId} Reason={Reason}", leaseId, withdrawal.Reason);
     }
 
     // ---- the tacit renewal (the job) -----------------------------------------------------------------------------

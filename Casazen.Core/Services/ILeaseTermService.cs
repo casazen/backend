@@ -1,5 +1,6 @@
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Leases;
 
 namespace Casazen.Core.Services;
 
@@ -55,6 +56,19 @@ public interface ILeaseTermService
     /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>, <c>lease_busy</c>.</exception>
     /// <exception cref="DomainRuleException">422 <c>lease_termination_date_invalid</c>, with <c>min</c> and <c>max</c> in its extensions.</exception>
     Task TerminateAsync(Guid leaseId, DateOnly on, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records the withdrawal (recesso) the tenant sent, received on <paramref name="receivedOn"/> (a day from the start of the lease up to
+    /// today), and ends the lease on the day the notice runs out (LR-OPS-1): <paramref name="receivedOn"/> plus the months of notice, which are
+    /// the ones of the rules (<c>LongRentRules</c>) for serious reasons and <paramref name="noticeMonths"/> (the rules' when omitted) when the
+    /// contract gave the faculty. The ending is the early termination of <see cref="TerminateAsync"/>, with the same rules and the same effects
+    /// (<c>start &lt; last day ≤ end of the period</c>, the rent plan cancelled after it), in the same transaction; irreversible. Events
+    /// <c>WithdrawalRecorded</c> and <c>Terminated</c>.
+    /// </summary>
+    /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>, <c>lease_busy</c>.</exception>
+    /// <exception cref="DomainRuleException">422 <c>lease_withdrawal_date_invalid</c>, <c>lease_withdrawal_notice_invalid</c>, and <c>lease_termination_date_invalid</c> (with <c>min</c> and <c>max</c>) when the day the notice runs out is not inside the period.</exception>
+    Task RecordWithdrawalAsync(
+        Guid leaseId, DateOnly receivedOn, TenantWithdrawalReason reason, int? noticeMonths, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The hourly job: every lease that renews by itself and whose period is over is brought forward one period at a time (at most
