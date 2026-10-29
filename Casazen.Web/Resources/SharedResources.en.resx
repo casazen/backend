@@ -1465,6 +1465,9 @@
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>The date range is not valid: the end date must be after the start date and the range cannot exceed {0} days.</value>
   </data>
+  <data name="PublicCalendarInvalidRange" xml:space="preserve">
+    <value>The date range is not valid: the end date must be after the start date and the range cannot exceed {0} months.</value>
+  </data>
   <data name="LeaseEndBeforeStart" xml:space="preserve">
     <value>The lease end date must be after the start date.</value>
   </data>
