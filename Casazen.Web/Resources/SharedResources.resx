@@ -1459,6 +1459,18 @@
   <data name="GuestBookingCodeInvalid" xml:space="preserve">
     <value>Il codice prenotazione non è valido: controlla l'email di conferma.</value>
   </data>
+  <data name="HostContactEmailInvalid" xml:space="preserve">
+    <value>Inserisci un indirizzo email valido: l'host risponderà a quello.</value>
+  </data>
+  <data name="HostContactMessageInvalid" xml:space="preserve">
+    <value>Scrivi un messaggio di almeno 5 e al massimo 2000 caratteri.</value>
+  </data>
+  <data name="HostContactNameTooLong" xml:space="preserve">
+    <value>Il nome può avere al massimo 100 caratteri.</value>
+  </data>
+  <data name="HostContactConsentRequired" xml:space="preserve">
+    <value>Per scrivere all'host devi accettare che il messaggio e il tuo indirizzo email gli vengano inviati.</value>
+  </data>
   <data name="GuestBookingEmailRequired" xml:space="preserve">
     <value>Inserisci l'indirizzo email con cui hai prenotato.</value>
   </data>

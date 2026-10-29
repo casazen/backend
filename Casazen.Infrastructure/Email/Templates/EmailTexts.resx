@@ -1638,6 +1638,36 @@
   <data name="HostReplyToGuest_Why" xml:space="preserve">
     <value>Ricevi questa email perché l'host ti ha risposto. Ne inviamo al massimo una ogni 10 minuti per conversazione.</value>
   </data>
+  <data name="HostContact_Subject" xml:space="preserve">
+    <value>Nuovo messaggio dal tuo sito di prenotazione</value>
+  </data>
+  <data name="HostContact_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti ha scritto dal tuo sito di prenotazione.</value>
+  </data>
+  <data name="HostContact_Property" xml:space="preserve">
+    <value>Stava guardando la casa &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostContact_PropertyLink" xml:space="preserve">
+    <value>La pagina della casa:</value>
+  </data>
+  <data name="HostContact_MessageLabel" xml:space="preserve">
+    <value>Messaggio</value>
+  </data>
+  <data name="HostContact_Reply" xml:space="preserve">
+    <value>Per rispondere, rispondi a questa email: la risposta arriva direttamente a &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostContact_Lang" xml:space="preserve">
+    <value>Il visitatore stava leggendo il sito in {0}.</value>
+  </data>
+  <data name="HostContact_Lang_it" xml:space="preserve">
+    <value>italiano</value>
+  </data>
+  <data name="HostContact_Lang_en" xml:space="preserve">
+    <value>inglese</value>
+  </data>
+  <data name="HostContact_Why" xml:space="preserve">
+    <value>Ricevi questa email perché il tuo sito di prenotazione ha un modulo per scriverti. Il visitatore ha accettato che il messaggio e il suo indirizzo email ti vengano inviati. Se non ti sembra un contatto vero, ignoralo.</value>
+  </data>
   <data name="GuestNewPhotoRequest_Subject" xml:space="preserve">
     <value>Nuova foto richiesta per il tuo soggiorno — {0}</value>
   </data>

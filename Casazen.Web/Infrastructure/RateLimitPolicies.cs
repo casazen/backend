@@ -96,6 +96,13 @@ public static class RateLimitPolicies
     public const string HostMessageSend = "HostMessageSend";
 
     /// <summary>
+    /// A visitor of the booking site writing to the host (<c>POST api/public/orgs/{slug}/contact</c>, DB-03b): anonymous free text that ends
+    /// in an email to somebody else, so it is the tightest of the public limits together with the bookings (5 per 10 minutes per client IP),
+    /// paired with a limit per address and org (<see cref="HostContactEmailRateLimiter"/>, 3 per day).
+    /// </summary>
+    public const string PublicContact = "PublicContact";
+
+    /// <summary>
     /// What an org invitation link is for (<c>POST api/org-invitations/lookup</c>, AM-02): anonymous, a token in the body.
     /// Tighter than <see cref="PublicRead"/>: a page asks once, and the token is 256 random bits, so nobody has a reason
     /// to ask often.

@@ -6,7 +6,11 @@ using Microsoft.Extensions.Options;
 namespace Casazen.Infrastructure.Email;
 
 /// <summary>A rendered email: plain-text subject and complete HTML document.</summary>
-public sealed record EmailContent(string Subject, string HtmlBody);
+/// <param name="ReplyTo">
+/// Where an answer to the email goes, when it is not the sender: the address of a visitor who wrote to the host through the booking
+/// site (DB-03b). <c>null</c> for every other email, which is queued exactly as before.
+/// </param>
+public sealed record EmailContent(string Subject, string HtmlBody, string? ReplyTo = null);
 
 /// <summary>
 /// Queues emails for delivery in a Hangfire job (<see cref="EmailDeliveryJob"/>), so the provider is never called
@@ -45,8 +49,14 @@ public sealed class HangfireEmailQueue(
 
         try
         {
-            var jobId = backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
-                job.SendAsync(to.Trim(), content.Subject, content.HtmlBody, template));
+            // An email without a reply-to goes through the job it always went through, so the jobs already waiting in the queue during a
+            // deploy still find their method; the reply-to has a job of its own.
+            var replyTo = string.IsNullOrWhiteSpace(content.ReplyTo) ? null : content.ReplyTo.Trim();
+            var jobId = replyTo is null
+                ? backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
+                    job.SendAsync(to.Trim(), content.Subject, content.HtmlBody, template))
+                : backgroundJobClient.Enqueue<EmailDeliveryJob>(job =>
+                    job.SendWithReplyToAsync(to.Trim(), content.Subject, content.HtmlBody, template, replyTo));
             logger.LogInformation("Email {Template} queued (job {JobId})", template, jobId);
             return true;
         }
@@ -68,9 +78,19 @@ public sealed class EmailDeliveryJob(IEmailService emailService, ILogger<EmailDe
     public const int MaxAttempts = 5;
 
     [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
-    public async Task SendAsync(string to, string subject, string htmlBody, string template)
+    public Task SendAsync(string to, string subject, string htmlBody, string template) =>
+        DeliverAsync(to, subject, htmlBody, template, replyTo: null);
+
+    /// <summary>The same with an address to answer to (DB-03b): the job of an email that has a reply-to.</summary>
+    [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
+    public Task SendWithReplyToAsync(string to, string subject, string htmlBody, string template, string replyTo) =>
+        DeliverAsync(to, subject, htmlBody, template, replyTo);
+
+    private async Task DeliverAsync(string to, string subject, string htmlBody, string template, string? replyTo)
     {
-        var result = await emailService.SendEmailAsync(to, subject, htmlBody);
+        var result = replyTo is null
+            ? await emailService.SendEmailAsync(to, subject, htmlBody)
+            : await emailService.SendEmailAsync(to, subject, htmlBody, replyTo);
         if (result.Success)
         {
             logger.LogInformation("Email {Template} delivered to the provider", template);

@@ -716,6 +716,8 @@ public static class ServiceCollectionExtensions
         // Messages between the guest of a direct booking and the host (DB-14a): the thread, its two sides and the two emails
         // that are the consequence of a message (docs/runbooks/guest-messages.md).
         services.AddScoped<IGuestMessageService, GuestMessageService>();
+        // «Scrivi a {host}» of the booking site: the visitor's message as one email to the host, answered from their mailbox (DB-03b).
+        services.AddScoped<IHostContactService, HostContactService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();
         services.AddScoped<INotificationChannel, DashboardNotificationChannel>();
