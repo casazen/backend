@@ -323,8 +323,8 @@ public class BookingService(
     }
 
     /// <summary>
-    /// A short-rent, active, unpaused property whose compliance allows public bookings: the same rule as
-    /// <see cref="PublicListing.IsPublished"/>. 404 when it does not exist or is not published (PC-03, A2-05); a property in
+    /// A short-rent, active, unpaused property whose compliance allows public bookings and that its host shows on the site:
+    /// <see cref="PublicListing.IsPublished"/> itself. 404 when it does not exist or is not published (PC-03, A2-05); a property in
     /// long-term mode (PM-01) is answered with the reason, 422 <c>property_not_bookable_in_long_mode</c>, whatever its
     /// other state: the public pages never lead to it, so this is a stale page or a hand-made request.
     /// </summary>
@@ -336,7 +336,9 @@ public class BookingService(
 
         PropertyRentalModeRules.EnsureShortRent(property);
 
-        if (!property.IsActive || property.IsPaused || property.ComplianceStatus != PropertyComplianceStatus.Active)
+        // The rule is read from PublicListing, never copied: a property the host switched off the site (SR-07a) is as unbookable as
+        // a paused one.
+        if (!PublicListing.Includes(property))
             throw new NotFoundException("Property not bookable") { MessageKey = "PropertyNotFound" };
 
         return property;

@@ -744,6 +744,12 @@
   <data name="OrgOperatorRegisteredOfficeTooLongInput" xml:space="preserve">
     <value>The registered office is too long.</value>
   </data>
+  <data name="OrgContactPhoneInvalid" xml:space="preserve">
+    <value>The phone number is not valid: use digits only, with an optional leading + (6 to 15 digits).</value>
+  </data>
+  <data name="OrgDefaultLanguageInvalid" xml:space="preserve">
+    <value>Unsupported language: choose Italian (it) or English (en).</value>
+  </data>
   <data name="OrgSlugInvalid" xml:space="preserve">
     <value>This web address (slug) is not valid: use {0} to {1} characters among letters, numbers and hyphens.</value>
   </data>
@@ -1587,6 +1593,24 @@
   </data>
   <data name="PropertyHouseRulesTooLong" xml:space="preserve">
     <value>The house rules can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyBedsRange" xml:space="preserve">
+    <value>The number of beds must be a whole number between {1} and {2}.</value>
+  </data>
+  <data name="PropertyAreaSqmRange" xml:space="preserve">
+    <value>The area must be between {1} and {2} square metres.</value>
+  </data>
+  <data name="PropertyListingTitleTooLong" xml:space="preserve">
+    <value>The listing title can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyExtraGuestFeeRange" xml:space="preserve">
+    <value>The fee for each extra guest must be between {1} and {2} euros per night.</value>
+  </data>
+  <data name="PropertyQuietHoursIncomplete" xml:space="preserve">
+    <value>Quiet hours go together: give both the start and the end, or neither.</value>
+  </data>
+  <data name="PropertyListViewInvalid" xml:space="preserve">
+    <value>Invalid view: use "overview" or leave it empty.</value>
   </data>
   <data name="PropertyTimezoneInvalid" xml:space="preserve">
     <value>Invalid time zone: use an IANA identifier, for example Europe/Rome.</value>

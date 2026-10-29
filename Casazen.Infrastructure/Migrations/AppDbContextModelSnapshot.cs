@@ -2891,6 +2891,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("ContactEmailPublic")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("ContactPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2900,6 +2904,13 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("CustomDomain")
                         .HasMaxLength(253)
                         .HasColumnType("character varying(253)");
+
+                    b.Property<string>("DefaultLanguage")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasDefaultValue("it");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
@@ -4244,6 +4255,9 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("AccommodationType")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Address")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -4258,10 +4272,16 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("integer[]");
 
+                    b.Property<int?>("AreaSqm")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Bathrooms")
                         .HasColumnType("integer");
 
                     b.Property<int>("Bedrooms")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Beds")
                         .HasColumnType("integer");
 
                     b.Property<string>("CadastralCategory")
@@ -4299,6 +4319,12 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("CancellationRefundType")
                         .HasColumnType("integer");
+
+                    b.Property<TimeOnly?>("CheckInFrom")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("CheckOutBy")
+                        .HasColumnType("time without time zone");
 
                     b.Property<string>("CinCode")
                         .HasMaxLength(25)
@@ -4357,6 +4383,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<decimal?>("ExtraGuestFeePerNight")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<string>("HouseRules")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -4377,6 +4407,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<decimal>("Latitude")
                         .HasPrecision(9, 6)
                         .HasColumnType("numeric(9,6)");
+
+                    b.Property<string>("ListingTitle")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
 
                     b.Property<decimal>("Longitude")
                         .HasPrecision(9, 6)
@@ -4405,8 +4439,14 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<int?>("PartiesPolicy")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("PausedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("PetsPolicy")
+                        .HasColumnType("integer");
 
                     b.PrimitiveCollection<List<string>>("PhotoUrls")
                         .IsRequired()
@@ -4416,6 +4456,16 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
+
+                    b.Property<bool>("PublishedOnSite")
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<TimeOnly?>("QuietHoursFrom")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("QuietHoursTo")
+                        .HasColumnType("time without time zone");
 
                     b.Property<string>("RegionCode")
                         .HasMaxLength(10)
@@ -4436,6 +4486,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("Slug")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<int?>("SmokingPolicy")
+                        .HasColumnType("integer");
 
                     b.Property<string>("SwissMunicipalityCode")
                         .HasMaxLength(10)
