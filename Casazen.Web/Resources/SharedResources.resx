@@ -513,6 +513,21 @@
   <data name="LeaseBusy" xml:space="preserve">
     <value>Il contratto è in uso da un'altra operazione in questo momento. Riprova tra un istante: questa modifica non è stata applicata.</value>
   </data>
+  <data name="LeaseWithdrawalDateInvalid" xml:space="preserve">
+    <value>Il giorno in cui è arrivato il recesso non può essere prima dell'inizio del contratto né nel futuro.</value>
+  </data>
+  <data name="LeaseWithdrawalNoticeInvalid" xml:space="preserve">
+    <value>Il preavviso del recesso deve essere un numero intero di mesi da 1 a {0}.</value>
+  </data>
+  <data name="LeaseLetterDateInvalid" xml:space="preserve">
+    <value>Il giorno in cui hai spedito la lettera non può essere prima dell'inizio del contratto né nel futuro.</value>
+  </data>
+  <data name="LeaseDisdettaReasonRequired" xml:space="preserve">
+    <value>Alla prima scadenza la disdetta deve indicare uno dei motivi previsti dalla legge: scegline uno.</value>
+  </data>
+  <data name="LeaseLetterUnavailable" xml:space="preserve">
+    <value>Il testo di questa lettera non è disponibile in questo momento. Riprova più tardi o scrivi all'assistenza.</value>
+  </data>
   <data name="LeasePeriodOverlaps" xml:space="preserve">
     <value>Per questo immobile c'è già un contratto dal {0:d MMM yyyy} al {1:d MMM yyyy}. Due contratti non possono coprire gli stessi giorni: apri quello esistente o cambia le date.</value>
   </data>
