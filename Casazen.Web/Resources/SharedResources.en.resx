@@ -513,6 +513,21 @@
   <data name="LeaseBusy" xml:space="preserve">
     <value>The contract is being changed by another operation right now. Try again in a moment: this change was not applied.</value>
   </data>
+  <data name="LeaseWithdrawalDateInvalid" xml:space="preserve">
+    <value>The day the withdrawal arrived cannot be before the start of the contract or in the future.</value>
+  </data>
+  <data name="LeaseWithdrawalNoticeInvalid" xml:space="preserve">
+    <value>The notice of the withdrawal must be a whole number of months from 1 to {0}.</value>
+  </data>
+  <data name="LeaseLetterDateInvalid" xml:space="preserve">
+    <value>The day you sent the letter cannot be before the start of the contract or in the future.</value>
+  </data>
+  <data name="LeaseDisdettaReasonRequired" xml:space="preserve">
+    <value>At the first expiry the notice must state one of the reasons the law allows: choose one.</value>
+  </data>
+  <data name="LeaseLetterUnavailable" xml:space="preserve">
+    <value>The text of this letter is not available right now. Try again later or write to support.</value>
+  </data>
   <data name="LeasePeriodOverlaps" xml:space="preserve">
     <value>This property already has a lease from {0:d MMM yyyy} to {1:d MMM yyyy}. Two leases cannot cover the same days: open the existing one or change the dates.</value>
   </data>
