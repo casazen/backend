@@ -348,7 +348,23 @@ L'elenco: l'istruzione di sempre, più **una** che chiede quali tra i contratti 
 
 ### 11.5 Cosa non c'è (versione ridotta)
 
-`progress` (avanzamento), i filtri `stage` e `actor`, `stages` e `todo` della Panoramica, `canEdit`, il filtro `leaseId` e i tipi `LeaseStart` e `DepositReturn` delle scadenze, `flow` nel dettaglio: la riga dell'elenco è l'unico posto dove un contratto ha `stage` e `nextStep` (il dettaglio `GET /api/leases/{id}` non li porta ancora). I valori di legge restano quelli di `LongRentRules` (LR-D29).
+i filtri `stage` e `actor` (la lista si filtra e si ordina sul client: è intera e non paginata), `stages` e `todo` della Panoramica, `canEdit`, il filtro `leaseId` e i tipi `LeaseStart` e `DepositReturn` delle scadenze, `flow` nel dettaglio: la riga dell'elenco è l'unico posto dove un contratto ha `stage` e `nextStep` (il dettaglio `GET /api/leases/{id}` non li porta ancora). I valori di legge restano quelli di `LongRentRules` (LR-D29).
+
+### 11.6 L'avanzamento (`progress`, LR-02b)
+
+Ogni riga dell'elenco porta anche `progress { kind, unit, done, total, percent }`, deciso dalla stessa funzione (`LeaseFlow.ProgressOf`): la barra
+e le parole sono dell'interfaccia, i numeri sono del server. `percent` va da 0 a 100.
+
+| Stato | `kind` / `unit` | `done` di `total` |
+|---|---|---|
+| Bozza, dati da completare | `Setup` / `Steps` | i passi dati della bozza (1–5) senza nulla che manca, su **8** |
+| In revisione | `Setup` / `Steps` | 5, oppure 6 a revisione confermata, su 8 |
+| In firma | `Setup` / `Steps` | 6 su 8 (contratto scaricato per la firma) |
+| Firmato (da registrare) | `Setup` / `Steps` | 7 su 8; l'ottavo passo, la registrazione, è quello che lo fa partire |
+| In corso, in scadenza | `Term` / `Years` o `Months` | l'anno (o il mese, se il periodo è più corto di 12 mesi) in cui si trova, sugli anni (mesi) del periodo **in corso** (`CurrentTermEndDate`, LR-14: un contratto rinnovato conta gli anni dall'inizio del primo periodo); `percent` = giorni trascorsi su giorni del periodo |
+| Concluso | `End` / `Steps` | 8 su 8, 100 |
+
+Nessuna istruzione SQL in più: per le bozze serve il flusso che il lettore già costruisce (§ 11.4).
 
 ## 12. Report fiscale per contratto, per il commercialista (LR-11b)
 
