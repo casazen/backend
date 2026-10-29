@@ -161,6 +161,14 @@ internal static class PostgresAdvisoryLocks
         SupplierServiceCatalog = 1_302,
 
         /// <summary>
+        /// Content of the showcase of one supplier (key: supplier org id, <c>orgId.ToString("N")</c>): saving the draft, discarding it,
+        /// publishing, undoing, pausing and reopening the showcase, and the merge of duplicate supplier profiles (<c>fix-orphaned</c>) run one
+        /// at a time, so a save never lands on a publication that is being written and the version check is decided on the row as it is
+        /// (SP-13a). Taken <b>before</b> the calendar lock of the supplier when a change also writes <c>OnlineBookingEnabled</c>.
+        /// </summary>
+        SupplierShowcaseContent = 1_303,
+
+        /// <summary>
         /// One run of the automatic cancellation of the service requests nobody answered (single key, session lock held for the
         /// whole run): two runs never cancel and notify the same requests at once, even outside Hangfire's own lock (SP-04, D8).
         /// </summary>

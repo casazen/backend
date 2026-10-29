@@ -303,6 +303,39 @@
   <data name="PropertyNotInTicino" xml:space="preserve">
     <value>Property is not located in Canton Ticino</value>
   </data>
+  <data name="SwissReportDateRequired" xml:space="preserve">
+    <value>Provide the report date.</value>
+  </data>
+  <data name="SwissPeriodFromRequired" xml:space="preserve">
+    <value>Provide the start date of the period.</value>
+  </data>
+  <data name="SwissPeriodToRequired" xml:space="preserve">
+    <value>Provide the end date of the period.</value>
+  </data>
+  <data name="SwissPeriodInvalid" xml:space="preserve">
+    <value>The end date of the period cannot be before its start date.</value>
+  </data>
+  <data name="SwissPeriodTooLong" xml:space="preserve">
+    <value>The period cannot be longer than {0} days.</value>
+  </data>
+  <data name="SwissReceiptTypeRequired" xml:space="preserve">
+    <value>Provide the receipt type: Police or OTR.</value>
+  </data>
+  <data name="SwissReceiptTypeInvalid" xml:space="preserve">
+    <value>Invalid receipt type: use "Police" (police notification) or "OTR" (overnight report).</value>
+  </data>
+  <data name="SwissReceiptReferenceRequired" xml:space="preserve">
+    <value>Provide the reference of the submission, for instance the confirmation number of the portal.</value>
+  </data>
+  <data name="SwissReceiptReferenceTooLong" xml:space="preserve">
+    <value>The reference cannot be longer than 200 characters.</value>
+  </data>
+  <data name="SwissReceiptFileRequired" xml:space="preserve">
+    <value>Attach the receipt file.</value>
+  </data>
+  <data name="SwissReceiptFileInvalid" xml:space="preserve">
+    <value>The receipt file is empty or larger than {0} MB.</value>
+  </data>
   <data name="BookingNotFound" xml:space="preserve">
     <value>Booking not found</value>
   </data>
@@ -512,6 +545,21 @@
   </data>
   <data name="LeaseBusy" xml:space="preserve">
     <value>The contract is being changed by another operation right now. Try again in a moment: this change was not applied.</value>
+  </data>
+  <data name="LeaseWithdrawalDateInvalid" xml:space="preserve">
+    <value>The day the withdrawal arrived cannot be before the start of the contract or in the future.</value>
+  </data>
+  <data name="LeaseWithdrawalNoticeInvalid" xml:space="preserve">
+    <value>The notice of the withdrawal must be a whole number of months from 1 to {0}.</value>
+  </data>
+  <data name="LeaseLetterDateInvalid" xml:space="preserve">
+    <value>The day you sent the letter cannot be before the start of the contract or in the future.</value>
+  </data>
+  <data name="LeaseDisdettaReasonRequired" xml:space="preserve">
+    <value>At the first expiry the notice must state one of the reasons the law allows: choose one.</value>
+  </data>
+  <data name="LeaseLetterUnavailable" xml:space="preserve">
+    <value>The text of this letter is not available right now. Try again later or write to support.</value>
   </data>
   <data name="LeasePeriodOverlaps" xml:space="preserve">
     <value>This property already has a lease from {0:d MMM yyyy} to {1:d MMM yyyy}. Two leases cannot cover the same days: open the existing one or change the dates.</value>
@@ -1537,6 +1585,24 @@
   <data name="PropertyHouseRulesTooLong" xml:space="preserve">
     <value>The house rules can be at most {1} characters long.</value>
   </data>
+  <data name="PropertyBedsRange" xml:space="preserve">
+    <value>The number of beds must be a whole number between {1} and {2}.</value>
+  </data>
+  <data name="PropertyAreaSqmRange" xml:space="preserve">
+    <value>The area must be between {1} and {2} square metres.</value>
+  </data>
+  <data name="PropertyListingTitleTooLong" xml:space="preserve">
+    <value>The listing title can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyExtraGuestFeeRange" xml:space="preserve">
+    <value>The fee for each extra guest must be between {1} and {2} euros per night.</value>
+  </data>
+  <data name="PropertyQuietHoursIncomplete" xml:space="preserve">
+    <value>Quiet hours go together: give both the start and the end, or neither.</value>
+  </data>
+  <data name="PropertyListViewInvalid" xml:space="preserve">
+    <value>Invalid view: use "overview" or leave it empty.</value>
+  </data>
   <data name="PropertyTimezoneInvalid" xml:space="preserve">
     <value>Invalid time zone: use an IANA identifier, for example Europe/Rome.</value>
   </data>
@@ -2520,6 +2586,12 @@
   </data>
   <data name="SupplierServiceCopySuffix" xml:space="preserve">
     <value> (copy)</value>
+  </data>
+  <data name="ShowcaseContentInvalid" xml:space="preserve">
+    <value>Some of the showcase content is not valid (fields: {0}). Check the texts, the color and the images and try again.</value>
+  </data>
+  <data name="ShowcaseVersionConflict" xml:space="preserve">
+    <value>The showcase was changed from another tab or by another user: reload the page and apply your change again.</value>
   </data>
   <data name="SupplierHoursInvalid" xml:space="preserve">
     <value>The working hours are not valid (fields: {0}). Check the bands: a day has at most 3, they cannot overlap, and each one must end after it starts (in minutes after midnight, from 0 to 1440).</value>
