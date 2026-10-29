@@ -77,6 +77,7 @@ allow-list only (`PublicSiteLinks.BillingReturnPagePaths`, exact match, no query
 |---|---|
 | `/app/short-rent/settings/plan` (default), `/app/short-rent/settings/billing` | short-rent (host) |
 | `/app/long-rent/settings/plan`, `/app/long-rent/settings/billing` | long-rent (landlord with only long-term leases) |
+| `/app/account/billing` | account area (AM-08a-FU1): the single plan and billing page of the people of the account |
 
 The backend builds `{App__PublicSiteBaseUrl}{returnPath}?checkout=success|cancel` (portal: `{App__PublicSiteBaseUrl}{returnPath}`).
 Anything else (another page, an absolute URL, `//host`, a query string) answers **400 `validation_error`** before any
