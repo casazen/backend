@@ -231,7 +231,7 @@ request created on the web never showed in the app.
 
 | Context | Tied to | API (host side) | Rule (422, ProblemDetails `code`) |
 |---|---|---|---|
-| **Short-rent** (`RentalContext = ShortRent`, 0) | One stay: `BookingId` + its `PropertyId` | `api/service-requests` (policies `property.read` / `property.write` in short-rent) | `bookingId` missing → `service_request_booking_required`; a booking that is not of that property and org (or does not exist) → `service_request_booking_mismatch` |
+| **Short-rent** (`RentalContext = ShortRent`, 0) | The property and, when the host names one, a stay of it: `BookingId` (optional since SR-08a, section 33.4) + its `PropertyId` | `api/service-requests` (policies `property.read` / `property.write` in short-rent) | a booking that is not of that property and org (or does not exist) → `service_request_booking_mismatch` |
 | **Long-rent** (`RentalContext = LongRent`, 1) | The property only (`BookingId` null) | `api/long-rent/service-requests` (policies `property.read` / `property.write` **in long-rent**) | a `bookingId` → `service_request_booking_not_allowed` |
 
 - The context is stored on the request (`ServiceRequests.RentalContext`) and is never inferred from `BookingId`.
@@ -3199,6 +3199,43 @@ a service without its own switch is not urgent; the supplier's switch comes firs
 
 Nothing to configure. The migration adds the columns with the defaults above to the rows that exist (a supplier keeps its settings; urgent is off for all of them). To try it on a test supplier: `PUT availability/urgent`
 (`enabled: true`), `PUT services/{id}` with `urgentEnabled: true` and a surcharge, then `GET …/slots?service=…&urgent=true` with `SupplierShowcaseBooking` on.
+
+## 33. The host's interventions: list, counters, the action to do, the house alone — SR-08a
+
+The page "Interventi" of Affitti brevi reads one list, with the counters of its chips and, on every request, what the host can do about it. The server
+decides; the page has no state machine of its own. Short-rent only (`api/service-requests`, `property.read` in short-rent, filtered by the caller's org and
+by its scope «Solo alcuni»); a long-rent request, or one of a supplier's showcase, is never part of it. No flag, no migration.
+
+### 33.1 Endpoints at a glance
+
+| Call | What it answers |
+|---|---|
+| `GET api/service-requests` | `{ items, total, page, pageSize }`, newest first unless `sort` says otherwise. The host's filters, all optional: `view`, `status`, `propertyId`, `bookingId`, `supplierOrgId`, `category`, `from`, `to`, `q`, `sort`, `page`, `pageSize` (1-100). With `view=supplier` it is still the supplier's inbox (unchanged). |
+| `GET api/service-requests/counts` | `{ all, pending, active, toPay, done, needsAction }` for the requests that pass the same filters but `view`, `sort` and the page. One aggregate statement. |
+| `GET api/service-requests/{id}`, the answers of `POST …/cancel`, `…/remind`, `…/proposal/accept`, `…/proposal/reject`, `…/final-amount/confirm`, `…/mark-paid` and of `POST api/service-requests` | the same request, with the extras of 33.3. |
+
+### 33.2 The chips, the filters, the order
+
+- `view` (any case): `all` (default), `pending` = `Richiesto`; `active` = `PresoInCarico`, `InCorso`; `topay` = `Completato`; `done` = `Pagato`, `Rifiutato`, `Annullato` (the statuses nothing leaves, `ServiceRequestStateMachine.IsFinal`); `needsaction` = what asks something of the host, the very definition of the Home's «Da fare» (`HostServiceRequestTodoRules.NeedTheHost`). The first four partition the requests, so their counters add up to `all`; `needsAction` overlaps them.
+- `from`/`to` (`yyyy-MM-dd`, Europe/Rome days, both included): the day of the work, that is the scheduled time or, for a request that has none, the day it was made.
+- `q` (2 to 60 characters, no control character): the name of the property, of the supplier (display name and name), of the service, or the category (its code or its label in Italian and in English). Never the notes, never the guest.
+- `category` is a code of `GET api/service-categories`. `sort` is `scheduled`, `created` or `status`, then `:asc` or `:desc`: `scheduled` the next work first (no time last, both ways), `created` the newest first, `status` what waits for the host first and then the status in the order of the work (refused, in progress, taken, new, finished, paid, cancelled). The id closes every order, so a page boundary never repeats or skips a request.
+- 400 with `service_request_list_invalid_view`, `…_invalid_sort`, `…_invalid_range` (`from` after `to`), `…_invalid_text`, `…_invalid_category`; `status` keeps ignoring a value it does not know (as before). `bookingId`/`propertyId` of another org are 404, one the caller may not read 403 (unchanged).
+- Cost: one statement for the page (with the property and the supplier), one for the total only when the page is full or past the end, one for the stays and one for the contacts of the supplier, whatever the size of the page.
+
+### 33.3 What a request says to its host (null for the supplier, and for the long-rent twin)
+
+- `propertyCity`; `stay` `{ bookingId, guestName, checkIn, checkOut }` or null when the request is for the house alone. **The guest is the host's**: the supplier's own mapping (`MapDtoForSupplier`, `SupplierServiceRequestView`) has no field for it, and a test reads the supplier's answers for it (decision D9).
+- `supplierContact` `{ phone, email }` of the supplier's profile **from the moment it took the request** (`TakenAt` set), never before.
+- `hostAction` `{ kind, remindAvailableAt? }` and `availableActions[]`, worked out in `HostServiceRequestActions` from the status, a proposed time, the amount to confirm, the way it is paid and the last reminder, using the Home's definition of what asks something of the host: `Richiesto` with a proposed time → `acceptProposal` (with `rejectProposal`); `Richiesto` without one → `remind`, or `none` with `remindAvailableAt` when the last reminder is less than `RemindIntervalHours` old; `Completato` → `confirmFinalAmount` while the amount waits for the host, then `pay` (`PaymentMode = Online`) or `markPaid` (`Manual`); `Rifiutato`/`Annullato` → `requestAgain`; anything else `none`. `availableActions` lists every action the endpoints would accept now, the `kind` first, plus `cancel` (up to the work in progress) and `requestAgain` after a payment. **An open set**: a client shows nothing for a word it does not know. The quote of SP-04b is another offer to answer (`respondToQuote`): it gets its word when that task lands.
+
+### 33.4 The house alone (SR-D3)
+
+`bookingId` is optional on `POST api/service-requests`: the request is for the property, with no stay. A `bookingId` that is not a stay of the property in the host's org is still 422 `service_request_booking_mismatch`; the long-rent rule (`service_request_booking_not_allowed`) is unchanged, and `service_request_booking_required` no longer exists. The time still defaults as in SP-04 (10:00 Europe/Rome of the check-out day, for the duration of the host, of the service or 120 minutes); **without a stay** it is today's 10:00 and, once that has gone by, tomorrow's. The answer of the `POST` says `scheduleDefaulted: true` whenever the host named no time. The notifications, the Home, the calendar and the supplier's reads already took a missing `bookingId` into account (older requests could not be traced to a stay).
+
+### 33.5 Decisions applied (defaults, nothing asked)
+
+SR-D3 (the stay is optional), SR-D20 (`pay` and `markPaid` follow `paymentMode`; online payments stay behind `SupplierOnlinePayments`), SR-D21 (the quote enters with SP-04b), SR-D35 (no «pay all»). Counters are `camelCase` like the other counters (`toPay`, while the chip is `topay`). The supplier's contact is the phone and the e-mail of its profile, given at the take. No rate limit on the list (a signed-in read of the caller's own org).
 
 ## Known limits (other tasks)
 

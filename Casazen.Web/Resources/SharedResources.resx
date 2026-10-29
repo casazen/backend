@@ -1639,11 +1639,23 @@
   <data name="PricingSuggestionsNotEnabled" xml:space="preserve">
     <value>I suggerimenti stagionali non sono attivi per questa struttura: attivali prima di ricalcolarli.</value>
   </data>
-  <data name="ServiceRequestBookingRequired" xml:space="preserve">
-    <value>Negli affitti brevi la richiesta al fornitore è legata a un soggiorno: scegli la prenotazione.</value>
-  </data>
   <data name="ServiceRequestBookingMismatch" xml:space="preserve">
     <value>La prenotazione indicata non è un soggiorno di questo immobile.</value>
+  </data>
+  <data name="ServiceRequestListInvalidView" xml:space="preserve">
+    <value>Vista non valida: usa uno dei nomi all, pending, active, topay, done o needsaction.</value>
+  </data>
+  <data name="ServiceRequestListInvalidSort" xml:space="preserve">
+    <value>Ordinamento non valido: usa scheduled, created o status, seguiti da :asc o :desc.</value>
+  </data>
+  <data name="ServiceRequestListInvalidRange" xml:space="preserve">
+    <value>Intervallo di date non valido: la data di inizio è dopo quella di fine.</value>
+  </data>
+  <data name="ServiceRequestListInvalidText" xml:space="preserve">
+    <value>Testo di ricerca non valido: servono da 2 a 60 caratteri, senza caratteri di controllo.</value>
+  </data>
+  <data name="ServiceRequestListInvalidCategory" xml:space="preserve">
+    <value>Categoria non valida: usa uno dei codici di GET /api/service-categories.</value>
   </data>
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>Negli affitti lunghi la richiesta al fornitore è legata all'immobile, non a una prenotazione.</value>

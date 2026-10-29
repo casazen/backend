@@ -1639,11 +1639,23 @@
   <data name="PricingSuggestionsNotEnabled" xml:space="preserve">
     <value>Seasonal suggestions are not enabled for this property: enable them before recalculating.</value>
   </data>
-  <data name="ServiceRequestBookingRequired" xml:space="preserve">
-    <value>In short-term rentals a supplier request is for a stay: choose the booking.</value>
-  </data>
   <data name="ServiceRequestBookingMismatch" xml:space="preserve">
     <value>The booking is not a stay of this property.</value>
+  </data>
+  <data name="ServiceRequestListInvalidView" xml:space="preserve">
+    <value>Invalid view: use one of the names all, pending, active, topay, done or needsaction.</value>
+  </data>
+  <data name="ServiceRequestListInvalidSort" xml:space="preserve">
+    <value>Invalid order: use scheduled, created or status, followed by :asc or :desc.</value>
+  </data>
+  <data name="ServiceRequestListInvalidRange" xml:space="preserve">
+    <value>Invalid date range: the start date is after the end date.</value>
+  </data>
+  <data name="ServiceRequestListInvalidText" xml:space="preserve">
+    <value>Invalid search text: use 2 to 60 characters, without control characters.</value>
+  </data>
+  <data name="ServiceRequestListInvalidCategory" xml:space="preserve">
+    <value>Invalid category: use one of the codes of GET /api/service-categories.</value>
   </data>
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>In long-term rentals a supplier request is for the property, not for a booking.</value>
