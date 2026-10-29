@@ -282,7 +282,7 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
             HttpStatusCode.OK,
             (await client.PutAsJsonAsync("/api/orgs/me/branding", new { subtitle = "Sottotitolo", hostName = "Giulia", publicPhone = "0832123456" })).StatusCode);
 
-        var response = await client.PutAsJsonAsync("/api/orgs/me/branding", new { primaryColor = "#1A6B8F", publicThemeId = "urban", tagline = "Nuovo slogan" });
+        var response = await client.PutAsJsonAsync("/api/orgs/me/branding", new { primaryColor = "#1A6B8F", publicThemeId = "citta", tagline = "Nuovo slogan" });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();

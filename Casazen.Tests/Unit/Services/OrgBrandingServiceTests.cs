@@ -123,7 +123,7 @@ public class OrgBrandingServiceTests : IDisposable
             HostName: FieldUpdate<string>.Set("Giulia"),
             PublicPhone: FieldUpdate<string>.Set("0832123456")));
 
-        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("#abcdef", "urban", "Nuovo slogan"));
+        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("#abcdef", "citta", "Nuovo slogan"));
 
         var stored = await _db.Orgs.AsNoTracking().FirstAsync(o => o.Id == _org.Id);
         Assert.Equal("Nuovo slogan", stored.Tagline);
@@ -162,7 +162,7 @@ public class OrgBrandingServiceTests : IDisposable
     [InlineData("phone", OrgBrandingRules.PhoneInvalidCode)]
     public async Task UpdateAsync_InvalidPublicProfileField_ThrowsAndChangesNothing(string field, string expectedCode)
     {
-        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("#123456", "urban", "Slogan"));
+        await _service.UpdateAsync(_org.Id, new OrgBrandingUpdate("#123456", "citta", "Slogan"));
 
         var update = field switch
         {
