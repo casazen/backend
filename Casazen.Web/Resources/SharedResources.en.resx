@@ -792,6 +792,15 @@
   <data name="CheckInMarketingConsentUnavailable" xml:space="preserve">
     <value>Consent to promotional communications is not available for this check-in.</value>
   </data>
+  <data name="CheckInMarketingConsentMinor" xml:space="preserve">
+    <value>Consent to promotional communications can only be given by an adult guest.</value>
+  </data>
+  <data name="CheckInMarketingEmailRequired" xml:space="preserve">
+    <value>Enter the email address where you want to receive promotional communications.</value>
+  </data>
+  <data name="CheckInMarketingEmailInvalid" xml:space="preserve">
+    <value>Invalid email address.</value>
+  </data>
   <data name="GdprMarketingConsentHostGrantForbidden" xml:space="preserve">
     <value>Only the guest can give the marketing consent, on the check-in portal. The host can only withdraw it on the guest's documented request.</value>
   </data>

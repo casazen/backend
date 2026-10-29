@@ -876,7 +876,7 @@ never a link to the dashboard.
 | `POST` | `/api/public/service-payments/{id}/payment-session` | Anonymous (link token in the body) | The PaymentIntent on the supplier's connected account to confirm with Stripe.js (SP-15a, rate-limited) |
 | `GET` | `/api/public/ical/{exportToken}` | Anonymous | Property iCal export feed |
 | `GET` | `/api/public/checkin/{token}` | Anonymous | Public guest check-in session |
-| `POST` | `/api/public/checkin/{token}` | Anonymous | Submit public guest check-in |
+| `POST` | `/api/public/checkin/{token}` | Anonymous | Submit public guest check-in; optional marketing consent, legacy `marketingConsent` or per channel (`marketingConsentEmail`, `marketingConsentWhatsApp`, `marketingEmail`, NF-05; `docs/runbooks/gdpr.md`) |
 
 #### Admin
 

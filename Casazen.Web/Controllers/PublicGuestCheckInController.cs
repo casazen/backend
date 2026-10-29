@@ -97,10 +97,11 @@ public class PublicGuestCheckInController(
     }
 
     /// <summary>
-    /// Accepts the data of every guest of the stay (CO-12) and the optional marketing consent; the privacy notice shown is
+    /// Accepts the data of every guest of the stay (CO-12) and the optional marketing consent, legacy or per channel (NF-05, the
+    /// contract is on <see cref="PublicCheckInSubmitRequest"/>); the privacy notice shown is
     /// recorded with its version (CO-15), no consent is asked for the Alloggiati registration. On success schedules the Alloggiati job for
     /// the arrival day. Invalid data → 400 ValidationProblem with the errors keyed by request property
-    /// (<c>Guests[1].DocumentNumber</c>);
+    /// (<c>Guests[1].DocumentNumber</c>, <c>MarketingEmail</c>);
     /// duplicate submission → 409 <c>checkin_already_submitted</c>.
     /// </summary>
     [HttpPost("{token}")]
@@ -116,6 +117,9 @@ public class PublicGuestCheckInController(
         {
             Guests = request.Guests.Select(g => g.ToInput()).ToList(),
             MarketingConsent = request.MarketingConsent,
+            MarketingConsentEmail = request.MarketingConsentEmail,
+            MarketingConsentWhatsApp = request.MarketingConsentWhatsApp,
+            MarketingEmail = request.MarketingEmail,
             ConsentIpAddress = ip,
         };
 
