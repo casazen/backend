@@ -1,0 +1,14 @@
+{
+  "leaseId": "0b6f7a3e-5a2d-4c58-9e0a-6c8b0f2e1d11",
+  "practices": [
+    {
+      "practiceId": "P-0123456789abcdef",
+      "status": "AwaitingUser",
+      "statusChangedAt": "2026-10-25T17:38:00Z",
+      "submittedAt": "2026-10-24T21:38:00Z",
+      "comune": "Monza",
+      "comuneDiffersFromLink": false,
+      "closeReason": null
+    }
+  ]
+}

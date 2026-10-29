@@ -1,0 +1,14 @@
+{
+  "leaseId": "7e570000-5eed-4000-8000-000000000003",
+  "practices": [
+    {
+      "practiceId": "P-7e5700000000000c",
+      "status": "InProgress",
+      "statusChangedAt": "2026-10-27T00:38:00Z",
+      "submittedAt": "2026-10-26T21:38:00Z",
+      "comune": "Reggio nell'Emilia",
+      "comuneDiffersFromLink": null,
+      "closeReason": null
+    }
+  ]
+}
