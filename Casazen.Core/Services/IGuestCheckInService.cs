@@ -57,9 +57,22 @@ public class GuestCheckInSubmitRequest
 
     /// <summary>
     /// Optional marketing consent ticked by the guest (CO-15). There is no consent for the Alloggiati registration: it is a
-    /// legal obligation, the privacy notice is only presented.
+    /// legal obligation, the privacy notice is only presented. Legacy single box: no channel, no marketing e-mail (it is
+    /// recorded on the guest and in <see cref="GuestConsentRecord"/> only); the per-channel consent is below.
     /// </summary>
     public bool MarketingConsent { get; set; }
+
+    /// <summary>The guest ticked the e-mail channel of the per-channel marketing consent (NF-05).</summary>
+    public bool MarketingConsentEmail { get; set; }
+
+    /// <summary>The guest ticked the WhatsApp channel of the per-channel marketing consent (NF-05).</summary>
+    public bool MarketingConsentWhatsApp { get; set; }
+
+    /// <summary>
+    /// Marketing e-mail address typed in its own field, as entered (NF-05): required when a channel is ticked, ignored
+    /// otherwise. Never the booking contact.
+    /// </summary>
+    public string? MarketingEmail { get; set; }
 
     /// <summary>Client IP recorded with the notice presented and the consent given (proof, art. 7.1 GDPR).</summary>
     public string ConsentIpAddress { get; set; } = string.Empty;
@@ -76,6 +89,9 @@ public static class CheckInValidationKeys
     public const string GenderInvalid = "CheckInGenderInvalid";
     public const string DocumentTypeInvalid = "CheckInDocumentTypeInvalid";
     public const string MarketingConsentUnavailable = "CheckInMarketingConsentUnavailable";
+    public const string MarketingConsentMinor = "CheckInMarketingConsentMinor";
+    public const string MarketingEmailRequired = "CheckInMarketingEmailRequired";
+    public const string MarketingEmailInvalid = "CheckInMarketingEmailInvalid";
     public const string GuestsCount = "CheckInGuestsCount";
     public const string GuestTypeInvalid = "CheckInGuestTypeInvalid";
     public const string MemberWithoutHead = "CheckInMemberWithoutHead";
