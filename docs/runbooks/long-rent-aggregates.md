@@ -412,3 +412,64 @@ Ogni cifra dichiara la sua base; il file lo dice nella terza riga e la prima rig
 - **LR-11b-FU1** IRPEF aggregata con gli «altri redditi» (non salvati) · **FU2** registro e bollo per i contratti ordinari · **FU3** «Invita il
   commercialista» · **FU4** i pagamenti ricevuti nell'anno per contratti finiti prima (righe con 0 mesi) · **FU5** mensilità parziali in
   proporzione ai giorni.
+
+## 13. Inquilini: l'elenco per persona, la copia dei dati e la cancellazione (LR-09)
+
+Il modello non ha un'anagrafica dei conduttori: una **persona** si ricava dalle parti dei contratti dell'org (`LongRentTenantRules.PersonKey`).
+L'identità è il **codice fiscale normalizzato** (`Trim` + maiuscolo, lo stesso confronto del servizio di privacy): una persona su più contratti
+è una riga sola; un codice fiscale sbagliato fa due persone e un nome non unisce mai due codici (il limite è scritto nella pagina). Una parte senza
+codice fiscale (righe anteriori alla validazione) è una persona a sé. Le parti anonimizzate non sono più persone della pagina.
+
+### 13.1 Endpoint
+
+Tutti `api/long-rent/tenants`, classe `lease.read`, ristretti in SQL all'org e, se non org-wide, agli immobili raggiungibili (`HostScope`, come
+l'elenco dei contratti); una persona senza contratti nella portata del chiamante è 404 `tenant_not_found`.
+
+| Metodo | Percorso | Permesso | Note |
+|---|---|---|---|
+| `GET` | `?view=All\|Current\|Former&q=&page=&pageSize=` | `lease.read` | 400 `validation_error` per una vista sconosciuta. Righe ordinate per cognome, nome. `q`: nome e cognome (in ogni ordine) e nome degli immobili. `counts`: persone per vista, sulla ricerca chiesta. |
+| `GET` | `{id}` | `lease.read` | La riga, gli ultimi 6 canoni scaduti (`payments`), il ritardo (`overdue`: quanti, quanto, il più vecchio) e `onTimeDays`. |
+| `GET` | `{id}/export` | `lease.read` + `lease.create` | Il file JSON `dati-personali.json` (nome neutro) con i dati in chiaro della persona; `TenantPrivacy`: 10 ogni 10 minuti per persona. |
+| `POST` | `{id}/erasure-request` | `lease.read` + `lease.create` | La richiesta di cancellazione, contratto per contratto; stesso limite. |
+
+L'`id` è **opaco**: l'id di una delle righe di parte della persona (quella del contratto più vecchio), mai il codice fiscale. Qualunque riga
+della persona porta alla stessa persona, quindi un indirizzo salvato resta valido quando arriva un contratto nuovo. Nessun hash del codice
+fiscale: senza una chiave segreta in configurazione sarebbe invertibile a tentativi.
+
+### 13.2 Chi è «attuale» e chi «ex»
+
+«Ex inquilino» = **tutti** i contratti della persona nello stato `Concluded` del percorso (§ 11: fine del periodo in corso senza rinnovo, disdetta,
+termine anticipato, respinto); «attuale» = almeno un contratto non concluso, anche in preparazione. Non si legge mai `EndDate` (LR-14).
+
+### 13.3 Puntualità
+
+Sulle rate **scadute** (`DueDate` ≤ oggi, non annullate) dei contratti della persona: `total` le conta tutte, `onTime` quelle pagate entro
+`LongRentTenants:OnTimeDays` giorni dalla scadenza (default 5, 0–60; un valore non valido vale il default; letta da `IConfiguration`, nessuna
+sezione in `appsettings.json`). Una rata ancora da venire non conta; una scaduta e non pagata conta come non puntuale. La puntualità è del
+contratto: i co-conduttori di uno stesso contratto hanno la stessa.
+
+### 13.4 La copia dei dati (articoli 15 e 20 GDPR)
+
+Per ogni contratto che il chiamante può gestire (`lease.create` sull'immobile, una verifica per immobile): i dati che quel contratto ha **della
+persona** come parte (nome, codice fiscale, cittadinanza, e-mail, residenza, «documenti verificati il»), i termini del contratto, l'immobile
+(nome, indirizzo, città), le rate e il tipo e il giorno degli eventi. **Mai** i dati delle altre parti dello stesso contratto (co-conduttori,
+locatore) né il contenuto (`Payload`) degli eventi. Niente telefono, documenti o messaggi (LR-D3, LR-D16, LR-D23). Risposta `Cache-Control:
+private, no-store`; nel log solo l'utente e il numero di contratti.
+
+### 13.5 La richiesta di cancellazione
+
+Si appoggia a `ILeasePartyPrivacyService.RequestErasureAsync`, **contratto per contratto**, quindi con le regole del pulsante «Chiedi la
+cancellazione dei dati» della scheda del contratto (nessuna regola nuova qui): un contratto **finito** (il giorno dopo la fine del periodo in
+corso) viene anonimizzato subito (`Anonymized`; `PartiallyAnonymized` se una parte è anche in un altro contratto non finito della stessa org: la
+conserva fino a quella fine); un contratto **non finito** non viene toccato: la richiesta resta registrata e le parti sono anonimizzate dal
+giorno dopo la fine (`Scheduled`, `anonymizationFrom`), ed è il contratto che «trattiene» i dati. Il contratto firmato e le ricevute non si
+toccano mai. Ogni contratto registra l'evento `ErasureRequested` (una volta). Idempotente. **Attenzione:** come per il pulsante del contratto,
+l'anonimizzazione di un contratto finito riguarda tutte le sue parti non trattenute, non solo la persona che ha chiesto.
+
+### 13.6 Costo e rimandato
+
+- Istruzioni SQL fisse, qualunque sia il numero di persone: le parti, l'elenco dei contratti dell'area (lo stesso della pagina Contratti) e le rate
+  dei soli contratti della pagina. Il raggruppamento per persona è in memoria (le parti conduttore di un'org sono poche centinaia).
+- **LR-09-FU1** sollecito diretto dalla scheda della persona (oggi la scheda porta al registro dei canoni del mese in ritardo) · **FU2** la
+  cancellazione solo della persona e non delle altre parti dei contratti finiti · **FU3** «Esporta i contatti» di tutte le persone · **FU4** la
+  voce di cancellazione nel registro attività dell'org (serve un tipo nuovo in `OrgActivityType`).
