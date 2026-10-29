@@ -798,6 +798,7 @@ a test; the perimeter grows row by row to about twenty-five events (decision AM-
 | `OrgNameChanged` | 21 | `account` | the org | none | `OrgService.UpdateSettingsAsync`; **the name itself is never recorded** |
 | `OrgSlugChanged` | 22 | `account` | the org | none | same; **the slug itself is never recorded** |
 | `TierAssigned` | 23 | `account` | the org | `toTier` | *reserved*: agency B2B (ADR-010) |
+| `OrgSettingsChanged` | 24 | `account` | the org | none | AM-08b-b: `OrgService.UpdateSettingsAsync`, in the save of the change, when the legal name, the registered office, the phone or the language of the account **really change** (a field that is not sent, or sent with the value it has, writes nothing); **neither what changed nor the values are recorded** (the phone and the registered office are personal data). The contact email and its publication stay out, as they always were |
 | `PropertyModeChangeScheduled` | 40 | the property's | the property | `fromMode`, `toMode`, `effectiveOn` | AM-02c: `PropertyModeService.ScheduleAsync`, in the save that writes the change (and closes the calendar); the actor is who programmed it; the area is the mode the property is in, the one it leaves |
 | `PropertyModeChangeCancelled` | 41 | the property's | the property | `fromMode`, `toMode` | AM-02c: `CancelAsync`, same transaction; the actor is who cancelled; the area is the mode the property is still in |
 | `PropertyModeChanged` | 42 | the property's | the property | `fromMode`, `toMode`, `released` | AM-02c: the daily job (`ApplyDueAsync`), in the save that changes the mode: **no actor**; the area is the mode the property has entered; `released` (`1`) only when the person in charge no longer reaches the property in its new mode (section 48). A change that fails writes nothing |
@@ -1363,3 +1364,18 @@ configuration; AM-D16 «Solo alcuni» stays the collaborator's only; AM-D18 the 
   property (`HostResource` already carries it through the property row) to `Reaches` and invalidating the grantees at the flip would close it; the lists, the audience and
   the release of the responsibility are already exact.
 - **Migration order.** LR-12 generates a migration in parallel: whoever merges second regenerates theirs (and puts back the line of `Down`, section 53).
+
+## 56. The settings of the account (AM-08b-b)
+
+`GET/PUT /api/orgs/me/settings` (policy `OrgBillingAdmin`: the owner and the administrators) carries, besides the name, the address of the booking site, the contact email
+and the operator data of the site footer (`legalName`, `registeredOffice`, DB-03b-a), two fields of the account that are **not** about the public site:
+
+| Field | Column (`Orgs`) | Rule |
+|---|---|---|
+| `contactPhone` | `ContactPhone` (20, null) | `+` or digits only, 6 to 15 digits, separators accepted and dropped (`OrgSettingsRules.NormalizeContactPhone`, the rule of the public phone of the site); 422 `org_contact_phone_invalid`. **Never published**: no public DTO has it, only the administrators read it back |
+| `defaultLanguage` | `DefaultLanguage` (2, `it`) | `it` or `en` (any case), blank = `it`; 422 `org_default_language_invalid`. The language of the emails the org sends to its team when nobody chooses another: the default of `OrgInvitation.Language` when `POST /api/orgs/me/invitations` has no `language`. The language of the guests is theirs to choose, not the org's |
+
+Both follow the rule of the operator data: a member **left out of the body keeps its stored value** (a client that does not know it never erases it); `null` or a blank clears the phone
+and puts the language back to Italian. They are validated before anything is loaded or written. When the legal name, the registered office, the phone or the language **really change**,
+the activity log gets one line, `OrgSettingsChanged` (section 30: the fact only, never the values). Migration `AddOrgContactPhoneAndDefaultLanguage`, additive: the existing orgs get
+`DefaultLanguage = 'it'`, no phone. Rollback: `Down` drops the two columns; the log lines already written stay (the enum value 24 is never reused).

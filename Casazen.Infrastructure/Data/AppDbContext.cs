@@ -751,6 +751,11 @@ public class AppDbContext(
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.StripeCustomerId);
 
+        // The language of the account (AM-08b-b): the orgs that exist when the column is added get Italian, the language they have always had.
+        modelBuilder.Entity<Org>()
+            .Property(o => o.DefaultLanguage)
+            .HasDefaultValue(Casazen.Core.OrgTeam.OrgInvitationRules.DefaultLanguage);
+
         // Previous public slugs of an org (PL-04, A1-23): shared links keep resolving and the value stays reserved.
         modelBuilder.Entity<OrgSlugAlias>()
             .HasOne(a => a.Org)

@@ -2891,6 +2891,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("ContactEmailPublic")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("ContactPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2900,6 +2904,13 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("CustomDomain")
                         .HasMaxLength(253)
                         .HasColumnType("character varying(253)");
+
+                    b.Property<string>("DefaultLanguage")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasDefaultValue("it");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
