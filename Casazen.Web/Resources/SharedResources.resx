@@ -1528,6 +1528,24 @@
   <data name="PropertyHouseRulesTooLong" xml:space="preserve">
     <value>Le regole della casa possono avere al massimo {1} caratteri.</value>
   </data>
+  <data name="PropertyBedsRange" xml:space="preserve">
+    <value>I letti devono essere un numero intero tra {1} e {2}.</value>
+  </data>
+  <data name="PropertyAreaSqmRange" xml:space="preserve">
+    <value>La superficie deve essere tra {1} e {2} metri quadri.</value>
+  </data>
+  <data name="PropertyListingTitleTooLong" xml:space="preserve">
+    <value>Il titolo dell'annuncio può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyExtraGuestFeeRange" xml:space="preserve">
+    <value>Il supplemento per ogni ospite in più deve essere tra {1} e {2} euro a notte.</value>
+  </data>
+  <data name="PropertyQuietHoursIncomplete" xml:space="preserve">
+    <value>Gli orari di silenzio vanno indicati insieme: scrivi sia l'inizio sia la fine, oppure nessuno dei due.</value>
+  </data>
+  <data name="PropertyListViewInvalid" xml:space="preserve">
+    <value>Vista non valida: usa «overview» oppure lascia vuoto.</value>
+  </data>
   <data name="PropertyTimezoneInvalid" xml:space="preserve">
     <value>Fuso orario non valido: usa un identificativo IANA, ad esempio Europe/Rome.</value>
   </data>

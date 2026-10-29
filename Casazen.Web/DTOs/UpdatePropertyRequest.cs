@@ -236,6 +236,200 @@ public class UpdatePropertyRequest
         }
     }
 
+    // The fields of the wizard «Aggiungi immobile» (SR-07a). A field left out keeps its stored value; sending it as null clears it
+    // (a host who removes the extra-guest fee or the quiet hours); a form that does not know them never touches them.
+
+    /// <summary>The kind of accommodation (<c>Apartment</c>, <c>HouseOrVilla</c>, <c>TrulloOrMasseria</c>, <c>LoftOrPenthouse</c>, <c>RoomOrSuite</c>); <c>null</c> clears it, leaving it out keeps it.</summary>
+    public AccommodationType? AccommodationType
+    {
+        get;
+        set
+        {
+            field = value;
+            AccommodationTypeSent = true;
+        }
+    }
+
+    /// <summary>Number of beds (1–100); <c>null</c> clears it, leaving it out keeps it.</summary>
+    [Range(PropertyHouseRules.MinBeds, PropertyHouseRules.MaxBeds, ErrorMessage = "PropertyBedsRange")]
+    public int? Beds
+    {
+        get;
+        set
+        {
+            field = value;
+            BedsSent = true;
+        }
+    }
+
+    /// <summary>Living area in square metres (1–9999); <c>null</c> clears it, leaving it out keeps it.</summary>
+    [Range(PropertyHouseRules.MinAreaSqm, PropertyHouseRules.MaxAreaSqm, ErrorMessage = "PropertyAreaSqmRange")]
+    public int? AreaSqm
+    {
+        get;
+        set
+        {
+            field = value;
+            AreaSqmSent = true;
+        }
+    }
+
+    /// <summary>The headline of the listing, at most 60 characters; <c>null</c> or blank clears it (the listing uses the name), leaving it out keeps it.</summary>
+    [MaxLength(PropertyHouseRules.ListingTitleMaxLength, ErrorMessage = "PropertyListingTitleTooLong")]
+    public string? ListingTitle
+    {
+        get;
+        set
+        {
+            field = value;
+            ListingTitleSent = true;
+        }
+    }
+
+    /// <summary>
+    /// «Mostra la casa sul sito»: <c>true</c> or <c>false</c> is applied, <c>null</c> or left out keeps the stored value. It only
+    /// takes a property off the site or puts it back where it can be: it publishes nothing that is not activated.
+    /// </summary>
+    public bool? PublishedOnSite { get; set; }
+
+    /// <summary>The earliest time guests can arrive, <c>HH:mm</c> on the property's clock; <c>null</c> clears it, leaving it out keeps it.</summary>
+    public TimeOnly? CheckInFrom
+    {
+        get;
+        set
+        {
+            field = value;
+            CheckInFromSent = true;
+        }
+    }
+
+    /// <summary>The time by which guests must leave, <c>HH:mm</c> on the property's clock; <c>null</c> clears it, leaving it out keeps it.</summary>
+    public TimeOnly? CheckOutBy
+    {
+        get;
+        set
+        {
+            field = value;
+            CheckOutBySent = true;
+        }
+    }
+
+    /// <summary>Smoking (<c>No</c>, <c>OutdoorsOnly</c>, <c>Yes</c>); <c>Yes</c> puts the amenity <c>SmokingAllowed</c> in the list and any other answer takes it out; <c>null</c> clears the rule, leaving it out keeps it.</summary>
+    public SmokingPolicy? SmokingPolicy
+    {
+        get;
+        set
+        {
+            field = value;
+            SmokingPolicySent = true;
+        }
+    }
+
+    /// <summary>Pets (<c>No</c>, <c>OnRequest</c>, <c>Yes</c>); <c>Yes</c> puts the amenity <c>PetFriendly</c> in the list and any other answer takes it out; <c>null</c> clears the rule, leaving it out keeps it.</summary>
+    public PetsPolicy? PetsPolicy
+    {
+        get;
+        set
+        {
+            field = value;
+            PetsPolicySent = true;
+        }
+    }
+
+    /// <summary>Parties and events (<c>No</c>, <c>OnRequest</c>); <c>null</c> clears the rule, leaving it out keeps it.</summary>
+    public PartiesPolicy? PartiesPolicy
+    {
+        get;
+        set
+        {
+            field = value;
+            PartiesPolicySent = true;
+        }
+    }
+
+    /// <summary>Quiet hours start, <c>HH:mm</c>; <c>null</c> clears it, leaving it out keeps it. Start and end are set together or cleared together (422 <c>property_quiet_hours_incomplete</c>).</summary>
+    public TimeOnly? QuietHoursFrom
+    {
+        get;
+        set
+        {
+            field = value;
+            QuietHoursFromSent = true;
+        }
+    }
+
+    /// <summary>Quiet hours end, <c>HH:mm</c>; <c>null</c> clears it, leaving it out keeps it.</summary>
+    public TimeOnly? QuietHoursTo
+    {
+        get;
+        set
+        {
+            field = value;
+            QuietHoursToSent = true;
+        }
+    }
+
+    /// <summary>What the host asks per night for each extra guest, in euros (0–1000); <c>null</c> clears it (extra guests are not accepted), leaving it out keeps it.</summary>
+    [Range(typeof(decimal), "0", "1000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyExtraGuestFeeRange")]
+    public decimal? ExtraGuestFeePerNight
+    {
+        get;
+        set
+        {
+            field = value;
+            ExtraGuestFeePerNightSent = true;
+        }
+    }
+
+    /// <summary>True when the body carries <see cref="AccommodationType"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool AccommodationTypeSent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="Beds"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool BedsSent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="AreaSqm"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool AreaSqmSent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="ListingTitle"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool ListingTitleSent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="CheckInFrom"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool CheckInFromSent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="CheckOutBy"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool CheckOutBySent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="SmokingPolicy"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool SmokingPolicySent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="PetsPolicy"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool PetsPolicySent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="PartiesPolicy"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool PartiesPolicySent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="QuietHoursFrom"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool QuietHoursFromSent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="QuietHoursTo"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool QuietHoursToSent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="ExtraGuestFeePerNight"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool ExtraGuestFeePerNightSent { get; private set; }
+
     /// <summary>True when the body carries <see cref="CinCode"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool CinCodeSent { get; private set; }
@@ -322,6 +516,34 @@ public class UpdatePropertyRequest
             property.CancellationRefundType = refundType;
         if (SlugSent)
             property.Slug = string.IsNullOrWhiteSpace(Slug) ? null : Slug.Trim().ToLowerInvariant();
+
+        // The wizard's fields (SR-07a): only the ones in the body; the property service stores them normalized.
+        if (AccommodationTypeSent)
+            property.AccommodationType = AccommodationType;
+        if (BedsSent)
+            property.Beds = Beds;
+        if (AreaSqmSent)
+            property.AreaSqm = AreaSqm;
+        if (ListingTitleSent)
+            property.ListingTitle = ListingTitle;
+        if (PublishedOnSite is { } publishedOnSite)
+            property.PublishedOnSite = publishedOnSite;
+        if (CheckInFromSent)
+            property.CheckInFrom = CheckInFrom;
+        if (CheckOutBySent)
+            property.CheckOutBy = CheckOutBy;
+        if (SmokingPolicySent)
+            property.SmokingPolicy = SmokingPolicy;
+        if (PetsPolicySent)
+            property.PetsPolicy = PetsPolicy;
+        if (PartiesPolicySent)
+            property.PartiesPolicy = PartiesPolicy;
+        if (QuietHoursFromSent)
+            property.QuietHoursFrom = QuietHoursFrom;
+        if (QuietHoursToSent)
+            property.QuietHoursTo = QuietHoursTo;
+        if (ExtraGuestFeePerNightSent)
+            property.ExtraGuestFeePerNight = ExtraGuestFeePerNight;
 
         property.UpdatedAt = DateTime.UtcNow;
     }
