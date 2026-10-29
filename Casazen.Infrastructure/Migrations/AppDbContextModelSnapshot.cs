@@ -4244,6 +4244,9 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("AccommodationType")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Address")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -4258,10 +4261,16 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("integer[]");
 
+                    b.Property<int?>("AreaSqm")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Bathrooms")
                         .HasColumnType("integer");
 
                     b.Property<int>("Bedrooms")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("Beds")
                         .HasColumnType("integer");
 
                     b.Property<string>("CadastralCategory")
@@ -4299,6 +4308,12 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("CancellationRefundType")
                         .HasColumnType("integer");
+
+                    b.Property<TimeOnly?>("CheckInFrom")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("CheckOutBy")
+                        .HasColumnType("time without time zone");
 
                     b.Property<string>("CinCode")
                         .HasMaxLength(25)
@@ -4357,6 +4372,10 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<decimal?>("ExtraGuestFeePerNight")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
                     b.Property<string>("HouseRules")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -4377,6 +4396,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<decimal>("Latitude")
                         .HasPrecision(9, 6)
                         .HasColumnType("numeric(9,6)");
+
+                    b.Property<string>("ListingTitle")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
 
                     b.Property<decimal>("Longitude")
                         .HasPrecision(9, 6)
@@ -4405,8 +4428,14 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<int?>("PartiesPolicy")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("PausedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("PetsPolicy")
+                        .HasColumnType("integer");
 
                     b.PrimitiveCollection<List<string>>("PhotoUrls")
                         .IsRequired()
@@ -4416,6 +4445,16 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
+
+                    b.Property<bool>("PublishedOnSite")
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<TimeOnly?>("QuietHoursFrom")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("QuietHoursTo")
+                        .HasColumnType("time without time zone");
 
                     b.Property<string>("RegionCode")
                         .HasMaxLength(10)
@@ -4436,6 +4475,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("Slug")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
+
+                    b.Property<int?>("SmokingPolicy")
+                        .HasColumnType("integer");
 
                     b.Property<string>("SwissMunicipalityCode")
                         .HasMaxLength(10)
@@ -7840,6 +7882,56 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierShowcaseContent", b =>
+                {
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DraftJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime?>("PausedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("PreviousPublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PreviousPublishedJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PublishedJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("SavedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UndoUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("OrgId");
+
+                    b.ToTable("SupplierShowcaseContents");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.SupplierTimeOff", b =>
                 {
                     b.Property<Guid>("Id")
@@ -10250,6 +10342,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
                         .WithOne()
                         .HasForeignKey("Casazen.Core.Entities.SupplierSettings", "OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SupplierProfile");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierShowcaseContent", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithOne()
+                        .HasForeignKey("Casazen.Core.Entities.SupplierShowcaseContent", "OrgId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

@@ -1585,6 +1585,24 @@
   <data name="PropertyHouseRulesTooLong" xml:space="preserve">
     <value>The house rules can be at most {1} characters long.</value>
   </data>
+  <data name="PropertyBedsRange" xml:space="preserve">
+    <value>The number of beds must be a whole number between {1} and {2}.</value>
+  </data>
+  <data name="PropertyAreaSqmRange" xml:space="preserve">
+    <value>The area must be between {1} and {2} square metres.</value>
+  </data>
+  <data name="PropertyListingTitleTooLong" xml:space="preserve">
+    <value>The listing title can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyExtraGuestFeeRange" xml:space="preserve">
+    <value>The fee for each extra guest must be between {1} and {2} euros per night.</value>
+  </data>
+  <data name="PropertyQuietHoursIncomplete" xml:space="preserve">
+    <value>Quiet hours go together: give both the start and the end, or neither.</value>
+  </data>
+  <data name="PropertyListViewInvalid" xml:space="preserve">
+    <value>Invalid view: use "overview" or leave it empty.</value>
+  </data>
   <data name="PropertyTimezoneInvalid" xml:space="preserve">
     <value>Invalid time zone: use an IANA identifier, for example Europe/Rome.</value>
   </data>
@@ -2556,6 +2574,12 @@
   </data>
   <data name="SupplierServiceCopySuffix" xml:space="preserve">
     <value> (copy)</value>
+  </data>
+  <data name="ShowcaseContentInvalid" xml:space="preserve">
+    <value>Some of the showcase content is not valid (fields: {0}). Check the texts, the color and the images and try again.</value>
+  </data>
+  <data name="ShowcaseVersionConflict" xml:space="preserve">
+    <value>The showcase was changed from another tab or by another user: reload the page and apply your change again.</value>
   </data>
   <data name="SupplierHoursInvalid" xml:space="preserve">
     <value>The working hours are not valid (fields: {0}). Check the bands: a day has at most 3, they cannot overlap, and each one must end after it starts (in minutes after midnight, from 0 to 1440).</value>
