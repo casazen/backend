@@ -47,7 +47,11 @@ public class EncryptedColumnsTests
                 "ServiceRequest.LocationAccessNotes:Casazen.ServiceRequest.Location",
                 "ServiceRequest.LocationAddress:Casazen.ServiceRequest.Location",
                 "ServiceRequest.LocationFloor:Casazen.ServiceRequest.Location",
+                // SP-10b: the words of the thread of a request on measure.
+                "ServiceRequestMessage.Body:Casazen.ServiceRequestMessage",
                 "ShowcaseBookingHold.Payload:Casazen.ServiceCustomer",
+                // SP-10b: the request on measure that waits for the e-mail check (the same data as the hold, plus the words).
+                "ShowcaseInquiry.Payload:Casazen.ServiceCustomer",
                 "StayGuest.DocumentIssuePlaceName:Casazen.Guest.Document",
                 "StayGuest.DocumentNumber:Casazen.Guest.Document",
             },

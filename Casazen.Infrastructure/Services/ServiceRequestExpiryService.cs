@@ -38,7 +38,9 @@ public sealed class ServiceRequestExpiryService(
             return ServiceRequestExpiryRun.LockTaken;
         }
 
-        var holdsDeleted = await DeleteExpiredHoldsAsync(cancellationToken);
+        // The holds of the bookings and the inquiries of the requests on measure (SP-10b) that nobody checked: both wait for an e-mail
+        // check and lapse alike, so the run counts them together.
+        var holdsDeleted = await DeleteExpiredHoldsAsync(cancellationToken) + await DeleteExpiredInquiriesAsync(cancellationToken);
         var cancellation = await autoCancel.CancelUnansweredShowcaseAsync(cancellationToken);
 
         if (holdsDeleted > 0 || cancellation.Cancelled > 0 || cancellation.Failed > 0)
@@ -65,6 +67,46 @@ public sealed class ServiceRequestExpiryService(
             .ThenBy(h => h.Id)
             .Select(h => h.Id)
             .Take(ShowcaseBookingLimits.ExpiryBatchSize);
+
+    /// <summary>
+    /// The inquiries (SP-10b) whose expiry has passed at <paramref name="nowUtc"/>, the oldest first, at most
+    /// <see cref="ShowcaseBookingLimits.ExpiryBatchSize"/>: the ones nobody checked and the ones that were checked and kept for the replay of
+    /// the link. Only ids: the payload (the words of the customer) is not read.
+    /// </summary>
+    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
+    internal static IQueryable<Guid> ExpiredInquiryIdsOf(AppDbContext db, DateTime nowUtc) =>
+        db.ShowcaseInquiries
+            .AsNoTracking()
+            .Where(i => i.ExpiresAt <= nowUtc)
+            .OrderBy(i => i.ExpiresAt)
+            .ThenBy(i => i.Id)
+            .Select(i => i.Id)
+            .Take(ShowcaseBookingLimits.ExpiryBatchSize);
+
+    private async Task<int> DeleteExpiredInquiriesAsync(CancellationToken cancellationToken)
+    {
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var ids = await ExpiredInquiryIdsOf(db, now).ToListAsync(cancellationToken);
+        if (ids.Count == 0)
+            return 0;
+
+        // By key, from a stub: the rows are deleted without being read (their payload is personal data and is encrypted).
+        db.ChangeTracker.Clear();
+        db.ShowcaseInquiries.RemoveRange(ids.Select(id => new ShowcaseInquiry { Id = id }));
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Another run removed some of them first: the next run finds what is left.
+            db.ChangeTracker.Clear();
+            logger.LogInformation("Service request expiry: some expired inquiries were already gone");
+            return 0;
+        }
+
+        return ids.Count;
+    }
 
     private async Task<int> DeleteExpiredHoldsAsync(CancellationToken cancellationToken)
     {

@@ -1671,4 +1671,43 @@
   <data name="VerificationRequiredPush_Body" xml:space="preserve">
     <value>The booking of {0} at {1} requires manual verification.</value>
   </data>
+  <data name="SupplierInquiryVerification_Subject" xml:space="preserve">
+    <value>Confirm your request to {0}</value>
+  </data>
+  <data name="SupplierInquiryVerification_Body" xml:space="preserve">
+    <value>You wrote to &lt;strong&gt;{0}&lt;/strong&gt; with a request on measure. Confirm your email address to send it: until you do, the supplier receives nothing.</value>
+  </data>
+  <data name="SupplierInquiryVerification_Valid" xml:space="preserve">
+    <value>The link works for {0} minutes. After that you can make the request again.</value>
+  </data>
+  <data name="SupplierInquiryVerification_Cta" xml:space="preserve">
+    <value>Confirm and send the request</value>
+  </data>
+  <data name="SupplierInquiryVerification_Ignore" xml:space="preserve">
+    <value>If you did not make this request, ignore this message: nothing happens.</value>
+  </data>
+  <data name="SupplierInquiryReceipt_Subject" xml:space="preserve">
+    <value>Request sent to {0}</value>
+  </data>
+  <data name="SupplierInquiryReceipt_Body" xml:space="preserve">
+    <value>We have sent your request to &lt;strong&gt;{0}&lt;/strong&gt;. The conversation with the supplier is on the page of the request.</value>
+  </data>
+  <data name="SupplierInquiryReceipt_Deadline" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; has until &lt;strong&gt;{1}&lt;/strong&gt; to answer you. If it does not, the request is closed and we tell you.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Subject" xml:space="preserve">
+    <value>New request on measure — {0}</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Body" xml:space="preserve">
+    <value>You have received a request on measure in &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Service" xml:space="preserve">
+    <value>It is about: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Deadline" xml:space="preserve">
+    <value>Answer by &lt;strong&gt;{0}&lt;/strong&gt;: after that time the request is closed automatically. Your first message stops the clock.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Hint" xml:space="preserve">
+    <value>Read the request and reply from the console. The customer's full name and contacts are shown once you take the request.</value>
+  </data>
 </root>

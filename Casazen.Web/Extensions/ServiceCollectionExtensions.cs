@@ -659,6 +659,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceCustomerReader, ServiceCustomerReader>();
         services.AddScoped<ShowcaseBookingNotifier>();
         services.AddScoped<IShowcaseBookingService, ShowcaseBookingService>();
+        // The request on measure from the same showcase (SP-10b): no slot, the words of the customer, a thread with the supplier.
+        services.AddScoped<IShowcaseInquiryService, ShowcaseInquiryService>();
         // The customer's own area of a booking (SP-11): find it with the code and the e-mail, cancel it, move it, answer a proposed time.
         services.AddScoped<IShowcaseBookingManager, ShowcaseBookingManager>();
         // The upkeep (expiry of holds and of unanswered showcase requests), the reminders of the day before and the retention of the
