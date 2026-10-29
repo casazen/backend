@@ -20,6 +20,8 @@ namespace Casazen.Web.Controllers;
 /// <remarks>
 /// <para><b>One 404.</b> An unknown slug and a supplier that is not active (pending or suspended) answer the same on every
 /// endpoint; an unknown, draft, paused or deleted service, and a service of another supplier, answer the same too.</para>
+/// <para><b>Paused (SP-13a).</b> A showcase the supplier paused answers its slots and its estimate with 422 <c>supplier_booking_offline</c>, as the
+/// booking does; the page itself keeps answering, with <c>paused: true</c> when the supplier published content.</para>
 /// <para><b>The flag.</b> The four endpoints added by SP-09 are behind <c>Features:SupplierShowcaseBooking</c> (off by
 /// default): with it off they answer 404 like a route that does not exist. The page itself
 /// (<c>GET api/public/suppliers/{slug}</c>) keeps answering, and with the flag off it reads exactly as it did before SP-09.</para>
@@ -57,10 +59,28 @@ public class PublicSupplierController(
         var availability = await supplierService.GetAvailabilityAsync(profile.OrgId, today, today.AddDays(13), ct);
 
         var dto = SupplierShowcaseMapper.ToDto(profile, listed, availability);
+
+        // SP-13a: what the supplier published with the editor (the published version, never the draft). A supplier that published nothing has
+        // none of these members and the page reads exactly as it always did.
+        var page = await showcase.GetPublishedPageAsync(profile, ct);
+        if (page is not null)
+            PublicShowcaseMapper.Apply(dto, page);
+
         if (featureFlags.IsEnabled(FeatureFlags.SupplierShowcaseBooking))
         {
             var extension = await showcase.GetExtensionAsync(profile, ct);
-            dto.Services = extension.Services.Select(PublicSupplierMapper.ToSummaryDto).ToList();
+            var nextSlots = page is { BookingsOpen: true }
+                ? await showcase.GetNextSlotsAsync(profile, extension.Services, ct)
+                : new Dictionary<string, DateTime>();
+            dto.Services = extension.Services
+                .Select(service =>
+                {
+                    var card = PublicSupplierMapper.ToSummaryDto(service);
+                    if (nextSlots.TryGetValue(service.Slug, out var next))
+                        card.NextSlotUtc = next;
+                    return card;
+                })
+                .ToList();
             dto.MedianResponseMinutes = extension.MedianResponseMinutes;
         }
 
@@ -155,6 +175,10 @@ public class PublicSupplierController(
         if (supplier is null)
             return SupplierNotFound();
 
+        // SP-13a: a showcase the supplier paused offers no slot (the booking is refused with the same answer).
+        if (await showcase.IsPausedAsync(supplier, ct))
+            throw ShowcaseBookingErrors.OfflineSupplier();
+
         var slots = await showcase.GetSlotsAsync(supplier, service, from, days, urgent ?? false, ct);
         return slots is null ? ServiceNotFound() : Ok(PublicSupplierMapper.ToDto(slots));
     }
@@ -181,6 +205,10 @@ public class PublicSupplierController(
         var supplier = await showcase.FindActiveSupplierAsync(slug, ct);
         if (supplier is null)
             return SupplierNotFound();
+
+        // SP-13a: a showcase the supplier paused gives no estimate either.
+        if (await showcase.IsPausedAsync(supplier, ct))
+            throw ShowcaseBookingErrors.OfflineSupplier();
 
         try
         {

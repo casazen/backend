@@ -701,6 +701,40 @@ public class SupplierShowcaseDto
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? MedianResponseMinutes { get; set; }
+
+    // SP-13a: what the supplier published with the editor. Every member is left out until it published something (and the owner's preview
+    // never has them), so the page of a supplier that did not is exactly what it always was.
+
+    /// <summary>The <b>published</b> content of the showcase (never the draft): style, texts, team, FAQ, gallery...</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicShowcaseContentDto? Content { get; set; }
+
+    /// <summary>The supplier paused its showcase: the page says it takes no bookings, and the slots and the estimate answer "not available".</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Paused { get; set; }
+
+    /// <summary>
+    /// The showcase takes bookings now: published, not paused, switched on, the payments on and the supplier's account ready (decision VT-D7).
+    /// False means read-only: the services and prices are there, the booking is not.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? BookingsOpen { get; set; }
+
+    /// <summary>What the platform vouches for: "Verificato" and, from a few, the jobs done. Nothing else.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicSupplierTrustDto? Trust { get; set; }
+
+    /// <summary>How long the supplier has to answer a booking, in minutes: its setting, never written on the page by hand.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? RespondWithinMinutes { get; set; }
+
+    /// <summary>The supplier takes the payment inside CasaZen: the payments are on and its account can take charges and payouts.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? AcceptsOnlinePayments { get; set; }
+
+    /// <summary>The version of the privacy notice a booking records (<c>Suppliers:Showcase:PrivacyNoticeVersion</c>); left out when not configured.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PrivacyNoticeVersion { get; set; }
 }
 
 /// <summary>The owner's preview of the public showcase and where it will be (or is) published.</summary>
