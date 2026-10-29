@@ -140,6 +140,7 @@ public static partial class OrgActivityCatalog
         new(OrgActivityType.OrgSlugChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
         new(OrgActivityType.TierAssigned, OrgActivityArea.Account, OrgActivitySubjectType.Org,
             [OrgActivityDetailKeys.ToTier], Reserved: true),
+        new(OrgActivityType.OrgSettingsChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
 
         // The mode change of a property (PM-02, written by PropertyModeService since AM-02c). The area is the one of the property,
         // which the service passes (ShortRent is only the default of the catalog).
