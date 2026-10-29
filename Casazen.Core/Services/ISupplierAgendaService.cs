@@ -211,6 +211,14 @@ public interface ISupplierAgendaService
     Task<SupplierSettingsView> ReplaceSettingsAsync(Guid supplierOrgId, SupplierSettingsInput input, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Turns the online bookings of the public showcase on or off (<c>SupplierSettings.OnlineBookingEnabled</c>, SP-13a). <b>The only writer</b>
+    /// of that switch: the showcase content service calls it when the supplier publishes, pauses or reopens the showcase and when its payments
+    /// account changes; the console's settings never do (decision SP-D29). Turning it off for a supplier that has no settings row writes
+    /// nothing; turning it on creates the row. Under the agenda lock, which joins the transaction of the caller.
+    /// </summary>
+    Task SetOnlineBookingEnabledAsync(Guid supplierOrgId, bool enabled, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The supplier's urgent settings (SP-04c, <c>GET api/supplier/availability/urgent</c>): whether it accepts urgent requests, the
     /// window of the day they are accepted in and its default surcharge. <see cref="SupplierUrgentSettings.Default"/> (off, 07:00 to
     /// 22:00, no surcharge) while the supplier never saved them; a read never creates the settings row. Read-only.
