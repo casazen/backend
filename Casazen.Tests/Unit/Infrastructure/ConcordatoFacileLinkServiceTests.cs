@@ -127,6 +127,88 @@ public class ConcordatoFacileLinkServiceTests
     }
 
     /// <summary>
+    /// CF-BYPASS: the test module of ConcordatoFacile is a Vercel deployment with its protection on; its secret rides on the link as
+    /// <c>x-vercel-protection-bypass</c> with <c>x-vercel-set-bypass-cookie=true</c>, after the signed parameters, which stay exactly
+    /// what they were (the signature of the vector does not change). The secret is trimmed and URL-encoded; the audit line still has
+    /// neither the address nor the secret.
+    /// </summary>
+    [Fact]
+    public async Task GenerateLink_TestModuleWithABypassSecret_CarriesTheTwoVercelParametersAfterTheSignedOnes()
+    {
+        var orgId = Guid.NewGuid();
+        var leaseId = Guid.Parse(VectorLeaseId);
+        await using var db = NewDb();
+        await SeedLeaseAsync(db, orgId, leaseId, comune: SeedComune("035033", "Reggio nell'Emilia", "RE"));
+
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 13, 9, 45, 0, TimeSpan.Zero));
+        var service = new ConcordatoFacileLinkService(
+            db,
+            AccessGranted(leaseId),
+            PrivacyAccepted(),
+            Options.Create(new ConcordatoFacileOptions
+            {
+                LinkSecret = VectorSecret,
+                FormUrl = "https://test-module.example/",
+                FormBypassSecret = " abc+def/ghi=\n",
+            }),
+            NullLogger<ConcordatoFacileLinkService>.Instance,
+            clock);
+
+        var link = await service.GenerateSignedLinkAsync(leaseId, new ClaimsPrincipal());
+
+        Assert.Equal(
+            "https://test-module.example/?partner=casazen"
+            + $"&leaseId={VectorLeaseId}"
+            + "&expiresAt=2026-10-13T10%3a00%3a00Z"
+            + $"&signature={VectorSignature}"
+            + "&comune=Reggio+nell%27Emilia"
+            + "&provincia=RE"
+            + "&x-vercel-protection-bypass=abc%2bdef%2fghi%3d"
+            + "&x-vercel-set-bypass-cookie=true",
+            link.Url);
+
+        var recorded = await db.LeaseEvents.SingleAsync(e => e.EventType == LeaseEventType.ConcordatoFacileLinkGenerated);
+        Assert.Null(recorded.Payload);
+    }
+
+    /// <summary>
+    /// CF-BYPASS: the secret goes only where the link opens the test module. Without <c>FormUrl</c> the link is the real module's, with
+    /// the simulator it is the page of the web app: neither carries the secret, whatever is configured (the startup refuses these
+    /// combinations too).
+    /// </summary>
+    [Fact]
+    public async Task GenerateLink_BypassSecretButNotTheTestModule_NeverCarriesIt()
+    {
+        var orgId = Guid.NewGuid();
+        var leaseId = Guid.Parse(VectorLeaseId);
+        await using var db = NewDb();
+        await SeedLeaseAsync(db, orgId, leaseId, comune: SeedComune("035033", "Reggio nell'Emilia", "RE"));
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 13, 9, 45, 0, TimeSpan.Zero));
+
+        async Task<string> LinkWith(ConcordatoFacileOptions options)
+        {
+            var service = new ConcordatoFacileLinkService(
+                db, AccessGranted(leaseId), PrivacyAccepted(), Options.Create(options), NullLogger<ConcordatoFacileLinkService>.Instance, clock);
+            return (await service.GenerateSignedLinkAsync(leaseId, new ClaimsPrincipal())).Url;
+        }
+
+        var real = await LinkWith(new ConcordatoFacileOptions { LinkSecret = VectorSecret, FormBypassSecret = "vercel-secret-0123456789" });
+        var simulated = await LinkWith(new ConcordatoFacileOptions
+        {
+            LinkSecret = VectorSecret,
+            FormMode = ConcordatoFacileFormMode.Simulated,
+            BaseUrl = "https://casazen-test-app.example",
+            FormUrl = "https://test-module.example/",
+            FormBypassSecret = "vercel-secret-0123456789",
+        });
+
+        Assert.StartsWith("https://app.concordatofacile.it/?partner=casazen", real, StringComparison.Ordinal);
+        Assert.StartsWith("https://casazen-test-app.example/guided-form?partner=casazen", simulated, StringComparison.Ordinal);
+        Assert.DoesNotContain("x-vercel", real + simulated, StringComparison.Ordinal);
+        Assert.DoesNotContain("vercel-secret", real + simulated, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// PROOF TEST: Permission rule - user without ConcordatoFacile access must NOT get a link (ADR-007-R10).
     /// Access check must happen BEFORE signature generation.
     /// </summary>

@@ -109,4 +109,18 @@ public enum LeaseEventType
     /// the other types do not change.
     /// </summary>
     ConcordatoFacilePrivacyAccepted,
+
+    /// <summary>
+    /// The landlord recorded the withdrawal (recesso) the tenant sent (LR-OPS-1): the lease was ended early on the day the notice runs out
+    /// (a <see cref="Terminated"/> event is written with it). Payload: <c>{reason}:{receivedOn}:{effectiveOn}:{noticeMonths}</c>, the
+    /// reason name and the three facts, days as <c>yyyy-MM-dd</c>. No personal data. Appended last: the stored integers of the other types do not change.
+    /// </summary>
+    WithdrawalRecorded,
+
+    /// <summary>
+    /// The landlord marked a letter CasaZen had prepared as sent (LR-OPS-1). Payload: <c>{kind}:{means}:{sentOn}</c>, the names of
+    /// <c>LeaseLetterKind</c> and <c>LeaseLetterMeans</c> and the day as <c>yyyy-MM-dd</c>. Nothing else: CasaZen does not send the letter and
+    /// does not keep a copy of it. No personal data.
+    /// </summary>
+    LetterSent,
 }
