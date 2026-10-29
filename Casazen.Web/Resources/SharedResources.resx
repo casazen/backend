@@ -303,6 +303,39 @@
   <data name="PropertyNotInTicino" xml:space="preserve">
     <value>La struttura non si trova nel Canton Ticino</value>
   </data>
+  <data name="SwissReportDateRequired" xml:space="preserve">
+    <value>Indica la data del rapporto.</value>
+  </data>
+  <data name="SwissPeriodFromRequired" xml:space="preserve">
+    <value>Indica la data di inizio del periodo.</value>
+  </data>
+  <data name="SwissPeriodToRequired" xml:space="preserve">
+    <value>Indica la data di fine del periodo.</value>
+  </data>
+  <data name="SwissPeriodInvalid" xml:space="preserve">
+    <value>La data di fine del periodo non può precedere la data di inizio.</value>
+  </data>
+  <data name="SwissPeriodTooLong" xml:space="preserve">
+    <value>Il periodo non può superare {0} giorni.</value>
+  </data>
+  <data name="SwissReceiptTypeRequired" xml:space="preserve">
+    <value>Indica il tipo di ricevuta: Police oppure OTR.</value>
+  </data>
+  <data name="SwissReceiptTypeInvalid" xml:space="preserve">
+    <value>Tipo di ricevuta non valido: usa «Police» (notifica alla polizia) oppure «OTR» (rapporto dei pernottamenti).</value>
+  </data>
+  <data name="SwissReceiptReferenceRequired" xml:space="preserve">
+    <value>Indica il riferimento dell'invio, per esempio il numero di conferma del portale.</value>
+  </data>
+  <data name="SwissReceiptReferenceTooLong" xml:space="preserve">
+    <value>Il riferimento non può superare 200 caratteri.</value>
+  </data>
+  <data name="SwissReceiptFileRequired" xml:space="preserve">
+    <value>Allega il file della ricevuta.</value>
+  </data>
+  <data name="SwissReceiptFileInvalid" xml:space="preserve">
+    <value>Il file della ricevuta è vuoto oppure supera {0} MB.</value>
+  </data>
   <data name="BookingNotFound" xml:space="preserve">
     <value>Prenotazione non trovata</value>
   </data>

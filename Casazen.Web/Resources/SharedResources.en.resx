@@ -303,6 +303,39 @@
   <data name="PropertyNotInTicino" xml:space="preserve">
     <value>Property is not located in Canton Ticino</value>
   </data>
+  <data name="SwissReportDateRequired" xml:space="preserve">
+    <value>Provide the report date.</value>
+  </data>
+  <data name="SwissPeriodFromRequired" xml:space="preserve">
+    <value>Provide the start date of the period.</value>
+  </data>
+  <data name="SwissPeriodToRequired" xml:space="preserve">
+    <value>Provide the end date of the period.</value>
+  </data>
+  <data name="SwissPeriodInvalid" xml:space="preserve">
+    <value>The end date of the period cannot be before its start date.</value>
+  </data>
+  <data name="SwissPeriodTooLong" xml:space="preserve">
+    <value>The period cannot be longer than {0} days.</value>
+  </data>
+  <data name="SwissReceiptTypeRequired" xml:space="preserve">
+    <value>Provide the receipt type: Police or OTR.</value>
+  </data>
+  <data name="SwissReceiptTypeInvalid" xml:space="preserve">
+    <value>Invalid receipt type: use "Police" (police notification) or "OTR" (overnight report).</value>
+  </data>
+  <data name="SwissReceiptReferenceRequired" xml:space="preserve">
+    <value>Provide the reference of the submission, for instance the confirmation number of the portal.</value>
+  </data>
+  <data name="SwissReceiptReferenceTooLong" xml:space="preserve">
+    <value>The reference cannot be longer than 200 characters.</value>
+  </data>
+  <data name="SwissReceiptFileRequired" xml:space="preserve">
+    <value>Attach the receipt file.</value>
+  </data>
+  <data name="SwissReceiptFileInvalid" xml:space="preserve">
+    <value>The receipt file is empty or larger than {0} MB.</value>
+  </data>
   <data name="BookingNotFound" xml:space="preserve">
     <value>Booking not found</value>
   </data>
