@@ -580,6 +580,8 @@ public static class ServiceCollectionExtensions
         // instead, and the supplier's own preview of the slots of a service (no cache, no flag, draft and paused services too).
         services.AddScoped<ISupplierConflictService, SupplierConflictService>();
         services.AddScoped<ISupplierSlotPreviewService, SupplierSlotPreviewService>();
+        // What the host reads of a supplier to ask it for an intervention: its published services and their free slots (SR-08a).
+        services.AddScoped<IHostSupplierCatalogService, HostSupplierCatalogService>();
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
         // Invitation of new independent hosts by admins and hosts: limits are configuration (HostInvites), validated at startup.
