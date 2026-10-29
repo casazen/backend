@@ -187,6 +187,10 @@ supplier in Italian, the supplier reads comune and "Nome C." only (D9).
 | `supplier-booking-proposal-answered-by-customer` | supplier | the customer accepted the proposed time (the request is taken) or turned it down (+ push `service-request-proposal-accepted` / `-rejected`) |
 | `supplier-booking-proposal-expired` | customer | the day to answer the proposed time passed and the request was cancelled (reason `ProposalNotAnswered`) |
 | `supplier-booking-proposal-lapsed` | supplier | the same event, told to the supplier: it was the customer who did not answer (+ push `service-request-cancelled`) |
+| `service-request-quote-received` | host, or showcase customer | the supplier sent a quote (SP-04b): the lines, the total, the time of the work (the quote's own if it offers another), the note; a showcase customer (in its language) also the time to answer by (the host has none) and the link to its booking; the host the link to the stay when the request has one (+ push `service-request-quote-sent` to the hosts of the property). The time is said not to be reserved before the quote is accepted |
+| `service-request-quote-answered` | supplier | the host or the customer accepted the quote (price and time) or turned it down (the request waits for the supplier again); comune and "Nome C." only (+ push `service-request-quote-accepted` / `-rejected`) |
+| `supplier-booking-quote-expired` | customer | the time to answer the quote passed and the request was cancelled (reason `QuoteNotAnswered`): it was the customer who did not answer |
+| `supplier-booking-quote-lapsed` | supplier | the same event, told to the supplier (+ push `service-request-quote-expired`) |
 
 When the customer **accepts** the proposed time it also gets the e-mail of a taken request (`supplier-booking-accepted`) with the new time: it took the
 request on the supplier's behalf. The customer gets nothing for moving the booking or for turning a proposal down: the page it is on answers with the booking.
