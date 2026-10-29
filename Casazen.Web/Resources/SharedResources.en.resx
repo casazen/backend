@@ -147,6 +147,9 @@
   <data name="StripeConnectAccountUnavailable" xml:space="preserve">
     <value>The connected Stripe account is no longer available: try again to connect a new one.</value>
   </data>
+  <data name="StripeConnectDashboardNotReady" xml:space="preserve">
+    <value>Your Stripe account is not ready yet: connect Stripe or finish the verification, then you can open it from here.</value>
+  </data>
   <data name="ConfigurationError" xml:space="preserve">
     <value>Server configuration error. Contact support.</value>
   </data>
@@ -2499,6 +2502,12 @@
   </data>
   <data name="LeaseListViewUnknown" xml:space="preserve">
     <value>The lease view is not valid: use All, Active, InPreparation, Expiring or Ended.</value>
+  </data>
+  <data name="TenantNotFound" xml:space="preserve">
+    <value>Tenant not found.</value>
+  </data>
+  <data name="TenantListViewUnknown" xml:space="preserve">
+    <value>The tenant view is not valid: use All, Current or Former.</value>
   </data>
   <data name="LongRentDeadlinesRangeInvalid" xml:space="preserve">
     <value>Enter a valid period: dates as yyyy-MM-dd, the end not before the start and at most 366 days.</value>

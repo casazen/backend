@@ -72,6 +72,16 @@ public interface IConnectOnboardingService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Single-use login link to the Express Dashboard of the org's own Stripe account (AM-08b-d): where the host sees balance,
+    /// payouts and bank details on Stripe. It needs an account that is already linked (the database says so, Stripe is not asked
+    /// for it) and never creates one: without an account, or when Stripe refuses the link because the onboarding is not complete,
+    /// it throws <see cref="Casazen.Core.Exceptions.DomainRuleException"/> (<see cref="ConnectDashboardErrors.NotReady"/>); any
+    /// other Stripe failure throws <see cref="Casazen.Core.Exceptions.StripeConnectException"/>. The URL is a credential: never log
+    /// it nor store it.
+    /// </summary>
+    Task<string> CreateDashboardLinkAsync(Guid orgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Applies an <c>account.updated</c> to the org that owns the account and says whether a supplier has just become able to
     /// receive payments (SP-15b): the caller then queues the payment requests that waited for it. An unknown account changes
     /// nothing and is <see cref="ConnectAccountUpdate.None"/>.
