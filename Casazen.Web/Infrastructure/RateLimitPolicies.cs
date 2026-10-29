@@ -116,4 +116,11 @@ public static class RateLimitPolicies
     /// it has a limit of its own.
     /// </summary>
     public const string GlobalSearch = "GlobalSearch";
+
+    /// <summary>
+    /// The copy of a tenant's personal data and the erasure request (<c>GET api/long-rent/tenants/{id}/export</c> and <c>POST
+    /// …/erasure-request</c>, LR-09): partitioned by <b>person</b>, since the export puts every personal datum of somebody in one file and
+    /// the erasure cannot be taken back. Nobody asks for more than a few in ten minutes.
+    /// </summary>
+    public const string TenantPrivacy = "TenantPrivacy";
 }
