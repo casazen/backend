@@ -68,9 +68,11 @@ public class BillingReturnUrlTests
     [InlineData("/app/long-rent/settings/plan")]
     [InlineData("/app/long-rent/settings/billing")]
     [InlineData("/app/short-rent/settings/billing")]
+    [InlineData("/app/account/billing")]
     public void BillingCheckoutSuccess_AllowListedReturnPath_BuildsThatPageOnThePublicSite(string returnPath)
     {
-        // PL-16 (A1-36): the landlord comes back to the plan/billing page of the context it started from.
+        // PL-16 (A1-36): the landlord comes back to the plan/billing page of the context it started from
+        // (AM-08a-FU1: the people of the account area, to the billing page of the account).
         var links = EmailTestHelpers.Links(PublicSite);
 
         Assert.Equal($"{PublicSite}{returnPath}?checkout=success", links.BillingCheckoutSuccess(returnPath));

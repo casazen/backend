@@ -276,8 +276,15 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public const string BillingPagePath = "/app/short-rent/settings/plan";
 
     /// <summary>
+    /// Billing page of the account area (route <c>/app/account/billing</c> of the web app, AM-08a): the one page that holds the
+    /// plan and the billing of the org for the people of the account, so Stripe can bring them back to it (AM-08a-FU1).
+    /// </summary>
+    public const string AccountBillingPagePath = "/app/account/billing";
+
+    /// <summary>
     /// Allow-list of the pages Stripe may send the browser back to (PL-16, A1-36): the plan and billing pages of the web
-    /// app in each rental context, so a long-term landlord comes back to its own shell. Exact paths, no query string.
+    /// app in each rental context, so a long-term landlord comes back to its own shell, and the billing page of the
+    /// account area (AM-08a-FU1). Exact paths, no query string.
     /// </summary>
     public static readonly IReadOnlySet<string> BillingReturnPagePaths = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -285,6 +292,7 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         "/app/short-rent/settings/billing",
         "/app/long-rent/settings/plan",
         "/app/long-rent/settings/billing",
+        AccountBillingPagePath,
     };
 
     /// <summary>True when <paramref name="path"/> is exactly one of <see cref="BillingReturnPagePaths"/>.</summary>

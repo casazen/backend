@@ -92,6 +92,66 @@ public class ConcordatoFacileFormModeTests
         Assert.Contains(result.Failures!, failure => failure.Contains("FormUrl", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// CF-BYPASS: the secret of the protected test module rides on the signed link, so production, which opens the real module, must
+    /// never have it; the message names the variable and never repeats the value.
+    /// </summary>
+    [Fact]
+    public void Validate_FormBypassSecretInProduction_StopsTheStartup_WithoutRepeatingTheSecret()
+    {
+        var options = Configured(ConcordatoFacileFormMode.Real);
+        options.FormUrl = "https://test.example/";
+        options.FormBypassSecret = "vercel-secret-0123456789";
+
+        var result = Validate("Production", options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, failure => failure.Contains("FormBypassSecret", StringComparison.Ordinal)
+            && failure.Contains("Production", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Failures!, failure => failure.Contains("vercel-secret-0123456789", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("Staging")]
+    [InlineData("Development")]
+    public void Validate_FormBypassSecretWithTheTestModule_PassesInATestEnvironment(string environmentName)
+    {
+        var options = Configured(ConcordatoFacileFormMode.Real);
+        options.FormUrl = "https://test.example/";
+        options.FormBypassSecret = " vercel-secret-0123456789\n";
+
+        Assert.True(Validate(environmentName, options).Succeeded);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("  ")]
+    public void Validate_FormBypassSecretWithoutAFormUrl_StopsTheStartup(string? formUrl)
+    {
+        var options = Configured(ConcordatoFacileFormMode.Real);
+        options.FormUrl = formUrl;
+        options.FormBypassSecret = "vercel-secret-0123456789";
+
+        var result = Validate("Staging", options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, failure => failure.Contains("FormBypassSecret needs", StringComparison.Ordinal)
+            && failure.Contains("FormUrl", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Validate_FormBypassSecretWithABlankInside_StopsTheStartup()
+    {
+        var options = Configured(ConcordatoFacileFormMode.Real);
+        options.FormUrl = "https://test.example/";
+        options.FormBypassSecret = "vercel secret";
+
+        var result = Validate("Staging", options);
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, failure => failure.Contains("single token", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Validate_SimulatedWithoutTheAddressOfTheWebApp_StopsTheStartup()
     {
