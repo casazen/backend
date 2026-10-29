@@ -37,6 +37,7 @@ public class LegacyRowsSchemaTests
     private const string Lr12 = "AddGuidedLeaseDraft";
     private const string Am02c = "AddOrgTeamCompletions";
     private const string Lr14 = "AddLeaseTermLifecycle";
+    private const string Sr07a = "AddPropertyWizardFields";
     private const string Db01 = "AddPublicSiteFontAndThemeIds";
     private const string Latest = "*";
 
@@ -118,6 +119,8 @@ public class LegacyRowsSchemaTests
         { nameof(LegacyOrgRows), Lr14 },
         { nameof(LegacyPropertyRows), Lr14 },
         { nameof(LegacyLeaseRows), Lr14 },
+        { nameof(LegacyOrgRows), Sr07a },
+        { nameof(LegacyPropertyRows), Sr07a },
         { nameof(LegacyOrgRows), Db01 },
     };
 

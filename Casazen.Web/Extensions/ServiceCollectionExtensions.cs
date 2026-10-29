@@ -495,6 +495,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();
         // Fiscal report per lease for the accountant (LR-11b): the rules of the tax advisory (LT-08) on the leases of the scope.
         services.AddScoped<ILongRentFiscalReportService, LongRentFiscalReportService>();
+        // The tenants of the area (LR-09): the people read from the parties of the leases, the copy of their data and their erasure.
+        services.AddScoped<ILongRentTenantService, LongRentTenantService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
@@ -515,6 +517,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertySafetyChecklistService, PropertySafetyChecklistService>();
         // Single evaluation of the activation blockers, suspension and nightly check of the published properties (CO-06).
         services.AddScoped<IPropertyComplianceStatusService, PropertyComplianceStatusService>();
+        // What the host's list shows of each property besides its record: one state, what is missing, the nights (SR-07a).
+        services.AddScoped<IPropertyOverviewService, PropertyOverviewService>();
         services.AddSingleton<IDemoEnvironmentGate, Casazen.Web.Demo.HostDemoEnvironmentGate>();
         services.AddScoped<IDemoEnvironmentService, DemoEnvironmentService>();
         services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
