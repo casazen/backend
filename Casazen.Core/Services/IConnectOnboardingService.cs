@@ -85,7 +85,11 @@ public interface IConnectOnboardingService
 /// The org is a supplier whose account could <b>not</b> take charges and payouts before this event and can now
 /// (<c>SupplierVerification.CanReceivePayments</c>): the payment requests that were pending for it can go out.
 /// </param>
-public sealed record ConnectAccountUpdate(Guid? OrgId, bool SupplierBecameReady)
+/// <param name="SupplierReadinessChanged">
+/// The org is a supplier whose ability to take charges and payouts changed in either direction (SP-13a): the bookings of its showcase
+/// close when it stops and open again when it is back.
+/// </param>
+public sealed record ConnectAccountUpdate(Guid? OrgId, bool SupplierBecameReady, bool SupplierReadinessChanged = false)
 {
     /// <summary>No org owns the account: nothing changed.</summary>
     public static ConnectAccountUpdate None { get; } = new(null, false);

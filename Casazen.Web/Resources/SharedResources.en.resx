@@ -2506,6 +2506,18 @@
   <data name="ShowcaseVersionConflict" xml:space="preserve">
     <value>The showcase was changed from another tab or by another user: reload the page and apply your change again.</value>
   </data>
+  <data name="ShowcaseNotPublishable" xml:space="preserve">
+    <value>The showcase cannot be published yet: some required things are still missing (items: {0}). Check the "What is missing" list and try again.</value>
+  </data>
+  <data name="ShowcaseSupplierNotActive" xml:space="preserve">
+    <value>You can publish or reopen the showcase only with an active supplier profile: complete the activation first.</value>
+  </data>
+  <data name="ShowcaseNotPublished" xml:space="preserve">
+    <value>The showcase has not been published yet: there is nothing to pause or to reopen.</value>
+  </data>
+  <data name="ShowcaseUndoUnavailable" xml:space="preserve">
+    <value>The last publication can no longer be undone: too much time has passed or you changed something else meanwhile.</value>
+  </data>
   <data name="SupplierHoursInvalid" xml:space="preserve">
     <value>The working hours are not valid (fields: {0}). Check the bands: a day has at most 3, they cannot overlap, and each one must end after it starts (in minutes after midnight, from 0 to 1440).</value>
   </data>

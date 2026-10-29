@@ -2506,6 +2506,18 @@
   <data name="ShowcaseVersionConflict" xml:space="preserve">
     <value>La vetrina è stata modificata da un'altra scheda o da un altro utente: ricarica la pagina e applica di nuovo la modifica.</value>
   </data>
+  <data name="ShowcaseNotPublishable" xml:space="preserve">
+    <value>La vetrina non si può ancora pubblicare: mancano ancora delle cose obbligatorie (voci: {0}). Controlla l'elenco «Cosa manca» e riprova.</value>
+  </data>
+  <data name="ShowcaseSupplierNotActive" xml:space="preserve">
+    <value>Puoi pubblicare o riattivare la vetrina solo con un profilo fornitore attivo: completa prima l'attivazione.</value>
+  </data>
+  <data name="ShowcaseNotPublished" xml:space="preserve">
+    <value>La vetrina non è ancora stata pubblicata: non c'è nulla da mettere in pausa o da riattivare.</value>
+  </data>
+  <data name="ShowcaseUndoUnavailable" xml:space="preserve">
+    <value>Non si può più annullare l'ultima pubblicazione: è passato troppo tempo o nel frattempo hai cambiato altro.</value>
+  </data>
   <data name="SupplierHoursInvalid" xml:space="preserve">
     <value>Gli orari non sono validi (campi: {0}). Controlla le fasce: ogni giorno ne ha al massimo 3, non possono sovrapporsi e ognuna deve finire dopo il suo inizio (in minuti dalla mezzanotte, da 0 a 1440).</value>
   </data>

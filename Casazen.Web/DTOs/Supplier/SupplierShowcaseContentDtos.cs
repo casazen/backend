@@ -43,7 +43,7 @@ public class SaveShowcaseContentRequest
 }
 
 /// <summary>
-/// Optional body of the commands (<c>discard</c>, and the ones that follow): the <c>version</c> the editor read. When it is there it must
+/// Optional body of the commands (<c>discard</c> and <c>publish</c>): the <c>version</c> the editor read. When it is there it must
 /// be the current one, so a command never acts on a draft the editor has not seen.
 /// </summary>
 public class ShowcaseCommandRequest
@@ -84,11 +84,55 @@ public class ShowcaseContentResponse
     /// <summary>Until when the last publication can be undone; <c>null</c> when it cannot.</summary>
     public DateTime? UndoUntil { get; set; }
 
+    /// <summary>What the supplier must and should have before it publishes: the editor's "what is missing" list.</summary>
+    public ShowcaseReadinessDto Readiness { get; set; } = new();
+
+    /// <summary>Whether the showcase takes bookings now and, if not, why.</summary>
+    public ShowcaseBookingsDto Bookings { get; set; } = new();
+
     /// <summary>The address of the showcase on the web app (<c>/fornitori/{slug}</c>); <c>null</c> while the supplier has none (never activated).</summary>
     public string? PublicPath { get; set; }
 
     /// <summary>The absolute address (<c>App:PublicSiteBaseUrl</c> + path); <c>null</c> when there is no path or the public URL is not configured.</summary>
     public string? PublicUrl { get; set; }
+}
+
+/// <summary>One line of the readiness: a stable <c>code</c> the editor writes the text for, how it stands, and where to fix it.</summary>
+public class ShowcaseReadinessItemDto
+{
+    /// <summary><c>services</c>, <c>zones</c>, <c>color</c> (required) and <c>hours</c>, <c>presentation</c>, <c>photos</c>, <c>faq</c>, <c>verified</c> (advised).</summary>
+    public string Code { get; set; } = string.Empty;
+
+    /// <summary><c>ok</c> (done), <c>warn</c> (advised, the showcase can be published without it) or <c>todo</c> (required: it cannot).</summary>
+    public string Level { get; set; } = string.Empty;
+
+    /// <summary>True for the items a publication needs.</summary>
+    public bool Required { get; set; }
+
+    /// <summary>The page of the web app where the supplier fixes it (a path, with <c>?step=</c> for the editor's own steps).</summary>
+    public string Target { get; set; } = string.Empty;
+}
+
+/// <summary>What the supplier must and should have before it publishes its showcase.</summary>
+public class ShowcaseReadinessDto
+{
+    /// <summary>No required item is still to do. The server judges it again at every publication.</summary>
+    public bool CanPublish { get; set; }
+
+    public IReadOnlyList<ShowcaseReadinessItemDto> Items { get; set; } = [];
+}
+
+/// <summary>Whether the showcase takes bookings, and if not why.</summary>
+public class ShowcaseBookingsDto
+{
+    /// <summary>Published, not paused, the payments on, the account ready and the switch on.</summary>
+    public bool Open { get; set; }
+
+    /// <summary>
+    /// Why not, in a stable order: <c>not_published</c>, <c>paused</c>, <c>payments_off</c>, <c>payments_account_not_ready</c>, and
+    /// <c>bookings_off</c> (everything is ready but the switch: "Riattiva" turns it on). Empty when the bookings are open.
+    /// </summary>
+    public IReadOnlyList<string> BlockedBy { get; set; } = [];
 }
 
 /// <summary>Maps the content of the showcase between the service and the API.</summary>
@@ -105,6 +149,20 @@ public static class ShowcaseContentMapper
         PublishedAt = view.PublishedAt,
         PausedAt = view.PausedAt,
         UndoUntil = view.UndoUntil,
+        Readiness = new ShowcaseReadinessDto
+        {
+            CanPublish = view.Readiness.CanPublish,
+            Items = view.Readiness.Items
+                .Select(item => new ShowcaseReadinessItemDto
+                {
+                    Code = item.Code,
+                    Level = item.Level.ToString().ToLowerInvariant(),
+                    Required = item.Required,
+                    Target = item.Target,
+                })
+                .ToList(),
+        },
+        Bookings = new ShowcaseBookingsDto { Open = view.Bookings.Open, BlockedBy = view.Bookings.BlockedBy },
         PublicPath = publicPath,
         PublicUrl = publicUrl,
     };
