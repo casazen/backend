@@ -52,6 +52,9 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicReviewSubmit, 10, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.GuestMessageSend, 30, TimeSpan.FromMinutes(10)),
 
+        // The guest cancelling a booking, from the guest area or with the host's link (DB-08a): money and dates, so 10 per 10 minutes.
+        new(RateLimitPolicies.GuestBookingCancel, 10, TimeSpan.FromMinutes(10)),
+
         // A policy of a signed-in endpoint: partitioned by person, since the request emails other people (AM-02b).
         new(RateLimitPolicies.OrgAccessRequest, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
 
@@ -77,6 +80,9 @@ public static class RateLimitingServiceCollectionExtensions
 
         // Per guest session and booking limit of the messages ([GuestMessageSessionRateLimit], DB-14a), next to its per-IP policy.
         services.AddSingleton<GuestMessageSessionRateLimiter>();
+
+        // Per booking limit of the cancellation of the guest ([GuestBookingCancelRateLimit], DB-08a), next to its per-IP policy.
+        services.AddSingleton<GuestBookingCancelRateLimiter>();
 
         // Per email and supplier limit of the booking from a supplier's showcase ([SupplierBookingEmailRateLimit], SP-10), next to
         // its per-IP policy.
