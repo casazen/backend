@@ -7882,6 +7882,56 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierShowcaseContent", b =>
+                {
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DraftJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime?>("PausedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("PreviousPublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PreviousPublishedJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PublishedJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("SavedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UndoUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("OrgId");
+
+                    b.ToTable("SupplierShowcaseContents");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.SupplierTimeOff", b =>
                 {
                     b.Property<Guid>("Id")
@@ -10292,6 +10342,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
                         .WithOne()
                         .HasForeignKey("Casazen.Core.Entities.SupplierSettings", "OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SupplierProfile");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierShowcaseContent", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithOne()
+                        .HasForeignKey("Casazen.Core.Entities.SupplierShowcaseContent", "OrgId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

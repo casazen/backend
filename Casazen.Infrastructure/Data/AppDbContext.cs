@@ -150,6 +150,13 @@ public class AppDbContext(
     public DbSet<SupplierBusyWindow> SupplierBusyWindows { get; set; } = null!;
     public DbSet<SupplierFreeCalendarEvent> SupplierFreeCalendarEvents { get; set; } = null!;
     public DbSet<SupplierSettings> SupplierSettings { get; set; } = null!;
+
+    /// <summary>
+    /// The content of the suppliers' public showcases (SP-13a): the draft, the published version and the one before it, one row per
+    /// supplier. Keyed by the supplier org, <b>not</b> tenant-filtered (see the TN-2 allow-list): only
+    /// <c>SupplierShowcaseContentService</c> (and the supplier repair) reads and writes it, always with an explicit <c>OrgId</c> predicate.
+    /// </summary>
+    public DbSet<SupplierShowcaseContent> SupplierShowcaseContents { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
     public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
     public DbSet<HostInviteRecord> HostInviteRecords { get; set; } = null!;
@@ -1032,6 +1039,10 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new SupplierFreeCalendarEventConfiguration());
 
         modelBuilder.ApplyConfiguration(new SupplierSettingsConfiguration());
+
+        // SP-13a: the content of the supplier's showcase (draft, published, previous). A child of the supplier profile in cascade, like
+        // the settings; xmin is the concurrency token.
+        modelBuilder.ApplyConfiguration(new SupplierShowcaseContentConfiguration());
 
         modelBuilder.Entity<SupplierInviteRecord>()
             .HasIndex(i => i.Email);
