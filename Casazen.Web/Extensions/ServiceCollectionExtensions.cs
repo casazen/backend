@@ -497,6 +497,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();
         // Fiscal report per lease for the accountant (LR-11b): the rules of the tax advisory (LT-08) on the leases of the scope.
         services.AddScoped<ILongRentFiscalReportService, LongRentFiscalReportService>();
+        // The tenants of the area (LR-09): the people read from the parties of the leases, the copy of their data and their erasure.
+        services.AddScoped<ILongRentTenantService, LongRentTenantService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();

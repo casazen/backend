@@ -34,7 +34,8 @@ public class StripeWebhookHandler(
     IActivityLog? activityLog = null,
     ConcordatoFacilePaymentHandler? concordatoFacilePayments = null,
     IConcordatoFacileGiftService? concordatoFacileGiftService = null,
-    IOptions<ConcordatoFacileOptions>? concordatoFacileOptions = null)
+    IOptions<ConcordatoFacileOptions>? concordatoFacileOptions = null,
+    ISupplierShowcaseContentService? showcaseContent = null)
 {
     private const string DirectBookingKind = "direct-booking";
 
@@ -629,6 +630,12 @@ public class StripeWebhookHandler(
         logger.LogInformation("Connect account updated: {AccountId}", account.Id);
         var snapshot = StripeConnectGateway.MapAccount(account);
         var update = await connectOnboardingService.ApplyAccountUpdatedAsync(snapshot);
+
+        // SP-13a: the bookings of the supplier's showcase follow its account. They close when it stops being able to take charges and
+        // payouts (the new bookings; those already made stay) and open again when it can, inside the transaction of the event.
+        if (showcaseContent is not null && update is { SupplierReadinessChanged: true, OrgId: { } supplierOrgId })
+            await showcaseContent.ReconcileBookingsAsync(supplierOrgId);
+
         return update is { SupplierBecameReady: true, OrgId: { } orgId } ? orgId : null;
     }
 
