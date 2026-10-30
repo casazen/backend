@@ -73,6 +73,9 @@ public static partial class EmailTemplates
     /// <summary>
     /// The address is checked and the request is with the supplier: the receipt to the customer, with the code to manage it, the
     /// time by which the supplier has to answer (after it the request lapses) and, when the service had a price, the estimate.
+    /// <paramref name="cardBlocked"/> (SP-15c-a): the customer's card is blocked for the total — the receipt says how much, that nothing is charged
+    /// unless the supplier accepts and that the block is released otherwise, instead of the estimate and of "you pay nothing now", which would not
+    /// be true.
     /// </summary>
     public static EmailContent SupplierBookingReceipt(
         CultureInfo culture,
@@ -83,7 +86,8 @@ public static partial class EmailTemplates
         string publicCode,
         DateTime respondByUtc,
         int? estimatedAmountCents,
-        string requestUrl)
+        string requestUrl,
+        bool cardBlocked = false)
     {
         var builder = new EmailHtmlBuilder(culture);
         builder
@@ -91,11 +95,22 @@ public static partial class EmailTemplates
             .Paragraph("SupplierBookingReceipt_Body", supplierName, serviceName, builder.FormatInstant(startUtc))
             .Paragraph("SupplierBookingReceipt_Code", Casazen.Core.Services.BookingCodes.Format(publicCode))
             .Paragraph("SupplierBookingReceipt_Deadline", supplierName, builder.FormatInstant(respondByUtc));
-        if (estimatedAmountCents is { } amount)
-            builder.Paragraph("SupplierBookingReceipt_Price", FormatEuro(amount, culture));
+
+        if (cardBlocked && estimatedAmountCents is { } blocked)
+        {
+            builder
+                .Paragraph("SupplierBookingReceipt_Blocked", FormatEuro(blocked, culture), supplierName)
+                .Muted("SupplierBookingReceipt_BlockedNote");
+        }
+        else
+        {
+            if (estimatedAmountCents is { } amount)
+                builder.Paragraph("SupplierBookingReceipt_Price", FormatEuro(amount, culture));
+
+            builder.Muted("SupplierBookingReceipt_NoPayment");
+        }
 
         return builder
-            .Muted("SupplierBookingReceipt_NoPayment")
             .Button("SupplierBooking_RequestCta", requestUrl)
             .Build("SupplierBookingReceipt_Subject", supplierName);
     }
@@ -114,7 +129,8 @@ public static partial class EmailTemplates
         DateTime startUtc,
         int? estimatedAmountCents,
         DateTime respondByUtc,
-        string inboxUrl)
+        string inboxUrl,
+        bool cardBlocked = false)
     {
         var builder = new EmailHtmlBuilder(culture);
         builder
@@ -123,7 +139,7 @@ public static partial class EmailTemplates
             .Paragraph("SupplierBookingNewRequest_Customer", customerShortName)
             .Paragraph("SupplierBookingNewRequest_When", builder.FormatInstant(startUtc));
         if (estimatedAmountCents is { } amount)
-            builder.Paragraph("SupplierBookingNewRequest_Price", FormatEuro(amount, culture));
+            builder.Paragraph(cardBlocked ? "SupplierBookingNewRequest_Blocked" : "SupplierBookingNewRequest_Price", FormatEuro(amount, culture));
 
         return builder
             .Paragraph("SupplierBookingNewRequest_Deadline", builder.FormatInstant(respondByUtc))
@@ -134,7 +150,8 @@ public static partial class EmailTemplates
 
     /// <summary>
     /// The supplier accepted the request, to the customer: when, the price (the supplier's own when it gave one, else the
-    /// estimate) and, only when it will really be sent, the time of the reminder of the day before.
+    /// estimate) and, only when it will really be sent, the time of the reminder of the day before. With <paramref name="cardCharged"/>
+    /// (SP-15c-a) the card was charged for the total that was blocked: the e-mail says so, and that CasaZen holds the amount until the work.
     /// </summary>
     public static EmailContent SupplierBookingAccepted(
         CultureInfo culture,
@@ -145,14 +162,17 @@ public static partial class EmailTemplates
         int? quotedAmountCents,
         int? estimatedAmountCents,
         bool reminderWillBeSent,
-        string requestUrl)
+        string requestUrl,
+        bool cardCharged = false)
     {
         var builder = new EmailHtmlBuilder(culture);
         builder
             .Paragraph("SupplierBooking_Greeting", customerName)
             .Paragraph("SupplierBookingAccepted_Body", supplierName, serviceName)
             .Paragraph("SupplierBookingAccepted_When", builder.FormatInstant(startUtc));
-        if (quotedAmountCents is { } quoted)
+        if (cardCharged && (quotedAmountCents ?? estimatedAmountCents) is { } charged)
+            builder.Paragraph("SupplierBookingAccepted_Charged", FormatEuro(charged, culture));
+        else if (quotedAmountCents is { } quoted)
             builder.Paragraph("SupplierBookingAccepted_Quoted", FormatEuro(quoted, culture));
         else if (estimatedAmountCents is { } estimated)
             builder.Paragraph("SupplierBookingAccepted_Estimated", FormatEuro(estimated, culture));

@@ -64,6 +64,10 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         // Committed: the notifications do not go with the request. A customer who closes the tab after the cancellation is saved is
         // still heard by the supplier, and a retry (which finds it cancelled and does nothing) would never tell it.
         await notifier.NotifyShowcaseCancelledByCustomerAsync(request, CancellationToken.None);
+
+        // SP-15c-a: the block on the customer's card is released, or the money charged is given back in full (cancelling is always free,
+        // decision D6, the commission included). The cancellation stands whatever Stripe does now: the funds job settles the rest.
+        await SettleClosedMoneyAsync(request, CancellationToken.None);
         return request;
     }
 
@@ -183,6 +187,10 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
             await EnsureSlotFreeAsync(supplierOrgId, schedule, exceptRequestId: request.Id, cancellationToken);
             await EnsureNoOverlappingCommitmentAsync(
                 supplierOrgId, request.Id, proposedStart, proposedEnd, cancellationToken);
+
+            // SP-15c-a: accepting the proposal takes the request on the supplier's behalf, so it charges the customer's card, before the
+            // request changes state (a block that lapsed or a card that is refused is 409 and the proposal stays).
+            await CaptureHeldMoneyAsync(request, cancellationToken);
 
             var proposedBy = request.ProposedByUserId;
             await TransitionAsync(

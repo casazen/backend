@@ -220,6 +220,32 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.RejectQuoteAsync(request.ToCredentials(), request.QuoteSentAt!.Value, ct)));
     }
 
+    /// <summary>
+    /// SP-15c-a, "Tutto a posto": the customer says the work is fine, and the money CasaZen holds for a booking paid inside CasaZen goes to the
+    /// supplier at once, without waiting for the hour after the work. Same proof of who is asking as the other actions of this area, same limits,
+    /// same uniform 404. Answers the booking as it is now (<c>payment</c> and <c>actions.canConfirmOk</c> included); asking again once the supplier was
+    /// paid answers the same and does nothing. If the transfer cannot be made right now the customer's word stands and the job makes it. 404
+    /// <c>supplier_booking_not_found</c>; 422 <c>service_payment_not_confirmable</c> (the booking is not paid inside CasaZen, the work is not done, or
+    /// the money is closed or stopped); 429.
+    /// </summary>
+    [HttpPost("confirm-ok")]
+    [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [SupplierBookingManageRateLimit]
+    [RequestSizeLimit(ShowcaseBookingLimits.ManageMaxBodyBytes)]
+    [ProducesResponseType(typeof(PublicSupplierBookingViewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<PublicSupplierBookingViewResponse>> ConfirmOk(
+        [FromBody] SupplierBookingAccessRequest request,
+        CancellationToken ct)
+    {
+        return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.ConfirmOkAsync(request.ToCredentials(), ct)));
+    }
+
     /// <summary>A 422 that names the fields at fault, as the booking does.</summary>
     private ObjectResult RuleProblem(string code, string messageKey, IReadOnlyList<object> messageArgs, IReadOnlyList<string> fields)
     {

@@ -19,13 +19,19 @@ namespace Casazen.Infrastructure.Services;
 /// <c>NoResponse</c> (or, for a showcase request whose customer did not answer the time the supplier proposed,
 /// <c>ProposalNotAnswered</c>: SP-11), the other parties told by <see cref="ServiceRequestNotifier"/> (the host for a host's
 /// request, the customer for a showcase one).</para>
+/// <para><b>Money (SP-15c-a).</b> A showcase request paid inside CasaZen that is still new when the block on its customer's card is gone (it
+/// lapsed, or was refused at the take) can never be accepted: <see cref="UnpayableShowcaseIdsOf"/> finds it, whatever its deadline, and it is
+/// cancelled as if nobody had answered — the answer time of such a request never reaches past the block, so this is the safety net, not the
+/// rule. Every showcase request this run cancels releases the block on the card it may still have (<see cref="ISupplierFundsService.SettleClosedRequestAsync"/>,
+/// which never throws; the funds job settles it if this cannot).</para>
 /// </remarks>
 public sealed class ServiceRequestAutoCancelService(
     AppDbContext db,
     ServiceRequestNotifier notifier,
     IFeatureFlags featureFlags,
     ILogger<ServiceRequestAutoCancelService> logger,
-    TimeProvider? timeProvider = null) : IServiceRequestAutoCancelService
+    TimeProvider? timeProvider = null,
+    ISupplierFundsService? funds = null) : IServiceRequestAutoCancelService
 {
     internal const string RunLockKey = "service-request-auto-cancel";
 
@@ -63,6 +69,11 @@ public sealed class ServiceRequestAutoCancelService(
         var now = _clock.GetUtcNow().UtcDateTime;
 
         var dueIds = await (showcase ? DueShowcaseIdsOf(db, now) : DueIdsOf(db, now)).ToListAsync(cancellationToken);
+
+        // SP-15c-a: the new requests paid inside CasaZen that lost the block on their customer's card are due whatever their deadline says.
+        var unpayable = showcase ? await UnpayableShowcaseIdsOf(db).ToListAsync(cancellationToken) : [];
+        var unpayableIds = unpayable.ToHashSet();
+        dueIds = dueIds.Concat(unpayable.Where(id => !dueIds.Contains(id))).ToList();
         if (dueIds.Count == 0)
             return ServiceRequestAutoCancelRun.Empty;
 
@@ -70,7 +81,7 @@ public sealed class ServiceRequestAutoCancelService(
         foreach (var id in dueIds)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            switch (await CancelAsync(id, now, showcase, cancellationToken))
+            switch (await CancelAsync(id, now, showcase, unpayableIds.Contains(id), cancellationToken))
             {
                 case Outcome.Cancelled:
                     cancelled++;
@@ -132,6 +143,28 @@ public sealed class ServiceRequestAutoCancelService(
             .Select(r => r.Id)
             .Take(MaxPerRun);
 
+    /// <summary>
+    /// The new requests of the public showcases that are paid inside CasaZen (<c>PaymentMode</c> online: their customer's card was blocked when
+    /// they were born) and have no payment left that is not canceled: the block is gone, so the supplier can never accept them (SP-15c-a). At most
+    /// <see cref="MaxPerRun"/>. The predicate on the payments is the request id, as everywhere the table is read.
+    /// </summary>
+    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
+    internal static IQueryable<Guid> UnpayableShowcaseIdsOf(AppDbContext db) =>
+        db.ServiceRequests
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.RentalContext == ServiceRequestRentalContext.Showcase
+                        && r.Status == ServiceRequestStatus.Richiesto
+                        && r.PaymentMode == ServiceRequestPaymentMode.Online
+                        && !db.ServiceRequestPayments
+                            .AsNoTracking()
+                            .Where(p => p.ServiceRequestId == r.Id && p.Status != ServicePaymentStatus.Canceled)
+                            .Any())
+            .OrderBy(r => r.CreatedAt)
+            .ThenBy(r => r.Id)
+            .Select(r => r.Id)
+            .Take(MaxPerRun);
+
     private enum Outcome
     {
         Cancelled,
@@ -139,7 +172,7 @@ public sealed class ServiceRequestAutoCancelService(
         Failed,
     }
 
-    private async Task<Outcome> CancelAsync(Guid id, DateTime now, bool showcase, CancellationToken cancellationToken)
+    private async Task<Outcome> CancelAsync(Guid id, DateTime now, bool showcase, bool unpayable, CancellationToken cancellationToken)
     {
         // One request at a time, read again: what the run listed a moment ago may have been answered since.
         db.ChangeTracker.Clear();
@@ -153,10 +186,13 @@ public sealed class ServiceRequestAutoCancelService(
                 .Include(r => r.SupplierOrg)
                 .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
 
+            // A request that lost the block on its customer's card (SP-15c-a) is due whatever its deadline says; it must still be a new
+            // showcase request that is paid inside CasaZen, as it was when it was listed.
+            var stillUnpayable = unpayable
+                                 && request is { Status: ServiceRequestStatus.Richiesto, PaymentMode: ServiceRequestPaymentMode.Online };
             if (request is null
                 || (request.RentalContext == ServiceRequestRentalContext.Showcase) != showcase
-                || request.ResponseDueAt is not { } due
-                || due > now
+                || (!stillUnpayable && (request.ResponseDueAt is not { } due || due > now))
                 || (!showcase && (request.ProposedStartUtc is not null || request.QuoteSentAt is not null))
                 || !ServiceRequestStateMachine.CanCancel(request.Status, ServiceRequestActorParty.System))
             {
@@ -193,6 +229,12 @@ public sealed class ServiceRequestAutoCancelService(
             // the supplier that it lost the request.
             await notifier.NotifyHostAsync(request, cancellationToken);
             await notifier.NotifySupplierCancelledAsync(request, cancellationToken);
+
+            // SP-15c-a: the block on the customer's card goes with the request. Never throws: the request is closed and stays so, and the
+            // funds job releases the block on its next run if this cannot.
+            if (showcase && funds is not null)
+                await funds.SettleClosedRequestAsync(id, cancellationToken);
+
             return Outcome.Cancelled;
         }
         catch (DbUpdateConcurrencyException)

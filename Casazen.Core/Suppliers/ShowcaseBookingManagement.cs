@@ -30,6 +30,7 @@ public sealed record ShowcaseBookingAccessKey(string Slug, string Code, string E
 /// <param name="RespondBy">When the supplier has to answer by, while the request is new and has no proposal; <c>null</c> otherwise.</param>
 /// <param name="RejectionReason">The reason the supplier gave when it refused the request (the customer was e-mailed it).</param>
 /// <param name="Quote">The quote the supplier sent and the customer has not answered (SP-04b); <c>null</c> when there is none.</param>
+/// <param name="Payment">The money of a booking paid inside CasaZen (SP-15c-a); <c>null</c> when the booking is not.</param>
 public sealed record ShowcaseBookingView(
     string PublicCode,
     ServiceRequestStatus Status,
@@ -45,7 +46,24 @@ public sealed record ShowcaseBookingView(
     string? RejectionReason,
     ShowcaseBookingCancellationTerms CancellationTerms,
     ShowcaseBookingActions Actions,
-    ShowcaseBookingQuote? Quote = null);
+    ShowcaseBookingQuote? Quote = null,
+    ShowcaseBookingPaymentView? Payment = null);
+
+/// <summary>
+/// The money of a booking paid inside CasaZen as its customer reads it (SP-15c-a): what the card is blocked or charged for, where the money
+/// is, and, while CasaZen holds it, the moment it goes to the supplier unless the customer says "all fine" first. Amounts only: nothing of
+/// Stripe, no id, no card.
+/// </summary>
+/// <param name="Status">
+/// <see cref="ShowcaseBookingManagementRules.PaymentStatusOf"/>: <c>authorized</c> (the card is blocked, nothing is charged), <c>held</c>
+/// (charged, CasaZen holds it), <c>released</c> (the supplier was paid), <c>refunded</c>, <c>canceled</c> (the block was released: nothing
+/// was charged) or <c>review</c> (CasaZen is looking at it).
+/// </param>
+/// <param name="AmountCents">The total that was blocked and, once the supplier accepted, charged.</param>
+/// <param name="Currency">Uppercase ISO currency.</param>
+/// <param name="RefundedCents">What was given back to the customer.</param>
+/// <param name="ReleaseAtUtc">While the money is held and the work is done: when it goes to the supplier if the customer says nothing; otherwise <c>null</c>.</param>
+public sealed record ShowcaseBookingPaymentView(string Status, int AmountCents, string Currency, int RefundedCents, DateTime? ReleaseAtUtc);
 
 /// <summary>
 /// The quote the supplier sent for the booking and the customer has not answered (SP-04b): the lines and the total, the note, the other
@@ -124,7 +142,13 @@ public sealed record ShowcaseBookingCancellation(DateTime At, ServiceRequestActo
 public sealed record ShowcaseBookingCancellationTerms(DateTime FreeUntilUtc, bool IsFree);
 
 /// <summary>What the customer may do now with the booking (<see cref="ShowcaseBookingManagementRules"/>).</summary>
-public sealed record ShowcaseBookingActions(bool CanCancel, bool CanReschedule, bool CanRespondToProposal, bool CanRespondToQuote = false);
+/// <param name="CanConfirmOk">SP-15c-a: the work is done and CasaZen holds the money: the customer may say "all fine" and the supplier is paid at once.</param>
+public sealed record ShowcaseBookingActions(
+    bool CanCancel,
+    bool CanReschedule,
+    bool CanRespondToProposal,
+    bool CanRespondToQuote = false,
+    bool CanConfirmOk = false);
 
 /// <summary>
 /// Codes (ProblemDetails <c>code</c>) and message keys (<c>SharedResources.resx</c>, Italian and English) of what the customer's
@@ -299,6 +323,32 @@ public static class ShowcaseBookingManagementRules
         && supplierActive
         && answerByUtc is { } answerBy
         && nowUtc < answerBy;
+
+    /// <summary>
+    /// What the customer reads of the state of a payment held by CasaZen (SP-15c-a): <c>authorized</c>, <c>held</c> (charged and kept by
+    /// CasaZen, also while a transfer to the supplier is being retried or a card dispute is open: none of that is the customer's concern),
+    /// <c>released</c>, <c>refunded</c> (all given back, or all but the commission), <c>canceled</c> (the block was released, nothing was
+    /// charged) or <c>review</c> (CasaZen is looking at the payment).
+    /// </summary>
+    public static string PaymentStatusOf(ServicePaymentStatus status) => status switch
+    {
+        ServicePaymentStatus.Authorized => "authorized",
+        ServicePaymentStatus.Held or ServicePaymentStatus.TransferFailed or ServicePaymentStatus.Disputed => "held",
+        ServicePaymentStatus.Released => "released",
+        ServicePaymentStatus.Refunded or ServicePaymentStatus.PartiallyRefunded => "refunded",
+        ServicePaymentStatus.Canceled => "canceled",
+        _ => "review",
+    };
+
+    /// <summary>
+    /// True when the customer may say "all fine" (SP-15c-a): the work is completed and the money is held by CasaZen with something still owed
+    /// to the supplier. The same facts <see cref="HeldPaymentRules.Release"/> needs before the payer's word releases the money, so the page and
+    /// the API cannot disagree; the money of a payment that a card dispute or a review stopped is not released this way.
+    /// </summary>
+    public static bool CanConfirmOk(ServiceRequestStatus requestStatus, ServicePaymentStatus paymentStatus, int netCents, int refundedCents) =>
+        requestStatus == ServiceRequestStatus.Completato
+        && paymentStatus is ServicePaymentStatus.Held or ServicePaymentStatus.TransferFailed
+        && HeldPaymentRules.ReleasableCents(netCents, refundedCents, 0) > 0;
 
     /// <summary>
     /// The reason a customer gave when it cancelled: trimmed, with the lines it wrote, or <c>null</c> when there is none. A reason

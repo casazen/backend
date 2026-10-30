@@ -42,7 +42,10 @@ public class PublicSupplierBookingController(
     /// checked. 404 <c>not_found</c> (supplier), <c>supplier_service_not_found</c>; 422 <c>supplier_booking_invalid</c> (with
     /// <c>fields</c>), <c>supplier_quote_invalid</c>, <c>supplier_booking_consent_required</c> / <c>_outdated</c>,
     /// <c>supplier_booking_offline</c>, <c>supplier_booking_outside_zone</c>; 409 <c>supplier_slot_unavailable</c>; 429
-    /// <c>rate_limited</c> (per IP, per address, or three bookings of the address waiting for the check).
+    /// <c>rate_limited</c> (per IP, per address, or three bookings of the address waiting for the check). SP-15c-a: for a booking paid inside
+    /// CasaZen the answer carries <c>payment</c> (the block of the customer's card to confirm with the Payment Element; the request is created
+    /// when the e-mail is checked <b>and</b> the card is blocked, in either order) and 503 <c>payment_provider_error</c> means the card could not
+    /// be asked for (the hold is released, nothing was sent: the customer can try again).
     /// </summary>
     [HttpPost]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
@@ -110,7 +113,9 @@ public class PublicSupplierBookingController(
     /// again. 404 <c>supplier_booking_link_invalid</c> (unknown booking, another supplier's, wrong token: one answer); 409
     /// <c>supplier_booking_link_expired</c> (the 30 minutes have passed; the booking starts again); 422
     /// <c>supplier_booking_supplier_unavailable</c> (the supplier is not active anymore). The token is in the body, never in the
-    /// URL of the API, so it is in no access log of the API.
+    /// URL of the API, so it is in no access log of the API. SP-15c-a: when the customer's card is not blocked yet the answer is 200 with
+    /// <c>status: "AwaitingPayment"</c> and <c>awaitingPayment: true</c>: the request does not exist and the supplier knows nothing; it is
+    /// created as soon as the block succeeds (the page asks again).
     /// </summary>
     [HttpPost("{id:guid}/confirm-email")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]

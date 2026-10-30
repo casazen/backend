@@ -35,7 +35,8 @@ public class StripeWebhookHandler(
     ConcordatoFacilePaymentHandler? concordatoFacilePayments = null,
     IConcordatoFacileGiftService? concordatoFacileGiftService = null,
     IOptions<ConcordatoFacileOptions>? concordatoFacileOptions = null,
-    ISupplierShowcaseContentService? showcaseContent = null)
+    ISupplierShowcaseContentService? showcaseContent = null,
+    IShowcaseBookingService? showcaseBookings = null)
 {
     private const string DirectBookingKind = "direct-booking";
 
@@ -99,6 +100,9 @@ public class StripeWebhookHandler(
         Guid? sdiSubmission = null;
         // Payment of a supplier's service (SP-15b): the receipt, the new link, the alert to the admins, the refund notices, once the event is committed.
         IReadOnlyList<ServicePaymentNotice> servicePaymentNotices = [];
+        // The card of a booking from a supplier's showcase was blocked and completed the booking (SP-15c-a): the receipt to the customer and the
+        // news to the supplier go once the event is committed.
+        ShowcaseHoldCompletion? holdCompletion = null;
         // A supplier that has just become able to receive payments (SP-15b): the payment requests that waited for it go out once the event is committed.
         Guid? readySupplierOrgId = null;
         try
@@ -138,7 +142,8 @@ public class StripeWebhookHandler(
                 case "payment_intent.canceled" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
                 // SP-15c-a: the card of a booking is blocked (the PaymentIntent of the money CasaZen holds is a manual-capture one).
                 case "payment_intent.amount_capturable_updated" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
-                    servicePaymentNotices = await HandleServiceChargeAsync(stripeEvent, (PaymentIntent)stripeEvent.Data.Object, source);
+                    (servicePaymentNotices, holdCompletion) = await HandleServiceChargeAsync(
+                        stripeEvent, (PaymentIntent)stripeEvent.Data.Object, source);
                     break;
                 // SP-15c-a: the charge side of the same events. The PaymentIntent events carry the same facts; these are handled as the
                 // PaymentIntent event they accompany, so a missed one is made good by the other (idempotent).
@@ -270,6 +275,9 @@ public class StripeWebhookHandler(
 
         if (servicePaymentNotices.Count > 0)
             await supplierPayments.CompleteAsync(servicePaymentNotices);
+
+        if (holdCompletion is not null && showcaseBookings is not null)
+            await showcaseBookings.CompleteHoldAuthorizationAsync(holdCompletion);
 
         if (readySupplierOrgId is { } supplierOrgId)
             supplierPayments.ScheduleSendPendingRequests(supplierOrgId);
@@ -670,7 +678,7 @@ public class StripeWebhookHandler(
     /// payment is recorded as paid only if account, amount, currency and commission are the ones that were asked for; otherwise it
     /// goes to review (<see cref="ISupplierPaymentWebhookService"/>).
     /// </summary>
-    private async Task<IReadOnlyList<ServicePaymentNotice>> HandleServiceChargeAsync(
+    private async Task<(IReadOnlyList<ServicePaymentNotice> Notices, ShowcaseHoldCompletion? HoldCompletion)> HandleServiceChargeAsync(
         Event stripeEvent,
         PaymentIntent paymentIntent,
         WebhookSource source)
@@ -695,7 +703,33 @@ public class StripeWebhookHandler(
             ? parsedHold
             : (Guid?)null;
 
-        return await supplierPayments.ApplyPaymentIntentEventAsync(new ServicePaymentIntentEvent(
+        // The card of a booking is blocked and the booking has no request yet (SP-15c-a): the block is the second of the two conditions that
+        // make the request (the other is the check of the e-mail). A hold that is already a request, or that does not exist, is not handled
+        // here: the event is then about a payment, which follows below.
+        if (stripeEvent.Type == "payment_intent.amount_capturable_updated"
+            && holdId is { } hold
+            && showcaseBookings is not null
+            && paymentIntent.Metadata is not null
+            && paymentIntent.Metadata.TryGetValue(ServiceCharges.SupplierMetadataKey, out var supplierRaw)
+            && Guid.TryParse(supplierRaw, out var supplierOrgId))
+        {
+            var applied = await showcaseBookings.ApplyHoldAuthorizationAsync(new ShowcaseHoldAuthorization(
+                supplierOrgId,
+                hold,
+                new HeldChargeObservation(
+                    paymentIntent.Id,
+                    stripeEvent.Account,
+                    paymentIntent.Amount,
+                    paymentIntent.AmountCapturable,
+                    paymentIntent.AmountReceived,
+                    paymentIntent.Currency,
+                    paymentIntent.ApplicationFeeAmount),
+                EventTime(stripeEvent)));
+            if (applied.Handled)
+                return (Array.Empty<ServicePaymentNotice>(), applied.Completion);
+        }
+
+        var notices = await supplierPayments.ApplyPaymentIntentEventAsync(new ServicePaymentIntentEvent(
             stripeEvent.Id ?? string.Empty,
             stripeEvent.Type,
             paymentIntent.Id,
@@ -710,6 +744,7 @@ public class StripeWebhookHandler(
             paymentIntent.AmountCapturable,
             paymentIntent.LatestChargeId,
             holdId));
+        return (notices, null);
     }
 
     /// <summary>A charge that carries the markers of a service PaymentIntent (Stripe copies the metadata of a PaymentIntent to its charge).</summary>

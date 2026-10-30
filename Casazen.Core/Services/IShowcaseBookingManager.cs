@@ -120,6 +120,19 @@ public interface IShowcaseBookingManager
         ShowcaseBookingCredentials credentials,
         DateTime quoteSentAt,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// SP-15c-a: the customer says "all fine" about a booking paid inside CasaZen whose work is done: the money CasaZen holds is released to
+    /// the supplier at once, without waiting for the hour after the work (decision VT-D1). The customer's word stands even if the transfer
+    /// cannot be made right now (the supplier's account is not ready, Stripe refuses): the job makes it. Asking again once the supplier was
+    /// paid answers the booking as it is and does nothing.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="ServicePaymentErrors.NotConfirmable"/>: the booking is not paid inside CasaZen, the work is not done, or the money is not
+    /// in a state to release (closed, refunded, stopped by a dispute).
+    /// </exception>
+    Task<ShowcaseBookingView> ConfirmOkAsync(ShowcaseBookingCredentials credentials, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

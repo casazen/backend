@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
@@ -121,6 +122,38 @@ public class PublicSupplierBookingViewResponse
 
     /// <summary>What the customer may do now: the page shows exactly these, and the endpoints enforce the same rules.</summary>
     public PublicSupplierBookingActionsDto Actions { get; set; } = new();
+
+    /// <summary>SP-15c-a: the money of a booking paid inside CasaZen; left out when the booking is not.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicSupplierBookingPaymentDto? Payment { get; set; }
+}
+
+/// <summary>
+/// The money of a booking paid inside CasaZen (SP-15c-a), in cents of euro. The status is what the customer reads, from the rules, not from Stripe;
+/// nothing here identifies a card or a Stripe object.
+/// </summary>
+public class PublicSupplierBookingPaymentDto
+{
+    /// <summary>
+    /// <c>authorized</c> (the card is blocked, nothing charged), <c>held</c> (charged, CasaZen holds it until the work is confirmed),
+    /// <c>released</c> (the supplier was paid), <c>refunded</c>, <c>canceled</c> (the block was released, nothing charged) or <c>review</c>.
+    /// </summary>
+    public string Status { get; set; } = string.Empty;
+
+    public int AmountCents { get; set; }
+
+    public string Currency { get; set; } = "EUR";
+
+    /// <summary>What was given back to the customer.</summary>
+    public int RefundedCents { get; set; }
+
+    /// <summary>
+    /// While CasaZen holds the money and the work is done: when it goes to the supplier if the customer says nothing (the end of the time to
+    /// speak up); otherwise <c>null</c>. The page counts down to it.
+    /// </summary>
+    public DateTime? ReleaseAtUtc { get; set; }
+
+    public DateTimeOffset? ReleaseAtLocal { get; set; }
 }
 
 public class PublicSupplierBookingServiceDto
@@ -272,6 +305,12 @@ public class PublicSupplierBookingActionsDto
 
     /// <summary>The customer may accept or turn down the quote (SP-04b): <c>quote</c> is there and its deadline has not passed.</summary>
     public bool CanRespondToQuote { get; set; }
+
+    /// <summary>
+    /// SP-15c-a: the work is done and CasaZen holds the money: the customer may say "all fine" (<c>POST api/public/supplier-bookings/confirm-ok</c>)
+    /// and the supplier is paid at once.
+    /// </summary>
+    public bool CanConfirmOk { get; set; }
 }
 
 /// <summary>Maps the customer's view of a booking to the API DTO.</summary>
@@ -364,7 +403,19 @@ public static class PublicSupplierBookingViewMapper
                 CanReschedule = view.Actions.CanReschedule,
                 CanRespondToProposal = view.Actions.CanRespondToProposal,
                 CanRespondToQuote = view.Actions.CanRespondToQuote,
+                CanConfirmOk = view.Actions.CanConfirmOk,
             },
+            Payment = view.Payment is { } payment
+                ? new PublicSupplierBookingPaymentDto
+                {
+                    Status = payment.Status,
+                    AmountCents = payment.AmountCents,
+                    Currency = payment.Currency,
+                    RefundedCents = payment.RefundedCents,
+                    ReleaseAtUtc = payment.ReleaseAtUtc is { } releaseAt ? AsUtc(releaseAt) : null,
+                    ReleaseAtLocal = payment.ReleaseAtUtc is { } localReleaseAt ? RomeCalendar.ToRome(localReleaseAt) : null,
+                }
+                : null,
         };
 
     /// <summary>The party that cancelled, as the page names it. The host never cancels a showcase request.</summary>

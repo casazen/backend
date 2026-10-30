@@ -1062,6 +1062,12 @@
   <data name="SupplierBookingReceipt_NoPayment" xml:space="preserve">
     <value>Con questa richiesta non paghi nulla adesso.</value>
   </data>
+  <data name="SupplierBookingReceipt_Blocked" xml:space="preserve">
+    <value>Abbiamo bloccato &lt;strong&gt;{0}&lt;/strong&gt; sulla tua carta: non è ancora un addebito. La somma viene addebitata solo se &lt;strong&gt;{1}&lt;/strong&gt; accetta la richiesta.</value>
+  </data>
+  <data name="SupplierBookingReceipt_BlockedNote" xml:space="preserve">
+    <value>Se la richiesta viene rifiutata, annullata o scade, il blocco viene rimosso e non paghi nulla. I tempi con cui la tua banca libera la somma dipendono da lei.</value>
+  </data>
   <data name="SupplierBookingNewRequest_Subject" xml:space="preserve">
     <value>Nuova richiesta dal tuo sito — {0}</value>
   </data>
@@ -1076,6 +1082,9 @@
   </data>
   <data name="SupplierBookingNewRequest_Price" xml:space="preserve">
     <value>Importo stimato: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingNewRequest_Blocked" xml:space="preserve">
+    <value>Importo: &lt;strong&gt;{0}&lt;/strong&gt;, già bloccato sulla carta del cliente. Se accetti, viene addebitato e CasaZen lo trattiene fino a lavoro finito.</value>
   </data>
   <data name="SupplierBookingNewRequest_Deadline" xml:space="preserve">
     <value>Rispondi entro le &lt;strong&gt;{0}&lt;/strong&gt;: dopo quell'ora la richiesta si annulla da sola.</value>
@@ -1100,6 +1109,9 @@
   </data>
   <data name="SupplierBookingAccepted_Estimated" xml:space="preserve">
     <value>Prezzo stimato: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingAccepted_Charged" xml:space="preserve">
+    <value>Abbiamo addebitato &lt;strong&gt;{0}&lt;/strong&gt; sulla tua carta. CasaZen trattiene la somma e la gira al fornitore dopo il lavoro.</value>
   </data>
   <data name="SupplierBookingAccepted_Reminder" xml:space="preserve">
     <value>Ti mandiamo un promemoria il giorno prima, alle {0}.</value>

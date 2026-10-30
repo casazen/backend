@@ -1062,6 +1062,12 @@
   <data name="SupplierBookingReceipt_NoPayment" xml:space="preserve">
     <value>You pay nothing now with this request.</value>
   </data>
+  <data name="SupplierBookingReceipt_Blocked" xml:space="preserve">
+    <value>We have blocked &lt;strong&gt;{0}&lt;/strong&gt; on your card: it is not a charge yet. The amount is charged only if &lt;strong&gt;{1}&lt;/strong&gt; accepts the request.</value>
+  </data>
+  <data name="SupplierBookingReceipt_BlockedNote" xml:space="preserve">
+    <value>If the request is declined, cancelled or lapses, the block is released and you pay nothing. How long your bank takes to free the amount depends on the bank.</value>
+  </data>
   <data name="SupplierBookingNewRequest_Subject" xml:space="preserve">
     <value>New request from your site — {0}</value>
   </data>
@@ -1076,6 +1082,9 @@
   </data>
   <data name="SupplierBookingNewRequest_Price" xml:space="preserve">
     <value>Estimated amount: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingNewRequest_Blocked" xml:space="preserve">
+    <value>Amount: &lt;strong&gt;{0}&lt;/strong&gt;, already blocked on the customer's card. If you accept, it is charged and CasaZen holds it until the work is done.</value>
   </data>
   <data name="SupplierBookingNewRequest_Deadline" xml:space="preserve">
     <value>Answer by &lt;strong&gt;{0}&lt;/strong&gt;: after that the request is cancelled automatically.</value>
@@ -1100,6 +1109,9 @@
   </data>
   <data name="SupplierBookingAccepted_Estimated" xml:space="preserve">
     <value>Estimated price: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingAccepted_Charged" xml:space="preserve">
+    <value>We have charged &lt;strong&gt;{0}&lt;/strong&gt; to your card. CasaZen holds the amount and passes it on to the supplier after the work.</value>
   </data>
   <data name="SupplierBookingAccepted_Reminder" xml:space="preserve">
     <value>We send you a reminder the day before, at {0}.</value>

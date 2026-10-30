@@ -52,7 +52,8 @@ public partial class ServiceRequestService(
     IOptions<ShowcaseBookingOptions> showcaseOptions,
     ISupplierPaymentService payments,
     ILogger<ServiceRequestService> logger,
-    TimeProvider? timeProvider = null) : IServiceRequestService
+    TimeProvider? timeProvider = null,
+    ISupplierFundsService? funds = null) : IServiceRequestService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -404,7 +405,14 @@ public partial class ServiceRequestService(
         EnsureCan(request, ServiceRequestStatus.PresoInCarico, ServiceRequestErrorCodes.CannotTakeMessageKey);
 
         if (command?.QuotedAmountCents is { } quote)
+        {
             ServiceRequestPricing.EnsureValidAmount(quote);
+
+            // SP-15c-a: the price of a request whose card is blocked is what the customer blocked; the supplier cannot commit another one
+            // (a different price needs a new offer from the supplier, accepted by the customer).
+            if (IsPaidInsideCasaZen(request) && quote != request.EstimatedAmountCents)
+                throw new DomainRuleException(ServicePaymentErrors.AmountLocked, ServicePaymentErrors.AmountLockedMessageKey);
+        }
 
         var schedule = await ResolveTakeScheduleAsync(request, supplierOrgId, command, cancellationToken);
 
@@ -425,6 +433,10 @@ public partial class ServiceRequestService(
                 schedule?.Start ?? request.ScheduledStartUtc,
                 schedule?.End ?? request.ScheduledEndUtc,
                 cancellationToken);
+
+            // SP-15c-a: accepting charges the customer's card, before the request changes state: if the card cannot be charged (the block
+            // lapsed, the bank refuses) the take does not happen and the supplier is told why (409).
+            await CaptureHeldMoneyAsync(request, cancellationToken);
 
             await TransitionAsync(
                 request,
@@ -638,8 +650,37 @@ public partial class ServiceRequestService(
 
         // A6-08: the host learns of the rejection by email and push, like of the other supplier decisions.
         await notifier.NotifyHostAsync(request, cancellationToken);
+
+        // SP-15c-a: the block on the customer's card goes with the refusal.
+        await SettleClosedMoneyAsync(request, cancellationToken);
         return request;
     }
+
+    // ─── The money CasaZen holds for a request (SP-15c-a) ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The request is paid inside CasaZen: it was born with the card of its customer blocked (a request from a supplier's public showcase;
+    /// the hosts' requests join in SP-15c-b). The price is then what the customer blocked, and the supplier's acceptance charges the card.
+    /// </summary>
+    private static bool IsPaidInsideCasaZen(ServiceRequest request) =>
+        request is { RentalContext: ServiceRequestRentalContext.Showcase, PaymentMode: ServiceRequestPaymentMode.Online };
+
+    /// <summary>
+    /// Charges the customer's card because the supplier is accepting the request, <b>before</b> it changes state; the caller holds the supplier's
+    /// calendar lock, so a request is never accepted with no money behind it. 409 <c>payment_authorization_expired</c> (the block lapsed: it is
+    /// released) or <c>payment_capture_failed</c> (the card could not be charged now): the take does not happen. A request that is not paid
+    /// inside CasaZen is not touched.
+    /// </summary>
+    private Task CaptureHeldMoneyAsync(ServiceRequest request, CancellationToken cancellationToken) =>
+        funds is not null && IsPaidInsideCasaZen(request) ? funds.CaptureForTakeAsync(request, cancellationToken) : Task.CompletedTask;
+
+    /// <summary>
+    /// The request closed (refused, cancelled): the block on the customer's card is released, or the money charged is given back in full (the
+    /// commission included, decision D6). Called after the closing is saved and never throws — the request stays closed, and the funds job settles
+    /// the money on its next run if this cannot.
+    /// </summary>
+    private Task SettleClosedMoneyAsync(ServiceRequest request, CancellationToken cancellationToken) =>
+        funds is not null && IsPaidInsideCasaZen(request) ? funds.SettleClosedRequestAsync(request.Id, cancellationToken) : Task.CompletedTask;
 
     public async Task<ServiceRequest> MarkPaidAsync(
         Guid id,

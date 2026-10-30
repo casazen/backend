@@ -192,6 +192,8 @@ public sealed partial class SupplierPaymentService
         return payment;
     }
 
+    public DateTime LatestResponseAt(DateTime authorizedAt) => HeldPaymentRules.LatestResponseAt(authorizedAt, options.Value.AuthorizationValidity);
+
     // ─── Reading ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     public async Task<bool> HasHeldPaymentAsync(Guid requestId, CancellationToken cancellationToken = default) =>
@@ -203,9 +205,8 @@ public sealed partial class SupplierPaymentService
     public async Task<ServiceRequestPayment?> FindHeldPaymentAsync(Guid requestId, CancellationToken cancellationToken = default) =>
         await db.ServiceRequestPayments
             .AsNoTracking()
-            .Where(p => p.ServiceRequestId == requestId
-                        && p.FundsModel == ServiceFundsModel.PlatformHeld
-                        && p.Status != ServicePaymentStatus.Canceled)
+            .Where(p => p.ServiceRequestId == requestId && p.FundsModel == ServiceFundsModel.PlatformHeld)
+            .OrderByDescending(p => p.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
     /// <summary>The most recent payment of the request that CasaZen holds (whatever its status, even a canceled block), as a reference.</summary>
