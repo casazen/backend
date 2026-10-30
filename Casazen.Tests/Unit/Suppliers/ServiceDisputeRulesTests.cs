@@ -404,7 +404,7 @@ public class ServiceDisputeRulesTests
         var english = ReadEntries(new CultureInfo("en"));
 
         var keys = ServiceDisputeErrors.MessageKeys;
-        Assert.Equal(14, keys.Count);
+        Assert.Equal(15, keys.Count);
         Assert.Equal(keys.Count, keys.Distinct().Count());
         Assert.All(keys, key =>
         {
@@ -420,7 +420,7 @@ public class ServiceDisputeRulesTests
             ServiceDisputeErrors.NotFound, ServiceDisputeErrors.NotReportable, ServiceDisputeErrors.TooEarly, ServiceDisputeErrors.WindowClosed,
             ServiceDisputeErrors.Invalid, ServiceDisputeErrors.NotOpen, ServiceDisputeErrors.AlreadyReplied, ServiceDisputeErrors.AwaitingSupplier,
             ServiceDisputeErrors.StateChanged, ServiceDisputeErrors.PaymentChanged, ServiceDisputeErrors.RefundInvalid, ServiceDisputeErrors.RefundExceeds,
-            ServiceDisputeErrors.OutcomeInvalid,
+            ServiceDisputeErrors.OutcomeInvalid, ServiceDisputeErrors.OpenBlocksCompletion,
         };
         Assert.Equal(codes.Length, codes.Distinct().Count());
         Assert.All(codes, code => Assert.Matches("^service_dispute(_[a-z]+)+$", code));

@@ -3755,4 +3755,7 @@
   <data name="ServiceDisputeFormInvalid" xml:space="preserve">
     <value>Say what is wrong and, if you wish, describe the problem in at most 1000 characters.</value>
   </data>
+  <data name="ServiceDisputeOpenBlocksCompletion" xml:space="preserve">
+    <value>A report is open on this job: reply to the report. If it is decided in your favour, the job is marked as completed.</value>
+  </data>
 </root>

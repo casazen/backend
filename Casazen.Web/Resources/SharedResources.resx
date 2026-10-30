@@ -3755,4 +3755,7 @@
   <data name="ServiceDisputeFormInvalid" xml:space="preserve">
     <value>Indica il motivo della segnalazione e, se vuoi, descrivi il problema in al massimo 1000 caratteri.</value>
   </data>
+  <data name="ServiceDisputeOpenBlocksCompletion" xml:space="preserve">
+    <value>C'è una segnalazione aperta su questo lavoro: rispondi alla segnalazione. Se viene decisa a tuo favore, il lavoro risulta completato.</value>
+  </data>
 </root>

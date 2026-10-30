@@ -1064,6 +1064,26 @@ public class ServiceDisputeTests
     }
 
     [Fact]
+    public async Task NoShow_TheSupplierCannotCompleteTheJobWhileTheComplaintIsOpen_ItRepliesInstead()
+    {
+        var (s, request, _) = await BookedAndTakenAsync();
+        using var scope = s;
+        var end = (await s.ReadAsync(request.Id)).ScheduledEndUtc!.Value;
+        s.Clock.SetUtcNow(new DateTimeOffset(end.AddHours(48), TimeSpan.Zero));
+        await s.Payments.RunDisputesAsync();
+
+        var refusal = await Assert.ThrowsAsync<DomainConflictException>(
+            async () => await s.Service.CompleteAsync(request.Id, s.SupplierOrgId, new CompleteServiceRequestCommand()));
+
+        // The work is not declared done while the payer says it was not: nothing changed, and the complaint is what the supplier answers.
+        Assert.Equal("service_dispute_open", refusal.Code);
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, (await s.ReadAsync(request.Id)).Status);
+        Assert.Equal(ServicePaymentStatus.Disputed, Assert.Single(await s.PaymentsOfAsync(request.Id)).Status);
+        var reply = await s.Payments.ReplyToDisputeAsync(request.Id, s.SupplierOrgId, SupplierWords);
+        Assert.Equal(ServiceDisputeStatus.AwaitingDecision, reply.Status);
+    }
+
+    [Fact]
     public async Task NoShow_DecidedForTheSupplier_CompletesTheRequest_AndTheSupplierIsPaid_WithNoPenalty()
     {
         var (s, request, _) = await BookedAndTakenAsync();

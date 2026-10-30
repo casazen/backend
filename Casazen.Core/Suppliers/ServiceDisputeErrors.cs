@@ -88,6 +88,15 @@ public static class ServiceDisputeErrors
     /// <summary>The key of <see cref="OutcomeInvalid"/>.</summary>
     public const string OutcomeInvalidMessageKey = "ServiceDisputeOutcomeInvalid";
 
+    /// <summary>
+    /// 409: the supplier tried to complete a job whose money a complaint has stopped (typically the no-show: it never marked the work completed). It replies to
+    /// the complaint; if it is decided for the supplier the job is completed for it.
+    /// </summary>
+    public const string OpenBlocksCompletion = "service_dispute_open";
+
+    /// <summary>The key of <see cref="OpenBlocksCompletion"/>.</summary>
+    public const string OpenBlocksCompletionMessageKey = "ServiceDisputeOpenBlocksCompletion";
+
     /// <summary>The key of the 400 for a body of the customer's complaint without a reason or with a text far too long (the form is malformed, not a rule broken).</summary>
     public const string FormInvalidMessageKey = "ServiceDisputeFormInvalid";
 
@@ -108,6 +117,7 @@ public static class ServiceDisputeErrors
         RefundExceedsMessageKey,
         OutcomeInvalidMessageKey,
         FormInvalidMessageKey,
+        OpenBlocksCompletionMessageKey,
     ];
 
     /// <summary>The dispute (or the request's dispute) does not exist for the caller.</summary>
@@ -162,6 +172,9 @@ public static class ServiceDisputeErrors
         {
             Extensions = new Dictionary<string, object?> { ["maxRefundCents"] = maxCents },
         };
+
+    /// <summary>A complaint is open on the job: it cannot be completed until the complaint is decided (the supplier replies to it).</summary>
+    public static DomainConflictException CompletionBlockedByDispute() => new(OpenBlocksCompletion, OpenBlocksCompletionMessageKey);
 
     public static DomainRuleException OutcomeNotValid() => new(OutcomeInvalid, OutcomeInvalidMessageKey);
 }

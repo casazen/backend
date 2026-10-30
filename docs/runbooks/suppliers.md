@@ -2807,6 +2807,9 @@ every statement on an explicit predicate and the table inside the payments servi
   fault, the admin refund tool does it first and the decision then stands with no money.
 - **A no-show decided for the customer leaves the request as it is** (taken): the payment is refunded and the supplier penalized, but closing the request
   (and the wording the clients show for it) is a follow-up with the frontend (SP-15c-d). Decided for the supplier, the request is completed.
+- **The supplier cannot complete a job whose money a complaint stopped**: `complete` answers 409 `service_dispute_open` (the work would be declared done
+  while the payer says it was not). It replies to the complaint instead; decided for it, the job is completed for it and paid by the next run. The same
+  wall protects the amount: a `Disputed` payment is never recomputed or re-planned by a completion.
 - **The host's DTO has no `payment`/`dispute` block yet** (follow-up SP-15c-b2): the host page reads `GET …/{id}/problem` (404 `service_dispute_not_found` when
   there is none) and the request status.
 - **The penalty is only logged** until the reliability events of the ranking exist (follow-up **SP-15c-c2**: the kinds `DisputeLost` and `NoShow`, their weights

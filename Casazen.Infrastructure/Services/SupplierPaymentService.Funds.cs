@@ -264,6 +264,11 @@ public sealed partial class SupplierPaymentService
                 .FirstAsync(cancellationToken);
         }
 
+        // A complaint stopped the money (typically the no-show: the work was never marked completed): the supplier replies to it, and a decision for
+        // the supplier completes the job for it. Completing from here would let the work be declared done while the payer says it was not.
+        if (payment.Status == ServicePaymentStatus.Disputed)
+            throw ServiceDisputeErrors.CompletionBlockedByDispute();
+
         if (payment.Status is not (ServicePaymentStatus.Held or ServicePaymentStatus.TransferFailed))
             throw InFlight();
 
