@@ -32,6 +32,7 @@ La documentazione tecnica e operativa condivisa vive in questa cartella. La guid
 | [AUTH0_SETUP.md](AUTH0_SETUP.md) | Setup Auth0; completare con il [runbook operativo](runbooks/auth0.md) |
 | [FRONTEND-TECHNICAL.md](FRONTEND-TECHNICAL.md), [FRONTEND-PROJECT.md](FRONTEND-PROJECT.md) | Indirizzamento alla documentazione mantenuta nel repository frontend |
 | [AI-STRATEGY.md](AI-STRATEGY.md) | Strategia e ipotesi di prodotto, da distinguere dalle capacità operative disponibili |
+| [business-plan/README.md](business-plan/README.md) | Business plan, listino, modello finanziario e pitch per founder, investitori e partner |
 
 ## Fonti per i flussi utente
 

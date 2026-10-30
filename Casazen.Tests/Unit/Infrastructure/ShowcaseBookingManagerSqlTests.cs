@@ -30,6 +30,7 @@ public class ShowcaseBookingManagerSqlTests
                      "Status", "PublicCode", "ServiceNameSnapshot", "ScheduledStartUtc", "ScheduledEndUtc", "EstimatedAmountCents", "QuotedAmountCents",
                      "FinalAmountCents", "PriceLinesJson", "OptionsJson", "ResponseDueAt", "ProposedStartUtc", "ProposedEndUtc", "ProposedAt",
                      "ProposalMessage", "CancelledAt", "CancelledBy", "CancellationReason", "RejectionReason", "LocationCity", "LocationPostalCode",
+                     "QuoteSentAt", "QuoteLinesJson", "QuoteTotalCents", "QuoteNote", "QuoteScheduledStartUtc", "QuoteScheduledEndUtc",
                  })
         {
             Assert.Contains($"\"{column}\"", sql, StringComparison.Ordinal);
@@ -41,6 +42,7 @@ public class ShowcaseBookingManagerSqlTests
                  {
                      "LocationAddress", "LocationFloor", "LocationAccessNotes", "CompletionNotes", "WorkPhotosJson", "TakenByUserId", "ProposedByUserId",
                      "Notes", "PropertyId", "BookingId", "LastRemindedAt", "ReminderSentAt", "PaidAt", "ChargeToGuest",
+                     "QuoteSentByUserId", "QuoteEventsJson",
                  })
         {
             Assert.DoesNotContain($"\"{column}\"", sql, StringComparison.Ordinal);
