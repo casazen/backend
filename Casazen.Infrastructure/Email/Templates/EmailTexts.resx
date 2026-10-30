@@ -1737,4 +1737,22 @@
   <data name="SupplierInquiryClosed_Cta" xml:space="preserve">
     <value>Vai alla pagina del fornitore</value>
   </data>
+  <data name="SupplierInquiryMessage_Subject" xml:space="preserve">
+    <value>Nuovo messaggio dal cliente — {0}</value>
+  </data>
+  <data name="SupplierInquiryMessage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti ha scritto nella richiesta su misura a &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryMessage_Hint" xml:space="preserve">
+    <value>Leggi il messaggio e rispondi dalla console: il testo non è in questa email.</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Subject" xml:space="preserve">
+    <value>Richiesta chiusa dal cliente — {0}</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha chiuso la richiesta su misura a &lt;strong&gt;{1}&lt;/strong&gt;: non serve più rispondere.</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Hint" xml:space="preserve">
+    <value>La conversazione resta leggibile nella console.</value>
+  </data>
 </root>

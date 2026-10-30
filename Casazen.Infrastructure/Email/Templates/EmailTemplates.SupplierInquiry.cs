@@ -23,6 +23,8 @@ public static partial class EmailTemplates
         public const string SupplierInquiryReply = "supplier-inquiry-reply";
         public const string SupplierInquiryDeclined = "supplier-inquiry-declined";
         public const string SupplierInquiryExpired = "supplier-inquiry-expired";
+        public const string SupplierInquiryMessage = "supplier-inquiry-message";
+        public const string SupplierInquiryClosedByCustomer = "supplier-inquiry-closed-by-customer";
     }
 
     /// <summary>
@@ -112,6 +114,48 @@ public static partial class EmailTemplates
             .Muted("SupplierInquiryExpired_Hint")
             .Button("SupplierInquiryClosed_Cta", showcaseUrl)
             .Build("SupplierInquiryExpired_Subject", supplierName);
+    }
+
+    /// <summary>
+    /// The customer wrote in the thread, to the supplier (Italian): that there is a message, from whom ("Nome C.") and where to read it.
+    /// <b>Never the words</b>: they are read in the request, by the two parties (decision D9 and the privacy of the free text).
+    /// </summary>
+    public static EmailContent SupplierInquiryMessage(
+        CultureInfo culture,
+        string supplierName,
+        string comune,
+        string customerShortName,
+        string inboxUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        return builder
+            .Paragraph("SupplierBooking_Greeting", supplierName)
+            .Paragraph("SupplierInquiryMessage_Body", customerShortName, comune)
+            .Muted("SupplierInquiryMessage_Hint")
+            .Button("SupplierBookingNewRequest_Cta", inboxUrl)
+            .Build("SupplierInquiryMessage_Subject", comune);
+    }
+
+    /// <summary>
+    /// The customer closed its request on measure, to the supplier (Italian): who ("Nome C."), where, and the reason the customer wrote. No
+    /// day and no time: the request has none.
+    /// </summary>
+    public static EmailContent SupplierInquiryClosedByCustomer(
+        CultureInfo culture,
+        string supplierName,
+        string comune,
+        string customerShortName,
+        string? reason,
+        string inboxUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        return builder
+            .Paragraph("SupplierBooking_Greeting", supplierName)
+            .Paragraph("SupplierInquiryClosedByCustomer_Body", customerShortName, comune)
+            .Quote("SupplierBooking_ReasonLabel", reason)
+            .Muted("SupplierInquiryClosedByCustomer_Hint")
+            .Button("SupplierBookingNewRequest_Cta", inboxUrl)
+            .Build("SupplierInquiryClosedByCustomer_Subject", comune);
     }
 
     /// <summary>

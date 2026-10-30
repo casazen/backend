@@ -8,55 +8,25 @@ using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
 
-// The conversation of a request on measure (SP-10b): the supplier reads the thread and writes in it. The request is loaded, judged and saved by
-// the code of the other supplier actions (the active-supplier and Terms checks, the xmin check, the notifier); the messages are rows of
-// ServiceRequestMessages, keyed by the supplier org and never read without it (ShowcaseInquiryTenancyTests). Nothing a message says goes in a log.
+// The conversation of a request on measure (SP-10b): the supplier reads the thread and writes in it, and so does the customer through the
+// customer's area (IShowcaseRequestCustomerActions, called only by ShowcaseBookingManager, which has proved who is asking). The request is
+// loaded, judged and saved by the code of the other actions (the active-supplier and Terms checks, the xmin check, the notifier); the messages
+// are rows of ServiceRequestMessages, keyed by the supplier org and never read without it (ShowcaseInquiryTenancyTests). Nothing a message says
+// goes in a log.
 public partial class ServiceRequestService : IServiceRequestThreadActions
 {
-    public async Task<ServiceRequestThread> GetThreadAsSupplierAsync(
+    public Task<ServiceRequestThread> GetThreadAsSupplierAsync(
         Guid id,
         Guid supplierOrgId,
-        CancellationToken cancellationToken = default)
-    {
-        var request = await db.ServiceRequests
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Where(r => r.Id == id
-                        && r.SupplierOrgId == supplierOrgId
-                        && r.RentalContext == ServiceRequestRentalContext.Showcase
-                        && r.Kind == ServiceRequestKind.Custom)
-            .Select(r => new { r.Status, r.ResponseDueAt })
-            .FirstOrDefaultAsync(cancellationToken)
-            ?? throw RequestNotFound(id);
+        CancellationToken cancellationToken = default) =>
+        ReadThreadAsync(id, supplierOrgId, ServiceRequestMessageAuthor.Supplier, () => RequestNotFound(id), cancellationToken);
 
-        // Tracked: what the customer wrote and the supplier had not read is marked read below, on these rows.
-        var messages = await db.ServiceRequestMessages
-            .Where(m => m.OrgId == supplierOrgId && m.ServiceRequestId == id)
-            .OrderBy(m => m.CreatedAt)
-            .ThenBy(m => m.Id)
-            .ToListAsync(cancellationToken);
-
-        // The answer shows each message as it was before this reading, so the screen can tell the new ones; the next reading shows them read.
-        var views = messages.Select(ToMessageView).ToList();
-        var unread = messages.Where(m => m.Author == ServiceRequestMessageAuthor.Customer && m.ReadAt is null).ToList();
-        if (unread.Count > 0)
-        {
-            var now = NowToTheMicrosecond();
-            foreach (var message in unread)
-                message.ReadAt = now;
-
-            await db.SaveChangesAsync(cancellationToken);
-        }
-
-        var canWrite = ServiceRequestThreadRules.IsOpen(request.Status)
-                       && await ReadSupplierStatusAsync(supplierOrgId, cancellationToken) == SupplierStatus.Active;
-        return new ServiceRequestThread(
-            id,
-            request.Status,
-            canWrite,
-            request.Status == ServiceRequestStatus.Richiesto ? request.ResponseDueAt : null,
-            views);
-    }
+    public Task<ServiceRequestThread> ReadThreadAsCustomerAsync(
+        Guid id,
+        Guid supplierOrgId,
+        CancellationToken cancellationToken = default) =>
+        ReadThreadAsync(
+            id, supplierOrgId, ServiceRequestMessageAuthor.Customer, ShowcaseBookingManagementErrors.BookingNotFound, cancellationToken);
 
     public async Task<ServiceRequestMessageView> PostMessageAsSupplierAsync(
         Guid id,
@@ -89,6 +59,93 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
             await notifier.NotifyShowcaseThreadMessageAsync(request, ServiceRequestMessageAuthor.Supplier, CancellationToken.None);
 
         return ToMessageView(message);
+    }
+
+    public async Task<ServiceRequestMessageView> PostMessageAsCustomerAsync(
+        Guid id,
+        Guid supplierOrgId,
+        string? body,
+        CancellationToken cancellationToken = default)
+    {
+        var text = ShowcaseInquiryRules.Message(body, [], minLength: 1) ?? throw ServiceRequestThreadErrors.InvalidMessage();
+
+        // The caller has proved who is asking; a request that is not a request on measure of that supplier is the 404 of the customer's area.
+        var request = await repository.GetByIdAsync(id, cancellationToken);
+        if (request is null
+            || request.RentalContext != ServiceRequestRentalContext.Showcase
+            || request.Kind != ServiceRequestKind.Custom
+            || request.SupplierOrgId != supplierOrgId)
+        {
+            throw ShowcaseBookingManagementErrors.BookingNotFound();
+        }
+
+        if (!ServiceRequestThreadRules.IsOpen(request.Status))
+            throw ServiceRequestThreadErrors.ThreadClosed();
+
+        // A supplier that is not active answers nobody: the customer is told so, as for every other action on its request.
+        if (await ReadSupplierStatusAsync(supplierOrgId, cancellationToken) != SupplierStatus.Active)
+            throw ShowcaseBookingErrors.InactiveSupplier();
+
+        var (message, notify) = await AddThreadMessageAsync(request, ServiceRequestMessageAuthor.Customer, text, cancellationToken);
+
+        logger.LogInformation("ServiceRequest {Id}: its customer wrote in the thread", request.Id);
+
+        // Committed: the supplier is told even if the customer has gone. A few lines in a row are one e-mail.
+        if (notify)
+            await notifier.NotifyShowcaseThreadMessageAsync(request, ServiceRequestMessageAuthor.Customer, CancellationToken.None);
+
+        return ToMessageView(message);
+    }
+
+    /// <summary>
+    /// The thread of a request on measure as <paramref name="reader"/> reads it. The messages the other parties wrote and the reader had not
+    /// read are marked read; the answer shows each message as it was before this reading, so the screen can tell the new ones, and the next
+    /// reading shows them read. <paramref name="notFound"/> makes the exception for a request that is not a request on measure of this supplier.
+    /// </summary>
+    private async Task<ServiceRequestThread> ReadThreadAsync(
+        Guid id,
+        Guid supplierOrgId,
+        ServiceRequestMessageAuthor reader,
+        Func<Exception> notFound,
+        CancellationToken cancellationToken)
+    {
+        var request = await db.ServiceRequests
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.Id == id
+                        && r.SupplierOrgId == supplierOrgId
+                        && r.RentalContext == ServiceRequestRentalContext.Showcase
+                        && r.Kind == ServiceRequestKind.Custom)
+            .Select(r => new { r.Status, r.ResponseDueAt })
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw notFound();
+
+        // Tracked: what the others wrote and the reader had not read is marked read below, on these rows.
+        var messages = await db.ServiceRequestMessages
+            .Where(m => m.OrgId == supplierOrgId && m.ServiceRequestId == id)
+            .OrderBy(m => m.CreatedAt)
+            .ThenBy(m => m.Id)
+            .ToListAsync(cancellationToken);
+
+        var views = messages.Select(ToMessageView).ToList();
+        var unread = messages.Where(m => m.Author != reader && m.ReadAt is null).ToList();
+        if (unread.Count > 0)
+        {
+            var now = NowToTheMicrosecond();
+            foreach (var message in unread)
+                message.ReadAt = now;
+
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        var canWrite = ServiceRequestThreadRules.IsOpen(request.Status)
+                       && await ReadSupplierStatusAsync(supplierOrgId, cancellationToken) == SupplierStatus.Active;
+        return new ServiceRequestThread(
+            id,
+            request.Status,
+            canWrite,
+            request.Status == ServiceRequestStatus.Richiesto ? request.ResponseDueAt : null,
+            views);
     }
 
     /// <summary>

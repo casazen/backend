@@ -14,7 +14,7 @@ public class ShowcaseBookingManagementArchitectureTests
 {
     /// <summary>The names of the actions of the customer (<c>IShowcaseRequestCustomerActions</c>).</summary>
     private static readonly Regex CustomerActionCall = new(
-        @"\b(Cancel|Reschedule|AcceptProposal|RejectProposal)AsCustomerAsync\b",
+        @"\b(Cancel|Reschedule|AcceptProposal|RejectProposal|ReadThread|PostMessage)AsCustomerAsync\b",
         RegexOptions.Compiled);
 
     private static readonly Regex CustomerActionsType = new(@"\bIShowcaseRequestCustomerActions\b", RegexOptions.Compiled);
@@ -24,6 +24,7 @@ public class ShowcaseBookingManagementArchitectureTests
     {
         ["Casazen.Core/Services/IShowcaseBookingManager.cs"] = "Declares the interface of the actions, next to the manager's.",
         ["Casazen.Infrastructure/Services/ServiceRequestService.Customer.cs"] = "Implements the actions with the other transitions of a request.",
+        ["Casazen.Infrastructure/Services/ServiceRequestService.Thread.cs"] = "Implements the actions of the conversation of a request on measure (SP-10b).",
         ["Casazen.Infrastructure/Services/ShowcaseBookingManager.cs"] = "The only caller: it proves who is asking, then acts.",
         ["Casazen.Web/Extensions/ServiceCollectionExtensions.cs"] = "Registers the interface.",
     };
@@ -49,17 +50,18 @@ public class ShowcaseBookingManagementArchitectureTests
     }
 
     [Fact]
-    public void TheGuardOnTheGuard_TheManagerCallsAllFourActions_AndTheImplementationDeclaresThem()
+    public void TheGuardOnTheGuard_TheManagerCallsAllTheActions_AndTheImplementationDeclaresThem()
     {
         var root = FindRepositoryRoot();
         var manager = CodeWithoutComments(File.ReadAllText(Path.Combine(root, "Casazen.Infrastructure", "Services", "ShowcaseBookingManager.cs")));
         var implementation = CodeWithoutComments(
-            File.ReadAllText(Path.Combine(root, "Casazen.Infrastructure", "Services", "ServiceRequestService.Customer.cs")));
+            File.ReadAllText(Path.Combine(root, "Casazen.Infrastructure", "Services", "ServiceRequestService.Customer.cs"))
+            + File.ReadAllText(Path.Combine(root, "Casazen.Infrastructure", "Services", "ServiceRequestService.Thread.cs")));
 
         var called = CustomerActionCall.Matches(manager).Select(m => m.Groups[1].Value).Distinct().Order().ToArray();
         var declared = CustomerActionCall.Matches(implementation).Select(m => m.Groups[1].Value).Distinct().Order().ToArray();
 
-        Assert.Equal(new[] { "AcceptProposal", "Cancel", "RejectProposal", "Reschedule" }, called);
+        Assert.Equal(new[] { "AcceptProposal", "Cancel", "PostMessage", "ReadThread", "RejectProposal", "Reschedule" }, called);
         Assert.Equal(called, declared);
     }
 
@@ -71,6 +73,7 @@ public class ShowcaseBookingManagementArchitectureTests
         {
             "Casazen.Infrastructure/Services/ShowcaseBookingManager.cs",
             "Casazen.Infrastructure/Services/ServiceRequestService.Customer.cs",
+            "Casazen.Infrastructure/Services/ServiceRequestService.Thread.cs",
             "Casazen.Web/Controllers/PublicSupplierBookingManagementController.cs",
             "Casazen.Web/Infrastructure/PerEmailRateLimiter.cs",
             "Casazen.Web/Infrastructure/SupplierBookingManageEmailRateLimiter.cs",

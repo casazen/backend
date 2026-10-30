@@ -400,19 +400,36 @@ public sealed class ShowcaseBookingNotifier(
             {
                 var italian = EmailTemplates.DefaultCulture;
                 var comune = request.LocationCity ?? string.Empty;
-                emailQueue.Enqueue(
-                    supplier.Email,
-                    EmailTemplates.SupplierBookingCancelledByCustomer(
-                        italian,
-                        supplier.LegalName,
-                        ServiceNameOf(request, italian),
-                        comune,
-                        ShortNameOf(contact),
-                        request.ScheduledStartUtc ?? request.CreatedAt,
-                        TextOfReason(request.CancellationReason),
-                        ShortNoticeHours(request),
-                        publicSiteLinks.SupplierInbox()),
-                    EmailTemplates.Names.SupplierBookingCancelledByCustomer);
+                if (request.Kind == ServiceRequestKind.Custom)
+                {
+                    // A request on measure has no day and no time to tell (SP-10b).
+                    emailQueue.Enqueue(
+                        supplier.Email,
+                        EmailTemplates.SupplierInquiryClosedByCustomer(
+                            italian,
+                            supplier.LegalName,
+                            comune,
+                            ShortNameOf(contact),
+                            TextOfReason(request.CancellationReason),
+                            publicSiteLinks.SupplierInbox()),
+                        EmailTemplates.Names.SupplierInquiryClosedByCustomer);
+                }
+                else
+                {
+                    emailQueue.Enqueue(
+                        supplier.Email,
+                        EmailTemplates.SupplierBookingCancelledByCustomer(
+                            italian,
+                            supplier.LegalName,
+                            ServiceNameOf(request, italian),
+                            comune,
+                            ShortNameOf(contact),
+                            request.ScheduledStartUtc ?? request.CreatedAt,
+                            TextOfReason(request.CancellationReason),
+                            ShortNoticeHours(request),
+                            publicSiteLinks.SupplierInbox()),
+                        EmailTemplates.Names.SupplierBookingCancelledByCustomer);
+                }
 
                 var push = EmailTemplates.ShowcaseCancelledByCustomerPush(italian, request.Category, comune);
                 pushNotifications.Enqueue(
@@ -429,7 +446,8 @@ public sealed class ShowcaseBookingNotifier(
 
         try
         {
-            if (supplier is not null && contact is not null)
+            // The receipt of the cancellation speaks of a day and a time: a request on measure has none, and the customer closed it itself.
+            if (supplier is not null && contact is not null && request.Kind != ServiceRequestKind.Custom)
             {
                 var culture = EmailTemplates.CultureOf(contact.Locale);
                 emailQueue.Enqueue(
@@ -628,24 +646,40 @@ public sealed class ShowcaseBookingNotifier(
 
     /// <summary>
     /// A party wrote in the thread of a request on measure: the other one is told by e-mail. The customer hears of the supplier's reply, in its
-    /// language, with the link to the request; <b>never the words</b>. Never throws.
+    /// language, with the link to the request page; the supplier hears of the customer's message in Italian, with the comune and "Nome C."
+    /// only. <b>Never the words</b>. Never throws.
     /// </summary>
     public async Task NotifyThreadMessageAsync(ServiceRequest request, ServiceRequestMessageAuthor author, CancellationToken cancellationToken)
     {
         try
         {
-            if (author != ServiceRequestMessageAuthor.Supplier)
+            if (author == ServiceRequestMessageAuthor.System)
                 return;
 
             var (contact, supplier) = await FindPartiesAsync(request, cancellationToken);
             if (contact is null || supplier is null)
                 return;
 
+            if (author == ServiceRequestMessageAuthor.Supplier)
+            {
+                emailQueue.Enqueue(
+                    contact.Email,
+                    EmailTemplates.SupplierInquiryReply(
+                        EmailTemplates.CultureOf(contact.Locale), contact.FullName, supplier.LegalName, RequestUrlOf(supplier, request)),
+                    EmailTemplates.Names.SupplierInquiryReply);
+                return;
+            }
+
+            // The customer wrote: the supplier is told in Italian, with the comune and "Nome C." only (decision D9) and never the words.
             emailQueue.Enqueue(
-                contact.Email,
-                EmailTemplates.SupplierInquiryReply(
-                    EmailTemplates.CultureOf(contact.Locale), contact.FullName, supplier.LegalName, RequestUrlOf(supplier, request)),
-                EmailTemplates.Names.SupplierInquiryReply);
+                supplier.Email,
+                EmailTemplates.SupplierInquiryMessage(
+                    EmailTemplates.DefaultCulture,
+                    supplier.LegalName,
+                    request.LocationCity ?? string.Empty,
+                    ShortNameOf(contact),
+                    publicSiteLinks.SupplierInbox()),
+                EmailTemplates.Names.SupplierInquiryMessage);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
