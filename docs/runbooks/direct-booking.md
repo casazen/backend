@@ -746,9 +746,12 @@ One call for the whole site instead of one per house. All anonymous, read only, 
 | `GET …/destinations` | the comuni of the published houses `{ id, label, comune, count }`: `id` is the value of `where` | `PublicRead` |
 | `GET …/properties/{slugOrId}/similar?max=3` | up to 6 other houses: same kind of place (pool, sea, terrace, garden, pets), same comune, near price; cards with the lowest price per night, no stay | `PublicRead` |
 
-- **`stays` card.** `id`, `slug`, `name`, `comune`, `zone` (null until DB-11a), `latitude`/`longitude` **rounded** (§ 11.7, no address anywhere), the first
-  five `photos`, `bedrooms`, `bathrooms`, `maxGuests`, `areaSqm`, the main `amenities` (names of `PropertyAmenity`, six at most), `tags` (empty until DB-11a),
-  `rating {count, average}` (`null` without public reviews), `availability` and `price`.
+- **`stays` card.** `id`, `slug`, `name`, `comune`, `zone` (`{it, en}` as the host wrote it, `null` = not said), `latitude`/`longitude` **rounded** (§ 11.7, no address anywhere), the first
+  five `photos`, `bedrooms`, `bathrooms`, `maxGuests`, `areaSqm`, the main `amenities` (names of `PropertyAmenity`, six at most), `tags` (the labels of the house: the ones the host chose and the ones
+  its data give, § 14),
+  `rating {count, average}` (`null` without public reviews), `availability`, `price` and, **with dates**, `cancellation` `{ fullRefundUntil, partialRefundPercent,
+  partialRefundUntil, selfServiceAvailable }`: what cancelling costs for that stay on the policy of the house with what the host changed of it, the dates of the quote
+  of the same stay (§ 11.2a, Europe/Rome, a date already past is `null`); `null` without dates and for a house with no cancellation policy.
 - **`availability`** `{ available, reason, minNights, firstFreeCheckIn }`. `reason`, in this order: `past` (check-in before today), `not_bookable`
   (the host cannot take a payment yet, § 11.5), `guests` (the party is larger than `maxGuests`), `pets` (`pets=true` and the house refuses pets; «on request»
   does not refuse), `busy` (a night is taken: booking, hold, request, iCal or manual block, the same read as § 11.9), `min_nights`. A house that is not free **stays in
@@ -765,8 +768,8 @@ One call for the whole site instead of one per house. All anonymous, read only, 
   +7, +10, +14, +21 days (not before today), with `availableCount` (houses that sleep the party, accept the pet and are free) and `fromPerNightCents`; oldest first.
 - **Filters.** `where` (a destination `id` or a comune name), `bedrooms`/`bathrooms`/`minSqm` (at least; a house that did not say its size is not shown for `minSqm`),
   `minPrice`/`maxPrice` (per night, on `perNightCents`), `amenities` (names of `PropertyAmenity`, the house has all), `rules` = `pets` (accepts pets), `selfCheckin`
-  (amenity), `smoking` (rule «yes», else the amenity), `parties` (rule «on request»). **Not applied, and said so** in `unsupportedFilters`: `tags` (the labels of the houses
-  are DB-11a), `rules:children` (the house rule about children is DB-11a), and any unknown amenity or rule (`amenities:Foo`). Never an error.
+  (amenity), `smoking` (rule «yes», else the amenity), `parties` (rule «on request»), `children` (only a house whose host said that children are welcome); `tags` (`mare,centro,piscina,pet,campagna,terrazza,vista-mare`: the house has
+  all of them, the host's and the data's). **Not applied, and said so** in `unsupportedFilters`: a value no house can match (`amenities:Foo`, `rules:Foo`, `tags:Foo`). Never an error.
 - **Sort** `recommended` (default: by name, until the editor can order the houses), `priceAsc`, `priceDesc` (on the total, per night without dates), `rating`, `largest`;
   `page` from 1 and `pageSize` (50 at most; left out, every house).
 - **Errors.** 422 `public_stays_dates_invalid` (one date only, departure not after arrival, more than 366 nights); 422 `public_site_calendar_range_invalid`; 400 for a

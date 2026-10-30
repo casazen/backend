@@ -2,6 +2,7 @@ using System.Globalization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.SiteProfile;
 using Casazen.Core.TouristTax;
 
 namespace Casazen.Core.Services;
@@ -27,8 +28,16 @@ public sealed record PublicStayHouse(
     PetsPolicy? Pets,
     SmokingPolicy? Smoking,
     PartiesPolicy? Parties,
-    IReadOnlyList<PropertyAmenity> Amenities)
+    IReadOnlyList<PropertyAmenity> Amenities,
+    LocalizedText? Zone = null,
+    IReadOnlyList<string>? Labels = null,
+    bool? ChildrenWelcome = null,
+    CancellationPolicy? CatalogPolicy = null,
+    HostCancellationOverrides Overrides = default)
 {
+    /// <summary>The labels of the house (what the host chose and what its data give), in the order of the vocabulary.</summary>
+    public IReadOnlyList<string> Tags => Labels ?? [];
+
     /// <summary>Pets are welcome, or welcome on request (the host decides then): a stay with a pet is not refused for it. Without the rule, the amenity says.</summary>
     public bool AcceptsPets => Pets is { } rule ? rule != PetsPolicy.No : Amenities.Contains(PropertyAmenity.PetFriendly);
 
@@ -103,20 +112,9 @@ public static class PublicStayPlanner
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(criteria);
 
-        var unsupported = new List<string>();
-        if (criteria.Tags.Count > 0)
-            unsupported.Add("tags");
-        var rules = new List<string>();
-        foreach (var rule in criteria.Rules)
-        {
-            // The house rule about children is a fact the hosts cannot give yet (DB-11a): asked and not applied, said so.
-            if (rule == "children")
-                unsupported.Add("rules:children");
-            else
-                rules.Add(rule);
-        }
-
-        unsupported.AddRange(criteria.IgnoredValues);
+        // What no house can match (an amenity, a rule or a label that does not exist) was left out by the query and is declared here.
+        var unsupported = new List<string>(criteria.IgnoredValues);
+        var rules = criteria.Rules;
 
         var amenities = criteria.Amenities
             .Select(name => Enum.TryParse<PropertyAmenity>(name, ignoreCase: true, out var amenity) ? (PropertyAmenity?)amenity : null)
@@ -186,6 +184,8 @@ public static class PublicStayPlanner
             return false;
         if (!amenities.All(house.Amenities.Contains))
             return false;
+        if (!criteria.Tags.All(house.Tags.Contains))
+            return false;
 
         return rules.All(rule => rule switch
         {
@@ -193,6 +193,8 @@ public static class PublicStayPlanner
             "selfCheckin" => house.HasSelfCheckIn,
             "smoking" => house.AllowsSmoking,
             "parties" => house.AllowsParties,
+            // Children are welcome only when the host said so (DB-11a): a house that never said is not offered for «adatta ai bambini».
+            "children" => house.ChildrenWelcome == true,
             _ => true,
         });
     }
@@ -253,11 +255,20 @@ public static class PublicStayPlanner
                 : criteria.Children > 0 && tax.AgeRulesApply ? PublicStayTaxStates.Estimated : PublicStayTaxStates.Exact;
         }
 
+        // What cancelling costs for this stay, on the policy of the house with what the host changed of it: the dates of the quote.
+        var cancellation = house.CatalogPolicy is null
+            ? null
+            : PublicCancellation.StayOf(
+                CancellationRefundPolicy.EffectivePolicy(house.CatalogPolicy, house.Overrides, nights),
+                checkIn.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+                data.Today);
+
         return Card(
             house,
             data,
             new PublicStayAvailability(reason is null, reason, house.MinNights, firstFree),
-            new PublicStayPrice(Currency, StayPricing.ToCents(lodging.Total / nights), total, includes));
+            new PublicStayPrice(Currency, StayPricing.ToCents(lodging.Total / nights), total, includes),
+            cancellation);
     }
 
     /// <summary>Why the house is not free for the stay, in the order of the design (<c>stayEval</c>); <c>null</c> when it is.</summary>
@@ -365,13 +376,14 @@ public static class PublicStayPlanner
         PublicStayHouse house,
         PublicStayData data,
         PublicStayAvailability availability,
-        PublicStayPrice price) =>
+        PublicStayPrice price,
+        StayCancellation? cancellation = null) =>
         new(
             house.Id,
             house.Slug,
             house.Name,
             house.City,
-            Zone: null,
+            house.Zone,
             house.Latitude,
             house.Longitude,
             house.Photos,
@@ -380,10 +392,11 @@ public static class PublicStayPlanner
             house.MaxGuests,
             house.AreaSqm,
             MainAmenitiesOf(house),
-            Tags: [],
+            house.Tags,
             data.Ratings.TryGetValue(house.Id, out var rating) ? rating : null,
             availability,
-            price);
+            price,
+            cancellation);
 
     private static IReadOnlyList<string> MainAmenitiesOf(PublicStayHouse house) =>
         MainAmenities.Where(house.Amenities.Contains).Take(MaxCardAmenities).Select(amenity => amenity.ToString()).ToList();
@@ -528,8 +541,7 @@ public static class PublicStayPlanner
 
     /// <summary>
     /// Up to <paramref name="max"/> other houses that look like <paramref name="target"/> (<c>similarTo</c> of the design): the same kind of
-    /// place (the amenities that make a house a «mare», «con piscina»…), the same comune and a price near. The cards carry the «from» price,
-    /// no stay.
+    /// place (the labels they share: «mare», «con piscina»…), the same comune and a price near. The cards carry the «from» price, no stay.
     /// </summary>
     public static IReadOnlyList<PublicStayCard> Similar(
         PublicStayHouse target,
@@ -540,11 +552,10 @@ public static class PublicStayPlanner
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(houses);
 
-        var targetKinds = KindsOf(target);
         var targetComune = DestinationId(target.City);
         return houses
             .Where(house => house.Id != target.Id)
-            .Select(house => (House: house, Score: (KindsOf(house).Intersect(targetKinds).Count() * 10m)
+            .Select(house => (House: house, Score: (house.Tags.Intersect(target.Tags).Count() * 10m)
                 - Math.Abs(house.NightlyRate - target.NightlyRate) / 20m
                 + (DestinationId(house.City) == targetComune ? 6m : 0m)))
             .OrderByDescending(entry => entry.Score)
@@ -553,11 +564,6 @@ public static class PublicStayPlanner
             .Select(entry => CardWithoutDates(entry.House, data))
             .ToList();
     }
-
-    // What makes a house a kind of place, from the amenities (the labels of DB-11a will say it better).
-    private static IEnumerable<PropertyAmenity> KindsOf(PublicStayHouse house) =>
-        house.Amenities.Where(amenity => amenity is PropertyAmenity.Pool or PropertyAmenity.BeachAccess or PropertyAmenity.Terrace
-            or PropertyAmenity.Garden or PropertyAmenity.PetFriendly);
 
     // ─── Small helpers ──────────────────────────────────────────────────────────────────────────────
 
