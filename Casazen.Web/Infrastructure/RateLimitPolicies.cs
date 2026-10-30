@@ -32,6 +32,15 @@ public static class RateLimitPolicies
     /// </summary>
     public const string PublicGuestSession = "PublicGuestSession";
 
+    /// <summary>
+    /// The guest cancelling a booking (<c>POST api/public/guest/bookings/{code}/cancel</c> from the guest area and
+    /// <c>POST api/public/bookings/{id}/cancel?token=</c> with the host's link, DB-08a): it moves money and frees the dates, so it is
+    /// tight (10 per 10 minutes per client IP) and paired with a limit per booking (<see cref="GuestBookingCancelRateLimiter"/>, 5 per
+    /// 15 minutes). The cancel link used <see cref="GuestCheckIn"/> before, which partitions by a <c>{token}</c> route value that the
+    /// cancel route does not have (its token is in the query), so it counted by IP alone. The previews use <see cref="PublicBookingLookup"/>.
+    /// </summary>
+    public const string GuestBookingCancel = "GuestBookingCancel";
+
     /// <summary>Guest check-in form reads (partitioned by IP and token hash).</summary>
     public const string GuestCheckIn = "GuestCheckIn";
 

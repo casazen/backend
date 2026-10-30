@@ -47,9 +47,10 @@ public class OrgBrandingController(
 
     /// <summary>
     /// Replaces primary color, theme and tagline, and sets the public profile of the site (DB-03: <c>subtitle</c>,
-    /// <c>hostName</c>, <c>publicPhone</c>) for the members the body carries: a member left out keeps its value, <c>null</c>
-    /// or blank clears it. 422 <c>org_branding_color_invalid</c>, <c>org_branding_theme_invalid</c>,
-    /// <c>org_branding_tagline_too_long</c>, <c>org_branding_subtitle_too_long</c>, <c>org_branding_host_name_too_long</c>
+    /// <c>hostName</c>, <c>publicPhone</c>) and the font pair (DB-01: <c>publicFontId</c>) for the members the body carries: a
+    /// member left out keeps its value, <c>null</c> or blank clears it. 422 <c>org_branding_color_invalid</c>,
+    /// <c>org_branding_theme_invalid</c>, <c>org_branding_font_invalid</c>, <c>org_branding_tagline_too_long</c>,
+    /// <c>org_branding_subtitle_too_long</c>, <c>org_branding_host_name_too_long</c>
     /// or <c>org_branding_phone_invalid</c> for an invalid value (nothing saved); 400 for an input far beyond the limits.
     /// The public phone is published as soon as it is saved.
     /// </summary>
@@ -76,7 +77,8 @@ public class OrgBrandingController(
                 dto.Tagline,
                 dto.SubtitleSent ? FieldUpdate<string>.Set(dto.Subtitle) : FieldUpdate<string>.Unchanged,
                 dto.HostNameSent ? FieldUpdate<string>.Set(dto.HostName) : FieldUpdate<string>.Unchanged,
-                dto.PublicPhoneSent ? FieldUpdate<string>.Set(dto.PublicPhone) : FieldUpdate<string>.Unchanged),
+                dto.PublicPhoneSent ? FieldUpdate<string>.Set(dto.PublicPhone) : FieldUpdate<string>.Unchanged,
+                dto.PublicFontIdSent ? FieldUpdate<string>.Set(dto.PublicFontId) : FieldUpdate<string>.Unchanged),
             cancellationToken);
         return org is null ? OrgNotFound() : Saved(org);
     }

@@ -1701,4 +1701,31 @@
   <data name="VerificationRequiredPush_Body" xml:space="preserve">
     <value>The booking of {0} at {1} requires manual verification.</value>
   </data>
+  <data name="GuestBookingCancelled_BodyByGuest" xml:space="preserve">
+    <value>your booking at &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt; has been cancelled, as you asked.</value>
+  </data>
+  <data name="GuestBookingCancelled_RefundTimingByGuest" xml:space="preserve">
+    <value>The credit usually shows within 5-10 days, but it depends on your bank or card issuer.</value>
+  </data>
+  <data name="GuestBookingCancelled_Retained" xml:space="preserve">
+    <value>As set by the cancellation policy of the property, &lt;strong&gt;€{0}&lt;/strong&gt; is not refunded.</value>
+  </data>
+  <data name="GuestBookingCancelled_NotYou" xml:space="preserve">
+    <value>If it was not you who cancelled it, write to the host right away.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Subject" xml:space="preserve">
+    <value>Booking cancelled by the guest - {0} (arrival {1})</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Body" xml:space="preserve">
+    <value>{0} cancelled the booking at &lt;strong&gt;{1}&lt;/strong&gt; from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt; (from the guest area or with the cancellation link you sent).</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Dates" xml:space="preserve">
+    <value>The dates are available again on the booking site and in the calendar exported to the OTAs.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Refund" xml:space="preserve">
+    <value>Refund to the guest, as set by the cancellation policy: &lt;strong&gt;€{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Retained" xml:space="preserve">
+    <value>Amount that stays with you: &lt;strong&gt;€{0}&lt;/strong&gt;.</value>
+  </data>
 </root>

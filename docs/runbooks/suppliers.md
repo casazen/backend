@@ -306,15 +306,34 @@ property page sends `POST /api/long-rent/service-requests` with the property onl
 | `verified` | The "Verificato" badge: the supplier is `Active` **and** has a VAT number (`SupplierVerification.IsProfileVerified`). It does **not** look at Stripe (`IsVerified`, the badge of the payments account of section 25, still needs the Connect account). Only the boolean leaves the server, never the VAT number. |
 | `showcaseSlug` | The address of the public showcase (`/fornitori/{slug}`); null when the supplier has none. |
 
-Parameters: `q` keeps the suppliers whose legal name or category code contains **every** word (any case; blank = all); `sort` is `name` (default), `price` (lowest first, no price last) or
+Parameters: `q` keeps the suppliers that have **every** word (blank = all) in their legal name, in a category (its code, its Italian name or its English name, from `EmailTexts`: `pulizie`,
+`cleaning` and `Pulizìe` all find the cleaners) or in the name of one of their **published** services, all of them and not only the three listed (MKT, SR-09a-FU2). Case and accents do not matter
+(`SearchText.Fold`, the folding of the global search: `pulizìe` finds `Pulizie`); a draft or a deleted service is never searchable. `sort` is `name` (default), `price` (lowest first, no price last) or
 `response` (fastest first, not measured last); ties by name. Another `sort` is 400 `validation_error` (`SupplierSortInvalid`). `totalCount` and `pageSize` are the size of the filtered list (one page, as before).
+
+**One supplier (MKT).** `GET /api/suppliers/{orgId}?propertyId=` (or `?comune=`) answers the same entry, with the same fields and no more, but **with every published service** (the list carries three):
+it is the page of a supplier in the marketplace (`/app/short-rent/marketplace/suppliers/{orgId}`, shareable). The target is resolved exactly as for the list (`propertyId` authorized as a host resource: 404 for a
+property that is not the caller's org's, 403 for one it may not read; 400 `SupplierSearchTargetRequired` with neither), and the supplier must be one the list would show there: a supplier that is not `Active`, or that
+does not work in that comune, is 404 `supplier_not_found`, so a supplier is never reachable by id alone.
 
 **Cost.** Two reads for the whole list whatever its size, never one per supplier: `ISupplierServiceCatalogService.ListPickerServicesAsync` (one statement on the published services of all the
 orgs asked for; the explicit org predicate is `PublicListingsOfMany`, allowed by `SupplierServiceListingTenancyTests`) and `ISupplierKpiService.GetMedianResponseMinutesBatchAsync` (the pairs of the
 window of all of them, grouped in memory). The long-rent search (`GET api/long-rent/service-requests/suppliers`) keeps its old answer: it carries `verified` and `showcaseSlug` (they come from the
 profile) but not the services, the price or the response time.
 
-`SupplierPickerPrivacyIntegrationTests` keeps the rule: only `Active` suppliers, and the fields of the answer are a whitelist (no VAT number, no Stripe account).
+`SupplierPickerPrivacyIntegrationTests` keeps the rule: only `Active` suppliers, and the fields of the answer are a whitelist (no VAT number, no Stripe account), for the list and for the one supplier alike.
+
+### 7.6 The suppliers the host already asked: «Le mie app» of the marketplace — MKT (SR-09c)
+
+`GET /api/service-requests/suppliers` answers one entry for each supplier that has at least one **short-rent** request of the caller's org, the one asked most recently first:
+`supplierOrgId`, `supplierName`, `requestsCount`, `openCount` (the requests that are not over: every one that is not `Rifiutato`, `Pagato` or `Annullato`), `lastRequestAt` and
+`lastCategory`; one page with all of them (`PagedResultDto`, as the picker). It is a view **derived** from the requests (`IHostSupplierUsageReader`, two reads whatever their number), not a
+relationship of its own: the trusted suppliers of the account (AM-10) are another thing. Nothing is shown about the supplier but its name (the legal name of its profile, the name of its org
+when it has none): the contact is on its page (`GET /api/suppliers/{orgId}`, § 7.5), which the host opens from the list.
+
+The perimeter is the rule, and `HostSupplierUsageReaderTests` keeps it: `property.read`; only the requests of the caller's org (an explicit `OrgId` predicate, `ServiceRequest` has no
+tenant filter); for a collaborator «Solo alcuni» (`InScope`) only the requests of the properties it was given, so a supplier it never asked through them is not listed; never a request of the
+long-rent context or one born from a supplier's showcase. The controller is its own file (`ServiceRequestSuppliersController`) so that `suppliers` is never taken for the id of a request.
 
 ## 8. Service requests: validation, errors and concurrent transitions — SU-10
 

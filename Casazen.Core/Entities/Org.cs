@@ -52,6 +52,13 @@ public class Org
     [MaxLength(50)]
     public string? PublicThemeId { get; set; }
 
+    /// <summary>
+    /// The font pair of the public site (DB-01): one of <c>PublicSiteFonts.All</c> (editoriale, moderno, classico). Null = the
+    /// font its theme starts with. Set by the branding endpoint, read anonymously through <c>PublicOrgDto</c>.
+    /// </summary>
+    [MaxLength(20)]
+    public string? PublicFontId { get; set; }
+
     [MaxLength(2048)]
     public string? HeroImageUrl { get; set; }
 
