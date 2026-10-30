@@ -39,6 +39,40 @@ public interface IPublicSiteSearchService
         string propertySlugOrId,
         int max,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The same search across ALL the booking sites (the public <c>/search</c> of CasaZen): the published houses of the active orgs that can
+    /// take a booking, with the same availability, total and cancellation of <see cref="SearchStaysAsync"/> (one definition of price), plus
+    /// the site of each house (<see cref="PublicStayCard.OrgSlug"/>) and the facets of the place. Only the houses that are free for the stay
+    /// are listed (the others are counted in <see cref="PublicStaysResult.TotalCount"/>); the list is paged.
+    /// </summary>
+    Task<PublicStaysResult> SearchPlatformStaysAsync(PublicStaysCriteria criteria, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The days of all the sites for the «Quando» field of the platform search, as <see cref="GetSiteCalendarAsync"/>; with
+    /// <paramref name="where"/> only the houses of that place count.
+    /// </summary>
+    /// <exception cref="Exceptions.DomainRuleException"><see cref="PublicSiteSearchErrorCodes.CalendarRangeInvalid"/>.</exception>
+    Task<PublicSiteCalendar> GetPlatformCalendarAsync(
+        string? where,
+        DateOnly? from,
+        DateOnly? to,
+        int adults,
+        int children,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>The comuni of the houses of all the sites, the most houses first (at most <see cref="PublicSiteSearch.MaxPlatformDestinations"/>).</summary>
+    Task<IReadOnlyList<PublicDestination>> GetPlatformDestinationsAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>Which houses a search looks at: the ones of one booking site, or the ones of every site (the platform search).</summary>
+public enum PublicStaysScope
+{
+    /// <summary>The houses of one org (<c>/api/public/orgs/{slug}/stays</c>).</summary>
+    Site = 0,
+
+    /// <summary>The houses of every active org that can take a booking (<c>/api/public/stays</c>).</summary>
+    Platform = 1,
 }
 
 /// <summary>Limits and constants of the search of the site.</summary>
@@ -46,6 +80,18 @@ public static class PublicSiteSearch
 {
     /// <summary>Houses of a site the search reads: a site with more is cut at the first 50 by name.</summary>
     public const int MaxHouses = 50;
+
+    /// <summary>
+    /// Houses the platform search reads across all the sites (cut at the first ones by name, with a published house of an active org that
+    /// can take a booking): past this a search that does not run in memory is needed (debt SEARCH-GLOBAL-FU3).
+    /// </summary>
+    public const int MaxPlatformHouses = 500;
+
+    /// <summary>Houses of a page of the platform search when the caller does not say.</summary>
+    public const int DefaultPlatformPageSize = 24;
+
+    /// <summary>Places the platform search offers for «Dove».</summary>
+    public const int MaxPlatformDestinations = 100;
 
     /// <summary>Largest page of the list.</summary>
     public const int MaxPageSize = 50;
@@ -137,6 +183,10 @@ public static class PublicSiteSearchErrorCodes
 /// <param name="Page">First page is 1.</param>
 /// <param name="PageSize"><c>null</c> for every house (at most <see cref="PublicSiteSearch.MaxPageSize"/>).</param>
 /// <param name="IgnoredValues">Values of the filters that no house can match (an unknown amenity, rule or label), declared and not applied.</param>
+/// <param name="Scope">
+/// <see cref="PublicStaysScope.Platform"/> for the search across all the sites: the place is matched by what the visitor types (the comune or
+/// the zone the host wrote contains it), the <c>recommended</c> sort puts the best rated first and the houses that are not free are not listed.
+/// </param>
 public sealed record PublicStaysCriteria(
     DateOnly? CheckIn,
     DateOnly? CheckOut,
@@ -155,7 +205,8 @@ public sealed record PublicStaysCriteria(
     string Sort,
     int Page,
     int? PageSize,
-    IReadOnlyList<string> IgnoredValues);
+    IReadOnlyList<string> IgnoredValues,
+    PublicStaysScope Scope = PublicStaysScope.Site);
 
 /// <summary>The list: the houses, the nearby dates when nothing is free, and what could not be applied.</summary>
 /// <param name="CheckIn">The stay asked, <c>null</c> without dates.</param>
@@ -165,6 +216,7 @@ public sealed record PublicStaysCriteria(
 /// <param name="Items">The page of houses: the free ones first, in the sort asked, then the others by name.</param>
 /// <param name="Alternatives">Up to three nearby ranges of the same length with free houses; empty when some house is free already.</param>
 /// <param name="UnsupportedFilters">Filters that were asked and not applied: a value no house can match (<c>amenities:…</c>, <c>rules:…</c> or <c>tags:…</c> of an unknown name).</param>
+/// <param name="Facets">Only on the platform search: what the houses of the place asked allow the controls to offer; <c>null</c> on a site.</param>
 public sealed record PublicStaysResult(
     string Currency,
     DateOnly? CheckIn,
@@ -180,7 +232,31 @@ public sealed record PublicStaysResult(
     IReadOnlyList<PublicStayCard> Items,
     IReadOnlyList<PublicStayAlternative> Alternatives,
     IReadOnlyList<string> UnsupportedFilters,
-    DateTime GeneratedAt);
+    DateTime GeneratedAt,
+    PublicStaysFacets? Facets = null);
+
+/// <summary>
+/// What the controls of the platform search need to know about the houses of the place asked (before the other filters): how far the
+/// price and size sliders go, how many guests a house takes, whether any takes pets, and the labels with how many houses carry each.
+/// </summary>
+/// <param name="MinNightCents">The lowest base night rate among the houses; <c>null</c> without houses.</param>
+/// <param name="MaxNightCents">The highest base night rate among the houses.</param>
+/// <param name="MaxGuests">The most people any of the houses sleeps; 0 without houses.</param>
+/// <param name="MinAreaSqm">The smallest size among the houses that said theirs.</param>
+/// <param name="MaxAreaSqm">The largest size among the houses that said theirs.</param>
+/// <param name="PetsAllowed">Some house accepts pets (welcome or on request).</param>
+/// <param name="Tags">The labels of the houses with their counts, in the order of the vocabulary.</param>
+public sealed record PublicStaysFacets(
+    long? MinNightCents,
+    long? MaxNightCents,
+    int MaxGuests,
+    int? MinAreaSqm,
+    int? MaxAreaSqm,
+    bool PetsAllowed,
+    IReadOnlyList<PublicStayFacetTag> Tags);
+
+/// <summary>A label of the houses and how many houses carry it.</summary>
+public sealed record PublicStayFacetTag(string Tag, int Count);
 
 /// <summary>A house of the site as the list shows it. Nothing private: the position is rounded, there is no address.</summary>
 /// <param name="Zone">The zone the host wrote (DB-11a), in Italian and, if written, English; <c>null</c> = not said.</param>
@@ -193,6 +269,8 @@ public sealed record PublicStaysResult(
 /// What cancelling costs for the stay asked, on the policy of the house, with the dates of the quote (last whole day, Europe/Rome); <c>null</c>
 /// without dates and for a house with no cancellation policy.
 /// </param>
+/// <param name="OrgSlug">Only on the platform search: the slug of the booking site of the house (<c>/book/{orgSlug}/property/{slug}</c>); <c>null</c> on a site.</param>
+/// <param name="HostName">Only on the platform search: how the host is named on the site (the name the host chose, else the name of the org).</param>
 public sealed record PublicStayCard(
     Guid Id,
     string? Slug,
@@ -211,7 +289,9 @@ public sealed record PublicStayCard(
     PublicRatingSummary? Rating,
     PublicStayAvailability Availability,
     PublicStayPrice Price,
-    StayCancellation? Cancellation = null);
+    StayCancellation? Cancellation = null,
+    string? OrgSlug = null,
+    string? HostName = null);
 
 /// <summary>Whether a house is free for the stay asked.</summary>
 /// <param name="Available">Free for the stay (and bookable); <c>true</c> when no dates were chosen, since there is nothing to be taken.</param>

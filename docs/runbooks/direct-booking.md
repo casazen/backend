@@ -781,6 +781,24 @@ One call for the whole site instead of one per house. All anonymous, read only, 
   **kept for `PublicRead__CacheSeconds` seconds** (30 by default, `0` = off) in a bounded cache (256 answers, a new one is simply not kept when it is full), per org and
   query; nothing invalidates it (`generatedAt` says when it was worked out, the quote and the checkout never read it, so a stale list cannot make a booking wrong).
 
+#### 11.4b The same search across all the sites: `/api/public/stays` (the public `/search` of CasaZen)
+
+The same contract and the same functions (`PublicStayPlanner`, `StayPricing`, `TouristTaxCalculator`: one definition of price and availability), with `scope = Platform`; no flag, no
+migration. `GET api/public/stays` (the parameters of `stays`), `GET api/public/stays/calendar?where&from&to&adults&children` and `GET api/public/stays/destinations`; same limits
+(`PublicStaySearch` 60 / min per IP; `destinations` `PublicRead`). The old `GET api/properties/search` is untouched.
+
+- **Which houses.** Published (`PublicListing.IsPublished`, which includes «Mostra la casa sul sito»), of an active org, **and of an org that can take a booking now**
+  (`Org.AcceptsDirectPayments`): a card that ends on «not bookable» is not offered. At most 500 houses are read (by name; past that a search that does not run in memory is needed,
+  debt SEARCH-GLOBAL-FU3); the written comune of each house feeds `destinations` (100 places at most).
+- **What changes from a site.** `where` is what the visitor typed: the id of a destination, or any text that the comune or the zone the host wrote contains, or a phrase that contains the
+  comune (`lago di como`). `recommended` is the best rated first (then by name). **Only the houses that are free for the stay are listed in `items`**, paged (`pageSize` 24 by default, 50
+  at most): `totalCount` counts the houses that pass the filters, `availableCount` the free ones, and `alternatives` still come when none is free.
+- **The card** is the one of `stays` plus `orgSlug` and `hostName` (the name the host chose for the site, else the name of the org): the site of the house is `/book/{orgSlug}/property/{slug}`.
+  The position is the rounded one (§ 11.7), no address.
+- **`facets`** (only here): over the houses of the place asked, before the other filters: `minNightCents`/`maxNightCents` (base rates), `maxGuests`, `minAreaSqm`/`maxAreaSqm`, `petsAllowed`,
+  `tags [{tag, count}]`: what the sliders, the guests and the label chips of the page offer.
+- **Cache** as § 11.4a, keys `platform-stays`, `platform-calendar` and `platform-destinations`.
+
 ### 11.5 Public host data and `acceptsBookings`
 
 - `acceptsBookings` is **the rule of the checkout**: the org has a Stripe connected account that is allowed to charge

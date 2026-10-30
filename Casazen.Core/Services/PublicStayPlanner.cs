@@ -33,7 +33,9 @@ public sealed record PublicStayHouse(
     IReadOnlyList<string>? Labels = null,
     bool? ChildrenWelcome = null,
     CancellationPolicy? CatalogPolicy = null,
-    HostCancellationOverrides Overrides = default)
+    HostCancellationOverrides Overrides = default,
+    string? OrgSlug = null,
+    string? HostName = null)
 {
     /// <summary>The labels of the house (what the host chose and what its data give), in the order of the vocabulary.</summary>
     public IReadOnlyList<string> Tags => Labels ?? [];
@@ -138,11 +140,18 @@ public static class PublicStayPlanner
                 cards.Add(card);
         }
 
-        var ordered = Order(cards, criteria.Sort, hasDates);
+        // The search across all the sites lists what can be booked (a long list would be mostly houses taken or too small for the party),
+        // best rated first, a page at a time; the houses that are not free are counted in TotalCount and not listed.
+        var platform = criteria.Scope == PublicStaysScope.Platform;
+        var ordered = Order(cards, criteria.Sort, hasDates, platform);
         var availableCount = cards.Count(card => card.Availability.Available);
-        var pageSize = Math.Clamp(criteria.PageSize ?? PublicSiteSearch.MaxPageSize, 1, PublicSiteSearch.MaxPageSize);
+        var pageSize = Math.Clamp(
+            criteria.PageSize ?? (platform ? PublicSiteSearch.DefaultPlatformPageSize : PublicSiteSearch.MaxPageSize),
+            1,
+            PublicSiteSearch.MaxPageSize);
         var page = Math.Max(criteria.Page, 1);
-        var items = ordered.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        var listed = platform ? ordered.Where(card => card.Availability.Available) : ordered;
+        var items = listed.Skip((page - 1) * pageSize).Take(pageSize).ToList();
 
         // Another date helps only the houses that pass every filter, the price too.
         var kept = cards.Select(card => card.Id).ToHashSet();
@@ -165,7 +174,40 @@ public static class PublicStayPlanner
             items,
             alternatives,
             unsupported,
-            generatedAt);
+            generatedAt,
+            platform ? Facets(InPlace(houses, criteria.Where, lenient: true)) : null);
+    }
+
+    /// <summary>
+    /// The houses in the place asked (all of them for an empty place). On a site the place is the id of a destination, or the name of a
+    /// comune; across all the sites it is what the visitor typed, so the comune or the zone the host wrote only has to contain it, and a
+    /// phrase that contains the name of the comune finds it too («lago di como»).
+    /// </summary>
+    public static IReadOnlyList<PublicStayHouse> InPlace(IReadOnlyList<PublicStayHouse> houses, string? place, bool lenient)
+    {
+        ArgumentNullException.ThrowIfNull(houses);
+
+        return string.IsNullOrWhiteSpace(place) ? houses : houses.Where(house => MatchesPlace(house, place, lenient)).ToList();
+    }
+
+    /// <summary>What the controls of the search need to know about <paramref name="houses"/>: the reach of the sliders, the guests, the pets, the labels.</summary>
+    private static PublicStaysFacets Facets(IReadOnlyList<PublicStayHouse> houses)
+    {
+        var rates = houses.Select(house => StayPricing.ToCents(house.NightlyRate)).ToList();
+        var areas = houses.Where(house => house.AreaSqm is > 0).Select(house => house.AreaSqm!.Value).ToList();
+        var tags = houses
+            .SelectMany(house => house.Tags.Distinct())
+            .GroupBy(tag => tag)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        return new PublicStaysFacets(
+            rates.Count > 0 ? rates.Min() : null,
+            rates.Count > 0 ? rates.Max() : null,
+            houses.Count > 0 ? houses.Max(house => house.MaxGuests) : 0,
+            areas.Count > 0 ? areas.Min() : null,
+            areas.Count > 0 ? areas.Max() : null,
+            houses.Any(house => house.AcceptsPets),
+            SitePropertyProfileLimits.Tags.Where(tags.ContainsKey).Select(tag => new PublicStayFacetTag(tag, tags[tag])).ToList());
     }
 
     private static bool PassesFilters(
@@ -174,7 +216,7 @@ public static class PublicStayPlanner
         IReadOnlyList<PropertyAmenity> amenities,
         IReadOnlyList<string> rules)
     {
-        if (!string.IsNullOrWhiteSpace(criteria.Where) && !MatchesPlace(house, criteria.Where))
+        if (!string.IsNullOrWhiteSpace(criteria.Where) && !MatchesPlace(house, criteria.Where, criteria.Scope == PublicStaysScope.Platform))
             return false;
         if (criteria.Bedrooms is { } bedrooms && house.Bedrooms < bedrooms)
             return false;
@@ -199,10 +241,35 @@ public static class PublicStayPlanner
         });
     }
 
-    private static bool MatchesPlace(PublicStayHouse house, string place)
+    // A comune this short is a word of other names («Lu», «Ro»): a phrase that contains it does not find it.
+    private const int MinCityLengthForPhrase = 4;
+
+    private static bool MatchesPlace(PublicStayHouse house, string place, bool lenient)
     {
         var wanted = TouristTaxComune.NormalizeName(place).Replace(' ', '-');
-        return DestinationId(house.City) == wanted;
+        var city = DestinationId(house.City);
+        if (city == wanted)
+            return true;
+        if (!lenient || wanted.Length == 0)
+            return false;
+
+        return city.Contains(wanted, StringComparison.Ordinal)
+            || (city.Length >= MinCityLengthForPhrase && wanted.Contains(city, StringComparison.Ordinal))
+            || ZoneIds(house).Any(zone => zone.Contains(wanted, StringComparison.Ordinal));
+    }
+
+    /// <summary>The zone the host wrote, in both languages, as ids comparable with a typed place.</summary>
+    private static IEnumerable<string> ZoneIds(PublicStayHouse house)
+    {
+        if (house.Zone is not { } zone)
+            yield break;
+
+        foreach (var text in new[] { zone.It, zone.En })
+        {
+            var id = DestinationId(text);
+            if (id.Length > 0)
+                yield return id;
+        }
     }
 
     private static bool PassesPrice(PublicStayCard card, PublicStaysCriteria criteria)
@@ -396,7 +463,9 @@ public static class PublicStayPlanner
             data.Ratings.TryGetValue(house.Id, out var rating) ? rating : null,
             availability,
             price,
-            cancellation);
+            cancellation,
+            house.OrgSlug,
+            house.HostName);
 
     private static IReadOnlyList<string> MainAmenitiesOf(PublicStayHouse house) =>
         MainAmenities.Where(house.Amenities.Contains).Take(MaxCardAmenities).Select(amenity => amenity.ToString()).ToList();
@@ -404,23 +473,26 @@ public static class PublicStayPlanner
     // ─── Order ──────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The free houses in the sort asked, then the others by name, as the design shows them.</summary>
-    private static IReadOnlyList<PublicStayCard> Order(IReadOnlyList<PublicStayCard> cards, string sort, bool hasDates)
+    private static IReadOnlyList<PublicStayCard> Order(IReadOnlyList<PublicStayCard> cards, string sort, bool hasDates, bool platform = false)
     {
         var free = cards.Where(card => card.Availability.Available);
         var others = cards.Where(card => !card.Availability.Available).OrderBy(card => card.Name, ByName).ToList();
 
         long PriceOf(PublicStayCard card) => hasDates ? card.Price.TotalCents ?? long.MaxValue : card.Price.PerNightCents;
 
+        IOrderedEnumerable<PublicStayCard> ByRating() => free.OrderByDescending(card => card.Rating?.Average ?? -1m)
+            .ThenByDescending(card => card.Rating?.Count ?? 0)
+            .ThenBy(card => card.Name, ByName);
+
         IEnumerable<PublicStayCard> sorted = sort switch
         {
             PublicSiteSearch.PriceAsc => free.OrderBy(PriceOf).ThenBy(card => card.Name, ByName),
             PublicSiteSearch.PriceDesc => free.OrderByDescending(card => card.Price.TotalCents is null && hasDates ? long.MinValue : PriceOf(card))
                 .ThenBy(card => card.Name, ByName),
-            PublicSiteSearch.Rating => free.OrderByDescending(card => card.Rating?.Average ?? -1m)
-                .ThenByDescending(card => card.Rating?.Count ?? 0)
-                .ThenBy(card => card.Name, ByName),
+            PublicSiteSearch.Rating => ByRating(),
             PublicSiteSearch.Largest => free.OrderByDescending(card => card.AreaSqm ?? -1).ThenBy(card => card.Name, ByName),
-            _ => free.OrderBy(card => card.Name, ByName),
+            // Across all the sites «recommended» is the best rated first (houses of many hosts have no order of their own); on a site, by name.
+            _ => platform ? ByRating() : free.OrderBy(card => card.Name, ByName),
         };
 
         return [.. sorted, .. others];
@@ -525,13 +597,21 @@ public static class PublicStayPlanner
     {
         ArgumentNullException.ThrowIfNull(houses);
 
-        return houses
-            .Where(house => DestinationId(house.City).Length > 0)
-            .GroupBy(house => DestinationId(house.City))
+        return DestinationsOfCities(houses.Select(house => house.City));
+    }
+
+    /// <summary>The same places from the written comuni of the houses alone (the platform lists them without loading the houses).</summary>
+    public static IReadOnlyList<PublicDestination> DestinationsOfCities(IEnumerable<string> cities)
+    {
+        ArgumentNullException.ThrowIfNull(cities);
+
+        return cities
+            .Where(city => DestinationId(city).Length > 0)
+            .GroupBy(DestinationId)
             .Select(group =>
             {
                 // The way the hosts wrote the comune most often (they may differ by an accent or a capital).
-                var comune = group.GroupBy(house => house.City.Trim()).OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal).First().Key;
+                var comune = group.GroupBy(city => city.Trim()).OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal).First().Key;
                 return new PublicDestination(group.Key, comune, comune, group.Count());
             })
             .OrderByDescending(destination => destination.Count)
