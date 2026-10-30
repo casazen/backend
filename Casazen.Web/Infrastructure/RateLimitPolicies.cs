@@ -57,6 +57,13 @@ public static class RateLimitPolicies
     public const string PublicComuni = "PublicComuni";
 
     /// <summary>
+    /// The search of a booking site and its calendar (<c>GET api/public/orgs/{slug}/stays</c> and <c>…/calendar</c>, DB-07a): the heaviest
+    /// anonymous reads, each prices every house of the site for the dates (the answer is kept a few seconds), so they have a limit of their own,
+    /// tighter than <see cref="PublicRead"/>.
+    /// </summary>
+    public const string PublicStaySearch = "PublicStaySearch";
+
+    /// <summary>
     /// Free slots of a supplier's service (<c>GET api/public/suppliers/{slug}/slots</c>, SP-09): each read runs the slot planner
     /// (cached 30 seconds per service), so it has a limit of its own, tighter than <see cref="PublicRead"/>.
     /// </summary>

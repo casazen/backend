@@ -1477,6 +1477,9 @@
   <data name="PublicCalendarInvalidRange" xml:space="preserve">
     <value>The date range is not valid: the end date must be after the start date and the range cannot exceed {0} months.</value>
   </data>
+  <data name="PublicStaysDatesInvalid" xml:space="preserve">
+    <value>The dates of the stay are not valid: give both the arrival and the departure, the departure must be after the arrival and the stay cannot exceed {0} nights.</value>
+  </data>
   <data name="LeaseEndBeforeStart" xml:space="preserve">
     <value>The lease end date must be after the start date.</value>
   </data>
