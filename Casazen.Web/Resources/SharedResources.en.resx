@@ -3587,4 +3587,40 @@
   <data name="GuestCancelConfirmRequired" xml:space="preserve">
     <value>Confirm that you want to cancel the booking to go on.</value>
   </data>
+  <data name="ServiceRequestCannotQuote" xml:space="preserve">
+    <value>You can answer with a quote only a request that still waits for your answer.</value>
+  </data>
+  <data name="ServiceRequestQuoteInvalid" xml:space="preserve">
+    <value>Invalid quote: it needs 1 to {0} lines, each with a description of at most {1} characters and an amount above zero; the total can be at most {2} euro.</value>
+  </data>
+  <data name="ServiceRequestNoQuote" xml:space="preserve">
+    <value>This request has no quote to answer: the supplier may have withdrawn it, or the request has already changed.</value>
+  </data>
+  <data name="ServiceRequestQuoteChanged" xml:space="preserve">
+    <value>The supplier changed the quote while you were reading it. Read it again before answering: nothing was changed.</value>
+  </data>
+  <data name="SupplierBookingNoQuote" xml:space="preserve">
+    <value>This request has no quote to accept or turn down.</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired" xml:space="preserve">
+    <value>The time to answer the quote has passed: the request will cancel itself. You will be able to book again from the supplier's site.</value>
+  </data>
+  <data name="ServiceRequestQuoteLinesRequired" xml:space="preserve">
+    <value>The quote needs at least one line.</value>
+  </data>
+  <data name="ServiceRequestQuoteTooManyLines" xml:space="preserve">
+    <value>The quote can have at most {1} lines.</value>
+  </data>
+  <data name="ServiceRequestQuoteLineLabelRequired" xml:space="preserve">
+    <value>Each line of the quote needs a description.</value>
+  </data>
+  <data name="ServiceRequestQuoteLineLabelTooLong" xml:space="preserve">
+    <value>The description of a line can have at most {1} characters.</value>
+  </data>
+  <data name="ServiceRequestQuoteNoteTooLong" xml:space="preserve">
+    <value>The note can have at most {1} characters.</value>
+  </data>
+  <data name="ServiceRequestQuoteSentAtRequired" xml:space="preserve">
+    <value>Say which quote you are accepting or turning down.</value>
+  </data>
 </root>

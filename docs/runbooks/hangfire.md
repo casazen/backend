@@ -586,8 +586,10 @@ reminded of, also after the flag is turned off (with it off, a run finds nothing
   (`xmin`: a supplier that takes it meanwhile wins and the run counts a conflict). The customer is told (`supplier-booking-expired`),
   the supplier by the existing mail of SP-04. A request whose customer did not answer a time the supplier proposed (the deadline of a
   pending proposal is the customer's) is cancelled with the reason `ProposalNotAnswered`: the customer is told
-  `supplier-booking-proposal-expired` and the supplier `supplier-booking-proposal-lapsed` (SP-11, [suppliers.md § 24](suppliers.md#24-the-customers-own-area-find-cancel-move-and-answer-a-proposed-time--sp-11)). It is the code of `service-request-auto-cancel` with the showcase scope, **without that
-  job's flag**: the host job stays behind `Features:SupplierRequestAutoCancel`, the two never touch each other's requests.
+  `supplier-booking-proposal-expired` and the supplier `supplier-booking-proposal-lapsed` (SP-11, [suppliers.md § 24](suppliers.md#24-the-customers-own-area-find-cancel-move-and-answer-a-proposed-time--sp-11)). The same
+  for a quote the customer did not answer (SP-04b: the deadline of a quote sent on a showcase request is the customer's too): reason `QuoteNotAnswered`, the customer is told `supplier-booking-quote-expired` and the
+  supplier `supplier-booking-quote-lapsed` ([suppliers.md § 34](suppliers.md)). It is the code of `service-request-auto-cancel` with the showcase scope, **without that
+  job's flag**: the host job stays behind `Features:SupplierRequestAutoCancel` (and, like a pending proposal, a pending quote keeps a host's request out of it: a host has no deadline), the two never touch each other's requests.
 - `service-request-reminders` (hourly, `ServiceRequestReminderJob`, wait 300 s). One run under a session lock looks at the showcase
   requests the supplier took (`PresoInCarico`) whose work starts in the next 48 hours and which have no `ReminderSentAt`, and sends the
   reminder to those for which 18:00 Europe/Rome of the day before has come and the work has not started, **if the supplier took the

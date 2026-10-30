@@ -14,7 +14,7 @@ public class ShowcaseBookingManagementArchitectureTests
 {
     /// <summary>The names of the actions of the customer (<c>IShowcaseRequestCustomerActions</c>).</summary>
     private static readonly Regex CustomerActionCall = new(
-        @"\b(Cancel|Reschedule|AcceptProposal|RejectProposal)AsCustomerAsync\b",
+        @"\b(Cancel|Reschedule|AcceptProposal|RejectProposal|AcceptQuote|RejectQuote)AsCustomerAsync\b",
         RegexOptions.Compiled);
 
     private static readonly Regex CustomerActionsType = new(@"\bIShowcaseRequestCustomerActions\b", RegexOptions.Compiled);
@@ -49,7 +49,7 @@ public class ShowcaseBookingManagementArchitectureTests
     }
 
     [Fact]
-    public void TheGuardOnTheGuard_TheManagerCallsAllFourActions_AndTheImplementationDeclaresThem()
+    public void TheGuardOnTheGuard_TheManagerCallsAllTheActions_AndTheImplementationDeclaresThem()
     {
         var root = FindRepositoryRoot();
         var manager = CodeWithoutComments(File.ReadAllText(Path.Combine(root, "Casazen.Infrastructure", "Services", "ShowcaseBookingManager.cs")));
@@ -59,7 +59,7 @@ public class ShowcaseBookingManagementArchitectureTests
         var called = CustomerActionCall.Matches(manager).Select(m => m.Groups[1].Value).Distinct().Order().ToArray();
         var declared = CustomerActionCall.Matches(implementation).Select(m => m.Groups[1].Value).Distinct().Order().ToArray();
 
-        Assert.Equal(new[] { "AcceptProposal", "Cancel", "RejectProposal", "Reschedule" }, called);
+        Assert.Equal(new[] { "AcceptProposal", "AcceptQuote", "Cancel", "RejectProposal", "RejectQuote", "Reschedule" }, called);
         Assert.Equal(called, declared);
     }
 

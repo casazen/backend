@@ -6574,6 +6574,38 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<string>("QuoteEventsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("QuoteLinesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("QuoteNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("QuoteScheduledEndUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("QuoteScheduledStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("QuoteSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("QuoteSentByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int?>("QuoteTotalCents")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("QuotedAmountCents")
                         .HasColumnType("integer");
 
@@ -6682,6 +6714,10 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_ServiceRequests_Kind", "\"Kind\" = 0 OR (\"Kind\" = 1 AND \"RentalContext\" = 2)");
 
                             t.HasCheckConstraint("CK_ServiceRequests_ProposedInterval", "(\"ProposedStartUtc\" IS NULL AND \"ProposedEndUtc\" IS NULL AND \"ProposedAt\" IS NULL) OR (\"ProposedStartUtc\" IS NOT NULL AND \"ProposedEndUtc\" IS NOT NULL AND \"ProposedAt\" IS NOT NULL AND \"ProposedEndUtc\" > \"ProposedStartUtc\")");
+
+                            t.HasCheckConstraint("CK_ServiceRequests_Quote", "(\"QuoteSentAt\" IS NULL AND \"QuoteSentByUserId\" IS NULL AND \"QuoteTotalCents\" IS NULL AND \"QuoteNote\" IS NULL AND \"QuoteScheduledStartUtc\" IS NULL AND \"QuoteScheduledEndUtc\" IS NULL AND \"QuoteLinesJson\" = '[]'::jsonb) OR (\"QuoteSentAt\" IS NOT NULL AND \"Status\" = 0 AND \"QuoteTotalCents\" BETWEEN 1 AND 10000000 AND jsonb_array_length(\"QuoteLinesJson\") BETWEEN 1 AND 20 AND ((\"QuoteScheduledStartUtc\" IS NULL AND \"QuoteScheduledEndUtc\" IS NULL) OR (\"QuoteScheduledStartUtc\" IS NOT NULL AND \"QuoteScheduledEndUtc\" IS NOT NULL AND \"QuoteScheduledEndUtc\" > \"QuoteScheduledStartUtc\")))");
+
+                            t.HasCheckConstraint("CK_ServiceRequests_QuoteOffer", "\"QuoteSentAt\" IS NULL OR \"ProposedStartUtc\" IS NULL");
 
                             t.HasCheckConstraint("CK_ServiceRequests_ScheduledInterval", "(\"ScheduledStartUtc\" IS NULL AND \"ScheduledEndUtc\" IS NULL) OR (\"ScheduledStartUtc\" IS NOT NULL AND \"ScheduledEndUtc\" IS NOT NULL AND \"ScheduledEndUtc\" > \"ScheduledStartUtc\")");
                         });

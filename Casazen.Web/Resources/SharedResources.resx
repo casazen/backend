@@ -3587,4 +3587,40 @@
   <data name="GuestCancelConfirmRequired" xml:space="preserve">
     <value>Conferma di voler annullare la prenotazione per procedere.</value>
   </data>
+  <data name="ServiceRequestCannotQuote" xml:space="preserve">
+    <value>Puoi rispondere con un preventivo solo a una richiesta ancora in attesa della tua risposta.</value>
+  </data>
+  <data name="ServiceRequestQuoteInvalid" xml:space="preserve">
+    <value>Preventivo non valido: servono da 1 a {0} voci, ciascuna con una descrizione di al massimo {1} caratteri e un importo maggiore di zero; il totale può arrivare al massimo a {2} euro.</value>
+  </data>
+  <data name="ServiceRequestNoQuote" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessun preventivo a cui rispondere: il fornitore potrebbe averlo ritirato, o la richiesta è già cambiata.</value>
+  </data>
+  <data name="ServiceRequestQuoteChanged" xml:space="preserve">
+    <value>Il fornitore ha modificato il preventivo mentre lo leggevi. Rileggilo prima di rispondere: non abbiamo cambiato nulla.</value>
+  </data>
+  <data name="SupplierBookingNoQuote" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessun preventivo da accettare o rifiutare.</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired" xml:space="preserve">
+    <value>Il tempo per rispondere al preventivo è scaduto: la richiesta si annulla da sola. Potrai prenotare di nuovo dal sito del fornitore.</value>
+  </data>
+  <data name="ServiceRequestQuoteLinesRequired" xml:space="preserve">
+    <value>Il preventivo ha bisogno di almeno una voce.</value>
+  </data>
+  <data name="ServiceRequestQuoteTooManyLines" xml:space="preserve">
+    <value>Il preventivo può avere al massimo {1} voci.</value>
+  </data>
+  <data name="ServiceRequestQuoteLineLabelRequired" xml:space="preserve">
+    <value>Ogni voce del preventivo ha bisogno di una descrizione.</value>
+  </data>
+  <data name="ServiceRequestQuoteLineLabelTooLong" xml:space="preserve">
+    <value>La descrizione di una voce può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestQuoteNoteTooLong" xml:space="preserve">
+    <value>La nota può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestQuoteSentAtRequired" xml:space="preserve">
+    <value>Indica quale preventivo stai accettando o rifiutando.</value>
+  </data>
 </root>

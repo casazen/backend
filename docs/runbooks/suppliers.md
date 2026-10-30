@@ -1568,6 +1568,8 @@ Queued **after** the change is saved, by the winner of a race only; a queue that
 | Reminder | the supplier | reminder | `service-request-reminder` |
 | Another time proposed | the host | the interval and the message | `service-request-time-proposed` |
 | Proposal accepted / turned down | the supplier | answer | `service-request-proposal-accepted` / `-rejected` |
+| Quote sent (SP-04b, section 34) | the host | the lines, the total, the time of the work, the note | `service-request-quote-sent` |
+| Quote accepted / turned down (SP-04b) | the supplier | answer, price and time | `service-request-quote-accepted` / `-rejected` |
 | Marked as paid | the supplier | unchanged | `service-request-paid` |
 
 The requests born from a supplier's showcase (SP-10) have the customer as their other party: its e-mails are listed in sections 23.8 and
@@ -2627,8 +2629,8 @@ requests with the **same statuses and the same "has a proposal" test as the tabs
 
 ### 27.4 The inbox: two tabs, `source`, `q`
 
-- **`tab=da-rispondere`**: `Richiesto` with **no** proposed time waiting (nor, from SP-04b, a quote): the supplier still has to answer.
-  **`tab=in-attesa`**: `Richiesto` **with** a proposed time the customer has not answered. Both by urgency (`ResponseDueAt`, the ones without last),
+- **`tab=da-rispondere`**: `Richiesto` with **no** proposed time waiting (nor, since SP-04b, a quote): the supplier still has to answer.
+  **`tab=in-attesa`**: `Richiesto` **with** a proposed time, or a quote (section 34), the customer has not answered. Both by urgency (`ResponseDueAt`, the ones without last),
   both on the statuses of `nuove`. **`tab=nuove` is unchanged** (every new request, same order): the Golden Journey and the other users do not change.
   The 400 for another tab (`SupplierInboxTabInvalid`) now lists the six.
 - **`source=casazen|showcase`**: where the request comes from (`item.source`): a CasaZen host, or the supplier's public showcase. Any case; another
@@ -2654,7 +2656,7 @@ of SP-03b uses the same type, so the file is the same in both), never stored, ne
 |---|---|---|
 | `to_answer` | the supplier has to answer (take, refuse, propose another time) | `Richiesto`, no proposed time waiting |
 | `proposal_pending` | the supplier proposed another time, the customer has not answered | `Richiesto` with a proposed time |
-| `quote_pending` | the supplier sent a quote, the customer has not answered. **Reserved for SP-04b: nothing produces it yet** | `Richiesto` |
+| `quote_pending` | the supplier sent a quote, the customer has not answered (SP-04b, section 34) | `Richiesto` with a quote |
 | `scheduled` | taken, the work is yet to start | `PresoInCarico` |
 | `in_progress` | the work started | `InCorso` |
 | `completed` | done, not paid yet | `Completato` |
@@ -2722,8 +2724,8 @@ thousands of requests, `(SupplierOrgId, CreatedAt)` is the first candidate (with
   the split and the two buttons, `late` the "Da fare" row (`payment` is there for **every completed job**, with `id` and `status` null until a record exists:
   test `payment.id` to know whether there is one, never `payment != null`); `overview.onlinePayments` decides "Incassi" or "Lavori completati"; `previous.from/to`
   say what the delta compares with; `today.jobsTotal` says when the 50 jobs are not all of them. The Golden Journey keeps using `nuove`.
-- **SP-04b (quote)**: add `Quote` to `SupplierServiceRequestView` and pass `hasPendingQuote: Quote is not null` in `SupplierServiceRequestView.Phase`; add the
-  same test to the predicate `AwaitingCustomer` of `SupplierServiceRequestReader.Filter` and to `TabCountsOf`. **SP-04d (auto-accept)**: done (section 21.14): the
+- **SP-04b (quote)**: done (section 34): `SupplierServiceRequestView.Quote` and `Phase`, the predicate `AwaitingCustomer` of `SupplierServiceRequestReader.Filter` and `TabCountsOf`.
+  **SP-04d (auto-accept)**: done (section 21.14): the
   requests accepted automatically are excluded from `SupplierKpiService.AnswersBetween` (and from the average of `today` and the public median). **LR-08a (`tenantContact`)**: independent
   fields of the same DTO.
 - **SP-16a (earnings)**: the definitions of "collected" (`Paid` by `PaidAt`) and "late" (flagged and still owed) are here (`ServicePaymentSchedule.IsOwed`,
@@ -2748,7 +2750,7 @@ carries `jobsTotal` (additive) so that the cap of 50 jobs, which a week can reac
 
 - The rules of `canRequest` and `canRecordOffline` are written twice, in `ServicePaymentActions` and in `SupplierPaymentService`; the matrix test of 27
   states keeps them equal, so whoever changes one changes both (the deeper fix is for the endpoints to call `ServicePaymentActions` too). The same goes for
-  "waiting for the customer": the filter, the counters and `phase` each test the proposed time, and SP-04b adds the quote to the three.
+  "waiting for the customer": the filter, the counters and `phase` each test the proposed time and the quote (SP-04b, section 34).
 - `IFeatureFlags` and `ISupplierPaymentReadModels` are optional constructor parameters of the KPI service and of the reader (so the tests that build them by hand
   stay as they are); the container always gives both, and `SupplierReadModelsPaymentsIntegrationTests`, which goes through the real host, fails if the registration is lost.
 - Cost: what is to be collected is added up in memory over the supplier's completed jobs not paid yet, and the answers of the mean are read as pairs. That is
@@ -2953,7 +2955,7 @@ green).
   range, section 28.3).
 - **SP-04e** (inbox/today read models, merged) — uses the same `SupplierRequestPhases` for `phase` in its DTOs (section 27.5): one file.
 - **SP-04c** (urgent slots) — `GET preview/slots` ignores `urgent` today; when the planner learns urgent slots, `urgent=true` returns them.
-- **SP-04b** (quotes) — `quote_pending` is a phase that nothing produces yet (`SupplierRequestPhases.Of(…, hasPendingQuote)`).
+- **SP-04b** (quotes, merged) — `quote_pending` is produced (section 34); the calendar and the agenda carry `hasPendingQuote` like `hasPendingProposal`.
 
 ### 28.8 After a deploy
 
@@ -3506,6 +3508,113 @@ messages of the requests that moved.
 - [ ] With `Features__SupplierShowcaseBooking` **off** (production): both endpoints answer 404 `not_found`, as before the task.
 - [ ] Test environment, flag on: an inquiry for an active supplier is 201 and the supplier gets nothing; the link of the e-mail ends in `#token=...`; `confirm-email` is 200 and now the supplier's inbox has a request `Richiesto` with "Nome C.", the comune and no time, and its e-mail does
       not contain the words of the customer.
+
+## 34. The quote with the customer's approval — SP-04b
+
+Redesign wave task SP-04b (branch `feature/rd-supplier-quote`): **no flag** (the brief's `SupplierQuotes` was not created: the functions of the wave are always on), migration
+`AddServiceRequestQuote` (additive: columns and checks, nothing is backfilled). The supplier answers a **new** request with a **quote** — lines, a total, a note, optionally another time — and
+the **customer** accepts or turns it down: the host (short-rent and long-rent) with `property.write`, or the private customer of a showcase request with the code and the e-mail of its booking.
+Accepting is a take made on the supplier's behalf: the total is the price agreed, the lines are the price lines (kind `quote`). Payment inside CasaZen stays behind the flag `SupplierOnlinePayments`
+(off until the test with Stripe, VT-D22): the quote only decides the amount; the way the request is paid is decided at the take, as for any take (section 26.1).
+
+### 34.1 The model: an offer on a new request, not an eighth status
+
+A quote lives on a request that is still `Richiesto`, like a proposed time (section 21.3): `ServiceRequestStatus` does not change (the mobile app does not know new values). Columns on `ServiceRequests`:
+`QuoteSentAt` (the **version** of the quote: kept to the microsecond, compared to the millisecond so a client that reads it as a JavaScript date can give it back), `QuoteSentByUserId`, `QuoteLinesJson`, `QuoteTotalCents`, `QuoteNote`, `QuoteScheduledStartUtc/EndUtc` (another time, optional) and
+`QuoteEventsJson` (the trace: what happened to the quotes of the request, the last 30). Checks in the database: the quote is there with all its columns or not at all, **only on a request that
+is `Richiesto`**, from 1 to 20 lines, a total from 1 cent to the bound of a request (100 000 €), its other time has both ends or none (`CK_ServiceRequests_Quote`); **a quote and a proposed time are
+never both there** (`CK_ServiceRequests_QuoteOffer`). That the total is the sum of the lines is the rule of `ServiceRequestQuoteRules.Normalize` (a CHECK cannot add up a JSON array).
+
+One offer at a time: a quote **takes the place** of a proposed time (and the other way round: `propose-time` drops the quote, with a `withdrawn` event). A new quote replaces the one that waits. The offer is
+dropped by **every** transition out of `Richiesto` (`TransitionAsync` clears it: take, refuse, cancel, accept a proposal) and by the auto-cancel job.
+
+### 34.2 Who does what
+
+| Who | Endpoint | What |
+|---|---|---|
+| supplier (`Supplier`) | `POST api/service-requests/{id}/quote` | `{ lines[1..20] {label ≤120, amountCents 1..10 000 000}, note ≤500?, scheduledStartUtc?, scheduledEndUtc? }`; only a `Richiesto` request; sends or **replaces**; answers the request with `quote` |
+| supplier | `POST api/service-requests/{id}/quote/withdraw` | takes it back: the request is "to answer" again (nobody is told) |
+| host (`property.write`) | `POST api/service-requests/{id}/quote/accept` · `…/quote/reject` | `{ quoteSentAt }` (the `quote.sentAt` it read); the twins for long-rent are at `api/long-rent/service-requests/{id}/quote/accept|reject` (`property.write` in long-rent) |
+| showcase customer (anonymous, behind `SupplierShowcaseBooking`) | `POST api/public/supplier-bookings/quote/accept` · `…/quote/reject` | `{ slug, code, email, quoteSentAt }` **in the body**, never in the URL; the same pipeline as `proposal/accept` (one 404 for everything that does not identify the booking, rate limit per IP and per address, `[PrivateAnswer]`) |
+
+`lookup` of the showcase customer gains `quote { sentAt, lines[{label, amountCents}], totalCents, note, startUtc/endUtc (+Local), answerBy }` and `actions.canRespondToQuote`; while a quote waits
+`canReschedule` is false (the quote is about the time the booking has; the customer turns it down first) and `respondBy` is null (the clock that runs is `quote.answerBy`). `ServiceRequestDto`
+(host, and the supplier's older readers) and `SupplierServiceRequestDto` (the console: inbox, today, detail) gain `quote { sentAt, lines, totalCents, note, scheduledStart, scheduledEnd, answerBy }`;
+the console's `phase` is `quote_pending` and the request is in the tab `in-attesa`. `answerBy` is the customer's deadline for a showcase request and `null` for a host.
+
+### 34.3 Accepting: the money and the time
+
+- **Money.** `QuotedAmountCents` = the total, `PriceLinesJson` = the lines with kind `quote` (open set of kinds, `price.lines[].kind`), `PaymentMode` decided as for any take (`ResolvePaymentModeAsync`: always `Manual` for a showcase
+  request), `ResponseDueAt` cleared. The total is the **reference of decision D7**: a final amount more than 20 % above it needs the customer's confirmation. Completing without a declared total
+  gives `FinalAmountCents` = the total with **the lines the customer approved** (`ServiceRequestPricing.ComposeFinalPrice(agreedLines)`), plus the extras; with a declared total that is not the quote the work
+  is priced as a whole (one `base` line). The payment, when it is made inside CasaZen, is the final amount with the commission of CasaZen taken out of it, exactly as for any request (section 26).
+- **Time.** The quote leans on the time the request has. If it offers **another time**, that time is checked with the slot planner when it is sent (409 `supplier_slot_unavailable`,
+  `supplier_commitment_conflict`) **and again at the acceptance under the supplier's calendar lock** (`SupplierCalendarSync`): the offer holds no slot. If it is gone, 409 and **the quote stays** (the customer can
+  turn it down or cancel). The overlap with a job the supplier already accepted is checked at the acceptance for the quote's time or, with none of its own, the request's.
+- **A request is taken once.** The acceptance is a normal transition (`xmin`): of two acceptances, or an acceptance and a cancellation, one wins and the other gets 409 `service_request_state_changed`; a second
+  acceptance finds no quote (422 `service_request_no_quote`, showcase: `supplier_booking_no_quote`). A supplier suspended meanwhile cannot be taken for (422 `service_request_supplier_inactive`, showcase:
+  `supplier_booking_supplier_unavailable`).
+
+### 34.4 Errors
+
+| Code | HTTP | When |
+|---|---|---|
+| `service_request_quote_invalid` | 422 | lines or total outside the limits (not 1 to 20 lines, a line without description, an amount outside 1 cent to 100 000 €, a total above it, a note over 500) |
+| `service_request_invalid_transition` | 422 | a quote on a request that is not new |
+| `service_request_no_quote` | 422 | nothing to answer or withdraw (never sent, withdrawn, answered, the request moved on) |
+| `service_request_quote_changed` | 409 | the answer repeats a version that is not the one that waits: the supplier replaced the quote; nothing changed, read it again. Also for the showcase customer |
+| `supplier_slot_unavailable`, `supplier_commitment_conflict` | 409 | the other time cannot be done (at sending, at accepting) |
+| `supplier_booking_no_quote`, `supplier_booking_quote_expired` | 422 | showcase customer: no quote, or its time to answer has passed |
+| `service_request_not_found` | 404 | another org's request, a request of the public showcase for a host, a long-rent request at the short-rent endpoint |
+
+### 34.5 The deadline
+
+A **showcase customer** has `Suppliers:Showcase:ProposalResponseMinutes` (24 hours; the quote reuses the key of the proposed time, no new setting) from the instant the quote was sent: the request's
+`ResponseDueAt` is moved to it, and the always-on job `service-request-expiry` cancels the request when it passes, by CasaZen, with the reason `QuoteNotAnswered` (a code, not a sentence); the supplier did answer, so
+the **customer** is told it is the one who did not (`supplier-booking-quote-expired`) and the **supplier** that the customer did not answer (`supplier-booking-quote-lapsed`), never that the supplier stayed silent
+(decision D24). A **host has no deadline**: the quote leaves `ResponseDueAt` as it was (the supplier's own), and `service-request-auto-cancel` (behind `SupplierRequestAutoCancel`) skips a request with a quote
+waiting, as it skips one with a proposed time (decision D8). When the quote goes (turned down, withdrawn) the supplier has its time to answer again: a showcase request gets the whole `RespondWithinMinutes`,
+a host's request keeps its deadline unless it has passed, and then the window of `HostResponseMinutes` starts again.
+
+### 34.6 What is told, and to whom (e-mail and push; nothing else is sent)
+
+| Event | To | E-mail (`EmailTemplates.Names`) | Push `type` (new, for the app) |
+|---|---|---|---|
+| quote sent | the host (Italian, the link to the stay when the request has one) | `service-request-quote-received` | `service-request-quote-sent` (to the hosts of the property) |
+| quote sent | the showcase customer (its language, with the lines, the total and the deadline) | `service-request-quote-received` | — |
+| accepted / turned down by the host or the customer | the supplier (Italian, comune and "Nome C." only) | `service-request-quote-answered` | `service-request-quote-accepted` / `service-request-quote-rejected` (to the supplier org) |
+| accepted by a showcase customer | the customer, the usual "request taken" e-mail with the price agreed | `supplier-booking-accepted` | — |
+| not answered in time (showcase) | the customer / the supplier | `supplier-booking-quote-expired` / `supplier-booking-quote-lapsed` | `service-request-quote-expired` (to the supplier org) |
+
+A quote taken back sends nothing. No text promises a time of answer, a payment date or a payment (decisions D24, SP-D14). The delivery key of every push carries the instant of the quote, so a retry is one push and
+the next quote is another (`PushDeliveryKeys.ServiceRequestQuote`). **For the mobile app (MO-SP04-1):** four new `data.type` values, and the new `quote` field in the DTOs; the status values do not change.
+
+### 34.7 The history
+
+`history[]` of the **supplier's console** (`GET api/supplier/inbox/{id}`) tells the quotes: `quote_sent`, `quote_rejected` and `quote_withdrawn` are steps of the status `Richiesto` with `event` set, the take that
+accepted a quote has `event: quote_accepted`, the cancellation of a quote nobody answered has `event: quote_expired` (and the reason code `QuoteNotAnswered`). A client that does not know `event` shows the step by its
+status. The history of the host's DTO and of the supplier's older readers (`ServiceRequestDto.history`) does **not** carry the quote steps, so the timelines already built (repeated "Richiesto" steps) do not change.
+The host's Home gets the quote among the things to do (`RespondToServiceRequest`: the same case as a proposed time).
+
+### 34.8 Decisions applied (defaults, nothing asked)
+
+SP-D15 as written: the quote leans on the time of the request and may offer another, which is not held; one quote at a time, a new one replaces the old; the customer of the showcase has the 24 hours of the proposed time, a
+host has no deadline; the total is the price agreed and the reference of D7. SP-D17: host and showcase customer, the same states and the same endpoints. SP-D30: this is the engine that the offer of the showcase (SP-10b-b)
+reuses. The brief's flag `SupplierQuotes` is not created (override of 17/10): sending is always on, and the answers of the host and of the customer exist in the same release as the offer.
+
+### 34.9 Known limits (follow-ups, nothing is broken)
+
+- **SP-04b-FU1** — the supplier's average response time counts a quote accepted days later like a proposed time accepted late (`TakenAt` is the instant of the customer's answer): a column for the instant
+  the supplier answered is the fix (as SP-04e-F1).
+- **SP-04b-FU2** — a showcase customer cannot ask for another time while a quote waits, only turn the quote down first; no message from the customer to the supplier exists (the chat is SP-10b).
+- **SP-04b-FU3** — a quote taken back is not told to the customer (it sees the quote vanish from the page); the e-mail of a quote that was replaced says nothing of the previous one.
+- The note and the lines of a quote are the supplier's text and are not scrubbed by the retention of the customers' personal data (like the message of a proposed time); an accepted quote keeps its lines (not the note) as price lines.
+- Demo seed: not applicable (the demo showcase has no supplier, service or request data, runbook 27.12).
+
+### 34.10 After a deploy
+
+Nothing to configure and no new setting. The migration adds the columns (empty) and the two checks. To try it on a test supplier: `POST api/service-requests/{id}/quote` with a line or two on a new request of a host, then
+`POST …/quote/accept` with `quoteSentAt` as given; for a showcase booking `SupplierShowcaseBooking` has to be on (section 23).
 
 ## Known limits (other tasks)
 
