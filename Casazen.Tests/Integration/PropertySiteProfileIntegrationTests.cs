@@ -74,7 +74,9 @@ public class PropertySiteProfileIntegrationTests : IClassFixture<CasazenWebAppli
 
         // Read back exactly as saved, and stored in the columns of the property.
         var read = await client.GetFromJsonAsync<JsonElement>(UrlOf(property.Id));
-        Assert.Equal(Without(body, "updatedAt"), Without(read, "updatedAt"));
+        // The instant and the number of decimals of the index (148.4 as sent, 148.40 as the column keeps it) are not part of the comparison.
+        Assert.Equal(Without(body, "updatedAt", "energyIndex"), Without(read, "updatedAt", "energyIndex"));
+        Assert.Equal(148.4m, read.GetProperty("energyIndex").GetDecimal());
         var stored = await LoadAsync(property.Id);
         Assert.Equal("D", stored.EnergyClass);
         Assert.Equal("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ", stored.VideoUrl);
@@ -166,10 +168,12 @@ public class PropertySiteProfileIntegrationTests : IClassFixture<CasazenWebAppli
     private static string? ZoneOf(Property property) =>
         SitePropertyProfileJson.Parse(property.SiteProfileJson).Zone?.It;
 
-    private static string Without(JsonElement element, string name)
+    private static string Without(JsonElement element, params string[] names)
     {
         var node = JsonNode.Parse(element.GetRawText())!.AsObject();
-        node.Remove(name);
+        foreach (var name in names)
+            node.Remove(name);
+
         return node.ToJsonString();
     }
 

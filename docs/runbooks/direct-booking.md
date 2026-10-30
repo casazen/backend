@@ -925,6 +925,38 @@ writes a few lines to the host, who gets them by email and answers from their ma
 - **Not done here.** A copy or a receipt to the visitor, a per-org cap against a distributed flood, a thread of the conversation in the
   app, the languages of the email to the host (Italian only).
 
+### 11.10 Writing to the host: «Scrivi a {host}» (DB-03b)
+
+`POST /api/public/orgs/{slug}/contact` (anonymous, no flag, no migration, no entity): a visitor of the booking site who has no booking yet
+writes a few lines to the host, who gets them by email and answers from their mailbox.
+
+```json
+{ "email": "anna@example.com", "message": "Ciao, c'è posto a Ferragosto?", "name": "Anna", "propertyId": "…", "lang": "en",
+  "consent": true, "website": "" }
+```
+
+- **Answer.** `202` with no body, **the same for every org that exists**: whether it publishes its contact email on the site
+  (`ContactEmailPublic` is about showing the address, the form never shows it), has one or not, and whether the honeypot caught the call.
+  The answer never says whether the message reached anybody. `404` for a site that does not resolve (its former slugs do, PL-04); `400`
+  `validation_error` for a body that breaks the limits, `host_contact_consent_required` when `consent` is not `true`,
+  `host_contact_email_invalid` (a plain address only, no display name), `host_contact_message_invalid` (5 to 2000 characters once trimmed);
+  `429` `rate_limited` (see below). The body is capped at 16 KB; `name` up to 100 characters; `lang` is `it` or `en` (anything else is
+  ignored); `propertyId` counts only if it is a published property of that org, otherwise it is ignored and tells nothing.
+- **Honeypot.** `website` is a field no person fills: when it has a value the call is answered `202` and nothing is sent.
+- **Limits.** Per client IP (`PublicContact`, 5 / 10 min) and per address and org (`HostContactPerEmail`, 3 / day, counted under the id of
+  the org, so a former slug shares the budget; its 429 always names the whole window). Variables in [proxy-ip.md](proxy-ip.md).
+- **The email** (`host-contact-message`, one per accepted message, to `Orgs.ContactEmail`, in Italian like the other emails to the host)
+  carries the text of the visitor (HTML-encoded, line breaks kept), their address and name, the property with a link to its page and the
+  language of the site they were reading; the subject has no personal data. Its **`Reply-To` is the visitor's address**, so the host answers
+  by replying; the sender stays the configured one (`EmailContent.ReplyTo`, `IEmailService.SendEmailAsync(…, replyTo)`; a message with a
+  reply-to goes through its own Hangfire job `SendWithReplyToAsync`, the emails without it through the job they always used). It is the
+  consequence of a person's action (the visitor sent the form), never automatic, and it is the only email that leaves.
+- **Privacy.** Nothing is stored. The log has the org id and whether the email was queued, never the address, the name or the text. The text
+  lives in the Hangfire job of the email until the job is deleted, like the body of every other email. An org without a contact email
+  drops the message quietly (log line with the org id).
+- **Not done here.** A copy or a receipt to the visitor, a per-org cap against a distributed flood, a thread of the conversation in the
+  app, the languages of the email to the host (Italian only).
+
 ### 11.11 The amenity catalog (DB-11a)
 
 `GET api/public/amenities` (anonymous, `PublicRead` limit, `Cache-Control: public, max-age=3600`) is the reference list the public property page
@@ -1028,8 +1060,29 @@ What is read by the public page, the JSON-LD, the amenity catalog and the filter
   `_energy_class_invalid`, `_energy_index_invalid`, `_energy_index_without_class`, `_check_in_window_invalid`, `_too_many_highlights`, `_too_many_safety_notes`.
 - **Migration `AddPropertySiteProfile`**: eleven nullable columns and four constraints on `Properties`, no data touched, no flag, no environment variable.
   Rollback: deploy the previous release (it ignores the columns); `Down` drops them and what the hosts wrote is lost.
-- **Not here** (next pieces of DB-11a): the public property page and its JSON-LD reading this profile, the amenity catalog, the filters of the search on
-  labels and children, floor plans and points of interest, alternative text and size of the photos.
+- **The public page (second piece).** `profile` in `PublicPropertyDetailDto`, on both routes (`GET api/public/orgs/{slug}/properties/{slugOrId}` and
+  `GET api/properties/{id}/public`; one projection, `PropertyService.DetailRow`, built by `PublicPropertyProfileBuilder`): `headline` (the listing title of the
+  wizard), `accommodationType`, `beds`, `areaSqm`, `floorLevel`, `floorNote`, `outdoorNote`, `renovatedYear`, `energy {class, index}`, `areaKind`, `zone`, `near`,
+  `tags` (the host's and the ones the data give, in the order of the vocabulary), `highlights`, `safetyNotes`, `rules` and the `video` / `tour` (`{url, provider}`).
+  **Only what the host said**: a member never said is `null` (a list: empty), `rules` is `null` when none of its members is set, and the page does not draw
+  that section. `rules` = `checkIn {from, to, method}`, `checkOutBy`, `quietHours {from, to}` (a pair or nothing), `pets` / `smoking` / `parties` (the wizard's
+  answers: `No`, `OnRequest`/`OutdoorsOnly`, `Yes`), `childrenWelcome`, `note`. A latest arrival that is not after the earliest (the wizard moved the
+  earliest later) is left out. The extra-guest fee of the wizard is **not** published: the quote does not charge it (SR-07a-FU1). Texts are `{it, en}`; the page
+  shows English only when the host wrote it. The columns that hold the texts as stored (`SiteProfileJson`, `PhotoAltJson`) are never part of a response.
+- **JSON-LD** of the property page (`VacationRental`): `containsPlace.floorSize` (m², `MTK`), `checkinTime`, `checkoutTime` and `petsAllowed` are written when the host
+  stated them (`false` only when the pets rule says No); nothing else is added, no `aggregateRating`.
+- **Demo.** The showcase property «Villa del Lago» carries a site profile (scenario `property-site-profile`, catalog `2026-10-30.1`), applied through the same rules as the
+  host form; no video or tour (nothing of a third party is embedded from a demo).
+- **Photos: alternative text and size (third piece).** `GET` / `PUT api/properties/{id}/site-profile/photos` (same permissions as the profile): the gallery in display order, each
+  photo `{ url, alt {it, en}, width, height }`. The `PUT` lists the photos that have an alternative text (Italian always, English if the host wants, 200 characters, same rules as the
+  texts above, `field: photos`) and the gallery photos it does not list **lose theirs**; an address that is not in the gallery is 404 `property_photo_not_found`; the size is not
+  part of the body. The map lives in `Properties.PhotoAltJson` and **follows the gallery under the same lock as the photo service**: an upload reads the size of the
+  file (PNG, JPEG or WebP header, no decoding; a JPEG a phone took on its side gives its width and height swapped, as the browser draws it; unreadable = no size, the upload is
+  never refused for it) and a deleted photo takes its text and size with it. A photo uploaded before this existed has no size. The public detail lists `photos` next to
+  `photoUrls`, which stays. **No resized variants**: nothing in the stack resizes images (no library, no CDN transform), so `srcset` is left to a later decision; the size lets the page
+  reserve the room and load the first photo with priority.
+- **Not here** (next pieces of DB-11a): the amenity catalog is `GET api/public/amenities` (§ 11.11); the filters of the search on labels and children are in § 11.4a; floor plans
+  and points of interest.
 - **Tests.** Unit: `SiteEmbedUrlsTests` (what an embed address can become), `SitePropertyProfileRulesTests` (clean, canonical, within the limits and the
   vocabularies). HTTP: `PropertySiteProfileIntegrationTests` (replace, read back, a mistake saves nothing, another org / a colleague / anonymous / long-term).
   PostgreSQL (CI): `AddPropertySiteProfileMigrationPostgresTests` (existing properties come out empty and published as before; the constraints), `LegacyRowsSchemaTests`.

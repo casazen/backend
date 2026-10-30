@@ -47,6 +47,19 @@ public class PublicPropertyDetailDto : PublicPropertyDto
     public string? CanonicalUrl { get; set; }
 
     /// <summary>
+    /// What the host said about the house (DB-11a): specifications, the place, the labels, highlights, safety notes, rules and times, video and
+    /// tour. Only what the host filled in: a member the host never said is <c>null</c> (a list: empty) and the page does not draw its section.
+    /// Never an address or an exact position.
+    /// </summary>
+    public PublicPropertyProfileDto Profile { get; set; } = new();
+
+    /// <summary>
+    /// The photos of the gallery in display order (the first is the cover), each with its alternative text and size (DB-11a). Lists the same
+    /// addresses as <see cref="PublicPropertyDto.PhotoUrls"/>, which stays.
+    /// </summary>
+    public IReadOnlyList<PublicPropertyPhotoDto> Photos { get; set; } = [];
+
+    /// <summary>
     /// The number and the average mark of the public reviews of the property (DB-12a), set by the endpoint. <b>Absent</b> from the JSON
     /// (not <c>null</c>, not zero) while the property has no review: a page never shows stars or «0 recensioni».
     /// </summary>
