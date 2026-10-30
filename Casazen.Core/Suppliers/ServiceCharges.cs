@@ -52,6 +52,59 @@ public static class ServiceCharges
     /// of the same refund sends the same key and gets the same Stripe refund.
     /// </summary>
     public static string RefundIdempotencyKey(Guid paymentId, int sequence) => $"service-charge-refund:{paymentId:N}:{sequence}";
+
+    // ─── The payment held by CasaZen (SP-15c-a) ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// <c>metadata</c> key of the booking hold a PaymentIntent blocks the card for, before the request exists (the payment is created when
+    /// the e-mail is checked and the block succeeded). The webhook finds the hold by the PaymentIntent and checks this id against it.
+    /// </summary>
+    public const string HoldMetadataKey = "showcaseHoldId";
+
+    /// <summary>
+    /// <c>metadata</c> key that marks a PaymentIntent created on the platform account for money CasaZen holds (<see cref="HeldFunds"/>), as
+    /// opposed to a direct charge on a supplier's account. Informative: the payment's <c>FundsModel</c> decides what CasaZen does.
+    /// </summary>
+    public const string FundsMetadataKey = "funds";
+
+    /// <summary>Value of <see cref="FundsMetadataKey"/> for a payment held by the platform.</summary>
+    public const string HeldFunds = "platform-held";
+
+    /// <summary>
+    /// The Stripe <c>transfer_group</c> of the payment of a request created as such (a host who pays from a link): every PaymentIntent,
+    /// refund and transfer of the money carries it, so the whole life of the money of one job can be found on the Stripe Dashboard with
+    /// one search. One live payment per request, so one group.
+    /// </summary>
+    public static string TransferGroup(Guid serviceRequestId) => $"service-request-{serviceRequestId:N}";
+
+    /// <summary>
+    /// The <c>transfer_group</c> of the money of a booking hold, which has a PaymentIntent before the request exists (the request id is not
+    /// known yet). The payment keeps it (<c>ServiceRequestPayment.TransferGroup</c>), so the transfer to the supplier is found by it.
+    /// </summary>
+    public static string HoldTransferGroup(Guid holdId) => $"service-hold-{holdId:N}";
+
+    /// <summary>Idempotency key of the PaymentIntent that blocks the card of a booking hold: the same hold is the same PaymentIntent.</summary>
+    public static string HoldAuthorizationIdempotencyKey(Guid holdId) => $"service-hold:{holdId:N}";
+
+    /// <summary>Idempotency key of the cancellation of the block of a hold (the hold lapsed, was removed, or its payment was refused).</summary>
+    public static string HoldCancellationIdempotencyKey(Guid holdId, string paymentIntentId) =>
+        $"service-hold-cancel:{holdId:N}:{paymentIntentId}";
+
+    /// <summary>Idempotency key of the capture of a payment's PaymentIntent: a payment is charged once, however many times the supplier tries.</summary>
+    public static string CaptureIdempotencyKey(Guid paymentId) => $"service-capture:{paymentId:N}";
+
+    /// <summary>
+    /// Idempotency key of the <paramref name="attempt"/>-th transfer of a payment to the supplier. The attempt grows only when Stripe
+    /// <b>refused</b> the previous one (Stripe remembers the answer to a key for a day, so the same key would replay the refusal); a try
+    /// whose answer was lost is repeated with the same key and finds the transfer it may have created.
+    /// </summary>
+    public static string TransferIdempotencyKey(Guid paymentId, int attempt) => $"service-transfer:{paymentId:N}:{attempt}";
+
+    /// <summary><c>metadata.kind</c> of the Stripe transfers CasaZen makes to a supplier for a service payment.</summary>
+    public const string TransferKind = "service-transfer";
+
+    /// <summary>The PaymentIntent statuses of a block that can be charged: the card is blocked and nothing was collected yet.</summary>
+    public static bool IsCapturable(string? stripeStatus) => stripeStatus == "requires_capture";
 }
 
 /// <summary>

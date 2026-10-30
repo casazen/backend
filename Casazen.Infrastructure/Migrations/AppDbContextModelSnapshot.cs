@@ -6822,8 +6822,28 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("ApplicationFeeCents")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("AuthorizationExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("AuthorizedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("CanceledAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CapturedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CardDisputeAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CardDisputeId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("CardDisputeStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<decimal>("CommissionPercent")
                         .HasColumnType("numeric(5,2)");
@@ -6849,6 +6869,12 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int?>("FeeVatMode")
                         .HasColumnType("integer");
+
+                    b.Property<int>("FundsModel")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("HoldWarnedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("LastSentAt")
                         .HasColumnType("timestamp with time zone");
@@ -6895,6 +6921,15 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("RefundedCents")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("ReleaseAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ReleaseConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ReleasedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("RequestedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -6907,12 +6942,37 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
+                    b.Property<string>("StripeChargeId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<string>("StripePaymentIntentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("StripeTransferId")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
                     b.Property<Guid>("SupplierOrgId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("TransferAlertedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("TransferAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TransferFailureCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("TransferGroup")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("TransferNextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -6931,6 +6991,15 @@ namespace Casazen.Infrastructure.Migrations
                         .HasDatabaseName("UIX_ServiceRequestPayments_StripePaymentIntentId")
                         .HasFilter("\"StripePaymentIntentId\" IS NOT NULL");
 
+                    b.HasIndex("StripeTransferId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ServiceRequestPayments_StripeTransferId")
+                        .HasFilter("\"StripeTransferId\" IS NOT NULL");
+
+                    b.HasIndex("Status", "ReleaseAt")
+                        .HasDatabaseName("IX_ServiceRequestPayments_Held_Status_ReleaseAt")
+                        .HasFilter("\"FundsModel\" = 1");
+
                     b.HasIndex("SupplierOrgId", "Status");
 
                     b.ToTable("ServiceRequestPayments", t =>
@@ -6940,6 +7009,10 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_ServiceRequestPayments_CommissionPercent", "\"CommissionPercent\" BETWEEN 0 AND 50");
 
                             t.HasCheckConstraint("CK_ServiceRequestPayments_FeeVat", "(\"FeeVatMode\" IS NULL AND \"FeeVatCents\" IS NULL) OR (\"FeeVatMode\" IS NOT NULL AND \"FeeVatCents\" IS NOT NULL AND \"FeeVatCents\" >= 0)");
+
+                            t.HasCheckConstraint("CK_ServiceRequestPayments_Funds", "\"FundsModel\" IN (0, 1) AND (\"Status\" < 8 OR \"FundsModel\" = 1) AND (\"FundsModel\" = 0 OR \"ConnectedAccountId\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_ServiceRequestPayments_Held", "(\"Status\" NOT IN (9, 10, 11, 12) OR \"CapturedAt\" IS NOT NULL) AND (\"Status\" <> 10 OR (\"StripeTransferId\" IS NOT NULL AND \"ReleasedAt\" IS NOT NULL)) AND \"TransferAttempts\" >= 0");
 
                             t.HasCheckConstraint("CK_ServiceRequestPayments_Paid", "\"Status\" NOT IN (2, 5, 6) OR (\"PaidAt\" IS NOT NULL AND \"PaidVia\" IS NOT NULL)");
 
@@ -7046,6 +7119,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<DateTime?>("EmailVerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("EndUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -7059,6 +7135,12 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("PayloadEncrypted");
 
+                    b.Property<int?>("PaymentAmountCents")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("PaymentAuthorizedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("PublicCode")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -7069,6 +7151,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime>("StartUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StripePaymentIntentId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<string>("TokenHash")
                         .IsRequired()
@@ -7081,6 +7167,11 @@ namespace Casazen.Infrastructure.Migrations
                         .HasDatabaseName("IX_ShowcaseBookingHolds_ExpiresAt");
 
                     b.HasIndex("ServiceRequestId");
+
+                    b.HasIndex("StripePaymentIntentId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ShowcaseBookingHolds_StripePaymentIntentId")
+                        .HasFilter("\"StripePaymentIntentId\" IS NOT NULL");
 
                     b.HasIndex("OrgId", "ClientRequestId")
                         .IsUnique()
@@ -7101,6 +7192,8 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_ShowcaseBookingHolds_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
 
                             t.HasCheckConstraint("CK_ShowcaseBookingHolds_Interval", "\"StartUtc\" < \"EndUtc\"");
+
+                            t.HasCheckConstraint("CK_ShowcaseBookingHolds_Payment", "(\"StripePaymentIntentId\" IS NULL AND \"PaymentAmountCents\" IS NULL AND \"PaymentAuthorizedAt\" IS NULL) OR (\"StripePaymentIntentId\" IS NOT NULL AND \"PaymentAmountCents\" > 0)");
                         });
                 });
 

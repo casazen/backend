@@ -186,10 +186,24 @@ public sealed partial class SupplierPaymentService
             {
                 var list = new List<ServicePaymentNotice>();
                 var payment = await LoadPaymentAsync(paymentId, cancellationToken);
-                if (payment is not { StripePaymentIntentId: { } intentId, ConnectedAccountId: { } accountId })
+                if (payment is not { StripePaymentIntentId: { } intentId })
                     return list;
 
-                var snapshots = await gateway.ListRefundsAsync(intentId, accountId, cancellationToken);
+                // The refunds of the money CasaZen holds are on the platform account, the others on the supplier's.
+                IReadOnlyList<ServiceChargeRefund> snapshots;
+                if (payment.FundsModel == ServiceFundsModel.PlatformHeld)
+                {
+                    snapshots = await Platform.ListRefundsAsync(intentId, cancellationToken);
+                }
+                else if (payment.ConnectedAccountId is { } accountId)
+                {
+                    snapshots = await gateway.ListRefundsAsync(intentId, accountId, cancellationToken);
+                }
+                else
+                {
+                    return list;
+                }
+
                 await ApplyRefundSnapshotsAsync(payment, snapshots, list, cancellationToken);
                 return list;
             },

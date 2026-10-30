@@ -165,6 +165,12 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public string SupplierConnectOnboardingRefresh() => Build(SupplierSettingsPagePath + "?stripe_refresh=1");
 
     /// <summary>
+    /// The supplier's settings page, where the payments account is completed (SP-15c-a: the e-mail of a payment waiting for the account links
+    /// here). Built by the server.
+    /// </summary>
+    public string SupplierSettings() => Build(SupplierSettingsPagePath);
+
+    /// <summary>
     /// "Le mie prenotazioni" of the org's booking site (BK-10, BK-11): the guest finds a booking there with its code and
     /// email. The checkout outcome page (BK-07) needs the checkout token, which only the guest's browser has, so emails
     /// link here. With <paramref name="bookingCode"/> the page opens with the code filled in (<c>?code=</c>) and still asks

@@ -49,6 +49,10 @@ public sealed partial class SupplierPaymentService
                 ?? await NewPaymentAsync(request, amount, ServiceRequestJson.ReadPriceLines(request.PriceLinesJson), now, cancellationToken);
             var isNew = db.Entry(payment).State == EntityState.Detached;
 
+            // The money CasaZen holds (SP-15c-a) is neither asked for nor reminded: it is already paid by the card the payer blocked.
+            if (payment.FundsModel == ServiceFundsModel.PlatformHeld)
+                throw payment.Status == ServicePaymentStatus.Released ? AlreadyPaid() : HeldByCasaZen();
+
             switch (payment.Status)
             {
                 case ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded:
@@ -151,6 +155,10 @@ public sealed partial class SupplierPaymentService
             var live = await LivePaymentOf(request.Id).ToListAsync(cancellationToken);
             foreach (var open in live)
             {
+                // The money CasaZen holds (SP-15c-a) reaches the supplier by the release; it cannot be declared received from elsewhere.
+                if (open.FundsModel == ServiceFundsModel.PlatformHeld)
+                    throw open.Status == ServicePaymentStatus.Released ? AlreadyPaid() : HeldByCasaZen();
+
                 switch (open.Status)
                 {
                     case ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded:

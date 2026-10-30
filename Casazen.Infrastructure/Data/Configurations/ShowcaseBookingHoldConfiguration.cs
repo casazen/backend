@@ -38,10 +38,22 @@ internal sealed class ShowcaseBookingHoldConfiguration : IEntityTypeConfiguratio
         entity.HasIndex(h => h.ExpiresAt).HasDatabaseName("IX_ShowcaseBookingHolds_ExpiresAt");
         entity.HasIndex(h => new { h.OrgId, h.EmailHash }).HasDatabaseName("IX_ShowcaseBookingHolds_OrgId_EmailHash");
 
+        // SP-15c-a: a PaymentIntent blocks the card of one hold only; the webhook finds the hold by it.
+        entity.HasIndex(h => h.StripePaymentIntentId)
+            .IsUnique()
+            .HasDatabaseName("UIX_ShowcaseBookingHolds_StripePaymentIntentId")
+            .HasFilter("\"StripePaymentIntentId\" IS NOT NULL");
+
         entity.ToTable(t =>
         {
             t.HasCheckConstraint("CK_ShowcaseBookingHolds_Interval", "\"StartUtc\" < \"EndUtc\"");
             t.HasCheckConstraint("CK_ShowcaseBookingHolds_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
+
+            // A hold that blocks a card says how much (a positive amount); one that does not has no trace of a payment.
+            t.HasCheckConstraint(
+                "CK_ShowcaseBookingHolds_Payment",
+                "(\"StripePaymentIntentId\" IS NULL AND \"PaymentAmountCents\" IS NULL AND \"PaymentAuthorizedAt\" IS NULL) "
+                + "OR (\"StripePaymentIntentId\" IS NOT NULL AND \"PaymentAmountCents\" > 0)");
         });
     }
 }

@@ -1545,6 +1545,27 @@
   <data name="ServicePaymentAlert_Detail" xml:space="preserve">
     <value>Dettaglio: {0}</value>
   </data>
+  <data name="ServiceFundsAlert_Subject" xml:space="preserve">
+    <value>Pagamento custodito da controllare: {0}</value>
+  </data>
+  <data name="ServiceFundsAlert_Body" xml:space="preserve">
+    <value>Per un servizio il denaro è custodito da CasaZen e qualcosa richiede attenzione: vedi il dettaglio qui sotto.</value>
+  </data>
+  <data name="ServiceFundsAlert_Action" xml:space="preserve">
+    <value>Controlla il pagamento su Stripe e nella console di amministrazione e decidi come procedere.</value>
+  </data>
+  <data name="ServiceFundsAccountNotReady_Subject" xml:space="preserve">
+    <value>Completa il tuo conto per ricevere {0}</value>
+  </data>
+  <data name="ServiceFundsAccountNotReady_Body" xml:space="preserve">
+    <value>Il pagamento del lavoro &lt;strong&gt;{0}&lt;/strong&gt; è pronto per esserti trasferito, ma il tuo conto per i pagamenti non può ancora ricevere denaro. Appena lo completi, CasaZen ti trasferisce {1}.</value>
+  </data>
+  <data name="ServiceFundsAccountNotReady_Cta" xml:space="preserve">
+    <value>Completa il conto</value>
+  </data>
+  <data name="ServicePaymentRefundedCustomer_Body" xml:space="preserve">
+    <value>È stato emesso un rimborso di &lt;strong&gt;{3}&lt;/strong&gt; per il pagamento del servizio &lt;strong&gt;{1}&lt;/strong&gt; di {0}.</value>
+  </data>
   <data name="HostInvite_Subject" xml:space="preserve">
     <value>Invito CasaZen — Registrati come host</value>
   </data>

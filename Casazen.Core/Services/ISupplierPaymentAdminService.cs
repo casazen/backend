@@ -22,9 +22,21 @@ public sealed record AdminServicePaymentQuery(
 
 /// <summary>
 /// One service payment as the admin sees it: gross, commission, net, what was refunded and the commission that went back with it
-/// (in proportion, <c>SupplierCommission.FeeRefundedCents</c>). Ids of the supplier and the payer org and their names; no email,
-/// no phone, no address.
+/// (in proportion, <c>SupplierCommission.FeeRefundedCents</c>; for the money CasaZen holds, all of it only when everything went back).
+/// Ids of the supplier and the payer org and their names; no email, no phone, no address. The last members are the money CasaZen holds
+/// (SP-15c-a): empty for a direct charge.
 /// </summary>
+/// <param name="FundsModel">Whose money the payment is in flight: the supplier's (a direct charge) or CasaZen's (held).</param>
+/// <param name="CapturedAt">When the card was charged (held money).</param>
+/// <param name="ReleaseAt">When the money is due to the supplier; empty until the work is completed.</param>
+/// <param name="ReleasedAt">When the supplier was paid.</param>
+/// <param name="StripeTransferId">The transfer that paid the supplier.</param>
+/// <param name="TransferAttempts">Transfers Stripe refused so far.</param>
+/// <param name="TransferFailureCode">Why the last transfer did not go (a Stripe code or <c>account_not_ready</c>).</param>
+/// <param name="TransferNextAttemptAt">When the release job tries the transfer again.</param>
+/// <param name="CardDisputeId">The card dispute (a chargeback) Stripe opened on the charge, if any: after the release it is CasaZen's loss.</param>
+/// <param name="CardDisputeStatus">Stripe's status of the card dispute.</param>
+/// <param name="CardDisputeAt">When Stripe last told about the card dispute.</param>
 public sealed record AdminServicePaymentItem(
     Guid Id,
     Guid ServiceRequestId,
@@ -47,7 +59,18 @@ public sealed record AdminServicePaymentItem(
     string? FailureCode,
     string? StripePaymentIntentId,
     string? ConnectedAccountId,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    ServiceFundsModel FundsModel = ServiceFundsModel.DirectCharge,
+    DateTime? CapturedAt = null,
+    DateTime? ReleaseAt = null,
+    DateTime? ReleasedAt = null,
+    string? StripeTransferId = null,
+    int TransferAttempts = 0,
+    string? TransferFailureCode = null,
+    DateTime? TransferNextAttemptAt = null,
+    string? CardDisputeId = null,
+    string? CardDisputeStatus = null,
+    DateTime? CardDisputeAt = null);
 
 /// <summary>A payment with its refunds, newest last.</summary>
 public sealed record AdminServicePaymentDetail(AdminServicePaymentItem Payment, IReadOnlyList<ServiceRequestPaymentRefund> Refunds);

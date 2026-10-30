@@ -35,6 +35,12 @@ namespace Casazen.Infrastructure.Services;
 /// pending-request jobs (<see cref="ISupplierPaymentJobService"/>, <c>.Jobs.cs</c>) and the admin refunds
 /// (<see cref="ISupplierPaymentRefundService"/>, <c>.Refunds.cs</c>): one payment lock, one way to issue a link and one way to
 /// read a PaymentIntent for all of them. The admin reads are in <c>SupplierPaymentAdminService</c>.</para>
+/// <para><b>SP-15c-a: the second model, money held by CasaZen.</b> A payment whose <c>FundsModel</c> is
+/// <see cref="ServiceFundsModel.PlatformHeld"/> follows the cycle <c>Authorized → Held → Released</c> (or a refund) described in
+/// <see cref="ISupplierFundsService"/>: the PaymentIntent is on the platform, the card is blocked then charged, and CasaZen transfers the
+/// supplier's part. It lives in <c>.Funds.cs</c> (the lifecycle), <c>.FundsRelease.cs</c> (the transfer), <c>.FundsWebhook.cs</c> (the events) and
+/// <c>.FundsJobs.cs</c> (the job), and uses the same lock, the same refund rows and the same notices as the direct charge. The code of the
+/// direct charge is not changed except where a held payment would otherwise be mistaken for one (it is told apart by <c>FundsModel</c>).</para>
 /// </remarks>
 public sealed partial class SupplierPaymentService(
     AppDbContext db,
@@ -47,12 +53,19 @@ public sealed partial class SupplierPaymentService(
     IConfiguration configuration,
     ISupplierPaymentJobScheduler jobScheduler,
     ILogger<SupplierPaymentService> logger,
-    TimeProvider? timeProvider = null)
-    : ISupplierPaymentService, ISupplierPaymentWebhookService, ISupplierPaymentJobService, ISupplierPaymentRefundService
+    TimeProvider? timeProvider = null,
+    IPlatformPaymentGateway? platformGateway = null,
+    IServiceCustomerReader? customerReader = null)
+    : ISupplierPaymentService, ISupplierPaymentWebhookService, ISupplierPaymentJobService, ISupplierPaymentRefundService,
+        ISupplierFundsService, ISupplierFundsJobService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     private DateTime Now() => _clock.GetUtcNow().UtcDateTime;
+
+    /// <summary>The gateway of the money held by CasaZen (SP-15c-a). Registered with the application; a test that never holds money passes none.</summary>
+    private IPlatformPaymentGateway Platform =>
+        platformGateway ?? throw new InvalidOperationException("The platform payment gateway is not configured.");
 
     /// <summary>The supplier's side of a payment as it is now: its Stripe account, whether it can be paid, and its name.</summary>
     private sealed record SupplierState(string? AccountId, bool CanReceivePayments, string Name);
@@ -84,14 +97,11 @@ public sealed partial class SupplierPaymentService(
         if (request.PaymentMode != ServiceRequestPaymentMode.Online)
             return new ServicePaymentPlan(ServiceRequestPaymentMode.Manual, null, null);
 
-        // A request from a supplier's public showcase (SP-10) is never charged here: it is taken as a manual one, and this keeps a
-        // path that set it online by mistake from sending a payment link to the supplier's own address.
+        // A request from a supplier's public showcase (SP-10) never gets a payment link: it is either paid with the card the customer
+        // blocked when it booked (SP-15c-a: the payment exists since the booking, and completing the work only fixes when the money is due)
+        // or taken as a manual one. This keeps a path that set it online by mistake from sending a payment link to the supplier's own address.
         if (request.RentalContext == ServiceRequestRentalContext.Showcase)
-        {
-            logger.LogWarning(
-                "ServiceRequest {Id}: a request from a supplier's showcase is not paid inside CasaZen, it is completed as a manual one", request.Id);
-            return new ServicePaymentPlan(ServiceRequestPaymentMode.Manual, null, null);
-        }
+            return await PlanHeldCompletionAsync(request, finalAmountCents, cancellationToken);
 
         // The flag stops the creation of payment requests; what exists stays payable (money in flight). A request taken while it was
         // on is completed as a manual one now: nothing is stuck, the host marks it paid as before.

@@ -3187,6 +3187,21 @@
   <data name="ServicePaymentStateChanged" xml:space="preserve">
     <value>Il pagamento è stato appena modificato da un'altra operazione: ricarica la pagina e verifica lo stato attuale.</value>
   </data>
+  <data name="ServicePaymentCaptureFailed" xml:space="preserve">
+    <value>Non è stato possibile addebitare la carta del cliente: la richiesta non è stata accettata e nulla è cambiato.</value>
+  </data>
+  <data name="ServicePaymentAuthorizationExpired" xml:space="preserve">
+    <value>L'importo bloccato sulla carta del cliente non è più disponibile: la richiesta non può essere accettata e viene chiusa. Il cliente può prenotare di nuovo.</value>
+  </data>
+  <data name="ServicePaymentAmountLocked" xml:space="preserve">
+    <value>Il cliente ha già bloccato questo importo sulla carta: non puoi indicare un totale diverso né aggiungere voci. Per cambiare il prezzo serve una nuova offerta.</value>
+  </data>
+  <data name="ServicePaymentNotConfirmable" xml:space="preserve">
+    <value>Non c'è nulla da confermare: il lavoro non è concluso oppure il pagamento è già chiuso.</value>
+  </data>
+  <data name="ServicePaymentHeld" xml:space="preserve">
+    <value>Il pagamento è custodito da CasaZen: non puoi richiederlo né registrarlo come ricevuto. Ti arriva dopo la conferma del cliente.</value>
+  </data>
   <data name="ServiceRequestNoConfirmationNeeded" xml:space="preserve">
     <value>Non c'è nessun importo da confermare per questa richiesta.</value>
   </data>

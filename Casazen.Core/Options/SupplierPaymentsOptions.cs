@@ -67,6 +67,67 @@ public sealed class SupplierPaymentsOptions
     /// <summary>Highest VAT rate the configuration may carry (percent).</summary>
     public const decimal MaxVatPercent = 100m;
 
+    // ─── The payment held by CasaZen (SP-15c-a, decision VT-D1). Every time below is configuration: Stripe's own limits are not ───
+    // ─── guaranteed by this code, and the product owner decides the ones that depend on the answers of Stripe (VT-D22). ──────────
+
+    /// <summary>
+    /// Longest a card block may last, in hours, that the configuration allows: Stripe keeps a block for 7 days for most cards but for
+    /// 4 days 18 hours (114 hours) for a Visa charged without the cardholder present (VT-D22), so CasaZen never relies on more than
+    /// four days.
+    /// </summary>
+    public const int MaxAuthorizationValidityHours = 96;
+
+    /// <summary>Longest wait between the work and the release, in minutes, that the configuration allows (one week).</summary>
+    public const int MaxReleaseAfterMinutes = 7 * 24 * 60;
+
+    /// <summary>
+    /// How long CasaZen treats the block of a customer's card as usable, in hours (48). It is the longest a supplier has to accept a
+    /// booking: after it the capture is refused, the block is released and the request is closed. <b>Far below</b> what a card keeps
+    /// (<see cref="MaxAuthorizationValidityHours"/>), so a booking is never left "paid" with no money behind it. Env var
+    /// <c>SupplierPayments__AuthorizationValidityHours</c>, 1 to <see cref="MaxAuthorizationValidityHours"/>.
+    /// </summary>
+    public int AuthorizationValidityHours { get; set; } = 48;
+
+    /// <summary>
+    /// Minutes between the completion of the work and the release of the money to the supplier if the payer says nothing (60: the
+    /// rule of the product owner, VT-D1). Env var <c>SupplierPayments__ReleaseAfterMinutes</c>, 0 to <see cref="MaxReleaseAfterMinutes"/>.
+    /// </summary>
+    public int ReleaseAfterMinutes { get; set; } = 60;
+
+    /// <summary>
+    /// The longest CasaZen means to hold a payer's money before releasing it, in days (60). <b>A decision of the product owner</b>, to be
+    /// confirmed with Stripe (VT-D22, question 2: a table of its documentation says 90 days for platforms outside the US, and it is
+    /// not clear whether that is a limit on the platform's balance); this is a setting, never a constant. It does not move any money:
+    /// it makes the admins warned <see cref="HoldWarningDays"/> days before a held payment reaches it. Env var
+    /// <c>SupplierPayments__MaxHoldDays</c>, 1 to 365.
+    /// </summary>
+    public int MaxHoldDays { get; set; } = 60;
+
+    /// <summary>Days before <see cref="MaxHoldDays"/> on which the admins are warned about a payment still held (7). Env var <c>SupplierPayments__HoldWarningDays</c>, 0 to <see cref="MaxHoldDays"/>.</summary>
+    public int HoldWarningDays { get; set; } = 7;
+
+    /// <summary>
+    /// Minutes before the first new try of a transfer Stripe refused, or that could not be made because the supplier's account is not
+    /// ready (15). Stripe does not retry a failed transfer by itself (VT-D22), so the release job does, doubling the wait each time up to
+    /// <see cref="TransferRetryMaxMinutes"/>. Env var <c>SupplierPayments__TransferRetryBaseMinutes</c>, 1 to 1440.
+    /// </summary>
+    public int TransferRetryBaseMinutes { get; set; } = 15;
+
+    /// <summary>The longest wait between two tries of a transfer, in minutes (720 = 12 hours). Env var <c>SupplierPayments__TransferRetryMaxMinutes</c>, <see cref="TransferRetryBaseMinutes"/> to 10080.</summary>
+    public int TransferRetryMaxMinutes { get; set; } = 720;
+
+    /// <summary>
+    /// After this many failed tries of a transfer the admins are told (once) that a supplier is not being paid (5). Env var
+    /// <c>SupplierPayments__TransferAlertAfterAttempts</c>, 1 to 100.
+    /// </summary>
+    public int TransferAlertAfterAttempts { get; set; } = 5;
+
+    /// <summary>The authorization validity as a time span: how long a card block is treated as usable.</summary>
+    public TimeSpan AuthorizationValidity => TimeSpan.FromHours(AuthorizationValidityHours);
+
+    /// <summary>The wait between the completion of the work and the release as a time span.</summary>
+    public TimeSpan ReleaseAfter => TimeSpan.FromMinutes(ReleaseAfterMinutes);
+
     /// <summary>The days of the reminders: <see cref="ReminderDays"/> without duplicates, ascending; 2 and 7 when none is set.</summary>
     public IReadOnlyList<int> EffectiveReminderDays =>
         ReminderDays is { Length: > 0 } ? ReminderDays.Distinct().Order().ToArray() : [2, 7];
@@ -102,6 +163,28 @@ public sealed class SupplierPaymentsOptions
             failures.Add($"{SectionName}__MinAmountCents must be between 1 and {ServiceRequestLimits.MaxAmountCents} cents.");
         if (CommissionVatPercent is { } vat && (vat is < 0m or > MaxVatPercent || decimal.Round(vat, 2) != vat))
             failures.Add($"{SectionName}__CommissionVatPercent must be empty or between 0 and {MaxVatPercent} with at most two decimals.");
+
+        // The held payment (SP-15c-a). A block that outlives what the card networks guarantee would let a booking be accepted with no
+        // money behind it, so the limit is part of the startup check, not of the code that uses it.
+        if (AuthorizationValidityHours is < 1 or > MaxAuthorizationValidityHours)
+        {
+            failures.Add(
+                $"{SectionName}__AuthorizationValidityHours must be between 1 and {MaxAuthorizationValidityHours} hours "
+                + "(a card block lasts 4 days 18 hours at the least: VT-D22).");
+        }
+
+        if (ReleaseAfterMinutes is < 0 or > MaxReleaseAfterMinutes)
+            failures.Add($"{SectionName}__ReleaseAfterMinutes must be between 0 and {MaxReleaseAfterMinutes} minutes.");
+        if (MaxHoldDays is < MinDays or > MaxDays)
+            failures.Add($"{SectionName}__MaxHoldDays must be between {MinDays} and {MaxDays} days.");
+        if (HoldWarningDays < 0 || HoldWarningDays > MaxHoldDays)
+            failures.Add($"{SectionName}__HoldWarningDays must be between 0 and {SectionName}__MaxHoldDays.");
+        if (TransferRetryBaseMinutes is < 1 or > 1440)
+            failures.Add($"{SectionName}__TransferRetryBaseMinutes must be between 1 and 1440 minutes.");
+        if (TransferRetryMaxMinutes < TransferRetryBaseMinutes || TransferRetryMaxMinutes > MaxReleaseAfterMinutes)
+            failures.Add($"{SectionName}__TransferRetryMaxMinutes must be between {SectionName}__TransferRetryBaseMinutes and {MaxReleaseAfterMinutes} minutes.");
+        if (TransferAlertAfterAttempts is < 1 or > 100)
+            failures.Add($"{SectionName}__TransferAlertAfterAttempts must be between 1 and 100.");
         return failures;
     }
 }

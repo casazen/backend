@@ -56,7 +56,101 @@ public sealed partial class SupplierPaymentService
             case ServicePaymentNoticeKind.Refunded when notice.RefundId is { } refundId:
                 await SendRefundNoticesAsync(payment, refundId, cancellationToken);
                 break;
+
+            // The money CasaZen holds (SP-15c-a). The supplier's receipt of a release is the one of a payment received: the same split.
+            case ServicePaymentNoticeKind.Released:
+                await SendReceiptAsync(payment, cancellationToken);
+                break;
+
+            case ServicePaymentNoticeKind.SupplierAccountNotReady:
+                await SendAccountNotReadyAsync(payment, cancellationToken);
+                break;
+
+            case ServicePaymentNoticeKind.FundsAlert:
+                await SendFundsAlertAsync(payment, notice.Detail, cancellationToken);
+                break;
         }
+    }
+
+    /// <summary>
+    /// The supplier is owed money that CasaZen cannot transfer because its Stripe account cannot receive it yet (SP-15c-a): it is asked to
+    /// complete the account. Sent once per payment (when the release first waits for it), ignoring the notification switches of the console: it
+    /// is not news about a request, it is money waiting for the supplier.
+    /// </summary>
+    private async Task SendAccountNotReadyAsync(ServiceRequestPayment payment, CancellationToken cancellationToken)
+    {
+        var recipient = await ReadSupplierEmailAsync(payment.SupplierOrgId, cancellationToken);
+        if (string.IsNullOrWhiteSpace(recipient))
+        {
+            logger.LogWarning("Held payment {PaymentId}: supplier {SupplierOrgId} has no email, the account notice was not queued", payment.Id, payment.SupplierOrgId);
+            return;
+        }
+
+        var context = await ReadContextAsync(payment, cancellationToken);
+        var content = EmailTemplates.ServiceFundsAccountNotReady(
+            EmailTemplates.DefaultCulture, context.ServiceName, payment.NetCents, links.SupplierSettings());
+        if (!emailQueue.Enqueue(recipient, content, EmailTemplates.Names.ServiceFundsAccountNotReady))
+            logger.LogWarning("The account notice of held payment {PaymentId} was not queued", payment.Id);
+    }
+
+    /// <summary>The alert to every active platform admin about the money CasaZen holds (SP-15c-a): ids, amounts and a code, no personal data.</summary>
+    private async Task SendFundsAlertAsync(ServiceRequestPayment payment, string? detail, CancellationToken cancellationToken)
+    {
+        // Users are not tenant-filtered; the platform admins are the ones with the Admin role who can still sign in.
+        var admins = await db.Users
+            .AsNoTracking()
+            .Where(u => u.IsActive && u.Role == UserRole.Admin && u.Email != string.Empty)
+            .Select(u => u.Email)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        if (admins.Count == 0)
+        {
+            logger.LogError("No active platform admin has an email: the funds alert of payment {PaymentId} could not be sent", payment.Id);
+            return;
+        }
+
+        var context = await ReadContextAsync(payment, cancellationToken);
+        var content = EmailTemplates.ServiceFundsAlert(
+            EmailTemplates.DefaultCulture, payment.Id, payment.ServiceRequestId, context.SupplierName, payment.AmountCents, detail);
+        foreach (var admin in admins)
+        {
+            if (!emailQueue.Enqueue(admin, content, EmailTemplates.Names.ServiceFundsAlert))
+                logger.LogWarning("The funds alert of payment {PaymentId} was not queued for one admin", payment.Id);
+        }
+    }
+
+    /// <summary>
+    /// Where to write to the payer of a payment: the contact address of the host org, or, for a private customer of a showcase, the address and
+    /// the language the customer gave (read through the reader of the customers, never from the table). Null when there is none, or the
+    /// customer was anonymized.
+    /// </summary>
+    private async Task<(string Email, System.Globalization.CultureInfo Culture)?> ReadPayerContactAsync(
+        ServiceRequestPayment payment,
+        CancellationToken cancellationToken)
+    {
+        if (payment.PayerOrgId is not null)
+        {
+            var orgEmail = await ReadPayerEmailAsync(payment.PayerOrgId, cancellationToken);
+            return string.IsNullOrWhiteSpace(orgEmail) ? null : (orgEmail, EmailTemplates.DefaultCulture);
+        }
+
+        if (customerReader is null)
+            return null;
+
+        // The customer of the request, whose supplier is the payment's supplier; the request has two parties and is scoped by its id.
+        var customerId = await db.ServiceRequests
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.Id == payment.ServiceRequestId)
+            .Select(r => r.CustomerId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (customerId is not { } id)
+            return null;
+
+        var contact = await customerReader.FindContactAsync(payment.SupplierOrgId, id, cancellationToken);
+        return contact is { Anonymized: false } && !string.IsNullOrWhiteSpace(contact.Email)
+            ? (contact.Email, EmailTemplates.CultureOf(contact.Locale))
+            : null;
     }
 
     /// <summary>
@@ -136,15 +230,21 @@ public sealed partial class SupplierPaymentService
 
         var context = await ReadContextAsync(payment, cancellationToken);
 
-        var payer = await ReadPayerEmailAsync(payment.PayerOrgId, cancellationToken);
-        if (!string.IsNullOrWhiteSpace(payer))
+        // The payer: the host org, or the private customer of a showcase in the language it chose (SP-15c-a).
+        var payer = await ReadPayerContactAsync(payment, cancellationToken);
+        if (payer is { } contact)
         {
             emailQueue.Enqueue(
-                payer,
+                contact.Email,
                 EmailTemplates.ServicePaymentRefundedToPayer(
-                    EmailTemplates.DefaultCulture, context.SupplierName, context.ServiceName, context.PropertyName, refund.AmountCents),
+                    contact.Culture, context.SupplierName, context.ServiceName, context.PropertyName, refund.AmountCents),
                 EmailTemplates.Names.ServicePaymentRefundedPayer);
         }
+
+        // A refund CasaZen made itself because the request closed is not news for the supplier, who closed or lost it: only a refund an
+        // admin made or one made outside CasaZen is told to it (SP-15c-a).
+        if (refund.Origin == ServicePaymentRefundOrigin.System)
+            return;
 
         var supplier = await ReadSupplierEmailAsync(payment.SupplierOrgId, cancellationToken);
         if (!string.IsNullOrWhiteSpace(supplier))

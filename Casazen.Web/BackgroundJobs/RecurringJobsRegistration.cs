@@ -274,6 +274,13 @@ public static class RecurringJobsRegistration
             job => job.ExecuteAsync(CancellationToken.None),
             ServicePaymentRemindersJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // The money CasaZen holds (SP-15c-a): releases, retries of failed transfers, closed requests, lapsed blocks, hold warnings.
+        recurringJobManager.AddOrUpdate<ServiceFundsJob>(
+            ServiceFundsJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ServiceFundsJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
     /// <summary>

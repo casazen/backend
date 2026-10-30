@@ -33,16 +33,27 @@ public static class SupplierEarningStates
     public const string PartiallyRefunded = "partially_refunded";
 
     /// <summary>
+    /// The customer paid and CasaZen holds the money (SP-15c-a): it reaches the supplier when the customer says "all fine" or an hour after the
+    /// work, whichever comes first. Also a release that is being retried. Counts as still to be collected.
+    /// </summary>
+    public const string Held = "held";
+
+    /// <summary>The customer complained and CasaZen has not decided yet (SP-15c-c): the money stays held. Counts as still to be collected.</summary>
+    public const string InDispute = "in_dispute";
+
+    /// <summary>
     /// The state of a completed or paid job: <paramref name="paymentStatus"/> is the status of its live payment record (null when it has none) and
     /// <paramref name="lateAt"/> the moment that record was flagged late. A late flag is never cleared, so it counts only while the payer still owes.
     /// </summary>
     public static string Of(ServiceRequestStatus requestStatus, ServicePaymentStatus? paymentStatus, DateTime? lateAt) => paymentStatus switch
     {
         null => requestStatus == ServiceRequestStatus.Pagato ? Paid : ToCollect,
-        ServicePaymentStatus.Paid => Paid,
+        ServicePaymentStatus.Paid or ServicePaymentStatus.Released => Paid,
         ServicePaymentStatus.PartiallyRefunded => PartiallyRefunded,
         ServicePaymentStatus.Refunded => Refunded,
         ServicePaymentStatus.NeedsReview => InReview,
+        ServicePaymentStatus.Authorized or ServicePaymentStatus.Held or ServicePaymentStatus.TransferFailed => Held,
+        ServicePaymentStatus.Disputed => InDispute,
         ServicePaymentStatus.Requested or ServicePaymentStatus.Failed => lateAt is null ? ToCollect : Late,
         _ => ToCollect,
     };
@@ -54,7 +65,7 @@ public enum SupplierEarningsTab
     /// <summary><c>tutti</c>: every completed or paid job.</summary>
     All,
 
-    /// <summary><c>da-incassare</c>: what is still to be collected: <c>to_collect</c>, <c>late</c> and <c>in_review</c>.</summary>
+    /// <summary><c>da-incassare</c>: what is still to be collected: <c>to_collect</c>, <c>late</c>, <c>in_review</c>, and the money CasaZen holds (<c>held</c>, <c>in_dispute</c>).</summary>
     ToCollect,
 
     /// <summary><c>pagati</c>: what was paid: <c>paid</c>, and the ones refunded afterwards (<c>refunded</c>, <c>partially_refunded</c>).</summary>

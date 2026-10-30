@@ -35,4 +35,11 @@ public enum ServicePaymentRefundOrigin
 
     /// <summary>Made outside CasaZen (Stripe Dashboard or API) and learnt from a webhook: recorded so the payment reflects it.</summary>
     Stripe = 1,
+
+    /// <summary>
+    /// Made by CasaZen itself on a payment held by the platform (SP-15c-a): the money given back because the request was refused,
+    /// cancelled or lapsed after the charge, or the decision of a dispute (SP-15c-c). The cancellation of a block is not a refund and
+    /// has no row.
+    /// </summary>
+    System = 2,
 }

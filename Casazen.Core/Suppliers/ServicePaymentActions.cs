@@ -101,11 +101,19 @@ public static class ServicePaymentActions
         return facts.PaymentStatus is not { } status || !IsSettledOrInFlight(status);
     }
 
-    /// <summary>The payment was collected (and perhaps refunded), is being processed by Stripe, or waits for an admin: nothing can be asked or recorded.</summary>
+    /// <summary>
+    /// The payment was collected (and perhaps refunded), is being processed by Stripe, waits for an admin, or is held by CasaZen (SP-15c-a:
+    /// blocked, held, released, in dispute, transfer failed): nothing can be asked or recorded.
+    /// </summary>
     private static bool IsSettledOrInFlight(ServicePaymentStatus status) => status is
         ServicePaymentStatus.Paid
         or ServicePaymentStatus.PartiallyRefunded
         or ServicePaymentStatus.Refunded
         or ServicePaymentStatus.Processing
-        or ServicePaymentStatus.NeedsReview;
+        or ServicePaymentStatus.NeedsReview
+        or ServicePaymentStatus.Authorized
+        or ServicePaymentStatus.Held
+        or ServicePaymentStatus.Released
+        or ServicePaymentStatus.Disputed
+        or ServicePaymentStatus.TransferFailed;
 }

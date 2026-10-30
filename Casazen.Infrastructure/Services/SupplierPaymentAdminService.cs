@@ -138,14 +138,29 @@ public sealed class SupplierPaymentAdminService(
         p.ApplicationFeeCents,
         p.NetCents,
         p.RefundedCents,
-        SupplierCommission.FeeRefundedCents(p.ApplicationFeeCents, p.AmountCents, p.RefundedCents),
+
+        // A direct charge gives its commission back in proportion; the money CasaZen holds keeps it unless everything went back.
+        p.FundsModel == ServiceFundsModel.PlatformHeld
+            ? (p.RefundedCents >= p.AmountCents ? p.ApplicationFeeCents : 0)
+            : SupplierCommission.FeeRefundedCents(p.ApplicationFeeCents, p.AmountCents, p.RefundedCents),
         p.RequestedAt,
         p.LateAt,
         p.PaidAt,
         p.FailureCode,
         p.StripePaymentIntentId,
         p.ConnectedAccountId,
-        p.CreatedAt);
+        p.CreatedAt,
+        p.FundsModel,
+        p.CapturedAt,
+        p.ReleaseAt,
+        p.ReleasedAt,
+        p.StripeTransferId,
+        p.TransferAttempts,
+        p.TransferFailureCode,
+        p.TransferNextAttemptAt,
+        p.CardDisputeId,
+        p.CardDisputeStatus,
+        p.CardDisputeAt);
 
     // ─── The commission of a supplier ───────────────────────────────────────────────────────────────────────────────
 
@@ -253,16 +268,19 @@ public sealed class SupplierPaymentAdminService(
         var fromUtc = RomeCalendar.StartOfDayUtc(first);
         var toUtc = RomeCalendar.StartOfDayUtc(first.AddMonths(1));
 
-        // Payments collected through Stripe in the month (an offline payment carries no commission and is not in the file).
+        // Payments collected through Stripe in the month (an offline payment carries no commission and is not in the file). Direct charges
+        // only: the commission CasaZen keeps from the money it holds is exported by SP-15c-b, once the host's payments are on that cycle.
         var paid = await db.ServiceRequestPayments
             .AsNoTracking()
-            .Where(p => p.PaidVia == ServicePaymentChannel.Stripe && p.PaidAt >= fromUtc && p.PaidAt < toUtc && PaidStatuses.Contains(p.Status))
+            .Where(p => p.FundsModel == ServiceFundsModel.DirectCharge
+                        && p.PaidVia == ServicePaymentChannel.Stripe && p.PaidAt >= fromUtc && p.PaidAt < toUtc && PaidStatuses.Contains(p.Status))
             .ToListAsync(cancellationToken);
 
         // Refunds that succeeded in the month, of payments collected through Stripe: the commission that went back.
         var refunds = await db.ServiceRequestPaymentRefunds
             .AsNoTracking()
             .Where(r => r.Status == ServicePaymentRefundStatus.Succeeded && r.CompletedAt >= fromUtc && r.CompletedAt < toUtc
+                        && r.ServiceRequestPayment.FundsModel == ServiceFundsModel.DirectCharge
                         && r.ServiceRequestPayment.PaidVia == ServicePaymentChannel.Stripe)
             .Select(r => new { Refund = r, Payment = r.ServiceRequestPayment })
             .ToListAsync(cancellationToken);

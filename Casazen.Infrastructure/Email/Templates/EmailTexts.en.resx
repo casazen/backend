@@ -1545,6 +1545,27 @@
   <data name="ServicePaymentAlert_Detail" xml:space="preserve">
     <value>Detail: {0}</value>
   </data>
+  <data name="ServiceFundsAlert_Subject" xml:space="preserve">
+    <value>Held payment to check: {0}</value>
+  </data>
+  <data name="ServiceFundsAlert_Body" xml:space="preserve">
+    <value>For a service the money is held by CasaZen and something needs attention: see the detail below.</value>
+  </data>
+  <data name="ServiceFundsAlert_Action" xml:space="preserve">
+    <value>Check the payment on Stripe and in the admin console, and decide how to proceed.</value>
+  </data>
+  <data name="ServiceFundsAccountNotReady_Subject" xml:space="preserve">
+    <value>Complete your account to receive {0}</value>
+  </data>
+  <data name="ServiceFundsAccountNotReady_Body" xml:space="preserve">
+    <value>The payment for the job &lt;strong&gt;{0}&lt;/strong&gt; is ready to be transferred to you, but your payments account cannot receive money yet. As soon as you complete it, CasaZen transfers {1} to you.</value>
+  </data>
+  <data name="ServiceFundsAccountNotReady_Cta" xml:space="preserve">
+    <value>Complete your account</value>
+  </data>
+  <data name="ServicePaymentRefundedCustomer_Body" xml:space="preserve">
+    <value>A refund of &lt;strong&gt;{3}&lt;/strong&gt; was issued for the payment of the service &lt;strong&gt;{1}&lt;/strong&gt; by {0}.</value>
+  </data>
   <data name="HostInvite_Subject" xml:space="preserve">
     <value>CasaZen invitation — Sign up as a host</value>
   </data>

@@ -23,6 +23,11 @@ public sealed partial class SupplierPaymentService
         {
             ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded => PublicServicePaymentState.Paid,
             ServicePaymentStatus.Processing or ServicePaymentStatus.NeedsReview => PublicServicePaymentState.Processing,
+
+            // The money CasaZen holds (SP-15c-a): the payer has paid (or the block is made), there is nothing left to pay.
+            ServicePaymentStatus.Held or ServicePaymentStatus.Released or ServicePaymentStatus.Disputed or ServicePaymentStatus.TransferFailed
+                => PublicServicePaymentState.Paid,
+            ServicePaymentStatus.Authorized => PublicServicePaymentState.Processing,
             ServicePaymentStatus.Requested or ServicePaymentStatus.Failed when supplier.CanReceivePayments => PublicServicePaymentState.Payable,
             _ => PublicServicePaymentState.Unavailable,
         };
@@ -108,11 +113,20 @@ public sealed partial class SupplierPaymentService
             if (hostOrgId is { } host && payment.PayerOrgId != host)
                 throw PaymentNotFound();
 
+            // The money CasaZen holds (SP-15c-a) is paid with the card the payer blocked, never with a session on the supplier's account.
+            if (payment.FundsModel == ServiceFundsModel.PlatformHeld && payment.Status is ServicePaymentStatus.Requested or ServicePaymentStatus.Failed)
+                throw NotPayable();
+
             switch (payment.Status)
             {
-                case ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded:
+                case ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded or ServicePaymentStatus.Released:
                     throw AlreadyPaid();
-                case ServicePaymentStatus.Processing or ServicePaymentStatus.NeedsReview:
+                case ServicePaymentStatus.Processing
+                    or ServicePaymentStatus.NeedsReview
+                    or ServicePaymentStatus.Authorized
+                    or ServicePaymentStatus.Held
+                    or ServicePaymentStatus.Disputed
+                    or ServicePaymentStatus.TransferFailed:
                     throw InFlight();
                 case ServicePaymentStatus.Canceled:
                     throw NotPayable();

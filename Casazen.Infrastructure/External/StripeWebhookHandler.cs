@@ -136,7 +136,20 @@ public class StripeWebhookHandler(
                 case "payment_intent.processing" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
                 case "payment_intent.payment_failed" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
                 case "payment_intent.canceled" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
+                // SP-15c-a: the card of a booking is blocked (the PaymentIntent of the money CasaZen holds is a manual-capture one).
+                case "payment_intent.amount_capturable_updated" when IsServiceCharge(stripeEvent.Data.Object as PaymentIntent):
                     servicePaymentNotices = await HandleServiceChargeAsync(stripeEvent, (PaymentIntent)stripeEvent.Data.Object, source);
+                    break;
+                // SP-15c-a: the charge side of the same events. The PaymentIntent events carry the same facts; these are handled as the
+                // PaymentIntent event they accompany, so a missed one is made good by the other (idempotent).
+                case "charge.captured" when IsServiceChargeOf(stripeEvent.Data.Object as Charge):
+                case "charge.expired" when IsServiceChargeOf(stripeEvent.Data.Object as Charge):
+                    servicePaymentNotices = await HandleServiceChargeEventAsync(stripeEvent, (Charge)stripeEvent.Data.Object);
+                    break;
+                // SP-15c-a: the transfer that pays a supplier, and its reversal.
+                case "transfer.created":
+                case "transfer.reversed":
+                    servicePaymentNotices = await HandleServiceTransferAsync(stripeEvent);
                     break;
                 case "payment_intent.succeeded":
                     checkoutSettlement = await HandlePaymentSucceededAsync(
@@ -177,9 +190,14 @@ public class StripeWebhookHandler(
                         break;
                     }
                 case "charge.dispute.created":
+                case "charge.dispute.updated":
+                case "charge.dispute.closed":
+                case "charge.dispute.funds_withdrawn":
+                case "charge.dispute.funds_reinstated":
                     {
-                        // A dispute on a supplier's service payment: error in the log and an email to the admins (SP-15b). Disputes of
-                        // other payments are not handled here, as before.
+                        // A dispute on a supplier's service payment: error in the log and an email to the admins (SP-15b); since SP-15c-a
+                        // it is also recorded on the payment, and the platform endpoint reports the ones on the money CasaZen holds.
+                        // Disputes of other payments are not handled here, as before.
                         var dispute = await HandleServiceDisputeAsync(stripeEvent);
                         if (dispute is { Handled: true })
                             servicePaymentNotices = dispute.Notices;
@@ -670,6 +688,13 @@ public class StripeWebhookHandler(
             ? parsed
             : (Guid?)null;
 
+        // The booking hold a PaymentIntent of the money CasaZen holds blocks the card for, before any payment exists (SP-15c-a).
+        var holdId = paymentIntent.Metadata is not null
+                     && paymentIntent.Metadata.TryGetValue(ServiceCharges.HoldMetadataKey, out var holdRaw)
+                     && Guid.TryParse(holdRaw, out var parsedHold)
+            ? parsedHold
+            : (Guid?)null;
+
         return await supplierPayments.ApplyPaymentIntentEventAsync(new ServicePaymentIntentEvent(
             stripeEvent.Id ?? string.Empty,
             stripeEvent.Type,
@@ -681,7 +706,80 @@ public class StripeWebhookHandler(
             paymentIntent.Currency,
             paymentIntent.ApplicationFeeAmount,
             paymentIntent.LastPaymentError?.Code,
-            EventTime(stripeEvent)));
+            EventTime(stripeEvent),
+            paymentIntent.AmountCapturable,
+            paymentIntent.LatestChargeId,
+            holdId));
+    }
+
+    /// <summary>A charge that carries the markers of a service PaymentIntent (Stripe copies the metadata of a PaymentIntent to its charge).</summary>
+    private static bool IsServiceChargeOf(Charge? charge) =>
+        charge is { Metadata: not null }
+        && !string.IsNullOrWhiteSpace(charge.PaymentIntentId)
+        && charge.Metadata.TryGetValue("kind", out var kind)
+        && string.Equals(kind, ServiceCharges.Kind, StringComparison.Ordinal);
+
+    /// <summary>
+    /// <c>charge.captured</c> and <c>charge.expired</c> of the money CasaZen holds (SP-15c-a), applied as the PaymentIntent event they accompany
+    /// (<c>payment_intent.succeeded</c> and <c>payment_intent.canceled</c>), so the second to arrive finds the work done.
+    /// </summary>
+    private async Task<IReadOnlyList<ServicePaymentNotice>> HandleServiceChargeEventAsync(Event stripeEvent, Charge charge)
+    {
+        var captured = stripeEvent.Type == "charge.captured";
+        var paymentId = charge.Metadata.TryGetValue(ServiceCharges.PaymentMetadataKey, out var raw) && Guid.TryParse(raw, out var parsed)
+            ? parsed
+            : (Guid?)null;
+        var holdId = charge.Metadata.TryGetValue(ServiceCharges.HoldMetadataKey, out var holdRaw) && Guid.TryParse(holdRaw, out var parsedHold)
+            ? parsedHold
+            : (Guid?)null;
+
+        return await supplierPayments.ApplyPaymentIntentEventAsync(new ServicePaymentIntentEvent(
+            stripeEvent.Id ?? string.Empty,
+            captured ? "payment_intent.succeeded" : "payment_intent.canceled",
+            charge.PaymentIntentId,
+            stripeEvent.Account,
+            paymentId,
+            charge.Amount,
+            captured ? charge.AmountCaptured : 0,
+            charge.Currency,
+            charge.ApplicationFeeAmount,
+            charge.FailureCode,
+            EventTime(stripeEvent),
+            AmountCapturableCents: 0,
+            charge.Id,
+            holdId));
+    }
+
+    /// <summary>
+    /// <c>transfer.created</c> and <c>transfer.reversed</c> (SP-15c-a): the transfers CasaZen makes to the suppliers carry the id of their
+    /// payment in the metadata. A transfer made for anything else (the platform has other flows) is not ours: nothing happens.
+    /// </summary>
+    private async Task<IReadOnlyList<ServicePaymentNotice>> HandleServiceTransferAsync(Event stripeEvent)
+    {
+        if (stripeEvent.Data.Object is not Transfer transfer
+            || transfer.Metadata is null
+            || !transfer.Metadata.TryGetValue("kind", out var kind)
+            || !string.Equals(kind, ServiceCharges.TransferKind, StringComparison.Ordinal))
+        {
+            logger.LogInformation("Unhandled Stripe event: {EventType} (not a service transfer)", stripeEvent.Type);
+            return [];
+        }
+
+        var paymentId = transfer.Metadata.TryGetValue(ServiceCharges.PaymentMetadataKey, out var raw) && Guid.TryParse(raw, out var parsed)
+            ? parsed
+            : (Guid?)null;
+        var result = await supplierPayments.ApplyTransferEventAsync(new ServiceTransferEvent(
+            stripeEvent.Id ?? string.Empty,
+            stripeEvent.Type,
+            transfer.Id,
+            transfer.Amount,
+            transfer.Currency,
+            transfer.DestinationId,
+            transfer.SourceTransactionId,
+            transfer.TransferGroup,
+            transfer.Reversed,
+            paymentId));
+        return result.Notices;
     }
 
     /// <summary>When Stripe says the event happened; null when the event has no creation time (synthetic events).</summary>
@@ -703,7 +801,7 @@ public class StripeWebhookHandler(
         if (stripeEvent.Data.Object is not Dispute dispute || string.IsNullOrWhiteSpace(dispute.PaymentIntentId))
             return ServicePaymentEventResult.NotOurs;
 
-        return await supplierPayments.ApplyDisputeCreatedAsync(new ServiceDisputeEvent(
+        var disputeEvent = new ServiceDisputeEvent(
             stripeEvent.Id ?? string.Empty,
             dispute.Id,
             dispute.PaymentIntentId,
@@ -711,7 +809,14 @@ public class StripeWebhookHandler(
             dispute.Amount,
             dispute.Currency,
             dispute.Reason,
-            dispute.Status));
+            dispute.Status,
+            stripeEvent.Type);
+
+        // The created one keeps its own path (the error in the log and the e-mail to the admins, SP-15b); the later ones of the
+        // money CasaZen holds only update what is recorded on the payment (SP-15c-a).
+        return stripeEvent.Type == "charge.dispute.created"
+            ? await supplierPayments.ApplyDisputeCreatedAsync(disputeEvent)
+            : await supplierPayments.ApplyDisputeChangedAsync(disputeEvent);
     }
 
     /// <summary>

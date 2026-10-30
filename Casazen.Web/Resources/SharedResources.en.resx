@@ -3187,6 +3187,21 @@
   <data name="ServicePaymentStateChanged" xml:space="preserve">
     <value>The payment was just changed by another operation: reload the page and check its current state.</value>
   </data>
+  <data name="ServicePaymentCaptureFailed" xml:space="preserve">
+    <value>The customer's card could not be charged: the request was not accepted and nothing changed.</value>
+  </data>
+  <data name="ServicePaymentAuthorizationExpired" xml:space="preserve">
+    <value>The amount blocked on the customer's card is no longer available: the request cannot be accepted and is closed. The customer can book again.</value>
+  </data>
+  <data name="ServicePaymentAmountLocked" xml:space="preserve">
+    <value>The customer has already blocked this amount on the card: you cannot declare a different total or add items. To change the price a new offer is needed.</value>
+  </data>
+  <data name="ServicePaymentNotConfirmable" xml:space="preserve">
+    <value>There is nothing to confirm: the work is not completed or the payment is already closed.</value>
+  </data>
+  <data name="ServicePaymentHeld" xml:space="preserve">
+    <value>The payment is held by CasaZen: you cannot ask for it or record it as received. It reaches you after the customer's confirmation.</value>
+  </data>
   <data name="ServiceRequestNoConfirmationNeeded" xml:space="preserve">
     <value>There is no amount to confirm for this request.</value>
   </data>
