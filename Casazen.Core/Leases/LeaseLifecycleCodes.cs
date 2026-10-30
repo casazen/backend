@@ -70,6 +70,30 @@ public static class LeaseLifecycleCodes
     /// <summary>422: the day a letter takes effect from is outside the days it can have (LR-OPS-1c).</summary>
     public const string LetterEffectDateInvalid = "lease_letter_effect_date_invalid";
 
+    /// <summary>422: the lease has no security deposit, so there is nothing to return (LR-OPS-1c).</summary>
+    public const string DepositNone = "lease_deposit_none";
+
+    /// <summary>422: the deposit was not held for at least a day, or it was paid too long before the lease or is returned too long after it (LR-OPS-1c).</summary>
+    public const string DepositDatesInvalid = "lease_deposit_dates_invalid";
+
+    /// <summary>422: a legal interest rate is not a percentage between zero and the bound with two decimals at most, or a year has two (LR-OPS-1c).</summary>
+    public const string DepositRateInvalid = "lease_deposit_rate_invalid";
+
+    /// <summary>422: a year the deposit was held in has no legal interest rate; the years that miss are in the message (LR-OPS-1c).</summary>
+    public const string DepositRateMissing = "lease_deposit_rate_missing";
+
+    /// <summary>422: the interest already paid is not a sum of euros with two decimals at most, or is more than the interest accrued (LR-OPS-1c).</summary>
+    public const string DepositInterestPaidInvalid = "lease_deposit_interest_paid_invalid";
+
+    /// <summary>422: a sum kept from the deposit has no reason, a reason that is too long, or a sum that is not above zero, or there are too many (LR-OPS-1c).</summary>
+    public const string DepositDeductionInvalid = "lease_deposit_deduction_invalid";
+
+    /// <summary>422: the sums kept are more than the deposit and the interest due: what is left is a debt of the tenant, not a return (LR-OPS-1c).</summary>
+    public const string DepositDeductionsExceed = "lease_deposit_deductions_exceed";
+
+    /// <summary>422: the day the deposit was returned is before the start of the lease or after today: what is recorded has already happened (LR-OPS-1c).</summary>
+    public const string DepositReturnDateInvalid = "lease_deposit_return_date_invalid";
+
     /// <summary>422: this letter does not apply to this lease (not a transitory lease, the need is the tenant's, a type that does not renew…) (LR-OPS-1).</summary>
     public const string LetterNotApplicable = "lease_letter_not_applicable";
 

@@ -5,6 +5,7 @@ using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.SiteProfile;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -219,11 +220,25 @@ public sealed class PublicSiteSearchService(
                 SmokingPolicy = p.SmokingPolicy,
                 PartiesPolicy = p.PartiesPolicy,
                 Amenities = p.Amenities,
+                AreaKind = p.AreaKind,
+                ChildrenWelcome = p.ChildrenWelcome,
+                SiteProfileJson = p.SiteProfileJson,
+                CatalogPolicy = p.CancellationPolicy,
+                OverrideFullRefundHours = p.CancellationFullRefundHours,
+                OverridePartialRefundHours = p.CancellationPartialRefundHours,
+                OverridePartialRefundPercent = p.CancellationPartialRefundPercent,
+                OverrideRefundType = p.CancellationRefundType,
             })
             .ToListAsync(cancellationToken);
 
-        return rows
-            .Select(row => new PublicStayHouse(
+        var houses = new List<PublicStayHouse>(rows.Count);
+        foreach (var row in rows)
+        {
+            // What the host wrote for the page (the zone) and the labels of the house: the ones the host chose and the ones its data give.
+            var profile = SitePropertyProfileJson.Parse(row.SiteProfileJson);
+            var tags = SitePropertyProfileRules.EffectiveTags(
+                profile.Tags, SitePropertyProfileRules.DerivedTags(row.Amenities, row.AreaKind, row.PetsPolicy));
+            houses.Add(new PublicStayHouse(
                 row.Id,
                 row.Slug,
                 row.Name,
@@ -243,8 +258,16 @@ public sealed class PublicSiteSearchService(
                 row.PetsPolicy,
                 row.SmokingPolicy,
                 row.PartiesPolicy,
-                row.Amenities))
-            .ToList();
+                row.Amenities,
+                profile.Zone,
+                tags,
+                row.ChildrenWelcome,
+                row.CatalogPolicy,
+                new HostCancellationOverrides(
+                    row.OverrideFullRefundHours, row.OverridePartialRefundHours, row.OverridePartialRefundPercent, row.OverrideRefundType)));
+        }
+
+        return houses;
     }
 
     private async Task<IReadOnlyDictionary<Guid, IReadOnlySet<DateOnly>>> LoadTakenAsync(
@@ -359,5 +382,15 @@ public sealed class PublicSiteSearchService(
         public SmokingPolicy? SmokingPolicy { get; init; }
         public PartiesPolicy? PartiesPolicy { get; init; }
         public List<PropertyAmenity> Amenities { get; init; } = [];
+        public PropertyAreaKind? AreaKind { get; init; }
+        public bool? ChildrenWelcome { get; init; }
+        public string? SiteProfileJson { get; init; }
+
+        // The cancellation policy of the house (the catalog row and what the host changed of it): the card of a stay says what cancelling costs.
+        public CancellationPolicy? CatalogPolicy { get; init; }
+        public int? OverrideFullRefundHours { get; init; }
+        public int? OverridePartialRefundHours { get; init; }
+        public decimal? OverridePartialRefundPercent { get; init; }
+        public HostCancellationRefundType OverrideRefundType { get; init; }
     }
 }
