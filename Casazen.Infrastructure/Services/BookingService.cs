@@ -466,7 +466,9 @@ public class BookingService(
             "EUR",
             freeRefundDeadline,
             DirectBookingPaymentRules.OptionsFor(freeRefundDeadline, _clock.TodayInRome(), effectivePolicy),
-            lodging);
+            lodging,
+            // DB-03b: the structured dates of the same policy (the last whole days, Europe/Rome), for the page to draw «fino al…».
+            PublicCancellation.StayOf(effectivePolicy, checkIn, _clock.TodayInRomeAsDateOnly()));
     }
 
     private async Task<string> HandleImmediatePaymentAsync(

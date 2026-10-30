@@ -116,6 +116,9 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `supplier-booking-verification` | customer of a supplier's showcase | the customer booked a slot: the link that checks its address (SP-10) | `ShowcaseBookingNotifier`, queued |
 | `supplier-booking-receipt` | customer | the address is checked: code, time by which the supplier answers, estimate | same |
 | `supplier-booking-new-request` | supplier | the address is checked: new request with comune and "Nome C." only (D9) | same |
+| `supplier-inquiry-verification` | customer of a supplier's showcase | the customer wrote a request on measure: the link that checks its address, the token in the fragment (SP-10b) | `ShowcaseBookingNotifier`, queued |
+| `supplier-inquiry-receipt` | customer | the address is checked: the code and the time by which the supplier answers (never the customer's words) | same |
+| `supplier-inquiry-new-request` | supplier | the address is checked: new request on measure with comune, the service when there is one and "Nome C." only (D9); **never a word of the message** | same |
 | `supplier-booking-accepted`, `-declined`, `-time-proposed`, `-cancelled`, `-expired` | customer | the supplier took, refused, proposed another time for, or cancelled the request; nobody answered in time (the job) | `ServiceRequestNotifier` → `ShowcaseBookingNotifier`, queued |
 | `supplier-booking-reminder` | customer | 18:00 (Rome) of the day before the work, once, if the supplier took the request before that time | `service-request-reminders` job → `ShowcaseBookingNotifier`, queued |
 | `supplier-booking-cancellation-receipt`, `-proposal-expired` | customer | it cancelled its request (receipt); the day to answer the time the supplier proposed passed and the request was cancelled (SP-11) | `ShowcaseBookingNotifier`, queued |

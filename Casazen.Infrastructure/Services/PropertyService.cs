@@ -351,35 +351,7 @@ public class PropertyService(
     {
         var row = await repository.GetSearchQueryable(PublicPropertySearchCriteria.None)
             .Where(p => p.Id == id)
-            .Select(p => new PublicPropertyDetailRow
-            {
-                Id = p.Id,
-                Slug = p.Slug,
-                OrgSlug = p.Org.Slug,
-                Name = p.Name,
-                Description = p.Description,
-                City = p.City,
-                PostalCode = p.PostalCode,
-                Latitude = p.Latitude,
-                Longitude = p.Longitude,
-                Bedrooms = p.Bedrooms,
-                Bathrooms = p.Bathrooms,
-                MaxGuests = p.MaxGuests,
-                NightlyRate = p.NightlyRate,
-                CleaningFee = p.CleaningFee,
-                Amenities = p.Amenities,
-                PhotoUrls = p.PhotoUrls,
-                CinCode = p.CinCode,
-                Timezone = p.Timezone,
-                HouseRules = p.HouseRules,
-                CancellationPolicySummary = p.CancellationPolicy != null ? p.CancellationPolicy.Description : string.Empty,
-                MinNights = p.MinNights,
-                WeekendSurchargePercent = p.WeekendSurchargePercent,
-                OrgStripeConnectedAccountId = p.Org.StripeConnectedAccountId,
-                OrgConnectChargesEnabled = p.Org.ConnectChargesEnabled,
-                OrgHostName = p.Org.HostName,
-                OrgPublicPhone = p.Org.PublicPhone,
-            })
+            .Select(DetailRow)
             .FirstOrDefaultAsync();
 
         return row is null ? null : MapPublicPropertyDetail(row);
@@ -394,35 +366,7 @@ public class PropertyService(
             query = query.Where(p => p.Slug == slugOrId);
 
         var row = await query
-            .Select(p => new PublicPropertyDetailRow
-            {
-                Id = p.Id,
-                Slug = p.Slug,
-                OrgSlug = p.Org.Slug,
-                Name = p.Name,
-                Description = p.Description,
-                City = p.City,
-                PostalCode = p.PostalCode,
-                Latitude = p.Latitude,
-                Longitude = p.Longitude,
-                Bedrooms = p.Bedrooms,
-                Bathrooms = p.Bathrooms,
-                MaxGuests = p.MaxGuests,
-                NightlyRate = p.NightlyRate,
-                CleaningFee = p.CleaningFee,
-                Amenities = p.Amenities,
-                PhotoUrls = p.PhotoUrls,
-                CinCode = p.CinCode,
-                Timezone = p.Timezone,
-                HouseRules = p.HouseRules,
-                CancellationPolicySummary = p.CancellationPolicy != null ? p.CancellationPolicy.Description : string.Empty,
-                MinNights = p.MinNights,
-                WeekendSurchargePercent = p.WeekendSurchargePercent,
-                OrgStripeConnectedAccountId = p.Org.StripeConnectedAccountId,
-                OrgConnectChargesEnabled = p.Org.ConnectChargesEnabled,
-                OrgHostName = p.Org.HostName,
-                OrgPublicPhone = p.Org.PublicPhone,
-            })
+            .Select(DetailRow)
             .FirstOrDefaultAsync();
 
         return row is null ? null : MapPublicPropertyDetail(row);
@@ -708,12 +652,55 @@ public class PropertyService(
         Timezone = row.Timezone,
         HouseRules = row.HouseRules,
         CancellationPolicySummary = row.CancellationPolicySummary,
+        CancellationPolicy = PublicCancellation.PolicyOf(
+            row.CatalogPolicy,
+            new HostCancellationOverrides(
+                row.OverrideFullRefundHours, row.OverridePartialRefundHours, row.OverridePartialRefundPercent, row.OverrideRefundType)),
         MinNights = row.MinNights,
         WeekendSurchargePercent = row.WeekendSurchargePercent,
         Currency = "EUR",
         AcceptsBookings = Org.AcceptsDirectPayments(row.OrgStripeConnectedAccountId, row.OrgConnectChargesEnabled),
         HostName = row.OrgHostName,
         PublicPhone = row.OrgPublicPhone,
+    };
+
+    /// <summary>
+    /// What the public page of a property reads, in one place for both ways to ask for it (by id and by org and slug). The cancellation
+    /// policy is the catalog row with the columns the host changed of it (DB-03b: <see cref="PublicCancellation"/> builds the page's view).
+    /// </summary>
+    private static readonly System.Linq.Expressions.Expression<Func<Property, PublicPropertyDetailRow>> DetailRow = p => new PublicPropertyDetailRow
+    {
+        Id = p.Id,
+        Slug = p.Slug,
+        OrgSlug = p.Org.Slug,
+        Name = p.Name,
+        Description = p.Description,
+        City = p.City,
+        PostalCode = p.PostalCode,
+        Latitude = p.Latitude,
+        Longitude = p.Longitude,
+        Bedrooms = p.Bedrooms,
+        Bathrooms = p.Bathrooms,
+        MaxGuests = p.MaxGuests,
+        NightlyRate = p.NightlyRate,
+        CleaningFee = p.CleaningFee,
+        Amenities = p.Amenities,
+        PhotoUrls = p.PhotoUrls,
+        CinCode = p.CinCode,
+        Timezone = p.Timezone,
+        HouseRules = p.HouseRules,
+        CancellationPolicySummary = p.CancellationPolicy != null ? p.CancellationPolicy.Description : string.Empty,
+        MinNights = p.MinNights,
+        WeekendSurchargePercent = p.WeekendSurchargePercent,
+        OrgStripeConnectedAccountId = p.Org.StripeConnectedAccountId,
+        OrgConnectChargesEnabled = p.Org.ConnectChargesEnabled,
+        OrgHostName = p.Org.HostName,
+        OrgPublicPhone = p.Org.PublicPhone,
+        CatalogPolicy = p.CancellationPolicy,
+        OverrideFullRefundHours = p.CancellationFullRefundHours,
+        OverridePartialRefundHours = p.CancellationPartialRefundHours,
+        OverridePartialRefundPercent = p.CancellationPartialRefundPercent,
+        OverrideRefundType = p.CancellationRefundType,
     };
 
     private class PublicPropertyRow
@@ -744,6 +731,13 @@ public class PropertyService(
         public string CancellationPolicySummary { get; init; } = string.Empty;
         public int? MinNights { get; init; }
         public decimal WeekendSurchargePercent { get; init; }
+
+        // The cancellation policy of the property (DB-03b): the catalog row, null without one, and what the host changed of it.
+        public CancellationPolicy? CatalogPolicy { get; init; }
+        public int? OverrideFullRefundHours { get; init; }
+        public int? OverridePartialRefundHours { get; init; }
+        public decimal? OverridePartialRefundPercent { get; init; }
+        public HostCancellationRefundType OverrideRefundType { get; init; }
 
         // The columns of the org the public page reads (DB-03): whether it can take a payment, how the host is named, the
         // phone the host chose to publish.

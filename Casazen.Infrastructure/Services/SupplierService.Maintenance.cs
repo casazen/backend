@@ -392,6 +392,15 @@ public partial class SupplierService
             .Where(h => h.OrgId == duplicateId)
             .ExecuteDeleteAsync(cancellationToken);
 
+        // The requests on measure (SP-10b): the ones that wait for an e-mail check go like the holds, and the messages of the requests that
+        // moved follow them (they carry the supplier org of their request).
+        await db.ShowcaseInquiries
+            .Where(i => i.OrgId == duplicateId)
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.ServiceRequestMessages
+            .Where(m => m.OrgId == duplicateId)
+            .ExecuteUpdateAsync(set => set.SetProperty(m => m.OrgId, keeperId), cancellationToken);
+
         return moved;
     }
 

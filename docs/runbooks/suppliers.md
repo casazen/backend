@@ -232,7 +232,7 @@ request created on the web never showed in the app.
 
 | Context | Tied to | API (host side) | Rule (422, ProblemDetails `code`) |
 |---|---|---|---|
-| **Short-rent** (`RentalContext = ShortRent`, 0) | One stay: `BookingId` + its `PropertyId` | `api/service-requests` (policies `property.read` / `property.write` in short-rent) | `bookingId` missing → `service_request_booking_required`; a booking that is not of that property and org (or does not exist) → `service_request_booking_mismatch` |
+| **Short-rent** (`RentalContext = ShortRent`, 0) | The property and, when the host names one, a stay of it: `BookingId` (optional since SR-08a, section 34.4) + its `PropertyId` | `api/service-requests` (policies `property.read` / `property.write` in short-rent) | a booking that is not of that property and org (or does not exist) → `service_request_booking_mismatch` |
 | **Long-rent** (`RentalContext = LongRent`, 1) | The property only (`BookingId` null) | `api/long-rent/service-requests` (policies `property.read` / `property.write` **in long-rent**) | a `bookingId` → `service_request_booking_not_allowed` |
 
 - The context is stored on the request (`ServiceRequests.RentalContext`) and is never inferred from `BookingId`.
@@ -3402,6 +3402,110 @@ with an address); once the supplier has a content row it is true only for a show
 - [ ] Part 3: `GET api/public/suppliers/{slug}` of a supplier that **published nothing** is unchanged (no `content`, `paused`, `bookingsOpen`, `trust`...); after a publication it carries `content` (the published text, never the draft), `paused: false`,
       `bookingsOpen` and `trust.verified`; with `SupplierShowcaseBooking` on and the bookings open, `services[].nextSlotUtc`. `POST …/pause` makes `GET …/slots?service=…` and `POST …/quote` answer 422 `supplier_booking_offline`.
 - [ ] `GET api/supplier/showcase/status` and `…/stats` answer for the caller's supplier only; `GET api/supplier/checklist` has `showcasePublished: true` for a supplier that never used the editor and for one that published, `false` while paused.
+
+## 34. The host's interventions: list, counters, the action to do, the house alone — SR-08a
+
+The page "Interventi" of Affitti brevi reads one list, with the counters of its chips and, on every request, what the host can do about it. The server
+decides; the page has no state machine of its own. Short-rent only (`api/service-requests`, `property.read` in short-rent, filtered by the caller's org and
+by its scope «Solo alcuni»); a long-rent request, or one of a supplier's showcase, is never part of it. No flag, no migration.
+
+### 34.1 Endpoints at a glance
+
+| Call | What it answers |
+|---|---|
+| `GET api/service-requests` | `{ items, total, page, pageSize }`, newest first unless `sort` says otherwise. The host's filters, all optional: `view`, `status`, `propertyId`, `bookingId`, `supplierOrgId`, `category`, `from`, `to`, `q`, `sort`, `page`, `pageSize` (1-100). With `view=supplier` it is still the supplier's inbox (unchanged). |
+| `GET api/service-requests/counts` | `{ all, pending, active, toPay, done, needsAction }` for the requests that pass the same filters but `view`, `sort` and the page. One aggregate statement. |
+| `GET api/service-requests/{id}`, the answers of `POST …/cancel`, `…/remind`, `…/proposal/accept`, `…/proposal/reject`, `…/final-amount/confirm`, `…/mark-paid` and of `POST api/service-requests` | the same request, with the extras of 33.3. |
+
+### 34.2 The chips, the filters, the order
+
+- `view` (any case): `all` (default), `pending` = `Richiesto`; `active` = `PresoInCarico`, `InCorso`; `topay` = `Completato`; `done` = `Pagato`, `Rifiutato`, `Annullato` (the statuses nothing leaves, `ServiceRequestStateMachine.IsFinal`); `needsaction` = what asks something of the host, the very definition of the Home's «Da fare» (`HostServiceRequestTodoRules.NeedTheHost`). The first four partition the requests, so their counters add up to `all`; `needsAction` overlaps them.
+- `from`/`to` (`yyyy-MM-dd`, Europe/Rome days, both included): the day of the work, that is the scheduled time or, for a request that has none, the day it was made.
+- `q` (2 to 60 characters, no control character): the name of the property, of the supplier (display name and name), of the service, or the category (its code or its label in Italian and in English). Never the notes, never the guest.
+- `category` is a code of `GET api/service-categories`. `sort` is `scheduled`, `created` or `status`, then `:asc` or `:desc`: `scheduled` the next work first (no time last, both ways), `created` the newest first, `status` what waits for the host first and then the status in the order of the work (refused, in progress, taken, new, finished, paid, cancelled). The id closes every order, so a page boundary never repeats or skips a request.
+- 400 with `service_request_list_invalid_view`, `…_invalid_sort`, `…_invalid_range` (`from` after `to`), `…_invalid_text`, `…_invalid_category`; `status` keeps ignoring a value it does not know (as before). `bookingId`/`propertyId` of another org are 404, one the caller may not read 403 (unchanged).
+- Cost: one statement for the page (with the property and the supplier), one for the total only when the page is full or past the end, one for the stays and one for the contacts of the supplier, whatever the size of the page.
+
+### 34.3 What a request says to its host (null for the supplier, and for the long-rent twin)
+
+- `propertyCity`; `stay` `{ bookingId, guestName, checkIn, checkOut }` or null when the request is for the house alone. **The guest is the host's**: the supplier's own mapping (`MapDtoForSupplier`, `SupplierServiceRequestView`) has no field for it, and a test reads the supplier's answers for it (decision D9).
+- `supplierContact` `{ phone, email }` of the supplier's profile **from the moment it took the request** (`TakenAt` set), never before.
+- `hostAction` `{ kind, remindAvailableAt? }` and `availableActions[]`, worked out in `HostServiceRequestActions` from the status, a proposed time, the amount to confirm, the way it is paid and the last reminder, using the Home's definition of what asks something of the host: `Richiesto` with a proposed time → `acceptProposal` (with `rejectProposal`); `Richiesto` without one → `remind`, or `none` with `remindAvailableAt` when the last reminder is less than `RemindIntervalHours` old; `Completato` → `confirmFinalAmount` while the amount waits for the host, then `pay` (`PaymentMode = Online`) or `markPaid` (`Manual`); `Rifiutato`/`Annullato` → `requestAgain`; anything else `none`. `availableActions` lists every action the endpoints would accept now, the `kind` first, plus `cancel` (up to the work in progress) and `requestAgain` after a payment. **An open set**: a client shows nothing for a word it does not know. The quote of SP-04b is another offer to answer (`respondToQuote`): it gets its word when that task lands.
+
+### 34.4 The house alone (SR-D3)
+
+`bookingId` is optional on `POST api/service-requests`: the request is for the property, with no stay. A `bookingId` that is not a stay of the property in the host's org is still 422 `service_request_booking_mismatch`; the long-rent rule (`service_request_booking_not_allowed`) is unchanged, and `service_request_booking_required` no longer exists. The time still defaults as in SP-04 (10:00 Europe/Rome of the check-out day, for the duration of the host, of the service or 120 minutes); **without a stay** it is today's 10:00 and, once that has gone by, tomorrow's. The answer of the `POST` says `scheduleDefaulted: true` whenever the host named no time. The notifications, the Home, the calendar and the supplier's reads already took a missing `bookingId` into account (older requests could not be traced to a stay).
+
+### 34.5 Decisions applied (defaults, nothing asked)
+
+SR-D3 (the stay is optional), SR-D20 (`pay` and `markPaid` follow `paymentMode`; online payments stay behind `SupplierOnlinePayments`), SR-D21 (the quote enters with SP-04b), SR-D35 (no «pay all»). Counters are `camelCase` like the other counters (`toPay`, while the chip is `topay`). The supplier's contact is the phone and the e-mail of its profile, given at the take. No rate limit on the list (a signed-in read of the caller's own org).
+
+## 34. The request on measure from the showcase — SP-10b (part a)
+
+Redesign wave task SP-10b, first of its two parts (branch `feature/rd-supplier-inquiry`, backend only), **no new feature flag** (the override of 17 October allows only the eight that exist: the endpoints ride on
+`SupplierShowcaseBooking`, which keeps them 404 wherever the booking is off), migration `AddShowcaseInquiries` (additive: one column, two tables, three CHECKs). Where the booking (section 23) needs a slot, the **request on measure**
+is for what the price list does not say: a service that is not in it, or is but with variations. The customer describes it in its own words, checks its e-mail and, only then, a request exists for the supplier, who answers inside CasaZen: the quote and the
+particular requests stay inside the app (interview of 9 October, Q3 and Q7), with no public contact of the supplier and no generic "Scrivici". This part is the **opening**: the inquiry, the check of the address, the request with its first message, and the
+mails. The conversation (the messages of the two parties, the thread in the customer's page and in the console, refusing and closing) is the next part; the offer and its acceptance are SP-10b-b.
+
+### 34.1 The request
+
+`ServiceRequest.Kind` (new column: `Standard` = 0 for every request there was, `Custom` = 1; CHECK `CK_ServiceRequests_Kind`: only the Showcase context can have a `Custom` one). **It is not a status**: the lifecycle is the one of every
+request (`Richiesto`, `PresoInCarico` ... `Rifiutato`, `Annullato`), so the mobile app, the inbox, the counters and the cancellations keep working with no new value. A request on measure is born `Richiesto`, with:
+
+- **no time** (`ScheduledStartUtc` and `ScheduledEndUtc` null) and no price: both come with the offer (SP-10b-b);
+- the comune the customer gave (`LocationCity`, and `LocationComuneIstat` when it picked one from the official list) and nothing else of the place: the street comes later;
+- the service it is about when the customer named one (`ServiceListingId`, `ServiceNameSnapshot`, its category), else the first category of the supplier;
+- `ResponseDueAt` = the moment the address is checked + `Suppliers__Showcase__InquiryResponseMinutes` (60; 5 to 1440, out of range: **startup**). If the supplier does not answer by then the always-on job `service-request-expiry` cancels the
+  request with the reason `NoResponse`, as it does with a booking nobody answered; the first message of the supplier stops the clock (next part);
+- `Notes` empty: what the customer wrote is the first **message** (34.4).
+
+### 34.2 Endpoints
+
+Both are anonymous, behind `SupplierShowcaseBooking` (404 like a route that does not exist while it is off), never indexable (`X-Robots-Tag: noindex`) and never cached (`Cache-Control: no-store`).
+
+| Endpoint | What |
+|---|---|
+| `POST api/public/suppliers/{slug}/inquiries` | Body: `clientRequestId`, `service?` (slug of a published service, a service on quote too), `comuneIstat?`, `city`, `message` (10 to 1000 characters), `fullName`, `email`, `phone`, `locale`, `privacyAccepted`, `privacyNoticeVersion` and the trap `website`. 201 `{ id, expiresAt }` and nothing else; the same `clientRequestId` is the same inquiry (no second e-mail). 404 for a supplier that is not active and `supplier_service_not_found`; 422 `supplier_booking_invalid` (with `fields`), `supplier_booking_consent_required` / `_outdated`, `supplier_booking_outside_zone`; 429 `rate_limited` |
+| `POST api/public/suppliers/{slug}/inquiries/{id}/confirm-email` | Body: `{ token }`. 200 `{ publicCode, status, serviceName?, respondBy?, alreadyConfirmed }`; a second click answers the same with `alreadyConfirmed` and does nothing again. 404 `supplier_booking_link_invalid` (unknown inquiry, another supplier's, wrong token: one answer), 409 `supplier_booking_link_expired`, 422 `supplier_booking_supplier_unavailable` |
+
+The codes are those of the booking (section 23): the same fields, the same consent, the same zone (the comune has to be one the supplier covers), the same 429. The e-mail carries the link `/fornitori/{slug}/conferma?inquiry={id}#token={token}`: the page reads
+`inquiry` from the query and the **token from the fragment**, which a browser never sends to a server, so the token is in no access log, and posts both to `confirm-email`. The booking's link keeps its own keys on the same page (`?hold=` and `token=`).
+
+### 34.3 Nothing before the check, almost nothing after
+
+Decision D34 holds: until the address is checked the supplier receives **nothing** (no request, no e-mail, no push) and the customer has only a row that lapses (`ShowcaseInquiries`, 30 minutes by default: `Suppliers__Showcase__EmailVerificationMinutes`). The row keeps what the
+customer typed as an **encrypted** JSON (`PayloadEncrypted`, the purpose of the customers of the suppliers); when the address is checked it becomes the customer (`ServiceCustomers`, the same one as for a booking), the request and its first message, the payload is
+erased and the token hash stays so that a second click answers the same. The job `service-request-expiry` deletes the rows that lapsed (it counts them with the holds in `holdsDeleted`).
+
+When the address is checked the customer gets a receipt (in its language: the code `XXXXX-XXXXX`, the deadline of the supplier, the link to the request) and the supplier an e-mail and a push in Italian with the comune, the service when there is one, "Nome C." (decision D9) and the
+deadline. **Never a word of the customer's message, its full name, e-mail or phone**, nor its address: the words are read in the request, by the two parties (a test looks for them in the mail and the push). The full name and the contacts come with the take, as for every
+showcase request.
+
+### 34.4 The messages
+
+Table `ServiceRequestMessages` (the request, `OrgId` = the supplier org, `Author` `Customer` / `Supplier` / `System`, `BodyEncrypted`, `CreatedAt`, `ReadAt`): the thread of a request on measure, in order. This part writes only the first message; reading and writing the
+others is the next part. The body is free text a person wrote, **encrypted at rest** with its own purpose (`Casazen.ServiceRequestMessage`), 10 to 1000 characters for the first one, at most 200 messages per request, plain text only: no attachments, and in v1 no masking of numbers or addresses
+(forbidden by the conditions and reportable: decisions VT-D11 and VT-D12).
+
+### 34.5 Limits against abuse
+
+Per IP: the policy `PublicSupplierBookingCreate` of the booking (5 per 10 minutes, one budget for both). Per address and supplier: the booking's `SupplierBookingCreatePerEmail` (3 per hour, one budget for both too). And at most **three requests of one address wait at the same
+time** for one supplier (the inquiries whose address is not checked yet plus the requests on measure still `Richiesto`): the fourth is the same 429, with the same wait, so the three look alike and none tells whether an address is known. The trap `website` is answered like a
+request and nothing is done. The body is at most 16 KB (the check, 1 KB).
+
+### 34.6 Tenancy
+
+`ShowcaseInquiries` and `ServiceRequestMessages` are keyed by the supplier org and are **not** `ITenantOwned` (the customer is anonymous and a supplier-only account has no `User.OrgId`): they are in the allow-list of `TenantQueryFilterArchitectureTests` with the reason, every statement
+carries the explicit `OrgId` predicate, and `ShowcaseInquiryTenancyTests` allows only `ShowcaseInquiryService`, the expiry job and the repair to use them. The merge of duplicate supplier profiles (`fix-orphaned`) drops the duplicate's inquiries that wait and moves the
+messages of the requests that moved.
+
+### 34.7 After a deploy
+
+- [ ] Migration `AddShowcaseInquiries` applied (`ServiceRequests.Kind` = 0 on every existing row; tables `ShowcaseInquiries` and `ServiceRequestMessages`; CHECKs `CK_ServiceRequests_Kind`, `CK_ShowcaseInquiries_Expiry`, `CK_ServiceRequestMessages_Author`).
+- [ ] With `Features__SupplierShowcaseBooking` **off** (production): both endpoints answer 404 `not_found`, as before the task.
+- [ ] Test environment, flag on: an inquiry for an active supplier is 201 and the supplier gets nothing; the link of the e-mail ends in `#token=...`; `confirm-email` is 200 and now the supplier's inbox has a request `Richiesto` with "Nome C.", the comune and no time, and its e-mail does
+      not contain the words of the customer.
 
 ## Known limits (other tasks)
 

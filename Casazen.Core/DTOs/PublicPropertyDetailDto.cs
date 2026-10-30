@@ -6,6 +6,15 @@ public class PublicPropertyDetailDto : PublicPropertyDto
     public string CancellationPolicySummary { get; set; } = string.Empty;
 
     /// <summary>
+    /// The cancellation policy in a form a page can draw (DB-03b): the catalog policy with what the host changed of it for a stay under
+    /// <c>longStayNights</c> (28) nights, as hours and a percentage. A window the policy does not have is <c>null</c> (<c>fullRefundHours</c>
+    /// null = never refunded in full). <c>description</c> is the catalog text, <c>null</c> once the host changed the windows
+    /// (<c>hostOverrideApplies</c>). <c>null</c> when the property has no policy. The dates for a stay are in the quote
+    /// (<c>cancellation</c>); <see cref="CancellationPolicySummary"/> stays as it was.
+    /// </summary>
+    public Services.PublicCancellationPolicy? CancellationPolicy { get; set; }
+
+    /// <summary>
     /// Fewest nights a guest can book (DB-03, <c>Property.MinNights</c>), or null for no minimum. The quote and the checkout
     /// refuse a shorter stay with 422 <c>direct_booking_min_nights_not_met</c>.
     /// </summary>
