@@ -72,6 +72,15 @@ public class DirectBookingQuoteResponse
     /// </summary>
     public IReadOnlyList<QuoteLineDto> Lines { get; set; } = [];
 
+    /// <summary>
+    /// What cancelling costs for this stay (DB-03b), on the cancellation policy of the stay (the catalog policy with the host's changes for a
+    /// stay under 28 nights): <c>fullRefundUntil</c> and <c>partialRefundUntil</c> are the last whole days (Europe/Rome, <c>yyyy-MM-dd</c>,
+    /// included) with the full and the partial refund, <c>partialRefundPercent</c> the share of the partial one. A window the policy does not
+    /// have, or that is already over, is <c>null</c>. <c>selfServiceAvailable</c>: the guest can cancel from the guest area (DB-08a); a
+    /// page shows the dates only when it is <c>true</c>. The same day as <c>paymentOptions.freeCancellationUntil</c> for the full refund.
+    /// </summary>
+    public StayCancellation? Cancellation { get; set; }
+
     public static DirectBookingQuoteResponse From(DirectBookingQuote quote) => new()
     {
         PropertyId = quote.PropertyId,
@@ -87,6 +96,7 @@ public class DirectBookingQuoteResponse
         Currency = quote.Currency,
         PaymentOptions = DirectBookingPaymentOptionsDto.From(quote.PaymentOptions),
         Lines = StayPricing.Lines(quote).Select(QuoteLineDto.From).ToList(),
+        Cancellation = quote.Cancellation,
     };
 }
 
