@@ -3450,11 +3450,11 @@ SR-D3 (the stay is optional), SR-D20 (`pay` and `markPaid` follow `paymentMode`;
 
 ## 34. The request on measure from the showcase — SP-10b (part a)
 
-Redesign wave task SP-10b, first of its two parts (branch `feature/rd-supplier-inquiry`, backend only), **no new feature flag** (the override of 17 October allows only the eight that exist: the endpoints ride on
+Redesign wave task SP-10b, first of its two parts (branches `feature/rd-supplier-inquiry`, `feature/rd-supplier-inquiry-chat` and `feature/rd-supplier-inquiry-customer`, backend only), **no new feature flag** (the override of 17 October allows only the eight that exist: the endpoints ride on
 `SupplierShowcaseBooking`, which keeps them 404 wherever the booking is off), migration `AddShowcaseInquiries` (additive: one column, two tables, three CHECKs). Where the booking (section 23) needs a slot, the **request on measure**
 is for what the price list does not say: a service that is not in it, or is but with variations. The customer describes it in its own words, checks its e-mail and, only then, a request exists for the supplier, who answers inside CasaZen: the quote and the
 particular requests stay inside the app (interview of 9 October, Q3 and Q7), with no public contact of the supplier and no generic "Scrivici". This part is the **opening**: the inquiry, the check of the address, the request with its first message, and the
-mails. The conversation (the messages of the two parties, the thread in the customer's page and in the console, refusing and closing) is the next part; the offer and its acceptance are SP-10b-b.
+mails. The conversation follows: the supplier's side (reading and writing the thread, refusing; section 34.7) and the customer's (the thread in its own area, writing, closing, the retention; section 34.8); the offer and its acceptance are SP-10b-b.
 
 ### 34.1 The request
 
@@ -3480,6 +3480,8 @@ Both are anonymous, behind `SupplierShowcaseBooking` (404 like a route that does
 The codes are those of the booking (section 23): the same fields, the same consent, the same zone (the comune has to be one the supplier covers), the same 429. The e-mail carries the link `/fornitori/{slug}/conferma?inquiry={id}#token={token}`: the page reads
 `inquiry` from the query and the **token from the fragment**, which a browser never sends to a server, so the token is in no access log, and posts both to `confirm-email`. The booking's link keeps its own keys on the same page (`?hold=` and `token=`).
 
+A showcase the supplier **paused** (SP-13a, section 33.7) takes no new request on measure: `POST …/inquiries` answers 422 `supplier_booking_offline`, the answer its slots and its estimate give, and nothing is stored or sent. The check of an address written before the pause is not gated (that customer is answered all the same).
+
 ### 34.3 Nothing before the check, almost nothing after
 
 Decision D34 holds: until the address is checked the supplier receives **nothing** (no request, no e-mail, no push) and the customer has only a row that lapses (`ShowcaseInquiries`, 30 minutes by default: `Suppliers__Showcase__EmailVerificationMinutes`). The row keeps what the
@@ -3492,8 +3494,7 @@ showcase request.
 
 ### 34.4 The messages
 
-Table `ServiceRequestMessages` (the request, `OrgId` = the supplier org, `Author` `Customer` / `Supplier` / `System`, `BodyEncrypted`, `CreatedAt`, `ReadAt`): the thread of a request on measure, in order. This part writes only the first message; reading and writing the
-others is the next part. The body is free text a person wrote, **encrypted at rest** with its own purpose (`Casazen.ServiceRequestMessage`), 10 to 1000 characters for the first one, at most 200 messages per request, plain text only: no attachments, and in v1 no masking of numbers or addresses
+Table `ServiceRequestMessages` (the request, `OrgId` = the supplier org, `Author` `Customer` / `Supplier` / `System`, `BodyEncrypted`, `CreatedAt`, `ReadAt`): the thread of a request on measure, in order. The first message is written when the address is checked; the supplier reads and writes the others from the console (34.7) and the customer in its own area (34.8). The body is free text a person wrote, **encrypted at rest** with its own purpose (`Casazen.ServiceRequestMessage`), 10 to 1000 characters for the first one, at most 200 messages per request, plain text only: no attachments, and in v1 no masking of numbers or addresses
 (forbidden by the conditions and reportable: decisions VT-D11 and VT-D12).
 
 ### 34.5 Limits against abuse
@@ -3508,12 +3509,56 @@ request and nothing is done. The body is at most 16 KB (the check, 1 KB).
 carries the explicit `OrgId` predicate, and `ShowcaseInquiryTenancyTests` allows only `ShowcaseInquiryService`, the expiry job and the repair to use them. The merge of duplicate supplier profiles (`fix-orphaned`) drops the duplicate's inquiries that wait and moves the
 messages of the requests that moved.
 
-### 34.7 After a deploy
+### 34.7 The conversation, the supplier's side (part b)
+
+The supplier's console reads and writes the thread of a request on measure. Both endpoints are for the caller's own supplier (policy `Supplier`, the org comes from its supplier link), only for requests of the kind `Custom`: any other id — a host's request, a
+booking, one of another supplier, one that does not exist — is the same 404 `not_found`. Not behind a flag (only the showcase flag can make such a request exist).
+
+| Endpoint | What |
+|---|---|
+| `GET api/supplier/requests/{id}/thread` | `{ requestId, status, canWrite, respondBy?, messages[] }`; each message is `{ id, author, body, createdAt, readAt? }` in the order written (at most 200). Reading marks the customer's messages as read by the supplier: the answer shows each one as it was **before** this reading (`readAt: null` marks what is new), the next reading shows them read. A supplier that is no longer active can still read (`canWrite: false`) |
+| `POST api/supplier/requests/{id}/messages` | Body: `{ body }`, 1 to 1000 characters of plain text. 201 with the message. 422 `service_request_message_invalid` (empty, too long, a control character), `service_request_thread_full` (200 messages), `supplier_not_active` (suspended) or the code of the Terms to accept again; 409 `service_request_thread_closed` (refused, cancelled or done) and `service_request_state_changed` (the request changed under the call) |
+
+- **The first message of the supplier stops the clock** of the hour: `ResponseDueAt` goes, so the always-on job does not close a conversation that is going on. A request nobody answered is still closed by the job (reason `NoResponse`). The conversation has no other
+  deadline in v1: a thread nobody writes in stays open until a party closes it or the retention anonymizes the customer (follow-up SP-10b-FU1: close an idle conversation after some days).
+- **The customer is told, never with the words**: an e-mail in its language, "the supplier replied", with the link to the request page (`/fornitori/{slug}/richiesta?code=...`). A few lines in a row are **one** e-mail: after a message the same author's next ones, for ten
+  minutes, tell nobody (`ServiceRequestThreadRules.NotificationQuietPeriod`). No push (the customer has no app; the mobile app does not know the new push types).
+- **A request on measure is not taken like a booking**: `POST api/service-requests/{id}/take`, `…/propose-time` and `POST api/supplier/inbox/accept` answer 422 `supplier_inquiry_needs_offer` (the work, the price and the time are agreed in the conversation and with an offer, SP-10b-b).
+  Refusing it is the usual `POST api/service-requests/{id}/reject`.
+- **The end of the request** is told to the customer with its own mails, which do not speak of a day and a time the request does not have: refused (`supplier-inquiry-declined`, with the reason the supplier gave) and closed because nobody answered in time
+  (`supplier-inquiry-expired`). Both lead to the supplier's page.
+- The supplier console's request (`GET api/supplier/inbox`, `…/inbox/{id}`) has a new member `kind` (`Standard` / `Custom`), so the console knows which requests have a thread.
+
+### 34.8 The conversation, the customer's side (part c)
+
+The customer reads and writes in its own area (section 24: the code of the request and the e-mail address, no account). Nothing changes for any other booking: the answer of `POST api/public/supplier-bookings/lookup` (and of every action of that area) has three members **only for a request on
+measure**, and they are not in the JSON of a booking at all.
+
+| Member / endpoint | What |
+|---|---|
+| `kind` | `Custom`. For such a request `startUtc`, `endUtc` and the cancellation terms are the day it was made (it has no time): to be ignored; closing it is always free (`cancellationTerms.isFree`) |
+| `thread` | `{ canWrite, messages[] }`, each `{ id, author, body, createdAt, readAt? }` with `author` `customer` / `supplier` / `system`, in the order written. Reading marks the supplier's messages as read **by the customer**; the answer shows each as it was before the reading (`readAt: null` = new), the next reading shows them read. `canWrite`: the request is open and the supplier is active |
+| `negotiation` | derived, never stored: `AwaitingSupplier` (new, the supplier has not written), `InConversation` (new, it wrote), `Agreed`, `Declined`, `Closed` (cancelled, or closed because nobody answered). An open set: the offer (SP-10b-b) adds its own |
+| `POST api/public/supplier-bookings/messages` | Body: `{ slug, code, email, body }` (the code and the address are in the body, as in the rest of the area), `body` 1 to 1000 characters of plain text. 200 with the request as it is now, thread included. 404 `supplier_booking_not_found` (the usual single answer, a booking that is not a request on measure included); 422 `service_request_message_invalid`, `service_request_thread_full`, `supplier_booking_supplier_unavailable` (the supplier is not active); 409 `service_request_thread_closed`, `service_request_state_changed`; 429 (per IP and per address, the area's) |
+
+- **The supplier is told, never with the words**: an e-mail in Italian (`supplier-inquiry-message`) with the comune and "Nome C." (decision D9), at most one for the messages of ten minutes — the description counts as the first, since the supplier was told of it when the address was
+  checked. No push (the mobile app does not know the new types).
+- **The customer closes the request** with the usual `POST api/public/supplier-bookings/cancel` (a new request any time; free): `Annullato` by the customer. The supplier is told with `supplier-inquiry-closed-by-customer` (comune, "Nome C.", the reason the customer wrote; no day and no time) and the push of
+  the cancellation; the customer gets **no receipt** (it closed the request itself, and the receipt of a booking speaks of a day and a time). The thread is read only from then on, for both.
+- **Retention.** The nightly job `gdpr-data-retention` (`Gdpr:Retention:SupplierCustomers`, off until configured) **deletes the messages** of a request on measure that is over (final status) once the period ended, counted from its cancellation (else its last change). The request stays for the
+  supplier's accounts (comune, status, dates); a request still open keeps its thread; a second run finds nothing. The customer's name, e-mail and phone are anonymized by the same job, as before. The statements are across suppliers on purpose and read ids only, never the text
+  (`ShowcaseInquiryTenancyTests`).
+
+### 34.9 After a deploy
 
 - [ ] Migration `AddShowcaseInquiries` applied (`ServiceRequests.Kind` = 0 on every existing row; tables `ShowcaseInquiries` and `ServiceRequestMessages`; CHECKs `CK_ServiceRequests_Kind`, `CK_ShowcaseInquiries_Expiry`, `CK_ServiceRequestMessages_Author`).
 - [ ] With `Features__SupplierShowcaseBooking` **off** (production): both endpoints answer 404 `not_found`, as before the task.
 - [ ] Test environment, flag on: an inquiry for an active supplier is 201 and the supplier gets nothing; the link of the e-mail ends in `#token=...`; `confirm-email` is 200 and now the supplier's inbox has a request `Richiesto` with "Nome C.", the comune and no time, and its e-mail does
       not contain the words of the customer.
+- [ ] As a supplier of the test environment: `GET api/supplier/requests/{id}/thread` of that request shows the customer's words and `kind: "Custom"` is in the inbox; `POST …/messages` is 201, the customer's e-mail has a link and none of the words, and `respondBy`
+      goes; the same calls as another supplier are 404; `POST api/service-requests/{id}/take` is 422 `supplier_inquiry_needs_offer`; refusing it tells the customer with the reason and closes the thread (409 on a new message).
+- [ ] As the customer (code and address of that request): `POST api/public/supplier-bookings/lookup` has `kind: "Custom"`, `negotiation` and the `thread` with the supplier's message as new, then as read; `POST …/messages` is 200 with the thread, the supplier's e-mail has the comune, "Nome C." and none
+      of the words; a booking (not on measure) answers the same lookup as before, with none of the three members; `POST …/cancel` closes the request for free, the supplier is told without a day, the customer gets no receipt, and a new message from either side is 409 `service_request_thread_closed`.
 
 ## 34. The quote with the customer's approval — SP-04b
 

@@ -141,6 +141,7 @@ public partial class ServiceRequestService
     {
         ArgumentNullException.ThrowIfNull(command);
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
+        EnsureNotOnMeasure(request);
         if (request.Status != ServiceRequestStatus.Richiesto)
         {
             throw new DomainRuleException(

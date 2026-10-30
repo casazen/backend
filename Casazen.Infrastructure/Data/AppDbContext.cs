@@ -108,6 +108,8 @@ public class AppDbContext(
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
     public DbSet<SeasonalPriceSuggestion> SeasonalPriceSuggestions { get; set; } = null!;
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
+    public DbSet<PropertyFloorPlan> PropertyFloorPlans { get; set; } = null!;
+    public DbSet<PropertyPoi> PropertyPois { get; set; } = null!;
     public DbSet<TestDataMarker> TestDataMarkers { get; set; } = null!;
     public DbSet<DemoEnvironmentSetting> DemoEnvironmentSettings { get; set; } = null!;
     public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
@@ -393,6 +395,10 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new PropertySafetyChecklistConfiguration());
 
         modelBuilder.ApplyConfiguration(new PropertySafetyChecklistItemConfiguration());
+
+        // DB-11a: the floor plan levels and the points of interest of a property, going with it; each carries the org of its property (TN-2).
+        modelBuilder.ApplyConfiguration(new PropertyFloorPlanConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyPoiConfiguration());
 
         modelBuilder.Entity<AlloggiatiCodeEntry>()
             .HasOne(e => e.Import)

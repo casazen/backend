@@ -4733,6 +4733,69 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("PropertyFiscalYears");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyFloorPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("AreaSqm")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("ImageHeight")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ImageUrl")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int?>("ImageWidth")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("NameEn")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<string>("NameIt")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("PropertyId", "Position");
+
+                    b.ToTable("PropertyFloorPlans", t =>
+                        {
+                            t.HasCheckConstraint("CK_PropertyFloorPlans_AreaSqm", "\"AreaSqm\" IS NULL OR \"AreaSqm\" BETWEEN 1 AND 9999");
+
+                            t.HasCheckConstraint("CK_PropertyFloorPlans_Level", "\"Level\" BETWEEN -3 AND 60");
+
+                            t.HasCheckConstraint("CK_PropertyFloorPlans_Position", "\"Position\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.PropertyICalExport", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5003,6 +5066,67 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("PropertyOwnerId");
 
                     b.ToTable("PropertyOwnerships");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyPoi", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Direction")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("DistanceMeters")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Minutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Mode")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("NameEn")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("NameIt")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("PropertyId", "Position");
+
+                    b.ToTable("PropertyPois", t =>
+                        {
+                            t.HasCheckConstraint("CK_PropertyPois_Direction", "\"Direction\" BETWEEN 0 AND 7");
+
+                            t.HasCheckConstraint("CK_PropertyPois_DistanceMeters", "\"DistanceMeters\" BETWEEN 200 AND 200000");
+
+                            t.HasCheckConstraint("CK_PropertyPois_Minutes", "\"Minutes\" BETWEEN 1 AND 600");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyQuesturaCredentials", b =>
@@ -10046,6 +10170,23 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Property");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyFloorPlan", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Property");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.PropertyICalExport", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", "Org")
@@ -10166,6 +10307,23 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Property");
 
                     b.Navigation("PropertyOwner");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyPoi", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Property");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyQuesturaCredentials", b =>

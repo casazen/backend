@@ -130,4 +130,11 @@ public enum LeaseEventType
     /// Not the tacit renewal of the hourly job, which writes <see cref="TermRenewed"/>. No personal data.
     /// </summary>
     RenewalRecorded,
+
+    /// <summary>
+    /// The landlord recorded that he returned the security deposit (LR-OPS-1c). Payload: <c>{returnedOn}:{deposit}:{interestDue}:{deductions}:{returned}</c>,
+    /// the day as <c>yyyy-MM-dd</c> and the four sums in euros with two decimals and a dot. No reason of a deduction and no personal data: CasaZen
+    /// moves no money, it records what the landlord did outside it.
+    /// </summary>
+    DepositReturnRecorded,
 }

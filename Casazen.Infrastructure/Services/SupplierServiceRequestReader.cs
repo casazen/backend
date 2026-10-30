@@ -466,6 +466,7 @@ public partial class SupplierServiceRequestReader(
                 TakenAt = r.TakenAt,
                 TakenByUserId = r.TakenByUserId,
                 AutoAccepted = r.AutoAccepted,
+                Kind = r.Kind,
                 // SP-BKP: where the request is in its group of backup suppliers (none outside one). The group table has no tenant filter and is
                 // reached through the request, which the supplier org predicate above already scopes.
                 GroupRole = r.GroupRole,
@@ -727,6 +728,7 @@ public partial class SupplierServiceRequestReader(
             row.PaymentMode,
             payment,
             row.AutoAccepted,
+            row.Kind,
             QuoteOf(row),
             BackupOf(row, nowUtc));
     }
@@ -783,6 +785,7 @@ public partial class SupplierServiceRequestReader(
         public DateTime? TakenAt { get; init; }
         public string? TakenByUserId { get; init; }
         public bool AutoAccepted { get; init; }
+        public ServiceRequestKind Kind { get; init; }
         public ServiceRequestGroupRole GroupRole { get; init; }
         public DateTime? BackupAcceptedAt { get; init; }
         public ServiceRequestGroupPhase? GroupPhase { get; init; }

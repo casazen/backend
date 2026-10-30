@@ -337,6 +337,30 @@ public class DemoEnvironmentService(
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.Property, property.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
 
+        // DB-11a: the points of interest around the house, with the distance rounded as for a host. They go with their property (cascade) when the
+        // showcase is reset, so they need no marker of their own.
+        for (var position = 0; position < (template.Pois?.Count ?? 0); position++)
+        {
+            var poi = template.Pois![position];
+            db.PropertyPois.Add(new PropertyPoi
+            {
+                PropertyId = property.Id,
+                OrgId = orgId,
+                Position = position,
+                Kind = poi.Kind,
+                NameIt = poi.NameIt,
+                NameEn = poi.NameEn,
+                Mode = poi.Mode,
+                Minutes = poi.Minutes,
+                Direction = poi.Direction,
+                DistanceMeters = PoiDistance.Round(poi.DistanceMeters),
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
         if (template.Publish || template.Mode == RentalMode.Long)
         {
             var used = await UsedCinsAsync(orgId, cancellationToken);

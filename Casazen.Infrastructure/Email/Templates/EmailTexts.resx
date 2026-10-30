@@ -1965,4 +1965,49 @@
   <data name="Push_ServicePaymentReceived_Body" xml:space="preserve">
     <value>{0}: {1} netti per te, prima delle commissioni di Stripe.</value>
   </data>
+  <data name="SupplierInquiryReply_Subject" xml:space="preserve">
+    <value>{0} ti ha risposto</value>
+  </data>
+  <data name="SupplierInquiryReply_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha risposto alla tua richiesta. Leggi il messaggio e continua la conversazione nella pagina della richiesta.</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Subject" xml:space="preserve">
+    <value>{0} non può occuparsi della tua richiesta</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; non può occuparsi della tua richiesta.</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Hint" xml:space="preserve">
+    <value>Non hai pagato nulla. Puoi chiedere a un altro fornitore.</value>
+  </data>
+  <data name="SupplierInquiryExpired_Subject" xml:space="preserve">
+    <value>La tua richiesta a {0} si è chiusa</value>
+  </data>
+  <data name="SupplierInquiryExpired_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; non ha risposto in tempo alla tua richiesta, quindi l'abbiamo chiusa.</value>
+  </data>
+  <data name="SupplierInquiryExpired_Hint" xml:space="preserve">
+    <value>Non hai pagato nulla. Puoi scrivere di nuovo o chiedere a un altro fornitore.</value>
+  </data>
+  <data name="SupplierInquiryClosed_Cta" xml:space="preserve">
+    <value>Vai alla pagina del fornitore</value>
+  </data>
+  <data name="SupplierInquiryMessage_Subject" xml:space="preserve">
+    <value>Nuovo messaggio dal cliente — {0}</value>
+  </data>
+  <data name="SupplierInquiryMessage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti ha scritto nella richiesta su misura a &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryMessage_Hint" xml:space="preserve">
+    <value>Leggi il messaggio e rispondi dalla console: il testo non è in questa email.</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Subject" xml:space="preserve">
+    <value>Richiesta chiusa dal cliente — {0}</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha chiuso la richiesta su misura a &lt;strong&gt;{1}&lt;/strong&gt;: non serve più rispondere.</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Hint" xml:space="preserve">
+    <value>La conversazione resta leggibile nella console.</value>
+  </data>
 </root>

@@ -419,6 +419,8 @@ public static class ServiceCollectionExtensions
         // DB-11a: the optional facts and texts of the property page of the booking site (api/properties/{id}/site-profile).
         services.AddScoped<IPropertySiteProfileService, PropertySiteProfileService>();
         services.AddScoped<IPropertyPhotoAltService, PropertyPhotoAltService>();
+        services.AddScoped<IPropertyFloorPlanService, PropertyFloorPlanService>();
+        services.AddScoped<IPropertyPoiService, PropertyPoiService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
         services.AddScoped<IApeComplianceService, ApeComplianceService>();
         // The code of an APE the file does not show legibly, from the public CENED register of Lombardy (open data, no key).
@@ -654,6 +656,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ServiceRequestService>();
         services.AddScoped<IServiceRequestService>(provider => provider.GetRequiredService<ServiceRequestService>());
         services.AddScoped<IShowcaseRequestCustomerActions>(provider => provider.GetRequiredService<ServiceRequestService>());
+        // The conversation of a request on measure (SP-10b): the supplier reads the thread and writes in it.
+        services.AddScoped<IServiceRequestThreadActions>(provider => provider.GetRequiredService<ServiceRequestService>());
         // Automatic cancellation of the requests nobody answered (SP-04, D8): the recurring job runs only with the flag on.
         services.AddScoped<IServiceRequestAutoCancelService, ServiceRequestAutoCancelService>();
         // Backup suppliers of a host's request (SP-BKP, flag SupplierRequestBackups for the creation of groups only): the choice of the backups

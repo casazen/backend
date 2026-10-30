@@ -417,6 +417,7 @@ public partial class ServiceRequestService(
         CancellationToken cancellationToken = default)
     {
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
+        EnsureNotOnMeasure(request);
 
         // A backup closed by the race (another backup accepted first) is told so plainly: 409, and it loses nothing.
         ThrowIfRaceClosed(request);
