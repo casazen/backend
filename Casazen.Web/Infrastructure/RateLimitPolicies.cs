@@ -66,6 +66,13 @@ public static class RateLimitPolicies
     public const string PublicComuni = "PublicComuni";
 
     /// <summary>
+    /// The search of a booking site and its calendar (<c>GET api/public/orgs/{slug}/stays</c> and <c>…/calendar</c>, DB-07a): the heaviest
+    /// anonymous reads, each prices every house of the site for the dates (the answer is kept a few seconds), so they have a limit of their own,
+    /// tighter than <see cref="PublicRead"/>.
+    /// </summary>
+    public const string PublicStaySearch = "PublicStaySearch";
+
+    /// <summary>
     /// Free slots of a supplier's service (<c>GET api/public/suppliers/{slug}/slots</c>, SP-09): each read runs the slot planner
     /// (cached 30 seconds per service), so it has a limit of its own, tighter than <see cref="PublicRead"/>.
     /// </summary>
@@ -105,6 +112,13 @@ public static class RateLimitPolicies
     public const string HostMessageSend = "HostMessageSend";
 
     /// <summary>
+    /// A visitor of the booking site writing to the host (<c>POST api/public/orgs/{slug}/contact</c>, DB-03b): anonymous free text that ends
+    /// in an email to somebody else, so it is the tightest of the public limits together with the bookings (5 per 10 minutes per client IP),
+    /// paired with a limit per address and org (<see cref="HostContactEmailRateLimiter"/>, 3 per day).
+    /// </summary>
+    public const string PublicContact = "PublicContact";
+
+    /// <summary>
     /// What an org invitation link is for (<c>POST api/org-invitations/lookup</c>, AM-02): anonymous, a token in the body.
     /// Tighter than <see cref="PublicRead"/>: a page asks once, and the token is 256 random bits, so nobody has a reason
     /// to ask often.
@@ -125,6 +139,13 @@ public static class RateLimitPolicies
     /// it has a limit of its own.
     /// </summary>
     public const string GlobalSearch = "GlobalSearch";
+
+    /// <summary>
+    /// The free slots of a supplier's service read by the host to ask for an intervention (<c>GET api/suppliers/{id}/services/{serviceId}/slots</c>,
+    /// SR-08a). Each read runs the slot planner over up to 14 days, so it has a limit of its own. A policy of a signed-in endpoint, like
+    /// <see cref="GlobalSearch"/>: partitioned by <b>person</b>, since the people of one office share an address.
+    /// </summary>
+    public const string HostSupplierSlots = "HostSupplierSlots";
 
     /// <summary>
     /// The copy of a tenant's personal data and the erasure request (<c>GET api/long-rent/tenants/{id}/export</c> and <c>POST

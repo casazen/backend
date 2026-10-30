@@ -26,6 +26,11 @@ publication is the **only writer of `SupplierSettings.OnlineBookingEnabled`**, a
 Task SP-04c (redesign wave) adds no flag: the urgent requests with a surcharge are the supplier's own settings (`api/supplier/availability/urgent`, `urgentEnabled` of a
 service, off until the supplier turns them on), and what the customer sees of them (`urgent=true` on the slots, the estimate and the booking) is part of the public reads and
 booking already behind `SupplierShowcaseBooking` (`docs/runbooks/suppliers.md` section 32).
+Task SP-04b (redesign wave) adds no flag either: the brief's `SupplierQuotes` was not created (the functions of the wave are always on, override of 17/10). The supplier's quote
+(`POST api/service-requests/{id}/quote`) and the host's answers are always available; the answers of a showcase customer (`api/public/supplier-bookings/quote/accept|reject`) are behind
+`SupplierShowcaseBooking` like the rest of its area, and paying the work inside CasaZen stays behind `SupplierOnlinePayments` (`docs/runbooks/suppliers.md` section 34).
+Task SP-16d (redesign wave) adds no flag: the notices of the supplier have their own three switches (columns of `SupplierSettings`, on by default, written by `PUT api/supplier/settings`), and the
+reminder of the day before to the supplier is sent by the job that already exists (`docs/runbooks/suppliers.md` section 35).
 Task CF-FIX (redesign wave, 2026-10-25) adds `ConcordatoFacile` (wanted by the product owner: the service is on in the test environment and
 off in production until CasaZen confirms the trial run and the privacy framework to ConcordatoFacile; `docs/integrations/concordatofacile/README.md`).
 

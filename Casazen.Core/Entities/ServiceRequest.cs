@@ -230,6 +230,50 @@ public class ServiceRequest
     [MaxLength(ServiceRequestLimits.ProposalMessageMaxLength)]
     public string? ProposalMessage { get; set; }
 
+    // ─── Quote with the customer's approval (SP-04b) ─────────────────────────────────────────────────────────────────
+    // An offer the supplier made on a request still waiting for its answer (Richiesto), like the proposed time: not an eighth status.
+    // The columns below are empty unless a quote waits for the customer, who is the host or, for a showcase request, the private
+    // customer. One offer at a time: a quote and a proposed time are never both there (CK_ServiceRequests_QuoteOffer).
+
+    /// <summary>
+    /// When the supplier sent the quote that waits for an answer (UTC, to the microsecond); <c>null</c> while there is none. It is also the
+    /// <b>version</b> of the quote: whoever answers repeats it, and an answer to a quote that was replaced or withdrawn meanwhile is refused
+    /// (409 <c>service_request_quote_changed</c>).
+    /// </summary>
+    public DateTime? QuoteSentAt { get; set; }
+
+    /// <summary>The supplier member who sent it: the one recorded as having taken the request if the customer accepts.</summary>
+    [MaxLength(255)]
+    public string? QuoteSentByUserId { get; set; }
+
+    /// <summary>JSON array of <see cref="ServiceRequestQuoteLine"/> (<c>label</c>, <c>amountCents</c>): from one to twenty; <c>[]</c> while there is no quote.</summary>
+    [Column(TypeName = "jsonb")]
+    public string QuoteLinesJson { get; set; } = "[]";
+
+    /// <summary>What the lines add up to, in cents of euro (gross, as declared: D4); the price agreed if the customer accepts.</summary>
+    public int? QuoteTotalCents { get; set; }
+
+    /// <summary>An optional note of the supplier for the customer.</summary>
+    [MaxLength(ServiceRequestLimits.QuoteNoteMaxLength)]
+    public string? QuoteNote { get; set; }
+
+    /// <summary>
+    /// Start of another time the quote offers instead of the request's own (UTC); <c>null</c> when the quote leans on the time the request
+    /// already has. The offer does not hold the slot: it is checked again, under the supplier's calendar lock, when the customer accepts.
+    /// </summary>
+    public DateTime? QuoteScheduledStartUtc { get; set; }
+
+    /// <summary>End of that other time (UTC); set and cleared together with <see cref="QuoteScheduledStartUtc"/>.</summary>
+    public DateTime? QuoteScheduledEndUtc { get; set; }
+
+    /// <summary>
+    /// JSON array of <see cref="ServiceRequestQuoteEvent"/> (<c>kind</c>, <c>at</c>, <c>totalCents</c>): what happened to the quotes of this
+    /// request (sent, accepted, rejected, withdrawn), oldest first, the last <see cref="ServiceRequestLimits.MaxQuoteEvents"/>. It is what the
+    /// history of the supplier's console is made of once the offer itself is gone.
+    /// </summary>
+    [Column(TypeName = "jsonb")]
+    public string QuoteEventsJson { get; set; } = "[]";
+
     // ─── Booking from the supplier's public showcase (SP-10) ─────────────────────────────────────────────────────────
     // Every column below is new in SP-10 and empty on the requests of a host: they are set together, and only, on a request of
     // the Showcase context (CK_ServiceRequests_Context).
@@ -287,6 +331,14 @@ public class ServiceRequest
     /// once per request.
     /// </summary>
     public DateTime? ReminderSentAt { get; set; }
+
+    /// <summary>
+    /// When the reminder of the day before was decided for the <b>supplier</b> (SP-16d, the same job <c>service-request-reminders</c>, 18:00
+    /// Europe/Rome, any context of the request): once per request. It is set in the save that precedes the queueing, and also when the
+    /// reminder is not sent because the supplier turned it off or is suspended, so a request is judged once and not at every run. Requests that
+    /// existed before the column have no value and are judged by the same rule: the work must still be ahead.
+    /// </summary>
+    public DateTime? SupplierReminderSentAt { get; set; }
 
     /// <summary>
     /// Optimistic concurrency token (A4-19): mapped to PostgreSQL's <c>xmin</c> system column, which changes with every

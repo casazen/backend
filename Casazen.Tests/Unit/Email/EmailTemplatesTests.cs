@@ -689,6 +689,9 @@ public class EmailTemplatesTests
             typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestCancelledToSupplierPush)),
             typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestReminderPush)),
             typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestProposalAnsweredPush)),
+            // SP-16d: the reminder of the day before has the service, the time and the comune, and nothing of the property.
+            typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestDayBefore)),
+            typeof(EmailTemplates).GetMethod(nameof(EmailTemplates.ServiceRequestDayBeforePush)),
         }.SelectMany(method => method!.GetParameters().Select(parameter => parameter.Name)).ToList();
 
         Assert.DoesNotContain("propertyName", parameterNames);

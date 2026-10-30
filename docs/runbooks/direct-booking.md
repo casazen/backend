@@ -734,6 +734,50 @@ nights, which is `nightlyRate x nights` without a surcharge) and adds `lines`, t
 - The lines before `Total` add up to it, to the cent (`StayPricingTests`, `DirectBookingPublicDataIntegrationTests`). The
   frontend shows them and never adds euros itself.
 
+### 11.4a The search of the site: `stays`, the calendar of the site, places, similar houses (DB-07a)
+
+One call for the whole site instead of one per house. All anonymous, read only, no flag, no migration, under `/api/public/orgs/{slug}`
+(a former slug of the org resolves, 404 for a site that does not):
+
+| Endpoint | What it gives | Limit |
+|---|---|---|
+| `GET …/stays?checkin&checkout&adults&children&pets&where&minPrice&maxPrice&bedrooms&bathrooms&minSqm&amenities&rules&tags&sort&page&pageSize` | every published house of the site (50 at most) with the card, `availability` and `price`; `alternatives` when nothing is free | `PublicStaySearch` 60 / min per IP |
+| `GET …/calendar?from&to&adults&children` | per day of the site: `anyAvailable`, `fromPriceCents`, `minNights` (the «Quando» field of the home); 13 months at most | `PublicStaySearch` |
+| `GET …/destinations` | the comuni of the published houses `{ id, label, comune, count }`: `id` is the value of `where` | `PublicRead` |
+| `GET …/properties/{slugOrId}/similar?max=3` | up to 6 other houses: same kind of place (pool, sea, terrace, garden, pets), same comune, near price; cards with the lowest price per night, no stay | `PublicRead` |
+
+- **`stays` card.** `id`, `slug`, `name`, `comune`, `zone` (null until DB-11a), `latitude`/`longitude` **rounded** (§ 11.7, no address anywhere), the first
+  five `photos`, `bedrooms`, `bathrooms`, `maxGuests`, `areaSqm`, the main `amenities` (names of `PropertyAmenity`, six at most), `tags` (empty until DB-11a),
+  `rating {count, average}` (`null` without public reviews), `availability` and `price`.
+- **`availability`** `{ available, reason, minNights, firstFreeCheckIn }`. `reason`, in this order: `past` (check-in before today), `not_bookable`
+  (the host cannot take a payment yet, § 11.5), `guests` (the party is larger than `maxGuests`), `pets` (`pets=true` and the house refuses pets; «on request»
+  does not refuse), `busy` (a night is taken: booking, hold, request, iCal or manual block, the same read as § 11.9), `min_nights`. A house that is not free **stays in
+  the list** after the free ones. `firstFreeCheckIn` = the check-in asked when the house is free; for `busy` and `min_nights` the first day (from the check-in asked,
+  not before today) a stay as long as the one asked and at least the minimum stay is free within 150 days; `null` for the other reasons. Without dates every house is
+  `available: true` (there is nothing to be taken) and `firstFreeCheckIn` is `null`.
+- **`price`** `{ currency, perNightCents, totalCents, includesTouristTax }`. **`totalCents` is the total of the quote** of that stay for that party, to the cent, from
+  the same functions (`StayPricing.Lodging`, `TouristTaxCalculator.Calculate`): nights (rate, weekend surcharge, prices the host confirmed) + cleaning + tourist tax
+  when it can be calculated. It is `null` without dates and when the quote would refuse the stay (too many guests, shorter than the minimum, in the past).
+  `perNightCents` is the nights divided by their number (cleaning and tax not in it), or, without dates, the lowest night of the next 30 days («da X € a notte»).
+  `includesTouristTax`: `exact`, `estimated` (children are in the party and the rate of the comune depends on age: **every child is counted as 17, a payer**, the
+  quote of the checkout, which asks the ages, gives the exact figure) or `notIncluded` (no rate for the comune: the total has no tax, as in the quote).
+- **`alternatives`**: only when dates were given and **no** house that passes the filters is free; up to 3 ranges as long as the stay, offsets +1, −1, +2, −2, +3, −3, +4, +5, +6,
+  +7, +10, +14, +21 days (not before today), with `availableCount` (houses that sleep the party, accept the pet and are free) and `fromPerNightCents`; oldest first.
+- **Filters.** `where` (a destination `id` or a comune name), `bedrooms`/`bathrooms`/`minSqm` (at least; a house that did not say its size is not shown for `minSqm`),
+  `minPrice`/`maxPrice` (per night, on `perNightCents`), `amenities` (names of `PropertyAmenity`, the house has all), `rules` = `pets` (accepts pets), `selfCheckin`
+  (amenity), `smoking` (rule «yes», else the amenity), `parties` (rule «on request»). **Not applied, and said so** in `unsupportedFilters`: `tags` (the labels of the houses
+  are DB-11a), `rules:children` (the house rule about children is DB-11a), and any unknown amenity or rule (`amenities:Foo`). Never an error.
+- **Sort** `recommended` (default: by name, until the editor can order the houses), `priceAsc`, `priceDesc` (on the total, per night without dates), `rating`, `largest`;
+  `page` from 1 and `pageSize` (50 at most; left out, every house).
+- **Errors.** 422 `public_stays_dates_invalid` (one date only, departure not after arrival, more than 366 nights); 422 `public_site_calendar_range_invalid`; 400 for a
+  value out of range (adults 1-50, children 0-50, page size 1-50…); 429 per client IP.
+- **Tenancy and privacy.** The houses are those of the org of the site and no other org's; a signed-in host of another org gets the answer everybody gets (the queries
+  name the org and ignore the tenant filter). Nothing says who stays or whether a night is a booking or a block.
+- **Cost.** Per request, whatever the number of houses: the houses (1 read), the taken nights of all of them (2), the prices the hosts confirmed (1), the tourist tax rates
+  of the stay (1) and the ratings (1); the taken nights are loaded from 21 days before the check-in to 150 days after it. The answer of `stays` and of the site calendar is
+  **kept for `PublicRead__CacheSeconds` seconds** (30 by default, `0` = off) in a bounded cache (256 answers, a new one is simply not kept when it is full), per org and
+  query; nothing invalidates it (`generatedAt` says when it was worked out, the quote and the checkout never read it, so a stale list cannot make a booking wrong).
+
 ### 11.5 Public host data and `acceptsBookings`
 
 - `acceptsBookings` is **the rule of the checkout**: the org has a Stripe connected account that is allowed to charge
@@ -849,6 +893,37 @@ property page, the stay pickers and the checkout. Anonymous, `PublicRead` (per c
 - **Prices the host confirmed are public data**: `PricingAdapterService.GetAppliedNightlyPricesAsync` names the property and ignores
   the tenant filter, so a signed-in host of another org who looks at the site sees the prices everybody sees (the quote did not
   guarantee it before).
+### 11.10 Writing to the host: «Scrivi a {host}» (DB-03b)
+
+`POST /api/public/orgs/{slug}/contact` (anonymous, no flag, no migration, no entity): a visitor of the booking site who has no booking yet
+writes a few lines to the host, who gets them by email and answers from their mailbox.
+
+```json
+{ "email": "anna@example.com", "message": "Ciao, c'è posto a Ferragosto?", "name": "Anna", "propertyId": "…", "lang": "en",
+  "consent": true, "website": "" }
+```
+
+- **Answer.** `202` with no body, **the same for every org that exists**: whether it publishes its contact email on the site
+  (`ContactEmailPublic` is about showing the address, the form never shows it), has one or not, and whether the honeypot caught the call.
+  The answer never says whether the message reached anybody. `404` for a site that does not resolve (its former slugs do, PL-04); `400`
+  `validation_error` for a body that breaks the limits, `host_contact_consent_required` when `consent` is not `true`,
+  `host_contact_email_invalid` (a plain address only, no display name), `host_contact_message_invalid` (5 to 2000 characters once trimmed);
+  `429` `rate_limited` (see below). The body is capped at 16 KB; `name` up to 100 characters; `lang` is `it` or `en` (anything else is
+  ignored); `propertyId` counts only if it is a published property of that org, otherwise it is ignored and tells nothing.
+- **Honeypot.** `website` is a field no person fills: when it has a value the call is answered `202` and nothing is sent.
+- **Limits.** Per client IP (`PublicContact`, 5 / 10 min) and per address and org (`HostContactPerEmail`, 3 / day, counted under the id of
+  the org, so a former slug shares the budget; its 429 always names the whole window). Variables in [proxy-ip.md](proxy-ip.md).
+- **The email** (`host-contact-message`, one per accepted message, to `Orgs.ContactEmail`, in Italian like the other emails to the host)
+  carries the text of the visitor (HTML-encoded, line breaks kept), their address and name, the property with a link to its page and the
+  language of the site they were reading; the subject has no personal data. Its **`Reply-To` is the visitor's address**, so the host answers
+  by replying; the sender stays the configured one (`EmailContent.ReplyTo`, `IEmailService.SendEmailAsync(…, replyTo)`; a message with a
+  reply-to goes through its own Hangfire job `SendWithReplyToAsync`, the emails without it through the job they always used). It is the
+  consequence of a person's action (the visitor sent the form), never automatic, and it is the only email that leaves.
+- **Privacy.** Nothing is stored. The log has the org id and whether the email was queued, never the address, the name or the text. The text
+  lives in the Hangfire job of the email until the job is deleted, like the body of every other email. An org without a contact email
+  drops the message quietly (log line with the org id).
+- **Not done here.** A copy or a receipt to the visitor, a per-org cap against a distributed flood, a thread of the conversation in the
+  app, the languages of the email to the host (Italian only).
 
 ## 12. Who runs the site: operator data in the footer (DB-03b-a)
 

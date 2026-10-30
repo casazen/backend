@@ -17,6 +17,9 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     /// <summary>Supplier console inbox.</summary>
     public string SupplierInbox() => Build("/app/supplier/inbox");
 
+    /// <summary>A request in the supplier console (SP-16d, the reminder of the day before). Only the id of the request is in the link, no personal data.</summary>
+    public string SupplierRequest(Guid serviceRequestId) => Build($"/app/supplier/inbox/{serviceRequestId:D}");
+
     /// <summary>Guest self check-in page for a raw session token.</summary>
     public string GuestCheckIn(string token)
     {
