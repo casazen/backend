@@ -536,6 +536,10 @@ public sealed partial class SupplierPaymentService
         }
 
         RecomputeRefunds(payment, refunds, now);
+
+        // SP-15c-c: the refund of a dispute decided for the customer may be this one. The payment leaves Disputed — and what the supplier is still
+        // owed becomes due — only once the payment has given back everything the decision asked for.
+        await SettleDecidedDisputeAsync(payment, now, cancellationToken);
     }
 
     /// <summary>

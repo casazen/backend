@@ -246,6 +246,60 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.ConfirmOkAsync(request.ToCredentials(), ct)));
     }
 
+    /// <summary>
+    /// SP-15c-c, "Segnala un problema": the customer reports a problem with a job paid inside CasaZen and the money CasaZen holds for it stops until a
+    /// person decides (decisions VT-D1 and VT-D16). Possible from the moment the work is completed until the money is due to the supplier
+    /// (<c>payment.releaseAtUtc</c>), never after the customer said "all fine" or the supplier was paid; for a job nobody marked completed, from the end
+    /// of the time agreed for it. The body carries <c>reason</c> (<c>not_done</c>, <c>incomplete</c>, <c>poor_quality</c>, <c>not_as_described</c> or
+    /// <c>other</c>) and <c>text</c> (at most 1000 characters, required for <c>other</c>; no photos). Same proof of who is asking as the other actions,
+    /// same limits, same uniform 404. Answers the booking as it is now (<c>payment.dispute</c> and <c>actions.canWithdrawProblem</c> included); a complaint
+    /// already open answers the same booking and writes nothing. 404 <c>supplier_booking_not_found</c>; 422 <c>service_dispute_not_reportable</c> (the
+    /// booking is not paid inside CasaZen, or not a job that was done), <c>service_dispute_window_closed</c> (the time is over; <c>windowEndedAt</c>),
+    /// <c>service_dispute_too_early</c> (the work is not completed and its time has not ended), <c>service_dispute_invalid</c> (<c>fields</c>: <c>reason</c>,
+    /// <c>text</c>); 429.
+    /// </summary>
+    [HttpPost("report-problem")]
+    [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [SupplierBookingManageRateLimit]
+    [RequestSizeLimit(ShowcaseBookingLimits.ManageMaxBodyBytes)]
+    [ProducesResponseType(typeof(PublicSupplierBookingViewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<PublicSupplierBookingViewResponse>> ReportProblem(
+        [FromBody] SupplierBookingReportProblemRequest request,
+        CancellationToken ct)
+    {
+        return Ok(PublicSupplierBookingViewMapper.ToDto(
+            await bookings.ReportProblemAsync(request.ToCredentials(), request.Reason, request.Text, ct)));
+    }
+
+    /// <summary>
+    /// SP-15c-c: the customer takes its complaint back — the money is no longer stopped and the supplier is paid at the next run of the funds job. Same
+    /// proof of who is asking and same limits as the other actions. Taking back a complaint that was taken back answers the same booking. 404
+    /// <c>supplier_booking_not_found</c> or <c>service_dispute_not_found</c> (no complaint); 409 <c>service_dispute_not_open</c> (it was decided already);
+    /// 429.
+    /// </summary>
+    [HttpPost("withdraw-problem")]
+    [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [SupplierBookingManageRateLimit]
+    [RequestSizeLimit(ShowcaseBookingLimits.ManageMaxBodyBytes)]
+    [ProducesResponseType(typeof(PublicSupplierBookingViewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<PublicSupplierBookingViewResponse>> WithdrawProblem(
+        [FromBody] SupplierBookingAccessRequest request,
+        CancellationToken ct)
+    {
+        return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.WithdrawProblemAsync(request.ToCredentials(), ct)));
+    }
+
     /// <summary>A 422 that names the fields at fault, as the booking does.</summary>
     private ObjectResult RuleProblem(string code, string messageKey, IReadOnlyList<object> messageArgs, IReadOnlyList<string> fields)
     {
