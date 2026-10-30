@@ -495,6 +495,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();
         // Fiscal report per lease for the accountant (LR-11b): the rules of the tax advisory (LT-08) on the leases of the scope.
         services.AddScoped<ILongRentFiscalReportService, LongRentFiscalReportService>();
+        // The tenants of the area (LR-09): the people read from the parties of the leases, the copy of their data and their erasure.
+        services.AddScoped<ILongRentTenantService, LongRentTenantService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
@@ -515,6 +517,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertySafetyChecklistService, PropertySafetyChecklistService>();
         // Single evaluation of the activation blockers, suspension and nightly check of the published properties (CO-06).
         services.AddScoped<IPropertyComplianceStatusService, PropertyComplianceStatusService>();
+        // What the host's list shows of each property besides its record: one state, what is missing, the nights (SR-07a).
+        services.AddScoped<IPropertyOverviewService, PropertyOverviewService>();
         services.AddSingleton<IDemoEnvironmentGate, Casazen.Web.Demo.HostDemoEnvironmentGate>();
         services.AddScoped<IDemoEnvironmentService, DemoEnvironmentService>();
         services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
@@ -572,6 +576,9 @@ public static class ServiceCollectionExtensions
         // The supplier's agenda (SP-03): hours, time off, blocks, rules, calendar and the input of the slot planner. Rows keyed
         // by the supplier org, not tenant-filtered; every write under the SupplierCalendarSync lock.
         services.AddScoped<ISupplierAgendaService, SupplierAgendaService>();
+        // The content of the supplier's showcase (SP-13a): the draft, the published version, and the changes between them. Rows keyed
+        // by the supplier org, not tenant-filtered; every change under the SupplierShowcaseContent lock.
+        services.AddScoped<ISupplierShowcaseContentService, SupplierShowcaseContentService>();
         // The anonymous read side of the supplier showcase (SP-09): services, free slots and price estimate, behind the flag
         // SupplierShowcaseBooking. The slot plans are kept 30 seconds per replica (a singleton: not tied to a request).
         services.AddSingleton<PublicSupplierSlotCache>();

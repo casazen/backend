@@ -147,6 +147,9 @@
   <data name="StripeConnectAccountUnavailable" xml:space="preserve">
     <value>L'account Stripe collegato non è più disponibile: riprova per collegarne uno nuovo.</value>
   </data>
+  <data name="StripeConnectDashboardNotReady" xml:space="preserve">
+    <value>Il tuo account Stripe non è ancora pronto: collega Stripe o completa la verifica, poi potrai aprirlo da qui.</value>
+  </data>
   <data name="ConfigurationError" xml:space="preserve">
     <value>Errore di configurazione del server. Contatta l'assistenza.</value>
   </data>
@@ -743,6 +746,12 @@
   </data>
   <data name="OrgOperatorRegisteredOfficeTooLongInput" xml:space="preserve">
     <value>La sede legale è troppo lunga.</value>
+  </data>
+  <data name="OrgContactPhoneInvalid" xml:space="preserve">
+    <value>Il numero di telefono non è valido: usa solo cifre, con un + iniziale facoltativo (da 6 a 15 cifre).</value>
+  </data>
+  <data name="OrgDefaultLanguageInvalid" xml:space="preserve">
+    <value>Lingua non supportata: scegli italiano (it) o inglese (en).</value>
   </data>
   <data name="OrgSlugInvalid" xml:space="preserve">
     <value>Questo indirizzo web (slug) non è valido: usa da {0} a {1} caratteri tra lettere, numeri e trattini.</value>
@@ -1584,6 +1593,24 @@
   </data>
   <data name="PropertyHouseRulesTooLong" xml:space="preserve">
     <value>Le regole della casa possono avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyBedsRange" xml:space="preserve">
+    <value>I letti devono essere un numero intero tra {1} e {2}.</value>
+  </data>
+  <data name="PropertyAreaSqmRange" xml:space="preserve">
+    <value>La superficie deve essere tra {1} e {2} metri quadri.</value>
+  </data>
+  <data name="PropertyListingTitleTooLong" xml:space="preserve">
+    <value>Il titolo dell'annuncio può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyExtraGuestFeeRange" xml:space="preserve">
+    <value>Il supplemento per ogni ospite in più deve essere tra {1} e {2} euro a notte.</value>
+  </data>
+  <data name="PropertyQuietHoursIncomplete" xml:space="preserve">
+    <value>Gli orari di silenzio vanno indicati insieme: scrivi sia l'inizio sia la fine, oppure nessuno dei due.</value>
+  </data>
+  <data name="PropertyListViewInvalid" xml:space="preserve">
+    <value>Vista non valida: usa «overview» oppure lascia vuoto.</value>
   </data>
   <data name="PropertyTimezoneInvalid" xml:space="preserve">
     <value>Fuso orario non valido: usa un identificativo IANA, ad esempio Europe/Rome.</value>
@@ -2476,6 +2503,12 @@
   <data name="LeaseListViewUnknown" xml:space="preserve">
     <value>La vista dei contratti non è valida: usa All, Active, InPreparation, Expiring oppure Ended.</value>
   </data>
+  <data name="TenantNotFound" xml:space="preserve">
+    <value>Inquilino non trovato.</value>
+  </data>
+  <data name="TenantListViewUnknown" xml:space="preserve">
+    <value>La vista degli inquilini non è valida: usa All, Current oppure Former.</value>
+  </data>
   <data name="LongRentDeadlinesRangeInvalid" xml:space="preserve">
     <value>Indica un periodo valido: date nel formato aaaa-mm-gg, con la fine non prima dell'inizio e al massimo 366 giorni.</value>
   </data>
@@ -2556,6 +2589,24 @@
   </data>
   <data name="SupplierServiceCopySuffix" xml:space="preserve">
     <value> (copia)</value>
+  </data>
+  <data name="ShowcaseContentInvalid" xml:space="preserve">
+    <value>Alcuni contenuti della vetrina non sono validi (campi: {0}). Controlla i testi, il colore e le immagini e riprova.</value>
+  </data>
+  <data name="ShowcaseVersionConflict" xml:space="preserve">
+    <value>La vetrina è stata modificata da un'altra scheda o da un altro utente: ricarica la pagina e applica di nuovo la modifica.</value>
+  </data>
+  <data name="ShowcaseNotPublishable" xml:space="preserve">
+    <value>La vetrina non si può ancora pubblicare: mancano ancora delle cose obbligatorie (voci: {0}). Controlla l'elenco «Cosa manca» e riprova.</value>
+  </data>
+  <data name="ShowcaseSupplierNotActive" xml:space="preserve">
+    <value>Puoi pubblicare o riattivare la vetrina solo con un profilo fornitore attivo: completa prima l'attivazione.</value>
+  </data>
+  <data name="ShowcaseNotPublished" xml:space="preserve">
+    <value>La vetrina non è ancora stata pubblicata: non c'è nulla da mettere in pausa o da riattivare.</value>
+  </data>
+  <data name="ShowcaseUndoUnavailable" xml:space="preserve">
+    <value>Non si può più annullare l'ultima pubblicazione: è passato troppo tempo o nel frattempo hai cambiato altro.</value>
   </data>
   <data name="SupplierHoursInvalid" xml:space="preserve">
     <value>Gli orari non sono validi (campi: {0}). Controlla le fasce: ogni giorno ne ha al massimo 3, non possono sovrapporsi e ognuna deve finire dopo il suo inizio (in minuti dalla mezzanotte, da 0 a 1440).</value>
