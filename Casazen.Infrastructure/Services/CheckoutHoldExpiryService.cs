@@ -291,10 +291,21 @@ public sealed class CheckoutHoldExpiryService(
                     await db.SaveChangesAsync(cancellationToken);
                     if (transaction is not null)
                         await transaction.CommitAsync(cancellationToken);
-                    logger.LogWarning(
-                        "Cancelled booking {BookingId} keeps an open payment: Stripe says the guest has paid or is paying ({PaymentIntentIds}); a person has to settle it",
-                        booking.Id,
-                        string.Join(',', inFlightPaymentIntentIds));
+                    if (inFlightPaymentIntentIds.Count > 0)
+                    {
+                        // Recorded as Processing: logged once, the next run no longer finds the payment open.
+                        logger.LogWarning(
+                            "Cancelled booking {BookingId} keeps an open payment: Stripe says the guest has paid or is paying ({PaymentIntentIds}); a person has to settle it",
+                            booking.Id,
+                            string.Join(',', inFlightPaymentIntentIds));
+                    }
+                    else
+                    {
+                        // A saved card (SetupIntent) already saved or being verified: nothing to record, read again by the next run.
+                        logger.LogInformation(
+                            "Cancelled booking {BookingId}: its saved card is already saved or being verified on Stripe; the payment row is left open", booking.Id);
+                    }
+
                     return ClosePaymentsOutcome.InFlight;
 
                 default:
