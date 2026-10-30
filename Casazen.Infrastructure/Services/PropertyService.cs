@@ -304,6 +304,7 @@ public class PropertyService(
                 MaxGuests = p.MaxGuests,
                 NightlyRate = p.NightlyRate,
                 CleaningFee = p.CleaningFee,
+                Currency = p.Currency,
                 Amenities = p.Amenities,
                 PhotoUrls = p.PhotoUrls,
                 CinCode = p.CinCode,
@@ -338,6 +339,7 @@ public class PropertyService(
                 MaxGuests = p.MaxGuests,
                 NightlyRate = p.NightlyRate,
                 CleaningFee = p.CleaningFee,
+                Currency = p.Currency,
                 Amenities = p.Amenities,
                 PhotoUrls = p.PhotoUrls,
                 CinCode = p.CinCode,
@@ -638,6 +640,7 @@ public class PropertyService(
         MaxGuests = row.MaxGuests,
         NightlyRate = row.NightlyRate,
         CleaningFee = row.CleaningFee,
+        Currency = StayCurrency.Normalize(row.Currency),
         Amenities = row.Amenities.Select(a => a.ToString()).ToList(),
         PhotoUrls = row.PhotoUrls,
         CinCode = row.CinCode,
@@ -662,6 +665,7 @@ public class PropertyService(
         MaxGuests = row.MaxGuests,
         NightlyRate = row.NightlyRate,
         CleaningFee = row.CleaningFee,
+        Currency = StayCurrency.Normalize(row.Currency),
         Amenities = row.Amenities.Select(a => a.ToString()).ToList(),
         PhotoUrls = row.PhotoUrls,
         CinCode = row.CinCode,
@@ -675,7 +679,6 @@ public class PropertyService(
                 row.OverrideFullRefundHours, row.OverridePartialRefundHours, row.OverridePartialRefundPercent, row.OverrideRefundType)),
         MinNights = row.MinNights,
         WeekendSurchargePercent = row.WeekendSurchargePercent,
-        Currency = "EUR",
         AcceptsBookings = Org.AcceptsDirectPayments(row.OrgStripeConnectedAccountId, row.OrgConnectChargesEnabled),
         HostName = row.OrgHostName,
         PublicPhone = row.OrgPublicPhone,
@@ -709,6 +712,7 @@ public class PropertyService(
         MaxGuests = p.MaxGuests,
         NightlyRate = p.NightlyRate,
         CleaningFee = p.CleaningFee,
+        Currency = p.Currency,
         Amenities = p.Amenities,
         PhotoUrls = p.PhotoUrls,
         CinCode = p.CinCode,
@@ -766,6 +770,9 @@ public class PropertyService(
         public int MaxGuests { get; init; }
         public decimal NightlyRate { get; init; }
         public decimal CleaningFee { get; init; }
+
+        // The currency of the rate and of the cleaning fee: the one of the property (StayCurrency).
+        public string Currency { get; init; } = StayCurrency.Default;
         public List<PropertyAmenity> Amenities { get; init; } = [];
         public List<string> PhotoUrls { get; init; } = [];
         public string? CinCode { get; init; }

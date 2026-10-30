@@ -96,7 +96,7 @@ public sealed class PublicCalendarService(
             }
         }
 
-        return new PublicCalendar(property.Id, first, end, today, "EUR", days, _clock.GetUtcNow().UtcDateTime);
+        return new PublicCalendar(property.Id, first, end, today, StayCurrency.Normalize(property.Currency), days, _clock.GetUtcNow().UtcDateTime);
     }
 
     /// <summary>The range asked for, or its defaults, and the 422 for one that cannot be answered.</summary>
@@ -123,9 +123,9 @@ public sealed class PublicCalendarService(
             .Where(p => p.Org.IsActive);
 
     private static readonly System.Linq.Expressions.Expression<Func<Property, PropertyRow>> Project =
-        p => new PropertyRow(p.Id, p.NightlyRate, p.WeekendSurchargePercent, p.MinNights);
+        p => new PropertyRow(p.Id, p.NightlyRate, p.WeekendSurchargePercent, p.MinNights, p.Currency);
 
     private static DateTime ToStoredDate(DateOnly date) => date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
-    private sealed record PropertyRow(Guid Id, decimal NightlyRate, decimal WeekendSurchargePercent, int? MinNights);
+    private sealed record PropertyRow(Guid Id, decimal NightlyRate, decimal WeekendSurchargePercent, int? MinNights, string Currency);
 }
