@@ -3,8 +3,11 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Enums;
+using Casazen.Core.SiteProfile;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Tests.Unit.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -75,6 +78,60 @@ public class PublicSiteSearchIntegrationTests : IClassFixture<CasazenWebApplicat
         Assert.Equal(Day(friday.AddDays(2)), taken.GetProperty("firstFreeCheckIn").GetString());
         Assert.Equal(1, adults.GetProperty("availableCount").GetInt32());
         Assert.Equal(0, adults.GetProperty("alternatives").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Stays_TheLabelsAndTheChildrenRuleFilterTheList_AndTheCardSaysWhatCancellingCostsWithTheDatesOfTheQuote()
+    {
+        var city = $"Etichette{Guid.NewGuid():N}";
+        // Alfa: a pool (a label its data give), a sea view the host chose, children welcome, the zone written, a cancellation policy;
+        // Beta: the host said nothing.
+        var (org, alfa) = await SeedOrgWithHouseAsync("Casa Alfa", city, p =>
+        {
+            p.Amenities = [PropertyAmenity.Pool];
+            p.ChildrenWelcome = true;
+            p.SiteProfileJson = SitePropertyProfileJson.Serialize(new SitePropertyProfileDocument
+            {
+                Zone = new LocalizedText("Centro storico", "Old town"),
+                Tags = ["vista-mare"],
+            });
+            p.CancellationPolicy = CatalogPolicies.Get(CatalogPolicies.Contenuta);
+        });
+        var beta = await SeedHouseAsync(org.Id, "Casa Beta", city);
+        using var client = _factory.CreateClient();
+        var friday = NextFriday(60);
+        var monday = friday.AddDays(3);
+        var dates = $"checkin={Day(friday)}&checkout={Day(monday)}&adults=2";
+
+        async Task<List<Guid>> IdsAsync(string query) =>
+            (await GetStaysAsync(client, org.Slug, query)).GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetGuid()).ToList();
+
+        // A label the data give, one the host chose, both, and the rule about children: only the house that has them.
+        Assert.Equal([alfa], await IdsAsync("tags=piscina"));
+        Assert.Equal([alfa], await IdsAsync("tags=vista-mare"));
+        Assert.Equal([alfa], await IdsAsync("tags=piscina,vista-mare"));
+        Assert.Equal([alfa], await IdsAsync("rules=children"));
+        Assert.Equal(new[] { alfa, beta }.Order(), (await IdsAsync("")).Order());
+
+        // A label that does not exist is left out and said so, never an error: the two houses stay.
+        var unknown = await GetStaysAsync(client, org.Slug, "tags=con-sauna");
+        Assert.Equal(2, unknown.GetProperty("totalCount").GetInt32());
+        Assert.Equal(["tags:con-sauna"], unknown.GetProperty("unsupportedFilters").EnumerateArray().Select(f => f.GetString()));
+
+        // The card: the zone as the host wrote it, the labels in the order of the vocabulary.
+        var items = (await GetStaysAsync(client, org.Slug, dates)).GetProperty("items").EnumerateArray().ToList();
+        var card = items.First(i => i.GetProperty("id").GetGuid() == alfa);
+        Assert.Equal("Old town", card.GetProperty("zone").GetProperty("en").GetString());
+        Assert.Equal(["piscina", "vista-mare"], card.GetProperty("tags").EnumerateArray().Select(t => t.GetString()));
+
+        // What cancelling costs is what the quote of that stay says, date for date; a house with no policy says nothing.
+        var quote = (await ReadAsync(await PostQuoteAsync(client, alfa, friday, monday, adults: 2, childrenAges: []))).GetProperty("cancellation");
+        var onCard = card.GetProperty("cancellation");
+        Assert.Equal(quote.GetProperty("fullRefundUntil").GetString(), onCard.GetProperty("fullRefundUntil").GetString());
+        Assert.Equal(quote.GetProperty("partialRefundUntil").GetString(), onCard.GetProperty("partialRefundUntil").GetString());
+        Assert.Equal(quote.GetProperty("partialRefundPercent").GetDecimal(), onCard.GetProperty("partialRefundPercent").GetDecimal());
+        Assert.NotEqual(JsonValueKind.Null, onCard.GetProperty("fullRefundUntil").ValueKind);
+        Assert.Equal(JsonValueKind.Null, items.First(i => i.GetProperty("id").GetGuid() == beta).GetProperty("cancellation").ValueKind);
     }
 
     private static string Day(DateTime date) => date.ToString("yyyy-MM-dd");
