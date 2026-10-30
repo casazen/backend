@@ -3542,4 +3542,13 @@
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Codice di accesso non disponibile o verifica non superata</value>
   </data>
+  <data name="GuestRefundChanged" xml:space="preserve">
+    <value>L'importo del rimborso è cambiato mentre decidevi: controlla il nuovo importo e conferma di nuovo. Non è stato annullato nulla.</value>
+  </data>
+  <data name="GuestCancelStayStarted" xml:space="preserve">
+    <value>Il soggiorno è già iniziato: per annullarlo scrivi all'host.</value>
+  </data>
+  <data name="GuestCancelConfirmRequired" xml:space="preserve">
+    <value>Conferma di voler annullare la prenotazione per procedere.</value>
+  </data>
 </root>

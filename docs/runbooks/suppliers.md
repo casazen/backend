@@ -323,6 +323,18 @@ profile) but not the services, the price or the response time.
 
 `SupplierPickerPrivacyIntegrationTests` keeps the rule: only `Active` suppliers, and the fields of the answer are a whitelist (no VAT number, no Stripe account), for the list and for the one supplier alike.
 
+### 7.6 The suppliers the host already asked: «Le mie app» of the marketplace — MKT (SR-09c)
+
+`GET /api/service-requests/suppliers` answers one entry for each supplier that has at least one **short-rent** request of the caller's org, the one asked most recently first:
+`supplierOrgId`, `supplierName`, `requestsCount`, `openCount` (the requests that are not over: every one that is not `Rifiutato`, `Pagato` or `Annullato`), `lastRequestAt` and
+`lastCategory`; one page with all of them (`PagedResultDto`, as the picker). It is a view **derived** from the requests (`IHostSupplierUsageReader`, two reads whatever their number), not a
+relationship of its own: the trusted suppliers of the account (AM-10) are another thing. Nothing is shown about the supplier but its name (the legal name of its profile, the name of its org
+when it has none): the contact is on its page (`GET /api/suppliers/{orgId}`, § 7.5), which the host opens from the list.
+
+The perimeter is the rule, and `HostSupplierUsageReaderTests` keeps it: `property.read`; only the requests of the caller's org (an explicit `OrgId` predicate, `ServiceRequest` has no
+tenant filter); for a collaborator «Solo alcuni» (`InScope`) only the requests of the properties it was given, so a supplier it never asked through them is not listed; never a request of the
+long-rent context or one born from a supplier's showcase. The controller is its own file (`ServiceRequestSuppliersController`) so that `suppliers` is never taken for the id of a request.
+
 ## 8. Service requests: validation, errors and concurrent transitions — SU-10
 
 Audit A4-17 / A4-18 / A4-19. Every error of `api/service-requests` and `api/long-rent/service-requests` has the FD-05
