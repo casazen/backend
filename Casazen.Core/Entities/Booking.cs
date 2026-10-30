@@ -192,7 +192,8 @@ public class Booking : ITenantOwned
     public DateTime? CheckoutWizardStartedAt { get; set; }
 
     /// <summary>
-    /// Why the system cancelled the booking; null when a person cancelled it (host, admin) or it is not cancelled.
+    /// Why the system cancelled the booking, or <see cref="BookingCancellationReason.GuestRequested"/> when the guest did; null when
+    /// the host or an admin cancelled it or it is not cancelled.
     /// Lets the payment webhook and support tell an expired checkout hold from a real cancellation (BK-21).
     /// </summary>
     public BookingCancellationReason? CancellationReason { get; set; }
@@ -324,6 +325,12 @@ public enum BookingCancellationReason
     /// <c>DirectBooking:DeferredChargeCancelAfterDays</c> days; nothing was collected, the dates were released (BK-08, A3-14).
     /// </summary>
     DeferredPaymentNotCompleted = 6,
+
+    /// <summary>
+    /// The guest cancelled the booking themselves, from the guest area or with the signed link the host sent (DB-08a, DB-08h).
+    /// A person's cancellation, but one the host did not make: the timeline tells it apart. Append-only: stored as 7.
+    /// </summary>
+    GuestRequested = 7,
 }
 
 public enum PaymentOption

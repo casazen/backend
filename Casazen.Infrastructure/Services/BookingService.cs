@@ -447,7 +447,11 @@ public class BookingService(
                 NightlyPrices: StayPricing.NightPrices(checkInDate, lodging)),
             cancellationToken);
 
-        var freeRefundDeadline = DirectBookingPaymentRules.FreeRefundDeadline(checkIn, property.CancellationPolicy);
+        // DB-08a: the policy of THIS stay (the catalog policy with the host's overrides for a stay under 28 nights), the one the
+        // cancellation will apply, so the day of the deferred charge and the free cancellation shown are true. It is stored on the
+        // booking as it is at creation: the bookings made before keep the day they were given.
+        var effectivePolicy = CancellationRefundPolicy.EffectivePolicy(property, nights);
+        var freeRefundDeadline = DirectBookingPaymentRules.FreeRefundDeadline(checkIn, effectivePolicy);
 
         return new DirectBookingQuote(
             property.Id,
@@ -461,7 +465,7 @@ public class BookingService(
             basePrice + touristTax.AmountOrZero,
             "EUR",
             freeRefundDeadline,
-            DirectBookingPaymentRules.OptionsFor(freeRefundDeadline, _clock.TodayInRome()),
+            DirectBookingPaymentRules.OptionsFor(freeRefundDeadline, _clock.TodayInRome(), effectivePolicy),
             lodging);
     }
 

@@ -27,12 +27,16 @@ public static class DirectBookingPaymentRules
     public const int DefaultFreeRefundDays = 7;
 
     /// <summary>
-    /// Whether the guest can cancel the booking by themselves. Not today: only the host cancels a booking (BK-02,
-    /// <c>POST /api/bookings/{id}/cancel</c>), the guest has no self-service cancellation. So the checkout must not
-    /// promise "Cancellazione gratuita fino a …" (A3-16): <see cref="DirectBookingPaymentOptions.FreeCancellationUntil"/>
-    /// stays null until such a flow exists.
+    /// Whether the checkout may say "Cancellazione gratuita fino a …" (A3-16, DB-08a): only when it is true. The guest cancels by
+    /// themselves from the guest area and gets back everything they paid (the price of the stay and the tourist tax) until the last
+    /// whole day of the full refund of the stay's <paramref name="effectivePolicy"/> (<see cref="CancellationRefundPolicy.EffectivePolicy"/>:
+    /// the catalog policy with the host's overrides). So no policy, a policy that never refunds in full, or a day already past
+    /// promise nothing.
     /// </summary>
-    public static bool GuestSelfCancellationAvailable => false;
+    public static bool IsFreeCancellationPromised(CancellationPolicy? effectivePolicy, DateTime freeRefundDeadline, DateTime todayInRome) =>
+        effectivePolicy is not null
+        && effectivePolicy.FullRefundHours < CancellationRefundPolicy.NeverFullRefundHours
+        && RomeCalendar.DateInRome(freeRefundDeadline) >= RomeCalendar.DateInRome(todayInRome);
 
     /// <summary>
     /// The free refund deadline of a stay (midnight UTC of the Europe/Rome date, the storage convention of date-only values).
@@ -45,23 +49,31 @@ public static class DirectBookingPaymentRules
 
         // Full refund while now <= start of the check-in day − FullRefundHours (CancellationRefundPolicy). The last day
         // entirely in that window is the day before the one containing that instant, daylight saving included.
-        var fullRefundUntil = RomeCalendar.StartOfDayUtc(ToStoredDate(checkIn))
-            .AddHours(-Math.Max(0, policy.FullRefundHours));
-        return ToStoredDate(RomeCalendar.DateInRome(fullRefundUntil).AddDays(-1));
+        return ToStoredDate(CancellationRefundPolicy.LastWholeDayAtLeast(
+            RomeCalendar.StartOfDayUtc(ToStoredDate(checkIn)), policy.FullRefundHours));
     }
 
     /// <summary>"Paga alla scadenza" can be chosen: the charge day is after today (both Europe/Rome calendar dates).</summary>
     public static bool IsDeferredPaymentOffered(DateTime freeRefundDeadline, DateTime todayInRome) =>
         RomeCalendar.DateInRome(freeRefundDeadline) > RomeCalendar.DateInRome(todayInRome);
 
-    /// <summary>The payment options of a stay whose free refund deadline is <paramref name="freeRefundDeadline"/>.</summary>
-    public static DirectBookingPaymentOptions OptionsFor(DateTime freeRefundDeadline, DateTime todayInRome)
+    /// <summary>
+    /// The payment options of a stay whose free refund deadline is <paramref name="freeRefundDeadline"/>. The free cancellation is
+    /// promised only for a stay whose <paramref name="effectivePolicy"/> is given and refunds in full until that day
+    /// (<see cref="IsFreeCancellationPromised"/>); without it (the default) the checkout promises none.
+    /// </summary>
+    public static DirectBookingPaymentOptions OptionsFor(
+        DateTime freeRefundDeadline,
+        DateTime todayInRome,
+        CancellationPolicy? effectivePolicy = null)
     {
         var deferred = IsDeferredPaymentOffered(freeRefundDeadline, todayInRome);
         return new DirectBookingPaymentOptions(
             DeferredPaymentAvailable: deferred,
             DeferredChargeDate: deferred ? freeRefundDeadline : null,
-            FreeCancellationUntil: GuestSelfCancellationAvailable ? freeRefundDeadline : null);
+            FreeCancellationUntil: IsFreeCancellationPromised(effectivePolicy, freeRefundDeadline, todayInRome)
+                ? freeRefundDeadline
+                : null);
     }
 
     private static DateTime ToStoredDate(DateOnly date) => date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);

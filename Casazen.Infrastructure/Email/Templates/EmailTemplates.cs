@@ -31,6 +31,7 @@ public static partial class EmailTemplates
         public const string AlloggiatiDeadline = "alloggiati-deadline";
         public const string GuestRefundConfirmed = "guest-refund-confirmed";
         public const string GuestBookingCancelled = "guest-booking-cancelled";
+        public const string HostBookingCancelledByGuest = "host-booking-cancelled-by-guest";
         public const string GuestBookingConfirmed = "guest-booking-confirmed";
         public const string HostBookingConfirmed = "host-booking-confirmed";
         public const string GuestPaymentRefundedDatesUnavailable = "guest-payment-refunded-dates-unavailable";
@@ -445,7 +446,10 @@ public static partial class EmailTemplates
     /// <summary>
     /// The host cancelled the booking, to the guest (PC-07, A2-08; one email with the refund, BK-10); or, with
     /// <paramref name="cause"/> <see cref="BookingCancellationEmailCause.DeferredPaymentNotCompleted"/>, the system cancelled
-    /// a "Paga più tardi" booking whose payment was not completed (BK-08: nothing was charged).
+    /// a "Paga più tardi" booking whose payment was not completed (BK-08: nothing was charged); or, with
+    /// <see cref="BookingCancellationEmailCause.Guest"/>, the guest cancelled it themselves (DB-08a): the email confirms it, says
+    /// what the policy kept (<paramref name="retainedEur"/>), that the refund usually takes 5-10 days, and asks the guest to tell the
+    /// host if it was not them (DB-D3).
     /// <paramref name="refundedEur"/> is what Stripe already confirmed at the cancellation: that refund gets no separate
     /// <see cref="GuestRefundConfirmed"/>. <paramref name="refundStartedEur"/> is what Stripe has not confirmed yet: its
     /// <see cref="GuestRefundConfirmed"/> follows. Amounts in euro; the host's reason is never passed here.
@@ -459,14 +463,19 @@ public static partial class EmailTemplates
         decimal refundedEur,
         decimal refundStartedEur,
         BookingHostContact hostContact,
-        BookingCancellationEmailCause cause = BookingCancellationEmailCause.Host)
+        BookingCancellationEmailCause cause = BookingCancellationEmailCause.Host,
+        decimal retainedEur = 0m)
     {
+        var byGuest = cause == BookingCancellationEmailCause.Guest;
         var builder = new EmailHtmlBuilder(culture)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph(
-                cause == BookingCancellationEmailCause.DeferredPaymentNotCompleted
-                    ? "GuestBookingCancelled_BodyUnpaid"
-                    : "GuestBookingCancelled_Body",
+                cause switch
+                {
+                    BookingCancellationEmailCause.DeferredPaymentNotCompleted => "GuestBookingCancelled_BodyUnpaid",
+                    BookingCancellationEmailCause.Guest => "GuestBookingCancelled_BodyByGuest",
+                    _ => "GuestBookingCancelled_Body",
+                },
                 propertyName,
                 checkInDate,
                 checkOutDate);
@@ -477,13 +486,53 @@ public static partial class EmailTemplates
             builder
                 .Paragraph("GuestBookingCancelled_Refunded", Amount(refundedEur, culture))
                 .Paragraph("GuestRefundConfirmed_Method")
-                .Muted("GuestRefundConfirmed_Timing");
+                .Muted(byGuest ? "GuestBookingCancelled_RefundTimingByGuest" : "GuestRefundConfirmed_Timing");
         }
 
         if (refundStartedEur > 0m)
+        {
             builder.Paragraph("GuestBookingCancelled_Refund", Amount(refundStartedEur, culture));
+            if (byGuest)
+                builder.Muted("GuestBookingCancelled_RefundTimingByGuest");
+        }
+
+        if (byGuest)
+        {
+            if (retainedEur > 0m)
+                builder.Paragraph("GuestBookingCancelled_Retained", Amount(retainedEur, culture));
+            builder.Muted("GuestBookingCancelled_NotYou");
+        }
 
         return ContactHost(builder, hostContact).Build("GuestBookingCancelled_Subject", propertyName);
+    }
+
+    /// <summary>
+    /// The guest cancelled the booking themselves, from the guest area or with the link the host sent (DB-08a), to the host: who, which
+    /// stay, what was refunded (<paramref name="refundedEur"/>, made or started) and what the policy kept (<paramref name="retainedEur"/>),
+    /// the dates free again, and the link to the booking. The guest's own words and the host's reason are not part of it.
+    /// </summary>
+    public static EmailContent HostBookingCancelledByGuest(
+        CultureInfo culture,
+        string guestFullName,
+        BookingEmailSummary booking,
+        decimal refundedEur,
+        decimal retainedEur,
+        string bookingUrl)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        var builder = new EmailHtmlBuilder(culture)
+            .Paragraph("HostBookingCancelledByGuest_Body", guestFullName, booking.PropertyName, booking.CheckInDate, booking.CheckOutDate)
+            .Paragraph("HostBookingCancelledByGuest_Dates");
+        if (refundedEur > 0m)
+            builder.Paragraph("HostBookingCancelledByGuest_Refund", Amount(refundedEur, culture));
+        if (retainedEur > 0m)
+            builder.Paragraph("HostBookingCancelledByGuest_Retained", Amount(retainedEur, culture));
+
+        return builder
+            .Paragraph("Booking_Code", booking.BookingCode)
+            .Button("HostBookingConfirmed_Cta", bookingUrl)
+            .LinkFallback("Booking_LinkFallback", bookingUrl)
+            .Build("HostBookingCancelledByGuest_Subject", booking.PropertyName, booking.CheckInDate);
     }
 
     /// <summary>
@@ -882,6 +931,9 @@ public enum BookingCancellationEmailCause
 
     /// <summary>"Paga più tardi" not paid within the deadline after the failed charge (BK-08): nothing was charged.</summary>
     DeferredPaymentNotCompleted,
+
+    /// <summary>The guest cancelled it themselves, from the guest area or with the host's link (DB-08a, DB-08h).</summary>
+    Guest,
 }
 
 /// <summary>How a booking became confirmed (BK-10): decides the payment paragraph and whether the host is emailed.</summary>
