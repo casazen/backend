@@ -332,16 +332,17 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
 
         // Plain SQL for the payment as well, for the same reason: saved through the model it writes the columns the held payments add
         // (SP-15c-a: AuthorizationExpiresAt, CapturedAt, ...), which do not exist at the schema right before AddSupplierPaymentRefunds.
-        // Those columns are nullable or have a default, so the same statement works on the latest schema too.
+        // Those columns are nullable or have a default, so the same statement works on the latest schema too (LineItemsJson is jsonb with
+        // a default of [], so it is left out rather than sent as text).
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO "ServiceRequestPayments" (
                 "Id", "ServiceRequestId", "SupplierOrgId", "PayerKind", "PayerOrgId", "AmountCents", "Currency", "CommissionPercent",
-                "ApplicationFeeCents", "NetCents", "Status", "PaymentIntentCount", "SentCount", "RefundedCents", "LineItemsJson",
+                "ApplicationFeeCents", "NetCents", "Status", "PaymentIntentCount", "SentCount", "RefundedCents",
                 "PaidAt", "PaidVia", "CreatedAt", "UpdatedAt")
             VALUES (
                 {payment.Id}, {payment.ServiceRequestId}, {payment.SupplierOrgId}, {(int)payment.PayerKind}, {payment.PayerOrgId},
                 {payment.AmountCents}, {payment.Currency}, {payment.CommissionPercent}, {payment.ApplicationFeeCents}, {payment.NetCents},
-                {(int)payment.Status}, {payment.PaymentIntentCount}, {payment.SentCount}, {payment.RefundedCents}, {payment.LineItemsJson},
+                {(int)payment.Status}, {payment.PaymentIntentCount}, {payment.SentCount}, {payment.RefundedCents},
                 {payment.PaidAt}, {(int?)payment.PaidVia}, {payment.CreatedAt}, {payment.UpdatedAt});
             """);
         return new Parents(hostOrg.Id, property.Id, supplierOrg.Id, request.Id, payment.Id);
