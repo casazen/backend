@@ -91,6 +91,8 @@ public partial class ServiceRequestService
         else
             await notifier.NotifyHostAsync(request, cancellationToken);
 
+        // SP-15c-a: the block on the customer's card is released, or the money charged is given back in full.
+        await SettleClosedMoneyAsync(request, cancellationToken);
         return request;
     }
 

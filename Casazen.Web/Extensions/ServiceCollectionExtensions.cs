@@ -652,6 +652,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierPaymentRefundService>(sp => sp.GetRequiredService<SupplierPaymentService>());
         services.AddScoped<ISupplierFundsService>(sp => sp.GetRequiredService<SupplierPaymentService>());
         services.AddScoped<ISupplierFundsJobService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        // The complaint about a job paid through CasaZen and its dispute (SP-15c-c, decision VT-D16) act on the same payment under the same
+        // lock, so they are the same instance. The penalty of a lost dispute goes to a sink that only logs until the reliability events of the
+        // ranking are connected (VT-D17): replace it, do not add to it.
+        services.AddScoped<IServiceDisputeService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<IServiceDisputeJobService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierDisputePenalties, LoggingSupplierDisputePenalties>();
         services.AddScoped<ISupplierPaymentAdminService, SupplierPaymentAdminService>();
         services.AddScoped<ISupplierPaymentJobScheduler, SupplierPaymentJobScheduler>();
         // One instance per request for both doors (SP-11): the hosts' and the suppliers' operations, and the narrow set of what the

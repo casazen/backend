@@ -90,6 +90,17 @@ public static class HeldPaymentRules
     public static bool AuthorizationLapsed(DateTime? expiresAt, DateTime now) => expiresAt is { } limit && now >= limit;
 
     /// <summary>
+    /// The latest instant a supplier may be left to answer a request whose card was blocked at <paramref name="authorizedAt"/>: a little before
+    /// the block stops being usable (a quarter of the validity, at most an hour), so the request closes and the block is released while it is
+    /// still in time, and an acceptance in the last minutes can still charge the card. A supplier's own, longer, answer time never reaches past it.
+    /// </summary>
+    public static DateTime LatestResponseAt(DateTime authorizedAt, TimeSpan validity)
+    {
+        var margin = TimeSpan.FromTicks(Math.Min(TimeSpan.FromHours(1).Ticks, validity.Ticks / 4));
+        return authorizedAt + validity - margin;
+    }
+
+    /// <summary>
     /// The card can be charged: the payment is <see cref="ServicePaymentStatus.Authorized"/> and the block has not lapsed. After it,
     /// the capture is refused and the block released: a supplier never accepts a booking with no money behind it.
     /// </summary>

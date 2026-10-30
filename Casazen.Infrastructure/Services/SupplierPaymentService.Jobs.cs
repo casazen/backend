@@ -78,6 +78,43 @@ public sealed partial class SupplierPaymentService
             }
         }
 
+        // 1b. What a host pays to the platform (SP-15c-b): the PaymentIntent exists, the event of its success may have been lost. Only the
+        //     payments a payer touched in the last days are read (a link nobody opens would otherwise be read on Stripe forever), and not the
+        //     ones touched in the last minutes (the webhook of a payment that is just going through is about to arrive).
+        var heldNow = Now();
+        var heldOpen = await db.ServiceRequestPayments
+            .AsNoTracking()
+            .Where(p => p.FundsModel == ServiceFundsModel.PlatformHeld
+                        && p.PayerKind == ServicePayerKind.Host
+                        && (p.Status == ServicePaymentStatus.Requested || p.Status == ServicePaymentStatus.Processing || p.Status == ServicePaymentStatus.Failed)
+                        && p.StripePaymentIntentId != null
+                        && p.UpdatedAt <= heldNow.AddMinutes(-10)
+                        && p.UpdatedAt >= heldNow.AddDays(-3))
+            .OrderBy(p => p.UpdatedAt)
+            .Take(ServicePaymentLimits.SyncBatchSize)
+            .Select(p => new PaymentRef(p.Id, p.ServiceRequestId))
+            .ToListAsync(cancellationToken);
+
+        foreach (var candidate in heldOpen)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var (notice, changed) = await SynchronizeHeldPaymentAsync(candidate, cancellationToken);
+                paymentsRead++;
+                if (changed)
+                    paymentsUpdated++;
+                if (notice is not null)
+                    await CompleteAsync([notice], CancellationToken.None);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                errors++;
+                db.ChangeTracker.Clear();
+                logger.LogError(ex, "Held payment {PaymentId} could not be read from Stripe; the next run retries it", candidate.Id);
+            }
+        }
+
         // 2. The refunds that never got Stripe's answer: looked for on Stripe, then sent again with the same key.
         var resubmitBefore = Now().AddMinutes(-ServicePaymentLimits.RefundResubmitAfterMinutes);
         var unsent = await db.ServiceRequestPaymentRefunds
@@ -163,6 +200,51 @@ public sealed partial class SupplierPaymentService
 
                 var before = payment.Status;
                 var notice = await ApplyObservationAsync(payment, Observe(intent, payment), cancellationToken);
+                return (notice, payment.Status != before);
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the PaymentIntent of a payment a host is paying to the platform (SP-15c-b) and, if it did succeed, records the charge exactly as the
+    /// webhook would (the same checks: the platform's PaymentIntent, the amount, the currency, no fee). One that is not paid, or is gone, changes nothing.
+    /// </summary>
+    private async Task<(ServicePaymentNotice? Notice, bool Changed)> SynchronizeHeldPaymentAsync(PaymentRef candidate, CancellationToken cancellationToken)
+    {
+        db.ChangeTracker.Clear();
+        return await UnderPaymentLockAsync(
+            candidate.ServiceRequestId,
+            async () =>
+            {
+                var payment = await LoadPaymentAsync(candidate.Id, cancellationToken);
+                // Read again under the lock: the webhook may have settled it while this run was waiting.
+                if (payment is not { FundsModel: ServiceFundsModel.PlatformHeld, StripePaymentIntentId: { } intentId }
+                    || payment.Status is not (ServicePaymentStatus.Requested or ServicePaymentStatus.Processing or ServicePaymentStatus.Failed))
+                    return ((ServicePaymentNotice?)null, false);
+
+                var charge = await ReadPlatformIntentAsync(intentId, cancellationToken);
+                if (charge is not { Status: "succeeded" })
+                    return ((ServicePaymentNotice?)null, false);
+
+                var before = payment.Status;
+                var notice = ApplyChargeEvent(
+                    payment,
+                    ObservationOf(charge),
+                    new ServicePaymentIntentEvent(
+                        "sync",
+                        "payment_intent.succeeded",
+                        charge.Id,
+                        AccountId: null,
+                        PaymentId: payment.Id,
+                        charge.AmountCents,
+                        charge.AmountReceivedCents,
+                        charge.Currency,
+                        charge.ApplicationFeeCents,
+                        FailureCode: null,
+                        OccurredAt: null,
+                        charge.AmountCapturableCents,
+                        charge.LatestChargeId),
+                    Now());
                 return (notice, payment.Status != before);
             },
             cancellationToken);

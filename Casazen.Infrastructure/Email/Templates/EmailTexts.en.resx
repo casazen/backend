@@ -1062,6 +1062,12 @@
   <data name="SupplierBookingReceipt_NoPayment" xml:space="preserve">
     <value>You pay nothing now with this request.</value>
   </data>
+  <data name="SupplierBookingReceipt_Blocked" xml:space="preserve">
+    <value>We have blocked &lt;strong&gt;{0}&lt;/strong&gt; on your card: it is not a charge yet. The amount is charged only if &lt;strong&gt;{1}&lt;/strong&gt; accepts the request.</value>
+  </data>
+  <data name="SupplierBookingReceipt_BlockedNote" xml:space="preserve">
+    <value>If the request is declined, cancelled or lapses, the block is released and you pay nothing. How long your bank takes to free the amount depends on the bank.</value>
+  </data>
   <data name="SupplierBookingNewRequest_Subject" xml:space="preserve">
     <value>New request from your site — {0}</value>
   </data>
@@ -1076,6 +1082,9 @@
   </data>
   <data name="SupplierBookingNewRequest_Price" xml:space="preserve">
     <value>Estimated amount: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingNewRequest_Blocked" xml:space="preserve">
+    <value>Amount: &lt;strong&gt;{0}&lt;/strong&gt;, already blocked on the customer's card. If you accept, it is charged and CasaZen holds it until the work is done.</value>
   </data>
   <data name="SupplierBookingNewRequest_Deadline" xml:space="preserve">
     <value>Answer by &lt;strong&gt;{0}&lt;/strong&gt;: after that the request is cancelled automatically.</value>
@@ -1100,6 +1109,9 @@
   </data>
   <data name="SupplierBookingAccepted_Estimated" xml:space="preserve">
     <value>Estimated price: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingAccepted_Charged" xml:space="preserve">
+    <value>We have charged &lt;strong&gt;{0}&lt;/strong&gt; to your card. CasaZen holds the amount and passes it on to the supplier after the work.</value>
   </data>
   <data name="SupplierBookingAccepted_Reminder" xml:space="preserve">
     <value>We send you a reminder the day before, at {0}.</value>
@@ -1898,5 +1910,110 @@
   </data>
   <data name="Push_ServicePaymentReceived_Body" xml:space="preserve">
     <value>{0}: {1} net to you, before Stripe's fees.</value>
+  </data>
+  <data name="ServiceDisputeReason_NotDone" xml:space="preserve">
+    <value>the work was not done</value>
+  </data>
+  <data name="ServiceDisputeReason_Incomplete" xml:space="preserve">
+    <value>the work was left half done</value>
+  </data>
+  <data name="ServiceDisputeReason_PoorQuality" xml:space="preserve">
+    <value>the work was not done well</value>
+  </data>
+  <data name="ServiceDisputeReason_NotAsDescribed" xml:space="preserve">
+    <value>the work is not what was agreed</value>
+  </data>
+  <data name="ServiceDisputeReason_Other" xml:space="preserve">
+    <value>another reason</value>
+  </data>
+  <data name="ServiceDisputeOpenedSupplier_Subject" xml:space="preserve">
+    <value>A problem was reported on one of your jobs: reply by {0}</value>
+  </data>
+  <data name="ServiceDisputeOpenedSupplier_Body" xml:space="preserve">
+    <value>A problem was reported on the job “{0}”: {1}. The payment of {2} stays held by CasaZen and is not paid out until the report is decided.</value>
+  </data>
+  <data name="ServiceDisputeOpenedSupplier_NoShowBody" xml:space="preserve">
+    <value>The job “{0}” is not marked as completed and the time agreed for it has ended. CasaZen opened a report to protect the person who paid: the payment of {1} stays held and is not paid out until the report is decided.</value>
+  </data>
+  <data name="ServiceDisputeOpenedSupplier_Reply" xml:space="preserve">
+    <value>You have until {0} to reply from your area: tell your side in your own words. If you do not reply, the report goes to the CasaZen team all the same, who decide.</value>
+  </data>
+  <data name="ServiceDisputeOpenedSupplier_Cta" xml:space="preserve">
+    <value>Open the report</value>
+  </data>
+  <data name="ServiceDisputeOpenedSupplier_Hint" xml:space="preserve">
+    <value>The words of the person who reported are read in your area only, not in this email.</value>
+  </data>
+  <data name="ServiceDisputeOpenedPayer_Subject" xml:space="preserve">
+    <value>We received your report: {0}</value>
+  </data>
+  <data name="ServiceDisputeOpenedPayer_Body" xml:space="preserve">
+    <value>We received your report on the job “{0}” by {1}. The payment stays held by CasaZen and is not paid out to the supplier until the report is decided.</value>
+  </data>
+  <data name="ServiceDisputeOpenedPayer_NoShowBody" xml:space="preserve">
+    <value>The job “{0}” by {1} is not marked as completed and the time agreed for it has ended: CasaZen opened a report for you. The payment stays held and is not paid out to the supplier until the report is decided. If the work was done, you can take it back.</value>
+  </data>
+  <data name="ServiceDisputeOpenedPayer_Reply" xml:space="preserve">
+    <value>The supplier has until {0} to reply; then the report goes to the CasaZen team. We write to you when it is decided.</value>
+  </data>
+  <data name="ServiceDisputeOpenedPayer_Cta" xml:space="preserve">
+    <value>View the booking</value>
+  </data>
+  <data name="ServiceDisputeRepliedPayer_Subject" xml:space="preserve">
+    <value>The supplier replied to your report: {0}</value>
+  </data>
+  <data name="ServiceDisputeRepliedPayer_Body" xml:space="preserve">
+    <value>{0} replied to your report on the job “{1}”. The CasaZen team now reviews it: the payment stays held until the decision and we write to you when there is one.</value>
+  </data>
+  <data name="ServiceDisputeResolvedPayer_Subject" xml:space="preserve">
+    <value>Your report was reviewed: {0}</value>
+  </data>
+  <data name="ServiceDisputeResolvedPayer_ForSupplier" xml:space="preserve">
+    <value>Your report on the job “{0}” by {1} was reviewed by the CasaZen team and was not upheld: the payment is paid out to the supplier.</value>
+  </data>
+  <data name="ServiceDisputeResolvedPayer_ForCustomer" xml:space="preserve">
+    <value>Your report on the job “{0}” by {1} was upheld by the CasaZen team: {2} is refunded to you.</value>
+  </data>
+  <data name="ServiceDisputeResolvedPayer_ForCustomerNoRefund" xml:space="preserve">
+    <value>Your report on the job “{0}” by {1} was upheld by the CasaZen team.</value>
+  </data>
+  <data name="ServiceDisputeResolvedPayer_Hint" xml:space="preserve">
+    <value>We write to you again when the refund is made. When the amount reaches your account depends on your bank.</value>
+  </data>
+  <data name="ServiceDisputeResolvedSupplier_Subject" xml:space="preserve">
+    <value>Report decided: {0}</value>
+  </data>
+  <data name="ServiceDisputeResolvedSupplier_ForSupplier" xml:space="preserve">
+    <value>The report on the job “{0}” was reviewed by the CasaZen team in your favour: the payment of {1} is transferred to your Stripe account. When the funds are available on the account depends on Stripe.</value>
+  </data>
+  <data name="ServiceDisputeResolvedSupplier_ForCustomer" xml:space="preserve">
+    <value>The report on the job “{0}” was upheld by the CasaZen team: {1} is given back to the person who paid.</value>
+  </data>
+  <data name="ServiceDisputeResolvedSupplier_Remaining" xml:space="preserve">
+    <value>For this job you are paid {0}.</value>
+  </data>
+  <data name="ServiceDisputeResolvedSupplier_NothingLeft" xml:space="preserve">
+    <value>For this job you receive no amount.</value>
+  </data>
+  <data name="ServiceDisputeResolvedSupplier_Cta" xml:space="preserve">
+    <value>Open the request</value>
+  </data>
+  <data name="ServiceDisputeWithdrawnSupplier_Subject" xml:space="preserve">
+    <value>Report taken back: {0}</value>
+  </data>
+  <data name="ServiceDisputeWithdrawnSupplier_Body" xml:space="preserve">
+    <value>The person who requested the job “{0}” took the report back: the payment of {1} is transferred to your Stripe account. When the funds are available on the account depends on Stripe.</value>
+  </data>
+  <data name="ServiceDisputeAlert_Subject" xml:space="preserve">
+    <value>Report to decide: {0}</value>
+  </data>
+  <data name="ServiceDisputeAlert_Body" xml:space="preserve">
+    <value>A report on a service paid through CasaZen needs a decision, or something did not go through: see the details below.</value>
+  </data>
+  <data name="ServiceDisputeAlert_Action" xml:space="preserve">
+    <value>Open the report in the admin console, read the words of both parties and decide: for the supplier or for the person who paid.</value>
+  </data>
+  <data name="ServiceDisputeAlert_Dispute" xml:space="preserve">
+    <value>Report: {0}</value>
   </data>
 </root>

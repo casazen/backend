@@ -30,6 +30,13 @@ namespace Casazen.Infrastructure.Services;
 /// taken, which is why of N customers who book the same slot at the same moment exactly one wins. The check of the e-mail takes
 /// the same lock, so the hold stops counting and the request starts counting inside one transaction: no moment shows the slot
 /// free. Outside PostgreSQL (EF InMemory in unit tests) nothing is locked.</para>
+/// <para><b>Money (SP-15c-a).</b> A booking with a total is paid inside CasaZen when <see cref="ISupplierFundsService.CanAuthorizeAsync"/>
+/// says so (flag on, supplier's account ready): after the hold is saved a PaymentIntent blocks the customer's card (Stripe is never called
+/// inside the calendar lock), and the request is created only when <b>both</b> the e-mail is checked and the block succeeded, in either order, by
+/// the same method under the same lock (<see cref="CreateRequestFromHoldAsync"/>), together with its <c>Authorized</c> payment. A hold that
+/// lapses first cancels its PaymentIntent (<see cref="ReleaseExpiredHoldAsync"/>): the customer's card is never left blocked for a request that
+/// does not exist, and no request exists without a block. Without the funds service, or when it says no, nothing changes: the booking is made
+/// as it always was.</para>
 /// <para><b>What it keeps out of the logs.</b> Ids and counts, never a name, an address, an e-mail or a token.</para>
 /// </remarks>
 public sealed class ShowcaseBookingService(
@@ -42,7 +49,8 @@ public sealed class ShowcaseBookingService(
     ShowcaseBookingNotifier notifier,
     IOptions<ShowcaseBookingOptions> options,
     ILogger<ShowcaseBookingService> logger,
-    TimeProvider? timeProvider = null) : IShowcaseBookingService
+    TimeProvider? timeProvider = null,
+    ISupplierFundsService? funds = null) : IShowcaseBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -95,6 +103,12 @@ public sealed class ShowcaseBookingService(
 
         // The same function that priced the page prices the booking: the total the customer saw is the total the request carries.
         var quote = SupplierQuoteCalculator.Calculate(service, choices, insideArea: true);
+
+        // SP-15c-a: a booking with a total is paid inside CasaZen when the flag is on and the supplier can be paid: the customer's card is
+        // blocked for that total, and the request exists only once the block succeeded as well. Decided here, once. A booking on quote has no
+        // total to block and is made as it always was.
+        var blockCents = quote.IsEstimate ? quote.TotalCents : null;
+        var paidInside = funds is not null && blockCents is { } total && await funds.CanAuthorizeAsync(orgId, total, cancellationToken);
 
         // The slot is judged below, under the calendar lock, by the planner of the kind the customer chose: the urgent plan for an
         // urgent booking (its window, 30 minutes of notice, today and tomorrow), the normal one otherwise. The lock is the same for
@@ -149,6 +163,20 @@ public sealed class ShowcaseBookingService(
         // booking, not a wrong link in an e-mail that holds a slot for nothing.
         var verification = notifier.RenderVerification(supplier, payload, start, holdId, token, validMinutes);
 
+        // A retry of a booking whose card was already asked for: its block is read from Stripe here, before the lock, so that a call to Stripe
+        // never waits inside the supplier's calendar lock (the replay below only copies what was read).
+        HoldAuthorization? replayedBlock = null;
+        if (paidInside && funds is not null)
+        {
+            var knownIntent = await HoldsOf(db, orgId)
+                .AsNoTracking()
+                .Where(h => h.ClientRequestId == content.ClientRequestId && h.ConsumedAt == null)
+                .Select(h => h.StripePaymentIntentId)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (knownIntent is not null)
+                replayedBlock = await funds.ReadHoldAuthorizationAsync(knownIntent, cancellationToken);
+        }
+
         ShowcaseBookingHoldResult result;
         ShowcaseBookingHold created;
         await using (var transaction = await LockSupplierCalendarAsync(orgId, cancellationToken))
@@ -167,7 +195,7 @@ public sealed class ShowcaseBookingService(
                 if (existing.ExpiresAt > now || existing.ConsumedAt is not null)
                 {
                     logger.LogInformation("Showcase hold {HoldId} of supplier {OrgId}: replay of the same client request", existing.Id, orgId);
-                    return new ShowcaseBookingHoldResult(existing.Id, existing.ExpiresAt);
+                    return new ShowcaseBookingHoldResult(existing.Id, existing.ExpiresAt, PaymentOf(existing, replayedBlock));
                 }
 
                 db.ShowcaseBookingHolds.Remove(existing);
@@ -224,6 +252,11 @@ public sealed class ShowcaseBookingService(
 
         logger.LogInformation("Showcase hold {HoldId} of supplier {OrgId} created", result.Id, orgId);
 
+        // SP-15c-a: the customer's card is blocked for the total, after the hold is saved and outside the lock. If Stripe cannot do it the hold
+        // goes (a StripeException, 503 for the caller) and the e-mail is never sent: nobody is asked to check a booking that cannot be paid.
+        if (paidInside && blockCents is { } amountToBlock)
+            result = result with { Payment = await BlockCardAsync(created, service.Name, amountToBlock, cancellationToken) };
+
         // After the commit: an e-mail for a booking that was not saved would be a link to nothing.
         if (!notifier.QueueVerification(content.Email, verification))
         {
@@ -238,9 +271,26 @@ public sealed class ShowcaseBookingService(
         return result;
     }
 
-    /// <summary>Deletes a hold nobody can check (see <see cref="CreateHoldAsync"/>); a failure here only leaves it to lapse.</summary>
+    /// <summary>
+    /// Deletes a hold nobody can check (see <see cref="CreateHoldAsync"/>), and the block on the card it asked for if one was made; a failure
+    /// here only leaves it to lapse (and a hold that lapses releases its block, <see cref="ReleaseExpiredHoldAsync"/>).
+    /// </summary>
     private async Task ReleaseAsync(ShowcaseBookingHold hold, CancellationToken cancellationToken)
     {
+        // The customer was never given the secret of this block (the caller's answer is an error), so nobody can confirm it with a card: letting
+        // it go is tidiness, not safety, and a failure of Stripe here does not stop the hold from going.
+        if (hold.StripePaymentIntentId is { } intent && funds is not null)
+        {
+            try
+            {
+                await funds.CancelHoldAuthorizationAsync(hold.Id, intent, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Showcase hold {HoldId}: the block {PaymentIntentId} could not be released now", hold.Id, intent);
+            }
+        }
+
         try
         {
             db.ShowcaseBookingHolds.Remove(hold);
@@ -253,6 +303,61 @@ public sealed class ShowcaseBookingService(
         }
     }
 
+    /// <summary>
+    /// Blocks the card of the customer for a hold that was just saved (SP-15c-a): the PaymentIntent is created on the platform and recorded on the
+    /// hold <b>before</b> the customer can see its secret, so the webhook that follows the card finds the hold. If Stripe cannot create it, or the hold
+    /// cannot record it, the hold goes and the exception reaches the caller (503 or 500): nothing was asked of the customer and no e-mail is sent.
+    /// </summary>
+    private async Task<ShowcaseBookingPayment> BlockCardAsync(
+        ShowcaseBookingHold hold,
+        string serviceName,
+        int amountCents,
+        CancellationToken cancellationToken)
+    {
+        HoldAuthorization block;
+        try
+        {
+            block = await funds!.AuthorizeHoldAsync(
+                new HoldAuthorizationRequest(hold.Id, hold.OrgId, amountCents, serviceName), cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Showcase hold {HoldId} of supplier {OrgId} released: the card block could not be created", hold.Id, hold.OrgId);
+            await ReleaseAsync(hold, cancellationToken);
+            throw;
+        }
+
+        // The PaymentIntent and its amount are recorded together (the table checks that they are), before the secret leaves.
+        hold.StripePaymentIntentId = block.PaymentIntentId;
+        hold.PaymentAmountCents = amountCents;
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Showcase hold {HoldId} of supplier {OrgId} released: its card block could not be recorded", hold.Id, hold.OrgId);
+            await ReleaseAsync(hold, cancellationToken);
+            throw;
+        }
+
+        return new ShowcaseBookingPayment(amountCents, block.Currency, block.ClientSecret, block.PublishableKey, Authorized: false);
+    }
+
+    /// <summary>
+    /// The block of a hold as the answer of a retry shows it: the amount and whether the card is blocked already, with the secret read from
+    /// Stripe before the lock (<c>null</c> when the card can no longer be asked for it). <c>null</c> for a hold that is not paid inside CasaZen.
+    /// </summary>
+    private static ShowcaseBookingPayment? PaymentOf(ShowcaseBookingHold hold, HoldAuthorization? block) =>
+        hold.StripePaymentIntentId is null || hold.PaymentAmountCents is not { } amount
+            ? null
+            : new ShowcaseBookingPayment(
+                amount,
+                ServiceCharges.Currency.ToUpperInvariant(),
+                block?.ClientSecret,
+                block?.PublishableKey,
+                Authorized: hold.PaymentAuthorizedAt is not null);
+
     public async Task<ShowcaseBookingConfirmation> ConfirmEmailAsync(
         SupplierProfile supplier,
         Guid holdId,
@@ -262,8 +367,7 @@ public sealed class ShowcaseBookingService(
         ArgumentNullException.ThrowIfNull(supplier);
         var orgId = supplier.OrgId;
 
-        ServiceRequest request;
-        ServiceCustomer customer;
+        BornRequest born;
         ShowcaseBookingConfirmation result;
         await using (var transaction = await LockSupplierCalendarAsync(orgId, cancellationToken))
         {
@@ -298,73 +402,271 @@ public sealed class ShowcaseBookingService(
                 throw ShowcaseBookingErrors.InvalidLink();
             }
 
-            var settings = await agenda.GetBookingSettingsAsync(orgId, cancellationToken);
-            customer = await UpsertCustomerAsync(orgId, hold, payload, now, cancellationToken);
-
-            // Decision D8: the supplier answers within SupplierSettings.RespondWithinMinutes (180 by default), or the request lapses
-            // (the always-on service-request-expiry job). An urgent request lapses at the latest when the work was due to start: an
-            // answer after that hour would be of no use to the customer, who must be able to look elsewhere.
-            var responseDueAt = now.AddMinutes(settings.RespondWithinMinutes);
-            if (payload.Urgent && hold.StartUtc < responseDueAt)
-                responseDueAt = hold.StartUtc;
-
-            request = new ServiceRequest
+            // SP-15c-a: the address is checked now. A booking whose card is to be blocked becomes a request only when the block has succeeded
+            // too, in either order; until then the supplier is told nothing, and the page is told the booking waits for the card. The webhook of
+            // the block (ApplyHoldAuthorizationAsync) creates the request under this same lock when it comes.
+            var alreadyChecked = hold.EmailVerifiedAt is not null;
+            hold.EmailVerifiedAt ??= now;
+            if (hold.StripePaymentIntentId is not null && hold.PaymentAuthorizedAt is null)
             {
-                OrgId = orgId,
-                SupplierOrgId = orgId,
-                RentalContext = ServiceRequestRentalContext.Showcase,
-                Source = ServiceRequestSource.Showcase,
-                PropertyId = null,
-                BookingId = null,
-                Category = payload.Category,
-                // An urgent slot (SP-04c) is an urgent request: the supplier reads it in `urgency`, and the surcharge is already in
-                // the estimate and in the options below.
-                Urgency = payload.Urgent ? ServiceRequestUrgency.High : ServiceRequestUrgency.Normal,
-                Notes = string.Empty,
-                Status = ServiceRequestStatus.Richiesto,
-                CreatedAt = now,
-                UpdatedAt = now,
-                ServiceListingId = payload.ServiceListingId,
-                ServiceNameSnapshot = payload.ServiceName,
-                OptionsJson = ServiceRequestJson.Serialize(payload.Options),
-                EstimatedAmountCents = payload.EstimatedAmountCents,
-                ScheduledStartUtc = hold.StartUtc,
-                ScheduledEndUtc = hold.EndUtc,
-                ResponseDueAt = responseDueAt,
-                PublicCode = hold.PublicCode,
-                CustomerId = customer.Id,
-                LocationComuneIstat = payload.ComuneIstat,
-                LocationCity = payload.City,
-                LocationPostalCode = payload.PostalCode,
-                LocationAddress = payload.Address,
-                LocationFloor = payload.Floor,
-                LocationAccessNotes = payload.AccessNotes,
-            };
-            db.ServiceRequests.Add(request);
+                await SaveAsync(cancellationToken);
+                await CommitAsync(transaction, cancellationToken);
 
-            // The hold becomes the request in the same save: it stops counting for the planner as the request starts counting.
-            // The payload goes: the data moved to the customer and the request. The token hash stays for the replay.
-            hold.ConsumedAt = now;
-            hold.ServiceRequestId = request.Id;
-            hold.Payload = null;
+                logger.LogInformation("Showcase hold {HoldId} of supplier {OrgId}: the e-mail is checked, the request waits for the card block", holdId, orgId);
+                return new ShowcaseBookingConfirmation(
+                    hold.PublicCode,
+                    ServiceRequestStatus.Richiesto,
+                    payload.ServiceName,
+                    hold.StartUtc,
+                    hold.EndUtc,
+                    null,
+                    alreadyChecked,
+                    AwaitingPayment: true);
+            }
 
+            born = await CreateRequestFromHoldAsync(orgId, hold, payload, now, cancellationToken);
             await SaveAsync(cancellationToken);
             await CommitAsync(transaction, cancellationToken);
 
             result = new ShowcaseBookingConfirmation(
-                request.PublicCode!,
-                request.Status,
+                born.Request.PublicCode!,
+                born.Request.Status,
                 payload.ServiceName,
                 hold.StartUtc,
                 hold.EndUtc,
-                request.ResponseDueAt,
+                born.Request.ResponseDueAt,
                 AlreadyConfirmed: false);
         }
 
-        logger.LogInformation("Showcase request {RequestId} of supplier {OrgId} created from hold {HoldId}", request.Id, orgId, holdId);
+        logger.LogInformation("Showcase request {RequestId} of supplier {OrgId} created from hold {HoldId}", born.Request.Id, orgId, holdId);
 
-        await notifier.QueueRequestReceivedAsync(supplier, request, customer, request.ResponseDueAt!.Value, cancellationToken);
+        await notifier.QueueRequestReceivedAsync(supplier, born.Request, born.Customer, born.Request.ResponseDueAt!.Value, cancellationToken);
         return result;
+    }
+
+    public async Task<ShowcaseHoldAuthorizationResult> ApplyHoldAuthorizationAsync(
+        ShowcaseHoldAuthorization authorization,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(authorization);
+        var orgId = authorization.SupplierOrgId;
+        var intent = authorization.Observed.PaymentIntentId;
+
+        BornRequest born;
+        SupplierProfile supplier;
+        await using (var transaction = await LockSupplierCalendarAsync(orgId, cancellationToken))
+        {
+            // Read after the lock: whoever held it before is seen. The hold is the one the PaymentIntent was made for, by the supplier org in
+            // its metadata and the PaymentIntent recorded on the hold; anything else is not the block of a waiting hold.
+            var hold = await HoldsOf(db, orgId).Where(h => h.Id == authorization.HoldId).FirstOrDefaultAsync(cancellationToken);
+            if (hold is null
+                || hold.ConsumedAt is not null
+                || !string.Equals(hold.StripePaymentIntentId, intent, StringComparison.Ordinal))
+            {
+                return ShowcaseHoldAuthorizationResult.NotAHold;
+            }
+
+            var now = UtcDateTime.TruncateToMicroseconds(_clock.GetUtcNow().UtcDateTime);
+
+            // What Stripe says must be what the hold asked for: the platform's own PaymentIntent, the whole total blocked, nothing charged, no
+            // fee. Otherwise no request is created from it and the block goes with the hold when it lapses.
+            var mismatches = HeldChargeVerification.AuthorizationMismatches(
+                new HeldChargeExpectation(hold.StripePaymentIntentId, hold.PaymentAmountCents ?? 0, ServiceCharges.Currency),
+                authorization.Observed);
+            if (mismatches.Count > 0)
+            {
+                logger.LogError(
+                    "Showcase hold {HoldId} of supplier {OrgId}: the card block {PaymentIntentId} differs from what was asked for ({Mismatches}); no request is created from it",
+                    hold.Id, orgId, intent, ServiceChargeVerification.ReviewCode(mismatches));
+                return new ShowcaseHoldAuthorizationResult(Handled: true);
+            }
+
+            // Recorded once. Stripe's time of the block is used unless it is in the future (a clock that runs behind ours).
+            hold.PaymentAuthorizedAt ??= authorization.AuthorizedAt is { } at && at < now ? UtcDateTime.TruncateToMicroseconds(at) : now;
+
+            var payload = hold.EmailVerifiedAt is null ? null : ShowcaseBookingPayload.FromJson(hold.Payload);
+            var status = await db.SupplierProfiles
+                .AsNoTracking()
+                .Where(sp => sp.OrgId == orgId)
+                .Select(sp => (SupplierStatus?)sp.Status)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (payload is null || hold.ExpiresAt <= now || status != SupplierStatus.Active)
+            {
+                // The e-mail is still to be checked (the check will create the request), or the hold lapsed, or the supplier is not active
+                // anymore: the block is recorded and nothing else happens. A hold that lapsed releases its block with the next run.
+                await SaveAsync(cancellationToken);
+                await CommitAsync(transaction, cancellationToken);
+                logger.LogInformation(
+                    "Showcase hold {HoldId} of supplier {OrgId}: the card is blocked, {Next}",
+                    hold.Id, orgId, hold.EmailVerifiedAt is null ? "the request waits for the e-mail" : "no request is created");
+                return new ShowcaseHoldAuthorizationResult(Handled: true);
+            }
+
+            // The e-mail was checked first: the block completes the booking now, exactly as the check of the e-mail does when it comes last.
+            born = await CreateRequestFromHoldAsync(orgId, hold, payload, now, cancellationToken);
+            await SaveAsync(cancellationToken);
+            await CommitAsync(transaction, cancellationToken);
+
+            supplier = await db.SupplierProfiles.AsNoTracking().Where(sp => sp.OrgId == orgId).FirstAsync(cancellationToken);
+        }
+
+        logger.LogInformation("Showcase request {RequestId} of supplier {OrgId} created from hold {HoldId} by the card block", born.Request.Id, orgId, authorization.HoldId);
+        return new ShowcaseHoldAuthorizationResult(Handled: true, new ShowcaseHoldCompletion(supplier, born.Request, born.Customer));
+    }
+
+    public async Task CompleteHoldAuthorizationAsync(ShowcaseHoldCompletion completion, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(completion);
+
+        // The notifier never throws: the request exists, the customer's receipt and the supplier's news are a courtesy that must not undo it.
+        if (completion.Request.ResponseDueAt is { } respondBy)
+            await notifier.QueueRequestReceivedAsync(completion.Supplier, completion.Request, completion.Customer, respondBy, cancellationToken);
+    }
+
+    public async Task<bool> ReleaseExpiredHoldAsync(Guid supplierOrgId, Guid holdId, CancellationToken cancellationToken = default)
+    {
+        await using var transaction = await LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
+
+        var hold = await HoldsOf(db, supplierOrgId).Where(h => h.Id == holdId).FirstOrDefaultAsync(cancellationToken);
+        if (hold is null)
+            return true;
+
+        // Read after the lock: a hold that became a request meanwhile belongs to the request now, and its PaymentIntent to the payment.
+        var now = UtcDateTime.TruncateToMicroseconds(_clock.GetUtcNow().UtcDateTime);
+        if (hold.ConsumedAt is not null || hold.ExpiresAt > now)
+            return false;
+
+        if (hold.StripePaymentIntentId is { } intent)
+        {
+            if (funds is null)
+            {
+                logger.LogWarning("Showcase hold {HoldId} has a card block and cannot release it: kept", hold.Id);
+                return false;
+            }
+
+            try
+            {
+                await funds.CancelHoldAuthorizationAsync(hold.Id, intent, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Kept: the customer's card must not stay blocked, so the next run tries again.
+                db.ChangeTracker.Clear();
+                logger.LogWarning(ex, "Showcase hold {HoldId}: its card block could not be released now; the next run tries again", hold.Id);
+                return false;
+            }
+        }
+
+        try
+        {
+            db.ShowcaseBookingHolds.Remove(hold);
+            await db.SaveChangesAsync(cancellationToken);
+            await CommitAsync(transaction, cancellationToken);
+            return true;
+        }
+        catch (DbUpdateException ex)
+        {
+            db.ChangeTracker.Clear();
+            logger.LogWarning(ex, "Showcase hold {HoldId} could not be deleted after its block was released: the next run deletes it", hold.Id);
+            return false;
+        }
+    }
+
+    /// <summary>The request and the customer a hold became.</summary>
+    private sealed record BornRequest(ServiceRequest Request, ServiceCustomer Customer);
+
+    /// <summary>
+    /// Turns a hold into the customer, the request and — for a booking whose card is blocked — the <c>Authorized</c> payment, and consumes the
+    /// hold, all in the changes of the caller's transaction, which holds the supplier's calendar lock and saves. <b>The one place a request is
+    /// born from a hold</b>: the check of the e-mail and the webhook of the block both come here, whichever is last.
+    /// </summary>
+    private async Task<BornRequest> CreateRequestFromHoldAsync(
+        Guid orgId,
+        ShowcaseBookingHold hold,
+        ShowcaseBookingPayload payload,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var settings = await agenda.GetBookingSettingsAsync(orgId, cancellationToken);
+        var customer = await UpsertCustomerAsync(orgId, hold, payload, now, cancellationToken);
+
+        // Decision D8: the supplier answers within SupplierSettings.RespondWithinMinutes (180 by default), or the request lapses
+        // (the always-on service-request-expiry job). An urgent request lapses at the latest when the work was due to start: an
+        // answer after that hour would be of no use to the customer, who must be able to look elsewhere.
+        var responseDueAt = now.AddMinutes(settings.RespondWithinMinutes);
+        if (payload.Urgent && hold.StartUtc < responseDueAt)
+            responseDueAt = hold.StartUtc;
+
+        // SP-15c-a: a request whose card is blocked is answered while the block is still usable, however long the supplier's own time is:
+        // the customer reads an answer time that is true, and the request closes (the block is released) before the block lapses.
+        if (hold.StripePaymentIntentId is not null && funds is not null)
+        {
+            var latest = funds.LatestResponseAt(hold.PaymentAuthorizedAt ?? now);
+            if (latest < responseDueAt)
+                responseDueAt = latest;
+        }
+
+        var request = new ServiceRequest
+        {
+            OrgId = orgId,
+            SupplierOrgId = orgId,
+            RentalContext = ServiceRequestRentalContext.Showcase,
+            Source = ServiceRequestSource.Showcase,
+            PropertyId = null,
+            BookingId = null,
+            Category = payload.Category,
+            // An urgent slot (SP-04c) is an urgent request: the supplier reads it in `urgency`, and the surcharge is already in
+            // the estimate and in the options below.
+            Urgency = payload.Urgent ? ServiceRequestUrgency.High : ServiceRequestUrgency.Normal,
+            Notes = string.Empty,
+            Status = ServiceRequestStatus.Richiesto,
+            CreatedAt = now,
+            UpdatedAt = now,
+            ServiceListingId = payload.ServiceListingId,
+            ServiceNameSnapshot = payload.ServiceName,
+            OptionsJson = ServiceRequestJson.Serialize(payload.Options),
+            EstimatedAmountCents = payload.EstimatedAmountCents,
+            ScheduledStartUtc = hold.StartUtc,
+            ScheduledEndUtc = hold.EndUtc,
+            ResponseDueAt = responseDueAt,
+            PublicCode = hold.PublicCode,
+            CustomerId = customer.Id,
+            LocationComuneIstat = payload.ComuneIstat,
+            LocationCity = payload.City,
+            LocationPostalCode = payload.PostalCode,
+            LocationAddress = payload.Address,
+            LocationFloor = payload.Floor,
+            LocationAccessNotes = payload.AccessNotes,
+        };
+        db.ServiceRequests.Add(request);
+
+        // The payment is born with the request, with the PaymentIntent that blocks the card, the amount the customer saw and the commission in
+        // force now; the request is paid inside CasaZen from its first moment (AddAuthorizedPaymentAsync sets it). A hold that has a block
+        // but no funds service to record it cannot become a request: the customer's card would be blocked for a request nobody can charge.
+        if (hold.StripePaymentIntentId is { } intent && hold.PaymentAmountCents is { } amount)
+        {
+            if (funds is null)
+                throw new InvalidOperationException("A hold with a card block cannot become a request without the funds service.");
+
+            await funds.AddAuthorizedPaymentAsync(
+                request,
+                new AuthorizedPaymentInput(
+                    intent,
+                    amount,
+                    hold.PaymentAuthorizedAt ?? now,
+                    ServiceCharges.HoldTransferGroup(hold.Id),
+                    [new ServiceRequestPriceLine(ServiceRequestPriceLineKinds.Base, payload.ServiceName, amount)]),
+                cancellationToken);
+        }
+
+        // The hold becomes the request in the same save: it stops counting for the planner as the request starts counting.
+        // The payload goes: the data moved to the customer and the request. The token hash stays for the replay.
+        hold.ConsumedAt = now;
+        hold.ServiceRequestId = request.Id;
+        hold.Payload = null;
+
+        return new BornRequest(request, customer);
     }
 
     /// <summary>

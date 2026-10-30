@@ -122,6 +122,56 @@ public sealed class SupplierPaymentsOptions
     /// </summary>
     public int TransferAlertAfterAttempts { get; set; } = 5;
 
+    /// <summary>
+    /// The payment a host makes from the link for a completed job goes through CasaZen (<c>true</c>, the default: SP-15c-b, decision VT-D1): the
+    /// card is charged on the <b>platform</b>, CasaZen holds the money and releases the supplier's part the <see cref="ReleaseAfterMinutes"/> after
+    /// the charge (or when the host says "all fine"). <c>false</c> keeps the model of SP-15a (a direct charge on the supplier's own account, CasaZen
+    /// holds nothing) for the payments <b>created from then on</b>; payments already created follow the model they were created with. It is the way
+    /// back if the held model has to be switched off in an environment without a deploy; it does not touch the booking of a showcase customer, whose
+    /// card is always blocked for CasaZen. Env var <c>SupplierPayments__HeldForHosts</c>.
+    /// </summary>
+    public bool HeldForHosts { get; set; } = true;
+
+    // ─── The complaint and the dispute (SP-15c-c, decision VT-D16). The times are configuration: they are the product owner's to change. ───
+
+    /// <summary>Longest the times of a dispute may be set to, in hours (30 days).</summary>
+    public const int MaxDisputeHours = 30 * 24;
+
+    /// <summary>
+    /// Hours the supplier has to reply to a complaint, from the moment it is opened (48, VT-D16). When they pass the dispute goes to the admins
+    /// without the reply; a reply that comes later is still taken while the dispute is open. Env var
+    /// <c>SupplierPayments__DisputeSupplierReplyHours</c>, 1 to <see cref="MaxDisputeHours"/>.
+    /// </summary>
+    public int DisputeSupplierReplyHours { get; set; } = 48;
+
+    /// <summary>
+    /// Hours the admins aim to decide a dispute in, from the moment it reaches them (72, VT-D16). It decides nothing and moves no money: when it
+    /// passes the admins are told once. Env var <c>SupplierPayments__DisputeDecisionTargetHours</c>, 1 to <see cref="MaxDisputeHours"/>.
+    /// </summary>
+    public int DisputeDecisionTargetHours { get; set; } = 72;
+
+    /// <summary>
+    /// Hours after the end of the time agreed for the work after which, if the supplier never marked it completed, CasaZen itself opens the complaint
+    /// for the payer (the no-show: 48, VT-D16). The payer can complain from the end of that time, without waiting. Env var
+    /// <c>SupplierPayments__DisputeNoShowHours</c>, 1 to <see cref="MaxDisputeHours"/>.
+    /// </summary>
+    public int DisputeNoShowHours { get; set; } = 48;
+
+    /// <summary>
+    /// Minutes after a decision for the customer after which, if the refund it decided has not succeeded and none is waiting for Stripe, the admins
+    /// are told once (30). Env var <c>SupplierPayments__DisputeRefundAlertMinutes</c>, 1 to 1440.
+    /// </summary>
+    public int DisputeRefundAlertMinutes { get; set; } = 30;
+
+    /// <summary>The time the supplier has to reply to a complaint as a time span.</summary>
+    public TimeSpan DisputeSupplierReply => TimeSpan.FromHours(DisputeSupplierReplyHours);
+
+    /// <summary>The time the admins aim to decide a dispute in as a time span.</summary>
+    public TimeSpan DisputeDecisionTarget => TimeSpan.FromHours(DisputeDecisionTargetHours);
+
+    /// <summary>The time after the end of the work after which CasaZen opens the no-show complaint as a time span.</summary>
+    public TimeSpan DisputeNoShow => TimeSpan.FromHours(DisputeNoShowHours);
+
     /// <summary>The authorization validity as a time span: how long a card block is treated as usable.</summary>
     public TimeSpan AuthorizationValidity => TimeSpan.FromHours(AuthorizationValidityHours);
 
@@ -185,6 +235,16 @@ public sealed class SupplierPaymentsOptions
             failures.Add($"{SectionName}__TransferRetryMaxMinutes must be between {SectionName}__TransferRetryBaseMinutes and {MaxReleaseAfterMinutes} minutes.");
         if (TransferAlertAfterAttempts is < 1 or > 100)
             failures.Add($"{SectionName}__TransferAlertAfterAttempts must be between 1 and 100.");
+
+        // The dispute (SP-15c-c): a time of zero would let a payer's complaint, or a supplier's reply, expire before it is read.
+        if (DisputeSupplierReplyHours is < 1 or > MaxDisputeHours)
+            failures.Add($"{SectionName}__DisputeSupplierReplyHours must be between 1 and {MaxDisputeHours} hours.");
+        if (DisputeDecisionTargetHours is < 1 or > MaxDisputeHours)
+            failures.Add($"{SectionName}__DisputeDecisionTargetHours must be between 1 and {MaxDisputeHours} hours.");
+        if (DisputeNoShowHours is < 1 or > MaxDisputeHours)
+            failures.Add($"{SectionName}__DisputeNoShowHours must be between 1 and {MaxDisputeHours} hours.");
+        if (DisputeRefundAlertMinutes is < 1 or > 1440)
+            failures.Add($"{SectionName}__DisputeRefundAlertMinutes must be between 1 and 1440 minutes.");
         return failures;
     }
 }

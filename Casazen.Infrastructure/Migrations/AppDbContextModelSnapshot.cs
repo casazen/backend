@@ -6484,6 +6484,112 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("ServiceCustomers");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.ServicePaymentDispute", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AdminNote")
+                        .HasColumnType("text")
+                        .HasColumnName("AdminNoteEncrypted");
+
+                    b.Property<string>("CustomerText")
+                        .HasColumnType("text")
+                        .HasColumnName("CustomerTextEncrypted");
+
+                    b.Property<int?>("DecidedRefundCents")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("DecisionDueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DecisionOverdueAlertedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("NoShow")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("OpenedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("OpenedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("OpenedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("Reason")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("RefundAlertedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("RefundTargetCents")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ResolvedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("ServiceRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ServiceRequestPaymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("SettledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SupplierOrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("SupplierRepliedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SupplierReply")
+                        .HasColumnType("text")
+                        .HasColumnName("SupplierReplyEncrypted");
+
+                    b.Property<DateTime>("SupplierReplyDueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServiceRequestId")
+                        .HasDatabaseName("IX_ServicePaymentDisputes_ServiceRequestId");
+
+                    b.HasIndex("ServiceRequestPaymentId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ServicePaymentDisputes_OpenPerPayment")
+                        .HasFilter("\"Status\" IN (0, 1)");
+
+                    b.HasIndex("Status", "SupplierReplyDueAt")
+                        .HasDatabaseName("IX_ServicePaymentDisputes_Status_SupplierReplyDueAt");
+
+                    b.HasIndex("SupplierOrgId", "Status")
+                        .HasDatabaseName("IX_ServicePaymentDisputes_SupplierOrgId_Status");
+
+                    b.ToTable("ServicePaymentDisputes", t =>
+                        {
+                            t.HasCheckConstraint("CK_ServicePaymentDisputes_Refund", "(\"Status\" = 3 AND \"DecidedRefundCents\" IS NOT NULL AND \"DecidedRefundCents\" >= 0 AND \"RefundTargetCents\" IS NOT NULL AND \"RefundTargetCents\" >= \"DecidedRefundCents\") OR (\"DecidedRefundCents\" IS NULL AND \"RefundTargetCents\" IS NULL AND \"SettledAt\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_ServicePaymentDisputes_Resolved", "(\"Status\" IN (0, 1) AND \"ResolvedAt\" IS NULL) OR (\"Status\" IN (2, 3, 4) AND \"ResolvedAt\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_ServicePaymentDisputes_Status", "\"Status\" BETWEEN 0 AND 4");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.ServiceRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -10393,6 +10499,29 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("SupplierProfile");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ServicePaymentDispute", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.ServiceRequest", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.ServiceRequestPayment", "ServiceRequestPayment")
+                        .WithMany()
+                        .HasForeignKey("ServiceRequestPaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("SupplierOrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ServiceRequestPayment");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.ServiceRequest", b =>

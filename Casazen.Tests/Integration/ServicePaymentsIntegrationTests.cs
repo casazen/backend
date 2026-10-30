@@ -636,7 +636,13 @@ public sealed class ServicePaymentsFactory : CasazenWebApplicationFactory
     {
         base.ConfigureWebHost(builder);
         builder.ConfigureAppConfiguration((_, config) =>
-            config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:SupplierOnlinePayments"] = "true" }));
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Features:SupplierOnlinePayments"] = "true",
+
+                // SP-15a/15b on the direct charge; the money CasaZen holds for a host (SP-15c-b) has its own tests.
+                ["SupplierPayments:HeldForHosts"] = "false",
+            }));
         builder.ConfigureTestServices(services =>
         {
             RemoveAllOf<IEmailQueue>(services);

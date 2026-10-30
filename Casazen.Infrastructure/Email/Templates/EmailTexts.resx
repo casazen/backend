@@ -1062,6 +1062,12 @@
   <data name="SupplierBookingReceipt_NoPayment" xml:space="preserve">
     <value>Con questa richiesta non paghi nulla adesso.</value>
   </data>
+  <data name="SupplierBookingReceipt_Blocked" xml:space="preserve">
+    <value>Abbiamo bloccato &lt;strong&gt;{0}&lt;/strong&gt; sulla tua carta: non è ancora un addebito. La somma viene addebitata solo se &lt;strong&gt;{1}&lt;/strong&gt; accetta la richiesta.</value>
+  </data>
+  <data name="SupplierBookingReceipt_BlockedNote" xml:space="preserve">
+    <value>Se la richiesta viene rifiutata, annullata o scade, il blocco viene rimosso e non paghi nulla. I tempi con cui la tua banca libera la somma dipendono da lei.</value>
+  </data>
   <data name="SupplierBookingNewRequest_Subject" xml:space="preserve">
     <value>Nuova richiesta dal tuo sito — {0}</value>
   </data>
@@ -1076,6 +1082,9 @@
   </data>
   <data name="SupplierBookingNewRequest_Price" xml:space="preserve">
     <value>Importo stimato: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingNewRequest_Blocked" xml:space="preserve">
+    <value>Importo: &lt;strong&gt;{0}&lt;/strong&gt;, già bloccato sulla carta del cliente. Se accetti, viene addebitato e CasaZen lo trattiene fino a lavoro finito.</value>
   </data>
   <data name="SupplierBookingNewRequest_Deadline" xml:space="preserve">
     <value>Rispondi entro le &lt;strong&gt;{0}&lt;/strong&gt;: dopo quell'ora la richiesta si annulla da sola.</value>
@@ -1100,6 +1109,9 @@
   </data>
   <data name="SupplierBookingAccepted_Estimated" xml:space="preserve">
     <value>Prezzo stimato: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierBookingAccepted_Charged" xml:space="preserve">
+    <value>Abbiamo addebitato &lt;strong&gt;{0}&lt;/strong&gt; sulla tua carta. CasaZen trattiene la somma e la gira al fornitore dopo il lavoro.</value>
   </data>
   <data name="SupplierBookingAccepted_Reminder" xml:space="preserve">
     <value>Ti mandiamo un promemoria il giorno prima, alle {0}.</value>
@@ -1898,5 +1910,110 @@
   </data>
   <data name="Push_ServicePaymentReceived_Body" xml:space="preserve">
     <value>{0}: {1} netti per te, prima delle commissioni di Stripe.</value>
+  </data>
+  <data name="ServiceDisputeReason_NotDone" xml:space="preserve">
+    <value>il lavoro non è stato svolto</value>
+  </data>
+  <data name="ServiceDisputeReason_Incomplete" xml:space="preserve">
+    <value>il lavoro è rimasto a metà</value>
+  </data>
+  <data name="ServiceDisputeReason_PoorQuality" xml:space="preserve">
+    <value>il lavoro non è stato fatto bene</value>
+  </data>
+  <data name="ServiceDisputeReason_NotAsDescribed" xml:space="preserve">
+    <value>il lavoro non corrisponde a quanto concordato</value>
+  </data>
+  <data name="ServiceDisputeReason_Other" xml:space="preserve">
+    <value>un altro motivo</value>
+  </data>
+  <data name="ServiceDisputeOpenedSupplier_Subject" xml:space="preserve">
+    <value>Segnalazione su un tuo lavoro: rispondi entro {0}</value>
+  </data>
+  <data name="ServiceDisputeOpenedSupplier_Body" xml:space="preserve">
+    <value>Per il lavoro «{0}» è stata aperta una segnalazione: {1}. Il pagamento di {2} resta custodito da CasaZen e non viene versato finché la segnalazione non è decisa.</value>
+  </data>
+  <data name="ServiceDisputeOpenedSupplier_NoShowBody" xml:space="preserve">
+    <value>Il lavoro «{0}» non risulta segnato come completato e l'orario previsto è terminato. CasaZen ha aperto una segnalazione per tutelare chi ha pagato: il pagamento di {1} resta custodito e non viene versato finché la segnalazione non è decisa.</value>
+  </data>
+  <data name="ServiceDisputeOpenedSupplier_Reply" xml:space="preserve">
+    <value>Hai tempo fino a {0} per rispondere dalla tua area: racconta la tua versione con parole tue. Se non rispondi, la segnalazione passa comunque al team di CasaZen, che decide.</value>
+  </data>
+  <data name="ServiceDisputeOpenedSupplier_Cta" xml:space="preserve">
+    <value>Apri la segnalazione</value>
+  </data>
+  <data name="ServiceDisputeOpenedSupplier_Hint" xml:space="preserve">
+    <value>Le parole di chi ha segnalato si leggono solo nella tua area, non in questa email.</value>
+  </data>
+  <data name="ServiceDisputeOpenedPayer_Subject" xml:space="preserve">
+    <value>Abbiamo ricevuto la tua segnalazione: {0}</value>
+  </data>
+  <data name="ServiceDisputeOpenedPayer_Body" xml:space="preserve">
+    <value>Abbiamo ricevuto la tua segnalazione sul lavoro «{0}» di {1}. Il pagamento resta custodito da CasaZen e non viene versato al fornitore finché la segnalazione non è decisa.</value>
+  </data>
+  <data name="ServiceDisputeOpenedPayer_NoShowBody" xml:space="preserve">
+    <value>Il lavoro «{0}» di {1} non risulta segnato come completato e l'orario previsto è terminato: CasaZen ha aperto una segnalazione per te. Il pagamento resta custodito e non viene versato al fornitore finché la segnalazione non è decisa. Se il lavoro è stato svolto, puoi ritirarla.</value>
+  </data>
+  <data name="ServiceDisputeOpenedPayer_Reply" xml:space="preserve">
+    <value>Il fornitore ha tempo fino a {0} per rispondere; poi la segnalazione passa al team di CasaZen. Ti scriviamo quando è decisa.</value>
+  </data>
+  <data name="ServiceDisputeOpenedPayer_Cta" xml:space="preserve">
+    <value>Vedi la prenotazione</value>
+  </data>
+  <data name="ServiceDisputeRepliedPayer_Subject" xml:space="preserve">
+    <value>Il fornitore ha risposto alla tua segnalazione: {0}</value>
+  </data>
+  <data name="ServiceDisputeRepliedPayer_Body" xml:space="preserve">
+    <value>{0} ha risposto alla tua segnalazione sul lavoro «{1}». Ora la valuta il team di CasaZen: il pagamento resta custodito fino alla decisione e ti scriviamo quando c'è.</value>
+  </data>
+  <data name="ServiceDisputeResolvedPayer_Subject" xml:space="preserve">
+    <value>La tua segnalazione è stata valutata: {0}</value>
+  </data>
+  <data name="ServiceDisputeResolvedPayer_ForSupplier" xml:space="preserve">
+    <value>La tua segnalazione sul lavoro «{0}» di {1} è stata valutata dal team di CasaZen e non è stata accolta: il pagamento viene versato al fornitore.</value>
+  </data>
+  <data name="ServiceDisputeResolvedPayer_ForCustomer" xml:space="preserve">
+    <value>La tua segnalazione sul lavoro «{0}» di {1} è stata accolta dal team di CasaZen: ti vengono rimborsati {2}.</value>
+  </data>
+  <data name="ServiceDisputeResolvedPayer_ForCustomerNoRefund" xml:space="preserve">
+    <value>La tua segnalazione sul lavoro «{0}» di {1} è stata accolta dal team di CasaZen.</value>
+  </data>
+  <data name="ServiceDisputeResolvedPayer_Hint" xml:space="preserve">
+    <value>Ti scriviamo di nuovo quando il rimborso è eseguito. Quando l'importo arriva sul tuo conto dipende dalla tua banca.</value>
+  </data>
+  <data name="ServiceDisputeResolvedSupplier_Subject" xml:space="preserve">
+    <value>Segnalazione decisa: {0}</value>
+  </data>
+  <data name="ServiceDisputeResolvedSupplier_ForSupplier" xml:space="preserve">
+    <value>La segnalazione sul lavoro «{0}» è stata valutata dal team di CasaZen a tuo favore: il pagamento di {1} viene trasferito al tuo conto Stripe. Quando i fondi sono disponibili sul conto dipende da Stripe.</value>
+  </data>
+  <data name="ServiceDisputeResolvedSupplier_ForCustomer" xml:space="preserve">
+    <value>La segnalazione sul lavoro «{0}» è stata accolta dal team di CasaZen: a chi ha pagato vengono restituiti {1}.</value>
+  </data>
+  <data name="ServiceDisputeResolvedSupplier_Remaining" xml:space="preserve">
+    <value>Per questo lavoro ti vengono versati {0}.</value>
+  </data>
+  <data name="ServiceDisputeResolvedSupplier_NothingLeft" xml:space="preserve">
+    <value>Per questo lavoro non ricevi alcun importo.</value>
+  </data>
+  <data name="ServiceDisputeResolvedSupplier_Cta" xml:space="preserve">
+    <value>Apri la richiesta</value>
+  </data>
+  <data name="ServiceDisputeWithdrawnSupplier_Subject" xml:space="preserve">
+    <value>Segnalazione ritirata: {0}</value>
+  </data>
+  <data name="ServiceDisputeWithdrawnSupplier_Body" xml:space="preserve">
+    <value>Chi ha richiesto il lavoro «{0}» ha ritirato la segnalazione: il pagamento di {1} viene trasferito al tuo conto Stripe. Quando i fondi sono disponibili sul conto dipende da Stripe.</value>
+  </data>
+  <data name="ServiceDisputeAlert_Subject" xml:space="preserve">
+    <value>Segnalazione da decidere: {0}</value>
+  </data>
+  <data name="ServiceDisputeAlert_Body" xml:space="preserve">
+    <value>Una segnalazione su un servizio pagato in CasaZen richiede una decisione, oppure qualcosa non è andato a buon fine: vedi il dettaglio qui sotto.</value>
+  </data>
+  <data name="ServiceDisputeAlert_Action" xml:space="preserve">
+    <value>Apri la segnalazione nella console di amministrazione, leggi le parole di entrambe le parti e decidi: a favore del fornitore o di chi ha pagato.</value>
+  </data>
+  <data name="ServiceDisputeAlert_Dispute" xml:space="preserve">
+    <value>Segnalazione: {0}</value>
   </data>
 </root>

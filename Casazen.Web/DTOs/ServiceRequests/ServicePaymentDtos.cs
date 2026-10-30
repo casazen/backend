@@ -89,8 +89,11 @@ public sealed class ServicePaymentSessionDto
 
     public string PublishableKey { get; set; } = string.Empty;
 
-    /// <summary>The supplier's connected account (<c>acct_…</c>): Stripe.js loads the PaymentIntent from it.</summary>
-    public string StripeAccountId { get; set; } = string.Empty;
+    /// <summary>
+    /// The supplier's connected account (<c>acct_…</c>): Stripe.js loads the PaymentIntent of a direct charge from it. <b>Null</b> for the money
+    /// CasaZen holds (SP-15c-b): the PaymentIntent is on the platform and Stripe.js is loaded with the publishable key alone.
+    /// </summary>
+    public string? StripeAccountId { get; set; }
 
     public int AmountCents { get; set; }
 

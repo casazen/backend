@@ -1868,8 +1868,8 @@ reviews. All behind the flag `Features__SupplierShowcaseBooking` (off by default
 2. `POST api/public/suppliers/{slug}/bookings` **holds** the chosen slot for `Suppliers__Showcase__EmailVerificationMinutes` (30 by
    default) and e-mails the customer a link. The supplier hears **nothing**; no request exists. The data the customer typed wait in the
    hold, encrypted.
-3. The link opens the showcase page `…/fornitori/{slug}/conferma?hold={id}&token={token}`; the page calls
-   `POST …/bookings/{id}/confirm-email` with the token. **Only now** the request is created, the customer is created or brought up to
+3. The link opens the showcase page `…/fornitori/{slug}/conferma?hold={id}#token={token}` (the token is in the **fragment** since SP-15c-a: a
+   browser never sends it to a server, so it is in no access log); the page calls `POST …/bookings/{id}/confirm-email` with the token. **Only now** the request is created, the customer is created or brought up to
    date, the hold stops holding and the request starts holding the slot **in the same transaction**, the customer gets the receipt and
    the supplier the new request (e-mail and push, comune and "Nome C." only, D9).
 4. The supplier has `SupplierSettings.RespondWithinMinutes` (180, D8) to answer. It takes the request (the customer is told, with the
@@ -2025,7 +2025,7 @@ undoes the change. The customer's e-mails are in the language it chose (`it` / `
 | Template | To | When |
 |---|---|---|
 | `supplier-booking-verification` | customer | the hold is made: the link, how long the time is kept, "ignore it if it was not you" |
-| `supplier-booking-receipt` | customer | the address is checked: the code, the time by which the supplier has to answer, the estimate, "you pay nothing now" |
+| `supplier-booking-receipt` | customer | the address is checked: the code, the time by which the supplier has to answer, the estimate, "you pay nothing now"; for a booking whose card is blocked (38.8) the amount blocked, that nothing is charged unless the supplier accepts and that the block is released otherwise, **instead of** the estimate and of "you pay nothing now" |
 | `supplier-booking-new-request` | supplier | the address is checked: service, comune, "Nome C.", time, estimate, the time to answer by (+ push) |
 | `supplier-booking-accepted` | customer | the supplier takes it: the time, its price (or the estimate), the reminder **only if it will be sent** |
 | `supplier-booking-declined` | customer | the supplier refuses it, with its reason |
@@ -2614,13 +2614,12 @@ the migration `AddHeldServicePayments`: `FundsModel`, the held states exist only
 The admin list and detail show the new statuses by name. A card dispute (a chargeback) is recorded on the payment (`CardDisputeId`, `CardDisputeStatus`,
 `CardDisputeAt`); after the release it is **CasaZen's loss** and nothing is recovered from the supplier (VT-D22). The admin refund
 (`POST api/admin/service-payments/{id}/refund`) works on held money before the release (any amount up to what was paid minus what was refunded) and is
-refused after it. The commission export (SP-15b) lists direct charges only: the held money's commission rows are SP-15c-b.
+refused after it. The commission export (SP-15b) lists the direct charges as before and, since SP-15c-b, the commission CasaZen retained from the money it held as `retained` rows (38.9).
 
 ### 38.6 Not done here (follow-ups)
 
-- The booking of the showcase with the block of the card (38.8) is the next pull request; the host's requests on this cycle, the "all fine" and "report a
-  problem" for hosts, the admin export of the commission kept, **SP-15c-b**; the complaint, the dispute and the penalty, **SP-15c-c**; the screens,
-  **SP-15c-d** (after SP-12b).
+- The host's requests on this cycle, the host's "all fine", the admin refund R4/R5 and the export of the commission kept are **SP-15c-b** (38.9); the
+  complaint ("report a problem", also for hosts), the dispute and the penalty, **SP-15c-c** (38.10); the screens, **SP-15c-d** (after SP-12b).
 - A shorter Stripe timeout for the platform client; an admin action to settle `NeedsReview` for a held payment; the recovery of a card dispute after the
   release (decision of the product owner, VT-D16).
 
@@ -2631,6 +2630,201 @@ refused after it. The commission export (SP-15b) lists direct charges only: the 
 - [ ] `service-funds` (`*/5`) among the recurring jobs (`GET api/admin/jobs`).
 - [ ] The platform endpoint sends the events of [`INFRA.md`](../INFRA.md) § Stripe before the flag goes on in any environment.
 - [ ] The five-step test-mode script of `results/VT-D22.md` of the wave was run and its answers are in the pull request that switches the flag on.
+
+### 38.8 The booking from the showcase, paid inside CasaZen — SP-15c-a (second pull request, stacked on the first)
+
+A booking with a total (`SupplierQuoteOutcome.Estimate`) is **paid inside CasaZen** when `ISupplierFundsService.CanAuthorizeAsync` says so: the flag
+`SupplierOnlinePayments` is on, the platform's publishable key is set, the supplier's Stripe account takes charges and payouts, and the total is at least
+`SupplierPayments__MinAmountCents`. Otherwise (flag off, account not ready, a booking on quote) **nothing changes**: the booking is made as it always was
+and its request is manual. The flag decides only the creation; what is already in flight follows its course whatever it says.
+
+| Step | What happens | Where |
+|---|---|---|
+| 1 | `POST api/public/suppliers/{slug}/bookings` saves the hold under the supplier's calendar lock, **then** (outside the lock) creates the PaymentIntent of the block and records it on the hold (`StripePaymentIntentId` and `PaymentAmountCents` together: the table checks it), **then** queues the verification e-mail. The answer carries `payment` (`amountCents`, `currency`, `clientSecret`, `publishableKey`, `authorized`). If Stripe cannot create the block the hold is deleted and the caller gets 503 `payment_provider_error` (no e-mail). The same `clientRequestId` is the same hold and the same PaymentIntent; a retry reads the block from Stripe **before** the lock. | `ShowcaseBookingService.CreateHoldAsync`, `BlockCardAsync` |
+| 2 | The customer confirms the card in the browser (Payment Element). Stripe sends `payment_intent.amount_capturable_updated`; the handler finds no payment for the PaymentIntent but a hold (metadata `showcaseHoldId`, `supplierOrgId`) and calls `ApplyHoldAuthorizationAsync`: the block must be the platform's, the whole total, nothing charged, no fee (`HeldChargeVerification`) or **no request is ever created from it** (the hold lapses and its block is released). The block is recorded on the hold (`PaymentAuthorizedAt`). | `StripeWebhookHandler.HandleServiceChargeAsync` |
+| 3 | `POST …/bookings/{id}/confirm-email` records `EmailVerifiedAt`. If the block is not recorded yet the answer is `status: "AwaitingPayment"`, `awaitingPayment: true`: **no request, the supplier knows nothing**; the page asks again (a second click is `alreadyConfirmed`). | `ConfirmEmailAsync` |
+| 4 | **The request is born when both are true, in either order**, by `CreateRequestFromHoldAsync` (the one place), under the supplier's calendar lock, in one transaction: customer, request (`Richiesto`, already `PaymentMode = Online`), the `Authorized` payment (amount = the total the customer saw, commission snapshotted, payer `Private`), the hold consumed. The receipt to the customer and the news to the supplier go **after** the commit (after the webhook transaction, for the second order). | `CreateRequestFromHoldAsync`, `CompleteHoldAuthorizationAsync` |
+| 5 | The supplier accepts (`TakeAsync`, or the customer accepts a proposed time): the card is **charged first** (`CaptureForTakeAsync`, inside the calendar lock, before the request changes state). A card that cannot be charged or a block that lapsed is 409 (`service_payment_capture_failed`, `service_payment_authorization_expired`) and the request stays new. | `ServiceRequestService.CaptureHeldMoneyAsync` |
+| 6 | Refused, cancelled (by the supplier or the customer) or lapsed: the block is released, or the charged money is refunded in full (`SettleClosedRequestAsync`, after the closing is saved; never throws; the `service-funds` job is the net). | `ServiceRequestService.SettleClosedMoneyAsync`, `ServiceRequestAutoCancelService` |
+| 7 | The supplier completes: the payment exists already, completing only fixes `release_at` (38.1). The customer may say "all fine" (`POST api/public/supplier-bookings/confirm-ok`, code + e-mail in the body like the other actions): the supplier is paid at once. | `ShowcaseBookingManager.ConfirmOkAsync` |
+
+**The customer's lookup** (`POST api/public/supplier-bookings/lookup`, and every answer of that area) adds `payment` — `status` (`authorized` · `held` ·
+`released` · `refunded` · `canceled` · `review`), `amountCents`, `currency`, `refundedCents`, `releaseAtUtc/Local` (while the money is held and the work is
+done: when it goes to the supplier if the customer says nothing) — and `actions.canConfirmOk` (the work is done and money is held that can still be
+released; the same facts the release checks). A booking that is not paid inside CasaZen has `payment: null`. `canReport` ("Segnala un problema") arrives
+with the complaint, SP-15c-c.
+
+**What keeps the money straight here**
+
+- *Nothing is created without a block, and a block without a request is released.* An expired hold that has a PaymentIntent and no request is released
+  by `ReleaseExpiredHoldAsync` (the block first, under the supplier's calendar lock, then the hold); a hold whose block could not be released is **kept**
+  and tried again by the next `service-request-expiry` run. A hold that became a request is deleted as before and its PaymentIntent — the payment's — is
+  never touched (the query that finds the ones to release excludes consumed holds).
+- *The answer time never reaches past the block.* A request born with a blocked card has `ResponseDueAt = min(the supplier's time, authorizedAt +
+  AuthorizationValidityHours − min(1 h, a quarter of it))` (`HeldPaymentRules.LatestResponseAt`), so the customer reads an answer time that is true.
+  Safety net: a **new** showcase request that is paid inside CasaZen and has **no payment left that is not canceled** (the block lapsed, or the bank refused
+  the charge) is cancelled by the next expiry run as "nobody answered" (`ServiceRequestAutoCancelService.UnpayableShowcaseIdsOf`), whatever its deadline.
+- *The price is the blocked amount.* On a request paid inside CasaZen the supplier cannot send a quote or commit another price when it takes
+  (422 `service_payment_amount_locked`); a different price needs the new offer of SP-10b-b.
+- *A take never turns a paid booking into a manual one* (`ResolvePaymentModeAsync` keeps `Online`), and a manual booking is never charged.
+- *The customer is told the truth* (D24): the receipt says the amount is blocked and not charged unless the supplier accepts; the e-mail of the take says the
+  card was charged and that CasaZen holds the amount until after the work; the supplier's new-request e-mail says the amount is already blocked. Nothing
+  is promised about when a bank frees a block.
+
+**Residual risks / decisions to confirm**
+
+- The capture (and, for an expired hold, the cancellation of the block) is a Stripe call made **inside the supplier's calendar lock**: a slow Stripe holds
+  that supplier's bookings for the duration (the SDK default timeout is long; see 38.6, "a shorter Stripe timeout").
+- If the webhook of the block is lost or late the customer waits on `AwaitingPayment` until the hold lapses (30 minutes by default): the block is then
+  released and nothing is charged; Stripe retries a failed delivery for days, but the hold does not live that long. The request is **not** created from a
+  Stripe read in `confirm-email` on purpose (a call to Stripe under the calendar lock).
+- A card with 3-D Secure that is abandoned leaves a PaymentIntent `requires_action`: the hold lapses and its PaymentIntent is canceled.
+- The e-mails of "work finished, you can report a problem until…" and "released" for the customer arrive with SP-15c-c; the refund e-mail is the one of 38.5.
+- The link of the verification e-mail carries the token in the **fragment** (`#token=`, FE-SP10-1): the page of SP-12b/SP-15c-d must read it from there
+  (`location.hash`); no frontend reads the booking link in `develop` yet.
+
+**Checks (test environment, flag on, Stripe test keys, supplier connected):** book a service with a total and confirm the card (`4242…`): the hold has
+the PaymentIntent, no request exists and the supplier got nothing; check the e-mail: the request appears with an `Authorized` payment (both orders:
+e-mail before the card shows `awaitingPayment`); let another hold lapse: its PaymentIntent is `canceled` on the Dashboard; accept as the supplier: the
+card is charged (`Held`); cancel as the customer before and after the acceptance: block released, then full refund; refuse a booking: block released;
+complete and press "all fine": one transfer of the net to the connected account. With the flag off: the same booking is made as before (no
+`payment`, a manual request).
+
+### 38.9 The host's payments on the held cycle — SP-15c-b
+
+What a **host** pays for a job the supplier completed (the link of SP-15b, or the host's own session) now goes through CasaZen too, unless
+`SupplierPayments__HeldForHosts` is `false` (default `true`: the way back to the direct charge of SP-15a in an environment, without a deploy; it only
+decides the payments **created from then on**, an existing payment keeps the model it was created with).
+
+| Step | What happens | Where |
+|---|---|---|
+| 1 | The supplier completes: `PlanAsync` creates the payment `Requested`, `FundsModel = PlatformHeld`, `TransferGroup = service-request-{id}`, commission snapshotted (no fee is ever sent to Stripe: the commission is the part that is not transferred); the link goes to the host exactly as in SP-15b (same token, same e-mails, same reminders, same "late" flag). | `NewPaymentAsync` |
+| 2 | The host opens the link (`POST api/public/service-payments/{id}/payment-session`) or its own session (`POST api/service-requests/{id}/payment-session`, long-rent twin): a PaymentIntent **on the platform**, automatic capture, cards only, transfer group of the request; reused while payable with the same amount and no fee, replaced otherwise, never replaced if Stripe says it was paid or is in progress (the payment shows as processing, the webhook settles it). `stripeAccountId` is **null**: Stripe.js is loaded with the publishable key alone. A supplier whose account cannot receive money any more collects nothing (409 `service_payment_supplier_not_ready`). | `OpenHeldSessionAsync` (`FundsSession.cs`) |
+| 3 | `payment_intent.succeeded` (checked against the payment: platform, PaymentIntent, amount, currency, no fee) makes the payment `Held` and sets `ReleaseAt = charge + SupplierPayments__ReleaseAfterMinutes` (R3: a host pays after the work). A refused card is `payment_intent.payment_failed`: the payment is `Failed` with the code and payable again with the same PaymentIntent. The `service-payment-sync` job (every 15 min) reads the PaymentIntent of the open held payments touched in the last 3 days (not in the last 10 minutes) and records a charge whose event was lost. | `ApplyChargeEvent`, `ApplyHeldPaymentFailed`, `SynchronizeHeldPaymentAsync` |
+| 4 | The supplier is paid by the `service-funds` job once `ReleaseAt` has passed, or at once when the host says "all fine": `POST api/service-requests/{id}/confirm-ok` (long-rent: `POST api/long-rent/service-requests/{id}/confirm-ok`), same permission as `mark-paid`; 404 for another org's request, 422 `service_payment_not_confirmable` when there is nothing to release (not paid yet, closed, stopped). One transfer of the net, whatever the number of runs or clicks; the request becomes `Pagato` at the release, not at the charge. | `ConfirmOkAsHostAsync` |
+| 5 | The supplier cannot ask for or remind a payment the host has paid (409 `service_payment_held`), but can still ask for, remind and — as a traced exception — declare **received outside CasaZen** a payment still to be made: its PaymentIntent **on the platform** is canceled first, one that was paid meanwhile wins (processing, 409). | `RequestPaymentAsync`, `RecordOfflineAsync` |
+
+**Admin refund** (`POST api/admin/service-payments/{id}/refund`): by default everything still refundable goes back from the platform's balance, the
+commission included (**R5**, cancelling is always free); with `"keepCommission": true` only what the supplier would have been paid goes back (the price
+minus the commission, minus what was already refunded), CasaZen keeps the commission and the supplier gets nothing (**R4**, the supplier was at fault; the
+amount may be lower but never higher). Either way **only before the release**: after the transfer the money is the supplier's (422
+`service_payment_not_refundable`). `keepCommission` on a direct charge is 422.
+
+**Commission export** (`GET api/admin/supplier-payments/export?year=&month=`): a new row type `retained` for the money CasaZen held, one per payment, on the
+day the commission became CasaZen's — the day of the transfer, or, for a payment where the supplier got nothing, the day of the last refund that
+succeeded. `gross` is what stayed with CasaZen of the payer's money (the price minus what was given back), `commission` is CasaZen's commission, `net`
+what the supplier got. A payment refunded in full has no row. The rows of the direct charge (`payment`, `refund`) are unchanged.
+
+**Residual risks / decisions to confirm**
+
+- The model of a payment is fixed when it is created: a payment created while `HeldForHosts` was on stays held if it is switched off, and the other way
+  round. The tests of SP-15a/15b pin the direct charge (`HeldForHosts = false` in their harness); the held cycle has its own (`HostHeldPaymentTests`).
+- The Payment Element must be loaded **without** `stripeAccount` for a held payment (the frontend, SP-15c-d); a client that still sends the account of
+  a direct charge would not find the PaymentIntent.
+- A host that pays a `Failed` held payment again reuses the same PaymentIntent; the sync job reads open payments for 3 days after the last touch, a
+  lost event after that is settled by the next session or by an admin (`NeedsReview` is not reached from here).
+- The host's DTO does not carry the payment yet (status, amount, `releaseAt`, whether "all fine" is possible): the host page reads the request status
+  (`Completato` until the release, `Pagato` after) and the payment page of the link. A payment block in the host's DTO is a follow-up (SP-15c-b2).
+- "Segnala un problema" for hosts (and the long-rent twin) is the complaint of SP-15c-c.
+
+### 38.10 The complaint and the dispute — SP-15c-c
+
+Redesign wave task SP-15c-c (branch `feature/rd-supplier-payments-dispute`, backend only, stacked on 38.9). Decisions **VT-D1** (the payer pays at once;
+CasaZen holds the money until "all fine" or the hour after the work; a complaint stops it; when the supplier is at fault CasaZen keeps its commission,
+the rest goes back to the payer and the supplier is penalized) and **VT-D16** (the window, the amount decided by an admin, the no-show, the times).
+**Text only** (VT-D12: no photos). The flag `SupplierOnlinePayments` is unchanged and stays off in production; like the webhooks and the release, the
+complaint and everything after it are **not** behind the flag (the money they stop is already held). Stripe is called by this task **only** for the
+refund of a decision, through the refund machinery of SP-15b/15c (idempotency key of a reserved row). Gateway and events: [`stripe.md`](stripe.md)
+§ "The complaint and the dispute (SP-15c-c)"; the e-mails: [`email.md`](email.md) § "The complaint about a job (SP-15c-c)".
+
+| Step | What happens | Where |
+|---|---|---|
+| 1. The window | The payer — the private customer of a showcase (code and e-mail, as for every action of its area) or the host (owns the request, holds `servicerequest.write` / long-rent `property.write`) — may report a problem **from the completion (`Completato`) until the money is due** (`ReleaseAt`: 60 minutes after the completion, or after the charge for a host), **never after "all fine"** (`ReleaseConfirmedAt`) **nor after the transfer**. For a job nobody marked completed (taken, and the time agreed for it ended) it may report **from the end of that time**; if nobody does, CasaZen opens the complaint itself `DisputeNoShowHours` (48) after the end. Outside: 422 `service_dispute_window_closed` (`windowEndedAt`) / `service_dispute_too_early` / `service_dispute_not_reportable` (no money held by CasaZen, or not a job that was done). | `ServiceDisputeRules.CanReport` (pure) |
+| 2. Opening | Under the payment lock (the one the release and the refunds take): the dispute `AwaitingSupplier` is written and the payment goes `Held` → **`Disputed`** in the same transaction. The release accepts only `Held`/`TransferFailed` (`HeldPaymentRules.Release`), so a complaint and a release **never both win**: the one that takes the lock first decides, the other is refused (a complaint after the release is a 422; "all fine" after a complaint is 422 `service_payment_not_confirmable`). **One open dispute per payment** (unique partial index `UIX_ServicePaymentDisputes_OpenPerPayment`): a second complaint is the same dispute and writes nothing. | `OpenDisputeAsync` |
+| 3. The supplier's reply | `DisputeSupplierReplyHours` (48) from the opening. **One** reply (the same words again are the same reply; other words are 409 `service_dispute_already_replied`); it moves the dispute to `AwaitingDecision` and starts the admins' target `DisputeDecisionTargetHours` (72). If the time passes without a reply the job sends the dispute to the admins anyway; a reply that comes later is **still taken** while the dispute is open. | `ReplyToDisputeAsync`, job step 1 |
+| 4. The decision | Only an admin, only in `AwaitingDecision` (before: 409 `service_dispute_awaiting_supplier`, `supplierReplyDueAt`). **For the supplier:** payment `Disputed` → `Held`, `ReleaseAt = now`: the funds job pays the net at its next run (a no-show: the request is completed first, the work was done and not marked). **For the customer:** the refund of the amount decided is **reserved in the same transaction** as the decision (a pending refund row, origin `System`, reason `dispute:{id}`, key `service-charge-refund:{payment}:{n}`), so neither a release nor another refund can take its euros; Stripe is asked **after the commit**; the payment stays `Disputed` until that refund **has succeeded**, and then ends `PartiallyRefunded` (nothing left for the supplier) or goes back to `Held` due now (the funds job pays what is left). | `ResolveDisputeAsync`, `SettleDecidedDisputeAsync` |
+| 5. The amount | From 1 cent to the supplier's part that is left: **price − commission − refunded − being refunded** (`ServiceDisputeRules.RefundableToPayer`); left out means all of it. **The commission is never given back by a dispute** (R4): 422 `service_dispute_refund_exceeds` (`maxRefundCents`) / `service_dispute_refund_invalid`. When nothing is left (the admin tool refunded it already) the decision stands with no money and the supplier is penalized all the same. For the supplier: no amount (422). | `DecideRefund` |
+| 6. Idempotent, and a race is a 409 | The same decision on a decided dispute (same outcome, same amount or none) answers the same and moves nothing: no second refund, no second penalty, no second e-mail. A different decision, or one that lost to the payer's withdrawal, is 409 `service_dispute_state_changed`. | `ResolveDisputeAsync` |
+| 7. The payer takes it back | While open, only the payer: the payment goes back to `Held`, due now; the supplier is paid at the next run and told; no penalty. | `WithdrawDisputeAsync` |
+| 8. The penalty | After the commit of a decision **for the customer**, `ISupplierDisputePenalties.RecordAsync` is called with `DisputeLost` (or `NoShow` when the supplier never marked the work completed). The only implementation today **logs**: nothing in the ranking changes and nothing is shown publicly (VT-D17: the weights are not approved). The dispute row (`ResolvedForCustomer`, `NoShow`) is the record the events are rebuilt from; a failure of the sink never undoes the decision. | `RecordPenaltyAsync`, `LoggingSupplierDisputePenalties` |
+
+**The job** (`service-funds`, every 5 minutes, always registered; a step after the releases): (1) disputes whose reply time passed go to the admins (alert
+`awaiting_decision:no_reply`); (2) disputes whose target passed: the admins are told once (`decision_overdue`); (3) a decision for the customer whose refund
+did not go through `DisputeRefundAlertMinutes` (30) after the decision and with no refund waiting for Stripe: the admins are told once
+(`refund_incomplete`) — a payment that has meanwhile given back what the decision asked is settled here, not alerted; (4) the no-show: a held payment of a
+request still `PresoInCarico`/`InCorso` whose `ScheduledEndUtc` is `DisputeNoShowHours` ago and that has no dispute gets one, opened by CasaZen
+(`reason = not_done`, `noShow = true`). Each dispute is handled alone, under its lock and read again after it; an error on one is logged and counted.
+
+**States × actions** (`ServiceDisputeStatus`, append only: `AwaitingSupplier` 0, `AwaitingDecision` 1, `ResolvedForSupplier` 2, `ResolvedForCustomer` 3, `Withdrawn` 4)
+
+| State | Supplier replies | Payer withdraws | Admin decides | Payment |
+|---|---|---|---|---|
+| `AwaitingSupplier` | yes (once) | yes | no (409, the supplier has time) | `Disputed` |
+| `AwaitingDecision` | yes if it had not (late reply) | yes | yes | `Disputed` |
+| `ResolvedForSupplier` / `Withdrawn` | no (409 `service_dispute_not_open`) | no | no | `Held` due now → `Released` |
+| `ResolvedForCustomer` | no | no | no | `Disputed` until the refund succeeded, then `PartiallyRefunded` or `Held` due now |
+
+**Endpoints**
+
+| Who | Endpoint | |
+|---|---|---|
+| Customer of a showcase | `POST api/public/supplier-bookings/report-problem` (`reason`, `text`), `POST …/withdraw-problem` — same proof, limits and uniform 404 as `confirm-ok`; the answer is the booking with `payment.dispute` and `actions.canReportProblem` / `canWithdrawProblem` | new |
+| Host (short rent / long rent) | `POST api/service-requests/{id}/report-problem`, `…/withdraw-problem`, `GET …/{id}/problem` and the same under `api/long-rent/service-requests/{id}` | new |
+| Supplier | `GET api/supplier/requests/{id}/dispute`, `POST api/supplier/requests/{id}/dispute/reply` (`text`) | new |
+| Admin | `GET api/admin/service-payment-disputes?status=&supplierOrgId=&openOnly=&page=&pageSize=`, `GET …/{id}`, `POST …/{id}/resolve` (`outcome`: `for_supplier` \| `for_customer`, `refundCents`, `note`) | new |
+
+`reason` is one of `not_done`, `incomplete`, `poor_quality`, `not_as_described`, `other` (`other` needs the words); `text` and `note` are at most 1000
+characters, plain text, no control characters (422 `service_dispute_invalid` with `fields`). Every view is made for its audience and can carry nothing
+else: the payer reads **its own words**, the state and the decision (and *that* the supplier replied, not what it wrote); the supplier reads the payer's
+words and its own reply; the admin reads everything; **the note of the admin is in no view of the parties**.
+
+**Configuration** (`SupplierPayments__*`, all validated at startup, see the deploy checklist)
+
+| Variable | Default | |
+|---|---|---|
+| `DisputeSupplierReplyHours` | 48 | time the supplier has to reply (1 to 720) |
+| `DisputeDecisionTargetHours` | 72 | target of the admins from the moment the dispute reaches them (it decides nothing: the admins get an e-mail when it passes) |
+| `DisputeNoShowHours` | 48 | after the end of the time agreed for the work, CasaZen opens the no-show complaint |
+| `DisputeRefundAlertMinutes` | 30 | after a decision for the customer, the admins are told if its refund did not go through |
+
+**Data** — table `ServicePaymentDisputes` (migration `AddServicePaymentDisputes`, additive: one table, three foreign keys that restrict, four indexes, three
+checks). The three texts (`CustomerTextEncrypted`, `SupplierReplyEncrypted`, `AdminNoteEncrypted`) are **encrypted at rest** with the purpose
+`Casazen.ServicePaymentDispute` ([`encryption.md`](encryption.md)), are in no log and in no e-mail, and follow the retention of the payment data
+([`gdpr.md`](gdpr.md)). The table is not tenant-filtered (two parties and an anonymous payer, like the payment): `ServicePaymentDisputeTenancyTests` keeps
+every statement on an explicit predicate and the table inside the payments service.
+
+**Residual risks / decisions to confirm**
+
+- **`[CONSULENTE LEGALE]`** The window of **one hour** is very short for a consumer (the rule of the product owner, configurable: `ReleaseAfterMinutes`); that a
+  consumer is not given back the commission when the supplier is at fault (VT-D1) and the texts of the e-mails to the payer have not been seen by a lawyer.
+- **The admins' work.** The decision is a person's: 72 hours is a target, nothing is decided by itself. The queue and the detail exist as API; the console
+  screens are AM-09/AM-10 and SP-15c-d. Until then the work queue is the e-mail alert and `GET api/admin/service-payment-disputes?openOnly=true`.
+- **The refund comes out of the platform's balance.** If it is not enough Stripe refuses the refund (VT-D22 questions 3 and 4): the decision stands, the
+  payment stays `Disputed`, nothing is paid out, the admins get one e-mail after 30 minutes, and the admin refund tool with `keepCommission` completes it.
+- **A request cancelled while a dispute is open** (only a job nobody marked completed can be) is not settled automatically (a `Disputed` payment is left
+  alone by the closing of a request): the admin decides the dispute. Decided for the supplier, the payment is `Held` again and, the request being closed, the
+  `service-funds` job refunds the payer **in full** (rule R5: a cancelled request is never paid); if the whole price must go back and the supplier was at
+  fault, the admin refund tool does it first and the decision then stands with no money.
+- **A no-show decided for the customer leaves the request as it is** (taken): the payment is refunded and the supplier penalized, but closing the request
+  (and the wording the clients show for it) is a follow-up with the frontend (SP-15c-d). Decided for the supplier, the request is completed.
+- **The supplier cannot complete a job whose money a complaint stopped**: `complete` answers 409 `service_dispute_open` (the work would be declared done
+  while the payer says it was not). It replies to the complaint instead; decided for it, the job is completed for it and paid by the next run. The same
+  wall protects the amount: a `Disputed` payment is never recomputed or re-planned by a completion.
+- **The host's DTO has no `payment`/`dispute` block yet** (follow-up SP-15c-b2): the host page reads `GET …/{id}/problem` (404 `service_dispute_not_found` when
+  there is none) and the request status.
+- **The penalty is only logged** until the reliability events of the ranking exist (follow-up **SP-15c-c2**: the kinds `DisputeLost` and `NoShow`, their weights
+  and the moving window are VT-D17); the events can be rebuilt from the dispute rows. A penalty is lost, but logged, if the process dies between the commit of
+  the decision and the call of the sink.
+- A card dispute (a chargeback) is another thing (38.5): it is recorded on the payment and answered on Stripe; it never moves a payment to `Disputed`.
+
+**Checks**
+
+- [ ] Migration `AddServicePaymentDisputes` applied (`ServicePaymentDisputes`, `UIX_ServicePaymentDisputes_OpenPerPayment`, the three checks).
+- [ ] `service-funds` (`*/5`) is among the recurring jobs and its log shows the `Service disputes:` line when there is work.
+- [ ] An active platform admin has an e-mail (the alerts go to every one); `SupplierPayments__Dispute*` are as the product owner decided.
+- [ ] Test environment (flag on, Stripe test keys): book, take, complete, report a problem (the page shows it, the release does not happen), let the supplier
+      reply, decide once for the customer with a partial amount (the refund appears on Stripe, the rest is transferred) and once for the supplier; try the
+      same decision twice; leave a taken job past its time and see the no-show opened after 48 hours.
 
 ## 27. Read models for the console: "Oggi" and "Richieste" — SP-04e
 
@@ -3542,7 +3736,7 @@ Both are anonymous, behind `SupplierShowcaseBooking` (404 like a route that does
 | `POST api/public/suppliers/{slug}/inquiries/{id}/confirm-email` | Body: `{ token }`. 200 `{ publicCode, status, serviceName?, respondBy?, alreadyConfirmed }`; a second click answers the same with `alreadyConfirmed` and does nothing again. 404 `supplier_booking_link_invalid` (unknown inquiry, another supplier's, wrong token: one answer), 409 `supplier_booking_link_expired`, 422 `supplier_booking_supplier_unavailable` |
 
 The codes are those of the booking (section 23): the same fields, the same consent, the same zone (the comune has to be one the supplier covers), the same 429. The e-mail carries the link `/fornitori/{slug}/conferma?inquiry={id}#token={token}`: the page reads
-`inquiry` from the query and the **token from the fragment**, which a browser never sends to a server, so the token is in no access log, and posts both to `confirm-email`. The booking's link keeps its own keys on the same page (`?hold=` and `token=`).
+`inquiry` from the query and the **token from the fragment**, which a browser never sends to a server, so the token is in no access log, and posts both to `confirm-email`. The booking's link keeps `?hold=` in the query and, since SP-15c-a, carries its token in the fragment too (`#token=`).
 
 ### 34.3 Nothing before the check, almost nothing after
 

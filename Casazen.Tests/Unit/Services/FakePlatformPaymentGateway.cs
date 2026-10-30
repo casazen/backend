@@ -22,9 +22,11 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
     private readonly Dictionary<string, ServiceTransfer> _transfersByKey = new(StringComparer.Ordinal);
     private readonly List<ServiceTransfer> _transfers = [];
     private int _sequence;
+    private Exception? _failNextCreate;
     private Exception? _failNextCapture;
     private Exception? _failNextTransfer;
     private Exception? _failNextList;
+    private Exception? _failNextRefund;
     private bool _loseNextTransferAnswer;
     private bool _chargeOnNextCancel;
 
@@ -97,6 +99,9 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
                 Status = status,
                 AmountCapturableCents = status == "requires_capture" ? current.AmountCents : 0,
                 AmountReceivedCents = status == "succeeded" ? received ?? current.AmountCents : current.AmountReceivedCents,
+
+                // A PaymentIntent that was paid has a charge (the source of the transfer to the supplier).
+                LatestChargeId = status == "succeeded" ? current.LatestChargeId ?? $"ch_{id}" : current.LatestChargeId,
             };
             _intents[id] = updated;
             return updated;
@@ -109,11 +114,17 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
             return _intents[id];
     }
 
+    /// <summary>The next PaymentIntent cannot be created (Stripe is down): nothing exists on this fake Stripe afterwards.</summary>
+    public void FailNextCreate(Exception exception) => _failNextCreate = exception;
+
     public void FailNextCapture(Exception exception) => _failNextCapture = exception;
 
     public void FailNextTransfer(Exception exception) => _failNextTransfer = exception;
 
     public void FailNextList(Exception exception) => _failNextList = exception;
+
+    /// <summary>The next refund is refused (or cannot be asked): nothing exists on this fake Stripe afterwards.</summary>
+    public void FailNextRefund(Exception exception) => _failNextRefund = exception;
 
     /// <summary>The next transfer is created on Stripe but the answer never comes back (a timeout): the next try must find it, not make another.</summary>
     public void LoseNextTransferAnswer() => _loseNextTransferAnswer = true;
@@ -126,6 +137,12 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
         lock (_gate)
         {
             Created.Add(request);
+            if (_failNextCreate is { } failure)
+            {
+                _failNextCreate = null;
+                throw failure;
+            }
+
             if (_intentByKey.TryGetValue(request.IdempotencyKey, out var existing))
                 return Task.FromResult(_intents[existing]);
 
@@ -201,6 +218,12 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
             RefundRequests.Add(request);
             if (_refundsByKey.TryGetValue(request.IdempotencyKey, out var existing))
                 return Task.FromResult(existing);
+
+            if (_failNextRefund is { } failure)
+            {
+                _failNextRefund = null;
+                throw failure;
+            }
 
             Find(request.PaymentIntentId);
             var metadata = new Dictionary<string, string>(request.Metadata) { ["kind"] = "service-charge-refund" };

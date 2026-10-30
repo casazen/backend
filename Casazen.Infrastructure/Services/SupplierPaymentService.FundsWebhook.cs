@@ -61,8 +61,27 @@ public sealed partial class SupplierPaymentService
             "payment_intent.amount_capturable_updated" => ApplyBlockEvent(payment, observation, paymentEvent, now),
             "payment_intent.succeeded" => ApplyChargeEvent(payment, observation, paymentEvent, now),
             "payment_intent.canceled" => ApplyBlockEndedEvent(payment, paymentEvent, now),
+            "payment_intent.payment_failed" => ApplyHeldPaymentFailed(payment, paymentEvent, now),
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// The card of a host that is paying a held payment was refused (SP-15c-b): the payment is plainly <c>Failed</c> with the code, and payable
+    /// again with the same PaymentIntent. Nothing else: the payer saw the refusal in the Payment Element. A payment that is already charged, or
+    /// not waiting for the payer, is left alone (a late event).
+    /// </summary>
+    private ServicePaymentNotice? ApplyHeldPaymentFailed(ServiceRequestPayment payment, ServicePaymentIntentEvent paymentEvent, DateTime now)
+    {
+        if (payment.Status is not (ServicePaymentStatus.Requested or ServicePaymentStatus.Processing or ServicePaymentStatus.Failed))
+            return null;
+
+        payment.Status = ServicePaymentStatus.Failed;
+        payment.FailureCode = Truncate(paymentEvent.FailureCode ?? "payment_failed", 100);
+        payment.UpdatedAt = now;
+        logger.LogInformation(
+            "Held payment {PaymentId} of request {RequestId}: the card was refused (event {EventId})", payment.Id, payment.ServiceRequestId, paymentEvent.EventId);
+        return null;
     }
 
     /// <summary>

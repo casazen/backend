@@ -104,6 +104,13 @@ public interface ISupplierFundsService
         AuthorizedPaymentInput input,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The latest instant a supplier may be left to answer a request whose card was blocked at <paramref name="authorizedAt"/>
+    /// (<see cref="HeldPaymentRules.LatestResponseAt"/> with <c>SupplierPayments:AuthorizationValidityHours</c>): the request is born with
+    /// no later deadline than this, so it closes while the block is still usable. Pure; no Stripe, no database.
+    /// </summary>
+    DateTime LatestResponseAt(DateTime authorizedAt);
+
     // ─── The life of the request ─────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The request has a payment held by CasaZen that is not canceled: its mode is <see cref="ServiceRequestPaymentMode.Online"/> and its amount is locked.</summary>
@@ -135,7 +142,10 @@ public interface ISupplierFundsService
     /// </summary>
     Task<ServiceRequestPayment> ConfirmOkAsync(Guid requestId, CancellationToken cancellationToken = default);
 
-    /// <summary>The live payment held by CasaZen of a request, read without tracking, or null.</summary>
+    /// <summary>
+    /// The most recent payment held by CasaZen of a request — a block that was released (<see cref="ServicePaymentStatus.Canceled"/>) included, so
+    /// a refused or cancelled booking can still say that nothing was charged — read without tracking; null when the request has none.
+    /// </summary>
     Task<ServiceRequestPayment?> FindHeldPaymentAsync(Guid requestId, CancellationToken cancellationToken = default);
 }
 

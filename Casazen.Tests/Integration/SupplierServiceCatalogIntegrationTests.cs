@@ -702,6 +702,7 @@ public sealed class SupplierFlagsEnabledFactory : CasazenWebApplicationFactory
             {
                 ["Features:SupplierShowcaseBooking"] = "true",
                 ["Features:SupplierOnlinePayments"] = "true",
+                ["SupplierPayments:HeldForHosts"] = "false",
             }));
     }
 }

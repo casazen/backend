@@ -44,6 +44,10 @@ public class EncryptedColumnsTests
                 "ServiceCustomer.Email:Casazen.ServiceCustomer",
                 "ServiceCustomer.FullName:Casazen.ServiceCustomer",
                 "ServiceCustomer.Phone:Casazen.ServiceCustomer",
+                // SP-15c-c: the words of a complaint about a job paid through CasaZen (the payer's, the supplier's, the admin's note).
+                "ServicePaymentDispute.AdminNote:Casazen.ServicePaymentDispute",
+                "ServicePaymentDispute.CustomerText:Casazen.ServicePaymentDispute",
+                "ServicePaymentDispute.SupplierReply:Casazen.ServicePaymentDispute",
                 "ServiceRequest.LocationAccessNotes:Casazen.ServiceRequest.Location",
                 "ServiceRequest.LocationAddress:Casazen.ServiceRequest.Location",
                 "ServiceRequest.LocationFloor:Casazen.ServiceRequest.Location",

@@ -48,6 +48,59 @@ public class ShowcaseBookingManagementArchitectureTests
             + "who is asking, may call them. Offenders: " + string.Join(", ", offenders));
     }
 
+    private static readonly Regex FundsType = new(@"\bISupplierFundsService\b", RegexOptions.Compiled);
+
+    private static readonly Regex ConfirmOkName = new(@"\bConfirmOkAsync\b", RegexOptions.Compiled);
+
+    /// <summary>The files that may name the money CasaZen holds (SP-15c-a), each with the reason.</summary>
+    private static readonly IReadOnlyDictionary<string, string> MayNameTheFunds = new Dictionary<string, string>
+    {
+        ["Casazen.Core/Services/ISupplierFundsService.cs"] = "Declares the interface.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.cs"] = "Implements it.",
+        ["Casazen.Infrastructure/Services/ShowcaseBookingService.cs"] = "Blocks the customer's card for a hold, gives the request its payment and releases the block of a hold that lapsed.",
+        ["Casazen.Infrastructure/Services/ShowcaseBookingManager.cs"] = "The only caller of the payer's «all fine»: it proves who is asking first.",
+        ["Casazen.Infrastructure/Services/ServiceRequestService.cs"] = "Charges the card when the supplier accepts and settles the money of a request that closes.",
+        ["Casazen.Infrastructure/Services/ServiceRequestAutoCancelService.cs"] = "Settles the money of the requests it cancels.",
+        ["Casazen.Web/Extensions/ServiceCollectionExtensions.cs"] = "Registers it.",
+    };
+
+    /// <summary>The files that may name the payer's «all fine» (it releases the money to the supplier at once), each with the reason.</summary>
+    private static readonly IReadOnlyDictionary<string, string> MayNameConfirmOk = new Dictionary<string, string>
+    {
+        ["Casazen.Core/Services/ISupplierFundsService.cs"] = "Declares what the funds service does.",
+        ["Casazen.Core/Services/IShowcaseBookingManager.cs"] = "Declares what the customer's own area does.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsRelease.cs"] = "Implements it, under the payment lock.",
+        ["Casazen.Infrastructure/Services/ShowcaseBookingManager.cs"] = "Proves that the customer knows the code and the e-mail address, then asks for it.",
+        ["Casazen.Infrastructure/Services/ServiceRequestService.Payments.cs"] = "The host's all fine (SP-15c-b): the host proved who it is by owning the request (another org's, and a showcase one, are not found).",
+        ["Casazen.Web/Controllers/PublicSupplierBookingManagementController.cs"] = "The public door of the customer's own area.",
+    };
+
+    [Fact]
+    public void TheMoneyCasaZenHolds_IsMovedOnlyByTheServicesThatOwnIt_AndAllFineOnlyAfterTheCustomerProvedWhoItIs()
+    {
+        var offenders = new List<string>();
+        var confirmOk = new List<string>();
+
+        foreach (var (relative, text) in ReadSources(FindRepositoryRoot()))
+        {
+            var code = CodeWithoutComments(text);
+            if (!MayNameTheFunds.ContainsKey(relative) && FundsType.IsMatch(code))
+                offenders.Add(relative);
+
+            if (!MayNameConfirmOk.ContainsKey(relative) && ConfirmOkName.IsMatch(code))
+                confirmOk.Add(relative);
+        }
+
+        Assert.True(
+            offenders.Count == 0,
+            "The money CasaZen holds is charged, released and given back only by the services that own it. Another reader of "
+            + "ISupplierFundsService must be added to MayNameTheFunds with its reason: " + string.Join(", ", offenders));
+        Assert.True(
+            confirmOk.Count == 0,
+            "The payer's «all fine» releases the money to the supplier at once, so it may be asked for only after the payer proved who it is "
+            + "(the manager of the customer's own area). Offenders: " + string.Join(", ", confirmOk));
+    }
+
     [Fact]
     public void TheGuardOnTheGuard_TheManagerCallsAllTheActions_AndTheImplementationDeclaresThem()
     {

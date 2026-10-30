@@ -14,15 +14,16 @@ namespace Casazen.Infrastructure.Services;
 public partial class ServiceRequestService
 {
     /// <summary>
-    /// How a request is paid from now on, decided when it is taken. A request from a supplier's public showcase (SP-10) is always
-    /// <see cref="ServiceRequestPaymentMode.Manual"/>: its customer is a private person with no account, no org and no address on file
-    /// for a payment link, and its <c>OrgId</c> is the supplier's own, so a payment request would reach the supplier itself. The
-    /// supplier records the payment it received outside CasaZen (<c>payment/offline</c>); paying a showcase customer online is a
-    /// decision of its own and is not made here.
+    /// How a request is paid from now on, decided when it is taken. A request from a supplier's public showcase (SP-10) has no org and no
+    /// address on file for a payment link (its customer is a private person, and its <c>OrgId</c> is the supplier's own, so a payment request
+    /// would reach the supplier itself), so it is <see cref="ServiceRequestPaymentMode.Manual"/> — the supplier records the payment it received
+    /// outside CasaZen (<c>payment/offline</c>) — <b>unless it was born paid inside CasaZen</b> (SP-15c-a): a booking whose customer's card was
+    /// blocked is created already <see cref="ServiceRequestPaymentMode.Online"/> with its payment, and the take keeps it so. The decision was
+    /// made once, when the booking was; a take never changes it.
     /// </summary>
     private async Task<ServiceRequestPaymentMode> ResolvePaymentModeAsync(ServiceRequest request, CancellationToken cancellationToken) =>
         request.RentalContext == ServiceRequestRentalContext.Showcase
-            ? ServiceRequestPaymentMode.Manual
+            ? (IsPaidInsideCasaZen(request) ? ServiceRequestPaymentMode.Online : ServiceRequestPaymentMode.Manual)
             : await payments.ResolveModeAsync(request.SupplierOrgId, cancellationToken);
 
     public async Task<ServiceRequest> ConfirmFinalAmountAsync(
@@ -64,6 +65,24 @@ public partial class ServiceRequestService
             "ServiceRequest {Id}: the host confirmed the final amount (payment mode {PaymentMode})", request.Id, request.PaymentMode);
 
         await payments.AnnounceAsync(plan, request, cancellationToken);
+        return request;
+    }
+
+    public async Task<ServiceRequest> ConfirmOkAsHostAsync(
+        Guid id,
+        Guid hostOrgId,
+        CancellationToken cancellationToken = default)
+    {
+        // Another org's request (and a showcase one) is not found. The host proved who it is by owning the request.
+        var request = await GetRequestOfHostOrThrow(id, hostOrgId, cancellationToken);
+        if (funds is null || request.PaymentMode != ServiceRequestPaymentMode.Online)
+            throw new DomainRuleException(ServicePaymentErrors.NotConfirmable, ServicePaymentErrors.NotConfirmableMessageKey);
+
+        await funds.ConfirmOkAsync(request.Id, cancellationToken);
+
+        // The release may have made the request paid: the answer is the request as it is now.
+        await db.Entry(request).ReloadAsync(cancellationToken);
+        logger.LogInformation("ServiceRequest {Id}: the host said all fine ({Status})", request.Id, request.Status);
         return request;
     }
 
