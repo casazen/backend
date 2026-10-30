@@ -1671,4 +1671,31 @@
   <data name="VerificationRequiredPush_Body" xml:space="preserve">
     <value>La prenotazione di {0} a {1} richiede verifica manuale.</value>
   </data>
+  <data name="GuestBookingCancelled_BodyByGuest" xml:space="preserve">
+    <value>la tua prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt; è stata annullata, come hai chiesto.</value>
+  </data>
+  <data name="GuestBookingCancelled_RefundTimingByGuest" xml:space="preserve">
+    <value>Di solito l'accredito compare entro 5-10 giorni, ma dipende dalla tua banca o dall'emittente della carta.</value>
+  </data>
+  <data name="GuestBookingCancelled_Retained" xml:space="preserve">
+    <value>Come previsto dalla politica di cancellazione della struttura, &lt;strong&gt;{0} €&lt;/strong&gt; non vengono rimborsati.</value>
+  </data>
+  <data name="GuestBookingCancelled_NotYou" xml:space="preserve">
+    <value>Se non sei stato tu ad annullarla, scrivi subito all'host.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Subject" xml:space="preserve">
+    <value>Prenotazione annullata dall'ospite - {0} (arrivo {1})</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Body" xml:space="preserve">
+    <value>{0} ha annullato la prenotazione presso &lt;strong&gt;{1}&lt;/strong&gt; dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt; (dall'area ospite o con il link di annullamento che hai inviato).</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Dates" xml:space="preserve">
+    <value>Le date sono di nuovo disponibili sul sito di prenotazione e nel calendario esportato verso le OTA.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Refund" xml:space="preserve">
+    <value>Rimborso all'ospite, come previsto dalla politica di cancellazione: &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Retained" xml:space="preserve">
+    <value>Importo che resta a te: &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+  </data>
 </root>

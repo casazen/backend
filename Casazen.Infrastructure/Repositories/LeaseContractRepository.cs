@@ -232,7 +232,8 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 NoticeFrom: x.NoticeFrom,
                 TerminatedOn: x.TerminatedOn,
                 Stage: flows[x.Id].Stage,
-                NextStep: flows[x.Id].NextStep))
+                NextStep: flows[x.Id].NextStep,
+                Progress: flows[x.Id].Progress))
             .ToList();
     }
 

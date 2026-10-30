@@ -147,6 +147,9 @@
   <data name="StripeConnectAccountUnavailable" xml:space="preserve">
     <value>L'account Stripe collegato non è più disponibile: riprova per collegarne uno nuovo.</value>
   </data>
+  <data name="StripeConnectDashboardNotReady" xml:space="preserve">
+    <value>Il tuo account Stripe non è ancora pronto: collega Stripe o completa la verifica, poi potrai aprirlo da qui.</value>
+  </data>
   <data name="ConfigurationError" xml:space="preserve">
     <value>Errore di configurazione del server. Contatta l'assistenza.</value>
   </data>
@@ -561,6 +564,21 @@
   <data name="LeaseLetterUnavailable" xml:space="preserve">
     <value>Il testo di questa lettera non è disponibile in questo momento. Riprova più tardi o scrivi all'assistenza.</value>
   </data>
+  <data name="LeaseRenewalEndInvalid" xml:space="preserve">
+    <value>Il periodo concordato deve finire dopo la fine del periodo in corso: scegli un giorno dal {0:d MMM yyyy} al {1:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalBlockedByNotice" xml:space="preserve">
+    <value>Hai registrato una disdetta, quindi il contratto non si rinnova. Se le parti hanno deciso di rinnovarlo, togli prima la disdetta.</value>
+  </data>
+  <data name="LeaseRenewalNotYet" xml:space="preserve">
+    <value>Il rinnovo si registra nell'ultimo tratto prima della scadenza, dal {0:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalPeriodOver" xml:space="preserve">
+    <value>Il periodo del contratto è già finito: il contratto si rinnova da solo e il rinnovo lo registra CasaZen.</value>
+  </data>
+  <data name="LeaseLetterNotApplicable" xml:space="preserve">
+    <value>Questa lettera non riguarda questo contratto.</value>
+  </data>
   <data name="LeasePeriodOverlaps" xml:space="preserve">
     <value>Per questo immobile c'è già un contratto dal {0:d MMM yyyy} al {1:d MMM yyyy}. Due contratti non possono coprire gli stessi giorni: apri quello esistente o cambia le date.</value>
   </data>
@@ -764,6 +782,9 @@
   </data>
   <data name="OrgBrandingThemeInvalid" xml:space="preserve">
     <value>Questo tema non è disponibile per il sito pubblico.</value>
+  </data>
+  <data name="OrgBrandingFontInvalid" xml:space="preserve">
+    <value>Questa coppia di caratteri non è disponibile per il sito pubblico.</value>
   </data>
   <data name="OrgBrandingTaglineTooLong" xml:space="preserve">
     <value>Lo slogan non può superare i {0} caratteri.</value>
@@ -1239,6 +1260,9 @@
   </data>
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Il consenso a ricevere offerte non è disponibile in questo momento: riprova senza selezionarlo.</value>
+  </data>
+  <data name="DirectBookingArrivalTimeInvalid" xml:space="preserve">
+    <value>L'orario di arrivo previsto non è valido: scegli un orario (per esempio 15:30) oppure "dopo l'orario di check-in".</value>
   </data>
   <data name="DirectBookingCurrencyNotSupported" xml:space="preserve">
     <value>Prenotazioni dirette non supportate per questa valuta</value>
@@ -2500,6 +2524,12 @@
   <data name="LeaseListViewUnknown" xml:space="preserve">
     <value>La vista dei contratti non è valida: usa All, Active, InPreparation, Expiring oppure Ended.</value>
   </data>
+  <data name="TenantNotFound" xml:space="preserve">
+    <value>Inquilino non trovato.</value>
+  </data>
+  <data name="TenantListViewUnknown" xml:space="preserve">
+    <value>La vista degli inquilini non è valida: usa All, Current oppure Former.</value>
+  </data>
   <data name="LongRentDeadlinesRangeInvalid" xml:space="preserve">
     <value>Indica un periodo valido: date nel formato aaaa-mm-gg, con la fine non prima dell'inizio e al massimo 366 giorni.</value>
   </data>
@@ -3529,5 +3559,14 @@
   </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Codice di accesso non disponibile o verifica non superata</value>
+  </data>
+  <data name="GuestRefundChanged" xml:space="preserve">
+    <value>L'importo del rimborso è cambiato mentre decidevi: controlla il nuovo importo e conferma di nuovo. Non è stato annullato nulla.</value>
+  </data>
+  <data name="GuestCancelStayStarted" xml:space="preserve">
+    <value>Il soggiorno è già iniziato: per annullarlo scrivi all'host.</value>
+  </data>
+  <data name="GuestCancelConfirmRequired" xml:space="preserve">
+    <value>Conferma di voler annullare la prenotazione per procedere.</value>
   </data>
 </root>

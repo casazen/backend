@@ -290,7 +290,7 @@ ORDER BY "OccurredAt";
 
 ### 10.9 Le operazioni del contratto: lettere in bozza, disdetta e recesso (LR-OPS-1)
 
-Il «come» delle azioni di questo capitolo: la bozza della lettera di disdetta da mandare all'inquilino (con i motivi che la legge ammette alla prima scadenza), il **recesso del conduttore** (`POST /api/leases/{id}/withdrawal`: il giorno di ricezione più il preavviso diventa l'ultimo giorno del contratto, con **le stesse regole e gli stessi effetti** della cessazione anticipata di § 10.2.1; due eventi in coda a `LeaseEventType`: `WithdrawalRecorded` e `LetterSent`) e «Segna come inviata». Le lettere sono bozze non approvate finché il PO non le approva con `LeaseLetters__Variants__…`; nulla parte verso il conduttore. Tutto è in [`lease-operations.md`](lease-operations.md). Nuovi codici: `lease_withdrawal_date_invalid`, `lease_withdrawal_notice_invalid`, `lease_letter_date_invalid`, `lease_disdetta_reason_required`, `lease_letter_unavailable`.
+Il «come» delle azioni di questo capitolo: la bozza della lettera di disdetta da mandare all'inquilino (con i motivi che la legge ammette alla prima scadenza), il **recesso del conduttore** (`POST /api/leases/{id}/withdrawal`: il giorno di ricezione più il preavviso diventa l'ultimo giorno del contratto, con **le stesse regole e gli stessi effetti** della cessazione anticipata di § 10.2.1; due eventi in coda a `LeaseEventType`: `WithdrawalRecorded` e `LetterSent`) e «Segna come inviata». Le lettere sono bozze non approvate finché il PO non le approva con `LeaseLetters__Variants__…`; nulla parte verso il conduttore. Tutto è in [`lease-operations.md`](lease-operations.md). Il **rinnovo esplicito** (`POST /api/leases/{id}/renewal`, 1b) formalizza un rinnovo o una proroga nell'ultimo tratto prima della fine del periodo (dall'ultimo giorno per la disdetta; registrarlo sposta la fine e chiude la finestra fino a quella del periodo dopo) con le regole di LR-OVERLAP (nuovo periodo libero) e il piano dei canoni esteso; il rinnovo tacito del job (§ 10.4) non cambia. Nuovi codici: `lease_withdrawal_date_invalid`, `lease_withdrawal_notice_invalid`, `lease_letter_date_invalid`, `lease_disdetta_reason_required`, `lease_letter_unavailable`, `lease_renewal_end_invalid`, `lease_renewal_blocked_by_notice`, `lease_renewal_period_over`, `lease_renewal_not_yet`, `lease_letter_not_applicable`.
 
 ## 11. Il percorso del contratto: stato e prossimo passo (LR-01b)
 
@@ -348,7 +348,23 @@ L'elenco: l'istruzione di sempre, più **una** che chiede quali tra i contratti 
 
 ### 11.5 Cosa non c'è (versione ridotta)
 
-`progress` (avanzamento), i filtri `stage` e `actor`, `stages` e `todo` della Panoramica, `canEdit`, il filtro `leaseId` e i tipi `LeaseStart` e `DepositReturn` delle scadenze, `flow` nel dettaglio: la riga dell'elenco è l'unico posto dove un contratto ha `stage` e `nextStep` (il dettaglio `GET /api/leases/{id}` non li porta ancora). I valori di legge restano quelli di `LongRentRules` (LR-D29).
+i filtri `stage` e `actor` (la lista si filtra e si ordina sul client: è intera e non paginata), `stages` e `todo` della Panoramica, `canEdit`, il filtro `leaseId` e i tipi `LeaseStart` e `DepositReturn` delle scadenze, `flow` nel dettaglio: la riga dell'elenco è l'unico posto dove un contratto ha `stage` e `nextStep` (il dettaglio `GET /api/leases/{id}` non li porta ancora). I valori di legge restano quelli di `LongRentRules` (LR-D29).
+
+### 11.6 L'avanzamento (`progress`, LR-02b)
+
+Ogni riga dell'elenco porta anche `progress { kind, unit, done, total, percent }`, deciso dalla stessa funzione (`LeaseFlow.ProgressOf`): la barra
+e le parole sono dell'interfaccia, i numeri sono del server. `percent` va da 0 a 100.
+
+| Stato | `kind` / `unit` | `done` di `total` |
+|---|---|---|
+| Bozza, dati da completare | `Setup` / `Steps` | i passi dati della bozza (1–5) senza nulla che manca, su **8** |
+| In revisione | `Setup` / `Steps` | 5, oppure 6 a revisione confermata, su 8 |
+| In firma | `Setup` / `Steps` | 6 su 8 (contratto scaricato per la firma) |
+| Firmato (da registrare) | `Setup` / `Steps` | 7 su 8; l'ottavo passo, la registrazione, è quello che lo fa partire |
+| In corso, in scadenza | `Term` / `Years` o `Months` | l'anno (o il mese, se il periodo è più corto di 12 mesi) in cui si trova, sugli anni (mesi) del periodo **in corso** (`CurrentTermEndDate`, LR-14: un contratto rinnovato conta gli anni dall'inizio del primo periodo); `percent` = giorni trascorsi su giorni del periodo |
+| Concluso | `End` / `Steps` | 8 su 8, 100 |
+
+Nessuna istruzione SQL in più: per le bozze serve il flusso che il lettore già costruisce (§ 11.4).
 
 ## 12. Report fiscale per contratto, per il commercialista (LR-11b)
 
@@ -412,3 +428,64 @@ Ogni cifra dichiara la sua base; il file lo dice nella terza riga e la prima rig
 - **LR-11b-FU1** IRPEF aggregata con gli «altri redditi» (non salvati) · **FU2** registro e bollo per i contratti ordinari · **FU3** «Invita il
   commercialista» · **FU4** i pagamenti ricevuti nell'anno per contratti finiti prima (righe con 0 mesi) · **FU5** mensilità parziali in
   proporzione ai giorni.
+
+## 13. Inquilini: l'elenco per persona, la copia dei dati e la cancellazione (LR-09)
+
+Il modello non ha un'anagrafica dei conduttori: una **persona** si ricava dalle parti dei contratti dell'org (`LongRentTenantRules.PersonKey`).
+L'identità è il **codice fiscale normalizzato** (`Trim` + maiuscolo, lo stesso confronto del servizio di privacy): una persona su più contratti
+è una riga sola; un codice fiscale sbagliato fa due persone e un nome non unisce mai due codici (il limite è scritto nella pagina). Una parte senza
+codice fiscale (righe anteriori alla validazione) è una persona a sé. Le parti anonimizzate non sono più persone della pagina.
+
+### 13.1 Endpoint
+
+Tutti `api/long-rent/tenants`, classe `lease.read`, ristretti in SQL all'org e, se non org-wide, agli immobili raggiungibili (`HostScope`, come
+l'elenco dei contratti); una persona senza contratti nella portata del chiamante è 404 `tenant_not_found`.
+
+| Metodo | Percorso | Permesso | Note |
+|---|---|---|---|
+| `GET` | `?view=All\|Current\|Former&q=&page=&pageSize=` | `lease.read` | 400 `validation_error` per una vista sconosciuta. Righe ordinate per cognome, nome. `q`: nome e cognome (in ogni ordine) e nome degli immobili. `counts`: persone per vista, sulla ricerca chiesta. |
+| `GET` | `{id}` | `lease.read` | La riga, gli ultimi 6 canoni scaduti (`payments`), il ritardo (`overdue`: quanti, quanto, il più vecchio) e `onTimeDays`. |
+| `GET` | `{id}/export` | `lease.read` + `lease.create` | Il file JSON `dati-personali.json` (nome neutro) con i dati in chiaro della persona; `TenantPrivacy`: 10 ogni 10 minuti per persona. |
+| `POST` | `{id}/erasure-request` | `lease.read` + `lease.create` | La richiesta di cancellazione, contratto per contratto; stesso limite. |
+
+L'`id` è **opaco**: l'id di una delle righe di parte della persona (quella del contratto più vecchio), mai il codice fiscale. Qualunque riga
+della persona porta alla stessa persona, quindi un indirizzo salvato resta valido quando arriva un contratto nuovo. Nessun hash del codice
+fiscale: senza una chiave segreta in configurazione sarebbe invertibile a tentativi.
+
+### 13.2 Chi è «attuale» e chi «ex»
+
+«Ex inquilino» = **tutti** i contratti della persona nello stato `Concluded` del percorso (§ 11: fine del periodo in corso senza rinnovo, disdetta,
+termine anticipato, respinto); «attuale» = almeno un contratto non concluso, anche in preparazione. Non si legge mai `EndDate` (LR-14).
+
+### 13.3 Puntualità
+
+Sulle rate **scadute** (`DueDate` ≤ oggi, non annullate) dei contratti della persona: `total` le conta tutte, `onTime` quelle pagate entro
+`LongRentTenants:OnTimeDays` giorni dalla scadenza (default 5, 0–60; un valore non valido vale il default; letta da `IConfiguration`, nessuna
+sezione in `appsettings.json`). Una rata ancora da venire non conta; una scaduta e non pagata conta come non puntuale. La puntualità è del
+contratto: i co-conduttori di uno stesso contratto hanno la stessa.
+
+### 13.4 La copia dei dati (articoli 15 e 20 GDPR)
+
+Per ogni contratto che il chiamante può gestire (`lease.create` sull'immobile, una verifica per immobile): i dati che quel contratto ha **della
+persona** come parte (nome, codice fiscale, cittadinanza, e-mail, residenza, «documenti verificati il»), i termini del contratto, l'immobile
+(nome, indirizzo, città), le rate e il tipo e il giorno degli eventi. **Mai** i dati delle altre parti dello stesso contratto (co-conduttori,
+locatore) né il contenuto (`Payload`) degli eventi. Niente telefono, documenti o messaggi (LR-D3, LR-D16, LR-D23). Risposta `Cache-Control:
+private, no-store`; nel log solo l'utente e il numero di contratti.
+
+### 13.5 La richiesta di cancellazione
+
+Si appoggia a `ILeasePartyPrivacyService.RequestErasureAsync`, **contratto per contratto**, quindi con le regole del pulsante «Chiedi la
+cancellazione dei dati» della scheda del contratto (nessuna regola nuova qui): un contratto **finito** (il giorno dopo la fine del periodo in
+corso) viene anonimizzato subito (`Anonymized`; `PartiallyAnonymized` se una parte è anche in un altro contratto non finito della stessa org: la
+conserva fino a quella fine); un contratto **non finito** non viene toccato: la richiesta resta registrata e le parti sono anonimizzate dal
+giorno dopo la fine (`Scheduled`, `anonymizationFrom`), ed è il contratto che «trattiene» i dati. Il contratto firmato e le ricevute non si
+toccano mai. Ogni contratto registra l'evento `ErasureRequested` (una volta). Idempotente. **Attenzione:** come per il pulsante del contratto,
+l'anonimizzazione di un contratto finito riguarda tutte le sue parti non trattenute, non solo la persona che ha chiesto.
+
+### 13.6 Costo e rimandato
+
+- Istruzioni SQL fisse, qualunque sia il numero di persone: le parti, l'elenco dei contratti dell'area (lo stesso della pagina Contratti) e le rate
+  dei soli contratti della pagina. Il raggruppamento per persona è in memoria (le parti conduttore di un'org sono poche centinaia).
+- **LR-09-FU1** sollecito diretto dalla scheda della persona (oggi la scheda porta al registro dei canoni del mese in ritardo) · **FU2** la
+  cancellazione solo della persona e non delle altre parti dei contratti finiti · **FU3** «Esporta i contatti» di tutte le persone · **FU4** la
+  voce di cancellazione nel registro attività dell'org (serve un tipo nuovo in `OrgActivityType`).

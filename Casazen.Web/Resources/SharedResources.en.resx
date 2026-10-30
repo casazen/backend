@@ -147,6 +147,9 @@
   <data name="StripeConnectAccountUnavailable" xml:space="preserve">
     <value>The connected Stripe account is no longer available: try again to connect a new one.</value>
   </data>
+  <data name="StripeConnectDashboardNotReady" xml:space="preserve">
+    <value>Your Stripe account is not ready yet: connect Stripe or finish the verification, then you can open it from here.</value>
+  </data>
   <data name="ConfigurationError" xml:space="preserve">
     <value>Server configuration error. Contact support.</value>
   </data>
@@ -561,6 +564,21 @@
   <data name="LeaseLetterUnavailable" xml:space="preserve">
     <value>The text of this letter is not available right now. Try again later or write to support.</value>
   </data>
+  <data name="LeaseRenewalEndInvalid" xml:space="preserve">
+    <value>The agreed period must end after the end of the current period: choose a day from {0:d MMM yyyy} to {1:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalBlockedByNotice" xml:space="preserve">
+    <value>A notice is recorded, so the lease does not renew. If the parties decided to renew it, take the notice back first.</value>
+  </data>
+  <data name="LeaseRenewalNotYet" xml:space="preserve">
+    <value>A renewal is recorded in the last stretch before the end, from {0:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalPeriodOver" xml:space="preserve">
+    <value>The period of the contract is already over: the lease renews by itself and CasaZen records the renewal.</value>
+  </data>
+  <data name="LeaseLetterNotApplicable" xml:space="preserve">
+    <value>This letter does not apply to this contract.</value>
+  </data>
   <data name="LeasePeriodOverlaps" xml:space="preserve">
     <value>This property already has a lease from {0:d MMM yyyy} to {1:d MMM yyyy}. Two leases cannot cover the same days: open the existing one or change the dates.</value>
   </data>
@@ -764,6 +782,9 @@
   </data>
   <data name="OrgBrandingThemeInvalid" xml:space="preserve">
     <value>This theme is not available for the public site.</value>
+  </data>
+  <data name="OrgBrandingFontInvalid" xml:space="preserve">
+    <value>This font pair is not available for the public site.</value>
   </data>
   <data name="OrgBrandingTaglineTooLong" xml:space="preserve">
     <value>The tagline cannot exceed {0} characters.</value>
@@ -1239,6 +1260,9 @@
   </data>
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Consent to receive offers is not available right now: try again without selecting it.</value>
+  </data>
+  <data name="DirectBookingArrivalTimeInvalid" xml:space="preserve">
+    <value>The expected arrival time is not valid: choose a time (for example 15:30) or "after the check-in window".</value>
   </data>
   <data name="DirectBookingCurrencyNotSupported" xml:space="preserve">
     <value>Direct bookings not supported for this currency</value>
@@ -2500,6 +2524,12 @@
   <data name="LeaseListViewUnknown" xml:space="preserve">
     <value>The lease view is not valid: use All, Active, InPreparation, Expiring or Ended.</value>
   </data>
+  <data name="TenantNotFound" xml:space="preserve">
+    <value>Tenant not found.</value>
+  </data>
+  <data name="TenantListViewUnknown" xml:space="preserve">
+    <value>The tenant view is not valid: use All, Current or Former.</value>
+  </data>
   <data name="LongRentDeadlinesRangeInvalid" xml:space="preserve">
     <value>Enter a valid period: dates as yyyy-MM-dd, the end not before the start and at most 366 days.</value>
   </data>
@@ -3529,5 +3559,14 @@
   </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Access code not available or verification not passed</value>
+  </data>
+  <data name="GuestRefundChanged" xml:space="preserve">
+    <value>The refund changed while you were deciding: check the new amount and confirm again. Nothing has been cancelled.</value>
+  </data>
+  <data name="GuestCancelStayStarted" xml:space="preserve">
+    <value>The stay has already started: write to the host to cancel it.</value>
+  </data>
+  <data name="GuestCancelConfirmRequired" xml:space="preserve">
+    <value>Confirm that you want to cancel the booking to go on.</value>
   </data>
 </root>
