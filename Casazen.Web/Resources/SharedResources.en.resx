@@ -147,6 +147,9 @@
   <data name="StripeConnectAccountUnavailable" xml:space="preserve">
     <value>The connected Stripe account is no longer available: try again to connect a new one.</value>
   </data>
+  <data name="StripeConnectDashboardNotReady" xml:space="preserve">
+    <value>Your Stripe account is not ready yet: connect Stripe or finish the verification, then you can open it from here.</value>
+  </data>
   <data name="ConfigurationError" xml:space="preserve">
     <value>Server configuration error. Contact support.</value>
   </data>
@@ -744,6 +747,12 @@
   <data name="OrgOperatorRegisteredOfficeTooLongInput" xml:space="preserve">
     <value>The registered office is too long.</value>
   </data>
+  <data name="OrgContactPhoneInvalid" xml:space="preserve">
+    <value>The phone number is not valid: use digits only, with an optional leading + (6 to 15 digits).</value>
+  </data>
+  <data name="OrgDefaultLanguageInvalid" xml:space="preserve">
+    <value>Unsupported language: choose Italian (it) or English (en).</value>
+  </data>
   <data name="OrgSlugInvalid" xml:space="preserve">
     <value>This web address (slug) is not valid: use {0} to {1} characters among letters, numbers and hyphens.</value>
   </data>
@@ -758,6 +767,9 @@
   </data>
   <data name="OrgBrandingThemeInvalid" xml:space="preserve">
     <value>This theme is not available for the public site.</value>
+  </data>
+  <data name="OrgBrandingFontInvalid" xml:space="preserve">
+    <value>This font pair is not available for the public site.</value>
   </data>
   <data name="OrgBrandingTaglineTooLong" xml:space="preserve">
     <value>The tagline cannot exceed {0} characters.</value>
@@ -1584,6 +1596,24 @@
   </data>
   <data name="PropertyHouseRulesTooLong" xml:space="preserve">
     <value>The house rules can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyBedsRange" xml:space="preserve">
+    <value>The number of beds must be a whole number between {1} and {2}.</value>
+  </data>
+  <data name="PropertyAreaSqmRange" xml:space="preserve">
+    <value>The area must be between {1} and {2} square metres.</value>
+  </data>
+  <data name="PropertyListingTitleTooLong" xml:space="preserve">
+    <value>The listing title can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyExtraGuestFeeRange" xml:space="preserve">
+    <value>The fee for each extra guest must be between {1} and {2} euros per night.</value>
+  </data>
+  <data name="PropertyQuietHoursIncomplete" xml:space="preserve">
+    <value>Quiet hours go together: give both the start and the end, or neither.</value>
+  </data>
+  <data name="PropertyListViewInvalid" xml:space="preserve">
+    <value>Invalid view: use "overview" or leave it empty.</value>
   </data>
   <data name="PropertyTimezoneInvalid" xml:space="preserve">
     <value>Invalid time zone: use an IANA identifier, for example Europe/Rome.</value>
@@ -2476,6 +2506,12 @@
   <data name="LeaseListViewUnknown" xml:space="preserve">
     <value>The lease view is not valid: use All, Active, InPreparation, Expiring or Ended.</value>
   </data>
+  <data name="TenantNotFound" xml:space="preserve">
+    <value>Tenant not found.</value>
+  </data>
+  <data name="TenantListViewUnknown" xml:space="preserve">
+    <value>The tenant view is not valid: use All, Current or Former.</value>
+  </data>
   <data name="LongRentDeadlinesRangeInvalid" xml:space="preserve">
     <value>Enter a valid period: dates as yyyy-MM-dd, the end not before the start and at most 366 days.</value>
   </data>
@@ -2562,6 +2598,18 @@
   </data>
   <data name="ShowcaseVersionConflict" xml:space="preserve">
     <value>The showcase was changed from another tab or by another user: reload the page and apply your change again.</value>
+  </data>
+  <data name="ShowcaseNotPublishable" xml:space="preserve">
+    <value>The showcase cannot be published yet: some required things are still missing (items: {0}). Check the "What is missing" list and try again.</value>
+  </data>
+  <data name="ShowcaseSupplierNotActive" xml:space="preserve">
+    <value>You can publish or reopen the showcase only with an active supplier profile: complete the activation first.</value>
+  </data>
+  <data name="ShowcaseNotPublished" xml:space="preserve">
+    <value>The showcase has not been published yet: there is nothing to pause or to reopen.</value>
+  </data>
+  <data name="ShowcaseUndoUnavailable" xml:space="preserve">
+    <value>The last publication can no longer be undone: too much time has passed or you changed something else meanwhile.</value>
   </data>
   <data name="SupplierHoursInvalid" xml:space="preserve">
     <value>The working hours are not valid (fields: {0}). Check the bands: a day has at most 3, they cannot overlap, and each one must end after it starts (in minutes after midnight, from 0 to 1440).</value>

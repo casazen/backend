@@ -744,3 +744,30 @@ of the settings page is marked as a draft until then. Publication is never block
   Rollback: deploy the previous release (it ignores the columns); `Down` drops them and the values entered are lost.
 - **Not done here** (proposed IDs in `results/DB-03b-a.md`): a structured registered office (street, town, province, postal
   code), the registry number (REA), a warning in a publication checklist, the same data in the JSON-LD of the site.
+
+## 13. Themes and font pairs of the public site (DB-01)
+
+Task DB-01 of the redesign wave. The booking site of a host has three themes, **Terra** (terracotta on cream), **Mare** (petrol
+blue on white) and **Città** (ink on stone), and three font pairs, **Editoriale**, **Moderno** and **Classico**. The tokens live in
+the frontend (`src/styles/public-tokens.css`, mirrored in `src/lib/public-site-themes.ts`); the backend only keeps the lists of
+the accepted ids (`PublicSiteThemes`, `PublicSiteFonts`).
+
+- **Ids.** `Orgs.PublicThemeId`: `terra` (the default), `mare`, `citta`. `Orgs.PublicFontId` (varchar 20, new, `NULL`): `editoriale`,
+  `moderno`, `classico`; `NULL` is the font its theme starts with (Terra and Mare: Editoriale, Città: Moderno). Both are written by
+  `PUT /api/orgs/me/branding` (422 `org_branding_theme_invalid` / `org_branding_font_invalid`); `publicFontId` is optional there: a
+  client that does not send it never erases the choice. Both are read by `GET /api/public/orgs/{slug}`, `GET /api/public/resolve-host`
+  and `GET /api/orgs/me/branding`.
+- **Migration `AddPublicSiteFontAndThemeIds`** (additive column, plus a rewrite of data). Before DB-01 the ids were `mare` (terracotta
+  on cream), `montagna` (green) and `urban` (indigo). `mare` now names a different look, so the migration moves `mare` and `montagna`
+  to `terra` and `urban` to `citta`; an org of `montagna` or `urban` that never picked a colour of its own gets the colour its theme
+  gave (`#2e6a4a`, `#2f3bd1`), so the part of the look that survives is kept. An org without a theme stays without one (it was the
+  terracotta default and is `terra` now). The reading code still understands `montagna` and `urban` (`PublicSiteThemes.Resolve`) for
+  two releases, because the frontend is deployed after the migration; they are no longer accepted when written.
+- **Order of the release.** The migration goes out with the backend, the frontend after it: between the two, a host that had `mare`
+  already reads `terra` (rewritten) and the old frontend does not know it, so it shows its default theme for a few minutes (the same
+  terracotta look). A write from a console that is still the old release and sends `montagna` or `urban` gets a 422; a reload fixes it.
+- **Rollback.** Deploy the previous release; `Down` maps `terra` back to `mare` and `citta` to `urban` and drops the column (the new
+  `mare` has no old twin and an old release shows it as terracotta; the colours written by `Up` stay, they are the host's colour now).
+- **Tests.** Unit: `OrgBrandingRulesTests`, `OrgBrandingServiceTests`, `PublicOrgControllerTests`, `LegacyRowsSchemaTests`. HTTP:
+  `OrgBrandingIntegrationTests`. PostgreSQL (CI): `AddPublicSiteFontAndThemeIdsMigrationPostgresTests` (stored ids and colours before
+  the migration, written by SQL, and what each becomes).

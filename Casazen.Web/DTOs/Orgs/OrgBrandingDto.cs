@@ -25,6 +25,9 @@ public class OrgBrandingDto
     /// <summary>The theme the public site renders: always one of <see cref="PublicSiteThemes.All"/>.</summary>
     public string PublicThemeId { get; set; } = PublicSiteThemes.Default;
 
+    /// <summary>The font pair the host chose (one of <see cref="PublicSiteFonts.All"/>), or null: the font its theme starts with.</summary>
+    public string? PublicFontId { get; set; }
+
     public string? Tagline { get; set; }
 
     /// <summary>The sentence under the slogan in the cover of the public site (DB-03), or null.</summary>
@@ -54,6 +57,7 @@ public class OrgBrandingDto
         HeroImageUrl = org.HeroImageUrl,
         PrimaryColor = org.ThemeColor,
         PublicThemeId = PublicSiteThemes.Resolve(org.PublicThemeId),
+        PublicFontId = PublicSiteFonts.Resolve(org.PublicFontId),
         Tagline = org.Tagline,
         Subtitle = org.Subtitle,
         HostName = org.HostName,
@@ -71,7 +75,8 @@ public class OrgBrandingDto
 /// </summary>
 /// <remarks>
 /// The color, the theme and the tagline are replaced as a whole: a body without them clears them, as it always did. The
-/// public profile of DB-03 (<see cref="Subtitle"/>, <see cref="HostName"/>, <see cref="PublicPhone"/>) follows the rule of
+/// public profile of DB-03 (<see cref="Subtitle"/>, <see cref="HostName"/>, <see cref="PublicPhone"/>) and the font of DB-01
+/// (<see cref="PublicFontId"/>) follow the rule of
 /// <c>PUT /api/properties/{id}</c> instead: a member that is not in the body keeps its stored value, so a client that
 /// does not know it (the appearance form of today) never erases it; <c>null</c> or a blank clears it.
 /// </remarks>
@@ -135,9 +140,28 @@ public class UpdateOrgBrandingDto
         }
     }
 
+    /// <summary>
+    /// The font pair of the site (DB-01): one of <see cref="PublicSiteFonts.All"/>. Left out = unchanged (a client that does not
+    /// know it never erases the choice); <c>null</c> or blank = the font of the theme.
+    /// </summary>
+    [MaxLength(20, ErrorMessage = "OrgBrandingFontInvalid")]
+    public string? PublicFontId
+    {
+        get;
+        set
+        {
+            field = value;
+            PublicFontIdSent = true;
+        }
+    }
+
     /// <summary>True when the body carries <see cref="Subtitle"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool SubtitleSent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="PublicFontId"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool PublicFontIdSent { get; private set; }
 
     /// <summary>True when the body carries <see cref="HostName"/>, <c>null</c> included.</summary>
     [JsonIgnore]
