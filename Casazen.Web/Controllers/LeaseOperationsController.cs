@@ -300,9 +300,11 @@ public sealed record DepositReturnInputDto(
     public LeaseDepositReturnInput ToInput() => new(
         ReturnedOn!.Value,
         DepositPaidOn,
-        (Rates ?? []).Select(r => new LeaseDepositRate(r.Year!.Value, r.RatePercent!.Value)).ToList(),
+        // A null item of a list is no rate and no sum (the validation reaches the members of an item, not an item that is null): it is left out, and the
+        // rules then say what is missing.
+        (Rates ?? []).Where(r => r is not null).Select(r => new LeaseDepositRate(r.Year!.Value, r.RatePercent!.Value)).ToList(),
         InterestPaid ?? 0m,
-        (Deductions ?? []).Select(d => new LeaseDepositDeduction(d.Reason!, d.Amount!.Value)).ToList());
+        (Deductions ?? []).Where(d => d is not null).Select(d => new LeaseDepositDeduction(d.Reason!, d.Amount!.Value)).ToList());
 }
 
 /// <summary>A letter marked as sent: the day (<c>yyyy-MM-dd</c>, from the start of the lease up to today) and how.</summary>
