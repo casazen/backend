@@ -29,6 +29,37 @@ public static class ServiceRequestCancellationReasons
     public const string CancelledByCustomer = "CancelledByCustomer";
 
     /// <summary>
+    /// SP-BKP, a backup supplier's request: the primary supplier took the job, so the backup request was closed by CasaZen
+    /// (<c>CancelledBy = System</c>). The client translates it, it is not a sentence.
+    /// </summary>
+    public const string PrimaryTookIt = "PrimaryTookIt";
+
+    /// <summary>
+    /// SP-BKP: a backup took the job first, so this request of the group (another backup's, or the primary's that did not answer in
+    /// time and is cancelled with <see cref="NoResponse"/> instead) was closed by CasaZen. The client translates it.
+    /// </summary>
+    public const string TakenByBackup = "TakenByBackup";
+
+    /// <summary>
+    /// SP-BKP, a backup supplier's request: the host cancelled the request, so there is no job to take (<c>CancelledBy = Host</c>). The
+    /// host's own words are never shown to a backup, which did not take the request. The client translates it.
+    /// </summary>
+    public const string RequestCancelledByHost = "RequestCancelledByHost";
+
+    /// <summary>
+    /// SP-BKP, a backup that had accepted: when the job came to it, its time was no longer free (a job it took meanwhile, a time off), so
+    /// this request was closed by CasaZen. The client translates it.
+    /// </summary>
+    public const string BackupSlotUnavailable = "BackupSlotUnavailable";
+
+    /// <summary>
+    /// SP-BKP, a backup supplier's request: another backup accepted first, which closes the race for the others at that instant — only the
+    /// first backup that accepts can have the job, and it has it if the primary supplier does not take it. Closed by CasaZen
+    /// (<c>CancelledBy = System</c>) and with no penalty: the supplier did nothing wrong. The client translates it.
+    /// </summary>
+    public const string BackupRaceClosed = "BackupRaceClosed";
+
+    /// <summary>
     /// A request from the public showcase whose supplier had sent a quote and whose customer did not answer before the deadline
     /// (SP-04b, <c>Suppliers:Showcase:ProposalResponseMinutes</c>): cancelled by CasaZen (<c>CancelledBy = System</c>), but the supplier did
     /// answer — it is the customer who did not. Its own code, so no party is told the other one stayed silent (decision D24). The client
@@ -37,7 +68,9 @@ public static class ServiceRequestCancellationReasons
     public const string QuoteNotAnswered = "QuoteNotAnswered";
 
     /// <summary>True for a value of <c>CancellationReason</c> that is one of the codes above and not text a person wrote.</summary>
-    public static bool IsCode(string? reason) => reason is NoResponse or ProposalNotAnswered or CancelledByCustomer or QuoteNotAnswered;
+    public static bool IsCode(string? reason) =>
+        reason is NoResponse or ProposalNotAnswered or CancelledByCustomer or QuoteNotAnswered or PrimaryTookIt or TakenByBackup
+            or RequestCancelledByHost or BackupSlotUnavailable or BackupRaceClosed;
 }
 
 /// <summary>The kinds of line of <see cref="ServiceRequestPriceLine"/>.</summary>

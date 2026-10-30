@@ -86,12 +86,16 @@ public sealed class HostServiceRequestReader(
         return DescribeCoreAsync(hostOrgId, own, cancellationToken);
     }
 
-    /// <summary>The short-rent requests of the host org that are on a property of the scope. A request of a showcase has none.</summary>
+    /// <summary>
+    /// The short-rent requests of the host org that are on a property of the scope. A request of a showcase has none. Never a backup supplier's
+    /// request of a group (SP-BKP): the host follows the request it made, or the backup that took the job, and the group is inside it.
+    /// </summary>
     private IQueryable<ServiceRequest> Rows(HostScope scope) =>
         db.ServiceRequests
             .AsNoTracking()
             .IgnoreQueryFilters()
             .Where(r => r.OrgId == scope.OrgId && r.RentalContext == ServiceRequestRentalContext.ShortRent)
+            .OnlyVisibleToHost()
             .InScope(scope);
 
     // The filters of the query but the chip, which the list adds and the counters of the chips replace.

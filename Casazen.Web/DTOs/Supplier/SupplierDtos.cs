@@ -304,9 +304,9 @@ public class GetSuppliersQuery
     public string? Q { get; set; }
 
     /// <summary>
-    /// The order of the list (SR-09a): <c>name</c> (default), <c>price</c> (the lowest "from" price first, suppliers without a
-    /// price last) or <c>response</c> (the fastest measured response first, suppliers without one last). Anything else is 400
-    /// <c>validation_error</c> (<c>SupplierSortInvalid</c>).
+    /// The order of the list (SR-09a, SP-REL): <c>recommended</c> (default: the best-ranked supplier first, by load, bio and reliability),
+    /// <c>name</c>, <c>price</c> (the lowest "from" price first, suppliers without a price last) or <c>response</c> (the fastest
+    /// measured response first, suppliers without one last). Anything else is 400 <c>validation_error</c> (<c>SupplierSortInvalid</c>).
     /// </summary>
     public string? Sort { get; set; }
 }
@@ -352,6 +352,13 @@ public class SupplierPickerDto
 
     /// <summary>The address of the public showcase (<c>/fornitori/{slug}</c>); <c>null</c> when the supplier has none published.</summary>
     public string? ShowcaseSlug { get; set; }
+
+    /// <summary>
+    /// "Consigliato" (SP-REL): this is the best-ranked supplier of the list, strictly ahead of the next one, in the default order
+    /// (<c>sort=recommended</c>). The score behind it (load, reliability) is never sent: only whether this one is the recommended one.
+    /// <c>false</c> in any other order, on a tie and on the page of a single supplier.
+    /// </summary>
+    public bool Recommended { get; set; }
 
     /// <summary>
     /// The supplier as a host sees it when choosing one (short-rent and long-rent search alike). <c>comuni</c> lists the names

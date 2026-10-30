@@ -377,6 +377,28 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         return org;
     }
 
+    public async Task<Org?> SetSupplierBackupsEnabledAsync(
+        Guid orgId,
+        bool enabled,
+        string? actorUserId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null)
+            return null;
+
+        if (org.SupplierBackupsEnabled != enabled)
+        {
+            // One line in the activity log (AM-02b): that the settings changed, never what they became.
+            activityLog?.Record(OrgActivity.Of(org.Id, OrgActivityType.OrgSettingsChanged, actorUserId, org.Id.ToString()));
+            org.SupplierBackupsEnabled = enabled;
+            org.UpdatedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        return org;
+    }
+
     public async Task<OrgSlugAvailability?> CheckSlugAvailabilityAsync(
         Guid orgId,
         string slug,

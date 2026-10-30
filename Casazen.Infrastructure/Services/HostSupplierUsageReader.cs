@@ -24,6 +24,7 @@ public sealed class HostSupplierUsageReader(AppDbContext db) : IHostSupplierUsag
         var requests = await db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
+            .OnlyVisibleToHost()
             .Where(r => r.OrgId == scope.OrgId && r.RentalContext == ServiceRequestRentalContext.ShortRent)
             .InScope(scope)
             .Select(r => new { r.SupplierOrgId, r.Category, r.Status, r.CreatedAt })
