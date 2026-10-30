@@ -768,6 +768,9 @@
   <data name="OrgBrandingThemeInvalid" xml:space="preserve">
     <value>Questo tema non è disponibile per il sito pubblico.</value>
   </data>
+  <data name="OrgBrandingFontInvalid" xml:space="preserve">
+    <value>Questa coppia di caratteri non è disponibile per il sito pubblico.</value>
+  </data>
   <data name="OrgBrandingTaglineTooLong" xml:space="preserve">
     <value>Lo slogan non può superare i {0} caratteri.</value>
   </data>
