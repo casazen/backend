@@ -59,6 +59,21 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         return query;
     }
 
+    public async Task<PropertySiteMedia> GetSiteMediaAsync(Guid propertyId, CancellationToken cancellationToken = default)
+    {
+        var plans = await context.PropertyFloorPlans.AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(f => f.PropertyId == propertyId)
+            .OrderBy(f => f.Level).ThenBy(f => f.Position).ThenBy(f => f.CreatedAt)
+            .ToListAsync(cancellationToken);
+        var pois = await context.PropertyPois.AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(p => p.PropertyId == propertyId)
+            .OrderBy(p => p.Position)
+            .ToListAsync(cancellationToken);
+        return new PropertySiteMedia(plans, pois);
+    }
+
     public async Task<IEnumerable<Property>> GetAllAsync()
     {
         return await context.Properties
