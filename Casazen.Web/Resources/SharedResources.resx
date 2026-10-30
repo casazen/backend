@@ -3641,6 +3641,9 @@
   <data name="GuestCancelConfirmRequired" xml:space="preserve">
     <value>Conferma di voler annullare la prenotazione per procedere.</value>
   </data>
+  <data name="ServiceRequestBookingRequired" xml:space="preserve">
+    <value>Negli affitti brevi la richiesta al fornitore è legata a un soggiorno: scegli la prenotazione.</value>
+  </data>
   <data name="ServiceRequestCannotQuote" xml:space="preserve">
     <value>Puoi rispondere con un preventivo solo a una richiesta ancora in attesa della tua risposta.</value>
   </data>

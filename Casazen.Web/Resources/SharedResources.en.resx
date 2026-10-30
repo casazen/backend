@@ -3641,6 +3641,9 @@
   <data name="GuestCancelConfirmRequired" xml:space="preserve">
     <value>Confirm that you want to cancel the booking to go on.</value>
   </data>
+  <data name="ServiceRequestBookingRequired" xml:space="preserve">
+    <value>In short-term rentals a supplier request is for a stay: choose the booking.</value>
+  </data>
   <data name="ServiceRequestCannotQuote" xml:space="preserve">
     <value>You can answer with a quote only a request that still waits for your answer.</value>
   </data>
