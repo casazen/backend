@@ -23,4 +23,12 @@ public record EmailSendResult(bool Success, string? ErrorDetail = null, bool Ski
 public interface IEmailService
 {
     Task<EmailSendResult> SendEmailAsync(string to, string subject, string htmlContent);
+
+    /// <summary>
+    /// The same email with an address that an answer goes to (<c>Reply-To</c>), for the one email whose sender is a visitor of the
+    /// booking site writing to the host (DB-03b). The sender (<c>From</c>) never changes. A sender that cannot set it sends the
+    /// email without (this default), so an implementation that does not know the header keeps working.
+    /// </summary>
+    Task<EmailSendResult> SendEmailAsync(string to, string subject, string htmlContent, string replyTo) =>
+        SendEmailAsync(to, subject, htmlContent);
 }
