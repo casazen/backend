@@ -122,6 +122,16 @@ public sealed class SupplierPaymentsOptions
     /// </summary>
     public int TransferAlertAfterAttempts { get; set; } = 5;
 
+    /// <summary>
+    /// The payment a host makes from the link for a completed job goes through CasaZen (<c>true</c>, the default: SP-15c-b, decision VT-D1): the
+    /// card is charged on the <b>platform</b>, CasaZen holds the money and releases the supplier's part the <see cref="ReleaseAfterMinutes"/> after
+    /// the charge (or when the host says "all fine"). <c>false</c> keeps the model of SP-15a (a direct charge on the supplier's own account, CasaZen
+    /// holds nothing) for the payments <b>created from then on</b>; payments already created follow the model they were created with. It is the way
+    /// back if the held model has to be switched off in an environment without a deploy; it does not touch the booking of a showcase customer, whose
+    /// card is always blocked for CasaZen. Env var <c>SupplierPayments__HeldForHosts</c>.
+    /// </summary>
+    public bool HeldForHosts { get; set; } = true;
+
     /// <summary>The authorization validity as a time span: how long a card block is treated as usable.</summary>
     public TimeSpan AuthorizationValidity => TimeSpan.FromHours(AuthorizationValidityHours);
 

@@ -28,7 +28,8 @@ public sealed partial class SupplierPaymentService
         int? amountCents,
         string? reason,
         string actorUserId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool keepCommission = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(actorUserId);
         var note = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
@@ -51,8 +52,11 @@ public sealed partial class SupplierPaymentService
             var refunds = await LoadRefundsAsync(paymentId, cancellationToken);
 
             // The money CasaZen holds is given back by the rules of the held cycle (SP-15c-a); a direct charge by the ones of SP-15b.
+            if (keepCommission && payment.FundsModel != ServiceFundsModel.PlatformHeld)
+                throw new DomainRuleException(ServicePaymentErrors.RefundAmountInvalid, ServicePaymentErrors.RefundAmountInvalidMessageKey);
+
             refund = payment.FundsModel == ServiceFundsModel.PlatformHeld
-                ? ReserveHeld(payment, refunds, amountCents, note, ServicePaymentRefundOrigin.Admin, actorUserId, Now())
+                ? ReserveHeld(payment, refunds, amountCents, note, ServicePaymentRefundOrigin.Admin, actorUserId, Now(), keepCommission)
                 : Reserve(payment, refunds, amountCents, note, actorUserId, Now());
             db.ServiceRequestPaymentRefunds.Add(refund);
             await SaveAsync(cancellationToken);
@@ -72,7 +76,7 @@ public sealed partial class SupplierPaymentService
     /// <see cref="ServicePaymentRefundOrigin.System"/>, in full, commission included: decision D6), an admin decided (SP-15b's tool) or a
     /// dispute was decided (SP-15c-c). The same three steps as the admin's refund: the amount is reserved under the lock, Stripe is asked
     /// outside it with the key of the row, the answer is recorded under the lock again. <paramref name="amountCents"/> null is everything
-    /// that can still be given back.
+    /// that can still be given back, or, with <paramref name="keepCommission"/>, what the supplier would have been paid (rule R4, SP-15c-b).
     /// </summary>
     private async Task<ServiceRequestPaymentRefund> RefundHeldAsync(
         Guid paymentId,
@@ -80,7 +84,8 @@ public sealed partial class SupplierPaymentService
         string? reason,
         ServicePaymentRefundOrigin origin,
         string? actorUserId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool keepCommission = false)
     {
         var requestId = await db.ServiceRequestPayments
             .AsNoTracking()
@@ -96,7 +101,7 @@ public sealed partial class SupplierPaymentService
             var payment = await LoadPaymentAsync(paymentId, cancellationToken) ?? throw PaymentNotFound();
             var refunds = await LoadRefundsAsync(paymentId, cancellationToken);
 
-            refund = ReserveHeld(payment, refunds, amountCents, reason, origin, actorUserId, Now());
+            refund = ReserveHeld(payment, refunds, amountCents, reason, origin, actorUserId, Now(), keepCommission);
             db.ServiceRequestPaymentRefunds.Add(refund);
             await SaveAsync(cancellationToken);
             await CommitAsync(transaction, cancellationToken);
@@ -112,7 +117,9 @@ public sealed partial class SupplierPaymentService
     /// <summary>
     /// Checks a refund against a payment held by CasaZen and builds the pending row (the caller holds the payment lock and saves). Only money
     /// CasaZen still has can be given back: <b>never after the transfer to the supplier</b> (the release and the refund are exclusive), and
-    /// never more than the amount minus what was refunded and what is being refunded.
+    /// never more than the amount minus what was refunded and what is being refunded. With <paramref name="keepCommission"/> (rule R4, the
+    /// supplier was at fault) it is at most what the supplier would still have been paid — the price minus the commission, minus what was
+    /// refunded — and that is the default: the commission stays with CasaZen.
     /// </summary>
     private static ServiceRequestPaymentRefund ReserveHeld(
         ServiceRequestPayment payment,
@@ -121,7 +128,8 @@ public sealed partial class SupplierPaymentService
         string? note,
         ServicePaymentRefundOrigin origin,
         string? actorUserId,
-        DateTime now)
+        DateTime now,
+        bool keepCommission = false)
     {
         if (payment.Status == ServicePaymentStatus.Refunded)
             throw new DomainRuleException(ServicePaymentErrors.RefundNothing, ServicePaymentErrors.RefundNothingMessageKey);
@@ -135,7 +143,14 @@ public sealed partial class SupplierPaymentService
 
         var refunded = refunds.Where(r => r.Status == ServicePaymentRefundStatus.Succeeded).Sum(r => (long)r.AmountCents);
         var inProgress = refunds.Where(IsInProgress).Sum(r => (long)r.AmountCents);
-        var refundable = HeldPaymentRules.RefundableCents(payment.AmountCents, (int)Math.Min(refunded, int.MaxValue), (int)Math.Min(inProgress, int.MaxValue));
+        var refundedCents = (int)Math.Min(refunded, int.MaxValue);
+        var inProgressCents = (int)Math.Min(inProgress, int.MaxValue);
+        var refundable = HeldPaymentRules.RefundableCents(payment.AmountCents, refundedCents, inProgressCents);
+
+        // R4: only the supplier's part goes back; the commission is CasaZen's.
+        if (keepCommission)
+            refundable = Math.Min(refundable, HeldPaymentRules.ReleasableCents(payment.NetCents, refundedCents, inProgressCents));
+
         if (refundable <= 0)
             throw new DomainRuleException(ServicePaymentErrors.RefundNothing, ServicePaymentErrors.RefundNothingMessageKey);
 

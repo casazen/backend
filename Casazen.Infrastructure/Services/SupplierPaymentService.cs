@@ -202,6 +202,11 @@ public sealed partial class SupplierPaymentService(
         var fee = SupplierCommission.FeeCents(amountCents, percent);
         var (payerKind, payerOrgId) = PayerOf(request);
 
+        // SP-15c-b (decision VT-D1): what a host pays for a completed job goes through CasaZen — the card is charged on the platform, CasaZen
+        // holds the money and releases the supplier's part later. The direct charge of SP-15a is kept for the payments that exist and, with
+        // SupplierPayments:HeldForHosts off, as the way back. The model is fixed when the payment is created and never changes.
+        var held = HostPaymentsAreHeld;
+
         return new ServiceRequestPayment
         {
             ServiceRequestId = request.Id,
@@ -214,11 +219,16 @@ public sealed partial class SupplierPaymentService(
             ApplicationFeeCents = fee,
             NetCents = SupplierCommission.NetCents(amountCents, fee),
             Status = ServicePaymentStatus.Requested,
+            FundsModel = held ? ServiceFundsModel.PlatformHeld : ServiceFundsModel.DirectCharge,
+            TransferGroup = held ? ServiceCharges.TransferGroup(request.Id) : null,
             LineItemsJson = ServiceRequestJson.Serialize(lines),
             CreatedAt = now,
             UpdatedAt = now,
         };
     }
+
+    /// <summary>A payment created for a host now is paid to CasaZen, which holds the money (SP-15c-b): the option is on and the platform gateway is there.</summary>
+    private bool HostPaymentsAreHeld => options.Value.HeldForHosts && platformGateway is not null;
 
     /// <summary>
     /// Who pays a request: the host org that asked for it or, for a request from a supplier's public showcase (SP-10, whose

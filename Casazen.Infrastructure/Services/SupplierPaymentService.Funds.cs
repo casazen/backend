@@ -418,8 +418,12 @@ public sealed partial class SupplierPaymentService
         }
     }
 
-    /// <summary>The card was charged: the money is held. <c>PaidAt</c> is the day the payer paid; it moves to the day of the release.</summary>
-    private static void RecordCaptured(ServiceRequestPayment payment, string? chargeId, DateTime now)
+    /// <summary>
+    /// The card was charged: the money is held. <c>PaidAt</c> is the day the payer paid; it moves to the day of the release. A host pays after the
+    /// work is done (its payment is created when the supplier completes, SP-15c-b), so the moment the supplier is due is the charge plus the window
+    /// (R3: the later of the completion and the charge, plus the window); a showcase customer pays before the work, and completing fixes it.
+    /// </summary>
+    private void RecordCaptured(ServiceRequestPayment payment, string? chargeId, DateTime now)
     {
         payment.Status = ServicePaymentStatus.Held;
         payment.CapturedAt ??= now;
@@ -428,6 +432,9 @@ public sealed partial class SupplierPaymentService
         payment.StripeChargeId = chargeId ?? payment.StripeChargeId;
         payment.FailureCode = null;
         payment.UpdatedAt = now;
+
+        if (payment.PayerKind == ServicePayerKind.Host)
+            payment.ReleaseAt ??= HeldPaymentRules.ReleaseAt(payment.CreatedAt, payment.CapturedAt.Value, options.Value.ReleaseAfter);
     }
 
     /// <summary>A refusal of the capture that a second try will not change: the bank's, or a block that expired.</summary>

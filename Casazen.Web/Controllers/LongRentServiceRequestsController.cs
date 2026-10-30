@@ -409,6 +409,35 @@ public class LongRentServiceRequestsController(
         return Ok(ServiceRequestsController.MapDto(updated));
     }
 
+    /// <summary>
+    /// "Tutto a posto" (SP-15c-b, decision VT-D1) for a long-rent request: the landlord says the work of a completed request paid inside CasaZen is
+    /// fine, and the money CasaZen holds for it goes to the supplier at once. Same rules and errors as the short-rent
+    /// <c>POST api/service-requests/{id}/confirm-ok</c>; <c>property.write</c> in long-rent on the request's property.
+    /// </summary>
+    [HttpPost("{id:guid}/confirm-ok")]
+    [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServiceRequestDto>> ConfirmOk(Guid id, CancellationToken cancellationToken)
+    {
+        var scope = await GetHostScopeAsync(cancellationToken);
+        if (scope is null) return Unauthorized();
+
+        var existing = await serviceRequestService.GetByIdForHostAsync(
+            id, scope, ServiceRequestRentalContext.LongRent, cancellationToken);
+        if (existing?.Property is null) return ServiceRequestsController.ServiceRequestNotFound(this);
+
+        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId, existing.PropertyId);
+        if (!await authorizationService.IsAuthorizedAsync(User, resource, LongRentPropertyOperations.Write))
+            return Forbid();
+
+        var updated = await serviceRequestService.ConfirmOkAsHostAsync(id, scope.OrgId, cancellationToken);
+        return Ok(ServiceRequestsController.MapDto(updated));
+    }
+
     private async Task<HostScope?> GetHostScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
