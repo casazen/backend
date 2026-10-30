@@ -69,6 +69,15 @@ public sealed partial class SupplierPaymentService
             case ServicePaymentNoticeKind.FundsAlert:
                 await SendFundsAlertAsync(payment, notice.Detail, cancellationToken);
                 break;
+
+            // The complaint about the job and its dispute (SP-15c-c): their e-mails are in .DisputesNotices.cs.
+            case ServicePaymentNoticeKind.DisputeOpened
+                or ServicePaymentNoticeKind.DisputeReplied
+                or ServicePaymentNoticeKind.DisputeResolved
+                or ServicePaymentNoticeKind.DisputeWithdrawn
+                or ServicePaymentNoticeKind.DisputeAdminAlert:
+                await SendDisputeNoticeAsync(payment, notice, cancellationToken);
+                break;
         }
     }
 

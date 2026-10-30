@@ -104,6 +104,21 @@ public enum ServicePaymentNoticeKind
 
     /// <summary>An admin must look at the money of a payment held by CasaZen (SP-15c-a): a transfer that keeps failing, money held for too long, a transfer reversed.</summary>
     FundsAlert,
+
+    /// <summary>A complaint about the job was opened (SP-15c-c): the supplier is asked to reply and the payer gets a receipt.</summary>
+    DisputeOpened,
+
+    /// <summary>The supplier replied to a complaint (SP-15c-c): the payer is told it went to CasaZen's team.</summary>
+    DisputeReplied,
+
+    /// <summary>A complaint was decided (SP-15c-c): the payer and the supplier are told the outcome.</summary>
+    DisputeResolved,
+
+    /// <summary>A complaint was withdrawn by the payer (SP-15c-c): the supplier is told it will be paid.</summary>
+    DisputeWithdrawn,
+
+    /// <summary>An admin must look at a complaint (SP-15c-c): it waits for a decision, the target to decide passed, or the refund that was decided did not go through.</summary>
+    DisputeAdminAlert,
 }
 
 /// <summary>An email to send once the webhook transaction has committed.</summary>
@@ -111,7 +126,13 @@ public enum ServicePaymentNoticeKind
 /// <param name="PaymentId">The payment it is about.</param>
 /// <param name="RefundId">The refund, for <see cref="ServicePaymentNoticeKind.Refunded"/>.</param>
 /// <param name="Detail">A short, plain description for the admins (a mismatch code, a dispute id and reason): ids and codes only, no personal data.</param>
-public sealed record ServicePaymentNotice(ServicePaymentNoticeKind Kind, Guid PaymentId, Guid? RefundId = null, string? Detail = null);
+/// <param name="DisputeId">The dispute, for the notices of a complaint (<see cref="ServicePaymentNoticeKind.DisputeOpened"/> and the ones after it).</param>
+public sealed record ServicePaymentNotice(
+    ServicePaymentNoticeKind Kind,
+    Guid PaymentId,
+    Guid? RefundId = null,
+    string? Detail = null,
+    Guid? DisputeId = null);
 
 /// <summary>What the service payments did with a refund or dispute event.</summary>
 /// <param name="Handled">The PaymentIntent belongs to a service payment. False: it is not one of ours, and the caller treats the event as before (the refunds of the booking payments).</param>

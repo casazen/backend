@@ -41,6 +41,11 @@ namespace Casazen.Infrastructure.Services;
 /// supplier's part. It lives in <c>.Funds.cs</c> (the lifecycle), <c>.FundsRelease.cs</c> (the transfer), <c>.FundsWebhook.cs</c> (the events) and
 /// <c>.FundsJobs.cs</c> (the job), and uses the same lock, the same refund rows and the same notices as the direct charge. The code of the
 /// direct charge is not changed except where a held payment would otherwise be mistaken for one (it is told apart by <c>FundsModel</c>).</para>
+/// <para><b>SP-15c-c: the complaint and the dispute.</b> The payer's complaint about a job, the supplier's reply and the admin's decision
+/// (<see cref="IServiceDisputeService"/>, <c>.Disputes.cs</c>, <c>.DisputesAdmin.cs</c>), their job (<see cref="IServiceDisputeJobService"/>,
+/// <c>.DisputesJobs.cs</c>) and their e-mails (<c>.DisputesNotices.cs</c>) live here too, because they all act on the same payment under the same
+/// lock: a complaint stops the money by moving the payment to <c>Disputed</c>, a decision for the customer reserves its refund in the same transaction,
+/// and the payment leaves <c>Disputed</c> only when that refund has succeeded.</para>
 /// </remarks>
 public sealed partial class SupplierPaymentService(
     AppDbContext db,
@@ -55,9 +60,10 @@ public sealed partial class SupplierPaymentService(
     ILogger<SupplierPaymentService> logger,
     TimeProvider? timeProvider = null,
     IPlatformPaymentGateway? platformGateway = null,
-    IServiceCustomerReader? customerReader = null)
+    IServiceCustomerReader? customerReader = null,
+    ISupplierDisputePenalties? penalties = null)
     : ISupplierPaymentService, ISupplierPaymentWebhookService, ISupplierPaymentJobService, ISupplierPaymentRefundService,
-        ISupplierFundsService, ISupplierFundsJobService
+        ISupplierFundsService, ISupplierFundsJobService, IServiceDisputeService, IServiceDisputeJobService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 

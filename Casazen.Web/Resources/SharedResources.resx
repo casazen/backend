@@ -3713,4 +3713,49 @@
   <data name="PropertySiteProfileTourUrlInvalid" xml:space="preserve">
     <value>Il tour virtuale deve essere un indirizzo Matterport (https).</value>
   </data>
+  <data name="ServiceDisputeNotFound" xml:space="preserve">
+    <value>Non c'è nessuna segnalazione per questa richiesta.</value>
+  </data>
+  <data name="ServiceDisputeNotReportable" xml:space="preserve">
+    <value>Da qui non si può segnalare un problema: per questo lavoro CasaZen non custodisce un pagamento che si possa fermare.</value>
+  </data>
+  <data name="ServiceDisputeTooEarly" xml:space="preserve">
+    <value>Puoi segnalare che il lavoro non è stato svolto dopo la fine dell'orario previsto, non prima.</value>
+  </data>
+  <data name="ServiceDisputeWindowClosed" xml:space="preserve">
+    <value>Il tempo per segnalare un problema è terminato: il pagamento è stato versato al fornitore, sta per esserlo oppure hai già confermato che è tutto a posto.</value>
+  </data>
+  <data name="ServiceDisputeInvalid" xml:space="preserve">
+    <value>Alcuni dati della segnalazione non sono validi (campi: {0}). Controllali e riprova.</value>
+  </data>
+  <data name="ServiceDisputeNotOpen" xml:space="preserve">
+    <value>La segnalazione non è più aperta: è stata decisa o ritirata.</value>
+  </data>
+  <data name="ServiceDisputeAlreadyReplied" xml:space="preserve">
+    <value>Hai già risposto a questa segnalazione.</value>
+  </data>
+  <data name="ServiceDisputeAwaitingSupplier" xml:space="preserve">
+    <value>Il fornitore ha ancora tempo per rispondere: la segnalazione si decide dopo la sua risposta o alla scadenza del suo tempo.</value>
+  </data>
+  <data name="ServiceDisputeStateChanged" xml:space="preserve">
+    <value>La segnalazione è cambiata nel frattempo: ricarica la pagina e verifica.</value>
+  </data>
+  <data name="ServiceDisputePaymentChanged" xml:space="preserve">
+    <value>Il pagamento non è in uno stato su cui si possa decidere (è in verifica o il denaro si è mosso in altro modo): controlla prima il pagamento.</value>
+  </data>
+  <data name="ServiceDisputeRefundInvalid" xml:space="preserve">
+    <value>L'importo da restituire deve essere un numero positivo di centesimi.</value>
+  </data>
+  <data name="ServiceDisputeRefundExceeds" xml:space="preserve">
+    <value>L'importo supera la parte del fornitore ancora disponibile ({0:N2} €): la commissione di CasaZen non si restituisce.</value>
+  </data>
+  <data name="ServiceDisputeOutcomeInvalid" xml:space="preserve">
+    <value>L'esito deve essere for_supplier (a favore del fornitore) oppure for_customer (a favore di chi ha pagato).</value>
+  </data>
+  <data name="ServiceDisputeFormInvalid" xml:space="preserve">
+    <value>Indica il motivo della segnalazione e, se vuoi, descrivi il problema in al massimo 1000 caratteri.</value>
+  </data>
+  <data name="ServiceDisputeOpenBlocksCompletion" xml:space="preserve">
+    <value>C'è una segnalazione aperta su questo lavoro: rispondi alla segnalazione. Se viene decisa a tuo favore, il lavoro risulta completato.</value>
+  </data>
 </root>
