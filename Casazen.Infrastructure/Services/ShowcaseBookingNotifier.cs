@@ -236,6 +236,14 @@ public sealed class ShowcaseBookingNotifier(
                 return;
 
             var culture = EmailTemplates.CultureOf(contact.Locale);
+
+            // A request on measure has no day and no time to tell (SP-10b): its own mails.
+            if (request.Kind == ServiceRequestKind.Custom)
+            {
+                QueueInquiryStatus(request, contact, supplier, culture);
+                return;
+            }
+
             var serviceName = request.ServiceNameSnapshot ?? EmailTemplates.ServiceCategoryLabel(culture, request.Category);
             var start = request.ScheduledStartUtc ?? request.CreatedAt;
             var showcaseUrl = SupplierPageOf(supplier);
@@ -588,6 +596,60 @@ public sealed class ShowcaseBookingNotifier(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Supplier notification for the lapsed proposal of the showcase request {Id} could not be queued", request.Id);
+        }
+    }
+
+    // ─── The conversation of a request on measure (SP-10b) ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The request on measure was refused by the supplier or closed because nobody answered in time: the mail to the customer, with the
+    /// reason the supplier gave and the way to the supplier's page. Taken (the offer accepted) and cancelled by the supplier come with the offer
+    /// (SP-10b-b) and send nothing here.
+    /// </summary>
+    private void QueueInquiryStatus(ServiceRequest request, ServiceCustomerContact contact, SupplierContact supplier, System.Globalization.CultureInfo culture)
+    {
+        switch (request.Status)
+        {
+            case ServiceRequestStatus.Rifiutato:
+                emailQueue.Enqueue(
+                    contact.Email,
+                    EmailTemplates.SupplierInquiryDeclined(culture, contact.FullName, supplier.LegalName, request.RejectionReason, SupplierPageOf(supplier)),
+                    EmailTemplates.Names.SupplierInquiryDeclined);
+                break;
+
+            case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.System:
+                emailQueue.Enqueue(
+                    contact.Email,
+                    EmailTemplates.SupplierInquiryExpired(culture, contact.FullName, supplier.LegalName, SupplierPageOf(supplier)),
+                    EmailTemplates.Names.SupplierInquiryExpired);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// A party wrote in the thread of a request on measure: the other one is told by e-mail. The customer hears of the supplier's reply, in its
+    /// language, with the link to the request; <b>never the words</b>. Never throws.
+    /// </summary>
+    public async Task NotifyThreadMessageAsync(ServiceRequest request, ServiceRequestMessageAuthor author, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (author != ServiceRequestMessageAuthor.Supplier)
+                return;
+
+            var (contact, supplier) = await FindPartiesAsync(request, cancellationToken);
+            if (contact is null || supplier is null)
+                return;
+
+            emailQueue.Enqueue(
+                contact.Email,
+                EmailTemplates.SupplierInquiryReply(
+                    EmailTemplates.CultureOf(contact.Locale), contact.FullName, supplier.LegalName, RequestUrlOf(supplier, request)),
+                EmailTemplates.Names.SupplierInquiryReply);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Notification of a message of the thread of the showcase request {Id} could not be queued", request.Id);
         }
     }
 

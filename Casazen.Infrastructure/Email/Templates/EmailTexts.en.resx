@@ -1710,4 +1710,31 @@
   <data name="SupplierInquiryNewRequest_Hint" xml:space="preserve">
     <value>Read the request and reply from the console. The customer's full name and contacts are shown once you take the request.</value>
   </data>
+  <data name="SupplierInquiryReply_Subject" xml:space="preserve">
+    <value>{0} has replied to you</value>
+  </data>
+  <data name="SupplierInquiryReply_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; has replied to your request. Read the message and carry on the conversation on the page of the request.</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Subject" xml:space="preserve">
+    <value>{0} cannot take your request</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; cannot take your request.</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Hint" xml:space="preserve">
+    <value>You have paid nothing. You can ask another supplier.</value>
+  </data>
+  <data name="SupplierInquiryExpired_Subject" xml:space="preserve">
+    <value>Your request to {0} has closed</value>
+  </data>
+  <data name="SupplierInquiryExpired_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; did not answer your request in time, so we closed it.</value>
+  </data>
+  <data name="SupplierInquiryExpired_Hint" xml:space="preserve">
+    <value>You have paid nothing. You can write again or ask another supplier.</value>
+  </data>
+  <data name="SupplierInquiryClosed_Cta" xml:space="preserve">
+    <value>Go to the supplier's page</value>
+  </data>
 </root>

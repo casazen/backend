@@ -96,6 +96,68 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
     }
 
     [Fact]
+    public async Task Inquiry_TheSupplierReadsAndAnswers_TheCustomerIsToldWithoutTheWords_AndTheRequestIsNotTaken()
+    {
+        var supplier = await PublicBookingTestData.SeedAsync(factory);
+        var other = await PublicBookingTestData.SeedAsync(factory);
+        var email = PublicBookingTestData.NewEmail();
+        using var client = factory.CreateClient();
+        var created = await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/inquiries", Body(email));
+        var inquiryId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var (_, token) = LinkOf(Assert.Single(factory.EmailsTo(email)));
+        await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/inquiries/{inquiryId}/confirm-email", new { token });
+
+        // 1. The console knows the kind of the request, and the thread has what the customer wrote.
+        var item = Assert.Single((await supplier.InboxAsync(factory)).GetProperty("items").EnumerateArray());
+        Assert.Equal("Custom", item.GetProperty("kind").GetString());
+        Assert.False(IsNull(item, "respondBy"));
+        var id = item.GetProperty("id").GetGuid();
+        using var asSupplier = supplier.Client(factory);
+        var thread = await asSupplier.GetFromJsonAsync<JsonElement>($"/api/supplier/requests/{id}/thread");
+        Assert.True(thread.GetProperty("canWrite").GetBoolean());
+        var first = Assert.Single(thread.GetProperty("messages").EnumerateArray());
+        Assert.Equal("Customer", first.GetProperty("author").GetString());
+        Assert.Equal(Words, first.GetProperty("body").GetString());
+
+        // 2. Another supplier gets the same 404 for reading and for writing, and a request that is not on measure is one too.
+        using var asOther = other.Client(factory);
+        Assert.Equal(HttpStatusCode.NotFound, (await asOther.GetAsync($"/api/supplier/requests/{id}/thread")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await asOther.PostAsJsonAsync($"/api/supplier/requests/{id}/messages", new { body = "Buongiorno a tutti" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await asSupplier.GetAsync($"/api/supplier/requests/{Guid.NewGuid()}/thread")).StatusCode);
+
+        // 3. The supplier answers: the customer is told with a link and none of the words, and the hour stops.
+        var posted = await asSupplier.PostAsJsonAsync($"/api/supplier/requests/{id}/messages", new { body = "Posso passare giovedì per un sopralluogo gratuito." });
+        Assert.Equal(HttpStatusCode.Created, posted.StatusCode);
+        Assert.Equal("Supplier", (await posted.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("author").GetString());
+        var reply = Assert.Single(factory.EmailsTo(email), e => e.Template == EmailTemplates.Names.SupplierInquiryReply);
+        Assert.Contains("/fornitori/", reply.Content.HtmlBody);
+        foreach (var words in new[] { "giovedì", "sopralluogo", "ringhiera" })
+            Assert.DoesNotContain(words, reply.Content.Subject + reply.Content.HtmlBody);
+        var answered = Assert.Single((await supplier.InboxAsync(factory)).GetProperty("items").EnumerateArray());
+        Assert.True(IsNull(answered, "respondBy"));
+        Assert.Equal(2, (await asSupplier.GetFromJsonAsync<JsonElement>($"/api/supplier/requests/{id}/thread")).GetProperty("messages").GetArrayLength());
+
+        // 4. A message that is not one is a 422; the request is not taken the way a booking is: it is refused or answered.
+        await AssertProblemAsync(
+            await asSupplier.PostAsJsonAsync($"/api/supplier/requests/{id}/messages", new { body = "   " }),
+            (HttpStatusCode)422,
+            "service_request_message_invalid");
+        await AssertProblemAsync(
+            await asSupplier.PostAsync($"/api/service-requests/{id}/take", content: null),
+            (HttpStatusCode)422,
+            "supplier_inquiry_needs_offer");
+
+        // 5. Refused: the customer is told with the reason, and the thread is closed.
+        var rejected = await asSupplier.PostAsJsonAsync($"/api/service-requests/{id}/reject", new { reason = "Non copro questo tipo di lavoro" });
+        Assert.Equal(HttpStatusCode.OK, rejected.StatusCode);
+        Assert.Contains(factory.EmailsTo(email), e => e.Template == EmailTemplates.Names.SupplierInquiryDeclined);
+        await AssertProblemAsync(
+            await asSupplier.PostAsJsonAsync($"/api/supplier/requests/{id}/messages", new { body = "Ci ho ripensato, mi dica pure." }),
+            HttpStatusCode.Conflict,
+            "service_request_thread_closed");
+    }
+
+    [Fact]
     public async Task Inquiry_EveryAnswerIsPrivate_AndNeitherTheAnswersNorTheLogsCarryAnythingPersonalOrTheWords()
     {
         var supplier = await PublicBookingTestData.SeedAsync(factory);
@@ -148,6 +210,10 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Assert.Equal(0, await db.ShowcaseInquiries.Where(i => i.OrgId == supplier.OrgId).CountAsync());
     }
+
+    /// <summary>A member that is null, or left out of the JSON when it is.</summary>
+    private static bool IsNull(JsonElement element, string name) =>
+        !element.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null;
 
     private static object Body(
         string email,

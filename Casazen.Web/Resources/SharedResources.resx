@@ -3494,4 +3494,16 @@
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Codice di accesso non disponibile o verifica non superata</value>
   </data>
+  <data name="ServiceRequestThreadClosed" xml:space="preserve">
+    <value>Questa richiesta è chiusa: non si possono più aggiungere messaggi.</value>
+  </data>
+  <data name="ServiceRequestThreadFull" xml:space="preserve">
+    <value>La conversazione ha raggiunto il numero massimo di messaggi. Per proseguire serve una proposta.</value>
+  </data>
+  <data name="ServiceRequestMessageInvalid" xml:space="preserve">
+    <value>Il messaggio è vuoto, troppo lungo o contiene caratteri non ammessi. Scrivi fino a 1000 caratteri di testo semplice.</value>
+  </data>
+  <data name="ServiceRequestInquiryNeedsOffer" xml:space="preserve">
+    <value>Una richiesta su misura non si accetta direttamente e non si propone per essa un altro orario: lavoro, prezzo e orario si concordano con il cliente nella conversazione, con una proposta.</value>
+  </data>
 </root>

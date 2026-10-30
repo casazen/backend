@@ -144,6 +144,13 @@ public class SupplierServiceRequestDto
     /// </summary>
     public bool AutoAccepted { get; set; }
 
+    /// <summary>
+    /// <c>Standard</c> (a host's request, or a booking at a free slot) or <c>Custom</c> (a request on measure from the showcase, SP-10b): the latter has no
+    /// time and no price, is carried on in a thread of messages (<c>GET api/supplier/requests/{id}/thread</c>) and is not taken (422
+    /// <c>supplier_inquiry_needs_offer</c>) but refused or answered.
+    /// </summary>
+    public string Kind { get; set; } = nameof(Casazen.Core.Entities.Enums.ServiceRequestKind.Standard);
+
     // ─── Phase and payment summary (SP-04e) ───
 
     /// <summary>
@@ -514,6 +521,7 @@ public static class SupplierServiceRequestMapper
         dto.WorkPhotos = ServiceRequestDtoParts.ToPhotoDtos(view.Id, view.WorkPhotos, ServiceRequestDtoParts.ShortRentBasePath);
         dto.PaymentMode = view.PaymentMode.ToString();
         dto.AutoAccepted = view.AutoAccepted;
+        dto.Kind = view.Kind.ToString();
         dto.Phase = view.Phase;
         dto.Payment = view.Payment is null ? null : SupplierRequestPaymentDto.From(view.Payment);
         return dto;

@@ -392,6 +392,7 @@ public partial class ServiceRequestService(
         CancellationToken cancellationToken = default)
     {
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
+        EnsureNotOnMeasure(request);
         EnsureCan(request, ServiceRequestStatus.PresoInCarico, ServiceRequestErrorCodes.CannotTakeMessageKey);
 
         if (command?.QuotedAmountCents is { } quote)

@@ -82,7 +82,8 @@ public sealed record SupplierServiceRequestView(
     IReadOnlyList<ServiceRequestPhoto> WorkPhotos,
     ServiceRequestPaymentMode PaymentMode = ServiceRequestPaymentMode.Manual,
     SupplierJobPayment? Payment = null,
-    bool AutoAccepted = false)
+    bool AutoAccepted = false,
+    ServiceRequestKind Kind = ServiceRequestKind.Standard)
 {
     /// <summary>
     /// The phase of the request (SP-04e): <see cref="SupplierRequestPhases"/>, derived from the status and the proposed time in one

@@ -451,6 +451,7 @@ public partial class SupplierServiceRequestReader(
                 TakenAt = r.TakenAt,
                 TakenByUserId = r.TakenByUserId,
                 AutoAccepted = r.AutoAccepted,
+                Kind = r.Kind,
                 CompletedAt = r.CompletedAt,
                 PaidAt = r.PaidAt,
                 // Activity date of the inbox period and order (SupplierInboxStatusFilter): completion for completed and
@@ -663,7 +664,8 @@ public partial class SupplierServiceRequestReader(
             ServiceRequestJson.ReadPhotos(row.WorkPhotosJson),
             row.PaymentMode,
             payment,
-            row.AutoAccepted);
+            row.AutoAccepted,
+            row.Kind);
     }
 
     /// <summary>
@@ -702,6 +704,7 @@ public partial class SupplierServiceRequestReader(
         public DateTime? TakenAt { get; init; }
         public string? TakenByUserId { get; init; }
         public bool AutoAccepted { get; init; }
+        public ServiceRequestKind Kind { get; init; }
         public DateTime? CompletedAt { get; init; }
         public DateTime? PaidAt { get; init; }
         public DateTime ActivityAt { get; init; }

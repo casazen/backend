@@ -24,6 +24,7 @@ public class ShowcaseInquiryTenancyTests
     {
         ["Casazen.Infrastructure/Data/AppDbContext.cs"] = "Declares the DbSets and the model.",
         ["Casazen.Infrastructure/Services/ShowcaseInquiryService.cs"] = "The request on measure: InquiriesOf carries the OrgId predicate, the rest is an insert or a remove of a row it loaded that way.",
+        ["Casazen.Infrastructure/Services/ServiceRequestService.Thread.cs"] = "The conversation of a request on measure: every read of the thread carries the OrgId predicate of the supplier, the rest is an insert.",
         ["Casazen.Infrastructure/Services/SupplierService.Maintenance.cs"] = "The repair that merges duplicate supplier profiles drops the inquiries of the duplicate org and moves the messages of its requests; both orgs are explicit.",
         ["Casazen.Infrastructure/Services/ServiceRequestExpiryService.cs"] = "System job: deletes the inquiries whose time has passed, whoever they belong to (ExpiredInquiryIdsOf reads ids only).",
     };
@@ -154,6 +155,7 @@ public class ShowcaseInquiryTenancyTests
 
     [Theory]
     [InlineData("Casazen.Infrastructure/Services/ShowcaseInquiryService.cs")]
+    [InlineData("Casazen.Infrastructure/Services/ServiceRequestService.Thread.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierService.Maintenance.cs")]
     [InlineData("Casazen.Infrastructure/Services/ServiceRequestExpiryService.cs")]
     public void EveryStatementOnTheTables_CarriesTheOrgPredicateOrIsAnInsertOrARemove(string relative)

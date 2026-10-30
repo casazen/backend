@@ -1710,4 +1710,31 @@
   <data name="SupplierInquiryNewRequest_Hint" xml:space="preserve">
     <value>Leggi la richiesta e rispondi dalla console. Il nome completo e i contatti del cliente si vedono quando prendi in carico la richiesta.</value>
   </data>
+  <data name="SupplierInquiryReply_Subject" xml:space="preserve">
+    <value>{0} ti ha risposto</value>
+  </data>
+  <data name="SupplierInquiryReply_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha risposto alla tua richiesta. Leggi il messaggio e continua la conversazione nella pagina della richiesta.</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Subject" xml:space="preserve">
+    <value>{0} non può occuparsi della tua richiesta</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; non può occuparsi della tua richiesta.</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Hint" xml:space="preserve">
+    <value>Non hai pagato nulla. Puoi chiedere a un altro fornitore.</value>
+  </data>
+  <data name="SupplierInquiryExpired_Subject" xml:space="preserve">
+    <value>La tua richiesta a {0} si è chiusa</value>
+  </data>
+  <data name="SupplierInquiryExpired_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; non ha risposto in tempo alla tua richiesta, quindi l'abbiamo chiusa.</value>
+  </data>
+  <data name="SupplierInquiryExpired_Hint" xml:space="preserve">
+    <value>Non hai pagato nulla. Puoi scrivere di nuovo o chiedere a un altro fornitore.</value>
+  </data>
+  <data name="SupplierInquiryClosed_Cta" xml:space="preserve">
+    <value>Vai alla pagina del fornitore</value>
+  </data>
 </root>
