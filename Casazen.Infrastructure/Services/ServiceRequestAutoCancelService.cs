@@ -91,10 +91,10 @@ public sealed class ServiceRequestAutoCancelService(
     }
 
     /// <summary>
-    /// The new requests of the hosts whose deadline has passed at <paramref name="nowUtc"/> and that have no time proposed, the
-    /// oldest deadline first, at most <see cref="MaxPerRun"/>. ServiceRequest has two parties and no tenant filter (TN-2
-    /// allow-list): the job works across every org, so the filters of the host are off and the predicate is the state of the
-    /// request itself. A request of the public showcase is not one of them (it is
+    /// The new requests of the hosts whose deadline has passed at <paramref name="nowUtc"/> and that have no time proposed and no quote
+    /// sent (SP-04b: the supplier answered, the host has no deadline), the oldest deadline first, at most <see cref="MaxPerRun"/>.
+    /// ServiceRequest has two parties and no tenant filter (TN-2 allow-list): the job works across every org, so the filters of the host
+    /// are off and the predicate is the state of the request itself. A request of the public showcase is not one of them (it is
     /// <see cref="DueShowcaseIdsOf"/>).
     /// </summary>
     /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
@@ -106,7 +106,8 @@ public sealed class ServiceRequestAutoCancelService(
                         && r.Status == ServiceRequestStatus.Richiesto
                         && r.ResponseDueAt != null
                         && r.ResponseDueAt <= nowUtc
-                        && r.ProposedStartUtc == null)
+                        && r.ProposedStartUtc == null
+                        && r.QuoteSentAt == null)
             .OrderBy(r => r.ResponseDueAt)
             .ThenBy(r => r.Id)
             .Select(r => r.Id)
@@ -156,27 +157,31 @@ public sealed class ServiceRequestAutoCancelService(
                 || (request.RentalContext == ServiceRequestRentalContext.Showcase) != showcase
                 || request.ResponseDueAt is not { } due
                 || due > now
-                || (!showcase && request.ProposedStartUtc is not null)
+                || (!showcase && (request.ProposedStartUtc is not null || request.QuoteSentAt is not null))
                 || !ServiceRequestStateMachine.CanCancel(request.Status, ServiceRequestActorParty.System))
             {
                 return Outcome.Conflict;
             }
 
-            // A showcase request can lapse with a time proposed that its customer never answered (SP-11 gives the customer the way to
-            // answer it): then it is the customer who did not answer, not the supplier, and the reason says so — nobody is told the
-            // other one stayed silent (decision D24). A host's request with a proposal is never picked by this job.
+            // A showcase request can lapse with a time proposed, or a quote sent, that its customer never answered (SP-11 and SP-04b give the
+            // customer the way to answer): then it is the customer who did not answer, not the supplier, and the reason says so — nobody is
+            // told the other one stayed silent (decision D24). A host's request with a proposal or a quote is never picked by this job.
+            var customerLetTheQuoteLapse = showcase && request.QuoteSentAt is not null;
             var customerLetTheProposalLapse = showcase && request.ProposedStartUtc is not null;
 
             request.Status = ServiceRequestStatus.Annullato;
             request.CancelledAt = now;
             request.CancelledBy = ServiceRequestActorParty.System;
-            request.CancellationReason = customerLetTheProposalLapse
-                ? ServiceRequestCancellationReasons.ProposalNotAnswered
-                : ServiceRequestCancellationReasons.NoResponse;
+            request.CancellationReason = customerLetTheQuoteLapse
+                ? ServiceRequestCancellationReasons.QuoteNotAnswered
+                : customerLetTheProposalLapse
+                    ? ServiceRequestCancellationReasons.ProposalNotAnswered
+                    : ServiceRequestCancellationReasons.NoResponse;
             request.ResponseDueAt = null;
 
-            // A cancelled request has no proposal waiting.
+            // A cancelled request has no proposal and no quote waiting.
             ServiceRequestService.ClearProposal(request);
+            ServiceRequestService.ClearQuote(request);
             request.UpdatedAt = now;
 
             // Saved only if the request is as it was read (xmin): a supplier that took it meanwhile wins.

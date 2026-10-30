@@ -67,6 +67,17 @@ public class SupplierBookingMessageRequest : SupplierBookingAccessRequest
 }
 
 /// <summary>
+/// Body of <c>POST api/public/supplier-bookings/quote/accept</c> and <c>…/quote/reject</c> (SP-04b): who the customer is, and the quote it
+/// read, by the instant the supplier sent it (<c>quote.sentAt</c> of the booking, repeated as it was given). If the supplier replaced the
+/// quote meanwhile the answer is 409 <c>service_request_quote_changed</c> and nothing changes.
+/// </summary>
+public class SupplierBookingQuoteAnswerRequest : SupplierBookingAccessRequest
+{
+    [Required(ErrorMessage = "ServiceRequestQuoteSentAtRequired")]
+    public DateTime? QuoteSentAt { get; set; }
+}
+
+/// <summary>
 /// Answer of every call of the customer's own area (200): the booking as it is now and what the customer can do with it. Built from
 /// <see cref="ShowcaseBookingView"/>; times are UTC instants with their Rome offset next to them (the two passes of the hour that
 /// happens twice when the clocks go back are told apart by the offset).
@@ -104,6 +115,9 @@ public class PublicSupplierBookingViewResponse
 
     /// <summary>The other time the supplier proposed and the customer has not answered; <c>null</c> when there is none.</summary>
     public PublicSupplierBookingProposalDto? Proposal { get; set; }
+
+    /// <summary>The quote the supplier sent and the customer has not answered (SP-04b); <c>null</c> when there is none.</summary>
+    public PublicSupplierBookingQuoteDto? Quote { get; set; }
 
     /// <summary>Set when the booking is cancelled (<c>Annullato</c>).</summary>
     public PublicSupplierBookingCancellationDto? Cancellation { get; set; }
@@ -217,6 +231,43 @@ public class PublicSupplierBookingProposalDto
     public string? Message { get; set; }
 }
 
+/// <summary>
+/// The quote the supplier sent for the booking (SP-04b). The booking keeps its own time until the customer accepts; <c>startUtc</c> is
+/// another time the quote offers, if it does (it is not held).
+/// </summary>
+public class PublicSupplierBookingQuoteDto
+{
+    /// <summary>When the supplier sent it: the version of the quote, which the answer repeats (<see cref="SupplierBookingQuoteAnswerRequest.QuoteSentAt"/>).</summary>
+    public DateTime SentAt { get; set; }
+
+    public List<PublicSupplierBookingQuoteLineDto> Lines { get; set; } = [];
+
+    /// <summary>What the lines add up to, in cents of euro: the price agreed if the customer accepts.</summary>
+    public int TotalCents { get; set; }
+
+    /// <summary>The note of the supplier for the customer.</summary>
+    public string? Note { get; set; }
+
+    /// <summary>Another time the quote offers instead of the booking's own; <c>null</c> when it leans on the booking's time.</summary>
+    public DateTime? StartUtc { get; set; }
+
+    public DateTime? EndUtc { get; set; }
+
+    public DateTimeOffset? StartLocal { get; set; }
+
+    public DateTimeOffset? EndLocal { get; set; }
+
+    /// <summary>The instant the customer has to answer by; after it the request is cancelled.</summary>
+    public DateTime? AnswerBy { get; set; }
+}
+
+public class PublicSupplierBookingQuoteLineDto
+{
+    public string Label { get; set; } = string.Empty;
+
+    public int AmountCents { get; set; }
+}
+
 public class PublicSupplierBookingCancellationDto
 {
     public DateTime At { get; set; }
@@ -245,6 +296,9 @@ public class PublicSupplierBookingActionsDto
     public bool CanReschedule { get; set; }
 
     public bool CanRespondToProposal { get; set; }
+
+    /// <summary>The customer may accept or turn down the quote (SP-04b): <c>quote</c> is there and its deadline has not passed.</summary>
+    public bool CanRespondToQuote { get; set; }
 }
 
 /// <summary>The conversation of a request on measure, as its customer reads it (SP-10b).</summary>
@@ -329,6 +383,22 @@ public static class PublicSupplierBookingViewMapper
                     Message = proposal.Message,
                 }
                 : null,
+            Quote = view.Quote is { } quote
+                ? new PublicSupplierBookingQuoteDto
+                {
+                    SentAt = AsUtc(quote.SentAt),
+                    Lines = quote.Lines
+                        .Select(line => new PublicSupplierBookingQuoteLineDto { Label = line.Label, AmountCents = line.AmountCents })
+                        .ToList(),
+                    TotalCents = quote.TotalCents,
+                    Note = quote.Note,
+                    StartUtc = quote.StartUtc is { } quoteStart ? AsUtc(quoteStart) : null,
+                    EndUtc = quote.EndUtc is { } quoteEnd ? AsUtc(quoteEnd) : null,
+                    StartLocal = quote.StartUtc is { } localStart ? RomeCalendar.ToRome(localStart) : null,
+                    EndLocal = quote.EndUtc is { } localEnd ? RomeCalendar.ToRome(localEnd) : null,
+                    AnswerBy = quote.AnswerBy is { } quoteAnswerBy ? AsUtc(quoteAnswerBy) : null,
+                }
+                : null,
             Cancellation = view.Cancellation is { } cancellation
                 ? new PublicSupplierBookingCancellationDto
                 {
@@ -349,6 +419,7 @@ public static class PublicSupplierBookingViewMapper
                 CanCancel = view.Actions.CanCancel,
                 CanReschedule = view.Actions.CanReschedule,
                 CanRespondToProposal = view.Actions.CanRespondToProposal,
+                CanRespondToQuote = view.Actions.CanRespondToQuote,
             },
             Kind = view.Kind == ServiceRequestKind.Custom ? nameof(ServiceRequestKind.Custom) : null,
             Thread = view.Thread is { } thread

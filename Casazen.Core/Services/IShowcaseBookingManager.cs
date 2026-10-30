@@ -94,6 +94,34 @@ public interface IShowcaseBookingManager
     Task<ShowcaseBookingView> RejectProposalAsync(ShowcaseBookingCredentials credentials, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Accepts the quote the supplier sent (SP-04b): the request is taken on the supplier's behalf (<c>Richiesto</c> → <c>PresoInCarico</c>) at
+    /// the time of the quote, with its total as the price agreed; the time is checked again under the calendar lock; the supplier and the
+    /// customer are told. <paramref name="quoteSentAt"/> is the version of the quote the customer read (<c>quote.sentAt</c>).
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="ShowcaseBookingQuoteErrors.NoQuote"/>, <see cref="ShowcaseBookingQuoteErrors.QuoteExpired"/>,
+    /// <see cref="ShowcaseBookingErrors.SupplierUnavailable"/>.
+    /// </exception>
+    /// <exception cref="Exceptions.DomainConflictException">
+    /// <c>service_request_quote_changed</c>: the supplier replaced or withdrew the quote; <c>supplier_slot_unavailable</c>: the time is gone
+    /// (the quote stays: the customer can turn it down, or cancel); <c>service_request_state_changed</c>.
+    /// </exception>
+    Task<ShowcaseBookingView> AcceptQuoteAsync(
+        ShowcaseBookingCredentials credentials,
+        DateTime quoteSentAt,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Turns the quote down (SP-04b): it goes, the request stays <c>Richiesto</c> at its time, the supplier has its whole time to answer
+    /// again and is told. Errors as <see cref="AcceptQuoteAsync"/>, but for the time.
+    /// </summary>
+    Task<ShowcaseBookingView> RejectQuoteAsync(
+        ShowcaseBookingCredentials credentials,
+        DateTime quoteSentAt,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Writes in the conversation of a request on measure (SP-10b): 1 to 1000 characters of plain text, at most 200 messages a request. The
     /// supplier is told by e-mail (the comune and "Nome C.", never the words), one e-mail for the messages of ten minutes. The booking of the
     /// credentials has to be a request on measure; any other is <see cref="ShowcaseBookingManagementErrors.NotFound"/>.
@@ -138,6 +166,12 @@ public interface IShowcaseRequestCustomerActions
 
     /// <summary>The customer turns the proposed time down (see <see cref="IShowcaseBookingManager.RejectProposalAsync"/>).</summary>
     Task<ServiceRequest> RejectProposalAsCustomerAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>The customer accepts the quote (see <see cref="IShowcaseBookingManager.AcceptQuoteAsync"/>).</summary>
+    Task<ServiceRequest> AcceptQuoteAsCustomerAsync(Guid id, Guid supplierOrgId, DateTime quoteSentAt, CancellationToken cancellationToken = default);
+
+    /// <summary>The customer turns the quote down (see <see cref="IShowcaseBookingManager.RejectQuoteAsync"/>).</summary>
+    Task<ServiceRequest> RejectQuoteAsCustomerAsync(Guid id, Guid supplierOrgId, DateTime quoteSentAt, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The thread of the customer's request on measure (SP-10b), with the messages of the supplier marked as read by the customer; each

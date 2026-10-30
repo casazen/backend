@@ -570,6 +570,21 @@
   <data name="LeaseRenewalBlockedByNotice" xml:space="preserve">
     <value>Hai registrato una disdetta, quindi il contratto non si rinnova. Se le parti hanno deciso di rinnovarlo, togli prima la disdetta.</value>
   </data>
+  <data name="LeaseIstatWaived" xml:space="preserve">
+    <value>Con la cedolare secca l'aggiornamento del canone è sospeso per tutta la durata dell'opzione: non c'è nulla da calcolare.</value>
+  </data>
+  <data name="LeaseIstatNoIncrease" xml:space="preserve">
+    <value>Con una variazione nulla o negativa il canone non aumenta: non c'è nessun aggiornamento da chiedere.</value>
+  </data>
+  <data name="LeaseIstatPercentInvalid" xml:space="preserve">
+    <value>La variazione dell'indice e la quota devono essere percentuali maggiori di zero con al massimo due decimali, e la quota non può superare il {0} per cento.</value>
+  </data>
+  <data name="LeaseIstatNoRent" xml:space="preserve">
+    <value>Il contratto non ha un canone: non c'è nulla da aggiornare.</value>
+  </data>
+  <data name="LeaseLetterEffectDateInvalid" xml:space="preserve">
+    <value>Il giorno da cui vale la lettera deve essere tra il {0:d MMM yyyy} e il {1:d MMM yyyy}.</value>
+  </data>
   <data name="LeaseRenewalNotYet" xml:space="preserve">
     <value>Il rinnovo si registra nell'ultimo tratto prima della scadenza, dal {0:d MMM yyyy}.</value>
   </data>
@@ -1483,6 +1498,18 @@
   <data name="GuestBookingCodeInvalid" xml:space="preserve">
     <value>Il codice prenotazione non è valido: controlla l'email di conferma.</value>
   </data>
+  <data name="HostContactEmailInvalid" xml:space="preserve">
+    <value>Inserisci un indirizzo email valido: l'host risponderà a quello.</value>
+  </data>
+  <data name="HostContactMessageInvalid" xml:space="preserve">
+    <value>Scrivi un messaggio di almeno 5 e al massimo 2000 caratteri.</value>
+  </data>
+  <data name="HostContactNameTooLong" xml:space="preserve">
+    <value>Il nome può avere al massimo 100 caratteri.</value>
+  </data>
+  <data name="HostContactConsentRequired" xml:space="preserve">
+    <value>Per scrivere all'host devi accettare che il messaggio e il tuo indirizzo email gli vengano inviati.</value>
+  </data>
   <data name="GuestBookingEmailRequired" xml:space="preserve">
     <value>Inserisci l'indirizzo email con cui hai prenotato.</value>
   </data>
@@ -1497,6 +1524,9 @@
   </data>
   <data name="PublicCalendarInvalidRange" xml:space="preserve">
     <value>L'intervallo di date non è valido: la data di fine deve essere successiva a quella di inizio e l'intervallo non può superare {0} mesi.</value>
+  </data>
+  <data name="PublicStaysDatesInvalid" xml:space="preserve">
+    <value>Le date del soggiorno non sono valide: servono l'arrivo e la partenza, la partenza deve essere dopo l'arrivo e il soggiorno non può superare {0} notti.</value>
   </data>
   <data name="LeaseEndBeforeStart" xml:space="preserve">
     <value>La data di fine del contratto deve essere successiva alla data di inizio.</value>
@@ -3586,6 +3616,87 @@
   </data>
   <data name="GuestCancelConfirmRequired" xml:space="preserve">
     <value>Conferma di voler annullare la prenotazione per procedere.</value>
+  </data>
+  <data name="ServiceRequestCannotQuote" xml:space="preserve">
+    <value>Puoi rispondere con un preventivo solo a una richiesta ancora in attesa della tua risposta.</value>
+  </data>
+  <data name="ServiceRequestQuoteInvalid" xml:space="preserve">
+    <value>Preventivo non valido: servono da 1 a {0} voci, ciascuna con una descrizione di al massimo {1} caratteri e un importo maggiore di zero; il totale può arrivare al massimo a {2} euro.</value>
+  </data>
+  <data name="ServiceRequestNoQuote" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessun preventivo a cui rispondere: il fornitore potrebbe averlo ritirato, o la richiesta è già cambiata.</value>
+  </data>
+  <data name="ServiceRequestQuoteChanged" xml:space="preserve">
+    <value>Il fornitore ha modificato il preventivo mentre lo leggevi. Rileggilo prima di rispondere: non abbiamo cambiato nulla.</value>
+  </data>
+  <data name="SupplierBookingNoQuote" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessun preventivo da accettare o rifiutare.</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired" xml:space="preserve">
+    <value>Il tempo per rispondere al preventivo è scaduto: la richiesta si annulla da sola. Potrai prenotare di nuovo dal sito del fornitore.</value>
+  </data>
+  <data name="ServiceRequestQuoteLinesRequired" xml:space="preserve">
+    <value>Il preventivo ha bisogno di almeno una voce.</value>
+  </data>
+  <data name="ServiceRequestQuoteTooManyLines" xml:space="preserve">
+    <value>Il preventivo può avere al massimo {1} voci.</value>
+  </data>
+  <data name="ServiceRequestQuoteLineLabelRequired" xml:space="preserve">
+    <value>Ogni voce del preventivo ha bisogno di una descrizione.</value>
+  </data>
+  <data name="ServiceRequestQuoteLineLabelTooLong" xml:space="preserve">
+    <value>La descrizione di una voce può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestQuoteNoteTooLong" xml:space="preserve">
+    <value>La nota può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestQuoteSentAtRequired" xml:space="preserve">
+    <value>Indica quale preventivo stai accettando o rifiutando.</value>
+  </data>
+  <data name="PropertySiteProfilePayloadTooLong" xml:space="preserve">
+    <value>Il testo inviato è troppo lungo.</value>
+  </data>
+  <data name="PropertySiteProfileTextTooLong" xml:space="preserve">
+    <value>Il testo è troppo lungo: al massimo {0} caratteri.</value>
+  </data>
+  <data name="PropertySiteProfileItalianRequired" xml:space="preserve">
+    <value>Scrivi il testo anche in italiano: è la lingua che il sito usa quando manca la traduzione.</value>
+  </data>
+  <data name="PropertySiteProfileTooManyHighlights" xml:space="preserve">
+    <value>Puoi indicare al massimo {0} punti forti.</value>
+  </data>
+  <data name="PropertySiteProfileHighlightIconUnknown" xml:space="preserve">
+    <value>Scegli l'icona del punto forte tra quelle proposte.</value>
+  </data>
+  <data name="PropertySiteProfileTooManySafetyNotes" xml:space="preserve">
+    <value>Puoi indicare al massimo {0} note di sicurezza.</value>
+  </data>
+  <data name="PropertySiteProfileTagUnknown" xml:space="preserve">
+    <value>Questa etichetta non esiste: scegline una tra quelle proposte.</value>
+  </data>
+  <data name="PropertySiteProfileFloorLevelInvalid" xml:space="preserve">
+    <value>Il piano deve essere compreso tra {0} e {1} (0 è il piano terra).</value>
+  </data>
+  <data name="PropertySiteProfileRenovatedYearInvalid" xml:space="preserve">
+    <value>L'anno di ristrutturazione deve essere compreso tra {0} e {1}.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyClassInvalid" xml:space="preserve">
+    <value>La classe energetica deve essere una tra A4, A3, A2, A1, A, B, C, D, E, F, G.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyIndexInvalid" xml:space="preserve">
+    <value>L'indice di prestazione energetica deve essere compreso tra 0 e {0} kWh/m² all'anno.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyIndexWithoutClass" xml:space="preserve">
+    <value>Indica la classe energetica insieme all'indice di prestazione.</value>
+  </data>
+  <data name="PropertySiteProfileCheckInWindowInvalid" xml:space="preserve">
+    <value>L'ultimo orario di arrivo deve essere successivo al primo.</value>
+  </data>
+  <data name="PropertySiteProfileVideoUrlInvalid" xml:space="preserve">
+    <value>Il video deve essere un indirizzo YouTube o Vimeo (https).</value>
+  </data>
+  <data name="PropertySiteProfileTourUrlInvalid" xml:space="preserve">
+    <value>Il tour virtuale deve essere un indirizzo Matterport (https).</value>
   </data>
   <data name="ServiceRequestThreadClosed" xml:space="preserve">
     <value>Questa richiesta è chiusa: non si possono più aggiungere messaggi.</value>

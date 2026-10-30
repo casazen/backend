@@ -108,6 +108,13 @@ public class SupplierServiceRequestDto
     /// <summary>The time the supplier proposed, waiting for the host's answer; <c>null</c> when there is none.</summary>
     public ServiceRequestProposalDto? Proposal { get; set; }
 
+    /// <summary>
+    /// The quote the supplier sent and the customer has not answered (SP-04b), with the phase <c>quote_pending</c>; <c>null</c> when there is
+    /// none. The supplier changes it by sending another (<c>POST api/service-requests/{id}/quote</c>) or takes it back
+    /// (<c>…/quote/withdraw</c>); <c>quote.answerBy</c> is the customer's deadline for a showcase request, <c>null</c> for a host.
+    /// </summary>
+    public ServiceRequestQuoteDto? Quote { get; set; }
+
     /// <summary>When the request was cancelled.</summary>
     public DateTime? CancelledAt { get; set; }
 
@@ -225,9 +232,18 @@ public class ServiceRequestHistoryEntryDto
 
     /// <summary>
     /// The rejection or cancellation reason, on the <c>Rifiutato</c> and <c>Annullato</c> steps: the text a person wrote, or the code
-    /// <c>NoResponse</c>, <c>ProposalNotAnswered</c> or <c>CancelledByCustomer</c> (<see cref="Casazen.Core.Suppliers.ServiceRequestCancellationReasons"/>).
+    /// <c>NoResponse</c>, <c>ProposalNotAnswered</c>, <c>QuoteNotAnswered</c> or <c>CancelledByCustomer</c>
+    /// (<see cref="Casazen.Core.Suppliers.ServiceRequestCancellationReasons"/>).
     /// </summary>
     public string? Reason { get; set; }
+
+    /// <summary>
+    /// What the step says beyond its status (SP-04b), or <c>null</c> for a plain step of the state machine: <c>quote_sent</c>,
+    /// <c>quote_rejected</c> and <c>quote_withdrawn</c> (steps of the status <c>Richiesto</c>, in the supplier's console only),
+    /// <c>quote_accepted</c> (the <c>PresoInCarico</c> step that took the request on a quote) and <c>quote_expired</c> (the
+    /// <c>Annullato</c> step of a quote nobody answered). <b>An open set</b>: a step with an event you do not know is shown by its status.
+    /// </summary>
+    public string? Event { get; set; }
 
     internal static ServiceRequestHistoryEntryDto From(ServiceRequestHistoryEntry entry) => new()
     {
@@ -236,6 +252,7 @@ public class ServiceRequestHistoryEntryDto
         Actor = entry.Actor.ToString(),
         ActorName = entry.ActorName,
         Reason = entry.Reason,
+        Event = entry.Event,
     };
 }
 
@@ -513,6 +530,7 @@ public static class SupplierServiceRequestMapper
                 ProposedAt = view.Proposal.ProposedAt,
                 Message = view.Proposal.Message,
             };
+        dto.Quote = ServiceRequestDtoParts.ToQuoteDto(view.Quote);
         dto.CancelledAt = view.Cancellation?.At;
         dto.CancelledBy = view.Cancellation?.By.ToString();
         dto.CancellationReason = view.Cancellation?.Reason;

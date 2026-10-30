@@ -57,6 +57,8 @@ public sealed class LeaseOperationsService(
         var withdrawal = LeaseOperationRules.Withdrawal(lease, today);
         var renewal = LeaseOperationRules.Renewal(lease, today);
         var confirmation = LeaseOperationRules.TransitoryConfirmation(lease, today);
+        var istat = LeaseIstatRules.Facts(lease, today);
+        var cedolare = LeaseOperationRules.CedolareNotice(lease, today);
 
         // The lease of the same property that already covers days of the standard renewal: told before the person tries (the server refuses it too).
         LeasePeriodConflictDto? conflict = null;
@@ -93,7 +95,10 @@ public sealed class LeaseOperationsService(
                 renewal.LatestAgreedEnd,
                 conflict,
                 RecordedRenewal(lease, RomeCalendar.DateInRome(lease.CurrentTermEndDate))),
-            new LeaseTransitoryConfirmationDto(confirmation.Applies, confirmation.Available, confirmation.Holder, confirmation.ConfirmBy));
+            new LeaseTransitoryConfirmationDto(confirmation.Applies, confirmation.Available, confirmation.Holder, confirmation.ConfirmBy),
+            new LeaseIstatOperationDto(
+                istat.Available, istat.CurrentRent, istat.DefaultSharePercent, istat.MaxSharePercent, istat.MinEffectiveOn, istat.MaxEffectiveOn),
+            new LeaseCedolareNoticeDto(cedolare.Available, cedolare.MinEffectiveOn, cedolare.MaxEffectiveOn));
     }
 
     // ---- the letters -----------------------------------------------------------------------------------------------
@@ -197,6 +202,87 @@ public sealed class LeaseOperationsService(
             new HashSet<string>(StringComparer.Ordinal),
             LeaseLetterData.Common(lease),
             $"conferma-esigenza-{lease.Id}.pdf");
+    }
+
+    public async Task<LeaseIstatCalculationDto> CalculateIstatAsync(
+        Guid leaseId, decimal foiPercent, decimal sharePercent, CancellationToken cancellationToken = default)
+    {
+        var lease = await db.LeaseContracts.AsNoTracking().FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken) ?? throw NotFound(leaseId);
+        var calculation = CalculateIstat(lease, foiPercent, sharePercent);
+        return new LeaseIstatCalculationDto(
+            calculation.CurrentRent, calculation.FoiPercent, calculation.SharePercent, calculation.AppliedPercent, calculation.Increase, calculation.NewRent);
+    }
+
+    public async Task<LeaseLetterFile> BuildAggiornamentoIstatAsync(
+        Guid leaseId, decimal foiPercent, decimal sharePercent, DateOnly effectiveFrom, CancellationToken cancellationToken = default)
+    {
+        var lease = await LoadForLetterAsync(leaseId, cancellationToken);
+        var calculation = CalculateIstat(lease, foiPercent, sharePercent);
+
+        // An update starts from the day it is asked for, never from one that has passed, and not after the period the lease is in.
+        var facts = LeaseIstatRules.Facts(lease, _clock.TodayInRomeAsDateOnly());
+        if (effectiveFrom < facts.MinEffectiveOn || effectiveFrom > facts.MaxEffectiveOn)
+        {
+            throw new DomainRuleException(
+                LeaseLifecycleCodes.LetterEffectDateInvalid, "LeaseLetterEffectDateInvalid", facts.MinEffectiveOn, facts.MaxEffectiveOn);
+        }
+
+        var values = LeaseLetterData.Common(lease);
+        values[LeaseLetterPlaceholders.CurrentRent] = LeaseLetterData.Money(calculation.CurrentRent);
+        values[LeaseLetterPlaceholders.FoiPercent] = LeaseLetterData.Percent(calculation.FoiPercent);
+        values[LeaseLetterPlaceholders.SharePercent] = LeaseLetterData.Percent(calculation.SharePercent);
+        values[LeaseLetterPlaceholders.AppliedPercent] = LeaseLetterData.Percent(calculation.AppliedPercent);
+        values[LeaseLetterPlaceholders.IncreaseAmount] = LeaseLetterData.Money(calculation.Increase);
+        values[LeaseLetterPlaceholders.NewRent] = LeaseLetterData.Money(calculation.NewRent);
+        values[LeaseLetterPlaceholders.EffectiveOn] = LeaseLetterData.Day(effectiveFrom);
+
+        return Build(lease, LeaseLetterKind.AggiornamentoIstat, new HashSet<string>(StringComparer.Ordinal), values, $"aggiornamento-istat-{lease.Id}.pdf");
+    }
+
+    public async Task<LeaseLetterFile> BuildOpzioneCedolareAsync(Guid leaseId, DateOnly? effectiveFrom, CancellationToken cancellationToken = default)
+    {
+        var lease = await LoadForLetterAsync(leaseId, cancellationToken);
+        EnsureInForce(lease);
+
+        // Only a lease under the cedolare secca has the option to communicate.
+        var facts = LeaseOperationRules.CedolareNotice(lease, _clock.TodayInRomeAsDateOnly());
+        if (!facts.Available)
+            throw new DomainRuleException(LeaseLifecycleCodes.LetterNotApplicable, "LeaseLetterNotApplicable");
+        if (effectiveFrom is { } day && (day < facts.MinEffectiveOn || day > facts.MaxEffectiveOn))
+        {
+            throw new DomainRuleException(
+                LeaseLifecycleCodes.LetterEffectDateInvalid, "LeaseLetterEffectDateInvalid", facts.MinEffectiveOn, facts.MaxEffectiveOn);
+        }
+
+        var values = LeaseLetterData.Common(lease);
+        values[LeaseLetterPlaceholders.EffectiveOn] = effectiveFrom is { } firstDay ? LeaseLetterData.Day(firstDay) : null;
+
+        return Build(lease, LeaseLetterKind.OpzioneCedolare, new HashSet<string>(StringComparer.Ordinal), values, $"opzione-cedolare-{lease.Id}.pdf");
+    }
+
+    /// <summary>
+    /// The checks the calculation and the letter of the ISTAT update share: the lease is in force and not ended, is not under the cedolare secca
+    /// (which suspends every update), has a rent; the variation is above zero (the rent only ever goes up), the percentages are valid and the
+    /// increase is not rounded away. Then the calculation of <see cref="LeaseIstatRules.Calculate"/>.
+    /// </summary>
+    private static LeaseIstatCalculation CalculateIstat(LeaseContract lease, decimal foiPercent, decimal sharePercent)
+    {
+        EnsureInForce(lease);
+        if (lease.TerminatedOn is not null)
+            throw new DomainConflictException(LeaseLifecycleCodes.AlreadyTerminated, "LeaseAlreadyTerminated");
+        if (LeaseIstatRules.UpdatesWaived(lease))
+            throw new DomainRuleException(LeaseLifecycleCodes.IstatWaived, "LeaseIstatWaived");
+        if (lease.MonthlyRent <= 0)
+            throw new DomainRuleException(LeaseLifecycleCodes.IstatNoRent, "LeaseIstatNoRent");
+        if (foiPercent <= 0)
+            throw new DomainRuleException(LeaseLifecycleCodes.IstatNoIncrease, "LeaseIstatNoIncrease");
+        if (LeaseIstatRules.Check(foiPercent, sharePercent) != LeaseIstatProblem.None)
+            throw new DomainRuleException(LeaseLifecycleCodes.IstatPercentInvalid, "LeaseIstatPercentInvalid", LeaseIstatRules.MaxSharePercent);
+
+        var calculation = LeaseIstatRules.Calculate(lease.MonthlyRent, foiPercent, sharePercent);
+        if (calculation.Increase <= 0)
+            throw new DomainRuleException(LeaseLifecycleCodes.IstatNoIncrease, "LeaseIstatNoIncrease");
+        return calculation;
     }
 
     private LeaseLetterFile Build(

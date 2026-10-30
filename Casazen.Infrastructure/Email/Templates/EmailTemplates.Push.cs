@@ -78,6 +78,22 @@ public static partial class EmailTemplates
             ServiceCategoryLabel(culture, category),
             comune);
 
+    /// <summary>The supplier sent a quote (SP-04b), to the host.</summary>
+    public static PushText ServiceRequestQuoteSentPush(CultureInfo culture, string category, string propertyName) =>
+        Push(culture, "Push_ServiceRequestQuoteSent", ServiceCategoryLabel(culture, category), propertyName);
+
+    /// <summary>The customer (the host, or the customer of a showcase request) accepted or turned down the quote (SP-04b), to the supplier (comune only).</summary>
+    public static PushText ServiceRequestQuoteAnsweredPush(CultureInfo culture, string category, string comune, bool accepted) =>
+        Push(
+            culture,
+            accepted ? "Push_ServiceRequestQuoteAccepted" : "Push_ServiceRequestQuoteRejected",
+            ServiceCategoryLabel(culture, category),
+            comune);
+
+    /// <summary>The customer of the public showcase did not answer the quote and the request was cancelled (SP-04b), to the supplier (comune only).</summary>
+    public static PushText ServiceRequestQuoteExpiredPush(CultureInfo culture, string category, string comune) =>
+        Push(culture, "Push_ServiceRequestQuoteExpired", ServiceCategoryLabel(culture, category), comune);
+
     /// <summary>The customer of the public showcase cancelled its request (SP-11), to the supplier (comune only).</summary>
     public static PushText ShowcaseCancelledByCustomerPush(CultureInfo culture, string category, string comune) =>
         Push(culture, "Push_ShowcaseCancelledByCustomer", ServiceCategoryLabel(culture, category), comune);

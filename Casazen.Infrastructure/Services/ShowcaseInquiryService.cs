@@ -275,7 +275,7 @@ public sealed class ShowcaseInquiryService(
 
         logger.LogInformation("Showcase request on measure {RequestId} of supplier {OrgId} created from inquiry {InquiryId}", request.Id, orgId, inquiryId);
 
-        notifier.QueueInquiryReceived(supplier, request, customer, request.ResponseDueAt!.Value);
+        await notifier.QueueInquiryReceivedAsync(supplier, request, customer, request.ResponseDueAt!.Value, cancellationToken);
         return result;
     }
 

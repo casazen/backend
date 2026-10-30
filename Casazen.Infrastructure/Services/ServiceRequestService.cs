@@ -178,7 +178,7 @@ public partial class ServiceRequestService(
         }
 
         if (!request.AutoAccepted)
-            notifier.QueueCreated(request, supplier.Email, supplierEmail, comune);
+            await notifier.QueueCreatedAsync(request, supplier.Email, supplierEmail, comune, cancellationToken);
 
         logger.LogInformation(
             "ServiceRequest {Id} ({RentalContext}) created by {UserId} for property {PropertyId} booking {BookingId} supplier {SupplierOrgId}",
@@ -566,11 +566,17 @@ public partial class ServiceRequestService(
 
         // The final price: the declared total, or the agreed price plus the extras (decision D7 compares it with the quote).
         var reference = ServiceRequestPricing.ReferenceAmount(request.QuotedAmountCents, request.EstimatedAmountCents);
+
+        // The lines of the quote the customer accepted (SP-04b) stay as it approved them while they still are the price of the work itself.
+        var agreedLines = request.QuotedAmountCents is null
+            ? null
+            : ServiceRequestJson.ReadPriceLines(request.PriceLinesJson).Where(line => line.Kind == ServiceRequestPriceLineKinds.Quote).ToList();
         var price = ServiceRequestPricing.ComposeFinalPrice(
             reference,
             command?.FinalAmountCents,
             command?.Extras,
-            request.ServiceNameSnapshot ?? request.Category);
+            request.ServiceNameSnapshot ?? request.Category,
+            agreedLines);
         var needsConfirmation = ServiceRequestPricing.ExceedsQuote(
             reference, price.FinalAmountCents, options.Value.FinalAmountTolerancePercent);
         var notes = string.IsNullOrWhiteSpace(command?.Notes) ? null : command.Notes.Trim();
@@ -689,6 +695,10 @@ public partial class ServiceRequestService(
 
         apply(request);
         request.Status = to;
+
+        // SP-04b: a quote is an offer on a request that still waits for its answer. Whatever moves the request on (taken, refused,
+        // cancelled) takes the offer away with it; the database refuses a quote on a request that is not new.
+        ClearQuote(request);
         request.UpdatedAt = Now();
 
         await SaveAsync(request, $"transition {from} -> {to}", cancellationToken);
