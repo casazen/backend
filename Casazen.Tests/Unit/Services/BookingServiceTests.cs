@@ -334,7 +334,8 @@ public class BookingServiceTests
         Assert.Equal(checkIn.AddDays(-15), quote.FreeRefundDeadline);
         Assert.True(quote.PaymentOptions.DeferredPaymentAvailable);
         Assert.Equal(checkIn.AddDays(-15), quote.PaymentOptions.DeferredChargeDate);
-        Assert.Null(quote.PaymentOptions.FreeCancellationUntil);
+        // DB-08a: the guest cancels by themselves, so the free cancellation is promised, until that same last whole day.
+        Assert.Equal(checkIn.AddDays(-15), quote.PaymentOptions.FreeCancellationUntil);
     }
 
     [Fact]

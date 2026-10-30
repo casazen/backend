@@ -49,6 +49,12 @@ public class BookingResponseDto
     public string Source { get; set; } = string.Empty;
     public string SpecialRequests { get; set; } = string.Empty;
 
+    /// <summary>
+    /// When the guest said they would arrive (DB-03b), from the public checkout: <c>HH:mm</c>, or <c>late</c> for after the check-in window;
+    /// <c>null</c> when they did not say and for the bookings that do not come from the checkout. The note "arrivo previsto alle…".
+    /// </summary>
+    public string? ExpectedArrivalTime { get; set; }
+
     /// <summary>Immediate, OnCancellationDeadline or OnSite.</summary>
     public string PaymentOption { get; set; } = string.Empty;
 

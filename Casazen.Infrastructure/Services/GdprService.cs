@@ -84,6 +84,7 @@ public class GdprService(
                 b.TotalPrice,
                 b.TouristTaxAmount,
                 b.SpecialRequests,
+                b.ExpectedArrivalTime,
                 b.CreatedAt,
                 Payments = b.Payments
                     .OrderBy(p => p.CreatedAt)
@@ -128,7 +129,7 @@ public class GdprService(
             Bookings = bookings.Select(b => new GuestExportBooking(
                 b.Id, b.BookingCode, b.PropertyName, DateOnly.FromDateTime(b.CheckInDate), DateOnly.FromDateTime(b.CheckOutDate),
                 b.Status, b.Source, b.NumberOfGuests, b.NumberOfAdults, b.NumberOfChildren, b.TotalPrice, b.TouristTaxAmount,
-                b.SpecialRequests, b.CreatedAt, b.Payments)).ToList(),
+                b.SpecialRequests, b.CreatedAt, b.Payments, b.ExpectedArrivalTime)).ToList(),
             StayGuests = stayGuests.Select(s => new GuestExportStayGuest(
                 s.BookingId, s.Position, s.GuestId == guest.Id, s.Type, s.FirstName, s.LastName, s.Gender, ToDate(s.DateOfBirth),
                 s.BornInItaly, s.BirthComuneCode, s.BirthComuneName, s.BirthProvince, s.BirthCountryCode, s.BirthCountryName,

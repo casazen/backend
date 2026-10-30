@@ -53,7 +53,7 @@ public class PropertyService(
         var policies = await repository.GetCancellationPoliciesAsync();
         return policies
             .Select(p => new CancellationPolicyOptionDto(
-                p.Id, p.Name, p.Description, p.FullRefundHours, p.PartialRefundPercent, p.PartialRefundHours))
+                p.Id, p.Name, p.Description, p.FullRefundHours, p.PartialRefundPercent, p.PartialRefundHours, p.Slug))
             .ToList();
     }
 
@@ -85,6 +85,7 @@ public class PropertyService(
         property.CinCode = CinFormat.Normalize(property.CinCode);
         NormalizeLocation(property);
         NormalizeStayRules(property);
+        PropertyHouseRules.Normalize(property);
         ApplyCountryDefaults(property);
         property.Slug = await ResolveSlugForCreateAsync(property.OrgId, property.Name, property.Slug);
         await EnsureCancellationPolicyExistsAsync(property);
@@ -106,6 +107,7 @@ public class PropertyService(
         property.CinCode = CinFormat.Normalize(property.CinCode);
         NormalizeLocation(property);
         NormalizeStayRules(property);
+        PropertyHouseRules.Normalize(property);
         // Country/Currency are not yet updateable via UpdatePropertyRequest, so don't apply defaults on update.
         // This preserves existing timezone values (PATCH semantics, A2-04).
         // When Country becomes updateable, ApplyCountryDefaults should only run when country is being changed.

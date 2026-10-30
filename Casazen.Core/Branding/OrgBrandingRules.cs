@@ -12,6 +12,7 @@ public static partial class OrgBrandingRules
 {
     public const string ColorInvalidCode = "org_branding_color_invalid";
     public const string ThemeInvalidCode = "org_branding_theme_invalid";
+    public const string FontInvalidCode = "org_branding_font_invalid";
     public const string TaglineTooLongCode = "org_branding_tagline_too_long";
     public const string SubtitleTooLongCode = "org_branding_subtitle_too_long";
     public const string HostNameTooLongCode = "org_branding_host_name_too_long";
@@ -99,6 +100,21 @@ public static partial class OrgBrandingRules
         return PublicSiteThemes.IsSupported(normalized)
             ? normalized
             : throw new DomainRuleException(ThemeInvalidCode, "OrgBrandingThemeInvalid");
+    }
+
+    /// <summary>
+    /// The font id as stored (DB-01), or <c>null</c> for "the font of the theme" when <paramref name="value"/> is empty. Throws
+    /// <see cref="DomainRuleException"/> (<see cref="FontInvalidCode"/>) for a font the public site does not support.
+    /// </summary>
+    public static string? NormalizeFontId(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(normalized))
+            return null;
+
+        return PublicSiteFonts.IsSupported(normalized)
+            ? normalized
+            : throw new DomainRuleException(FontInvalidCode, "OrgBrandingFontInvalid");
     }
 
     /// <summary>
