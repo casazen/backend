@@ -3554,4 +3554,49 @@
   <data name="GuestCancelConfirmRequired" xml:space="preserve">
     <value>Conferma di voler annullare la prenotazione per procedere.</value>
   </data>
+  <data name="PropertySiteProfilePayloadTooLong" xml:space="preserve">
+    <value>Il testo inviato è troppo lungo.</value>
+  </data>
+  <data name="PropertySiteProfileTextTooLong" xml:space="preserve">
+    <value>Il testo è troppo lungo: al massimo {0} caratteri.</value>
+  </data>
+  <data name="PropertySiteProfileItalianRequired" xml:space="preserve">
+    <value>Scrivi il testo anche in italiano: è la lingua che il sito usa quando manca la traduzione.</value>
+  </data>
+  <data name="PropertySiteProfileTooManyHighlights" xml:space="preserve">
+    <value>Puoi indicare al massimo {0} punti forti.</value>
+  </data>
+  <data name="PropertySiteProfileHighlightIconUnknown" xml:space="preserve">
+    <value>Scegli l'icona del punto forte tra quelle proposte.</value>
+  </data>
+  <data name="PropertySiteProfileTooManySafetyNotes" xml:space="preserve">
+    <value>Puoi indicare al massimo {0} note di sicurezza.</value>
+  </data>
+  <data name="PropertySiteProfileTagUnknown" xml:space="preserve">
+    <value>Questa etichetta non esiste: scegline una tra quelle proposte.</value>
+  </data>
+  <data name="PropertySiteProfileFloorLevelInvalid" xml:space="preserve">
+    <value>Il piano deve essere compreso tra {0} e {1} (0 è il piano terra).</value>
+  </data>
+  <data name="PropertySiteProfileRenovatedYearInvalid" xml:space="preserve">
+    <value>L'anno di ristrutturazione deve essere compreso tra {0} e {1}.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyClassInvalid" xml:space="preserve">
+    <value>La classe energetica deve essere una tra A4, A3, A2, A1, A, B, C, D, E, F, G.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyIndexInvalid" xml:space="preserve">
+    <value>L'indice di prestazione energetica deve essere compreso tra 0 e {0} kWh/m² all'anno.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyIndexWithoutClass" xml:space="preserve">
+    <value>Indica la classe energetica insieme all'indice di prestazione.</value>
+  </data>
+  <data name="PropertySiteProfileCheckInWindowInvalid" xml:space="preserve">
+    <value>L'ultimo orario di arrivo deve essere successivo al primo.</value>
+  </data>
+  <data name="PropertySiteProfileVideoUrlInvalid" xml:space="preserve">
+    <value>Il video deve essere un indirizzo YouTube o Vimeo (https).</value>
+  </data>
+  <data name="PropertySiteProfileTourUrlInvalid" xml:space="preserve">
+    <value>Il tour virtuale deve essere un indirizzo Matterport (https).</value>
+  </data>
 </root>
