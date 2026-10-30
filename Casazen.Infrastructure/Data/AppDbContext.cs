@@ -171,6 +171,14 @@ public class AppDbContext(
     public DbSet<ServiceCustomer> ServiceCustomers { get; set; } = null!;
     public DbSet<ShowcaseBookingHold> ShowcaseBookingHolds { get; set; } = null!;
 
+    /// <summary>
+    /// The request on measure from a supplier's public showcase (SP-10b): the inquiry that waits for the e-mail check and the messages of
+    /// the thread of the request. Both keyed by the supplier org and <b>not</b> tenant-filtered (see the TN-2 allow-list); only the services
+    /// listed in <c>ShowcaseInquiryTenancyTests</c> touch them, always with an explicit <c>OrgId</c> predicate.
+    /// </summary>
+    public DbSet<ShowcaseInquiry> ShowcaseInquiries { get; set; } = null!;
+    public DbSet<ServiceRequestMessage> ServiceRequestMessages { get; set; } = null!;
+
     // Payment of the service requests inside CasaZen (SP-15a): two parties, not tenant-filtered.
     public DbSet<ServiceRequestPayment> ServiceRequestPayments { get; set; } = null!;
 
@@ -1155,6 +1163,10 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new ServiceCustomerConfiguration());
 
         modelBuilder.ApplyConfiguration(new ShowcaseBookingHoldConfiguration());
+
+        // The request on measure (SP-10b): the inquiry that waits for the e-mail check and the messages of its thread.
+        modelBuilder.ApplyConfiguration(new ShowcaseInquiryConfiguration());
+        modelBuilder.ApplyConfiguration(new ServiceRequestMessageConfiguration());
 
         // ─── Payment of the service requests inside CasaZen (SP-15a) ─────────────
         // The commission a supplier is charged instead of the platform's (an admin sets it, SP-15b): a percentage, 0 to 50.

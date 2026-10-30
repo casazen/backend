@@ -359,6 +359,8 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
             $"/api/public/seo/orgs/{org.Slug}",
             $"/api/public/seo/orgs/{org.Slug}/properties/{property.Slug}",
             $"/api/public/bookings/property/{property.Id}/availability",
+            $"/api/public/properties/{property.Id}/calendar",
+            $"/api/public/orgs/{org.Slug}/properties/{property.Slug}/calendar",
             $"/api/public/orgs/{org.Slug}/sitemap.xml",
             "/api/public/sitemap-book.xml",
         };
@@ -436,7 +438,75 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
         Assert.DoesNotContain("Segretissima", html);
     }
 
+    // ─── The calendar with the price of every night (DB-03b) ────────────────────────────────────────
+
+    [Fact]
+    public async Task Calendar_EveryNightPrice_IsWhatTheQuoteAddsUpForThatNight_AndATakenNightSaysNothingMore()
+    {
+        // 15 % on the weekend nights, and 200 that the host confirmed for the first Friday.
+        var (org, property) = await SeedAsync(p => p.WeekendSurchargePercent = 15m);
+        var friday = NextFriday(40);
+        await SeedConfirmedPriceAsync(org.Id, property.Id, DateOnly.FromDateTime(friday), 200m);
+        // The Sunday is blocked by the host and the Tuesday is held by a guest who is paying: both are taken nights, and the calendar
+        // cannot tell them (nor a booking, nor an iCal block) apart, nor say who they are.
+        var sunday = friday.AddDays(2);
+        var tuesday = friday.AddDays(4);
+        await SeedManualBlockAsync(org.Id, property.Id, sunday, sunday.AddDays(1));
+        using var client = _factory.CreateClient();
+        var held = await PostBookingAsync(client, BookingPayload(property.Id, tuesday, tuesday.AddDays(1)));
+        Assert.Equal(HttpStatusCode.OK, held.StatusCode);
+
+        var response = await client.GetAsync(
+            $"/api/public/properties/{property.Id}/calendar?from={friday:yyyy-MM-dd}&to={friday.AddDays(14):yyyy-MM-dd}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        var calendar = JsonDocument.Parse(body).RootElement;
+        var days = calendar.GetProperty("days").EnumerateArray().ToList();
+        Assert.Equal(14, days.Count);
+        foreach (var day in days)
+        {
+            // The number of the calendar is the first line of the quote of a one-night stay on that date (nights or weekend nights).
+            var date = DateTime.ParseExact(day.GetProperty("date").GetString()!, "yyyy-MM-dd", null);
+            var quote = await ReadAsync(await PostQuoteAsync(client, property.Id, date, date.AddDays(1)));
+            var night = quote.GetProperty("lines").EnumerateArray().First();
+            Assert.Equal(night.GetProperty("amountCents").GetInt64(), day.GetProperty("nightlyPriceCents").GetInt64());
+            Assert.Equal(["date", "available", "nightlyPriceCents", "minNights"], day.EnumerateObject().Select(p => p.Name));
+            Assert.Equal(date != sunday && date != tuesday, day.GetProperty("available").GetBoolean());
+        }
+
+        // Friday 200 (the host's price), Saturday 172.50 (rate + 15 %), Sunday 150.
+        Assert.Equal([20000L, 17250L, 15000L], days.Take(3).Select(d => d.GetProperty("nightlyPriceCents").GetInt64()));
+        Assert.DoesNotContain("example.com", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Manutenzione", body, StringComparison.OrdinalIgnoreCase);
+
+        // The same calendar through the slug of the site.
+        var bySlug = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/public/orgs/{org.Slug}/properties/{property.Slug}/calendar?from={friday:yyyy-MM-dd}&to={friday.AddDays(14):yyyy-MM-dd}");
+        Assert.Equal(
+            days.Select(d => d.GetProperty("nightlyPriceCents").GetInt64()),
+            bySlug.GetProperty("days").EnumerateArray().Select(d => d.GetProperty("nightlyPriceCents").GetInt64()));
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>A night blocked by hand by the host (a manual calendar block).</summary>
+    private async Task SeedManualBlockAsync(Guid orgId, Guid propertyId, DateTime start, DateTime end)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.CalendarBlocks.Add(new CalendarBlock
+        {
+            OrgId = orgId,
+            PropertyId = propertyId,
+            Source = CalendarBlockSource.Manual,
+            StartUtc = start,
+            EndUtc = end,
+            Summary = "Manutenzione caldaia",
+            LastSyncedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+    }
 
     /// <summary>The first Friday that is at least <paramref name="minDaysAhead"/> days from today in Rome (midnight UTC of its date).</summary>
     private static DateTime NextFriday(int minDaysAhead)

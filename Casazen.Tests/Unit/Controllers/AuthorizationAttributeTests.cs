@@ -64,6 +64,7 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(LongRentRentsController), CasazenPolicies.LeaseRead)]
     [InlineData(typeof(LongRentAgendaController), CasazenPolicies.LeaseRead)]
     [InlineData(typeof(LongRentTenantsController), CasazenPolicies.LeaseRead)]
+    [InlineData(typeof(LongRentPropertiesController), CasazenPolicies.LongRentPropertyRead)]
     // LR-12: the guided draft carries the parties in clear, so even its reads need the permission to create a lease.
     [InlineData(typeof(LeaseDraftsController), CasazenPolicies.LeaseCreate)]
     public void HostController_ClassPolicyIsAContextReadPermission(Type controllerType, string expectedPolicy)

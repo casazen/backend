@@ -8,6 +8,7 @@ using Casazen.Core.Leases;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services.LeaseDrafts;
 using Casazen.Infrastructure.Services.LeaseLetters;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -54,6 +55,17 @@ public sealed class LeaseOperationsService(
         var today = _clock.TodayInRomeAsDateOnly();
         var disdetta = LeaseOperationRules.Disdetta(lease, today);
         var withdrawal = LeaseOperationRules.Withdrawal(lease, today);
+        var renewal = LeaseOperationRules.Renewal(lease, today);
+        var confirmation = LeaseOperationRules.TransitoryConfirmation(lease, today);
+
+        // The lease of the same property that already covers days of the standard renewal: told before the person tries (the server refuses it too).
+        LeasePeriodConflictDto? conflict = null;
+        if (renewal.Available
+            && await LeasePeriodGuard.FindAsync(
+                db, lease.PropertyId, lease.Id, ToStoredDate(renewal.StartsOn), ToStoredDate(renewal.StandardEnd), cancellationToken) is { } inTheWay)
+        {
+            conflict = new LeasePeriodConflictDto(inTheWay.ConflictingLeaseId, inTheWay.ConflictingFrom, inTheWay.ConflictingTo);
+        }
 
         return new LeaseOperationsDto(
             new LeaseDisdettaOperationDto(
@@ -71,7 +83,17 @@ public sealed class LeaseOperationsService(
                 RecordedWithdrawal(lease)),
             Enum.GetValues<LeaseLetterKind>()
                 .Select(kind => new LeaseLetterStateDto(kind, letters.Get(kind).IsApproved, LastSent(lease, kind)))
-                .ToList());
+                .ToList(),
+            new LeaseRenewalOperationDto(
+                renewal.Available,
+                renewal.OpensOn,
+                renewal.StartsOn,
+                renewal.StandardEnd,
+                renewal.StandardMonths,
+                renewal.LatestAgreedEnd,
+                conflict,
+                RecordedRenewal(lease, RomeCalendar.DateInRome(lease.CurrentTermEndDate))),
+            new LeaseTransitoryConfirmationDto(confirmation.Applies, confirmation.Available, confirmation.Holder, confirmation.ConfirmBy));
     }
 
     // ---- the letters -----------------------------------------------------------------------------------------------
@@ -133,6 +155,48 @@ public sealed class LeaseOperationsService(
             new HashSet<string>(StringComparer.Ordinal) { LeaseLetterFlags.Withdrawal(reason) },
             values,
             $"presa-atto-recesso-{lease.Id}.pdf");
+    }
+
+    public async Task<LeaseLetterFile> BuildRinnovoAsync(
+        Guid leaseId, DateOnly startsOn, DateOnly endsOn, bool agreed, CancellationToken cancellationToken = default)
+    {
+        var lease = await LoadForLetterAsync(leaseId, cancellationToken);
+        EnsureInForce(lease);
+        if (!LeaseRenewal.Renews(lease.ContractType))
+            throw new DomainRuleException(LeaseLifecycleCodes.LetterNotApplicable, "LeaseLetterNotApplicable");
+
+        // The days of the period the agreement adds: after the start of the lease, in order and not further than a typo would take them.
+        var furthest = startsOn.AddYears(LeaseOperationRules.MaxAgreedExtensionYears);
+        if (startsOn < RomeCalendar.DateInRome(lease.StartDate) || endsOn < startsOn || endsOn > furthest)
+            throw new DomainRuleException(LeaseLifecycleCodes.RenewalEndInvalid, "LeaseRenewalEndInvalid", startsOn, furthest);
+
+        var values = LeaseLetterData.Common(lease);
+        values[LeaseLetterPlaceholders.NewPeriodStart] = LeaseLetterData.Day(startsOn);
+        values[LeaseLetterPlaceholders.NewPeriodEnd] = LeaseLetterData.Day(endsOn);
+
+        return Build(
+            lease,
+            LeaseLetterKind.Rinnovo,
+            new HashSet<string>(StringComparer.Ordinal) { agreed ? LeaseLetterFlags.RenewalAgreed : LeaseLetterFlags.RenewalStandard },
+            values,
+            $"rinnovo-{lease.Id}.pdf");
+    }
+
+    public async Task<LeaseLetterFile> BuildConfermaEsigenzaAsync(Guid leaseId, CancellationToken cancellationToken = default)
+    {
+        var lease = await LoadForLetterAsync(leaseId, cancellationToken);
+        EnsureInForce(lease);
+
+        // Only a transitory lease, and only when the need is the landlord's: when it is the tenant's, the tenant confirms it.
+        if (!LeaseOperationRules.TransitoryConfirmation(lease, _clock.TodayInRomeAsDateOnly()).Available)
+            throw new DomainRuleException(LeaseLifecycleCodes.LetterNotApplicable, "LeaseLetterNotApplicable");
+
+        return Build(
+            lease,
+            LeaseLetterKind.ConfermaEsigenza,
+            new HashSet<string>(StringComparer.Ordinal),
+            LeaseLetterData.Common(lease),
+            $"conferma-esigenza-{lease.Id}.pdf");
     }
 
     private LeaseLetterFile Build(
@@ -221,6 +285,27 @@ public sealed class LeaseOperationsService(
         return null;
     }
 
+    /// <summary>
+    /// The last renewal the landlord recorded (the payload <c>{Standard|Agreed}:{from}:{to}</c>) when it is the one of the period the lease is in
+    /// now (<paramref name="currentEnd"/>), or <c>null</c>: once the lease has moved on to a later period or ended early, the record is history.
+    /// </summary>
+    private static LeaseRenewalRecordDto? RecordedRenewal(LeaseContract lease, DateOnly currentEnd)
+    {
+        foreach (var e in lease.Events.Where(e => e.EventType == LeaseEventType.RenewalRecorded).OrderByDescending(e => e.OccurredAt))
+        {
+            var parts = e.Payload?.Split(':');
+            if (parts is { Length: 3 }
+                && parts[0] is "Standard" or "Agreed"
+                && TryDay(parts[1], out var from)
+                && TryDay(parts[2], out var to))
+            {
+                return to == currentEnd ? new LeaseRenewalRecordDto(parts[0] == "Agreed", from, to) : null;
+            }
+        }
+
+        return null;
+    }
+
     // ---- loading and checking --------------------------------------------------------------------------------------
 
     /// <summary>The lease with its property and its parties (their residences are decrypted here), read only.</summary>
@@ -245,4 +330,6 @@ public sealed class LeaseOperationsService(
         DateOnly.TryParseExact(text, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out day);
 
     private static string Format(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private static DateTime ToStoredDate(DateOnly date) => date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 }

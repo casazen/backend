@@ -8,8 +8,8 @@ namespace Casazen.Core.Services;
 
 /// <summary>
 /// A host request to a supplier. <paramref name="RentalContext"/> is the context the host opened it in (D2): a
-/// short-rent request is for one stay and needs <paramref name="BookingId"/>; a long-rent request is for the property
-/// and takes no booking. See <see cref="ServiceRequestErrorCodes"/>.
+/// short-rent request is for the property and, when the host names it, one of its stays (<paramref name="BookingId"/>, SR-08a: the stay
+/// is optional); a long-rent request is for the property and takes no booking. See <see cref="ServiceRequestErrorCodes"/>.
 /// </summary>
 /// <param name="ServiceListingId">
 /// The service of the supplier's catalog the request is for (SP-04): it must be an active service of that supplier, of the
@@ -127,9 +127,6 @@ public static class ServiceRequestErrorCodes
     /// </summary>
     public const string StateChanged = "service_request_state_changed";
 
-    /// <summary>A short-rent request without <c>bookingId</c>: in short-term rental a request is for one stay.</summary>
-    public const string BookingRequired = "service_request_booking_required";
-
     /// <summary>The <c>bookingId</c> is not a booking of the request's property in the host's org (or does not exist).</summary>
     public const string BookingMismatch = "service_request_booking_mismatch";
 
@@ -189,7 +186,6 @@ public static class ServiceRequestErrorCodes
     public const string PhotoNotFound = "service_request_photo_not_found";
 
     /// <summary>SharedResources keys of the messages of the codes above.</summary>
-    public const string BookingRequiredMessageKey = "ServiceRequestBookingRequired";
     public const string BookingMismatchMessageKey = "ServiceRequestBookingMismatch";
     public const string BookingNotAllowedMessageKey = "ServiceRequestBookingNotAllowed";
     public const string NotFoundMessageKey = "ServiceRequestNotFound";
@@ -228,7 +224,6 @@ public static class ServiceRequestErrorCodes
     /// <summary>Every <c>SharedResources</c> key the service raises (a test checks that each one exists in Italian and English).</summary>
     public static IReadOnlyList<string> MessageKeys { get; } =
     [
-        BookingRequiredMessageKey,
         BookingMismatchMessageKey,
         BookingNotAllowedMessageKey,
         NotFoundMessageKey,
