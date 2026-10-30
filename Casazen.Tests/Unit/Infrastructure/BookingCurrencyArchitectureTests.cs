@@ -26,12 +26,17 @@ public class BookingCurrencyArchitectureTests
         "Casazen.Infrastructure/Services/CheckoutPaymentSettlementService.cs",
         "Casazen.Infrastructure/Services/DeferredChargeService.cs",
         "Casazen.Infrastructure/Services/PaymentRefundService.cs",
+        "Casazen.Infrastructure/Services/PaymentListService.cs",
+        "Casazen.Infrastructure/Services/PublicCalendarService.cs",
         "Casazen.Infrastructure/Services/BookingNotifier.cs",
         "Casazen.Infrastructure/Services/OnSiteBookingRequestService.cs",
         "Casazen.Infrastructure/External/StripeService.cs",
         "Casazen.Infrastructure/External/StripeWebhookHandler.cs",
         "Casazen.Web/Controllers/BookingController.cs",
         "Casazen.Web/Controllers/PublicBookingsController.cs",
+        "Casazen.Web/Infrastructure/BookingMapper.cs",
+        "Casazen.Web/Seo/PublicSeoService.cs",
+        "Casazen.Web/DTOs/OnSiteRequestDtos.cs",
     ];
 
     // A currency written as a string: "EUR", "eur" (what a service gives Stripe) or a mix.

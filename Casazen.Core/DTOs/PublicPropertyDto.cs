@@ -24,6 +24,12 @@ public class PublicPropertyDto
     public int MaxGuests { get; set; }
     public decimal NightlyRate { get; set; }
     public decimal CleaningFee { get; set; }
+
+    /// <summary>
+    /// ISO 4217 code of the property (<see cref="Services.StayCurrency"/>, <c>EUR</c> or <c>CHF</c>): <see cref="NightlyRate"/> and
+    /// <see cref="CleaningFee"/> are in it, and so is every quote, charge and refund of a stay (CHF-MONEY).
+    /// </summary>
+    public string Currency { get; set; } = Services.StayCurrency.Default;
     public IReadOnlyList<string> Amenities { get; set; } = [];
     public IReadOnlyList<string> PhotoUrls { get; set; } = [];
     public string? CinCode { get; set; }

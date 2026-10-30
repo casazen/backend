@@ -41,7 +41,8 @@ public class BookingResponseDto
     /// <summary>The host's note on that price (at most 80 characters); <c>null</c> when there is none.</summary>
     public string? PriceOverrideNote { get; set; }
 
-    public string Currency { get; set; } = "EUR";
+    /// <summary>ISO 4217 code of the property (EUR or CHF, <see cref="StayCurrency"/>): every amount of the booking is in it.</summary>
+    public string Currency { get; set; } = StayCurrency.Default;
     public string Status { get; set; } = string.Empty;
 
     /// <summary>Reason the host wrote when cancelling (host only).</summary>

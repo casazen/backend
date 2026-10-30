@@ -65,9 +65,10 @@ public sealed record PaymentListCriteria(
     DateOnly? From = null,
     DateOnly? To = null);
 
-/// <summary>A payment as the list shows it: amounts in euros as stored, the guest and the property named.</summary>
+/// <summary>A payment as the list shows it: amounts as stored, in the currency of the property, the guest and the property named.</summary>
 /// <param name="BookingCode">The stored form of the booking code (<see cref="BookingCodes.Format"/> shows it as <c>XXXXX-XXXXX</c>).</param>
 /// <param name="GuestName">First and last name of the guest of the booking.</param>
+/// <param name="Currency">ISO 4217 code of the property (<see cref="StayCurrency"/>): a payment has no currency column, it is charged and refunded in this one.</param>
 public sealed record PaymentListItem(
     Guid Id,
     Guid BookingId,
@@ -88,4 +89,5 @@ public sealed record PaymentListItem(
     decimal NetAmountAfterWithholding,
     WithholdingSource WithholdingSource,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    string Currency = StayCurrency.Default);
