@@ -117,7 +117,10 @@ public class ShowcaseBookingTenancyTests
         Assert.Equal("UIX_ServiceCustomers_OrgId_EmailHash", customerUnique.GetDatabaseName());
 
         var holdUniques = holds.GetIndexes().Where(index => index.IsUnique).Select(index => index.GetDatabaseName()!).Order().ToArray();
-        Assert.Equal(["UIX_ShowcaseBookingHolds_OrgId_ClientRequestId", "UIX_ShowcaseBookingHolds_OrgId_PublicCode"], holdUniques);
+        // SP-15c-a: a PaymentIntent blocks the card of one hold only (the webhook finds the hold by it).
+        Assert.Equal(
+            ["UIX_ShowcaseBookingHolds_OrgId_ClientRequestId", "UIX_ShowcaseBookingHolds_OrgId_PublicCode", "UIX_ShowcaseBookingHolds_StripePaymentIntentId"],
+            holdUniques);
         Assert.Contains(holds.GetIndexes(), index => index.GetDatabaseName() == "IX_ShowcaseBookingHolds_ExpiresAt");
         Assert.Contains(holds.GetIndexes(), index =>
             index.Properties.Select(p => p.Name).SequenceEqual(new[] { "OrgId", "StartUtc" }));
@@ -129,7 +132,9 @@ public class ShowcaseBookingTenancyTests
             .Order()
             .ToArray();
 
-        Assert.Equal(["CK_ShowcaseBookingHolds_Expiry", "CK_ShowcaseBookingHolds_Interval"], ChecksOf(typeof(ShowcaseBookingHold)));
+        Assert.Equal(
+            ["CK_ShowcaseBookingHolds_Expiry", "CK_ShowcaseBookingHolds_Interval", "CK_ShowcaseBookingHolds_Payment"],
+            ChecksOf(typeof(ShowcaseBookingHold)));
         Assert.Contains("CK_ServiceRequests_Context", ChecksOf(typeof(ServiceRequest)));
 
         var publicCodeIndex = Assert.Single(

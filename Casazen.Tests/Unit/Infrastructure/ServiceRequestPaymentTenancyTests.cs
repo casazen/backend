@@ -31,6 +31,10 @@ public class ServiceRequestPaymentTenancyTests
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Refunds.cs"] = "The admin's refund and the refund events (SP-15b): by payment id or by PaymentIntent, under the payment lock.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs"] = "The system jobs (SP-15b: sync, reminders, pending requests) run over the payments in a state, across every supplier, and handle each payment by id under its lock; a job has no tenant.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Notices.cs"] = "The emails after a commit (SP-15b): the payment is read by its id.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.Funds.cs"] = "The money CasaZen holds (SP-15c-a): the payment born with the request, the charge when the supplier accepts and the money given back when the request closes; by request id or payment id, under the payment lock.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsRelease.cs"] = "The release of the held money to the supplier (SP-15c-a): one payment, by id, under the payment lock; the payer's confirmation reads it back by id.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsWebhook.cs"] = "The Stripe events of the held money (SP-15c-a): the payment found by its transfer (or the payment id of its metadata), then read by id under the payment lock.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsJobs.cs"] = "The system job of the held money (SP-15c-a): it runs over the payments in a state, across every supplier, and handles each payment by id under its lock; a job has no tenant.",
         ["Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs"] = "The platform admin's list, detail and commission export (SP-15b, AdminOnly): read-only projections across the suppliers, on purpose.",
         ["Casazen.Infrastructure/Services/SupplierPaymentReadModels.cs"] = "The supplier console's read models (SP-04e): the payment summary of a job, the counters and the figures of the home. Read-only, and every statement carries the caller's SupplierOrgId.",
     };
@@ -52,6 +56,8 @@ public class ServiceRequestPaymentTenancyTests
     private static readonly IReadOnlyDictionary<string, string[]> ExtraContinuations = new Dictionary<string, string[]>
     {
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs"] = [".AsNoTracking().Where(p=>"],
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsJobs.cs"] = [".AsNoTracking().Where(p=>"],
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsWebhook.cs"] = [".AsNoTracking().Where(p=>p.StripeTransferId=="],
         ["Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs"] = [".AsNoTracking()"],
         // The console reads one supplier's payments: the supplier org of the caller is the first predicate of every statement.
         ["Casazen.Infrastructure/Services/SupplierPaymentReadModels.cs"] = [".AsNoTracking().Where(p=>p.SupplierOrgId=="],
@@ -152,6 +158,8 @@ public class ServiceRequestPaymentTenancyTests
                 "CK_ServiceRequestPayments_Amounts",
                 "CK_ServiceRequestPayments_CommissionPercent",
                 "CK_ServiceRequestPayments_FeeVat",
+                "CK_ServiceRequestPayments_Funds",
+                "CK_ServiceRequestPayments_Held",
                 "CK_ServiceRequestPayments_Paid",
                 "CK_ServiceRequestPayments_Payer",
             },
@@ -218,6 +226,10 @@ public class ServiceRequestPaymentTenancyTests
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Refunds.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Notices.cs")]
+    [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Funds.cs")]
+    [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.FundsRelease.cs")]
+    [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.FundsWebhook.cs")]
+    [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.FundsJobs.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentReadModels.cs")]
     public void EveryStatementOnTheTable_CarriesAnExplicitPredicateOrIsAnInsert(string relative)

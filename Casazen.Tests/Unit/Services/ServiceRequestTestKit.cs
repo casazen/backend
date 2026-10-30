@@ -41,7 +41,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
         SupplierPaymentsOptions? paymentOptions = null,
         FakeSupplierPaymentGateway? gateway = null,
         TestFeatureFlags? flags = null,
-        Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null)
+        Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null,
+        FakePlatformPaymentGateway? platformGateway = null)
     {
         Db = db;
         Clock = clock ?? TimeProvider.System;
@@ -49,6 +50,7 @@ internal sealed class ServiceRequestTestKit : IDisposable
         ShowcaseOptions = showcaseOptions ?? new ShowcaseBookingOptions { PrivacyNoticeVersion = PrivacyNoticeVersion };
         PaymentOptions = paymentOptions ?? new SupplierPaymentsOptions { CommissionPercent = 10m };
         Gateway = gateway ?? new FakeSupplierPaymentGateway();
+        PlatformGateway = platformGateway ?? new FakePlatformPaymentGateway();
         Flags = flags ?? new TestFeatureFlags();
         Emails = emails ?? new RecordingEmailQueue();
         Push = push ?? Mock.Of<IPushNotificationService>();
@@ -104,7 +106,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Stripe:PublishableKey"] = PublishableKey }).Build(),
             JobScheduler,
             paymentLogger ?? NullLogger<SupplierPaymentService>.Instance,
-            Clock);
+            Clock,
+            PlatformGateway,
+            Customers);
         Matcher = ComuneTestServices.Matcher(db);
         Service = new ServiceRequestService(
             db,
@@ -165,6 +169,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
     public SupplierPaymentsOptions PaymentOptions { get; }
 
     public FakeSupplierPaymentGateway Gateway { get; }
+
+    /// <summary>The gateway of the money CasaZen holds (SP-15c-a): never reaches Stripe.</summary>
+    public FakePlatformPaymentGateway PlatformGateway { get; }
 
     /// <summary>Records the supplier orgs whose pending payment requests were queued (SP-15b); nothing reaches Hangfire.</summary>
     public RecordingSupplierPaymentJobScheduler JobScheduler { get; } = new();
