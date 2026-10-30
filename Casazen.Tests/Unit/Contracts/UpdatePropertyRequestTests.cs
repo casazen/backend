@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Web.DTOs;
 using Xunit;
@@ -391,5 +392,100 @@ public class UpdatePropertyRequestTests
         Assert.Equal(15m, withRules.WeekendSurchargePercent);
         Assert.Null(withDefaults.MinNights);
         Assert.Equal(0m, withDefaults.WeekendSurchargePercent);
+    }
+
+    // ─── The fields of the wizard «Aggiungi immobile» (SR-07a) ──────────────────────────────────────
+
+    private static Property StoredPropertyWithTheWizardFields()
+    {
+        var property = StoredProperty();
+        property.AccommodationType = AccommodationType.HouseOrVilla;
+        property.Beds = 4;
+        property.AreaSqm = 90;
+        property.ListingTitle = "Casa al mare";
+        property.PublishedOnSite = false;
+        property.CheckInFrom = new TimeOnly(15, 0);
+        property.CheckOutBy = new TimeOnly(10, 0);
+        property.SmokingPolicy = SmokingPolicy.OutdoorsOnly;
+        property.PetsPolicy = PetsPolicy.OnRequest;
+        property.PartiesPolicy = PartiesPolicy.No;
+        property.QuietHoursFrom = new TimeOnly(22, 0);
+        property.QuietHoursTo = new TimeOnly(8, 0);
+        property.ExtraGuestFeePerNight = 15m;
+        return property;
+    }
+
+    [Fact]
+    public void ApplyTo_AFormThatDoesNotKnowTheWizardFields_NeverTouchesThem()
+    {
+        // The long-rent form, the activation step and the edit page of today send the fields they know: the new ones stay as the
+        // wizard stored them, the switch «Mostra la casa sul sito» included.
+        var property = StoredPropertyWithTheWizardFields();
+
+        Read("""{ "name": "Casa al mare rinnovata", "bedrooms": 3, "amenities": ["WiFi"], "houseRules": "Niente feste" }""").ApplyTo(property);
+
+        var expected = StoredPropertyWithTheWizardFields();
+        Assert.Equal(expected.AccommodationType, property.AccommodationType);
+        Assert.Equal(expected.Beds, property.Beds);
+        Assert.Equal(expected.AreaSqm, property.AreaSqm);
+        Assert.Equal(expected.ListingTitle, property.ListingTitle);
+        Assert.False(property.PublishedOnSite);
+        Assert.Equal(expected.CheckInFrom, property.CheckInFrom);
+        Assert.Equal(expected.CheckOutBy, property.CheckOutBy);
+        Assert.Equal(expected.SmokingPolicy, property.SmokingPolicy);
+        Assert.Equal(expected.PetsPolicy, property.PetsPolicy);
+        Assert.Equal(expected.PartiesPolicy, property.PartiesPolicy);
+        Assert.Equal(expected.QuietHoursFrom, property.QuietHoursFrom);
+        Assert.Equal(expected.QuietHoursTo, property.QuietHoursTo);
+        Assert.Equal(expected.ExtraGuestFeePerNight, property.ExtraGuestFeePerNight);
+    }
+
+    [Fact]
+    public void ApplyTo_WizardFieldsSent_AreAppliedAndNullClearsThem()
+    {
+        var property = StoredPropertyWithTheWizardFields();
+
+        Read("""
+            {
+              "accommodationType": "LoftOrPenthouse",
+              "beds": 2, "areaSqm": 55, "listingTitle": "Loft in centro",
+              "publishedOnSite": true,
+              "checkInFrom": "16:00", "checkOutBy": "11:00:00",
+              "smokingPolicy": "Yes", "petsPolicy": "No", "partiesPolicy": "OnRequest",
+              "quietHoursFrom": null, "quietHoursTo": null,
+              "extraGuestFeePerNight": null
+            }
+            """).ApplyTo(property);
+
+        Assert.Equal(AccommodationType.LoftOrPenthouse, property.AccommodationType);
+        Assert.Equal((2, 55, "Loft in centro"), (property.Beds, property.AreaSqm, property.ListingTitle));
+        Assert.True(property.PublishedOnSite);
+        Assert.Equal((new TimeOnly(16, 0), new TimeOnly(11, 0)), (property.CheckInFrom, property.CheckOutBy));
+        Assert.Equal(
+            (SmokingPolicy.Yes, PetsPolicy.No, PartiesPolicy.OnRequest),
+            (property.SmokingPolicy, property.PetsPolicy, property.PartiesPolicy));
+        Assert.Null(property.QuietHoursFrom);
+        Assert.Null(property.QuietHoursTo);
+        Assert.Null(property.ExtraGuestFeePerNight);
+    }
+
+    [Fact]
+    public void ToProperty_CreateWithoutTheWizardFields_IsShownOnTheSiteAndTheRestIsNotSet()
+    {
+        var created = new CreatePropertyRequest { Name = "Casa", Address = "Via Roma 1", City = "Rimini" }.ToProperty("auth0|owner");
+
+        Assert.True(created.PublishedOnSite);
+        Assert.Null(created.AccommodationType);
+        Assert.Null(created.Beds);
+        Assert.Null(created.AreaSqm);
+        Assert.Null(created.ListingTitle);
+        Assert.Null(created.CheckInFrom);
+        Assert.Null(created.CheckOutBy);
+        Assert.Null(created.SmokingPolicy);
+        Assert.Null(created.PetsPolicy);
+        Assert.Null(created.PartiesPolicy);
+        Assert.Null(created.QuietHoursFrom);
+        Assert.Null(created.QuietHoursTo);
+        Assert.Null(created.ExtraGuestFeePerNight);
     }
 }

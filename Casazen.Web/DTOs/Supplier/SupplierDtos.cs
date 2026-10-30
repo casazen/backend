@@ -297,15 +297,16 @@ public class GetSuppliersQuery
     public string? Category { get; set; }
 
     /// <summary>
-    /// Words to look for (SR-09a): every word must be in the legal name of the supplier, in one of its category codes or in the
-    /// name of one of its published services, whatever the case. Blank is no filter.
+    /// Words to look for (SR-09a, MKT): every word must be in the legal name of the supplier, in one of its categories (the code or
+    /// its Italian or English name) or in the name of one of its published services (all of them, not only the three listed);
+    /// the case and the accents do not matter. Blank is no filter.
     /// </summary>
     public string? Q { get; set; }
 
     /// <summary>
     /// The order of the list (SR-09a): <c>name</c> (default), <c>price</c> (the lowest "from" price first, suppliers without a
     /// price last) or <c>response</c> (the fastest measured response first, suppliers without one last). Anything else is 400
-    /// <c>supplier_list_invalid_sort</c>.
+    /// <c>validation_error</c> (<c>SupplierSortInvalid</c>).
     /// </summary>
     public string? Sort { get; set; }
 }
@@ -374,19 +375,21 @@ public class SupplierPickerDto
     /// <summary>
     /// The same picker entry with what the marketplace adds (SR-09a):
     /// <paramref name="services"/> are all the published services of the supplier in its order (the first
-    /// <see cref="SupplierPickerLimits.MaxServices"/> are listed, the "from" price is the lowest of all of them) and
-    /// <paramref name="medianResponseMinutes"/> its measured response time, <c>null</c> when it has none.
+    /// <paramref name="maxServices"/> are listed, the "from" price is the lowest of all of them) and
+    /// <paramref name="medianResponseMinutes"/> its measured response time, <c>null</c> when it has none. The list of the
+    /// marketplace keeps <see cref="SupplierPickerLimits.MaxServices"/>; the page of one supplier lists them all.
     /// </summary>
     public static SupplierPickerDto From(
         SupplierProfile sp,
         IReadOnlyDictionary<string, Comune>? listed,
         IReadOnlyList<SupplierPickerService> services,
-        int? medianResponseMinutes)
+        int? medianResponseMinutes,
+        int maxServices = SupplierPickerLimits.MaxServices)
     {
         var dto = From(sp, listed);
         var cheapest = services.Where(s => s.PriceFromCents is not null).OrderBy(s => s.PriceFromCents).FirstOrDefault();
 
-        dto.Services = services.Take(SupplierPickerLimits.MaxServices).Select(SupplierPickerServiceDto.From).ToList();
+        dto.Services = services.Take(maxServices).Select(SupplierPickerServiceDto.From).ToList();
         dto.PriceFromCents = cheapest?.PriceFromCents;
         dto.PriceFromUnit = cheapest?.PriceUnit;
         dto.MedianResponseMinutes = medianResponseMinutes;
@@ -701,6 +704,40 @@ public class SupplierShowcaseDto
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? MedianResponseMinutes { get; set; }
+
+    // SP-13a: what the supplier published with the editor. Every member is left out until it published something (and the owner's preview
+    // never has them), so the page of a supplier that did not is exactly what it always was.
+
+    /// <summary>The <b>published</b> content of the showcase (never the draft): style, texts, team, FAQ, gallery...</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicShowcaseContentDto? Content { get; set; }
+
+    /// <summary>The supplier paused its showcase: the page says it takes no bookings, and the slots and the estimate answer "not available".</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Paused { get; set; }
+
+    /// <summary>
+    /// The showcase takes bookings now: published, not paused, switched on, the payments on and the supplier's account ready (decision VT-D7).
+    /// False means read-only: the services and prices are there, the booking is not.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? BookingsOpen { get; set; }
+
+    /// <summary>What the platform vouches for: "Verificato" and, from a few, the jobs done. Nothing else.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicSupplierTrustDto? Trust { get; set; }
+
+    /// <summary>How long the supplier has to answer a booking, in minutes: its setting, never written on the page by hand.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? RespondWithinMinutes { get; set; }
+
+    /// <summary>The supplier takes the payment inside CasaZen: the payments are on and its account can take charges and payouts.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? AcceptsOnlinePayments { get; set; }
+
+    /// <summary>The version of the privacy notice a booking records (<c>Suppliers:Showcase:PrivacyNoticeVersion</c>); left out when not configured.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PrivacyNoticeVersion { get; set; }
 }
 
 /// <summary>The owner's preview of the public showcase and where it will be (or is) published.</summary>

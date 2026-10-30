@@ -526,6 +526,24 @@ public static class ShowcaseContentRules
         return changes;
     }
 
+    /// <summary>
+    /// The active services in the order the supplier published (<see cref="ShowcaseContentDocument.ServiceOrder"/>): an empty order is every
+    /// service as the catalog has it; otherwise only the services of the order, in that order, and the ones that are not in it are not shown.
+    /// A slug of the order that is not active any more is simply not there.
+    /// </summary>
+    public static IReadOnlyList<SupplierPublicService> ApplyServiceOrder(
+        IReadOnlyList<SupplierPublicService> services,
+        IReadOnlyList<string> order)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(order);
+        if (order.Count == 0)
+            return services;
+
+        var bySlug = services.ToDictionary(service => service.Slug, StringComparer.Ordinal);
+        return order.Distinct(StringComparer.Ordinal).Where(bySlug.ContainsKey).Select(slug => bySlug[slug]).ToList();
+    }
+
     /// <summary>The state the editor shows (never stored).</summary>
     public static ShowcaseContentState StateOf(bool published, bool paused, bool hasChanges)
     {

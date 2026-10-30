@@ -32,7 +32,18 @@ internal static class LeaseLetterData
             [LeaseLetterPlaceholders.ContractType] = ContractTypeText(lease.ContractType),
             [LeaseLetterPlaceholders.StartDate] = Day(RomeCalendar.DateInRome(lease.StartDate)),
             [LeaseLetterPlaceholders.PeriodEnd] = Day(RomeCalendar.DateInRome(lease.CurrentTermEndDate)),
+            [LeaseLetterPlaceholders.NeedReason] = OneLine(lease.TransitoryNeed),
         };
+    }
+
+    /// <summary>A text the landlord typed, as it goes into a sentence: on one line, without the stops that would meet the one the sentence has; <c>null</c> when there is none.</summary>
+    private static string? OneLine(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var line = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).TrimEnd('.', ',', ';', ':');
+        return line.Length == 0 ? null : line;
     }
 
     /// <summary>A day as a person writes it in a letter: «31 ottobre 2030».</summary>

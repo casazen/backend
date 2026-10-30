@@ -321,6 +321,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingService, BookingService>();
         // Public availability of the booking site, same nights as the booking checks (BK-05).
         services.AddScoped<IPublicAvailabilityService, PublicAvailabilityService>();
+        // The calendar of a property on the booking site: availability and price of every night, from the quote's own functions (DB-03b).
+        services.AddScoped<IPublicCalendarService, PublicCalendarService>();
         // Host dashboard KPIs per period and iCal feeds widget (PC-16).
         services.AddScoped<IHostDashboardService, HostDashboardService>();
         // The host's day in one read: stays of the day, requests, things to do (SR-03). What the cockpit items lack is a service apart.
@@ -495,6 +497,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();
         // Fiscal report per lease for the accountant (LR-11b): the rules of the tax advisory (LT-08) on the leases of the scope.
         services.AddScoped<ILongRentFiscalReportService, LongRentFiscalReportService>();
+        // The tenants of the area (LR-09): the people read from the parties of the leases, the copy of their data and their erasure.
+        services.AddScoped<ILongRentTenantService, LongRentTenantService>();
+        // The properties of the area with the APE, the cadastral data, who holds them and the change of mode programmed (LR-07a).
+        services.AddScoped<ILongRentPropertyService, LongRentPropertyService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
@@ -515,6 +521,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertySafetyChecklistService, PropertySafetyChecklistService>();
         // Single evaluation of the activation blockers, suspension and nightly check of the published properties (CO-06).
         services.AddScoped<IPropertyComplianceStatusService, PropertyComplianceStatusService>();
+        // What the host's list shows of each property besides its record: one state, what is missing, the nights (SR-07a).
+        services.AddScoped<IPropertyOverviewService, PropertyOverviewService>();
         services.AddSingleton<IDemoEnvironmentGate, Casazen.Web.Demo.HostDemoEnvironmentGate>();
         services.AddScoped<IDemoEnvironmentService, DemoEnvironmentService>();
         services.AddScoped<ICanoneConcordatoEligibilityService, CanoneConcordatoEligibilityService>();
@@ -641,6 +649,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRequestThreadActions>(provider => provider.GetRequiredService<ServiceRequestService>());
         // Automatic cancellation of the requests nobody answered (SP-04, D8): the recurring job runs only with the flag on.
         services.AddScoped<IServiceRequestAutoCancelService, ServiceRequestAutoCancelService>();
+        // The suppliers a host already asked for a job, for «Le mie app» of the marketplace (MKT, SR-09c): a view of its requests.
+        services.AddScoped<IHostSupplierUsageReader, HostSupplierUsageReader>();
 
         // Booking from a supplier's public showcase (SP-10, flag SupplierShowcaseBooking): hold, e-mail check, request. The options
         // (Suppliers:Showcase, and Suppliers:CustomerIndexKey for the HMAC of the customers' e-mail) are validated at startup: with the
@@ -682,6 +692,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierTodayService, SupplierTodayService>();
         // Supplier inbox, history and request detail: address, date and host contact after the take (SU-08, A4-14).
         services.AddScoped<ISupplierServiceRequestReader, SupplierServiceRequestReader>();
+        // The host's list of interventions with the counters of its chips, and what a request says to its host: the stay, the contact of
+        // the supplier and the action to do (SR-08a).
+        services.AddScoped<IHostServiceRequestReader, HostServiceRequestReader>();
         // The supplier's customers, the page "Clienti": hosts and private customers of the showcase aggregated from the requests (SP-16a).
         services.AddScoped<ISupplierClientsService, SupplierClientsService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();

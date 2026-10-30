@@ -78,7 +78,36 @@ public class LeaseOperationsController(
     }
 
     /// <summary>
-    /// Marks a letter (<c>disdetta</c>, <c>presa-atto-recesso</c>) as sent on <c>sentOn</c> (a day from the start of the lease up to today) by
+    /// The draft of the agreement of the parties to renew or extend the lease, as a PDF, for the period from <c>startsOn</c> to <c>endsOn</c>
+    /// (<c>agreed</c>: an extension to a day agreed on, otherwise the standard renewal). Both parties sign it. 422
+    /// <c>lease_letter_not_applicable</c> (a type that does not renew), <c>lease_renewal_end_invalid</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/letters/rinnovo")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Rinnovo(Guid id, [FromBody] RinnovoLetterDto dto, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        return Pdf(await operations.BuildRinnovoAsync(id, dto.StartsOn!.Value, dto.EndsOn!.Value, dto.Agreed, cancellationToken));
+    }
+
+    /// <summary>
+    /// The draft of the confirmation that the need of a transitory lease goes on, from the landlord to the tenant, as a PDF. 422
+    /// <c>lease_letter_not_applicable</c> when the lease is not a transitory one in force or the need is the tenant's.
+    /// </summary>
+    [HttpPost("{id:guid}/letters/conferma-esigenza")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ConfermaEsigenza(Guid id, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        return Pdf(await operations.BuildConfermaEsigenzaAsync(id, cancellationToken));
+    }
+
+    /// <summary>
+    /// Marks a letter (<c>disdetta</c>, <c>presa-atto-recesso</c>, <c>conferma-esigenza</c>) as sent on <c>sentOn</c> (a day from the start of the lease up to today) by
     /// <c>means</c>: an event in the history of the lease and nothing else, the lease does not change. 200 with the operations of the lease; 404
     /// for a letter that does not exist; 409 <c>lease_not_in_force</c>; 422 <c>lease_letter_date_invalid</c>.
     /// </summary>
@@ -130,6 +159,9 @@ public sealed record PresaAttoRecessoLetterDto(
     [param: Required] DateOnly? ReceivedOn,
     [param: Required, EnumDataType(typeof(TenantWithdrawalReason))] TenantWithdrawalReason? Reason,
     int? NoticeMonths = null);
+
+/// <summary>The agreement to renew or extend the lease: the first and the last day of the period it adds, and whether it is an extension agreed on a day.</summary>
+public sealed record RinnovoLetterDto([param: Required] DateOnly? StartsOn, [param: Required] DateOnly? EndsOn, bool Agreed = false);
 
 /// <summary>A letter marked as sent: the day (<c>yyyy-MM-dd</c>, from the start of the lease up to today) and how.</summary>
 public sealed record MarkLetterSentDto(
