@@ -3722,4 +3722,28 @@
   <data name="PropertySiteProfileTourUrlInvalid" xml:space="preserve">
     <value>The virtual tour must be a Matterport address (https).</value>
   </data>
+  <data name="PropertyFloorPlanNone" xml:space="preserve">
+    <value>Upload the image of the floor plan.</value>
+  </data>
+  <data name="PropertyFloorPlanInvalidType" xml:space="preserve">
+    <value>The floor plan must be a PNG or JPEG image.</value>
+  </data>
+  <data name="PropertyFloorPlanInvalidSize" xml:space="preserve">
+    <value>The image is empty or larger than {0} MB.</value>
+  </data>
+  <data name="PropertyFloorPlanLimitReached" xml:space="preserve">
+    <value>You can upload {0} floor plan levels at most.</value>
+  </data>
+  <data name="PropertyFloorPlanNotFound" xml:space="preserve">
+    <value>This floor plan level does not exist.</value>
+  </data>
+  <data name="PropertyFloorPlanAreaInvalid" xml:space="preserve">
+    <value>The area of the level must be between {0} and {1} m².</value>
+  </data>
+  <data name="PropertyPoiLimitReached" xml:space="preserve">
+    <value>You can add {0} points of interest at most.</value>
+  </data>
+  <data name="PropertyPoiMinutesInvalid" xml:space="preserve">
+    <value>The minutes must be between {0} and {1}.</value>
+  </data>
 </root>
