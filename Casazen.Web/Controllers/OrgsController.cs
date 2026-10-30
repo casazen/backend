@@ -133,6 +133,54 @@ public class OrgsController(
         return Ok(OrgSettingsDto.FromOrg(updated));
     }
 
+    /// <summary>
+    /// The caller org's rules for the requests it sends to suppliers (SP-BKP): whether a request also goes to up to three backup
+    /// suppliers (on by default). Org policy <see cref="CasazenPolicies.OrgBillingAdmin"/>, like the rest of the org's settings.
+    /// </summary>
+    [HttpGet("me/service-request-settings")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    [ProducesResponseType(typeof(OrgServiceRequestSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrgServiceRequestSettingsDto>> GetMyServiceRequestSettings(CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
+
+        var org = await orgService.GetByIdAsync(orgId.Value, cancellationToken);
+        if (org is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        return Ok(new OrgServiceRequestSettingsDto { UseBackupSuppliers = org.SupplierBackupsEnabled });
+    }
+
+    /// <summary>
+    /// Turns on or off the org's default for sending its requests to backup suppliers too (SP-BKP). A request already sent is not touched:
+    /// the choice is read when a request is created.
+    /// </summary>
+    [HttpPut("me/service-request-settings")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    [ProducesResponseType(typeof(OrgServiceRequestSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrgServiceRequestSettingsDto>> UpdateMyServiceRequestSettings(
+        [FromBody] OrgServiceRequestSettingsDto dto,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
+
+        var updated = await orgService.SetSupplierBackupsEnabledAsync(orgId.Value, dto.UseBackupSuppliers, User.GetUserId(), cancellationToken);
+        if (updated is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        return Ok(new OrgServiceRequestSettingsDto { UseBackupSuppliers = updated.SupplierBackupsEnabled });
+    }
+
     /// <summary>Returns available plan tiers and property limits.</summary>
     [HttpGet("plans")]
     [AllowAnonymous]

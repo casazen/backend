@@ -194,6 +194,8 @@ builder.Services.AddScoped<GuestCheckInSendJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
 // SP-04: cancels the service requests nobody answered in time (scheduled only with Features:SupplierRequestAutoCancel on).
 builder.Services.AddScoped<ServiceRequestAutoCancelJob>();
+// SP-BKP: follows the windows of the groups of backup suppliers (always scheduled: the flag only gates the creation of groups).
+builder.Services.AddScoped<ServiceRequestGroupJob>();
 // SP-10: upkeep of the bookings from the suppliers' public showcases (holds, unanswered requests) and the reminders of the day
 // before; both are scheduled whatever the feature flags say.
 builder.Services.AddScoped<ServiceRequestExpiryJob>();

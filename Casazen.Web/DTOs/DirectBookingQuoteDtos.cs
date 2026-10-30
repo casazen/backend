@@ -57,7 +57,8 @@ public class DirectBookingQuoteResponse
     /// <summary>Base price + tourist tax when calculated (the tax is charged with the rest of the total).</summary>
     public decimal TotalPrice { get; set; }
 
-    public string Currency { get; set; } = "EUR";
+    /// <summary>ISO 4217 code of the property (EUR or CHF, <see cref="StayCurrency"/>): every amount here is in it, and the checkout charges in it.</summary>
+    public string Currency { get; set; } = StayCurrency.Default;
 
     /// <summary>What the checkout may offer and promise for this stay (A3-16).</summary>
     public DirectBookingPaymentOptionsDto PaymentOptions { get; set; } = new();
@@ -101,7 +102,7 @@ public class DirectBookingQuoteResponse
 }
 
 /// <summary>
-/// One line of the price breakdown of a quote (DB-03). Amounts are in cents (euro cents, <c>Currency</c> of the quote), whole
+/// One line of the price breakdown of a quote (DB-03). Amounts are in cents (of the <c>Currency</c> of the quote), whole
 /// numbers, so the frontend adds integers and formats once.
 /// </summary>
 public class QuoteLineDto

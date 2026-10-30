@@ -22,6 +22,14 @@ public static class RecurringJobsRegistration
 
         ConfigureServiceRequestAutoCancel(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel));
 
+        // SP-BKP: the groups of backup suppliers are followed whatever the flag SupplierRequestBackups says (it only gates their creation): a
+        // group that exists has its windows, and turning the flag off must not leave its requests hanging. With no group a run finds nothing.
+        recurringJobManager.AddOrUpdate<ServiceRequestGroupJob>(
+            ServiceRequestGroupJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ServiceRequestGroupJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         // SP-10: the upkeep of the bookings from the suppliers' public showcases is registered whatever the flags say. A hold that
         // was made while SupplierShowcaseBooking was on has to lapse, a request nobody answered has to be cancelled and a booking
         // that exists keeps its reminder, also after the flag is turned off; with the flag off these runs just find nothing.

@@ -52,7 +52,6 @@ public sealed class PublicSeoService(
     public const int MaxListedProperties = 50;
 
     private const int MaxImages = 8;
-    private const string Currency = "EUR";
 
     public async Task<SeoPageResult> RenderOrgAsync(string orgSlug, string? requestHost, CancellationToken cancellationToken = default)
     {
@@ -128,7 +127,7 @@ public sealed class PublicSeoService(
                 if (row.MaxGuests > 0)
                     body.Append(". ").Append(SeoHtml.Encode($"{T("SeoLabelGuests")}: {row.MaxGuests}"));
                 if (row.NightlyRate > 0m)
-                    body.Append(". ").Append(SeoHtml.Encode(T("SeoPriceFrom", Money(row.NightlyRate, culture))));
+                    body.Append(". ").Append(SeoHtml.Encode(T("SeoPriceFrom", Money(row.NightlyRate, row.Currency, culture))));
                 body.Append("</li>\n");
             }
 
@@ -233,13 +232,13 @@ public sealed class PublicSeoService(
         if (row.Bathrooms > 0)
             AppendFact(body, T("SeoLabelBathrooms"), row.Bathrooms.ToString(culture));
         if (row.CleaningFee > 0m)
-            AppendFact(body, T("SeoLabelCleaningFee"), Money(row.CleaningFee, culture));
+            AppendFact(body, T("SeoLabelCleaningFee"), Money(row.CleaningFee, row.Currency, culture));
         if (cin is not null)
             AppendFact(body, T("SeoLabelCin"), cin);
         body.Append("</ul>\n");
 
         if (row.NightlyRate > 0m)
-            body.Append("<p>").Append(SeoHtml.Encode(T("SeoPriceFrom", Money(row.NightlyRate, culture)))).Append("</p>\n");
+            body.Append("<p>").Append(SeoHtml.Encode(T("SeoPriceFrom", Money(row.NightlyRate, row.Currency, culture)))).Append("</p>\n");
 
         if (amenityNames.Count > 0)
         {
@@ -272,9 +271,13 @@ public sealed class PublicSeoService(
             // The CIN identifies the unit nationally; without a valid one the (unique) id of the property does.
             cin ?? row.Id.ToString(),
             row.NightlyRate,
-            Currency,
+            StayCurrency.Normalize(row.Currency),
             orgName,
-            orgUrl);
+            orgUrl,
+            row.AreaSqm,
+            row.CheckInFrom,
+            row.CheckOutBy,
+            row.PetsPolicy == PetsPolicy.No);
 
         var breadcrumb = SeoJsonLd.BreadcrumbList([(orgName, orgUrl), (row.Name, canonical)]);
 
@@ -633,11 +636,16 @@ public sealed class PublicSeoService(
         MaxGuests = p.MaxGuests,
         NightlyRate = p.NightlyRate,
         CleaningFee = p.CleaningFee,
+        Currency = p.Currency,
         Amenities = p.Amenities,
         PhotoUrls = p.PhotoUrls,
         CinCode = p.CinCode,
         HouseRules = p.HouseRules,
         CancellationPolicySummary = p.CancellationPolicy != null ? p.CancellationPolicy.Description : string.Empty,
+        AreaSqm = p.AreaSqm,
+        CheckInFrom = p.CheckInFrom,
+        CheckOutBy = p.CheckOutBy,
+        PetsPolicy = p.PetsPolicy,
     };
 
     /// <summary>
@@ -754,8 +762,13 @@ public sealed class PublicSeoService(
     private static string Language() =>
         string.Equals(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, "en", StringComparison.OrdinalIgnoreCase) ? "en" : "it";
 
-    private static string Money(decimal amount, CultureInfo culture) =>
-        "€" + (amount % 1m == 0m ? amount.ToString("0", culture) : amount.ToString("0.00", culture));
+    /// <summary>An amount of a property for a crawler page: <c>€120</c> for the euro, <c>CHF 120</c> for any other code (CHF-MONEY).</summary>
+    private static string Money(decimal amount, string? currency, CultureInfo culture)
+    {
+        var number = amount % 1m == 0m ? amount.ToString("0", culture) : amount.ToString("0.00", culture);
+        var code = StayCurrency.Normalize(currency);
+        return code == StayCurrency.Euro ? "€" + number : code + " " + number;
+    }
 
     /// <summary>The columns of a published property that the crawler pages read.</summary>
     internal sealed class SeoPropertyRow
@@ -773,10 +786,17 @@ public sealed class PublicSeoService(
         public int MaxGuests { get; init; }
         public decimal NightlyRate { get; init; }
         public decimal CleaningFee { get; init; }
+        public string Currency { get; init; } = StayCurrency.Default;
         public List<PropertyAmenity> Amenities { get; init; } = [];
         public List<string> PhotoUrls { get; init; } = [];
         public string? CinCode { get; init; }
         public string HouseRules { get; init; } = string.Empty;
         public string CancellationPolicySummary { get; init; } = string.Empty;
+
+        // What the host said (SR-07a), for the structured data of the page (DB-11a).
+        public int? AreaSqm { get; init; }
+        public TimeOnly? CheckInFrom { get; init; }
+        public TimeOnly? CheckOutBy { get; init; }
+        public PetsPolicy? PetsPolicy { get; init; }
     }
 }

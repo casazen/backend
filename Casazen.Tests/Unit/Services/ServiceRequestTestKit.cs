@@ -97,6 +97,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
             ShowcaseNotifier,
             Microsoft.Extensions.Options.Options.Create(Options),
             NullLogger<ServiceRequestNotifier>.Instance);
+        // SP-REL: the reliability events of the suppliers are written by the real service over the same database, with the default weights.
+        Reliability = new SupplierReliabilityService(
+            db, Agenda, Microsoft.Extensions.Options.Options.Create(RankingOptions), NullLogger<SupplierReliabilityService>.Instance, Clock);
         Payments = new SupplierPaymentService(
             db,
             Gateway,
@@ -111,8 +114,14 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Clock,
             PlatformGateway,
             Customers,
-            Penalties);
+            Penalties,
+            Reliability);
         Matcher = ComuneTestServices.Matcher(db);
+
+        // SP-BKP: the choice of the backup suppliers over a plain ranking (the real one needs the whole supplier service); it is only
+        // reached with the feature flag SupplierRequestBackups on, which the kit leaves off until a test switches it on.
+        BackupSelector = new ServiceRequestBackupSelector(
+            new FakeSupplierRanking(db), Agenda, LegalTestServices.Legal(), db, NullLogger<ServiceRequestBackupSelector>.Instance);
         Service = new ServiceRequestService(
             db,
             new ServiceRequestRepository(db),
@@ -128,7 +137,10 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Payments,
             NullLogger<ServiceRequestService>.Instance,
             Clock,
-            Payments);
+            Payments,
+            Flags,
+            BackupSelector,
+            Reliability);
         Booking = new ShowcaseBookingService(
             db,
             Catalog,
@@ -174,6 +186,12 @@ internal sealed class ServiceRequestTestKit : IDisposable
     public ShowcaseBookingOptions ShowcaseOptions { get; }
 
     public SupplierPaymentsOptions PaymentOptions { get; }
+
+    /// <summary>The weights of the ranking the kit's reliability service uses: the defaults.</summary>
+    public SupplierRankingOptions RankingOptions { get; } = new();
+
+    /// <summary>The reliability events of the suppliers (SP-REL), written by the flows of the kit.</summary>
+    public SupplierReliabilityService Reliability { get; }
 
     public FakeSupplierPaymentGateway Gateway { get; }
 
@@ -223,6 +241,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
     public SupplierPaymentService Payments { get; }
 
     public ServiceRequestService Service { get; }
+
+    /// <summary>The choice of the backup suppliers of a request (SP-BKP), over <see cref="FakeSupplierRanking"/>.</summary>
+    public ServiceRequestBackupSelector BackupSelector { get; }
 
     public ShowcaseBookingService Booking { get; }
 

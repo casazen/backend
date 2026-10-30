@@ -74,6 +74,14 @@ public class SupplierBookingRescheduleRequest : SupplierBookingAccessRequest
     public DateTime? StartUtc { get; set; }
 }
 
+/// <summary>Body of <c>POST api/public/supplier-bookings/messages</c> (SP-10b): who the customer is, and what it writes.</summary>
+public class SupplierBookingMessageRequest : SupplierBookingAccessRequest
+{
+    /// <summary>The message: 1 to 1000 characters of plain text. The attribute only stops an oversized body; the rule is the service's (422 <c>service_request_message_invalid</c>).</summary>
+    [MaxLength(ShowcaseInquiryLimits.MessageMaxLength * 2)]
+    public string? Body { get; set; }
+}
+
 /// <summary>
 /// Body of <c>POST api/public/supplier-bookings/quote/accept</c> and <c>…/quote/reject</c> (SP-04b): who the customer is, and the quote it
 /// read, by the instant the supplier sent it (<c>quote.sentAt</c> of the booking, repeated as it was given). If the supplier replaced the
@@ -138,6 +146,24 @@ public class PublicSupplierBookingViewResponse
 
     /// <summary>What the customer may do now: the page shows exactly these, and the endpoints enforce the same rules.</summary>
     public PublicSupplierBookingActionsDto Actions { get; set; } = new();
+
+    /// <summary>
+    /// <c>Custom</c> for a request on measure (SP-10b): it has no time and no price (<c>startUtc</c>, <c>endUtc</c> and the cancellation terms are the
+    /// day it was made, to be ignored) and a conversation (<see cref="Thread"/>). <b>Left out for every other booking, whose answer is what it always was.</b>
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Kind { get; set; }
+
+    /// <summary>The conversation with the supplier of a request on measure; left out for any other booking.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicSupplierBookingThreadDto? Thread { get; set; }
+
+    /// <summary>
+    /// Where the negotiation of a request on measure is: <c>AwaitingSupplier</c>, <c>InConversation</c>, <c>Agreed</c>, <c>Declined</c> or <c>Closed</c>
+    /// (an open set: the offer of the next task adds states). Left out for any other booking.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Negotiation { get; set; }
 
     /// <summary>SP-15c-a: the money of a booking paid inside CasaZen; left out when the booking is not.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -383,6 +409,35 @@ public class PublicSupplierBookingActionsDto
     public bool CanWithdrawProblem { get; set; }
 }
 
+/// <summary>The conversation of a request on measure, as its customer reads it (SP-10b).</summary>
+public class PublicSupplierBookingThreadDto
+{
+    /// <summary>The request is open and the supplier is active: the customer can write (<c>POST api/public/supplier-bookings/messages</c>).</summary>
+    public bool CanWrite { get; set; }
+
+    /// <summary>In the order they were written; at most 200.</summary>
+    public List<PublicSupplierBookingMessageDto> Messages { get; set; } = [];
+}
+
+/// <summary>One message of the conversation of a request on measure. Plain text; personal data, shown to the two parties only.</summary>
+public class PublicSupplierBookingMessageDto
+{
+    public Guid Id { get; set; }
+
+    /// <summary><c>customer</c>, <c>supplier</c> or <c>system</c>.</summary>
+    public string Author { get; set; } = string.Empty;
+
+    public string Body { get; set; } = string.Empty;
+
+    public DateTime CreatedAt { get; set; }
+
+    /// <summary>
+    /// When the <b>other</b> party first read it; <c>null</c> while it did not. For a message of the supplier, as it was before this reading:
+    /// <c>null</c> marks the ones that are new to the customer.
+    /// </summary>
+    public DateTime? ReadAt { get; set; }
+}
+
 /// <summary>Maps the customer's view of a booking to the API DTO.</summary>
 public static class PublicSupplierBookingViewMapper
 {
@@ -477,6 +532,24 @@ public static class PublicSupplierBookingViewMapper
                 CanReportProblem = view.Actions.CanReportProblem,
                 CanWithdrawProblem = view.Actions.CanWithdrawProblem,
             },
+            Kind = view.Kind == ServiceRequestKind.Custom ? nameof(ServiceRequestKind.Custom) : null,
+            Thread = view.Thread is { } thread
+                ? new PublicSupplierBookingThreadDto
+                {
+                    CanWrite = thread.CanWrite,
+                    Messages = thread.Messages
+                        .Select(message => new PublicSupplierBookingMessageDto
+                        {
+                            Id = message.Id,
+                            Author = AuthorOf(message.Author),
+                            Body = message.Body,
+                            CreatedAt = AsUtc(message.CreatedAt),
+                            ReadAt = message.ReadAt is { } readAt ? AsUtc(readAt) : null,
+                        })
+                        .ToList(),
+                }
+                : null,
+            Negotiation = view.Negotiation,
             Payment = view.Payment is { } payment
                 ? new PublicSupplierBookingPaymentDto
                 {
@@ -505,6 +578,14 @@ public static class PublicSupplierBookingViewMapper
                 }
                 : null,
         };
+
+    /// <summary>The author of a message, as the page names it.</summary>
+    internal static string AuthorOf(ServiceRequestMessageAuthor author) => author switch
+    {
+        ServiceRequestMessageAuthor.Customer => "customer",
+        ServiceRequestMessageAuthor.Supplier => "supplier",
+        _ => "system",
+    };
 
     /// <summary>The party that cancelled, as the page names it. The host never cancels a showcase request.</summary>
     internal static string PartyOf(ServiceRequestActorParty party) => party switch

@@ -746,9 +746,12 @@ One call for the whole site instead of one per house. All anonymous, read only, 
 | `GET …/destinations` | the comuni of the published houses `{ id, label, comune, count }`: `id` is the value of `where` | `PublicRead` |
 | `GET …/properties/{slugOrId}/similar?max=3` | up to 6 other houses: same kind of place (pool, sea, terrace, garden, pets), same comune, near price; cards with the lowest price per night, no stay | `PublicRead` |
 
-- **`stays` card.** `id`, `slug`, `name`, `comune`, `zone` (null until DB-11a), `latitude`/`longitude` **rounded** (§ 11.7, no address anywhere), the first
-  five `photos`, `bedrooms`, `bathrooms`, `maxGuests`, `areaSqm`, the main `amenities` (names of `PropertyAmenity`, six at most), `tags` (empty until DB-11a),
-  `rating {count, average}` (`null` without public reviews), `availability` and `price`.
+- **`stays` card.** `id`, `slug`, `name`, `comune`, `zone` (`{it, en}` as the host wrote it, `null` = not said), `latitude`/`longitude` **rounded** (§ 11.7, no address anywhere), the first
+  five `photos`, `bedrooms`, `bathrooms`, `maxGuests`, `areaSqm`, the main `amenities` (names of `PropertyAmenity`, six at most), `tags` (the labels of the house: the ones the host chose and the ones
+  its data give, § 14),
+  `rating {count, average}` (`null` without public reviews), `availability`, `price` and, **with dates**, `cancellation` `{ fullRefundUntil, partialRefundPercent,
+  partialRefundUntil, selfServiceAvailable }`: what cancelling costs for that stay on the policy of the house with what the host changed of it, the dates of the quote
+  of the same stay (§ 11.2a, Europe/Rome, a date already past is `null`); `null` without dates and for a house with no cancellation policy.
 - **`availability`** `{ available, reason, minNights, firstFreeCheckIn }`. `reason`, in this order: `past` (check-in before today), `not_bookable`
   (the host cannot take a payment yet, § 11.5), `guests` (the party is larger than `maxGuests`), `pets` (`pets=true` and the house refuses pets; «on request»
   does not refuse), `busy` (a night is taken: booking, hold, request, iCal or manual block, the same read as § 11.9), `min_nights`. A house that is not free **stays in
@@ -765,8 +768,8 @@ One call for the whole site instead of one per house. All anonymous, read only, 
   +7, +10, +14, +21 days (not before today), with `availableCount` (houses that sleep the party, accept the pet and are free) and `fromPerNightCents`; oldest first.
 - **Filters.** `where` (a destination `id` or a comune name), `bedrooms`/`bathrooms`/`minSqm` (at least; a house that did not say its size is not shown for `minSqm`),
   `minPrice`/`maxPrice` (per night, on `perNightCents`), `amenities` (names of `PropertyAmenity`, the house has all), `rules` = `pets` (accepts pets), `selfCheckin`
-  (amenity), `smoking` (rule «yes», else the amenity), `parties` (rule «on request»). **Not applied, and said so** in `unsupportedFilters`: `tags` (the labels of the houses
-  are DB-11a), `rules:children` (the house rule about children is DB-11a), and any unknown amenity or rule (`amenities:Foo`). Never an error.
+  (amenity), `smoking` (rule «yes», else the amenity), `parties` (rule «on request»), `children` (only a house whose host said that children are welcome); `tags` (`mare,centro,piscina,pet,campagna,terrazza,vista-mare`: the house has
+  all of them, the host's and the data's). **Not applied, and said so** in `unsupportedFilters`: a value no house can match (`amenities:Foo`, `rules:Foo`, `tags:Foo`). Never an error.
 - **Sort** `recommended` (default: by name, until the editor can order the houses), `priceAsc`, `priceDesc` (on the total, per night without dates), `rating`, `largest`;
   `page` from 1 and `pageSize` (50 at most; left out, every house).
 - **Errors.** 422 `public_stays_dates_invalid` (one date only, departure not after arrival, more than 366 nights); 422 `public_site_calendar_range_invalid`; 400 for a
@@ -777,6 +780,24 @@ One call for the whole site instead of one per house. All anonymous, read only, 
   of the stay (1) and the ratings (1); the taken nights are loaded from 21 days before the check-in to 150 days after it. The answer of `stays` and of the site calendar is
   **kept for `PublicRead__CacheSeconds` seconds** (30 by default, `0` = off) in a bounded cache (256 answers, a new one is simply not kept when it is full), per org and
   query; nothing invalidates it (`generatedAt` says when it was worked out, the quote and the checkout never read it, so a stale list cannot make a booking wrong).
+
+#### 11.4b The same search across all the sites: `/api/public/stays` (the public `/search` of CasaZen)
+
+The same contract and the same functions (`PublicStayPlanner`, `StayPricing`, `TouristTaxCalculator`: one definition of price and availability), with `scope = Platform`; no flag, no
+migration. `GET api/public/stays` (the parameters of `stays`), `GET api/public/stays/calendar?where&from&to&adults&children` and `GET api/public/stays/destinations`; same limits
+(`PublicStaySearch` 60 / min per IP; `destinations` `PublicRead`). The old `GET api/properties/search` is untouched.
+
+- **Which houses.** Published (`PublicListing.IsPublished`, which includes «Mostra la casa sul sito»), of an active org, **and of an org that can take a booking now**
+  (`Org.AcceptsDirectPayments`): a card that ends on «not bookable» is not offered. At most 500 houses are read (by name; past that a search that does not run in memory is needed,
+  debt SEARCH-GLOBAL-FU3); the written comune of each house feeds `destinations` (100 places at most).
+- **What changes from a site.** `where` is what the visitor typed: the id of a destination, or any text that the comune or the zone the host wrote contains, or a phrase that contains the
+  comune (`lago di como`). `recommended` is the best rated first (then by name). **Only the houses that are free for the stay are listed in `items`**, paged (`pageSize` 24 by default, 50
+  at most): `totalCount` counts the houses that pass the filters, `availableCount` the free ones, and `alternatives` still come when none is free.
+- **The card** is the one of `stays` plus `orgSlug` and `hostName` (the name the host chose for the site, else the name of the org): the site of the house is `/book/{orgSlug}/property/{slug}`.
+  The position is the rounded one (§ 11.7), no address.
+- **`facets`** (only here): over the houses of the place asked, before the other filters: `minNightCents`/`maxNightCents` (base rates), `maxGuests`, `minAreaSqm`/`maxAreaSqm`, `petsAllowed`,
+  `tags [{tag, count}]`: what the sliders, the guests and the label chips of the page offer.
+- **Cache** as § 11.4a, keys `platform-stays`, `platform-calendar` and `platform-destinations`.
 
 ### 11.5 Public host data and `acceptsBookings`
 
@@ -925,6 +946,48 @@ writes a few lines to the host, who gets them by email and answers from their ma
 - **Not done here.** A copy or a receipt to the visitor, a per-org cap against a distributed flood, a thread of the conversation in the
   app, the languages of the email to the host (Italian only).
 
+### 11.10 Writing to the host: «Scrivi a {host}» (DB-03b)
+
+`POST /api/public/orgs/{slug}/contact` (anonymous, no flag, no migration, no entity): a visitor of the booking site who has no booking yet
+writes a few lines to the host, who gets them by email and answers from their mailbox.
+
+```json
+{ "email": "anna@example.com", "message": "Ciao, c'è posto a Ferragosto?", "name": "Anna", "propertyId": "…", "lang": "en",
+  "consent": true, "website": "" }
+```
+
+- **Answer.** `202` with no body, **the same for every org that exists**: whether it publishes its contact email on the site
+  (`ContactEmailPublic` is about showing the address, the form never shows it), has one or not, and whether the honeypot caught the call.
+  The answer never says whether the message reached anybody. `404` for a site that does not resolve (its former slugs do, PL-04); `400`
+  `validation_error` for a body that breaks the limits, `host_contact_consent_required` when `consent` is not `true`,
+  `host_contact_email_invalid` (a plain address only, no display name), `host_contact_message_invalid` (5 to 2000 characters once trimmed);
+  `429` `rate_limited` (see below). The body is capped at 16 KB; `name` up to 100 characters; `lang` is `it` or `en` (anything else is
+  ignored); `propertyId` counts only if it is a published property of that org, otherwise it is ignored and tells nothing.
+- **Honeypot.** `website` is a field no person fills: when it has a value the call is answered `202` and nothing is sent.
+- **Limits.** Per client IP (`PublicContact`, 5 / 10 min) and per address and org (`HostContactPerEmail`, 3 / day, counted under the id of
+  the org, so a former slug shares the budget; its 429 always names the whole window). Variables in [proxy-ip.md](proxy-ip.md).
+- **The email** (`host-contact-message`, one per accepted message, to `Orgs.ContactEmail`, in Italian like the other emails to the host)
+  carries the text of the visitor (HTML-encoded, line breaks kept), their address and name, the property with a link to its page and the
+  language of the site they were reading; the subject has no personal data. Its **`Reply-To` is the visitor's address**, so the host answers
+  by replying; the sender stays the configured one (`EmailContent.ReplyTo`, `IEmailService.SendEmailAsync(…, replyTo)`; a message with a
+  reply-to goes through its own Hangfire job `SendWithReplyToAsync`, the emails without it through the job they always used). It is the
+  consequence of a person's action (the visitor sent the form), never automatic, and it is the only email that leaves.
+- **Privacy.** Nothing is stored. The log has the org id and whether the email was queued, never the address, the name or the text. The text
+  lives in the Hangfire job of the email until the job is deleted, like the body of every other email. An org without a contact email
+  drops the message quietly (log line with the org id).
+- **Not done here.** A copy or a receipt to the visitor, a per-org cap against a distributed flood, a thread of the conversation in the
+  app, the languages of the email to the host (Italian only).
+
+### 11.11 The amenity catalog (DB-11a)
+
+`GET api/public/amenities` (anonymous, `PublicRead` limit, `Cache-Control: public, max-age=3600`) is the reference list the public property page
+reads so it never shows a raw code: `groups` (the five of the design, in order: `comfort`, `kitchen`, `bedbath`, `outdoor`, `safety`, each with
+`label {it, en}`) and `amenities`, one entry for **every** `PropertyAmenity` (`name` is the enum member name, which is what `amenities` of the public
+property DTOs carries; `icon` is an icon of the booking site; `group`; `label {it, en}`). The labels say what the amenity says and no more (`Pool` is
+«Piscina», not «Piscina privata»: the host's data do not tell whether it is shared). The list lives in code (`AmenityCatalog`); a new amenity without an
+entry fails `PublicAmenityCatalogIntegrationTests`. The design lists five services the enum does not have (bed linen, hair dryer, loungers, outdoor
+shower, sea view): they are not in the catalog and a host cannot state them until the enum grows (append only).
+
 ## 12. Who runs the site: operator data in the footer (DB-03b-a)
 
 Task DB-03b-a of the redesign wave (reduced DB-03b, decision DB-D14 (a)). The booking site of a host shows, in its footer, the
@@ -1018,8 +1081,42 @@ What is read by the public page, the JSON-LD, the amenity catalog and the filter
   `_energy_class_invalid`, `_energy_index_invalid`, `_energy_index_without_class`, `_check_in_window_invalid`, `_too_many_highlights`, `_too_many_safety_notes`.
 - **Migration `AddPropertySiteProfile`**: eleven nullable columns and four constraints on `Properties`, no data touched, no flag, no environment variable.
   Rollback: deploy the previous release (it ignores the columns); `Down` drops them and what the hosts wrote is lost.
-- **Not here** (next pieces of DB-11a): the public property page and its JSON-LD reading this profile, the amenity catalog, the filters of the search on
-  labels and children, floor plans and points of interest, alternative text and size of the photos.
+- **The public page (second piece).** `profile` in `PublicPropertyDetailDto`, on both routes (`GET api/public/orgs/{slug}/properties/{slugOrId}` and
+  `GET api/properties/{id}/public`; one projection, `PropertyService.DetailRow`, built by `PublicPropertyProfileBuilder`): `headline` (the listing title of the
+  wizard), `accommodationType`, `beds`, `areaSqm`, `floorLevel`, `floorNote`, `outdoorNote`, `renovatedYear`, `energy {class, index}`, `areaKind`, `zone`, `near`,
+  `tags` (the host's and the ones the data give, in the order of the vocabulary), `highlights`, `safetyNotes`, `rules` and the `video` / `tour` (`{url, provider}`).
+  **Only what the host said**: a member never said is `null` (a list: empty), `rules` is `null` when none of its members is set, and the page does not draw
+  that section. `rules` = `checkIn {from, to, method}`, `checkOutBy`, `quietHours {from, to}` (a pair or nothing), `pets` / `smoking` / `parties` (the wizard's
+  answers: `No`, `OnRequest`/`OutdoorsOnly`, `Yes`), `childrenWelcome`, `note`. A latest arrival that is not after the earliest (the wizard moved the
+  earliest later) is left out. The extra-guest fee of the wizard is **not** published: the quote does not charge it (SR-07a-FU1). Texts are `{it, en}`; the page
+  shows English only when the host wrote it. The columns that hold the texts as stored (`SiteProfileJson`, `PhotoAltJson`) are never part of a response.
+- **JSON-LD** of the property page (`VacationRental`): `containsPlace.floorSize` (m², `MTK`), `checkinTime`, `checkoutTime` and `petsAllowed` are written when the host
+  stated them (`false` only when the pets rule says No); nothing else is added, no `aggregateRating`.
+- **Demo.** The showcase property «Villa del Lago» carries a site profile (scenario `property-site-profile`, catalog `2026-10-30.1`), applied through the same rules as the
+  host form; no video or tour (nothing of a third party is embedded from a demo).
+- **Photos: alternative text and size (third piece).** `GET` / `PUT api/properties/{id}/site-profile/photos` (same permissions as the profile): the gallery in display order, each
+  photo `{ url, alt {it, en}, width, height }`. The `PUT` lists the photos that have an alternative text (Italian always, English if the host wants, 200 characters, same rules as the
+  texts above, `field: photos`) and the gallery photos it does not list **lose theirs**; an address that is not in the gallery is 404 `property_photo_not_found`; the size is not
+  part of the body. The map lives in `Properties.PhotoAltJson` and **follows the gallery under the same lock as the photo service**: an upload reads the size of the
+  file (PNG, JPEG or WebP header, no decoding; a JPEG a phone took on its side gives its width and height swapped, as the browser draws it; unreadable = no size, the upload is
+  never refused for it) and a deleted photo takes its text and size with it. A photo uploaded before this existed has no size. The public detail lists `photos` next to
+  `photoUrls`, which stays. **No resized variants**: nothing in the stack resizes images (no library, no CDN transform), so `srcset` is left to a later decision; the size lets the page
+  reserve the room and load the first photo with priority.
+- **Floor plan (fourth piece).** `GET` / `POST` / `PUT {planId}` / `DELETE {planId}` on `api/properties/{id}/site-profile/floor-plans` (same permissions): at most **six levels**, each a **PNG or
+  JPEG of 5 MB at most checked on its content** (a text named `.png` is 422 `property_floor_plan_invalid_type`), uploaded as multipart (`image`, `nameIt` required, `nameEn`,
+  `level` -3 to 60 with 0 = ground floor, `areaSqm`), stored in the property's own folder of the public bucket (`properties/{id}/floorplans/`), its size read from the file. The page lists the
+  levels lowest floor first. 422 `property_floor_plan_none` / `_invalid_type` / `_invalid_size` / `_limit_reached` / `_area_invalid` and the usual `property_site_profile_*` with the `field`;
+  404 `property_floor_plan_not_found`. Deleting removes the object first and the row after; the limit is checked under the property's media lock (the one of the photos).
+- **Points of interest (fourth piece).** `GET` / `PUT api/properties/{id}/site-profile/pois`: the host sends the whole list (**twelve at most**, an empty list removes them all):
+  `kind` (`Beach`, `Food`, `Shop`, `Transport`, `Sight`, `Health`, `Parking`), `name` (Italian required), `mode` (`Walk`/`Car`), `minutes` (1 to 600), `direction` (one of eight points:
+  `N` `NE` `E` `SE` `S` `SW` `W` `NW`) and `distanceMeters`. **Privacy**: a point is never a position. The side is one of eight points, the distance is **stored rounded** (100 m below 1 km,
+  250 m below 5 km, 500 m below 20 km, then 1 km) and **never closer than 200 m**, and nothing is worked out from the coordinates of the property: a known place a few metres away on
+  a known side would give the door away whatever the rounding of the coordinates. 422 `property_poi_limit_reached`, `property_poi_minutes_invalid`, `property_site_profile_italian_required` (`field: pois`).
+- **Public page.** `profile.floorPlans` `[ { id, level, name, imageUrl, width, height, areaSqm } ]` and `profile.pois` `[ { kind, name, mode, minutes, direction, distanceMeters } ]`, both on the
+  detail only, never in a list. The demo property «Villa del Lago» carries four points (catalog `2026-10-30.2`); no floor plan image in a demo.
+- **Migration `AddPropertyFloorPlansAndPois`**: two new tables (`PropertyFloorPlans`, `PropertyPois`, tenant-owned, cascade with their property) and their constraints; no existing row is touched.
+  Rollback: `Down` drops them (what the hosts entered is lost; the image objects stay in the bucket).
+- **Not here**: the amenity catalog is `GET api/public/amenities` (§ 11.11) and the filters of the search on labels and children are in § 11.4a.
 - **Tests.** Unit: `SiteEmbedUrlsTests` (what an embed address can become), `SitePropertyProfileRulesTests` (clean, canonical, within the limits and the
   vocabularies). HTTP: `PropertySiteProfileIntegrationTests` (replace, read back, a mistake saves nothing, another org / a colleague / anonymous / long-term).
   PostgreSQL (CI): `AddPropertySiteProfileMigrationPostgresTests` (existing properties come out empty and published as before; the constraints), `LegacyRowsSchemaTests`.

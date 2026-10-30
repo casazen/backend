@@ -165,6 +165,16 @@ public sealed class ShowcaseBookingManager(
         return await AfterAsync(found, cancellationToken);
     }
 
+    public async Task<ShowcaseBookingView> PostMessageAsync(
+        ShowcaseBookingCredentials credentials,
+        string? body,
+        CancellationToken cancellationToken = default)
+    {
+        var found = await IdentifyAsync(credentials, cancellationToken);
+        await actions.PostMessageAsCustomerAsync(found.Row.Id, found.Supplier.OrgId, body, cancellationToken);
+        return await AfterAsync(found, cancellationToken);
+    }
+
     // ─── Who is asking ───────────────────────────────────────────────────────────────────────────────────────────────
 
     private sealed record Found(SupplierRow Supplier, ShowcaseBookingRow Row);
@@ -227,6 +237,10 @@ public sealed class ShowcaseBookingManager(
             : null;
         var published = service is { IsRequestable: true };
         var supplierActive = supplier.Status == SupplierStatus.Active;
+
+        // The conversation of a request on measure (SP-10b): read now, which marks what the supplier wrote as read by the customer.
+        var onMeasure = row.Kind == ServiceRequestKind.Custom;
+        var thread = onMeasure ? await actions.ReadThreadAsCustomerAsync(row.Id, supplier.OrgId, cancellationToken) : null;
 
         var start = row.ScheduledStartUtc ?? row.CreatedAt;
         var end = row.ScheduledEndUtc ?? start;
@@ -307,9 +321,12 @@ public sealed class ShowcaseBookingManager(
             proposal,
             cancellation,
             row.Status == ServiceRequestStatus.Rifiutato && !string.IsNullOrWhiteSpace(row.RejectionReason) ? row.RejectionReason : null,
-            new ShowcaseBookingCancellationTerms(
-                ShowcaseBookingManagementRules.FreeCancellationUntil(start, hours),
-                ShowcaseBookingManagementRules.IsFreeCancellation(start, now, hours)),
+            // A request on measure has no work to start: closing it is always free (and its start is the day it was made).
+            onMeasure
+                ? new ShowcaseBookingCancellationTerms(start, IsFree: true)
+                : new ShowcaseBookingCancellationTerms(
+                    ShowcaseBookingManagementRules.FreeCancellationUntil(start, hours),
+                    ShowcaseBookingManagementRules.IsFreeCancellation(start, now, hours)),
             new ShowcaseBookingActions(
                 ShowcaseBookingManagementRules.CanCancel(row.Status, row.ScheduledStartUtc, now),
                 ShowcaseBookingManagementRules.CanReschedule(row.Status, row.ScheduledStartUtc is not null, supplierActive, published, quotePending),
@@ -318,6 +335,9 @@ public sealed class ShowcaseBookingManager(
                 canConfirmOk,
                 canReportProblem,
                 disputeOpen),
+            row.Kind,
+            thread,
+            thread is null ? null : ServiceRequestNegotiation.Of(row.Status, thread.Messages.Any(m => m.Author == ServiceRequestMessageAuthor.Supplier)),
             quote,
             payment);
     }
@@ -446,6 +466,7 @@ public sealed class ShowcaseBookingManager(
                 LocationCity = r.LocationCity,
                 LocationPostalCode = r.LocationPostalCode,
                 CreatedAt = r.CreatedAt,
+                Kind = r.Kind,
             });
 
     /// <summary>
@@ -532,5 +553,7 @@ public sealed class ShowcaseBookingManager(
         public string? LocationPostalCode { get; init; }
 
         public DateTime CreatedAt { get; init; }
+
+        public ServiceRequestKind Kind { get; init; }
     }
 }

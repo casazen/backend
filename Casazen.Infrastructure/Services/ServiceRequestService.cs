@@ -2,6 +2,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
@@ -53,7 +54,10 @@ public partial class ServiceRequestService(
     ISupplierPaymentService payments,
     ILogger<ServiceRequestService> logger,
     TimeProvider? timeProvider = null,
-    ISupplierFundsService? funds = null) : IServiceRequestService
+    ISupplierFundsService? funds = null,
+    IFeatureFlags? featureFlags = null,
+    ServiceRequestBackupSelector? backupSelector = null,
+    ISupplierReliabilityService? reliability = null) : IServiceRequestService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -131,6 +135,9 @@ public partial class ServiceRequestService(
         command = await EnsureTimedCreateCommandAsync(command, service, cancellationToken);
         var schedule = ResolveCreateSchedule(command, service);
 
+        // SP-BKP: the backups the same request is sent to, declared as such. Chosen before the lock (a few reads), added to the same save below.
+        var backupSuppliers = await SelectBackupsAsync(command, property, category, schedule, cancellationToken);
+
         var now = Now();
         var request = new ServiceRequest
         {
@@ -160,6 +167,7 @@ public partial class ServiceRequestService(
         var comune = property.City;
         var supplierEmail = notifier.RenderCreatedEmail(request, supplier.LegalName, comune);
 
+        IReadOnlyList<(ServiceRequest Request, SupplierProfile Supplier)> backups = [];
         IDbContextTransaction? transaction = await LockSupplierCalendarAsync(command.SupplierOrgId, cancellationToken);
         await using (transaction)
         {
@@ -174,12 +182,20 @@ public partial class ServiceRequestService(
             // SP-04d: with the slot checked, the request of a regular host is saved already taken, in this same transaction.
             await AcceptAutomaticallyIfRegularAsync(request, command, supplier, service, cancellationToken);
 
+            // SP-BKP: a request that waits for its supplier's answer is tied to its backups in the same save; one that was accepted by the
+            // supplier's own rule has nothing to wait for, so it has no backups. The primary's window is the hour of the rule, not the 120 minutes.
+            if (!request.AutoAccepted && backupSuppliers.Count > 0)
+                backups = AttachBackupGroup(request, backupSuppliers, slotPlanned: command.DurationMinutes is null, now);
+
             await repository.AddAsync(request, cancellationToken);
             await CommitAsync(transaction, cancellationToken);
         }
 
         if (!request.AutoAccepted)
             await notifier.QueueCreatedAsync(request, supplier.Email, supplierEmail, comune, cancellationToken);
+
+        if (backups.Count > 0)
+            await notifier.NotifyBackupsInvitedAsync(backups, comune, request.ResponseDueAt!.Value, cancellationToken);
 
         logger.LogInformation(
             "ServiceRequest {Id} ({RentalContext}) created by {UserId} for property {PropertyId} booking {BookingId} supplier {SupplierOrgId}",
@@ -402,7 +418,16 @@ public partial class ServiceRequestService(
         CancellationToken cancellationToken = default)
     {
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
+        EnsureNotOnMeasure(request);
+
+        // A backup closed by the race (another backup accepted first) is told so plainly: 409, and it loses nothing.
+        ThrowIfRaceClosed(request);
         EnsureCan(request, ServiceRequestStatus.PresoInCarico, ServiceRequestErrorCodes.CannotTakeMessageKey);
+
+        // The deadline the request had when the supplier answered: the take clears it, the ranking (SP-REL) needs it. The group role
+        // changes with the take (the backup that gets the job is promoted), so it is read now.
+        var dueBeforeAnswer = await ReplyDeadlineAsync(request, cancellationToken);
+        var answeredAsBackup = request.GroupRole == ServiceRequestGroupRole.Backup;
 
         if (command?.QuotedAmountCents is { } quote)
         {
@@ -420,12 +445,32 @@ public partial class ServiceRequestService(
         // can take charges and payouts: no payment before the KYC).
         var paymentMode = await ResolvePaymentModeAsync(request, cancellationToken);
 
-        // Always under the calendar lock: two takes of the same day must not both pass the overlap check.
-        IDbContextTransaction? transaction = await LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
+        // Always under the calendar lock: two takes of the same day must not both pass the overlap check. A request of a group of backup
+        // suppliers (SP-BKP) first takes the lock of its group, always in this order.
+        IDbContextTransaction? transaction = await LockSupplierCalendarAsync(supplierOrgId, request.GroupId, cancellationToken);
+        GroupClosure? closure = null;
         await using (transaction)
         {
+            // The group is read again under its lock and the take is judged by its rules: the primary has its window, a backup waits for it or
+            // takes the job in its turn. From here on the request is the one committed now (the tracker was cleared to read it).
+            GroupTake? groupTake = null;
+            if (request.GroupId is { } groupId)
+            {
+                groupTake = await RequireGroupTakeAsync(id, groupId, cancellationToken);
+                request = groupTake.Request;
+            }
+
             if (schedule is not null)
+            {
                 await EnsureSlotFreeAsync(supplierOrgId, schedule, exceptRequestId: request.Id, cancellationToken);
+            }
+            else if (groupTake is { Request.GroupRole: ServiceRequestGroupRole.Backup, State.Group.SlotPlanned: true })
+            {
+                // A backup did not hold the slot: the time the host picked among the primary's slots must be one of its own now that it gets the job.
+                var backupSchedule = await ResolveScheduleAsync(
+                    request, supplierOrgId, request.ScheduledStartUtc!.Value, request.ScheduledEndUtc, cancellationToken);
+                await EnsureSlotFreeAsync(supplierOrgId, backupSchedule, exceptRequestId: request.Id, cancellationToken);
+            }
 
             await EnsureNoOverlappingCommitmentAsync(
                 supplierOrgId,
@@ -437,6 +482,10 @@ public partial class ServiceRequestService(
             // SP-15c-a: accepting charges the customer's card, before the request changes state: if the card cannot be charged (the block
             // lapsed, the bank refuses) the take does not happen and the supplier is told why (409).
             await CaptureHeldMoneyAsync(request, cancellationToken);
+
+            // The others of the group are closed in the same save as the take: either the job is this supplier's and the rest is over, or nothing.
+            if (groupTake is not null)
+                closure = CloseGroupAfterTake(groupTake, Now());
 
             await TransitionAsync(
                 request,
@@ -464,7 +513,17 @@ public partial class ServiceRequestService(
             await CommitAsync(transaction, cancellationToken);
         }
 
-        await notifier.NotifyHostAsync(request, cancellationToken);
+        await RecordReplyAsync(request, dueBeforeAnswer, answeredAsBackup, cancellationToken);
+
+        // The host learns who has the job; when a backup took it in place of the primary, it is told so.
+        if (closure is { WinnerIsBackup: true })
+            await notifier.NotifyHostBackupTookOverAsync(request, cancellationToken);
+        else
+            await notifier.NotifyHostAsync(request, cancellationToken);
+
+        if (closure is not null)
+            await NotifyClosureAsync(closure, cancellationToken);
+
         return request;
     }
 
@@ -622,6 +681,7 @@ public partial class ServiceRequestService(
 
         // The link goes out after the save, and only the winner of the transition sends it.
         await payments.AnnounceAsync(plan, request, cancellationToken);
+        await RecordCompletedAsync(request, cancellationToken);
         await notifier.NotifyHostAsync(request, cancellationToken);
         return request;
     }
@@ -635,6 +695,8 @@ public partial class ServiceRequestService(
         // The API requires a reason of at most 500 characters (400 validation_error, A4-18): a blank one is a bug here.
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
+        var wasWaitingBackup = request.GroupRole == ServiceRequestGroupRole.Backup;
+        var dueBeforeAnswer = await ReplyDeadlineAsync(request, cancellationToken);
 
         await TransitionAsync(
             request,
@@ -648,11 +710,19 @@ public partial class ServiceRequestService(
             },
             cancellationToken);
 
-        // A6-08: the host learns of the rejection by email and push, like of the other supplier decisions.
-        await notifier.NotifyHostAsync(request, cancellationToken);
+        // Saying no in time is an answer in time (SP-REL): the host can ask somebody else at once. A backup's counts as a backup's.
+        await RecordReplyAsync(request, dueBeforeAnswer, wasWaitingBackup, cancellationToken);
+
+        // A6-08: the host learns of the rejection by email and push, like of the other supplier decisions. Not of a backup's: the host did not
+        // choose it, and the group goes on without it.
+        if (!wasWaitingBackup)
+            await notifier.NotifyHostAsync(request, cancellationToken);
 
         // SP-15c-a: the block on the customer's card goes with the refusal.
         await SettleClosedMoneyAsync(request, cancellationToken);
+
+        // SP-BKP: a refusal changes the group (the primary is out, or a backup is): it is looked at right away.
+        await ResolveGroupAfterChangeAsync(request.GroupId, cancellationToken);
         return request;
     }
 
@@ -689,9 +759,14 @@ public partial class ServiceRequestService(
     {
         var request = await repository.GetByIdAsync(id, cancellationToken);
 
-        // Another org's request, and one from a supplier's showcase, are answered exactly like a missing one.
-        if (request is null || request.OrgId != hostOrgId || request.RentalContext == ServiceRequestRentalContext.Showcase)
+        // Another org's request, one from a supplier's showcase and a backup's that waits are answered exactly like a missing one.
+        if (request is null
+            || request.OrgId != hostOrgId
+            || request.RentalContext == ServiceRequestRentalContext.Showcase
+            || !ServiceRequestGroupRules.IsVisibleToHost(request.GroupRole))
+        {
             throw RequestNotFound(id);
+        }
 
         // SP-15a, decision D5: a request paid inside CasaZen is paid with the link (the commission is part of it). The host cannot
         // mark it paid by hand; the only exception is the supplier's, traced (api/supplier/requests/{id}/payment/offline).
@@ -961,9 +1036,15 @@ public partial class ServiceRequestService(
     {
         var request = await repository.GetByIdAsync(id, cancellationToken);
 
-        // The host never reaches a request of a supplier's public showcase (SP-10), even when the supplier org is also its org.
-        if (request is null || request.OrgId != hostOrgId || request.RentalContext == ServiceRequestRentalContext.Showcase)
+        // The host never reaches a request of a supplier's public showcase (SP-10), even when the supplier org is also its org. Nor a backup
+        // that waits (SP-BKP): it follows the request of the supplier it chose, and the group is reached through it.
+        if (request is null
+            || request.OrgId != hostOrgId
+            || request.RentalContext == ServiceRequestRentalContext.Showcase
+            || !ServiceRequestGroupRules.IsVisibleToHost(request.GroupRole))
+        {
             throw RequestNotFound(id);
+        }
 
         return request;
     }
@@ -1023,7 +1104,7 @@ public partial class ServiceRequestService(
     }
     /// <summary>The host's org and, for a restricted scope (AM-03), only the requests on the properties the caller reaches.</summary>
     private static IQueryable<ServiceRequest> ApplyHostScope(IQueryable<ServiceRequest> query, HostScope scope) =>
-        query.Where(r => r.OrgId == scope.OrgId).InScope(scope);
+        query.Where(r => r.OrgId == scope.OrgId).InScope(scope).OnlyVisibleToHost();
 
     private static async Task<(IReadOnlyList<ServiceRequest> Items, int Total)> MaterializeServiceRequestPageAsync(
         IQueryable<ServiceRequest> query,

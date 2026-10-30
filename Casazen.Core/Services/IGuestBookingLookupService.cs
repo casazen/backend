@@ -28,9 +28,11 @@ public interface IGuestBookingLookupService
 public sealed record GuestBookingCredentials(string OrgSlug, string BookingCode, string Email);
 
 /// <summary>
-/// One booking as its guest sees it in "Le mie prenotazioni": state, stay, amounts in euro as recorded on the booking,
-/// the host's public contact and the online check-in. No personal data of anyone (the guest typed their own email).
+/// One booking as its guest sees it in "Le mie prenotazioni": state, stay, amounts as recorded on the booking, in the currency of its
+/// property (<paramref name="Currency"/>), the host's public contact and the online check-in. No personal data of anyone (the guest typed
+/// their own email).
 /// </summary>
+/// <param name="Currency">ISO 4217 code of the property (<see cref="StayCurrency"/>, EUR or CHF).</param>
 /// <param name="BookingCode">Formatted, <c>XXXXX-XXXXX</c>.</param>
 /// <param name="Lodging">Nightly part: <c>BasePrice - CleaningFee</c>.</param>
 /// <param name="TotalPrice">Lodging, cleaning and tourist tax.</param>

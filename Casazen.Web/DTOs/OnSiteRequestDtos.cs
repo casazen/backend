@@ -62,7 +62,7 @@ public sealed record BookingApprovalRequestDto(
         booking.NumberOfAdults,
         booking.NumberOfChildren,
         booking.TotalPrice,
-        "EUR",
+        StayCurrency.ForProperty(booking.Property),
         booking.SpecialRequests,
         booking.Guest is null
             ? new BookingGuestDto()

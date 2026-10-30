@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.SiteProfile;
 
 namespace Casazen.Core.Demo;
 
@@ -15,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-10-29.2";
+    public const string Version = "2026-10-30.2";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -58,6 +59,7 @@ public static class DemoShowcaseCatalog
         public const string RoutineActive = "routine-active";
         public const string RoutineTestMode = "routine-test-mode";
         public const string PropertyWizardFields = "property-wizard-fields";
+        public const string PropertySiteProfile = "property-site-profile";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -97,6 +99,7 @@ public static class DemoShowcaseCatalog
         Scenario.RoutineActive,
         Scenario.RoutineTestMode,
         Scenario.PropertyWizardFields,
+        Scenario.PropertySiteProfile,
     ];
 
     /// <summary>
@@ -176,11 +179,44 @@ public static class DemoShowcaseCatalog
             NightlyRate: 180m,
             CleaningFee: 40m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields],
+            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile],
             Profile: new DemoPropertyProfile(
                 AccommodationType.HouseOrVilla, 5, 140, "Villa sul lago con giardino (demo)",
                 new TimeOnly(15, 0), new TimeOnly(10, 0), SmokingPolicy.No, PetsPolicy.OnRequest, PartiesPolicy.No,
                 new TimeOnly(22, 0), new TimeOnly(8, 0), 20m),
+            // DB-11a: what the host says about the house on its public page: invented like the rest of the demo, no video or tour (nothing
+            // of a third party is embedded from a demo).
+            SiteProfile: new SitePropertyProfileInput(
+                FloorLevel: 0,
+                RenovatedYear: 2022,
+                EnergyClass: "C",
+                EnergyIndex: 112.5m,
+                AreaKind: null,
+                ChildrenWelcome: true,
+                CheckInTo: new TimeOnly(20, 0),
+                VideoUrl: null,
+                TourUrl: null,
+                Zone: new LocalizedTextInput("Lungolago di Como (demo)", "Como lakefront (demo)"),
+                Near: new LocalizedTextInput("A cinque minuti a piedi dal lago", "Five minutes on foot from the lake"),
+                FloorNote: new LocalizedTextInput("Piano terra, senza scale", "Ground floor, no stairs"),
+                OutdoorNote: new LocalizedTextInput("Giardino di 300 m² con accesso al lago", "300 m² garden with lake access"),
+                CheckInMethod: new LocalizedTextInput("In autonomia, con cassetta a codice", "Self check-in with a code key box"),
+                RulesNote: new LocalizedTextInput("Dimostrazione: silenzio dopo le 22.", "Demo: quiet after 10 pm."),
+                Highlights:
+                [
+                    new SiteHighlightInput("sunset", new LocalizedTextInput("Vista sul lago", "Lake view"), new LocalizedTextInput("Tramonti dal giardino.", "Sunsets from the garden.")),
+                    new SiteHighlightInput("trees", new LocalizedTextInput("Giardino privato", "Private garden"), null),
+                    new SiteHighlightInput("key", new LocalizedTextInput("Check-in autonomo", "Self check-in"), null),
+                ],
+                SafetyNotes: [new LocalizedTextInput("Rilevatore di fumo", "Smoke detector"), new LocalizedTextInput("Estintore", "Fire extinguisher")],
+                Tags: []),
+            Pois:
+            [
+                new(PoiKind.Beach, "Lido di Como (demo)", "Como lido (demo)", PoiTravelMode.Walk, 6, CompassPoint.S, 450),
+                new(PoiKind.Food, "Trattoria sul lungolago (demo)", "Lakefront trattoria (demo)", PoiTravelMode.Walk, 3, CompassPoint.SE, 250),
+                new(PoiKind.Sight, "Funicolare per Brunate (demo)", "Brunate funicular (demo)", PoiTravelMode.Walk, 15, CompassPoint.NE, 1300),
+                new(PoiKind.Transport, "Stazione di Como San Giovanni (demo)", "Como San Giovanni station (demo)", PoiTravelMode.Car, 10, CompassPoint.W, 3200),
+            ],
             Bookings:
             [
                 new("arrivo", "Giulia", "Bianchi", "ospite.demo.arrivo@example.com", 14, 4, BookingStatus.Confirmed, Scenario.BookingUpcoming),
@@ -493,7 +529,15 @@ public sealed record DemoPropertyTemplate(
     DemoCadastral? Cadastral,
     IReadOnlyList<string> Scenarios,
     IReadOnlyList<DemoBookingTemplate> Bookings,
-    DemoPropertyProfile? Profile = null);
+    DemoPropertyProfile? Profile = null,
+    SitePropertyProfileInput? SiteProfile = null,
+    IReadOnlyList<DemoPoi>? Pois = null);
+
+/// <summary>
+/// A point of interest of a demo property (DB-11a): invented like the rest of the demo. The distance is stored through the same rounding as a host's
+/// (<see cref="PoiDistance"/>), so a demo can never hold a figure a host could not.
+/// </summary>
+public sealed record DemoPoi(PoiKind Kind, string NameIt, string NameEn, PoiTravelMode Mode, int Minutes, CompassPoint Direction, int DistanceMeters);
 
 /// <summary>
 /// The fields of the wizard «Aggiungi immobile» (SR-07a) a demo property carries, so the list and the cards of the host are not

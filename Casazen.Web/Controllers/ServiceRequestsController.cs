@@ -112,7 +112,8 @@ public class ServiceRequestsController(
                 ServiceRequestRentalContext.ShortRent,
                 request.ServiceListingId,
                 request.ScheduledStartUtc,
-                request.DurationMinutes),
+                request.DurationMinutes,
+                request.UseBackupSuppliers),
             cancellationToken);
 
         var dto = await HostDtoAsync(created, orgId.Value, cancellationToken);
@@ -206,9 +207,12 @@ public class ServiceRequestsController(
 
         var result = await hostReader.ListAsync(scope, filters with { Page = page, PageSize = pageSize }, cancellationToken);
 
+        var listed = result.Items.Select(r => (Request: r, Dto: MapDto(r, result.Extras.GetValueOrDefault(r.Id)))).ToList();
+        await AttachGroupsAsync(serviceRequestService, scope.OrgId, listed, cancellationToken);
+
         return Ok(new ServiceRequestListResponse
         {
-            Items = result.Items.Select(r => MapDto(r, result.Extras.GetValueOrDefault(r.Id))).ToList(),
+            Items = listed.Select(item => item.Dto).ToList(),
             Total = result.Total,
             Page = result.Page,
             PageSize = result.PageSize,
@@ -354,6 +358,31 @@ public class ServiceRequestsController(
             ? null
             : new TakeServiceRequestCommand(request.ScheduledStartUtc, request.ScheduledEndUtc, request.QuotedAmountCents);
         var updated = await serviceRequestService.TakeAsync(id, supplierOrgId.Value, userId, command, cancellationToken);
+        return Ok(MapDtoForSupplier(updated));
+    }
+
+    /// <summary>
+    /// A backup supplier says it would take the job if the primary supplier does not (SP-BKP, the pre-approval): the request stays
+    /// <c>Richiesto</c> and holds no slot of the supplier's agenda; if the primary does not take the job in its window, the earliest backup to
+    /// accept has it. Accepting twice is not an error. 422 <c>service_request_not_a_waiting_backup</c> for a request that is not a backup
+    /// waiting for the primary; 422 <c>service_request_backup_already_active</c> in the second window (take the job instead); 409
+    /// <c>supplier_slot_unavailable</c> when its time is no longer free; 409 <c>service_request_state_changed</c> when the group closed
+    /// meanwhile. Not behind the feature flag: a group that exists is followed to the end.
+    /// </summary>
+    [HttpPost("{id:guid}/accept-as-backup")]
+    [Authorize(Policy = CasazenPolicies.Supplier)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServiceRequestDto>> AcceptAsBackup(Guid id, CancellationToken cancellationToken)
+    {
+        var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        var userId = User.GetUserId();
+        if (supplierOrgId is null || userId is null) return NotFound();
+
+        var updated = await serviceRequestService.AcceptAsBackupAsync(id, supplierOrgId.Value, userId, cancellationToken);
         return Ok(MapDtoForSupplier(updated));
     }
 
@@ -913,6 +942,44 @@ public class ServiceRequestsController(
     internal static ServiceRequestDto MapDto(ServiceRequest r) => Map(r, forSupplier: false);
 
     /// <summary>
+    /// The requests as their host sees them, with the group of backup suppliers of each one that has one (SP-BKP): one read for all the groups
+    /// of the page, scoped by the host org. The order of <paramref name="requests"/> is kept. For the contexts without the extras of SR-08a
+    /// (long-rent).
+    /// </summary>
+    internal static async Task<List<ServiceRequestDto>> MapForHostAsync(
+        IServiceRequestService service,
+        Guid hostOrgId,
+        IReadOnlyList<ServiceRequest> requests,
+        CancellationToken cancellationToken)
+    {
+        var items = requests.Select(r => (Request: r, Dto: MapDto(r))).ToList();
+        await AttachGroupsAsync(service, hostOrgId, items, cancellationToken);
+        return [.. items.Select(item => item.Dto)];
+    }
+
+    /// <summary>
+    /// Puts the group of backup suppliers (SP-BKP) in the DTO of each request that belongs to one: a single read for all the groups of the
+    /// page, scoped by the host org, and none at all when no request has a group.
+    /// </summary>
+    internal static async Task AttachGroupsAsync(
+        IServiceRequestService service,
+        Guid hostOrgId,
+        IReadOnlyList<(ServiceRequest Request, ServiceRequestDto Dto)> items,
+        CancellationToken cancellationToken)
+    {
+        var groupIds = items.Where(item => item.Request.GroupId is not null).Select(item => item.Request.GroupId!.Value).Distinct().ToList();
+        if (groupIds.Count == 0)
+            return;
+
+        var groups = (await service.GetGroupViewsAsync(hostOrgId, groupIds, cancellationToken)).ToDictionary();
+        foreach (var (request, dto) in items)
+        {
+            if (request.GroupId is { } groupId && groups.TryGetValue(groupId, out var group))
+                dto.Group = ServiceRequestDtoParts.ToGroupDto(group);
+        }
+    }
+
+    /// <summary>
     /// The request as the host of the short-rent context reads it (SR-08a): <see cref="MapDto(ServiceRequest)"/> and, from
     /// <paramref name="extras"/>, the city of the property, the stay, the contact of the supplier and what the host can do. The supplier
     /// never gets these: <see cref="MapDtoForSupplier"/> leaves them out.
@@ -941,11 +1008,14 @@ public class ServiceRequestsController(
         return dto;
     }
 
-    // The request of the host with its extras: one read for the stay and one for the contact, whatever the request.
+    // The request of the host with its extras: one read for the stay and one for the contact, whatever the request, and the group of backup
+    // suppliers when it belongs to one (SP-BKP).
     private async Task<ServiceRequestDto> HostDtoAsync(ServiceRequest request, Guid hostOrgId, CancellationToken cancellationToken)
     {
         var extras = await hostReader.DescribeAsync(hostOrgId, [request], cancellationToken);
-        return MapDto(request, extras.GetValueOrDefault(request.Id));
+        var dto = MapDto(request, extras.GetValueOrDefault(request.Id));
+        await AttachGroupsAsync(serviceRequestService, hostOrgId, [(request, dto)], cancellationToken);
+        return dto;
     }
 
     /// <summary>

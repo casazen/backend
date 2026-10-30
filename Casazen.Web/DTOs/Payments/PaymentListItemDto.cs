@@ -27,19 +27,22 @@ public sealed class PaymentListItemDto
     /// <summary>First and last name of the guest of the booking.</summary>
     public string GuestName { get; init; } = string.Empty;
 
-    /// <summary>Gross amount, in euros.</summary>
+    /// <summary>Gross amount, in <see cref="Currency"/>.</summary>
     public decimal Amount { get; init; }
 
-    /// <summary><see cref="Amount"/> in cents of euro.</summary>
+    /// <summary><see cref="Amount"/> in cents of <see cref="Currency"/>.</summary>
     public long AmountCents { get; init; }
 
-    /// <summary>What was refunded so far, in euros.</summary>
+    /// <summary>What was refunded so far, in <see cref="Currency"/>.</summary>
     public decimal RefundedAmount { get; init; }
 
     public long RefundedAmountCents { get; init; }
 
-    /// <summary>Always EUR: payments have no currency of their own.</summary>
-    public string Currency { get; init; } = "EUR";
+    /// <summary>
+    /// ISO 4217 code of the property of the booking (EUR or CHF, <see cref="StayCurrency"/>): a payment has no currency column of its own,
+    /// it is charged and refunded in the one of its property.
+    /// </summary>
+    public string Currency { get; init; } = StayCurrency.Default;
 
     /// <summary><c>Pending</c>, <c>Processing</c>, <c>Completed</c>, <c>Failed</c>, <c>Refunded</c>, <c>PartiallyRefunded</c> or <c>Canceled</c>.</summary>
     public PaymentStatus Status { get; init; }
@@ -87,6 +90,7 @@ public sealed class PaymentListItemDto
         AmountCents = PaymentCashRules.ToCents(item.Amount),
         RefundedAmount = item.RefundedAmount,
         RefundedAmountCents = PaymentCashRules.ToCents(item.RefundedAmount),
+        Currency = StayCurrency.Normalize(item.Currency),
         Status = item.Status,
         Method = item.Method,
         TransactionId = item.TransactionId,

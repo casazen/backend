@@ -418,6 +418,44 @@ public class GuestBookingCancellationServiceTests : IDisposable
         AssertTheGuestAndTheHostAreEmailedOnce(); // the winner's emails: the loser sends none
     }
 
+    // ── CHF-MONEY: a house in Switzerland is previewed, cancelled and refunded in francs ─────────────────────────
+
+    [Fact]
+    public async Task PreviewAndCancelByGuestLink_HouseInSwissFrancs_SayFrancsAndRefundTheSameFigure()
+    {
+        // The preview the guest reads, the quote under it and the refund sent to Stripe are one figure, in the currency of the house.
+        _now = HoursBeforeCheckIn(500);
+        var seed = await SeedAsync(policy: CatalogPolicies.Contenuta, currency: StayCurrency.SwissFranc); // 100% of 400, plus the 20 of tax
+
+        GuestCancellationPreview preview;
+        BookingCancellationQuote quote;
+        await using (var db = NewContext())
+        {
+            preview = await GuestService(db).PreviewByGuestLinkAsync(seed.BookingId, seed.Token);
+            quote = await CancellationService(db).GetQuoteAsync(seed.BookingId);
+        }
+
+        var result = await ClickAsync(seed);
+
+        Assert.Equal("CHF", preview.Currency);
+        Assert.Equal("CHF", quote.Currency);
+        Assert.Equal(420m, preview.RefundAmount);
+        Assert.Equal(preview.RefundAmount, result.RefundAmount);
+        Assert.Equal(42_000, Assert.Single(_refunds).AmountCents);
+    }
+
+    [Fact]
+    public async Task PreviewByGuestLink_HouseInEuros_StaysInEuros()
+    {
+        _now = HoursBeforeCheckIn(500);
+        var seed = await SeedAsync(policy: CatalogPolicies.Contenuta);
+
+        await using var db = NewContext();
+        var preview = await GuestService(db).PreviewByGuestLinkAsync(seed.BookingId, seed.Token);
+
+        Assert.Equal("EUR", preview.Currency);
+    }
+
     // ── The whole journey: the host sends the link, the guest follows the emailed URL ─────────────────────────────
 
     [Fact]
@@ -544,7 +582,8 @@ public class GuestBookingCancellationServiceTests : IDisposable
         PaymentKind kind = PaymentKind.PaidOnline,
         BookingStatus status = BookingStatus.Confirmed,
         string? policy = CatalogPolicies.Intermedia,
-        decimal touristTax = 20m)
+        decimal touristTax = 20m,
+        string currency = StayCurrency.Euro)
     {
         const decimal basePrice = 400m;
         var total = basePrice + touristTax;
@@ -565,6 +604,7 @@ public class GuestBookingCancellationServiceTests : IDisposable
             Name = "Villa Rosa",
             Address = "Via Roma 1",
             City = "Roma",
+            Currency = currency,
             CancellationPolicy = policy is null ? null : CatalogPolicies.Get(policy),
         };
         var guest = new Guest { OrgId = org.Id, FirstName = "Anna", LastName = "Verdi", Email = "guest@example.com" };

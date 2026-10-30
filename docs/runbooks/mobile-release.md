@@ -2,7 +2,7 @@
 
 Task MO-02. Audit defects: A6-02, A9-37, A6-30 (assets and version part). Product decision D9: code plus runbook, the app reports missing configuration at startup.
 
-Repository: `casazen/mobile` (Expo SDK 52, `expo-router`, EAS Build). The values below are applied by the product owner; nothing in this runbook is a secret stored in git.
+Repository: `casazen/mobile` (Expo SDK 57, React Native 0.86, `expo-router`, EAS Build; moved from SDK 52 on 2026-10-30, section 10). The values below are applied by the product owner; nothing in this runbook is a secret stored in git.
 
 ## What changed
 
@@ -12,7 +12,7 @@ Repository: `casazen/mobile` (Expo SDK 52, `expo-router`, EAS Build). The values
 | EAS Build | No `env` per profile, no link to EAS environment variables | Each profile reads the EAS environment of the same name (`"environment"` in `eas.json`) and sets `APP_VARIANT`. On the EAS worker a `preview` / `production` build **fails** in `app.config.ts` if a variable is missing or invalid |
 | EAS project id | `extra.eas.projectId` = `00000000-0000-0000-0000-000000000000` in `app.json` | Read by `app.config.ts` from `EAS_PROJECT_ID` (on the EAS worker from `EAS_BUILD_PROJECT_ID`). All-zero or malformed values are refused. Without an id the app skips push registration and logs `PUSH_PROJECT_ID_MISSING` instead of crashing (push setup: section 9, task MO-03) |
 | Icon, splash, notification icon | None | Neutral **placeholder** files in `assets/` (section 6), to be replaced before the store release |
-| Native dependencies | `react-native` 0.76.3, `react-native-screens` 4.1.0, `expo-font` / `expo-file-system` / `expo-keep-awake` nested under `expo/` (not autolinked) | Aligned with SDK 52: `react-native` 0.76.9, `react-native-screens` ~4.4.0, the three modules are direct dependencies |
+| Native dependencies | `react-native` 0.76.3, `react-native-screens` 4.1.0, `expo-font` / `expo-file-system` / `expo-keep-awake` nested under `expo/` (not autolinked) | Aligned with SDK 52 at the time of MO-02 (`react-native` 0.76.9, the three modules direct dependencies); the app is now on SDK 57, see sections 7 and 10 |
 | App version | `0.1.0` in `app.json`, `0.2.0` in `package.json` | `app.config.ts` takes `version` from `package.json` |
 
 Code: `mobile/app.config.ts`, `mobile/eas.json`, `mobile/src/config/config-rules.js` (rules shared by the app and `app.config.ts`), `mobile/src/config/env.ts`, `mobile/src/config/eas.ts`, `mobile/src/components/ConfigErrorScreen.tsx`. Tests: `mobile/src/config/__tests__/`.
@@ -95,10 +95,11 @@ Do **not** put these variables:
 | Profile | EAS environment | `APP_VARIANT` | Distribution | Release checks |
 |---|---|---|---|---|
 | `development` | `development` | `development` | internal, development client | none: JS comes from Metro on the developer machine (`.env`, local fallbacks) |
-| `preview` | `preview` | `preview` | internal (testers) | build fails without valid variables; app shows `CONFIG_ENV_INVALID` if a bundle is built without them |
-| `production` | `production` | `production` | store, `autoIncrement` | same as preview |
+| `ios-simulator` | `development` | `development` | development client for the iOS Simulator (needs no Apple account, runs only on a Mac) | none, as `development` |
+| `preview` | `preview` | `preview` | internal (testers); **APK** on Android (`android.buildType: apk`, an AAB cannot be installed on a phone) | build fails without valid variables; app shows `CONFIG_ENV_INVALID` if a bundle is built without them |
+| `production` | `production` | `production` | store (AAB on Android), `autoIncrement` | same as preview |
 
-A new profile without `APP_VARIANT` is treated as a release build (checks on). Versions: `version` comes from `mobile/package.json` (bump it there); build numbers are managed remotely by EAS (`appVersionSource: remote`).
+A new profile without `APP_VARIANT` is treated as a release build (checks on). Versions: `version` comes from `mobile/package.json` (bump it there); build numbers are managed remotely by EAS (`appVersionSource: remote`). No profile sets an `image`: EAS uses `auto`, which follows the SDK (section 10).
 
 ## 4. Build
 
@@ -141,12 +142,12 @@ The files in `mobile/assets/` are **neutral placeholders** (grey circle), only t
 |---|---|---|
 | `assets/icon.png` | App icon (iOS, Android fallback) | 1024×1024 PNG, **no transparency** (App Store rejects alpha) |
 | `assets/adaptive-icon.png` | Android adaptive icon foreground | 1024×1024 PNG, transparent background, subject inside the central 66%; background colour `android.adaptiveIcon.backgroundColor` in `app.json` |
-| `assets/splash.png` | Splash screen image | PNG with transparency, drawn centred (`resizeMode: contain`) on `splash.backgroundColor` |
+| `assets/splash.png` | Splash screen image | PNG with transparency, drawn centred (`resizeMode: contain`, `imageWidth` 200) on `backgroundColor`: both set in the `expo-splash-screen` plugin entry of `app.json` (SDK 55+ has no top-level `splash` key) |
 | `assets/notification-icon.png` | Android notification small icon (`expo-notifications` plugin) | 96×96 PNG, white shape on transparent background (Android uses only the alpha channel) |
 
 The colour `#1A2B3C` (splash background, adaptive icon background, notification accent) is the existing app colour; change it in `app.json` together with the artwork if needed. `npm test` checks that the four paths exist.
 
-## 7. Dependencies (SDK 52)
+## 7. Dependencies (SDK 57)
 
 After any dependency change run, in `mobile/`:
 
@@ -155,7 +156,7 @@ npx expo install --check     # versions expected by the installed SDK
 npx expo-doctor
 ```
 
-Both query `api.expo.dev` (and `expo-doctor` also `reactnative.directory`). Without network access use `EXPO_OFFLINE=1 npx expo install --check`, which checks against the versions bundled with `expo`. Keep `expo-asset`, `expo-font`, `expo-file-system` and `expo-keep-awake` as direct dependencies: when npm nests them under `expo/`, autolinking does not link them and the native build can crash at runtime.
+Both query `api.expo.dev` (and `expo-doctor` also `reactnative.directory`). Without network access use `EXPO_OFFLINE=1 npx expo install --check`, which checks against the versions bundled with `expo`. Keep `expo-asset`, `expo-font`, `expo-file-system` and `expo-keep-awake` as direct dependencies: when npm nests them under `expo/` Metro can fail to find them (`expo-asset`) and the native build can miss them. `react-native-gesture-handler`, `react-native-reanimated`, `react-native-worklets` and `react-dom` are also direct dependencies, at the versions of the SDK, although the app does not use them: `expo-router` needs them as peers, and without them npm installs the latest releases, which do not match the SDK and would be linked into the app. Change them only with `npx expo install`.
 
 ## 8. Troubleshooting
 
@@ -334,3 +335,32 @@ Without the variable and without enhanced security, pushes work as before (no he
       "Nuova richiesta di servizio".
 - [ ] Railway logs: `Push … queued`, then `Push …: N of N messages accepted by Expo`; 15–30 minutes later `Push receipts:
       … checked, … delivered`.
+
+## 10. Store requirements and the Expo SDK (upgrade 52 → 57, 2026-10-30)
+
+The app moved from Expo SDK 52 (React Native 0.76) to **SDK 57** (React Native 0.86, React 19.2, TypeScript 6) so that it can be uploaded to the stores again. Code and checks: [casazen/mobile#13](https://github.com/casazen/mobile/pull/13); toolchain table and upgrade procedure: `casazen/mobile` `docs/technical/guide.md`, section "Toolchain and SDK upgrades".
+
+| Store rule | How the app meets it |
+|---|---|
+| Google Play: new apps and updates must target Android 16 (API 36) since 2026-08-31 ([Play Console Help](https://support.google.com/googleplay/android-developer/answer/11926878)); SDK 52 targeted API 34 | compile and target SDK 36: the defaults of React Native 0.86 / Expo SDK 57, nothing to set in the repository |
+| Google Play: native libraries must support 16 KB memory pages ([developer.android.com/16kb-page-size](https://developer.android.com/16kb-page-size)) | React Native 0.77+ with NDK r27 builds them aligned (SDK 52 / React Native 0.76 did not) |
+| App Store Connect: uploads built with Xcode 26 (iOS 26 SDK) since 2026-04-28 | no `image` in `eas.json`, so EAS uses `auto`, which follows the SDK: for SDK 57 `macos-tahoe-26.5-xcode-26.6` (iOS) and `ubuntu-26.04-jdk-17-ndk-r27b-sdk-57` (Android). The "Spin up build environment" part of the build log shows the image used. Do not pin `latest`: it moves to the next SDK's images (Xcode 27, which needs the iOS scene life cycle) |
+
+What changes for whoever builds:
+
+- **`android/` and `ios/` are generated** by `expo prebuild` (EAS Build, `expo run:*` and the Maestro job do it) and must not be committed. A project with a committed `android/` makes EAS skip prebuild and ignore `app.json` / `app.config.ts`: icon, splash, plugins, `GOOGLE_SERVICES_JSON` (section 9.2), version and the push mode would be silently ignored, and the build keeps the target SDK of the day the folder was generated. Such a folder had been committed on 2026-10-08 (target SDK 34, and `reactNativeArchitectures=x86_64` in its `gradle.properties`, i.e. native libraries for the emulator only); the upgrade removed it. `npx expo-doctor` reports the situation ("app config fields that may not be synced in a non-CNG project").
+- **Preview builds are APKs** (`android.buildType: apk` in `eas.json`): install them on a phone. Production builds are AABs for Google Play.
+- **Android UI**: from API 36 the app always draws edge-to-edge (behind the status and navigation bars). `android.userInterfaceStyle` is `light`, so on Android the app stays light-coloured even when the phone is in dark mode, as before; on iOS it is `automatic`.
+- **iOS**: `ITSAppUsesNonExemptEncryption` is `false` in `app.json` (the app only uses HTTPS and the standard cryptography of the operating system), so App Store Connect does not ask the export-compliance question at every upload. Minimum iOS 16.4; a local iOS build needs Xcode 26.4+ (a Mac); the `ios-simulator` profile builds a development client for the Simulator on EAS without an Apple account.
+- **Node.js 22.13+, JDK 17** for local builds and CI.
+
+First builds after the upgrade, in this order (the runbook sections 4 and 9.5 apply as always):
+
+```bash
+cd mobile
+export EAS_PROJECT_ID=<uuid>
+npx eas-cli@latest build --platform android --profile preview     # first: no Apple account needed
+npx eas-cli@latest build --platform ios --profile preview         # needs the paid Apple Developer account and registered devices
+```
+
+Device checks for the first SDK 57 build (CI cannot cover them): login with Auth0 (PKCE; since SDK 56 the global `fetch` is `expo/fetch`: if the code exchange or the refresh misbehaves, `EXPO_PUBLIC_USE_RN_FETCH=1` in the EAS environment restores the React Native one), calendar and booking detail, a push received in the foreground (banner shown) and one that starts the app (section 9.5), a cold start without network (persisted list of properties), the share link, logout, and on Android 15/16 the status bar and the bottom tab bar (no content under the system bars).

@@ -26,6 +26,11 @@ namespace Casazen.Core.Services;
 /// catalog service is chosen. The supplier sees it and can take another job the same day only when the intervals do not
 /// overlap. A full working day is occupied only when this interval covers those hours, never by omitting the time.
 /// </param>
+/// <param name="UseBackupSuppliers">
+/// SP-BKP: whether the request is also sent to up to three backup suppliers, declared as such. <c>null</c> (the default) follows the org's
+/// choice (<c>Org.SupplierBackupsEnabled</c>, on by default); <c>false</c> sends it to the chosen supplier alone, as before. It only matters
+/// while the feature flag <c>SupplierRequestBackups</c> is on, and never for a request accepted automatically (SP-04d).
+/// </param>
 public record CreateServiceRequestCommand(
     Guid OrgId,
     string UserId,
@@ -39,7 +44,8 @@ public record CreateServiceRequestCommand(
     ServiceRequestRentalContext RentalContext = ServiceRequestRentalContext.ShortRent,
     Guid? ServiceListingId = null,
     DateTime? ScheduledStartUtc = null,
-    int? DurationMinutes = null);
+    int? DurationMinutes = null,
+    bool? UseBackupSuppliers = null);
 
 /// <summary>
 /// What the supplier adds when it takes a request (SP-04): a time for a request that has none, and the price it commits to.
@@ -526,5 +532,38 @@ public interface IServiceRequestService
         bool openOnly,
         int page,
         int pageSize,
+        CancellationToken cancellationToken = default);
+
+    // ─── Backup suppliers (SP-BKP) ───
+
+    /// <summary>
+    /// A backup supplier says it would take the job if the primary does not (the pre-approval, <c>POST api/service-requests/{id}/accept-as-backup</c>):
+    /// the request stays <c>Richiesto</c> and holds no slot, but if the primary does not take the job in its window this backup, the earliest
+    /// to accept, has it. Accepting twice is not an error. 422 <see cref="ServiceRequestGroupErrorCodes.NotAWaitingBackup"/> for a request that is
+    /// not a backup waiting; 422 <see cref="ServiceRequestGroupErrorCodes.BackupAlreadyActive"/> in the second window (take the job instead); 409
+    /// <see cref="ServiceRequestErrorCodes.SlotUnavailable"/> when its time is no longer free for the supplier.
+    /// </summary>
+    Task<ServiceRequest> AcceptAsBackupAsync(
+        Guid id,
+        Guid supplierOrgId,
+        string userId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One pass over a group of backup suppliers, under its lock: closes it if the primary took the job or the host cancelled, hands the job
+    /// to the earliest backup that accepted when the primary is out (its slot checked again; the next one when it is not free), opens the second
+    /// window when none could, and lapses the requests when it has passed. Idempotent; called by the recurring job <c>service-request-groups</c>
+    /// and right after a refusal or a cancellation of a member. Never throws for a group it cannot handle: it answers
+    /// <see cref="ServiceRequestGroupResolution.Conflict"/> and the next pass looks again.
+    /// </summary>
+    Task<ServiceRequestGroupResolution> ResolveGroupAsync(Guid groupId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The groups with the given ids as the host org <paramref name="hostOrgId"/> sees them: where each is, the primary and the backups with
+    /// their state, and who took the job. Only groups of that org (another org's id is simply missing from the answer).
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, ServiceRequestGroupView>> GetGroupViewsAsync(
+        Guid hostOrgId,
+        IReadOnlyCollection<Guid> groupIds,
         CancellationToken cancellationToken = default);
 }

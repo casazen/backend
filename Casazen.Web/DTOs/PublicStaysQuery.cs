@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.SiteProfile;
 
 namespace Casazen.Web.DTOs;
 
@@ -63,7 +64,7 @@ public sealed class PublicStaysQuery
     [StringLength(200)]
     public string? Rules { get; set; }
 
-    /// <summary>Labels of the houses, comma separated. Not supported yet (the hosts cannot give them), declared in the answer.</summary>
+    /// <summary>Labels of the houses (<c>mare,centro,piscina,pet,campagna,terrazza,vista-mare</c>), comma separated: the house has all of them. An unknown label is left out and declared.</summary>
     [StringLength(500)]
     public string? Tags { get; set; }
 
@@ -74,11 +75,12 @@ public sealed class PublicStaysQuery
     [Range(1, 10_000)]
     public int Page { get; set; } = 1;
 
-    /// <summary>Houses per page, 50 at most; left out, every house of the site.</summary>
+    /// <summary>Houses per page, 50 at most; left out, every house of the site (24 across all the sites).</summary>
     [Range(1, PublicSiteSearch.MaxPageSize)]
     public int? PageSize { get; set; }
 
-    public PublicStaysCriteria ToCriteria()
+    /// <param name="scope"><see cref="PublicStaysScope.Platform"/> for the search across all the sites (<c>GET api/public/stays</c>).</param>
+    public PublicStaysCriteria ToCriteria(PublicStaysScope scope = PublicStaysScope.Site)
     {
         var ignored = new List<string>();
 
@@ -101,6 +103,16 @@ public sealed class PublicStaysQuery
                 rules.Add(rule);
         }
 
+        var tags = new List<string>();
+        foreach (var token in Tokens(Tags))
+        {
+            var tag = token.ToLowerInvariant();
+            if (SitePropertyProfileLimits.Tags.Contains(tag, StringComparer.Ordinal))
+                tags.Add(tag);
+            else
+                ignored.Add($"tags:{token}");
+        }
+
         var sort = KnownSorts.FirstOrDefault(known => string.Equals(known, Sort?.Trim(), StringComparison.OrdinalIgnoreCase))
             ?? PublicSiteSearch.Recommended;
 
@@ -118,11 +130,12 @@ public sealed class PublicStaysQuery
             MinSqm,
             amenities.Distinct(StringComparer.Ordinal).ToList(),
             rules.Distinct(StringComparer.Ordinal).ToList(),
-            Tokens(Tags).ToList(),
+            tags.Distinct(StringComparer.Ordinal).ToList(),
             sort,
             Page,
             PageSize,
-            ignored);
+            ignored,
+            scope);
     }
 
     /// <summary>The comma separated values of a filter: trimmed, without repeats, at most 20, each of a sensible length.</summary>

@@ -8,6 +8,7 @@ using Casazen.Core.Pricing;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.SiteProfile;
 using Casazen.Core.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -303,6 +304,7 @@ public class PropertyService(
                 MaxGuests = p.MaxGuests,
                 NightlyRate = p.NightlyRate,
                 CleaningFee = p.CleaningFee,
+                Currency = p.Currency,
                 Amenities = p.Amenities,
                 PhotoUrls = p.PhotoUrls,
                 CinCode = p.CinCode,
@@ -337,6 +339,7 @@ public class PropertyService(
                 MaxGuests = p.MaxGuests,
                 NightlyRate = p.NightlyRate,
                 CleaningFee = p.CleaningFee,
+                Currency = p.Currency,
                 Amenities = p.Amenities,
                 PhotoUrls = p.PhotoUrls,
                 CinCode = p.CinCode,
@@ -354,7 +357,7 @@ public class PropertyService(
             .Select(DetailRow)
             .FirstOrDefaultAsync();
 
-        return row is null ? null : MapPublicPropertyDetail(row);
+        return row is null ? null : await WithSiteMediaAsync(MapPublicPropertyDetail(row));
     }
 
     public async Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(string slugOrId, Guid orgId)
@@ -369,7 +372,23 @@ public class PropertyService(
             .Select(DetailRow)
             .FirstOrDefaultAsync();
 
-        return row is null ? null : MapPublicPropertyDetail(row);
+        return row is null ? null : await WithSiteMediaAsync(MapPublicPropertyDetail(row));
+    }
+
+    /// <summary>The floor plan levels and the points of interest of the page (DB-11a): two small reads of the property named, never of a list.</summary>
+    private async Task<PublicPropertyDetailDto> WithSiteMediaAsync(PublicPropertyDetailDto page)
+    {
+        var media = await repository.GetSiteMediaAsync(page.Id);
+        page.Profile.FloorPlans =
+        [
+            .. media.FloorPlans.Select(f => new PublicFloorPlanDto(
+                f.Id, f.Level, new LocalizedText(f.NameIt, f.NameEn), f.ImageUrl, f.ImageWidth, f.ImageHeight, f.AreaSqm)),
+        ];
+        page.Profile.Pois =
+        [
+            .. media.Pois.Select(p => new PublicPoiDto(p.Kind, new LocalizedText(p.NameIt, p.NameEn), p.Mode, p.Minutes, p.Direction, p.DistanceMeters)),
+        ];
+        return page;
     }
 
     public async Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId)
@@ -621,6 +640,7 @@ public class PropertyService(
         MaxGuests = row.MaxGuests,
         NightlyRate = row.NightlyRate,
         CleaningFee = row.CleaningFee,
+        Currency = StayCurrency.Normalize(row.Currency),
         Amenities = row.Amenities.Select(a => a.ToString()).ToList(),
         PhotoUrls = row.PhotoUrls,
         CinCode = row.CinCode,
@@ -645,6 +665,7 @@ public class PropertyService(
         MaxGuests = row.MaxGuests,
         NightlyRate = row.NightlyRate,
         CleaningFee = row.CleaningFee,
+        Currency = StayCurrency.Normalize(row.Currency),
         Amenities = row.Amenities.Select(a => a.ToString()).ToList(),
         PhotoUrls = row.PhotoUrls,
         CinCode = row.CinCode,
@@ -658,10 +679,17 @@ public class PropertyService(
                 row.OverrideFullRefundHours, row.OverridePartialRefundHours, row.OverridePartialRefundPercent, row.OverrideRefundType)),
         MinNights = row.MinNights,
         WeekendSurchargePercent = row.WeekendSurchargePercent,
-        Currency = "EUR",
         AcceptsBookings = Org.AcceptsDirectPayments(row.OrgStripeConnectedAccountId, row.OrgConnectChargesEnabled),
         HostName = row.OrgHostName,
         PublicPhone = row.OrgPublicPhone,
+        // DB-11a: what the host said about the house, only what they filled in.
+        Profile = PublicPropertyProfileBuilder.Build(new PublicProfileSource(
+            row.ListingTitle, row.AccommodationType, row.Beds, row.AreaSqm, row.FloorLevel, row.RenovatedYear, row.EnergyClass,
+            row.EnergyIndex, row.AreaKind, row.ChildrenWelcome, row.CheckInFrom, row.CheckInTo, row.CheckOutBy, row.QuietHoursFrom,
+            row.QuietHoursTo, row.SmokingPolicy, row.PetsPolicy, row.PartiesPolicy, row.VideoUrl, row.TourUrl, row.SiteProfileJson,
+            row.Amenities)),
+        // DB-11a: the photos with the alternative text the host wrote and the size read at the upload (photoUrls stays).
+        Photos = PropertyPhotoMeta.Of(row.PhotoUrls, row.PhotoAltJson),
     };
 
     /// <summary>
@@ -684,6 +712,7 @@ public class PropertyService(
         MaxGuests = p.MaxGuests,
         NightlyRate = p.NightlyRate,
         CleaningFee = p.CleaningFee,
+        Currency = p.Currency,
         Amenities = p.Amenities,
         PhotoUrls = p.PhotoUrls,
         CinCode = p.CinCode,
@@ -701,6 +730,28 @@ public class PropertyService(
         OverridePartialRefundHours = p.CancellationPartialRefundHours,
         OverridePartialRefundPercent = p.CancellationPartialRefundPercent,
         OverrideRefundType = p.CancellationRefundType,
+        ListingTitle = p.ListingTitle,
+        AccommodationType = p.AccommodationType,
+        Beds = p.Beds,
+        AreaSqm = p.AreaSqm,
+        FloorLevel = p.FloorLevel,
+        RenovatedYear = p.RenovatedYear,
+        EnergyClass = p.EnergyClass,
+        EnergyIndex = p.EnergyIndex,
+        AreaKind = p.AreaKind,
+        ChildrenWelcome = p.ChildrenWelcome,
+        CheckInFrom = p.CheckInFrom,
+        CheckInTo = p.CheckInTo,
+        CheckOutBy = p.CheckOutBy,
+        QuietHoursFrom = p.QuietHoursFrom,
+        QuietHoursTo = p.QuietHoursTo,
+        SmokingPolicy = p.SmokingPolicy,
+        PetsPolicy = p.PetsPolicy,
+        PartiesPolicy = p.PartiesPolicy,
+        VideoUrl = p.VideoUrl,
+        TourUrl = p.TourUrl,
+        SiteProfileJson = p.SiteProfileJson,
+        PhotoAltJson = p.PhotoAltJson,
     };
 
     private class PublicPropertyRow
@@ -719,6 +770,9 @@ public class PropertyService(
         public int MaxGuests { get; init; }
         public decimal NightlyRate { get; init; }
         public decimal CleaningFee { get; init; }
+
+        // The currency of the rate and of the cleaning fee: the one of the property (StayCurrency).
+        public string Currency { get; init; } = StayCurrency.Default;
         public List<PropertyAmenity> Amenities { get; init; } = [];
         public List<string> PhotoUrls { get; init; } = [];
         public string? CinCode { get; init; }
@@ -745,5 +799,29 @@ public class PropertyService(
         public bool OrgConnectChargesEnabled { get; init; }
         public string? OrgHostName { get; init; }
         public string? OrgPublicPhone { get; init; }
+
+        // What the host said about the house (SR-07a wizard fields and the DB-11a site profile): built into the profile of the page.
+        public string? ListingTitle { get; init; }
+        public AccommodationType? AccommodationType { get; init; }
+        public int? Beds { get; init; }
+        public int? AreaSqm { get; init; }
+        public int? FloorLevel { get; init; }
+        public int? RenovatedYear { get; init; }
+        public string? EnergyClass { get; init; }
+        public decimal? EnergyIndex { get; init; }
+        public PropertyAreaKind? AreaKind { get; init; }
+        public bool? ChildrenWelcome { get; init; }
+        public TimeOnly? CheckInFrom { get; init; }
+        public TimeOnly? CheckInTo { get; init; }
+        public TimeOnly? CheckOutBy { get; init; }
+        public TimeOnly? QuietHoursFrom { get; init; }
+        public TimeOnly? QuietHoursTo { get; init; }
+        public SmokingPolicy? SmokingPolicy { get; init; }
+        public PetsPolicy? PetsPolicy { get; init; }
+        public PartiesPolicy? PartiesPolicy { get; init; }
+        public string? VideoUrl { get; init; }
+        public string? TourUrl { get; init; }
+        public string? SiteProfileJson { get; init; }
+        public string? PhotoAltJson { get; init; }
     }
 }

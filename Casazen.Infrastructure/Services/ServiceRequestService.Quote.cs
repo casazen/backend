@@ -37,8 +37,16 @@ public partial class ServiceRequestService
         if (IsPaidInsideCasaZen(request))
             throw new DomainRuleException(ServicePaymentErrors.AmountLocked, ServicePaymentErrors.AmountLockedMessageKey);
 
+        // SP-BKP: a backup answers the request as it is or refuses; the host would be answering a supplier it did not choose.
+        if (request.GroupRole == ServiceRequestGroupRole.Backup)
+        {
+            throw new DomainRuleException(
+                ServiceRequestGroupErrorCodes.BackupCannotQuote, ServiceRequestGroupErrorCodes.BackupCannotQuoteMessageKey);
+        }
+
         var (lines, total) = ServiceRequestQuoteRules.Normalize(command.Lines);
         var note = ServiceRequestQuoteRules.NormalizeNote(command.Note);
+        var dueBeforeAnswer = await ReplyDeadlineAsync(request, cancellationToken);
 
         // The quote leans on the time the request has (every request has one). Another time is optional and is judged like the time of a
         // proposal: with the planner, under the lock, and without holding the slot.
@@ -90,6 +98,8 @@ public partial class ServiceRequestService
 
         logger.LogInformation("ServiceRequest {Id}: the supplier sent a quote", request.Id);
 
+        // A quote is an answer too (the request then waits for the customer, not for the supplier).
+        await RecordReplyAsync(request, dueBeforeAnswer, asBackup: false, cancellationToken);
         await notifier.NotifyQuoteSentAsync(request, cancellationToken);
         return request;
     }
@@ -109,6 +119,10 @@ public partial class ServiceRequestService
         AppendQuoteEvent(request, ServiceRequestQuoteEventKinds.Withdrawn, now, quote.TotalCents);
         request.UpdatedAt = now;
         await SaveAsync(request, "quote withdrawn", cancellationToken);
+
+        // SP-BKP: the primary is "to answer" again, and the window of its group starts again the same way if it passed while the quote waited.
+        if (request.GroupId is { } groupId)
+            await ReopenGroupWindowAsync(groupId, cancellationToken);
 
         logger.LogInformation("ServiceRequest {Id}: the supplier took its quote back", request.Id);
         return request;
@@ -145,6 +159,9 @@ public partial class ServiceRequestService
         logger.LogInformation("ServiceRequest {Id}: the host accepted the quote", request.Id);
 
         await notifier.NotifyQuoteAnsweredAsync(request, accepted: true, quote, cancellationToken);
+
+        // SP-BKP: accepting the primary's quote is the take of its job: the backups that still wait are closed.
+        await ResolveGroupAfterChangeAsync(request.GroupId, cancellationToken);
         return request;
     }
 
@@ -165,6 +182,10 @@ public partial class ServiceRequestService
         AppendQuoteEvent(request, ServiceRequestQuoteEventKinds.Rejected, now, quote.TotalCents);
         request.UpdatedAt = now;
         await SaveAsync(request, "quote rejected", cancellationToken);
+
+        // SP-BKP: the window of a group starts again the same way, for the primary and the backups together.
+        if (request.GroupId is { } groupId)
+            await ReopenGroupWindowAsync(groupId, cancellationToken);
 
         logger.LogInformation("ServiceRequest {Id}: the host turned the quote down", request.Id);
 
@@ -265,8 +286,9 @@ public partial class ServiceRequestService
             var settings = await agenda.GetBookingSettingsAsync(request.SupplierOrgId, cancellationToken);
             request.ResponseDueAt = now.AddMinutes(settings.RespondWithinMinutes);
         }
-        else if (request.ResponseDueAt is { } due && due <= now)
+        else if (request.GroupId is null && request.ResponseDueAt is { } due && due <= now)
         {
+            // A request of a group has the deadline of the group's window (ReopenGroupWindowAsync starts it again).
             request.ResponseDueAt = now.AddMinutes(options.Value.HostResponseMinutes);
         }
     }

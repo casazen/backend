@@ -61,7 +61,8 @@ public sealed partial class SupplierPaymentService(
     TimeProvider? timeProvider = null,
     IPlatformPaymentGateway? platformGateway = null,
     IServiceCustomerReader? customerReader = null,
-    ISupplierDisputePenalties? penalties = null)
+    ISupplierDisputePenalties? penalties = null,
+    ISupplierReliabilityService? reliability = null)
     : ISupplierPaymentService, ISupplierPaymentWebhookService, ISupplierPaymentJobService, ISupplierPaymentRefundService,
         ISupplierFundsService, ISupplierFundsJobService, IServiceDisputeService, IServiceDisputeJobService
 {

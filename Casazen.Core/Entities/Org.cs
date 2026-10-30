@@ -127,6 +127,14 @@ public class Org
     [MaxLength(2)]
     public string DefaultLanguage { get; set; } = OrgInvitationRules.DefaultLanguage;
 
+    /// <summary>
+    /// Whether a request this org sends to a supplier is also sent to up to three backup suppliers, declared as such (SP-BKP): the
+    /// primary has one hour, and the first backup that accepts has the job if the primary does not. <b>On by default</b>, because the
+    /// rule is general; the org turns it off with <c>PUT api/orgs/me/service-request-settings</c> and a single request can turn it off
+    /// too (<c>useBackupSuppliers</c>). It only matters while the feature flag <c>SupplierRequestBackups</c> is on.
+    /// </summary>
+    public bool SupplierBackupsEnabled { get; set; } = true;
+
     [MaxLength(255)]
     public string ContactEmail { get; set; } = string.Empty;
 

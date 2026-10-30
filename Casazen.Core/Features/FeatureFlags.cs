@@ -84,6 +84,17 @@ public static class FeatureFlags
     public const string SupplierRequestAutoCancel = "SupplierRequestAutoCancel";
 
     /// <summary>
+    /// SP-BKP (product owner, 2026-10-29/30): backup suppliers for a host's request. With the flag on, a request a host sends to a
+    /// supplier (the primary) is sent at the same moment to up to three backups, declared as such: the primary has one hour
+    /// (<c>Suppliers:ServiceRequests:PrimaryResponseMinutes</c>) to take the job, and the first backup that accepts has it if the
+    /// primary does not. <b>Off by default</b>: it changes what the suppliers receive and what the host sees. The flag only gates the
+    /// <b>creation</b> of a group: a group that exists is followed to the end whatever the flag says (the recurring job
+    /// <c>service-request-groups</c> is always registered, and the suppliers' answers are not gated), so turning the flag off never
+    /// leaves a request hanging. A host can still turn the rule off for its org (<c>Org.SupplierBackupsEnabled</c>) or for one request.
+    /// </summary>
+    public const string SupplierRequestBackups = "SupplierRequestBackups";
+
+    /// <summary>
     /// SEO-INVITE (product owner, 2026-10-13): CasaZen is on private invitation, prices and the onboarding of new customers are
     /// not defined yet. Off (the default): the public SEO pages carry no call to action to sign up ("Pubblica la tua casa"):
     /// <c>cta</c> is <c>null</c> in <c>GET api/public/content/…</c> and the crawler page has no link to <c>/signup</c>. The
@@ -123,5 +134,6 @@ public static class FeatureFlags
         SeoSignupCta,
         AgencyTier,
         ConcordatoFacile,
+        SupplierRequestBackups,
     ];
 }

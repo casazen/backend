@@ -52,6 +52,8 @@ public class ClientIpRateLimitingIntegrationTests : IClassFixture<ClientIpRateLi
         { 21, "GET", "/api/public/seo/como/featured-properties", null },
         { 24, "GET", "/api/public/orgs/missing-org-db07a/stays", null },
         { 25, "GET", "/api/public/orgs/missing-org-db07a/calendar", null },
+        { 26, "GET", "/api/public/stays?where=nowhere-search-global", null },
+        { 27, "GET", "/api/public/stays/calendar?where=nowhere-search-global", null },
     };
 
     [Theory]
