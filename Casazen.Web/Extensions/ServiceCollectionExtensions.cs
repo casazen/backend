@@ -684,6 +684,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierTodayService, SupplierTodayService>();
         // Supplier inbox, history and request detail: address, date and host contact after the take (SU-08, A4-14).
         services.AddScoped<ISupplierServiceRequestReader, SupplierServiceRequestReader>();
+        // The host's list of interventions with the counters of its chips, and what a request says to its host: the stay, the contact of
+        // the supplier and the action to do (SR-08a).
+        services.AddScoped<IHostServiceRequestReader, HostServiceRequestReader>();
         // The supplier's customers, the page "Clienti": hosts and private customers of the showcase aggregated from the requests (SP-16a).
         services.AddScoped<ISupplierClientsService, SupplierClientsService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
