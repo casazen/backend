@@ -80,6 +80,10 @@ public sealed record PropertyMissingItem(string Code, bool Blocking);
 /// <param name="CoverPhotoUrl">The first photo, the cover; null without photos.</param>
 /// <param name="SiteVisibility">Where it stands on the booking site; null for a property in long-term mode.</param>
 /// <param name="SuspensionReasons">Why a suspended property was suspended (the blocker codes); null unless <see cref="PropertyLifecycleStatus.Suspended"/>.</param>
+/// <param name="ScheduledModeChange">
+/// The change of rental mode waiting for its day (PM-02, AM-13b), for a property in either mode; null when none is scheduled. Only a
+/// <see cref="PropertyModeChangeStatus.Scheduled"/> one: an applied, cancelled or failed change is history, not news.
+/// </param>
 public sealed record PropertyOverview(
     Guid PropertyId,
     PropertyLifecycleStatus? LifecycleStatus,
@@ -88,7 +92,8 @@ public sealed record PropertyOverview(
     int PhotoCount,
     string? CoverPhotoUrl,
     PropertySiteVisibility? SiteVisibility,
-    IReadOnlyList<string>? SuspensionReasons);
+    IReadOnlyList<string>? SuspensionReasons,
+    PropertyModeChange? ScheduledModeChange = null);
 
 /// <summary>
 /// The pure rules behind <see cref="PropertyOverview"/>: the state, the site visibility and the list of what is missing. No

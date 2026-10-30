@@ -135,9 +135,72 @@ public class ShowcaseBookingsDto
     public IReadOnlyList<string> BlockedBy { get; set; } = [];
 }
 
-/// <summary>Maps the content of the showcase between the service and the API.</summary>
+/// <summary>
+/// The short status of the showcase for the home and the checklist of the console (<c>GET api/supplier/showcase/status</c>): a few facts, no
+/// document.
+/// </summary>
+public class ShowcaseStatusDto
+{
+    /// <summary>Something is published (even if it is paused).</summary>
+    public bool Published { get; set; }
+
+    /// <summary>The draft has changes a publication would publish (a draft that was never published has them as soon as it holds something).</summary>
+    public bool HasDraft { get; set; }
+
+    public bool Paused { get; set; }
+
+    /// <summary>The absolute address of the showcase; <c>null</c> while the supplier has none (never activated) or the public URL is not configured.</summary>
+    public string? Url { get; set; }
+
+    /// <summary>The requests that came from the showcase in the last 30 days.</summary>
+    public int Requests30d { get; set; }
+
+    /// <summary>Of those, how many still wait for the supplier's answer.</summary>
+    public int Pending30d { get; set; }
+
+    /// <summary>The members of the contract in which the draft differs from what is published.</summary>
+    public IReadOnlyList<string> Changes { get; set; } = [];
+
+    public DateTime? PublishedAt { get; set; }
+
+    public DateTime? SavedAt { get; set; }
+
+    /// <summary>0 to 100: the share of the readiness items that are done.</summary>
+    public int Completeness { get; set; }
+}
+
+/// <summary>The two true numbers of the showcase editor (<c>GET api/supplier/showcase/stats</c>).</summary>
+public class ShowcaseStatsDto
+{
+    /// <summary>The period: the last <see cref="Days"/> days (30).</summary>
+    public int Days { get; set; }
+
+    public int Requests { get; set; }
+
+    public int Pending { get; set; }
+}
+
+/// <summary>Maps the content of the showcase between the service and the API.</summary>/// <summary>Maps the content of the showcase between the service and the API.</summary>
 public static class ShowcaseContentMapper
 {
+    public static ShowcaseStatusDto ToStatus(ShowcaseContentView view, ShowcaseRequestStats stats, string? url)
+    {
+        var items = view.Readiness.Items;
+        return new ShowcaseStatusDto
+        {
+            Published = view.Published is not null,
+            HasDraft = view.Changes.Count > 0,
+            Paused = view.PausedAt is not null,
+            Url = url,
+            Requests30d = stats.Requests,
+            Pending30d = stats.Pending,
+            Changes = view.Changes,
+            PublishedAt = view.PublishedAt,
+            SavedAt = view.SavedAt,
+            Completeness = items.Count == 0 ? 0 : (int)Math.Round(100.0 * items.Count(item => item.Level == ShowcaseReadinessLevel.Ok) / items.Count),
+        };
+    }
+
     public static ShowcaseContentResponse ToResponse(ShowcaseContentView view, string? publicPath, string? publicUrl) => new()
     {
         State = view.State.ToString(),
