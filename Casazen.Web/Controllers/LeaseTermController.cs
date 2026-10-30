@@ -106,6 +106,25 @@ public class LeaseTermController(
         return await DetailAsync(id);
     }
 
+    /// <summary>
+    /// Records the renewal of the lease before the end of its period (LR-OPS-1): the standard one (the months of the type) or, with `newEnd`, an
+    /// extension to a day the parties agreed on. The new period may not cover the days of another lease of the property (409
+    /// `lease_period_overlaps`), the end of the period moves forward and an active rent plan is extended to it. Only for a lease that renews by
+    /// itself, in the last stretch before its end (from the last day to give notice) and while no notice is recorded. 200 with the detail; 422
+    /// `lease_type_has_no_renewal`, `lease_renewal_not_yet`, `lease_renewal_end_invalid`; 409 `lease_not_in_force`, `lease_already_terminated`, `lease_renewal_blocked_by_notice`,
+    /// `lease_renewal_period_over`, `lease_period_overlaps`, `lease_busy`. Nothing is written to the tenant.
+    /// </summary>
+    [HttpPost("{id:guid}/renewal")]
+    [ProducesResponseType(typeof(LeaseDetailDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RecordRenewal(Guid id, [FromBody] RecordLeaseRenewalDto dto, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        await terms.RecordRenewalAsync(id, dto.NewEnd, cancellationToken);
+        return await DetailAsync(id);
+    }
+
     // ---- authorization and answer --------------------------------------------------------------------------------
 
     /// <summary>
@@ -140,6 +159,9 @@ public sealed record RecordLeaseNoticeDto(
 
 /// <summary>The last day of a lease ended early (<c>yyyy-MM-dd</c>, from the start of the lease up to the end of the period it is in).</summary>
 public sealed record TerminateLeaseDto([param: Required] DateOnly? On);
+
+/// <summary>The renewal of a lease (LR-OPS-1): without a day the standard one of the type, otherwise the last day of the extension the parties agreed on (<c>yyyy-MM-dd</c>).</summary>
+public sealed record RecordLeaseRenewalDto(DateOnly? NewEnd = null);
 
 /// <summary>
 /// A withdrawal of the tenant (LR-OPS-1): the day it was received (<c>yyyy-MM-dd</c>, from the start of the lease up to today), why, and, only
