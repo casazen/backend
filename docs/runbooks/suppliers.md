@@ -3472,6 +3472,8 @@ Both are anonymous, behind `SupplierShowcaseBooking` (404 like a route that does
 The codes are those of the booking (section 23): the same fields, the same consent, the same zone (the comune has to be one the supplier covers), the same 429. The e-mail carries the link `/fornitori/{slug}/conferma?inquiry={id}#token={token}`: the page reads
 `inquiry` from the query and the **token from the fragment**, which a browser never sends to a server, so the token is in no access log, and posts both to `confirm-email`. The booking's link keeps its own keys on the same page (`?hold=` and `token=`).
 
+A showcase the supplier **paused** (SP-13a, section 33.7) takes no new request on measure: `POST …/inquiries` answers 422 `supplier_booking_offline`, the answer its slots and its estimate give, and nothing is stored or sent. The check of an address written before the pause is not gated (that customer is answered all the same).
+
 ### 34.3 Nothing before the check, almost nothing after
 
 Decision D34 holds: until the address is checked the supplier receives **nothing** (no request, no e-mail, no push) and the customer has only a row that lapses (`ShowcaseInquiries`, 30 minutes by default: `Suppliers__Showcase__EmailVerificationMinutes`). The row keeps what the
