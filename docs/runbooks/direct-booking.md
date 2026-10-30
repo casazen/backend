@@ -957,6 +957,16 @@ writes a few lines to the host, who gets them by email and answers from their ma
 - **Not done here.** A copy or a receipt to the visitor, a per-org cap against a distributed flood, a thread of the conversation in the
   app, the languages of the email to the host (Italian only).
 
+### 11.11 The amenity catalog (DB-11a)
+
+`GET api/public/amenities` (anonymous, `PublicRead` limit, `Cache-Control: public, max-age=3600`) is the reference list the public property page
+reads so it never shows a raw code: `groups` (the five of the design, in order: `comfort`, `kitchen`, `bedbath`, `outdoor`, `safety`, each with
+`label {it, en}`) and `amenities`, one entry for **every** `PropertyAmenity` (`name` is the enum member name, which is what `amenities` of the public
+property DTOs carries; `icon` is an icon of the booking site; `group`; `label {it, en}`). The labels say what the amenity says and no more (`Pool` is
+«Piscina», not «Piscina privata»: the host's data do not tell whether it is shared). The list lives in code (`AmenityCatalog`); a new amenity without an
+entry fails `PublicAmenityCatalogIntegrationTests`. The design lists five services the enum does not have (bed linen, hair dryer, loungers, outdoor
+shower, sea view): they are not in the catalog and a host cannot state them until the enum grows (append only).
+
 ## 12. Who runs the site: operator data in the footer (DB-03b-a)
 
 Task DB-03b-a of the redesign wave (reduced DB-03b, decision DB-D14 (a)). The booking site of a host shows, in its footer, the
