@@ -107,7 +107,51 @@ public class LeaseOperationsController(
     }
 
     /// <summary>
-    /// Marks a letter (<c>disdetta</c>, <c>presa-atto-recesso</c>, <c>conferma-esigenza</c>) as sent on <c>sentOn</c> (a day from the start of the lease up to today) by
+    /// The ISTAT update of the rent worked out from the variation of the FOI index the landlord typed and the share of it the contract
+    /// recognizes. Nothing is written and no external service is called. 409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>; 422
+    /// <c>lease_istat_waived</c> (cedolare secca), <c>lease_istat_no_rent</c>, <c>lease_istat_percent_invalid</c>, <c>lease_istat_no_increase</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/istat/calculate")]
+    [ProducesResponseType(typeof(LeaseIstatCalculationDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CalculateIstat(Guid id, [FromBody] IstatCalculationInputDto dto, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(await operations.CalculateIstatAsync(id, dto.FoiPercent!.Value, dto.SharePercent!.Value, cancellationToken));
+    }
+
+    /// <summary>
+    /// The draft of the landlord's request to update the rent, as a PDF, with the numbers <c>istat/calculate</c> gives for the same percentages,
+    /// from <c>effectiveFrom</c> (never in the past, not after the end of the period: 422 <c>lease_letter_effect_date_invalid</c>).
+    /// </summary>
+    [HttpPost("{id:guid}/letters/aggiornamento-istat")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> AggiornamentoIstat(Guid id, [FromBody] AggiornamentoIstatLetterDto dto, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        return Pdf(await operations.BuildAggiornamentoIstatAsync(id, dto.FoiPercent!.Value, dto.SharePercent!.Value, dto.EffectiveFrom!.Value, cancellationToken));
+    }
+
+    /// <summary>
+    /// The draft of the communication to the tenant that the landlord has chosen the cedolare secca, with the renunciation of the updates of the
+    /// rent, as a PDF. 422 <c>lease_letter_not_applicable</c> when the lease is not under the cedolare secca.
+    /// </summary>
+    [HttpPost("{id:guid}/letters/opzione-cedolare")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> OpzioneCedolare(Guid id, [FromBody] OpzioneCedolareLetterDto dto, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        return Pdf(await operations.BuildOpzioneCedolareAsync(id, dto.EffectiveFrom, cancellationToken));
+    }
+
+    /// <summary>
+    /// Marks a letter (<c>disdetta</c>, <c>presa-atto-recesso</c>, <c>conferma-esigenza</c>, <c>aggiornamento-istat</c>, <c>opzione-cedolare</c>) as sent on <c>sentOn</c> (a day from the start of the lease up to today) by
     /// <c>means</c>: an event in the history of the lease and nothing else, the lease does not change. 200 with the operations of the lease; 404
     /// for a letter that does not exist; 409 <c>lease_not_in_force</c>; 422 <c>lease_letter_date_invalid</c>.
     /// </summary>
@@ -162,6 +206,16 @@ public sealed record PresaAttoRecessoLetterDto(
 
 /// <summary>The agreement to renew or extend the lease: the first and the last day of the period it adds, and whether it is an extension agreed on a day.</summary>
 public sealed record RinnovoLetterDto([param: Required] DateOnly? StartsOn, [param: Required] DateOnly? EndsOn, bool Agreed = false);
+
+/// <summary>The ISTAT update to work out: the variation of the FOI index (percent, above zero, two decimals at most) and the share of it the contract recognizes.</summary>
+public sealed record IstatCalculationInputDto([param: Required] decimal? FoiPercent, [param: Required] decimal? SharePercent);
+
+/// <summary>The request to update the rent: the same percentages and the day the new rent applies from.</summary>
+public sealed record AggiornamentoIstatLetterDto(
+    [param: Required] decimal? FoiPercent, [param: Required] decimal? SharePercent, [param: Required] DateOnly? EffectiveFrom);
+
+/// <summary>The communication of the cedolare secca: the first day the option applies from, when the person says it.</summary>
+public sealed record OpzioneCedolareLetterDto(DateOnly? EffectiveFrom = null);
 
 /// <summary>A letter marked as sent: the day (<c>yyyy-MM-dd</c>, from the start of the lease up to today) and how.</summary>
 public sealed record MarkLetterSentDto(
