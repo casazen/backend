@@ -124,7 +124,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
             Payments,
             NullLogger<ServiceRequestService>.Instance,
-            Clock);
+            Clock,
+            Payments);
         Booking = new ShowcaseBookingService(
             db,
             Catalog,
@@ -135,7 +136,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             ShowcaseNotifier,
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
             NullLogger<ShowcaseBookingService>.Instance,
-            Clock);
+            Clock,
+            Payments);
         Inquiry = new ShowcaseInquiryService(
             db,
             Catalog,
@@ -152,7 +154,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Catalog,
             Service,
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
-            Clock);
+            Clock,
+            Payments);
     }
 
     /// <summary>The publishable key the payment sessions of the kit carry.</summary>

@@ -22,6 +22,7 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
     private readonly Dictionary<string, ServiceTransfer> _transfersByKey = new(StringComparer.Ordinal);
     private readonly List<ServiceTransfer> _transfers = [];
     private int _sequence;
+    private Exception? _failNextCreate;
     private Exception? _failNextCapture;
     private Exception? _failNextTransfer;
     private Exception? _failNextList;
@@ -109,6 +110,9 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
             return _intents[id];
     }
 
+    /// <summary>The next PaymentIntent cannot be created (Stripe is down): nothing exists on this fake Stripe afterwards.</summary>
+    public void FailNextCreate(Exception exception) => _failNextCreate = exception;
+
     public void FailNextCapture(Exception exception) => _failNextCapture = exception;
 
     public void FailNextTransfer(Exception exception) => _failNextTransfer = exception;
@@ -126,6 +130,12 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
         lock (_gate)
         {
             Created.Add(request);
+            if (_failNextCreate is { } failure)
+            {
+                _failNextCreate = null;
+                throw failure;
+            }
+
             if (_intentByKey.TryGetValue(request.IdempotencyKey, out var existing))
                 return Task.FromResult(_intents[existing]);
 

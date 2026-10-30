@@ -35,6 +35,7 @@ public class ServiceRequestPaymentTenancyTests
         ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsRelease.cs"] = "The release of the held money to the supplier (SP-15c-a): one payment, by id, under the payment lock; the payer's confirmation reads it back by id.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsWebhook.cs"] = "The Stripe events of the held money (SP-15c-a): the payment found by its transfer (or the payment id of its metadata), then read by id under the payment lock.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsJobs.cs"] = "The system job of the held money (SP-15c-a): it runs over the payments in a state, across every supplier, and handles each payment by id under its lock; a job has no tenant.",
+        ["Casazen.Infrastructure/Services/ServiceRequestAutoCancelService.cs"] = "The system job that closes the new showcase requests whose card block is gone (SP-15c-a): it asks, per request id, whether the request still has a payment that is not canceled; a job has no tenant.",
         ["Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs"] = "The platform admin's list, detail and commission export (SP-15b, AdminOnly): read-only projections across the suppliers, on purpose.",
         ["Casazen.Infrastructure/Services/SupplierPaymentReadModels.cs"] = "The supplier console's read models (SP-04e): the payment summary of a job, the counters and the figures of the home. Read-only, and every statement carries the caller's SupplierOrgId.",
     };

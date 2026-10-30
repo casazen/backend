@@ -37,7 +37,7 @@ public class ShowcaseBookingTenancyTests
     /// <summary>The system jobs that work across every supplier on purpose: run only by Hangfire, reachable from no request.</summary>
     private static readonly IReadOnlyDictionary<string, string> SystemJobFiles = new Dictionary<string, string>
     {
-        ["Casazen.Infrastructure/Services/ServiceRequestExpiryService.cs"] = "Deletes the holds whose time has passed, whoever they belong to (ExpiredHoldIdsOf reads ids only).",
+        ["Casazen.Infrastructure/Services/ServiceRequestExpiryService.cs"] = "Deletes the holds whose time has passed, whoever they belong to (ExpiredHoldIdsOf reads ids only; UnconsumedPaidHoldsOf reads ids and the supplier org of the ones with a card block, which the booking service releases one at a time).",
         ["Casazen.Infrastructure/Services/ServiceCustomerPrivacyService.cs"] = "The nightly retention anonymizes the customers whose period has ended, whoever they belong to.",
     };
 
@@ -191,6 +191,16 @@ public class ShowcaseBookingTenancyTests
         Assert.DoesNotContain("EmailHash", expired, StringComparison.Ordinal);
         Assert.DoesNotContain("TokenHash", expired, StringComparison.Ordinal);
         Assert.DoesNotMatch("\"OrgId\" = @", expired);
+
+        // SP-15c-a: of those, the ones that never became a request and carry a block on a card are released one at a time. The statement
+        // that finds them reads the id and the supplier org (the lock the release takes is the supplier's) and nothing personal, and never
+        // a hold that has a request: its PaymentIntent belongs to the payment.
+        var paid = ServiceRequestExpiryService.UnconsumedPaidHoldsOf(db, [Guid.NewGuid(), Guid.NewGuid()]).ToQueryString();
+        Assert.Contains("= ANY (@", paid, StringComparison.Ordinal);
+        Assert.Matches("\"StripePaymentIntentId\" IS NOT NULL", paid);
+        Assert.Matches("\"ConsumedAt\" IS NULL", paid);
+        foreach (var column in new[] { "PayloadEncrypted", "EmailHash", "TokenHash", "PublicCode", "ClientRequestId", "ServiceRequestId" })
+            Assert.DoesNotContain(column, paid, StringComparison.Ordinal);
     }
 
     [Fact]

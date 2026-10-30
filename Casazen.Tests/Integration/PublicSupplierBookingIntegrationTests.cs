@@ -857,7 +857,7 @@ internal static class PublicBookingTestData
     /// <summary>The hold and the token of the link in a verification e-mail.</summary>
     public static (Guid HoldId, string Token) LinkOf((string? To, EmailContent Content, string Template) email)
     {
-        var match = Regex.Match(email.Content.HtmlBody, "hold=([0-9a-fA-F-]{36})&amp;token=([A-Za-z0-9_-]+)");
+        var match = Regex.Match(email.Content.HtmlBody, "hold=([0-9a-fA-F-]{36})#token=([A-Za-z0-9_-]+)");
         Assert.True(match.Success, "the verification e-mail has no link with the hold and the token");
         return (Guid.Parse(match.Groups[1].Value), match.Groups[2].Value);
     }
