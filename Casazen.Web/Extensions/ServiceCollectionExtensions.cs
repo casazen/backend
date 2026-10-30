@@ -709,6 +709,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IHostServiceRequestReader, HostServiceRequestReader>();
         // The supplier's customers, the page "Clienti": hosts and private customers of the showcase aggregated from the requests (SP-16a).
         services.AddScoped<ISupplierClientsService, SupplierClientsService>();
+        // The ranking of the suppliers (SP-REL): who is recommended, the order of the list a host chooses from and, with the backups, who
+        // is called. The weights are configuration (SupplierRanking), validated at startup, every one with a default; the events the
+        // reliability is made of (answers in time, jobs without a dispute, missed deadlines, disputes) are recorded by the request flow.
+        services.AddOptions<Casazen.Core.Options.SupplierRankingOptions>()
+            .BindConfiguration(Casazen.Core.Options.SupplierRankingOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.SupplierRankingOptions>, Casazen.Core.Options.SupplierRankingOptionsValidator>();
+        services.AddScoped<ISupplierReliabilityService, SupplierReliabilityService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
         // Internal activities performed by staff on properties (NF-22, agency tier).
         services.AddScoped<IInternalActivityService, InternalActivityService>();

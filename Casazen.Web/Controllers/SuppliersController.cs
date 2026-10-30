@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
@@ -268,8 +269,9 @@ public class SuppliersController(
     /// <c>services</c>, the lowest <c>priceFromCents</c>, the measured <c>medianResponseMinutes</c>, the <c>verified</c> badge (an
     /// active profile with a VAT number, never the number itself) and the <c>showcaseSlug</c>; <c>q</c> keeps the suppliers whose
     /// name, category (code, Italian or English name) or service name matches, whatever the case and the accents, and <c>sort</c>
-    /// (<c>name</c>, <c>price</c>, <c>response</c>) orders them. The enrichment is two reads for the whole list, whatever its size,
-    /// and does not depend on the showcase flag.
+    /// (<c>recommended</c> by default, <c>name</c>, <c>price</c>, <c>response</c>) orders them: <c>recommended</c> is the ranking of
+    /// SP-REL (load, bio, reliability), with the first supplier marked <c>recommended</c> when it is strictly ahead of the next. The
+    /// enrichment is two reads for the whole list, whatever its size, and does not depend on the showcase flag.
     /// </summary>
     [HttpGet]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
@@ -283,6 +285,7 @@ public class SuppliersController(
         [FromQuery] GetSuppliersQuery query,
         [FromServices] ISupplierServiceCatalogService catalog,
         [FromServices] ISupplierKpiService kpis,
+        [FromServices] ISupplierMatchService matcher,
         CancellationToken cancellationToken)
     {
         if (!SupplierPickerSearch.TryParseSort(query.Sort, out var sort))
@@ -303,6 +306,12 @@ public class SuppliersController(
         var services = await catalog.ListPickerServicesAsync(orgIds, cancellationToken);
         var medians = await kpis.GetMedianResponseMinutesBatchAsync(orgIds, cancellationToken);
 
+        // SP-REL: the default order is the ranking, the same score that recommends a supplier and picks its backups. Read only for that
+        // order; the number is never sent, only the order and the "recommended" marker of the first one.
+        var scores = sort == SupplierPickerSort.Recommended
+            ? await matcher.ScoresAsync(suppliers, ServiceRequestUrgency.Normal, cancellationToken)
+            : null;
+
         var items = SupplierPickerSearch.Apply(
             suppliers.Select(sp => SupplierPickerDto.From(
                 sp,
@@ -311,7 +320,8 @@ public class SuppliersController(
                 medians.GetValueOrDefault(sp.OrgId))),
             query.Q,
             sort,
-            services);
+            services,
+            scores);
 
         return Ok(new PagedResultDto<SupplierPickerDto>
         {

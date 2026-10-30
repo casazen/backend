@@ -6,19 +6,23 @@ namespace Casazen.Core.Suppliers;
 
 /// <summary>
 /// The rules of the backup suppliers (SP-BKP, decision of the product owner of 2026-10-29/30): a host's request is sent to the
-/// supplier it chose (the <b>primary</b>) and, at the same moment, to up to three <b>backups</b>, declared as such. The primary has one
-/// hour (<c>Suppliers:ServiceRequests:PrimaryResponseMinutes</c>) to take the job; the first backup that accepts has it if the primary
-/// does not. One place for the service, the readers, the job and the tests.
+/// supplier it chose (the <b>primary</b>) and, at the same moment, to up to three <b>backups</b>, declared as such and picked by the
+/// ranking of the suppliers (SP-REL). The primary has one hour (<c>Suppliers:ServiceRequests:PrimaryResponseMinutes</c>) to take the job;
+/// the first backup that accepts has it if the primary does not, and <b>its acceptance closes the race</b> for the other backups. One
+/// place for the service, the readers, the job and the tests.
 /// </summary>
 /// <remarks>
-/// <para><b>The decisions with a default</b> (the product owner can change them):
-/// (1) a backup can only say it would take the job (the <i>pre-approval</i>, <see cref="ServiceRequest.BackupAcceptedAt"/>) while the
-/// primary has its window; when the window passes, the earliest pre-approval has the job; (2) when nobody pre-approved, the group opens a
-/// second window (<c>BackupResponseMinutes</c>, 60) in which the primary is still in the race but without any priority, and the first to
-/// take the job has it; (3) the primary that takes the job after its hour is refused only when a backup holds a pre-approval; (4) a
-/// backup never holds a slot of its agenda before it has the job: the slot is checked again when the job is assigned and, if it is not
-/// free, the next pre-approval is tried; (5) a backup sees what a supplier sees before the take (the comune, the time, the price): never
-/// the property or the host's notes.</para>
+/// <para><b>The decisions</b> (the product owner's of 2026-10-30, and the defaults he left open):
+/// (1) a backup can only say it would take the job (the <i>acceptance</i>, <see cref="ServiceRequest.BackupAcceptedAt"/>) while the
+/// primary has its window; (2) <b>the first backup that accepts closes the race</b>: at that instant the requests of the other backups are
+/// closed for good (<c>BackupRaceClosed</c>, no penalty) and they cannot accept any more; when the window passes, or the primary refuses,
+/// the backup that accepted takes the job by itself; (3) the acceptance holds the backup's slot in its agenda from then on (checked when it
+/// accepts, under the supplier's calendar lock, and again when the job is assigned) and frees it if the primary takes the job, which
+/// releases the backup with no penalty; the backups that did not accept never hold a slot; (4) when nobody accepted by the end of the
+/// primary's window, the group opens a second window (<c>BackupResponseMinutes</c>, 60) in which the primary is still in the race but
+/// without any priority, and the first to take the job has it, which closes the others; (5) the primary that takes the job after its hour
+/// is refused only when a backup has accepted; (6) a backup sees what a supplier sees before the take (the comune, the time, the price):
+/// never the property or the host's notes.</para>
 /// </remarks>
 public static class ServiceRequestGroupRules
 {
@@ -28,9 +32,17 @@ public static class ServiceRequestGroupRules
         || r.GroupRole == ServiceRequestGroupRole.Primary
         || r.GroupRole == ServiceRequestGroupRole.PromotedBackup;
 
-    /// <summary>The requests that are not a backup waiting for the primary: the ones that hold, or may hold, a time in the supplier's agenda.</summary>
+    /// <summary>The requests that are not a backup waiting for the primary: the ones that are, or may become, a job of the supplier (the backup that accepted included).</summary>
     public static readonly Expression<Func<ServiceRequest, bool>> NotWaitingBackup = r =>
         r.GroupRole != ServiceRequestGroupRole.Backup || r.Status != ServiceRequestStatus.Richiesto;
+
+    /// <summary>
+    /// The requests that hold, or may hold, a time in the supplier's agenda: all but a backup that still waits. A backup holds its slot from
+    /// the moment it accepts (it is the only one that can have the job when the primary does not take it), so one that accepted is in; the
+    /// ones that did not accept, and the ones closed by the race, are not.
+    /// </summary>
+    public static readonly Expression<Func<ServiceRequest, bool>> HoldsSupplierTime = r =>
+        r.GroupRole != ServiceRequestGroupRole.Backup || r.Status != ServiceRequestStatus.Richiesto || r.BackupAcceptedAt != null;
 
     /// <summary>The requests the host sees (see <see cref="VisibleToHost"/>).</summary>
     public static IQueryable<ServiceRequest> OnlyVisibleToHost(this IQueryable<ServiceRequest> requests) => requests.Where(VisibleToHost);
@@ -38,7 +50,10 @@ public static class ServiceRequestGroupRules
     /// <summary>The requests that are not a backup waiting for the primary (see <see cref="NotWaitingBackup"/>).</summary>
     public static IQueryable<ServiceRequest> WithoutWaitingBackups(this IQueryable<ServiceRequest> requests) => requests.Where(NotWaitingBackup);
 
-    /// <summary>True for a backup that has not taken the job and is not out of the group: it holds nothing and the host does not see it.</summary>
+    /// <summary>The requests that hold, or may hold, a time in the supplier's agenda (see <see cref="HoldsSupplierTime"/>).</summary>
+    public static IQueryable<ServiceRequest> OnlyHoldingSupplierTime(this IQueryable<ServiceRequest> requests) => requests.Where(HoldsSupplierTime);
+
+    /// <summary>True for a backup that has not taken the job and is not out of the group: the host does not see it, and it holds no slot unless it accepted.</summary>
     public static bool IsWaitingBackup(ServiceRequestGroupRole role, ServiceRequestStatus status) =>
         role == ServiceRequestGroupRole.Backup && status == ServiceRequestStatus.Richiesto;
 
@@ -62,7 +77,10 @@ public static class ServiceRequestGroupRules
         public bool IsLive => Status == ServiceRequestStatus.Richiesto;
     }
 
-    /// <summary>The backups that pre-approved and still wait, the earliest first (the instant, then the id: a total order, so two runs agree).</summary>
+    /// <summary>
+    /// The backups that accepted and still wait, the earliest first (the instant, then the id: a total order, so two runs agree). Since the
+    /// first acceptance closes the race there is at most one; the order stays as the last guard of a race the database could not stop.
+    /// </summary>
     public static IReadOnlyList<Member> PreApprovedInOrder(IEnumerable<Member> members) =>
         [.. members
             .Where(m => m.Role == ServiceRequestGroupRole.Backup && m.IsLive && m.BackupAcceptedAt is not null)
@@ -183,6 +201,12 @@ public static class ServiceRequestGroupErrorCodes
     /// <summary>422: the second window of the group is open, so the backup takes the job directly instead of accepting as a backup.</summary>
     public const string BackupAlreadyActive = "service_request_backup_already_active";
 
+    /// <summary>
+    /// 409: another backup accepted first, which closes the race for the others (the first backup that accepts is the only one that can have
+    /// the job): this one can no longer accept, and loses nothing by it.
+    /// </summary>
+    public const string BackupRaceClosed = "service_request_backup_race_closed";
+
     public const string BackupWaitsForPrimaryMessageKey = "ServiceRequestBackupWaitsForPrimary";
     public const string PrimaryWindowPassedMessageKey = "ServiceRequestPrimaryWindowPassed";
     public const string BackupNotYourTurnMessageKey = "ServiceRequestBackupNotYourTurn";
@@ -190,6 +214,7 @@ public static class ServiceRequestGroupErrorCodes
     public const string BackupCannotProposeMessageKey = "ServiceRequestBackupCannotPropose";
     public const string BackupCannotQuoteMessageKey = "ServiceRequestBackupCannotQuote";
     public const string BackupAlreadyActiveMessageKey = "ServiceRequestBackupAlreadyActive";
+    public const string BackupRaceClosedMessageKey = "ServiceRequestBackupRaceClosed";
 
     /// <summary>Every <c>SharedResources</c> key the backup rules raise (a test checks that each one exists in Italian and English).</summary>
     public static IReadOnlyList<string> MessageKeys { get; } =
@@ -201,6 +226,7 @@ public static class ServiceRequestGroupErrorCodes
         BackupCannotProposeMessageKey,
         BackupCannotQuoteMessageKey,
         BackupAlreadyActiveMessageKey,
+        BackupRaceClosedMessageKey,
     ];
 }
 

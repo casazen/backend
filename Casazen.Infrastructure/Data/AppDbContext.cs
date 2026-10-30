@@ -153,6 +153,13 @@ public class AppDbContext(
     public DbSet<SupplierSettings> SupplierSettings { get; set; } = null!;
 
     /// <summary>
+    /// What weighs on the reliability of a supplier (SP-REL): replies in time, missed deadlines, completed jobs, disputes. Keyed by the
+    /// supplier org and <b>not</b> tenant-filtered (TN-2 allow-list): only <c>SupplierReliabilityService</c> reads and writes it, always
+    /// with an explicit supplier predicate.
+    /// </summary>
+    public DbSet<SupplierReliabilityEvent> SupplierReliabilityEvents { get; set; } = null!;
+
+    /// <summary>
     /// The content of the suppliers' public showcases (SP-13a): the draft, the published version and the one before it, one row per
     /// supplier. Keyed by the supplier org, <b>not</b> tenant-filtered (see the TN-2 allow-list): only
     /// <c>SupplierShowcaseContentService</c> (and the supplier repair) reads and writes it, always with an explicit <c>OrgId</c> predicate.
@@ -1080,6 +1087,9 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new SupplierFreeCalendarEventConfiguration());
 
         modelBuilder.ApplyConfiguration(new SupplierSettingsConfiguration());
+
+        // SP-REL: the events of the reliability of a supplier, a child of its profile like the agenda.
+        modelBuilder.ApplyConfiguration(new SupplierReliabilityEventConfiguration());
 
         // SP-13a: the content of the supplier's showcase (draft, published, previous). A child of the supplier profile in cascade, like
         // the settings; xmin is the concurrency token.

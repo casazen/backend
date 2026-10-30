@@ -8,7 +8,7 @@ public enum ServiceRequestBackupClosedKind
     /// <summary>The primary supplier took the job.</summary>
     PrimaryTookIt = 0,
 
-    /// <summary>Another backup accepted first.</summary>
+    /// <summary>Another backup took the job first, in the second window.</summary>
     TakenByBackup = 1,
 
     /// <summary>The host cancelled the request.</summary>
@@ -16,6 +16,12 @@ public enum ServiceRequestBackupClosedKind
 
     /// <summary>The backup had accepted, but when the job came to it its time was no longer free.</summary>
     SlotUnavailable = 3,
+
+    /// <summary>Another backup accepted first, which closed the race for the others: no penalty.</summary>
+    RaceClosed = 4,
+
+    /// <summary>The backup had accepted and the primary supplier took the job after all: the backup is released, its time is free again, no penalty.</summary>
+    ReleasedByPrimary = 5,
 }
 
 public static partial class EmailTemplates

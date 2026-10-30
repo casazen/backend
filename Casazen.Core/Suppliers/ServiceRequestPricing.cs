@@ -48,9 +48,16 @@ public static class ServiceRequestCancellationReasons
 
     /// <summary>
     /// SP-BKP, a backup that had accepted: when the job came to it, its time was no longer free (a job it took meanwhile, a time off), so
-    /// the job went on to the next one and this request was closed by CasaZen. The client translates it.
+    /// this request was closed by CasaZen. The client translates it.
     /// </summary>
     public const string BackupSlotUnavailable = "BackupSlotUnavailable";
+
+    /// <summary>
+    /// SP-BKP, a backup supplier's request: another backup accepted first, which closes the race for the others at that instant — only the
+    /// first backup that accepts can have the job, and it has it if the primary supplier does not take it. Closed by CasaZen
+    /// (<c>CancelledBy = System</c>) and with no penalty: the supplier did nothing wrong. The client translates it.
+    /// </summary>
+    public const string BackupRaceClosed = "BackupRaceClosed";
 
     /// <summary>
     /// A request from the public showcase whose supplier had sent a quote and whose customer did not answer before the deadline
@@ -63,7 +70,7 @@ public static class ServiceRequestCancellationReasons
     /// <summary>True for a value of <c>CancellationReason</c> that is one of the codes above and not text a person wrote.</summary>
     public static bool IsCode(string? reason) =>
         reason is NoResponse or ProposalNotAnswered or CancelledByCustomer or QuoteNotAnswered or PrimaryTookIt or TakenByBackup
-            or RequestCancelledByHost or BackupSlotUnavailable;
+            or RequestCancelledByHost or BackupSlotUnavailable or BackupRaceClosed;
 }
 
 /// <summary>The kinds of line of <see cref="ServiceRequestPriceLine"/>.</summary>

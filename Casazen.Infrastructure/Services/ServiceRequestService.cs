@@ -55,7 +55,8 @@ public partial class ServiceRequestService(
     ILogger<ServiceRequestService> logger,
     TimeProvider? timeProvider = null,
     IFeatureFlags? featureFlags = null,
-    ServiceRequestBackupSelector? backupSelector = null) : IServiceRequestService
+    ServiceRequestBackupSelector? backupSelector = null,
+    ISupplierReliabilityService? reliability = null) : IServiceRequestService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -416,7 +417,15 @@ public partial class ServiceRequestService(
         CancellationToken cancellationToken = default)
     {
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
+
+        // A backup closed by the race (another backup accepted first) is told so plainly: 409, and it loses nothing.
+        ThrowIfRaceClosed(request);
         EnsureCan(request, ServiceRequestStatus.PresoInCarico, ServiceRequestErrorCodes.CannotTakeMessageKey);
+
+        // The deadline the request had when the supplier answered: the take clears it, the ranking (SP-REL) needs it. The group role
+        // changes with the take (the backup that gets the job is promoted), so it is read now.
+        var dueBeforeAnswer = await ReplyDeadlineAsync(request, cancellationToken);
+        var answeredAsBackup = request.GroupRole == ServiceRequestGroupRole.Backup;
 
         if (command?.QuotedAmountCents is { } quote)
             ServiceRequestPricing.EnsureValidAmount(quote);
@@ -490,6 +499,8 @@ public partial class ServiceRequestService(
                 cancellationToken);
             await CommitAsync(transaction, cancellationToken);
         }
+
+        await RecordReplyAsync(request, dueBeforeAnswer, answeredAsBackup, cancellationToken);
 
         // The host learns who has the job; when a backup took it in place of the primary, it is told so.
         if (closure is { WinnerIsBackup: true })
@@ -657,6 +668,7 @@ public partial class ServiceRequestService(
 
         // The link goes out after the save, and only the winner of the transition sends it.
         await payments.AnnounceAsync(plan, request, cancellationToken);
+        await RecordCompletedAsync(request, cancellationToken);
         await notifier.NotifyHostAsync(request, cancellationToken);
         return request;
     }
@@ -671,6 +683,7 @@ public partial class ServiceRequestService(
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
         var wasWaitingBackup = request.GroupRole == ServiceRequestGroupRole.Backup;
+        var dueBeforeAnswer = await ReplyDeadlineAsync(request, cancellationToken);
 
         await TransitionAsync(
             request,
@@ -683,6 +696,9 @@ public partial class ServiceRequestService(
                 ClearProposal(r);
             },
             cancellationToken);
+
+        // Saying no in time is an answer in time (SP-REL): the host can ask somebody else at once. A backup's counts as a backup's.
+        await RecordReplyAsync(request, dueBeforeAnswer, wasWaitingBackup, cancellationToken);
 
         // A6-08: the host learns of the rejection by email and push, like of the other supplier decisions. Not of a backup's: the host did not
         // choose it, and the group goes on without it.

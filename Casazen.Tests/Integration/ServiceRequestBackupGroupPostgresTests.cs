@@ -111,7 +111,7 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
     }
 
     [PostgresFact]
-    public async Task SilentPrimary_TheEarliestBackupThatAccepted_GetsTheJobWhenTheJobRuns()
+    public async Task SilentPrimary_TheBackupThatAcceptedFirst_ClosesTheRace_AndGetsTheJobWhenTheJobRuns()
     {
         var world = await SeedAsync();
         var id = await factory.CreateRequestAsync(world.Base);
@@ -124,18 +124,25 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
         using (var b = factory.CreateAuthenticatedClient(world.BackupB.UserId, "Supplier"))
         {
             await AcceptAsBackupAsync(a, requestA.Id);
-            await Task.Delay(50);
-            await AcceptAsBackupAsync(b, requestB.Id);
 
-            // Saying it again is not an error and does not move the supplier back in the line.
+            // The first backup that accepts closes the race: the other one finds it closed (409 with its own code), and it loses nothing.
+            var late = await b.PostAsync($"/api/service-requests/{requestB.Id}/accept-as-backup", content: null);
+            await AssertProblemAsync(late, HttpStatusCode.Conflict, ServiceRequestGroupErrorCodes.BackupRaceClosed);
+            var take = await b.PostAsJsonAsync($"/api/service-requests/{requestB.Id}/take", new { });
+            await AssertProblemAsync(take, HttpStatusCode.Conflict, ServiceRequestGroupErrorCodes.BackupRaceClosed);
+
+            // Saying it again is not an error and changes nothing.
             await AcceptAsBackupAsync(a, requestA.Id);
         }
 
         var accepted = await MembersAsync(groupId);
-        Assert.True(
-            accepted.Single(m => m.Id == requestA.Id).BackupAcceptedAt < accepted.Single(m => m.Id == requestB.Id).BackupAcceptedAt,
-            "The first backup to accept is the first in line.");
-        Assert.All(accepted.Where(m => m.GroupRole == ServiceRequestGroupRole.Backup), m => Assert.Equal(ServiceRequestStatus.Richiesto, m.Status));
+        Assert.NotNull(accepted.Single(m => m.Id == requestA.Id).BackupAcceptedAt);
+        Assert.Equal(ServiceRequestStatus.Richiesto, accepted.Single(m => m.Id == requestA.Id).Status);
+        var raced = accepted.Single(m => m.Id == requestB.Id);
+        Assert.Null(raced.BackupAcceptedAt);
+        Assert.Equal(ServiceRequestStatus.Annullato, raced.Status);
+        Assert.Equal(ServiceRequestActorParty.System, raced.CancelledBy);
+        Assert.Equal(ServiceRequestCancellationReasons.BackupRaceClosed, raced.CancellationReason);
 
         // Within the primary's hour the job leaves the group as it is.
         await RunJobAsync();
@@ -159,9 +166,10 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
         Assert.Equal(ServiceRequestStatus.Annullato, replaced.Status);
         Assert.Equal(ServiceRequestCancellationReasons.NoResponse, replaced.CancellationReason);
 
+        // Beta stays as the race left it: closed when Alfa accepted, not by the take.
         var other = after.Single(m => m.Id == requestB.Id);
         Assert.Equal(ServiceRequestStatus.Annullato, other.Status);
-        Assert.Equal(ServiceRequestCancellationReasons.TakenByBackup, other.CancellationReason);
+        Assert.Equal(ServiceRequestCancellationReasons.BackupRaceClosed, other.CancellationReason);
 
         // The host follows the backup that took the job, and the group tells how it came to it.
         using (var host = factory.Host(world.Base))
@@ -181,6 +189,37 @@ public class ServiceRequestBackupGroupPostgresTests(BackupGroupsEnabledFactory f
         var closedAt = (await LoadGroupAsync(groupId)).ClosedAt;
         await RunJobAsync();
         Assert.Equal(closedAt, (await LoadGroupAsync(groupId)).ClosedAt);
+    }
+
+    [PostgresFact]
+    public async Task TwoBackupsAcceptingAtTheSameMoment_OneClosesTheRaceAndTheOtherFindsItClosed()
+    {
+        var world = await SeedAsync();
+        var id = await factory.CreateRequestAsync(world.Base);
+        var groupId = await GroupIdOfAsync(id);
+        var members = await MembersAsync(groupId);
+        var requestA = members.Single(m => m.SupplierOrgId == world.BackupA.OrgId);
+        var requestB = members.Single(m => m.SupplierOrgId == world.BackupB.OrgId);
+
+        using var a = factory.CreateAuthenticatedClient(world.BackupA.UserId, "Supplier");
+        using var b = factory.CreateAuthenticatedClient(world.BackupB.UserId, "Supplier");
+        var responses = await Task.WhenAll(
+            a.PostAsync($"/api/service-requests/{requestA.Id}/accept-as-backup", content: null),
+            b.PostAsync($"/api/service-requests/{requestB.Id}/accept-as-backup", content: null));
+
+        // The group's lock serializes the acceptances: one has it, and the other finds its request closed by the race (409, its own code).
+        Assert.DoesNotContain(responses, r => (int)r.StatusCode >= 500);
+        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.OK);
+        await AssertProblemAsync(
+            Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Conflict), HttpStatusCode.Conflict, ServiceRequestGroupErrorCodes.BackupRaceClosed);
+
+        var after = await MembersAsync(groupId);
+        var accepted = Assert.Single(after, m => m.GroupRole == ServiceRequestGroupRole.Backup && m.BackupAcceptedAt != null);
+        Assert.Equal(ServiceRequestStatus.Richiesto, accepted.Status);
+        var closed = Assert.Single(after, m => m.GroupRole == ServiceRequestGroupRole.Backup && m.BackupAcceptedAt == null);
+        Assert.Equal(ServiceRequestStatus.Annullato, closed.Status);
+        Assert.Equal(ServiceRequestCancellationReasons.BackupRaceClosed, closed.CancellationReason);
+        Assert.Equal(ServiceRequestGroupPhase.PrimaryWindow, (await LoadGroupAsync(groupId)).Phase);
     }
 
     [PostgresFact]

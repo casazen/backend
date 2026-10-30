@@ -3638,6 +3638,9 @@
   <data name="ServiceRequestBackupAlreadyActive" xml:space="preserve">
     <value>The main supplier did not take the request: you can accept it directly, the first to accept gets the job.</value>
   </data>
+  <data name="ServiceRequestBackupRaceClosed" xml:space="preserve">
+    <value>Another backup supplier has already accepted this job: the race is over and your backup request is no longer available. There is no penalty for you.</value>
+  </data>
   <data name="ServiceRequestCannotQuote" xml:space="preserve">
     <value>You can answer with a quote only a request that still waits for your answer.</value>
   </data>

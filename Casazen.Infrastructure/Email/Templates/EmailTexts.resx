@@ -912,6 +912,9 @@
   <data name="ServiceRequestExpired_Body" xml:space="preserve">
     <value>La richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; è stata &lt;strong&gt;annullata&lt;/strong&gt;: non hai risposto entro il termine.</value>
   </data>
+  <data name="ServiceRequestExpired_PointsHint" xml:space="preserve">
+    <value>Le richieste a cui non si risponde in tempo fanno scendere il punteggio di affidabilità: chi risponde puntuale compare più in alto nell'elenco dei fornitori.</value>
+  </data>
   <data name="ServiceRequestReminder_Subject" xml:space="preserve">
     <value>Promemoria: richiesta in attesa di risposta — {0}</value>
   </data>
@@ -1774,7 +1777,7 @@
     <value>Hai ricevuto una richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; come &lt;strong&gt;fornitore di riserva&lt;/strong&gt;: il cliente l'ha mandata anche al fornitore che ha scelto, che ha tempo fino a &lt;strong&gt;{2}&lt;/strong&gt; per accettarla. Il lavoro sarà tuo solo se quel fornitore non accetta.</value>
   </data>
   <data name="ServiceRequestBackupInvited_Hint" xml:space="preserve">
-    <value>Puoi dire subito che accetti come riserva: se il fornitore principale non risponde, il lavoro va al primo tra le riserve che hanno accettato. Finché non ti viene assegnato, il tuo calendario non è occupato. L'indirizzo, il nome dell'immobile e le note dell'host si vedono dopo che il lavoro è tuo.</value>
+    <value>Puoi dire subito che accetti come riserva: la prima riserva che accetta chiude la gara (le altre non possono più accettare) e il suo orario viene riservato in agenda; se il fornitore principale non accetta, il lavoro va a lei. Finché non accetti, il tuo calendario non è occupato. L'indirizzo, il nome dell'immobile e le note dell'host si vedono dopo che il lavoro è tuo.</value>
   </data>
   <data name="ServiceRequestBackupActive_Subject" xml:space="preserve">
     <value>Ora puoi accettare la richiesta — {0}</value>
@@ -1804,7 +1807,13 @@
     <value>La richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; è stata annullata: non c'è più un lavoro da prendere.</value>
   </data>
   <data name="ServiceRequestBackupClosed_SlotUnavailable_Body" xml:space="preserve">
-    <value>Il lavoro di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; doveva passare a te, ma l'orario non risultava più libero nella tua agenda: è andato avanti con un'altra riserva.</value>
+    <value>Il lavoro di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; doveva passare a te, ma l'orario non risultava più libero nella tua agenda: la tua richiesta di riserva si chiude.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_RaceClosed_Body" xml:space="preserve">
+    <value>Un'altra riserva ha già accettato la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: la gara è chiusa e la tua richiesta di riserva si chiude qui. Non c'è nessuna penalità per te.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_ReleasedByPrimary_Body" xml:space="preserve">
+    <value>Il fornitore principale ha accettato la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: la tua disponibilità come riserva non serve più. L'orario che avevi riservato in agenda è di nuovo libero e non c'è nessuna penalità per te.</value>
   </data>
   <data name="ServiceRequestTakenByBackup_Subject" xml:space="preserve">
     <value>Richiesta fornitore presa in carico da una riserva — {0}</value>

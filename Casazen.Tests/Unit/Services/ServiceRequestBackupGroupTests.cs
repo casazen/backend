@@ -255,11 +255,13 @@ public class ServiceRequestBackupGroupTests
         using var s = await ServiceRequestScenario.CreateAsync();
         var (primary, alfa, beta) = await CreateGroupAsync(s);
 
-        // Beta accepts first, Alfa three minutes later: the order of the acceptances decides, not the order of the list.
+        // Beta accepts first, and that closes the race: Alfa, which would have accepted three minutes later, finds it closed.
         s.Clock.Advance(TimeSpan.FromMinutes(2));
         await s.Service.AcceptAsBackupAsync(beta.Id, beta.SupplierOrgId, beta.Member);
         s.Clock.Advance(TimeSpan.FromMinutes(3));
-        await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
+        var tooLate = await Assert.ThrowsAsync<DomainConflictException>(
+            () => s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member));
+        Assert.Equal(ServiceRequestGroupErrorCodes.BackupRaceClosed, tooLate.Code);
 
         // Before the end of the hour nothing happens.
         s.Clock.Advance(TimeSpan.FromMinutes(54));
@@ -276,9 +278,10 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(beta.Member, winner.TakenByUserId);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, winner.TakenAt);
         Assert.Null(winner.ResponseDueAt);
+        // Alfa was closed when Beta accepted, not by the take: its request says so, and it was told then.
         var other = await s.ReadAsync(alfa.Id);
         Assert.Equal(ServiceRequestStatus.Annullato, other.Status);
-        Assert.Equal(ServiceRequestCancellationReasons.TakenByBackup, other.CancellationReason);
+        Assert.Equal(ServiceRequestCancellationReasons.BackupRaceClosed, other.CancellationReason);
         var lost = await s.ReadAsync(primary.Id);
         Assert.Equal(ServiceRequestStatus.Annullato, lost.Status);
         Assert.Equal(ServiceRequestCancellationReasons.NoResponse, lost.CancellationReason);
@@ -293,22 +296,32 @@ public class ServiceRequestBackupGroupTests
         Assert.Equal(EmailTemplates.Names.ServiceRequestTakenByBackup, toHost.Template);
         Assert.Contains("Beta Srl", toHost.Content.HtmlBody);
 
-        // The winner is told the job is its; the primary that did not answer and the other backup are told theirs.
+        // The winner is told the job is its; the primary that did not answer is told its own, and why it loses points. The other backup was
+        // told when the race closed, and is not told again.
         Assert.Single(s.Emails.Snapshot(), e => e.To == "beta-srl@test.com" && e.Template == EmailTemplates.Names.ServiceRequestBackupWon);
-        Assert.Single(s.Emails.Snapshot(), e => e.To == "alfa-srl@test.com" && e.Template == EmailTemplates.Names.ServiceRequestBackupClosed);
-        Assert.Single(s.Emails.Snapshot(), e => e.To == "supplier@test.com" && e.Template == EmailTemplates.Names.ServiceRequestCancelledToSupplier);
+        Assert.DoesNotContain(s.Emails.Snapshot(), e => e.To == "alfa-srl@test.com");
+        var toPrimary = Assert.Single(s.Emails.Snapshot(), e => e.To == "supplier@test.com" && e.Template == EmailTemplates.Names.ServiceRequestCancelledToSupplier);
+        Assert.Contains("punteggio di affidabilità", toPrimary.Content.HtmlBody);
+
+        // Reliability (SP-REL): Beta answered in time as a backup, the primary missed its hour, Alfa lost nothing.
+        var betaEvents = await s.ReliabilityEventsAsync(beta.SupplierOrgId);
+        var answered = Assert.Single(betaEvents);
+        Assert.Equal(SupplierReliabilityEventKind.RepliedInTime, answered.Kind);
+        Assert.True(answered.AsBackup);
+        Assert.Empty(await s.ReliabilityEventsAsync(alfa.SupplierOrgId));
+        var missed = Assert.Single(await s.ReliabilityEventsAsync());
+        Assert.Equal(SupplierReliabilityEventKind.NoReplyInTime, missed.Kind);
+        Assert.False(missed.AsBackup);
     }
 
     [Fact]
-    public async Task PrimarySilent_TheBackupWhoseTimeIsNoLongerFree_IsPassedOver_AndTheNextOneHasTheJob()
+    public async Task PrimarySilent_TheBackupThatAcceptedButWhoseTimeIsGoneMeanwhile_IsDropped_AndThePrimaryGetsTheSecondWindow()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         var (primary, alfa, beta) = await CreateGroupAsync(s);
         await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
-        s.Clock.Advance(TimeSpan.FromMinutes(1));
-        await s.Service.AcceptAsBackupAsync(beta.Id, beta.SupplierOrgId, beta.Member);
 
-        // Alfa takes another job at that time before the hour is over: a backup held nothing, so nothing stopped it.
+        // Alfa takes another job at that time before the hour is over (written straight to the table: the planner would have refused it).
         var savedPrimary = await s.ReadAsync(primary.Id);
         await s.SeedAsync(
             ServiceRequestStatus.PresoInCarico,
@@ -324,13 +337,14 @@ public class ServiceRequestBackupGroupTests
 
         var run = await Job(s).RunAsync();
 
-        Assert.Equal(1, run.Closed);
+        // Beta was closed with the race and cannot have the job: nobody is left but the primary, which has a second window without priority.
+        Assert.Equal(new ServiceRequestGroupRun(false, 1, 0, 1, 0, 0), run);
         var dropped = await s.ReadAsync(alfa.Id);
         Assert.Equal(ServiceRequestStatus.Annullato, dropped.Status);
         Assert.Equal(ServiceRequestCancellationReasons.BackupSlotUnavailable, dropped.CancellationReason);
-        var winner = await s.ReadAsync(beta.Id);
-        Assert.Equal(ServiceRequestStatus.PresoInCarico, winner.Status);
-        Assert.Equal(ServiceRequestGroupRole.PromotedBackup, winner.GroupRole);
+        Assert.Equal(ServiceRequestCancellationReasons.BackupRaceClosed, (await s.ReadAsync(beta.Id)).CancellationReason);
+        Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(primary.Id)).Status);
+        Assert.Equal(ServiceRequestGroupPhase.BackupWindow, (await s.Db.ServiceRequestGroups.AsNoTracking().SingleAsync()).Phase);
         var toAlfa = Assert.Single(s.Emails.Snapshot(), e => e.To == "alfa-srl@test.com");
         Assert.Equal(EmailTemplates.Names.ServiceRequestBackupClosed, toAlfa.Template);
         Assert.Contains("non risultava più libero", toAlfa.Content.HtmlBody);
@@ -433,6 +447,214 @@ public class ServiceRequestBackupGroupTests
     }
 
     // ─── The rules for the suppliers ─────────────────────────────────────────────────────────────────────────────────
+
+    // ─── The first backup that accepts closes the race (decision of 2026-10-30) ──────────────────────────────────────
+
+    [Fact]
+    public async Task TheFirstBackupToAccept_ClosesTheRaceForTheOthers_InTheSameSave_AndTellsThemWithoutAPenalty()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var (primary, alfa, beta) = await CreateGroupAsync(s);
+        s.ForgetNotifications();
+        s.Clock.Advance(TimeSpan.FromMinutes(5));
+
+        var accepted = await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
+
+        // Alfa is the only backup left: it waits for the primary, and its acceptance is on the record.
+        Assert.Equal(ServiceRequestStatus.Richiesto, accepted.Status);
+        var savedAlfa = await s.ReadAsync(alfa.Id);
+        Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, savedAlfa.BackupAcceptedAt);
+        Assert.Equal(alfa.Member, savedAlfa.BackupAcceptedByUserId);
+        Assert.Equal(ServiceRequestGroupRole.Backup, savedAlfa.GroupRole);
+
+        // Beta's request is closed for good, by CasaZen, with its own reason, and the group goes on.
+        var closed = await s.ReadAsync(beta.Id);
+        Assert.Equal(ServiceRequestStatus.Annullato, closed.Status);
+        Assert.Equal(ServiceRequestActorParty.System, closed.CancelledBy);
+        Assert.Equal(ServiceRequestCancellationReasons.BackupRaceClosed, closed.CancellationReason);
+        Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, closed.CancelledAt);
+        Assert.Null(closed.ResponseDueAt);
+        Assert.Null(closed.BackupAcceptedAt);
+        Assert.Equal(ServiceRequestGroupPhase.PrimaryWindow, (await s.Db.ServiceRequestGroups.AsNoTracking().SingleAsync()).Phase);
+        Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(primary.Id)).Status);
+
+        // Beta is told why, plainly, and nobody else is told anything: the primary and the host are not bothered.
+        var toBeta = Assert.Single(s.Emails.Snapshot());
+        Assert.Equal("beta-srl@test.com", toBeta.To);
+        Assert.Equal(EmailTemplates.Names.ServiceRequestBackupClosed, toBeta.Template);
+        Assert.Contains("già accettato", toBeta.Content.HtmlBody);
+        Assert.Contains("nessuna penalità", toBeta.Content.HtmlBody);
+
+        // It costs Beta nothing: the points of a supplier are written for what it did, and it did nothing wrong. Alfa answered in time.
+        Assert.Empty(await s.ReliabilityEventsAsync(beta.SupplierOrgId));
+        var reply = Assert.Single(await s.ReliabilityEventsAsync(alfa.SupplierOrgId));
+        Assert.Equal(SupplierReliabilityEventKind.RepliedInTime, reply.Kind);
+        Assert.True(reply.AsBackup);
+    }
+
+    [Fact]
+    public async Task ABackupClosedByTheRace_CannotAcceptNorTake_Gets409WithItsOwnCode_AndLosesNothing()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var (_, alfa, beta) = await CreateGroupAsync(s);
+        await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
+
+        var accept = await Assert.ThrowsAsync<DomainConflictException>(() => s.Service.AcceptAsBackupAsync(beta.Id, beta.SupplierOrgId, beta.Member));
+        var take = await Assert.ThrowsAsync<DomainConflictException>(() => s.Service.TakeAsync(beta.Id, beta.SupplierOrgId, beta.Member));
+
+        Assert.Equal(ServiceRequestGroupErrorCodes.BackupRaceClosed, accept.Code);
+        Assert.Equal(ServiceRequestGroupErrorCodes.BackupRaceClosed, take.Code);
+        // The request is as the race left it, and Alfa still holds the first place.
+        var saved = await s.ReadAsync(beta.Id);
+        Assert.Equal(ServiceRequestCancellationReasons.BackupRaceClosed, saved.CancellationReason);
+        Assert.Null(saved.BackupAcceptedAt);
+        Assert.NotNull((await s.ReadAsync(alfa.Id)).BackupAcceptedAt);
+        Assert.Empty(await s.ReliabilityEventsAsync(beta.SupplierOrgId));
+    }
+
+    [Fact]
+    public async Task TheBackupThatAccepted_HoldsItsTimeInItsAgenda_TheOthersNever_AndThePrimaryTakingFreesItAndReleasesTheBackup()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var (primary, alfa, beta) = await CreateGroupAsync(s);
+        var savedPrimary = await s.ReadAsync(primary.Id);
+        var day = RomeCalendar.DateInRome(savedPrimary.ScheduledStartUtc!.Value);
+
+        // Nobody has accepted yet: no backup holds anything.
+        Assert.Empty(await s.Reader.ListForAgendaAsync(alfa.SupplierOrgId, day, day));
+
+        await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
+
+        // Alfa's agenda holds the time from now on (a request waiting counts); Beta, closed by the race, holds nothing.
+        Assert.Single(await s.Reader.ListForAgendaAsync(alfa.SupplierOrgId, day, day));
+        Assert.Empty(await s.Reader.ListForAgendaAsync(beta.SupplierOrgId, day, day));
+
+        // The primary takes the job in its hour: Alfa is released, the time is free again and Alfa loses nothing.
+        s.ForgetNotifications();
+        await s.Service.TakeAsync(primary.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
+
+        Assert.Empty(await s.Reader.ListForAgendaAsync(alfa.SupplierOrgId, day, day));
+        var released = await s.ReadAsync(alfa.Id);
+        Assert.Equal(ServiceRequestStatus.Annullato, released.Status);
+        Assert.Equal(ServiceRequestCancellationReasons.PrimaryTookIt, released.CancellationReason);
+        var toAlfa = Assert.Single(s.Emails.Snapshot(), e => e.To == "alfa-srl@test.com");
+        Assert.Equal(EmailTemplates.Names.ServiceRequestBackupClosed, toAlfa.Template);
+        Assert.Contains("di nuovo libero", toAlfa.Content.HtmlBody);
+        Assert.Contains("nessuna penalità", toAlfa.Content.HtmlBody);
+        Assert.All(await s.ReliabilityEventsAsync(alfa.SupplierOrgId), e => Assert.Equal(SupplierReliabilityEventKind.RepliedInTime, e.Kind));
+        Assert.Empty(await s.ReliabilityEventsAsync(beta.SupplierOrgId));
+    }
+
+    [Fact]
+    public async Task ABackupWhoseTimeIsNotFree_CannotAccept_409_AndTheRaceStaysOpenForTheNext()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var (primary, alfa, beta) = await CreateGroupAsync(s);
+        var savedPrimary = await s.ReadAsync(primary.Id);
+        await s.SeedAsync(
+            ServiceRequestStatus.PresoInCarico,
+            r =>
+            {
+                r.ScheduledStartUtc = savedPrimary.ScheduledStartUtc;
+                r.ScheduledEndUtc = savedPrimary.ScheduledEndUtc;
+                r.TakenAt = ServiceRequestScenario.Instant.UtcDateTime;
+            },
+            supplierOrgId: alfa.SupplierOrgId);
+
+        var refused = await Assert.ThrowsAsync<DomainConflictException>(() => s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member));
+
+        // Alfa could not say yes, so nothing was closed: the race is open and Beta can still accept (which then closes it for Alfa).
+        Assert.Equal(ServiceRequestErrorCodes.SlotUnavailable, refused.Code);
+        Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(alfa.Id)).Status);
+        Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(beta.Id)).Status);
+        await s.Service.AcceptAsBackupAsync(beta.Id, beta.SupplierOrgId, beta.Member);
+        Assert.Equal(ServiceRequestCancellationReasons.BackupRaceClosed, (await s.ReadAsync(alfa.Id)).CancellationReason);
+    }
+
+    [Fact]
+    public async Task ABackupThatAcceptsAfterThePrimarysHourHasPassed_HasTheJobAtOnce()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var (primary, alfa, beta) = await CreateGroupAsync(s);
+        s.Clock.Advance(PrimaryWindow);
+
+        // The job has not looked at the group yet: the acceptance does, and the primary is out of time.
+        var result = await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
+
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, result.Status);
+        Assert.Equal(ServiceRequestGroupRole.PromotedBackup, (await s.ReadAsync(alfa.Id)).GroupRole);
+        Assert.Equal(ServiceRequestCancellationReasons.NoResponse, (await s.ReadAsync(primary.Id)).CancellationReason);
+        Assert.Equal(ServiceRequestCancellationReasons.BackupRaceClosed, (await s.ReadAsync(beta.Id)).CancellationReason);
+        Assert.Equal(ServiceRequestGroupPhase.Closed, (await s.Db.ServiceRequestGroups.AsNoTracking().SingleAsync()).Phase);
+    }
+
+    // ─── Who earns and who loses points (SP-REL) ─────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task NobodyAnswers_ThePrimaryLosesTheBigShare_ASilentBackupTheSmallOne_AndWhoWasAwayLosesNothing()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var (_, alfa, beta) = await CreateGroupAsync(s);
+        // Beta only works on Sundays: while the request waits (a Thursday) it could not have answered.
+        await s.Agenda.ReplaceHoursAsync(
+            beta.SupplierOrgId,
+            new SupplierHoursInput([new SupplierHoursDayInput(DayOfWeek.Sunday, [new SupplierHoursBandInput(8 * 60, 9 * 60)])]));
+        s.Clock.Advance(PrimaryWindow);
+        await Job(s).RunAsync();
+        s.Clock.Advance(TimeSpan.FromMinutes(60));
+        s.ForgetNotifications();
+
+        await Job(s).RunAsync();
+
+        var primaryMissed = Assert.Single(await s.ReliabilityEventsAsync());
+        Assert.Equal(SupplierReliabilityEventKind.NoReplyInTime, primaryMissed.Kind);
+        Assert.False(primaryMissed.AsBackup);
+        var alfaMissed = Assert.Single(await s.ReliabilityEventsAsync(alfa.SupplierOrgId));
+        Assert.Equal(SupplierReliabilityEventKind.NoReplyInTime, alfaMissed.Kind);
+        Assert.True(alfaMissed.AsBackup);
+        Assert.Empty(await s.ReliabilityEventsAsync(beta.SupplierOrgId));
+        var points = await s.Kit.Reliability.PointsAsync([s.SupplierOrgId, alfa.SupplierOrgId, beta.SupplierOrgId]);
+        Assert.Equal(-10, points[s.SupplierOrgId]);
+        Assert.Equal(-2, points[alfa.SupplierOrgId]);
+        Assert.False(points.ContainsKey(beta.SupplierOrgId));
+
+        // The two that lost points are told why; the one that was away is told the request lapsed, and nothing about points.
+        const string hint = "punteggio di affidabilità";
+        Assert.Contains(hint, Assert.Single(s.Emails.Snapshot(), e => e.To == "supplier@test.com" && e.Template == EmailTemplates.Names.ServiceRequestCancelledToSupplier).Content.HtmlBody);
+        Assert.Contains(hint, Assert.Single(s.Emails.Snapshot(), e => e.To == "alfa-srl@test.com" && e.Template == EmailTemplates.Names.ServiceRequestCancelledToSupplier).Content.HtmlBody);
+        Assert.DoesNotContain(hint, Assert.Single(s.Emails.Snapshot(), e => e.To == "beta-srl@test.com" && e.Template == EmailTemplates.Names.ServiceRequestCancelledToSupplier).Content.HtmlBody);
+    }
+
+    [Fact]
+    public async Task ThePrimaryThatTakesTheJobInTheSecondWindow_AlreadyLostItsPoints_AndEarnsNoneForAnswerTooLate()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var (primary, _, _) = await CreateGroupAsync(s);
+        s.Clock.Advance(PrimaryWindow);
+        await Job(s).RunAsync();
+        s.Clock.Advance(TimeSpan.FromMinutes(10));
+
+        await s.Service.TakeAsync(primary.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
+
+        // It missed its hour (written when the second window opened); taking the job later is not an answer in time.
+        var missed = Assert.Single(await s.ReliabilityEventsAsync());
+        Assert.Equal(SupplierReliabilityEventKind.NoReplyInTime, missed.Kind);
+    }
+
+    [Fact]
+    public async Task ABackupThatRefusesInTime_AnswersInTime_AsABackup()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var (_, alfa, beta) = await CreateGroupAsync(s);
+
+        await s.Service.RejectAsync(alfa.Id, alfa.SupplierOrgId, "Siamo al completo");
+
+        var reply = Assert.Single(await s.ReliabilityEventsAsync(alfa.SupplierOrgId));
+        Assert.Equal(SupplierReliabilityEventKind.RepliedInTime, reply.Kind);
+        Assert.True(reply.AsBackup);
+        // Refusing did not close the race: Beta can still accept.
+        Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(beta.Id)).Status);
+    }
 
     [Fact]
     public async Task ABackup_CannotTakeTheJobWhileThePrimaryHasItsHour_ButCanAcceptAsABackup_Once()
@@ -592,12 +814,13 @@ public class ServiceRequestBackupGroupTests
         await s.Service.AcceptQuoteAsync(primary.Id, s.HostOrgId, quoted.QuoteSentAt!.Value);
 
         Assert.Equal(ServiceRequestStatus.PresoInCarico, (await s.ReadAsync(primary.Id)).Status);
-        foreach (var backup in new[] { alfa, beta })
-        {
-            var saved = await s.ReadAsync(backup.Id);
-            Assert.Equal(ServiceRequestStatus.Annullato, saved.Status);
-            Assert.Equal(ServiceRequestCancellationReasons.PrimaryTookIt, saved.CancellationReason);
-        }
+        // Alfa had accepted and is released because the primary has the job; Beta was closed with the race when Alfa accepted.
+        var released = await s.ReadAsync(alfa.Id);
+        Assert.Equal(ServiceRequestStatus.Annullato, released.Status);
+        Assert.Equal(ServiceRequestCancellationReasons.PrimaryTookIt, released.CancellationReason);
+        var raced = await s.ReadAsync(beta.Id);
+        Assert.Equal(ServiceRequestStatus.Annullato, raced.Status);
+        Assert.Equal(ServiceRequestCancellationReasons.BackupRaceClosed, raced.CancellationReason);
 
         Assert.Equal(ServiceRequestGroupPhase.Closed, (await s.Db.ServiceRequestGroups.AsNoTracking().SingleAsync()).Phase);
     }

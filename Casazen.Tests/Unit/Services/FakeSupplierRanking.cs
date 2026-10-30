@@ -1,3 +1,4 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
@@ -20,6 +21,12 @@ internal sealed class FakeSupplierRanking(AppDbContext db) : ISupplierMatchServi
         ServiceRequestUrgency urgency,
         CancellationToken cancellationToken = default) =>
         throw new NotSupportedException("The backup suppliers rank with RankActiveAsync.");
+
+    public Task<IReadOnlyDictionary<Guid, int>> ScoresAsync(
+        IReadOnlyList<SupplierProfile> suppliers,
+        ServiceRequestUrgency urgency,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyDictionary<Guid, int>>(suppliers.ToDictionary(sp => sp.OrgId, _ => 70));
 
     public async Task<IReadOnlyList<RankedSupplier>> RankActiveAsync(
         ComuneTarget target,

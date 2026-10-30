@@ -64,4 +64,14 @@ public interface ISupplierMatchService
         string category,
         ServiceRequestUrgency urgency,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The ranking score (1 to 100, <see cref="Casazen.Core.Suppliers.SupplierRanking"/>) of each of <paramref name="suppliers"/> for a
+    /// request of <paramref name="urgency"/>: the same score <see cref="MatchAsync"/> orders by, with the reliability of each supplier
+    /// (SP-REL). The list a host sees when it asks for a job is ordered by it; the number itself is never shown to anybody.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, int>> ScoresAsync(
+        IReadOnlyList<Casazen.Core.Entities.SupplierProfile> suppliers,
+        ServiceRequestUrgency urgency,
+        CancellationToken cancellationToken = default);
 }

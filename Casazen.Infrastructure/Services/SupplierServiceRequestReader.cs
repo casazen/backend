@@ -330,8 +330,9 @@ public partial class SupplierServiceRequestReader(
         db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
-            // SP-BKP: a backup that only waits for its primary holds nothing of the agenda (the slot is checked when the job is assigned to it).
-            .WithoutWaitingBackups()
+            // SP-BKP: a backup that only waits for its primary holds nothing of the agenda; the backup that accepted does, from then on (the
+            // first backup that accepts closes the race and is the only one that can have the job), and frees the time if the primary takes it.
+            .OnlyHoldingSupplierTime()
             .Where(r => r.SupplierOrgId == supplierOrgId
                         && r.Status != ServiceRequestStatus.Rifiutato
                         && r.Status != ServiceRequestStatus.Annullato

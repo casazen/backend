@@ -3638,6 +3638,9 @@
   <data name="ServiceRequestBackupAlreadyActive" xml:space="preserve">
     <value>Il fornitore principale non ha preso in carico la richiesta: puoi accettarla direttamente, il primo che accetta ha il lavoro.</value>
   </data>
+  <data name="ServiceRequestBackupRaceClosed" xml:space="preserve">
+    <value>Un altro fornitore di riserva ha già accettato questo lavoro: la gara è chiusa e la tua richiesta di riserva non è più disponibile. Non c'è nessuna penalità per te.</value>
+  </data>
   <data name="ServiceRequestCannotQuote" xml:space="preserve">
     <value>Puoi rispondere con un preventivo solo a una richiesta ancora in attesa della tua risposta.</value>
   </data>

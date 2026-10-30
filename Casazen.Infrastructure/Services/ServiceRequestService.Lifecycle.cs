@@ -158,6 +158,7 @@ public partial class ServiceRequestService
         var end = command.EndUtc is { } requestedEnd ? UtcDateTime.Normalize(requestedEnd) : (DateTime?)null;
         var schedule = await ResolveScheduleAsync(request, supplierOrgId, start, end, cancellationToken);
         var message = string.IsNullOrWhiteSpace(command.Message) ? null : command.Message.Trim();
+        var dueBeforeAnswer = await ReplyDeadlineAsync(request, cancellationToken);
 
         IDbContextTransaction? transaction = await LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
         await using (transaction)
@@ -192,6 +193,8 @@ public partial class ServiceRequestService
 
         logger.LogInformation("ServiceRequest {Id}: the supplier proposed another time", request.Id);
 
+        // A proposal is an answer, and the deadline of the supplier is spent with it.
+        await RecordReplyAsync(request, dueBeforeAnswer, asBackup: false, cancellationToken);
         await notifier.NotifyTimeProposedAsync(request, cancellationToken);
         return request;
     }

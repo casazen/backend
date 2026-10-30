@@ -211,11 +211,80 @@ public partial class ServiceRequestService
     /// <summary>The group a request is taken in, and the request as committed now (<see cref="RequireGroupTakeAsync"/>).</summary>
     private sealed record GroupTake(GroupState State, ServiceRequest Request);
 
-    /// <summary>What closing a group after a take changed, to tell the people it concerns after the commit.</summary>
+    /// <summary>
+    /// What closing a group after a take changed, to tell the people it concerns after the commit. <paramref name="PrimaryDueAt"/> is the end
+    /// of the primary's window, which the primary that was replaced did not meet.
+    /// </summary>
     private sealed record GroupClosure(
         bool WinnerIsBackup,
         ServiceRequest? ReplacedPrimary,
-        IReadOnlyList<(ServiceRequest Request, ServiceRequestBackupClosedKind Kind)> ClosedBackups);
+        IReadOnlyList<(ServiceRequest Request, ServiceRequestBackupClosedKind Kind)> ClosedBackups,
+        DateTime PrimaryDueAt);
+
+    // ─── Race closed, deadlines of the replies ───────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 409 <see cref="ServiceRequestGroupErrorCodes.BackupRaceClosed"/> for a backup whose request the race closed: another backup accepted
+    /// first, so this one can no longer accept nor take it. Clearer for the supplier than "the request changed", and it loses nothing by it.
+    /// </summary>
+    private static void ThrowIfRaceClosed(ServiceRequest request)
+    {
+        if (request is
+            {
+                GroupRole: ServiceRequestGroupRole.Backup,
+                Status: ServiceRequestStatus.Annullato,
+                CancellationReason: ServiceRequestCancellationReasons.BackupRaceClosed,
+            })
+        {
+            throw new DomainConflictException(
+                ServiceRequestGroupErrorCodes.BackupRaceClosed, ServiceRequestGroupErrorCodes.BackupRaceClosedMessageKey);
+        }
+    }
+
+    /// <summary>
+    /// The deadline a reply of the supplier is judged against for its reliability (SP-REL): the <c>ResponseDueAt</c> the request has, except
+    /// for the primary of a group, whose deadline is the end of its own window whatever the second window says (an answer in the second
+    /// window is late for the primary). Read before the answer, which clears <c>ResponseDueAt</c>.
+    /// </summary>
+    private async Task<DateTime?> ReplyDeadlineAsync(ServiceRequest request, CancellationToken cancellationToken)
+    {
+        if (request is not { GroupRole: ServiceRequestGroupRole.Primary, GroupId: { } groupId })
+            return request.ResponseDueAt;
+
+        // The group has no tenant filter (TN-2 allow-list): the id is the predicate.
+        var group = await db.ServiceRequestGroups.FirstOrDefaultAsync(g => g.Id == groupId, cancellationToken);
+        return group?.PrimaryDueAt ?? request.ResponseDueAt;
+    }
+
+    /// <summary>When the primary began to wait for the group's first window to end: the creation, or the start of the last window when the host's answer to a proposal restarted it.</summary>
+    private DateTime PrimaryWindowStart(ServiceRequestGroup group, ServiceRequest primary)
+    {
+        var start = group.PrimaryDueAt.AddMinutes(-options.Value.PrimaryResponseMinutes);
+        return start > primary.CreatedAt ? start : primary.CreatedAt;
+    }
+
+    /// <summary>
+    /// A supplier of the group did not answer in its window (SP-REL): it loses the points of a missed deadline, a backup only the small
+    /// share, unless it could not have answered (not active, on time off, closed while the request waited). True when it did lose them, so
+    /// the e-mail it gets can say why. Written after the group's change is committed, never inside it.
+    /// </summary>
+    private async Task<bool> RecordMissedWindowAsync(
+        ServiceRequest request,
+        DateTime windowStartUtc,
+        DateTime windowEndUtc,
+        CancellationToken cancellationToken)
+    {
+        if (reliability is null || !CountsForReliability(request))
+            return false;
+
+        return await reliability.RecordNoReplyAsync(
+            request.SupplierOrgId,
+            request.Id,
+            windowStartUtc,
+            windowEndUtc,
+            asBackup: request.GroupRole == ServiceRequestGroupRole.Backup,
+            cancellationToken);
+    }
 
     /// <summary>
     /// Under the group's lock: reads the group again and refuses the take unless <see cref="ServiceRequestGroupRules.CanTake"/> allows it.
@@ -295,27 +364,41 @@ public partial class ServiceRequestService
         var closed = new List<(ServiceRequest Request, ServiceRequestBackupClosedKind Kind)>();
         foreach (var backup in take.State.Backups.Where(b => b.Id != winner.Id && b.Status == ServiceRequestStatus.Richiesto).ToList())
         {
+            // The primary took the job: a backup that had accepted is released (and told its time is free again), the others are told the job
+            // is taken. Neither loses anything.
             var (reason, kind) = winnerIsBackup
                 ? (ServiceRequestCancellationReasons.TakenByBackup, ServiceRequestBackupClosedKind.TakenByBackup)
-                : (ServiceRequestCancellationReasons.PrimaryTookIt, ServiceRequestBackupClosedKind.PrimaryTookIt);
+                : (ServiceRequestCancellationReasons.PrimaryTookIt, PrimaryTookItKind(backup));
             CloseBySystem(backup, reason, now);
             closed.Add((backup, kind));
         }
 
-        return new GroupClosure(winnerIsBackup, replaced, closed);
+        return new GroupClosure(winnerIsBackup, replaced, closed, group.PrimaryDueAt);
     }
 
-    /// <summary>Tells who the closing of a group concerns, after the commit: the primary that lost its job and the backups that were closed.</summary>
+    /// <summary>How a backup is told that the primary took the job: released (its time was held) when it had accepted, closed otherwise.</summary>
+    private static ServiceRequestBackupClosedKind PrimaryTookItKind(ServiceRequest backup) =>
+        backup.BackupAcceptedAt is not null ? ServiceRequestBackupClosedKind.ReleasedByPrimary : ServiceRequestBackupClosedKind.PrimaryTookIt;
+
+    /// <summary>
+    /// Tells who the closing of a group concerns, after the commit: the primary that lost its job (it did not take it in its window, so it
+    /// loses the points of a missed deadline unless it could not have answered, and its e-mail says so) and the backups that were closed.
+    /// </summary>
     private async Task NotifyClosureAsync(GroupClosure closure, CancellationToken cancellationToken)
     {
         if (closure.ReplacedPrimary is { } replaced)
-            await notifier.NotifySupplierCancelledAsync(replaced, cancellationToken);
+        {
+            var windowStart = closure.PrimaryDueAt.AddMinutes(-options.Value.PrimaryResponseMinutes);
+            var lostPoints = await RecordMissedWindowAsync(
+                replaced, windowStart > replaced.CreatedAt ? windowStart : replaced.CreatedAt, closure.PrimaryDueAt, cancellationToken);
+            await notifier.NotifySupplierCancelledAsync(replaced, cancellationToken, lostPoints);
+        }
 
         foreach (var (request, kind) in closure.ClosedBackups)
             await notifier.NotifyBackupClosedAsync(request, kind, cancellationToken);
     }
 
-    // ─── The pre-approval ────────────────────────────────────────────────────────────────────────────────────────────
+    // ─── The acceptance of a backup: the first one closes the race ──────────────────────────────────────────────────
 
     public async Task<ServiceRequest> AcceptAsBackupAsync(
         Guid id,
@@ -324,17 +407,26 @@ public partial class ServiceRequestService
         CancellationToken cancellationToken = default)
     {
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
+        ThrowIfRaceClosed(request);
         if (request is not { GroupId: { } groupId, GroupRole: ServiceRequestGroupRole.Backup, Status: ServiceRequestStatus.Richiesto })
         {
             throw new DomainRuleException(
                 ServiceRequestGroupErrorCodes.NotAWaitingBackup, ServiceRequestGroupErrorCodes.NotAWaitingBackupMessageKey);
         }
 
-        IDbContextTransaction? transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken, GroupLock(groupId));
+        var dueBeforeAnswer = request.ResponseDueAt;
+        IReadOnlyList<ServiceRequest> closedByTheRace = [];
+
+        // The group's lock first, then the supplier's calendar lock: the acceptance holds the supplier's slot, so it is judged under both,
+        // like the time of any take.
+        IDbContextTransaction? transaction = await LockSupplierCalendarAsync(supplierOrgId, groupId, cancellationToken);
         await using (transaction)
         {
             var state = await LoadGroupAsync(groupId, cancellationToken) ?? throw RequestNotFound(id);
             request = state.Find(id) ?? throw RequestNotFound(id);
+
+            // Another backup accepted while this call waited for the lock: this request was closed with the race.
+            ThrowIfRaceClosed(request);
 
             // Closed meanwhile (the primary took the job, someone else did, the host cancelled): nothing to accept anymore.
             if (state.Group.Phase == ServiceRequestGroupPhase.Closed || request.Status != ServiceRequestStatus.Richiesto)
@@ -348,11 +440,20 @@ public partial class ServiceRequestService
                     ServiceRequestGroupErrorCodes.BackupAlreadyActive, ServiceRequestGroupErrorCodes.BackupAlreadyActiveMessageKey);
             }
 
-            // Accepting twice is not an error and does not move the supplier back in the line.
+            // Accepting twice is not an error and changes nothing.
             if (request.BackupAcceptedAt is not null)
                 return request;
 
-            // It says it will take the job at that time, so the time must still be free for it. Checked again when the job is assigned.
+            // The first backup that accepts closes the race: if another one has accepted already this one is out of it (its request was closed
+            // in the same save; this is the guard for rows that say otherwise).
+            if (state.Backups.Any(b => b.Id != request.Id && b.Status == ServiceRequestStatus.Richiesto && b.BackupAcceptedAt is not null))
+            {
+                throw new DomainConflictException(
+                    ServiceRequestGroupErrorCodes.BackupRaceClosed, ServiceRequestGroupErrorCodes.BackupRaceClosedMessageKey);
+            }
+
+            // It says it will take the job at that time, and from now on its agenda holds the time: the time must be free for it, judged here
+            // under the supplier's lock like the time of any take (409 supplier_slot_unavailable), and again when the job is assigned.
             if (backupSelector is not null
                 && request is { ScheduledStartUtc: { } start, ScheduledEndUtc: { } end }
                 && !await backupSelector.IsFreeAsync(supplierOrgId, start, end, state.Group.SlotPlanned, cancellationToken))
@@ -364,12 +465,29 @@ public partial class ServiceRequestService
             request.BackupAcceptedAt = now;
             request.BackupAcceptedByUserId = userId;
             request.UpdatedAt = now;
+
+            // The race is closed for the others in the same save: either this supplier is the one, or nothing changes. Nobody loses anything.
+            var others = state.Backups.Where(b => b.Id != request.Id && b.Status == ServiceRequestStatus.Richiesto).ToList();
+            foreach (var other in others)
+                CloseBySystem(other, ServiceRequestCancellationReasons.BackupRaceClosed, now);
+
             await SaveAsync(request, "backup acceptance", cancellationToken);
             await CommitAsync(transaction, cancellationToken);
+            closedByTheRace = others;
         }
 
-        logger.LogInformation("ServiceRequest {Id}: the backup supplier {SupplierOrgId} accepted as a backup", id, supplierOrgId);
-        return request;
+        logger.LogInformation(
+            "ServiceRequest {Id}: the backup supplier {SupplierOrgId} accepted as a backup and closed the race for {Closed} other backups",
+            id, supplierOrgId, closedByTheRace.Count);
+
+        // After the commit, by the winner only: the answer counts for the supplier's reliability, the ones left behind are told.
+        await RecordReplyAsync(request, dueBeforeAnswer, asBackup: true, cancellationToken);
+        foreach (var other in closedByTheRace)
+            await notifier.NotifyBackupClosedAsync(other, ServiceRequestBackupClosedKind.RaceClosed, cancellationToken);
+
+        // The primary's hour may be over already (the job had not looked at the group yet): then the backup that accepted has the job at once.
+        await ResolveGroupAfterChangeAsync(groupId, cancellationToken);
+        return await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
     }
 
     // ─── The pass over a group ───────────────────────────────────────────────────────────────────────────────────────
@@ -530,8 +648,10 @@ public partial class ServiceRequestService
         await SaveAsync(state.Head!, "group closed", cancellationToken);
         foreach (var backup in closed)
         {
+            // A backup that had accepted and is released because the primary took the job is told its time is free again.
             var closedBackup = backup;
-            notices.Add(() => notifier.NotifyBackupClosedAsync(closedBackup, kind, cancellationToken));
+            var kindForBackup = kind == ServiceRequestBackupClosedKind.PrimaryTookIt ? PrimaryTookItKind(backup) : kind;
+            notices.Add(() => notifier.NotifyBackupClosedAsync(closedBackup, kindForBackup, cancellationToken));
         }
 
         logger.LogInformation("Group {GroupId} closed: {Outcome}, {Closed} backup requests closed", state.Group.Id, outcome, closed.Count);
@@ -554,6 +674,16 @@ public partial class ServiceRequestService
         var headLive = head.Status == ServiceRequestStatus.Richiesto;
         if (!headLive && waiting.Count == 0)
             return await LapseGroupAsync(state, now, notices, cancellationToken);
+
+        // The primary's window is over and it never answered (a refusal or a cancellation would have closed its request): it loses the points
+        // of a missed deadline now, whatever happens next, unless it could not have answered (SP-REL). It stays in the race without priority.
+        if (headLive)
+        {
+            var silent = head;
+            var windowStart = PrimaryWindowStart(group, silent);
+            var windowEnd = group.PrimaryDueAt;
+            notices.Add(() => RecordMissedWindowAsync(silent, windowStart, windowEnd, cancellationToken));
+        }
 
         group.Phase = ServiceRequestGroupPhase.BackupWindow;
         group.BackupDueAt = now.AddMinutes(options.Value.BackupResponseMinutes);
@@ -612,10 +742,20 @@ public partial class ServiceRequestService
         await SaveAsync(head, "group lapsed", cancellationToken);
 
         notices.Add(() => notifier.NotifyHostNoResponseAsync(head, cancellationToken));
+        var group = state.Group;
         foreach (var request in lapsing)
         {
+            // Nobody answered: each supplier that was asked and stayed silent loses the points of a missed deadline (the supplier the host
+            // chose all of them, a backup its small share) unless it could not have answered, and its e-mail says so when it did (SP-REL).
             var lapsed = request;
-            notices.Add(() => notifier.NotifySupplierCancelledAsync(lapsed, cancellationToken));
+            var isBackup = lapsed.GroupRole == ServiceRequestGroupRole.Backup;
+            var windowStart = isBackup ? lapsed.CreatedAt : PrimaryWindowStart(group, lapsed);
+            var windowEnd = isBackup ? group.BackupDueAt ?? group.PrimaryDueAt : group.PrimaryDueAt;
+            notices.Add(async () =>
+            {
+                var lostPoints = await RecordMissedWindowAsync(lapsed, windowStart, windowEnd, cancellationToken);
+                await notifier.NotifySupplierCancelledAsync(lapsed, cancellationToken, lostPoints);
+            });
         }
 
         logger.LogInformation("Group {GroupId} lapsed: nobody took the job, {Lapsed} requests closed", state.Group.Id, lapsing.Count);

@@ -47,7 +47,8 @@ public sealed partial class SupplierPaymentService(
     IConfiguration configuration,
     ISupplierPaymentJobScheduler jobScheduler,
     ILogger<SupplierPaymentService> logger,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    ISupplierReliabilityService? reliability = null)
     : ISupplierPaymentService, ISupplierPaymentWebhookService, ISupplierPaymentJobService, ISupplierPaymentRefundService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;

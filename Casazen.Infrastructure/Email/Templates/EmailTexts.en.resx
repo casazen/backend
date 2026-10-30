@@ -912,6 +912,9 @@
   <data name="ServiceRequestExpired_Body" xml:space="preserve">
     <value>The &lt;strong&gt;{0}&lt;/strong&gt; request in &lt;strong&gt;{1}&lt;/strong&gt; was &lt;strong&gt;cancelled&lt;/strong&gt;: you did not answer in time.</value>
   </data>
+  <data name="ServiceRequestExpired_PointsHint" xml:space="preserve">
+    <value>Requests that are not answered in time lower your reliability score: suppliers who answer promptly are listed higher.</value>
+  </data>
   <data name="ServiceRequestReminder_Subject" xml:space="preserve">
     <value>Reminder: request waiting for your answer — {0}</value>
   </data>
@@ -1774,7 +1777,7 @@
     <value>You received a request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; as a &lt;strong&gt;backup supplier&lt;/strong&gt;: the customer also sent it to the supplier they chose, who has until &lt;strong&gt;{2}&lt;/strong&gt; to accept it. The job will be yours only if that supplier does not accept.</value>
   </data>
   <data name="ServiceRequestBackupInvited_Hint" xml:space="preserve">
-    <value>You can say now that you accept as a backup: if the main supplier does not answer, the job goes to the first backup that accepted. Your calendar stays free until the job is assigned to you. The address, the property name and the host's notes are shown once the job is yours.</value>
+    <value>You can say now that you accept as a backup: the first backup that accepts closes the race (the others can no longer accept) and its time is set aside in its calendar; if the main supplier does not accept, the job goes to it. Your calendar stays free until you accept. The address, the property name and the host's notes are shown once the job is yours.</value>
   </data>
   <data name="ServiceRequestBackupActive_Subject" xml:space="preserve">
     <value>You can accept the request now — {0}</value>
@@ -1804,7 +1807,13 @@
     <value>The request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; was cancelled: there is no job left to take.</value>
   </data>
   <data name="ServiceRequestBackupClosed_SlotUnavailable_Body" xml:space="preserve">
-    <value>The job for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; was to go to you, but the time was no longer free in your calendar: it went on to another backup.</value>
+    <value>The job for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; was to go to you, but the time was no longer free in your calendar: your backup request is closed.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_RaceClosed_Body" xml:space="preserve">
+    <value>Another backup supplier has already accepted the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;: the race is over and your backup request ends here. There is no penalty for you.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_ReleasedByPrimary_Body" xml:space="preserve">
+    <value>The main supplier accepted the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;: your availability as a backup is no longer needed. The time you had set aside in your calendar is free again and there is no penalty for you.</value>
   </data>
   <data name="ServiceRequestTakenByBackup_Subject" xml:space="preserve">
     <value>Supplier request taken by a backup — {0}</value>

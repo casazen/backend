@@ -41,6 +41,7 @@ public partial class ServiceRequestService
 
         var (lines, total) = ServiceRequestQuoteRules.Normalize(command.Lines);
         var note = ServiceRequestQuoteRules.NormalizeNote(command.Note);
+        var dueBeforeAnswer = await ReplyDeadlineAsync(request, cancellationToken);
 
         // The quote leans on the time the request has (every request has one). Another time is optional and is judged like the time of a
         // proposal: with the planner, under the lock, and without holding the slot.
@@ -92,6 +93,8 @@ public partial class ServiceRequestService
 
         logger.LogInformation("ServiceRequest {Id}: the supplier sent a quote", request.Id);
 
+        // A quote is an answer too (the request then waits for the customer, not for the supplier).
+        await RecordReplyAsync(request, dueBeforeAnswer, asBackup: false, cancellationToken);
         await notifier.NotifyQuoteSentAsync(request, cancellationToken);
         return request;
     }

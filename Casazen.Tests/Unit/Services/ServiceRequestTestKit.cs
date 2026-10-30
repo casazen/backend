@@ -93,6 +93,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
             ShowcaseNotifier,
             Microsoft.Extensions.Options.Options.Create(Options),
             NullLogger<ServiceRequestNotifier>.Instance);
+        // SP-REL: the reliability events of the suppliers are written by the real service over the same database, with the default weights.
+        Reliability = new SupplierReliabilityService(
+            db, Agenda, Microsoft.Extensions.Options.Options.Create(RankingOptions), NullLogger<SupplierReliabilityService>.Instance, Clock);
         Payments = new SupplierPaymentService(
             db,
             Gateway,
@@ -104,7 +107,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Stripe:PublishableKey"] = PublishableKey }).Build(),
             JobScheduler,
             paymentLogger ?? NullLogger<SupplierPaymentService>.Instance,
-            Clock);
+            Clock,
+            Reliability);
         Matcher = ComuneTestServices.Matcher(db);
 
         // SP-BKP: the choice of the backup suppliers over a plain ranking (the real one needs the whole supplier service); it is only
@@ -127,7 +131,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             NullLogger<ServiceRequestService>.Instance,
             Clock,
             Flags,
-            BackupSelector);
+            BackupSelector,
+            Reliability);
         Booking = new ShowcaseBookingService(
             db,
             Catalog,
@@ -170,6 +175,12 @@ internal sealed class ServiceRequestTestKit : IDisposable
     public ShowcaseBookingOptions ShowcaseOptions { get; }
 
     public SupplierPaymentsOptions PaymentOptions { get; }
+
+    /// <summary>The weights of the ranking the kit's reliability service uses: the defaults.</summary>
+    public SupplierRankingOptions RankingOptions { get; } = new();
+
+    /// <summary>The reliability events of the suppliers (SP-REL), written by the flows of the kit.</summary>
+    public SupplierReliabilityService Reliability { get; }
 
     public FakeSupplierPaymentGateway Gateway { get; }
 

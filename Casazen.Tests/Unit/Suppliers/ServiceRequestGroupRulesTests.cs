@@ -192,6 +192,30 @@ public class ServiceRequestGroupRulesTests
     }
 
     [Theory]
+    [InlineData(ServiceRequestGroupRole.None, ServiceRequestStatus.Richiesto, false, true)]
+    [InlineData(ServiceRequestGroupRole.Primary, ServiceRequestStatus.Richiesto, false, true)]
+    [InlineData(ServiceRequestGroupRole.Backup, ServiceRequestStatus.Richiesto, false, false)]
+    [InlineData(ServiceRequestGroupRole.Backup, ServiceRequestStatus.Richiesto, true, true)]
+    [InlineData(ServiceRequestGroupRole.PromotedBackup, ServiceRequestStatus.PresoInCarico, true, true)]
+    public void HoldsSupplierTime_AllButABackupThatStillWaits_AndTheBackupThatAcceptedHoldsItsSlot(
+        ServiceRequestGroupRole role,
+        ServiceRequestStatus status,
+        bool accepted,
+        bool expected)
+    {
+        var request = new Casazen.Core.Entities.ServiceRequest
+        {
+            GroupRole = role,
+            Status = status,
+            BackupAcceptedAt = accepted ? Start : null,
+        };
+
+        Assert.Equal(expected, HoldsSupplierTime.Compile()(request));
+        // The clients of a supplier still leave the backup that accepted out: it is a possible job, not a client yet.
+        Assert.Equal(role != ServiceRequestGroupRole.Backup, NotWaitingBackup.Compile()(request));
+    }
+
+    [Theory]
     [InlineData(ServiceRequestGroupRole.Backup, ServiceRequestGroupPhase.PrimaryWindow, false, SupplierBackupStates.Waiting)]
     [InlineData(ServiceRequestGroupRole.Backup, ServiceRequestGroupPhase.PrimaryWindow, true, SupplierBackupStates.Accepted)]
     [InlineData(ServiceRequestGroupRole.Backup, ServiceRequestGroupPhase.BackupWindow, false, SupplierBackupStates.Active)]
