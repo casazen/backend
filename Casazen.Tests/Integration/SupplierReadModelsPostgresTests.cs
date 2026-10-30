@@ -416,7 +416,11 @@ public class SupplierReadModelsPostgresTests : IClassFixture<CasazenWebApplicati
         _factory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureAppConfiguration((_, config) =>
-                config.AddInMemoryCollection(new Dictionary<string, string?> { ["Features:SupplierOnlinePayments"] = paymentsFlag ? "true" : "false" }));
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Features:SupplierOnlinePayments"] = paymentsFlag ? "true" : "false",
+                    ["SupplierPayments:HeldForHosts"] = "false",
+                }));
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<TimeProvider>();

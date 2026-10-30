@@ -48,7 +48,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
         Clock = clock ?? TimeProvider.System;
         Options = options ?? new ServiceRequestOptions();
         ShowcaseOptions = showcaseOptions ?? new ShowcaseBookingOptions { PrivacyNoticeVersion = PrivacyNoticeVersion };
-        PaymentOptions = paymentOptions ?? new SupplierPaymentsOptions { CommissionPercent = 10m };
+        // The tests of SP-15a/15b exercise the direct charge on the supplier's account, so the kit pins that model; the money CasaZen holds for
+        // a host (SP-15c-b) is tried by the tests that ask for it (HeldForHosts = true).
+        PaymentOptions = paymentOptions ?? new SupplierPaymentsOptions { CommissionPercent = 10m, HeldForHosts = false };
         Gateway = gateway ?? new FakeSupplierPaymentGateway();
         PlatformGateway = platformGateway ?? new FakePlatformPaymentGateway();
         Flags = flags ?? new TestFeatureFlags();

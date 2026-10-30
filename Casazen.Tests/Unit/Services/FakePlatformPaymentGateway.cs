@@ -98,6 +98,9 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
                 Status = status,
                 AmountCapturableCents = status == "requires_capture" ? current.AmountCents : 0,
                 AmountReceivedCents = status == "succeeded" ? received ?? current.AmountCents : current.AmountReceivedCents,
+
+                // A PaymentIntent that was paid has a charge (the source of the transfer to the supplier).
+                LatestChargeId = status == "succeeded" ? current.LatestChargeId ?? $"ch_{id}" : current.LatestChargeId,
             };
             _intents[id] = updated;
             return updated;

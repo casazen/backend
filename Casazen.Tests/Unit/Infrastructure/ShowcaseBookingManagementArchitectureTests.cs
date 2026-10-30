@@ -71,6 +71,7 @@ public class ShowcaseBookingManagementArchitectureTests
         ["Casazen.Core/Services/IShowcaseBookingManager.cs"] = "Declares what the customer's own area does.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsRelease.cs"] = "Implements it, under the payment lock.",
         ["Casazen.Infrastructure/Services/ShowcaseBookingManager.cs"] = "Proves that the customer knows the code and the e-mail address, then asks for it.",
+        ["Casazen.Infrastructure/Services/ServiceRequestService.Payments.cs"] = "The host's all fine (SP-15c-b): the host proved who it is by owning the request (another org's, and a showcase one, are not found).",
         ["Casazen.Web/Controllers/PublicSupplierBookingManagementController.cs"] = "The public door of the customer's own area.",
     };
 
