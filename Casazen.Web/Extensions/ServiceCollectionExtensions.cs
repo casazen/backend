@@ -499,6 +499,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILongRentFiscalReportService, LongRentFiscalReportService>();
         // The tenants of the area (LR-09): the people read from the parties of the leases, the copy of their data and their erasure.
         services.AddScoped<ILongRentTenantService, LongRentTenantService>();
+        // The properties of the area with the APE, the cadastral data, who holds them and the change of mode programmed (LR-07a).
+        services.AddScoped<ILongRentPropertyService, LongRentPropertyService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
