@@ -117,7 +117,7 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `service-payment-refunded-payer` (customer of a showcase) | the customer of a showcase booking (in the language it chose) | the refund of a payment CasaZen held, when the request was refused, cancelled or lapsed: how much, and that the time to reach the bank depends on the bank. The sentence does not name a property (a customer has none); the supplier is **not** told of a refund CasaZen made itself (SP-15c-a) | `SupplierPaymentService.Notices`, queued |
 | `supplier-invite` | prospective supplier | invite by a platform admin | `SupplierService`, queued |
 | `supplier-booking-verification` | customer of a supplier's showcase | the customer booked a slot: the link that checks its address (SP-10) | `ShowcaseBookingNotifier`, queued |
-| `supplier-booking-receipt` | customer | the address is checked: code, time by which the supplier answers, estimate | same |
+| `supplier-booking-receipt` | customer | the address is checked: code, time by which the supplier answers, estimate (SP-15c-a, card blocked: the amount blocked, nothing charged unless the supplier accepts, released otherwise — no estimate, no "you pay nothing now") | same |
 | `supplier-booking-new-request` | supplier | the address is checked: new request with comune and "Nome C." only (D9); not if the supplier turned «Nuove richieste» off (SP-16d) | same |
 | `supplier-inquiry-verification` | customer of a supplier's showcase | the customer wrote a request on measure: the link that checks its address, the token in the fragment (SP-10b) | `ShowcaseBookingNotifier`, queued |
 | `supplier-inquiry-receipt` | customer | the address is checked: the code and the time by which the supplier answers (never the customer's words) | same |
@@ -172,7 +172,7 @@ texts `SupplierBooking*` in `EmailTexts.resx` and `EmailTexts.en.resx`. Details 
 - **The supplier never learns more than D9 allows**: comune, "Nome C.", time and estimate; not the address, the contacts or the full name.
 - **Only what is true** (D24): no "guaranteed price", no "answers in an hour", nothing about payment. The reminder is promised in the e-mail of the take only
   when it will really be sent. A test searches every template, in both languages, for the phrases that must never appear.
-- **Links** (all built by `PublicSiteLinks`): `…/fornitori/{slug}/conferma?hold={id}&token={token}` (the token is single use and works for 30 minutes),
+- **Links** (all built by `PublicSiteLinks`): `…/fornitori/{slug}/conferma?hold={id}#token={token}` (the token is in the fragment, single use, and works for 30 minutes),
   `…/fornitori/{slug}/richiesta?code={code}` (the page of the request, SP-11), `…/fornitori/{slug}` and the supplier's inbox.
 - **What Hangfire keeps.** Like every queued e-mail the job carries the recipient, the subject and the HTML for 24 hours: the customer's e-mails carry its first
   name and the verification e-mail the link with the token (single use, valid for the minutes of the hold). It is outside the encryption at rest of the

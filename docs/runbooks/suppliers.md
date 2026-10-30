@@ -1868,8 +1868,8 @@ reviews. All behind the flag `Features__SupplierShowcaseBooking` (off by default
 2. `POST api/public/suppliers/{slug}/bookings` **holds** the chosen slot for `Suppliers__Showcase__EmailVerificationMinutes` (30 by
    default) and e-mails the customer a link. The supplier hears **nothing**; no request exists. The data the customer typed wait in the
    hold, encrypted.
-3. The link opens the showcase page `…/fornitori/{slug}/conferma?hold={id}&token={token}`; the page calls
-   `POST …/bookings/{id}/confirm-email` with the token. **Only now** the request is created, the customer is created or brought up to
+3. The link opens the showcase page `…/fornitori/{slug}/conferma?hold={id}#token={token}` (the token is in the **fragment** since SP-15c-a: a
+   browser never sends it to a server, so it is in no access log); the page calls `POST …/bookings/{id}/confirm-email` with the token. **Only now** the request is created, the customer is created or brought up to
    date, the hold stops holding and the request starts holding the slot **in the same transaction**, the customer gets the receipt and
    the supplier the new request (e-mail and push, comune and "Nome C." only, D9).
 4. The supplier has `SupplierSettings.RespondWithinMinutes` (180, D8) to answer. It takes the request (the customer is told, with the
@@ -2025,7 +2025,7 @@ undoes the change. The customer's e-mails are in the language it chose (`it` / `
 | Template | To | When |
 |---|---|---|
 | `supplier-booking-verification` | customer | the hold is made: the link, how long the time is kept, "ignore it if it was not you" |
-| `supplier-booking-receipt` | customer | the address is checked: the code, the time by which the supplier has to answer, the estimate, "you pay nothing now" |
+| `supplier-booking-receipt` | customer | the address is checked: the code, the time by which the supplier has to answer, the estimate, "you pay nothing now"; for a booking whose card is blocked (38.8) the amount blocked, that nothing is charged unless the supplier accepts and that the block is released otherwise, **instead of** the estimate and of "you pay nothing now" |
 | `supplier-booking-new-request` | supplier | the address is checked: service, comune, "Nome C.", time, estimate, the time to answer by (+ push) |
 | `supplier-booking-accepted` | customer | the supplier takes it: the time, its price (or the estimate), the reminder **only if it will be sent** |
 | `supplier-booking-declined` | customer | the supplier refuses it, with its reason |
@@ -2618,7 +2618,7 @@ refused after it. The commission export (SP-15b) lists direct charges only: the 
 
 ### 38.6 Not done here (follow-ups)
 
-- The booking of the showcase with the block of the card (38.8) is the next pull request; the host's requests on this cycle, the "all fine" and "report a
+- The host's requests on this cycle, the "all fine" and "report a
   problem" for hosts, the admin export of the commission kept, **SP-15c-b**; the complaint, the dispute and the penalty, **SP-15c-c**; the screens,
   **SP-15c-d** (after SP-12b).
 - A shorter Stripe timeout for the platform client; an admin action to settle `NeedsReview` for a held payment; the recovery of a card dispute after the
@@ -2631,6 +2631,65 @@ refused after it. The commission export (SP-15b) lists direct charges only: the 
 - [ ] `service-funds` (`*/5`) among the recurring jobs (`GET api/admin/jobs`).
 - [ ] The platform endpoint sends the events of [`INFRA.md`](../INFRA.md) § Stripe before the flag goes on in any environment.
 - [ ] The five-step test-mode script of `results/VT-D22.md` of the wave was run and its answers are in the pull request that switches the flag on.
+
+### 38.8 The booking from the showcase, paid inside CasaZen — SP-15c-a (second pull request, stacked on the first)
+
+A booking with a total (`SupplierQuoteOutcome.Estimate`) is **paid inside CasaZen** when `ISupplierFundsService.CanAuthorizeAsync` says so: the flag
+`SupplierOnlinePayments` is on, the platform's publishable key is set, the supplier's Stripe account takes charges and payouts, and the total is at least
+`SupplierPayments__MinAmountCents`. Otherwise (flag off, account not ready, a booking on quote) **nothing changes**: the booking is made as it always was
+and its request is manual. The flag decides only the creation; what is already in flight follows its course whatever it says.
+
+| Step | What happens | Where |
+|---|---|---|
+| 1 | `POST api/public/suppliers/{slug}/bookings` saves the hold under the supplier's calendar lock, **then** (outside the lock) creates the PaymentIntent of the block and records it on the hold (`StripePaymentIntentId` and `PaymentAmountCents` together: the table checks it), **then** queues the verification e-mail. The answer carries `payment` (`amountCents`, `currency`, `clientSecret`, `publishableKey`, `authorized`). If Stripe cannot create the block the hold is deleted and the caller gets 503 `payment_provider_error` (no e-mail). The same `clientRequestId` is the same hold and the same PaymentIntent; a retry reads the block from Stripe **before** the lock. | `ShowcaseBookingService.CreateHoldAsync`, `BlockCardAsync` |
+| 2 | The customer confirms the card in the browser (Payment Element). Stripe sends `payment_intent.amount_capturable_updated`; the handler finds no payment for the PaymentIntent but a hold (metadata `showcaseHoldId`, `supplierOrgId`) and calls `ApplyHoldAuthorizationAsync`: the block must be the platform's, the whole total, nothing charged, no fee (`HeldChargeVerification`) or **no request is ever created from it** (the hold lapses and its block is released). The block is recorded on the hold (`PaymentAuthorizedAt`). | `StripeWebhookHandler.HandleServiceChargeAsync` |
+| 3 | `POST …/bookings/{id}/confirm-email` records `EmailVerifiedAt`. If the block is not recorded yet the answer is `status: "AwaitingPayment"`, `awaitingPayment: true`: **no request, the supplier knows nothing**; the page asks again (a second click is `alreadyConfirmed`). | `ConfirmEmailAsync` |
+| 4 | **The request is born when both are true, in either order**, by `CreateRequestFromHoldAsync` (the one place), under the supplier's calendar lock, in one transaction: customer, request (`Richiesto`, already `PaymentMode = Online`), the `Authorized` payment (amount = the total the customer saw, commission snapshotted, payer `Private`), the hold consumed. The receipt to the customer and the news to the supplier go **after** the commit (after the webhook transaction, for the second order). | `CreateRequestFromHoldAsync`, `CompleteHoldAuthorizationAsync` |
+| 5 | The supplier accepts (`TakeAsync`, or the customer accepts a proposed time): the card is **charged first** (`CaptureForTakeAsync`, inside the calendar lock, before the request changes state). A card that cannot be charged or a block that lapsed is 409 (`service_payment_capture_failed`, `service_payment_authorization_expired`) and the request stays new. | `ServiceRequestService.CaptureHeldMoneyAsync` |
+| 6 | Refused, cancelled (by the supplier or the customer) or lapsed: the block is released, or the charged money is refunded in full (`SettleClosedRequestAsync`, after the closing is saved; never throws; the `service-funds` job is the net). | `ServiceRequestService.SettleClosedMoneyAsync`, `ServiceRequestAutoCancelService` |
+| 7 | The supplier completes: the payment exists already, completing only fixes `release_at` (38.1). The customer may say "all fine" (`POST api/public/supplier-bookings/confirm-ok`, code + e-mail in the body like the other actions): the supplier is paid at once. | `ShowcaseBookingManager.ConfirmOkAsync` |
+
+**The customer's lookup** (`POST api/public/supplier-bookings/lookup`, and every answer of that area) adds `payment` — `status` (`authorized` · `held` ·
+`released` · `refunded` · `canceled` · `review`), `amountCents`, `currency`, `refundedCents`, `releaseAtUtc/Local` (while the money is held and the work is
+done: when it goes to the supplier if the customer says nothing) — and `actions.canConfirmOk` (the work is done and money is held that can still be
+released; the same facts the release checks). A booking that is not paid inside CasaZen has `payment: null`. `canReport` ("Segnala un problema") arrives
+with the complaint, SP-15c-c.
+
+**What keeps the money straight here**
+
+- *Nothing is created without a block, and a block without a request is released.* An expired hold that has a PaymentIntent and no request is released
+  by `ReleaseExpiredHoldAsync` (the block first, under the supplier's calendar lock, then the hold); a hold whose block could not be released is **kept**
+  and tried again by the next `service-request-expiry` run. A hold that became a request is deleted as before and its PaymentIntent — the payment's — is
+  never touched (the query that finds the ones to release excludes consumed holds).
+- *The answer time never reaches past the block.* A request born with a blocked card has `ResponseDueAt = min(the supplier's time, authorizedAt +
+  AuthorizationValidityHours − min(1 h, a quarter of it))` (`HeldPaymentRules.LatestResponseAt`), so the customer reads an answer time that is true.
+  Safety net: a **new** showcase request that is paid inside CasaZen and has **no payment left that is not canceled** (the block lapsed, or the bank refused
+  the charge) is cancelled by the next expiry run as "nobody answered" (`ServiceRequestAutoCancelService.UnpayableShowcaseIdsOf`), whatever its deadline.
+- *The price is the blocked amount.* On a request paid inside CasaZen the supplier cannot send a quote or commit another price when it takes
+  (422 `service_payment_amount_locked`); a different price needs the new offer of SP-10b-b.
+- *A take never turns a paid booking into a manual one* (`ResolvePaymentModeAsync` keeps `Online`), and a manual booking is never charged.
+- *The customer is told the truth* (D24): the receipt says the amount is blocked and not charged unless the supplier accepts; the e-mail of the take says the
+  card was charged and that CasaZen holds the amount until after the work; the supplier's new-request e-mail says the amount is already blocked. Nothing
+  is promised about when a bank frees a block.
+
+**Residual risks / decisions to confirm**
+
+- The capture (and, for an expired hold, the cancellation of the block) is a Stripe call made **inside the supplier's calendar lock**: a slow Stripe holds
+  that supplier's bookings for the duration (the SDK default timeout is long; see 38.6, "a shorter Stripe timeout").
+- If the webhook of the block is lost or late the customer waits on `AwaitingPayment` until the hold lapses (30 minutes by default): the block is then
+  released and nothing is charged; Stripe retries a failed delivery for days, but the hold does not live that long. The request is **not** created from a
+  Stripe read in `confirm-email` on purpose (a call to Stripe under the calendar lock).
+- A card with 3-D Secure that is abandoned leaves a PaymentIntent `requires_action`: the hold lapses and its PaymentIntent is canceled.
+- The e-mails of "work finished, you can report a problem until…" and "released" for the customer arrive with SP-15c-c; the refund e-mail is the one of 38.5.
+- The link of the verification e-mail carries the token in the **fragment** (`#token=`, FE-SP10-1): the page of SP-12b/SP-15c-d must read it from there
+  (`location.hash`); no frontend reads the booking link in `develop` yet.
+
+**Checks (test environment, flag on, Stripe test keys, supplier connected):** book a service with a total and confirm the card (`4242…`): the hold has
+the PaymentIntent, no request exists and the supplier got nothing; check the e-mail: the request appears with an `Authorized` payment (both orders:
+e-mail before the card shows `awaitingPayment`); let another hold lapse: its PaymentIntent is `canceled` on the Dashboard; accept as the supplier: the
+card is charged (`Held`); cancel as the customer before and after the acceptance: block released, then full refund; refuse a booking: block released;
+complete and press "all fine": one transfer of the net to the connected account. With the flag off: the same booking is made as before (no
+`payment`, a manual request).
 
 ## 27. Read models for the console: "Oggi" and "Richieste" — SP-04e
 
@@ -3542,7 +3601,7 @@ Both are anonymous, behind `SupplierShowcaseBooking` (404 like a route that does
 | `POST api/public/suppliers/{slug}/inquiries/{id}/confirm-email` | Body: `{ token }`. 200 `{ publicCode, status, serviceName?, respondBy?, alreadyConfirmed }`; a second click answers the same with `alreadyConfirmed` and does nothing again. 404 `supplier_booking_link_invalid` (unknown inquiry, another supplier's, wrong token: one answer), 409 `supplier_booking_link_expired`, 422 `supplier_booking_supplier_unavailable` |
 
 The codes are those of the booking (section 23): the same fields, the same consent, the same zone (the comune has to be one the supplier covers), the same 429. The e-mail carries the link `/fornitori/{slug}/conferma?inquiry={id}#token={token}`: the page reads
-`inquiry` from the query and the **token from the fragment**, which a browser never sends to a server, so the token is in no access log, and posts both to `confirm-email`. The booking's link keeps its own keys on the same page (`?hold=` and `token=`).
+`inquiry` from the query and the **token from the fragment**, which a browser never sends to a server, so the token is in no access log, and posts both to `confirm-email`. The booking's link keeps `?hold=` in the query and, since SP-15c-a, carries its token in the fragment too (`#token=`).
 
 ### 34.3 Nothing before the check, almost nothing after
 
