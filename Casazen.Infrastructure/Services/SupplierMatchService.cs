@@ -1,11 +1,13 @@
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -22,7 +24,9 @@ public class SupplierMatchService(
     IAiProvider aiProvider,
     IFeatureFlags featureFlags,
     ILogger<SupplierMatchService> logger,
-    IAiResponseCache? aiCache = null) : ISupplierMatchService
+    IAiResponseCache? aiCache = null,
+    ISupplierReliabilityService? reliability = null,
+    IOptions<SupplierRankingOptions>? rankingOptions = null) : ISupplierMatchService
 {
     private static readonly ServiceRequestStatus[] OpenStatuses =
     [
@@ -30,6 +34,8 @@ public class SupplierMatchService(
         ServiceRequestStatus.PresoInCarico,
         ServiceRequestStatus.InCorso,
     ];
+
+    private readonly SupplierRankingOptions _ranking = rankingOptions?.Value ?? new SupplierRankingOptions();
 
     public async Task<SupplierMatchResult> MatchAsync(
         Guid orgId,
@@ -65,33 +71,7 @@ public class SupplierMatchService(
             return new SupplierMatchResult(null, [], external, external.Count > 0);
         }
 
-        var supplierIds = suppliers.Select(s => s.OrgId).ToList();
-        var openCounts = await db.ServiceRequests
-            .AsNoTracking()
-            .Where(sr => supplierIds.Contains(sr.SupplierOrgId) && OpenStatuses.Contains(sr.Status))
-            .GroupBy(sr => sr.SupplierOrgId)
-            .Select(g => new { SupplierOrgId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.SupplierOrgId, x => x.Count, cancellationToken);
-
-        var scored = suppliers
-            .Select(sp =>
-            {
-                var load = openCounts.GetValueOrDefault(sp.OrgId, 0);
-                var score = 70;
-                score -= Math.Min(load * 8, 40);
-                score += urgency switch
-                {
-                    ServiceRequestUrgency.Emergency => 15,
-                    ServiceRequestUrgency.High => 8,
-                    _ => 0,
-                };
-                if (!string.IsNullOrWhiteSpace(sp.Bio))
-                    score += 5;
-                return (Profile: sp, Score: Math.Clamp(score, 1, 100), Load: load);
-            })
-            .OrderByDescending(x => x.Score)
-            .ThenBy(x => x.Load)
-            .ToList();
+        var scored = await ScoreAsync(suppliers, urgency, cancellationToken);
 
         var top = scored[0];
         var (reason, reasonByAi) = aiEnabled && ServiceCategories.IsKnown(category)
@@ -109,6 +89,78 @@ public class SupplierMatchService(
             propertyId, recommended.OrgId, recommended.MatchScore);
 
         return new SupplierMatchResult(recommended, alternatives, [], false);
+    }
+
+    public async Task<IReadOnlyList<RankedSupplier>> RankActiveAsync(
+        ComuneTarget target,
+        string category,
+        ServiceRequestUrgency urgency,
+        CancellationToken cancellationToken = default)
+    {
+        category = ServiceCategories.Require(category);
+        var suppliers = await supplierService.GetActiveByComuneAsync(target, category, cancellationToken);
+        if (suppliers.Count == 0)
+            return [];
+
+        var scored = await ScoreAsync(suppliers, urgency, cancellationToken);
+        return [.. scored.Select(x => new RankedSupplier(x.Profile, x.Score, x.Load))];
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, int>> ScoresAsync(
+        IReadOnlyList<Casazen.Core.Entities.SupplierProfile> suppliers,
+        ServiceRequestUrgency urgency,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(suppliers);
+        if (suppliers.Count == 0)
+            return new Dictionary<Guid, int>();
+
+        var scored = await ScoreAsync(suppliers, urgency, cancellationToken);
+        return scored.ToDictionary(x => x.Profile.OrgId, x => x.Score);
+    }
+
+    /// <summary>
+    /// The suppliers with their score, best first (<see cref="SupplierRanking"/>, SP-REL): the base score of 70, minus 8 for each open
+    /// request up to 40, plus the urgency, plus 5 for a bio, plus what the supplier earned by answering in time and doing its jobs
+    /// without disputes, minus what it lost by missing deadlines and by disputes. The same score decides who is recommended, in which
+    /// order the suppliers are listed and who is called as a backup (SP-BKP). A tie goes to the supplier with less work. The open requests
+    /// are the ones the supplier holds or may hold: a backup that only waits for its primary, and has not accepted, is not load.
+    /// </summary>
+    private async Task<List<(Casazen.Core.Entities.SupplierProfile Profile, int Score, int Load)>> ScoreAsync(
+        IReadOnlyList<Casazen.Core.Entities.SupplierProfile> suppliers,
+        ServiceRequestUrgency urgency,
+        CancellationToken cancellationToken)
+    {
+        var supplierIds = suppliers.Select(s => s.OrgId).ToList();
+        var openCounts = await db.ServiceRequests
+            .AsNoTracking()
+            .OnlyHoldingSupplierTime()
+            .Where(sr => supplierIds.Contains(sr.SupplierOrgId) && OpenStatuses.Contains(sr.Status))
+            .GroupBy(sr => sr.SupplierOrgId)
+            .Select(g => new { SupplierOrgId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.SupplierOrgId, x => x.Count, cancellationToken);
+
+        IReadOnlyDictionary<Guid, int> reliabilityPoints = reliability is null || !_ranking.ReliabilityEnabled
+            ? new Dictionary<Guid, int>()
+            : await reliability.PointsAsync(supplierIds, cancellationToken);
+
+        return suppliers
+            .Select(sp =>
+            {
+                var load = openCounts.GetValueOrDefault(sp.OrgId, 0);
+                var score = SupplierRanking.Score(
+                    _ranking,
+                    load,
+                    urgency,
+                    !string.IsNullOrWhiteSpace(sp.Bio),
+                    reliabilityPoints.GetValueOrDefault(sp.OrgId, 0));
+                return (Profile: sp, Score: score, Load: load);
+            })
+            .OrderByDescending(x => x.Score)
+            .ThenBy(x => x.Load)
+            .ThenBy(x => x.Profile.LegalName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Profile.OrgId)
+            .ToList();
     }
 
     /// <summary>

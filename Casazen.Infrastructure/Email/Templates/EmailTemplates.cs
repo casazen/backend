@@ -187,6 +187,9 @@ public static partial class EmailTemplates
     /// </summary>
     /// <param name="cancelledBy"><see cref="ServiceRequestActorParty.Host"/> or <see cref="ServiceRequestActorParty.System"/>.</param>
     /// <param name="reason">The host's reason (shown for a cancellation by the host only).</param>
+    /// <param name="lostPoints">
+    /// The missed answer cost the supplier points of its reliability (SP-REL): a line says so (cancellation by CasaZen only).
+    /// </param>
     public static EmailContent ServiceRequestCancelledToSupplier(
         CultureInfo culture,
         string supplierName,
@@ -194,7 +197,8 @@ public static partial class EmailTemplates
         string comune,
         ServiceRequestActorParty cancelledBy,
         string? reason,
-        string inboxUrl)
+        string inboxUrl,
+        bool lostPoints = false)
     {
         var prefix = cancelledBy == ServiceRequestActorParty.System ? "ServiceRequestExpired" : "ServiceRequestCancelledByHost";
         var builder = new EmailHtmlBuilder(culture)
@@ -202,6 +206,8 @@ public static partial class EmailTemplates
             .Paragraph($"{prefix}_Body", ServiceCategoryLabel(culture, category), comune);
         if (cancelledBy == ServiceRequestActorParty.Host)
             builder.Quote("ServiceRequestCancelled_ReasonLabel", reason);
+        if (cancelledBy == ServiceRequestActorParty.System && lostPoints)
+            builder.Muted("ServiceRequestExpired_PointsHint");
 
         return builder
             .Button("ServiceRequestCreated_Cta", inboxUrl)

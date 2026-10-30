@@ -250,6 +250,18 @@ internal sealed class ServiceRequestScenario : IDisposable
     public async Task<ServiceRequest> ReadAsync(Guid id) =>
         await Db.ServiceRequests.IgnoreQueryFilters().AsNoTracking().SingleAsync(r => r.Id == id);
 
+    /// <summary>The reliability events of the supplier as saved (SP-REL), oldest first.</summary>
+    public async Task<List<SupplierReliabilityEvent>> ReliabilityEventsAsync(Guid? supplierOrgId = null)
+    {
+        var supplier = supplierOrgId ?? SupplierOrgId;
+        return await Db.SupplierReliabilityEvents
+            .AsNoTracking()
+            .Where(e => e.SupplierOrgId == supplier)
+            .OrderBy(e => e.OccurredAt)
+            .ThenBy(e => e.Kind)
+            .ToListAsync();
+    }
+
     /// <summary>A request written straight to the database in <paramref name="status"/>, for the states the flows reach slowly.</summary>
     public async Task<ServiceRequest> SeedAsync(
         ServiceRequestStatus status,

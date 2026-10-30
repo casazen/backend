@@ -34,7 +34,7 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="ShowcaseBookingNotifier"/>, and there is no push to a host. What goes to the supplier is the same, with the comune
 /// of the request itself instead of the one of a property.</para>
 /// </remarks>
-public sealed class ServiceRequestNotifier(
+public sealed partial class ServiceRequestNotifier(
     AppDbContext db,
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,
@@ -348,8 +348,13 @@ public sealed class ServiceRequestNotifier(
     /// <summary>
     /// Email and push to the supplier when the request was cancelled by the host, or by CasaZen because nobody answered in
     /// time (<see cref="ServiceRequest.CancelledBy"/> says which). The supplier is told whatever its status.
+    /// <paramref name="lostReliabilityPoints"/> adds to the email of a request nobody answered that the missed answer costs the supplier
+    /// points of its reliability (SP-REL), which is what puts it lower in the lists; false when it was excused (paused, time off, closed).
     /// </summary>
-    public async Task NotifySupplierCancelledAsync(ServiceRequest request, CancellationToken cancellationToken)
+    public async Task NotifySupplierCancelledAsync(
+        ServiceRequest request,
+        CancellationToken cancellationToken,
+        bool lostReliabilityPoints = false)
     {
         if (request.CancelledBy is not { } cancelledBy || cancelledBy == ServiceRequestActorParty.Supplier)
             return;
@@ -391,7 +396,8 @@ public sealed class ServiceRequestNotifier(
                     comune,
                     cancelledBy,
                     request.CancellationReason,
-                    publicSiteLinks.SupplierInbox());
+                    publicSiteLinks.SupplierInbox(),
+                    lostReliabilityPoints);
                 emailQueue.Enqueue(supplier.Email, email, EmailTemplates.Names.ServiceRequestCancelledToSupplier);
             }
 
@@ -408,6 +414,15 @@ public sealed class ServiceRequestNotifier(
     }
 
     // ─── What the customer of a public showcase does (SP-11): the supplier, and the customer's receipt ───────────────
+
+    /// <summary>
+    /// A party wrote in the thread of a request on measure (SP-10b): the other one is told by e-mail, with a link and never the words.
+    /// </summary>
+    public Task NotifyShowcaseThreadMessageAsync(
+        ServiceRequest request,
+        ServiceRequestMessageAuthor author,
+        CancellationToken cancellationToken) =>
+        showcase.NotifyThreadMessageAsync(request, author, cancellationToken);
 
     /// <summary>The customer cancelled its showcase request: the supplier is told, and the customer gets the receipt.</summary>
     public Task NotifyShowcaseCancelledByCustomerAsync(ServiceRequest request, CancellationToken cancellationToken) =>

@@ -155,6 +155,13 @@ public class AppDbContext(
     public DbSet<SupplierSettings> SupplierSettings { get; set; } = null!;
 
     /// <summary>
+    /// What weighs on the reliability of a supplier (SP-REL): replies in time, missed deadlines, completed jobs, disputes. Keyed by the
+    /// supplier org and <b>not</b> tenant-filtered (TN-2 allow-list): only <c>SupplierReliabilityService</c> reads and writes it, always
+    /// with an explicit supplier predicate.
+    /// </summary>
+    public DbSet<SupplierReliabilityEvent> SupplierReliabilityEvents { get; set; } = null!;
+
+    /// <summary>
     /// The content of the suppliers' public showcases (SP-13a): the draft, the published version and the one before it, one row per
     /// supplier. Keyed by the supplier org, <b>not</b> tenant-filtered (see the TN-2 allow-list): only
     /// <c>SupplierShowcaseContentService</c> (and the supplier repair) reads and writes it, always with an explicit <c>OrgId</c> predicate.
@@ -187,6 +194,13 @@ public class AppDbContext(
 
     // The refunds of a service payment (SP-15b): they belong to the payment, so they are not tenant-filtered either.
     public DbSet<ServiceRequestPaymentRefund> ServiceRequestPaymentRefunds { get; set; } = null!;
+
+    /// <summary>
+    /// The groups of backup suppliers (SP-BKP): a request and the backups it was sent to with it. Two parties and more (the host and
+    /// the suppliers of the backups) and a system job, so <b>not</b> tenant-filtered (see the TN-2 allow-list); only the code listed in
+    /// <c>ServiceRequestGroupTenancyTests</c> touches it, always with an explicit predicate.
+    /// </summary>
+    public DbSet<ServiceRequestGroup> ServiceRequestGroups { get; set; } = null!;
 
     // Property iCal OTA sync (US-018 / #294)
     public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
@@ -1080,6 +1094,9 @@ public class AppDbContext(
 
         modelBuilder.ApplyConfiguration(new SupplierSettingsConfiguration());
 
+        // SP-REL: the events of the reliability of a supplier, a child of its profile like the agenda.
+        modelBuilder.ApplyConfiguration(new SupplierReliabilityEventConfiguration());
+
         // SP-13a: the content of the supplier's showcase (draft, published, previous). A child of the supplier profile in cascade, like
         // the settings; xmin is the concurrency token.
         modelBuilder.ApplyConfiguration(new SupplierShowcaseContentConfiguration());
@@ -1186,6 +1203,19 @@ public class AppDbContext(
         // (a property, never a customer, a code or a place of their own); nothing is asked of BookingId there, which older
         // requests leave empty. The check holds for every row that exists before this migration.
         modelBuilder.ApplyConfiguration(new ServiceRequestShowcaseConfiguration());
+
+        // ─── Backup suppliers (SP-BKP) ───────────────────────────────────────────────────────────────────────────────
+        // A request and the backups it was sent to with it are tied by a group; the group's windows decide who has the job.
+        modelBuilder.ApplyConfiguration(new ServiceRequestGroupConfiguration());
+        modelBuilder.ApplyConfiguration(new ServiceRequestGroupMembershipConfiguration());
+
+        // Whether an org's requests also go to backup suppliers: on for every org that exists (the rule is general), so the migration gives
+        // the existing rows true. EF itself always writes the value of the entity: left to generate it, EF would take an explicit false for
+        // «not set» and the insert would write the default (true) in its place, turning the rule back on for an org that switched it off.
+        modelBuilder.Entity<Org>()
+            .Property(o => o.SupplierBackupsEnabled)
+            .HasDefaultValue(true)
+            .ValueGeneratedNever();
 
         // ─── Quote with the customer's approval (SP-04b) ──────────────────────────────────────────────────────────────
         // The offer a supplier makes on a request still waiting for its answer: its columns, and the checks that keep it true.

@@ -29,6 +29,12 @@ public sealed record ShowcaseBookingAccessKey(string Slug, string Code, string E
 /// <param name="PublicCode">The code of the booking, stored form (<see cref="BookingCodes"/>): the page shows it as <c>XXXXX-XXXXX</c>.</param>
 /// <param name="RespondBy">When the supplier has to answer by, while the request is new and has no proposal; <c>null</c> otherwise.</param>
 /// <param name="RejectionReason">The reason the supplier gave when it refused the request (the customer was e-mailed it).</param>
+/// <param name="Kind">
+/// <see cref="ServiceRequestKind.Custom"/> for a request on measure (SP-10b), which has no time and no price (<c>StartUtc</c> and <c>EndUtc</c> are its
+/// creation, to be ignored) and a conversation; <see cref="ServiceRequestKind.Standard"/> for every other booking, whose view is what it always was.
+/// </param>
+/// <param name="Thread">The conversation of a request on measure, with the supplier's messages marked as read; <c>null</c> for any other booking.</param>
+/// <param name="Negotiation">Where the negotiation is (<see cref="ServiceRequestNegotiation"/>); <c>null</c> for any other booking.</param>
 /// <param name="Quote">The quote the supplier sent and the customer has not answered (SP-04b); <c>null</c> when there is none.</param>
 public sealed record ShowcaseBookingView(
     string PublicCode,
@@ -45,6 +51,9 @@ public sealed record ShowcaseBookingView(
     string? RejectionReason,
     ShowcaseBookingCancellationTerms CancellationTerms,
     ShowcaseBookingActions Actions,
+    ServiceRequestKind Kind = ServiceRequestKind.Standard,
+    ServiceRequestThread? Thread = null,
+    string? Negotiation = null,
     ShowcaseBookingQuote? Quote = null);
 
 /// <summary>

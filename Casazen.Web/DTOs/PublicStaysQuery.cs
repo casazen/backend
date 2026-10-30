@@ -75,11 +75,12 @@ public sealed class PublicStaysQuery
     [Range(1, 10_000)]
     public int Page { get; set; } = 1;
 
-    /// <summary>Houses per page, 50 at most; left out, every house of the site.</summary>
+    /// <summary>Houses per page, 50 at most; left out, every house of the site (24 across all the sites).</summary>
     [Range(1, PublicSiteSearch.MaxPageSize)]
     public int? PageSize { get; set; }
 
-    public PublicStaysCriteria ToCriteria()
+    /// <param name="scope"><see cref="PublicStaysScope.Platform"/> for the search across all the sites (<c>GET api/public/stays</c>).</param>
+    public PublicStaysCriteria ToCriteria(PublicStaysScope scope = PublicStaysScope.Site)
     {
         var ignored = new List<string>();
 
@@ -133,7 +134,8 @@ public sealed class PublicStaysQuery
             sort,
             Page,
             PageSize,
-            ignored);
+            ignored,
+            scope);
     }
 
     /// <summary>The comma separated values of a filter: trimmed, without repeats, at most 20, each of a sensible length.</summary>

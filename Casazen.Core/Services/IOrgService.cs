@@ -109,6 +109,17 @@ public interface IOrgService
         Guid orgId,
         string slug,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Turns on or off the org's default for sending its requests to backup suppliers too (SP-BKP, <see cref="Org.SupplierBackupsEnabled"/>,
+    /// on by default). When the value really changes the activity log gets one line, <c>OrgSettingsChanged</c> (the fact, never the value).
+    /// Returns <c>null</c> when the org does not exist.
+    /// </summary>
+    Task<Org?> SetSupplierBackupsEnabledAsync(
+        Guid orgId,
+        bool enabled,
+        string? actorUserId = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>Result of <see cref="IOrgService.CheckSlugAvailabilityAsync"/>.</summary>

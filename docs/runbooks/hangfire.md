@@ -53,6 +53,7 @@ and production never block each other.
 | `service-request-expiry` (SP-10: deletes the booking holds past their expiry, cancels the showcase requests nobody answered and tells the customer; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | `*/5` | `ServiceRequestExpiryJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 60 s |
 | `service-request-reminders` (SP-10: the reminder to the customer of a showcase request, and SP-16d: to the supplier of any taken request, 18:00 Rome of the day before; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | hourly | `ServiceRequestReminderJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 300 s |
 | `service-request-auto-cancel` (SP-04, D8: cancels the new service requests nobody answered; only with `Features:SupplierRequestAutoCancel=true`, otherwise removed at startup, see [suppliers.md](suppliers.md) § 21.8) | `*/10` | `ServiceRequestAutoCancelJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 requests per run) | 60 s |
+| `service-request-groups` (SP-BKP: follows the windows of the groups of backup suppliers: the job goes to the backup that accepted first, the second window opens, the requests nobody took lapse; **always registered**, see [§16](#16-backup-suppliers-sp-bkp)) | `*/5` | `ServiceRequestGroupJob.ExecuteAsync` (plus a PostgreSQL session lock per run and the lock of each group, at most 500 groups per run) | 60 s |
 | `service-payment-sync` (SP-15b: reads again the payments Stripe is processing and the refunds it has not completed; always scheduled, see [§14](#14-service-payments-sp-15b)) | `*/15` | `ServicePaymentSyncJob.ExecuteAsync` (plus the payment lock of each request) | 60 s |
 | `service-payment-reminders` (SP-15b: flags the late payments, sends the pending requests and the reminders at +2 and +7 days with `Features:SupplierOnlinePayments` on; always scheduled, see [§14](#14-service-payments-sp-15b)) | 07:30 | `ServicePaymentRemindersJob.ExecuteAsync` (plus the payment lock of each request) | 300 s |
 | `ical-supplier-sync` (SU-15: active **and pending** suppliers with an iCal URL, see [ical.md](ical.md#supplier-calendars-su-15); SP-05: the events by the hour become windows of hours, see [ical.md](ical.md#events-by-the-hour-sp-05)) | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` (plus a PostgreSQL advisory lock per supplier while its days and windows are written) | 60 s |
@@ -260,11 +261,12 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
   ORDER BY env, lastheartbeat DESC;
 
-  -- 36 recurring jobs in each schema with every flag on; 31 with the defaults
+  -- 37 recurring jobs in each schema with every flag on; 32 with the defaults
   -- (Features:OtaPartnerApi, Features:RliProvider, Features:ESignProvider and Features:SupplierRequestAutoCancel off:
   -- ota-sync-all, booking-pull-all, lease-registration-status-poll, lease-sign-status-poll and
   -- service-request-auto-cancel are the five that appear only with their flag on; every other job, among them
-  -- service-request-expiry, service-request-reminders, org-invitation-maintenance, org-activity-retention,
+  -- service-request-expiry, service-request-reminders, service-request-groups (SP-BKP, whatever
+  -- Features:SupplierRequestBackups says), org-invitation-maintenance, org-activity-retention,
   -- service-payment-sync, service-payment-reminders, in-app-notification-retention (UI-12a),
   -- property-mode-change (PM-02), lease-draft-retention (LR-12), lease-term-renewal (LR-14) and
   -- lease-notice-reminder (LR-11c-a), is in both counts)
@@ -675,3 +677,37 @@ of <audience> <id>`, `… the N users were told already`, `… nobody to tell fo
 [in-app-notifications.md § 6](in-app-notifications.md#6-checking-rolling-back), last query), and the audience has at least one
 active user (a booking that is gone, or every member deactivated, writes nothing and logs `nobody to tell`). `InAppNotificationJobTests` and
 `InAppNotificationRetentionJobTests` fail if the job loses its retry or its lock, or the retention its schedule.
+
+## 16. Backup suppliers (SP-BKP)
+
+Task SP-BKP. One recurring job follows the groups of backup suppliers ([suppliers.md § 36](suppliers.md#36-backup-suppliers-for-a-hosts-request--sp-bkp)):
+
+| Job | When | Lock (wait) | What |
+|---|---|---|---|
+| `service-request-groups` (`ServiceRequestGroupJob`) | `*/5` | `ServiceRequestGroupJob.ExecuteAsync` (60 s) | One run, under a PostgreSQL **session lock** (scope 1314; a second run is skipped and says so in the log), lists the groups that are not over and have something due (the primary's hour is over, the second window is over, or the request the host follows was taken, refused or cancelled by the host without the group having followed), oldest first, **at most 500 per run**, and resolves each one under **its own advisory lock** (scope 1315, taken before any supplier calendar lock): the job goes to the backup that accepted first (its time checked again; the next one when it is not free), or the second window opens, or the requests nobody took lapse with `NoResponse`. |
+
+**Registered at every startup whatever `Features:SupplierRequestBackups` says**: the flag only gates the creation of groups, and a group that
+exists has to be followed to the end even if the flag is turned off (with no group a run reads one empty index and stops). It never
+touches the requests of the old job: `service-request-auto-cancel` skips every request that has a `GroupId`. **Idempotent**: a group that was
+resolved is no longer due; a take or a refusal that happens in the same moment wins and the run counts a conflict (the request, and the group,
+are saved only if they are as they were read, `xmin`). A group whose primary proposed another time is the host's to decide and is not moved.
+
+**Logs.** `Service request groups: N examined, C closed, W second windows opened, X changed under the run, F failed` (only when a group was due);
+`Service request groups run skipped: another run is in progress`; `Group <id> closed: …`, `Group <id>: the primary is out, the backups can take the job
+until …` and `Group <id> lapsed: nobody took the job` for each group; a group that could not be handled is logged by id and retried at the next run
+(`Warning` with the counts when `F` > 0).
+
+```sql
+-- Groups waiting past their window (expected 0 a few minutes after the window ends; 0 Primary, 1 Backup window, 2 Closed)
+SELECT "Id", "Phase", "PrimaryDueAt", "BackupDueAt" FROM casazen_prod."ServiceRequestGroups"
+WHERE "Phase" = 0 AND "PrimaryDueAt" < now() - interval '15 minutes'
+   OR "Phase" = 1 AND "BackupDueAt" < now() - interval '15 minutes';
+
+-- Backup requests still waiting although their group is over (expected 0)
+SELECT r."Id" FROM casazen_prod."ServiceRequests" r
+JOIN casazen_prod."ServiceRequestGroups" g ON g."Id" = r."GroupId"
+WHERE g."Phase" = 2 AND r."GroupRole" = 2 AND r."Status" = 0;
+```
+
+`RecurringJobsConcurrencyTests` requires `[DisableConcurrentExecution]` on the job and `RecurringJobsFeatureFlagTests` that it is registered with every
+flag off and never removed.

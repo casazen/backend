@@ -27,6 +27,7 @@ conflicts with a fix, "how customers see you" and the unlinking of the calendar 
 Section 29: the console's settings, earnings and clients (SP-16a, redesign wave).
 Section 32: the urgent requests with a surcharge, the supplier's settings, the urgent slots, the estimate and the booking (SP-04c, redesign wave).
 Section 33: the content of the supplier's showcase, the draft the editor autosaves, its publication with undo, the pause, the switch of the bookings, what the public page reads of it, the short status, the statistics and the checklist (SP-13a, redesign wave).
+Section 36: the backup suppliers of a host's request, the hour of the primary, the pre-approval, the second window and the job that follows the groups (SP-BKP).
 
 ## 1. How a supplier joins
 
@@ -1537,7 +1538,9 @@ are SP-10's). The recurring job **`service-request-auto-cancel`** (every 10 minu
 `CancellationReason = NoResponse`, and it tells the host ("nessuna risposta") and the supplier. It is **idempotent** (a cancelled request leaves the
 set it reads; the change is saved under the `xmin` check, so a supplier that takes the request at the same moment wins and the run counts a conflict),
 it runs one at a time (a PostgreSQL session lock, scope `ServiceRequestAutoCancelRun` 1_310, on top of Hangfire's), and a run handles at most **500**
-requests, oldest deadline first.
+requests, oldest deadline first. **A request that belongs to a group of backup suppliers (section 36, SP-BKP) is left alone by this job**
+(`GroupId IS NULL` in the statement, and again before the save): the primary and the backups lapse, or are given the job, by the logic of the group
+(`service-request-groups`), whose windows are the hour of the primary and the second window, not `HostResponseMinutes`.
 
 It is **behind the flag `Features__SupplierRequestAutoCancel`, off by default**: it changes what happens to the requests that exist. With the flag off the
 job is not scheduled (an earlier schedule is removed) and the service refuses to run if triggered by hand; nothing is ever cancelled by time. Requests
@@ -1590,7 +1593,8 @@ Statuses travel **by name**. **`Annullato` is new** and a client that does not k
 
 Section `Suppliers:ServiceRequests` (validated at startup, `appsettings.json` has the defaults): `Suppliers__ServiceRequests__HostResponseMinutes` (120,
 10 to 4320), `…__FinalAmountTolerancePercent` (20, 0 to 100), `…__RemindIntervalHours` (6, 1 to 72), `…__RegularHostMinJobs` (3, 1 to 100,
-section 21.14). Flag: `Features__SupplierRequestAutoCancel` (`feature-flags.md`, `deploy-checklist.md` § 2.11). Hangfire: `hangfire.md`.
+section 21.14), and since SP-BKP `…__PrimaryResponseMinutes` (60), `…__BackupResponseMinutes` (60) and `…__MaxBackupSuppliers` (3), section 36.8. Flag:
+`Features__SupplierRequestAutoCancel` (`feature-flags.md`, `deploy-checklist.md` § 2.11); for the backups `Features__SupplierRequestBackups` (section 36). Hangfire: `hangfire.md`.
 
 ### 21.13 After a deploy
 
@@ -3446,11 +3450,11 @@ SR-D3 (the stay is optional), SR-D20 (`pay` and `markPaid` follow `paymentMode`;
 
 ## 34. The request on measure from the showcase — SP-10b (part a)
 
-Redesign wave task SP-10b, first of its two parts (branch `feature/rd-supplier-inquiry`, backend only), **no new feature flag** (the override of 17 October allows only the eight that exist: the endpoints ride on
+Redesign wave task SP-10b, first of its two parts (branches `feature/rd-supplier-inquiry`, `feature/rd-supplier-inquiry-chat` and `feature/rd-supplier-inquiry-customer`, backend only), **no new feature flag** (the override of 17 October allows only the eight that exist: the endpoints ride on
 `SupplierShowcaseBooking`, which keeps them 404 wherever the booking is off), migration `AddShowcaseInquiries` (additive: one column, two tables, three CHECKs). Where the booking (section 23) needs a slot, the **request on measure**
 is for what the price list does not say: a service that is not in it, or is but with variations. The customer describes it in its own words, checks its e-mail and, only then, a request exists for the supplier, who answers inside CasaZen: the quote and the
 particular requests stay inside the app (interview of 9 October, Q3 and Q7), with no public contact of the supplier and no generic "Scrivici". This part is the **opening**: the inquiry, the check of the address, the request with its first message, and the
-mails. The conversation (the messages of the two parties, the thread in the customer's page and in the console, refusing and closing) is the next part; the offer and its acceptance are SP-10b-b.
+mails. The conversation follows: the supplier's side (reading and writing the thread, refusing; section 34.7) and the customer's (the thread in its own area, writing, closing, the retention; section 34.8); the offer and its acceptance are SP-10b-b.
 
 ### 34.1 The request
 
@@ -3476,6 +3480,8 @@ Both are anonymous, behind `SupplierShowcaseBooking` (404 like a route that does
 The codes are those of the booking (section 23): the same fields, the same consent, the same zone (the comune has to be one the supplier covers), the same 429. The e-mail carries the link `/fornitori/{slug}/conferma?inquiry={id}#token={token}`: the page reads
 `inquiry` from the query and the **token from the fragment**, which a browser never sends to a server, so the token is in no access log, and posts both to `confirm-email`. The booking's link keeps its own keys on the same page (`?hold=` and `token=`).
 
+A showcase the supplier **paused** (SP-13a, section 33.7) takes no new request on measure: `POST …/inquiries` answers 422 `supplier_booking_offline`, the answer its slots and its estimate give, and nothing is stored or sent. The check of an address written before the pause is not gated (that customer is answered all the same).
+
 ### 34.3 Nothing before the check, almost nothing after
 
 Decision D34 holds: until the address is checked the supplier receives **nothing** (no request, no e-mail, no push) and the customer has only a row that lapses (`ShowcaseInquiries`, 30 minutes by default: `Suppliers__Showcase__EmailVerificationMinutes`). The row keeps what the
@@ -3488,8 +3494,7 @@ showcase request.
 
 ### 34.4 The messages
 
-Table `ServiceRequestMessages` (the request, `OrgId` = the supplier org, `Author` `Customer` / `Supplier` / `System`, `BodyEncrypted`, `CreatedAt`, `ReadAt`): the thread of a request on measure, in order. This part writes only the first message; reading and writing the
-others is the next part. The body is free text a person wrote, **encrypted at rest** with its own purpose (`Casazen.ServiceRequestMessage`), 10 to 1000 characters for the first one, at most 200 messages per request, plain text only: no attachments, and in v1 no masking of numbers or addresses
+Table `ServiceRequestMessages` (the request, `OrgId` = the supplier org, `Author` `Customer` / `Supplier` / `System`, `BodyEncrypted`, `CreatedAt`, `ReadAt`): the thread of a request on measure, in order. The first message is written when the address is checked; the supplier reads and writes the others from the console (34.7) and the customer in its own area (34.8). The body is free text a person wrote, **encrypted at rest** with its own purpose (`Casazen.ServiceRequestMessage`), 10 to 1000 characters for the first one, at most 200 messages per request, plain text only: no attachments, and in v1 no masking of numbers or addresses
 (forbidden by the conditions and reportable: decisions VT-D11 and VT-D12).
 
 ### 34.5 Limits against abuse
@@ -3504,12 +3509,56 @@ request and nothing is done. The body is at most 16 KB (the check, 1 KB).
 carries the explicit `OrgId` predicate, and `ShowcaseInquiryTenancyTests` allows only `ShowcaseInquiryService`, the expiry job and the repair to use them. The merge of duplicate supplier profiles (`fix-orphaned`) drops the duplicate's inquiries that wait and moves the
 messages of the requests that moved.
 
-### 34.7 After a deploy
+### 34.7 The conversation, the supplier's side (part b)
+
+The supplier's console reads and writes the thread of a request on measure. Both endpoints are for the caller's own supplier (policy `Supplier`, the org comes from its supplier link), only for requests of the kind `Custom`: any other id — a host's request, a
+booking, one of another supplier, one that does not exist — is the same 404 `not_found`. Not behind a flag (only the showcase flag can make such a request exist).
+
+| Endpoint | What |
+|---|---|
+| `GET api/supplier/requests/{id}/thread` | `{ requestId, status, canWrite, respondBy?, messages[] }`; each message is `{ id, author, body, createdAt, readAt? }` in the order written (at most 200). Reading marks the customer's messages as read by the supplier: the answer shows each one as it was **before** this reading (`readAt: null` marks what is new), the next reading shows them read. A supplier that is no longer active can still read (`canWrite: false`) |
+| `POST api/supplier/requests/{id}/messages` | Body: `{ body }`, 1 to 1000 characters of plain text. 201 with the message. 422 `service_request_message_invalid` (empty, too long, a control character), `service_request_thread_full` (200 messages), `supplier_not_active` (suspended) or the code of the Terms to accept again; 409 `service_request_thread_closed` (refused, cancelled or done) and `service_request_state_changed` (the request changed under the call) |
+
+- **The first message of the supplier stops the clock** of the hour: `ResponseDueAt` goes, so the always-on job does not close a conversation that is going on. A request nobody answered is still closed by the job (reason `NoResponse`). The conversation has no other
+  deadline in v1: a thread nobody writes in stays open until a party closes it or the retention anonymizes the customer (follow-up SP-10b-FU1: close an idle conversation after some days).
+- **The customer is told, never with the words**: an e-mail in its language, "the supplier replied", with the link to the request page (`/fornitori/{slug}/richiesta?code=...`). A few lines in a row are **one** e-mail: after a message the same author's next ones, for ten
+  minutes, tell nobody (`ServiceRequestThreadRules.NotificationQuietPeriod`). No push (the customer has no app; the mobile app does not know the new push types).
+- **A request on measure is not taken like a booking**: `POST api/service-requests/{id}/take`, `…/propose-time` and `POST api/supplier/inbox/accept` answer 422 `supplier_inquiry_needs_offer` (the work, the price and the time are agreed in the conversation and with an offer, SP-10b-b).
+  Refusing it is the usual `POST api/service-requests/{id}/reject`.
+- **The end of the request** is told to the customer with its own mails, which do not speak of a day and a time the request does not have: refused (`supplier-inquiry-declined`, with the reason the supplier gave) and closed because nobody answered in time
+  (`supplier-inquiry-expired`). Both lead to the supplier's page.
+- The supplier console's request (`GET api/supplier/inbox`, `…/inbox/{id}`) has a new member `kind` (`Standard` / `Custom`), so the console knows which requests have a thread.
+
+### 34.8 The conversation, the customer's side (part c)
+
+The customer reads and writes in its own area (section 24: the code of the request and the e-mail address, no account). Nothing changes for any other booking: the answer of `POST api/public/supplier-bookings/lookup` (and of every action of that area) has three members **only for a request on
+measure**, and they are not in the JSON of a booking at all.
+
+| Member / endpoint | What |
+|---|---|
+| `kind` | `Custom`. For such a request `startUtc`, `endUtc` and the cancellation terms are the day it was made (it has no time): to be ignored; closing it is always free (`cancellationTerms.isFree`) |
+| `thread` | `{ canWrite, messages[] }`, each `{ id, author, body, createdAt, readAt? }` with `author` `customer` / `supplier` / `system`, in the order written. Reading marks the supplier's messages as read **by the customer**; the answer shows each as it was before the reading (`readAt: null` = new), the next reading shows them read. `canWrite`: the request is open and the supplier is active |
+| `negotiation` | derived, never stored: `AwaitingSupplier` (new, the supplier has not written), `InConversation` (new, it wrote), `Agreed`, `Declined`, `Closed` (cancelled, or closed because nobody answered). An open set: the offer (SP-10b-b) adds its own |
+| `POST api/public/supplier-bookings/messages` | Body: `{ slug, code, email, body }` (the code and the address are in the body, as in the rest of the area), `body` 1 to 1000 characters of plain text. 200 with the request as it is now, thread included. 404 `supplier_booking_not_found` (the usual single answer, a booking that is not a request on measure included); 422 `service_request_message_invalid`, `service_request_thread_full`, `supplier_booking_supplier_unavailable` (the supplier is not active); 409 `service_request_thread_closed`, `service_request_state_changed`; 429 (per IP and per address, the area's) |
+
+- **The supplier is told, never with the words**: an e-mail in Italian (`supplier-inquiry-message`) with the comune and "Nome C." (decision D9), at most one for the messages of ten minutes — the description counts as the first, since the supplier was told of it when the address was
+  checked. No push (the mobile app does not know the new types).
+- **The customer closes the request** with the usual `POST api/public/supplier-bookings/cancel` (a new request any time; free): `Annullato` by the customer. The supplier is told with `supplier-inquiry-closed-by-customer` (comune, "Nome C.", the reason the customer wrote; no day and no time) and the push of
+  the cancellation; the customer gets **no receipt** (it closed the request itself, and the receipt of a booking speaks of a day and a time). The thread is read only from then on, for both.
+- **Retention.** The nightly job `gdpr-data-retention` (`Gdpr:Retention:SupplierCustomers`, off until configured) **deletes the messages** of a request on measure that is over (final status) once the period ended, counted from its cancellation (else its last change). The request stays for the
+  supplier's accounts (comune, status, dates); a request still open keeps its thread; a second run finds nothing. The customer's name, e-mail and phone are anonymized by the same job, as before. The statements are across suppliers on purpose and read ids only, never the text
+  (`ShowcaseInquiryTenancyTests`).
+
+### 34.9 After a deploy
 
 - [ ] Migration `AddShowcaseInquiries` applied (`ServiceRequests.Kind` = 0 on every existing row; tables `ShowcaseInquiries` and `ServiceRequestMessages`; CHECKs `CK_ServiceRequests_Kind`, `CK_ShowcaseInquiries_Expiry`, `CK_ServiceRequestMessages_Author`).
 - [ ] With `Features__SupplierShowcaseBooking` **off** (production): both endpoints answer 404 `not_found`, as before the task.
 - [ ] Test environment, flag on: an inquiry for an active supplier is 201 and the supplier gets nothing; the link of the e-mail ends in `#token=...`; `confirm-email` is 200 and now the supplier's inbox has a request `Richiesto` with "Nome C.", the comune and no time, and its e-mail does
       not contain the words of the customer.
+- [ ] As a supplier of the test environment: `GET api/supplier/requests/{id}/thread` of that request shows the customer's words and `kind: "Custom"` is in the inbox; `POST …/messages` is 201, the customer's e-mail has a link and none of the words, and `respondBy`
+      goes; the same calls as another supplier are 404; `POST api/service-requests/{id}/take` is 422 `supplier_inquiry_needs_offer`; refusing it tells the customer with the reason and closes the thread (409 on a new message).
+- [ ] As the customer (code and address of that request): `POST api/public/supplier-bookings/lookup` has `kind: "Custom"`, `negotiation` and the `thread` with the supplier's message as new, then as read; `POST …/messages` is 200 with the thread, the supplier's e-mail has the comune, "Nome C." and none
+      of the words; a booking (not on measure) answers the same lookup as before, with none of the three members; `POST …/cancel` closes the request for free, the supplier is told without a day, the customer gets no receipt, and a new message from either side is 409 `service_request_thread_closed`.
 
 ## 34. The quote with the customer's approval — SP-04b
 
@@ -3682,6 +3731,144 @@ Two new `data.type` of push, both to the supplier org: `service-request-day-befo
 setting. To try it on a test supplier: take a request for tomorrow, then run `service-request-reminders` from the Hangfire dashboard after 18:00 Rome of today (or move the work to the next hours), and check the e-mail (no address in it)
 and the push; turn `notifyDayBeforeReminder` off with `PUT api/supplier/settings` and a second request is not reminded. The migration `AddServiceRequestSupplierReminder` adds the column (nullable); it goes down by dropping it.
 
+## 36. Backup suppliers for a host's request — SP-BKP
+
+Task SP-BKP (branches `feature/rd-supplier-backup-groups` and `feature/rd-supplier-backup-groups-ui`). It builds the rule the product owner stated on
+2026-10-29/30: «anche per i fornitori, la rule è che hanno un'ora per confermare la presa in carico dell'attività, altrimenti pre-approvi altri 3 fornitori che
+prenderanno il lavoro al posto del fornitore selezionato che non ha risposto in tempo» and, between the two ways to read it, «in parallelo, vince il primo che
+accetta: servono i gruppi di richieste, ma il fornitore selezionato ha comunque un'ora per accettare, quindi avvisa che i tre fornitori contattati sono dei backup e
+il lavoro sarà accettato solo se il fornitore principale non accetta» (decision SR-D9, option (b): groups of requests). Before it, a request had one supplier
+(`SupplierOrgId` is mandatory) and nothing replaced the one that stayed silent (section 21.8 only cancels). On 2026-10-30 the product owner added two rules: the backups
+are picked, and their points moved, by the **reliability ranking** of the suppliers (SP-REL, section 37), and «dal momento in cui uno dei tre accetta il lavoro, si chiude la gara, gli altri due non
+possono più accettare» (**the first backup that accepts closes the race**, section 36.1). Out of scope: the alternatives offered to the customers of a showcase (SP-12c), the commissions and
+payments, the mobile app, the Railway variables.
+
+### 36.1 The rule
+
+When a host sends a request to a supplier (the **primary**), the same request is sent at the same moment to up to three **backups** of the same category and comune,
+declared as such. One group = one primary + up to three backups, each a row of `ServiceRequests` with the same data (host, property, stay, category, notes, time,
+price estimate) and its own supplier. Three windows:
+
+| When | Who can do what |
+|---|---|
+| **Hour of the primary** (`Suppliers__ServiceRequests__PrimaryResponseMinutes`, 60, from the creation) | The primary takes (or refuses) as for any request. A backup can only **accept as a backup** or refuse. **The first backup that accepts closes the race**: the other backups' requests are closed at that instant (`BackupRaceClosed`) and only the one that accepted holds its slot. |
+| **The hour is over** | If the primary took the job, the group is over: the backup that accepted is **released** (`PrimaryTookIt`, its slot is free again, no penalty). Otherwise the **backup that accepted** (`BackupAcceptedAt`) has the job: its slot is checked again under the supplier's calendar lock and, if it is no longer free, that backup is dropped (`BackupSlotUnavailable`) and the primary gets the second window. The primary's request is cancelled with `NoResponse` (and loses the points of a missed deadline, section 37). |
+| **Second window** (`…__BackupResponseMinutes`, 60, from the moment the hour was found over with nobody able to take the job; at once when the primary refuses or cancels) | Every request of the group still waiting can be taken, **the first has the job** (the primary too, now with no priority) and the others are closed (`TakenByBackup`). If nobody takes it the requests lapse with `NoResponse`, as a single request does (section 21.8), and the host is told that nobody answered. |
+
+The host cancelling the request closes the backups (`RequestCancelledByHost`, without the host's words). A primary that proposed another time is the host's to decide:
+the group does not move until the host answers; if the host turns the time down the window that had passed starts again, for the primary and the backups together.
+
+**The race of the backups** (decision of 2026-10-30). Accepting as a backup is the moment the race ends: under the group's lock and the supplier's calendar lock, in **one save**, the request of the backup that accepts gets
+`BackupAcceptedAt` and every other backup request still waiting becomes `Annullato` by CasaZen with the reason `BackupRaceClosed` (no `ResponseDueAt`, no penalty). Those backups are told once (`service-request-backup-closed`,
+«un altro fornitore di riserva ha già accettato») and any later `accept-as-backup` or `take` of theirs is **409 `service_request_backup_race_closed`**. The backup that accepted **holds its slot**: its agenda counts the request from
+then on (`ServiceRequestGroupRules.HoldsSupplierTime`, also in its load for the ranking), and the slot is checked **when it accepts** (409 `supplier_slot_unavailable` if the time is not free, and then nothing is closed: the race stays
+open for the next backup). The backups that did not accept never hold a slot. If the acceptance comes after the primary's hour (the job has not looked yet) the backup has the job at once.
+
+### 36.2 What the supplier sees and does
+
+- **A backup** sees its request in the inbox like any other, declared as a backup (`backup: { role: "backup", state, primaryDueAt, backupDueAt, acceptedAt }`): `state` is
+  `waiting` (the primary has its hour: it can accept as a backup or refuse), `accepted`, `active` (second window: it can take the job), `won`, or `closed`. Before the take it
+  sees what any supplier sees (decision D9, section 21.6): the comune, the time, the price, **never the property or the host's notes**, in the console, in the emails and in the
+  pushes. `respondBy` is the end of the primary's hour (then the end of the second window).
+- `POST api/service-requests/{id}/accept-as-backup` (policy `Supplier`): the acceptance, which **closes the race for the other backups** (section 36.1). The request stays `Richiesto` but now holds
+  the slot of the supplier; accepting twice is not an error and keeps the first instant. 422 `service_request_not_a_waiting_backup` for a request that is not a backup waiting; 422
+  `service_request_backup_already_active` in the second window (take the job instead); 409 `supplier_slot_unavailable` if its time is no longer free for the supplier (nothing is closed then); 409
+  `service_request_backup_race_closed` when another backup accepted first (the request is `Annullato` with `cancellationReason: BackupRaceClosed`); 409 `service_request_state_changed` when the group closed
+  meanwhile. The answer reflects the request after the group was looked at: `PresoInCarico` when the primary's hour was already over.
+- **Taking a backup request during the primary's hour** is 422 `service_request_backup_waits_for_primary` (so the batch accept and the apps cannot jump the queue). A backup cannot
+  propose another time (422 `service_request_backup_cannot_propose`); it can refuse (`reject`, `cancel`), and nobody tells the host.
+- **After its hour the primary** can still take the job if no backup accepted (it is in the race without priority); if a backup holds a pre-approval the primary is refused with 422
+  `service_request_primary_window_passed`, even before the job has run. `backup.role: "primary"` with `state: priority | late` tells the primary where it is.
+- The winner is a request like any other (`PresoInCarico`, `TakenAt`, `TakenByUserId` = the member who accepted); its `backup.state` is `won`.
+
+### 36.3 What the host sees and does
+
+- The host's lists, detail, calendar, "Oggi", search, used suppliers and every action show **one request per group**: the primary, and, once a backup took the job, the backup in its place
+  (`GroupRole`: `Primary`, `PromotedBackup`). A waiting backup and the primary it replaced (`Backup`, `ReplacedPrimary`) are never listed and cannot be read, cancelled or reminded by the host
+  (404): the group is reached through the request it follows.
+- `group` in `ServiceRequestDto` (list, detail, creation): `{ id, phase: PrimaryWindow | BackupWindow | Closed, primaryDueAt, backupDueAt, closedAt, members: [{ requestId, role, supplierOrgId,
+  supplierName, status, acceptedAt, tookTheJob, cancellationReason }] }`, the host's own supplier first. While the second window is open the request is `Richiesto`: the host sees it waiting.
+- When a backup takes the job the host gets «il fornitore principale non ha risposto: l'ha presa in carico X» (email `service-request-taken-by-backup` and the same push key as the take); when
+  nobody takes it, the usual «nessuna risposta» email and push.
+- Per request: `useBackupSuppliers` in the body of `POST api/service-requests` and `api/long-rent/service-requests` (`false` = this request goes alone). Per organization:
+  `GET/PUT api/orgs/me/service-request-settings` (`{ useBackupSuppliers }`, policy `OrgBillingAdmin`, **on by default** because the rule is general; the column is `Orgs.SupplierBackupsEnabled`).
+
+### 36.4 Choosing the backups
+
+`ServiceRequestBackupSelector` takes `ISupplierMatchService.RankActiveAsync` (the score of `MatchAsync` and of the supplier list, section 37: 70, minus 8 for each open request up to 40, plus the urgency, plus
+5 for a bio, plus the **reliability** of the supplier; no AI; a backup that only waits and has not accepted is not "load"), so the three backups are the **three best-ranked** eligible suppliers: the active suppliers of the property's comune that declared the category, **without the primary and the host's own org, without the ones that must accept
+new Terms, and without the ones whose time is not free**. «Free» is the check a take makes, made earlier: no job it took overlaps (`PresoInCarico`, `InCorso`) and, when the host picked the time
+among the primary's published slots (`ServiceRequestGroup.SlotPlanned`), the time is one of the backup's own slots too (hours, time off, closed days, notice, daily maximum, buffer). At most
+`…__MaxBackupSuppliers` (3), after looking at no more than 12 candidates; fewer, or none, and the request goes as before (with the 120 minutes of section 21.8). A failure while choosing never stops
+the request. A request accepted automatically (SP-04d) has no backups. The backup request has **no `ServiceListingId`** (the primary's service belongs to another catalog) but keeps the name and the
+price estimate the host saw.
+
+### 36.5 Data
+
+Migration `AddServiceRequestBackupGroups` (additive, no backfill): table `ServiceRequestGroups` (`OrgId` = the host, `Phase`, `PrimaryDueAt`, `BackupDueAt`, `SlotPlanned`, `CreatedAt`, `ClosedAt`, `xmin`),
+columns `ServiceRequests.GroupId`, `GroupRole` (0 `None`, 1 `Primary`, 2 `Backup`, 3 `ReplacedPrimary`, 4 `PromotedBackup`; never renumbered), `BackupAcceptedAt`, `BackupAcceptedByUserId`, and
+`Orgs.SupplierBackupsEnabled` (default true). Checks `CK_ServiceRequestGroups_Phase`, `…_Windows` and `CK_ServiceRequests_GroupRole`; unique partial indexes: one `Primary` and at most one
+`PromotedBackup` per group. `ServiceRequestStatus` is **unchanged** (seven values; the mobile app does not know new ones). `ServiceRequestGroups` is not tenant-filtered (it has more than two parties and a system job: allow-list of
+`TenantQueryFilterArchitectureTests`, explicit predicates, `ServiceRequestGroupTenancyTests`).
+
+### 36.6 Concurrency
+
+Every change of a group runs under the advisory lock `ServiceRequestGroup` (key: the group id, scope 1315), **taken before** the supplier's calendar lock (`SupplierCalendarSync`), never after; the group and
+its requests are read again after taking it (the change tracker is cleared) and saved in **one** `SaveChanges` with the `xmin` checks of the rows: of a take of the primary, a take of a backup and the job, one
+wins and the others get 409/422 and nothing of theirs is saved. The pass over a group is `IServiceRequestService.ResolveGroupAsync`, idempotent, called by the job (section 36.8) and right after a refusal,
+a cancellation, the host's answer to a proposal or an acceptance as a backup; it never fails the call that triggered it. The planner and the conflicts of the console do not count a backup that waits and
+has not accepted (`AgendaRequestsOf`, `HoldsSupplierTime`); the old job `service-request-auto-cancel` skips every request with a `GroupId`. The locks, the checks and the unique indexes only exist on PostgreSQL:
+`ServiceRequestBackupGroupPostgresTests` (`[PostgresFact]`, run in CI, not on a laptop without PostgreSQL) proves the primary's take closing the backups, the silent primary giving the job to the backup that
+accepted first (and the other finding the race closed, 409), two backups **accepting** at the same moment (one has it, the other gets 409 `service_request_backup_race_closed`), two backups taking at the
+same moment in the second window (one wins), the host's cancellation and the job's session lock.
+
+### 36.7 Emails and pushes (Italian, queued after the commit, by the winner only)
+
+| Event | To | Template / push `type` |
+|---|---|---|
+| Group created | each backup | `service-request-backup-invited` (comune, time, amount, until when the primary has) / `service-request-backup-invited` |
+| Second window opened | the backups still waiting | `service-request-backup-active` / `service-request-backup-active` |
+| The job went to a backup that had accepted | that backup | `service-request-backup-won` / `service-request-backup-won` |
+| Another backup accepted first (the race is closed) | the other backups, once, at that moment | `service-request-backup-closed` (kind `RaceClosed`: «nessuna penalità») / `service-request-backup-closed` |
+| The primary took the job | the backup that had accepted: released, its time is free again (kind `ReleasedByPrimary`); the others: closed (`PrimaryTookIt`) | `service-request-backup-closed` / `service-request-backup-closed` |
+| A backup took the job in the second window, the host cancelled, or the backup's time was not free | the backups closed | `service-request-backup-closed` / `service-request-backup-closed` (never the host's words) |
+| A backup took the job | the host | `service-request-taken-by-backup` / `service-request-taken` (same key as a take) |
+| The primary lost the job | the primary | `service-request-cancelled-to-supplier` (expired; with the line about the reliability points when it lost them, section 37) / `service-request-cancelled` |
+| Nobody took the job | the host and every supplier whose request lapsed (the primary, and the backups that stayed silent, with the line about the points when they lost them) | `service-request-status-changed` (nessuna risposta), `service-request-cancelled-to-supplier` |
+
+### 36.8 Configuration and job
+
+Section `Suppliers:ServiceRequests` gains `PrimaryResponseMinutes` (60), `BackupResponseMinutes` (60) and `MaxBackupSuppliers` (3, 1 to 5), validated at startup. Flag `Features__SupplierRequestBackups`
+(`feature-flags.md`): **off by default, and it gates only the creation of groups**. The recurring job `service-request-groups` (`*/5`, section 16 of `hangfire.md`) is always registered, one run at a time
+(session lock 1314 on top of Hangfire's), at most 500 groups per run; it also repairs a group whose followed request moved on without the group having followed (a crash between the two).
+
+### 36.9 Decisions with a default (the product owner can change them)
+
+1. The backups are the three best of the ranking of the suppliers (load, bio, reliability: section 37), not picked by the host. 2. The primary's hour counts from the creation of the request. 3. After its hour the primary can still take the job when no backup
+accepted (it only loses the priority); the strict reading («the primary is out after one hour») is a one-line change in `ServiceRequestGroupRules.CanTake`. 4. The second window is 60 minutes, counted from the moment the
+job finds the hour over. 5. A backup that accepted and whose time is not free any more when the job comes to it is dropped, and **nobody replaces it**: the race is closed for good, so the primary gets the second window. 6. A backup cannot propose another time, nor send a quote (SP-04b): 422 `service_request_backup_cannot_propose` / `…_cannot_quote`. 7. The rule applies to short-rent and long-rent requests and
+to the turnover request of a check-out; not to a showcase request, nor to one the supplier accepts automatically. 8. A pending proposal or quote of the primary freezes the group (the host is the one waited for): accepting it is the primary's take and closes the backups, turning it down or taking it back starts the window again. 9. «In pausa» is read as the supplier's time off
+and closed days (the planner), since a supplier has no pause of its own for the host's requests.
+
+### 36.10 Known limits
+
+The mobile app does not know the pre-approval: a backup request shows there as a new request and «accept» answers 422 `service_request_backup_waits_for_primary` with a localized message; the app
+does not show the group of the host's request. A backup that accepted is not asked again at assignment (no confirmation step): it can cancel the job before it starts, like any supplier. The group counts in the
+reliability of the suppliers (section 37): the replies in time (a backup too), the missed hour of the primary and the silent backups' small share; a backup closed by the race or released because the primary took the job loses
+nothing. Until the flags `Features__SupplierRequestBackups` or `Features__SupplierRequestAutoCancel` are on nothing lapses, so nobody loses points.
+
+### 36.11 After a deploy
+
+- [ ] Migration `AddServiceRequestBackupGroups` applied (table `ServiceRequestGroups`, the four columns of `ServiceRequests`, `Orgs.SupplierBackupsEnabled` true for every row).
+- [ ] `GET /api/public/features` has `supplierRequestBackups: false`; `service-request-groups` **is** in the Hangfire recurring jobs.
+- [ ] Test environment, `Features__SupplierRequestBackups=true`, three suppliers of the same comune and category: as the host, a request for one of them → 201 with `group.phase: "PrimaryWindow"` and three `members`;
+      the other two see the request in their inbox with `backup.role: "backup"`, `state: "waiting"` and **no property name and no notes**; `POST …/take` as a backup → 422 `service_request_backup_waits_for_primary`.
+- [ ] A backup `accept-as-backup` → 200, `state: "accepted"`; the other two backups are `Annullato` with `BackupRaceClosed` at once, and their `accept-as-backup` / `take` → 409 `service_request_backup_race_closed`; the primary `take` → 200 and the
+      backup that accepted is `Annullato` with `PrimaryTookIt` (released, its agenda is free again); the host's list has the one request.
+- [ ] Another request, nobody answers for an hour: the backup that accepted first has the job (`PresoInCarico`), the primary is `Annullato` `NoResponse`, and the host's list shows the backup's request
+      (`GET /api/service-requests` does not list the others). With nobody accepting, the second window opens (`group.phase: "BackupWindow"`), then `NoResponse` for all after another hour.
+- [ ] `PUT api/orgs/me/service-request-settings { "useBackupSuppliers": false }` → new requests of that org go to one supplier only.
+
 ## Known limits (other tasks)
 
 - Booking from the showcase (SP-10, SP-11): the customer finds, cancels, moves and answers a proposed time of its request (section 24).
@@ -3708,3 +3895,35 @@ The request wizard of Affitti brevi picks a service of the supplier and one of i
 - **The offer is the check.** The slots are the plan of `ISupplierAgendaService.PlanAsync` for `SupplierServiceForRequest.ToSlotQuery()`: the very query `ServiceRequestService` checks the time of a request with (`ResolveCreateSchedule`, `EnsureSlotFreeAsync`). A slot offered here is one `POST api/service-requests` accepts with `serviceListingId` and `scheduledStartUtc` equal to its `startUtc`; if someone takes it first, 409 `supplier_slot_unavailable` (and 409 `supplier_commitment_conflict` when the time overlaps a job the supplier already accepted). With `durationMinutes` the creation does **not** check the slot: the slots are for the services of the catalog.
 - **The same rules as the creation come first**: 404 `supplier_not_found`; 422 `service_request_supplier_inactive` (the supplier is not `Active`) and `service_request_supplier_outside_comune` (it does not cover the comune of the property, by ISTAT code or by the written city); for the slots, 404 `supplier_service_not_found` (another supplier's, or deleted) and 422 `service_request_service_unavailable` (a draft or a paused service).
 - **Privacy and cost**: the slots carry two instants and nothing of the supplier's agenda (no reason, job or person); the services come out through `ISupplierServiceCatalogService`, the only code that reads that table. Not cached: the host reads a few days of one supplier once per choice. Rate limit `HostSupplierSlots` on the slots, 60 / min **per signed-in person** (`RateLimiting__HostSupplierSlots__PermitLimit`, 429 `rate_limited`), and the window cannot be longer than 14 days.
+
+## 37. The reliability and the ranking of the suppliers — SP-REL
+
+One score ranks the suppliers (`Casazen.Core.Suppliers.SupplierRanking`, pure functions over the weights of `SupplierRankingOptions`, section `SupplierRanking`): it decides **who is recommended** to a host (`POST api/service-requests/match`), **in which order the suppliers are listed** when a host asks for a job (`GET api/suppliers`, `GET api/long-rent/service-requests/suppliers`) and, with the backups (SP-BKP), **who is called**. It is the score the platform always had plus the **reliability** of the supplier: who answers in time and does its jobs without disputes goes up, who misses deadlines or is disputed goes down. It was SP-10c's open point; only its events were built, not the rest of SP-10c (no staff console, no host claim: SP-15c-c).
+
+**The score** (1 to 100, `SupplierMatchService` reads it for every supplier of a comune in two queries, the open requests and the events of the window):
+
+`BaseScore 70` − `8` per request the supplier holds (up to `40`) + `15` for an emergency / `8` for a high urgency + `5` for a supplier that wrote a bio + `reliability points`, clamped to 1..100. A tie goes to the supplier with less work, then to the name.
+
+**The events** (`SupplierReliabilityEvents`, one row per supplier, request and kind: a job or a webhook that runs twice adds nothing; `ISupplierReliabilityService`, the only code that touches the table):
+
+| Kind | Written when | Points |
+|---|---|---|
+| `RepliedInTime` | The supplier takes, refuses, proposes another time or sends a quote on a new request **before its `ResponseDueAt`** (saying no in time counts). Answering twice adds nothing. | `+1` each, up to `+10` |
+| `JobCompletedClean` | `CompleteAsync` moves the request to `Completato`. | `+2` each, up to `+20` |
+| `NoReplyInTime` | The job `service-request-auto-cancel` cancels a request of a host nobody answered (the supplier the host chose: `AsBackup = false`). In a group of backups (SP-BKP, section 36) the groups pass writes it: for the primary when its hour ends without an answer (when the second window opens, or when a backup takes the job in its place), and for each backup that stayed silent through both windows when the group lapses with `NoResponse` (`AsBackup = true`). A backup closed by the race, or released because the primary took the job, gets none. | `−10` for the supplier chosen, `−2` (`20 %`, `BackupPenaltyShare`) for a backup |
+| `DisputeOpened` | `charge.dispute.created` of Stripe on the payment of the request (`SupplierPaymentService.ApplyDisputeCreatedAsync`). It takes back the `+2` of that job. **Until SP-15c-c (the claim a host opens from CasaZen) exists, disputes come only from Stripe chargebacks**; that task records the same event with `RecordAsync`. | `−12` |
+
+Rules, all in `SupplierRanking:*` (zero them, or `ReliabilityEnabled=false`, and the ranking is the one of before; the events are still recorded, so the weights can be changed later and applied to what already happened):
+
+- **Window**: the events of the last `WindowDays` (90) days. A supplier with no event starts neutral (`0`).
+- **Caps**: the bonuses stop at `+10` and `+20`; the penalties stop together at `MaxTotalPenalty` (`40`), so one bad month never zeroes a supplier, and the score stays within 1..100.
+- **A missed deadline is not held against a supplier that could not answer.** `RecordNoReplyAsync` looks at the time the request waited (from the creation, or from the start of the last window when the deadline was restarted, to the deadline): no penalty when the supplier was not `Active`, was on time off every day of it, or when the whole window falls outside its working hours (a Sunday, the night). A supplier that wrote **no working hours** is taken to have been there. The request lapses all the same; only the points are not taken, and the e-mail does not say they were.
+- **Only the requests of the hosts count** (short rent and long rent). A booking from a supplier's own public showcase neither earns nor costs points: its customer chose the supplier and the deadline is the supplier's own setting.
+- **Nothing is written for what the supplier did not choose**: a backup closed because another one accepted first, or released because the primary accepted, loses nothing (SP-BKP).
+- **A failure to write an event never fails the operation** (it is logged); the event is written after the change is saved, by the winner only.
+
+**Who sees what.** The host sees the **order** of the list and one boolean, `recommended` on the first supplier of the default order, only when it is strictly ahead of the second (with a tie nobody is "the" recommended one); `GET api/suppliers?sort=` takes `recommended` (the default, blank included), `name`, `price` or `response`, anything else is 400 `validation_error` (`SupplierSortInvalid`). Nobody sees the number, the points or the events (`SupplierPickerPrivacyIntegrationTests` keeps the answer to a whitelist of fields). The supplier is told **why it loses points** only in the e-mail of the request that lapsed (`service-request-cancelled-to-supplier`, line `ServiceRequestExpired_PointsHint`), and only when it did.
+
+**Reading it in support.** The events of a supplier, newest first: `SELECT "Kind", "RequestId", "AsBackup", "OccurredAt", "Detail" FROM "SupplierReliabilityEvents" WHERE "SupplierOrgId" = '<org>' ORDER BY "OccurredAt" DESC;` (kinds: 1 replied in time, 2 no reply in time, 3 job completed clean, 4 dispute opened). Not tenant-filtered (TN-2 allow-list, `SupplierReliabilityTenancyTests`): every statement in the code carries the supplier predicate. The migration `AddSupplierReliabilityEvents` only adds the table. The table fills from the deploy on: the events before it are not rebuilt, so every supplier starts neutral.
+
+**What needs a flag.** Nothing in the ranking: it is on with the code. But the **missed-deadline points** exist only where requests are really cancelled for lack of an answer: with `Features__SupplierRequestAutoCancel` off (the default) and without the backups (`Features__SupplierRequestBackups`), no request lapses, so no `NoReplyInTime` is written and the reliability can only go up. Turn those on to make a silent supplier lose points.

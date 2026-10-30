@@ -656,8 +656,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ServiceRequestService>();
         services.AddScoped<IServiceRequestService>(provider => provider.GetRequiredService<ServiceRequestService>());
         services.AddScoped<IShowcaseRequestCustomerActions>(provider => provider.GetRequiredService<ServiceRequestService>());
+        // The conversation of a request on measure (SP-10b): the supplier reads the thread and writes in it.
+        services.AddScoped<IServiceRequestThreadActions>(provider => provider.GetRequiredService<ServiceRequestService>());
         // Automatic cancellation of the requests nobody answered (SP-04, D8): the recurring job runs only with the flag on.
         services.AddScoped<IServiceRequestAutoCancelService, ServiceRequestAutoCancelService>();
+        // Backup suppliers of a host's request (SP-BKP, flag SupplierRequestBackups for the creation of groups only): the choice of the backups
+        // and the always-on pass over the groups that follows their windows.
+        services.AddScoped<ServiceRequestBackupSelector>();
+        services.AddScoped<IServiceRequestGroupRunService, ServiceRequestGroupRunService>();
         // The suppliers a host already asked for a job, for «Le mie app» of the marketplace (MKT, SR-09c): a view of its requests.
         services.AddScoped<IHostSupplierUsageReader, HostSupplierUsageReader>();
 
@@ -708,6 +714,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IHostServiceRequestReader, HostServiceRequestReader>();
         // The supplier's customers, the page "Clienti": hosts and private customers of the showcase aggregated from the requests (SP-16a).
         services.AddScoped<ISupplierClientsService, SupplierClientsService>();
+        // The ranking of the suppliers (SP-REL): who is recommended, the order of the list a host chooses from and, with the backups, who
+        // is called. The weights are configuration (SupplierRanking), validated at startup, every one with a default; the events the
+        // reliability is made of (answers in time, jobs without a dispute, missed deadlines, disputes) are recorded by the request flow.
+        services.AddOptions<Casazen.Core.Options.SupplierRankingOptions>()
+            .BindConfiguration(Casazen.Core.Options.SupplierRankingOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<Casazen.Core.Options.SupplierRankingOptions>, Casazen.Core.Options.SupplierRankingOptionsValidator>();
+        services.AddScoped<ISupplierReliabilityService, SupplierReliabilityService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
         // Internal activities performed by staff on properties (NF-22, agency tier).
         services.AddScoped<IInternalActivityService, InternalActivityService>();

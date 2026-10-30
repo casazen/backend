@@ -6,10 +6,17 @@ using Casazen.Infrastructure.Email.Templates;
 
 namespace Casazen.Web.DTOs.Supplier;
 
-/// <summary>The order of <c>GET /api/suppliers</c> (SR-09a): <c>?sort=name|price|response</c>.</summary>
+/// <summary>The order of <c>GET /api/suppliers</c> (SR-09a, SP-REL): <c>?sort=recommended|name|price|response</c>.</summary>
 public enum SupplierPickerSort
 {
-    /// <summary>By the legal name of the supplier (default).</summary>
+    /// <summary>
+    /// The best-ranked supplier first (default, SP-REL): the score of <see cref="SupplierRanking"/>, that is the load of the supplier,
+    /// what it wrote about itself and its reliability (the replies in time and the jobs without disputes raise it, the missed deadlines
+    /// and the disputes lower it). The score itself is never sent. Ties are broken by name.
+    /// </summary>
+    Recommended,
+
+    /// <summary>By the legal name of the supplier.</summary>
     Name,
 
     /// <summary>The lowest "from" price first; the suppliers without a price last.</summary>
@@ -39,18 +46,21 @@ public static class SupplierPickerSearch
         StringComparer.Ordinal);
 
     /// <summary>
-    /// Reads <c>?sort=</c>: blank is <see cref="SupplierPickerSort.Name"/>; <c>name</c>, <c>price</c> and <c>response</c> (any case)
-    /// are the three orders. False for anything else.
+    /// Reads <c>?sort=</c>: blank is <see cref="SupplierPickerSort.Recommended"/>; <c>recommended</c>, <c>name</c>, <c>price</c> and
+    /// <c>response</c> (any case) are the four orders. False for anything else.
     /// </summary>
     public static bool TryParseSort(string? value, out SupplierPickerSort sort)
     {
-        sort = SupplierPickerSort.Name;
+        sort = SupplierPickerSort.Recommended;
         if (string.IsNullOrWhiteSpace(value))
             return true;
 
         switch (value.Trim().ToLowerInvariant())
         {
+            case "recommended":
+                return true;
             case "name":
+                sort = SupplierPickerSort.Name;
                 return true;
             case "price":
                 sort = SupplierPickerSort.Price;
@@ -68,13 +78,17 @@ public static class SupplierPickerSearch
     /// code or its Italian or English name, or in the name of one of its published services; the case and the accents do not
     /// matter; blank keeps all), in the order of <paramref name="sort"/>. Ties are broken by name, then by org id, so the order
     /// is always the same. <paramref name="services"/> are all the published services of each supplier (the entries list only the
-    /// first ones): without them the search looks at the services the entries carry.
+    /// first ones): without them the search looks at the services the entries carry. <paramref name="scores"/> are the ranking scores of
+    /// the suppliers (<see cref="SupplierRanking"/>, by org id) that <see cref="SupplierPickerSort.Recommended"/> orders by: a supplier
+    /// without one counts as 0, so without scores the order is the one by name. In that order the first supplier is marked
+    /// <see cref="SupplierPickerDto.Recommended"/> when it is strictly ahead of the second: with a tie nobody is "the" recommended one.
     /// </summary>
     public static List<SupplierPickerDto> Apply(
         IEnumerable<SupplierPickerDto> suppliers,
         string? q,
         SupplierPickerSort sort,
-        IReadOnlyDictionary<Guid, IReadOnlyList<SupplierPickerService>>? services = null)
+        IReadOnlyDictionary<Guid, IReadOnlyList<SupplierPickerService>>? services = null,
+        IReadOnlyDictionary<Guid, int>? scores = null)
     {
         ArgumentNullException.ThrowIfNull(suppliers);
 
@@ -83,17 +97,25 @@ public static class SupplierPickerSearch
             ? suppliers
             : suppliers.Where(s => Matches(SearchKey(s, services), words));
 
+        int ScoreOf(SupplierPickerDto supplier) => scores is not null && scores.TryGetValue(supplier.OrgId, out var score) ? score : 0;
+
         var ordered = sort switch
         {
+            SupplierPickerSort.Recommended => matching.OrderByDescending(ScoreOf),
             SupplierPickerSort.Price => matching.OrderBy(s => s.PriceFromCents is null).ThenBy(s => s.PriceFromCents),
             SupplierPickerSort.Response => matching.OrderBy(s => s.MedianResponseMinutes is null).ThenBy(s => s.MedianResponseMinutes),
             _ => matching.OrderBy(_ => 0),
         };
 
-        return ordered
+        var list = ordered
             .ThenBy(s => s.LegalName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(s => s.OrgId)
             .ToList();
+
+        if (sort == SupplierPickerSort.Recommended && scores is not null && list.Count > 1 && ScoreOf(list[0]) > ScoreOf(list[1]))
+            list[0].Recommended = true;
+
+        return list;
     }
 
     /// <summary>The words a supplier is found by, folded: its name, its categories and the names of its published services.</summary>
