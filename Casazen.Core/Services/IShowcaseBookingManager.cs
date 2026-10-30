@@ -122,6 +122,48 @@ public interface IShowcaseBookingManager
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// SP-15c-a: the customer says "all fine" about a booking paid inside CasaZen whose work is done: the money CasaZen holds is released to
+    /// the supplier at once, without waiting for the hour after the work (decision VT-D1). The customer's word stands even if the transfer
+    /// cannot be made right now (the supplier's account is not ready, Stripe refuses): the job makes it. Asking again once the supplier was
+    /// paid answers the booking as it is and does nothing.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="ServicePaymentErrors.NotConfirmable"/>: the booking is not paid inside CasaZen, the work is not done, or the money is not
+    /// in a state to release (closed, refunded, stopped by a dispute).
+    /// </exception>
+    Task<ShowcaseBookingView> ConfirmOkAsync(ShowcaseBookingCredentials credentials, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// SP-15c-c, "Segnala un problema": the customer reports a problem with a job paid inside CasaZen — the money CasaZen holds stops until a person
+    /// decides (decisions VT-D1 and VT-D16). Possible from the moment the work is completed until the money is due to the supplier (the hour after
+    /// the work), never after the customer said "all fine" or the supplier was paid; for a job nobody marked completed, from the end of the time agreed
+    /// for it. A complaint already open answers the same booking and writes nothing. Text only: no photos.
+    /// </summary>
+    /// <param name="credentials">Who the customer says it is.</param>
+    /// <param name="reason"><c>not_done</c>, <c>incomplete</c>, <c>poor_quality</c>, <c>not_as_described</c> or <c>other</c>.</param>
+    /// <param name="text">What the customer writes, at most 1000 characters; required for <c>other</c>.</param>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="ServiceDisputeErrors.NotReportable"/> (the booking is not paid inside CasaZen, or not a job that was done),
+    /// <see cref="ServiceDisputeErrors.WindowClosed"/> (the time is over), <see cref="ServiceDisputeErrors.TooEarly"/> (the work is not completed and
+    /// its time has not ended), <see cref="ServiceDisputeErrors.Invalid"/> (<c>fields</c>: <c>reason</c>, <c>text</c>).
+    /// </exception>
+    Task<ShowcaseBookingView> ReportProblemAsync(
+        ShowcaseBookingCredentials credentials,
+        string? reason,
+        string? text,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// SP-15c-c: the customer takes its complaint back — the money is no longer stopped and the supplier is paid. Taking back a complaint that was
+    /// taken back answers the same booking.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>, or <see cref="ServiceDisputeErrors.NotFound"/> (no complaint).</exception>
+    /// <exception cref="Exceptions.DomainConflictException"><see cref="ServiceDisputeErrors.NotOpen"/>: the complaint was decided already.</exception>
+    Task<ShowcaseBookingView> WithdrawProblemAsync(ShowcaseBookingCredentials credentials, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Writes in the conversation of a request on measure (SP-10b): 1 to 1000 characters of plain text, at most 200 messages a request. The
     /// supplier is told by e-mail (the comune and "Nome C.", never the words), one e-mail for the messages of ten minutes. The booking of the
     /// credentials has to be a request on measure; any other is <see cref="ShowcaseBookingManagementErrors.NotFound"/>.

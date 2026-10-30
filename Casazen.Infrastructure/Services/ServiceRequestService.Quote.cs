@@ -32,6 +32,11 @@ public partial class ServiceRequestService
                 ServiceRequestErrorCodes.InvalidTransition, ServiceRequestErrorCodes.CannotQuoteMessageKey);
         }
 
+        // SP-15c-a: a request whose card is blocked has its price: the total the customer saw is what is blocked, and a quote would be another
+        // price (R7: a different price needs a new offer, not an answer of the supplier). Refused before anything else is read.
+        if (IsPaidInsideCasaZen(request))
+            throw new DomainRuleException(ServicePaymentErrors.AmountLocked, ServicePaymentErrors.AmountLockedMessageKey);
+
         // SP-BKP: a backup answers the request as it is or refuses; the host would be answering a supplier it did not choose.
         if (request.GroupRole == ServiceRequestGroupRole.Backup)
         {

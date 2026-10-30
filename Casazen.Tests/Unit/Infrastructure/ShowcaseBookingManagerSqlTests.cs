@@ -31,6 +31,8 @@ public class ShowcaseBookingManagerSqlTests
                      "FinalAmountCents", "PriceLinesJson", "OptionsJson", "ResponseDueAt", "ProposedStartUtc", "ProposedEndUtc", "ProposedAt",
                      "ProposalMessage", "CancelledAt", "CancelledBy", "CancellationReason", "RejectionReason", "LocationCity", "LocationPostalCode",
                      "QuoteSentAt", "QuoteLinesJson", "QuoteTotalCents", "QuoteNote", "QuoteScheduledStartUtc", "QuoteScheduledEndUtc",
+                     // SP-15c-a: whether the booking is paid inside CasaZen (its payment is read through the funds service, not here).
+                     "PaymentMode",
                  })
         {
             Assert.Contains($"\"{column}\"", sql, StringComparison.Ordinal);

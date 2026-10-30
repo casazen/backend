@@ -41,14 +41,18 @@ internal sealed class ServiceRequestTestKit : IDisposable
         SupplierPaymentsOptions? paymentOptions = null,
         FakeSupplierPaymentGateway? gateway = null,
         TestFeatureFlags? flags = null,
-        Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null)
+        Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null,
+        FakePlatformPaymentGateway? platformGateway = null)
     {
         Db = db;
         Clock = clock ?? TimeProvider.System;
         Options = options ?? new ServiceRequestOptions();
         ShowcaseOptions = showcaseOptions ?? new ShowcaseBookingOptions { PrivacyNoticeVersion = PrivacyNoticeVersion };
-        PaymentOptions = paymentOptions ?? new SupplierPaymentsOptions { CommissionPercent = 10m };
+        // The tests of SP-15a/15b exercise the direct charge on the supplier's account, so the kit pins that model; the money CasaZen holds for
+        // a host (SP-15c-b) is tried by the tests that ask for it (HeldForHosts = true).
+        PaymentOptions = paymentOptions ?? new SupplierPaymentsOptions { CommissionPercent = 10m, HeldForHosts = false };
         Gateway = gateway ?? new FakeSupplierPaymentGateway();
+        PlatformGateway = platformGateway ?? new FakePlatformPaymentGateway();
         Flags = flags ?? new TestFeatureFlags();
         Emails = emails ?? new RecordingEmailQueue();
         Push = push ?? Mock.Of<IPushNotificationService>();
@@ -108,6 +112,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
             JobScheduler,
             paymentLogger ?? NullLogger<SupplierPaymentService>.Instance,
             Clock,
+            PlatformGateway,
+            Customers,
+            Penalties,
             Reliability);
         Matcher = ComuneTestServices.Matcher(db);
 
@@ -130,6 +137,7 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Payments,
             NullLogger<ServiceRequestService>.Instance,
             Clock,
+            Payments,
             Flags,
             BackupSelector,
             Reliability);
@@ -143,7 +151,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             ShowcaseNotifier,
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
             NullLogger<ShowcaseBookingService>.Instance,
-            Clock);
+            Clock,
+            Payments);
         Inquiry = new ShowcaseInquiryService(
             db,
             Catalog,
@@ -160,7 +169,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Catalog,
             Service,
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
-            Clock);
+            Clock,
+            Payments,
+            Payments);
     }
 
     /// <summary>The publishable key the payment sessions of the kit carry.</summary>
@@ -183,6 +194,12 @@ internal sealed class ServiceRequestTestKit : IDisposable
     public SupplierReliabilityService Reliability { get; }
 
     public FakeSupplierPaymentGateway Gateway { get; }
+
+    /// <summary>The gateway of the money CasaZen holds (SP-15c-a): never reaches Stripe.</summary>
+    public FakePlatformPaymentGateway PlatformGateway { get; }
+
+    /// <summary>Records the penalties the disputes decided for the customer give a supplier (SP-15c-c); nothing reaches a ranking.</summary>
+    public RecordingSupplierDisputePenalties Penalties { get; } = new();
 
     /// <summary>Records the supplier orgs whose pending payment requests were queued (SP-15b); nothing reaches Hangfire.</summary>
     public RecordingSupplierPaymentJobScheduler JobScheduler { get; } = new();

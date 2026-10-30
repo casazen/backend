@@ -354,9 +354,10 @@ public class SupplierPaymentSummaryTests
     public async Task CanRequest_ARequestFromTheShowcase_IsNeverTrue_BecauseItsCustomerHasNoAddressToSendALinkTo()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
-        await s.EnablePaymentsAsync();
         await s.EnableBookingAsync();
         var (showcase, _) = await s.BookedAsync();
+        // After the booking: with the payments on, a booking of a showcase blocks the card of its customer (SP-15c-a) and is paid inside CasaZen.
+        await s.EnablePaymentsAsync();
         await s.ChangeRequestAsync(showcase.Id, r =>
         {
             // Even a showcase request marked Online by mistake, completed and old enough for a reminder.
@@ -551,9 +552,9 @@ public class SupplierPaymentSummaryTests
 
             case "showcase-completed":
                 {
-                    await s.EnablePaymentsAsync();
                     await s.EnableBookingAsync();
                     var (showcase, _) = await s.BookedAsync();
+                    await s.EnablePaymentsAsync(); // after the booking: see SupplierPaymentShowcaseTests
                     await s.Service.TakeAsync(showcase.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId);
                     await s.Service.CompleteAsync(showcase.Id, s.SupplierOrgId);
                     s.Clock.Advance(TimeSpan.FromHours(25));

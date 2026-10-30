@@ -37,7 +37,7 @@ public class ShowcaseBookingTenancyTests
     /// <summary>The system jobs that work across every supplier on purpose: run only by Hangfire, reachable from no request.</summary>
     private static readonly IReadOnlyDictionary<string, string> SystemJobFiles = new Dictionary<string, string>
     {
-        ["Casazen.Infrastructure/Services/ServiceRequestExpiryService.cs"] = "Deletes the holds whose time has passed, whoever they belong to (ExpiredHoldIdsOf reads ids only).",
+        ["Casazen.Infrastructure/Services/ServiceRequestExpiryService.cs"] = "Deletes the holds whose time has passed, whoever they belong to (ExpiredHoldIdsOf reads ids only; UnconsumedPaidHoldsOf reads ids and the supplier org of the ones with a card block, which the booking service releases one at a time).",
         ["Casazen.Infrastructure/Services/ServiceCustomerPrivacyService.cs"] = "The nightly retention anonymizes the customers whose period has ended, whoever they belong to.",
     };
 
@@ -117,7 +117,10 @@ public class ShowcaseBookingTenancyTests
         Assert.Equal("UIX_ServiceCustomers_OrgId_EmailHash", customerUnique.GetDatabaseName());
 
         var holdUniques = holds.GetIndexes().Where(index => index.IsUnique).Select(index => index.GetDatabaseName()!).Order().ToArray();
-        Assert.Equal(["UIX_ShowcaseBookingHolds_OrgId_ClientRequestId", "UIX_ShowcaseBookingHolds_OrgId_PublicCode"], holdUniques);
+        // SP-15c-a: a PaymentIntent blocks the card of one hold only (the webhook finds the hold by it).
+        Assert.Equal(
+            ["UIX_ShowcaseBookingHolds_OrgId_ClientRequestId", "UIX_ShowcaseBookingHolds_OrgId_PublicCode", "UIX_ShowcaseBookingHolds_StripePaymentIntentId"],
+            holdUniques);
         Assert.Contains(holds.GetIndexes(), index => index.GetDatabaseName() == "IX_ShowcaseBookingHolds_ExpiresAt");
         Assert.Contains(holds.GetIndexes(), index =>
             index.Properties.Select(p => p.Name).SequenceEqual(new[] { "OrgId", "StartUtc" }));
@@ -129,7 +132,9 @@ public class ShowcaseBookingTenancyTests
             .Order()
             .ToArray();
 
-        Assert.Equal(["CK_ShowcaseBookingHolds_Expiry", "CK_ShowcaseBookingHolds_Interval"], ChecksOf(typeof(ShowcaseBookingHold)));
+        Assert.Equal(
+            ["CK_ShowcaseBookingHolds_Expiry", "CK_ShowcaseBookingHolds_Interval", "CK_ShowcaseBookingHolds_Payment"],
+            ChecksOf(typeof(ShowcaseBookingHold)));
         Assert.Contains("CK_ServiceRequests_Context", ChecksOf(typeof(ServiceRequest)));
 
         var publicCodeIndex = Assert.Single(
@@ -186,6 +191,16 @@ public class ShowcaseBookingTenancyTests
         Assert.DoesNotContain("EmailHash", expired, StringComparison.Ordinal);
         Assert.DoesNotContain("TokenHash", expired, StringComparison.Ordinal);
         Assert.DoesNotMatch("\"OrgId\" = @", expired);
+
+        // SP-15c-a: of those, the ones that never became a request and carry a block on a card are released one at a time. The statement
+        // that finds them reads the id and the supplier org (the lock the release takes is the supplier's) and nothing personal, and never
+        // a hold that has a request: its PaymentIntent belongs to the payment.
+        var paid = ServiceRequestExpiryService.UnconsumedPaidHoldsOf(db, [Guid.NewGuid(), Guid.NewGuid()]).ToQueryString();
+        Assert.Contains("= ANY (@", paid, StringComparison.Ordinal);
+        Assert.Matches("\"StripePaymentIntentId\" IS NOT NULL", paid);
+        Assert.Matches("\"ConsumedAt\" IS NULL", paid);
+        foreach (var column in new[] { "PayloadEncrypted", "EmailHash", "TokenHash", "PublicCode", "ClientRequestId", "ServiceRequestId" })
+            Assert.DoesNotContain(column, paid, StringComparison.Ordinal);
     }
 
     [Fact]

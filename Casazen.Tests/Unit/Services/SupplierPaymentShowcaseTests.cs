@@ -25,8 +25,10 @@ public class SupplierPaymentShowcaseTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
-        await s.EnablePaymentsAsync();
         var (request, _) = await s.BookedAsync();
+        // The payments are switched on after the booking: with them on a booking of a showcase blocks the card of its customer (SP-15c-a)
+        // and is paid inside CasaZen; this request was born without that and stays a manual one.
+        await s.EnablePaymentsAsync();
 
         var taken = await s.Service.TakeAsync(request.Id, s.SupplierOrgId, UserId);
 
@@ -41,8 +43,8 @@ public class SupplierPaymentShowcaseTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
-        await s.EnablePaymentsAsync();
         var (request, credentials) = await s.BookedForManagementAsync();
+        await s.EnablePaymentsAsync(); // after the booking: see Take_AShowcaseRequest_IsManualEvenWithTheFlagOnAndTheAccountReady
         s.Clock.Advance(TimeSpan.FromMinutes(20));
         await s.ProposeAsSupplierAsync(request.Id, ServiceRequestScenario.FridayAt14);
         s.Clock.Advance(TimeSpan.FromMinutes(40));
@@ -60,8 +62,8 @@ public class SupplierPaymentShowcaseTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
-        await s.EnablePaymentsAsync();
         var (request, _) = await s.BookedAsync();
+        await s.EnablePaymentsAsync(); // after the booking: see Take_AShowcaseRequest_IsManualEvenWithTheFlagOnAndTheAccountReady
         await s.Service.TakeAsync(request.Id, s.SupplierOrgId, UserId);
         s.ForgetNotifications();
 
@@ -80,8 +82,8 @@ public class SupplierPaymentShowcaseTests
     {
         using var s = await ServiceRequestScenario.CreateAsync();
         await s.EnableBookingAsync();
-        await s.EnablePaymentsAsync();
         var (request, _) = await s.BookedAsync();
+        await s.EnablePaymentsAsync(); // after the booking: see Take_AShowcaseRequest_IsManualEvenWithTheFlagOnAndTheAccountReady
         await s.Service.TakeAsync(request.Id, s.SupplierOrgId, UserId);
         await s.ChangeRequestAsync(request.Id, r => r.PaymentMode = ServiceRequestPaymentMode.Online);
         s.ForgetNotifications();

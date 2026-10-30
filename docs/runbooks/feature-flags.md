@@ -16,6 +16,9 @@ Task SP-14 (redesign wave) puts the supplier's Stripe Connect account behind `Su
 Task SP-15a (redesign wave) puts the **creation** of the payments of the supplier's work behind `SupplierOnlinePayments`
 (`docs/runbooks/stripe.md` § "Services of the suppliers (SP-15)", `docs/runbooks/suppliers.md` section 26); SP-15b adds the
 requests and reminders the daily job sends (and nothing else: the webhook, the sync and the refunds are not behind it).
+Task SP-15c-a (redesign wave, decision VT-D1) adds **no flag**: the same `SupplierOnlinePayments` governs the **creation** of the payments CasaZen
+holds (the block of a showcase customer's card at the booking, `ISupplierFundsService.CanAuthorizeAsync`); the block, the charge, the release, the
+refunds, the webhook and the `service-funds` job of money already in flight are **not** behind it (`docs/runbooks/suppliers.md` section 38).
 Task SP-16a (redesign wave) adds no flag. Two things to know when switching the two supplier flags on (`docs/runbooks/suppliers.md` section 29): the
 showcase takes bookings only for a supplier whose `SupplierSettings.OnlineBookingEnabled` is true, a column that **only the showcase editor writes**
 (`PUT api/supplier/settings` neither takes nor changes it, decision SP-D29), so `SupplierShowcaseBooking` alone opens nothing; and `GET api/supplier/checklist`

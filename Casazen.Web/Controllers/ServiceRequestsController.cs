@@ -853,6 +853,38 @@ public class ServiceRequestsController(
         return Ok(await HostDtoAsync(updated, scope.OrgId, cancellationToken));
     }
 
+    /// <summary>
+    /// "Tutto a posto" (SP-15c-b, decision VT-D1): the host says the work of a completed short-rent request paid inside CasaZen is fine, and the
+    /// money CasaZen holds for it goes to the supplier at once, without waiting for the time after the charge. Same permission as
+    /// <see cref="MarkPaid"/> (<c>servicerequest.write</c> on the request's property). 404 <c>service_request_not_found</c> outside the caller's
+    /// scope or for a long-rent request; 422 <c>service_payment_not_confirmable</c> when there is nothing to release (the request is not paid
+    /// inside CasaZen, the payer has not paid yet, it is closed or a dispute stopped it); asking again once the supplier was paid answers the
+    /// request and does nothing. If the transfer cannot be made right now the host's word stands and the job makes it.
+    /// </summary>
+    [HttpPost("{id:guid}/confirm-ok")]
+    [Authorize(Policy = CasazenPolicies.ServiceRequestWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServiceRequestDto>> ConfirmOk(Guid id, CancellationToken cancellationToken)
+    {
+        var scope = await GetHostScopeAsync(cancellationToken);
+        if (scope is null) return Unauthorized();
+
+        var existing = await serviceRequestService.GetByIdForHostAsync(
+            id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
+        if (existing is null) return ServiceRequestNotFound();
+
+        var resource = new HostResource(existing.OrgId, existing.Property?.OwnerId, existing.PropertyId);
+        if (existing.Property is null ||
+            !await authorizationService.IsAuthorizedAsync(User, resource, ServiceRequestOperations.Write))
+            return Forbid();
+
+        var updated = await serviceRequestService.ConfirmOkAsHostAsync(id, scope.OrgId, cancellationToken);
+        return Ok(await HostDtoAsync(updated, scope.OrgId, cancellationToken));
+    }
+
     /// <summary>404 <c>service_request_not_found</c> (FD-05), also for a request outside the caller's scope.</summary>
     internal static ObjectResult ServiceRequestNotFound(ControllerBase controller) =>
         controller.ApiProblem(

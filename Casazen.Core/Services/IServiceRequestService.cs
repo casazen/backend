@@ -439,6 +439,15 @@ public interface IServiceRequestService
     Task<ServiceRequest> MarkPaidAsync(Guid id, Guid hostOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// SP-15c-b, "Tutto a posto": the host (the org that asked for the work) says the work is fine, and the money CasaZen holds for it goes to the
+    /// supplier at once, without waiting for the time after the charge (decision VT-D1). Only for a completed request paid inside CasaZen whose payer
+    /// has paid: 422 <see cref="ServicePaymentErrors.NotConfirmable"/> otherwise (nothing to release yet, already closed, stopped by a dispute). The
+    /// host's word stands even if the transfer cannot be made right now: the job makes it. Asking again once the supplier was paid answers the
+    /// request as it is and does nothing. Another org's request, and one from a supplier's showcase, are not found.
+    /// </summary>
+    Task<ServiceRequest> ConfirmOkAsHostAsync(Guid id, Guid hostOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The host confirms the final amount of a completed request that is above the quote by more than the tolerance (SP-15a,
     /// decision D7): the request no longer needs the confirmation and, when it is paid inside CasaZen, its payment is created and
     /// the link sent. Confirming twice is not an error; another org's request is not found; 422

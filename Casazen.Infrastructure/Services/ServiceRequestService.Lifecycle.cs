@@ -93,6 +93,9 @@ public partial class ServiceRequestService
         else if (!wasWaitingBackup)
             await notifier.NotifyHostAsync(request, cancellationToken);
 
+        // SP-15c-a: the block on the customer's card is released, or the money charged is given back in full.
+        await SettleClosedMoneyAsync(request, cancellationToken);
+
         // SP-BKP: the host's cancellation closes the backups; a supplier that gives up its request (the primary, or a backup) changes who is
         // in the race. The group is looked at right away.
         await ResolveGroupAfterChangeAsync(request.GroupId, cancellationToken);

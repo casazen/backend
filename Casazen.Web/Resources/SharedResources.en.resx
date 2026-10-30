@@ -3211,6 +3211,21 @@
   <data name="ServicePaymentStateChanged" xml:space="preserve">
     <value>The payment was just changed by another operation: reload the page and check its current state.</value>
   </data>
+  <data name="ServicePaymentCaptureFailed" xml:space="preserve">
+    <value>The customer's card could not be charged: the request was not accepted and nothing changed.</value>
+  </data>
+  <data name="ServicePaymentAuthorizationExpired" xml:space="preserve">
+    <value>The amount blocked on the customer's card is no longer available: the request cannot be accepted and is closed. The customer can book again.</value>
+  </data>
+  <data name="ServicePaymentAmountLocked" xml:space="preserve">
+    <value>The customer has already blocked this amount on the card: you cannot declare a different total or add items. To change the price a new offer is needed.</value>
+  </data>
+  <data name="ServicePaymentNotConfirmable" xml:space="preserve">
+    <value>There is nothing to confirm: the work is not completed or the payment is already closed.</value>
+  </data>
+  <data name="ServicePaymentHeld" xml:space="preserve">
+    <value>The payment is held by CasaZen: you cannot ask for it or record it as received. It reaches you after the customer's confirmation.</value>
+  </data>
   <data name="ServiceRequestNoConfirmationNeeded" xml:space="preserve">
     <value>There is no amount to confirm for this request.</value>
   </data>
@@ -3784,5 +3799,50 @@
   </data>
   <data name="ServiceRequestInquiryNeedsOffer" xml:space="preserve">
     <value>A request on measure cannot be accepted directly nor given another time: the work, the price and the time are agreed with the customer in the conversation, with an offer.</value>
+  </data>
+  <data name="ServiceDisputeNotFound" xml:space="preserve">
+    <value>There is no report for this request.</value>
+  </data>
+  <data name="ServiceDisputeNotReportable" xml:space="preserve">
+    <value>A problem cannot be reported from here: CasaZen holds no payment for this job that can be stopped.</value>
+  </data>
+  <data name="ServiceDisputeTooEarly" xml:space="preserve">
+    <value>You can report that the work was not done after the time agreed for it has ended, not before.</value>
+  </data>
+  <data name="ServiceDisputeWindowClosed" xml:space="preserve">
+    <value>The time to report a problem has ended: the payment was paid out to the supplier, is about to be, or you already confirmed that all is fine.</value>
+  </data>
+  <data name="ServiceDisputeInvalid" xml:space="preserve">
+    <value>Some details of the report are not valid (fields: {0}). Check them and try again.</value>
+  </data>
+  <data name="ServiceDisputeNotOpen" xml:space="preserve">
+    <value>The report is no longer open: it was decided or taken back.</value>
+  </data>
+  <data name="ServiceDisputeAlreadyReplied" xml:space="preserve">
+    <value>You have already replied to this report.</value>
+  </data>
+  <data name="ServiceDisputeAwaitingSupplier" xml:space="preserve">
+    <value>The supplier still has time to reply: the report is decided after its reply or when its time is up.</value>
+  </data>
+  <data name="ServiceDisputeStateChanged" xml:space="preserve">
+    <value>The report changed in the meantime: reload the page and check.</value>
+  </data>
+  <data name="ServiceDisputePaymentChanged" xml:space="preserve">
+    <value>The payment is not in a state a decision can be made on (it is under review or the money moved otherwise): check the payment first.</value>
+  </data>
+  <data name="ServiceDisputeRefundInvalid" xml:space="preserve">
+    <value>The amount to give back must be a positive number of cents.</value>
+  </data>
+  <data name="ServiceDisputeRefundExceeds" xml:space="preserve">
+    <value>The amount is more than what is still left of the supplier's part ({0:N2} €): CasaZen's commission is not given back.</value>
+  </data>
+  <data name="ServiceDisputeOutcomeInvalid" xml:space="preserve">
+    <value>The outcome must be for_supplier (for the supplier) or for_customer (for the person who paid).</value>
+  </data>
+  <data name="ServiceDisputeFormInvalid" xml:space="preserve">
+    <value>Say what is wrong and, if you wish, describe the problem in at most 1000 characters.</value>
+  </data>
+  <data name="ServiceDisputeOpenBlocksCompletion" xml:space="preserve">
+    <value>A report is open on this job: reply to the report. If it is decided in your favour, the job is marked as completed.</value>
   </data>
 </root>

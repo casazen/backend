@@ -27,6 +27,14 @@ namespace Casazen.Core.Entities;
 /// <para><b>One live payment per request.</b> A unique partial index allows a single row per request that is not
 /// <see cref="ServicePaymentStatus.Canceled"/>; the creation paths also run under the advisory lock
 /// <c>ServiceRequestPayment</c> (key: the request id), so two concurrent sessions create one PaymentIntent.</para>
+/// <para><b>Two models of funds (SP-15c-a).</b> <see cref="FundsModel"/> tells which one the row follows.
+/// <see cref="ServiceFundsModel.DirectCharge"/> is the one described above. <see cref="ServiceFundsModel.PlatformHeld"/> (decision
+/// VT-D1) keeps the same amounts but the money takes another road: the PaymentIntent is on the <b>platform</b> account
+/// (<see cref="ConnectedAccountId"/> stays empty, no application fee is sent), the card is blocked then charged
+/// (<see cref="ServicePaymentStatus.Authorized"/> → <see cref="ServicePaymentStatus.Held"/>), and CasaZen later transfers
+/// <see cref="NetCents"/> to the supplier (<see cref="ServicePaymentStatus.Released"/>) or gives the money back. There,
+/// <see cref="ApplicationFeeCents"/> is the commission CasaZen <b>keeps</b> (nothing is sent to Stripe as a fee) and
+/// <see cref="PaidAt"/> is when the payer's card was charged, moved to the moment of the transfer when it is released.</para>
 /// </remarks>
 [Table("ServiceRequestPayments")]
 public class ServiceRequestPayment
@@ -131,6 +139,87 @@ public class ServiceRequestPayment
 
     /// <summary>When the payment was dropped (<see cref="ServicePaymentStatus.Canceled"/>).</summary>
     public DateTime? CanceledAt { get; set; }
+
+    // ─── The payment held by CasaZen (SP-15c-a, decision VT-D1): every column below is empty for ServiceFundsModel.DirectCharge ───
+
+    /// <summary>Whose money the payment is while it is in flight: the supplier's (a direct charge, SP-15a) or CasaZen's (held, SP-15c).</summary>
+    public ServiceFundsModel FundsModel { get; set; } = ServiceFundsModel.DirectCharge;
+
+    /// <summary>
+    /// The Stripe charge (<c>ch_…</c>) of the platform PaymentIntent, known from the capture: the <c>source_transaction</c> of the
+    /// transfer to the supplier, which ties the transfer to the money of this payment and lets it go before the funds are settled.
+    /// </summary>
+    [MaxLength(255)]
+    public string? StripeChargeId { get; set; }
+
+    /// <summary>
+    /// The Stripe <c>transfer_group</c> the PaymentIntent was created with: every PaymentIntent, refund and transfer of this money carries it.
+    /// The release looks for a transfer of the group before it makes one, so a transfer whose answer was lost is found, not duplicated.
+    /// </summary>
+    [MaxLength(100)]
+    public string? TransferGroup { get; set; }
+
+    /// <summary>When the payer's card was blocked for the amount (the PaymentIntent became <c>requires_capture</c>).</summary>
+    public DateTime? AuthorizedAt { get; set; }
+
+    /// <summary>
+    /// When CasaZen stops treating the block as usable: <see cref="AuthorizedAt"/> plus <c>SupplierPayments:AuthorizationValidityHours</c>,
+    /// far below what a card network keeps a block for. A capture after it is refused and the block is released (VT-D22).
+    /// </summary>
+    public DateTime? AuthorizationExpiresAt { get; set; }
+
+    /// <summary>When the card was charged (the supplier accepted and the capture succeeded): the money is held from here.</summary>
+    public DateTime? CapturedAt { get; set; }
+
+    /// <summary>
+    /// When the money is due to the supplier: the later of the completion of the work and <see cref="CapturedAt"/>, plus
+    /// <c>SupplierPayments:ReleaseAfterMinutes</c>. Empty until the supplier completes the work. The release job transfers from here on,
+    /// unless a dispute stops it.
+    /// </summary>
+    public DateTime? ReleaseAt { get; set; }
+
+    /// <summary>When the payer pressed "all fine": the money is released at once (<see cref="ReleaseAt"/> is brought forward to it).</summary>
+    public DateTime? ReleaseConfirmedAt { get; set; }
+
+    /// <summary>When the transfer to the supplier succeeded (<see cref="ServicePaymentStatus.Released"/>).</summary>
+    public DateTime? ReleasedAt { get; set; }
+
+    /// <summary>The Stripe transfer (<c>tr_…</c>) that paid the supplier. At most one per payment (unique index): never two transfers.</summary>
+    [MaxLength(255)]
+    public string? StripeTransferId { get; set; }
+
+    /// <summary>
+    /// Transfers Stripe refused so far. Part of the idempotency key of the next try, so a refusal that Stripe remembers for a day is not
+    /// replayed, while a try whose answer was lost is repeated with the same key and finds the same transfer.
+    /// </summary>
+    public int TransferAttempts { get; set; }
+
+    /// <summary>Not before: the release job leaves the payment alone until then (the backoff after a refused or impossible transfer).</summary>
+    public DateTime? TransferNextAttemptAt { get; set; }
+
+    /// <summary>Why the last transfer did not go (<c>account_not_ready</c> or a Stripe error code); no personal data.</summary>
+    [MaxLength(100)]
+    public string? TransferFailureCode { get; set; }
+
+    /// <summary>When the admins were told that the transfer keeps failing (once).</summary>
+    public DateTime? TransferAlertedAt { get; set; }
+
+    /// <summary>When the admins were warned that the money has been held for nearly <c>SupplierPayments:MaxHoldDays</c> (once).</summary>
+    public DateTime? HoldWarnedAt { get; set; }
+
+    /// <summary>
+    /// The card dispute (a chargeback, <c>dp_…</c>) Stripe opened on the charge, if any. A dispute after the release is CasaZen's loss
+    /// (VT-D22): it is only recorded here, for the admin console, and nothing is recovered automatically. Not the complaint of SP-15c-c.
+    /// </summary>
+    [MaxLength(255)]
+    public string? CardDisputeId { get; set; }
+
+    /// <summary>Stripe's status of <see cref="CardDisputeId"/> (<c>needs_response</c>, <c>won</c>, <c>lost</c>…).</summary>
+    [MaxLength(50)]
+    public string? CardDisputeStatus { get; set; }
+
+    /// <summary>When Stripe last told about the card dispute.</summary>
+    public DateTime? CardDisputeAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

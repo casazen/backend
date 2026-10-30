@@ -91,6 +91,10 @@ public sealed class ShowcaseBookingNotifier(
             var serviceName = request.ServiceNameSnapshot ?? EmailTemplates.ServiceCategoryLabel(culture, request.Category);
             var start = request.ScheduledStartUtc!.Value;
 
+            // SP-15c-a: a request born paid inside CasaZen has the customer's card blocked for the total; its mails say so, and never "you pay
+            // nothing now" or an estimate the supplier may change.
+            var cardBlocked = request.PaymentMode == ServiceRequestPaymentMode.Online;
+
             emailQueue.Enqueue(
                 customer.Email,
                 EmailTemplates.SupplierBookingReceipt(
@@ -102,7 +106,8 @@ public sealed class ShowcaseBookingNotifier(
                     request.PublicCode!,
                     respondByUtc,
                     request.EstimatedAmountCents,
-                    publicSiteLinks.SupplierBookingRequest(slug, request.PublicCode)),
+                    publicSiteLinks.SupplierBookingRequest(slug, request.PublicCode),
+                    cardBlocked: cardBlocked),
                 EmailTemplates.Names.SupplierBookingReceipt);
 
             if (!await SupplierNotificationPreferences.AllowsAsync(db, request.SupplierOrgId, SupplierNotificationKind.NewRequest, cancellationToken))
@@ -121,7 +126,8 @@ public sealed class ShowcaseBookingNotifier(
                     start,
                     request.EstimatedAmountCents,
                     respondByUtc,
-                    publicSiteLinks.SupplierInbox()),
+                    publicSiteLinks.SupplierInbox(),
+                    cardBlocked: cardBlocked),
                 EmailTemplates.Names.SupplierBookingNewRequest);
 
             var push = EmailTemplates.ServiceRequestCreatedPush(italian, request.Category, comune);
@@ -277,7 +283,9 @@ public sealed class ShowcaseBookingNotifier(
                             request.QuotedAmountCents,
                             request.EstimatedAmountCents,
                             ServiceRequestReminderRules.WillBeSent(start, request.TakenAt ?? DateTime.MaxValue),
-                            RequestUrlOf(supplier, request)),
+                            RequestUrlOf(supplier, request),
+                            // SP-15c-a: the take charged the card that was blocked (it cannot be taken otherwise).
+                            cardCharged: request.PaymentMode == ServiceRequestPaymentMode.Online),
                         EmailTemplates.Names.SupplierBookingAccepted);
                     break;
 

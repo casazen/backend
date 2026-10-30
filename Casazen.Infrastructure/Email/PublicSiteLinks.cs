@@ -165,6 +165,12 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public string SupplierConnectOnboardingRefresh() => Build(SupplierSettingsPagePath + "?stripe_refresh=1");
 
     /// <summary>
+    /// The supplier's settings page, where the payments account is completed (SP-15c-a: the e-mail of a payment waiting for the account links
+    /// here). Built by the server.
+    /// </summary>
+    public string SupplierSettings() => Build(SupplierSettingsPagePath);
+
+    /// <summary>
     /// "Le mie prenotazioni" of the org's booking site (BK-10, BK-11): the guest finds a booking there with its code and
     /// email. The checkout outcome page (BK-07) needs the checkout token, which only the guest's browser has, so emails
     /// link here. With <paramref name="bookingCode"/> the page opens with the code filled in (<c>?code=</c>) and still asks
@@ -191,16 +197,17 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
 
     /// <summary>
     /// Page of the supplier's showcase where the customer checks the e-mail of a booking (route
-    /// <c>/fornitori/:slug/conferma</c>, SP-10): the page reads the booking id and the token of the link and sends them to
-    /// <c>POST api/public/suppliers/{slug}/bookings/{id}/confirm-email</c>. Only the id and the random token (single use,
-    /// valid for the minutes of the hold) are in the link, no personal data.
+    /// <c>/fornitori/:slug/conferma</c>, SP-10): the page reads <c>hold</c> from the query and the <c>token</c> from the <b>fragment</b>
+    /// — which a browser never sends to a server, so the token is in no access log (SP-15c-a, FE-SP10-1: the link of the booking used to
+    /// carry it in the query) — and sends them to <c>POST api/public/suppliers/{slug}/bookings/{id}/confirm-email</c>. Only the id and the
+    /// random token (single use, valid for the minutes of the hold) are in the link, no personal data.
     /// </summary>
     public string SupplierBookingConfirmation(string supplierSlug, Guid holdId, string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(supplierSlug);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
         return Build(
-            $"/fornitori/{Uri.EscapeDataString(supplierSlug)}/conferma?hold={holdId:D}&token={Uri.EscapeDataString(token)}");
+            $"/fornitori/{Uri.EscapeDataString(supplierSlug)}/conferma?hold={holdId:D}#token={Uri.EscapeDataString(token)}");
     }
 
     /// <summary>

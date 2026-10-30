@@ -84,7 +84,7 @@ public class ShowcaseBookingHoldTests
         Assert.Equal(EmailTemplates.Names.SupplierBookingVerification, email.Template);
         Assert.Contains("Supplier Srl", email.Content.Subject);
         Assert.Contains(ShowcaseScenario.CustomerName, email.Content.HtmlBody);
-        Assert.Contains($"/fornitori/{ShowcaseScenario.Slug}/conferma?hold={hold.Id:D}&amp;token=", email.Content.HtmlBody);
+        Assert.Contains($"/fornitori/{ShowcaseScenario.Slug}/conferma?hold={hold.Id:D}#token=", email.Content.HtmlBody);
         Assert.Contains("30 minuti", email.Content.HtmlBody);
         var token = s.VerificationTokenOf(hold.Id);
         Assert.Equal(43, token.Length);

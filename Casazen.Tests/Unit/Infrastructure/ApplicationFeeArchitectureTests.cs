@@ -110,6 +110,24 @@ public class ApplicationFeeArchitectureTests
         }
     }
 
+    // SP-15c-a: the money CasaZen holds. Its PaymentIntents live on the platform account and CasaZen keeps its commission by not transferring
+    // it: no application fee at all, and no connected account, anywhere in the gateway of the held money (decision VT-D1, R6).
+    [Fact]
+    public void ThePlatformGateway_SetsNoFee_AsksNoFeeRefund_AndNeverUsesAConnectedAccount()
+    {
+        var code = StripComments(File.ReadAllText(
+            Path.Combine(FindRepositoryRoot(), "Casazen.Infrastructure", "External", "StripePlatformPaymentGateway.cs")));
+
+        Assert.DoesNotMatch(FeeAssignment, code);
+        Assert.DoesNotMatch(FeePercentAssignment, code);
+        Assert.DoesNotMatch(FeeParameterLiteral, code);
+        Assert.DoesNotMatch(RefundFeeAssignment, code);
+        Assert.DoesNotMatch(RefundFeeParameterLiteral, code);
+        Assert.DoesNotContain("StripeAccount", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("on_behalf_of", code, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("OnBehalfOf", code, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void TheExistingPaymentIntentsOfCasaZen_StillSetNoFee()
     {

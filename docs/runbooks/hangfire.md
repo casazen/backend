@@ -56,6 +56,7 @@ and production never block each other.
 | `service-request-groups` (SP-BKP: follows the windows of the groups of backup suppliers: the job goes to the backup that accepted first, the second window opens, the requests nobody took lapse; **always registered**, see [§16](#16-backup-suppliers-sp-bkp)) | `*/5` | `ServiceRequestGroupJob.ExecuteAsync` (plus a PostgreSQL session lock per run and the lock of each group, at most 500 groups per run) | 60 s |
 | `service-payment-sync` (SP-15b: reads again the payments Stripe is processing and the refunds it has not completed; always scheduled, see [§14](#14-service-payments-sp-15b)) | `*/15` | `ServicePaymentSyncJob.ExecuteAsync` (plus the payment lock of each request) | 60 s |
 | `service-payment-reminders` (SP-15b: flags the late payments, sends the pending requests and the reminders at +2 and +7 days with `Features:SupplierOnlinePayments` on; always scheduled, see [§14](#14-service-payments-sp-15b)) | 07:30 | `ServicePaymentRemindersJob.ExecuteAsync` (plus the payment lock of each request) | 300 s |
+| `service-funds` (SP-15c-a: releases to the suppliers the money CasaZen holds, retries the failed transfers, settles the money of closed requests, drops the lapsed card blocks, warns about money held too long and, since SP-15c-c, follows the disputes (the supplier's reply time, the admins' target, a refund that did not go through, the no-show); always scheduled, see [§14.1](#141-the-money-casazen-holds-service-funds-sp-15c-a)) | `*/5` | `ServiceFundsJob.ExecuteAsync` (plus the payment lock of each request) | 60 s |
 | `ical-supplier-sync` (SU-15: active **and pending** suppliers with an iCal URL, see [ical.md](ical.md#supplier-calendars-su-15); SP-05: the events by the hour become windows of hours, see [ical.md](ical.md#events-by-the-hour-sp-05)) | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` (plus a PostgreSQL advisory lock per supplier while its days and windows are written) | 60 s |
 | `property-ical-sync` | `*/15` | `PropertyICalSyncJob.ExecuteAsync` | 60 s |
 | `guest-checkin-send` (CO-09: expires stale links, queues `GuestCheckInLinkEmailJob`, see [alloggiati.md](alloggiati.md#guest-check-in-link-and-host-fallback-co-09)) | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
@@ -645,7 +646,7 @@ Task SP-15b. Three jobs follow the money of the services paid inside CasaZen ([s
 
 | Job | When | Lock (wait) | What |
 |---|---|---|---|
-| `service-payment-sync` (`ServicePaymentSyncJob`) | `*/15` | `ServicePaymentSyncJob.ExecuteAsync` (60 s) | reads again on Stripe the payments `Processing` and applies them as the webhook would (a PaymentIntent that no longer exists: `NeedsReview`); looks for the refunds that never got Stripe's answer (`Pending`, no Stripe id, older than 2 minutes) and sends them again with the same idempotency key; reads again the refunds Stripe has not completed. At most 100 of each per run |
+| `service-payment-sync` (`ServicePaymentSyncJob`) | `*/15` | `ServicePaymentSyncJob.ExecuteAsync` (60 s) | reads again on Stripe the payments `Processing` and applies them as the webhook would (a PaymentIntent that no longer exists: `NeedsReview`); since SP-15c-b also the payments a **host** is paying to the platform (`Requested`/`Processing`/`Failed` held payments with a PaymentIntent, touched in the last 3 days and not in the last 10 minutes): a charge whose `payment_intent.succeeded` was lost is recorded with the same checks; looks for the refunds that never got Stripe's answer (`Pending`, no Stripe id, older than 2 minutes) and sends them again with the same idempotency key; reads again the refunds Stripe has not completed. At most 100 of each per run |
 | `service-payment-reminders` (`ServicePaymentRemindersJob`) | 07:30 | `ServicePaymentRemindersJob.ExecuteAsync` (300 s, 3 retries) | flags the late payments (`SupplierPayments__LateAfterDays`, 7); with the flag **on** sends the requests that waited and the reminders at +2 and +7 days (`SupplierPayments__ReminderDays__0/1`), at most three emails with a link in all and never two in 24 hours. At most 500 payments per step |
 | `SendPendingPaymentRequestsJob(orgId)` | on demand: queued after the commit of an `account.updated` that makes a supplier able to take charges and payouts | `SendPendingPaymentRequestsJob.ExecuteAsync` (300 s, 3 retries) | sends the first request of the payments of that supplier that were pending (no link yet). With the flag off it sends nothing. A job that fails or is never queued is made up for by the daily job |
 
@@ -659,6 +660,32 @@ SELECT "Status", count(*), min("CreatedAt") FROM casazen_prod."ServiceRequestPay
 ```
 
 If `Processing` payments or `Pending` refunds pile up, check that the Connect webhook endpoint sends the events listed in [stripe.md](stripe.md#stripe-settings-to-check-product-owner) and that `service-payment-sync` runs (Hangfire dashboard). `RecurringJobsConcurrencyTests` and `ServicePaymentJobsRegistrationTests` fail if one of them loses its lock or its schedule.
+
+### 14.1 The money CasaZen holds: `service-funds` (SP-15c-a)
+
+Task SP-15c-a ([stripe.md](stripe.md#the-money-casazen-holds-for-the-services-sp-15c)). One job, `service-funds` (`ServiceFundsJob`, every 5 minutes, **always registered**, `[DisableConcurrentExecution]` 60 s), follows the payments whose `FundsModel` is `PlatformHeld`, whatever the state of `Features__SupplierOnlinePayments`. One run does four things, at most 100 payments each, every payment alone, under the payment lock of its request and read again after it (an error on one is logged and counted, the others go on):
+
+1. **Release**: payments `Held` or `TransferFailed` whose `ReleaseAt` has passed, with no dispute and no refund in progress, and whose next try (`TransferNextAttemptAt`) is due: look for the payment's transfer on Stripe, make it if there is none (`source_transaction` = the charge, key `service-transfer:{payment}:{attempts}`), record `Released` and the request `Pagato`. A refusal from Stripe makes it `TransferFailed` and delays the next try (15, 30, 60 … up to 720 minutes by default); a supplier whose account cannot receive money yet, or an answer that does not come, only delays it. After 5 refusals the admins get one e-mail.
+2. **Closed requests**: payments `Authorized`, `Held` or `TransferFailed` whose request is `Annullato` or `Rifiutato`: the block is cancelled, the charge refunded in full. The request closing already tries it at once; this is the safety net.
+3. **Lapsed blocks**: payments `Authorized` past `AuthorizationExpiresAt` (`SupplierPayments__AuthorizationValidityHours`): the PaymentIntent is cancelled and the payment `Canceled`.
+4. **Hold warnings**: money held for `MaxHoldDays - HoldWarningDays` days or more, once: an e-mail to the admins. Nothing moves.
+
+Since SP-15c-c the same run has a **fifth step, after the four**, for the complaints about the jobs (`IServiceDisputeJobService`, [suppliers.md](suppliers.md#3810-the-complaint-and-the-dispute--sp-15c-c)): (a) disputes `AwaitingSupplier` whose `SupplierReplyDueAt` passed go to the admins (`AwaitingDecision`, e-mail `awaiting_decision:no_reply`); (b) disputes `AwaitingDecision` whose `DecisionDueAt` passed: the admins are told once (`decision_overdue`); (c) decisions for the customer (`ResolvedForCustomer`, `SettledAt` empty) older than `DisputeRefundAlertMinutes` whose refund did not go through and none is waiting for Stripe: the admins are told once (`refund_incomplete`); (d) held payments of a request still `PresoInCarico`/`InCorso` whose `ScheduledEndUtc` is `DisputeNoShowHours` ago and with no dispute: CasaZen opens the no-show complaint. It never calls Stripe and moves no money; a failure of this step does not keep the releases from running.
+
+**Log.** `Service disputes: N sent to the admins, … overdue, … refund alert(s), … no-show complaint(s) opened, E error(s)` (only when something happened; the funds line is the one below). `Service funds: N released, M release(s) waiting or refused, … closed request(s) settled, … block(s) released, … hold warning(s), E error(s)` (only when something happened). Errors that need a person are `LogError`: `Payment {id}: the transfer to the supplier failed N times (last: …)`, `Held payment {id} has been held for N days`, `Transfer {tr} does not match what was meant to be released`, `Held payment {id} was canceled but PaymentIntent … succeeded`.
+
+```sql
+-- The payments CasaZen holds, by status (8 Authorized, 9 Held, 10 Released, 11 Disputed, 12 TransferFailed)
+SELECT "Status", count(*), min("CapturedAt"), min("ReleaseAt") FROM casazen_prod."ServiceRequestPayments" WHERE "FundsModel" = 1 GROUP BY 1 ORDER BY 1;
+-- The disputes waiting for somebody (0 AwaitingSupplier, 1 AwaitingDecision), oldest first
+SELECT "Id", "ServiceRequestId", "Status", "NoShow", "OpenedAt", "SupplierReplyDueAt", "DecisionDueAt" FROM casazen_prod."ServicePaymentDisputes" WHERE "Status" IN (0, 1) ORDER BY "OpenedAt";
+-- Decisions for the customer whose refund is not done yet
+SELECT d."Id", d."ResolvedAt", d."DecidedRefundCents", d."RefundTargetCents", p."RefundedCents", p."Status" FROM casazen_prod."ServicePaymentDisputes" d JOIN casazen_prod."ServiceRequestPayments" p ON p."Id" = d."ServiceRequestPaymentId" WHERE d."Status" = 3 AND d."SettledAt" IS NULL;
+-- Transfers that keep failing
+SELECT "Id", "TransferAttempts", "TransferFailureCode", "TransferNextAttemptAt" FROM casazen_prod."ServiceRequestPayments" WHERE "FundsModel" = 1 AND "Status" = 12;
+```
+
+`RecurringJobsConcurrencyTests` fails if the job loses its lock or its schedule.
 
 ## 15. In-app notifications (UI-12a)
 

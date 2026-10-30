@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 
@@ -24,7 +25,7 @@ public sealed class AdminServicePaymentDto
 
     public string? PayerName { get; set; }
 
-    /// <summary><c>Requested</c>, <c>Processing</c>, <c>Paid</c>, <c>Failed</c>, <c>Canceled</c>, <c>PartiallyRefunded</c>, <c>Refunded</c> or <c>NeedsReview</c>.</summary>
+    /// <summary><c>Requested</c>, <c>Processing</c>, <c>Paid</c>, <c>Failed</c>, <c>Canceled</c>, <c>PartiallyRefunded</c>, <c>Refunded</c>, <c>NeedsReview</c> and, for the money CasaZen holds (SP-15c), <c>Authorized</c>, <c>Held</c>, <c>Released</c>, <c>Disputed</c> or <c>TransferFailed</c>.</summary>
     public string Status { get; set; } = string.Empty;
 
     /// <summary><c>Stripe</c> or <c>Offline</c>; null while it is not paid.</summary>
@@ -68,6 +69,37 @@ public sealed class AdminServicePaymentDto
 
     public DateTime CreatedAt { get; set; }
 
+    /// <summary><c>DirectCharge</c> (SP-15a: the supplier's own money) or <c>PlatformHeld</c> (SP-15c: CasaZen holds it until it is released).</summary>
+    public string FundsModel { get; set; } = nameof(ServiceFundsModel.DirectCharge);
+
+    /// <summary>When the card was charged and CasaZen began to hold the money; null for a direct charge or a block not charged yet.</summary>
+    public DateTime? CapturedAt { get; set; }
+
+    /// <summary>When the money is due to the supplier; null until the work is completed.</summary>
+    public DateTime? ReleaseAt { get; set; }
+
+    /// <summary>When the supplier was paid.</summary>
+    public DateTime? ReleasedAt { get; set; }
+
+    /// <summary>The Stripe transfer that paid the supplier.</summary>
+    public string? StripeTransferId { get; set; }
+
+    /// <summary>Transfers Stripe refused so far; the release job tries again with a growing delay.</summary>
+    public int TransferAttempts { get; set; }
+
+    /// <summary>Why the last transfer did not go: a Stripe code, or <c>account_not_ready</c>. No personal data.</summary>
+    public string? TransferFailureCode { get; set; }
+
+    public DateTime? TransferNextAttemptAt { get; set; }
+
+    /// <summary>The card dispute (chargeback) Stripe opened on the charge; after the release it is CasaZen's loss.</summary>
+    public string? CardDisputeId { get; set; }
+
+    /// <summary>Stripe's status of the card dispute (<c>needs_response</c>, <c>won</c>, <c>lost</c>…).</summary>
+    public string? CardDisputeStatus { get; set; }
+
+    public DateTime? CardDisputeAt { get; set; }
+
     internal static AdminServicePaymentDto From(AdminServicePaymentItem item) => new()
     {
         Id = item.Id,
@@ -92,6 +124,17 @@ public sealed class AdminServicePaymentDto
         StripePaymentIntentId = item.StripePaymentIntentId,
         ConnectedAccountId = item.ConnectedAccountId,
         CreatedAt = item.CreatedAt,
+        FundsModel = item.FundsModel.ToString(),
+        CapturedAt = item.CapturedAt,
+        ReleaseAt = item.ReleaseAt,
+        ReleasedAt = item.ReleasedAt,
+        StripeTransferId = item.StripeTransferId,
+        TransferAttempts = item.TransferAttempts,
+        TransferFailureCode = item.TransferFailureCode,
+        TransferNextAttemptAt = item.TransferNextAttemptAt,
+        CardDisputeId = item.CardDisputeId,
+        CardDisputeStatus = item.CardDisputeStatus,
+        CardDisputeAt = item.CardDisputeAt,
     };
 }
 
@@ -108,7 +151,7 @@ public sealed class AdminServicePaymentRefundDto
     /// <summary><c>Pending</c>, <c>Succeeded</c>, <c>Failed</c>, <c>Canceled</c> or <c>RequiresAction</c>. Only a succeeded refund counts.</summary>
     public string Status { get; set; } = string.Empty;
 
-    /// <summary><c>Admin</c> or <c>Stripe</c> (made outside CasaZen).</summary>
+    /// <summary><c>Admin</c>, <c>Stripe</c> (made outside CasaZen) or <c>System</c> (CasaZen gave the money back because the request closed, SP-15c).</summary>
     public string Origin { get; set; } = string.Empty;
 
     public string? StripeRefundId { get; set; }
@@ -166,6 +209,14 @@ public sealed class RefundServicePaymentRequest
     /// <summary>Why: an internal note of at most 500 characters. It is never sent to Stripe.</summary>
     [MaxLength(ServicePaymentLimits.OfflineNoteMaxLength, ErrorMessage = ServicePaymentErrors.RefundReasonTooLongMessageKey)]
     public string? Reason { get; set; }
+
+    /// <summary>
+    /// SP-15c-b, rule R4 — for the money CasaZen holds, before it is released: the supplier was at fault, so the payer gets back what the supplier
+    /// would have been paid (the price minus the commission), CasaZen keeps its commission and the supplier gets nothing. <c>amountCents</c> may
+    /// ask for less but never for more than that. Left out or false (rule R5, cancelling is always free): everything still refundable goes back,
+    /// the commission included. Not for a direct charge (422).
+    /// </summary>
+    public bool KeepCommission { get; set; }
 }
 
 /// <summary>The commission applied to a supplier (<c>GET/PUT api/admin/suppliers/{orgId}/commission</c>).</summary>

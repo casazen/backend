@@ -195,6 +195,9 @@ public class AppDbContext(
     // The refunds of a service payment (SP-15b): they belong to the payment, so they are not tenant-filtered either.
     public DbSet<ServiceRequestPaymentRefund> ServiceRequestPaymentRefunds { get; set; } = null!;
 
+    // The complaint about a job paid through CasaZen and its dispute (SP-15c-c): it belongs to the payment, so it is not tenant-filtered either.
+    public DbSet<ServicePaymentDispute> ServicePaymentDisputes { get; set; } = null!;
+
     /// <summary>
     /// The groups of backup suppliers (SP-BKP): a request and the backups it was sent to with it. Two parties and more (the host and
     /// the suppliers of the backups) and a system job, so <b>not</b> tenant-filtered (see the TN-2 allow-list); only the code listed in
@@ -1251,6 +1254,10 @@ public class AppDbContext(
         // A refund belongs to its payment: restrict, so a payment with refunds is never deleted. The sequence is the n of the
         // idempotency key and is unique within the payment; a Stripe refund and a key belong to one refund each.
         modelBuilder.ApplyConfiguration(new ServiceRequestPaymentRefundConfiguration());
+
+        // ─── The complaint and the dispute about a job paid through CasaZen (SP-15c-c) ─────────────
+        // One open dispute per payment (unique partial index); a payment, a request and a supplier with a dispute are never deleted.
+        modelBuilder.ApplyConfiguration(new ServicePaymentDisputeConfiguration());
 
         // ─── Property iCal OTA sync (US-018 / #294) ─────────────────────────────
         modelBuilder.Entity<CalendarBlock>()

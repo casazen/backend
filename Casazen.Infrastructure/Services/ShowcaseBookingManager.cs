@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
@@ -26,6 +27,12 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>The actions</b> are those of <see cref="IShowcaseRequestCustomerActions"/> (the lock, the planner, the <c>xmin</c> check, the
 /// notifications); this class proves who is asking and answers with the booking as it is afterwards, read again from the database.
 /// It writes nothing about the customer to a log.</para>
+/// <para><b>The money (SP-15c-a).</b> For a booking paid inside CasaZen the view adds the payment (<see cref="ShowcaseBookingPaymentView"/>, read
+/// through <see cref="ISupplierFundsService"/>, never from the table) and whether the customer may say "all fine"; saying it
+/// (<see cref="ConfirmOkAsync"/>) is allowed by the same proof of who is asking as the other actions, and releases the money to the supplier.</para>
+/// <para><b>The complaint (SP-15c-c).</b> Reporting a problem (<see cref="ReportProblemAsync"/>) and taking it back (<see cref="WithdrawProblemAsync"/>) are
+/// allowed by the same proof of who is asking; the view adds the complaint the customer made (its own words, the state, the decision — never the supplier's
+/// words nor the admin's note) and whether the customer may report or withdraw. The dispute itself is <see cref="IServiceDisputeService"/>.</para>
 /// </remarks>
 public sealed class ShowcaseBookingManager(
     AppDbContext db,
@@ -33,7 +40,9 @@ public sealed class ShowcaseBookingManager(
     ISupplierServiceCatalogService catalog,
     IShowcaseRequestCustomerActions actions,
     IOptions<ShowcaseBookingOptions> options,
-    TimeProvider? timeProvider = null) : IShowcaseBookingManager
+    TimeProvider? timeProvider = null,
+    ISupplierFundsService? funds = null,
+    IServiceDisputeService? disputes = null) : IShowcaseBookingManager
 {
     /// <summary>
     /// What a slug and a code that cannot be valid are looked up as: values that match nothing (a slug never starts with a hyphen, a code
@@ -107,6 +116,52 @@ public sealed class ShowcaseBookingManager(
     {
         var found = await IdentifyAsync(credentials, cancellationToken);
         await actions.RejectQuoteAsCustomerAsync(found.Row.Id, found.Supplier.OrgId, quoteSentAt, cancellationToken);
+        return await AfterAsync(found, cancellationToken);
+    }
+
+    public async Task<ShowcaseBookingView> ConfirmOkAsync(
+        ShowcaseBookingCredentials credentials,
+        CancellationToken cancellationToken = default)
+    {
+        var found = await IdentifyAsync(credentials, cancellationToken);
+
+        // Only a booking paid inside CasaZen has money to release; any other is "nothing to confirm", like a booking whose work is not done.
+        if (funds is null || found.Row.PaymentMode != ServiceRequestPaymentMode.Online)
+            throw new DomainRuleException(ServicePaymentErrors.NotConfirmable, ServicePaymentErrors.NotConfirmableMessageKey);
+
+        await funds.ConfirmOkAsync(found.Row.Id, cancellationToken);
+        return await AfterAsync(found, cancellationToken);
+    }
+
+    public async Task<ShowcaseBookingView> ReportProblemAsync(
+        ShowcaseBookingCredentials credentials,
+        string? reason,
+        string? text,
+        CancellationToken cancellationToken = default)
+    {
+        var found = await IdentifyAsync(credentials, cancellationToken);
+
+        // Only a booking paid inside CasaZen has money to stop; any other has nothing to report from here.
+        if (disputes is null || found.Row.PaymentMode != ServiceRequestPaymentMode.Online)
+            throw ServiceDisputeErrors.CannotReport();
+
+        if (!ServiceDisputeRules.TryParseReason(reason, out var parsed))
+            throw ServiceDisputeErrors.InvalidFields(ServiceDisputeLimits.ReasonField);
+
+        await disputes.OpenDisputeAsync(
+            new OpenServiceDisputeRequest(found.Row.Id, ServiceDisputeOpener.Customer, parsed, text), cancellationToken);
+        return await AfterAsync(found, cancellationToken);
+    }
+
+    public async Task<ShowcaseBookingView> WithdrawProblemAsync(
+        ShowcaseBookingCredentials credentials,
+        CancellationToken cancellationToken = default)
+    {
+        var found = await IdentifyAsync(credentials, cancellationToken);
+        if (disputes is null || found.Row.PaymentMode != ServiceRequestPaymentMode.Online)
+            throw ServiceDisputeErrors.DisputeNotFound();
+
+        await disputes.WithdrawDisputeAsync(found.Row.Id, ServiceDisputeOpener.Customer, hostOrgId: null, cancellationToken);
         return await AfterAsync(found, cancellationToken);
     }
 
@@ -218,6 +273,36 @@ public sealed class ShowcaseBookingManager(
                     : row.CancellationReason)
             : null;
 
+        // SP-15c-a: the money of a booking paid inside CasaZen, read through the funds service (the payments table is not read here).
+        var held = funds is not null && row.PaymentMode == ServiceRequestPaymentMode.Online
+            ? await funds.FindHeldPaymentAsync(row.Id, cancellationToken)
+            : null;
+
+        // SP-15c-c: the customer's complaint about the job, read through the dispute service (the disputes table is not read here either).
+        var dispute = held is not null && disputes is not null
+            ? await disputes.FindDisputeForPayerAsync(row.Id, cancellationToken)
+            : null;
+        var disputeOpen = dispute is not null && ServiceDisputeRules.IsOpen(dispute.Status);
+
+        var payment = held is null
+            ? null
+            : new ShowcaseBookingPaymentView(
+                ShowcaseBookingManagementRules.PaymentStatusOf(held.Status),
+                held.AmountCents,
+                held.Currency.ToUpperInvariant(),
+                held.RefundedCents,
+                held.Status is ServicePaymentStatus.Held or ServicePaymentStatus.TransferFailed ? held.ReleaseAt : null,
+                dispute is null ? null : ToDisputeView(dispute));
+        var canConfirmOk = held is not null
+            && ShowcaseBookingManagementRules.CanConfirmOk(row.Status, held.Status, held.NetCents, held.RefundedCents);
+
+        // The same facts and the same rule the endpoint enforces, so the page and the API cannot disagree.
+        var canReportProblem = held is not null
+            && disputes is not null
+            && ServiceDisputeRules.CanReport(
+                new DisputeReportFacts(held.Status, held.ReleaseAt, held.ReleaseConfirmedAt, row.Status, row.ScheduledEndUtc, disputeOpen), now)
+                is DisputeReportVerdict.Allowed or DisputeReportVerdict.AllowedNoShow;
+
         return new ShowcaseBookingView(
             row.PublicCode ?? string.Empty,
             row.Status,
@@ -246,12 +331,30 @@ public sealed class ShowcaseBookingManager(
                 ShowcaseBookingManagementRules.CanCancel(row.Status, row.ScheduledStartUtc, now),
                 ShowcaseBookingManagementRules.CanReschedule(row.Status, row.ScheduledStartUtc is not null, supplierActive, published, quotePending),
                 ShowcaseBookingManagementRules.CanRespondToProposal(row.Status, proposalPending, answerBy, now, supplierActive),
-                ShowcaseBookingManagementRules.CanRespondToQuote(row.Status, quotePending, row.ResponseDueAt, now, supplierActive)),
+                ShowcaseBookingManagementRules.CanRespondToQuote(row.Status, quotePending, row.ResponseDueAt, now, supplierActive),
+                canConfirmOk,
+                canReportProblem,
+                disputeOpen),
             row.Kind,
             thread,
             thread is null ? null : ServiceRequestNegotiation.Of(row.Status, thread.Messages.Any(m => m.Author == ServiceRequestMessageAuthor.Supplier)),
-            quote);
+            quote,
+            payment);
     }
+
+    /// <summary>The complaint as the customer reads it: its own words, the state and the decision; never the supplier's reply nor the admin's note.</summary>
+    private static ShowcaseBookingDisputeView ToDisputeView(ServiceDisputePayerView dispute) => new(
+        dispute.Status.ToString(),
+        ServiceDisputeRules.ReasonName(dispute.Reason),
+        dispute.NoShow,
+        dispute.OpenedBy == ServiceDisputeOpener.System,
+        dispute.Text,
+        dispute.OpenedAt,
+        dispute.SupplierReplyDueAt,
+        dispute.SupplierReplied,
+        dispute.ResolvedAt,
+        dispute.RefundCents,
+        dispute.Settled);
 
     /// <summary>
     /// The price of the booking: the amounts, and the lines — the choices of the customer when it booked, or, once the supplier
@@ -331,6 +434,8 @@ public sealed class ShowcaseBookingManager(
                 Id = r.Id,
                 CustomerId = r.CustomerId,
                 Status = r.Status,
+                // SP-15c-a: whether the booking is paid inside CasaZen (then its payment is read through the funds service).
+                PaymentMode = r.PaymentMode,
                 PublicCode = r.PublicCode,
                 ServiceListingId = r.ServiceListingId,
                 ServiceNameSnapshot = r.ServiceNameSnapshot,
@@ -390,6 +495,8 @@ public sealed class ShowcaseBookingManager(
         public Guid? CustomerId { get; init; }
 
         public ServiceRequestStatus Status { get; init; }
+
+        public ServiceRequestPaymentMode PaymentMode { get; init; }
 
         public string? PublicCode { get; init; }
 

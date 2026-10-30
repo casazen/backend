@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
@@ -110,6 +111,40 @@ public class PublicSupplierBookingHoldResponse
 
     /// <summary>When the hold lapses (UTC): the slot is free again and the link no longer works.</summary>
     public DateTime ExpiresAt { get; set; }
+
+    /// <summary>
+    /// SP-15c-a: the block of the customer's card for a booking paid inside CasaZen — what the page needs to ask for it with the Payment
+    /// Element. <c>null</c> when the booking is not paid inside CasaZen (the supplier is paid as always). The booking becomes a request when
+    /// the e-mail is checked <b>and</b> the card is blocked, in either order. Left out when there is none, so the answer of a booking that is not paid
+    /// inside CasaZen is the one it always was.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicSupplierBookingCardBlockDto? Payment { get; set; }
+}
+
+/// <summary>
+/// The block of the customer's card for a booking (SP-15c-a): the total that is blocked, and the credentials of the customer's browser to ask the
+/// card for it. <b>Nothing is charged</b> until the supplier accepts; if it refuses, does not answer in time, or the customer cancels, the block is
+/// released. The client secret is sent once, never logged and never stored.
+/// </summary>
+public class PublicSupplierBookingCardBlockDto
+{
+    /// <summary>The total that is blocked, in cents of euro: the total the customer saw.</summary>
+    public int AmountCents { get; set; }
+
+    public string Currency { get; set; } = "EUR";
+
+    /// <summary>
+    /// The client secret of the Stripe PaymentIntent, for the Payment Element; <c>null</c> when the card is already blocked
+    /// (<see cref="Authorized"/>) or can no longer be asked for this block.
+    /// </summary>
+    public string? ClientSecret { get; set; }
+
+    /// <summary>The platform's publishable key; <c>null</c> together with <see cref="ClientSecret"/>.</summary>
+    public string? PublishableKey { get; set; }
+
+    /// <summary>The card is already blocked: only the e-mail is left to check.</summary>
+    public bool Authorized { get; set; }
 }
 
 /// <summary>Body of <c>POST api/public/suppliers/{slug}/bookings/{id}/confirm-email</c>: the token of the link.</summary>
@@ -130,7 +165,11 @@ public class PublicSupplierBookingConfirmationResponse
     /// <summary>The code of the booking as people read it (<c>XXXXX-XXXXX</c>): with the e-mail address, it finds the request again.</summary>
     public string PublicCode { get; set; } = string.Empty;
 
-    /// <summary><c>Richiesto</c> the first time (the supplier has to accept); the status by then on a later click.</summary>
+    /// <summary>
+    /// <c>Richiesto</c> the first time (the supplier has to accept); the status by then on a later click. <c>AwaitingPayment</c> (SP-15c-a) when the
+    /// e-mail is checked but the customer's card is not blocked yet: the request does not exist, the supplier knows nothing, and it is created as soon
+    /// as the card is blocked (see <see cref="AwaitingPayment"/>).
+    /// </summary>
     public string Status { get; set; } = string.Empty;
 
     /// <summary>The name of the service.</summary>
@@ -154,6 +193,14 @@ public class PublicSupplierBookingConfirmationResponse
 
     /// <summary>True when the e-mail had already been checked: nothing was done again.</summary>
     public bool AlreadyConfirmed { get; set; }
+
+    /// <summary>
+    /// SP-15c-a: the e-mail is checked but the customer's card is not blocked yet, so the request is not created. The page asks the card for the block
+    /// (the one <c>payment</c> of the booking gave) or, if the customer already did, asks again in a moment: the request exists when the block succeeds.
+    /// Left out when false, so the answer of a booking that is not paid inside CasaZen is the one it always was.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool AwaitingPayment { get; set; }
 }
 
 /// <summary>Maps the booking to the API DTOs.</summary>
@@ -183,13 +230,27 @@ public static class PublicSupplierBookingMapper
             request.Urgent);
 
     public static PublicSupplierBookingHoldResponse ToDto(ShowcaseBookingHoldResult hold) =>
-        new() { Id = hold.Id, ExpiresAt = AsUtc(hold.ExpiresAt) };
+        new()
+        {
+            Id = hold.Id,
+            ExpiresAt = AsUtc(hold.ExpiresAt),
+            Payment = hold.Payment is { } payment
+                ? new PublicSupplierBookingCardBlockDto
+                {
+                    AmountCents = payment.AmountCents,
+                    Currency = payment.Currency,
+                    ClientSecret = payment.ClientSecret,
+                    PublishableKey = payment.PublishableKey,
+                    Authorized = payment.Authorized,
+                }
+                : null,
+        };
 
     public static PublicSupplierBookingConfirmationResponse ToDto(ShowcaseBookingConfirmation confirmation) =>
         new()
         {
             PublicCode = BookingCodes.Format(confirmation.PublicCode),
-            Status = confirmation.Status.ToString(),
+            Status = confirmation.AwaitingPayment ? AwaitingPaymentStatus : confirmation.Status.ToString(),
             ServiceName = confirmation.ServiceName,
             StartUtc = AsUtc(confirmation.StartUtc),
             EndUtc = AsUtc(confirmation.EndUtc),
@@ -197,7 +258,11 @@ public static class PublicSupplierBookingMapper
             EndLocal = InRome(confirmation.EndUtc),
             RespondBy = confirmation.RespondBy is { } respondBy ? AsUtc(respondBy) : null,
             AlreadyConfirmed = confirmation.AlreadyConfirmed,
+            AwaitingPayment = confirmation.AwaitingPayment,
         };
+
+    /// <summary>The <c>status</c> of a booking whose e-mail is checked but whose card is not blocked yet: there is no request, so no request status.</summary>
+    public const string AwaitingPaymentStatus = "AwaitingPayment";
 
     private static DateTime AsUtc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
 

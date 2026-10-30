@@ -233,7 +233,13 @@ public class ServiceRequestReliabilityTests
             NullLogger<SupplierReliabilityService>.Instance,
             s.Clock);
         var service = new ServiceRequestAutoCancelService(
-            s.Db, s.Notifier, s.Flags, NullLogger<ServiceRequestAutoCancelService>.Instance, s.Clock, off, Options.Create(s.Kit.Options));
+            s.Db,
+            s.Notifier,
+            s.Flags,
+            NullLogger<ServiceRequestAutoCancelService>.Instance,
+            s.Clock,
+            reliability: off,
+            requestOptions: Options.Create(s.Kit.Options));
 
         var run = await service.CancelUnansweredAsync();
 
@@ -275,5 +281,12 @@ public class ServiceRequestReliabilityTests
     }
 
     private static ServiceRequestAutoCancelService AutoCancel(ServiceRequestScenario s) =>
-        new(s.Db, s.Notifier, s.Flags, NullLogger<ServiceRequestAutoCancelService>.Instance, s.Clock, s.Kit.Reliability, Options.Create(s.Kit.Options));
+        new(
+            s.Db,
+            s.Notifier,
+            s.Flags,
+            NullLogger<ServiceRequestAutoCancelService>.Instance,
+            s.Clock,
+            reliability: s.Kit.Reliability,
+            requestOptions: Options.Create(s.Kit.Options));
 }

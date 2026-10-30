@@ -642,13 +642,25 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         services.AddSingleton<IValidateOptions<Casazen.Core.Options.SupplierPaymentsOptions>, Casazen.Core.Options.SupplierPaymentsOptionsValidator>();
         services.AddSingleton<ISupplierPaymentGateway, StripeSupplierPaymentGateway>();
+        // The money CasaZen holds (SP-15c-a, decision VT-D1): the other gateway of the supplier payments, on the platform account and with no
+        // application fee at all.
+        services.AddSingleton<IPlatformPaymentGateway, StripePlatformPaymentGateway>();
         // The payment service holds the payer's side (SP-15a) and, in its own interfaces, the Stripe webhook, the jobs and the admin
-        // refunds (SP-15b): one instance per scope, so they share the payment lock and the way a link is issued.
+        // refunds (SP-15b) and the cycle of the money CasaZen holds (SP-15c-a): one instance per scope, so they share the payment lock
+        // and the way a link is issued.
         services.AddScoped<SupplierPaymentService>();
         services.AddScoped<ISupplierPaymentService>(sp => sp.GetRequiredService<SupplierPaymentService>());
         services.AddScoped<ISupplierPaymentWebhookService>(sp => sp.GetRequiredService<SupplierPaymentService>());
         services.AddScoped<ISupplierPaymentJobService>(sp => sp.GetRequiredService<SupplierPaymentService>());
         services.AddScoped<ISupplierPaymentRefundService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierFundsService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierFundsJobService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        // The complaint about a job paid through CasaZen and its dispute (SP-15c-c, decision VT-D16) act on the same payment under the same
+        // lock, so they are the same instance. The penalty of a lost dispute goes to a sink that only logs until the reliability events of the
+        // ranking are connected (VT-D17): replace it, do not add to it.
+        services.AddScoped<IServiceDisputeService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<IServiceDisputeJobService>(sp => sp.GetRequiredService<SupplierPaymentService>());
+        services.AddScoped<ISupplierDisputePenalties, LoggingSupplierDisputePenalties>();
         services.AddScoped<ISupplierPaymentAdminService, SupplierPaymentAdminService>();
         services.AddScoped<ISupplierPaymentJobScheduler, SupplierPaymentJobScheduler>();
         // One instance per request for both doors (SP-11): the hosts' and the suppliers' operations, and the narrow set of what the

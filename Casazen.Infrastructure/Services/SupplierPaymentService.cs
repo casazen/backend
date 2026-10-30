@@ -35,6 +35,17 @@ namespace Casazen.Infrastructure.Services;
 /// pending-request jobs (<see cref="ISupplierPaymentJobService"/>, <c>.Jobs.cs</c>) and the admin refunds
 /// (<see cref="ISupplierPaymentRefundService"/>, <c>.Refunds.cs</c>): one payment lock, one way to issue a link and one way to
 /// read a PaymentIntent for all of them. The admin reads are in <c>SupplierPaymentAdminService</c>.</para>
+/// <para><b>SP-15c-a: the second model, money held by CasaZen.</b> A payment whose <c>FundsModel</c> is
+/// <see cref="ServiceFundsModel.PlatformHeld"/> follows the cycle <c>Authorized → Held → Released</c> (or a refund) described in
+/// <see cref="ISupplierFundsService"/>: the PaymentIntent is on the platform, the card is blocked then charged, and CasaZen transfers the
+/// supplier's part. It lives in <c>.Funds.cs</c> (the lifecycle), <c>.FundsRelease.cs</c> (the transfer), <c>.FundsWebhook.cs</c> (the events) and
+/// <c>.FundsJobs.cs</c> (the job), and uses the same lock, the same refund rows and the same notices as the direct charge. The code of the
+/// direct charge is not changed except where a held payment would otherwise be mistaken for one (it is told apart by <c>FundsModel</c>).</para>
+/// <para><b>SP-15c-c: the complaint and the dispute.</b> The payer's complaint about a job, the supplier's reply and the admin's decision
+/// (<see cref="IServiceDisputeService"/>, <c>.Disputes.cs</c>, <c>.DisputesAdmin.cs</c>), their job (<see cref="IServiceDisputeJobService"/>,
+/// <c>.DisputesJobs.cs</c>) and their e-mails (<c>.DisputesNotices.cs</c>) live here too, because they all act on the same payment under the same
+/// lock: a complaint stops the money by moving the payment to <c>Disputed</c>, a decision for the customer reserves its refund in the same transaction,
+/// and the payment leaves <c>Disputed</c> only when that refund has succeeded.</para>
 /// </remarks>
 public sealed partial class SupplierPaymentService(
     AppDbContext db,
@@ -48,12 +59,20 @@ public sealed partial class SupplierPaymentService(
     ISupplierPaymentJobScheduler jobScheduler,
     ILogger<SupplierPaymentService> logger,
     TimeProvider? timeProvider = null,
+    IPlatformPaymentGateway? platformGateway = null,
+    IServiceCustomerReader? customerReader = null,
+    ISupplierDisputePenalties? penalties = null,
     ISupplierReliabilityService? reliability = null)
-    : ISupplierPaymentService, ISupplierPaymentWebhookService, ISupplierPaymentJobService, ISupplierPaymentRefundService
+    : ISupplierPaymentService, ISupplierPaymentWebhookService, ISupplierPaymentJobService, ISupplierPaymentRefundService,
+        ISupplierFundsService, ISupplierFundsJobService, IServiceDisputeService, IServiceDisputeJobService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     private DateTime Now() => _clock.GetUtcNow().UtcDateTime;
+
+    /// <summary>The gateway of the money held by CasaZen (SP-15c-a). Registered with the application; a test that never holds money passes none.</summary>
+    private IPlatformPaymentGateway Platform =>
+        platformGateway ?? throw new InvalidOperationException("The platform payment gateway is not configured.");
 
     /// <summary>The supplier's side of a payment as it is now: its Stripe account, whether it can be paid, and its name.</summary>
     private sealed record SupplierState(string? AccountId, bool CanReceivePayments, string Name);
@@ -85,14 +104,11 @@ public sealed partial class SupplierPaymentService(
         if (request.PaymentMode != ServiceRequestPaymentMode.Online)
             return new ServicePaymentPlan(ServiceRequestPaymentMode.Manual, null, null);
 
-        // A request from a supplier's public showcase (SP-10) is never charged here: it is taken as a manual one, and this keeps a
-        // path that set it online by mistake from sending a payment link to the supplier's own address.
+        // A request from a supplier's public showcase (SP-10) never gets a payment link: it is either paid with the card the customer
+        // blocked when it booked (SP-15c-a: the payment exists since the booking, and completing the work only fixes when the money is due)
+        // or taken as a manual one. This keeps a path that set it online by mistake from sending a payment link to the supplier's own address.
         if (request.RentalContext == ServiceRequestRentalContext.Showcase)
-        {
-            logger.LogWarning(
-                "ServiceRequest {Id}: a request from a supplier's showcase is not paid inside CasaZen, it is completed as a manual one", request.Id);
-            return new ServicePaymentPlan(ServiceRequestPaymentMode.Manual, null, null);
-        }
+            return await PlanHeldCompletionAsync(request, finalAmountCents, cancellationToken);
 
         // The flag stops the creation of payment requests; what exists stays payable (money in flight). A request taken while it was
         // on is completed as a manual one now: nothing is stuck, the host marks it paid as before.
@@ -193,6 +209,11 @@ public sealed partial class SupplierPaymentService(
         var fee = SupplierCommission.FeeCents(amountCents, percent);
         var (payerKind, payerOrgId) = PayerOf(request);
 
+        // SP-15c-b (decision VT-D1): what a host pays for a completed job goes through CasaZen — the card is charged on the platform, CasaZen
+        // holds the money and releases the supplier's part later. The direct charge of SP-15a is kept for the payments that exist and, with
+        // SupplierPayments:HeldForHosts off, as the way back. The model is fixed when the payment is created and never changes.
+        var held = HostPaymentsAreHeld;
+
         return new ServiceRequestPayment
         {
             ServiceRequestId = request.Id,
@@ -205,11 +226,16 @@ public sealed partial class SupplierPaymentService(
             ApplicationFeeCents = fee,
             NetCents = SupplierCommission.NetCents(amountCents, fee),
             Status = ServicePaymentStatus.Requested,
+            FundsModel = held ? ServiceFundsModel.PlatformHeld : ServiceFundsModel.DirectCharge,
+            TransferGroup = held ? ServiceCharges.TransferGroup(request.Id) : null,
             LineItemsJson = ServiceRequestJson.Serialize(lines),
             CreatedAt = now,
             UpdatedAt = now,
         };
     }
+
+    /// <summary>A payment created for a host now is paid to CasaZen, which holds the money (SP-15c-b): the option is on and the platform gateway is there.</summary>
+    private bool HostPaymentsAreHeld => options.Value.HeldForHosts && platformGateway is not null;
 
     /// <summary>
     /// Who pays a request: the host org that asked for it or, for a request from a supplier's public showcase (SP-10, whose
