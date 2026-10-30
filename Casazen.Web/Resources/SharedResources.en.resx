@@ -3542,4 +3542,13 @@
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Access code not available or verification not passed</value>
   </data>
+  <data name="GuestRefundChanged" xml:space="preserve">
+    <value>The refund changed while you were deciding: check the new amount and confirm again. Nothing has been cancelled.</value>
+  </data>
+  <data name="GuestCancelStayStarted" xml:space="preserve">
+    <value>The stay has already started: write to the host to cancel it.</value>
+  </data>
+  <data name="GuestCancelConfirmRequired" xml:space="preserve">
+    <value>Confirm that you want to cancel the booking to go on.</value>
+  </data>
 </root>

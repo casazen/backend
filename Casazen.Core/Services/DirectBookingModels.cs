@@ -141,8 +141,10 @@ public sealed record QuoteLine(QuoteLineKind Kind, int? Quantity, long? UnitAmou
 /// </param>
 /// <param name="DeferredChargeDate">Day the saved card is charged when the deferred payment is chosen (midnight UTC of the Rome date).</param>
 /// <param name="FreeCancellationUntil">
-/// Last day the guest can cancel for free by themselves; <c>null</c> while the guest has no self-service cancellation
-/// (<see cref="DirectBookingPaymentRules.GuestSelfCancellationAvailable"/>): the checkout then promises no free cancellation.
+/// Last day the guest can cancel for free by themselves from the guest area (DB-08a), a Europe/Rome date: the last day of the full
+/// refund of the stay's policy. <c>null</c> when it would not be true: the property has no cancellation policy, the policy never
+/// refunds in full, or the day is already past (<see cref="DirectBookingPaymentRules.IsFreeCancellationPromised"/>): the checkout then
+/// promises no free cancellation.
 /// </param>
 public record DirectBookingPaymentOptions(
     bool DeferredPaymentAvailable,
