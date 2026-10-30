@@ -337,6 +337,18 @@ checks: `Pending` + source `Direct` and either
   either (legacy host bookings created as `Direct` before PC-01).
 - The host's accept / decline of a request (BK-06) lock the booking row (`FOR UPDATE`): a run finding it locked skips
   it (`SKIP LOCKED`), and a run holding it makes the answer wait and then answer 409.
+- **Payments a cancelled booking left open**, the last step of every run (`CloseOpenPaymentsOfCancelledBookingsAsync`). The
+  cleanup before BK-21 (until the end of September 2026: it ran when the next booking took the same dates) set only
+  `Booking.Status = Cancelled`, and a cancellation that does not carry its payments leaves `Pending` or `Failed` rows on a
+  `Cancelled` booking, listed as "Da incassare" for ever and counted in "In attesa di incasso". For each such booking, oldest
+  first, at most 50 per run, under the same row lock (`FOR UPDATE SKIP LOCKED`): the intents are released exactly as in step 3
+  (an intent not found, or no connected account, counts as released) and the open payment rows become `Canceled`. The booking
+  is **not** touched (not its status, `CancelledAt` or `CancellationReason`). A Stripe error leaves everything as it is for
+  the next run. When Stripe says the guest has paid or is paying (`succeeded`, `processing`, `requires_capture`) nothing is
+  cancelled: the payment row of the PaymentIntent becomes `Processing` and the log says `Cancelled booking … keeps an open
+  payment: Stripe says the guest has paid or is paying`: a person settles it (refund or record), because the reconciliation
+  above reads `Pending` bookings only, so no job will. Log: `Payments of cancelled bookings: … closed, … paid or in flight on
+  Stripe, … skipped`.
 
 Nothing to configure on Railway: the job is registered at startup like the others. To change the TTL set
 `DirectBooking__PendingTtlMinutes` (keep it longer than the time a guest needs for 3-D Secure; why 30 minutes:
@@ -365,12 +377,19 @@ WHERE "CancellationReason" = 1 AND "UpdatedAt" > now() - interval '7 days';
 SELECT b."Id", p."StripePaymentIntentId", p."UpdatedAt"
 FROM casazen_prod."Bookings" b JOIN casazen_prod."Payments" p ON p."BookingId" = b."Id"
 WHERE b."Status" = 0 AND b."Source" = 0 AND p."Status" = 1 AND p."UpdatedAt" < now() - interval '1 hour';
+
+-- Payments still open on a cancelled booking (Pending 0 / Failed 3 should be empty minutes after a deploy;
+-- Processing 1 = Stripe says the guest paid or is paying: settle it by hand)
+SELECT b."BookingCode", b."Status", p."Id", p."Status" AS "PaymentStatus", p."Amount", p."UpdatedAt"
+FROM casazen_prod."Bookings" b JOIN casazen_prod."Payments" p ON p."BookingId" = b."Id"
+WHERE b."Status" = 4 AND p."Status" IN (0, 1, 3);
 ```
 
-The last query should stay empty: a row there means the payment webhook did not arrive (check the Connect endpoint and
+The third query should stay empty: a row there means the payment webhook did not arrive (check the Connect endpoint and
 `Stripe__ConnectWebhookSecret`, then resend the event from the Stripe Dashboard) or a SEPA payment is still
 processing. A SetupIntent still `processing` is not recorded on the booking: the job reads it again at every run until
-the webhook confirms it.
+the webhook confirms it. The fourth query is empty of `Pending` and `Failed` rows once the step above has run; a
+`Processing` row there needs a person (the money may be on the host's Stripe account).
 
 ## 8. RLI deadline reminder (LT-04)
 
