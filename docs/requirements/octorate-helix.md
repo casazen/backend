@@ -1,9 +1,9 @@
 # Requirements Helix — integrazione CasaZen × Octorate
 
-Versione 1.2 · 30 ottobre 2026 · Stato: partnership tecnica accettata dal PO,
-in attesa delle istruzioni di onboarding e delle credenziali API.
-Revisione 1.2: integra la conclusione dello scambio commerciale/tecnico e la checklist
-operativa consegnata dal PO (§2, §4, §6 e §9). Le capacità restano
+Versione 1.3 · 30 ottobre 2026 · Stato: account di test attivato e istruzioni
+OAuth ricevute; credenziali consegnate ma non validate da CasaZen.
+Revisione 1.3: integra le tre email operative ricevute dal PO e restringe il perimetro
+commerciale agli appartamenti indipendenti (§2, §4, §6 e §9). Le capacità restano
 `documentate`, non `provate`, finché non sono verificate con le credenziali ricevute.
 
 ## 1. Mandato e risultato atteso
@@ -27,6 +27,9 @@ CasaZen. Le capacità Octorate per check-in, generazione dati Alloggiati/ISTAT e
 di documenti fiscali sono registrate come dipendenze future, non come funzionalità
 incluse implicitamente nel primo rilascio.
 Rollout a circa 250 proprietà: piano e verifica di capacità, non esecuzione automatica.
+CasaZen integra esclusivamente appartamenti/proprietà indipendenti: hotel, camere
+dipendenti da una struttura alberghiera e relativo listino non fanno parte del caso
+d'uso né delle stime commerciali di questa specifica.
 
 ## 2. Fonti, precedenze e decisioni da preservare
 
@@ -40,6 +43,9 @@ Rollout a circa 250 proprietà: piano e verifica di capacità, non esecuzione au
 | S6 | Risposta scritta di Octorate al PO, 23/10/2026 (testo riportato dal PO, non allegato) | Dichiarazioni su canali, recensioni, webhook, messaggi, camere e rete di test: valgono come `documentato` con fonte S6, non come prova sandbox (§6) |
 | S7 | Resoconto conclusivo dello scambio CasaZen × Octorate, consegnato dal PO il 30/10/2026 (testo riportato, email originali non allegate) | Conferme finali su copertura API, IP statici, canali, compliance, messaggistica, recensioni, documenti fiscali, reporting, offerta commerciale e disponibilità a consegnare le credenziali |
 | S8 | `CasaZen_Octorate_Integration_Checklist.md`, consegnata dal PO il 30/10/2026 (file esterno, non copiato nel repository) | Checklist di provisioning, sicurezza, mapping, sync, prenotazioni, webhook, guest, messaggistica, compliance, fatturazione, review, reporting, test e rollout; è backlog operativo, non evidenza di funzionalità già implementate |
+| S9 | Email Octorate «istruzioni per accedere», riportata dal PO il 30/10/2026 (testo non allegato) | Flusso OAuth authorization code, whitelist redirect URI, durata token, link alla documentazione e canale di supporto; fonte operativa più recente per l'autenticazione |
+| S10 | Email Octorate con credenziali partner, riportata dal PO il 30/10/2026 (valori segreti deliberatamente omessi) | Host frontend/API, accesso limitato alle proprietà test, un'autorizzazione e una coppia di token per proprietà. L'email contiene anche la frase «current credentials have expired»: validità dei valori consegnati da verificare, non presumere |
+| S11 | Email di attivazione account «CasaZen calendar master», riportata dal PO il 30/10/2026 (username, password, email e ID omessi) | Conferma che l'account utente del network di test è stato attivato; le credenziali UI servono al login/autorizzazione del proprietario e non sono credenziali applicative CasaZen |
 
 S2 è stata letta dalla PR, ancora aperta: il file integrato in develop è v4 e non
 va usato per ripristinare decisioni superate. S3/S4 sono fonti di analisi, non
@@ -51,6 +57,9 @@ elencate in §5.2.
 S7 prevale sulle precedenti indicazioni commerciali informali quando le corregge.
 Poiché sono disponibili solo il resoconto e non le email originali, non aggiungere
 frequenza di fatturazione, IVA, minimi, tier o condizioni contrattuali non riportate.
+S9–S11 sono riportate dal PO ma contengono segreti: nessun valore va copiato in Git,
+PR, log, fixture, documentazione o frontend. Il client secret vive solo nel secret store
+del backend di test. Le credenziali dell'utente Octorate non sono memorizzate da CasaZen.
 
 Conflitti risolti esplicitamente:
 
@@ -67,6 +76,11 @@ Conflitti risolti esplicitamente:
   possibile creare proprietà/camere via API, per altri solo collegare e sincronizzare:
   non è indicato quali appartengano a ciascun gruppo, quindi la matrice per canale
   resta da compilare senza inferenze.
+- S5 descrive anche `network_name` e un possibile refresh token condiviso per proprietà
+  create via API. S10 stabilisce invece che l'accesso alle proprietà dei clienti
+  dipende dall'autorizzazione di ciascun proprietario («N tokens for N properties»).
+  Per CasaZen e i suoi appartamenti indipendenti vale S10: nessun token di rete
+  condiviso finché Octorate non documenta per iscritto un diverso contratto applicabile.
 
 ## 3. Baseline tecnica e strategia
 
@@ -104,7 +118,7 @@ supportato. Un requisito live bloccato rimane visibile nel report dei gap.
 |---|---|---|
 | OCT-01 | P0 · S2–S4 | Adapter Mock e client Octorate con modalità interne Mock/Sandbox/Production; stessi contratti applicativi. Demo funziona senza rete esterna; nessuna chiamata Production dal Mock. Configurazione mancante impedisce attivazione live. Sandbox: S5 dichiara un solo server («Production - Restricted for Sandbox»); l'ambiente è un attributo dell'API member (`GET /rest/v1/api/configuration`, campo `environment` = `SANDBOX` o `PRODUCTION`), la chiamata nell'ambiente sbagliato dà 403 `WrongEnviroment` e le proprietà di prova hanno `sandboxProperty`. S6: la rete di test non è collegabile ai portali e non prova il push: la modalità Sandbox copre il contratto API, non gli effetti sulle OTA (§6, G2). |
 | OCT-02 | P0 · S3/S4 | Separazione per tenant, ambiente e proprietà in DB, token, job e query. Un operatore non può leggere o scrivere risorse di altro tenant neppure passando ID esterni validi. Owner/guest non ricevono permessi operativi OTA. |
-| OCT-03 | P0/P1 · S3/S4/S7/S8 | OAuth server-side per operation: authorizationCode e clientCredentials solo dove prescritti; state e callback validati, PKCE (il corpo di `POST /rest/v1/identity/token` prevede `code_challenge`). Segreti cifrati/secret store, rinnovo concorrente controllato, revoca e riconnessione. Token scaduto o scope insufficiente genera stato azionabile, mai successo simulato. S5: `OAuthLogin` (authorization code per proprietà o rete; il grant si consuma entro 3 minuti) e `ApiOperations` (client credentials, solo per creare proprietà, portali e sottoscrizioni; `apilogin` compare solo in Postman). Access token a scadenza breve (`expires_in`), refresh token senza scadenza e non ruotato salvo `rotate_refresh=true`: rinnovo serializzato per connessione. Permessi per risorsa (`RESERVATION_READ/WRITE`, `CONTENT_*`, `CALENDAR_*`, `CONNECTION_*`, `WEBHOOK_WRITE`): chiedere il minimo; `CREDIT_CARD_*` e `RESERVATION_SENTITIVE_*` (ortografia della specifica) fuori perimetro salvo ADR. Il DTO di connessione accetta `username` e `password` del portale: salvo ADR CasaZen non li raccoglie né li conserva, e per i portali OAuth il login lo completa l'utente su Octorate (`userLogged`, `loginAt`). Prima dei dati reali: ottenere base URL, credenziali, lifecycle token, scope, rate limit/quote e ambienti; configurare secret vault e IP statici da comunicare per whitelist. S7 conferma che email, telefono e altri dati sensibili non sono accessibili senza IP statici autorizzati e che non esiste un fallback sandbox. |
+| OCT-03 | P0/P1 · S3/S4/S7–S10 | OAuth server-side per operation: authorizationCode e clientCredentials solo dove prescritti; state e callback validati, PKCE (il corpo di `POST /rest/v1/identity/token` prevede `code_challenge`). Segreti cifrati/secret store, rinnovo concorrente controllato, revoca e riconnessione. Token scaduto o scope insufficiente genera stato azionabile, mai successo simulato. S5: `OAuthLogin` (authorization code per proprietà o rete) e `ApiOperations` (client credentials, solo per creare proprietà, portali e sottoscrizioni; `apilogin` compare solo in Postman). S9 prevale sul lifecycle: access token valido 24 ore e refresh token senza scadenza; rinnovo serializzato per proprietà. Permessi per risorsa (`RESERVATION_READ/WRITE`, `CONTENT_*`, `CALENDAR_*`, `CONNECTION_*`, `WEBHOOK_WRITE`): chiedere il minimo; `CREDIT_CARD_*` e `RESERVATION_SENTITIVE_*` (ortografia della specifica) fuori perimetro salvo ADR. CasaZen non raccoglie né conserva username/password Octorate: il proprietario completa il login direttamente sul frontend Octorate. Prima dei dati reali: validare credenziali, scope, rate limit/quote e ambienti; configurare secret vault e IP statici da comunicare per whitelist. S7 conferma che email, telefono e altri dati sensibili non sono accessibili senza IP statici autorizzati e che non esiste un fallback sandbox. |
 | OCT-04 | P0 · S2/S3 | Mapping tenant→proprietà→unità→rate plan→connessione→listing esterno. Vincoli univoci nello scope corretto, conflitti e import preview; nessuna scrittura con mapping ambiguo. Conservare ID annunci esistenti, recensioni e continuità solo dopo prova/conferma OTA. S5: connessione (`POST /rest/v1/connection/{accommodation}`, verifica licenza e credenziali), azioni `IMPORT_ROOMS`, `IMPORT_RESERVATIONS`, `IMPORT_CALENDAR`, poi mapping `productId` ↔ `externalId` (`updateCalendar` e `pullReservations` attivabili solo dopo il mapping; `pullMappedOnly` vero di default), `MARK_CONNECTED` o `COMMIT_MAPPING_AS_COMPLETED`; i prodotti esterni con `manageable` falso sono solo informativi (§5.1 D6). |
 | OCT-05 | P0/P1 · S2–S4 | Editor contenuti: titoli, descrizioni e traduzioni IT/EN/DE/FR, foto, servizi, camere/letti, regole, politiche e CIN/licenze. Distinguere bozza, in coda, accettato dal provider e pubblicato su OTA; limitare campi e azioni alla matrice capacità. Un errore parziale non marca tutto come pubblicato. Interfaccia DE non richiesta ora. S5: nessun campo CIN dedicato (`nrua` esiste solo per la Spagna); candidati `legalId`/`legalIdIssuer` (camera) e `taxId` (listing), campo effettivo per OTA da confermare. Stato di pubblicazione: `airbnbApprovalStatus` e `GET /rest/v1/content/products/{accommodation}/process/{processId}`; push per prodotto solo `booking_xml`, `airbnb_xml`, `homeaway`. Non usare `addTextToHouseRules` e `addTextToField` come API di scrittura (§5, §5.1 D2). |
 | OCT-06 | P0/P1 · S2–S4 | ARI con diff, aggiornamenti bulk e controllo stato processo. Date locali della struttura, soggiorni [check-in, check-out), valuta e decimali espliciti; test DST Italia/Svizzera. Nessuna disponibilità/prezzo/restrizione inviata a unità errata. Accettazione bulk non equivale a propagazione OTA. S5: date `yyyy-mm-dd` con `dateTo` inclusivo, nessuna valuta nel payload; quota 1 unità ogni 15 camera-giorno, dinamica per proprietà e tariffe (§5.1 D7). Il bulk può rispondere HTTP 200 con `success: false` (esempio Postman): controllare il corpo e conservare gli id `process`; lo stato per data e portale è solo in Postman. Octorate può alterare ARI da solo (`closeNextDays`/`openNextDays`, `tripleThePrice`, `revenue*`, `derivedRule`; per connessione `correctionRatio`, `correctionFixed`, `correctionRound`, `availabilityPercentage`): l'adapter li legge e li tiene neutri o li modella, altrimenti il writer unico non basta. |
@@ -117,6 +131,50 @@ supportato. Un requisito live bloccato rimane visibile nel report dei gap.
 | OCT-13 | P0/P1 · S3/S4 | Resilienza: timeout/cancellazione, backoff con jitter e Retry-After se presente, rate limit per scope effettivo e backpressure. Distinguere validazione, 401, 403, 404, 409/422 se previsti, 5xx. S5 non documenta né 429 né Retry-After: la quota esaurita è un 403 `ApiQuotaException`, da distinguere dai 403 di permessi (`ApiSecurityException`) e di ambiente (`WrongEnviroment`); un 550 `ApiPartnerServerError` indica il fallimento del partner o della OTA. Decidere sul `code` stabile di `ApiError` e non sul testo; salvare `request-id`; leggere `X-RateLimit-Remaining` e, se presente, `X-RateLimit-Additional-Cost`; quota in `quotaLimit` e `quotaStatus` di `GET /rest/v1/api/configuration`. Nessun header o chiave di idempotenza né ETag documentati; alcune PATCH rispondono 304 se nulla cambia; alcuni esempi di errore sono pagine HTML del server, quindi non assumere JSON. Retry scritture solo se sicuro/idempotente o previa riconciliazione. Nessuna tempesta di retry. |
 | OCT-14 | P0/P1 · S3/S4 | Dashboard stato per proprietà/canale, lag, quota, errori, ultima riconciliazione, operazioni sospese e replay autorizzato. Correlation ID e audit senza token/documenti/testi sensibili nei log. Kill switch scritture per tenant/proprietà/canale, senza perdere eventi ricevuti. |
 | OCT-15 | P0 · S3/S4 | Demo deterministica con agenzia DEMO e 10 proprietà fittizie: mapping, contenuti/foto, ARI, creazione/modifica/cancellazione, chat/AI e review. Reset ripristina dataset; mostra sempre Mock e le funzionalità non certificate; nessun dato reale Quokka. |
+
+### Contratto OAuth ricevuto il 30/10/2026
+
+S9 e S10 chiudono i seguenti punti operativi senza autorizzare l'uso dei segreti nel
+frontend o nel repository:
+
+1. CasaZen genera il link sul frontend Octorate con `client_id`, `redirect_uri` e
+   `state`. Octorate descrive `state` come opzionale ma consigliato; CasaZen lo rende
+   obbligatorio, monouso, a scadenza e legato a tenant, utente e redirect attesi.
+2. Il proprietario dell'appartamento accede direttamente a Octorate e autorizza
+   quella proprietà. CasaZen non riceve né conserva username e password Octorate.
+3. Octorate reindirizza alla callback CasaZen con `code`. S9 dice «pochi secondi»,
+   mentre S5 indicava 3 minuti: implementare scambio immediato e non assumere una
+   durata minima maggiore; un codice scaduto riavvia il consenso.
+4. Il backend scambia il codice usando il client secret e conserva cifrati access e
+   refresh token. L'access token dura 24 ore; il refresh token non scade secondo S9.
+   Rinnovo preventivo e single-flight per proprietà; mai token nel browser o nei log.
+5. L'autorizzazione è per proprietà: **N appartamenti indipendenti = N consensi e N
+   coppie di token**. Storage, lock, revoca, audit e health devono quindi essere
+   scoped per tenant + ambiente + `OctorateAccommodationId`, non globali per agenzia.
+
+Endpoint documentati da S9/S10, da usare come configurazione e non hard-code sparso:
+
+- documentazione: `https://api.octorate.com/connect`;
+- frontend/login: `https://admin.octorate.com/octobook`;
+- base API: `https://api.octorate.com/octobook/rest`;
+- autorizzazione: `/octobook/identity/oauth.xhtml` sul frontend Octorate;
+- token e refresh: operazioni ufficiali `token` e `refresh` della documentazione.
+
+La redirect URI di test e quella di produzione devono entrambe essere in whitelist.
+In test CasaZen può aggiornarle tramite `postConfiguration`; in produzione deve
+scrivere a `openapi@octorate.com`. Il default `https://localhost/` non è una callback
+CasaZen distribuibile e va sostituito prima della prima prova end-to-end. Non è
+ancora definito nel materiale ricevuto l'URL definitivo della callback CasaZen.
+
+Configurazione operativa eseguita il 30/10/2026: nel secret store Railway del solo
+ambiente backend `test` sono presenti `Octorate__ClientId`,
+`Octorate__ClientSecret`, `Octorate__ApiBaseUrl`, `Octorate__FrontendBaseUrl` e
+`Octorate__AuthorizationEndpoint`, senza forzare un deploy. Nessun segreto Octorate
+è stato aggiunto a Railway `production`, Vercel o GitHub. La callback non è stata
+configurata perché il relativo endpoint CasaZen non esiste ancora e inventarne uno
+renderebbe la whitelist errata. Prima dell'implementazione verificare che le
+credenziali siano ancora valide; se Octorate conferma che sono scadute, ruotare il
+client secret nel medesimo secret store senza cambiare i nomi di configurazione.
 
 ### Confini operativi confermati il 30/10/2026
 
@@ -215,9 +273,9 @@ Octorate.
 | D9 | Stripe e prenotazioni dirette (email 8) | CasaZen può creare la prenotazione diretta (`POST /reservation/{accommodation}`: decrementa la disponibilità salvo `availability=false`) e registrare l'incasso con `POST .../{id}/payment` («non è l'addebito della carta»; `transaction` = id esterno, `paymentMode`, `amount`). I campi di addebito automatico di Octorate (`scheduled*`, `preauth*`, `stopCron`) non si usano. Per le OTA `companyCollect` e `paymentType` indicano chi incassa. | `channelId` da usare per le dirette (l'esempio dei webhook mostra 233, «Octorate»); confine di responsabilità per iscritto |
 | D10 | Altri canali (A.11) | Né e-domizil né feratel né Google Vacation Rentals compaiono in S5 (c'è Google Hotel Ads per gli hotel). Portali con metadati di contenuto negli esempi: Booking.com, Airbnb, Vrbo (`homeaway`), Expedia, HomeToGo, Holidu, Agoda, Rentals United, Rakuten, Marriott VR (`marriot_vr`). L'elenco completo è `GET /meta/portals`. S6: tutti i canali elencati sono disponibili tranne Google Vacation Rentals. | e-domizil e feratel non sono stati chiesti |
 | D11 | Titolarità degli account, export, uscita (A.7) | Tecnicamente: la creazione con `ApiOperations` restituisce il token e crea un utente con l'email indicata (credenziali inviate se `welcome_user`); l'API member vede le proprietà create o collegate (`GET /accommodation`); `DELETE .../account` disattiva senza cancellare; `PATCH .../changeAdminUserAccess` autorizza o revoca l'accesso degli amministratori Octorate agli utenti della proprietà. Export via GET: contenuti, camere e tariffe, calendario, prenotazioni, mapping, ospiti. Le recensioni stanno sull'annuncio OTA, non in Octorate. | Titolarità contrattuale degli account e dei contratti OTA; uscita senza perdere le recensioni |
-| D12 | Sandbox (A.8) | `environment` `SANDBOX`/`PRODUCTION` in `GET /rest/v1/api/configuration`, stesso host, 403 `WrongEnviroment` se si sbaglia ambiente, proprietà di prova con `sandboxProperty`. S6: rete di test con le credenziali, non collegabile ai portali, senza prova di push. S7: i dati ospite sensibili non sono accessibili finché gli IP statici non sono in whitelist e non esiste un'alternativa in sandbox. Documentazione 2019 (da riconfermare): accesso su richiesta, breve certificazione prima del flag di produzione. | Se la rete di test consente thread chat e prenotazioni di prova (il modello chat ha `TEST_BOOKING_DETAILS`); procedura e tempi di whitelist IP |
+| D12 | Sandbox (A.8) | `environment` `SANDBOX`/`PRODUCTION` in `GET /rest/v1/api/configuration`, stesso host, 403 `WrongEnviroment` se si sbaglia ambiente, proprietà di prova con `sandboxProperty`. S6: rete di test non collegabile ai portali, senza prova di push. S7: i dati ospite sensibili non sono accessibili finché gli IP statici non sono in whitelist e non esiste un'alternativa in sandbox. S9–S11: account del network test attivato, credenziali utente e partner consegnate, accesso API limitato alle proprietà marcate test; callback iniziale `https://localhost/`, da sostituire e mettere in whitelist. S10 contiene anche un avviso di credenziali scadute, quindi l'autenticazione riuscita resta il criterio di validità. | URL callback CasaZen di test; se il network consente thread chat e prenotazioni di prova; procedura e tempi di whitelist IP; validità effettiva delle credenziali consegnate |
 | D13 | Convenzioni: idempotenza, paginazione, date, valute | Nessun header di idempotenza né ETag; alcune PATCH e PUT rispondono 304 se il contenuto è identico. Paginazione `page`/`size` (prenotazioni fino a 200 per pagina e pagina fino a 1000; calendario fino a 20 prodotti); `ApiListResponse` con link. `dateTo` del calendario è inclusivo; ricerche in ora di Roma; `checkin` e `checkout` in UTC. Valuta nella connessione e nella prenotazione, non nel calendario; `SpecialOfferDTO.totalPrice` è un intero con unità non documentata. Errori `ApiError` con `code` stabile. | Unità di `totalPrice` |
-| D14 | Costo e licenza (A.6) | Nessun prezzo in S5. La licenza è per proprietà (`ApiLicenseForm`: `channelManager` `FREE`/`BASIC`/`PRO`/`ENTERPRISE`/`PREMIUM`, flag separati per `chat`, `smartOffer`, `invoice` e altri, `roomsLimit`, `expireDay`) e `createConnection` la verifica; `GET /rest/v1/api/configuration` prevede un account reseller. S7 riporta: OTA Integration €130 base + €7/hotel oppure €0,50/proprietà; Messaging €14/hotel oppure €1/proprietà. | Frequenza e IVA; se le formule sono alternative e come si applicano; definizione hotel/proprietà; tier e flag inclusi (almeno chat e contenuti); decorrenza; minimi e condizioni da reseller |
+| D14 | Costo e licenza (A.6) | Nessun prezzo in S5. La licenza è per proprietà (`ApiLicenseForm`: `channelManager` `FREE`/`BASIC`/`PRO`/`ENTERPRISE`/`PREMIUM`, flag separati per `chat`, `smartOffer`, `invoice` e altri, `roomsLimit`, `expireDay`) e `createConnection` la verifica; `GET /rest/v1/api/configuration` prevede un account reseller. Per il solo perimetro CasaZen di appartamenti indipendenti, S7 riporta: OTA Integration **€130 base + €0,50/proprietà**; Messaging **€1/proprietà**. Le tariffe hotel sono fuori perimetro. | Frequenza e IVA; conferma che il base €130 si applichi al ramo proprietà e come; tier e flag inclusi (almeno chat e contenuti); decorrenza, minimi e condizioni da reseller |
 
 ### 5.2 Correzioni rispetto alla v1.0 e agli allegati S3/S4
 
@@ -282,11 +340,11 @@ dalla produzione (H6/H7).
 | Dipendenza | Chi la risolve | Blocca |
 |---|---|---|
 | Snapshot API e schemi effettivi | Team implementazione | DTO/client e test contrattuali reali, non il Mock |
-| Istruzioni di onboarding, base URL, credenziali, scope, property/room/rate e connessioni test, reset. S7: Octorate è pronta a consegnare le credenziali e il PO ha confermato di procedere; al 30/10 CasaZen è in attesa delle istruzioni. S6: rete di test non collegabile ai portali | Octorate via referente CasaZen | Test autenticati e certificazione; prove con effetti sulle OTA solo in produzione |
+| Credenziali partner e account test consegnati (S9–S11), ma validità non ancora provata a causa dell'avviso «expired» in S10. Base API e flusso OAuth noti; mancano callback CasaZen definitiva, property/room/rate test verificati, scope effettivi e procedura reset | Octorate + CasaZen | Prima autenticazione end-to-end e test contrattuali; prove con effetti sulle OTA solo in produzione |
 | IP statici in Development/Staging/Production e whitelist Octorate. S7: senza IP autorizzati email, telefono e altri dati sensibili non sono accessibili, anche in sandbox; nessun meccanismo alternativo comunicato | CasaZen infrastruttura + Octorate | Test e uso reale di guest contact info/CRM; non blocca i flussi che non richiedono dati sensibili |
 | Matrice OTA, mantenimento ID/review/storico, onboarding/migrazione | Octorate | Promessa commerciale e attivazione capacità interessate |
 | API review, CIN, pre-booking, allegati, policy AI | Octorate + PO | Singole funzioni live; gap obbligatori nel go/no-go |
-| Quote, bulk, SLA/latenza, minimi/certificazione/supporto e condizioni economiche. S7 sostituisce la precedente indicazione informale: **OTA Integration:** €130 base + €7/hotel oppure €0,50/proprietà; **Messaging:** €14/hotel oppure €1/proprietà. Frequenza, IVA, applicazione cumulativa/alternativa, soglie e definizione di hotel/proprietà non sono riportate e vanno confermate; nessun totale stimato finché non lo sono | Octorate + referente commerciale | Capacity e sostenibilità pilota/rollout; non usare la stima precedente né prezzi NextPax |
+| Quote, bulk, SLA/latenza, minimi/certificazione/supporto e condizioni economiche per appartamenti indipendenti: **OTA Integration:** €130 base + €0,50/proprietà; **Messaging:** €1/proprietà. Il ramo hotel è escluso. Frequenza, IVA, applicazione del base, soglie e minimi non sono riportati e vanno confermati; nessun totale stimato finché non lo sono | Octorate + referente commerciale | Capacity e sostenibilità pilota/rollout; non usare la stima precedente né prezzi NextPax |
 | Licenza per struttura (`ApiLicenseForm`: tier del channel manager, flag `chat` e altri, `roomsLimit`) e condizioni da reseller | Octorate + referente commerciale | Che cosa comprende il costo comunicato; funzioni chat e contenuti |
 | Titolarità account/export/uscita, DPA, localizzazione/subfornitori, condizioni software vendor. S5 chiude solo la parte tecnica (§5.1 D11) | Octorate + responsabili CasaZen | Uso dati reali/accordo partner |
 | Proprietà/territori/canali, autorizzazioni, finestra cutover e accettazione commerciale | Quokka + PO | Pilota reale |
@@ -354,6 +412,12 @@ nuovo pilota mensile per ogni proprietà. Nessun contatto esterno, merge o go-li
 
 ## 9. Revisioni
 
+- **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti.
+  Documentati host e base API, authorization code flow, whitelist delle callback,
+  access token di 24 ore, refresh token senza scadenza e modello N proprietà = N
+  consensi/token. Account test segnato attivo, ma credenziali non marcate valide finché
+  non provate per la contraddizione «current credentials have expired» in S10.
+  Perimetro e listino ristretti agli appartamenti indipendenti; hotel esclusi.
 - **1.2 · 30 ottobre 2026:** integrate S7 e S8. Registrati: esito positivo della
   partnership e attesa onboarding/credenziali; copertura API confermata; requisito
   di IP statici per dati sensibili; messaggistica per Airbnb, Booking.com, Vrbo ed
