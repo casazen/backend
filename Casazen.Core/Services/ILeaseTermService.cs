@@ -71,6 +71,18 @@ public interface ILeaseTermService
         Guid leaseId, DateOnly receivedOn, TenantWithdrawalReason reason, int? noticeMonths, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Records the renewal of a lease before the end of its period (LR-OPS-1): the standard one (the months of the type) or, with
+    /// <paramref name="agreedEnd"/>, an extension to a day the parties agreed on. The new period is checked against the other leases of the property
+    /// (<c>lease_period_overlaps</c>, under the lock of the property), the end of the period moves forward, an active rent plan is extended to the new
+    /// end and an event <c>RenewalRecorded</c> is written, all in one transaction. Only for a lease that renews by itself (libero, concordato), while
+    /// its period is not over, the last stretch before its end has begun (from the last day to give notice) and no notice is recorded.
+    /// Nothing is written to the tenant.
+    /// </summary>
+    /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>, <c>lease_renewal_blocked_by_notice</c>, <c>lease_renewal_period_over</c>, <c>lease_period_overlaps</c>, <c>lease_busy</c>.</exception>
+    /// <exception cref="DomainRuleException">422 <c>lease_type_has_no_renewal</c>, <c>lease_renewal_not_yet</c>, <c>lease_renewal_end_invalid</c>.</exception>
+    Task RecordRenewalAsync(Guid leaseId, DateOnly? agreedEnd, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The hourly job: every lease that renews by itself and whose period is over is brought forward one period at a time (at most
     /// <c>LeaseRenewal.MaxPeriodsPerRun</c> in a run), an event <c>TermRenewed</c> for each, and an active rent plan is extended to the new end.
     /// Idempotent: a lease that was renewed is not due any more, so a second run, a retry or a manual trigger finds nothing to do. It

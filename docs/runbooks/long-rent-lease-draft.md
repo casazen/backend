@@ -457,11 +457,12 @@ posso crearne 2»). It reverses decision LR-D14 (one may let by rooms), which le
   `LeasePeriodOverlapIntegrationTests` proves it on PostgreSQL (a request waits while another holds the lock and has not committed its lease).
 - **Not blocked, on purpose.** The tacit renewal job (`lease-term-renewal`) renews by law whatever CasaZen knows: if the renewed period would cover the
   days of a lease that follows, the landlord has to record the notice or the early termination of the first lease (§ 10 of the aggregates runbook).
-  `POST /api/leases` (complete creation, no longer used by the interface) writes a draft and is not a step that makes a contract. There is no
-  explicit renewal or extension action yet: the day it exists it has to call `LeasePeriodGuard.EnsureFreeAsync` with the new period.
+  `POST /api/leases` (complete creation, no longer used by the interface) writes a draft and is not a step that makes a contract. The explicit
+  renewal or extension (`POST /api/leases/{id}/renewal`, LR-OPS-1b, [`lease-operations.md`](lease-operations.md) § 2.3) calls `LeasePeriodGuard.EnsureFreeAsync` with the new
+  period and answers 409 `lease_period_overlaps` like the other steps.
 - **Existing data is not touched.** No migration and no backfill: leases that already overlap stay as they are and only stop a *new* step.
 - **Open points** (proposed ids): LR-OVERLAP-FU1, the tacit renewal job does not look at the following lease (above); LR-OVERLAP-FU2, a draft with
   both dates counts, so two drafts on the same days block each other until one is deleted or moved, and whether only confirmed drafts should count is a
-  decision of the product owner; LR-OVERLAP-FU3, the explicit renewal or extension action (LR-OPS-1) has to call the guard; LR-OVERLAP-FU4, the toast of
+  decision of the product owner; LR-OVERLAP-FU3, the explicit renewal or extension action has to call the guard (done in LR-OPS-1b); LR-OVERLAP-FU4, the toast of
   a refused confirmation shows the server text without the link (the review that is read again right after has it); LR-OVERLAP-FU5, a tool to find the
   leases that already overlap in an environment (the test environment has two).

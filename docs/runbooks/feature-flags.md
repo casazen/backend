@@ -20,6 +20,9 @@ Task SP-16a (redesign wave) adds no flag. Two things to know when switching the 
 showcase takes bookings only for a supplier whose `SupplierSettings.OnlineBookingEnabled` is true, a column that **only the showcase editor writes**
 (`PUT api/supplier/settings` neither takes nor changes it, decision SP-D29), so `SupplierShowcaseBooking` alone opens nothing; and `GET api/supplier/checklist`
 tells `verification` whatever the flag says and `paymentsActive` only while `SupplierOnlinePayments` is on (`null` otherwise).
+Task SP-13a (redesign wave) adds no flag: the content endpoints of the supplier's showcase (`api/supplier/showcase/*`, `docs/runbooks/suppliers.md` section 33) are always on and nothing they save is public until the supplier publishes it. The
+publication is the **only writer of `SupplierSettings.OnlineBookingEnabled`**, and it reads `SupplierOnlinePayments`: the bookings of a showcase open only with that flag on **and** the supplier's Stripe account able to take charges and payouts
+(decision VT-D7), so with the flag off every showcase is read-only whatever `SupplierShowcaseBooking` says.
 Task SP-04c (redesign wave) adds no flag: the urgent requests with a surcharge are the supplier's own settings (`api/supplier/availability/urgent`, `urgentEnabled` of a
 service, off until the supplier turns them on), and what the customer sees of them (`urgent=true` on the slots, the estimate and the booking) is part of the public reads and
 booking already behind `SupplierShowcaseBooking` (`docs/runbooks/suppliers.md` section 32).

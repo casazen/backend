@@ -48,6 +48,79 @@ public class PropertyComplianceStatusService(
     {
         ArgumentNullException.ThrowIfNull(property);
 
+        // SU-04: the comune chosen from the official ISTAT list is what gives the regional rules and the CIN check. A note,
+        // never a blocker: it only appears while the list is imported (otherwise there is nothing to choose from).
+        var comuneListImported = property.ComuneIstatCode is null
+                                 && await db.Comuni.AsNoTracking().AnyAsync(c => c.IsActive, cancellationToken);
+        var uploadedTypes = (await db.PropertyDocuments
+                .AsNoTracking()
+                .Where(d => d.PropertyId == property.Id)
+                .Select(d => d.DocumentType)
+                .ToListAsync(cancellationToken))
+            .Select(type => type.ToString())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // D.L. 145/2023 art. 13-ter (CO-07): only the required items of the checklist block.
+        var safetyChecklist = await db.PropertySafetyChecklists
+            .AsNoTracking()
+            .Include(c => c.Items)
+            .FirstOrDefaultAsync(c => c.PropertyId == property.Id, cancellationToken);
+
+        return BuildBlockingSteps(property, comuneListImported, uploadedTypes, safetyChecklist);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<ComplianceActivationStep>>> GetBlockingStepsManyAsync(
+        IReadOnlyCollection<Property> properties,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(properties);
+
+        var stepsOf = new Dictionary<Guid, IReadOnlyList<ComplianceActivationStep>>();
+        if (properties.Count == 0)
+            return stepsOf;
+
+        // The facts of all the properties in one read each — the documents, the checklists (with their items) and the comuni
+        // list, three queries whatever the number of properties — then the very same rules as for one property.
+        var ids = properties.Select(p => p.Id).Distinct().ToList();
+        var comuneListImported = properties.Any(p => p.ComuneIstatCode is null)
+                                 && await db.Comuni.AsNoTracking().AnyAsync(c => c.IsActive, cancellationToken);
+        var typesOf = (await db.PropertyDocuments
+                .AsNoTracking()
+                .Where(d => ids.Contains(d.PropertyId))
+                .Select(d => new { d.PropertyId, d.DocumentType })
+                .ToListAsync(cancellationToken))
+            .GroupBy(d => d.PropertyId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(d => d.DocumentType.ToString()).ToHashSet(StringComparer.OrdinalIgnoreCase));
+        var checklistOf = (await db.PropertySafetyChecklists
+                .AsNoTracking()
+                .Include(c => c.Items)
+                .Where(c => ids.Contains(c.PropertyId))
+                .ToListAsync(cancellationToken))
+            .GroupBy(c => c.PropertyId)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        foreach (var property in properties)
+        {
+            stepsOf[property.Id] = BuildBlockingSteps(
+                property,
+                comuneListImported,
+                typesOf.GetValueOrDefault(property.Id) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                checklistOf.GetValueOrDefault(property.Id));
+        }
+
+        return stepsOf;
+    }
+
+    // The rules of the four blocking steps, on facts already read: one definition for the wizard, the activation, the
+    // re-evaluation, the nightly check and the host's list (SR-07a) — which read the facts of one property or of many.
+    private IReadOnlyList<ComplianceActivationStep> BuildBlockingSteps(
+        Property property,
+        bool comuneListImported,
+        IReadOnlySet<string> uploadedTypes,
+        PropertySafetyChecklist? safetyChecklist)
+    {
         var cinStatus = CinComplianceRules.ResolveStatus(property.CinCode);
         var cinGuidanceUrl = configuration["Compliance:CinGuidanceUrl"]
             ?? ComplianceOptions.DefaultCinGuidanceUrl;
@@ -61,26 +134,11 @@ public class PropertyComplianceStatusService(
 
         var requiredDocs = ResolveRequiredDocuments(property);
 
-        // SU-04: the comune chosen from the official ISTAT list is what gives the regional rules and the CIN check. A note,
-        // never a blocker: it only appears while the list is imported (otherwise there is nothing to choose from).
-        var comuneMissing = property.ComuneIstatCode is null
-                            && await db.Comuni.AsNoTracking().AnyAsync(c => c.IsActive, cancellationToken);
+        var comuneMissing = property.ComuneIstatCode is null && comuneListImported;
         var cinIstatMismatch = CinFormat.HasIstatComuneMismatch(property.CinCode, property.ComuneIstatCode);
-        var uploadedTypes = (await db.PropertyDocuments
-                .AsNoTracking()
-                .Where(d => d.PropertyId == property.Id)
-                .Select(d => d.DocumentType)
-                .ToListAsync(cancellationToken))
-            .Select(type => type.ToString())
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var missingDocs = requiredDocs.Where(d => !uploadedTypes.Contains(d)).ToList();
         var docsComplete = missingDocs.Count == 0;
 
-        // D.L. 145/2023 art. 13-ter (CO-07): only the required items of the checklist block.
-        var safetyChecklist = await db.PropertySafetyChecklists
-            .AsNoTracking()
-            .Include(c => c.Items)
-            .FirstOrDefaultAsync(c => c.PropertyId == property.Id, cancellationToken);
         var safety = SafetyChecklistRules.Evaluate(safetyChecklist);
         var safetyComplete = safety.IsComplete;
 

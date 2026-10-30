@@ -75,6 +75,7 @@ public class ServiceRequestPaymentScopeTests
     {
         public Mock<IServiceRequestService> Requests { get; } = new();
         public Mock<ISupplierPaymentService> Payments { get; } = new();
+        public Mock<IHostServiceRequestReader> HostReader { get; } = new();
         public ControllerBase Controller { get; }
         public string[] Held { get; }
 
@@ -91,6 +92,11 @@ public class ServiceRequestPaymentScopeTests
             var orgContext = new Mock<IOrgContextResolver>();
             orgContext.Setup(o => o.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(OrgId);
 
+            // The extras of the host (the stay, the contact, the action) are not what these tests are about: none.
+            HostReader
+                .Setup(r => r.DescribeAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyCollection<ServiceRequest>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new Dictionary<Guid, HostServiceRequestExtras>());
+
             var http = new DefaultHttpContext
             {
                 User = HostAuthorizationTestHarness.User(Collaborator),
@@ -105,7 +111,8 @@ public class ServiceRequestPaymentScopeTests
                     orgContext.Object,
                     scopes,
                     Mock.Of<ISupplierOrgContextResolver>(),
-                    Payments.Object)
+                    Payments.Object,
+                    HostReader.Object)
                 : new LongRentServiceRequestsController(
                     Requests.Object,
                     Mock.Of<ISupplierService>(),

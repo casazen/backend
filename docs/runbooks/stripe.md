@@ -301,8 +301,10 @@ cancellation, with `Initiator = Guest`:
 
 - **Refund**: `CancellationRefundPolicy.EvaluateGuestRefund` is the one calculation: the percent of the property's
   cancellation policy (the host's overrides for stays under 28 nights, no `FreeRefundDeadline` floor) of
-  `Booking.BasePrice` (lodging and cleaning, **tourist tax excluded**), rounded to cents, never more than what is
-  refundable. A property without a policy refunds nothing. The host's cancellation, by contrast, owes the guest everything
+  `Booking.BasePrice` (lodging and cleaning), rounded to cents, **plus the whole tourist tax** (DB-08a, default of DB-D15 (1a):
+  not due on a stay that does not happen), never more than what is refundable. A property without a policy refunds only the
+  tax. The same figure is what the guest sees before confirming (guest area, [direct-booking.md](direct-booking.md) § 8.5;
+  `refund_changed` when it moved). The host's cancellation, by contrast, owes the guest everything
   refundable (PO 2026-10-08). The guest service decides the amount and the cancellation checks it again under its advisory
   lock: the guest's minimum is that same refund, so an amount below it (a payment changed between the two) is refused with
   422 rather than paid wrongly, and nothing is cancelled; a policy that refunds nothing needs no amount.
@@ -318,15 +320,13 @@ cancellation, with `Initiator = Guest`:
   cancellation, whoever cancelled it (this link, an earlier or simultaneous click, the host) and however many times the link
   is used, even after it expired. The guest's retry after a lost response therefore sees the success page. If the booking
   were confirmed again afterwards (a late payment, BK-04) the spent link is expired and cancels nothing.
-- **Known gaps until DB-08a**:
-  - the guest's confirmation is the host-cancellation email, worded "annullata dall'host", and the host is told nothing
-    (`BookingNotifier.BookingCancelledByHostAsync`);
-  - "Non rimborsabile" has `FullRefundHours = 0`, so until the check-in day starts the formula gives 100% of the base price
-    (DB-D2): do not send links for those bookings before it is decided;
-  - the refunds are submitted to Stripe after the commit with the request's cancellation token, so a client that drops in
-    that instant can leave a reserved refund pending without a retry (shared with the host's cancellation).
-- Not here: the preview of the refund, cancelling from the guest area and the `GuestSelfCancellation` flag (DB-08a), the open
-  decisions on the policies' semantics and the tourist tax in the refund (DB-D2, DB-D15).
+- **Closed by DB-08a**: the guest's confirmation says they cancelled it themselves and the host gets its own email
+  (`BookingNotifier.BookingCancelledByGuestAsync`); "Non rimborsabile" refunds nothing at any time (its `FullRefundHours` is now
+  the "never" window of ten years, migration `FixCancellationPolicyCatalog`, DB-D2 (a)); the cancel endpoints of the guest
+  (link and guest area) send the refunds to Stripe with a token that is not the request's, so a client that drops after the
+  commit leaves nothing reserved and unsent. The host's cancellation still uses the request's token (the debt DB-08h-F4).
+- The open decisions are defaults, to be confirmed: the policies' semantics and texts (DB-D2 (a)) and the tourist tax refunded in
+  full (DB-D15 (1a)); changing either is the function above plus the catalog rows.
 
 ### Stripe settings to check (product owner)
 
@@ -681,8 +681,16 @@ The payments page of the web app shows the message of the code with **"Riprova"*
 
 | Endpoint | Policy |
 |---|---|
-| `POST /api/connect/account`, `POST /api/connect/onboarding-link` | `RequireOrgBillingAdmin` (`CasazenPolicies.OrgBillingAdmin`, TN-3): a `Staff` collaborator gets 403 |
+| `POST /api/connect/account`, `POST /api/connect/onboarding-link`, `POST /api/connect/dashboard-link` | `RequireOrgBillingAdmin` (`CasazenPolicies.OrgBillingAdmin`, TN-3): a `Staff` collaborator gets 403 |
 | `GET /api/connect/status` | `payment.read` in short-rent |
+
+**«Gestisci su Stripe» (AM-08b-d).** `POST /api/connect/dashboard-link` (no body) answers `{ "url" }`: the single-use login link to the **Express
+Dashboard** of the org's own account (`POST /v1/accounts/{id}/login_links`, the `IStripeConnectGateway.CreateDashboardLoginLinkAsync` of the
+suppliers, SP-14), where the host sees balance, payouts and bank details. It **needs an account that is already linked** (the database says so; Stripe
+is not asked for the status) and never creates one: without an account, or when Stripe refuses the link because the onboarding is not complete, it
+answers **422 `stripe_connect_dashboard_not_ready`** (`StripeConnectDashboardNotReady`, Italian and English); a rate limit, an outage or a key problem
+are the 503 / 502 of the onboarding. The URL is a credential: not logged, not stored. The key of the platform needs what SP-14 already needs (the
+login links, section «Connect onboarding of the suppliers»).
 
 The Account Link pages are built by the API from `App__PublicSiteBaseUrl` (decision D3, same helper `PublicSiteLinks`
 as the billing return pages of PL-11): `return_url` =

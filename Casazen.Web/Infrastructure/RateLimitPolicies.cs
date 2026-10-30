@@ -32,6 +32,15 @@ public static class RateLimitPolicies
     /// </summary>
     public const string PublicGuestSession = "PublicGuestSession";
 
+    /// <summary>
+    /// The guest cancelling a booking (<c>POST api/public/guest/bookings/{code}/cancel</c> from the guest area and
+    /// <c>POST api/public/bookings/{id}/cancel?token=</c> with the host's link, DB-08a): it moves money and frees the dates, so it is
+    /// tight (10 per 10 minutes per client IP) and paired with a limit per booking (<see cref="GuestBookingCancelRateLimiter"/>, 5 per
+    /// 15 minutes). The cancel link used <see cref="GuestCheckIn"/> before, which partitions by a <c>{token}</c> route value that the
+    /// cancel route does not have (its token is in the query), so it counted by IP alone. The previews use <see cref="PublicBookingLookup"/>.
+    /// </summary>
+    public const string GuestBookingCancel = "GuestBookingCancel";
+
     /// <summary>Guest check-in form reads (partitioned by IP and token hash).</summary>
     public const string GuestCheckIn = "GuestCheckIn";
 
@@ -123,6 +132,13 @@ public static class RateLimitPolicies
     /// <see cref="GlobalSearch"/>: partitioned by <b>person</b>, since the people of one office share an address.
     /// </summary>
     public const string HostSupplierSlots = "HostSupplierSlots";
+
+    /// <summary>
+    /// The copy of a tenant's personal data and the erasure request (<c>GET api/long-rent/tenants/{id}/export</c> and <c>POST
+    /// …/erasure-request</c>, LR-09): partitioned by <b>person</b>, since the export puts every personal datum of somebody in one file and
+    /// the erasure cannot be taken back. Nobody asks for more than a few in ten minutes.
+    /// </summary>
+    public const string TenantPrivacy = "TenantPrivacy";
 
     /// <summary>
     /// The autosave of the showcase editor (<c>PATCH api/supplier/showcase/content</c>, SP-13a). A policy of a signed-in endpoint, like

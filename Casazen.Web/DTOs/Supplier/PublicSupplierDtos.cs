@@ -105,6 +105,13 @@ public class PublicSupplierServiceDto
 
     /// <summary>Whether an urgent slot can be booked for this service, and the surcharge it adds (SP-04c).</summary>
     public PublicSupplierUrgentDto Urgent { get; set; } = new();
+
+    /// <summary>
+    /// The first free slot of the service (UTC), from the same plan and cache as the slots (SP-13a); left out while the showcase does not take
+    /// bookings, and for a service with no free slot in the supplier's horizon. A slot shown is not a promise: the booking checks it again.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTime? NextSlotUtc { get; set; }
 }
 
 /// <summary>One service with its description and the structured supplements the estimate is computed from.</summary>
