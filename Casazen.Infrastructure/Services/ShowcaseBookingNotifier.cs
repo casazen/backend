@@ -74,13 +74,15 @@ public sealed class ShowcaseBookingNotifier(
 
     /// <summary>
     /// The address is checked and the request exists: the receipt to the customer, and the new request to the supplier (e-mail
-    /// and push, comune only). Never throws.
+    /// and push, comune only), unless the supplier turned off «Nuove richieste» (SP-16d, <see cref="SupplierNotificationKind.NewRequest"/>):
+    /// the customer's receipt does not depend on it. Never throws.
     /// </summary>
-    public void QueueRequestReceived(
+    public async Task QueueRequestReceivedAsync(
         SupplierProfile supplier,
         ServiceRequest request,
         ServiceCustomer customer,
-        DateTime respondByUtc)
+        DateTime respondByUtc,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -102,6 +104,9 @@ public sealed class ShowcaseBookingNotifier(
                     request.EstimatedAmountCents,
                     publicSiteLinks.SupplierBookingRequest(slug, request.PublicCode)),
                 EmailTemplates.Names.SupplierBookingReceipt);
+
+            if (!await SupplierNotificationPreferences.AllowsAsync(db, request.SupplierOrgId, SupplierNotificationKind.NewRequest, cancellationToken))
+                return;
 
             var italian = EmailTemplates.DefaultCulture;
             var comune = request.LocationCity ?? string.Empty;
@@ -162,11 +167,12 @@ public sealed class ShowcaseBookingNotifier(
     /// The address is checked and the request on measure exists: the receipt to the customer, and the new request to the supplier (e-mail and
     /// push, comune and "Nome C." only — never a word of the message). Never throws.
     /// </summary>
-    public void QueueInquiryReceived(
+    public async Task QueueInquiryReceivedAsync(
         SupplierProfile supplier,
         ServiceRequest request,
         ServiceCustomer customer,
-        DateTime respondByUtc)
+        DateTime respondByUtc,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -182,6 +188,15 @@ public sealed class ShowcaseBookingNotifier(
                     respondByUtc,
                     publicSiteLinks.SupplierBookingRequest(SlugOf(supplier), request.PublicCode)),
                 EmailTemplates.Names.SupplierInquiryReceipt);
+
+            if (!await SupplierNotificationPreferences.AllowsAsync(
+                    db,
+                    request.SupplierOrgId,
+                    SupplierNotificationKind.NewRequest,
+                    cancellationToken))
+            {
+                return;
+            }
 
             var italian = EmailTemplates.DefaultCulture;
             var comune = request.LocationCity ?? string.Empty;

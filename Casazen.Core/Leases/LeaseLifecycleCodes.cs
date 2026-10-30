@@ -55,6 +55,21 @@ public static class LeaseLifecycleCodes
     /// <summary>409: a notice is recorded, so the lease cannot be renewed until the notice is taken back (LR-OPS-1).</summary>
     public const string RenewalBlockedByNotice = "lease_renewal_blocked_by_notice";
 
+    /// <summary>422: the lease is under the cedolare secca, which suspends every update of the rent for as long as the option lasts, so nothing is calculated (LR-OPS-1c).</summary>
+    public const string IstatWaived = "lease_istat_waived";
+
+    /// <summary>422: the variation of the index is zero or negative (or the increase rounds to nothing): the rent does not go up, there is nothing to ask for (LR-OPS-1c).</summary>
+    public const string IstatNoIncrease = "lease_istat_no_increase";
+
+    /// <summary>422: a percentage typed is not above zero, is above its maximum or has more than two decimals (LR-OPS-1c).</summary>
+    public const string IstatPercentInvalid = "lease_istat_percent_invalid";
+
+    /// <summary>422: the lease has no rent to update (LR-OPS-1c).</summary>
+    public const string IstatNoRent = "lease_istat_no_rent";
+
+    /// <summary>422: the day a letter takes effect from is outside the days it can have (LR-OPS-1c).</summary>
+    public const string LetterEffectDateInvalid = "lease_letter_effect_date_invalid";
+
     /// <summary>422: this letter does not apply to this lease (not a transitory lease, the need is the tenant's, a type that does not renew…) (LR-OPS-1).</summary>
     public const string LetterNotApplicable = "lease_letter_not_applicable";
 
