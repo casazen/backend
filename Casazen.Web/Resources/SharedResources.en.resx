@@ -3653,4 +3653,49 @@
   <data name="ServiceRequestQuoteSentAtRequired" xml:space="preserve">
     <value>Say which quote you are accepting or turning down.</value>
   </data>
+  <data name="PropertySiteProfilePayloadTooLong" xml:space="preserve">
+    <value>The text sent is too long.</value>
+  </data>
+  <data name="PropertySiteProfileTextTooLong" xml:space="preserve">
+    <value>The text is too long: {0} characters at most.</value>
+  </data>
+  <data name="PropertySiteProfileItalianRequired" xml:space="preserve">
+    <value>Write the text in Italian too: it is the language the site uses when there is no translation.</value>
+  </data>
+  <data name="PropertySiteProfileTooManyHighlights" xml:space="preserve">
+    <value>You can add {0} highlights at most.</value>
+  </data>
+  <data name="PropertySiteProfileHighlightIconUnknown" xml:space="preserve">
+    <value>Choose the icon of the highlight from the ones offered.</value>
+  </data>
+  <data name="PropertySiteProfileTooManySafetyNotes" xml:space="preserve">
+    <value>You can add {0} safety notes at most.</value>
+  </data>
+  <data name="PropertySiteProfileTagUnknown" xml:space="preserve">
+    <value>This label does not exist: choose one of those offered.</value>
+  </data>
+  <data name="PropertySiteProfileFloorLevelInvalid" xml:space="preserve">
+    <value>The floor must be between {0} and {1} (0 is the ground floor).</value>
+  </data>
+  <data name="PropertySiteProfileRenovatedYearInvalid" xml:space="preserve">
+    <value>The renovation year must be between {0} and {1}.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyClassInvalid" xml:space="preserve">
+    <value>The energy class must be one of A4, A3, A2, A1, A, B, C, D, E, F, G.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyIndexInvalid" xml:space="preserve">
+    <value>The energy performance index must be between 0 and {0} kWh/m² per year.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyIndexWithoutClass" xml:space="preserve">
+    <value>Give the energy class together with the performance index.</value>
+  </data>
+  <data name="PropertySiteProfileCheckInWindowInvalid" xml:space="preserve">
+    <value>The latest arrival time must be after the earliest one.</value>
+  </data>
+  <data name="PropertySiteProfileVideoUrlInvalid" xml:space="preserve">
+    <value>The video must be a YouTube or Vimeo address (https).</value>
+  </data>
+  <data name="PropertySiteProfileTourUrlInvalid" xml:space="preserve">
+    <value>The virtual tour must be a Matterport address (https).</value>
+  </data>
 </root>

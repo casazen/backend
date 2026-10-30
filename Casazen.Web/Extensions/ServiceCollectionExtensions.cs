@@ -416,6 +416,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
+        // DB-11a: the optional facts and texts of the property page of the booking site (api/properties/{id}/site-profile).
+        services.AddScoped<IPropertySiteProfileService, PropertySiteProfileService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
         services.AddScoped<IApeComplianceService, ApeComplianceService>();
         // The code of an APE the file does not show legibly, from the public CENED register of Lombardy (open data, no key).
