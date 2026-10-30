@@ -32,8 +32,12 @@ public class SupplierShowcaseContentController(
     ISupplierShowcaseContentService content,
     ISupplierService supplierService,
     ISupplierOrgContextResolver supplierOrgContextResolver,
+    ISupplierKpiService kpis,
     PublicSiteLinks publicSiteLinks) : ControllerBase
 {
+    /// <summary>The period of the two numbers of the showcase: the requests of the last 30 days (decision VT-D15).</summary>
+    private const int StatsDays = 30;
+
     /// <summary>
     /// The content: the draft (empty before the first save), what is published, the state (<c>Draft</c>, <c>Online</c>, <c>ChangesReady</c>,
     /// <c>Paused</c>), what a publication would change (<c>changes</c>), the <c>version</c> to send back with the next save and the public
@@ -141,6 +145,45 @@ public class SupplierShowcaseContentController(
         await RunAsync(orgId => content.ResumeAsync(orgId, cancellationToken), ensureAddress: false, cancellationToken);
 
     /// <summary>
+    /// The short status of the showcase for the home and the checklist of the console: whether it is published, whether the draft has changes, whether
+    /// it is paused, the public address, the two true numbers (<c>requests30d</c>: the requests that came from the showcase in the last 30 days,
+    /// <c>pending30d</c>: how many of them still wait for an answer), what a publication would change, when it was published and last saved, and
+    /// <c>completeness</c> (0 to 100: the share of the readiness items that are done).
+    /// </summary>
+    [HttpGet("status")]
+    [ProducesResponseType(typeof(ShowcaseStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ShowcaseStatusDto>> GetStatus(CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        var view = await content.GetAsync(orgId.Value, cancellationToken);
+        var stats = await kpis.GetShowcaseRequestStatsAsync(orgId.Value, StatsDays, cancellationToken);
+        var (_, url) = await AddressAsync(orgId.Value, ensure: false, cancellationToken);
+
+        return Ok(ShowcaseContentMapper.ToStatus(view, stats, url));
+    }
+
+    /// <summary>
+    /// The two true numbers of the showcase editor: the requests that came from the showcase in the last 30 days and how many of them still wait for
+    /// the supplier's answer. Visits and conversion are not counted (decision VT-D15).
+    /// </summary>
+    [HttpGet("stats")]
+    [ProducesResponseType(typeof(ShowcaseStatsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ShowcaseStatsDto>> GetStats(CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        var stats = await kpis.GetShowcaseRequestStatsAsync(orgId.Value, StatsDays, cancellationToken);
+        return Ok(new ShowcaseStatsDto { Days = stats.Days, Requests = stats.Requests, Pending = stats.Pending });
+    }
+
+    /// <summary>
     /// Runs <paramref name="action"/> for the caller's linked supplier org. The org comes only from the caller's own supplier link
     /// (<see cref="ISupplierOrgContextResolver.GetLinkedSupplierOrgIdAsync"/>): the content never provisions a supplier org, it is business
     /// data. The answer carries the public address; <paramref name="ensureAddress"/> gives an active supplier that has none yet (activated
@@ -156,13 +199,19 @@ public class SupplierShowcaseContentController(
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
 
         var view = await action(orgId.Value);
-
-        if (ensureAddress)
-            await supplierService.EnsureShowcaseSlugAsync(orgId.Value, cancellationToken);
-        var profile = await supplierService.GetProfileAsync(orgId.Value, cancellationToken);
-        var path = string.IsNullOrEmpty(profile?.ShowcaseSlug) ? null : PublicSitePaths.SupplierShowcase(profile.ShowcaseSlug);
-        var url = path is null ? null : publicSiteLinks.TryPublicPage(path);
+        var (path, url) = await AddressAsync(orgId.Value, ensureAddress, cancellationToken);
 
         return Ok(ShowcaseContentMapper.ToResponse(view, path, url));
+    }
+
+    /// <summary>The path and the absolute URL of the supplier's showcase; both <c>null</c> while it has no address (never activated).</summary>
+    private async Task<(string? Path, string? Url)> AddressAsync(Guid orgId, bool ensure, CancellationToken cancellationToken)
+    {
+        if (ensure)
+            await supplierService.EnsureShowcaseSlugAsync(orgId, cancellationToken);
+
+        var profile = await supplierService.GetProfileAsync(orgId, cancellationToken);
+        var path = string.IsNullOrEmpty(profile?.ShowcaseSlug) ? null : PublicSitePaths.SupplierShowcase(profile.ShowcaseSlug);
+        return (path, path is null ? null : publicSiteLinks.TryPublicPage(path));
     }
 }

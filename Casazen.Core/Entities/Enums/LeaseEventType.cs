@@ -123,4 +123,11 @@ public enum LeaseEventType
     /// does not keep a copy of it. No personal data.
     /// </summary>
     LetterSent,
+
+    /// <summary>
+    /// The landlord recorded the renewal of the lease before the end of its period (LR-OPS-1): the end of the period moved forward and the
+    /// rent plan was extended. Payload: <c>{Standard|Agreed}:{from}:{to}</c>, the first and last day of the period added (<c>yyyy-MM-dd</c>).
+    /// Not the tacit renewal of the hourly job, which writes <see cref="TermRenewed"/>. No personal data.
+    /// </summary>
+    RenewalRecorded,
 }

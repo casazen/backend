@@ -22,7 +22,8 @@ public sealed class SupplierTodayService(
     ISupplierAgendaService agenda,
     TimeProvider? timeProvider = null,
     ISupplierPaymentsAccountService? paymentsAccount = null,
-    IFeatureFlags? features = null) : ISupplierTodayService
+    IFeatureFlags? features = null,
+    ISupplierShowcaseContentService? showcase = null) : ISupplierTodayService
 {
     /// <summary>
     /// Jobs listed: far above the daily maximum a supplier can set (50), so it never bites for one day; a week can pass it, which is
@@ -99,14 +100,24 @@ public sealed class SupplierTodayService(
                 paymentsActive = account.CanReceivePayments;
         }
 
+        // The showcase is published when the page is reachable (an active supplier with its address) and, once the supplier used the editor,
+        // when it published something that is not paused (SP-13a). A supplier that never saved a content keeps the plain page of SU-13, which is
+        // online for every active supplier with an address, so the step stays done for it.
+        var showcasePublished = profile.Status == SupplierStatus.Active && !string.IsNullOrEmpty(profile.ShowcaseSlug);
+        if (showcasePublished && showcase is not null)
+        {
+            var publication = await showcase.GetPublicationAsync(supplierOrgId, cancellationToken);
+            if (publication.Exists)
+                showcasePublished = publication.Published && !publication.Paused;
+        }
+
         return new SupplierChecklist(
             dashboard.ProfileCompletionPercent,
             ProfileComplete: dashboard.ProfileCompletionPercent >= 100,
             activeServices,
             HoursConfigured: hours.ConfiguredAt is not null,
             HoursConfiguredAt: hours.ConfiguredAt,
-            // As the owner's preview says: published only for an active supplier that has its address.
-            ShowcasePublished: profile.Status == SupplierStatus.Active && !string.IsNullOrEmpty(profile.ShowcaseSlug),
+            ShowcasePublished: showcasePublished,
             FirstRequestAnswered: answered,
             PaymentsActive: paymentsActive,
             Verification: verification);
