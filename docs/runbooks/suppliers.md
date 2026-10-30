@@ -1560,7 +1560,7 @@ Queued **after** the change is saved, by the winner of a race only; a queue that
 
 | Event | To | Email | Push `type` |
 |---|---|---|---|
-| New request | the supplier | comune, time, amount, link to the inbox | `service-request-created` |
+| New request (not if the supplier turned «Nuove richieste» off, SP-16d, section 35) | the supplier | comune, time, amount, link to the inbox | `service-request-created` |
 | New request accepted automatically (SP-04d, section 21.14), **instead of** the line above | the supplier | comune, time, amount, link to the inbox; no address, no contact | `service-request-auto-accepted` |
 | Taken, started, completed (with final amount, the over-quote note and the supplier's notes), rejected | the host | status email | `service-request-taken`, `-started`, `-completed`, `-rejected` |
 | Cancelled by the supplier / by CasaZen (no answer) | the host | status email | `service-request-cancelled` |
@@ -1570,7 +1570,9 @@ Queued **after** the change is saved, by the winner of a race only; a queue that
 | Proposal accepted / turned down | the supplier | answer | `service-request-proposal-accepted` / `-rejected` |
 | Quote sent (SP-04b, section 34) | the host | the lines, the total, the time of the work, the note | `service-request-quote-sent` |
 | Quote accepted / turned down (SP-04b) | the supplier | answer, price and time | `service-request-quote-accepted` / `-rejected` |
-| Marked as paid | the supplier | unchanged | `service-request-paid` |
+| Marked as paid (not if the supplier turned «Pagamenti ricevuti» off, SP-16d) | the supplier | unchanged | `service-request-paid` |
+| The day before the work, 18:00 Rome (SP-16d, section 35.2) | the supplier | service, time, comune, link to the request; no address, no contact | `service-request-day-before` |
+| A payment made through CasaZen arrived (SP-16d, section 35.3) | the supplier | gross, commission, net before Stripe's fees (SP-15b) | `service-payment-received` |
 
 The requests born from a supplier's showcase (SP-10) have the customer as their other party: its e-mails are listed in sections 23.8 and
 24.7, and the push `type` `service-request-rescheduled` (SP-11) is the one new `type` of the customer's own area.
@@ -1637,7 +1639,7 @@ and the contact of the host as after any take (decision D9).
 **Messages.** Only the ones the flow already sends, and no other to anybody: the **host** gets the usual "taken" email and push (`service-request-taken`); the
 **supplier** gets, **instead of** the "new request" email and push, the email and push `service-request-auto-accepted` ("accettata in automatico"; comune, time and amount,
 never the address or the contact of the host, and an invitation to cancel from the console if it cannot do the job). Nothing is sent to the guest or to a third party.
-The setting `NotifyNewRequests` is not read by any code yet (SP-16d connects it, and will gate this message with the one of a new request).
+The setting `NotifyNewRequests` governs this message like the one of a new request (SP-16d, section 35): a supplier that turned it off gets neither.
 
 **Response time.** A request accepted automatically is born taken, so its wait would be 0: it is **left out of the average** (`GET api/supplier/today`, the overview of
 section 27) and of the public median, and it counts as **accepted** in the acceptance rate.
@@ -1651,7 +1653,7 @@ always cancel); the demo showcase has no supplier with the option on (it has no 
 
 **For the tasks stacked on this one.** `PUT api/supplier/settings` writes `AutoAcceptRegulars` under the same agenda lock that creating a request takes, so a request is
 judged on the value as it is saved; SP-16c shows the switch and the explanation; SP-08c shows `autoAccepted` and the "Accettata in automatico" step; SP-16d gates this
-message by `NotifyNewRequests`.
+message by `NotifyNewRequests` (done, section 35).
 
 **After a deploy.**
 - [ ] Migration `AddServiceRequestAutoAccepted` applied; every row has `AutoAccepted = false`.
@@ -2042,7 +2044,7 @@ languages for the phrases that must never appear. The proposal e-mail points to 
 | Job | Cron (UTC) | Always registered | What |
 |---|---|---|---|
 | `service-request-expiry` | `*/5 * * * *` | yes | deletes the holds past their expiry (the checked ones are kept until then for the replay of the link), cancels the showcase requests past `ResponseDueAt` (also a proposal the customer did not answer: reason `ProposalNotAnswered`, SP-11) and tells the customer (and, for a lapsed proposal, the supplier) |
-| `service-request-reminders` | hourly | yes | the reminder of the day before 18:00 Rome, once (`ReminderSentAt`), only for a request taken before that time |
+| `service-request-reminders` | hourly | yes | the reminder of the day before 18:00 Rome, once, only for a request taken before that time: to the customer of a showcase request (`ReminderSentAt`) and, since SP-16d, to the supplier of any taken request (`SupplierReminderSentAt`, section 35) |
 | `gdpr-data-retention` | 03:00 | yes | + the customers of the suppliers (23.7), off until configured |
 
 The retention changes the customers of one supplier under that supplier's calendar lock and reads them again after taking it: a
@@ -2984,9 +2986,9 @@ supplier org of the caller's **own link** (`GetLinkedSupplierOrgIdAsync`: a read
 |---|---|---|---|
 | `onlineBookingEnabled` | `OnlineBookingEnabled` | `false` | the booking from the showcase (SP-10): off is 422 `supplier_booking_offline`. **Read-only here** (below) |
 | `autoAcceptRegulars` | `AutoAcceptRegulars` | `false` | SP-04d, section 21.14 (a regular host is one with at least three jobs taken with the supplier): on, the requests of its regular hosts are accepted automatically |
-| `notifyNewRequests` | `NotifyNewRequests` | `true` | SP-16d; until it is deployed no code reads it |
-| `notifyDayBeforeReminder` | `NotifyDayBeforeReminder` | `true` | SP-16d, same |
-| `notifyPayments` | `NotifyPaymentMarked` | `true` | SP-16d, same |
+| `notifyNewRequests` | `NotifyNewRequests` | `true` | SP-16d (section 35): the e-mail and the push of a new request (a host's, accepted automatically, from the showcase) |
+| `notifyDayBeforeReminder` | `NotifyDayBeforeReminder` | `true` | SP-16d: the reminder of the day before to the supplier (section 35.2) |
+| `notifyPayments` | `NotifyPaymentMarked` | `true` | SP-16d: the notice that a job was paid (the customer marked it, or it was paid through CasaZen; section 35.3) |
 | `respondWithinMinutes` | `RespondWithinMinutes` | `180` (3 h, D8) | the deadline of a booking from the showcase (`ResponseDueAt`); a request of a CasaZen host has its own (`Suppliers:ServiceRequests:HostResponseMinutes`, 2 h) and shows it as `respondBy` |
 
 - **`GET`** answers the defaults while the supplier never saved a setting: a read **never creates the row**. **`PUT`** replaces the five settings the console
@@ -3615,6 +3617,71 @@ reuses. The brief's flag `SupplierQuotes` is not created (override of 17/10): se
 
 Nothing to configure and no new setting. The migration adds the columns (empty) and the two checks. To try it on a test supplier: `POST api/service-requests/{id}/quote` with a line or two on a new request of a host, then
 `POST …/quote/accept` with `quoteSentAt` as given; for a showcase booking `SupplierShowcaseBooking` has to be on (section 23).
+
+## 35. The notices of the supplier: the three switches, the reminder of the day before, the payment received — SP-16d
+
+Redesign wave task SP-16d (branch `feature/rd-supplier-notifications`): **no flag**, migration `AddServiceRequestSupplierReminder` (additive: one nullable column
+`ServiceRequests.SupplierReminderSentAt`, nothing is backfilled). The card «Notifiche» of the console writes three switches (`PUT api/supplier/settings`, section 29.1)
+that were columns nothing read; now they do what they say.
+
+### 35.1 What each switch governs
+
+| Switch (column of `SupplierSettings`) | Governs (e-mail **and** push) | Never hidden by a switch |
+|---|---|---|
+| `notifyNewRequests` (`NotifyNewRequests`) | a new request to answer: a host's (`service-request-created`), the same accepted automatically (`service-request-auto-accepted`, section 21.14, it is the new-request notice in its other form) and one from the public showcase (`supplier-booking-new-request`, section 23) | a cancellation, the answer to a proposed time or to a quote, a quote nobody answered, the reminder of the host, a payment that failed or was refunded |
+| `notifyDayBeforeReminder` (`NotifyDayBeforeReminder`) | the reminder of the day before (35.2) | — |
+| `notifyPayments` (`NotifyPaymentMarked`) | a job paid: the customer marked it as paid (`service-request-paid`, a request paid outside CasaZen) and the payment made through CasaZen (`service-payment-received`, with the net, 35.3) | the refund and the payment that failed (SP-15b) |
+
+- A supplier that never saved its settings has **no row** (it is lazy, section 29.1) and gets the defaults: all three **on**. A switch is read at the moment of sending.
+- **One place decides.** `SupplierNotificationPreferences.AllowsAsync(db, supplierOrgId, kind)` reads the row (`SupplierNotificationRules.Allows` is the pure rule) and every path that queues
+  one of the three kinds asks it **in the same method**. `SupplierNotifyingPathsArchitectureTests` names the notices, lists the files that may queue them and fails when a use is not behind the
+  question or is in a file that is not on the list: a path written later has to be added there on purpose.
+- The customer's receipt of a showcase booking (`supplier-booking-receipt`) does not depend on the supplier's switch.
+
+### 35.2 The reminder of the day before, to the supplier
+
+The job of the customers' reminder (`service-request-reminders`, hourly, section 23 and `hangfire.md`) has a **second pass**, `SupplierDayBeforeReminders`, under the same session lock. It looks at the requests
+in status `PresoInCarico` with a start time in the next 48 hours and no `SupplierReminderSentAt`, **of any context** (a host's short or long stay, or the showcase), and reminds the supplier of those whose
+time has come: **18:00 Europe/Rome of the day before** (daylight saving time follows the clock of Rome, `ServiceRequestReminderRules`), the work not started, **once**.
+
+- **Once.** The request is marked (`SupplierReminderSentAt`, in a save that carries `xmin`: a request cancelled or changed meanwhile wins and is left as it is) **before** the notice is queued, so a crash or a
+  repeated run sends it once or not at all. The mark is also written when nothing is sent because the supplier turned the reminder off or is suspended: the request was judged, and a supplier that turns the switch on that
+  night does not get it late.
+- A request taken **after** that time gets none (the supplier took it a moment ago), as for the customer. Requests that existed before the deploy are judged by the same rule; a job already past is not reminded.
+- **What it says** (`ServiceRequestNotifier.NotifySupplierDayBeforeAsync`, Italian, e-mail `service-request-day-before` and push `service-request-day-before`): the service, the time (and its end) in Rome and the
+  **comune**, and a link to the request (`/app/supplier/inbox/{id}`). **Never the address, the contact, the name of the property, the notes or the name of the customer** (decision D9: they are in the console after the
+  take, and the arguments of a queued job are no place for personal data, SEC-SP10-2). Not sent to a supplier that is not active.
+- The run record (`ServiceRequestReminderRun`) counts `SupplierSent` and `SupplierFailed` next to `Sent` and `Failed` of the customers; at most 500 rows per pass.
+
+### 35.3 The payment received
+
+- A payment made through CasaZen that becomes `Paid` (the webhook, or the sync job of SP-15b) already e-mailed the supplier the receipt (`service-payment-received`: gross, commission, net before Stripe's fees). SP-16d adds the **push**
+  (`service-payment-received`: «{service}: {net} netti per te, prima delle commissioni di Stripe»; `entityId` is the request) and puts both behind `notifyPayments`. Nothing is promised about when the money reaches the bank (D14, D24).
+- The notice that the host marked a request **paid outside CasaZen** (`service-request-paid`, SU-09) follows the same switch.
+- **Not** sent for a payment the supplier recorded itself as received outside CasaZen (`payment/offline`, section 26: it raises no notice to the supplier), and the refund (SP-15b) always arrives.
+
+### 35.4 For the mobile app
+
+Two new `data.type` of push, both to the supplier org: `service-request-day-before` and `service-payment-received` (`entityId`: the service request, route as the other supplier pushes). Delivery keys: one per request
+(`service-request:{id}:day-before`) and one per payment (`service-payment:{id}:received`), so a retry is one push. The bell of the web app does not know them yet (SP-16d-FU1).
+
+### 35.5 Decisions applied (defaults, nothing asked)
+
+- The automatic-acceptance notice follows `notifyNewRequests` (it is the new-request notice when there is nothing left to answer); the host-reminder, the cancellation and the answers stay always on.
+- A reminder skipped because of the switch or of a suspension is marked as judged (see 35.2).
+- The channel follows the event: e-mail and push go together under one switch (the design's choice of channels is not in this release). Language: Italian, as the other notices of the supplier.
+- The hour (18:00 of the day before) is not the supplier's to choose.
+
+### 35.6 Known limits (follow-ups, nothing is broken)
+
+- SP-16d-FU1: the bell of the web app (`notification-model.ts`) lacks the two new types (it shows the generic sentence and opens nothing).
+- SP-16d-FU2: SMS, WhatsApp, a daily summary, the choice of channels and of the hour, and notices for expiring documents or reviews are not here (out of the scope of the task).
+
+### 35.7 After a deploy
+
+**Release note: at the deploy the suppliers start receiving the reminder of the day before** for the jobs they already took and that start in the next hours (at most 500 per run, each once). Nothing to configure and no new
+setting. To try it on a test supplier: take a request for tomorrow, then run `service-request-reminders` from the Hangfire dashboard after 18:00 Rome of today (or move the work to the next hours), and check the e-mail (no address in it)
+and the push; turn `notifyDayBeforeReminder` off with `PUT api/supplier/settings` and a second request is not reminded. The migration `AddServiceRequestSupplierReminder` adds the column (nullable); it goes down by dropping it.
 
 ## Known limits (other tasks)
 

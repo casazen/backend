@@ -363,7 +363,7 @@ public sealed class ShowcaseBookingService(
 
         logger.LogInformation("Showcase request {RequestId} of supplier {OrgId} created from hold {HoldId}", request.Id, orgId, holdId);
 
-        notifier.QueueRequestReceived(supplier, request, customer, request.ResponseDueAt!.Value);
+        await notifier.QueueRequestReceivedAsync(supplier, request, customer, request.ResponseDueAt!.Value, cancellationToken);
         return result;
     }
 

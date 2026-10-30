@@ -1821,4 +1821,31 @@
   <data name="Push_ServiceRequestQuoteExpired_Body" xml:space="preserve">
     <value>{0} a {1}: il cliente non ha risposto, la richiesta è annullata.</value>
   </data>
+  <data name="ServiceRequestDayBefore_Subject" xml:space="preserve">
+    <value>Domani: {0} a {1}</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Body" xml:space="preserve">
+    <value>Ti ricordiamo il lavoro di domani: &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestDayBefore_When" xml:space="preserve">
+    <value>Quando: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Hint" xml:space="preserve">
+    <value>L'indirizzo e i contatti del cliente sono nella richiesta, nella tua console.</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Cta" xml:space="preserve">
+    <value>Apri la richiesta</value>
+  </data>
+  <data name="Push_ServiceRequestDayBefore_Title" xml:space="preserve">
+    <value>Domani hai un lavoro</value>
+  </data>
+  <data name="Push_ServiceRequestDayBefore_Body" xml:space="preserve">
+    <value>{0} a {1}, alle {2}.</value>
+  </data>
+  <data name="Push_ServicePaymentReceived_Title" xml:space="preserve">
+    <value>Pagamento ricevuto</value>
+  </data>
+  <data name="Push_ServicePaymentReceived_Body" xml:space="preserve">
+    <value>{0}: {1} netti per te, prima delle commissioni di Stripe.</value>
+  </data>
 </root>

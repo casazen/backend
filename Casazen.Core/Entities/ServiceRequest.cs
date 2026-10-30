@@ -333,6 +333,14 @@ public class ServiceRequest
     public DateTime? ReminderSentAt { get; set; }
 
     /// <summary>
+    /// When the reminder of the day before was decided for the <b>supplier</b> (SP-16d, the same job <c>service-request-reminders</c>, 18:00
+    /// Europe/Rome, any context of the request): once per request. It is set in the save that precedes the queueing, and also when the
+    /// reminder is not sent because the supplier turned it off or is suspended, so a request is judged once and not at every run. Requests that
+    /// existed before the column have no value and are judged by the same rule: the work must still be ahead.
+    /// </summary>
+    public DateTime? SupplierReminderSentAt { get; set; }
+
+    /// <summary>
     /// Optimistic concurrency token (A4-19): mapped to PostgreSQL's <c>xmin</c> system column, which changes with every
     /// update of the row (no column of its own). Two transitions that read the same state cannot both be saved: the
     /// second save fails and the caller gets 409 <c>service_request_state_changed</c>.

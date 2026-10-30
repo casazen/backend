@@ -65,6 +65,12 @@ public static class PushDeliveryKeys
     /// <summary>A new service request accepted automatically for a regular host (SP-04d), to the supplier: it replaces the push of the new request.</summary>
     public static string ServiceRequestAutoAccepted(Guid serviceRequestId) => $"service-request:{serviceRequestId:N}:auto-accepted";
 
+    /// <summary>The reminder of the day before the work (SP-16d), to the supplier: one per request, whatever the number of runs of the job.</summary>
+    public static string ServiceRequestDayBefore(Guid serviceRequestId) => $"service-request:{serviceRequestId:N}:day-before";
+
+    /// <summary>The payment of a job made through CasaZen (SP-16d), to the supplier: one per payment.</summary>
+    public static string ServicePaymentReceived(Guid paymentId) => $"service-payment:{paymentId:N}:received";
+
     /// <summary>
     /// A service request reached <paramref name="status"/>, to the host (or, for a cancellation, to the other party). The
     /// state machine reaches every status at most once (SU-10), so the key identifies the transition.
@@ -175,6 +181,12 @@ public static class PushTypes
 
     /// <summary>The customer of a showcase request did not answer the quote in time and the request was cancelled (SP-04b): pushed to the supplier org.</summary>
     public const string ServiceRequestQuoteExpired = "service-request-quote-expired";
+
+    /// <summary>The job of tomorrow, at 18:00 of the day before (SP-16d): pushed to the supplier org, for a request of any context. No address in it.</summary>
+    public const string ServiceRequestDayBefore = "service-request-day-before";
+
+    /// <summary>A payment made through CasaZen arrived (SP-16d): pushed to the supplier org with the net; <c>entityId</c> is the service request.</summary>
+    public const string ServicePaymentReceived = "service-payment-received";
     public const string NewBooking = "new-booking";
 
     /// <summary>The guest of a direct booking wrote a message: pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its thread.</summary>
