@@ -3440,6 +3440,73 @@ by its scope «Solo alcuni»); a long-rent request, or one of a supplier's showc
 
 SR-D3 (the stay is optional), SR-D20 (`pay` and `markPaid` follow `paymentMode`; online payments stay behind `SupplierOnlinePayments`), SR-D21 (the quote enters with SP-04b), SR-D35 (no «pay all»). Counters are `camelCase` like the other counters (`toPay`, while the chip is `topay`). The supplier's contact is the phone and the e-mail of its profile, given at the take. No rate limit on the list (a signed-in read of the caller's own org).
 
+## 34. The request on measure from the showcase — SP-10b (part a)
+
+Redesign wave task SP-10b, first of its two parts (branch `feature/rd-supplier-inquiry`, backend only), **no new feature flag** (the override of 17 October allows only the eight that exist: the endpoints ride on
+`SupplierShowcaseBooking`, which keeps them 404 wherever the booking is off), migration `AddShowcaseInquiries` (additive: one column, two tables, three CHECKs). Where the booking (section 23) needs a slot, the **request on measure**
+is for what the price list does not say: a service that is not in it, or is but with variations. The customer describes it in its own words, checks its e-mail and, only then, a request exists for the supplier, who answers inside CasaZen: the quote and the
+particular requests stay inside the app (interview of 9 October, Q3 and Q7), with no public contact of the supplier and no generic "Scrivici". This part is the **opening**: the inquiry, the check of the address, the request with its first message, and the
+mails. The conversation (the messages of the two parties, the thread in the customer's page and in the console, refusing and closing) is the next part; the offer and its acceptance are SP-10b-b.
+
+### 34.1 The request
+
+`ServiceRequest.Kind` (new column: `Standard` = 0 for every request there was, `Custom` = 1; CHECK `CK_ServiceRequests_Kind`: only the Showcase context can have a `Custom` one). **It is not a status**: the lifecycle is the one of every
+request (`Richiesto`, `PresoInCarico` ... `Rifiutato`, `Annullato`), so the mobile app, the inbox, the counters and the cancellations keep working with no new value. A request on measure is born `Richiesto`, with:
+
+- **no time** (`ScheduledStartUtc` and `ScheduledEndUtc` null) and no price: both come with the offer (SP-10b-b);
+- the comune the customer gave (`LocationCity`, and `LocationComuneIstat` when it picked one from the official list) and nothing else of the place: the street comes later;
+- the service it is about when the customer named one (`ServiceListingId`, `ServiceNameSnapshot`, its category), else the first category of the supplier;
+- `ResponseDueAt` = the moment the address is checked + `Suppliers__Showcase__InquiryResponseMinutes` (60; 5 to 1440, out of range: **startup**). If the supplier does not answer by then the always-on job `service-request-expiry` cancels the
+  request with the reason `NoResponse`, as it does with a booking nobody answered; the first message of the supplier stops the clock (next part);
+- `Notes` empty: what the customer wrote is the first **message** (34.4).
+
+### 34.2 Endpoints
+
+Both are anonymous, behind `SupplierShowcaseBooking` (404 like a route that does not exist while it is off), never indexable (`X-Robots-Tag: noindex`) and never cached (`Cache-Control: no-store`).
+
+| Endpoint | What |
+|---|---|
+| `POST api/public/suppliers/{slug}/inquiries` | Body: `clientRequestId`, `service?` (slug of a published service, a service on quote too), `comuneIstat?`, `city`, `message` (10 to 1000 characters), `fullName`, `email`, `phone`, `locale`, `privacyAccepted`, `privacyNoticeVersion` and the trap `website`. 201 `{ id, expiresAt }` and nothing else; the same `clientRequestId` is the same inquiry (no second e-mail). 404 for a supplier that is not active and `supplier_service_not_found`; 422 `supplier_booking_invalid` (with `fields`), `supplier_booking_consent_required` / `_outdated`, `supplier_booking_outside_zone`; 429 `rate_limited` |
+| `POST api/public/suppliers/{slug}/inquiries/{id}/confirm-email` | Body: `{ token }`. 200 `{ publicCode, status, serviceName?, respondBy?, alreadyConfirmed }`; a second click answers the same with `alreadyConfirmed` and does nothing again. 404 `supplier_booking_link_invalid` (unknown inquiry, another supplier's, wrong token: one answer), 409 `supplier_booking_link_expired`, 422 `supplier_booking_supplier_unavailable` |
+
+The codes are those of the booking (section 23): the same fields, the same consent, the same zone (the comune has to be one the supplier covers), the same 429. The e-mail carries the link `/fornitori/{slug}/conferma?inquiry={id}#token={token}`: the page reads
+`inquiry` from the query and the **token from the fragment**, which a browser never sends to a server, so the token is in no access log, and posts both to `confirm-email`. The booking's link keeps its own keys on the same page (`?hold=` and `token=`).
+
+### 34.3 Nothing before the check, almost nothing after
+
+Decision D34 holds: until the address is checked the supplier receives **nothing** (no request, no e-mail, no push) and the customer has only a row that lapses (`ShowcaseInquiries`, 30 minutes by default: `Suppliers__Showcase__EmailVerificationMinutes`). The row keeps what the
+customer typed as an **encrypted** JSON (`PayloadEncrypted`, the purpose of the customers of the suppliers); when the address is checked it becomes the customer (`ServiceCustomers`, the same one as for a booking), the request and its first message, the payload is
+erased and the token hash stays so that a second click answers the same. The job `service-request-expiry` deletes the rows that lapsed (it counts them with the holds in `holdsDeleted`).
+
+When the address is checked the customer gets a receipt (in its language: the code `XXXXX-XXXXX`, the deadline of the supplier, the link to the request) and the supplier an e-mail and a push in Italian with the comune, the service when there is one, "Nome C." (decision D9) and the
+deadline. **Never a word of the customer's message, its full name, e-mail or phone**, nor its address: the words are read in the request, by the two parties (a test looks for them in the mail and the push). The full name and the contacts come with the take, as for every
+showcase request.
+
+### 34.4 The messages
+
+Table `ServiceRequestMessages` (the request, `OrgId` = the supplier org, `Author` `Customer` / `Supplier` / `System`, `BodyEncrypted`, `CreatedAt`, `ReadAt`): the thread of a request on measure, in order. This part writes only the first message; reading and writing the
+others is the next part. The body is free text a person wrote, **encrypted at rest** with its own purpose (`Casazen.ServiceRequestMessage`), 10 to 1000 characters for the first one, at most 200 messages per request, plain text only: no attachments, and in v1 no masking of numbers or addresses
+(forbidden by the conditions and reportable: decisions VT-D11 and VT-D12).
+
+### 34.5 Limits against abuse
+
+Per IP: the policy `PublicSupplierBookingCreate` of the booking (5 per 10 minutes, one budget for both). Per address and supplier: the booking's `SupplierBookingCreatePerEmail` (3 per hour, one budget for both too). And at most **three requests of one address wait at the same
+time** for one supplier (the inquiries whose address is not checked yet plus the requests on measure still `Richiesto`): the fourth is the same 429, with the same wait, so the three look alike and none tells whether an address is known. The trap `website` is answered like a
+request and nothing is done. The body is at most 16 KB (the check, 1 KB).
+
+### 34.6 Tenancy
+
+`ShowcaseInquiries` and `ServiceRequestMessages` are keyed by the supplier org and are **not** `ITenantOwned` (the customer is anonymous and a supplier-only account has no `User.OrgId`): they are in the allow-list of `TenantQueryFilterArchitectureTests` with the reason, every statement
+carries the explicit `OrgId` predicate, and `ShowcaseInquiryTenancyTests` allows only `ShowcaseInquiryService`, the expiry job and the repair to use them. The merge of duplicate supplier profiles (`fix-orphaned`) drops the duplicate's inquiries that wait and moves the
+messages of the requests that moved.
+
+### 34.7 After a deploy
+
+- [ ] Migration `AddShowcaseInquiries` applied (`ServiceRequests.Kind` = 0 on every existing row; tables `ShowcaseInquiries` and `ServiceRequestMessages`; CHECKs `CK_ServiceRequests_Kind`, `CK_ShowcaseInquiries_Expiry`, `CK_ServiceRequestMessages_Author`).
+- [ ] With `Features__SupplierShowcaseBooking` **off** (production): both endpoints answer 404 `not_found`, as before the task.
+- [ ] Test environment, flag on: an inquiry for an active supplier is 201 and the supplier gets nothing; the link of the e-mail ends in `#token=...`; `confirm-email` is 200 and now the supplier's inbox has a request `Richiesto` with "Nome C.", the comune and no time, and its e-mail does
+      not contain the words of the customer.
+
 ## Known limits (other tasks)
 
 - Booking from the showcase (SP-10, SP-11): the customer finds, cancels, moves and answers a proposed time of its request (section 24).
