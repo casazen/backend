@@ -54,6 +54,10 @@ public record DirectBookingQuoteInput(
 /// surcharge. <c>BasePrice = Lodging.Total + CleaningFee</c>; with no surcharge (the default) <c>Lodging.Total</c> is
 /// <c>NightlyRate x Nights</c>, as it has always been.
 /// </param>
+/// <param name="Cancellation">
+/// What cancelling costs for this stay (DB-03b): the last days of the full and of the partial refund, on the policy of the stay, Europe/Rome
+/// dates still ahead. Worked out from the same policy as <paramref name="FreeRefundDeadline"/> and the guest area.
+/// </param>
 public record DirectBookingQuote(
     Guid PropertyId,
     DateTime CheckInDate,
@@ -67,7 +71,8 @@ public record DirectBookingQuote(
     string Currency,
     DateTime FreeRefundDeadline,
     DirectBookingPaymentOptions PaymentOptions,
-    StayLodging Lodging);
+    StayLodging Lodging,
+    StayCancellation? Cancellation = null);
 
 /// <summary>
 /// The lodging part of a quote (DB-03, D20): <see cref="WeekdayNights"/> nights at <see cref="NightlyRate"/> and
