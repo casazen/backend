@@ -77,7 +77,7 @@ public class LeaseDepositServiceTests : IDisposable
 
         // 1,950.00 held from 1 November 2025 to 9 October 2026: 61 days of 2025 at 2 % (6.52) and 282 days of 2026 at 1.6 % (24.11).
         var statement = await service.CalculateDepositReturnAsync(lease.Id, input);
-        var letter = PdfTestReader.Text((await service.BuildRestituzioneCauzioneAsync(lease.Id, input)).Pdf);
+        var letter = BodyText((await service.BuildRestituzioneCauzioneAsync(lease.Id, input)).Pdf);
 
         Assert.Equal(30.63m, statement.Interest);
         Assert.Equal(1860.63m, statement.Returned); // 1950.00 + 30.63 - 120.00
@@ -129,6 +129,9 @@ public class LeaseDepositServiceTests : IDisposable
 
         Assert.Empty(await db.LeaseEvents.ToListAsync());
     }
+
+    /// <summary>The words of the body of the PDF in reading order: the rotated watermark is not interleaved with the sentences it crosses.</summary>
+    private static string BodyText(byte[] pdf) => string.Join(' ', PdfTestReader.BodyWords(pdf));
 
     private static string LettersDirectory()
     {
