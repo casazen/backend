@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
@@ -118,7 +119,10 @@ public class SupplierShowcaseContentServiceTests
             .Setup(s => s.TryGetPublicKey(It.IsAny<string>()))
             .Returns((string url) => url.StartsWith(PublicBase, StringComparison.Ordinal) ? url[PublicBase.Length..] : null);
 
+        var db = CreateDb();
+        var agenda = new SupplierAgendaService(
+            db, new SupplierServiceRequestReader(db), new ShowcaseHoldReader(db), NullLogger<SupplierAgendaService>.Instance, _clock);
         return new SupplierShowcaseContentService(
-            CreateDb(), catalog.Object, storage.Object, NullLogger<SupplierShowcaseContentService>.Instance, _clock);
+            db, catalog.Object, agenda, storage.Object, Mock.Of<IFeatureFlags>(), NullLogger<SupplierShowcaseContentService>.Instance, _clock);
     }
 }

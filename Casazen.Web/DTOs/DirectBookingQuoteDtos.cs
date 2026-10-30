@@ -127,8 +127,9 @@ public class DirectBookingPaymentOptionsDto
     public DateOnly? DeferredChargeDate { get; set; }
 
     /// <summary>
-    /// Last day the guest can cancel for free by themselves. Always null today: the guest has no self-service
-    /// cancellation (only the host cancels, BK-02), so the checkout must not promise one.
+    /// Last day the guest can cancel for free by themselves from the guest area (DB-08a): the last day of the full refund of the
+    /// stay's cancellation policy. Null when the property has no policy, the policy never refunds in full, or the day is past:
+    /// the checkout then promises no free cancellation.
     /// </summary>
     public DateOnly? FreeCancellationUntil { get; set; }
 

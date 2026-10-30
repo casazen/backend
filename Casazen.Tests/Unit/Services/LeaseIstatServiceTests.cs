@@ -89,7 +89,7 @@ public class LeaseIstatServiceTests : IDisposable
 
         var calculation = await service.CalculateIstatAsync(lease.Id, 3.2m, 75m);
         var letter = await service.BuildAggiornamentoIstatAsync(lease.Id, 3.2m, 75m, new DateOnly(2026, 11, 1));
-        var text = PdfTestReader.Text(letter.Pdf);
+        var text = BodyText(letter.Pdf);
 
         Assert.Equal(650m, calculation.CurrentRent);
         Assert.Equal(2.4m, calculation.AppliedPercent);
@@ -155,8 +155,8 @@ public class LeaseIstatServiceTests : IDisposable
         await using var db = _h.SecondContext();
         var service = NewService(db);
 
-        var dated = PdfTestReader.Text((await service.BuildOpzioneCedolareAsync(lease.Id, new DateOnly(2026, 11, 1))).Pdf);
-        var undated = PdfTestReader.Text((await service.BuildOpzioneCedolareAsync(lease.Id, null)).Pdf);
+        var dated = BodyText((await service.BuildOpzioneCedolareAsync(lease.Id, new DateOnly(2026, 11, 1))).Pdf);
+        var undated = BodyText((await service.BuildOpzioneCedolareAsync(lease.Id, null)).Pdf);
 
         Assert.Contains("con effetto dal 1 novembre 2026", dated, StringComparison.Ordinal);
         Assert.Contains("il locatore rinuncia alla", dated, StringComparison.Ordinal);
@@ -164,6 +164,9 @@ public class LeaseIstatServiceTests : IDisposable
         var outside = await Assert.ThrowsAsync<DomainRuleException>(() => service.BuildOpzioneCedolareAsync(lease.Id, new DateOnly(2025, 10, 31)));
         Assert.Equal("lease_letter_effect_date_invalid", outside.Code);
     }
+
+    /// <summary>The words of the body of the PDF in reading order: the rotated watermark is not interleaved with the sentences it crosses.</summary>
+    private static string BodyText(byte[] pdf) => string.Join(' ', PdfTestReader.BodyWords(pdf));
 
     private static string LettersDirectory()
     {

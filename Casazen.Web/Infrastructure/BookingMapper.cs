@@ -58,6 +58,7 @@ public static class BookingMapper
         response.CancellationNote = booking.CancellationNote;
         response.Source = booking.Source.ToString();
         response.SpecialRequests = booking.SpecialRequests;
+        response.ExpectedArrivalTime = booking.ExpectedArrivalTime;
         response.PaymentOption = booking.PaymentOption.ToString();
         response.OnSiteRequestState = OnSiteRequests.StateOf(booking, nowUtc)?.ToString();
         response.RequestExpiresAt = OnSiteRequests.StateOf(booking, nowUtc) is null ? null : booking.RequestExpiresAt;
