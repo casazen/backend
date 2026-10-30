@@ -1522,6 +1522,18 @@
   <data name="GuestBookingCodeInvalid" xml:space="preserve">
     <value>The booking code is not valid: check the confirmation email.</value>
   </data>
+  <data name="HostContactEmailInvalid" xml:space="preserve">
+    <value>Enter a valid email address: the host will answer to it.</value>
+  </data>
+  <data name="HostContactMessageInvalid" xml:space="preserve">
+    <value>Write a message of at least 5 and at most 2000 characters.</value>
+  </data>
+  <data name="HostContactNameTooLong" xml:space="preserve">
+    <value>The name can have at most 100 characters.</value>
+  </data>
+  <data name="HostContactConsentRequired" xml:space="preserve">
+    <value>To write to the host you must agree that your message and your email address are sent to them.</value>
+  </data>
   <data name="GuestBookingEmailRequired" xml:space="preserve">
     <value>Enter the email address you booked with.</value>
   </data>
@@ -1533,6 +1545,12 @@
   </data>
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>The date range is not valid: the end date must be after the start date and the range cannot exceed {0} days.</value>
+  </data>
+  <data name="PublicCalendarInvalidRange" xml:space="preserve">
+    <value>The date range is not valid: the end date must be after the start date and the range cannot exceed {0} months.</value>
+  </data>
+  <data name="PublicStaysDatesInvalid" xml:space="preserve">
+    <value>The dates of the stay are not valid: give both the arrival and the departure, the departure must be after the arrival and the stay cannot exceed {0} nights.</value>
   </data>
   <data name="LeaseEndBeforeStart" xml:space="preserve">
     <value>The lease end date must be after the start date.</value>
@@ -1783,11 +1801,23 @@
   <data name="PricingSuggestionsNotEnabled" xml:space="preserve">
     <value>Seasonal suggestions are not enabled for this property: enable them before recalculating.</value>
   </data>
-  <data name="ServiceRequestBookingRequired" xml:space="preserve">
-    <value>In short-term rentals a supplier request is for a stay: choose the booking.</value>
-  </data>
   <data name="ServiceRequestBookingMismatch" xml:space="preserve">
     <value>The booking is not a stay of this property.</value>
+  </data>
+  <data name="ServiceRequestListInvalidView" xml:space="preserve">
+    <value>Invalid view: use one of the names all, pending, active, topay, done or needsaction.</value>
+  </data>
+  <data name="ServiceRequestListInvalidSort" xml:space="preserve">
+    <value>Invalid order: use scheduled, created or status, followed by :asc or :desc.</value>
+  </data>
+  <data name="ServiceRequestListInvalidRange" xml:space="preserve">
+    <value>Invalid date range: the start date is after the end date.</value>
+  </data>
+  <data name="ServiceRequestListInvalidText" xml:space="preserve">
+    <value>Invalid search text: use 2 to 60 characters, without control characters.</value>
+  </data>
+  <data name="ServiceRequestListInvalidCategory" xml:space="preserve">
+    <value>Invalid category: use one of the codes of GET /api/service-categories.</value>
   </data>
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>In long-term rentals a supplier request is for the property, not for a booking.</value>
@@ -2568,6 +2598,9 @@
   </data>
   <data name="TenantListViewUnknown" xml:space="preserve">
     <value>The tenant view is not valid: use All, Current or Former.</value>
+  </data>
+  <data name="LongRentPropertyViewUnknown" xml:space="preserve">
+    <value>The property view is not valid: use All, Rented or Free.</value>
   </data>
   <data name="LongRentDeadlinesRangeInvalid" xml:space="preserve">
     <value>Enter a valid period: dates as yyyy-MM-dd, the end not before the start and at most 366 days.</value>
@@ -3607,5 +3640,86 @@
   </data>
   <data name="GuestCancelConfirmRequired" xml:space="preserve">
     <value>Confirm that you want to cancel the booking to go on.</value>
+  </data>
+  <data name="ServiceRequestCannotQuote" xml:space="preserve">
+    <value>You can answer with a quote only a request that still waits for your answer.</value>
+  </data>
+  <data name="ServiceRequestQuoteInvalid" xml:space="preserve">
+    <value>Invalid quote: it needs 1 to {0} lines, each with a description of at most {1} characters and an amount above zero; the total can be at most {2} euro.</value>
+  </data>
+  <data name="ServiceRequestNoQuote" xml:space="preserve">
+    <value>This request has no quote to answer: the supplier may have withdrawn it, or the request has already changed.</value>
+  </data>
+  <data name="ServiceRequestQuoteChanged" xml:space="preserve">
+    <value>The supplier changed the quote while you were reading it. Read it again before answering: nothing was changed.</value>
+  </data>
+  <data name="SupplierBookingNoQuote" xml:space="preserve">
+    <value>This request has no quote to accept or turn down.</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired" xml:space="preserve">
+    <value>The time to answer the quote has passed: the request will cancel itself. You will be able to book again from the supplier's site.</value>
+  </data>
+  <data name="ServiceRequestQuoteLinesRequired" xml:space="preserve">
+    <value>The quote needs at least one line.</value>
+  </data>
+  <data name="ServiceRequestQuoteTooManyLines" xml:space="preserve">
+    <value>The quote can have at most {1} lines.</value>
+  </data>
+  <data name="ServiceRequestQuoteLineLabelRequired" xml:space="preserve">
+    <value>Each line of the quote needs a description.</value>
+  </data>
+  <data name="ServiceRequestQuoteLineLabelTooLong" xml:space="preserve">
+    <value>The description of a line can have at most {1} characters.</value>
+  </data>
+  <data name="ServiceRequestQuoteNoteTooLong" xml:space="preserve">
+    <value>The note can have at most {1} characters.</value>
+  </data>
+  <data name="ServiceRequestQuoteSentAtRequired" xml:space="preserve">
+    <value>Say which quote you are accepting or turning down.</value>
+  </data>
+  <data name="PropertySiteProfilePayloadTooLong" xml:space="preserve">
+    <value>The text sent is too long.</value>
+  </data>
+  <data name="PropertySiteProfileTextTooLong" xml:space="preserve">
+    <value>The text is too long: {0} characters at most.</value>
+  </data>
+  <data name="PropertySiteProfileItalianRequired" xml:space="preserve">
+    <value>Write the text in Italian too: it is the language the site uses when there is no translation.</value>
+  </data>
+  <data name="PropertySiteProfileTooManyHighlights" xml:space="preserve">
+    <value>You can add {0} highlights at most.</value>
+  </data>
+  <data name="PropertySiteProfileHighlightIconUnknown" xml:space="preserve">
+    <value>Choose the icon of the highlight from the ones offered.</value>
+  </data>
+  <data name="PropertySiteProfileTooManySafetyNotes" xml:space="preserve">
+    <value>You can add {0} safety notes at most.</value>
+  </data>
+  <data name="PropertySiteProfileTagUnknown" xml:space="preserve">
+    <value>This label does not exist: choose one of those offered.</value>
+  </data>
+  <data name="PropertySiteProfileFloorLevelInvalid" xml:space="preserve">
+    <value>The floor must be between {0} and {1} (0 is the ground floor).</value>
+  </data>
+  <data name="PropertySiteProfileRenovatedYearInvalid" xml:space="preserve">
+    <value>The renovation year must be between {0} and {1}.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyClassInvalid" xml:space="preserve">
+    <value>The energy class must be one of A4, A3, A2, A1, A, B, C, D, E, F, G.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyIndexInvalid" xml:space="preserve">
+    <value>The energy performance index must be between 0 and {0} kWh/m² per year.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyIndexWithoutClass" xml:space="preserve">
+    <value>Give the energy class together with the performance index.</value>
+  </data>
+  <data name="PropertySiteProfileCheckInWindowInvalid" xml:space="preserve">
+    <value>The latest arrival time must be after the earliest one.</value>
+  </data>
+  <data name="PropertySiteProfileVideoUrlInvalid" xml:space="preserve">
+    <value>The video must be a YouTube or Vimeo address (https).</value>
+  </data>
+  <data name="PropertySiteProfileTourUrlInvalid" xml:space="preserve">
+    <value>The virtual tour must be a Matterport address (https).</value>
   </data>
 </root>

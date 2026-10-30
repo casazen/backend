@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.SiteProfile;
 using Casazen.Core.Validation;
 using Microsoft.EntityFrameworkCore;
 
@@ -221,6 +222,64 @@ public class Property : ITenantOwned
         ErrorMessage = "PropertyExtraGuestFeeRange")]
     public decimal? ExtraGuestFeePerNight { get; set; }
 
+    // The site profile (DB-11a): optional facts and presentation texts the property page of the booking site shows when the host
+    // filled them in (api/properties/{id}/site-profile). All optional: null = the host never said, which is every property that
+    // existed before them; nothing here is read to decide a booking, a price or a refund, and none can hold an address or an exact
+    // position. The fields of the wizard (SR-07a) above keep their one owner; the public page reads both.
+
+    /// <summary>The floor of the unit, <see cref="SitePropertyProfileLimits.MinFloorLevel"/> to <see cref="SitePropertyProfileLimits.MaxFloorLevel"/>, 0 = ground floor; null = not set.</summary>
+    public int? FloorLevel { get; set; }
+
+    /// <summary>The year the house was last renovated; null = not set. Never in the future.</summary>
+    public int? RenovatedYear { get; set; }
+
+    /// <summary>
+    /// The energy class printed on the APE, <c>A4</c>…<c>G</c>, upper-case; null = the host did not say. Never filled in by the
+    /// system and never guessed (DB-D18): the APE document of the property is private and is not copied here.
+    /// </summary>
+    [MaxLength(SitePropertyProfileLimits.EnergyClassMaxLength)]
+    public string? EnergyClass { get; set; }
+
+    /// <summary>The global energy performance index of the APE, in kWh/m² per year, two decimals; null = not said. Only with an <see cref="EnergyClass"/>.</summary>
+    [Precision(7, 2)]
+    public decimal? EnergyIndex { get; set; }
+
+    /// <summary>What kind of place the house stands in (the local map and the label of the site); null = not set.</summary>
+    public PropertyAreaKind? AreaKind { get; set; }
+
+    /// <summary>The house rules about children: <c>true</c> = children are welcome, <c>false</c> = not suited to them; null = never said.</summary>
+    public bool? ChildrenWelcome { get; set; }
+
+    /// <summary>The latest time guests may arrive, on the property's clock, whole minutes; null = no limit given. The earliest is <see cref="CheckInFrom"/>.</summary>
+    public TimeOnly? CheckInTo { get; set; }
+
+    /// <summary>The video of the house as an embeddable address of YouTube (nocookie) or Vimeo, in its canonical form; null = none. Never uploaded.</summary>
+    [MaxLength(SitePropertyProfileLimits.EmbedUrlMaxLength)]
+    public string? VideoUrl { get; set; }
+
+    /// <summary>The virtual tour (360°) of the house as an embeddable Matterport address, in its canonical form; null = none.</summary>
+    [MaxLength(SitePropertyProfileLimits.EmbedUrlMaxLength)]
+    public string? TourUrl { get; set; }
+
+    /// <summary>
+    /// The texts the host wrote for the page, in Italian and English, and the short lists (the zone, what is near, the notes about the
+    /// floor and the outdoor spaces, how check-in works, a note on the rules, up to three highlights, the safety notes, the labels
+    /// of the site): a <see cref="SitePropertyProfileDocument"/> as JSON; null = nothing written. Read and written only through
+    /// <see cref="SitePropertyProfileJson"/>, never edited by hand.
+    /// </summary>
+    [JsonIgnore]
+    [Column(TypeName = "jsonb")]
+    public string? SiteProfileJson { get; set; }
+
+    /// <summary>
+    /// The alternative text of the photos of the gallery: a JSON map from the URL of a photo to its text in Italian and English
+    /// (and, once known, its width and height); null = none written. Kept in step with <see cref="PhotoUrls"/> by the photo
+    /// service: a photo that leaves the gallery leaves the map.
+    /// </summary>
+    [JsonIgnore]
+    [Column(TypeName = "jsonb")]
+    public string? PhotoAltJson { get; set; }
+
     // Italian regulatory compliance - D.L. 145/2023
     [MaxLength(25)]
     [CinCode]
@@ -252,11 +311,17 @@ public class Property : ITenantOwned
     /// <summary>
     /// Complete for the contract: sheet, parcel, category and income (the subaltern is optional, LT-10).
     /// </summary>
-    public bool HasCadastralData =>
-        !string.IsNullOrWhiteSpace(CadastralSheet)
-        && !string.IsNullOrWhiteSpace(CadastralParcel)
-        && !string.IsNullOrWhiteSpace(CadastralCategory)
-        && CadastralIncome is not null;
+    public bool HasCadastralData => IsCadastralDataComplete(CadastralSheet, CadastralParcel, CadastralCategory, CadastralIncome);
+
+    /// <summary>
+    /// The rule of <see cref="HasCadastralData"/> for four values read without the property (a query that selects only the columns, like the
+    /// list of the long-term properties, LR-07a): the one rule of the contract.
+    /// </summary>
+    public static bool IsCadastralDataComplete(string? sheet, string? parcel, string? category, decimal? income) =>
+        !string.IsNullOrWhiteSpace(sheet)
+        && !string.IsNullOrWhiteSpace(parcel)
+        && !string.IsNullOrWhiteSpace(category)
+        && income is not null;
 
     /// <summary>
     /// ISO 3166-1 alpha-2 country code (e.g. "IT", "CH"). Non-null, default IT (ADR-001-R7).

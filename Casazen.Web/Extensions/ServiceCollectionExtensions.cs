@@ -321,6 +321,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingService, BookingService>();
         // Public availability of the booking site, same nights as the booking checks (BK-05).
         services.AddScoped<IPublicAvailabilityService, PublicAvailabilityService>();
+        // The calendar of a property on the booking site: availability and price of every night, from the quote's own functions (DB-03b).
+        services.AddScoped<IPublicCalendarService, PublicCalendarService>();
+        // The search of a booking site (the houses for a stay, the calendar of the whole site, the places, the houses that look alike) and
+        // the small cache that keeps its answers for a few seconds (DB-07a).
+        services.AddSingleton<PublicReadCache>();
+        services.AddScoped<IPublicSiteSearchService, PublicSiteSearchService>();
         // Host dashboard KPIs per period and iCal feeds widget (PC-16).
         services.AddScoped<IHostDashboardService, HostDashboardService>();
         // The host's day in one read: stays of the day, requests, things to do (SR-03). What the cockpit items lack is a service apart.
@@ -410,6 +416,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
+        // DB-11a: the optional facts and texts of the property page of the booking site (api/properties/{id}/site-profile).
+        services.AddScoped<IPropertySiteProfileService, PropertySiteProfileService>();
+        services.AddScoped<IPropertyPhotoAltService, PropertyPhotoAltService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
         services.AddScoped<IApeComplianceService, ApeComplianceService>();
         // The code of an APE the file does not show legibly, from the public CENED register of Lombardy (open data, no key).
@@ -497,6 +506,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILongRentFiscalReportService, LongRentFiscalReportService>();
         // The tenants of the area (LR-09): the people read from the parties of the leases, the copy of their data and their erasure.
         services.AddScoped<ILongRentTenantService, LongRentTenantService>();
+        // The properties of the area with the APE, the cadastral data, who holds them and the change of mode programmed (LR-07a).
+        services.AddScoped<ILongRentPropertyService, LongRentPropertyService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
@@ -587,6 +598,8 @@ public static class ServiceCollectionExtensions
         // instead, and the supplier's own preview of the slots of a service (no cache, no flag, draft and paused services too).
         services.AddScoped<ISupplierConflictService, SupplierConflictService>();
         services.AddScoped<ISupplierSlotPreviewService, SupplierSlotPreviewService>();
+        // What the host reads of a supplier to ask it for an intervention: its published services and their free slots (SR-08a).
+        services.AddScoped<IHostSupplierCatalogService, HostSupplierCatalogService>();
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
         // Invitation of new independent hosts by admins and hosts: limits are configuration (HostInvites), validated at startup.
@@ -665,11 +678,15 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceCustomerReader, ServiceCustomerReader>();
         services.AddScoped<ShowcaseBookingNotifier>();
         services.AddScoped<IShowcaseBookingService, ShowcaseBookingService>();
+        // The request on measure from the same showcase (SP-10b): no slot, the words of the customer, a thread with the supplier.
+        services.AddScoped<IShowcaseInquiryService, ShowcaseInquiryService>();
         // The customer's own area of a booking (SP-11): find it with the code and the e-mail, cancel it, move it, answer a proposed time.
         services.AddScoped<IShowcaseBookingManager, ShowcaseBookingManager>();
         // The upkeep (expiry of holds and of unanswered showcase requests), the reminders of the day before and the retention of the
         // customers' data: their recurring jobs are registered whatever the flags say.
         services.AddScoped<IServiceRequestExpiryService, ServiceRequestExpiryService>();
+        // The reminder of the day before to the supplier (SP-16d) is the second pass of the same job: the reminders service takes it in.
+        services.AddScoped<SupplierDayBeforeReminders>();
         services.AddScoped<IServiceRequestReminderService, ServiceRequestReminderService>();
         services.AddScoped<IServiceCustomerPrivacyService, ServiceCustomerPrivacyService>();
         // The reads of the payments of a request for the supplier console: the summary of a job, the counters and the figures of the
@@ -684,6 +701,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISupplierTodayService, SupplierTodayService>();
         // Supplier inbox, history and request detail: address, date and host contact after the take (SU-08, A4-14).
         services.AddScoped<ISupplierServiceRequestReader, SupplierServiceRequestReader>();
+        // The host's list of interventions with the counters of its chips, and what a request says to its host: the stay, the contact of
+        // the supplier and the action to do (SR-08a).
+        services.AddScoped<IHostServiceRequestReader, HostServiceRequestReader>();
         // The supplier's customers, the page "Clienti": hosts and private customers of the showcase aggregated from the requests (SP-16a).
         services.AddScoped<ISupplierClientsService, SupplierClientsService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
@@ -720,6 +740,8 @@ public static class ServiceCollectionExtensions
         // Messages between the guest of a direct booking and the host (DB-14a): the thread, its two sides and the two emails
         // that are the consequence of a message (docs/runbooks/guest-messages.md).
         services.AddScoped<IGuestMessageService, GuestMessageService>();
+        // «Scrivi a {host}» of the booking site: the visitor's message as one email to the host, answered from their mailbox (DB-03b).
+        services.AddScoped<IHostContactService, HostContactService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();
         services.AddScoped<INotificationChannel, DashboardNotificationChannel>();

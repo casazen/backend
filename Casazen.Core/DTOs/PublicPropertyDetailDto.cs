@@ -6,6 +6,15 @@ public class PublicPropertyDetailDto : PublicPropertyDto
     public string CancellationPolicySummary { get; set; } = string.Empty;
 
     /// <summary>
+    /// The cancellation policy in a form a page can draw (DB-03b): the catalog policy with what the host changed of it for a stay under
+    /// <c>longStayNights</c> (28) nights, as hours and a percentage. A window the policy does not have is <c>null</c> (<c>fullRefundHours</c>
+    /// null = never refunded in full). <c>description</c> is the catalog text, <c>null</c> once the host changed the windows
+    /// (<c>hostOverrideApplies</c>). <c>null</c> when the property has no policy. The dates for a stay are in the quote
+    /// (<c>cancellation</c>); <see cref="CancellationPolicySummary"/> stays as it was.
+    /// </summary>
+    public Services.PublicCancellationPolicy? CancellationPolicy { get; set; }
+
+    /// <summary>
     /// Fewest nights a guest can book (DB-03, <c>Property.MinNights</c>), or null for no minimum. The quote and the checkout
     /// refuse a shorter stay with 422 <c>direct_booking_min_nights_not_met</c>.
     /// </summary>
@@ -36,6 +45,19 @@ public class PublicPropertyDetailDto : PublicPropertyDto
     /// the endpoint, never built in the browser.
     /// </summary>
     public string? CanonicalUrl { get; set; }
+
+    /// <summary>
+    /// What the host said about the house (DB-11a): specifications, the place, the labels, highlights, safety notes, rules and times, video and
+    /// tour. Only what the host filled in: a member the host never said is <c>null</c> (a list: empty) and the page does not draw its section.
+    /// Never an address or an exact position.
+    /// </summary>
+    public PublicPropertyProfileDto Profile { get; set; } = new();
+
+    /// <summary>
+    /// The photos of the gallery in display order (the first is the cover), each with its alternative text and size (DB-11a). Lists the same
+    /// addresses as <see cref="PublicPropertyDto.PhotoUrls"/>, which stays.
+    /// </summary>
+    public IReadOnlyList<PublicPropertyPhotoDto> Photos { get; set; } = [];
 
     /// <summary>
     /// The number and the average mark of the public reviews of the property (DB-12a), set by the endpoint. <b>Absent</b> from the JSON

@@ -5,6 +5,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
+using Casazen.Core.SiteProfile;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Infrastructure.Search;
@@ -170,6 +171,14 @@ public class AppDbContext(
     /// </summary>
     public DbSet<ServiceCustomer> ServiceCustomers { get; set; } = null!;
     public DbSet<ShowcaseBookingHold> ShowcaseBookingHolds { get; set; } = null!;
+
+    /// <summary>
+    /// The request on measure from a supplier's public showcase (SP-10b): the inquiry that waits for the e-mail check and the messages of
+    /// the thread of the request. Both keyed by the supplier org and <b>not</b> tenant-filtered (see the TN-2 allow-list); only the services
+    /// listed in <c>ShowcaseInquiryTenancyTests</c> touch them, always with an explicit <c>OrgId</c> predicate.
+    /// </summary>
+    public DbSet<ShowcaseInquiry> ShowcaseInquiries { get; set; } = null!;
+    public DbSet<ServiceRequestMessage> ServiceRequestMessages { get; set; } = null!;
 
     // Payment of the service requests inside CasaZen (SP-15a): two parties, not tenant-filtered.
     public DbSet<ServiceRequestPayment> ServiceRequestPayments { get; set; } = null!;
@@ -427,6 +436,26 @@ public class AppDbContext(
             .Property(p => p.PublishedOnSite)
             .HasDefaultValue(true)
             .ValueGeneratedNever();
+
+        // DB-11a: the site profile (floor, renovation year, energy class and index, kind of place, children, latest arrival, video and tour
+        // addresses, the JSON of the texts and of the photo alt texts). Every column is nullable: null = the host never said, which is
+        // every property that existed before them. The host API validates (SitePropertyProfileRules); the constraints keep any other
+        // writer honest. The ranges repeat the constants of SitePropertyProfileLimits.
+        modelBuilder.Entity<Property>().ToTable(t =>
+        {
+            t.HasCheckConstraint(
+                "CK_Properties_FloorLevel",
+                $"\"FloorLevel\" IS NULL OR \"FloorLevel\" BETWEEN {SitePropertyProfileLimits.MinFloorLevel} AND {SitePropertyProfileLimits.MaxFloorLevel}");
+            t.HasCheckConstraint(
+                "CK_Properties_RenovatedYear",
+                $"\"RenovatedYear\" IS NULL OR \"RenovatedYear\" >= {SitePropertyProfileLimits.MinRenovatedYear}");
+            t.HasCheckConstraint(
+                "CK_Properties_EnergyClass",
+                "\"EnergyClass\" IS NULL OR \"EnergyClass\" IN ('A4', 'A3', 'A2', 'A1', 'A', 'B', 'C', 'D', 'E', 'F', 'G')");
+            t.HasCheckConstraint(
+                "CK_Properties_EnergyIndex",
+                $"\"EnergyIndex\" IS NULL OR (\"EnergyClass\" IS NOT NULL AND \"EnergyIndex\" >= 0 AND \"EnergyIndex\" <= {SitePropertyProfileLimits.MaxEnergyIndex})");
+        });
 
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
@@ -1152,9 +1181,17 @@ public class AppDbContext(
         // requests leave empty. The check holds for every row that exists before this migration.
         modelBuilder.ApplyConfiguration(new ServiceRequestShowcaseConfiguration());
 
+        // ─── Quote with the customer's approval (SP-04b) ──────────────────────────────────────────────────────────────
+        // The offer a supplier makes on a request still waiting for its answer: its columns, and the checks that keep it true.
+        modelBuilder.ApplyConfiguration(new ServiceRequestQuoteConfiguration());
+
         modelBuilder.ApplyConfiguration(new ServiceCustomerConfiguration());
 
         modelBuilder.ApplyConfiguration(new ShowcaseBookingHoldConfiguration());
+
+        // The request on measure (SP-10b): the inquiry that waits for the e-mail check and the messages of its thread.
+        modelBuilder.ApplyConfiguration(new ShowcaseInquiryConfiguration());
+        modelBuilder.ApplyConfiguration(new ServiceRequestMessageConfiguration());
 
         // ─── Payment of the service requests inside CasaZen (SP-15a) ─────────────
         // The commission a supplier is charged instead of the platform's (an admin sets it, SP-15b): a percentage, 0 to 50.

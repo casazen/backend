@@ -40,6 +40,7 @@ public sealed partial class SupplierPaymentService(
     AppDbContext db,
     ISupplierPaymentGateway gateway,
     IEmailQueue emailQueue,
+    IPushNotificationService pushNotifications,
     PublicSiteLinks links,
     IFeatureFlags features,
     IOptions<SupplierPaymentsOptions> options,

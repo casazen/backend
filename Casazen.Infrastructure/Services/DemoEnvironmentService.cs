@@ -6,6 +6,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.SiteProfile;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -326,6 +327,11 @@ public class DemoEnvironmentService(
             property.ExtraGuestFeePerNight = profile.ExtraGuestFeePerNight;
             PropertyHouseRules.SyncAmenities(property);
         }
+
+        // DB-11a: what the host says about the house on its public page, through the rules of the host form (a demo can never hold
+        // what a host could not).
+        if (template.SiteProfile is { } siteProfile)
+            SitePropertyProfileRules.Apply(property, SitePropertyProfileRules.Normalize(siteProfile, property.CheckInFrom, now.Year));
 
         db.Properties.Add(property);
         await db.SaveChangesAsync(cancellationToken);
