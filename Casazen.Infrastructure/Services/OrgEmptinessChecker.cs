@@ -99,6 +99,7 @@ public sealed class OrgEmptinessChecker(AppDbContext db) : IOrgEmptinessChecker
         if (!string.IsNullOrWhiteSpace(org.LogoUrl)
             || !string.IsNullOrWhiteSpace(org.ThemeColor)
             || !string.IsNullOrWhiteSpace(org.PublicThemeId)
+            || !string.IsNullOrWhiteSpace(org.PublicFontId)
             || !string.IsNullOrWhiteSpace(org.HeroImageUrl)
             || !string.IsNullOrWhiteSpace(org.Tagline)
             || !string.IsNullOrWhiteSpace(org.LegalName)

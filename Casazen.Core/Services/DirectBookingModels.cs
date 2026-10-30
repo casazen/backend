@@ -15,6 +15,10 @@ public record DirectBookingGuestInput(
 /// when the marketing consent text has a version (<c>Gdpr:MarketingConsentVersion</c>, CO-15): the version is recorded with
 /// the consent, so without one the answer is 422 <see cref="DirectBookingErrorCodes.MarketingConsentUnavailable"/>.
 /// </param>
+/// <param name="ExpectedArrivalTime">
+/// When the guest thinks they will arrive (DB-03b): <c>HH:mm</c> or <c>late</c> (after the check-in window), <c>null</c> when they
+/// do not say. Only a note for the host (<see cref="ArrivalTimeRules"/>): it changes no price, no availability and no check.
+/// </param>
 public record DirectBookingCreateInput(
     Guid PropertyId,
     DateTime CheckInDate,
@@ -27,7 +31,8 @@ public record DirectBookingCreateInput(
     string? SpecialRequests,
     PaymentOption PaymentOption = PaymentOption.Immediate,
     IReadOnlyList<int>? ChildrenAges = null,
-    bool MarketingConsent = false);
+    bool MarketingConsent = false,
+    string? ExpectedArrivalTime = null);
 
 /// <summary>Stay to price before booking (checkout quote).</summary>
 /// <param name="ChildrenAges">Age of each minor at check-in, needed when the tourist tax depends on it.</param>
@@ -141,8 +146,10 @@ public sealed record QuoteLine(QuoteLineKind Kind, int? Quantity, long? UnitAmou
 /// </param>
 /// <param name="DeferredChargeDate">Day the saved card is charged when the deferred payment is chosen (midnight UTC of the Rome date).</param>
 /// <param name="FreeCancellationUntil">
-/// Last day the guest can cancel for free by themselves; <c>null</c> while the guest has no self-service cancellation
-/// (<see cref="DirectBookingPaymentRules.GuestSelfCancellationAvailable"/>): the checkout then promises no free cancellation.
+/// Last day the guest can cancel for free by themselves from the guest area (DB-08a), a Europe/Rome date: the last day of the full
+/// refund of the stay's policy. <c>null</c> when it would not be true: the property has no cancellation policy, the policy never
+/// refunds in full, or the day is already past (<see cref="DirectBookingPaymentRules.IsFreeCancellationPromised"/>): the checkout then
+/// promises no free cancellation.
 /// </param>
 public record DirectBookingPaymentOptions(
     bool DeferredPaymentAvailable,
@@ -209,6 +216,12 @@ public static class DirectBookingErrorCodes
     /// so it is not offered (<c>marketingConsentVersion</c> of the public org is null) and not accepted either.
     /// </summary>
     public const string MarketingConsentUnavailable = "direct_booking_marketing_consent_unavailable";
+
+    /// <summary>
+    /// 422: the checkout carries an <c>expectedArrivalTime</c> that is neither <c>HH:mm</c> nor <c>late</c> (DB-03b,
+    /// <see cref="ArrivalTimeRules"/>). The field is optional and only a preference of the guest, so nothing else is refused for it.
+    /// </summary>
+    public const string ArrivalTimeInvalid = "direct_booking_arrival_time_invalid";
 
     /// <summary>
     /// 501: direct bookings not supported for properties with non-EUR currency (ADR-001-R10, deferred per D-02).

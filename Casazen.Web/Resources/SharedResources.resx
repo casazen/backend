@@ -768,6 +768,9 @@
   <data name="OrgBrandingThemeInvalid" xml:space="preserve">
     <value>Questo tema non è disponibile per il sito pubblico.</value>
   </data>
+  <data name="OrgBrandingFontInvalid" xml:space="preserve">
+    <value>Questa coppia di caratteri non è disponibile per il sito pubblico.</value>
+  </data>
   <data name="OrgBrandingTaglineTooLong" xml:space="preserve">
     <value>Lo slogan non può superare i {0} caratteri.</value>
   </data>
@@ -1242,6 +1245,9 @@
   </data>
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Il consenso a ricevere offerte non è disponibile in questo momento: riprova senza selezionarlo.</value>
+  </data>
+  <data name="DirectBookingArrivalTimeInvalid" xml:space="preserve">
+    <value>L'orario di arrivo previsto non è valido: scegli un orario (per esempio 15:30) oppure "dopo l'orario di check-in".</value>
   </data>
   <data name="DirectBookingCurrencyNotSupported" xml:space="preserve">
     <value>Prenotazioni dirette non supportate per questa valuta</value>
@@ -3544,5 +3550,14 @@
   </data>
   <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
     <value>Codice di accesso non disponibile o verifica non superata</value>
+  </data>
+  <data name="GuestRefundChanged" xml:space="preserve">
+    <value>L'importo del rimborso è cambiato mentre decidevi: controlla il nuovo importo e conferma di nuovo. Non è stato annullato nulla.</value>
+  </data>
+  <data name="GuestCancelStayStarted" xml:space="preserve">
+    <value>Il soggiorno è già iniziato: per annullarlo scrivi all'host.</value>
+  </data>
+  <data name="GuestCancelConfirmRequired" xml:space="preserve">
+    <value>Conferma di voler annullare la prenotazione per procedere.</value>
   </data>
 </root>

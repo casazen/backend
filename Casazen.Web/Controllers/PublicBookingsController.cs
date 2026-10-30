@@ -196,6 +196,7 @@ public class PublicBookingsController(
     /// <c>direct_booking_deferred_payment_unavailable</c>, <c>tourist_tax_child_ages_required</c>,
     /// <c>onsite_request_too_many_nights</c>, <c>direct_booking_min_nights_not_met</c> (DB-03),
     /// <c>direct_booking_marketing_consent_unavailable</c> (DB-03: <c>marketingConsent</c> without a versioned text),
+    /// <c>direct_booking_arrival_time_invalid</c> (DB-03b: <c>expectedArrivalTime</c> is neither <c>HH:mm</c> nor <c>late</c>),
     /// <c>property_not_bookable_in_long_mode</c> (the property is let long-term,
     /// PM-01); 503 <c>payment_provider_error</c>. The answer carries the
     /// <c>checkoutToken</c> of the outcome page (BK-07): the only time it is given.
@@ -236,7 +237,8 @@ public class PublicBookingsController(
             request.SpecialRequests,
             request.PaymentOption,
             request.ChildrenAges,
-            request.MarketingConsent ?? false));
+            request.MarketingConsent ?? false,
+            request.ExpectedArrivalTime));
 
         return Ok(new DirectBookingResponse
         {
