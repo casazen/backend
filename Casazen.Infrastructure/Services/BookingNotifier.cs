@@ -119,6 +119,46 @@ public sealed class BookingNotifier(
     }
 
     /// <summary>
+    /// The guest cancelled the booking themselves, from the guest area or with the host's link (DB-08a): an email to the guest that
+    /// says so, with the refund Stripe already confirmed (<paramref name="refundedAmount"/>, whose own confirmation email the caller has
+    /// claimed), the refund still in progress (<paramref name="refundStartedAmount"/>, confirmed by a later email) and what the policy
+    /// keeps (<paramref name="retainedAmount"/>); and one to the host, who did not do it, with the same figures and the link to the
+    /// booking. Nothing of the guest's session or link is in them.
+    /// </summary>
+    public async Task BookingCancelledByGuestAsync(
+        Guid bookingId,
+        decimal refundedAmount,
+        decimal refundStartedAmount,
+        decimal retainedAmount,
+        CancellationToken cancellationToken = default)
+    {
+        var data = await TryLoadAsync(bookingId, "Guest cancellation", cancellationToken);
+        if (data is null)
+            return;
+
+        Queue(bookingId, EmailTemplates.Names.GuestBookingCancelled, data.GuestEmail, () =>
+            EmailTemplates.GuestBookingCancelled(
+                EmailTemplates.DefaultCulture,
+                data.GuestFirstName,
+                data.Summary.PropertyName,
+                data.Summary.CheckInDate,
+                data.Summary.CheckOutDate,
+                refundedAmount,
+                refundStartedAmount,
+                data.HostContact,
+                BookingCancellationEmailCause.Guest,
+                retainedAmount));
+        QueueToHost(data, EmailTemplates.Names.HostBookingCancelledByGuest, () =>
+            EmailTemplates.HostBookingCancelledByGuest(
+                EmailTemplates.DefaultCulture,
+                $"{data.GuestFirstName} {data.GuestLastName}".Trim(),
+                data.Summary,
+                refundedAmount + refundStartedAmount,
+                retainedAmount,
+                links.HostBooking(data.BookingId)));
+    }
+
+    /// <summary>
     /// The deferred charge failed and needs the guest (BK-08, A3-14): the guest gets the link to pay on the checkout outcome
     /// page (<paramref name="checkoutToken"/>, the raw token whose hash was just stored), the host is told. The last day to
     /// pay is the day before <paramref name="cancellationDay"/> when an automatic cancellation applies.

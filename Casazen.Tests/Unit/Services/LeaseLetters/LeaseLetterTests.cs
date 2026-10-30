@@ -128,6 +128,43 @@ public class LeaseLetterTests
         Assert.DoesNotContain(TenantEmail, text, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TheRenewalAgreement_PrintsTheRenewalOrTheExtensionNeverBoth_WithTheDaysItWasGiven()
+    {
+        var values = LeaseLetterData.Common(Lease());
+        values[LeaseLetterPlaceholders.NewPeriodStart] = LeaseLetterData.Day(new DateOnly(2029, 11, 1));
+        values[LeaseLetterPlaceholders.NewPeriodEnd] = LeaseLetterData.Day(new DateOnly(2033, 10, 31));
+
+        var renewal = TextOf(LeaseLetterDocument.Build(Draft(LeaseLetterKind.Rinnovo), new HashSet<string> { LeaseLetterFlags.RenewalStandard }, values));
+        var extension = TextOf(LeaseLetterDocument.Build(Draft(LeaseLetterKind.Rinnovo), new HashSet<string> { LeaseLetterFlags.RenewalAgreed }, values));
+
+        Assert.Contains("si rinnova alla scadenza", renewal, StringComparison.Ordinal);
+        Assert.DoesNotContain("convengono di prorogare", renewal, StringComparison.Ordinal);
+        Assert.Contains("convengono di prorogare", extension, StringComparison.Ordinal);
+        Assert.DoesNotContain("si rinnova alla scadenza", extension, StringComparison.Ordinal);
+        foreach (var text in new[] { renewal, extension })
+        {
+            Assert.Contains("dal 1 novembre 2029 al 31 ottobre 2033", text, StringComparison.Ordinal);
+            Assert.DoesNotContain(TenantFiscalCode, text, StringComparison.Ordinal);
+            Assert.DoesNotContain(TenantEmail, text, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void TheNeedConfirmation_RepeatsTheNeedAsTheContractWritesIt_OnOneLine_WithTheLastDay()
+    {
+        var lease = Lease();
+        lease.ContractType = LeaseContractType.Transitorio;
+        lease.TransitoryNeed = "Trasferimento temporaneo\nper lavoro.";
+
+        var text = TextOf(LeaseLetterDocument.Build(Draft(LeaseLetterKind.ConfermaEsigenza), new HashSet<string>(), LeaseLetterData.Common(lease)));
+
+        Assert.Contains("Trasferimento temporaneo per lavoro. La conferma", text, StringComparison.Ordinal);
+        Assert.Contains("cessa il 31 ottobre 2029", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(TenantFiscalCode, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(TenantEmail, text, StringComparison.Ordinal);
+    }
+
     // ---- helpers -------------------------------------------------------------------------------------------------
 
     private static HashSet<string> FirstPeriodFlags(LeaseDisdettaReason reason) =>

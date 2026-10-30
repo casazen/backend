@@ -159,6 +159,68 @@ public class Property : ITenantOwned
     [MaxLength(1000)]
     public string HouseRules { get; set; } = string.Empty;
 
+    // The fields of the wizard «Aggiungi immobile» (SR-07a). All optional: null = the host never said, which is every property
+    // that existed before them, and nothing reads them to decide a booking, a price or a refund. Only PublishedOnSite changes
+    // what the public site shows, and it starts true, so every property keeps the visibility it has today.
+
+    /// <summary>The kind of accommodation (<see cref="Enums.AccommodationType"/>); null = never chosen.</summary>
+    public AccommodationType? AccommodationType { get; set; }
+
+    /// <summary>Number of beds, <see cref="PropertyHouseRules.MinBeds"/> to <see cref="PropertyHouseRules.MaxBeds"/>; null = not set.</summary>
+    [Range(PropertyHouseRules.MinBeds, PropertyHouseRules.MaxBeds, ErrorMessage = "PropertyBedsRange")]
+    public int? Beds { get; set; }
+
+    /// <summary>Living area in square metres, <see cref="PropertyHouseRules.MinAreaSqm"/> to <see cref="PropertyHouseRules.MaxAreaSqm"/>; null = not set.</summary>
+    [Range(PropertyHouseRules.MinAreaSqm, PropertyHouseRules.MaxAreaSqm, ErrorMessage = "PropertyAreaSqmRange")]
+    public int? AreaSqm { get; set; }
+
+    /// <summary>
+    /// The headline of the listing, at most <see cref="PropertyHouseRules.ListingTitleMaxLength"/> characters, trimmed; null = the
+    /// listing uses the name of the property. The longer text of the listing is <see cref="Description"/>.
+    /// </summary>
+    [MaxLength(PropertyHouseRules.ListingTitleMaxLength)]
+    public string? ListingTitle { get; set; }
+
+    /// <summary>
+    /// The host's switch «Mostra la casa sul sito» (SR-07a, SR-D24): <c>true</c> (the default, and the value of every property
+    /// that existed before the column) = the property is on the booking site as soon as it can be; <c>false</c> = the host hides
+    /// it. It is one of the conditions of <see cref="Casazen.Core.Services.PublicListing.IsPublished"/>, added to the others and
+    /// never instead of them: turning it on publishes nothing that is not activated, and a paused, pending or suspended property
+    /// stays off the site whatever this says.
+    /// </summary>
+    public bool PublishedOnSite { get; set; } = true;
+
+    /// <summary>The earliest time guests can arrive, on the property's clock (<see cref="Timezone"/>); null = not set. Whole minutes.</summary>
+    public TimeOnly? CheckInFrom { get; set; }
+
+    /// <summary>The time by which guests must leave, on the property's clock; null = not set. Whole minutes.</summary>
+    public TimeOnly? CheckOutBy { get; set; }
+
+    /// <summary>What the house rules say about smoking; null = never said. The amenity <see cref="PropertyAmenity.SmokingAllowed"/> follows it.</summary>
+    public SmokingPolicy? SmokingPolicy { get; set; }
+
+    /// <summary>What the house rules say about pets; null = never said. The amenity <see cref="PropertyAmenity.PetFriendly"/> follows it.</summary>
+    public PetsPolicy? PetsPolicy { get; set; }
+
+    /// <summary>What the house rules say about parties and events; null = never said.</summary>
+    public PartiesPolicy? PartiesPolicy { get; set; }
+
+    /// <summary>Quiet hours start, on the property's clock; null = none. Always set together with <see cref="QuietHoursTo"/>. Whole minutes.</summary>
+    public TimeOnly? QuietHoursFrom { get; set; }
+
+    /// <summary>Quiet hours end, on the property's clock; null = none. Always set together with <see cref="QuietHoursFrom"/>. Whole minutes.</summary>
+    public TimeOnly? QuietHoursTo { get; set; }
+
+    /// <summary>
+    /// What the host asks, per night, for each guest beyond the usual number of guests, in euros, 0 to
+    /// <see cref="PropertyHouseRules.MaxExtraGuestFeePerNight"/>; null = extra guests are not accepted. A house rule the
+    /// listing states: the booking site does not add it to the price of a stay (<c>StayPricing</c> does not read it).
+    /// </summary>
+    [Precision(18, 2)]
+    [Range(typeof(decimal), "0", "1000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyExtraGuestFeeRange")]
+    public decimal? ExtraGuestFeePerNight { get; set; }
+
     // Italian regulatory compliance - D.L. 145/2023
     [MaxLength(25)]
     [CinCode]
@@ -190,11 +252,17 @@ public class Property : ITenantOwned
     /// <summary>
     /// Complete for the contract: sheet, parcel, category and income (the subaltern is optional, LT-10).
     /// </summary>
-    public bool HasCadastralData =>
-        !string.IsNullOrWhiteSpace(CadastralSheet)
-        && !string.IsNullOrWhiteSpace(CadastralParcel)
-        && !string.IsNullOrWhiteSpace(CadastralCategory)
-        && CadastralIncome is not null;
+    public bool HasCadastralData => IsCadastralDataComplete(CadastralSheet, CadastralParcel, CadastralCategory, CadastralIncome);
+
+    /// <summary>
+    /// The rule of <see cref="HasCadastralData"/> for four values read without the property (a query that selects only the columns, like the
+    /// list of the long-term properties, LR-07a): the one rule of the contract.
+    /// </summary>
+    public static bool IsCadastralDataComplete(string? sheet, string? parcel, string? category, decimal? income) =>
+        !string.IsNullOrWhiteSpace(sheet)
+        && !string.IsNullOrWhiteSpace(parcel)
+        && !string.IsNullOrWhiteSpace(category)
+        && income is not null;
 
     /// <summary>
     /// ISO 3166-1 alpha-2 country code (e.g. "IT", "CH"). Non-null, default IT (ADR-001-R7).

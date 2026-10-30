@@ -49,6 +49,8 @@ panel "Richieste da approvare" and badges in the bookings list.
 | `RateLimiting__PublicGuestSession__PermitLimit` / `__WindowSeconds` | Opening a guest session, per client IP (§ 8.4) | 10 per 300 s | DB-06a |
 | `RateLimiting__GuestSessionPerCode__PermitLimit` / `__WindowSeconds` | Opening a guest session, per booking code, whatever the IP and the address (§ 8.4) | 10 per 900 s | DB-06a |
 | `GuestArea__SessionMinutes` | How long a guest session lasts, in minutes; no refresh, never above 1440 (24 hours), never below 5 (§ 8.4) | **120** | DB-06a, decision DB-D21 |
+| `RateLimiting__GuestBookingCancel__PermitLimit` / `__WindowSeconds` | The guest cancelling a booking (guest area and the host's link), per client IP (§ 8.5) | 10 per 600 s | DB-08a |
+| `RateLimiting__GuestBookingCancelPerBooking__PermitLimit` / `__WindowSeconds` | Same, per booking, whatever the IP (§ 8.5) | 5 per 900 s | DB-08a |
 | `App__PublicSiteBaseUrl`, `Email__*` | Links and delivery of the emails | — | required, see [email.md](email.md) |
 
 A changed value applies to new requests and new confirmations: a request already waiting keeps the deadline stored in
@@ -221,10 +223,13 @@ its own translation of the code (`apiErrors.codes.*`, `getProblemMessage`). `Boo
   offered, 422 if forced). The quote (`POST /api/public/bookings/quote`) answers
   `paymentOptions: { deferredPaymentAvailable, deferredChargeDate, freeCancellationUntil }` and the checkout shows the
   button "Paga più tardi: la carta viene salvata ora e addebitata il {data}" only from it.
-- **"Cancellazione gratuita fino a …"** is not shown anywhere: the guest has **no self-service cancellation** (only the host
-  cancels, BK-02), so `freeCancellationUntil` is always `null` (`DirectBookingPaymentRules.GuestSelfCancellationAvailable`
-  = false). The guest booking page shows "Pagamento previsto per {data}" for the deferred payment instead. When a guest
-  cancellation exists, set the flag and the checkout shows the text again from the quote.
+- **"Cancellazione gratuita fino a …"** (DB-08a): the guest cancels by themselves from the guest area (§ 8.5), so the quote's
+  `freeCancellationUntil` is the free refund deadline **when it is true**: the stay has a cancellation policy that refunds in full
+  (not "Non rimborsabile", not a stay the host marked non-refundable) and that day is today or later
+  (`DirectBookingPaymentRules.IsFreeCancellationPromised`); otherwise `null` and the checkout says nothing. "Free" is free: the
+  guest gets back the price of the stay **and** the tourist tax (§ 8.5). The deadline of a new booking is worked out with the
+  policy **of the stay** (`CancellationRefundPolicy.EffectivePolicy`: the catalog policy with the host's overrides for a stay
+  under 28 nights), the same the cancellation applies; the bookings made before keep the day they were given.
 - The refund floor of a host cancellation (BK-02) keeps using `FreeRefundDeadline`: for new bookings of a property with a
   policy it now coincides with the policy's full refund window instead of check-in − 7.
 
@@ -382,6 +387,61 @@ Code: `Casazen.Core/Services/IGuestSessionService.cs`, `Casazen.Infrastructure/S
 `Casazen.Web/Infrastructure/GuestSessionCodeRateLimiter.cs`. Frontend: `src/features/public-booking/guest-bookings-page.tsx` (the form,
 "Esci" and `guest-area-slot.tsx`, where the messages of the guest hook in), `src/api/guest-session.api.ts`, `src/lib/guest-session.ts`,
 `src/queries/use-guest-session.ts`. Test: `GuestBookingLookupPostgresTests.GuestSession_…` (tenancy, uniform 404).
+
+### 8.5 The guest cancels from the guest area (DB-08a)
+
+The guest sees **what they would get back** and cancels, with the code and the email of § 8.4 and no email link in between (PO choice,
+DB-D3). No flag: it is always on and does not depend on the booking site v2. The cancellation goes through the existing services
+(`GuestBookingCancellationService` → `BookingCancellationService`, the same as the host's link of DB-08h): no new way to move money.
+
+| Endpoint | Auth | Answers |
+|---|---|---|
+| `GET /api/public/guest/bookings/{code}/cancellation` | Bearer (§ 8.4), `PublicBookingLookup` | 200 the **preview**; 401; **404 `guest_booking_not_found`** |
+| `POST /api/public/guest/bookings/{code}/cancel` `{ confirm: true, expectedRefundAmount }` + header `Idempotency-Key` | Bearer (§ 8.4); `GuestBookingCancel` (10 per 10 min per IP) and `GuestBookingCancelPerBooking` (5 per 15 min per booking) | 200 `{ status, refundAmount, refundStatus }`; **409 `refund_changed`** (+ `preview`); 409 `booking_payment_in_progress`; 422 `guest_cancel_stay_started`, `booking_not_cancellable_by_guest`, `guest_cancel_confirmation_required`, `refund_amount_invalid`, `idempotency_key_invalid`; 401; 404; 429 |
+| `GET /api/public/bookings/{id}/cancellation?token=` (the page of the host's link `/book/{slug}/bookings/{id}/cancel?token=`) | the link token; `PublicBookingLookup` | the same preview, the token **not spent**; 400 `guest_cancel_token_missing`; 422 `guest_cancel_token_invalid` / `_expired`; 404 |
+| `POST /api/public/bookings/{id}/cancel?token=` (DB-08h) + optional body `{ expectedRefundAmount }` | the link token; `GuestBookingCancel` | as above; without the body it cancels as before; with it, 409 `refund_changed` leaves the link usable |
+
+- **The refund, one calculation** (`CancellationRefundPolicy.EvaluateGuestRefund`, used by the preview and by the cancellation, which checks
+  it again under its lock): the **percent of the stay's policy** (the catalog policy of the property, with the host's overrides for a stay
+  under 28 nights) of `BasePrice` (lodging and cleaning) **plus the whole tourist tax**, never more than what is still refundable. The
+  default of DB-D15 (1a), to be confirmed with the consultant: the tax is a debt to the municipality, not due on a stay that does not
+  happen. If the PO decides otherwise the change is in that function and in the five catalog texts (migration `FixCancellationPolicyCatalog`).
+  A property without a policy refunds only the tax. A refund is never "done" before Stripe confirms it: `refundStatus` is `pending`
+  until the refund webhook, `confirmed` after, `none` when nothing goes back.
+- **The preview** (`GuestCancellationPreview`): `cancellable`, `reason` (`already_cancelled`, `stay_started`, `not_cancellable_status`,
+  `payment_in_progress`), `kind` (`cancel`; `withdrawRequest` for a request to pay at the property that the host has not accepted;
+  `deferredNoCharge` for "Paga alla scadenza" with nothing charged yet), `paidAmount`, `alreadyRefundedAmount`, `refundPercent`,
+  `refundAmount`, `retainedAmount` (+ `retainedBecause: "policy"`), the `policy` (`slug`, `name`, `description`: the description only
+  while the host's overrides did not change the windows), the last day (Europe/Rome, included) of the full and of the partial refund
+  (`fullRefundUntil`, `partialRefundPercent`, `partialRefundUntil`: the last **whole** day at least that many hours before the start of
+  the check-in day, as the free refund deadline of § 7.5), the `stay` (property and dates), `outcome` for a booking already cancelled
+  and `generatedAt`. Every figure comes from here; no booking code, nothing personal.
+- **What the guest area cancels.** Confirmed bookings and requests not yet accepted, **until the check-in day begins** (Europe/Rome): from
+  then on (`stay_started`, also a checked-in or checked-out stay) the guest writes to the host (DB-D3: no cancellation during a stay).
+  The link the host sent still works for a stay in progress. A payment that is settling (`Processing`) blocks it
+  (`payment_in_progress`). A booking already cancelled answers **200 with the outcome** of its cancellation and refunds nothing again.
+- **`refund_changed`.** The POST works the refund out again; if it is not `expectedRefundAmount` (a threshold of the policy was crossed
+  between the preview and the click, a payment changed) **nothing is cancelled** and the 409 carries the new `preview` in the problem
+  (`preview` extension) for the screen to show and ask again.
+- **Idempotency.** It is the cancelled state that stops a second refund: a repeated POST (same `Idempotency-Key`, another, or the
+  link and the area one after the other) answers the same 200 and creates no second refund (advisory locks per booking and payment, the
+  cancellation reads the booking again under them). The header is required (8-64 characters) so a client cannot cancel without a key
+  of its own. The cancellation is not tied to the request being open: a guest who closes the page does not leave a refund reserved and
+  never sent.
+- **Safety, DB-D3 (a).** Short session (§ 8.4), explicit confirmation of the amount, per-IP and per-booking limits, no cancellation
+  during the stay, the refund cannot exceed the policy, an email to the guest ("annullata come hai chiesto", the amount, "di solito
+  5-10 giorni", "se non sei stato tu scrivi all'host") **and** one to the host (`host-booking-cancelled-by-guest`, the amount refunded and
+  kept, the link to the booking), so an abuse is seen. The cancellation is stored with `Bookings.CancellationReason = GuestRequested`
+  (the host's timeline says "annullata dall'ospite"). Logs: booking id, channel, percent and amount; no email, no code, no token.
+- **Not done yet.** Card brand and last four digits in the guest's email; the cancellation of paid extras (DB-15); an English version of
+  the emails (DB-18); a demo scenario.
+
+Code: `Casazen.Core/Services/CancellationRefundPolicy.cs` (`EvaluateGuestRefund`, `RefundWindows`, `NeverFullRefundHours`),
+`GuestCancellationPreview.cs`, `IGuestBookingCancellationService.cs`, `DirectBookingPaymentRules.cs`;
+`Casazen.Infrastructure/Services/GuestBookingCancellationService.cs`, `BookingCancellationService.cs`, `BookingNotifier.cs`;
+`Casazen.Web/Controllers/GuestCancellationController.cs`, `PublicGuestBookingCancellationController.cs`,
+`Casazen.Web/Infrastructure/GuestBookingCancelRateLimiter.cs`, `GuestCancellationProblems.cs`, `DTOs/GuestCancellationDtos.cs`.
+Test: `GuestSelfCancellationPostgresTests` (the amount shown is the amount refunded, per property, once, never for another guest).
 
 ## 9. Deferred charge of "Paga più tardi" (BK-08)
 
@@ -599,6 +659,28 @@ what the code did before, and the migration rewrites no data.
 - A "pay at the property" request has its own cap (`onsite_request_too_many_nights`, § 2): a minimum above that cap leaves
   the card as the only way to book.
 
+### 11.2a The cancellation policy and its dates, for the public pages (DB-03b)
+
+Two additive read fields, no flag, no migration. Both come from the one rule of the guest area (§ 8.5: `CancellationRefundPolicy`,
+`EffectivePolicy`, `RefundWindows`), so what a page promises is what the cancellation then does.
+
+- **`cancellationPolicy`** in the public property detail (`GET /api/public/orgs/{slug}/properties/{slugOrId}` and `GET /api/properties/{id}/public`),
+  `null` for a property without a policy: `{ slug, name, description, fullRefundHours, partialRefundHours, partialRefundPercent, hostOverrideApplies,
+  longStayNights }`. It is the policy of a **normal stay** (under `longStayNights` = 28 nights): the catalog policy with what the host changed of it.
+  A window the policy does not have is **`null`**, never a number that means «never»: `fullRefundHours: null` is «Non rimborsabile» (no full refund at any
+  time), `partialRefundHours`/`partialRefundPercent: null` is a policy with no partial window. `hostOverrideApplies` = the host changed the hours or
+  the percentage; then `description` (the text of the catalog) is `null`, since it would say something else. From 28 nights the catalog policy applies as it
+  is, whatever the host changed: the quote below says the real dates of a stay. `cancellationPolicySummary` stays as it was.
+- **`cancellation`** in the quote (`POST /api/public/bookings/quote`): `{ fullRefundUntil, partialRefundPercent, partialRefundUntil, selfServiceAvailable }`
+  for the stay asked, worked out on the policy **of that stay**. The dates are the **last whole days** (Europe/Rome, `yyyy-MM-dd`, included) that end at least
+  that many hours before the start of the check-in day, daylight saving included: a date shown is never a promise an hour too long. A date already past is
+  `null` (a page never says «gratuita fino a ieri»), and so is a window the policy does not have. `fullRefundUntil` is the same day as
+  `paymentOptions.freeCancellationUntil` while it is ahead. `selfServiceAvailable` is `true` for every direct booking since DB-08a (the guest cancels
+  from the guest area, § 8.5); a page shows the dates only when it is true.
+- **Fixed on the way.** `CancellationRefundPolicy.RefundWindows` dropped the partial window of every sound policy (its test compared the days the
+  wrong way round): the guest-area preview never carried `partialRefundUntil`. The amount of the refund was never affected (it comes from
+  `EvaluateGuestRefund`). Test: `PublicCancellationPolicyIntegrationTests`.
+
 ### 11.3 The weekend surcharge
 
 - **A weekend night** is a night that starts on a Friday or on a Saturday, by its Europe/Rome calendar date
@@ -680,6 +762,20 @@ nights, which is `nightlyRate x nights` without a surcharge) and adds `lines`, t
   withdrawal keeps the version of the text the guest agreed to. The tab labels the source (`GuestConsentSource`): the
   frontend needs the label for `BookingCheckout` (follow-up FE).
 
+### 11.6a The expected arrival time (DB-03b)
+
+- `POST /api/public/bookings` accepts `expectedArrivalTime`, optional, from step 2 of the checkout: `HH:mm` (`15:30`; `9:30` is read as
+  `09:30`) or `late` for "after the check-in window". Left out, `null` or blank = the guest did not say. Anything else is **422
+  `direct_booking_arrival_time_invalid`** before anything is written (IT/EN message). Stored on the new nullable
+  `Bookings.ExpectedArrivalTime` (`varchar(5)`; migration `AddBookingExpectedArrivalTime`, additive, no backfill, no flag).
+- **It is a note for the host, not a rule**: it moves no price, no availability and no check. The check-in window of the property is **not**
+  enforced (the property has no end of window, and an optional preference must never be what stops a paid booking); the checkout offers
+  the hours of the window and "after …" itself. The quote does not take it.
+- The host reads it as `expectedArrivalTime` in the booking DTO (`GET /api/bookings`, `GET /api/bookings/{id}`; `null` for a booking that did
+  not come from the checkout): the note "arrivo previsto alle…". It is in the data export of the guest (`GuestExportBooking.ExpectedArrivalTime`)
+  and is cleared, with the special requests, when the guest is erased ([gdpr.md](gdpr.md)).
+- Rollback: deploy the previous release (it ignores the column); `Down` drops it and the values are lost.
+
 ### 11.7 Public coordinates (privacy)
 
 - The exact position of a house (6 decimals, about 10 cm, what the host types) **never leaves CasaZen**. Every public
@@ -720,6 +816,40 @@ FROM casazen_prod."Orgs";
   the schema before the migration, defaults, CHECKs, old writer, Down/Up) and `DirectCheckoutMarketingConsentPostgresTests`
   (two checkouts at once, payment not started, cascade, GDPR tab).
 
+### 11.9 The calendar with the price of every night (DB-03b)
+
+`GET /api/public/properties/{propertyId}/calendar?from=yyyy-MM-dd&to=yyyy-MM-dd` and, for a property of a site,
+`GET /api/public/orgs/{slug}/properties/{slugOrId}/calendar` (same query): the night that starts on each day, to draw the calendar of the
+property page, the stay pickers and the checkout. Anonymous, `PublicRead` (per client IP), no flag, no migration.
+
+```json
+{ "propertyId": "…", "startDate": "2026-10-30", "endDate": "2027-10-30", "today": "2026-10-30", "currency": "EUR",
+  "generatedAt": "2026-10-30T09:12:44Z",
+  "days": [ { "date": "2026-10-30", "available": true, "nightlyPriceCents": 17250, "minNights": 2 }, … ] }
+```
+
+- **Range.** `from` defaults to today (Europe/Rome), `to` (excluded) to `from` + 12 months; at most **13 months**, otherwise 422
+  `public_calendar_range_invalid`. Days before today are not listed (`startDate` is the first day listed, `today` tells what "past" is).
+  404 `public_property_not_found` (the same message of the availability) for a property that does not exist or is not published
+  (`PublicListing.IsPublished`, active org); the slug route answers a plain 404 for an org that does not resolve, its former slugs too.
+- **`available`** = a stay can start that night: no booking that is not cancelled, no hold within its time, no "pay at the property"
+  request waiting for the host, no iCal block, no manual block. It is **the same read as the availability** (`PublicOccupancyReader`,
+  shared with `PublicAvailabilityService`: `PropertyOccupancy` + `CheckoutHolds.OccupiesDates`), so a night shown as taken is a night
+  the checkout refuses and the other way round. The check-out day of a stay is available. A booking, a host block and an iCal block
+  look the same, and nothing says who stays: the answer carries dates, booleans and numbers only.
+- **`nightlyPriceCents`** = `StayPricing.NightPrice`, the function the quote adds the nights up with (`StayPricing.Lodging` of one
+  night): the nightly rate, `+ weekendSurchargePercent` on a Friday or a Saturday (rounded to the cent), or the price the host confirmed
+  for that date (§ 11.3). It is the first line of the quote of a one-night stay on that date, to the cent (test
+  `Calendar_EveryNightPrice_IsWhatTheQuoteAddsUpForThatNight_*`); there is no second calculation. It is also given for a taken night.
+  The quote stays the only authority on a **total**: the calendar says nothing of cleaning, tourist tax or the length of the stay.
+- **`minNights`** = the shortest stay that can start that day: the property's minimum (§ 11.2), 1 when it has none. It is per day on
+  purpose: the minimum by date (D20, SR-11) will fill the same field with no change of contract.
+- **Cache.** None: four small reads (the property, the bookings, the blocks, the prices the host confirmed) for any range, behind
+  the per-IP limit. `generatedAt` says when the answer was worked out.
+- **Prices the host confirmed are public data**: `PricingAdapterService.GetAppliedNightlyPricesAsync` names the property and ignores
+  the tenant filter, so a signed-in host of another org who looks at the site sees the prices everybody sees (the quote did not
+  guarantee it before).
+
 ## 12. Who runs the site: operator data in the footer (DB-03b-a)
 
 Task DB-03b-a of the redesign wave (reduced DB-03b, decision DB-D14 (a)). The booking site of a host shows, in its footer, the
@@ -744,3 +874,30 @@ of the settings page is marked as a draft until then. Publication is never block
   Rollback: deploy the previous release (it ignores the columns); `Down` drops them and the values entered are lost.
 - **Not done here** (proposed IDs in `results/DB-03b-a.md`): a structured registered office (street, town, province, postal
   code), the registry number (REA), a warning in a publication checklist, the same data in the JSON-LD of the site.
+
+## 13. Themes and font pairs of the public site (DB-01)
+
+Task DB-01 of the redesign wave. The booking site of a host has three themes, **Terra** (terracotta on cream), **Mare** (petrol
+blue on white) and **Città** (ink on stone), and three font pairs, **Editoriale**, **Moderno** and **Classico**. The tokens live in
+the frontend (`src/styles/public-tokens.css`, mirrored in `src/lib/public-site-themes.ts`); the backend only keeps the lists of
+the accepted ids (`PublicSiteThemes`, `PublicSiteFonts`).
+
+- **Ids.** `Orgs.PublicThemeId`: `terra` (the default), `mare`, `citta`. `Orgs.PublicFontId` (varchar 20, new, `NULL`): `editoriale`,
+  `moderno`, `classico`; `NULL` is the font its theme starts with (Terra and Mare: Editoriale, Città: Moderno). Both are written by
+  `PUT /api/orgs/me/branding` (422 `org_branding_theme_invalid` / `org_branding_font_invalid`); `publicFontId` is optional there: a
+  client that does not send it never erases the choice. Both are read by `GET /api/public/orgs/{slug}`, `GET /api/public/resolve-host`
+  and `GET /api/orgs/me/branding`.
+- **Migration `AddPublicSiteFontAndThemeIds`** (additive column, plus a rewrite of data). Before DB-01 the ids were `mare` (terracotta
+  on cream), `montagna` (green) and `urban` (indigo). `mare` now names a different look, so the migration moves `mare` and `montagna`
+  to `terra` and `urban` to `citta`; an org of `montagna` or `urban` that never picked a colour of its own gets the colour its theme
+  gave (`#2e6a4a`, `#2f3bd1`), so the part of the look that survives is kept. An org without a theme stays without one (it was the
+  terracotta default and is `terra` now). The reading code still understands `montagna` and `urban` (`PublicSiteThemes.Resolve`) for
+  two releases, because the frontend is deployed after the migration; they are no longer accepted when written.
+- **Order of the release.** The migration goes out with the backend, the frontend after it: between the two, a host that had `mare`
+  already reads `terra` (rewritten) and the old frontend does not know it, so it shows its default theme for a few minutes (the same
+  terracotta look). A write from a console that is still the old release and sends `montagna` or `urban` gets a 422; a reload fixes it.
+- **Rollback.** Deploy the previous release; `Down` maps `terra` back to `mare` and `citta` to `urban` and drops the column (the new
+  `mare` has no old twin and an old release shows it as terracotta; the colours written by `Up` stay, they are the host's colour now).
+- **Tests.** Unit: `OrgBrandingRulesTests`, `OrgBrandingServiceTests`, `PublicOrgControllerTests`, `LegacyRowsSchemaTests`. HTTP:
+  `OrgBrandingIntegrationTests`. PostgreSQL (CI): `AddPublicSiteFontAndThemeIdsMigrationPostgresTests` (stored ids and colours before
+  the migration, written by SQL, and what each becomes).
