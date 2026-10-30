@@ -49,6 +49,10 @@ internal static class LeaseLetterData
     /// <summary>A day as a person writes it in a letter: «31 ottobre 2030».</summary>
     public static string Day(DateOnly day) => day.ToString("d MMMM yyyy", Italian);
 
+    /// <summary>The line of a year of the interest of a deposit: «2024: tasso 2,5% per 366 giorni su 366: euro 30,00».</summary>
+    public static string YearInterestLine(int year, decimal ratePercent, int days, int daysInYear, decimal interest) =>
+        $"{year}: tasso {Percent(ratePercent)}% per {days} giorni su {daysInYear}: euro {Money(interest)}";
+
     /// <summary>An amount of euros as it is written in a letter, with the cents: «1.250,50».</summary>
     public static string Money(decimal amount) => amount.ToString("N2", Italian);
 

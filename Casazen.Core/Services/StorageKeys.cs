@@ -7,6 +7,7 @@ namespace Casazen.Core.Services;
 /// Builds and validates object keys of <see cref="IFileStorage"/>. One place for the layout:
 /// <list type="bullet">
 /// <item><c>properties/{propertyId}/photos/{file}</c> — public bucket</item>
+/// <item><c>properties/{propertyId}/floorplans/{file}</c> — public bucket (DB-11a)</item>
 /// <item><c>suppliers/{supplierOrgId}/photos/{file}</c> — public bucket</item>
 /// <item><c>properties/{propertyId}/documents/{file}</c> — private bucket</item>
 /// <item><c>guest-documents/{orgId}/{guestId}/{file}</c> — private bucket</item>
@@ -23,6 +24,10 @@ public static partial class StorageKeys
 
     public static string PropertyPhoto(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/photos/{fileName}";
+
+    /// <summary>A floor plan image of a property (public bucket, DB-11a): shown on the property page of the booking site.</summary>
+    public static string PropertyFloorPlan(Guid propertyId, string fileName) =>
+        $"properties/{propertyId}/floorplans/{fileName}";
 
     public static string SupplierPhoto(Guid supplierOrgId, string fileName) =>
         $"suppliers/{supplierOrgId}/photos/{fileName}";

@@ -357,7 +357,7 @@ public class PropertyService(
             .Select(DetailRow)
             .FirstOrDefaultAsync();
 
-        return row is null ? null : MapPublicPropertyDetail(row);
+        return row is null ? null : await WithSiteMediaAsync(MapPublicPropertyDetail(row));
     }
 
     public async Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(string slugOrId, Guid orgId)
@@ -372,7 +372,23 @@ public class PropertyService(
             .Select(DetailRow)
             .FirstOrDefaultAsync();
 
-        return row is null ? null : MapPublicPropertyDetail(row);
+        return row is null ? null : await WithSiteMediaAsync(MapPublicPropertyDetail(row));
+    }
+
+    /// <summary>The floor plan levels and the points of interest of the page (DB-11a): two small reads of the property named, never of a list.</summary>
+    private async Task<PublicPropertyDetailDto> WithSiteMediaAsync(PublicPropertyDetailDto page)
+    {
+        var media = await repository.GetSiteMediaAsync(page.Id);
+        page.Profile.FloorPlans =
+        [
+            .. media.FloorPlans.Select(f => new PublicFloorPlanDto(
+                f.Id, f.Level, new LocalizedText(f.NameIt, f.NameEn), f.ImageUrl, f.ImageWidth, f.ImageHeight, f.AreaSqm)),
+        ];
+        page.Profile.Pois =
+        [
+            .. media.Pois.Select(p => new PublicPoiDto(p.Kind, new LocalizedText(p.NameIt, p.NameEn), p.Mode, p.Minutes, p.Direction, p.DistanceMeters)),
+        ];
+        return page;
     }
 
     public async Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId)
