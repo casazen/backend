@@ -182,19 +182,23 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
         Assert.Equal("customer", first.GetProperty("author").GetString());
         Assert.Equal(Words, first.GetProperty("body").GetString());
 
-        // 2. The supplier answers; the customer sees it as new, once.
+        // 2. The supplier answers; the customer sees it as new, once. The clock of the host is frozen: the answer comes a minute after the
+        // customer's words, otherwise both messages have the same instant and the thread lists them in the order of their random ids.
         var requestId = Assert.Single((await supplier.InboxAsync(factory)).GetProperty("items").EnumerateArray()).GetProperty("id").GetGuid();
         using var asSupplier = supplier.Client(factory);
-        Assert.Equal(
-            HttpStatusCode.Created,
-            (await asSupplier.PostAsJsonAsync($"/api/supplier/requests/{requestId}/messages", new { body = "Posso passare giovedì per un sopralluogo." })).StatusCode);
-        var talking = await (await client.PostAsJsonAsync("/api/public/supplier-bookings/lookup", access)).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("InConversation", talking.GetProperty("negotiation").GetString());
-        var answer = talking.GetProperty("thread").GetProperty("messages").EnumerateArray().Last();
-        Assert.Equal("supplier", answer.GetProperty("author").GetString());
-        Assert.True(IsNull(answer, "readAt"));
-        var read = await (await client.PostAsJsonAsync("/api/public/supplier-bookings/lookup", access)).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.False(IsNull(read.GetProperty("thread").GetProperty("messages").EnumerateArray().Last(), "readAt"));
+        using (factory.MoveClock(TimeSpan.FromMinutes(1)))
+        {
+            Assert.Equal(
+                HttpStatusCode.Created,
+                (await asSupplier.PostAsJsonAsync($"/api/supplier/requests/{requestId}/messages", new { body = "Posso passare giovedì per un sopralluogo." })).StatusCode);
+            var talking = await (await client.PostAsJsonAsync("/api/public/supplier-bookings/lookup", access)).Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("InConversation", talking.GetProperty("negotiation").GetString());
+            var answer = talking.GetProperty("thread").GetProperty("messages").EnumerateArray().Last();
+            Assert.Equal("supplier", answer.GetProperty("author").GetString());
+            Assert.True(IsNull(answer, "readAt"));
+            var read = await (await client.PostAsJsonAsync("/api/public/supplier-bookings/lookup", access)).Content.ReadFromJsonAsync<JsonElement>();
+            Assert.False(IsNull(read.GetProperty("thread").GetProperty("messages").EnumerateArray().Last(), "readAt"));
+        }
 
         // 3. The customer writes (after the quiet period of the first message): the supplier is told with "Nome C." and never the words.
         using (factory.MoveClock(TimeSpan.FromMinutes(11)))
