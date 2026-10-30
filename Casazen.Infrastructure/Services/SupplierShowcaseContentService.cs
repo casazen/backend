@@ -271,6 +271,30 @@ public class SupplierShowcaseContentService(
         await CommitAsync(transaction, cancellationToken);
     }
 
+    public async Task<PublishedShowcase?> GetPublishedAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)
+    {
+        var row = await Contents(supplierOrgId)
+            .AsNoTracking()
+            .Select(c => new { c.PublishedJson, c.PausedAt, c.PublishedAt })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return row?.PublishedJson is null
+            ? null
+            : new PublishedShowcase(ShowcaseContentRules.Read(row.PublishedJson), row.PausedAt is not null, row.PublishedAt);
+    }
+
+    public async Task<ShowcasePublication> GetPublicationAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)
+    {
+        var row = await Contents(supplierOrgId)
+            .AsNoTracking()
+            .Select(c => new { Published = c.PublishedJson != null, c.PausedAt, c.PublishedAt, c.SavedAt })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return row is null
+            ? new ShowcasePublication(false, false, false, null, null)
+            : new ShowcasePublication(true, row.Published, row.PausedAt is not null, row.PublishedAt, row.SavedAt);
+    }
+
     /// <summary>
     /// The content of <paramref name="orgId"/>. <b>The only way</b> this service reads or changes a row: the table is not
     /// tenant-filtered, so the supplier org is always an explicit predicate.
