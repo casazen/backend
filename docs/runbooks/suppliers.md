@@ -3663,7 +3663,7 @@ time has come: **18:00 Europe/Rome of the day before** (daylight saving time fol
 ### 35.4 For the mobile app
 
 Two new `data.type` of push, both to the supplier org: `service-request-day-before` and `service-payment-received` (`entityId`: the service request, route as the other supplier pushes). Delivery keys: one per request
-(`service-request:{id}:day-before`) and one per payment (`service-payment:{id}:received`), so a retry is one push. The bell of the web app does not know them yet (SP-16d-FU1).
+(`service-request:{id}:day-before`) and one per payment (`service-payment:{id}:received`), so a retry is one push. The bell of the web app knows them (frontend SP-08d, together with the four types of the quote).
 
 ### 35.5 Decisions applied (defaults, nothing asked)
 
@@ -3674,8 +3674,7 @@ Two new `data.type` of push, both to the supplier org: `service-request-day-befo
 
 ### 35.6 Known limits (follow-ups, nothing is broken)
 
-- SP-16d-FU1: the bell of the web app (`notification-model.ts`) lacks the two new types (it shows the generic sentence and opens nothing).
-- SP-16d-FU2: SMS, WhatsApp, a daily summary, the choice of channels and of the hour, and notices for expiring documents or reviews are not here (out of the scope of the task).
+- SP-16d-FU1: SMS, WhatsApp, a daily summary, the choice of channels and of the hour, and notices for expiring documents or reviews are not here (out of the scope of the task).
 
 ### 35.7 After a deploy
 
