@@ -239,7 +239,7 @@ public sealed class PublicSiteSearchService(
             days.AddRange(PublicStayPlanner.SiteDays(houses, data, first, end, adults + children));
         }
 
-        return new PublicSiteCalendar(first, end, today, "EUR", adults, children, days, _clock.GetUtcNow().UtcDateTime);
+        return new PublicSiteCalendar(first, end, today, PublicStayPlanner.CurrencyOf(houses), adults, children, days, _clock.GetUtcNow().UtcDateTime);
     }
 
     /// <summary>The rules of the stay asked, the ones the quote and the checkout apply to every stay: a 422 before anything is read.</summary>
@@ -301,6 +301,8 @@ public sealed class PublicSiteSearchService(
                 OrgHostName = p.Org.HostName,
                 OrgStripeConnectedAccountId = p.Org.StripeConnectedAccountId,
                 OrgConnectChargesEnabled = p.Org.ConnectChargesEnabled,
+                Currency = p.Currency,
+                Country = p.Country,
                 Id = p.Id,
                 Slug = p.Slug,
                 Name = p.Name,
@@ -371,7 +373,10 @@ public sealed class PublicSiteSearchService(
                     row.OverrideFullRefundHours, row.OverridePartialRefundHours, row.OverridePartialRefundPercent, row.OverrideRefundType),
                 // The site of the house and the name of its host: only where the list mixes the sites.
                 platform ? row.OrgSlug : null,
-                platform ? HostNameOf(row) : null));
+                platform ? HostNameOf(row) : null,
+                // The property says its own currency and country (EUR and IT, or CHF and CH): the price of a card is in that currency.
+                string.IsNullOrWhiteSpace(row.Currency) ? PublicStayHouse.DefaultCurrency : row.Currency.Trim().ToUpperInvariant(),
+                string.IsNullOrWhiteSpace(row.Country) ? PublicStayHouse.DefaultCountry : row.Country.Trim().ToUpperInvariant()));
         }
 
         return houses;
@@ -484,6 +489,10 @@ public sealed class PublicSiteSearchService(
         public string? OrgHostName { get; init; }
         public string? OrgStripeConnectedAccountId { get; init; }
         public bool OrgConnectChargesEnabled { get; init; }
+
+        // The currency and the country of the property (EUR / IT by default, CHF / CH in Switzerland).
+        public string Currency { get; init; } = PublicStayHouse.DefaultCurrency;
+        public string Country { get; init; } = PublicStayHouse.DefaultCountry;
 
         public Guid Id { get; init; }
         public string? Slug { get; init; }

@@ -239,13 +239,14 @@ public sealed record PublicStaysResult(
 /// What the controls of the platform search need to know about the houses of the place asked (before the other filters): how far the
 /// price and size sliders go, how many guests a house takes, whether any takes pets, and the labels with how many houses carry each.
 /// </summary>
-/// <param name="MinNightCents">The lowest base night rate among the houses; <c>null</c> without houses.</param>
+/// <param name="MinNightCents">The lowest base night rate among the houses; <c>null</c> without houses. Amounts of two currencies are not converted.</param>
 /// <param name="MaxNightCents">The highest base night rate among the houses.</param>
 /// <param name="MaxGuests">The most people any of the houses sleeps; 0 without houses.</param>
 /// <param name="MinAreaSqm">The smallest size among the houses that said theirs.</param>
 /// <param name="MaxAreaSqm">The largest size among the houses that said theirs.</param>
 /// <param name="PetsAllowed">Some house accepts pets (welcome or on request).</param>
 /// <param name="Tags">The labels of the houses with their counts, in the order of the vocabulary.</param>
+/// <param name="Currency">The currency of the houses of the place when they share it (<c>CHF</c> in Ticino), else <c>EUR</c>: what the sliders are written in.</param>
 public sealed record PublicStaysFacets(
     long? MinNightCents,
     long? MaxNightCents,
@@ -253,7 +254,8 @@ public sealed record PublicStaysFacets(
     int? MinAreaSqm,
     int? MaxAreaSqm,
     bool PetsAllowed,
-    IReadOnlyList<PublicStayFacetTag> Tags);
+    IReadOnlyList<PublicStayFacetTag> Tags,
+    string Currency = PublicStayHouse.DefaultCurrency);
 
 /// <summary>A label of the houses and how many houses carry it.</summary>
 public sealed record PublicStayFacetTag(string Tag, int Count);
@@ -271,6 +273,7 @@ public sealed record PublicStayFacetTag(string Tag, int Count);
 /// </param>
 /// <param name="OrgSlug">Only on the platform search: the slug of the booking site of the house (<c>/book/{orgSlug}/property/{slug}</c>); <c>null</c> on a site.</param>
 /// <param name="HostName">Only on the platform search: how the host is named on the site (the name the host chose, else the name of the org).</param>
+/// <param name="Country">ISO 3166-1 alpha-2 country of the house (<c>IT</c>, <c>CH</c>); its price is in the currency of that house (<see cref="PublicStayPrice.Currency"/>).</param>
 public sealed record PublicStayCard(
     Guid Id,
     string? Slug,
@@ -291,7 +294,8 @@ public sealed record PublicStayCard(
     PublicStayPrice Price,
     StayCancellation? Cancellation = null,
     string? OrgSlug = null,
-    string? HostName = null);
+    string? HostName = null,
+    string? Country = null);
 
 /// <summary>Whether a house is free for the stay asked.</summary>
 /// <param name="Available">Free for the stay (and bookable); <c>true</c> when no dates were chosen, since there is nothing to be taken.</param>

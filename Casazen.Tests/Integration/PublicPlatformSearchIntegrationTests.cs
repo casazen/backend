@@ -90,6 +90,37 @@ public class PublicPlatformSearchIntegrationTests : IClassFixture<CasazenWebAppl
         var facets = result.GetProperty("facets");
         Assert.Equal(4, facets.GetProperty("maxGuests").GetInt32());
         Assert.Equal(CentsOf(150m), facets.GetProperty("minNightCents").GetInt64());
+        Assert.Equal("EUR", facets.GetProperty("currency").GetString());
+    }
+
+    [Fact]
+    public async Task PlatformStays_AHouseInSwitzerlandIsFoundByItsCountry_AndItsPriceIsInItsOwnCurrency()
+    {
+        var city = $"Lugano{Guid.NewGuid():N}";
+        var friday = NextFriday(50);
+        var monday = friday.AddDays(3);
+        var org = await SeedOrgAsync("Host Ticino", active: true, canTakeBookings: true);
+        var swiss = await SeedHouseAsync(org.Id, "Casa Ticino", city, p =>
+        {
+            p.Country = "CH";
+            p.Currency = "CHF";
+            p.NightlyRate = 200m;
+        });
+        using var client = _factory.CreateClient();
+
+        // «svizzera» and the name of the comune find it; the card says CHF (the property's own currency) and CH, never euros.
+        foreach (var where in new[] { "svizzera", "Switzerland", city })
+        {
+            var result = await GetStaysAsync(client, $"where={where}&checkin={Day(friday)}&checkout={Day(monday)}&adults=2");
+            var card = result.GetProperty("items").EnumerateArray().First(i => i.GetProperty("id").GetGuid() == swiss);
+            Assert.Equal("CHF", card.GetProperty("price").GetProperty("currency").GetString());
+            Assert.Equal("CH", card.GetProperty("country").GetString());
+            Assert.All(result.GetProperty("items").EnumerateArray(), i => Assert.Equal("CH", i.GetProperty("country").GetString()));
+        }
+
+        // The sliders of a place where every house is Swiss are written in francs.
+        var facets = (await GetStaysAsync(client, $"where={city}")).GetProperty("facets");
+        Assert.Equal("CHF", facets.GetProperty("currency").GetString());
     }
 
     private static string Day(DateTime date) => date.ToString("yyyy-MM-dd");

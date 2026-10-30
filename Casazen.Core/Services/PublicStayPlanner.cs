@@ -35,8 +35,15 @@ public sealed record PublicStayHouse(
     CancellationPolicy? CatalogPolicy = null,
     HostCancellationOverrides Overrides = default,
     string? OrgSlug = null,
-    string? HostName = null)
+    string? HostName = null,
+    string Currency = PublicStayHouse.DefaultCurrency,
+    string Country = PublicStayHouse.DefaultCountry)
 {
+    /// <summary>What a house without a currency of its own costs in (the property says <c>EUR</c> until it is in Switzerland).</summary>
+    public const string DefaultCurrency = "EUR";
+
+    public const string DefaultCountry = "IT";
+
     /// <summary>The labels of the house (what the host chose and what its data give), in the order of the vocabulary.</summary>
     public IReadOnlyList<string> Tags => Labels ?? [];
 
@@ -77,7 +84,15 @@ public sealed record PublicStayData(
 /// </summary>
 public static class PublicStayPlanner
 {
-    private const string Currency = "EUR";
+    /// <summary>
+    /// The currency a list or a calendar says it is in: the one of its houses when they share it, else euros (the houses of two countries
+    /// in one list each carry their own on their price; amounts of two currencies are not converted).
+    /// </summary>
+    public static string CurrencyOf(IEnumerable<PublicStayHouse> houses)
+    {
+        var currencies = houses.Select(house => house.Currency).Distinct(StringComparer.Ordinal).Take(2).ToList();
+        return currencies.Count == 1 ? currencies[0] : PublicStayHouse.DefaultCurrency;
+    }
 
     /// <summary>The age every child is counted at while the list does not know theirs: the oldest minor, a payer wherever a minor pays.</summary>
     private const int EstimatedChildAge = TouristTaxCalculator.AdultAge - 1;
@@ -160,7 +175,7 @@ public static class PublicStayPlanner
             : [];
 
         return new PublicStaysResult(
-            Currency,
+            CurrencyOf(pool),
             hasDates ? checkIn : null,
             hasDates ? checkOut : null,
             hasDates ? nights : null,
@@ -207,7 +222,8 @@ public static class PublicStayPlanner
             areas.Count > 0 ? areas.Min() : null,
             areas.Count > 0 ? areas.Max() : null,
             houses.Any(house => house.AcceptsPets),
-            SitePropertyProfileLimits.Tags.Where(tags.ContainsKey).Select(tag => new PublicStayFacetTag(tag, tags[tag])).ToList());
+            SitePropertyProfileLimits.Tags.Where(tags.ContainsKey).Select(tag => new PublicStayFacetTag(tag, tags[tag])).ToList(),
+            CurrencyOf(houses));
     }
 
     private static bool PassesFilters(
@@ -244,6 +260,18 @@ public static class PublicStayPlanner
     // A comune this short is a word of other names («Lu», «Ro»): a phrase that contains it does not find it.
     private const int MinCityLengthForPhrase = 4;
 
+    // The countries CasaZen has houses in (IT and CH, ADR-001-R7), by the ids of what a visitor types for them (see DestinationId).
+    private static readonly IReadOnlyDictionary<string, string> CountryNames = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["italia"] = "IT",
+        ["italy"] = "IT",
+        ["svizzera"] = "CH",
+        ["switzerland"] = "CH",
+        ["schweiz"] = "CH",
+        ["suisse"] = "CH",
+        ["svizra"] = "CH",
+    };
+
     private static bool MatchesPlace(PublicStayHouse house, string place, bool lenient)
     {
         var wanted = TouristTaxComune.NormalizeName(place).Replace(' ', '-');
@@ -252,6 +280,10 @@ public static class PublicStayPlanner
             return true;
         if (!lenient || wanted.Length == 0)
             return false;
+
+        // The country, by the names people use for it: «svizzera» or «switzerland» find the houses in Switzerland.
+        if (CountryNames.TryGetValue(wanted, out var country))
+            return string.Equals(house.Country, country, StringComparison.OrdinalIgnoreCase);
 
         return city.Contains(wanted, StringComparison.Ordinal)
             || (city.Length >= MinCityLengthForPhrase && wanted.Contains(city, StringComparison.Ordinal))
@@ -334,7 +366,7 @@ public static class PublicStayPlanner
             house,
             data,
             new PublicStayAvailability(reason is null, reason, house.MinNights, firstFree),
-            new PublicStayPrice(Currency, StayPricing.ToCents(lodging.Total / nights), total, includes),
+            new PublicStayPrice(house.Currency, StayPricing.ToCents(lodging.Total / nights), total, includes),
             cancellation);
     }
 
@@ -422,7 +454,7 @@ public static class PublicStayPlanner
             house,
             data,
             new PublicStayAvailability(true, null, house.MinNights, null),
-            new PublicStayPrice(Currency, FromPerNightCents(house, data), null, null));
+            new PublicStayPrice(house.Currency, FromPerNightCents(house, data), null, null));
 
     /// <summary>The lowest night of the next <see cref="PublicSiteSearch.FromPriceDays"/> days: the «da X € a notte» of a house.</summary>
     private static long FromPerNightCents(PublicStayHouse house, PublicStayData data)
@@ -465,7 +497,8 @@ public static class PublicStayPlanner
             price,
             cancellation,
             house.OrgSlug,
-            house.HostName);
+            house.HostName,
+            house.Country);
 
     private static IReadOnlyList<string> MainAmenitiesOf(PublicStayHouse house) =>
         MainAmenities.Where(house.Amenities.Contains).Take(MaxCardAmenities).Select(amenity => amenity.ToString()).ToList();
