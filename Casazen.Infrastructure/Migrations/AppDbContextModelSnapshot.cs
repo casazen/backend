@@ -3005,6 +3005,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("PlanTier")
                         .HasColumnType("integer");
 
+                    b.Property<string>("PublicFontId")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<int>("PublicHostMode")
                         .HasColumnType("integer");
 
