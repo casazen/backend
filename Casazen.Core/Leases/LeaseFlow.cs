@@ -109,8 +109,41 @@ public sealed record LeaseNextStep(
     DateOnly? DueOn = null,
     IReadOnlyDictionary<string, object?>? Params = null);
 
-/// <summary>The stage of a lease and the one step it is waiting for.</summary>
-public sealed record LeaseFlowResult(LeaseStage Stage, LeaseNextStep NextStep);
+/// <summary>What <see cref="LeaseProgress"/> measures. Serialized by name.</summary>
+public enum LeaseProgressKind
+{
+    /// <summary>A contract not signed by everyone yet: the steps of the path done out of <see cref="LeaseFlow.SetupSteps"/>.</summary>
+    Setup,
+
+    /// <summary>A contract in force: how far into the period it is in now (the year, or the month of a period shorter than a year).</summary>
+    Term,
+
+    /// <summary>A concluded contract: the whole path is behind it.</summary>
+    End,
+}
+
+/// <summary>The unit a <see cref="LeaseProgressKind.Term"/> progress counts in. Serialized by name.</summary>
+public enum LeaseProgressUnit
+{
+    /// <summary>The steps of the path (<see cref="LeaseProgressKind.Setup"/> and <see cref="LeaseProgressKind.End"/>).</summary>
+    Steps,
+
+    /// <summary>The months of a period shorter than twelve.</summary>
+    Months,
+
+    /// <summary>The years of a period of twelve months or more.</summary>
+    Years,
+}
+
+/// <summary>
+/// How far along a lease is (LR-02b), for the bar and the words of the list: <c>Done</c> of <c>Total</c> in <c>Unit</c>, and <c>Percent</c>
+/// (0 to 100) for the bar. The words say what the bar measures ("3 di 8 passi", "Anno 3 di 8"); the server decides the numbers, the interface
+/// works none out.
+/// </summary>
+public sealed record LeaseProgress(LeaseProgressKind Kind, LeaseProgressUnit Unit, int Done, int Total, int Percent);
+
+/// <summary>The stage of a lease, the one step it is waiting for and how far along it is.</summary>
+public sealed record LeaseFlowResult(LeaseStage Stage, LeaseNextStep NextStep, LeaseProgress Progress);
 
 /// <summary>
 /// Everything <see cref="LeaseFlow.Derive"/> needs to know about a lease, as plain values: no entity, no database. Every date is a Europe/Rome
@@ -247,13 +280,71 @@ public static class LeaseFlow
     /// <summary>A last day to give notice within this many days is urgent.</summary>
     public const int NoticeUrgentWithinDays = 60;
 
-    /// <summary>The stage of the lease and the one step it is waiting for.</summary>
+    /// <summary>
+    /// The steps of the path before the contract runs: the five data steps of the guided draft, the review, the signature and the
+    /// registration. A contract not signed by everyone is measured in them; a running one in the time it has run.
+    /// </summary>
+    public const int SetupSteps = 8;
+
+    /// <summary>The stage of the lease, the one step it is waiting for and how far along it is.</summary>
     public static LeaseFlowResult Derive(LeaseFlowInput input)
     {
         ArgumentNullException.ThrowIfNull(input);
 
         var stage = StageOf(input);
-        return new LeaseFlowResult(stage, NextStepOf(input, stage));
+        return new LeaseFlowResult(stage, NextStepOf(input, stage), ProgressOf(input, stage));
+    }
+
+    /// <summary>
+    /// How far along the lease is. Before the contract runs it counts the steps of the path: the data steps of the draft that have nothing
+    /// missing (0 to 5) while it is a draft, then the review (5, 6 once confirmed), the contract handed out for signature (6) and signed by
+    /// everyone (7); the eighth, the registration, is the one that makes it run. A running lease is measured in the period it is in now
+    /// (<see cref="LeaseFlowInput.CurrentTermEndDate"/>, so a lease that renewed counts its years from the start of the first period): the year
+    /// it is in out of the years of the period, or the month out of the months when the period is shorter than a year, with the share of its
+    /// days gone by. A concluded lease is whole.
+    /// </summary>
+    public static LeaseProgress ProgressOf(LeaseFlowInput input, LeaseStage stage)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+
+        switch (stage)
+        {
+            case LeaseStage.Concluded:
+                return new LeaseProgress(LeaseProgressKind.End, LeaseProgressUnit.Steps, SetupSteps, SetupSteps, 100);
+            case LeaseStage.Active or LeaseStage.Expiring:
+                return TermProgress(input);
+        }
+
+        var done = stage switch
+        {
+            LeaseStage.Signed => 7,
+            LeaseStage.SentForSignature => 6,
+            LeaseStage.InReview => input.ReviewConfirmed ? 6 : LeaseDraftDefaults.LastDataStep,
+            _ => input.Draft is { } draft ? draft.Steps.Take(LeaseDraftDefaults.LastDataStep).Count(s => s.Needs.Count == 0) : 0,
+        };
+        return new LeaseProgress(LeaseProgressKind.Setup, LeaseProgressUnit.Steps, done, SetupSteps, done * 100 / SetupSteps);
+    }
+
+    private static LeaseProgress TermProgress(LeaseFlowInput i)
+    {
+        var start = i.StartDate;
+        var end = i.CurrentTermEndDate;
+        var days = Math.Max(1, end.DayNumber - start.DayNumber + 1);
+        var gone = Math.Clamp(i.Today.DayNumber - start.DayNumber + 1, 0, days);
+        var percent = gone * 100 / days;
+
+        // Whole months of the period (its last day included) and whole months run by today, a month not being whole before its day comes.
+        var after = end.AddDays(1);
+        var months = Math.Max(1, (after.Year - start.Year) * 12 + after.Month - start.Month);
+        var run = Math.Max(0, (i.Today.Year - start.Year) * 12 + i.Today.Month - start.Month - (i.Today.Day < start.Day ? 1 : 0));
+
+        if (months >= 12)
+        {
+            var years = (months + 11) / 12;
+            return new LeaseProgress(LeaseProgressKind.Term, LeaseProgressUnit.Years, Math.Min(years, run / 12 + 1), years, percent);
+        }
+
+        return new LeaseProgress(LeaseProgressKind.Term, LeaseProgressUnit.Months, Math.Min(months, run + 1), months, percent);
     }
 
     /// <summary>The stage of the lease.</summary>
