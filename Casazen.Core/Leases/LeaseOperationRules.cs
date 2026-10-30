@@ -40,6 +40,18 @@ public enum LeaseLetterKind
     /// update of the rent for as long as the option lasts (D.Lgs. 23/2011, art. 3).
     /// </summary>
     OpzioneCedolare = 5,
+
+    /// <summary>
+    /// The minutes of the handover of the property at the end of the lease (LR-OPS-1c): the date, the state, the readings of the meters and the
+    /// keys, mostly lines the two parties fill in by hand on the day. Both sign it; it is not sent.
+    /// </summary>
+    Riconsegna = 6,
+
+    /// <summary>
+    /// The statement the landlord gives the tenant when he returns the security deposit (LR-OPS-1c): the deposit, the legal interest year by year,
+    /// the interest already paid, the sums he keeps and why, and what he returns.
+    /// </summary>
+    RestituzioneCauzione = 7,
 }
 
 /// <summary>How the person sent a letter (<c>Segna come inviata</c>): written in the history of the lease with the day, nothing else.</summary>
@@ -100,6 +112,8 @@ public static class LeaseLetterKinds
         LeaseLetterKind.ConfermaEsigenza => "conferma-esigenza",
         LeaseLetterKind.AggiornamentoIstat => "aggiornamento-istat",
         LeaseLetterKind.OpzioneCedolare => "opzione-cedolare",
+        LeaseLetterKind.Riconsegna => "riconsegna",
+        LeaseLetterKind.RestituzioneCauzione => "restituzione-cauzione",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown letter"),
     };
 
@@ -154,6 +168,23 @@ public sealed record LeaseTransitoryConfirmationFacts(bool Applies, bool Availab
 /// <param name="MinEffectiveOn">The first day the option can be said to apply from (the start of the lease).</param>
 /// <param name="MaxEffectiveOn">The last day (the end of the period the lease is in).</param>
 public sealed record LeaseCedolareNoticeFacts(bool Available, DateOnly MinEffectiveOn, DateOnly MaxEffectiveOn);
+
+/// <summary>What the landlord can do about the handover of the property today (<see cref="LeaseOperationRules.Handover"/>).</summary>
+/// <param name="Available">The lease is in force and ending (a notice is recorded, it was ended early, or it is of a type that does not renew): the handover is to be arranged.</param>
+/// <param name="MinOn">The first day the handover can be dated (the start of the lease).</param>
+/// <param name="MaxOn">The last day (a year after the end of the lease: a sanity bound).</param>
+/// <param name="SuggestedOn">The day the window suggests: the last day of the lease.</param>
+public sealed record LeaseHandoverFacts(bool Available, DateOnly MinOn, DateOnly MaxOn, DateOnly SuggestedOn);
+
+/// <summary>What the landlord can do about the return of the security deposit today (<see cref="LeaseOperationRules.Deposit"/>).</summary>
+/// <param name="Available">The lease is ending (as for the handover) and has a deposit: the statement of the return can be worked out.</param>
+/// <param name="Amount">The deposit of the lease, in euros; 0 when it has none.</param>
+/// <param name="PaidOn">The day the deposit is taken to have been paid unless the landlord says another: the start of the lease.</param>
+/// <param name="MinPaidOn">The earliest day it can have been paid: a year before the start of the lease.</param>
+/// <param name="SuggestedReturnOn">The day the window suggests: the last day of the lease, or today when the lease is over.</param>
+/// <param name="MaxReturnOn">The last day a return can be dated: a few years after the end of the lease (a sanity bound).</param>
+public sealed record LeaseDepositFacts(
+    bool Available, decimal Amount, DateOnly PaidOn, DateOnly MinPaidOn, DateOnly SuggestedReturnOn, DateOnly MaxReturnOn);
 
 /// <summary>
 /// The rules of the operations of a lease in force (LR-OPS-1), pure: when a notice is on time, what a withdrawal ends the lease on, which
@@ -257,6 +288,43 @@ public static class LeaseOperationRules
                         && LeaseIstatRules.UpdatesWaived(lease)
                         && periodEnd >= today;
         return new LeaseCedolareNoticeFacts(available, start, periodEnd);
+    }
+
+    /// <summary>
+    /// The lease is going to end or has ended and does not renew: a notice is recorded (by either party), it was ended early, or it is of a type
+    /// that ends by itself. The handover of the property and the return of the deposit belong to this moment.
+    /// </summary>
+    public static bool IsEnding(LeaseContract lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        return lease.TerminatedOn is not null || lease.NoticeOn is not null || !LeaseRenewal.Renews(lease.ContractType);
+    }
+
+    /// <summary>Whether the minutes of the handover can be prepared (the lease is in force and ending) and the days they can be dated.</summary>
+    public static LeaseHandoverFacts Handover(LeaseContract lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+
+        var start = RomeCalendar.DateInRome(lease.StartDate);
+        var end = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
+        var available = LeaseRenewal.IsInForce(lease.Status) && IsEnding(lease);
+        return new LeaseHandoverFacts(available, start, end.AddYears(1), end < start ? start : end);
+    }
+
+    /// <summary>Whether the statement of the return of the deposit can be worked out (the lease is ending and has a deposit), and the days it can have.</summary>
+    public static LeaseDepositFacts Deposit(LeaseContract lease, DateOnly today)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+
+        var start = RomeCalendar.DateInRome(lease.StartDate);
+        var end = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
+        return new LeaseDepositFacts(
+            LeaseDepositRules.Applies(lease),
+            lease.SecurityDeposit ?? 0m,
+            start,
+            start.AddYears(-1),
+            end > today ? end : today,
+            end.AddYears(LeaseDepositRules.MaxYearsAfterEnd));
     }
 
     /// <summary>The notice, in months, of a withdrawal: the one of the rules for serious reasons, the one typed (or the rules') for the contractual faculty.</summary>

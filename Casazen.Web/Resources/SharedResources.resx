@@ -570,6 +570,30 @@
   <data name="LeaseRenewalBlockedByNotice" xml:space="preserve">
     <value>Hai registrato una disdetta, quindi il contratto non si rinnova. Se le parti hanno deciso di rinnovarlo, togli prima la disdetta.</value>
   </data>
+  <data name="LeaseDepositNone" xml:space="preserve">
+    <value>Il contratto non ha un deposito cauzionale: non c'è nulla da restituire.</value>
+  </data>
+  <data name="LeaseDepositDatesInvalid" xml:space="preserve">
+    <value>Il deposito deve essere stato versato almeno un giorno prima di essere restituito, e il giorno della restituzione non può essere troppo lontano dalla fine del contratto.</value>
+  </data>
+  <data name="LeaseDepositRateInvalid" xml:space="preserve">
+    <value>Il tasso di interesse legale di ogni anno è una percentuale tra 0 e {0} con al massimo due decimali, scritta una sola volta per anno.</value>
+  </data>
+  <data name="LeaseDepositRateMissing" xml:space="preserve">
+    <value>Manca il tasso di interesse legale degli anni: {0}.</value>
+  </data>
+  <data name="LeaseDepositInterestPaidInvalid" xml:space="preserve">
+    <value>Gli interessi già corrisposti sono una somma in euro con al massimo due decimali e non superano gli interessi maturati.</value>
+  </data>
+  <data name="LeaseDepositDeductionInvalid" xml:space="preserve">
+    <value>Ogni trattenuta ha un motivo (al massimo {0} caratteri) e una somma maggiore di zero con al massimo due decimali; al massimo {1} trattenute.</value>
+  </data>
+  <data name="LeaseDepositDeductionsExceed" xml:space="preserve">
+    <value>Le trattenute superano il deposito e gli interessi dovuti: il saldo non è una restituzione.</value>
+  </data>
+  <data name="LeaseDepositReturnDateInvalid" xml:space="preserve">
+    <value>Il giorno della restituzione deve essere tra l'inizio del contratto e oggi: quello che registri è già avvenuto.</value>
+  </data>
   <data name="LeaseIstatWaived" xml:space="preserve">
     <value>Con la cedolare secca l'aggiornamento del canone è sospeso per tutta la durata dell'opzione: non c'è nulla da calcolare.</value>
   </data>
@@ -3700,5 +3724,29 @@
   </data>
   <data name="PropertySiteProfileTourUrlInvalid" xml:space="preserve">
     <value>Il tour virtuale deve essere un indirizzo Matterport (https).</value>
+  </data>
+  <data name="PropertyFloorPlanNone" xml:space="preserve">
+    <value>Carica l'immagine della planimetria.</value>
+  </data>
+  <data name="PropertyFloorPlanInvalidType" xml:space="preserve">
+    <value>La planimetria deve essere un'immagine PNG o JPEG.</value>
+  </data>
+  <data name="PropertyFloorPlanInvalidSize" xml:space="preserve">
+    <value>L'immagine è vuota o supera {0} MB.</value>
+  </data>
+  <data name="PropertyFloorPlanLimitReached" xml:space="preserve">
+    <value>Puoi caricare al massimo {0} livelli di planimetria.</value>
+  </data>
+  <data name="PropertyFloorPlanNotFound" xml:space="preserve">
+    <value>Questo livello della planimetria non esiste.</value>
+  </data>
+  <data name="PropertyFloorPlanAreaInvalid" xml:space="preserve">
+    <value>La superficie del livello deve essere compresa tra {0} e {1} m².</value>
+  </data>
+  <data name="PropertyPoiLimitReached" xml:space="preserve">
+    <value>Puoi indicare al massimo {0} punti di interesse.</value>
+  </data>
+  <data name="PropertyPoiMinutesInvalid" xml:space="preserve">
+    <value>I minuti devono essere compresi tra {0} e {1}.</value>
   </data>
 </root>
