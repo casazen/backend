@@ -1181,6 +1181,10 @@ public class AppDbContext(
         // requests leave empty. The check holds for every row that exists before this migration.
         modelBuilder.ApplyConfiguration(new ServiceRequestShowcaseConfiguration());
 
+        // ─── Quote with the customer's approval (SP-04b) ──────────────────────────────────────────────────────────────
+        // The offer a supplier makes on a request still waiting for its answer: its columns, and the checks that keep it true.
+        modelBuilder.ApplyConfiguration(new ServiceRequestQuoteConfiguration());
+
         modelBuilder.ApplyConfiguration(new ServiceCustomerConfiguration());
 
         modelBuilder.ApplyConfiguration(new ShowcaseBookingHoldConfiguration());

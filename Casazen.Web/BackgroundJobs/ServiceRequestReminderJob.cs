@@ -4,10 +4,11 @@ using Hangfire;
 namespace Casazen.Web.BackgroundJobs;
 
 /// <summary>
-/// Recurring reminder to the customers who booked a supplier from its public showcase (SP-10): every hour, the customers whose
-/// work is tomorrow (Europe/Rome) and whose request the supplier took get one e-mail, at 18:00 of the day before or at the first
-/// run after (<see cref="IServiceRequestReminderService"/>). <b>Registered whatever the feature flags say</b>: a booking that
-/// exists keeps its reminder. Runbooks: <c>docs/runbooks/suppliers.md</c> section 23, <c>docs/runbooks/hangfire.md</c>.
+/// Recurring reminders of the day before the work (SP-10, SP-16d): every hour, the customers who booked a supplier from its public showcase whose
+/// work is tomorrow (Europe/Rome) and whose request the supplier took get one e-mail, and the <b>suppliers</b> whose job is tomorrow — a request of
+/// any context — get one e-mail and one push (unless they turned «Promemoria del giorno prima» off), at 18:00 of the day before or at the first
+/// run after (<see cref="IServiceRequestReminderService"/>). <b>Registered whatever the feature flags say</b>: a booking that exists keeps its
+/// reminder. Runbooks: <c>docs/runbooks/suppliers.md</c> sections 23 and 35, <c>docs/runbooks/hangfire.md</c>.
 /// </summary>
 public class ServiceRequestReminderJob(IServiceRequestReminderService reminderService, ILogger<ServiceRequestReminderJob> logger)
 {
@@ -24,7 +25,11 @@ public class ServiceRequestReminderJob(IServiceRequestReminderService reminderSe
             return;
         }
 
-        if (run.Failed > 0)
-            logger.LogWarning("Service request reminders: {Sent} queued, {Failed} could not be queued", run.Sent, run.Failed);
+        if (run.Failed > 0 || run.SupplierFailed > 0)
+        {
+            logger.LogWarning(
+                "Service request reminders: {Sent} queued to customers, {Failed} could not be queued; {SupplierSent} queued to suppliers, {SupplierFailed} could not be queued",
+                run.Sent, run.Failed, run.SupplierSent, run.SupplierFailed);
+        }
     }
 }

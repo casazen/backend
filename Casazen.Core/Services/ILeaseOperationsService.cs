@@ -67,6 +67,34 @@ public interface ILeaseOperationsService
     Task<LeaseLetterFile> BuildConfermaEsigenzaAsync(Guid leaseId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The ISTAT update of the rent worked out from the variation of the FOI index (<paramref name="foiPercent"/>, typed by the landlord) and the
+    /// share of it the contract recognizes (<paramref name="sharePercent"/>). Nothing is written and no external service is called.
+    /// </summary>
+    /// <exception cref="NotFoundException">404 <c>lease_not_found</c>.</exception>
+    /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>.</exception>
+    /// <exception cref="DomainRuleException">422 <c>lease_istat_waived</c> (cedolare secca), <c>lease_istat_no_rent</c>, <c>lease_istat_percent_invalid</c>, <c>lease_istat_no_increase</c>.</exception>
+    Task<LeaseIstatCalculationDto> CalculateIstatAsync(Guid leaseId, decimal foiPercent, decimal sharePercent, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The request to update the rent, from <paramref name="effectiveFrom"/> (never in the past, not after the end of the period), with the numbers
+    /// <see cref="CalculateIstatAsync"/> gives for the same percentages.
+    /// </summary>
+    /// <exception cref="NotFoundException">404 <c>lease_not_found</c>.</exception>
+    /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>.</exception>
+    /// <exception cref="DomainRuleException">422 the ones of <see cref="CalculateIstatAsync"/>, <c>lease_letter_effect_date_invalid</c>, <c>lease_letter_unavailable</c>.</exception>
+    Task<LeaseLetterFile> BuildAggiornamentoIstatAsync(
+        Guid leaseId, decimal foiPercent, decimal sharePercent, DateOnly effectiveFrom, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The communication to the tenant that the landlord has chosen the cedolare secca, with the renunciation of the updates of the rent; the
+    /// option applies from <paramref name="effectiveFrom"/> when given (otherwise the letter leaves it to complete).
+    /// </summary>
+    /// <exception cref="NotFoundException">404 <c>lease_not_found</c>.</exception>
+    /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>.</exception>
+    /// <exception cref="DomainRuleException">422 <c>lease_letter_not_applicable</c> (the lease is not under the cedolare secca), <c>lease_letter_effect_date_invalid</c>, <c>lease_letter_unavailable</c>.</exception>
+    Task<LeaseLetterFile> BuildOpzioneCedolareAsync(Guid leaseId, DateOnly? effectiveFrom, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Records that the landlord sent a letter on <paramref name="sentOn"/> (a day from the start of the lease up to today) by
     /// <paramref name="means"/>: an event <c>LetterSent</c> in the history, and nothing more (the lease does not change).
     /// </summary>

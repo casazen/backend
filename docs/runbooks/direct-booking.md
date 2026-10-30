@@ -896,6 +896,37 @@ property page, the stay pickers and the checkout. Anonymous, `PublicRead` (per c
 - **Prices the host confirmed are public data**: `PricingAdapterService.GetAppliedNightlyPricesAsync` names the property and ignores
   the tenant filter, so a signed-in host of another org who looks at the site sees the prices everybody sees (the quote did not
   guarantee it before).
+### 11.10 Writing to the host: «Scrivi a {host}» (DB-03b)
+
+`POST /api/public/orgs/{slug}/contact` (anonymous, no flag, no migration, no entity): a visitor of the booking site who has no booking yet
+writes a few lines to the host, who gets them by email and answers from their mailbox.
+
+```json
+{ "email": "anna@example.com", "message": "Ciao, c'è posto a Ferragosto?", "name": "Anna", "propertyId": "…", "lang": "en",
+  "consent": true, "website": "" }
+```
+
+- **Answer.** `202` with no body, **the same for every org that exists**: whether it publishes its contact email on the site
+  (`ContactEmailPublic` is about showing the address, the form never shows it), has one or not, and whether the honeypot caught the call.
+  The answer never says whether the message reached anybody. `404` for a site that does not resolve (its former slugs do, PL-04); `400`
+  `validation_error` for a body that breaks the limits, `host_contact_consent_required` when `consent` is not `true`,
+  `host_contact_email_invalid` (a plain address only, no display name), `host_contact_message_invalid` (5 to 2000 characters once trimmed);
+  `429` `rate_limited` (see below). The body is capped at 16 KB; `name` up to 100 characters; `lang` is `it` or `en` (anything else is
+  ignored); `propertyId` counts only if it is a published property of that org, otherwise it is ignored and tells nothing.
+- **Honeypot.** `website` is a field no person fills: when it has a value the call is answered `202` and nothing is sent.
+- **Limits.** Per client IP (`PublicContact`, 5 / 10 min) and per address and org (`HostContactPerEmail`, 3 / day, counted under the id of
+  the org, so a former slug shares the budget; its 429 always names the whole window). Variables in [proxy-ip.md](proxy-ip.md).
+- **The email** (`host-contact-message`, one per accepted message, to `Orgs.ContactEmail`, in Italian like the other emails to the host)
+  carries the text of the visitor (HTML-encoded, line breaks kept), their address and name, the property with a link to its page and the
+  language of the site they were reading; the subject has no personal data. Its **`Reply-To` is the visitor's address**, so the host answers
+  by replying; the sender stays the configured one (`EmailContent.ReplyTo`, `IEmailService.SendEmailAsync(…, replyTo)`; a message with a
+  reply-to goes through its own Hangfire job `SendWithReplyToAsync`, the emails without it through the job they always used). It is the
+  consequence of a person's action (the visitor sent the form), never automatic, and it is the only email that leaves.
+- **Privacy.** Nothing is stored. The log has the org id and whether the email was queued, never the address, the name or the text. The text
+  lives in the Hangfire job of the email until the job is deleted, like the body of every other email. An org without a contact email
+  drops the message quietly (log line with the org id).
+- **Not done here.** A copy or a receipt to the visitor, a per-org cap against a distributed flood, a thread of the conversation in the
+  app, the languages of the email to the host (Italian only).
 
 ## 12. Who runs the site: operator data in the footer (DB-03b-a)
 

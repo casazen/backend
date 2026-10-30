@@ -29,6 +29,7 @@ public sealed record ShowcaseBookingAccessKey(string Slug, string Code, string E
 /// <param name="PublicCode">The code of the booking, stored form (<see cref="BookingCodes"/>): the page shows it as <c>XXXXX-XXXXX</c>.</param>
 /// <param name="RespondBy">When the supplier has to answer by, while the request is new and has no proposal; <c>null</c> otherwise.</param>
 /// <param name="RejectionReason">The reason the supplier gave when it refused the request (the customer was e-mailed it).</param>
+/// <param name="Quote">The quote the supplier sent and the customer has not answered (SP-04b); <c>null</c> when there is none.</param>
 public sealed record ShowcaseBookingView(
     string PublicCode,
     ServiceRequestStatus Status,
@@ -43,7 +44,23 @@ public sealed record ShowcaseBookingView(
     ShowcaseBookingCancellation? Cancellation,
     string? RejectionReason,
     ShowcaseBookingCancellationTerms CancellationTerms,
-    ShowcaseBookingActions Actions);
+    ShowcaseBookingActions Actions,
+    ShowcaseBookingQuote? Quote = null);
+
+/// <summary>
+/// The quote the supplier sent for the booking and the customer has not answered (SP-04b): the lines and the total, the note, the other
+/// time when the supplier offered one (the booking keeps its own until the customer accepts), and the deadline of the answer.
+/// </summary>
+/// <param name="SentAt">When it was sent: the version of the quote, which the answer repeats.</param>
+/// <param name="AnswerBy">The instant the customer has to answer by; after it the request is cancelled.</param>
+public sealed record ShowcaseBookingQuote(
+    DateTime SentAt,
+    IReadOnlyList<ServiceRequestQuoteLine> Lines,
+    int TotalCents,
+    string? Note,
+    DateTime? StartUtc,
+    DateTime? EndUtc,
+    DateTime? AnswerBy);
 
 /// <param name="Name">The name of the service when the request was made.</param>
 /// <param name="Slug">
@@ -107,7 +124,7 @@ public sealed record ShowcaseBookingCancellation(DateTime At, ServiceRequestActo
 public sealed record ShowcaseBookingCancellationTerms(DateTime FreeUntilUtc, bool IsFree);
 
 /// <summary>What the customer may do now with the booking (<see cref="ShowcaseBookingManagementRules"/>).</summary>
-public sealed record ShowcaseBookingActions(bool CanCancel, bool CanReschedule, bool CanRespondToProposal);
+public sealed record ShowcaseBookingActions(bool CanCancel, bool CanReschedule, bool CanRespondToProposal, bool CanRespondToQuote = false);
 
 /// <summary>
 /// Codes (ProblemDetails <c>code</c>) and message keys (<c>SharedResources.resx</c>, Italian and English) of what the customer's
@@ -240,10 +257,32 @@ public static class ShowcaseBookingManagementRules
 
     /// <summary>
     /// True when the customer may move the time: only a new request that has a time, of a supplier that is active, for a service that
-    /// is still published (the page needs its free slots, and the planner needs its duration and rules).
+    /// is still published (the page needs its free slots, and the planner needs its duration and rules), and that has no quote waiting
+    /// (SP-04b: the quote is about the time the request has; the customer answers it first, and can ask for another time after turning it down).
     /// </summary>
-    public static bool CanReschedule(ServiceRequestStatus status, bool hasTime, bool supplierActive, bool serviceBookable) =>
-        status == ServiceRequestStatus.Richiesto && hasTime && supplierActive && serviceBookable;
+    public static bool CanReschedule(
+        ServiceRequestStatus status,
+        bool hasTime,
+        bool supplierActive,
+        bool serviceBookable,
+        bool quotePending = false) =>
+        status == ServiceRequestStatus.Richiesto && hasTime && supplierActive && serviceBookable && !quotePending;
+
+    /// <summary>
+    /// True when the customer may accept or turn down the quote (SP-04b): the request is new, a quote is waiting, the deadline to answer it
+    /// (<paramref name="answerByUtc"/>) has not passed and the supplier is active (accepting takes the request on its behalf).
+    /// </summary>
+    public static bool CanRespondToQuote(
+        ServiceRequestStatus status,
+        bool quotePending,
+        DateTime? answerByUtc,
+        DateTime nowUtc,
+        bool supplierActive) =>
+        status == ServiceRequestStatus.Richiesto
+        && quotePending
+        && supplierActive
+        && answerByUtc is { } answerBy
+        && nowUtc < answerBy;
 
     /// <summary>
     /// True when the customer may accept or turn down the proposed time: the request is new, a proposal is waiting, the deadline to

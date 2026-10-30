@@ -49,6 +49,7 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicSupplierSlots, 60, OneMinute),
         new(RateLimitPolicies.PublicSupplierQuote, 30, OneMinute),
         new(RateLimitPolicies.PublicSupplierBookingCreate, 5, TimeSpan.FromMinutes(10)),
+        new(RateLimitPolicies.PublicContact, 5, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.PublicInvitationLookup, 20, OneMinute),
         new(RateLimitPolicies.PublicReviewSubmit, 10, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.GuestMessageSend, 30, TimeSpan.FromMinutes(10)),
@@ -61,6 +62,9 @@ public static class RateLimitingServiceCollectionExtensions
 
         // The global search of the palette (UI-13a): per signed-in person as well, since the palette asks at every pause in typing.
         new(RateLimitPolicies.GlobalSearch, 60, OneMinute, PartitionByUser: true),
+
+        // The slots of a supplier's service read by the host (SR-08a): the planner runs for each read, per signed-in person as well.
+        new(RateLimitPolicies.HostSupplierSlots, 60, OneMinute, PartitionByUser: true),
 
         // The host answering a guest (DB-14a): per signed-in person as well, since the answer is an email to somebody else.
         new(RateLimitPolicies.HostMessageSend, 60, TimeSpan.FromMinutes(10), PartitionByUser: true),
@@ -94,6 +98,9 @@ public static class RateLimitingServiceCollectionExtensions
         // Per email and supplier limit of the booking from a supplier's showcase ([SupplierBookingEmailRateLimit], SP-10), next to
         // its per-IP policy.
         services.AddSingleton<SupplierBookingEmailRateLimiter>();
+
+        // Per email and org limit of the contact form of the booking site (DB-03b), next to its per-IP policy PublicContact.
+        services.AddSingleton<HostContactEmailRateLimiter>();
 
         // Per email and supplier limit of the customer's own area of a booking ([SupplierBookingManageRateLimit], SP-11), next to the
         // per-IP policy PublicGuestBookingLookup.

@@ -87,8 +87,10 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
             request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
             var now = NowToTheMicrosecond();
 
-            // Only a new request: once the supplier took it, the time is agreed. And only a request that has a time to move.
+            // Only a new request: once the supplier took it, the time is agreed. And only a request that has a time to move, and no quote
+            // waiting (SP-04b): the quote is about the time the request has, so the customer answers it first.
             if (request.Status != ServiceRequestStatus.Richiesto
+                || request.QuoteSentAt is not null
                 || request.ScheduledStartUtc is not { } currentStart
                 || request.ScheduledEndUtc is not { } currentEnd)
             {
@@ -230,6 +232,95 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         // Committed: the supplier is told even if the customer has gone.
         await notifier.NotifyShowcaseProposalAnsweredAsync(request, accepted: false, proposedAt, CancellationToken.None);
         return request;
+    }
+
+    public async Task<ServiceRequest> AcceptQuoteAsCustomerAsync(
+        Guid id,
+        Guid supplierOrgId,
+        DateTime quoteSentAt,
+        CancellationToken cancellationToken = default)
+    {
+        ServiceRequest request;
+        ServiceRequestQuote quote;
+        await using (var transaction = await LockSupplierCalendarAsync(supplierOrgId, cancellationToken))
+        {
+            // Read after the lock: whoever held it before is seen, and a quote the supplier replaced a moment ago is judged as it is.
+            request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
+            var now = NowToTheMicrosecond();
+
+            // Accepting takes the request on the supplier's behalf: a supplier suspended meanwhile cannot take work.
+            quote = await RequireQuoteToAnswerAsync(request, supplierOrgId, quoteSentAt, now, cancellationToken);
+
+            // Checked again under the lock, like the host's acceptance: the time may have been taken, or closed, since the supplier quoted.
+            // Then 409 and the quote stays: the customer can still turn it down, or cancel.
+            await TakeOnQuoteAsync(request, quote, await ResolvePaymentModeAsync(request, cancellationToken), now, cancellationToken);
+            await CommitAsync(transaction, cancellationToken);
+        }
+
+        logger.LogInformation("ServiceRequest {Id}: its customer accepted the quote", request.Id);
+
+        // Committed: both parties are told even if the customer has gone.
+        await notifier.NotifyShowcaseQuoteAnsweredAsync(request, accepted: true, quote, CancellationToken.None);
+        return request;
+    }
+
+    public async Task<ServiceRequest> RejectQuoteAsCustomerAsync(
+        Guid id,
+        Guid supplierOrgId,
+        DateTime quoteSentAt,
+        CancellationToken cancellationToken = default)
+    {
+        var request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
+        var now = NowToTheMicrosecond();
+        var quote = await RequireQuoteToAnswerAsync(request, supplierOrgId, quoteSentAt, now, cancellationToken);
+
+        // The request goes back to being a new one at its own time: the deadline that stood on it was the customer's, and the supplier
+        // has its whole time to answer again. Nothing is held or released: no lock, the check of the row version is enough.
+        await RestartSupplierDeadlineAsync(request, now, cancellationToken);
+        ClearQuote(request);
+        AppendQuoteEvent(request, ServiceRequestQuoteEventKinds.Rejected, now, quote.TotalCents);
+        request.UpdatedAt = now;
+        await SaveAsync(request, "quote rejected by the customer", cancellationToken);
+
+        logger.LogInformation("ServiceRequest {Id}: its customer turned the quote down", request.Id);
+
+        // Committed: the supplier is told even if the customer has gone.
+        await notifier.NotifyShowcaseQuoteAnsweredAsync(request, accepted: false, quote, CancellationToken.None);
+        return request;
+    }
+
+    /// <summary>
+    /// The quote a new showcase request is waiting for its customer to answer, while there is still time to: 422
+    /// <see cref="ShowcaseBookingQuoteErrors.NoQuote"/> when there is none (never sent, withdrawn, answered, or the request moved on),
+    /// 409 <see cref="ServiceRequestErrorCodes.QuoteChanged"/> when the customer read another one (the supplier replaced it meanwhile), 422
+    /// <see cref="ShowcaseBookingQuoteErrors.QuoteExpired"/> once its deadline (<c>ResponseDueAt</c>, which a quote of a showcase request
+    /// moves to the customer's time) has passed: the upkeep job cancels the request on its next run; 422
+    /// <c>supplier_booking_supplier_unavailable</c> when the supplier is not active. In the end it is the rule the lookup shows
+    /// <c>canRespondToQuote</c> from that decides (<see cref="ShowcaseBookingManagementRules.CanRespondToQuote"/>), so the page and the API
+    /// cannot disagree.
+    /// </summary>
+    private async Task<ServiceRequestQuote> RequireQuoteToAnswerAsync(
+        ServiceRequest request,
+        Guid supplierOrgId,
+        DateTime quoteSentAt,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        var quote = ServiceRequestQuoteRules.PendingOf(request) ?? throw ShowcaseBookingQuoteErrors.QuoteMissing();
+        if (!ServiceRequestQuoteRules.IsSameVersion(quote.SentAt, quoteSentAt))
+            throw new DomainConflictException(ServiceRequestErrorCodes.QuoteChanged, ServiceRequestErrorCodes.QuoteChangedMessageKey);
+
+        if (quote.AnswerBy is not { } answerBy || answerBy <= now)
+            throw ShowcaseBookingQuoteErrors.QuoteLapsed();
+
+        var supplierActive = await ReadSupplierStatusAsync(supplierOrgId, cancellationToken) == SupplierStatus.Active;
+        if (!supplierActive)
+            throw ShowcaseBookingErrors.InactiveSupplier();
+
+        if (!ShowcaseBookingManagementRules.CanRespondToQuote(request.Status, quotePending: true, answerBy, now, supplierActive))
+            throw ShowcaseBookingQuoteErrors.QuoteMissing();
+
+        return quote;
     }
 
     /// <summary>
