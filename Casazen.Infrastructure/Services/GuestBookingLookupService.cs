@@ -26,8 +26,6 @@ public sealed class GuestBookingLookupService(
     ILogger<GuestBookingLookupService> logger,
     TimeProvider? timeProvider = null) : IGuestBookingLookupService
 {
-    private const string Currency = "EUR";
-
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task<GuestBookingView> FindAsync(
@@ -70,7 +68,7 @@ public sealed class GuestBookingLookupService(
             booking.TotalPrice,
             collected.Sum(p => p.Amount),
             collected.Sum(p => p.RefundedAmount),
-            Currency,
+            StayCurrency.ForProperty(booking.Property),
             CheckoutOutcomes.ExpiresAt(booking, outcomeState, ttlMinutes),
             booking.PaymentOption == PaymentOption.OnCancellationDeadline && booking.FreeRefundDeadline is { } deadline
                 ? RomeCalendar.DateInRome(deadline)

@@ -285,7 +285,7 @@ public sealed class PaymentRefundService(
         await db.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
-            "Refund {RefundId} of {Amount} EUR reserved on payment {PaymentId} ({Origin})",
+            "Refund {RefundId} of {Amount} (currency of the payment) reserved on payment {PaymentId} ({Origin})",
             refund.Id,
             refund.Amount,
             payment.Id,

@@ -53,6 +53,7 @@ public record DirectBookingQuoteInput(
 /// Last day of the full refund (<see cref="DirectBookingPaymentRules.FreeRefundDeadline"/>), recorded on the booking; also
 /// the day the deferred payment is charged.
 /// </param>
+/// <param name="Currency">ISO 4217 code of the property (<see cref="StayCurrency"/>): every amount of the quote is in it, and the checkout charges in it.</param>
 /// <param name="PaymentOptions">Which payment options the checkout may offer for this stay (A3-16).</param>
 /// <param name="Lodging">
 /// How the nights of the stay are priced (DB-03): the nights at the nightly rate and the weekend nights with the property's
@@ -229,8 +230,9 @@ public static class DirectBookingErrorCodes
     public const string ArrivalTimeInvalid = "direct_booking_arrival_time_invalid";
 
     /// <summary>
-    /// 501: direct bookings not supported for properties with non-EUR currency (ADR-001-R10, deferred per D-02).
-    /// Multi-currency bookings require Stripe Connect multi-currency setup.
+    /// The property has a currency that is neither EUR nor CHF (<see cref="StayCurrency.IsSupported"/>): 422 from the quote and the
+    /// checkout, 501 from the host's manual booking. A house in Switzerland is a CHF house and is priced, charged and refunded in francs
+    /// (CHF-MONEY, which supersedes ADR-001-R10: CHF used to be refused here).
     /// </summary>
     public const string CurrencyNotSupported = "currency_not_supported";
 }

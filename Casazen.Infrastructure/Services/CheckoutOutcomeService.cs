@@ -23,8 +23,6 @@ public sealed class CheckoutOutcomeService(
     ILogger<CheckoutOutcomeService> logger,
     TimeProvider? timeProvider = null) : ICheckoutOutcomeService
 {
-    private const string Currency = "EUR";
-
     /// <summary>Intent states in which the guest can still pay (again): nothing was collected yet.</summary>
     private static readonly HashSet<string> PayableIntentStatuses = new(StringComparer.Ordinal)
     {
@@ -59,7 +57,7 @@ public sealed class CheckoutOutcomeService(
             booking.NumberOfAdults,
             booking.NumberOfChildren,
             booking.TotalPrice,
-            Currency,
+            StayCurrency.ForProperty(booking.Property),
             CheckoutOutcomes.ExpiresAt(booking, state, ttlMinutes, DeferredCharges.GetCancelAfterDays(configuration)),
             // Once the deferred charge is collected the page shows "paid online", not a charge still to come (BK-08).
             booking.PaymentOption == PaymentOption.OnCancellationDeadline &&

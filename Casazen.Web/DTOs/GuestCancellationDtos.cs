@@ -19,7 +19,7 @@ public sealed record GuestCancellationOutcomeDto(decimal RefundAmount, string Re
 /// <param name="Cancellable">The guest can cancel now from where they are.</param>
 /// <param name="Reason">Why not: <c>already_cancelled</c>, <c>stay_started</c>, <c>not_cancellable_status</c>, <c>payment_in_progress</c>.</param>
 /// <param name="Kind"><c>cancel</c>, <c>withdrawRequest</c> (a request to pay at the property, not accepted yet), <c>deferredNoCharge</c> (a saved card never charged).</param>
-/// <param name="Currency">EUR.</param>
+/// <param name="Currency">ISO 4217 code of the property (EUR or CHF): the amounts below are in it.</param>
 /// <param name="PaidAmount">Collected by Stripe so far.</param>
 /// <param name="AlreadyRefundedAmount">Refunded or being refunded before now.</param>
 /// <param name="RefundPercent">The share of the price of the stay the policy grants now, 0-100 (the tourist tax comes back in full besides).</param>
@@ -85,7 +85,7 @@ public sealed class GuestCancelRequest
     /// <summary>Must be <c>true</c>: the guest confirmed the cancellation.</summary>
     public bool? Confirm { get; set; }
 
-    /// <summary>The <c>refundAmount</c> the guest saw (EUR, two decimals; 0 when they were shown no refund).</summary>
+    /// <summary>The <c>refundAmount</c> the guest saw (in the currency of the preview, two decimals; 0 when they were shown no refund).</summary>
     public decimal? ExpectedRefundAmount { get; set; }
 }
 
