@@ -18,7 +18,9 @@ public sealed record LeaseOperationsDto(
     LeaseRenewalOperationDto Renewal,
     LeaseTransitoryConfirmationDto TransitoryConfirmation,
     LeaseIstatOperationDto Istat,
-    LeaseCedolareNoticeDto CedolareNotice);
+    LeaseCedolareNoticeDto CedolareNotice,
+    LeaseHandoverOperationDto Handover,
+    LeaseDepositOperationDto Deposit);
 
 /// <summary>The state of a letter kind: its text is approved or still a draft, and the last time the landlord marked it as sent.</summary>
 public sealed record LeaseLetterStateDto(LeaseLetterKind Kind, bool Approved, LeaseLetterSentDto? Sent);
@@ -104,6 +106,54 @@ public sealed record LeaseIstatOperationDto(
 /// said to apply from a day between <c>MinEffectiveOn</c> and <c>MaxEffectiveOn</c>.
 /// </summary>
 public sealed record LeaseCedolareNoticeDto(bool Available, DateOnly MinEffectiveOn, DateOnly MaxEffectiveOn);
+
+/// <summary>
+/// The handover of the property at the end of the lease. <c>Available</c>: the lease is ending (a notice is recorded, it was ended early, or it
+/// is of a type that ends by itself), so the minutes can be prepared; they can be dated from <c>MinOn</c> to <c>MaxOn</c>, and the window
+/// suggests <c>SuggestedOn</c>, the last day of the lease.
+/// </summary>
+public sealed record LeaseHandoverOperationDto(bool Available, DateOnly MinOn, DateOnly MaxOn, DateOnly SuggestedOn);
+
+/// <summary>
+/// The return of the security deposit. <c>Available</c>: the lease is ending and has a deposit, so the statement can be worked out. <c>Amount</c> is
+/// the deposit; it is taken to have been paid on <c>PaidOn</c> (the start of the lease) unless the landlord says another day from <c>MinPaidOn</c>;
+/// the return can be dated up to <c>MaxReturnOn</c> and the window suggests <c>SuggestedReturnOn</c>; at most <c>MaxDeductions</c> sums can be kept.
+/// <c>Recorded</c> is the return the landlord recorded last, if any.
+/// </summary>
+public sealed record LeaseDepositOperationDto(
+    bool Available,
+    decimal Amount,
+    DateOnly PaidOn,
+    DateOnly MinPaidOn,
+    DateOnly SuggestedReturnOn,
+    DateOnly MaxReturnOn,
+    int MaxDeductions,
+    LeaseDepositRecordDto? Recorded);
+
+/// <summary>A return of the deposit the landlord recorded: the day, the deposit, the interest that was due, the sums kept and what was returned.</summary>
+public sealed record LeaseDepositRecordDto(DateOnly ReturnedOn, decimal Deposit, decimal InterestDue, decimal Deductions, decimal Returned);
+
+/// <summary>The interest of one calendar year of the statement: the rate, the days the deposit was held in it, the days of the year and the interest.</summary>
+public sealed record LeaseDepositYearDto(int Year, decimal RatePercent, int Days, int DaysInYear, decimal Interest);
+
+/// <summary>A sum kept from the deposit and why.</summary>
+public sealed record LeaseDepositDeductionDto(string Reason, decimal Amount);
+
+/// <summary>
+/// The statement of the return of the deposit worked out by the server (<c>POST api/leases/{id}/deposit/calculate</c>): the deposit, the interest
+/// year by year and in total, the interest already paid and still due, the sums kept and what is returned, all to the cent. Nothing is written.
+/// </summary>
+public sealed record LeaseDepositCalculationDto(
+    decimal Deposit,
+    DateOnly From,
+    DateOnly To,
+    IReadOnlyList<LeaseDepositYearDto> Years,
+    decimal Interest,
+    decimal InterestPaid,
+    decimal InterestDue,
+    IReadOnlyList<LeaseDepositDeductionDto> Deductions,
+    decimal DeductionsTotal,
+    decimal Returned);
 
 /// <summary>
 /// The ISTAT update worked out by the server (<c>POST api/leases/{id}/istat/calculate</c>): the rent today, the variation and the share typed,

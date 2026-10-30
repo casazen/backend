@@ -5,6 +5,9 @@ using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Repositories;
 
+/// <summary>The floor plan levels and the points of interest of a property (DB-11a).</summary>
+public sealed record PropertySiteMedia(IReadOnlyList<PropertyFloorPlan> FloorPlans, IReadOnlyList<PropertyPoi> Pois);
+
 public interface IPropertyRepository
 {
     Task<Property?> GetByIdAsync(Guid id);
@@ -14,6 +17,13 @@ public interface IPropertyRepository
     /// endpoints read and update. Saving it never rewrites rows of other aggregates (A2-04).
     /// </summary>
     Task<Property?> GetRecordAsync(Guid id);
+
+    /// <summary>
+    /// The floor plan levels (lowest floor first) and the points of interest (in the host's order) of one property, for its public page
+    /// (DB-11a). The caller has already resolved the property as published; the tenant filter is ignored and the property named, so a signed-in
+    /// host of another org reads what everybody reads.
+    /// </summary>
+    Task<PropertySiteMedia> GetSiteMediaAsync(Guid propertyId, CancellationToken cancellationToken = default);
     Task<IEnumerable<Property>> GetByOwnerAsync(string ownerId);
 
     /// <summary>

@@ -151,7 +151,67 @@ public class LeaseOperationsController(
     }
 
     /// <summary>
-    /// Marks a letter (<c>disdetta</c>, <c>presa-atto-recesso</c>, <c>conferma-esigenza</c>, <c>aggiornamento-istat</c>, <c>opzione-cedolare</c>) as sent on <c>sentOn</c> (a day from the start of the lease up to today) by
+    /// The draft of the minutes of the handover of the property at the end of the lease, as a PDF, dated <c>handoverOn</c> when given. The
+    /// state of the property, the readings of the meters and the keys are lines the parties fill in by hand. 422
+    /// <c>lease_letter_not_applicable</c> when the lease is not ending, <c>lease_letter_effect_date_invalid</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/letters/riconsegna")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Riconsegna(Guid id, [FromBody] RiconsegnaLetterDto dto, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        return Pdf(await operations.BuildRiconsegnaAsync(id, dto.HandoverOn, cancellationToken));
+    }
+
+    /// <summary>
+    /// The statement of the return of the security deposit worked out from the legal interest rate of each year the deposit was held, the interest
+    /// already paid and the sums the landlord keeps. Nothing is written. 422 <c>lease_deposit_none</c>, <c>lease_letter_not_applicable</c> (the
+    /// lease is not ending), <c>lease_deposit_dates_invalid</c>, <c>lease_deposit_rate_invalid</c>, <c>lease_deposit_rate_missing</c>,
+    /// <c>lease_deposit_interest_paid_invalid</c>, <c>lease_deposit_deduction_invalid</c>, <c>lease_deposit_deductions_exceed</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/deposit/calculate")]
+    [ProducesResponseType(typeof(LeaseDepositCalculationDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CalculateDepositReturn(Guid id, [FromBody] DepositReturnInputDto dto, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(await operations.CalculateDepositReturnAsync(id, dto.ToInput(), cancellationToken));
+    }
+
+    /// <summary>The draft of the statement of the return of the deposit, as a PDF, with the same numbers as <c>deposit/calculate</c> for the same input.</summary>
+    [HttpPost("{id:guid}/letters/restituzione-cauzione")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> RestituzioneCauzione(Guid id, [FromBody] DepositReturnInputDto dto, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        return Pdf(await operations.BuildRestituzioneCauzioneAsync(id, dto.ToInput(), cancellationToken));
+    }
+
+    /// <summary>
+    /// Records that the landlord returned the deposit on <c>returnedOn</c> (a day from the start of the lease up to today) with the sums of the
+    /// statement the same input gives: an event in the history of the lease and nothing else (CasaZen moves no money; the deposit of the lease does not
+    /// change). 200 with the operations of the lease; 422 the codes of <c>deposit/calculate</c> and <c>lease_deposit_return_date_invalid</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/deposit/return")]
+    [ProducesResponseType(typeof(LeaseOperationsDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RecordDepositReturn(Guid id, [FromBody] DepositReturnInputDto dto, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        await operations.RecordDepositReturnAsync(id, dto.ToInput(), cancellationToken);
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(await operations.GetAsync(id, cancellationToken));
+    }
+
+    /// <summary>
+    /// Marks a letter (<c>disdetta</c>, <c>presa-atto-recesso</c>, <c>conferma-esigenza</c>, <c>aggiornamento-istat</c>, <c>opzione-cedolare</c>, <c>riconsegna</c>, <c>restituzione-cauzione</c>) as sent on <c>sentOn</c> (a day from the start of the lease up to today) by
     /// <c>means</c>: an event in the history of the lease and nothing else, the lease does not change. 200 with the operations of the lease; 404
     /// for a letter that does not exist; 409 <c>lease_not_in_force</c>; 422 <c>lease_letter_date_invalid</c>.
     /// </summary>
@@ -216,6 +276,36 @@ public sealed record AggiornamentoIstatLetterDto(
 
 /// <summary>The communication of the cedolare secca: the first day the option applies from, when the person says it.</summary>
 public sealed record OpzioneCedolareLetterDto(DateOnly? EffectiveFrom = null);
+
+/// <summary>The minutes of the handover: the day it takes place, when the person says it.</summary>
+public sealed record RiconsegnaLetterDto(DateOnly? HandoverOn = null);
+
+/// <summary>The legal interest rate, in percent per year, of one calendar year.</summary>
+public sealed record DepositRateDto([param: Required] int? Year, [param: Required] decimal? RatePercent);
+
+/// <summary>A sum the landlord keeps from the deposit and the reason he states.</summary>
+public sealed record DepositDeductionDto([param: Required, MaxLength(LeaseDepositRules.MaxReasonLength)] string? Reason, [param: Required] decimal? Amount);
+
+/// <summary>
+/// The statement of the return of the deposit: the day it is returned, the day it was paid (the start of the lease when not given), the legal rate of
+/// each calendar year it was held, the interest already paid to the tenant and the sums kept.
+/// </summary>
+public sealed record DepositReturnInputDto(
+    [param: Required] DateOnly? ReturnedOn,
+    DateOnly? DepositPaidOn,
+    [param: Required, MaxLength(60)] List<DepositRateDto>? Rates,
+    decimal? InterestPaid,
+    [param: MaxLength(LeaseDepositRules.MaxDeductions)] List<DepositDeductionDto>? Deductions)
+{
+    public LeaseDepositReturnInput ToInput() => new(
+        ReturnedOn!.Value,
+        DepositPaidOn,
+        // A null item of a list is no rate and no sum (the validation reaches the members of an item, not an item that is null): it is left out, and the
+        // rules then say what is missing.
+        (Rates ?? []).Where(r => r is not null).Select(r => new LeaseDepositRate(r.Year!.Value, r.RatePercent!.Value)).ToList(),
+        InterestPaid ?? 0m,
+        (Deductions ?? []).Where(d => d is not null).Select(d => new LeaseDepositDeduction(d.Reason!, d.Amount!.Value)).ToList());
+}
 
 /// <summary>A letter marked as sent: the day (<c>yyyy-MM-dd</c>, from the start of the lease up to today) and how.</summary>
 public sealed record MarkLetterSentDto(

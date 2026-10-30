@@ -1,3 +1,5 @@
+using Casazen.Core.SiteProfile;
+
 namespace Casazen.Core.Services;
 
 /// <summary>
@@ -130,11 +132,11 @@ public static class PublicSiteSearchErrorCodes
 /// <param name="MinSqm">At least this many square metres (a house that did not say its size is not shown).</param>
 /// <param name="Amenities">Names of <see cref="Enums.PropertyAmenity"/>: the house has all of them.</param>
 /// <param name="Rules"><c>pets</c>, <c>children</c>, <c>selfCheckin</c>, <c>smoking</c>, <c>parties</c>: the house allows all of them.</param>
-/// <param name="Tags">Labels of the houses (DB-11a): not supported yet, declared in <see cref="PublicStaysResult.UnsupportedFilters"/>.</param>
+/// <param name="Tags">Labels of the houses (<see cref="SitePropertyProfileLimits.Tags"/>): the house has all of them, the ones the host chose and the ones its data give.</param>
 /// <param name="Sort">One of <see cref="PublicSiteSearch"/> (<c>recommended</c> by default).</param>
 /// <param name="Page">First page is 1.</param>
 /// <param name="PageSize"><c>null</c> for every house (at most <see cref="PublicSiteSearch.MaxPageSize"/>).</param>
-/// <param name="IgnoredValues">Values of the filters that no house can match (an unknown amenity or rule), declared and not applied.</param>
+/// <param name="IgnoredValues">Values of the filters that no house can match (an unknown amenity, rule or label), declared and not applied.</param>
 public sealed record PublicStaysCriteria(
     DateOnly? CheckIn,
     DateOnly? CheckOut,
@@ -162,7 +164,7 @@ public sealed record PublicStaysCriteria(
 /// <param name="AvailableCount">Of those, the ones that are free for the stay (all of them when no dates were chosen).</param>
 /// <param name="Items">The page of houses: the free ones first, in the sort asked, then the others by name.</param>
 /// <param name="Alternatives">Up to three nearby ranges of the same length with free houses; empty when some house is free already.</param>
-/// <param name="UnsupportedFilters">Filters that were asked and not applied: <c>tags</c>, <c>rules:children</c>, <c>amenities:…</c> of an unknown name.</param>
+/// <param name="UnsupportedFilters">Filters that were asked and not applied: a value no house can match (<c>amenities:…</c>, <c>rules:…</c> or <c>tags:…</c> of an unknown name).</param>
 public sealed record PublicStaysResult(
     string Currency,
     DateOnly? CheckIn,
@@ -181,18 +183,22 @@ public sealed record PublicStaysResult(
     DateTime GeneratedAt);
 
 /// <summary>A house of the site as the list shows it. Nothing private: the position is rounded, there is no address.</summary>
-/// <param name="Zone">The zone of the house (DB-11a): <c>null</c> until the host can say it.</param>
+/// <param name="Zone">The zone the host wrote (DB-11a), in Italian and, if written, English; <c>null</c> = not said.</param>
 /// <param name="Latitude">Rounded to about a kilometre (<see cref="Entities.PropertyAddress.ToPublicCoordinate"/>).</param>
 /// <param name="Photos">The first photos, the first is the cover.</param>
 /// <param name="Amenities">The main ones, as the names of <see cref="Enums.PropertyAmenity"/>.</param>
-/// <param name="Tags">Labels of the house (DB-11a): empty until the host can give them.</param>
+/// <param name="Tags">Labels of the house: the ones the host chose and the ones its data give (a pool, pets welcome, the coast...), in the order of the vocabulary.</param>
 /// <param name="Rating">The number and the average of the public reviews; <c>null</c> without any.</param>
+/// <param name="Cancellation">
+/// What cancelling costs for the stay asked, on the policy of the house, with the dates of the quote (last whole day, Europe/Rome); <c>null</c>
+/// without dates and for a house with no cancellation policy.
+/// </param>
 public sealed record PublicStayCard(
     Guid Id,
     string? Slug,
     string Name,
     string Comune,
-    string? Zone,
+    LocalizedText? Zone,
     decimal Latitude,
     decimal Longitude,
     IReadOnlyList<string> Photos,
@@ -204,7 +210,8 @@ public sealed record PublicStayCard(
     IReadOnlyList<string> Tags,
     PublicRatingSummary? Rating,
     PublicStayAvailability Availability,
-    PublicStayPrice Price);
+    PublicStayPrice Price,
+    StayCancellation? Cancellation = null);
 
 /// <summary>Whether a house is free for the stay asked.</summary>
 /// <param name="Available">Free for the stay (and bookable); <c>true</c> when no dates were chosen, since there is nothing to be taken.</param>

@@ -55,6 +55,12 @@ public sealed class PublicPropertyProfileDto
 
     /// <summary>The 360° tour, embeddable after the visitor's click; <c>null</c> = none.</summary>
     public PublicPropertyEmbedDto? Tour { get; init; }
+
+    /// <summary>The levels of the floor plan, lowest level first; empty = the host uploaded none.</summary>
+    public IReadOnlyList<PublicFloorPlanDto> FloorPlans { get; set; } = [];
+
+    /// <summary>The points of interest around the house, in the order the host gave; empty = none. Never an exact position (see <see cref="PublicPoiDto"/>).</summary>
+    public IReadOnlyList<PublicPoiDto> Pois { get; set; } = [];
 }
 
 /// <summary>The energy class of the APE as the host stated it.</summary>
@@ -103,3 +109,26 @@ public sealed record PublicPropertyEmbedDto(string Url, SiteEmbedProvider Provid
 /// <param name="Width">Width in pixels; <c>null</c> = not known.</param>
 /// <param name="Height">Height in pixels; <c>null</c> = not known.</param>
 public sealed record PublicPropertyPhotoDto(string Url, LocalizedText? Alt, int? Width, int? Height);
+
+/// <summary>One level of the floor plan of a house.</summary>
+/// <param name="Id">Identifier of the level, for the host editor.</param>
+/// <param name="Level">The floor, 0 = ground floor.</param>
+/// <param name="Name">What the guest reads: «Piano terra», «Mansarda».</param>
+/// <param name="ImageUrl">Absolute public address of the image (PNG or JPEG).</param>
+/// <param name="Width">Width of the image in pixels; <c>null</c> = not known.</param>
+/// <param name="Height">Height of the image in pixels; <c>null</c> = not known.</param>
+/// <param name="AreaSqm">The living area of the level in square metres; <c>null</c> = not said.</param>
+public sealed record PublicFloorPlanDto(Guid Id, int Level, LocalizedText Name, string ImageUrl, int? Width, int? Height, int? AreaSqm);
+
+/// <summary>
+/// A point of interest near the house. <b>Never a position</b>: the host states the minutes, the distance and the side of the compass, and the
+/// server keeps the side as one of eight points and the distance rounded and not closer than 200 m (<see cref="Casazen.Core.SiteProfile.PoiDistance"/>),
+/// so a place that is known does not give the door of the house away.
+/// </summary>
+/// <param name="Kind">Beach, food, shop, transport, sight, health or parking.</param>
+/// <param name="Name">What the guest reads, in Italian and, if written, English.</param>
+/// <param name="Mode">On foot or by car: how the minutes are travelled.</param>
+/// <param name="Minutes">Minutes to get there.</param>
+/// <param name="Direction">Side of the compass the place lies on, seen from the house.</param>
+/// <param name="DistanceMeters">Distance in metres, rounded.</param>
+public sealed record PublicPoiDto(PoiKind Kind, LocalizedText Name, PoiTravelMode Mode, int Minutes, CompassPoint Direction, int DistanceMeters);

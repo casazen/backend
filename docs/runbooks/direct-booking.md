@@ -746,9 +746,12 @@ One call for the whole site instead of one per house. All anonymous, read only, 
 | `GET …/destinations` | the comuni of the published houses `{ id, label, comune, count }`: `id` is the value of `where` | `PublicRead` |
 | `GET …/properties/{slugOrId}/similar?max=3` | up to 6 other houses: same kind of place (pool, sea, terrace, garden, pets), same comune, near price; cards with the lowest price per night, no stay | `PublicRead` |
 
-- **`stays` card.** `id`, `slug`, `name`, `comune`, `zone` (null until DB-11a), `latitude`/`longitude` **rounded** (§ 11.7, no address anywhere), the first
-  five `photos`, `bedrooms`, `bathrooms`, `maxGuests`, `areaSqm`, the main `amenities` (names of `PropertyAmenity`, six at most), `tags` (empty until DB-11a),
-  `rating {count, average}` (`null` without public reviews), `availability` and `price`.
+- **`stays` card.** `id`, `slug`, `name`, `comune`, `zone` (`{it, en}` as the host wrote it, `null` = not said), `latitude`/`longitude` **rounded** (§ 11.7, no address anywhere), the first
+  five `photos`, `bedrooms`, `bathrooms`, `maxGuests`, `areaSqm`, the main `amenities` (names of `PropertyAmenity`, six at most), `tags` (the labels of the house: the ones the host chose and the ones
+  its data give, § 14),
+  `rating {count, average}` (`null` without public reviews), `availability`, `price` and, **with dates**, `cancellation` `{ fullRefundUntil, partialRefundPercent,
+  partialRefundUntil, selfServiceAvailable }`: what cancelling costs for that stay on the policy of the house with what the host changed of it, the dates of the quote
+  of the same stay (§ 11.2a, Europe/Rome, a date already past is `null`); `null` without dates and for a house with no cancellation policy.
 - **`availability`** `{ available, reason, minNights, firstFreeCheckIn }`. `reason`, in this order: `past` (check-in before today), `not_bookable`
   (the host cannot take a payment yet, § 11.5), `guests` (the party is larger than `maxGuests`), `pets` (`pets=true` and the house refuses pets; «on request»
   does not refuse), `busy` (a night is taken: booking, hold, request, iCal or manual block, the same read as § 11.9), `min_nights`. A house that is not free **stays in
@@ -765,8 +768,8 @@ One call for the whole site instead of one per house. All anonymous, read only, 
   +7, +10, +14, +21 days (not before today), with `availableCount` (houses that sleep the party, accept the pet and are free) and `fromPerNightCents`; oldest first.
 - **Filters.** `where` (a destination `id` or a comune name), `bedrooms`/`bathrooms`/`minSqm` (at least; a house that did not say its size is not shown for `minSqm`),
   `minPrice`/`maxPrice` (per night, on `perNightCents`), `amenities` (names of `PropertyAmenity`, the house has all), `rules` = `pets` (accepts pets), `selfCheckin`
-  (amenity), `smoking` (rule «yes», else the amenity), `parties` (rule «on request»). **Not applied, and said so** in `unsupportedFilters`: `tags` (the labels of the houses
-  are DB-11a), `rules:children` (the house rule about children is DB-11a), and any unknown amenity or rule (`amenities:Foo`). Never an error.
+  (amenity), `smoking` (rule «yes», else the amenity), `parties` (rule «on request»), `children` (only a house whose host said that children are welcome); `tags` (`mare,centro,piscina,pet,campagna,terrazza,vista-mare`: the house has
+  all of them, the host's and the data's). **Not applied, and said so** in `unsupportedFilters`: a value no house can match (`amenities:Foo`, `rules:Foo`, `tags:Foo`). Never an error.
 - **Sort** `recommended` (default: by name, until the editor can order the houses), `priceAsc`, `priceDesc` (on the total, per night without dates), `rating`, `largest`;
   `page` from 1 and `pageSize` (50 at most; left out, every house).
 - **Errors.** 422 `public_stays_dates_invalid` (one date only, departure not after arrival, more than 366 nights); 422 `public_site_calendar_range_invalid`; 400 for a
@@ -957,6 +960,16 @@ writes a few lines to the host, who gets them by email and answers from their ma
 - **Not done here.** A copy or a receipt to the visitor, a per-org cap against a distributed flood, a thread of the conversation in the
   app, the languages of the email to the host (Italian only).
 
+### 11.11 The amenity catalog (DB-11a)
+
+`GET api/public/amenities` (anonymous, `PublicRead` limit, `Cache-Control: public, max-age=3600`) is the reference list the public property page
+reads so it never shows a raw code: `groups` (the five of the design, in order: `comfort`, `kitchen`, `bedbath`, `outdoor`, `safety`, each with
+`label {it, en}`) and `amenities`, one entry for **every** `PropertyAmenity` (`name` is the enum member name, which is what `amenities` of the public
+property DTOs carries; `icon` is an icon of the booking site; `group`; `label {it, en}`). The labels say what the amenity says and no more (`Pool` is
+«Piscina», not «Piscina privata»: the host's data do not tell whether it is shared). The list lives in code (`AmenityCatalog`); a new amenity without an
+entry fails `PublicAmenityCatalogIntegrationTests`. The design lists five services the enum does not have (bed linen, hair dryer, loungers, outdoor
+shower, sea view): they are not in the catalog and a host cannot state them until the enum grows (append only).
+
 ## 12. Who runs the site: operator data in the footer (DB-03b-a)
 
 Task DB-03b-a of the redesign wave (reduced DB-03b, decision DB-D14 (a)). The booking site of a host shows, in its footer, the
@@ -1071,8 +1084,21 @@ What is read by the public page, the JSON-LD, the amenity catalog and the filter
   never refused for it) and a deleted photo takes its text and size with it. A photo uploaded before this existed has no size. The public detail lists `photos` next to
   `photoUrls`, which stays. **No resized variants**: nothing in the stack resizes images (no library, no CDN transform), so `srcset` is left to a later decision; the size lets the page
   reserve the room and load the first photo with priority.
-- **Not here** (next pieces of DB-11a): the amenity catalog is `GET api/public/amenities` (§ 11.11); the filters of the search on labels and children are in § 11.4a; floor plans
-  and points of interest.
+- **Floor plan (fourth piece).** `GET` / `POST` / `PUT {planId}` / `DELETE {planId}` on `api/properties/{id}/site-profile/floor-plans` (same permissions): at most **six levels**, each a **PNG or
+  JPEG of 5 MB at most checked on its content** (a text named `.png` is 422 `property_floor_plan_invalid_type`), uploaded as multipart (`image`, `nameIt` required, `nameEn`,
+  `level` -3 to 60 with 0 = ground floor, `areaSqm`), stored in the property's own folder of the public bucket (`properties/{id}/floorplans/`), its size read from the file. The page lists the
+  levels lowest floor first. 422 `property_floor_plan_none` / `_invalid_type` / `_invalid_size` / `_limit_reached` / `_area_invalid` and the usual `property_site_profile_*` with the `field`;
+  404 `property_floor_plan_not_found`. Deleting removes the object first and the row after; the limit is checked under the property's media lock (the one of the photos).
+- **Points of interest (fourth piece).** `GET` / `PUT api/properties/{id}/site-profile/pois`: the host sends the whole list (**twelve at most**, an empty list removes them all):
+  `kind` (`Beach`, `Food`, `Shop`, `Transport`, `Sight`, `Health`, `Parking`), `name` (Italian required), `mode` (`Walk`/`Car`), `minutes` (1 to 600), `direction` (one of eight points:
+  `N` `NE` `E` `SE` `S` `SW` `W` `NW`) and `distanceMeters`. **Privacy**: a point is never a position. The side is one of eight points, the distance is **stored rounded** (100 m below 1 km,
+  250 m below 5 km, 500 m below 20 km, then 1 km) and **never closer than 200 m**, and nothing is worked out from the coordinates of the property: a known place a few metres away on
+  a known side would give the door away whatever the rounding of the coordinates. 422 `property_poi_limit_reached`, `property_poi_minutes_invalid`, `property_site_profile_italian_required` (`field: pois`).
+- **Public page.** `profile.floorPlans` `[ { id, level, name, imageUrl, width, height, areaSqm } ]` and `profile.pois` `[ { kind, name, mode, minutes, direction, distanceMeters } ]`, both on the
+  detail only, never in a list. The demo property «Villa del Lago» carries four points (catalog `2026-10-30.2`); no floor plan image in a demo.
+- **Migration `AddPropertyFloorPlansAndPois`**: two new tables (`PropertyFloorPlans`, `PropertyPois`, tenant-owned, cascade with their property) and their constraints; no existing row is touched.
+  Rollback: `Down` drops them (what the hosts entered is lost; the image objects stay in the bucket).
+- **Not here**: the amenity catalog is `GET api/public/amenities` (§ 11.11) and the filters of the search on labels and children are in § 11.4a.
 - **Tests.** Unit: `SiteEmbedUrlsTests` (what an embed address can become), `SitePropertyProfileRulesTests` (clean, canonical, within the limits and the
   vocabularies). HTTP: `PropertySiteProfileIntegrationTests` (replace, read back, a mistake saves nothing, another org / a colleague / anonymous / long-term).
   PostgreSQL (CI): `AddPropertySiteProfileMigrationPostgresTests` (existing properties come out empty and published as before; the constraints), `LegacyRowsSchemaTests`.
