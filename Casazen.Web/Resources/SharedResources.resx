@@ -1246,6 +1246,9 @@
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Il consenso a ricevere offerte non è disponibile in questo momento: riprova senza selezionarlo.</value>
   </data>
+  <data name="DirectBookingArrivalTimeInvalid" xml:space="preserve">
+    <value>L'orario di arrivo previsto non è valido: scegli un orario (per esempio 15:30) oppure "dopo l'orario di check-in".</value>
+  </data>
   <data name="DirectBookingCurrencyNotSupported" xml:space="preserve">
     <value>Prenotazioni dirette non supportate per questa valuta</value>
   </data>

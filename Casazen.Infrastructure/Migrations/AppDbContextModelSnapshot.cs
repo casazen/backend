@@ -526,6 +526,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("DeferredChargeLastAttemptOn")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ExpectedArrivalTime")
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
                     b.Property<string>("ExternalId")
                         .IsRequired()
                         .HasMaxLength(500)

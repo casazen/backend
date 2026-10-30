@@ -140,6 +140,15 @@ public class Booking : ITenantOwned
     [MaxLength(1000)]
     public string SpecialRequests { get; set; } = string.Empty;
 
+    /// <summary>
+    /// When the guest of a direct booking thinks they will arrive (DB-03b): <c>HH:mm</c>, or <c>late</c> for after the check-in window;
+    /// <c>null</c> when they did not say, and for every booking that does not come from the public checkout. A note for the host
+    /// ("arrivo previsto alle…"), never a rule (<see cref="Services.ArrivalTimeRules"/>). Cleared with the guest's other free-text data when
+    /// the guest is erased.
+    /// </summary>
+    [MaxLength(Services.ArrivalTimeRules.MaxLength)]
+    public string? ExpectedArrivalTime { get; set; }
+
     /// <summary>Payment option selected: Immediate (pay now), OnCancellationDeadline (pay on deadline), OnSite (pay at property).</summary>
     [Required]
     public PaymentOption PaymentOption { get; set; } = PaymentOption.Immediate;

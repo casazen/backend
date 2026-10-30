@@ -82,6 +82,15 @@ public class CreateDirectBookingRequest : IValidatableObject
     /// </summary>
     public bool? MarketingConsent { get; set; }
 
+    /// <summary>
+    /// When the guest thinks they will arrive (DB-03b), optional (step 2 of the checkout): <c>HH:mm</c> (<c>15:30</c>) or <c>late</c> for after
+    /// the check-in window; left out, <c>null</c> or blank when they do not say. Only a note for the host (their booking shows
+    /// <c>expectedArrivalTime</c>): it changes no price and no check, and the check-in window of the property is not enforced. Anything
+    /// else is refused with 422 <c>direct_booking_arrival_time_invalid</c>.
+    /// </summary>
+    [MaxLength(32)]
+    public string? ExpectedArrivalTime { get; set; }
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
         ChildrenAgesValidation.Validate(validationContext, ChildrenAges, NumberOfChildren);
 }

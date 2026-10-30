@@ -740,6 +740,20 @@ nights, which is `nightlyRate x nights` without a surcharge) and adds `lines`, t
   withdrawal keeps the version of the text the guest agreed to. The tab labels the source (`GuestConsentSource`): the
   frontend needs the label for `BookingCheckout` (follow-up FE).
 
+### 11.6a The expected arrival time (DB-03b)
+
+- `POST /api/public/bookings` accepts `expectedArrivalTime`, optional, from step 2 of the checkout: `HH:mm` (`15:30`; `9:30` is read as
+  `09:30`) or `late` for "after the check-in window". Left out, `null` or blank = the guest did not say. Anything else is **422
+  `direct_booking_arrival_time_invalid`** before anything is written (IT/EN message). Stored on the new nullable
+  `Bookings.ExpectedArrivalTime` (`varchar(5)`; migration `AddBookingExpectedArrivalTime`, additive, no backfill, no flag).
+- **It is a note for the host, not a rule**: it moves no price, no availability and no check. The check-in window of the property is **not**
+  enforced (the property has no end of window, and an optional preference must never be what stops a paid booking); the checkout offers
+  the hours of the window and "after …" itself. The quote does not take it.
+- The host reads it as `expectedArrivalTime` in the booking DTO (`GET /api/bookings`, `GET /api/bookings/{id}`; `null` for a booking that did
+  not come from the checkout): the note "arrivo previsto alle…". It is in the data export of the guest (`GuestExportBooking.ExpectedArrivalTime`)
+  and is cleared, with the special requests, when the guest is erased ([gdpr.md](gdpr.md)).
+- Rollback: deploy the previous release (it ignores the column); `Down` drops it and the values are lost.
+
 ### 11.7 Public coordinates (privacy)
 
 - The exact position of a house (6 decimals, about 10 cm, what the host types) **never leaves CasaZen**. Every public
