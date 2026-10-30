@@ -127,6 +127,13 @@ public static class RateLimitPolicies
     public const string GlobalSearch = "GlobalSearch";
 
     /// <summary>
+    /// The free slots of a supplier's service read by the host to ask for an intervention (<c>GET api/suppliers/{id}/services/{serviceId}/slots</c>,
+    /// SR-08a). Each read runs the slot planner over up to 14 days, so it has a limit of its own. A policy of a signed-in endpoint, like
+    /// <see cref="GlobalSearch"/>: partitioned by <b>person</b>, since the people of one office share an address.
+    /// </summary>
+    public const string HostSupplierSlots = "HostSupplierSlots";
+
+    /// <summary>
     /// The copy of a tenant's personal data and the erasure request (<c>GET api/long-rent/tenants/{id}/export</c> and <c>POST
     /// …/erasure-request</c>, LR-09): partitioned by <b>person</b>, since the export puts every personal datum of somebody in one file and
     /// the erasure cannot be taken back. Nobody asks for more than a few in ten minutes.

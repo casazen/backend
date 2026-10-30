@@ -85,7 +85,7 @@ when the CDN path is active). None of this was verified by us, so measure it:
 
 ## 4. Rate limiting policies
 
-Limits are **per client IP** (and per token where noted; `OrgAccessRequest` and `GlobalSearch`, the policies of signed-in endpoints, per person), per fixed window. The defaults of the policies that
+Limits are **per client IP** (and per token where noted; `OrgAccessRequest`, `GlobalSearch` and `HostSupplierSlots`, the policies of signed-in endpoints, per person), per fixed window. The defaults of the policies that
 existed before FD-10 are the old *global* limits, now applied per IP.
 
 | Policy | Endpoints | Default | Limit key (legacy key still honoured) |
@@ -112,6 +112,7 @@ existed before FD-10 are the old *global* limits, now applied per IP.
 | `OrgAccessRequest` | `POST api/orgs/me/access-requests` (a member asks the administrators of its org for access, AM-02b). **Counted per signed-in person, not per client IP** (the request emails other people, so what matters is how many one person can send, not how many one office network can; the account id is hashed in the partition key) | 5 / 10 min | `RateLimiting__OrgAccessRequest__PermitLimit` |
 | `GlobalSearch` | `GET api/search` (the global search of the command palette, UI-13a). **Per signed-in user** (a hash of the subject of the token), not per IP: the palette asks at every pause in typing and the people of one office share an address | 60 / min | `RateLimiting__GlobalSearch__PermitLimit` |
 | `HostMessageSend` | `POST api/bookings/{id}/messages` (the host answers a guest, DB-14a). **Per signed-in person**: the answer is an email to somebody else | 60 / 10 min | `RateLimiting__HostMessageSend__PermitLimit` |
+| `HostSupplierSlots` | `GET api/suppliers/{id}/services/{serviceId}/slots` (the free slots of a supplier's service read by the host to ask for an intervention, each read runs the planner over up to 14 days, SR-08a). **Per signed-in person** | 60 / min | `RateLimiting__HostSupplierSlots__PermitLimit` |
 | `TenantPrivacy` | `GET api/long-rent/tenants/{id}/export` (the copy of a tenant's personal data) and `POST api/long-rent/tenants/{id}/erasure-request` (LR-09). **Per signed-in person**: one file holds every personal datum of somebody and the erasure cannot be taken back | 10 / 10 min | `RateLimiting__TenantPrivacy__PermitLimit` |
 | `SupplierShowcaseSave` | `PATCH api/supplier/showcase/content` (the autosave of the showcase editor, SP-13a). **Per signed-in person**: the editor saves at every pause in typing and the people of one office share an address | 120 / min | `RateLimiting__SupplierShowcaseSave__PermitLimit` |
 

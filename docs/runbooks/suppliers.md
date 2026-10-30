@@ -3627,3 +3627,18 @@ Nothing to configure and no new setting. The migration adds the columns (empty) 
 - Service requests: the host timeline, rejection reason and "paid" confirmation are in section 14 (SU-09), but only on
   the web: the app's supplier choice (today the first result) is MO-10 and its error states MO-07. `chargeToGuest` is
   still always refused, also for long-rent (open product point).
+
+## 35. The host reads a supplier's services and free slots to ask for an intervention — SR-08a (part 2)
+
+The request wizard of Affitti brevi picks a service of the supplier and one of its free slots. Two reads, for a property of the host, change nothing and need no flag
+(`property.read` in short-rent, the property authorized as a `HostResource`: 400 `validation_error` without `propertyId`, 404 `property_not_found` outside the caller's org,
+403 for a property the caller may not read or reach).
+
+| Call | What it answers |
+|---|---|
+| `GET api/suppliers/{supplierOrgId}/services?propertyId=&category=` | `{ items: [{ id, name, category, durationMinutes, priceFromCents, priceUnit, requiresQuote, estimatedAmountCents }] }`: the `Active` services of the supplier in its catalog order. `id` is the `serviceListingId` of the request; `estimatedAmountCents` is the price a request starts with (`SupplierServiceForRequest.EstimateOf`: the «from» price of a service priced per job, none on quote or per hour/set/m²). No public text, photo, supplement or slug. `category`: a code of `GET api/service-categories` (422 `invalid_service_category` otherwise). |
+| `GET api/suppliers/{supplierOrgId}/services/{serviceId}/slots?propertyId=&date=` | `{ serviceId, durationMinutes, from, to, slots: [{ startUtc, endUtc }] }` from `date` (`yyyy-MM-dd`, Europe/Rome; never before today, today when missing) for 14 days at most, cut at the supplier's horizon (`PublicSlotWindow`, the window of the public page and of the supplier's own preview). A first day past the horizon, or a service without a duration, is `from`/`to` null and no slot. |
+
+- **The offer is the check.** The slots are the plan of `ISupplierAgendaService.PlanAsync` for `SupplierServiceForRequest.ToSlotQuery()`: the very query `ServiceRequestService` checks the time of a request with (`ResolveCreateSchedule`, `EnsureSlotFreeAsync`). A slot offered here is one `POST api/service-requests` accepts with `serviceListingId` and `scheduledStartUtc` equal to its `startUtc`; if someone takes it first, 409 `supplier_slot_unavailable` (and 409 `supplier_commitment_conflict` when the time overlaps a job the supplier already accepted). With `durationMinutes` the creation does **not** check the slot: the slots are for the services of the catalog.
+- **The same rules as the creation come first**: 404 `supplier_not_found`; 422 `service_request_supplier_inactive` (the supplier is not `Active`) and `service_request_supplier_outside_comune` (it does not cover the comune of the property, by ISTAT code or by the written city); for the slots, 404 `supplier_service_not_found` (another supplier's, or deleted) and 422 `service_request_service_unavailable` (a draft or a paused service).
+- **Privacy and cost**: the slots carry two instants and nothing of the supplier's agenda (no reason, job or person); the services come out through `ISupplierServiceCatalogService`, the only code that reads that table. Not cached: the host reads a few days of one supplier once per choice. Rate limit `HostSupplierSlots` on the slots, 60 / min **per signed-in person** (`RateLimiting__HostSupplierSlots__PermitLimit`, 429 `rate_limited`), and the window cannot be longer than 14 days.
