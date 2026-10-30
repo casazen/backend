@@ -2564,6 +2564,74 @@ the jobs, the refunds and the export are in [`stripe.md`](stripe.md) § "Service
       supplier's own commission and see the next payment carry it; download the export (`stripe.md` → Verification, points 2 and 3).
 - [ ] Production: `Features__SupplierOnlinePayments` still off until the legal texts and the tax treatment of the commission are approved.
 
+## 38. The money CasaZen holds: block, charge, hold, release — SP-15c-a
+
+Redesign wave task SP-15c-a (branch `feature/rd-supplier-payments-platform`, backend only; the booking of the showcase that uses it is the pull request
+stacked on this one, **38.8**). Decision **VT-D1** (supersedes D2 for the payments below): the customer **pays at once**, CasaZen **holds** the money and
+**releases** it to the supplier when the customer says "all fine" or a configurable time after the work is done; if the request is refused, cancelled or
+lapses, the customer gets everything back. Gateway, parameters and Stripe events: [`stripe.md`](stripe.md) § "The money CasaZen holds for the services
+(SP-15c)". SP-15a and SP-15b (the direct charge on the supplier's account, `FundsModel = DirectCharge`) are **not changed**: they work as before until
+SP-15c-b moves the host's payments to this cycle. **Keep `Features__SupplierOnlinePayments` off in production** until the legal texts, the tax treatment
+(VT-D20, VT-D21) and the test-mode check of VT-D22 are done.
+
+### 38.1 The rules, as implemented
+
+| Rule | Where | Default (configuration) |
+|---|---|---|
+| **R1** the payer pays the whole amount at once: the card is **blocked** at the booking (PaymentIntent on the platform, manual capture, cards only) | `StripePlatformPaymentGateway.CreateAsync`, `SupplierPaymentService.AuthorizeHoldAsync` | usable for `SupplierPayments__AuthorizationValidityHours` = 48 h (1 to 96) |
+| **R2** the card is **charged** when the supplier accepts; if the supplier refuses, does not answer or the customer cancels first, nothing is charged | `CaptureForTakeAsync` (before the request changes state), `SettleClosedRequestAsync` | the take is refused (409) if the card cannot be charged or the block lapsed |
+| **R3** release = the later of the completion and the charge, plus the window | `HeldPaymentRules.ReleaseAt`, set by `PlanAsync` when the supplier completes | `SupplierPayments__ReleaseAfterMinutes` = 60 |
+| **R4/R5** a refund and a release never share the same euros: before the release a refund (R5: everything, the commission included) takes the money back; after the release nothing is refunded from here | `HeldPaymentRules.Release/ReleasableCents/RefundableCents`, `ReserveHeld` | — |
+| **R6** no application fee: the commission is the part not transferred | `StripePlatformPaymentGateway`, `ApplicationFeeArchitectureTests` | `SupplierPayments__CommissionPercent` (10, provisional) / the supplier's override, snapshotted when the payment is created |
+| **R7** the final amount is the blocked amount: the supplier cannot declare another total or add extras (422 `service_payment_amount_locked`); a change goes through a new offer (SP-10b-b) | `PlanHeldCompletionAsync` | — |
+
+### 38.2 Statuses (`ServicePaymentStatus`, append only)
+
+`Authorized` (8) · `Held` (9) · `Released` (10) · `Disputed` (11, SP-15c-c) · `TransferFailed` (12), with `Canceled`, `Refunded`, `PartiallyRefunded` and `NeedsReview`
+of SP-15b. `PartiallyRefunded` of a held payment means "nothing is left for the supplier, CasaZen kept its commission" (the cycle is over). A held payment
+has `PaidAt` (when the card was charged, moved to the day of the release) and `PaidVia = Stripe`, so the supplier's earnings count it as paid only once
+`Released`; before that the console shows `held`.
+
+### 38.3 What the supplier sees
+
+The console states (`SupplierEarningStates`): `held` (charged and held, or a transfer being retried) and `in_dispute` count as still to be collected;
+`Released` counts as paid. A supplier cannot ask for, remind or record as received (`payment/offline`) a payment CasaZen holds: 409
+`service_payment_held`. When the money is due and the supplier's Stripe account cannot receive it yet, it gets one e-mail asking it to complete the account
+(`service-funds-account-not-ready`); the e-mail of a release is the receipt of a payment received (gross, commission, net, no payout date promised).
+
+### 38.4 Concurrency and failures
+
+Everything that changes the payment runs under the advisory lock `ServiceRequestPayment` (key: the request id), after the supplier's calendar lock when
+both are needed (a take), never the other way round. Every Stripe call has an idempotency key and, when it meets a state it cannot act on, **reads the
+real one** (`payment_intent_unexpected_state`). A Stripe step that succeeded while its database change was rolled back with a caller that failed
+afterwards (the take lost a race) is made good by the webhook and by the `service-funds` job: money is never lost, only late. Tables, indexes and checks of
+the migration `AddHeldServicePayments`: `FundsModel`, the held states exist only for `PlatformHeld` and never with a connected account
+(`CK_ServiceRequestPayments_Funds`), `Held`/`Released`/`Disputed`/`TransferFailed` say when the card was charged and `Released` the transfer
+(`CK_ServiceRequestPayments_Held`), one transfer id per payment (`UIX_ServiceRequestPayments_StripeTransferId`). Additive only.
+
+### 38.5 Admin
+
+The admin list and detail show the new statuses by name. A card dispute (a chargeback) is recorded on the payment (`CardDisputeId`, `CardDisputeStatus`,
+`CardDisputeAt`); after the release it is **CasaZen's loss** and nothing is recovered from the supplier (VT-D22). The admin refund
+(`POST api/admin/service-payments/{id}/refund`) works on held money before the release (any amount up to what was paid minus what was refunded) and is
+refused after it. The commission export (SP-15b) lists direct charges only: the held money's commission rows are SP-15c-b.
+
+### 38.6 Not done here (follow-ups)
+
+- The booking of the showcase with the block of the card (38.8) is the next pull request; the host's requests on this cycle, the "all fine" and "report a
+  problem" for hosts, the admin export of the commission kept, **SP-15c-b**; the complaint, the dispute and the penalty, **SP-15c-c**; the screens,
+  **SP-15c-d** (after SP-12b).
+- A shorter Stripe timeout for the platform client; an admin action to settle `NeedsReview` for a held payment; the recovery of a card dispute after the
+  release (decision of the product owner, VT-D16).
+
+### 38.7 Checks
+
+- [ ] Migration `AddHeldServicePayments` applied (new columns, `CK_ServiceRequestPayments_Funds`/`_Held`, `UIX_ServiceRequestPayments_StripeTransferId`,
+      `IX_ServiceRequestPayments_Held_Status_ReleaseAt`, `CK_ShowcaseBookingHolds_Payment`, `UIX_ShowcaseBookingHolds_StripePaymentIntentId`).
+- [ ] `service-funds` (`*/5`) among the recurring jobs (`GET api/admin/jobs`).
+- [ ] The platform endpoint sends the events of [`INFRA.md`](../INFRA.md) § Stripe before the flag goes on in any environment.
+- [ ] The five-step test-mode script of `results/VT-D22.md` of the wave was run and its answers are in the pull request that switches the flag on.
+
 ## 27. Read models for the console: "Oggi" and "Richieste" — SP-04e
 
 Redesign wave task SP-04e (branch `feature/rd-supplier-read-models`, backend only: **no flag, no migration, no new table**; the screens that
