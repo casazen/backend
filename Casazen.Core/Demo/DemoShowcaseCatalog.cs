@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-10-30.1";
+    public const string Version = "2026-10-30.2";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -210,6 +210,13 @@ public static class DemoShowcaseCatalog
                 ],
                 SafetyNotes: [new LocalizedTextInput("Rilevatore di fumo", "Smoke detector"), new LocalizedTextInput("Estintore", "Fire extinguisher")],
                 Tags: []),
+            Pois:
+            [
+                new(PoiKind.Beach, "Lido di Como (demo)", "Como lido (demo)", PoiTravelMode.Walk, 6, CompassPoint.S, 450),
+                new(PoiKind.Food, "Trattoria sul lungolago (demo)", "Lakefront trattoria (demo)", PoiTravelMode.Walk, 3, CompassPoint.SE, 250),
+                new(PoiKind.Sight, "Funicolare per Brunate (demo)", "Brunate funicular (demo)", PoiTravelMode.Walk, 15, CompassPoint.NE, 1300),
+                new(PoiKind.Transport, "Stazione di Como San Giovanni (demo)", "Como San Giovanni station (demo)", PoiTravelMode.Car, 10, CompassPoint.W, 3200),
+            ],
             Bookings:
             [
                 new("arrivo", "Giulia", "Bianchi", "ospite.demo.arrivo@example.com", 14, 4, BookingStatus.Confirmed, Scenario.BookingUpcoming),
@@ -523,7 +530,14 @@ public sealed record DemoPropertyTemplate(
     IReadOnlyList<string> Scenarios,
     IReadOnlyList<DemoBookingTemplate> Bookings,
     DemoPropertyProfile? Profile = null,
-    SitePropertyProfileInput? SiteProfile = null);
+    SitePropertyProfileInput? SiteProfile = null,
+    IReadOnlyList<DemoPoi>? Pois = null);
+
+/// <summary>
+/// A point of interest of a demo property (DB-11a): invented like the rest of the demo. The distance is stored through the same rounding as a host's
+/// (<see cref="PoiDistance"/>), so a demo can never hold a figure a host could not.
+/// </summary>
+public sealed record DemoPoi(PoiKind Kind, string NameIt, string NameEn, PoiTravelMode Mode, int Minutes, CompassPoint Direction, int DistanceMeters);
 
 /// <summary>
 /// The fields of the wizard «Aggiungi immobile» (SR-07a) a demo property carries, so the list and the cards of the host are not

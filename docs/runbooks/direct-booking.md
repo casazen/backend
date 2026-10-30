@@ -960,6 +960,16 @@ writes a few lines to the host, who gets them by email and answers from their ma
 - **Not done here.** A copy or a receipt to the visitor, a per-org cap against a distributed flood, a thread of the conversation in the
   app, the languages of the email to the host (Italian only).
 
+### 11.11 The amenity catalog (DB-11a)
+
+`GET api/public/amenities` (anonymous, `PublicRead` limit, `Cache-Control: public, max-age=3600`) is the reference list the public property page
+reads so it never shows a raw code: `groups` (the five of the design, in order: `comfort`, `kitchen`, `bedbath`, `outdoor`, `safety`, each with
+`label {it, en}`) and `amenities`, one entry for **every** `PropertyAmenity` (`name` is the enum member name, which is what `amenities` of the public
+property DTOs carries; `icon` is an icon of the booking site; `group`; `label {it, en}`). The labels say what the amenity says and no more (`Pool` is
+«Piscina», not «Piscina privata»: the host's data do not tell whether it is shared). The list lives in code (`AmenityCatalog`); a new amenity without an
+entry fails `PublicAmenityCatalogIntegrationTests`. The design lists five services the enum does not have (bed linen, hair dryer, loungers, outdoor
+shower, sea view): they are not in the catalog and a host cannot state them until the enum grows (append only).
+
 ## 12. Who runs the site: operator data in the footer (DB-03b-a)
 
 Task DB-03b-a of the redesign wave (reduced DB-03b, decision DB-D14 (a)). The booking site of a host shows, in its footer, the
@@ -1074,8 +1084,21 @@ What is read by the public page, the JSON-LD, the amenity catalog and the filter
   never refused for it) and a deleted photo takes its text and size with it. A photo uploaded before this existed has no size. The public detail lists `photos` next to
   `photoUrls`, which stays. **No resized variants**: nothing in the stack resizes images (no library, no CDN transform), so `srcset` is left to a later decision; the size lets the page
   reserve the room and load the first photo with priority.
-- **Not here** (next pieces of DB-11a): the amenity catalog is `GET api/public/amenities` (§ 11.11); the filters of the search on labels and children are in § 11.4a; floor plans
-  and points of interest.
+- **Floor plan (fourth piece).** `GET` / `POST` / `PUT {planId}` / `DELETE {planId}` on `api/properties/{id}/site-profile/floor-plans` (same permissions): at most **six levels**, each a **PNG or
+  JPEG of 5 MB at most checked on its content** (a text named `.png` is 422 `property_floor_plan_invalid_type`), uploaded as multipart (`image`, `nameIt` required, `nameEn`,
+  `level` -3 to 60 with 0 = ground floor, `areaSqm`), stored in the property's own folder of the public bucket (`properties/{id}/floorplans/`), its size read from the file. The page lists the
+  levels lowest floor first. 422 `property_floor_plan_none` / `_invalid_type` / `_invalid_size` / `_limit_reached` / `_area_invalid` and the usual `property_site_profile_*` with the `field`;
+  404 `property_floor_plan_not_found`. Deleting removes the object first and the row after; the limit is checked under the property's media lock (the one of the photos).
+- **Points of interest (fourth piece).** `GET` / `PUT api/properties/{id}/site-profile/pois`: the host sends the whole list (**twelve at most**, an empty list removes them all):
+  `kind` (`Beach`, `Food`, `Shop`, `Transport`, `Sight`, `Health`, `Parking`), `name` (Italian required), `mode` (`Walk`/`Car`), `minutes` (1 to 600), `direction` (one of eight points:
+  `N` `NE` `E` `SE` `S` `SW` `W` `NW`) and `distanceMeters`. **Privacy**: a point is never a position. The side is one of eight points, the distance is **stored rounded** (100 m below 1 km,
+  250 m below 5 km, 500 m below 20 km, then 1 km) and **never closer than 200 m**, and nothing is worked out from the coordinates of the property: a known place a few metres away on
+  a known side would give the door away whatever the rounding of the coordinates. 422 `property_poi_limit_reached`, `property_poi_minutes_invalid`, `property_site_profile_italian_required` (`field: pois`).
+- **Public page.** `profile.floorPlans` `[ { id, level, name, imageUrl, width, height, areaSqm } ]` and `profile.pois` `[ { kind, name, mode, minutes, direction, distanceMeters } ]`, both on the
+  detail only, never in a list. The demo property «Villa del Lago» carries four points (catalog `2026-10-30.2`); no floor plan image in a demo.
+- **Migration `AddPropertyFloorPlansAndPois`**: two new tables (`PropertyFloorPlans`, `PropertyPois`, tenant-owned, cascade with their property) and their constraints; no existing row is touched.
+  Rollback: `Down` drops them (what the hosts entered is lost; the image objects stay in the bucket).
+- **Not here**: the amenity catalog is `GET api/public/amenities` (§ 11.11) and the filters of the search on labels and children are in § 11.4a.
 - **Tests.** Unit: `SiteEmbedUrlsTests` (what an embed address can become), `SitePropertyProfileRulesTests` (clean, canonical, within the limits and the
   vocabularies). HTTP: `PropertySiteProfileIntegrationTests` (replace, read back, a mistake saves nothing, another org / a colleague / anonymous / long-term).
   PostgreSQL (CI): `AddPropertySiteProfileMigrationPostgresTests` (existing properties come out empty and published as before; the constraints), `LegacyRowsSchemaTests`.
