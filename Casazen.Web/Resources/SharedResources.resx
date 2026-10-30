@@ -567,6 +567,21 @@
   <data name="LeaseRenewalBlockedByNotice" xml:space="preserve">
     <value>Hai registrato una disdetta, quindi il contratto non si rinnova. Se le parti hanno deciso di rinnovarlo, togli prima la disdetta.</value>
   </data>
+  <data name="LeaseIstatWaived" xml:space="preserve">
+    <value>Con la cedolare secca l'aggiornamento del canone è sospeso per tutta la durata dell'opzione: non c'è nulla da calcolare.</value>
+  </data>
+  <data name="LeaseIstatNoIncrease" xml:space="preserve">
+    <value>Con una variazione nulla o negativa il canone non aumenta: non c'è nessun aggiornamento da chiedere.</value>
+  </data>
+  <data name="LeaseIstatPercentInvalid" xml:space="preserve">
+    <value>La variazione dell'indice e la quota devono essere percentuali maggiori di zero con al massimo due decimali, e la quota non può superare il {0} per cento.</value>
+  </data>
+  <data name="LeaseIstatNoRent" xml:space="preserve">
+    <value>Il contratto non ha un canone: non c'è nulla da aggiornare.</value>
+  </data>
+  <data name="LeaseLetterEffectDateInvalid" xml:space="preserve">
+    <value>Il giorno da cui vale la lettera deve essere tra il {0:d MMM yyyy} e il {1:d MMM yyyy}.</value>
+  </data>
   <data name="LeaseRenewalNotYet" xml:space="preserve">
     <value>Il rinnovo si registra nell'ultimo tratto prima della scadenza, dal {0:d MMM yyyy}.</value>
   </data>
