@@ -113,3 +113,25 @@ public sealed class SiteHighlightRequest
 
     public SiteHighlightInput ToInput() => new(Icon, Title?.ToInput(), Text?.ToInput());
 }
+
+/// <summary>Body of <c>PUT /api/properties/{id}/site-profile/photos</c>: the photos that have an alternative text; the others lose theirs.</summary>
+public sealed class PropertyPhotoAltRequest
+{
+    /// <summary>At most as many as a gallery can hold.</summary>
+    [MaxLength(Casazen.Core.Services.PropertyPhotoLimits.MaxPhotos, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
+    public List<PropertyPhotoAltItem>? Photos { get; set; }
+
+    public IReadOnlyList<Casazen.Core.Services.PhotoAltInput> ToInput() =>
+        [.. (Photos ?? []).Where(p => !string.IsNullOrWhiteSpace(p.Url)).Select(p => new Casazen.Core.Services.PhotoAltInput(p.Url!, p.Alt?.ToInput()))];
+}
+
+/// <summary>The alternative text of one photo.</summary>
+public sealed class PropertyPhotoAltItem
+{
+    /// <summary>The address of the photo, as the gallery lists it.</summary>
+    [MaxLength(PropertyPhotoRequestLimits.UrlMaxLength, ErrorMessage = "PropertyPhotoUrlTooLong")]
+    public string? Url { get; set; }
+
+    /// <summary>The text in Italian and, if the host wants, English; blank = none.</summary>
+    public SiteTextRequest? Alt { get; set; }
+}

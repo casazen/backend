@@ -164,12 +164,12 @@ public static class SitePropertyProfileRules
 
         var document = new SitePropertyProfileDocument
         {
-            Zone = Text(input.Zone, SitePropertyProfileLimits.ZoneMaxLength, "zone"),
-            Near = Text(input.Near, SitePropertyProfileLimits.NearMaxLength, "near"),
-            FloorNote = Text(input.FloorNote, SitePropertyProfileLimits.FloorNoteMaxLength, "floorNote"),
-            OutdoorNote = Text(input.OutdoorNote, SitePropertyProfileLimits.OutdoorNoteMaxLength, "outdoorNote"),
-            CheckInMethod = Text(input.CheckInMethod, SitePropertyProfileLimits.CheckInMethodMaxLength, "checkInMethod"),
-            RulesNote = Text(input.RulesNote, SitePropertyProfileLimits.RulesNoteMaxLength, "rulesNote", multiline: true),
+            Zone = NormalizeText(input.Zone, SitePropertyProfileLimits.ZoneMaxLength, "zone"),
+            Near = NormalizeText(input.Near, SitePropertyProfileLimits.NearMaxLength, "near"),
+            FloorNote = NormalizeText(input.FloorNote, SitePropertyProfileLimits.FloorNoteMaxLength, "floorNote"),
+            OutdoorNote = NormalizeText(input.OutdoorNote, SitePropertyProfileLimits.OutdoorNoteMaxLength, "outdoorNote"),
+            CheckInMethod = NormalizeText(input.CheckInMethod, SitePropertyProfileLimits.CheckInMethodMaxLength, "checkInMethod"),
+            RulesNote = NormalizeText(input.RulesNote, SitePropertyProfileLimits.RulesNoteMaxLength, "rulesNote", multiline: true),
             Highlights = Highlights(input.Highlights),
             SafetyNotes = SafetyNotes(input.SafetyNotes),
             Tags = Tags(input.Tags),
@@ -310,8 +310,8 @@ public static class SitePropertyProfileRules
         var result = new List<SiteHighlight>();
         foreach (var item in input ?? [])
         {
-            var title = Text(item?.Title, SitePropertyProfileLimits.HighlightTitleMaxLength, "highlights");
-            var text = Text(item?.Text, SitePropertyProfileLimits.HighlightTextMaxLength, "highlights");
+            var title = NormalizeText(item?.Title, SitePropertyProfileLimits.HighlightTitleMaxLength, "highlights");
+            var text = NormalizeText(item?.Text, SitePropertyProfileLimits.HighlightTextMaxLength, "highlights");
             var icon = item?.Icon?.Trim().ToLowerInvariant();
 
             // A row of the form the host left empty is not a highlight.
@@ -342,7 +342,7 @@ public static class SitePropertyProfileRules
         var result = new List<LocalizedText>();
         foreach (var item in input ?? [])
         {
-            if (Text(item, SitePropertyProfileLimits.SafetyNoteMaxLength, "safetyNotes") is { } note)
+            if (NormalizeText(item, SitePropertyProfileLimits.SafetyNoteMaxLength, "safetyNotes") is { } note)
                 result.Add(note);
         }
 
@@ -375,7 +375,11 @@ public static class SitePropertyProfileRules
         return [.. SitePropertyProfileLimits.Tags.Where(chosen.Contains)];
     }
 
-    private static LocalizedText? Text(LocalizedTextInput? input, int maxLength, string field, bool multiline = false)
+    /// <summary>
+    /// A text as stored (<see cref="CleanText"/>), Italian always present, within <paramref name="maxLength"/>; <c>null</c> when the host wrote nothing.
+    /// </summary>
+    /// <exception cref="DomainRuleException">422 <see cref="SitePropertyProfileErrorCodes.ItalianRequired"/> or <see cref="SitePropertyProfileErrorCodes.TextTooLong"/> with the <paramref name="field"/>.</exception>
+    public static LocalizedText? NormalizeText(LocalizedTextInput? input, int maxLength, string field, bool multiline = false)
     {
         var italian = CleanText(input?.It, multiline);
         var english = CleanText(input?.En, multiline);

@@ -54,6 +54,12 @@ public class PublicPropertyDetailDto : PublicPropertyDto
     public PublicPropertyProfileDto Profile { get; set; } = new();
 
     /// <summary>
+    /// The photos of the gallery in display order (the first is the cover), each with its alternative text and size (DB-11a). Lists the same
+    /// addresses as <see cref="PublicPropertyDto.PhotoUrls"/>, which stays.
+    /// </summary>
+    public IReadOnlyList<PublicPropertyPhotoDto> Photos { get; set; } = [];
+
+    /// <summary>
     /// The number and the average mark of the public reviews of the property (DB-12a), set by the endpoint. <b>Absent</b> from the JSON
     /// (not <c>null</c>, not zero) while the property has no review: a page never shows stars or «0 recensioni».
     /// </summary>

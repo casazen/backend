@@ -93,3 +93,13 @@ public sealed record PublicQuietHoursDto(TimeOnly From, TimeOnly To);
 
 /// <summary>A video or a tour as an address the page can embed (the canonical embed of one of three providers).</summary>
 public sealed record PublicPropertyEmbedDto(string Url, SiteEmbedProvider Provider);
+
+/// <summary>
+/// A photo of the gallery with what the page needs to draw it well (DB-11a): the address, the alternative text the host wrote (Italian and,
+/// if written, English) and the size in pixels. <c>photoUrls</c> keeps listing the same addresses.
+/// </summary>
+/// <param name="Url">Absolute public address of the photo.</param>
+/// <param name="Alt">The alternative text; <c>null</c> = the host wrote none (the page then describes the photo by the name of the house).</param>
+/// <param name="Width">Width in pixels; <c>null</c> = not known.</param>
+/// <param name="Height">Height in pixels; <c>null</c> = not known.</param>
+public sealed record PublicPropertyPhotoDto(string Url, LocalizedText? Alt, int? Width, int? Height);
