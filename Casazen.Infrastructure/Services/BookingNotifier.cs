@@ -115,7 +115,8 @@ public sealed class BookingNotifier(
                 data.Summary.CheckOutDate,
                 refundedAmount,
                 refundStartedAmount,
-                data.HostContact));
+                data.HostContact,
+                currency: data.Summary.Currency));
     }
 
     /// <summary>
@@ -147,7 +148,8 @@ public sealed class BookingNotifier(
                 refundStartedAmount,
                 data.HostContact,
                 BookingCancellationEmailCause.Guest,
-                retainedAmount));
+                retainedAmount,
+                data.Summary.Currency));
         QueueToHost(data, EmailTemplates.Names.HostBookingCancelledByGuest, () =>
             EmailTemplates.HostBookingCancelledByGuest(
                 EmailTemplates.DefaultCulture,
@@ -217,7 +219,8 @@ public sealed class BookingNotifier(
                 refundedEur: 0m,
                 refundStartedEur: 0m,
                 data.HostContact,
-                BookingCancellationEmailCause.DeferredPaymentNotCompleted));
+                BookingCancellationEmailCause.DeferredPaymentNotCompleted,
+                currency: data.Summary.Currency));
         QueueToHost(data, EmailTemplates.Names.HostDeferredChargeCancelled, () =>
             EmailTemplates.HostDeferredChargeCancelled(
                 EmailTemplates.DefaultCulture,
@@ -339,6 +342,7 @@ public sealed class BookingNotifier(
                 GuestLastName = b.Guest.LastName,
                 GuestEmail = b.Guest.Email,
                 PropertyName = b.Property.Name,
+                PropertyCurrency = b.Property.Currency,
                 OrgSlug = b.Org.Slug,
                 OrgDisplayName = b.Org.DisplayName,
                 OrgContactEmail = b.Org.ContactEmail,
@@ -369,7 +373,9 @@ public sealed class BookingNotifier(
             row.BasePrice - row.CleaningFee,
             row.CleaningFee,
             row.TouristTax,
-            row.TotalPrice);
+            row.TotalPrice,
+            // The amounts of the emails are in the currency of the property (CHF-MONEY).
+            StayCurrency.Normalize(row.PropertyCurrency));
 
         // AM-03: the org's contact address, as ever, plus the member in charge of the property and the org's administrators.
         var tellEmails = await HostNotificationAudience

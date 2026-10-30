@@ -190,7 +190,7 @@
     <value>Rimborso confermato - {0}</value>
   </data>
   <data name="GuestRefundConfirmed_Body" xml:space="preserve">
-    <value>abbiamo rimborsato &lt;strong&gt;{0} €&lt;/strong&gt; per la prenotazione presso &lt;strong&gt;{1}&lt;/strong&gt; con arrivo il &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+    <value>abbiamo rimborsato &lt;strong&gt;{0}&lt;/strong&gt; per la prenotazione presso &lt;strong&gt;{1}&lt;/strong&gt; con arrivo il &lt;strong&gt;{2}&lt;/strong&gt;.</value>
   </data>
   <data name="GuestRefundConfirmed_Method" xml:space="preserve">
     <value>L'importo torna sul metodo di pagamento usato per la prenotazione.</value>
@@ -205,7 +205,7 @@
     <value>la tua prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt; è stata annullata dall'host.</value>
   </data>
   <data name="GuestBookingCancelled_Refund" xml:space="preserve">
-    <value>È stato avviato un rimborso di &lt;strong&gt;{0} €&lt;/strong&gt; sul metodo di pagamento usato per la prenotazione: riceverai un'altra email quando sarà confermato.</value>
+    <value>È stato avviato un rimborso di &lt;strong&gt;{0}&lt;/strong&gt; sul metodo di pagamento usato per la prenotazione: riceverai un'altra email quando sarà confermato.</value>
   </data>
   <data name="Booking_ContactHostDirectly" xml:space="preserve">
     <value>Per qualsiasi domanda contatta direttamente l'host della struttura.</value>
@@ -217,7 +217,7 @@
     <value>il tuo pagamento per &lt;strong&gt;{0}&lt;/strong&gt;, dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;, è arrivato dopo il tempo previsto per completare la prenotazione e nel frattempo le date non erano più disponibili. Non è stato possibile confermare la prenotazione.</value>
   </data>
   <data name="GuestPaymentRefundedDatesUnavailable_Refund" xml:space="preserve">
-    <value>Ti abbiamo rimborsato l'intero importo pagato, &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+    <value>Ti abbiamo rimborsato l'intero importo pagato, &lt;strong&gt;{0}&lt;/strong&gt;.</value>
   </data>
   <data name="RliDeadlineReminder_Subject" xml:space="preserve">
     <value>Promemoria registrazione RLI — {0} (scadenza {1})</value>
@@ -316,7 +316,7 @@
     <value>Conferma la tua richiesta di prenotazione - {0}</value>
   </data>
   <data name="OnSiteRequestReceived_Body" xml:space="preserve">
-    <value>abbiamo ricevuto la tua richiesta di prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;, con pagamento di &lt;strong&gt;{3} €&lt;/strong&gt; in struttura.</value>
+    <value>abbiamo ricevuto la tua richiesta di prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;, con pagamento di &lt;strong&gt;{3}&lt;/strong&gt; in struttura.</value>
   </data>
   <data name="OnSiteRequestReceived_Action" xml:space="preserve">
     <value>Conferma il tuo indirizzo email per inviare la richiesta all'host. Senza conferma entro il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana) la richiesta viene annullata e le date tornano disponibili.</value>
@@ -334,7 +334,7 @@
     <value>Nuova richiesta di prenotazione da approvare - {0}</value>
   </data>
   <data name="OnSiteRequestToHost_Body" xml:space="preserve">
-    <value>&lt;strong&gt;{0}&lt;/strong&gt; chiede di prenotare &lt;strong&gt;{1}&lt;/strong&gt; dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt; per {4} ospiti, con pagamento di &lt;strong&gt;{5} €&lt;/strong&gt; in struttura. L'ospite ha confermato il suo indirizzo email.</value>
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; chiede di prenotare &lt;strong&gt;{1}&lt;/strong&gt; dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt; per {4} ospiti, con pagamento di &lt;strong&gt;{5}&lt;/strong&gt; in struttura. L'ospite ha confermato il suo indirizzo email.</value>
   </data>
   <data name="OnSiteRequestToHost_Action" xml:space="preserve">
     <value>Accetta o rifiuta la richiesta entro il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana): dopo quella data la richiesta scade e le date tornano disponibili.</value>
@@ -379,16 +379,16 @@
     <value>Ospiti: {0}</value>
   </data>
   <data name="Booking_Summary_Lodging" xml:space="preserve">
-    <value>Soggiorno: {0} €</value>
+    <value>Soggiorno: {0}</value>
   </data>
   <data name="Booking_Summary_Cleaning" xml:space="preserve">
-    <value>Pulizie: {0} €</value>
+    <value>Pulizie: {0}</value>
   </data>
   <data name="Booking_Summary_TouristTax" xml:space="preserve">
-    <value>Tassa di soggiorno: {0} € (inclusa nel totale)</value>
+    <value>Tassa di soggiorno: {0} (inclusa nel totale)</value>
   </data>
   <data name="Booking_Summary_Total" xml:space="preserve">
-    <value>Totale: &lt;strong&gt;{0} €&lt;/strong&gt;</value>
+    <value>Totale: &lt;strong&gt;{0}&lt;/strong&gt;</value>
   </data>
   <data name="Booking_ContactHost" xml:space="preserve">
     <value>Per qualsiasi domanda contatta &lt;strong&gt;{0}&lt;/strong&gt; all'indirizzo {1}.</value>
@@ -409,16 +409,16 @@
     <value>Il pagamento è arrivato dopo il tempo previsto per completare la prenotazione, ma le date erano ancora libere.</value>
   </data>
   <data name="GuestBookingConfirmed_Paid" xml:space="preserve">
-    <value>Pagamento ricevuto: &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+    <value>Pagamento ricevuto: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
   </data>
   <data name="GuestBookingConfirmed_DeferredOn" xml:space="preserve">
-    <value>Non ti è stato ancora addebitato nulla: il totale di &lt;strong&gt;{0} €&lt;/strong&gt; sarà addebitato il &lt;strong&gt;{1}&lt;/strong&gt; sul metodo di pagamento salvato durante la prenotazione.</value>
+    <value>Non ti è stato ancora addebitato nulla: il totale di &lt;strong&gt;{0}&lt;/strong&gt; sarà addebitato il &lt;strong&gt;{1}&lt;/strong&gt; sul metodo di pagamento salvato durante la prenotazione.</value>
   </data>
   <data name="GuestBookingConfirmed_Deferred" xml:space="preserve">
-    <value>Non ti è stato ancora addebitato nulla: il totale di &lt;strong&gt;{0} €&lt;/strong&gt; sarà addebitato alla scadenza indicata durante la prenotazione, sul metodo di pagamento salvato.</value>
+    <value>Non ti è stato ancora addebitato nulla: il totale di &lt;strong&gt;{0}&lt;/strong&gt; sarà addebitato alla scadenza indicata durante la prenotazione, sul metodo di pagamento salvato.</value>
   </data>
   <data name="GuestBookingConfirmed_OnSite" xml:space="preserve">
-    <value>Pagherai &lt;strong&gt;{0} €&lt;/strong&gt; direttamente in struttura.</value>
+    <value>Pagherai &lt;strong&gt;{0}&lt;/strong&gt; direttamente in struttura.</value>
   </data>
   <data name="GuestBookingConfirmed_NotFiscal" xml:space="preserve">
     <value>Questa email conferma la prenotazione e il pagamento ricevuto; non è un documento fiscale.</value>
@@ -433,25 +433,25 @@
     <value>Il pagamento dell'ospite è arrivato dopo il tempo previsto per il checkout, ma le date erano ancora libere: la prenotazione è stata confermata automaticamente.</value>
   </data>
   <data name="HostBookingConfirmed_Paid" xml:space="preserve">
-    <value>Pagamento online ricevuto: &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+    <value>Pagamento online ricevuto: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
   </data>
   <data name="HostBookingConfirmed_DeferredOn" xml:space="preserve">
-    <value>L'ospite ha salvato un metodo di pagamento: il totale di &lt;strong&gt;{0} €&lt;/strong&gt; sarà addebitato il &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+    <value>L'ospite ha salvato un metodo di pagamento: il totale di &lt;strong&gt;{0}&lt;/strong&gt; sarà addebitato il &lt;strong&gt;{1}&lt;/strong&gt;.</value>
   </data>
   <data name="HostBookingConfirmed_Deferred" xml:space="preserve">
-    <value>L'ospite ha salvato un metodo di pagamento: il totale di &lt;strong&gt;{0} €&lt;/strong&gt; sarà addebitato alla scadenza scelta al checkout.</value>
+    <value>L'ospite ha salvato un metodo di pagamento: il totale di &lt;strong&gt;{0}&lt;/strong&gt; sarà addebitato alla scadenza scelta al checkout.</value>
   </data>
   <data name="HostBookingConfirmed_Cta" xml:space="preserve">
     <value>Apri la prenotazione</value>
   </data>
   <data name="GuestBookingCancelled_Refunded" xml:space="preserve">
-    <value>Ti abbiamo rimborsato &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+    <value>Ti abbiamo rimborsato &lt;strong&gt;{0}&lt;/strong&gt;.</value>
   </data>
   <data name="GuestDeferredChargeFailed_Subject" xml:space="preserve">
     <value>Pagamento non riuscito, completa il pagamento - {0}</value>
   </data>
   <data name="GuestDeferredChargeFailed_Body" xml:space="preserve">
-    <value>il pagamento di &lt;strong&gt;{0} €&lt;/strong&gt; per la tua prenotazione presso &lt;strong&gt;{1}&lt;/strong&gt; dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt;, previsto con il metodo di pagamento che hai salvato, non è andato a buon fine: la tua banca chiede una conferma oppure il pagamento è stato rifiutato.</value>
+    <value>il pagamento di &lt;strong&gt;{0}&lt;/strong&gt; per la tua prenotazione presso &lt;strong&gt;{1}&lt;/strong&gt; dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt;, previsto con il metodo di pagamento che hai salvato, non è andato a buon fine: la tua banca chiede una conferma oppure il pagamento è stato rifiutato.</value>
   </data>
   <data name="GuestDeferredChargeFailed_Action" xml:space="preserve">
     <value>Non ti è stato addebitato nulla. Completa il pagamento dal link qui sotto: potrai confermarlo con la tua banca oppure usare un altro metodo di pagamento.</value>
@@ -469,7 +469,7 @@
     <value>Addebito non riuscito - {0} (arrivo {1})</value>
   </data>
   <data name="HostDeferredChargeFailed_Body" xml:space="preserve">
-    <value>L'addebito automatico di &lt;strong&gt;{0} €&lt;/strong&gt; per la prenotazione di &lt;strong&gt;{1}&lt;/strong&gt; presso &lt;strong&gt;{2}&lt;/strong&gt; dal &lt;strong&gt;{3}&lt;/strong&gt; al &lt;strong&gt;{4}&lt;/strong&gt; (opzione "Paga più tardi") non è riuscito: il pagamento non è stato incassato.</value>
+    <value>L'addebito automatico di &lt;strong&gt;{0}&lt;/strong&gt; per la prenotazione di &lt;strong&gt;{1}&lt;/strong&gt; presso &lt;strong&gt;{2}&lt;/strong&gt; dal &lt;strong&gt;{3}&lt;/strong&gt; al &lt;strong&gt;{4}&lt;/strong&gt; (opzione "Paga più tardi") non è riuscito: il pagamento non è stato incassato.</value>
   </data>
   <data name="HostDeferredChargeFailed_GuestAsked" xml:space="preserve">
     <value>Abbiamo inviato all'ospite un'email con il link per completare il pagamento.</value>
@@ -1747,7 +1747,7 @@
     <value>Di solito l'accredito compare entro 5-10 giorni, ma dipende dalla tua banca o dall'emittente della carta.</value>
   </data>
   <data name="GuestBookingCancelled_Retained" xml:space="preserve">
-    <value>Come previsto dalla politica di cancellazione della struttura, &lt;strong&gt;{0} €&lt;/strong&gt; non vengono rimborsati.</value>
+    <value>Come previsto dalla politica di cancellazione della struttura, &lt;strong&gt;{0}&lt;/strong&gt; non vengono rimborsati.</value>
   </data>
   <data name="GuestBookingCancelled_NotYou" xml:space="preserve">
     <value>Se non sei stato tu ad annullarla, scrivi subito all'host.</value>
@@ -1762,10 +1762,10 @@
     <value>Le date sono di nuovo disponibili sul sito di prenotazione e nel calendario esportato verso le OTA.</value>
   </data>
   <data name="HostBookingCancelledByGuest_Refund" xml:space="preserve">
-    <value>Rimborso all'ospite, come previsto dalla politica di cancellazione: &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+    <value>Rimborso all'ospite, come previsto dalla politica di cancellazione: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
   </data>
   <data name="HostBookingCancelledByGuest_Retained" xml:space="preserve">
-    <value>Importo che resta a te: &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+    <value>Importo che resta a te: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
   </data>
   <data name="ServiceRequestQuoteReceived_Subject" xml:space="preserve">
     <value>{0} ti ha inviato un preventivo</value>
