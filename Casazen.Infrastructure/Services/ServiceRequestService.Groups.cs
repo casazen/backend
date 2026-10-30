@@ -182,8 +182,14 @@ public partial class ServiceRequestService
         request.GroupRole,
         request.Status,
         request.BackupAcceptedAt,
-        HasPendingProposal: request.ProposedStartUtc is not null,
+        HasPendingProposal: HasPendingOffer(request),
         request.CancelledBy);
+
+    /// <summary>
+    /// The supplier made the host an offer that waits for its answer: a time proposed (SP-04) or a quote (SP-04b). The supplier did answer, so
+    /// the host is the one that is waited for and the group does not move.
+    /// </summary>
+    private static bool HasPendingOffer(ServiceRequest request) => request.ProposedStartUtc is not null || request.QuoteSentAt is not null;
 
     /// <summary>Closes a request of a group on behalf of CasaZen: <c>Richiesto → Annullato</c> with a code the client translates.</summary>
     private static void CloseBySystem(ServiceRequest request, string reason, DateTime now)
@@ -193,7 +199,10 @@ public partial class ServiceRequestService
         request.CancelledBy = ServiceRequestActorParty.System;
         request.CancellationReason = reason;
         request.ResponseDueAt = null;
+
+        // The database refuses an offer on a request that is not new: the primary closed in the second window may have one waiting.
         ClearProposal(request);
+        ClearQuote(request);
         request.UpdatedAt = now;
     }
 
@@ -486,7 +495,7 @@ public partial class ServiceRequestService
         // The second window.
         var waiting = state.Backups.Where(b => b.Status == ServiceRequestStatus.Richiesto).ToList();
         var headLive = head.Status == ServiceRequestStatus.Richiesto;
-        if (headLive && head.ProposedStartUtc is not null)
+        if (headLive && HasPendingOffer(head))
             return ServiceRequestGroupResolution.NothingToDo;
 
         if ((!headLive && waiting.Count == 0) || (group.BackupDueAt is { } end && now >= end))

@@ -177,6 +177,9 @@ public static class ServiceRequestGroupErrorCodes
     /// <summary>422: a backup cannot propose another time (the host would answer a supplier that is not the one it chose).</summary>
     public const string BackupCannotPropose = "service_request_backup_cannot_propose";
 
+    /// <summary>422: a backup cannot send a quote (SP-04b): the host would answer a supplier that is not the one it chose.</summary>
+    public const string BackupCannotQuote = "service_request_backup_cannot_quote";
+
     /// <summary>422: the second window of the group is open, so the backup takes the job directly instead of accepting as a backup.</summary>
     public const string BackupAlreadyActive = "service_request_backup_already_active";
 
@@ -185,6 +188,7 @@ public static class ServiceRequestGroupErrorCodes
     public const string BackupNotYourTurnMessageKey = "ServiceRequestBackupNotYourTurn";
     public const string NotAWaitingBackupMessageKey = "ServiceRequestNotAWaitingBackup";
     public const string BackupCannotProposeMessageKey = "ServiceRequestBackupCannotPropose";
+    public const string BackupCannotQuoteMessageKey = "ServiceRequestBackupCannotQuote";
     public const string BackupAlreadyActiveMessageKey = "ServiceRequestBackupAlreadyActive";
 
     /// <summary>Every <c>SharedResources</c> key the backup rules raise (a test checks that each one exists in Italian and English).</summary>
@@ -195,6 +199,7 @@ public static class ServiceRequestGroupErrorCodes
         BackupNotYourTurnMessageKey,
         NotAWaitingBackupMessageKey,
         BackupCannotProposeMessageKey,
+        BackupCannotQuoteMessageKey,
         BackupAlreadyActiveMessageKey,
     ];
 }

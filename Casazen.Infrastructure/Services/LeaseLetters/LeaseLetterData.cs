@@ -49,6 +49,12 @@ internal static class LeaseLetterData
     /// <summary>A day as a person writes it in a letter: «31 ottobre 2030».</summary>
     public static string Day(DateOnly day) => day.ToString("d MMMM yyyy", Italian);
 
+    /// <summary>An amount of euros as it is written in a letter, with the cents: «1.250,50».</summary>
+    public static string Money(decimal amount) => amount.ToString("N2", Italian);
+
+    /// <summary>A percentage as it is written in a letter, without trailing zeros: «3,2», «75», «2,4375».</summary>
+    public static string Percent(decimal value) => value.ToString("0.####", Italian);
+
     /// <summary>The parties of a role in the order they were entered, without the ones whose data were anonymized.</summary>
     private static List<Party> Parties(LeaseContract lease, PartyRole role) =>
         lease.Parties

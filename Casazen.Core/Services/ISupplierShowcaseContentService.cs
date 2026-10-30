@@ -31,6 +31,23 @@ public sealed record ShowcaseContentView(
     ShowcaseReadinessResult Readiness,
     ShowcaseBookings Bookings);
 
+/// <summary>What the public page reads of a published showcase: the published content, never the draft.</summary>
+/// <param name="Content">The published content document.</param>
+/// <param name="Paused">The supplier paused the showcase.</param>
+/// <param name="PublishedAt">When it was published.</param>
+public sealed record PublishedShowcase(ShowcaseContentDocument Content, bool Paused, DateTime? PublishedAt);
+
+/// <summary>
+/// Whether a supplier's showcase is published, from the row alone (a cheap read for the checklist of the console): <see cref="Exists"/> is
+/// false for a supplier that never saved anything.
+/// </summary>
+/// <param name="Exists">The supplier has a content row.</param>
+/// <param name="Published">Something is published.</param>
+/// <param name="Paused">The supplier paused the showcase.</param>
+/// <param name="PublishedAt">The last publication.</param>
+/// <param name="SavedAt">The last save of the draft.</param>
+public sealed record ShowcasePublication(bool Exists, bool Published, bool Paused, DateTime? PublishedAt, DateTime? SavedAt);
+
 /// <summary>
 /// The content of the supplier's showcase with its draft and its published version (SP-13a, <c>api/supplier/showcase/*</c>).
 /// Every method takes the supplier org (the caller's own supplier link, never a value of the request) and reads and writes only the
@@ -107,4 +124,13 @@ public interface ISupplierShowcaseContentService
     /// account stops being ready and open again when it is. A supplier with no content row is left alone. Idempotent.
     /// </summary>
     Task ReconcileBookingsAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What the public page reads: the <b>published</b> content (never the draft) and whether the showcase is paused; <c>null</c> while nothing is
+    /// published. Read-only, one statement scoped by the supplier org.
+    /// </summary>
+    Task<PublishedShowcase?> GetPublishedAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>The state of the publication from the row alone (the checklist of the console). Read-only.</summary>
+    Task<ShowcasePublication> GetPublicationAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 }

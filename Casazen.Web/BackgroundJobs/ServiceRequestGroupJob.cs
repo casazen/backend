@@ -9,7 +9,7 @@ namespace Casazen.Web.BackgroundJobs;
 /// <c>NoResponse</c> (<see cref="IServiceRequestGroupRunService"/>). <b>Registered whatever the feature flags say</b>: the flag
 /// <c>SupplierRequestBackups</c> only gates the creation of groups, and a group that exists has to be followed to the end even if the flag
 /// is turned off afterwards; with no group a run finds nothing. It does not duplicate <see cref="ServiceRequestAutoCancelJob"/>, which leaves
-/// the requests of a group alone. Runbooks: <c>docs/runbooks/suppliers.md</c> section 34, <c>docs/runbooks/hangfire.md</c>.
+/// the requests of a group alone. Runbooks: <c>docs/runbooks/suppliers.md</c> section 36, <c>docs/runbooks/hangfire.md</c>.
 /// </summary>
 public class ServiceRequestGroupJob(IServiceRequestGroupRunService runService, ILogger<ServiceRequestGroupJob> logger)
 {

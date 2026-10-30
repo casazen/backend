@@ -114,9 +114,13 @@ public partial class SupplierServiceRequestReader(
         if (query.Source is { } source)
             rows = rows.Where(r => r.Source == source);
 
-        // The tabs "da rispondere" and "in attesa": what the supplier did about a new request is the time it proposed (SP-04b adds the quote).
+        // The tabs "da rispondere" and "in attesa": what the supplier did about a new request is the time it proposed or the quote it sent.
         if (query.AwaitingCustomer is { } awaiting)
-            rows = awaiting ? rows.Where(r => r.ProposedStartUtc != null) : rows.Where(r => r.ProposedStartUtc == null);
+        {
+            rows = awaiting
+                ? rows.Where(r => r.ProposedStartUtc != null || r.QuoteSentAt != null)
+                : rows.Where(r => r.ProposedStartUtc == null && r.QuoteSentAt == null);
+        }
 
         if (!string.IsNullOrWhiteSpace(query.Text))
             rows = FilterByText(rows, query.Text.Trim());
@@ -224,7 +228,9 @@ public partial class SupplierServiceRequestReader(
                 row.CancelledBy,
                 PaidBy: row.PaidBy,
                 Requester: row.RentalContext == ServiceRequestRentalContext.Showcase ? ServiceRequestActorParty.Customer : ServiceRequestActorParty.Host,
-                AutoAccepted: row.AutoAccepted),
+                AutoAccepted: row.AutoAccepted,
+                // The supplier's console tells the story of the quotes too (SP-04b): the sent, turned down and taken back ones are steps.
+                QuoteEvents: ServiceRequestJson.ReadQuoteEvents(row.QuoteEventsJson)),
             takenByName);
 
         return ToView(row, ownerPhones, summaries.GetValueOrDefault(row.Id), history, _clock.GetUtcNow().UtcDateTime);
@@ -292,10 +298,11 @@ public partial class SupplierServiceRequestReader(
         return row is { StartUtc: { } start, EndUtc: { } end }
             ? new SupplierAgendaRequest(
                 row.Id, RomeCalendar.DateInRome(start), row.Status, row.Category, start, end, row.ServiceListingId,
-                Source: source, HasPendingProposal: row.HasPendingProposal)
+                Source: source, HasPendingProposal: row.HasPendingProposal, HasPendingQuote: row.HasPendingQuote)
             : new SupplierAgendaRequest(
                 row.Id, RomeCalendar.DateInRome(row.CheckOutDate!.Value), row.Status, row.Category,
-                ServiceListingId: row.ServiceListingId, Source: source, HasPendingProposal: row.HasPendingProposal);
+                ServiceListingId: row.ServiceListingId, Source: source, HasPendingProposal: row.HasPendingProposal,
+                HasPendingQuote: row.HasPendingQuote);
     }
 
     /// <summary>
@@ -352,7 +359,8 @@ public partial class SupplierServiceRequestReader(
                 r.Booking != null ? r.Booking.CheckOutDate : (DateTime?)null,
                 r.ServiceListingId,
                 r.Source,
-                r.ProposedStartUtc != null && r.ProposedEndUtc != null && r.ProposedAt != null));
+                r.ProposedStartUtc != null && r.ProposedEndUtc != null && r.ProposedAt != null,
+                r.QuoteSentAt != null));
 
     /// <summary>
     /// The same requests with the titles of the calendar (SP-03b): the name of the service, the org of the host, the name of the
@@ -377,7 +385,8 @@ public partial class SupplierServiceRequestReader(
                 r.Org.Name,
                 r.Customer != null ? r.Customer.FullName : null,
                 r.Property != null ? r.Property.City : r.LocationCity ?? string.Empty,
-                r.ProposedStartUtc != null && r.ProposedEndUtc != null && r.ProposedAt != null));
+                r.ProposedStartUtc != null && r.ProposedEndUtc != null && r.ProposedAt != null,
+                r.QuoteSentAt != null));
 
     /// <summary>A request of the agenda as read from the database.</summary>
     internal sealed record AgendaRow(
@@ -389,7 +398,8 @@ public partial class SupplierServiceRequestReader(
         DateTime? CheckOutDate,
         Guid? ServiceListingId,
         ServiceRequestSource Source,
-        bool HasPendingProposal);
+        bool HasPendingProposal,
+        bool HasPendingQuote);
 
     /// <summary>A request of the calendar as read from the database, with the columns its titles are made of.</summary>
     internal sealed record CalendarRow(
@@ -407,10 +417,11 @@ public partial class SupplierServiceRequestReader(
         string? HostName,
         string? CustomerFullName,
         string City,
-        bool HasPendingProposal)
+        bool HasPendingProposal,
+        bool HasPendingQuote)
     {
         /// <summary>The columns every read of the agenda has, as the light read would have returned them.</summary>
-        public AgendaRow Core => new(Id, Status, Category, StartUtc, EndUtc, CheckOutDate, ServiceListingId, Source, HasPendingProposal);
+        public AgendaRow Core => new(Id, Status, Category, StartUtc, EndUtc, CheckOutDate, ServiceListingId, Source, HasPendingProposal, HasPendingQuote);
     }
 
     /// <summary>The statuses in which a request has been taken by the supplier (<see cref="SupplierJobDisclosure.IsDisclosed"/>).</summary>
@@ -499,6 +510,14 @@ public partial class SupplierServiceRequestReader(
                 ProposedEndUtc = r.ProposedEndUtc,
                 ProposedAt = r.ProposedAt,
                 ProposalMessage = r.ProposalMessage,
+                // The quote the supplier sent (SP-04b) and what happened to its quotes: the supplier's own words, nothing of the customer.
+                QuoteSentAt = r.QuoteSentAt,
+                QuoteLinesJson = r.QuoteLinesJson,
+                QuoteTotalCents = r.QuoteTotalCents,
+                QuoteNote = r.QuoteNote,
+                QuoteScheduledStartUtc = r.QuoteScheduledStartUtc,
+                QuoteScheduledEndUtc = r.QuoteScheduledEndUtc,
+                QuoteEventsJson = r.QuoteEventsJson,
                 // Only to search by it (q, SP-04e): never part of a view, the customer's credential stays out of the supplier's sight.
                 PublicCode = r.PublicCode,
                 PropertyId = r.PropertyId,
@@ -707,8 +726,25 @@ public partial class SupplierServiceRequestReader(
             row.PaymentMode,
             payment,
             row.AutoAccepted,
+            QuoteOf(row),
             BackupOf(row, nowUtc));
     }
+
+    /// <summary>
+    /// The quote that waits for the customer's answer (SP-04b), or <c>null</c>. The deadline is the customer's, so it is told for a showcase
+    /// request only; the <c>ResponseDueAt</c> of a host's request is the supplier's own.
+    /// </summary>
+    private static ServiceRequestQuote? QuoteOf(SupplierRequestRow row) =>
+        ServiceRequestQuoteRules.IsPending(row.Status, row.QuoteSentAt) && row is { QuoteSentAt: { } sentAt, QuoteTotalCents: { } total }
+            ? new ServiceRequestQuote(
+                sentAt,
+                ServiceRequestJson.ReadQuoteLines(row.QuoteLinesJson),
+                total,
+                NullIfBlank(row.QuoteNote),
+                row.QuoteScheduledStartUtc,
+                row.QuoteScheduledEndUtc,
+                row.RentalContext == ServiceRequestRentalContext.Showcase ? row.ResponseDueAt : null)
+            : null;
 
     /// <summary>
     /// Who asked, as the supplier may know it (decision D9): the host's org for a host's request, a private customer of the public
@@ -778,6 +814,13 @@ public partial class SupplierServiceRequestReader(
         public DateTime? ProposedEndUtc { get; init; }
         public DateTime? ProposedAt { get; init; }
         public string? ProposalMessage { get; init; }
+        public DateTime? QuoteSentAt { get; init; }
+        public string QuoteLinesJson { get; init; } = "[]";
+        public int? QuoteTotalCents { get; init; }
+        public string? QuoteNote { get; init; }
+        public DateTime? QuoteScheduledStartUtc { get; init; }
+        public DateTime? QuoteScheduledEndUtc { get; init; }
+        public string QuoteEventsJson { get; init; } = "[]";
         public string? PublicCode { get; init; }
         public Guid? PropertyId { get; init; }
         public string? PropertyName { get; init; }

@@ -65,6 +65,12 @@ public static class PushDeliveryKeys
     /// <summary>A new service request accepted automatically for a regular host (SP-04d), to the supplier: it replaces the push of the new request.</summary>
     public static string ServiceRequestAutoAccepted(Guid serviceRequestId) => $"service-request:{serviceRequestId:N}:auto-accepted";
 
+    /// <summary>The reminder of the day before the work (SP-16d), to the supplier: one per request, whatever the number of runs of the job.</summary>
+    public static string ServiceRequestDayBefore(Guid serviceRequestId) => $"service-request:{serviceRequestId:N}:day-before";
+
+    /// <summary>The payment of a job made through CasaZen (SP-16d), to the supplier: one per payment.</summary>
+    public static string ServicePaymentReceived(Guid paymentId) => $"service-payment:{paymentId:N}:received";
+
     /// <summary>
     /// A service request reached <paramref name="status"/>, to the host (or, for a cancellation, to the other party). The
     /// state machine reaches every status at most once (SU-10), so the key identifies the transition.
@@ -86,6 +92,14 @@ public static class PushDeliveryKeys
     /// <summary>The host's answer to the proposal made at <paramref name="proposedAtUtc"/>, to the supplier (SP-04).</summary>
     public static string ServiceRequestProposalAnswered(Guid serviceRequestId, DateTime proposedAtUtc, bool accepted) =>
         $"service-request:{serviceRequestId:N}:proposal-{(accepted ? "accepted" : "rejected")}:{proposedAtUtc:yyyyMMddHHmmss}";
+
+    /// <summary>
+    /// What happened to the quote sent at <paramref name="quoteSentAtUtc"/> (SP-04b): <paramref name="outcome"/> is <c>sent</c> (to the host),
+    /// <c>accepted</c>, <c>rejected</c> or <c>expired</c> (to the supplier). A request can be quoted again, so the instant of the quote is part of
+    /// the key: a retry of the job is one push, the next quote is another.
+    /// </summary>
+    public static string ServiceRequestQuote(Guid serviceRequestId, DateTime quoteSentAtUtc, string outcome) =>
+        $"service-request:{serviceRequestId:N}:quote-{outcome}:{quoteSentAtUtc.Ticks}";
 
     /// <summary>
     /// The customer of a supplier's public showcase moved a new request to another time, to the supplier (SP-11). A request can be
@@ -173,6 +187,25 @@ public static class PushTypes
 
     /// <summary>A backup request was closed (SP-BKP): the primary or another backup took the job, the host cancelled, or its time was no longer free. Pushed to the supplier org.</summary>
     public const string ServiceRequestBackupClosed = "service-request-backup-closed";
+
+    /// <summary>The supplier sent a quote (SP-04b): pushed to the hosts of the property (a showcase customer has no app: it gets an e-mail).</summary>
+    public const string ServiceRequestQuoteSent = "service-request-quote-sent";
+
+    /// <summary>The host, or the customer of a showcase request, accepted the quote (SP-04b): pushed to the supplier org.</summary>
+    public const string ServiceRequestQuoteAccepted = "service-request-quote-accepted";
+
+    /// <summary>The host, or the customer of a showcase request, turned the quote down (SP-04b): pushed to the supplier org.</summary>
+    public const string ServiceRequestQuoteRejected = "service-request-quote-rejected";
+
+    /// <summary>The customer of a showcase request did not answer the quote in time and the request was cancelled (SP-04b): pushed to the supplier org.</summary>
+    public const string ServiceRequestQuoteExpired = "service-request-quote-expired";
+
+    /// <summary>The job of tomorrow, at 18:00 of the day before (SP-16d): pushed to the supplier org, for a request of any context. No address in it.</summary>
+    public const string ServiceRequestDayBefore = "service-request-day-before";
+
+    /// <summary>A payment made through CasaZen arrived (SP-16d): pushed to the supplier org with the net; <c>entityId</c> is the service request.</summary>
+    public const string ServicePaymentReceived = "service-payment-received";
+
     public const string NewBooking = "new-booking";
 
     /// <summary>The guest of a direct booking wrote a message: pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its thread.</summary>

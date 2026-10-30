@@ -59,6 +59,9 @@ public partial class ServiceRequestService(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
+    /// <summary>The wall clock time (Europe/Rome) a request gets when the host names none (SP-04, SR-08a).</summary>
+    private static readonly TimeOnly DefaultStartTime = new(10, 0);
+
     /// <summary>The time asked for a request, with the slot query that checks it.</summary>
     private sealed record RequestSchedule(DateTime Start, DateTime End, SupplierSlotQuery Query);
 
@@ -187,7 +190,7 @@ public partial class ServiceRequestService(
         }
 
         if (!request.AutoAccepted)
-            notifier.QueueCreated(request, supplier.Email, supplierEmail, comune);
+            await notifier.QueueCreatedAsync(request, supplier.Email, supplierEmail, comune, cancellationToken);
 
         if (backups.Count > 0)
             await notifier.NotifyBackupsInvitedAsync(backups, comune, request.ResponseDueAt!.Value, cancellationToken);
@@ -266,9 +269,9 @@ public partial class ServiceRequestService(
     }
 
     /// <summary>
-    /// D2 (SU-07): a short-rent request is for one stay, a booking of the request's property in the host's org; a
-    /// long-rent request is for the property and takes no booking. 422 with the codes of
-    /// <see cref="ServiceRequestErrorCodes"/>; a booking of another property or org answers like a missing one.
+    /// D2 (SU-07): a short-rent request may be for one stay, a booking of the request's property in the host's org (SR-D3, SR-08a:
+    /// the stay is optional, a request can be for the house alone); a long-rent request is for the property and takes no booking. 422
+    /// with the codes of <see cref="ServiceRequestErrorCodes"/>; a booking of another property or org answers like a missing one.
     /// </summary>
     private async Task EnsureBookingRuleAsync(CreateServiceRequestCommand command, CancellationToken cancellationToken)
     {
@@ -283,11 +286,9 @@ public partial class ServiceRequestService(
             return;
         }
 
+        // No stay named: the request is for the property alone (the database check only asks for a property and the host's source).
         if (command.BookingId is not { } bookingId)
-        {
-            throw new DomainRuleException(
-                ServiceRequestErrorCodes.BookingRequired, ServiceRequestErrorCodes.BookingRequiredMessageKey);
-        }
+            return;
 
         // IgnoreQueryFilters: scoped by the explicit OrgId predicate (same reason as the property lookup above).
         var belongsToProperty = await db.Bookings
@@ -340,7 +341,9 @@ public partial class ServiceRequestService(
 
     /// <summary>
     /// Every request stores an interval. When the host omitted the start, use Europe/Rome 10:00 on the stay check-out
-    /// day (or on today for long-rent) and a duration from the host, the catalog, or 120 minutes — never a day-only row.
+    /// day (or on today when there is no stay: long-rent, or a short-rent request for the house alone, SR-08a) and a duration from
+    /// the host, the catalog, or 120 minutes — never a day-only row. Without a stay the default never falls in the past: once
+    /// today's 10:00 has gone by it is 10:00 of the next day.
     /// </summary>
     private async Task<CreateServiceRequestCommand> EnsureTimedCreateCommandAsync(
         CreateServiceRequestCommand command,
@@ -351,20 +354,26 @@ public partial class ServiceRequestService(
             return command;
 
         DateOnly day;
+        var now = Now();
         if (command.BookingId is Guid bookingId)
         {
             var checkout = await db.Bookings.AsNoTracking()
                 .Where(b => b.Id == bookingId)
                 .Select(b => (DateTime?)b.CheckOutDate)
                 .FirstOrDefaultAsync(cancellationToken);
-            day = checkout is { } when ? RomeCalendar.DateInRome(when) : RomeCalendar.DateInRome(Now());
+            day = checkout is { } when ? RomeCalendar.DateInRome(when) : RomeCalendar.DateInRome(now);
         }
         else
         {
-            day = RomeCalendar.DateInRome(Now());
+            day = RomeCalendar.DateInRome(now);
         }
 
-        var start = RomeCalendar.ToUtc(day, new TimeOnly(10, 0));
+        var start = RomeCalendar.ToUtc(day, DefaultStartTime);
+
+        // A short-rent request for the house alone (SR-08a): "today at 10:00" that has gone by is the next day's.
+        if (command.RentalContext == ServiceRequestRentalContext.ShortRent && command.BookingId is null && start <= now)
+            start = RomeCalendar.ToUtc(day.AddDays(1), DefaultStartTime);
+
         // Explicit duration so the planner is not asked for a published slot the host never chose.
         var minutes = command.DurationMinutes
             ?? (service?.DurationMinutes is > 0 and var fromService ? fromService : 120);
@@ -603,11 +612,17 @@ public partial class ServiceRequestService(
 
         // The final price: the declared total, or the agreed price plus the extras (decision D7 compares it with the quote).
         var reference = ServiceRequestPricing.ReferenceAmount(request.QuotedAmountCents, request.EstimatedAmountCents);
+
+        // The lines of the quote the customer accepted (SP-04b) stay as it approved them while they still are the price of the work itself.
+        var agreedLines = request.QuotedAmountCents is null
+            ? null
+            : ServiceRequestJson.ReadPriceLines(request.PriceLinesJson).Where(line => line.Kind == ServiceRequestPriceLineKinds.Quote).ToList();
         var price = ServiceRequestPricing.ComposeFinalPrice(
             reference,
             command?.FinalAmountCents,
             command?.Extras,
-            request.ServiceNameSnapshot ?? request.Category);
+            request.ServiceNameSnapshot ?? request.Category,
+            agreedLines);
         var needsConfirmation = ServiceRequestPricing.ExceedsQuote(
             reference, price.FinalAmountCents, options.Value.FinalAmountTolerancePercent);
         var notes = string.IsNullOrWhiteSpace(command?.Notes) ? null : command.Notes.Trim();
@@ -737,6 +752,10 @@ public partial class ServiceRequestService(
 
         apply(request);
         request.Status = to;
+
+        // SP-04b: a quote is an offer on a request that still waits for its answer. Whatever moves the request on (taken, refused,
+        // cancelled) takes the offer away with it; the database refuses a quote on a request that is not new.
+        ClearQuote(request);
         request.UpdatedAt = Now();
 
         await SaveAsync(request, $"transition {from} -> {to}", cancellationToken);

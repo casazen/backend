@@ -569,6 +569,60 @@ public class ServiceRequestBackupGroupTests
     }
 
     [Fact]
+    public async Task AQuote_ABackupCannotSendOne_ThePrimarysFreezesTheGroup_AndTheHostAcceptingItClosesTheBackups()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var (primary, alfa, beta) = await CreateGroupAsync(s);
+        List<ServiceRequestQuoteLine> lines = [new("Pulizia profonda", 30000)];
+
+        // A backup answers the request as it is or refuses: the host would be answering a supplier it did not choose.
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => s.Service.SendQuoteAsync(
+            alfa.Id, alfa.SupplierOrgId, alfa.Member, new SendServiceRequestQuoteCommand(lines, null, null)));
+        Assert.Equal(ServiceRequestGroupErrorCodes.BackupCannotQuote, refused.Code);
+
+        // The primary's quote is the host's to answer: the hour passes and nobody is given the job over the host's head.
+        await s.Service.AcceptAsBackupAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
+        var quoted = await s.Service.SendQuoteAsync(
+            primary.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, new SendServiceRequestQuoteCommand(lines, null, null));
+        s.Clock.Advance(PrimaryWindow + TimeSpan.FromMinutes(30));
+        Assert.Equal(ServiceRequestGroupRun.Empty with { Examined = 1 }, await Job(s).RunAsync());
+        Assert.Equal(ServiceRequestStatus.Richiesto, (await s.ReadAsync(alfa.Id)).Status);
+
+        // The host accepts the quote: that is the primary's take, and the backups are closed.
+        await s.Service.AcceptQuoteAsync(primary.Id, s.HostOrgId, quoted.QuoteSentAt!.Value);
+
+        Assert.Equal(ServiceRequestStatus.PresoInCarico, (await s.ReadAsync(primary.Id)).Status);
+        foreach (var backup in new[] { alfa, beta })
+        {
+            var saved = await s.ReadAsync(backup.Id);
+            Assert.Equal(ServiceRequestStatus.Annullato, saved.Status);
+            Assert.Equal(ServiceRequestCancellationReasons.PrimaryTookIt, saved.CancellationReason);
+        }
+
+        Assert.Equal(ServiceRequestGroupPhase.Closed, (await s.Db.ServiceRequestGroups.AsNoTracking().SingleAsync()).Phase);
+    }
+
+    [Fact]
+    public async Task ABackupTakingTheJobInTheSecondWindow_ClosesAPrimaryThatHasAQuoteWaiting_AndTheQuoteGoesWithIt()
+    {
+        using var s = await ServiceRequestScenario.CreateAsync();
+        var (primary, alfa, _) = await CreateGroupAsync(s);
+        s.Clock.Advance(PrimaryWindow);
+        Assert.Equal(1, (await Job(s).RunAsync()).BackupWindowsOpened);
+        List<ServiceRequestQuoteLine> lines = [new("Pulizia profonda", 30000)];
+        await s.Service.SendQuoteAsync(
+            primary.Id, s.SupplierOrgId, ServiceRequestScenario.SupplierUserId, new SendServiceRequestQuoteCommand(lines, null, null));
+
+        await s.Service.TakeAsync(alfa.Id, alfa.SupplierOrgId, alfa.Member);
+
+        // The database refuses a quote on a request that is not new: it is cleared with the cancellation.
+        var lost = await s.ReadAsync(primary.Id);
+        Assert.Equal(ServiceRequestStatus.Annullato, lost.Status);
+        Assert.Equal(ServiceRequestCancellationReasons.NoResponse, lost.CancellationReason);
+        Assert.Null(lost.QuoteSentAt);
+    }
+
+    [Fact]
     public async Task Job_RunsTheServiceOnce_AndWarnsOnlyWhenAGroupFailed()
     {
         var service = new Mock<IServiceRequestGroupRunService>();

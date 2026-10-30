@@ -258,7 +258,7 @@ public sealed class HostTodayService(
             .Select(r => new ServiceRequestToAnswer(
                 r.Id,
                 r.Status,
-                r.ProposedStartUtc != null,
+                r.ProposedStartUtc != null || r.QuoteSentAt != null,
                 r.FinalAmountNeedsConfirmation,
                 r.ScheduledStartUtc,
                 r.BookingId,

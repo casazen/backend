@@ -51,6 +51,7 @@ namespace Casazen.Core.Suppliers;
 /// record or is <c>Completato</c>. Filled by the reader (<see cref="SupplierJobPayment"/>); null in a view built without it.
 /// </param>
 /// <param name="AutoAccepted">The request was born taken: accepted automatically for a regular host (SP-04d); its take is a step of CasaZen itself in <paramref name="History"/>.</param>
+/// <param name="Quote">The quote the supplier sent and the customer has not answered (SP-04b); <c>null</c> when there is none.</param>
 /// <param name="Backup">
 /// SP-BKP: where the request stands in its group of backup suppliers (<see cref="SupplierJobBackup"/>): <b>null</b> for a request sent to this
 /// supplier alone. A backup is declared as such to its supplier, who sees what it sees before any take (decision D9): the comune, the
@@ -88,13 +89,14 @@ public sealed record SupplierServiceRequestView(
     ServiceRequestPaymentMode PaymentMode = ServiceRequestPaymentMode.Manual,
     SupplierJobPayment? Payment = null,
     bool AutoAccepted = false,
+    ServiceRequestQuote? Quote = null,
     SupplierJobBackup? Backup = null)
 {
     /// <summary>
-    /// The phase of the request (SP-04e): <see cref="SupplierRequestPhases"/>, derived from the status and the proposed time in one
-    /// place. An open set: a client shows a generic wording for a value it does not know.
+    /// The phase of the request (SP-04e): <see cref="SupplierRequestPhases"/>, derived from the status, the proposed time and the quote in
+    /// one place. An open set: a client shows a generic wording for a value it does not know.
     /// </summary>
-    public string Phase => SupplierRequestPhases.Of(Status, hasPendingProposal: Proposal is not null);
+    public string Phase => SupplierRequestPhases.Of(Status, hasPendingProposal: Proposal is not null, hasPendingQuote: Quote is not null);
 }
 
 /// <summary>
@@ -251,12 +253,37 @@ public sealed record SupplierJobCancellation(DateTime At, ServiceRequestActorPar
 /// never named: the host is identified by the host contact.
 /// </param>
 /// <param name="Reason">The reason of a <see cref="ServiceRequestStatus.Rifiutato"/> or <see cref="ServiceRequestStatus.Annullato"/> step.</param>
+/// <param name="Event">
+/// What the step says beyond the status (SP-04b), one of <see cref="ServiceRequestHistoryEvents"/>: the steps about a quote of the supplier
+/// (sent, rejected, withdrawn) are of the status <c>Richiesto</c>, and the take that accepted a quote and the cancellation that came from a quote
+/// nobody answered carry it too. <c>null</c> for the plain steps of the state machine. <b>An open set.</b>
+/// </param>
 public sealed record ServiceRequestHistoryEntry(
     ServiceRequestStatus Status,
     DateTime At,
     ServiceRequestActorParty Actor,
     string? ActorName,
-    string? Reason);
+    string? Reason,
+    string? Event = null);
+
+/// <summary>The values of <see cref="ServiceRequestHistoryEntry.Event"/>: the quote steps of a request (SP-04b).</summary>
+public static class ServiceRequestHistoryEvents
+{
+    /// <summary>The supplier sent a quote (or replaced the one that waited).</summary>
+    public const string QuoteSent = "quote_sent";
+
+    /// <summary>The take of the request is the acceptance of a quote: its total is the agreed price.</summary>
+    public const string QuoteAccepted = "quote_accepted";
+
+    /// <summary>The customer turned a quote down: the request is "to answer" again.</summary>
+    public const string QuoteRejected = "quote_rejected";
+
+    /// <summary>The supplier took its quote back: the request is "to answer" again.</summary>
+    public const string QuoteWithdrawn = "quote_withdrawn";
+
+    /// <summary>The cancellation of a request whose customer did not answer the quote in time.</summary>
+    public const string QuoteExpired = "quote_expired";
+}
 
 /// <summary>
 /// What the supplier sees before and after taking a request (SU-08, GDPR data minimization; decision D9): before the take the

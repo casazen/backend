@@ -107,8 +107,8 @@ public partial class ServiceRequestService
     {
         var request = await GetRequestOfHostOrThrow(id, hostOrgId, cancellationToken);
 
-        // A reminder asks for an answer: only a new request waits for one, and not one with a proposal the host has to answer.
-        if (request.Status != ServiceRequestStatus.Richiesto || request.ProposedStartUtc is not null)
+        // A reminder asks for an answer: only a new request waits for one, and not one with a proposal or a quote the host has to answer.
+        if (request.Status != ServiceRequestStatus.Richiesto || request.ProposedStartUtc is not null || request.QuoteSentAt is not null)
         {
             throw new DomainRuleException(
                 ServiceRequestErrorCodes.InvalidTransition, ServiceRequestErrorCodes.CannotRemindMessageKey);
@@ -172,6 +172,13 @@ public partial class ServiceRequestService
             request.ProposedByUserId = userId;
             request.ProposalMessage = message;
             request.UpdatedAt = now;
+
+            // SP-04b: one offer at a time. A quote that waited gives way to the proposed time, as a quote gives way to a proposal.
+            if (request.QuoteSentAt is not null)
+            {
+                AppendQuoteEvent(request, ServiceRequestQuoteEventKinds.Withdrawn, UtcDateTime.TruncateToMicroseconds(now), request.QuoteTotalCents);
+                ClearQuote(request);
+            }
 
             // A showcase request has no host who may take as long as it needs: the customer has Suppliers:Showcase:
             // ProposalResponseMinutes to answer (the answer arrives with SP-11), then the request lapses like one nobody

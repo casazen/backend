@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -9,14 +10,16 @@ namespace Casazen.Infrastructure.Services;
 
 // What the backup suppliers of a request are told, and what the host is told when one of them takes the job (SP-BKP). Same rules as the
 // rest of the notifier: called after the change is saved, by the winner only, never an error for the caller, and (decision D9) the supplier
-// is told the comune, never the property, the street or the host's notes.
+// is told the comune, never the property, the street or the host's notes. The two notices that offer new work to a backup (it is a backup;
+// the second window opened) follow the supplier's switch «Nuove richieste» like the notice of a new request (SP-16d); the ones that follow
+// from what the supplier did or from the end of the race are always sent.
 public sealed partial class ServiceRequestNotifier
 {
     /// <summary>
     /// The backups of a new request are told they are backups (SP-BKP): the job is theirs only if the primary supplier does not take it by
     /// <paramref name="primaryDueAtUtc"/>, and they can accept as a backup right away. One email and one push each.
     /// </summary>
-    public Task NotifyBackupsInvitedAsync(
+    public async Task NotifyBackupsInvitedAsync(
         IReadOnlyList<(ServiceRequest Request, SupplierProfile Supplier)> backups,
         string comune,
         DateTime primaryDueAtUtc,
@@ -27,6 +30,9 @@ public sealed partial class ServiceRequestNotifier
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
+                if (!await SupplierNotificationPreferences.AllowsAsync(db, request.SupplierOrgId, SupplierNotificationKind.NewRequest, cancellationToken))
+                    continue;
+
                 var email = EmailTemplates.ServiceRequestBackupInvited(
                     EmailTemplates.DefaultCulture,
                     supplier.LegalName,
@@ -49,8 +55,6 @@ public sealed partial class ServiceRequestNotifier
                 logger.LogError(ex, "Backup notification for service request {Id} could not be queued", request.Id);
             }
         }
-
-        return Task.CompletedTask;
     }
 
     /// <summary>The second window of the group opened (SP-BKP): the backup can take the job now, until <paramref name="backupDueAtUtc"/>.</summary>
@@ -58,6 +62,9 @@ public sealed partial class ServiceRequestNotifier
     {
         try
         {
+            if (!await SupplierNotificationPreferences.AllowsAsync(db, request.SupplierOrgId, SupplierNotificationKind.NewRequest, cancellationToken))
+                return;
+
             var supplier = await FindSupplierAsync(request, cancellationToken);
             var comune = ComuneOf(request);
             if (supplier is not null)

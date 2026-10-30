@@ -17,6 +17,9 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     /// <summary>Supplier console inbox.</summary>
     public string SupplierInbox() => Build("/app/supplier/inbox");
 
+    /// <summary>A request in the supplier console (SP-16d, the reminder of the day before). Only the id of the request is in the link, no personal data.</summary>
+    public string SupplierRequest(Guid serviceRequestId) => Build($"/app/supplier/inbox/{serviceRequestId:D}");
+
     /// <summary>Guest self check-in page for a raw session token.</summary>
     public string GuestCheckIn(string token)
     {
@@ -198,6 +201,21 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
         return Build(
             $"/fornitori/{Uri.EscapeDataString(supplierSlug)}/conferma?hold={holdId:D}&token={Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>
+    /// Page of the supplier's showcase where the customer checks the e-mail of a request on measure (SP-10b; the same route as the booking's,
+    /// <c>/fornitori/:slug/conferma</c>, told apart by the query key): the page reads <c>inquiry</c> from the query and <c>token</c> from the
+    /// <b>fragment</b> — which a browser never sends to a server, so the token is in no access log — and sends them to
+    /// <c>POST api/public/suppliers/{slug}/inquiries/{id}/confirm-email</c>. Only the id and the random token (single use, valid for the minutes
+    /// of the inquiry) are in the link, no personal data.
+    /// </summary>
+    public string SupplierInquiryConfirmation(string supplierSlug, Guid inquiryId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(supplierSlug);
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build(
+            $"/fornitori/{Uri.EscapeDataString(supplierSlug)}/conferma?inquiry={inquiryId:D}#token={Uri.EscapeDataString(token)}");
     }
 
     /// <summary>
