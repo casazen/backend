@@ -120,6 +120,21 @@ public interface IShowcaseBookingManager
         ShowcaseBookingCredentials credentials,
         DateTime quoteSentAt,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes in the conversation of a request on measure (SP-10b): 1 to 1000 characters of plain text, at most 200 messages a request. The
+    /// supplier is told by e-mail (the comune and "Nome C.", never the words), one e-mail for the messages of ten minutes. The booking of the
+    /// credentials has to be a request on measure; any other is <see cref="ShowcaseBookingManagementErrors.NotFound"/>.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="ServiceRequestThreadErrors.MessageInvalid"/>, <see cref="ServiceRequestThreadErrors.Full"/>,
+    /// <see cref="ShowcaseBookingErrors.SupplierUnavailable"/>.
+    /// </exception>
+    /// <exception cref="Exceptions.DomainConflictException">
+    /// <see cref="ServiceRequestThreadErrors.Closed"/> (refused, cancelled or done), <c>service_request_state_changed</c>.
+    /// </exception>
+    Task<ShowcaseBookingView> PostMessageAsync(ShowcaseBookingCredentials credentials, string? body, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -157,4 +172,13 @@ public interface IShowcaseRequestCustomerActions
 
     /// <summary>The customer turns the quote down (see <see cref="IShowcaseBookingManager.RejectQuoteAsync"/>).</summary>
     Task<ServiceRequest> RejectQuoteAsCustomerAsync(Guid id, Guid supplierOrgId, DateTime quoteSentAt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The thread of the customer's request on measure (SP-10b), with the messages of the supplier marked as read by the customer; each
+    /// message is shown as it was before this reading.
+    /// </summary>
+    Task<ServiceRequestThread> ReadThreadAsCustomerAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>The customer writes in the thread of its request on measure (see <see cref="IShowcaseBookingManager.PostMessageAsync"/>).</summary>
+    Task<ServiceRequestMessageView> PostMessageAsCustomerAsync(Guid id, Guid supplierOrgId, string? body, CancellationToken cancellationToken = default);
 }

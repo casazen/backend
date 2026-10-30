@@ -84,6 +84,7 @@ public sealed record SupplierServiceRequestView(
     ServiceRequestPaymentMode PaymentMode = ServiceRequestPaymentMode.Manual,
     SupplierJobPayment? Payment = null,
     bool AutoAccepted = false,
+    ServiceRequestKind Kind = ServiceRequestKind.Standard,
     ServiceRequestQuote? Quote = null)
 {
     /// <summary>

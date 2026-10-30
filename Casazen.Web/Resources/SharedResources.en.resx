@@ -3749,4 +3749,16 @@
   <data name="PropertyPoiMinutesInvalid" xml:space="preserve">
     <value>The minutes must be between {0} and {1}.</value>
   </data>
+  <data name="ServiceRequestThreadClosed" xml:space="preserve">
+    <value>This request is closed: no more messages can be added.</value>
+  </data>
+  <data name="ServiceRequestThreadFull" xml:space="preserve">
+    <value>The conversation has reached the largest number of messages. To go on, an offer is needed.</value>
+  </data>
+  <data name="ServiceRequestMessageInvalid" xml:space="preserve">
+    <value>The message is empty, too long or has characters that are not allowed. Write up to 1000 characters of plain text.</value>
+  </data>
+  <data name="ServiceRequestInquiryNeedsOffer" xml:space="preserve">
+    <value>A request on measure cannot be accepted directly nor given another time: the work, the price and the time are agreed with the customer in the conversation, with an offer.</value>
+  </data>
 </root>

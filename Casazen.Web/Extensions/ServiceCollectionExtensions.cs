@@ -656,6 +656,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ServiceRequestService>();
         services.AddScoped<IServiceRequestService>(provider => provider.GetRequiredService<ServiceRequestService>());
         services.AddScoped<IShowcaseRequestCustomerActions>(provider => provider.GetRequiredService<ServiceRequestService>());
+        // The conversation of a request on measure (SP-10b): the supplier reads the thread and writes in it.
+        services.AddScoped<IServiceRequestThreadActions>(provider => provider.GetRequiredService<ServiceRequestService>());
         // Automatic cancellation of the requests nobody answered (SP-04, D8): the recurring job runs only with the flag on.
         services.AddScoped<IServiceRequestAutoCancelService, ServiceRequestAutoCancelService>();
         // The suppliers a host already asked for a job, for «Le mie app» of the marketplace (MKT, SR-09c): a view of its requests.

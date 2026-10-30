@@ -1878,4 +1878,49 @@
   <data name="Push_ServicePaymentReceived_Body" xml:space="preserve">
     <value>{0}: {1} net to you, before Stripe's fees.</value>
   </data>
+  <data name="SupplierInquiryReply_Subject" xml:space="preserve">
+    <value>{0} has replied to you</value>
+  </data>
+  <data name="SupplierInquiryReply_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; has replied to your request. Read the message and carry on the conversation on the page of the request.</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Subject" xml:space="preserve">
+    <value>{0} cannot take your request</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; cannot take your request.</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Hint" xml:space="preserve">
+    <value>You have paid nothing. You can ask another supplier.</value>
+  </data>
+  <data name="SupplierInquiryExpired_Subject" xml:space="preserve">
+    <value>Your request to {0} has closed</value>
+  </data>
+  <data name="SupplierInquiryExpired_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; did not answer your request in time, so we closed it.</value>
+  </data>
+  <data name="SupplierInquiryExpired_Hint" xml:space="preserve">
+    <value>You have paid nothing. You can write again or ask another supplier.</value>
+  </data>
+  <data name="SupplierInquiryClosed_Cta" xml:space="preserve">
+    <value>Go to the supplier's page</value>
+  </data>
+  <data name="SupplierInquiryMessage_Subject" xml:space="preserve">
+    <value>New message from the customer — {0}</value>
+  </data>
+  <data name="SupplierInquiryMessage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; wrote to you in the request on measure in &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryMessage_Hint" xml:space="preserve">
+    <value>Read the message and reply from the console: the text is not in this e-mail.</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Subject" xml:space="preserve">
+    <value>Request closed by the customer — {0}</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; closed the request on measure in &lt;strong&gt;{1}&lt;/strong&gt;: there is no need to answer anymore.</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Hint" xml:space="preserve">
+    <value>The conversation stays readable in the console.</value>
+  </data>
 </root>
