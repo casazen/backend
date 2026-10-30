@@ -53,9 +53,12 @@ public class ShowcaseBookingThreadTests
         Assert.Equal(ServiceRequestMessageAuthor.Customer, first.Author);
         Assert.Equal(InquiryScenario.Words, first.Body);
 
-        // The supplier answers: the customer sees it as new, then as read, and the hour is no longer its concern.
+        // The supplier answers: the customer sees it as new, then as read, and the hour is no longer its concern. The clock of the test is
+        // frozen: the answer comes a minute after the customer's words, otherwise both messages have the same instant and the thread lists
+        // them in the order of their random ids.
+        s.Clock.Advance(TimeSpan.FromMinutes(1));
         await s.Service.PostMessageAsSupplierAsync(request.Id, s.SupplierOrgId, Reply);
-        s.Clock.Advance(TimeSpan.FromMinutes(3));
+        s.Clock.Advance(TimeSpan.FromMinutes(2));
 
         var talking = await s.Kit.Manager.LookupAsync(Credentials(request));
 
