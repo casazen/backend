@@ -26,7 +26,7 @@ Section 27: the read models of the console screens "Oggi" and "Richieste" (SP-04
 conflicts with a fix, "how customers see you" and the unlinking of the calendar (SP-03b, redesign wave).
 Section 29: the console's settings, earnings and clients (SP-16a, redesign wave).
 Section 32: the urgent requests with a surcharge, the supplier's settings, the urgent slots, the estimate and the booking (SP-04c, redesign wave).
-Section 33: the content of the supplier's showcase, the draft the editor autosaves (SP-13a, redesign wave).
+Section 33: the content of the supplier's showcase, the draft the editor autosaves, its publication with undo, the pause, the switch of the bookings, what the public page reads of it, the short status, the statistics and the checklist (SP-13a, redesign wave).
 
 ## 1. How a supplier joins
 
@@ -306,15 +306,34 @@ property page sends `POST /api/long-rent/service-requests` with the property onl
 | `verified` | The "Verificato" badge: the supplier is `Active` **and** has a VAT number (`SupplierVerification.IsProfileVerified`). It does **not** look at Stripe (`IsVerified`, the badge of the payments account of section 25, still needs the Connect account). Only the boolean leaves the server, never the VAT number. |
 | `showcaseSlug` | The address of the public showcase (`/fornitori/{slug}`); null when the supplier has none. |
 
-Parameters: `q` keeps the suppliers whose legal name or category code contains **every** word (any case; blank = all); `sort` is `name` (default), `price` (lowest first, no price last) or
+Parameters: `q` keeps the suppliers that have **every** word (blank = all) in their legal name, in a category (its code, its Italian name or its English name, from `EmailTexts`: `pulizie`,
+`cleaning` and `Pulizìe` all find the cleaners) or in the name of one of their **published** services, all of them and not only the three listed (MKT, SR-09a-FU2). Case and accents do not matter
+(`SearchText.Fold`, the folding of the global search: `pulizìe` finds `Pulizie`); a draft or a deleted service is never searchable. `sort` is `name` (default), `price` (lowest first, no price last) or
 `response` (fastest first, not measured last); ties by name. Another `sort` is 400 `validation_error` (`SupplierSortInvalid`). `totalCount` and `pageSize` are the size of the filtered list (one page, as before).
+
+**One supplier (MKT).** `GET /api/suppliers/{orgId}?propertyId=` (or `?comune=`) answers the same entry, with the same fields and no more, but **with every published service** (the list carries three):
+it is the page of a supplier in the marketplace (`/app/short-rent/marketplace/suppliers/{orgId}`, shareable). The target is resolved exactly as for the list (`propertyId` authorized as a host resource: 404 for a
+property that is not the caller's org's, 403 for one it may not read; 400 `SupplierSearchTargetRequired` with neither), and the supplier must be one the list would show there: a supplier that is not `Active`, or that
+does not work in that comune, is 404 `supplier_not_found`, so a supplier is never reachable by id alone.
 
 **Cost.** Two reads for the whole list whatever its size, never one per supplier: `ISupplierServiceCatalogService.ListPickerServicesAsync` (one statement on the published services of all the
 orgs asked for; the explicit org predicate is `PublicListingsOfMany`, allowed by `SupplierServiceListingTenancyTests`) and `ISupplierKpiService.GetMedianResponseMinutesBatchAsync` (the pairs of the
 window of all of them, grouped in memory). The long-rent search (`GET api/long-rent/service-requests/suppliers`) keeps its old answer: it carries `verified` and `showcaseSlug` (they come from the
 profile) but not the services, the price or the response time.
 
-`SupplierPickerPrivacyIntegrationTests` keeps the rule: only `Active` suppliers, and the fields of the answer are a whitelist (no VAT number, no Stripe account).
+`SupplierPickerPrivacyIntegrationTests` keeps the rule: only `Active` suppliers, and the fields of the answer are a whitelist (no VAT number, no Stripe account), for the list and for the one supplier alike.
+
+### 7.6 The suppliers the host already asked: «Le mie app» of the marketplace — MKT (SR-09c)
+
+`GET /api/service-requests/suppliers` answers one entry for each supplier that has at least one **short-rent** request of the caller's org, the one asked most recently first:
+`supplierOrgId`, `supplierName`, `requestsCount`, `openCount` (the requests that are not over: every one that is not `Rifiutato`, `Pagato` or `Annullato`), `lastRequestAt` and
+`lastCategory`; one page with all of them (`PagedResultDto`, as the picker). It is a view **derived** from the requests (`IHostSupplierUsageReader`, two reads whatever their number), not a
+relationship of its own: the trusted suppliers of the account (AM-10) are another thing. Nothing is shown about the supplier but its name (the legal name of its profile, the name of its org
+when it has none): the contact is on its page (`GET /api/suppliers/{orgId}`, § 7.5), which the host opens from the list.
+
+The perimeter is the rule, and `HostSupplierUsageReaderTests` keeps it: `property.read`; only the requests of the caller's org (an explicit `OrgId` predicate, `ServiceRequest` has no
+tenant filter); for a collaborator «Solo alcuni» (`InScope`) only the requests of the properties it was given, so a supplier it never asked through them is not listed; never a request of the
+long-rent context or one born from a supplier's showcase. The controller is its own file (`ServiceRequestSuppliersController`) so that `suppliers` is never taken for the id of a request.
 
 ## 8. Service requests: validation, errors and concurrent transitions — SU-10
 
@@ -1693,8 +1712,8 @@ in whole minutes (a half rounds up), **present only with at least 5 of them** (`
 otherwise: it is measured, never configured. A median, not an average: one request left over a weekend does not make a supplier that
 answers in minutes look slow. The **"pausa" state of the demo does not exist in the backend** (gap report 07: "bozza = vetrina in
 pausa non esiste"): a supplier that is not `Active` is the 404 above, and the pause the supplier chooses itself (a draft and a live
-showcase, and the online-booking switch `SupplierSettings.OnlineBookingEnabled`, which no endpoint writes yet) arrives with SP-13 and
-SP-16; the DTO will then gain a `paused` flag.
+showcase, and the online-booking switch `SupplierSettings.OnlineBookingEnabled`) is the showcase content of SP-13a (section 33): the page gains
+`paused` and `bookingsOpen` when the supplier published content, and the slots and the estimate of a paused showcase answer 422 `supplier_booking_offline`.
 
 ### 22.4 Services
 
@@ -1815,7 +1834,7 @@ limits (`RateLimiting__PublicSupplierSlots__*`, `RateLimiting__PublicSupplierQuo
   `OnlineBookingEnabled` is false (`supplier_booking_offline`), and gates its endpoints with the same flag.
 - **SP-12 / SP-06** (screens): the endpoints above are the whole contract; `slots` is the list of "i primi orari", `quote` drives the
   estimate box and the "chiedi un preventivo" state, `coverage` and `reason` pick the wording; the "IVA" wording follows `pricesIncludeVat`.
-- **SP-13** (showcase editor): when the supplier can pause the showcase, add `paused` to the page and gate the slots and the estimate on it.
+- **SP-13** (showcase editor): done in SP-13a, section 33.9 (`paused` on the page, the slots and the estimate gated on it).
 
 ### 22.10 After a deploy
 
@@ -2974,8 +2993,8 @@ supplier org of the caller's **own link** (`GetLinkedSupplierOrgIdAsync`: a read
   `supplier_settings_invalid` with `fields` naming every setting at fault (as `PUT availability/rules`), and nothing is written. The answer of the `PUT` has the
   shape of the `GET`.
 - **`onlineBookingEnabled` is not a field of the `PUT`** (decision SP-D29): a value sent for it is ignored, so a settings call can never open the showcase to
-  bookings. The only writer will be the showcase editor (SP-13a, publish and pause). Until it is deployed **nothing writes the column**, so the public booking stays
-  closed for every supplier whatever the flag `SupplierShowcaseBooking` says (`deploy-checklist.md`).
+  bookings. The only writer is the showcase editor (SP-13a, section 33.8): publishing, reopening, pausing and the supplier's Stripe account. A supplier opens its bookings only with
+  the payments on and its account ready, so the public booking stays closed for every other supplier whatever the flag `SupplierShowcaseBooking` says (`deploy-checklist.md`).
 - The row is shared with the rules and the hours of the agenda (section 20): the first write creates it, and **every write takes the same advisory lock**
   (`SupplierCalendarSync` of the supplier org) and reads the row after taking it, so two saves never overwrite each other's columns. A save leaves the other
   columns (the five rules, `HoursConfiguredAt`, `ParallelJobs`) exactly as they were. The code is in `SupplierAgendaService` (the only reader and writer of the
@@ -3201,12 +3220,13 @@ a service without its own switch is not urgent; the supplier's switch comes firs
 Nothing to configure. The migration adds the columns with the defaults above to the rows that exist (a supplier keeps its settings; urgent is off for all of them). To try it on a test supplier: `PUT availability/urgent`
 (`enabled: true`), `PUT services/{id}` with `urgentEnabled: true` and a surcharge, then `GET …/slots?service=…&urgent=true` with `SupplierShowcaseBooking` on.
 
-## 33. The content of the showcase: the draft the editor autosaves — SP-13a (part 1)
+## 33. The content of the showcase: draft, publication, pause, the bookings switch and the public page — SP-13a
 
 Redesign wave task SP-13a (branch `feature/rd-showcase-content-api`, backend only: the editor is SP-13c to SP-13e), **no new feature flag** (the override of 17 October allows only the eight that exist; the endpoints are always on, and nothing a supplier saves is
-seen by a customer until it is published, which is the next part of the task), migration `AddSupplierShowcaseContent` (additive: one new table). The supplier writes the texts, the style and the order of its services of its public
-page `/fornitori/{slug}`; this part is the **draft**: reading it, saving it as the editor autosaves, and throwing the changes away. Publication, undo, pause, the readiness checks and the switch of the bookings are the next part; the
-public page is the one after.
+seen by a customer until it is published and until the public page reads it, which is the third part of the task), migration `AddSupplierShowcaseContent` (additive: one new table). The supplier writes the texts, the style and the order of its
+services of its public page `/fornitori/{slug}`. **Part 1** is the **draft** (33.1 to 33.5): reading it, saving it as the editor autosaves, and throwing the changes away. **Part 2** (33.6 to 33.8) is the **publication** with its undo,
+the **pause**, the readiness checks and the **switch of the bookings** (`SupplierSettings.OnlineBookingEnabled`, which until now no endpoint wrote). **Part 3** (33.9 to 33.11) is what the **public page** reads of the
+published content, the **short status**, the **statistics** and the **checklist** of the console.
 
 ### 33.1 What is stored
 
@@ -3259,6 +3279,11 @@ refused** (a `<` followed by a letter, `/`, `!` or `?`; a lone "5 < 10" is fine)
 | `GET api/supplier/showcase/content` | `{ schemaVersion, state, version, draft, published, changes[], savedAt, publishedAt, pausedAt, undoUntil, publicPath, publicUrl }`. `state` is derived: `Draft` (nothing published), `Online`, `ChangesReady`, `Paused`; `changes` are the members of the contract in which the draft (cleaned of empty rows) differs from what is published, in the order of the table above; `version` is `0` while there is no row. It gives an active supplier that has no slug its slug, as the preview does (`GET api/supplier/showcase`, which stays as it is) |
 | `PATCH api/supplier/showcase/content` | the autosave. Body: `{ "version": n, ...members to change }` as a **JSON merge patch** (RFC 7396): a member that is there replaces the stored one, an object (`sections`, `logo`, `cover`, `guarantee`) is merged member by member, a list replaces the whole list, `null` clears. The result is validated as a whole and every field at fault is collected: 422 `showcase_content_invalid` with `fields` (`tagline`, `faq[2].a`, `cover.url`...) and, when the color is the one at fault because white text cannot be read on it, `suggestedColor` (the same hue, darker). Body at most 64 KB; rate limit `SupplierShowcaseSave` (120 / min **per person**) |
 | `POST api/supplier/showcase/discard` | the draft goes back to what is published (an empty draft while nothing is). The body may carry `{ "version": n }`; when it does it must be the current one |
+| `POST api/supplier/showcase/publish` | publishes the draft (33.7). The body may carry `{ "version": n }`. 422 `showcase_not_publishable` (`fields` = the codes of what is missing), `showcase_supplier_not_active`, `showcase_content_invalid` (a half-filled row) |
+| `POST api/supplier/showcase/publish/undo` | "Annulla": the version published before is published again (33.7). 409 `showcase_undo_unavailable` |
+| `POST api/supplier/showcase/pause`, `POST api/supplier/showcase/resume` | pause and "Riattiva" (33.7). 422 `showcase_not_published`; `resume` also 422 `showcase_supplier_not_active` |
+
+Every answer is the same document as `GET content`, which since part 2 also carries `readiness` (33.6) and `bookings` (33.8).
 
 Errors: 404 `not_found` (no linked supplier), 400 `validation_error` (malformed or oversized body), 409 `showcase_version_conflict`, 422 `showcase_content_invalid`.
 
@@ -3276,19 +3301,113 @@ A save that names `serviceOrder` is checked.
 `OrgId` predicate, and `SupplierShowcaseContentTenancyTests` allows only `SupplierShowcaseContentService`, the supplier repair and the context to use the table. A host never reads it and the draft never leaves the supplier's own endpoints. Nothing of the
 content goes in a log (ids and counts only). The merge of duplicate profiles (`fix-orphaned`) moves the duplicate's row to the keeper only when the keeper has none (the keeper's own stays, the duplicate's goes with its profile); it counts in `showcaseRowsMoved`.
 
-### 33.6 After a deploy
+### 33.6 Readiness ("cosa manca")
+
+`readiness { canPublish, items[] }` is judged from the draft (cleaned of empty rows) and the supplier's facts, **again on the server at every publication**: a button disabled in the editor is a convenience, not a guard. Every item has a stable
+`code` (the editor writes the text), a `level` (`ok`, `warn` or `todo`), `required` and a `target` (the page of the web app where the supplier fixes it, `?step=` for the editor's own steps).
+
+| Code | Rule | Required | Target |
+|---|---|---|---|
+| `services` | at least one **active** service is shown (the ones of `serviceOrder`, or every active one when it is empty; a published service always has a price or "su preventivo") | yes | `/app/supplier/services` |
+| `zones` | the supplier serves at least one comune (`ComuneIstatCodesJson` or `ComuniJson`) | yes | `/app/supplier/profile` |
+| `color` | no color, or one white text reads on at 4.5:1 (a saved draft cannot hold another, so this is the guard of data written otherwise) | yes | `/app/supplier/showcase?step=style` |
+| `hours` | working hours saved with at least one band | advised | `/app/supplier/availability` |
+| `presentation` | a sentence of 12 characters or more and a "chi siamo" of 60 or more | advised | `?step=texts` |
+| `photos` | three jobs with a photo | advised | `?step=works` |
+| `faq` | three questions with their answer | advised | `?step=texts` |
+| `verified` | "Verificato" (decision D11): active profile, a VAT number and a Stripe account that can take charges and payouts | advised | `/app/supplier/settings` |
+
+A required item that is `todo` is a 422 `showcase_not_publishable` on `publish`, with `fields` = the codes.
+
+### 33.7 Publication, undo, pause and resume
+
+- **Publish.** An active supplier only (422 `showcase_supplier_not_active`). The draft is cleaned (`ShowcaseContentRules.ForPublication`): an empty row is dropped, a half-filled one (a question with no answer, a job with no photo, a guarantee with a title and no
+  text...) is a 422 `showcase_content_invalid` with its path, and the services of `serviceOrder` are reduced to the ones that are **active now**. Then the readiness is judged (33.6). The published document becomes `PublishedJson` **and the draft**
+  (so `changes` is empty), the version published before goes to `PreviousPublishedJson` and `UndoUntil` is set to 5 minutes from now (`ShowcaseContentLimits.UndoWindow`). Publishing a **paused** showcase publishes the content and leaves it paused.
+- **Undo** ("Annulla"). Until `undoUntil`: the previous version is published again (none, for the first publication: the showcase is a `Draft` again), `PublishedAt` goes back with it, the draft is not touched. **Any other change ends the possibility**
+  (a save, a discard, a pause, a resume); after the time it is 409 `showcase_undo_unavailable`.
+- **Pause.** Only a published showcase (422 `showcase_not_published`); idempotent. The state is `Paused` (it wins over `ChangesReady`), the bookings close.
+- **Resume** ("Riattiva"). A paused showcase is reopened; **on one that is not paused it judges the bookings again** (the account became ready after the publication), so it is also the way to open them at the supplier's wish.
+
+A publication, an undo, a pause and a resume write the content row **and** the switch of the bookings in one transaction (the switch first: a lost race rolls both back). Both are under the content lock, then the agenda lock, always in this order.
+
+### 33.8 The bookings switch (`OnlineBookingEnabled`)
+
+`SupplierSettings.OnlineBookingEnabled` has **one writer**, `ISupplierAgendaService.SetOnlineBookingEnabledAsync`, called only by the content service (the settings of the console still neither take nor change it, decision SP-D29). The value is
+`published ∧ not paused ∧ payments on ∧ account ready`, where *payments on* is the flag `SupplierOnlinePayments` and *account ready* is what `SupplierVerification.CanReceivePayments` says of the Stripe account cached on the org (charges **and**
+payouts enabled; never a call to Stripe). It is written by publish and resume (the rule), pause (off), undo (the rule for what is published after it) and by `account.updated`.
+
+`bookings { open, blockedBy[] }` of the answer is the derived rule `published ∧ not paused ∧ switch ∧ payments on ∧ account ready` (decision VT-D7: the bookings open only with the payment; until then the showcase is read-only), with the reasons in this order:
+`not_published`, `paused`, `payments_off`, `payments_account_not_ready`, and `bookings_off` (everything is ready but the switch: "Riattiva" turns it on). A publication with the account not ready is **not** an error: the showcase is online and the answer
+says why the bookings are closed.
+
+**`account.updated`.** `StripeWebhookHandler` calls `ReconcileBookingsAsync` for a supplier whose ability to take charges and payouts changed in either direction (`ConnectAccountUpdate.SupplierReadinessChanged`), inside the transaction of the event: the
+new bookings **close** when the account stops being ready (the ones already made are untouched: a booking is a request, not the switch) and **open again** when it is, if the showcase is published and not paused. A supplier with no content row is left
+alone. The booking itself (`POST api/public/suppliers/{slug}/bookings`) still reads only the switch (section 23): it refuses with `supplier_booking_offline` while it is off.
+
+### 33.9 The public page
+
+`GET api/public/suppliers/{slug}` (section 18) gains **additive members, left out until the supplier has published content** (`[JsonIgnore(WhenWritingNull)]`: the page of a supplier that published nothing is, member for member, what it was; a test compares the
+member names). They come from `IPublicSupplierShowcaseService.GetPublishedPageAsync`, which reads the **published** version only (`ISupplierShowcaseContentService.GetPublishedAsync`: one statement scoped by the supplier org): **a draft is never public**, and
+neither is the one a supplier is writing while another version is online.
+
+| Member | What |
+|---|---|
+| `content` | the published document without `serviceOrder`: `style`, `font`, `color`, `logo`, `cover`, `tagline`, `intro`, `bio`, `team`, `values`, `guarantee`, `certs`, `faq`, `gallery`, `prep`, `sections` (plain text; images are the supplier's own) |
+| `paused` | the supplier paused the showcase |
+| `bookingsOpen` | `published ∧ not paused ∧ OnlineBookingEnabled ∧ payments on ∧ account ready` (33.8), computed on every read: it is false (read-only showcase) until the supplier's account can take charges and payouts |
+| `trust` | `{ verified, jobsDone? }`: "Verificato" (decision D11: active profile, VAT number, Stripe account able to take charges and payouts; **the VAT number itself is never shown**) and the **true** count of jobs completed or paid, left out below `ShowcaseContentLimits.JobsDoneMinToShow` (5). No rating, reviews, insurance or years (D11, D13, D24) |
+| `respondWithinMinutes` | the supplier's setting (`RespondWithinMinutes`, 180 by default), never written by hand on the page |
+| `acceptsOnlinePayments` | `SupplierOnlinePayments` on and the account able to take charges and payouts |
+| `privacyNoticeVersion` | `Suppliers:Showcase:PrivacyNoticeVersion` (the version a booking records); left out when not configured. Until now no endpoint gave it to the frontend |
+| `services[].nextSlotUtc` | the first free slot of each service (UTC), from the same plan and the same 30-second cache as the slots, **only while `bookingsOpen`**; left out for a service with no free slot in the horizon |
+
+Never on the page: telephone, e-mail, VAT number, status, ids (a test serializes the new members and looks for them). The `services` (and `medianResponseMinutes`) of the page and the list `GET …/services` keep the **flag**
+`SupplierShowcaseBooking` as before (section 22.2): with it off a published showcase shows its content and no service. When the supplier published an order (`serviceOrder`), `services` and the list show **only the services of the order, in that order**
+(`ShowcaseContentRules.ApplyServiceOrder`); the booking of a service still reads the catalog, so a service the supplier does not show is reachable by its slug (known limit below).
+
+**Paused.** The slots (`GET …/slots`) and the estimate (`POST …/quote`) of a paused showcase answer **422 `supplier_booking_offline`**, as the booking does (its switch is off): no slot is offered and no estimate given. The page and the services list still answer. A
+showcase that is online but whose bookings are closed for another reason (the account is not ready) is **not** paused: its slots and estimates answer as they always did, and `bookingsOpen: false` tells the screen to show it read-only.
+
+### 33.10 The short status and the statistics
+
+| Endpoint | What |
+|---|---|
+| `GET api/supplier/showcase/status` | `{ published, hasDraft, paused, url, requests30d, pending30d, changes[], publishedAt, savedAt, completeness }` for the home and the checklist of the console: `hasDraft` = the draft has changes a publication would publish, `completeness` = the percentage (0 to 100) of the readiness items that are done (33.6), `url` the absolute address |
+| `GET api/supplier/showcase/stats` | `{ days: 30, requests, pending }`: the requests that came from the showcase in the last 30 days (`ServiceRequest.RentalContext = Showcase`, scoped by the supplier org) and how many still wait for the supplier's answer (`Richiesto`). **Visits and conversion are not counted** (decision VT-D15) |
+
+### 33.11 The checklist of the console
+
+`SupplierChecklistDto.ShowcasePublished` (`GET api/supplier/checklist`, section 21.7) reads the real publication: for a supplier that **never used the editor** (no content row) the plain page of SU-13 counts, so it stays what it was (an active supplier
+with an address); once the supplier has a content row it is true only for a showcase that is **published and not paused**, and, as before, never for a supplier that is not active.
+
+### 33.12 Known limits and follow-ups
+
+- **SP-13a-FU1** — a service the supplier does not show (it is not in the published `serviceOrder`) is still bookable by its slug (`POST …/bookings` reads the catalog): hiding is a choice about the page. Making the booking follow the order is a decision of the product owner.
+- **SP-13a-FU2** — `services` of the page need `SupplierShowcaseBooking` on, as before: a published showcase with the flag off shows its content and no service. Showing the read-only price list without the flag is a decision of the product owner.
+- The images of the content are references only: the upload with its checks on the content is SP-13b (the editor can already point to the supplier's own photos of its profile and services).
+- The long text fields are plain text in one language (Italian): no translation (the design has one).
+
+### 33.13 After a deploy
 
 - [ ] Migration `AddSupplierShowcaseContent` applied (table `SupplierShowcaseContents`, primary key and foreign key to `SupplierProfiles` in cascade).
 - [ ] As a supplier (test environment): `GET api/supplier/showcase/content` is 200 with `state: "Draft"`, `version: 0`, an empty `draft` and no `published`; `PATCH` with `{ "version": 0, "tagline": "Pronti in un'ora" }` is 200 with the new `version`;
       the same `PATCH` again with `version: 0` is 409; `{ "version": n, "color": "#FFFF00" }` is 422 with `suggestedColor`; `POST discard` gives an empty draft.
 - [ ] Another supplier's `GET` shows its own (empty) content, never the first one's.
 - [ ] `GET api/public/suppliers/{slug}` is exactly what it was: the draft is not on the public page.
+- [ ] Part 2, test environment, `Features__SupplierOnlinePayments=true`: `POST api/supplier/showcase/publish` of a supplier with an active service, a comune and a Stripe account that can take charges and payouts is 200 with `state: "Online"`,
+      `bookings.open: true` and `GET api/supplier/settings` shows `onlineBookingEnabled: true`; `POST …/pause` closes it (`blockedBy: ["paused"]`) and `POST …/resume` opens it; `POST …/publish/undo` right after a first publication gives `Draft` again.
+- [ ] The same publication with an account that is not ready is 200, `bookings.open: false`, `blockedBy: ["payments_account_not_ready"]`; without the active service or the comune it is 422 `showcase_not_publishable` with `fields`.
+- [ ] A Stripe `account.updated` that disables charges on the supplier's account sets `onlineBookingEnabled` back to false; the one that enables them sets it to true again (a published, not paused showcase).
+- [ ] Part 3: `GET api/public/suppliers/{slug}` of a supplier that **published nothing** is unchanged (no `content`, `paused`, `bookingsOpen`, `trust`...); after a publication it carries `content` (the published text, never the draft), `paused: false`,
+      `bookingsOpen` and `trust.verified`; with `SupplierShowcaseBooking` on and the bookings open, `services[].nextSlotUtc`. `POST …/pause` makes `GET …/slots?service=…` and `POST …/quote` answer 422 `supplier_booking_offline`.
+- [ ] `GET api/supplier/showcase/status` and `…/stats` answer for the caller's supplier only; `GET api/supplier/checklist` has `showcasePublished: true` for a supplier that never used the editor and for one that published, `false` while paused.
 
 ## Known limits (other tasks)
 
 - Booking from the showcase (SP-10, SP-11): the customer finds, cancels, moves and answers a proposed time of its request (section 24).
   A showcase request is not paid inside CasaZen (section 26.2, SP-15c): the supplier records the payment it received outside it.
-  `SupplierSettings.OnlineBookingEnabled` is read by `GET api/supplier/settings` (section 29.1) but no endpoint writes it yet (SP-13a, the showcase editor).
+  `SupplierSettings.OnlineBookingEnabled` is read by `GET api/supplier/settings` (section 29.1) and written only by the showcase editor (section 33.8).
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
   claim without token links the existing profile once the Auth0 email is verified (section 2.2). The web pages show
   the localized message of the 409; a dedicated "link it" button for that code is a frontend follow-up.

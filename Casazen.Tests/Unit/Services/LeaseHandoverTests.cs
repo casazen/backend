@@ -89,8 +89,8 @@ public class LeaseHandoverTests : IDisposable
         await using var db = _h.SecondContext();
         var service = NewService(db);
 
-        var dated = PdfTestReader.Text((await service.BuildRiconsegnaAsync(lease.Id, new DateOnly(2029, 10, 31))).Pdf);
-        var undated = PdfTestReader.Text((await service.BuildRiconsegnaAsync(lease.Id, null)).Pdf);
+        var dated = BodyText((await service.BuildRiconsegnaAsync(lease.Id, new DateOnly(2029, 10, 31))).Pdf);
+        var undated = BodyText((await service.BuildRiconsegnaAsync(lease.Id, null)).Pdf);
 
         Assert.Contains("Il giorno 31 ottobre 2029 il conduttore riconsegna", dated, StringComparison.Ordinal);
         Assert.Contains("Il giorno [da completare] il conduttore riconsegna", undated, StringComparison.Ordinal);
@@ -110,6 +110,9 @@ public class LeaseHandoverTests : IDisposable
 
         Assert.Empty(await db.LeaseEvents.ToListAsync()); // preparing the minutes writes nothing
     }
+
+    /// <summary>The words of the body of the PDF in reading order: the rotated watermark is not interleaved with the sentences it crosses.</summary>
+    private static string BodyText(byte[] pdf) => string.Join(' ', PdfTestReader.BodyWords(pdf));
 
     private static string LettersDirectory()
     {

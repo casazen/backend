@@ -309,6 +309,24 @@ public class DemoEnvironmentService(
             property.CadastralIncome = cadastral.Income;
         }
 
+        // SR-07a: the type, beds, area and house rules of the wizard «Aggiungi immobile», so the host's list is not empty.
+        if (template.Profile is { } profile)
+        {
+            property.AccommodationType = profile.Type;
+            property.Beds = profile.Beds;
+            property.AreaSqm = profile.AreaSqm;
+            property.ListingTitle = profile.ListingTitle;
+            property.CheckInFrom = profile.CheckInFrom;
+            property.CheckOutBy = profile.CheckOutBy;
+            property.SmokingPolicy = profile.Smoking;
+            property.PetsPolicy = profile.Pets;
+            property.PartiesPolicy = profile.Parties;
+            property.QuietHoursFrom = profile.QuietHoursFrom;
+            property.QuietHoursTo = profile.QuietHoursTo;
+            property.ExtraGuestFeePerNight = profile.ExtraGuestFeePerNight;
+            PropertyHouseRules.SyncAmenities(property);
+        }
+
         db.Properties.Add(property);
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.Property, property.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);

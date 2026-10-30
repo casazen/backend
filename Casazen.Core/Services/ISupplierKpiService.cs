@@ -32,6 +32,19 @@ public interface ISupplierKpiService
     Task<bool> HasAnsweredARequestAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The requests the supplier received from its public showcase (<c>RentalContext = Showcase</c>) in the last <paramref name="days"/> days, and how
+    /// many of them still wait for its answer (<c>Richiesto</c>): the two true numbers of the showcase editor (SP-13a, decision VT-D15; visits and
+    /// conversion are not counted). Read-only; scoped by the supplier org.
+    /// </summary>
+    Task<ShowcaseRequestStats> GetShowcaseRequestStatsAsync(Guid supplierOrgId, int days, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The jobs the supplier completed: its requests in <c>Completato</c> or <c>Pagato</c>, of any origin. A real count, shown to customers
+    /// only from <see cref="ShowcaseContentLimits.JobsDoneMinToShow"/> of them. Read-only.
+    /// </summary>
+    Task<int> CountJobsDoneAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The typical time the supplier takes to answer, for the public showcase (SP-09): the <b>median</b> of
     /// <c>TakenAt − CreatedAt</c> over the requests taken in the last <see cref="SupplierEarningsSummary.ResponseWindowDays"/>
     /// days (the same pairs the average of <see cref="GetEarningsSummaryAsync"/> is made of), in whole minutes. <c>null</c> until
@@ -120,6 +133,13 @@ public sealed record SupplierOverviewPeriod(
     long CommissionCents,
     long? ToCollectCents,
     int? ToCollectJobs);
+
+/// <summary>Service-request KPIs of a supplier org.</summary>
+/// <summary>The requests that came from a supplier's public showcase: how many in a period and how many wait for an answer.</summary>
+/// <param name="Days">The period: the last <paramref name="Days"/> days up to now.</param>
+/// <param name="Requests">Requests created in the period.</param>
+/// <param name="Pending">Of those, the ones still waiting for the supplier's answer (<c>Richiesto</c>).</param>
+public sealed record ShowcaseRequestStats(int Days, int Requests, int Pending);
 
 /// <summary>Service-request KPIs of a supplier org.</summary>
 /// <param name="Period">The requested period.</param>

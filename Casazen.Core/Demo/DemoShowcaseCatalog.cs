@@ -15,7 +15,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-10-29.1";
+    public const string Version = "2026-10-29.2";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -57,6 +57,7 @@ public static class DemoShowcaseCatalog
         public const string WireBatchGenerated = "wire-batch-generated";
         public const string RoutineActive = "routine-active";
         public const string RoutineTestMode = "routine-test-mode";
+        public const string PropertyWizardFields = "property-wizard-fields";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -95,6 +96,7 @@ public static class DemoShowcaseCatalog
         Scenario.WireBatchGenerated,
         Scenario.RoutineActive,
         Scenario.RoutineTestMode,
+        Scenario.PropertyWizardFields,
     ];
 
     /// <summary>
@@ -174,7 +176,11 @@ public static class DemoShowcaseCatalog
             NightlyRate: 180m,
             CleaningFee: 40m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight],
+            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields],
+            Profile: new DemoPropertyProfile(
+                AccommodationType.HouseOrVilla, 5, 140, "Villa sul lago con giardino (demo)",
+                new TimeOnly(15, 0), new TimeOnly(10, 0), SmokingPolicy.No, PetsPolicy.OnRequest, PartiesPolicy.No,
+                new TimeOnly(22, 0), new TimeOnly(8, 0), 20m),
             Bookings:
             [
                 new("arrivo", "Giulia", "Bianchi", "ospite.demo.arrivo@example.com", 14, 4, BookingStatus.Confirmed, Scenario.BookingUpcoming),
@@ -207,6 +213,10 @@ public static class DemoShowcaseCatalog
             CleaningFee: 30m,
             Cadastral: null,
             Scenarios: [Scenario.PublishedLombardia],
+            Profile: new DemoPropertyProfile(
+                AccommodationType.Apartment, 2, 55, null,
+                new TimeOnly(14, 0), new TimeOnly(11, 0), SmokingPolicy.OutdoorsOnly, PetsPolicy.No, PartiesPolicy.No,
+                new TimeOnly(22, 0), new TimeOnly(8, 0), null),
             Bookings: []),
         new(
             Key: "casa-trastevere",
@@ -222,6 +232,10 @@ public static class DemoShowcaseCatalog
             CleaningFee: 35m,
             Cadastral: null,
             Scenarios: [Scenario.PublishedLazio, Scenario.AlloggiatiRegistered],
+            Profile: new DemoPropertyProfile(
+                AccommodationType.Apartment, 3, 70, "Casa nel cuore di Trastevere (demo)",
+                new TimeOnly(15, 0), new TimeOnly(10, 30), SmokingPolicy.No, PetsPolicy.Yes, PartiesPolicy.OnRequest,
+                new TimeOnly(23, 0), new TimeOnly(7, 0), 15m),
             Bookings:
             [
                 new("past-guest-roma", "Francesca", "Romano", "francesca.demo@example.com", -15, 5, BookingStatus.CheckedOut, Scenario.AlloggiatiRegistered),
@@ -255,6 +269,10 @@ public static class DemoShowcaseCatalog
             CleaningFee: 20m,
             Cadastral: null,
             Scenarios: [Scenario.ActivationPending],
+            Profile: new DemoPropertyProfile(
+                AccommodationType.RoomOrSuite, 1, 28, null,
+                null, null, null, null, null,
+                null, null, null),
             Bookings: []),
         new(
             Key: "attico-firenze",
@@ -474,7 +492,27 @@ public sealed record DemoPropertyTemplate(
     decimal CleaningFee,
     DemoCadastral? Cadastral,
     IReadOnlyList<string> Scenarios,
-    IReadOnlyList<DemoBookingTemplate> Bookings);
+    IReadOnlyList<DemoBookingTemplate> Bookings,
+    DemoPropertyProfile? Profile = null);
+
+/// <summary>
+/// The fields of the wizard «Aggiungi immobile» (SR-07a) a demo property carries, so the list and the cards of the host are not
+/// empty. Invented like the rest of the demo; a property without a profile keeps them unset, as every real property that existed
+/// before the wizard. The rules are consistent with the house rules text of the demo (no smoking, quiet after 22:00).
+/// </summary>
+public sealed record DemoPropertyProfile(
+    AccommodationType Type,
+    int Beds,
+    int AreaSqm,
+    string? ListingTitle,
+    TimeOnly? CheckInFrom,
+    TimeOnly? CheckOutBy,
+    SmokingPolicy? Smoking,
+    PetsPolicy? Pets,
+    PartiesPolicy? Parties,
+    TimeOnly? QuietHoursFrom,
+    TimeOnly? QuietHoursTo,
+    decimal? ExtraGuestFeePerNight);
 
 /// <summary>State a demo host invite is created in.</summary>
 public enum DemoHostInviteState

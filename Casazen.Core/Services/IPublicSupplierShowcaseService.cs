@@ -15,6 +15,30 @@ namespace Casazen.Core.Services;
 public sealed record PublicSupplierExtension(IReadOnlyList<SupplierPublicService> Services, int? MedianResponseMinutes);
 
 /// <summary>
+/// What the published content of a supplier adds to its public page (SP-13a): the published content (never the draft), whether the supplier
+/// paused the showcase, whether it takes bookings, and the few facts that are measured or checked, never written by hand.
+/// </summary>
+/// <param name="Content">The published content document.</param>
+/// <param name="Paused">The supplier paused the showcase: the page says it takes no bookings.</param>
+/// <param name="BookingsOpen">
+/// The derived rule <c>published ∧ not paused ∧ OnlineBookingEnabled ∧ payments account ready ∧ payments flag on</c> (decision VT-D7).
+/// </param>
+/// <param name="Verified">"Verificato" (decision D11): an active profile, a VAT number and a Stripe account that can take charges and payouts.</param>
+/// <param name="JobsDone">The jobs done with CasaZen, a true count, only from <see cref="ShowcaseContentLimits.JobsDoneMinToShow"/>; otherwise <c>null</c>.</param>
+/// <param name="RespondWithinMinutes">How long the supplier has to answer a booking: its setting (180 by default), never written on the page by hand.</param>
+/// <param name="AcceptsOnlinePayments">The payments are on and the supplier's account can take charges and payouts.</param>
+/// <param name="PrivacyNoticeVersion">The version of the privacy notice a booking records (<c>Suppliers:Showcase:PrivacyNoticeVersion</c>), or <c>null</c> when not configured.</param>
+public sealed record PublishedShowcasePage(
+    ShowcaseContentDocument Content,
+    bool Paused,
+    bool BookingsOpen,
+    bool Verified,
+    int? JobsDone,
+    int RespondWithinMinutes,
+    bool AcceptsOnlinePayments,
+    string? PrivacyNoticeVersion);
+
+/// <summary>
 /// The free slots of one Europe/Rome day. <b>No reason, no kind, no label</b>: a day with no slot is just "not available"
 /// (closed, on leave, full, inside the notice and beyond the horizon look the same to the public), so a customer can read
 /// neither why a supplier is not working nor what it is doing.
@@ -90,6 +114,24 @@ public interface IPublicSupplierShowcaseService
     /// slug and for a supplier that is pending or suspended, with no way to tell which. Read-only.
     /// </summary>
     Task<SupplierProfile?> FindActiveSupplierAsync(string? slug, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What the published content adds to the page of <paramref name="supplier"/> (SP-13a); <c>null</c> while the supplier has published nothing,
+    /// and then the page is exactly what it always was. Reads the <b>published</b> version only, never the draft. Read-only.
+    /// </summary>
+    Task<PublishedShowcasePage?> GetPublishedPageAsync(SupplierProfile supplier, CancellationToken cancellationToken = default);
+
+    /// <summary>True when the supplier paused its published showcase: its slots and estimates answer "not available" (SP-13a). Read-only.</summary>
+    Task<bool> IsPausedAsync(SupplierProfile supplier, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The first free slot of each of <paramref name="services"/> (SP-13a, "primo orario libero"), by service slug; a service with no free slot in
+    /// the supplier's horizon is not in the answer. From the same plan and the same 30-second cache as <see cref="GetSlotsAsync"/>. Read-only.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, DateTime>> GetNextSlotsAsync(
+        SupplierProfile supplier,
+        IReadOnlyList<SupplierPublicService> services,
+        CancellationToken cancellationToken = default);
 
     /// <summary>The services and the measured response time to add to the showcase of <paramref name="supplier"/>. Read-only.</summary>
     Task<PublicSupplierExtension> GetExtensionAsync(SupplierProfile supplier, CancellationToken cancellationToken = default);

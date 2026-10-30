@@ -15,9 +15,9 @@ using PaymentMethod = Casazen.Core.Entities.PaymentMethod;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// DB-08h (BK-02, BK-07) over the real pipeline (routing, rate limit, ProblemDetails, EF) with a fake Stripe: the link a
-/// host sends cancels a paid booking and answers 200 with the policy's refund (percent of the base price, tourist tax
-/// excluded). Before the fix every booking whose guest had paid the tourist tax answered 422 and burned the link.
+/// DB-08h (BK-02, BK-07), DB-08a over the real pipeline (routing, rate limit, ProblemDetails, EF) with a fake Stripe: the link a
+/// host sends cancels a paid booking and answers 200 with the policy's refund (percent of the base price, and the whole tourist
+/// tax). Before DB-08h every booking whose guest had paid the tourist tax answered 422 and burned the link.
 /// </summary>
 public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
@@ -30,7 +30,7 @@ public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<Casa
     private FakeStripeService Stripe => (FakeStripeService)_factory.Services.GetRequiredService<IStripeService>();
 
     [Fact]
-    public async Task Cancel_PaidBookingWithTouristTaxInThePartialWindow_Returns200AndRefundsHalfOfTheBasePrice()
+    public async Task Cancel_PaidBookingWithTouristTaxInThePartialWindow_Returns200AndRefundsHalfOfTheBasePriceAndTheTax()
     {
         var seed = await SeedAsync(daysToCheckIn: 10); // Contenuta: 50% from 14 to 7 days before check-in
         using var guest = _factory.CreateClient();
@@ -41,10 +41,10 @@ public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<Casa
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(seed.BookingId, body.GetProperty("bookingId").GetGuid());
         Assert.Equal("Cancelled", body.GetProperty("status").GetString());
-        Assert.Equal(200m, body.GetProperty("refundAmount").GetDecimal());
+        Assert.Equal(220m, body.GetProperty("refundAmount").GetDecimal()); // 50% of the 400, and the 20 of tax
         var request = Assert.Single(Stripe.RefundRequests, r => r.PaymentIntentId == seed.PaymentIntentId);
         Assert.Equal(Account, request.ConnectedAccountId);
-        Assert.Equal(20_000, request.AmountCents);
+        Assert.Equal(22_000, request.AmountCents);
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -53,12 +53,12 @@ public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<Casa
         Assert.Equal(GuestCancellationTokens.HashToken(seed.Token), booking.GuestCancelTokenHash); // recognised again, but spent
         Assert.True(booking.GuestCancelTokenExpiresAt <= DateTime.UtcNow);
         var refund = await db.PaymentRefunds.IgnoreQueryFilters().SingleAsync(r => r.PaymentId == seed.PaymentId);
-        Assert.Equal(200m, refund.Amount);
+        Assert.Equal(220m, refund.Amount);
         Assert.Equal(PaymentRefundOrigin.BookingCancellation, refund.Origin);
     }
 
     [Fact]
-    public async Task Cancel_PaidBookingWithTouristTaxInTheFullRefundWindow_RefundsTheBasePriceAndNotTheTax()
+    public async Task Cancel_PaidBookingWithTouristTaxInTheFullRefundWindow_RefundsEverythingPaid()
     {
         var seed = await SeedAsync(daysToCheckIn: 30);
         using var guest = _factory.CreateClient();
@@ -67,14 +67,14 @@ public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<Casa
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(400m, body.GetProperty("refundAmount").GetDecimal()); // paid 420: the 20 of tourist tax stays out
-        Assert.Equal(40_000, Assert.Single(Stripe.RefundRequests, r => r.PaymentIntentId == seed.PaymentIntentId).AmountCents);
+        Assert.Equal(420m, body.GetProperty("refundAmount").GetDecimal()); // paid 420: the base price and the 20 of tourist tax
+        Assert.Equal(42_000, Assert.Single(Stripe.RefundRequests, r => r.PaymentIntentId == seed.PaymentIntentId).AmountCents);
     }
 
     [Fact]
-    public async Task Cancel_AfterTheRefundWindows_Returns200WithNothingRefunded()
+    public async Task Cancel_AfterTheRefundWindows_Returns200AndRefundsOnlyTheTouristTax()
     {
-        var seed = await SeedAsync(daysToCheckIn: 3); // Contenuta: 0% within 7 days
+        var seed = await SeedAsync(daysToCheckIn: 3); // Contenuta: 0% of the stay within 7 days; the tax is not due on a cancelled stay
         using var guest = _factory.CreateClient();
 
         var response = await guest.PostAsync(CancelUrl(seed), null);
@@ -82,8 +82,8 @@ public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<Casa
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Cancelled", body.GetProperty("status").GetString());
-        Assert.Equal(0m, body.GetProperty("refundAmount").GetDecimal());
-        Assert.DoesNotContain(Stripe.RefundRequests, r => r.PaymentIntentId == seed.PaymentIntentId);
+        Assert.Equal(20m, body.GetProperty("refundAmount").GetDecimal());
+        Assert.Equal(2_000, Assert.Single(Stripe.RefundRequests, r => r.PaymentIntentId == seed.PaymentIntentId).AmountCents);
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<Casa
 
         Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
         var body = await retry.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(200m, body.GetProperty("refundAmount").GetDecimal());
+        Assert.Equal(220m, body.GetProperty("refundAmount").GetDecimal());
     }
 
     [Fact]
@@ -152,7 +152,7 @@ public class PublicGuestBookingCancellationIntegrationTests : IClassFixture<Casa
             var body = await response.Content.ReadFromJsonAsync<JsonElement>();
             Assert.Equal(seed.BookingId, body.GetProperty("bookingId").GetGuid());
             Assert.Equal("Cancelled", body.GetProperty("status").GetString());
-            Assert.Equal(200m, body.GetProperty("refundAmount").GetDecimal());
+            Assert.Equal(220m, body.GetProperty("refundAmount").GetDecimal());
         }
 
         Assert.Single(Stripe.RefundRequests, r => r.PaymentIntentId == seed.PaymentIntentId);
