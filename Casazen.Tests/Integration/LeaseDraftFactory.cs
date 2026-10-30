@@ -46,7 +46,10 @@ public class LeaseDraftFactory : CasazenWebApplicationFactory
         });
     }
 
-    /// <summary>A property of the org, long-term, with its energy certificate and its cadastral data: nothing is missing at step 1.</summary>
+    /// <summary>
+    /// A property of the org, long-term, with its energy certificate (with the code and the class the contract prints, LR-APE) and its
+    /// cadastral data: nothing is missing at step 1.
+    /// </summary>
     public async Task MakeReadyAsync(Guid propertyId, bool ape = true, bool cadastre = true, RentalMode mode = RentalMode.Long)
     {
         await using var scope = Services.CreateAsyncScope();
@@ -71,10 +74,46 @@ public class LeaseDraftFactory : CasazenWebApplicationFactory
                 StorageUrl = $"properties/{propertyId}/documents/ape.pdf",
                 DocumentType = DocumentType.Ape,
                 UploadedBy = property.OwnerId,
+                ApeCode = "1510800012345",
+                ApeEnergyClass = "C",
             });
         }
 
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// A new long-term property of the org, owned by <paramref name="ownerId"/>, ready (<see cref="MakeReadyAsync"/>) and with no lease: the
+    /// property a test writes its drafts on, since two leases of one property cannot cover the same days (LR-OVERLAP) and the property of
+    /// a <c>LongRentWorld</c> already has leases.
+    /// </summary>
+    public async Task<Guid> AddReadyPropertyAsync(Guid orgId, string ownerId)
+    {
+        Guid id;
+        await using (var scope = Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var property = new Property
+            {
+                OwnerId = ownerId,
+                OrgId = orgId,
+                Name = "Casa senza contratti",
+                Description = "Property with no lease, for the guided draft tests",
+                Address = $"Via Libera {Guid.NewGuid():N}",
+                City = "Bari",
+                PostalCode = "70121",
+                Bedrooms = 2,
+                Bathrooms = 1,
+                RentalMode = RentalMode.Long,
+                IsActive = true,
+            };
+            db.Properties.Add(property);
+            await db.SaveChangesAsync();
+            id = property.Id;
+        }
+
+        await MakeReadyAsync(id);
+        return id;
     }
 }
 

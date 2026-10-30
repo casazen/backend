@@ -8,8 +8,9 @@ namespace Casazen.Core.Leases;
 /// <list type="bullet">
 /// <item><see cref="RliRegistration"/>: the day by which a lease still to be registered must be (LT-04).</item>
 /// <item><see cref="Questura"/>: the 48 hours of the communication for an extra-EU tenant, not declared yet (LT-07).</item>
-/// <item><see cref="LeaseEnd"/>: the last day of a registered lease.</item>
-/// <item><see cref="Notice"/>: the last day to give notice, six months before the end (4+4 and 3+2 contracts).</item>
+/// <item><see cref="LeaseEnd"/>: the last day of the period a registered lease is in (LR-14: the current period, not the first).</item>
+/// <item><see cref="Notice"/>: the last day to give notice, six months before the end of the period (4+4 and 3+2 contracts); not listed once
+/// a notice or an early termination is recorded, there is nothing left to give notice of.</item>
 /// <item><see cref="Rent"/>: the due date of a rent installment not paid yet.</item>
 /// </list>
 /// IMU is not listed: the data per comune (<c>ComuneImuChannel</c>) carries no deadline. ISTAT is out of the first release
@@ -45,12 +46,17 @@ public static class LongRentDeadlineRules
     public const int MaxRentItems = 500;
 
     /// <summary>
-    /// The last day to give notice of a contract that ends on <paramref name="endDate"/>, or <c>null</c> when the contract
-    /// type has no notice: a transitory lease ends by itself (D.M. 16/01/2017 art. 2), with no renewal to refuse. The end
-    /// date is the one entered for the contract (the first expiry): renewals are not modelled (D8).
+    /// The last day to give notice of a contract whose current period ends on <paramref name="endDate"/>, or <c>null</c> when the
+    /// contract type has no notice: a transitory lease ends by itself (D.M. 16/01/2017 art. 2), with no renewal to refuse. The end
+    /// date is <see cref="Entities.LeaseContract.CurrentTermEndDate"/>: the first expiry until the lease renews by itself, then the
+    /// end of the period it renewed into (LR-14, decision D5).
     /// </summary>
     public static DateOnly? NoticeDate(LeaseContractType contractType, DateTime endDate) =>
+        NoticeDate(contractType, RomeCalendar.DateInRome(endDate));
+
+    /// <inheritdoc cref="NoticeDate(LeaseContractType, DateTime)"/>
+    public static DateOnly? NoticeDate(LeaseContractType contractType, DateOnly endDate) =>
         contractType is LeaseContractType.Libero or LeaseContractType.Concordato
-            ? RomeCalendar.DateInRome(endDate).AddMonths(-NoticeMonthsBeforeEnd)
+            ? endDate.AddMonths(-NoticeMonthsBeforeEnd)
             : null;
 }

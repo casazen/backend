@@ -44,6 +44,12 @@ public static class EncryptedColumns
     public const string ServiceCustomerPurpose = "Casazen.ServiceCustomer";
 
     /// <summary>
+    /// Purpose of the words of the thread of a request on measure (SP-10b): <see cref="ServiceRequestMessage.Body"/>, free text a person
+    /// wrote for the other party. Its own purpose, because it is read by the two parties of the request and by nobody else. Never change it.
+    /// </summary>
+    public const string ServiceRequestMessagePurpose = "Casazen.ServiceRequestMessage";
+
+    /// <summary>
     /// Purpose of the place of the work of a request from the public showcase (SP-10): street address, floor and access notes of
     /// <see cref="ServiceRequest"/>. The comune and the postal code are not encrypted: the supplier sees them before it takes the request.
     /// </summary>
@@ -64,6 +70,19 @@ public static class EncryptedColumns
     /// DTO); the residence is new, and is never returned. Never change it.
     /// </summary>
     public const string LeasePartyPurpose = "Casazen.LeaseParty";
+
+    /// <summary>
+    /// Purpose of the need of a transitory lease (TR): <see cref="LeaseContract.TransitoryNeed"/> and <see cref="LeaseContract.TransitoryDocumentation"/>,
+    /// the reason the landlord or the tenant gives for the short term and the papers that prove it. Free text that can say why a person moves
+    /// house; printed in the contract, never searched. Never change it.
+    /// </summary>
+    public const string LeaseTransitoryNeedPurpose = "Casazen.LeaseContract.TransitoryNeed";
+
+    /// <summary>
+    /// Purpose of the identity document image URLs (NF-10, ADR-009-R21): <see cref="DocumentImage.FrontImageUrl"/> and
+    /// <see cref="DocumentImage.BackImageUrl"/>. Never stored for Ticino properties per ADR-013-R6. Never change it.
+    /// </summary>
+    public const string DocumentImagePurpose = "Casazen.DocumentImage";
 
     /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
@@ -102,6 +121,11 @@ public static class EncryptedColumns
             nameof(PropertyQuesturaCredentials.Username),
             nameof(PropertyQuesturaCredentials.Password),
             nameof(PropertyQuesturaCredentials.WsKey)),
+        // ADR-012: property owner financial data (IBAN and fiscal code).
+        new EncryptedEntity<PropertyOwner>(
+            PropertyOwnerEncryptionPurpose.Purpose,
+            nameof(PropertyOwner.Iban),
+            nameof(PropertyOwner.FiscalCode)),
         // SP-10: the private customers of the suppliers and the booking that waits for their e-mail check.
         new EncryptedEntity<ServiceCustomer>(
             ServiceCustomerPurpose,
@@ -111,6 +135,13 @@ public static class EncryptedColumns
         new EncryptedEntity<ShowcaseBookingHold>(
             ServiceCustomerPurpose,
             nameof(ShowcaseBookingHold.Payload)),
+        // SP-10b: the request on measure that waits for the e-mail check (the same data as the hold, plus the words) and the thread.
+        new EncryptedEntity<ShowcaseInquiry>(
+            ServiceCustomerPurpose,
+            nameof(ShowcaseInquiry.Payload)),
+        new EncryptedEntity<ServiceRequestMessage>(
+            ServiceRequestMessagePurpose,
+            nameof(ServiceRequestMessage.Body)),
         new EncryptedEntity<ServiceRequest>(
             ServiceRequestLocationPurpose,
             nameof(ServiceRequest.LocationAddress),
@@ -126,6 +157,20 @@ public static class EncryptedColumns
         new EncryptedEntity<Party>(
             LeasePartyPurpose,
             nameof(Party.Residence)),
+        // TR: the need of a transitory lease and its documentation.
+        new EncryptedEntity<LeaseContract>(
+            LeaseTransitoryNeedPurpose,
+            nameof(LeaseContract.TransitoryNeed),
+            nameof(LeaseContract.TransitoryDocumentation)),
+        // NF-10: identity document image URLs for OCR (ADR-009-R21, ADR-013-R3).
+        new EncryptedEntity<DocumentImage>(
+            DocumentImagePurpose,
+            nameof(DocumentImage.FrontImageUrl),
+            nameof(DocumentImage.BackImageUrl)),
+        // NF-13: property access codes (E06/F03/US01/T01).
+        new EncryptedEntity<PropertyAccessCode>(
+            PropertyAccessCodeEncryptionPurpose.Purpose,
+            nameof(PropertyAccessCode.EncryptedCode)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

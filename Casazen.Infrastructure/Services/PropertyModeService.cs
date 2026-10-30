@@ -595,7 +595,9 @@ public sealed class PropertyModeService(
     /// <summary>
     /// The leases that are not drafts nor rejected and end on or after <paramref name="since"/>: the rule that refuses to
     /// delete a property (<c>PropertyRepository.SoftDeleteAsync</c>), asked for the day chosen instead of today, from the one
-    /// definition <see cref="LeaseOccupancy"/>. And every draft: no day frees the property from a draft, it is deleted first
+    /// definition <see cref="LeaseOccupancy"/>. The end is the one of the period the lease is in now
+    /// (<c>CurrentTermEndDate</c>, LR-14): a lease that renewed by itself holds the property until its new end, one with a notice or
+    /// ended early lets it go the day after its last day. And every draft: no day frees the property from a draft, it is deleted first
     /// (D16).
     /// </summary>
     private async Task<IReadOnlyList<PropertyModeBlocker>> LoadLongRentCandidatesAsync(
@@ -606,7 +608,17 @@ public sealed class PropertyModeService(
         var running = await db.LeaseContracts
             .AsNoTracking()
             .Where(LeaseOccupancy.RunsOnOrAfter(propertyId, RomeCalendar.StartOfDayUtc(since)))
-            .Select(l => new { l.Id, l.StartDate, l.EndDate, l.Status })
+            .Select(l => new { l.Id, l.StartDate, EndDate = l.CurrentTermEndDate, l.Status })
+            .ToListAsync(cancellationToken);
+        // A lease that renews by itself and whose period has just ended is waiting for the hourly renewal job (LR-14): it still holds the
+        // property, and no day frees it until the job has run and the lease has its new end (or the notice stops it). Without this a change
+        // due on the first morning after the end would be applied before the renewal and leave a renewed lease on a property let for short
+        // stays; with it that change fails like any other that meets a lease.
+        var renewing = await db.LeaseContracts
+            .AsNoTracking()
+            .Where(l => l.PropertyId == propertyId)
+            .Where(LeaseRenewal.DueOn(_clock.TodayInRome()))
+            .Select(l => new { l.Id, l.StartDate, EndDate = l.CurrentTermEndDate, l.Status })
             .ToListAsync(cancellationToken);
         var drafts = await db.LeaseContracts
             .AsNoTracking()
@@ -621,6 +633,13 @@ public sealed class PropertyModeService(
             l.StartDate.Date,
             l.EndDate.Date,
             l.EndDate.Date.AddDays(1),
+            Status: l.Status.ToString())));
+        candidates.AddRange(renewing.Select(l => new PropertyModeBlocker(
+            PropertyModeBlockerKind.Lease,
+            l.Id,
+            l.StartDate.Date,
+            l.EndDate.Date,
+            FreeFrom: null,
             Status: l.Status.ToString())));
         candidates.AddRange(drafts.Select(l => new PropertyModeBlocker(
             PropertyModeBlockerKind.DraftLease,

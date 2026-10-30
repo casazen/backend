@@ -43,7 +43,10 @@ public class PublicCheckInContextResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? PrivacyNoticeVersion { get; set; }
 
-    /// <summary>Version of the optional marketing consent text; absent when the consent is not offered (CO-15).</summary>
+    /// <summary>
+    /// Version of the optional marketing consent text; absent when the consent is not offered (CO-15). Absent: do not show the
+    /// consent step, the server rejects every marketing consent field set to true (<see cref="PublicCheckInSubmitRequest"/>).
+    /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? MarketingConsentVersion { get; set; }
 }
@@ -103,6 +106,49 @@ public class PublicCheckInGuestPrefill
 /// keys (<see cref="CheckInValidationKeys"/>); the conditional fields (birth place, document) are checked by
 /// <see cref="IStayGuestService"/>.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>Marketing consent contract (NF-05, Q1-05).</b> Optional and never a condition of the check-in: a guest who skips the
+/// consent screen sends none of <see cref="MarketingConsentEmail"/>, <see cref="MarketingConsentWhatsApp"/>,
+/// <see cref="MarketingEmail"/> (or sends them false/null) and the check-in completes. The screen comes after the mandatory
+/// steps, the boxes start unticked, and it is offered only when the context carries a <c>marketingConsentVersion</c>.
+/// </para>
+/// <list type="bullet">
+/// <item><description>
+/// <b>Who consents.</b> The booker: the first element of <see cref="Guests"/>. If that guest is a minor on the day of the
+/// submission, a ticked channel is rejected (<see cref="CheckInValidationKeys.MarketingConsentMinor"/>); the screen should
+/// not be shown to a minor at all (AC-NF05-3).
+/// </description></item>
+/// <item><description>
+/// <b>Channels.</b> Send <c>true</c> only for the box the guest ticked: each channel is recorded as given, or not given,
+/// on its own, and a channel is never implied by another one.
+/// </description></item>
+/// <item><description>
+/// <b>Marketing e-mail.</b> <see cref="MarketingEmail"/> is required as soon as one channel is ticked (the double opt-in
+/// confirmation is by e-mail, for every channel, and nothing is sent on any channel before the guest confirms it). When no
+/// channel is ticked it is ignored: not validated and not stored.
+/// </description></item>
+/// <item><description>
+/// <b>Text version.</b> The version recorded is the <c>marketingConsentVersion</c> the server holds at submission time (the
+/// one of the context); the client sends none. Without it any consent field set to true answers 400
+/// (<see cref="CheckInValidationKeys.MarketingConsentUnavailable"/>).
+/// </description></item>
+/// <item><description>
+/// <b>What is stored.</b> One <c>MarketingConsentRecord</c> per submission with a ticked channel: the channels ticked, the
+/// normalized marketing e-mail, the time of the submission (UTC), the text version, the client IP and the booking, with the
+/// e-mail not confirmed yet. It never touches the legacy flag of the guest (<c>Guest.MarketingConsent</c>).
+/// </description></item>
+/// <item><description>
+/// <b>Errors.</b> 400 <c>validation_error</c> with the errors keyed by property name, as for the guests
+/// (<c>MarketingEmail</c>, <c>MarketingConsentEmail</c>, <c>MarketingConsentWhatsApp</c>, <c>MarketingConsent</c>); the
+/// messages are localized (Italian, English).
+/// </description></item>
+/// <item><description>
+/// <b>Compatibility.</b> <see cref="MarketingConsent"/> keeps its behavior; a request that does not send the new properties
+/// is read exactly as before.
+/// </description></item>
+/// </list>
+/// </remarks>
 public class PublicCheckInSubmitRequest
 {
     /// <summary>Guests in record order: a head of family or group before its members; minors included.</summary>
@@ -112,8 +158,32 @@ public class PublicCheckInSubmitRequest
     /// <summary>
     /// Optional marketing consent (CO-15): accepted only when the context offered it (<c>marketingConsentVersion</c>). There
     /// is no consent for the Alloggiati registration: it is a legal obligation and the privacy notice is only shown (A5-15).
+    /// Legacy single box, kept for clients that do not know the channels: it names no channel and no marketing e-mail, so it
+    /// is recorded on the guest and in the consent history as before and never as a per-channel consent. New screens leave it
+    /// <c>false</c> and send the channels below.
     /// </summary>
     public bool MarketingConsent { get; set; }
+
+    /// <summary>
+    /// The guest ticked the e-mail box of the consent step (NF-05). Default <c>false</c>; requires <see cref="MarketingEmail"/>.
+    /// </summary>
+    public bool MarketingConsentEmail { get; set; }
+
+    /// <summary>
+    /// The guest ticked the WhatsApp box of the consent step (NF-05). Default <c>false</c>; requires <see cref="MarketingEmail"/>
+    /// (the confirmation is by e-mail for every channel). The request carries no WhatsApp number.
+    /// </summary>
+    public bool MarketingConsentWhatsApp { get; set; }
+
+    /// <summary>
+    /// The real address for marketing, typed in a field of its own (NF-05): never the booking contact (for Booking.com and
+    /// Airbnb that is a forwarding alias), so the form must not prefill it from there. Required when
+    /// <see cref="MarketingConsentEmail"/> or <see cref="MarketingConsentWhatsApp"/> is <c>true</c>
+    /// (<see cref="CheckInValidationKeys.MarketingEmailRequired"/>): a plain address, at most 255 characters
+    /// (<see cref="CheckInValidationKeys.MarketingEmailInvalid"/>). Ignored when no channel is ticked. Stored trimmed and in
+    /// lowercase.
+    /// </summary>
+    public string? MarketingEmail { get; set; }
 }
 
 /// <summary>
@@ -274,4 +344,67 @@ public class CheckInSessionStatusResponse
                 EmailError = session.LinkEmailStatus == GuestCheckInLinkEmailStatus.Failed ? session.LinkEmailError : null,
                 CanIssueLink = bookingEligible && !session.IsCompleted,
             };
+}
+
+/// <summary>
+/// Response from document upload endpoint with extracted fields for guest confirmation (NF-10, ADR-009-R22).
+/// </summary>
+public class DocumentUploadResponse
+{
+    /// <summary>True if extraction succeeded (MRZ or OCR).</summary>
+    public bool Success { get; set; }
+
+    /// <summary>Extraction method used (MRZ, OCR, or None).</summary>
+    public string ExtractionMethod { get; set; } = string.Empty;
+
+    /// <summary>Extracted fields for guest confirmation.</summary>
+    public ExtractedDocumentFields? Fields { get; set; }
+
+    /// <summary>Confidence score (0.0 to 1.0) of the extraction.</summary>
+    public double Confidence { get; set; }
+
+    /// <summary>True if check digits are valid (MRZ only, ADR-009-R23).</summary>
+    public bool? CheckDigitsValid { get; set; }
+
+    /// <summary>True if manual review is suggested (low confidence or invalid check digits).</summary>
+    public bool RequiresManualReview { get; set; }
+}
+
+/// <summary>
+/// Extracted document fields from MRZ or OCR (NF-10).
+/// </summary>
+public class ExtractedDocumentFields
+{
+    public string? DocumentType { get; set; }
+    public string? Surname { get; set; }
+    public string? GivenNames { get; set; }
+    public string? FullName { get; set; }
+    public string? DocumentNumber { get; set; }
+    public DateTime? DateOfBirth { get; set; }
+    public string? Nationality { get; set; }
+    public DateTime? ExpirationDate { get; set; }
+    public string? Sex { get; set; }
+    public string? IssuingState { get; set; }
+}
+
+/// <summary>
+/// Response from selfie upload endpoint with biometric verification outcome (NF-11, ADR-013).
+/// NEVER includes image data or embeddings per ADR-013-R2 (immediate deletion guarantee).
+/// </summary>
+public class SelfieUploadResponse
+{
+    /// <summary>Biometric verification outcome: Accept, Escalate, or Reject (ADR-013-R4).</summary>
+    public string Outcome { get; set; } = string.Empty;
+
+    /// <summary>Number of attempts made in this session (max 3 per ADR-013-R5).</summary>
+    public int Attempts { get; set; }
+
+    /// <summary>Maximum attempts allowed.</summary>
+    public int MaxAttempts { get; set; }
+
+    /// <summary>True if max attempts reached and session auto-escalated to operator queue (ADR-013-R5).</summary>
+    public bool AutoEscalated { get; set; }
+
+    /// <summary>Message key for localized feedback to the guest.</summary>
+    public string? MessageKey { get; set; }
 }

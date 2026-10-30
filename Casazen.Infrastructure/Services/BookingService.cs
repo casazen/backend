@@ -127,6 +127,10 @@ public class BookingService(
                 DirectBookingErrorCodes.MarketingConsentUnavailable, "DirectBookingMarketingConsentUnavailable");
         }
 
+        // DB-03b: the optional expected arrival time is a note for the host: only its shape is checked, before anything is written.
+        if (!ArrivalTimeRules.TryNormalize(input.ExpectedArrivalTime, out var expectedArrivalTime))
+            throw new DomainRuleException(DirectBookingErrorCodes.ArrivalTimeInvalid, "DirectBookingArrivalTimeInvalid");
+
         var property = await GetBookablePropertyAsync(input.PropertyId);
 
         var org = await orgService.GetByIdAsync(property.OrgId);
@@ -194,6 +198,7 @@ public class BookingService(
             NumberOfChildren = input.NumberOfChildren,
             NumberOfGuests = totalGuests,
             SpecialRequests = input.SpecialRequests ?? string.Empty,
+            ExpectedArrivalTime = expectedArrivalTime,
             Status = BookingStatus.Pending,
             Source = BookingSource.Direct,
             BasePrice = basePrice,
@@ -323,8 +328,8 @@ public class BookingService(
     }
 
     /// <summary>
-    /// A short-rent, active, unpaused property whose compliance allows public bookings: the same rule as
-    /// <see cref="PublicListing.IsPublished"/>. 404 when it does not exist or is not published (PC-03, A2-05); a property in
+    /// A short-rent, active, unpaused property whose compliance allows public bookings and that its host shows on the site:
+    /// <see cref="PublicListing.IsPublished"/> itself. 404 when it does not exist or is not published (PC-03, A2-05); a property in
     /// long-term mode (PM-01) is answered with the reason, 422 <c>property_not_bookable_in_long_mode</c>, whatever its
     /// other state: the public pages never lead to it, so this is a stale page or a hand-made request.
     /// </summary>
@@ -336,7 +341,9 @@ public class BookingService(
 
         PropertyRentalModeRules.EnsureShortRent(property);
 
-        if (!property.IsActive || property.IsPaused || property.ComplianceStatus != PropertyComplianceStatus.Active)
+        // The rule is read from PublicListing, never copied: a property the host switched off the site (SR-07a) is as unbookable as
+        // a paused one.
+        if (!PublicListing.Includes(property))
             throw new NotFoundException("Property not bookable") { MessageKey = "PropertyNotFound" };
 
         return property;
@@ -440,7 +447,11 @@ public class BookingService(
                 NightlyPrices: StayPricing.NightPrices(checkInDate, lodging)),
             cancellationToken);
 
-        var freeRefundDeadline = DirectBookingPaymentRules.FreeRefundDeadline(checkIn, property.CancellationPolicy);
+        // DB-08a: the policy of THIS stay (the catalog policy with the host's overrides for a stay under 28 nights), the one the
+        // cancellation will apply, so the day of the deferred charge and the free cancellation shown are true. It is stored on the
+        // booking as it is at creation: the bookings made before keep the day they were given.
+        var effectivePolicy = CancellationRefundPolicy.EffectivePolicy(property, nights);
+        var freeRefundDeadline = DirectBookingPaymentRules.FreeRefundDeadline(checkIn, effectivePolicy);
 
         return new DirectBookingQuote(
             property.Id,
@@ -454,8 +465,10 @@ public class BookingService(
             basePrice + touristTax.AmountOrZero,
             "EUR",
             freeRefundDeadline,
-            DirectBookingPaymentRules.OptionsFor(freeRefundDeadline, _clock.TodayInRome()),
-            lodging);
+            DirectBookingPaymentRules.OptionsFor(freeRefundDeadline, _clock.TodayInRome(), effectivePolicy),
+            lodging,
+            // DB-03b: the structured dates of the same policy (the last whole days, Europe/Rome), for the page to draw «fino al…».
+            PublicCancellation.StayOf(effectivePolicy, checkIn, _clock.TodayInRomeAsDateOnly()));
     }
 
     private async Task<string> HandleImmediatePaymentAsync(

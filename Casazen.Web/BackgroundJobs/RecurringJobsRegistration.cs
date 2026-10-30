@@ -1,4 +1,6 @@
 using Casazen.Core.Features;
+using Casazen.Core.Services;
+using Casazen.Infrastructure.Jobs;
 using Hangfire;
 
 namespace Casazen.Web.BackgroundJobs;
@@ -19,6 +21,14 @@ public static class RecurringJobsRegistration
         ConfigureOtaPartnerJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OtaPartnerApi));
 
         ConfigureServiceRequestAutoCancel(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel));
+
+        // SP-BKP: the groups of backup suppliers are followed whatever the flag SupplierRequestBackups says (it only gates their creation): a
+        // group that exists has its windows, and turning the flag off must not leave its requests hanging. With no group a run finds nothing.
+        recurringJobManager.AddOrUpdate<ServiceRequestGroupJob>(
+            ServiceRequestGroupJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ServiceRequestGroupJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         // SP-10: the upkeep of the bookings from the suppliers' public showcases is registered whatever the flags say. A hold that
         // was made while SupplierShowcaseBooking was on has to lapse, a request nobody answered has to be cancelled and a booking
@@ -105,6 +115,20 @@ public static class RecurringJobsRegistration
             LeaseDraftRetentionJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // LR-14: the leases whose period is over and that nobody gave notice of renew by themselves, every hour.
+        recurringJobManager.AddOrUpdate<LeaseTermRenewalJob>(
+            LeaseTermRenewalJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            LeaseTermRenewalJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // LR-11c-a: the landlord is reminded of the last day to give notice of a lease (30 and 7 days before, and that day), every day.
+        recurringJobManager.AddOrUpdate<LeaseNoticeReminderJob>(
+            LeaseNoticeReminderJob.RecurringJobId,
+            job => job.ExecuteAsync(),
+            LeaseNoticeReminderJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<RliDeadlineReminderJob>(
             "rli-deadline-reminder",
             job => job.ExecuteAsync(),
@@ -156,10 +180,11 @@ public static class RecurringJobsRegistration
             "*/15 * * * *",  // Every 15 minutes
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // SR-10b: the page of the calendars says how often this runs from the same constant, never from a number of its own.
         recurringJobManager.AddOrUpdate<PropertyICalSyncJob>(
             "property-ical-sync",
             job => job.ExecuteAsync(),
-            "*/15 * * * *",
+            PropertyICalSchedule.SyncCron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         recurringJobManager.AddOrUpdate<GuestCheckInSendJob>(
@@ -180,6 +205,13 @@ public static class RecurringJobsRegistration
             InAppNotificationRetentionJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             InAppNotificationRetentionJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // NF-06: approval queue items pending for >7 days are expired every night.
+        recurringJobManager.AddOrUpdate<ApprovalExpirationJob>(
+            ApprovalExpirationJob.RecurringJobId,
+            job => job.ProcessExpirationsAsync(CancellationToken.None),
+            ApprovalExpirationJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         // CO-06: nightly compliance check of every published property (suspends the ones that lost a requirement).

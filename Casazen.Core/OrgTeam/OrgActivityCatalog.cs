@@ -138,6 +138,9 @@ public static partial class OrgActivityCatalog
             [OrgActivityDetailKeys.FromTier, OrgActivityDetailKeys.ToTier, OrgActivityDetailKeys.Source]),
         new(OrgActivityType.OrgNameChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
         new(OrgActivityType.OrgSlugChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
+        new(OrgActivityType.TierAssigned, OrgActivityArea.Account, OrgActivitySubjectType.Org,
+            [OrgActivityDetailKeys.ToTier], Reserved: true),
+        new(OrgActivityType.OrgSettingsChanged, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
 
         // The mode change of a property (PM-02, written by PropertyModeService since AM-02c). The area is the one of the property,
         // which the service passes (ShortRent is only the default of the catalog).
@@ -150,7 +153,10 @@ public static partial class OrgActivityCatalog
 
         // Reserved: the trusted suppliers of the host.
         new(OrgActivityType.TrustedSupplierAdded, OrgActivityArea.Supplier, OrgActivitySubjectType.Supplier, [], Reserved: true),
-        new(OrgActivityType.TrustedSupplierRemoved, OrgActivityArea.Supplier, OrgActivitySubjectType.Supplier, [], Reserved: true),
+        new(OrgActivityType.TrustedSupplierRemoved, OrgActivityArea.Supplier, OrgActivitySubjectType.Supplier, [], Reserved: false),
+
+        // ConcordatoFacile gift.
+        new(OrgActivityType.AdminGrantedConcordatoFacileGift, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
     ];
 
     /// <summary>Every event the log can record, in the order of the runbook.</summary>

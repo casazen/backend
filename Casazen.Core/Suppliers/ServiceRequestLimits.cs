@@ -46,6 +46,18 @@ public static class ServiceRequestLimits
     /// <summary>Requests the supplier may accept in one batch (<c>POST api/supplier/inbox/accept</c>).</summary>
     public const int MaxBatchAccept = 20;
 
+    /// <summary>Lines of a quote (SP-04b): from one to this many.</summary>
+    public const int MaxQuoteLines = 20;
+
+    /// <summary>Longest label of a line of a quote.</summary>
+    public const int QuoteLineLabelMaxLength = 120;
+
+    /// <summary>Longest note that goes with a quote.</summary>
+    public const int QuoteNoteMaxLength = 500;
+
+    /// <summary>Quote events a request keeps in its trace (the oldest are dropped): enough to tell its story, small enough for a row.</summary>
+    public const int MaxQuoteEvents = 30;
+
     /// <summary>Longest service filter of the inbox (a category code, or a service id).</summary>
     public const int InboxFilterMaxLength = 100;
 }

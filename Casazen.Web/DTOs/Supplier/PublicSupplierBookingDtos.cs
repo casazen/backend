@@ -39,6 +39,14 @@ public class CreatePublicSupplierBookingRequest
     [MaxLength(PublicShowcaseLimits.QuoteMaxOptions)]
     public List<PublicQuoteOptionRequest?>? Options { get; set; }
 
+    /// <summary>
+    /// The slot is an urgent one (SP-04c: <c>startUtc</c> comes from <c>GET …/slots?urgent=true</c>, as in the estimate): the slot is
+    /// judged against the urgent plan under the calendar lock (409 <c>supplier_slot_unavailable</c> when it is not free), the price
+    /// carries the surcharge of the service once, and the supplier reads <c>urgency</c> <c>High</c>. 422 <c>supplier_quote_invalid</c> on
+    /// the field <c>urgent</c> for a service that does not offer urgent requests. Left out or false: the booking as it always was.
+    /// </summary>
+    public bool Urgent { get; set; }
+
     /// <summary>ISTAT code of the comune, when the customer chose it from the official list (<c>GET api/comuni</c>).</summary>
     [MaxLength(10)]
     public string? ComuneIstat { get; set; }
@@ -171,7 +179,8 @@ public static class PublicSupplierBookingMapper
             request.Locale,
             request.PrivacyAccepted,
             request.PrivacyNoticeVersion,
-            consentIp);
+            consentIp,
+            request.Urgent);
 
     public static PublicSupplierBookingHoldResponse ToDto(ShowcaseBookingHoldResult hold) =>
         new() { Id = hold.Id, ExpiresAt = AsUtc(hold.ExpiresAt) };

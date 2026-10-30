@@ -62,13 +62,23 @@ public class PropertiesController(
     /// (<see cref="PropertyResponse"/>), never the entity. <c>?mode=short|long</c> (PM-01) lists the properties in that
     /// rental mode only; without it the list is every property, as it has always been. The plan limit counts them all.
     /// </summary>
+    /// <remarks>
+    /// <c>?view=overview</c> (SR-07a) adds to each short-stay row what the host's list shows: <c>lifecycleStatus</c> (the one
+    /// state), <c>missing[]</c> (what the activation and the listing still lack, worked out by the server with the rules of the
+    /// activation wizard), <c>occupancy30</c> (the Home's last 30 days, for an active property), <c>photoCount</c>,
+    /// <c>coverPhotoUrl</c>, <c>siteVisibility</c> and, for a suspended property, <c>suspensionReasons</c>. A fixed number of
+    /// queries whatever the number of properties. Without <c>view</c> the answer is exactly what it was.
+    /// </remarks>
     /// <param name="mode">Optional rental mode filter: <c>short</c> or <c>long</c> (case-insensitive).</param>
-    /// <response code="400"><c>validation_error</c>: <paramref name="mode"/> names no rental mode.</response>
+    /// <param name="view">Optional: <c>overview</c> for the rows of the host's list. Blank is the same as none.</param>
+    /// <response code="400"><c>validation_error</c>: <paramref name="mode"/> names no rental mode, or <paramref name="view"/> no view.</response>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<PropertyResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<ActionResult<IEnumerable<PropertyResponse>>> GetAll([FromQuery] string? mode = null)
+    public async Task<ActionResult<IEnumerable<PropertyResponse>>> GetAll(
+        [FromQuery] string? mode = null,
+        [FromQuery] string? view = null)
     {
         // Never log the claims or the identity name: they carry email and name (FD-17, A2-32).
         var userId = GetAuthenticatedUserId();
@@ -88,6 +98,16 @@ public class PropertiesController(
             modeFilter = parsedMode;
         }
 
+        // Same for the view: a value that is not a view is a 400, never silently the plain list.
+        var overviewRequested = false;
+        if (!string.IsNullOrWhiteSpace(view))
+        {
+            if (!string.Equals(view.Trim(), OverviewView, StringComparison.OrdinalIgnoreCase))
+                return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "PropertyListViewInvalid");
+
+            overviewRequested = true;
+        }
+
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
         if (orgId is null
             || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
@@ -96,7 +116,40 @@ public class PropertiesController(
         var properties = modeFilter is { } wanted
             ? await propertyService.GetPropertiesAsync(scope, wanted)
             : await propertyService.GetPropertiesAsync(scope);
-        return Ok(properties.Select(PropertyResponse.From).ToList());
+        if (!overviewRequested)
+            return Ok(properties.Select(property => PropertyResponse.From(property)).ToList());
+
+        // The rows the caller's scope reached, and nothing else, are described: the overview never widens the list.
+        var rows = properties.ToList();
+        var overviewService = HttpContext.RequestServices.GetRequiredService<IPropertyOverviewService>();
+        var overviews = await overviewService.DescribeAsync(rows, HttpContext.RequestAborted);
+        return Ok(rows.Select((property, index) => PropertyResponse.From(property, overviews[index])).ToList());
+    }
+
+    /// <summary>
+    /// How many properties the org has and how many its plan allows (SR-07a): the line «Piano: 11 di 50 immobili» at the foot of
+    /// the list and the check before «Aggiungi immobile». The plan's property limit counts every property of the org (short and
+    /// long, paused ones included, deleted ones not), so <c>used</c> is the org's, not the caller's scope. Readable by whoever may read
+    /// properties; it says nothing of the plan's name, the subscription or the billing (<c>GET /api/orgs/me/entitlement</c> does, and
+    /// is for the billing administrator only).
+    /// </summary>
+    /// <response code="200"><c>{ used, max, unlimited, canAdd }</c>: <c>max</c> is null when the plan has no limit.</response>
+    [HttpGet("plan-usage")]
+    [ProducesResponseType(typeof(PlanUsageResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<PlanUsageResponse>> GetPlanUsage(CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, "no_org_context", "NoOrganizationContext");
+
+        var entitlement = await entitlementService.GetEntitlementAsync(orgId.Value, cancellationToken);
+        var unlimited = entitlement.MaxProperties == int.MaxValue;
+        return Ok(new PlanUsageResponse(
+            entitlement.PropertyCount,
+            unlimited ? null : entitlement.MaxProperties,
+            unlimited,
+            entitlement.CanAddProperty));
     }
 
     /// <summary>
@@ -832,9 +885,12 @@ public class PropertiesController(
     /// <param name="id">The unique identifier of the property.</param>
     /// <param name="file">The document file to upload.</param>
     /// <param name="documentType">The document type (e.g. <c>CinCertificate</c>, <c>FloorPlan</c>).</param>
-    /// <returns>The created <see cref="PropertyDocumentDto"/>.</returns>
+    /// <returns>
+    /// The created <see cref="PropertyDocumentDto"/>; for an APE with <c>apeCheck</c> (and <c>apeUnreadFields</c>): a certificate the
+    /// automatic reading could not read whole is stored all the same, and the landlord confirms it by typing its code and class.
+    /// </returns>
     /// <response code="201">Document uploaded successfully.</response>
-    /// <response code="400">Invalid document type value.</response>
+    /// <response code="400">Invalid document type value; for an APE, a file that is not a PDF/JPEG/PNG, unreadable or expired.</response>
     /// <response code="401">The caller is not authenticated.</response>
     /// <response code="403">The caller does not own this property.</response>
     /// <response code="404">No property found with the given <paramref name="id"/>.</response>
@@ -866,15 +922,15 @@ public class PropertiesController(
 
         try
         {
-            var document = await documentService.UploadDocumentAsync(id, file, docType, userId);
-            return CreatedAtAction(nameof(GetDocuments), new { id }, ToDocumentDto(document));
+            var upload = await documentService.UploadDocumentAsync(id, file, docType, userId);
+            return CreatedAtAction(nameof(GetDocuments), new { id }, ToUploadDto(upload));
         }
         catch (ApeComplianceException ex)
         {
             return this.ApiProblem(
-                StatusCodes.Status400BadRequest,
-                ex.Code,
-                ex.Code == ApeComplianceException.InvalidContentCode ? "ApeInvalidContent" : "ApeRequired");
+                ex.IsUnavailable ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status400BadRequest,
+                ex.Code, ex.MessageKey,
+                string.Join(", ", ex.MissingFields.Select(field => HttpContext.RequestServices.GetRequiredService<IStringLocalizer<SharedResources>>()[$"ApeField_{field}"].Value)));
         }
         catch (DomainRuleException ex)
         {
@@ -949,6 +1005,52 @@ public class PropertiesController(
 
         var updated = await documentService.UpdateApeIdentificationAsync(document, request.Code, request.EnergyClass);
         return Ok(ToDocumentDto(updated));
+    }
+
+    /// <summary>
+    /// Reads the code and the energy class of a stored APE again, from the file (OCR) and, for a code the file does not show
+    /// legibly, from the public register of the region (CENED, Lombardy): for an APE uploaded before they were read automatically.
+    /// Fills only what is empty, never a value the landlord typed. The answer is the document with <c>apeCheck</c>,
+    /// <c>apeUnreadFields</c> and <c>apeIdentificationSource</c> (<c>Document</c>, <c>Registry</c>). 422 <c>document_not_ape</c>.
+    /// </summary>
+    /// <response code="200">The document, with what was read.</response>
+    /// <response code="403">The caller may not edit this property.</response>
+    /// <response code="404">Property or document not found.</response>
+    [HttpPost("{id:guid}/documents/{docId:guid}/ape/read")]
+    [Authorize(Policy = CasazenPolicies.SharedPropertyWrite)]
+    public async Task<ActionResult<PropertyDocumentDto>> ReadApeIdentification(Guid id, Guid docId)
+    {
+        var userId = GetAuthenticatedUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var property = await propertyService.GetPropertyAsync(id);
+        if (property == null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "property_not_found", "PropertyNotFound");
+
+        if (!await hostAuthorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), SharedPropertyOperations.Write))
+            return Forbid();
+
+        var document = await documentService.GetDocumentAsync(docId);
+        if (document == null || document.PropertyId != id)
+            return NotFound();
+
+        await AuditPrivilegedAccessIfNeededAsync(userId, id, property.OwnerId, GetUserRoles(), "PropertyDocument.ReadApe");
+
+        return Ok(ToUploadDto(await documentService.ReadApeIdentificationAsync(document)));
+    }
+
+    /// <summary>A document just stored or read again, with what the reading of an APE found (localized names of the data not read).</summary>
+    private PropertyDocumentDto ToUploadDto(PropertyDocumentUpload upload)
+    {
+        var dto = ToDocumentDto(upload.Document);
+        if (upload.ApeCheck is { } check)
+        {
+            dto.ApeCheck = check.Outcome;
+            dto.ApeUnreadFields = [.. check.UnreadFields.Select(field => HttpContext.RequestServices.GetRequiredService<IStringLocalizer<SharedResources>>()[$"ApeField_{field}"].Value)];
+            dto.ApeIdentificationSource = check.CodeSource;
+        }
+        return dto;
     }
 
     /// <summary>
@@ -1076,6 +1178,61 @@ public class PropertiesController(
     // ─── iCal calendars (PC-11: many import feeds per property, URL encrypted) ─────
     // TN-3 on every action: PropertyRead / PropertyWrite policies plus the resource check of the property (404 when
     // it is not visible, e.g. another org; 403 when visible but the operation is not allowed).
+
+    /// <summary>
+    /// The calendars of all the caller's properties in one read (SR-10b): for every active short-rent property of the caller's reach
+    /// (<c>HostScope</c>, AM-03) its import feeds with their state (as <c>GET /api/dashboard/ical-feeds</c>, never the import URL),
+    /// its export link, and how often the feeds are synced. A property with no feed is there with an empty list; a property whose link
+    /// nobody asked for has <c>exportUrl: null</c> (<c>GET .../ical/export-url</c> creates it). Needs <c>property.read</c>, like that
+    /// single read: the export link shows the dates taken to whoever has it, a secret in practice, so the answer is
+    /// <c>private, no-store</c> and the link is never written to a log. A fixed number of queries.
+    /// </summary>
+    [HttpGet("calendar-overview")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(HostCalendarOverviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<HostCalendarOverviewDto>> GetCalendarOverview(
+        [FromServices] IHostDashboardService dashboardService,
+        [FromServices] IStringLocalizer<SharedResources> localizer,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null
+            || await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken) is not { } scope)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        var overview = await dashboardService.GetCalendarOverviewAsync(scope, cancellationToken);
+
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(new HostCalendarOverviewDto
+        {
+            SyncEveryMinutes = PropertyICalSchedule.SyncEveryMinutes,
+            StaleAfterMinutes = PropertyICalSchedule.StaleAfterMinutes,
+            Properties = overview.Properties.Select(property => new HostCalendarOverviewPropertyDto
+            {
+                PropertyId = property.PropertyId,
+                PropertyName = property.PropertyName,
+                ExportUrl = property.ExportToken is { } token ? propertyICalSyncService.BuildExportUrl(token) : null,
+                Feeds = property.Feeds.Select(feed => ToCalendarOverviewFeed(feed, localizer)).ToList(),
+            }).ToList(),
+        });
+    }
+
+    private static HostCalendarOverviewFeedDto ToCalendarOverviewFeed(HostDashboardIcalFeed feed, IStringLocalizer localizer)
+    {
+        var (code, message) = ICalErrorMessages.Describe(feed.LastError, localizer);
+        return new HostCalendarOverviewFeedDto
+        {
+            FeedId = feed.FeedId,
+            Channel = feed.Channel.ToString(),
+            Label = feed.Label,
+            LastImportAt = feed.LastImportAt,
+            LastImportStatus = feed.LastImportStatus?.ToString(),
+            LastErrorCode = code,
+            LastError = message,
+            Syncing = feed.LastImportStatus == PropertyICalImportStatus.Syncing,
+        };
+    }
 
     /// <summary>Export link, block count and import feeds of the property.</summary>
     [HttpGet("{id:guid}/ical/status")]
@@ -1644,6 +1801,9 @@ public class PropertiesController(
 
         return null;
     }
+
+    /// <summary>The value of <c>?view=</c> that adds the state, what is missing and the nights to each row of the list (SR-07a).</summary>
+    internal const string OverviewView = "overview";
 
     /// <summary>403 of a create over the org's plan limit; the frontend branches on it (<c>isPlanLimitError</c>).</summary>
     internal const string PlanLimitReachedCode = "plan_limit_reached";

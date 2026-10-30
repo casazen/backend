@@ -48,8 +48,14 @@ public class PropertyDocument : ITenantOwned
     public string? ApeEnergyClass { get; set; }
 
     /// <summary>Code and energy class are both set.</summary>
-    public bool HasApeIdentification =>
-        !string.IsNullOrWhiteSpace(ApeCode) && !string.IsNullOrWhiteSpace(ApeEnergyClass);
+    public bool HasApeIdentification => IsApeIdentified(ApeCode, ApeEnergyClass);
+
+    /// <summary>
+    /// The rule of <see cref="HasApeIdentification"/> for two values read without the document (a query that selects only the two columns):
+    /// the one rule of the contract (which prints the last APE that has them) and of the review of the draft (which needs one that has them).
+    /// </summary>
+    public static bool IsApeIdentified(string? code, string? energyClass) =>
+        !string.IsNullOrWhiteSpace(code) && !string.IsNullOrWhiteSpace(energyClass);
 }
 
 /// <summary>Lengths of the APE identification (LT-10).</summary>

@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.SiteProfile;
 using Casazen.Core.Validation;
 using Microsoft.EntityFrameworkCore;
 
@@ -159,6 +160,126 @@ public class Property : ITenantOwned
     [MaxLength(1000)]
     public string HouseRules { get; set; } = string.Empty;
 
+    // The fields of the wizard «Aggiungi immobile» (SR-07a). All optional: null = the host never said, which is every property
+    // that existed before them, and nothing reads them to decide a booking, a price or a refund. Only PublishedOnSite changes
+    // what the public site shows, and it starts true, so every property keeps the visibility it has today.
+
+    /// <summary>The kind of accommodation (<see cref="Enums.AccommodationType"/>); null = never chosen.</summary>
+    public AccommodationType? AccommodationType { get; set; }
+
+    /// <summary>Number of beds, <see cref="PropertyHouseRules.MinBeds"/> to <see cref="PropertyHouseRules.MaxBeds"/>; null = not set.</summary>
+    [Range(PropertyHouseRules.MinBeds, PropertyHouseRules.MaxBeds, ErrorMessage = "PropertyBedsRange")]
+    public int? Beds { get; set; }
+
+    /// <summary>Living area in square metres, <see cref="PropertyHouseRules.MinAreaSqm"/> to <see cref="PropertyHouseRules.MaxAreaSqm"/>; null = not set.</summary>
+    [Range(PropertyHouseRules.MinAreaSqm, PropertyHouseRules.MaxAreaSqm, ErrorMessage = "PropertyAreaSqmRange")]
+    public int? AreaSqm { get; set; }
+
+    /// <summary>
+    /// The headline of the listing, at most <see cref="PropertyHouseRules.ListingTitleMaxLength"/> characters, trimmed; null = the
+    /// listing uses the name of the property. The longer text of the listing is <see cref="Description"/>.
+    /// </summary>
+    [MaxLength(PropertyHouseRules.ListingTitleMaxLength)]
+    public string? ListingTitle { get; set; }
+
+    /// <summary>
+    /// The host's switch «Mostra la casa sul sito» (SR-07a, SR-D24): <c>true</c> (the default, and the value of every property
+    /// that existed before the column) = the property is on the booking site as soon as it can be; <c>false</c> = the host hides
+    /// it. It is one of the conditions of <see cref="Casazen.Core.Services.PublicListing.IsPublished"/>, added to the others and
+    /// never instead of them: turning it on publishes nothing that is not activated, and a paused, pending or suspended property
+    /// stays off the site whatever this says.
+    /// </summary>
+    public bool PublishedOnSite { get; set; } = true;
+
+    /// <summary>The earliest time guests can arrive, on the property's clock (<see cref="Timezone"/>); null = not set. Whole minutes.</summary>
+    public TimeOnly? CheckInFrom { get; set; }
+
+    /// <summary>The time by which guests must leave, on the property's clock; null = not set. Whole minutes.</summary>
+    public TimeOnly? CheckOutBy { get; set; }
+
+    /// <summary>What the house rules say about smoking; null = never said. The amenity <see cref="PropertyAmenity.SmokingAllowed"/> follows it.</summary>
+    public SmokingPolicy? SmokingPolicy { get; set; }
+
+    /// <summary>What the house rules say about pets; null = never said. The amenity <see cref="PropertyAmenity.PetFriendly"/> follows it.</summary>
+    public PetsPolicy? PetsPolicy { get; set; }
+
+    /// <summary>What the house rules say about parties and events; null = never said.</summary>
+    public PartiesPolicy? PartiesPolicy { get; set; }
+
+    /// <summary>Quiet hours start, on the property's clock; null = none. Always set together with <see cref="QuietHoursTo"/>. Whole minutes.</summary>
+    public TimeOnly? QuietHoursFrom { get; set; }
+
+    /// <summary>Quiet hours end, on the property's clock; null = none. Always set together with <see cref="QuietHoursFrom"/>. Whole minutes.</summary>
+    public TimeOnly? QuietHoursTo { get; set; }
+
+    /// <summary>
+    /// What the host asks, per night, for each guest beyond the usual number of guests, in euros, 0 to
+    /// <see cref="PropertyHouseRules.MaxExtraGuestFeePerNight"/>; null = extra guests are not accepted. A house rule the
+    /// listing states: the booking site does not add it to the price of a stay (<c>StayPricing</c> does not read it).
+    /// </summary>
+    [Precision(18, 2)]
+    [Range(typeof(decimal), "0", "1000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyExtraGuestFeeRange")]
+    public decimal? ExtraGuestFeePerNight { get; set; }
+
+    // The site profile (DB-11a): optional facts and presentation texts the property page of the booking site shows when the host
+    // filled them in (api/properties/{id}/site-profile). All optional: null = the host never said, which is every property that
+    // existed before them; nothing here is read to decide a booking, a price or a refund, and none can hold an address or an exact
+    // position. The fields of the wizard (SR-07a) above keep their one owner; the public page reads both.
+
+    /// <summary>The floor of the unit, <see cref="SitePropertyProfileLimits.MinFloorLevel"/> to <see cref="SitePropertyProfileLimits.MaxFloorLevel"/>, 0 = ground floor; null = not set.</summary>
+    public int? FloorLevel { get; set; }
+
+    /// <summary>The year the house was last renovated; null = not set. Never in the future.</summary>
+    public int? RenovatedYear { get; set; }
+
+    /// <summary>
+    /// The energy class printed on the APE, <c>A4</c>…<c>G</c>, upper-case; null = the host did not say. Never filled in by the
+    /// system and never guessed (DB-D18): the APE document of the property is private and is not copied here.
+    /// </summary>
+    [MaxLength(SitePropertyProfileLimits.EnergyClassMaxLength)]
+    public string? EnergyClass { get; set; }
+
+    /// <summary>The global energy performance index of the APE, in kWh/m² per year, two decimals; null = not said. Only with an <see cref="EnergyClass"/>.</summary>
+    [Precision(7, 2)]
+    public decimal? EnergyIndex { get; set; }
+
+    /// <summary>What kind of place the house stands in (the local map and the label of the site); null = not set.</summary>
+    public PropertyAreaKind? AreaKind { get; set; }
+
+    /// <summary>The house rules about children: <c>true</c> = children are welcome, <c>false</c> = not suited to them; null = never said.</summary>
+    public bool? ChildrenWelcome { get; set; }
+
+    /// <summary>The latest time guests may arrive, on the property's clock, whole minutes; null = no limit given. The earliest is <see cref="CheckInFrom"/>.</summary>
+    public TimeOnly? CheckInTo { get; set; }
+
+    /// <summary>The video of the house as an embeddable address of YouTube (nocookie) or Vimeo, in its canonical form; null = none. Never uploaded.</summary>
+    [MaxLength(SitePropertyProfileLimits.EmbedUrlMaxLength)]
+    public string? VideoUrl { get; set; }
+
+    /// <summary>The virtual tour (360°) of the house as an embeddable Matterport address, in its canonical form; null = none.</summary>
+    [MaxLength(SitePropertyProfileLimits.EmbedUrlMaxLength)]
+    public string? TourUrl { get; set; }
+
+    /// <summary>
+    /// The texts the host wrote for the page, in Italian and English, and the short lists (the zone, what is near, the notes about the
+    /// floor and the outdoor spaces, how check-in works, a note on the rules, up to three highlights, the safety notes, the labels
+    /// of the site): a <see cref="SitePropertyProfileDocument"/> as JSON; null = nothing written. Read and written only through
+    /// <see cref="SitePropertyProfileJson"/>, never edited by hand.
+    /// </summary>
+    [JsonIgnore]
+    [Column(TypeName = "jsonb")]
+    public string? SiteProfileJson { get; set; }
+
+    /// <summary>
+    /// The alternative text of the photos of the gallery: a JSON map from the URL of a photo to its text in Italian and English
+    /// (and, once known, its width and height); null = none written. Kept in step with <see cref="PhotoUrls"/> by the photo
+    /// service: a photo that leaves the gallery leaves the map.
+    /// </summary>
+    [JsonIgnore]
+    [Column(TypeName = "jsonb")]
+    public string? PhotoAltJson { get; set; }
+
     // Italian regulatory compliance - D.L. 145/2023
     [MaxLength(25)]
     [CinCode]
@@ -190,15 +311,40 @@ public class Property : ITenantOwned
     /// <summary>
     /// Complete for the contract: sheet, parcel, category and income (the subaltern is optional, LT-10).
     /// </summary>
-    public bool HasCadastralData =>
-        !string.IsNullOrWhiteSpace(CadastralSheet)
-        && !string.IsNullOrWhiteSpace(CadastralParcel)
-        && !string.IsNullOrWhiteSpace(CadastralCategory)
-        && CadastralIncome is not null;
+    public bool HasCadastralData => IsCadastralDataComplete(CadastralSheet, CadastralParcel, CadastralCategory, CadastralIncome);
+
+    /// <summary>
+    /// The rule of <see cref="HasCadastralData"/> for four values read without the property (a query that selects only the columns, like the
+    /// list of the long-term properties, LR-07a): the one rule of the contract.
+    /// </summary>
+    public static bool IsCadastralDataComplete(string? sheet, string? parcel, string? category, decimal? income) =>
+        !string.IsNullOrWhiteSpace(sheet)
+        && !string.IsNullOrWhiteSpace(parcel)
+        && !string.IsNullOrWhiteSpace(category)
+        && income is not null;
+
+    /// <summary>
+    /// ISO 3166-1 alpha-2 country code (e.g. "IT", "CH"). Non-null, default IT (ADR-001-R7).
+    /// </summary>
+    [Required, MaxLength(2)]
+    public string Country { get; set; } = "IT";
+
+    /// <summary>
+    /// ISO 4217 currency code (e.g. "EUR", "CHF"). Non-null, default EUR (ADR-001-R7).
+    /// </summary>
+    [Required, MaxLength(3)]
+    public string Currency { get; set; } = "EUR";
 
     // Timezone for booking date handling (IANA timezone ID)
     [MaxLength(50)]
     public string Timezone { get; set; } = "Europe/Rome"; // Default for Italian properties
+
+    /// <summary>
+    /// Swiss municipality code (official BFS number) for properties in Switzerland (Country = 'CH').
+    /// Null for non-Swiss properties. Foreign key to SwissMunicipalities table (ADR-001-R9, NF-02).
+    /// </summary>
+    [MaxLength(10)]
+    public string? SwissMunicipalityCode { get; set; }
 
     [ForeignKey("CancellationPolicy")]
     public Guid? CancellationPolicyId { get; set; }

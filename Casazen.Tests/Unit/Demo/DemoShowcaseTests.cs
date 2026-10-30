@@ -67,6 +67,19 @@ public class DemoShowcaseTests
         var covered = DemoShowcaseCatalog.Properties
             .SelectMany(p => p.Scenarios.Concat(p.Bookings.Select(b => b.Scenario)))
             .Concat(DemoShowcaseCatalog.HostInvites.Select(i => i.Scenario))
+            .Concat(DemoShowcaseCatalog.PropertyOwners.Select(o => o.Scenario))
+            .Concat(DemoShowcaseCatalog.GuestSegments.Select(s => s.Scenario))
+            .Concat(DemoShowcaseCatalog.Campaigns.Select(c => c.Scenario))
+            .Concat(DemoShowcaseCatalog.AgencyInvoices.Select(inv => inv.Scenario))
+            .Concat(DemoShowcaseCatalog.StaffMembers.Select(staff => staff.Scenario))
+            .Concat(DemoShowcaseCatalog.Suppliers.Select(sup => sup.Scenario))
+            .Concat(DemoShowcaseCatalog.CheckIns.Select(ci => ci.Scenario))
+            .Concat(DemoShowcaseCatalog.AlloggiatiReports.Select(ar => ar.Scenario))
+            .Concat(DemoShowcaseCatalog.Statements.Select(st => st.Scenario))
+            .Concat(DemoShowcaseCatalog.WithholdingSummaries.Select(wh => wh.Scenario))
+            .Concat(DemoShowcaseCatalog.F24Records.Select(f24 => f24.Scenario))
+            .Concat(DemoShowcaseCatalog.WireBatches.Select(wb => wb.Scenario))
+            .Concat(DemoShowcaseCatalog.Routines.Select(rt => rt.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));

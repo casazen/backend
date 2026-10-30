@@ -139,6 +139,13 @@ public class Guest : ITenantOwned
     public virtual ICollection<Booking> Bookings { get; set; } = new List<Booking>();
     public virtual ICollection<AlloggiatiWebReport> AlloggiatiWebReports { get; set; } = new List<AlloggiatiWebReport>();
 
+    /// <summary>
+    /// Link to the CRM profile for this guest (NF-23, ADR-021): matched by composite key hash,
+    /// aggregates stays and marketing consent across bookings. Null for existing guests (lazy matching).
+    /// </summary>
+    public Guid? GuestCrmProfileId { get; set; }
+    public virtual GuestCrmProfile? CrmProfile { get; set; }
+
     /// <summary>Copy of this guest for another booking of the same org (the copy keeps <see cref="OrgId"/>).</summary>
     public Guest CreateSnapshot(DateTime now) => new()
     {

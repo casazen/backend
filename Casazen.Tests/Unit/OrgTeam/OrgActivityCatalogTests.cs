@@ -34,11 +34,13 @@ public class OrgActivityCatalogTests
     [InlineData(OrgActivityType.PlanChanged, 20)]
     [InlineData(OrgActivityType.OrgNameChanged, 21)]
     [InlineData(OrgActivityType.OrgSlugChanged, 22)]
+    [InlineData(OrgActivityType.OrgSettingsChanged, 24)]
     [InlineData(OrgActivityType.PropertyModeChangeScheduled, 40)]
     [InlineData(OrgActivityType.PropertyModeChangeCancelled, 41)]
     [InlineData(OrgActivityType.PropertyModeChanged, 42)]
     [InlineData(OrgActivityType.TrustedSupplierAdded, 60)]
     [InlineData(OrgActivityType.TrustedSupplierRemoved, 61)]
+    [InlineData(OrgActivityType.AdminGrantedConcordatoFacileGift, 70)]
     public void Type_TheIntegerOfEveryEvent_IsPinned(OrgActivityType type, int value)
     {
         // The value is what the database holds: reordering or reusing it would rewrite history.
@@ -48,7 +50,7 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Type_EveryEventOfTheEnum_IsPinnedAbove()
     {
-        Assert.Equal(18, Enum.GetValues<OrgActivityType>().Length);
+        Assert.Equal(21, Enum.GetValues<OrgActivityType>().Length);
     }
 
     [Fact]
@@ -78,11 +80,11 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Catalog_TheReservedEvents_AreTheTwoOfTheTrustedSuppliersThatDoNotExistYet()
     {
-        // The three events of the property mode are written since AM-02c (PropertyModeService); the trusted suppliers are not.
+        // The three events of the property mode are written since AM-02c (PropertyModeService); TrustedSupplierRemoved is written since NF-21; TrustedSupplierAdded and TierAssigned (ADR-010) are reserved.
         var reserved = OrgActivityCatalog.All.Where(e => e.Reserved).Select(e => e.Type).Order().ToList();
 
         Assert.Equal(
-            new[] { OrgActivityType.TrustedSupplierAdded, OrgActivityType.TrustedSupplierRemoved }.Order(),
+            new[] { OrgActivityType.TierAssigned, OrgActivityType.TrustedSupplierAdded }.Order(),
             reserved);
     }
 

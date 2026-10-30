@@ -258,6 +258,21 @@
   <data name="Questura_MarkDone" xml:space="preserve">
     <value>Dopo l'invio, segna la comunicazione come fatta nella pagina del contratto, con la data (e, se vuoi, la ricevuta): solo così la voce della checklist risulta completata.</value>
   </data>
+  <data name="LeaseNoticeReminder_Subject" xml:space="preserve">
+    <value>Disdetta del contratto entro il {1} — {0}</value>
+  </data>
+  <data name="LeaseNoticeReminder_Body" xml:space="preserve">
+    <value>Promemoria: l'ultimo giorno utile per dare la disdetta del contratto di locazione per &lt;strong&gt;{0}&lt;/strong&gt; è il &lt;strong&gt;{1}&lt;/strong&gt;. Giorni rimanenti: &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="LeaseNoticeReminder_BodyToday" xml:space="preserve">
+    <value>Promemoria: l'ultimo giorno utile per dare la disdetta del contratto di locazione per &lt;strong&gt;{0}&lt;/strong&gt; è &lt;strong&gt;oggi&lt;/strong&gt;, {1}.</value>
+  </data>
+  <data name="LeaseNoticeReminder_Renewal" xml:space="preserve">
+    <value>Il periodo in corso termina il &lt;strong&gt;{0}&lt;/strong&gt;. Se nessuno dà la disdetta entro l'ultimo giorno utile, il contratto si rinnova da solo per altri &lt;strong&gt;{1} mesi&lt;/strong&gt;.</value>
+  </data>
+  <data name="LeaseNoticeReminder_Responsibility" xml:space="preserve">
+    <value>CasaZen calcola questo giorno dalla fine del periodo in corso: non invia la disdetta al posto tuo e non ne giudica la validità. Controlla il termine di preavviso scritto nel tuo contratto. Bozza da confermare con legale.</value>
+  </data>
   <data name="ServiceCategory_cleaning" xml:space="preserve">
     <value>Pulizie</value>
   </data>
@@ -572,6 +587,12 @@
   </data>
   <data name="Push_NewBooking_Body" xml:space="preserve">
     <value>{0}: dal {1} al {2}, ospiti: {3}.</value>
+  </data>
+  <data name="Push_GuestMessage_Title" xml:space="preserve">
+    <value>Nuovo messaggio da un ospite</value>
+  </data>
+  <data name="Push_GuestMessage_Body" xml:space="preserve">
+    <value>{0}: un ospite ti ha scritto.</value>
   </data>
   <data name="Push_CheckoutReminder_Title" xml:space="preserve">
     <value>Promemoria check-out</value>
@@ -890,6 +911,9 @@
   </data>
   <data name="ServiceRequestExpired_Body" xml:space="preserve">
     <value>La richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; è stata &lt;strong&gt;annullata&lt;/strong&gt;: non hai risposto entro il termine.</value>
+  </data>
+  <data name="ServiceRequestExpired_PointsHint" xml:space="preserve">
+    <value>Le richieste a cui non si risponde in tempo fanno scendere il punteggio di affidabilità: chi risponde puntuale compare più in alto nell'elenco dei fornitori.</value>
   </data>
   <data name="ServiceRequestReminder_Subject" xml:space="preserve">
     <value>Promemoria: richiesta in attesa di risposta — {0}</value>
@@ -1320,6 +1344,24 @@
   <data name="OrgInvitationExpired_Cta" xml:space="preserve">
     <value>Apri Persone e permessi</value>
   </data>
+  <data name="OwnerInvitation_Subject" xml:space="preserve">
+    <value>Invito al portale proprietari di {0}</value>
+  </data>
+  <data name="OwnerInvitation_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="OwnerInvitation_Body" xml:space="preserve">
+    <value>Sei stato invitato ad accedere al portale proprietari di &lt;strong&gt;{0}&lt;/strong&gt; su CasaZen. Potrai visualizzare il calendario delle prenotazioni, i riepiloghi degli incassi e le tue fatture.</value>
+  </data>
+  <data name="OwnerInvitation_Cta" xml:space="preserve">
+    <value>Accetta l'invito</value>
+  </data>
+  <data name="OwnerInvitation_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia e incolla questo link nel browser:</value>
+  </data>
+  <data name="OwnerInvitation_Expires" xml:space="preserve">
+    <value>L'invito scade il &lt;strong&gt;{0}&lt;/strong&gt; (ora italiana).</value>
+  </data>
   <data name="OrgAccessRequest_Subject" xml:space="preserve">
     <value>{0} chiede di accedere a «{1}»</value>
   </data>
@@ -1598,5 +1640,374 @@
   </data>
   <data name="HostReplyToGuest_Why" xml:space="preserve">
     <value>Ricevi questa email perché l'host ti ha risposto. Ne inviamo al massimo una ogni 10 minuti per conversazione.</value>
+  </data>
+  <data name="HostContact_Subject" xml:space="preserve">
+    <value>Nuovo messaggio dal tuo sito di prenotazione</value>
+  </data>
+  <data name="HostContact_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti ha scritto dal tuo sito di prenotazione.</value>
+  </data>
+  <data name="HostContact_Property" xml:space="preserve">
+    <value>Stava guardando la casa &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostContact_PropertyLink" xml:space="preserve">
+    <value>La pagina della casa:</value>
+  </data>
+  <data name="HostContact_MessageLabel" xml:space="preserve">
+    <value>Messaggio</value>
+  </data>
+  <data name="HostContact_Reply" xml:space="preserve">
+    <value>Per rispondere, rispondi a questa email: la risposta arriva direttamente a &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostContact_Lang" xml:space="preserve">
+    <value>Il visitatore stava leggendo il sito in {0}.</value>
+  </data>
+  <data name="HostContact_Lang_it" xml:space="preserve">
+    <value>italiano</value>
+  </data>
+  <data name="HostContact_Lang_en" xml:space="preserve">
+    <value>inglese</value>
+  </data>
+  <data name="HostContact_Why" xml:space="preserve">
+    <value>Ricevi questa email perché il tuo sito di prenotazione ha un modulo per scriverti. Il visitatore ha accettato che il messaggio e il suo indirizzo email ti vengano inviati. Se non ti sembra un contatto vero, ignoralo.</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Subject" xml:space="preserve">
+    <value>Nuova foto richiesta per il tuo soggiorno — {0}</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Body" xml:space="preserve">
+    <value>Per il tuo soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt; con check-in il &lt;strong&gt;{1}&lt;/strong&gt;, abbiamo bisogno di una nuova foto selfie per completare la verifica.</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Action" xml:space="preserve">
+    <value>Clicca il link qui sotto per completare il check-in:</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Cta" xml:space="preserve">
+    <value>Completa il check-in</value>
+  </data>
+  <data name="GuestNewPhotoRequest_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="VerificationRequired_Subject" xml:space="preserve">
+    <value>Verifica biometrica richiesta — {0}</value>
+  </data>
+  <data name="VerificationRequired_Body" xml:space="preserve">
+    <value>La prenotazione di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; con check-in il {2:dd/MM/yyyy} richiede verifica manuale.</value>
+  </data>
+  <data name="VerificationRequired_Action" xml:space="preserve">
+    <value>Apri la coda di verifica in CasaZen per approvare o rifiutare la prenotazione.</value>
+  </data>
+  <data name="VerificationRequiredPush_Title" xml:space="preserve">
+    <value>Verifica manuale richiesta</value>
+  </data>
+  <data name="VerificationRequiredPush_Body" xml:space="preserve">
+    <value>La prenotazione di {0} a {1} richiede verifica manuale.</value>
+  </data>
+  <data name="SupplierInquiryVerification_Subject" xml:space="preserve">
+    <value>Conferma la tua richiesta a {0}</value>
+  </data>
+  <data name="SupplierInquiryVerification_Body" xml:space="preserve">
+    <value>Hai scritto a &lt;strong&gt;{0}&lt;/strong&gt; per una richiesta su misura. Conferma il tuo indirizzo email per inviarla: finché non lo fai, il fornitore non riceve nulla.</value>
+  </data>
+  <data name="SupplierInquiryVerification_Valid" xml:space="preserve">
+    <value>Il link funziona per {0} minuti. Dopo, potrai rifare la richiesta.</value>
+  </data>
+  <data name="SupplierInquiryVerification_Cta" xml:space="preserve">
+    <value>Conferma e invia la richiesta</value>
+  </data>
+  <data name="SupplierInquiryVerification_Ignore" xml:space="preserve">
+    <value>Se non hai fatto tu questa richiesta, ignora questo messaggio: non succede nulla.</value>
+  </data>
+  <data name="SupplierInquiryReceipt_Subject" xml:space="preserve">
+    <value>Richiesta inviata a {0}</value>
+  </data>
+  <data name="SupplierInquiryReceipt_Body" xml:space="preserve">
+    <value>Abbiamo inviato la tua richiesta a &lt;strong&gt;{0}&lt;/strong&gt;. La conversazione con il fornitore è nella pagina della richiesta.</value>
+  </data>
+  <data name="SupplierInquiryReceipt_Deadline" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha tempo fino alle &lt;strong&gt;{1}&lt;/strong&gt; per risponderti. Se non lo fa, la richiesta si chiude e te lo diciamo.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Subject" xml:space="preserve">
+    <value>Nuova richiesta su misura — {0}</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Body" xml:space="preserve">
+    <value>Hai ricevuto una richiesta su misura a &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Service" xml:space="preserve">
+    <value>Riguarda: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Deadline" xml:space="preserve">
+    <value>Rispondi entro le &lt;strong&gt;{0}&lt;/strong&gt;: dopo quell'ora la richiesta si chiude da sola. Il tuo primo messaggio ferma il conto.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Hint" xml:space="preserve">
+    <value>Leggi la richiesta e rispondi dalla console. Il nome completo e i contatti del cliente si vedono quando prendi in carico la richiesta.</value>
+  </data>
+  <data name="GuestBookingCancelled_BodyByGuest" xml:space="preserve">
+    <value>la tua prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt; è stata annullata, come hai chiesto.</value>
+  </data>
+  <data name="GuestBookingCancelled_RefundTimingByGuest" xml:space="preserve">
+    <value>Di solito l'accredito compare entro 5-10 giorni, ma dipende dalla tua banca o dall'emittente della carta.</value>
+  </data>
+  <data name="GuestBookingCancelled_Retained" xml:space="preserve">
+    <value>Come previsto dalla politica di cancellazione della struttura, &lt;strong&gt;{0} €&lt;/strong&gt; non vengono rimborsati.</value>
+  </data>
+  <data name="GuestBookingCancelled_NotYou" xml:space="preserve">
+    <value>Se non sei stato tu ad annullarla, scrivi subito all'host.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Subject" xml:space="preserve">
+    <value>Prenotazione annullata dall'ospite - {0} (arrivo {1})</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Body" xml:space="preserve">
+    <value>{0} ha annullato la prenotazione presso &lt;strong&gt;{1}&lt;/strong&gt; dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt; (dall'area ospite o con il link di annullamento che hai inviato).</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Dates" xml:space="preserve">
+    <value>Le date sono di nuovo disponibili sul sito di prenotazione e nel calendario esportato verso le OTA.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Refund" xml:space="preserve">
+    <value>Rimborso all'ospite, come previsto dalla politica di cancellazione: &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Retained" xml:space="preserve">
+    <value>Importo che resta a te: &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestBackupInvited_Subject" xml:space="preserve">
+    <value>Richiesta come fornitore di riserva — {0}</value>
+  </data>
+  <data name="ServiceRequestBackupInvited_Body" xml:space="preserve">
+    <value>Hai ricevuto una richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; come &lt;strong&gt;fornitore di riserva&lt;/strong&gt;: il cliente l'ha mandata anche al fornitore che ha scelto, che ha tempo fino a &lt;strong&gt;{2}&lt;/strong&gt; per accettarla. Il lavoro sarà tuo solo se quel fornitore non accetta.</value>
+  </data>
+  <data name="ServiceRequestBackupInvited_Hint" xml:space="preserve">
+    <value>Puoi dire subito che accetti come riserva: la prima riserva che accetta chiude la gara (le altre non possono più accettare) e il suo orario viene riservato in agenda; se il fornitore principale non accetta, il lavoro va a lei. Finché non accetti, il tuo calendario non è occupato. L'indirizzo, il nome dell'immobile e le note dell'host si vedono dopo che il lavoro è tuo.</value>
+  </data>
+  <data name="ServiceRequestBackupActive_Subject" xml:space="preserve">
+    <value>Ora puoi accettare la richiesta — {0}</value>
+  </data>
+  <data name="ServiceRequestBackupActive_Body" xml:space="preserve">
+    <value>Il fornitore principale non ha preso in carico la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;. Ora puoi accettarla tu come riserva: il primo che accetta ha il lavoro. Hai tempo fino a &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestBackupWon_Subject" xml:space="preserve">
+    <value>Il lavoro è tuo — {0}</value>
+  </data>
+  <data name="ServiceRequestBackupWon_Body" xml:space="preserve">
+    <value>Il fornitore principale non ha preso in carico la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: come avevi accettato, il lavoro è &lt;strong&gt;tuo&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestBackupWon_Hint" xml:space="preserve">
+    <value>Trovi l'indirizzo e i contatti dell'host nella console. Se non puoi più farlo, annulla la richiesta dalla console prima che inizi il lavoro.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_Subject" xml:space="preserve">
+    <value>Richiesta di riserva chiusa — {0}</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_PrimaryTookIt_Body" xml:space="preserve">
+    <value>Il fornitore principale ha accettato la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: la tua richiesta di riserva è chiusa.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_TakenByBackup_Body" xml:space="preserve">
+    <value>Un'altra riserva ha accettato prima di te la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: la richiesta è chiusa.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_RequestCancelledByHost_Body" xml:space="preserve">
+    <value>La richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; è stata annullata: non c'è più un lavoro da prendere.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_SlotUnavailable_Body" xml:space="preserve">
+    <value>Il lavoro di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; doveva passare a te, ma l'orario non risultava più libero nella tua agenda: la tua richiesta di riserva si chiude.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_RaceClosed_Body" xml:space="preserve">
+    <value>Un'altra riserva ha già accettato la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: la gara è chiusa e la tua richiesta di riserva si chiude qui. Non c'è nessuna penalità per te.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_ReleasedByPrimary_Body" xml:space="preserve">
+    <value>Il fornitore principale ha accettato la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: la tua disponibilità come riserva non serve più. L'orario che avevi riservato in agenda è di nuovo libero e non c'è nessuna penalità per te.</value>
+  </data>
+  <data name="ServiceRequestTakenByBackup_Subject" xml:space="preserve">
+    <value>Richiesta fornitore presa in carico da una riserva — {0}</value>
+  </data>
+  <data name="ServiceRequestTakenByBackup_Body" xml:space="preserve">
+    <value>Il fornitore che avevi scelto non ha risposto in tempo: la richiesta di &lt;strong&gt;{0}&lt;/strong&gt; per &lt;strong&gt;{1}&lt;/strong&gt; è stata &lt;strong&gt;presa in carico da {2}&lt;/strong&gt;, che era stato avvisato come riserva.</value>
+  </data>
+  <data name="ServiceRequestTakenByBackup_Hint" xml:space="preserve">
+    <value>Non devi fare nulla: la richiesta prosegue come sempre e il fornitore principale è stato avvisato che non ha risposto in tempo.</value>
+  </data>
+  <data name="Push_ServiceRequestBackupInvited_Title" xml:space="preserve">
+    <value>Richiesta come riserva</value>
+  </data>
+  <data name="Push_ServiceRequestBackupInvited_Body" xml:space="preserve">
+    <value>{0} a {1}: sei una riserva, il lavoro è tuo solo se il fornitore principale non accetta.</value>
+  </data>
+  <data name="Push_ServiceRequestBackupActive_Title" xml:space="preserve">
+    <value>Ora puoi accettare</value>
+  </data>
+  <data name="Push_ServiceRequestBackupActive_Body" xml:space="preserve">
+    <value>{0} a {1}: il fornitore principale non ha risposto, il primo che accetta ha il lavoro.</value>
+  </data>
+  <data name="Push_ServiceRequestBackupWon_Title" xml:space="preserve">
+    <value>Il lavoro è tuo</value>
+  </data>
+  <data name="Push_ServiceRequestBackupWon_Body" xml:space="preserve">
+    <value>{0} a {1}: il fornitore principale non ha risposto e il lavoro è passato a te.</value>
+  </data>
+  <data name="Push_ServiceRequestBackupClosed_Title" xml:space="preserve">
+    <value>Richiesta di riserva chiusa</value>
+  </data>
+  <data name="Push_ServiceRequestBackupClosed_Body" xml:space="preserve">
+    <value>{0} a {1}: la richiesta di riserva è chiusa.</value>
+  </data>
+  <data name="Push_ServiceRequestTakenByBackup_Title" xml:space="preserve">
+    <value>Richiesta presa in carico da una riserva</value>
+  </data>
+  <data name="Push_ServiceRequestTakenByBackup_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore principale non ha risposto, l'ha presa in carico {2}.</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_Subject" xml:space="preserve">
+    <value>{0} ti ha inviato un preventivo</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha risposto alla tua richiesta di &lt;strong&gt;{1}&lt;/strong&gt; con un preventivo di &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_Lines" xml:space="preserve">
+    <value>Le voci del preventivo:</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_When" xml:space="preserve">
+    <value>Orario del lavoro: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_NoteLabel" xml:space="preserve">
+    <value>Il messaggio del fornitore:</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_Hint" xml:space="preserve">
+    <value>L'orario non è riservato finché non accetti il preventivo.</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_Deadline" xml:space="preserve">
+    <value>Rispondi entro le &lt;strong&gt;{0}&lt;/strong&gt;: se non lo fai, la richiesta si annulla.</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_Cta" xml:space="preserve">
+    <value>Vedi il preventivo</value>
+  </data>
+  <data name="ServiceRequestQuoteAccepted_Subject" xml:space="preserve">
+    <value>Preventivo accettato — {0}</value>
+  </data>
+  <data name="ServiceRequestQuoteAccepted_Body" xml:space="preserve">
+    <value>Il cliente ha &lt;strong&gt;accettato&lt;/strong&gt; il tuo preventivo di &lt;strong&gt;{2}&lt;/strong&gt; per &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: la richiesta è tua.</value>
+  </data>
+  <data name="ServiceRequestQuoteAccepted_When" xml:space="preserve">
+    <value>Orario del lavoro: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestQuoteRejected_Subject" xml:space="preserve">
+    <value>Preventivo non accettato — {0}</value>
+  </data>
+  <data name="ServiceRequestQuoteRejected_Body" xml:space="preserve">
+    <value>Il cliente non ha accettato il tuo preventivo per &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;. La richiesta aspetta di nuovo la tua risposta: puoi inviare un altro preventivo, proporre un altro orario o rifiutarla.</value>
+  </data>
+  <data name="ServiceRequestQuoteAnswered_Cta" xml:space="preserve">
+    <value>Apri la richiesta</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired_Subject" xml:space="preserve">
+    <value>Richiesta a {0} annullata: preventivo senza risposta</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti aveva inviato un preventivo per &lt;strong&gt;{1}&lt;/strong&gt; (richiesto per &lt;strong&gt;{2}&lt;/strong&gt;), ma non hai risposto in tempo: abbiamo annullato la richiesta.</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired_Hint" xml:space="preserve">
+    <value>Non hai pagato nulla. Puoi prenotare di nuovo.</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired_Cta" xml:space="preserve">
+    <value>Prenota di nuovo</value>
+  </data>
+  <data name="SupplierBookingQuoteLapsed_Subject" xml:space="preserve">
+    <value>Preventivo senza risposta — {0}</value>
+  </data>
+  <data name="SupplierBookingQuoteLapsed_Body" xml:space="preserve">
+    <value>Il cliente non ha risposto in tempo al tuo preventivo per &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;: abbiamo &lt;strong&gt;annullato&lt;/strong&gt; la richiesta, che non occupa più l'orario.</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteSent_Title" xml:space="preserve">
+    <value>Preventivo ricevuto</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteSent_Body" xml:space="preserve">
+    <value>{0} presso {1}: il fornitore ha inviato un preventivo. Accettalo o rifiutalo.</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteAccepted_Title" xml:space="preserve">
+    <value>Preventivo accettato</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteAccepted_Body" xml:space="preserve">
+    <value>{0} a {1}: la richiesta è tua.</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteRejected_Title" xml:space="preserve">
+    <value>Preventivo non accettato</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteRejected_Body" xml:space="preserve">
+    <value>{0} a {1}: puoi inviare un altro preventivo.</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteExpired_Title" xml:space="preserve">
+    <value>Preventivo senza risposta</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteExpired_Body" xml:space="preserve">
+    <value>{0} a {1}: il cliente non ha risposto, la richiesta è annullata.</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Subject" xml:space="preserve">
+    <value>Domani: {0} a {1}</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Body" xml:space="preserve">
+    <value>Ti ricordiamo il lavoro di domani: &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestDayBefore_When" xml:space="preserve">
+    <value>Quando: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Hint" xml:space="preserve">
+    <value>L'indirizzo e i contatti del cliente sono nella richiesta, nella tua console.</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Cta" xml:space="preserve">
+    <value>Apri la richiesta</value>
+  </data>
+  <data name="Push_ServiceRequestDayBefore_Title" xml:space="preserve">
+    <value>Domani hai un lavoro</value>
+  </data>
+  <data name="Push_ServiceRequestDayBefore_Body" xml:space="preserve">
+    <value>{0} a {1}, alle {2}.</value>
+  </data>
+  <data name="Push_ServicePaymentReceived_Title" xml:space="preserve">
+    <value>Pagamento ricevuto</value>
+  </data>
+  <data name="Push_ServicePaymentReceived_Body" xml:space="preserve">
+    <value>{0}: {1} netti per te, prima delle commissioni di Stripe.</value>
+  </data>
+  <data name="SupplierInquiryReply_Subject" xml:space="preserve">
+    <value>{0} ti ha risposto</value>
+  </data>
+  <data name="SupplierInquiryReply_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha risposto alla tua richiesta. Leggi il messaggio e continua la conversazione nella pagina della richiesta.</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Subject" xml:space="preserve">
+    <value>{0} non può occuparsi della tua richiesta</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; non può occuparsi della tua richiesta.</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Hint" xml:space="preserve">
+    <value>Non hai pagato nulla. Puoi chiedere a un altro fornitore.</value>
+  </data>
+  <data name="SupplierInquiryExpired_Subject" xml:space="preserve">
+    <value>La tua richiesta a {0} si è chiusa</value>
+  </data>
+  <data name="SupplierInquiryExpired_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; non ha risposto in tempo alla tua richiesta, quindi l'abbiamo chiusa.</value>
+  </data>
+  <data name="SupplierInquiryExpired_Hint" xml:space="preserve">
+    <value>Non hai pagato nulla. Puoi scrivere di nuovo o chiedere a un altro fornitore.</value>
+  </data>
+  <data name="SupplierInquiryClosed_Cta" xml:space="preserve">
+    <value>Vai alla pagina del fornitore</value>
+  </data>
+  <data name="SupplierInquiryMessage_Subject" xml:space="preserve">
+    <value>Nuovo messaggio dal cliente — {0}</value>
+  </data>
+  <data name="SupplierInquiryMessage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti ha scritto nella richiesta su misura a &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryMessage_Hint" xml:space="preserve">
+    <value>Leggi il messaggio e rispondi dalla console: il testo non è in questa email.</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Subject" xml:space="preserve">
+    <value>Richiesta chiusa dal cliente — {0}</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha chiuso la richiesta su misura a &lt;strong&gt;{1}&lt;/strong&gt;: non serve più rispondere.</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Hint" xml:space="preserve">
+    <value>La conversazione resta leggibile nella console.</value>
   </data>
 </root>

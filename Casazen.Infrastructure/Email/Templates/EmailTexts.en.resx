@@ -258,6 +258,21 @@
   <data name="Questura_MarkDone" xml:space="preserve">
     <value>Once sent, mark the communication as done on the lease page, with its date (and, if you wish, the receipt): only then the checklist item is completed.</value>
   </data>
+  <data name="LeaseNoticeReminder_Subject" xml:space="preserve">
+    <value>Lease notice due by {1} — {0}</value>
+  </data>
+  <data name="LeaseNoticeReminder_Body" xml:space="preserve">
+    <value>Reminder: the last useful day to give notice of the lease for &lt;strong&gt;{0}&lt;/strong&gt; is &lt;strong&gt;{1}&lt;/strong&gt;. Days remaining: &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="LeaseNoticeReminder_BodyToday" xml:space="preserve">
+    <value>Reminder: the last useful day to give notice of the lease for &lt;strong&gt;{0}&lt;/strong&gt; is &lt;strong&gt;today&lt;/strong&gt;, {1}.</value>
+  </data>
+  <data name="LeaseNoticeReminder_Renewal" xml:space="preserve">
+    <value>The current period ends on &lt;strong&gt;{0}&lt;/strong&gt;. If nobody gives notice by the last useful day, the lease renews by itself for another &lt;strong&gt;{1} months&lt;/strong&gt;.</value>
+  </data>
+  <data name="LeaseNoticeReminder_Responsibility" xml:space="preserve">
+    <value>CasaZen works this day out from the end of the current period: it does not send the notice for you and does not judge whether it is valid. Check the notice period written in your contract. Draft wording pending counsel.</value>
+  </data>
   <data name="ServiceCategory_cleaning" xml:space="preserve">
     <value>Cleaning</value>
   </data>
@@ -572,6 +587,12 @@
   </data>
   <data name="Push_NewBooking_Body" xml:space="preserve">
     <value>{0}: from {1} to {2}, guests: {3}.</value>
+  </data>
+  <data name="Push_GuestMessage_Title" xml:space="preserve">
+    <value>New message from a guest</value>
+  </data>
+  <data name="Push_GuestMessage_Body" xml:space="preserve">
+    <value>{0}: a guest wrote to you.</value>
   </data>
   <data name="Push_CheckoutReminder_Title" xml:space="preserve">
     <value>Check-out reminder</value>
@@ -890,6 +911,9 @@
   </data>
   <data name="ServiceRequestExpired_Body" xml:space="preserve">
     <value>The &lt;strong&gt;{0}&lt;/strong&gt; request in &lt;strong&gt;{1}&lt;/strong&gt; was &lt;strong&gt;cancelled&lt;/strong&gt;: you did not answer in time.</value>
+  </data>
+  <data name="ServiceRequestExpired_PointsHint" xml:space="preserve">
+    <value>Requests that are not answered in time lower your reliability score: suppliers who answer promptly are listed higher.</value>
   </data>
   <data name="ServiceRequestReminder_Subject" xml:space="preserve">
     <value>Reminder: request waiting for your answer — {0}</value>
@@ -1320,6 +1344,24 @@
   <data name="OrgInvitationExpired_Cta" xml:space="preserve">
     <value>Open People and permissions</value>
   </data>
+  <data name="OwnerInvitation_Subject" xml:space="preserve">
+    <value>Invitation to {0}'s owner portal</value>
+  </data>
+  <data name="OwnerInvitation_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="OwnerInvitation_Body" xml:space="preserve">
+    <value>You have been invited to access the owner portal of &lt;strong&gt;{0}&lt;/strong&gt; on CasaZen. You will be able to view your booking calendar, revenue summaries, and invoices.</value>
+  </data>
+  <data name="OwnerInvitation_Cta" xml:space="preserve">
+    <value>Accept invitation</value>
+  </data>
+  <data name="OwnerInvitation_LinkFallback" xml:space="preserve">
+    <value>If the button doesn't work, copy and paste this link into your browser:</value>
+  </data>
+  <data name="OwnerInvitation_Expires" xml:space="preserve">
+    <value>The invitation expires on &lt;strong&gt;{0}&lt;/strong&gt; (Italian time).</value>
+  </data>
   <data name="OrgAccessRequest_Subject" xml:space="preserve">
     <value>{0} asks for access to "{1}"</value>
   </data>
@@ -1598,5 +1640,374 @@
   </data>
   <data name="HostReplyToGuest_Why" xml:space="preserve">
     <value>You receive this email because the host replied to you. We send at most one every 10 minutes per conversation.</value>
+  </data>
+  <data name="HostContact_Subject" xml:space="preserve">
+    <value>New message from your booking site</value>
+  </data>
+  <data name="HostContact_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; wrote to you from your booking site.</value>
+  </data>
+  <data name="HostContact_Property" xml:space="preserve">
+    <value>They were looking at &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostContact_PropertyLink" xml:space="preserve">
+    <value>The page of the property:</value>
+  </data>
+  <data name="HostContact_MessageLabel" xml:space="preserve">
+    <value>Message</value>
+  </data>
+  <data name="HostContact_Reply" xml:space="preserve">
+    <value>To answer, reply to this email: your reply goes straight to &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostContact_Lang" xml:space="preserve">
+    <value>The visitor was reading the site in {0}.</value>
+  </data>
+  <data name="HostContact_Lang_it" xml:space="preserve">
+    <value>Italian</value>
+  </data>
+  <data name="HostContact_Lang_en" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="HostContact_Why" xml:space="preserve">
+    <value>You receive this email because your booking site has a form to write to you. The visitor agreed that the message and their email address are sent to you. If it does not look like a real contact, ignore it.</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Subject" xml:space="preserve">
+    <value>New photo requested for your stay — {0}</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Body" xml:space="preserve">
+    <value>For your stay at &lt;strong&gt;{0}&lt;/strong&gt; checking in on &lt;strong&gt;{1}&lt;/strong&gt;, we need a new selfie photo to complete verification.</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Action" xml:space="preserve">
+    <value>Click the link below to complete check-in:</value>
+  </data>
+  <data name="GuestNewPhotoRequest_Cta" xml:space="preserve">
+    <value>Complete check-in</value>
+  </data>
+  <data name="GuestNewPhotoRequest_LinkFallback" xml:space="preserve">
+    <value>If the button doesn't work, copy this link into your browser:</value>
+  </data>
+  <data name="VerificationRequired_Subject" xml:space="preserve">
+    <value>Biometric verification required — {0}</value>
+  </data>
+  <data name="VerificationRequired_Body" xml:space="preserve">
+    <value>The booking of &lt;strong&gt;{0}&lt;/strong&gt; at &lt;strong&gt;{1}&lt;/strong&gt; checking in on {2:d MMMM yyyy} requires manual verification.</value>
+  </data>
+  <data name="VerificationRequired_Action" xml:space="preserve">
+    <value>Open the verification queue in CasaZen to approve or reject the booking.</value>
+  </data>
+  <data name="VerificationRequiredPush_Title" xml:space="preserve">
+    <value>Manual verification required</value>
+  </data>
+  <data name="VerificationRequiredPush_Body" xml:space="preserve">
+    <value>The booking of {0} at {1} requires manual verification.</value>
+  </data>
+  <data name="SupplierInquiryVerification_Subject" xml:space="preserve">
+    <value>Confirm your request to {0}</value>
+  </data>
+  <data name="SupplierInquiryVerification_Body" xml:space="preserve">
+    <value>You wrote to &lt;strong&gt;{0}&lt;/strong&gt; with a request on measure. Confirm your email address to send it: until you do, the supplier receives nothing.</value>
+  </data>
+  <data name="SupplierInquiryVerification_Valid" xml:space="preserve">
+    <value>The link works for {0} minutes. After that you can make the request again.</value>
+  </data>
+  <data name="SupplierInquiryVerification_Cta" xml:space="preserve">
+    <value>Confirm and send the request</value>
+  </data>
+  <data name="SupplierInquiryVerification_Ignore" xml:space="preserve">
+    <value>If you did not make this request, ignore this message: nothing happens.</value>
+  </data>
+  <data name="SupplierInquiryReceipt_Subject" xml:space="preserve">
+    <value>Request sent to {0}</value>
+  </data>
+  <data name="SupplierInquiryReceipt_Body" xml:space="preserve">
+    <value>We have sent your request to &lt;strong&gt;{0}&lt;/strong&gt;. The conversation with the supplier is on the page of the request.</value>
+  </data>
+  <data name="SupplierInquiryReceipt_Deadline" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; has until &lt;strong&gt;{1}&lt;/strong&gt; to answer you. If it does not, the request is closed and we tell you.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Subject" xml:space="preserve">
+    <value>New request on measure — {0}</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Body" xml:space="preserve">
+    <value>You have received a request on measure in &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Service" xml:space="preserve">
+    <value>It is about: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Deadline" xml:space="preserve">
+    <value>Answer by &lt;strong&gt;{0}&lt;/strong&gt;: after that time the request is closed automatically. Your first message stops the clock.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Hint" xml:space="preserve">
+    <value>Read the request and reply from the console. The customer's full name and contacts are shown once you take the request.</value>
+  </data>
+  <data name="GuestBookingCancelled_BodyByGuest" xml:space="preserve">
+    <value>your booking at &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt; has been cancelled, as you asked.</value>
+  </data>
+  <data name="GuestBookingCancelled_RefundTimingByGuest" xml:space="preserve">
+    <value>The credit usually shows within 5-10 days, but it depends on your bank or card issuer.</value>
+  </data>
+  <data name="GuestBookingCancelled_Retained" xml:space="preserve">
+    <value>As set by the cancellation policy of the property, &lt;strong&gt;€{0}&lt;/strong&gt; is not refunded.</value>
+  </data>
+  <data name="GuestBookingCancelled_NotYou" xml:space="preserve">
+    <value>If it was not you who cancelled it, write to the host right away.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Subject" xml:space="preserve">
+    <value>Booking cancelled by the guest - {0} (arrival {1})</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Body" xml:space="preserve">
+    <value>{0} cancelled the booking at &lt;strong&gt;{1}&lt;/strong&gt; from &lt;strong&gt;{2}&lt;/strong&gt; to &lt;strong&gt;{3}&lt;/strong&gt; (from the guest area or with the cancellation link you sent).</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Dates" xml:space="preserve">
+    <value>The dates are available again on the booking site and in the calendar exported to the OTAs.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Refund" xml:space="preserve">
+    <value>Refund to the guest, as set by the cancellation policy: &lt;strong&gt;€{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Retained" xml:space="preserve">
+    <value>Amount that stays with you: &lt;strong&gt;€{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestBackupInvited_Subject" xml:space="preserve">
+    <value>Request as a backup supplier — {0}</value>
+  </data>
+  <data name="ServiceRequestBackupInvited_Body" xml:space="preserve">
+    <value>You received a request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; as a &lt;strong&gt;backup supplier&lt;/strong&gt;: the customer also sent it to the supplier they chose, who has until &lt;strong&gt;{2}&lt;/strong&gt; to accept it. The job will be yours only if that supplier does not accept.</value>
+  </data>
+  <data name="ServiceRequestBackupInvited_Hint" xml:space="preserve">
+    <value>You can say now that you accept as a backup: the first backup that accepts closes the race (the others can no longer accept) and its time is set aside in its calendar; if the main supplier does not accept, the job goes to it. Your calendar stays free until you accept. The address, the property name and the host's notes are shown once the job is yours.</value>
+  </data>
+  <data name="ServiceRequestBackupActive_Subject" xml:space="preserve">
+    <value>You can accept the request now — {0}</value>
+  </data>
+  <data name="ServiceRequestBackupActive_Body" xml:space="preserve">
+    <value>The main supplier did not take the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;. You can now accept it as a backup: the first to accept gets the job. You have until &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestBackupWon_Subject" xml:space="preserve">
+    <value>The job is yours — {0}</value>
+  </data>
+  <data name="ServiceRequestBackupWon_Body" xml:space="preserve">
+    <value>The main supplier did not take the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;: as you had accepted, the job is &lt;strong&gt;yours&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestBackupWon_Hint" xml:space="preserve">
+    <value>You find the address and the host's contact in the console. If you can no longer do it, cancel the request from the console before the work starts.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_Subject" xml:space="preserve">
+    <value>Backup request closed — {0}</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_PrimaryTookIt_Body" xml:space="preserve">
+    <value>The main supplier accepted the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;: your backup request is closed.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_TakenByBackup_Body" xml:space="preserve">
+    <value>Another backup accepted the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; before you: the request is closed.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_RequestCancelledByHost_Body" xml:space="preserve">
+    <value>The request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; was cancelled: there is no job left to take.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_SlotUnavailable_Body" xml:space="preserve">
+    <value>The job for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; was to go to you, but the time was no longer free in your calendar: your backup request is closed.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_RaceClosed_Body" xml:space="preserve">
+    <value>Another backup supplier has already accepted the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;: the race is over and your backup request ends here. There is no penalty for you.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_ReleasedByPrimary_Body" xml:space="preserve">
+    <value>The main supplier accepted the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;: your availability as a backup is no longer needed. The time you had set aside in your calendar is free again and there is no penalty for you.</value>
+  </data>
+  <data name="ServiceRequestTakenByBackup_Subject" xml:space="preserve">
+    <value>Supplier request taken by a backup — {0}</value>
+  </data>
+  <data name="ServiceRequestTakenByBackup_Body" xml:space="preserve">
+    <value>The supplier you chose did not answer in time: the request for &lt;strong&gt;{0}&lt;/strong&gt; for &lt;strong&gt;{1}&lt;/strong&gt; was &lt;strong&gt;taken by {2}&lt;/strong&gt;, who had been told they were a backup.</value>
+  </data>
+  <data name="ServiceRequestTakenByBackup_Hint" xml:space="preserve">
+    <value>You do not need to do anything: the request goes on as usual and the main supplier was told that it did not answer in time.</value>
+  </data>
+  <data name="Push_ServiceRequestBackupInvited_Title" xml:space="preserve">
+    <value>Request as a backup</value>
+  </data>
+  <data name="Push_ServiceRequestBackupInvited_Body" xml:space="preserve">
+    <value>{0} in {1}: you are a backup, the job is yours only if the main supplier does not accept.</value>
+  </data>
+  <data name="Push_ServiceRequestBackupActive_Title" xml:space="preserve">
+    <value>You can accept now</value>
+  </data>
+  <data name="Push_ServiceRequestBackupActive_Body" xml:space="preserve">
+    <value>{0} in {1}: the main supplier did not answer, the first to accept gets the job.</value>
+  </data>
+  <data name="Push_ServiceRequestBackupWon_Title" xml:space="preserve">
+    <value>The job is yours</value>
+  </data>
+  <data name="Push_ServiceRequestBackupWon_Body" xml:space="preserve">
+    <value>{0} in {1}: the main supplier did not answer and the job went to you.</value>
+  </data>
+  <data name="Push_ServiceRequestBackupClosed_Title" xml:space="preserve">
+    <value>Backup request closed</value>
+  </data>
+  <data name="Push_ServiceRequestBackupClosed_Body" xml:space="preserve">
+    <value>{0} in {1}: the backup request is closed.</value>
+  </data>
+  <data name="Push_ServiceRequestTakenByBackup_Title" xml:space="preserve">
+    <value>Request taken by a backup</value>
+  </data>
+  <data name="Push_ServiceRequestTakenByBackup_Body" xml:space="preserve">
+    <value>{0} at {1}: the main supplier did not answer, {2} took it.</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_Subject" xml:space="preserve">
+    <value>{0} sent you a quote</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; answered your request for &lt;strong&gt;{1}&lt;/strong&gt; with a quote of &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_Lines" xml:space="preserve">
+    <value>The lines of the quote:</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_When" xml:space="preserve">
+    <value>Time of the work: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_NoteLabel" xml:space="preserve">
+    <value>The supplier's message:</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_Hint" xml:space="preserve">
+    <value>The time is not reserved until you accept the quote.</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_Deadline" xml:space="preserve">
+    <value>Answer by &lt;strong&gt;{0}&lt;/strong&gt;: if you do not, the request is cancelled.</value>
+  </data>
+  <data name="ServiceRequestQuoteReceived_Cta" xml:space="preserve">
+    <value>See the quote</value>
+  </data>
+  <data name="ServiceRequestQuoteAccepted_Subject" xml:space="preserve">
+    <value>Quote accepted — {0}</value>
+  </data>
+  <data name="ServiceRequestQuoteAccepted_Body" xml:space="preserve">
+    <value>The customer &lt;strong&gt;accepted&lt;/strong&gt; your quote of &lt;strong&gt;{2}&lt;/strong&gt; for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;: the request is yours.</value>
+  </data>
+  <data name="ServiceRequestQuoteAccepted_When" xml:space="preserve">
+    <value>Time of the work: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestQuoteRejected_Subject" xml:space="preserve">
+    <value>Quote not accepted — {0}</value>
+  </data>
+  <data name="ServiceRequestQuoteRejected_Body" xml:space="preserve">
+    <value>The customer did not accept your quote for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;. The request waits for your answer again: you can send another quote, propose another time or turn it down.</value>
+  </data>
+  <data name="ServiceRequestQuoteAnswered_Cta" xml:space="preserve">
+    <value>Open the request</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired_Subject" xml:space="preserve">
+    <value>Request to {0} cancelled: quote not answered</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; had sent you a quote for &lt;strong&gt;{1}&lt;/strong&gt; (requested for &lt;strong&gt;{2}&lt;/strong&gt;), but you did not answer in time: we cancelled the request.</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired_Hint" xml:space="preserve">
+    <value>You have paid nothing. You can book again.</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired_Cta" xml:space="preserve">
+    <value>Book again</value>
+  </data>
+  <data name="SupplierBookingQuoteLapsed_Subject" xml:space="preserve">
+    <value>Quote not answered — {0}</value>
+  </data>
+  <data name="SupplierBookingQuoteLapsed_Body" xml:space="preserve">
+    <value>The customer did not answer your quote for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; in time: we &lt;strong&gt;cancelled&lt;/strong&gt; the request, which no longer takes up the time.</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteSent_Title" xml:space="preserve">
+    <value>Quote received</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteSent_Body" xml:space="preserve">
+    <value>{0} at {1}: the supplier sent a quote. Accept or decline it.</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteAccepted_Title" xml:space="preserve">
+    <value>Quote accepted</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteAccepted_Body" xml:space="preserve">
+    <value>{0} in {1}: the request is yours.</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteRejected_Title" xml:space="preserve">
+    <value>Quote not accepted</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteRejected_Body" xml:space="preserve">
+    <value>{0} in {1}: you can send another quote.</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteExpired_Title" xml:space="preserve">
+    <value>Quote not answered</value>
+  </data>
+  <data name="Push_ServiceRequestQuoteExpired_Body" xml:space="preserve">
+    <value>{0} in {1}: the customer did not answer, the request is cancelled.</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Subject" xml:space="preserve">
+    <value>Tomorrow: {0} in {1}</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Body" xml:space="preserve">
+    <value>A reminder of tomorrow's job: &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestDayBefore_When" xml:space="preserve">
+    <value>When: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Hint" xml:space="preserve">
+    <value>The customer's address and contact details are in the request, in your console.</value>
+  </data>
+  <data name="ServiceRequestDayBefore_Cta" xml:space="preserve">
+    <value>Open the request</value>
+  </data>
+  <data name="Push_ServiceRequestDayBefore_Title" xml:space="preserve">
+    <value>You have a job tomorrow</value>
+  </data>
+  <data name="Push_ServiceRequestDayBefore_Body" xml:space="preserve">
+    <value>{0} in {1}, at {2}.</value>
+  </data>
+  <data name="Push_ServicePaymentReceived_Title" xml:space="preserve">
+    <value>Payment received</value>
+  </data>
+  <data name="Push_ServicePaymentReceived_Body" xml:space="preserve">
+    <value>{0}: {1} net to you, before Stripe's fees.</value>
+  </data>
+  <data name="SupplierInquiryReply_Subject" xml:space="preserve">
+    <value>{0} has replied to you</value>
+  </data>
+  <data name="SupplierInquiryReply_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; has replied to your request. Read the message and carry on the conversation on the page of the request.</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Subject" xml:space="preserve">
+    <value>{0} cannot take your request</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; cannot take your request.</value>
+  </data>
+  <data name="SupplierInquiryDeclined_Hint" xml:space="preserve">
+    <value>You have paid nothing. You can ask another supplier.</value>
+  </data>
+  <data name="SupplierInquiryExpired_Subject" xml:space="preserve">
+    <value>Your request to {0} has closed</value>
+  </data>
+  <data name="SupplierInquiryExpired_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; did not answer your request in time, so we closed it.</value>
+  </data>
+  <data name="SupplierInquiryExpired_Hint" xml:space="preserve">
+    <value>You have paid nothing. You can write again or ask another supplier.</value>
+  </data>
+  <data name="SupplierInquiryClosed_Cta" xml:space="preserve">
+    <value>Go to the supplier's page</value>
+  </data>
+  <data name="SupplierInquiryMessage_Subject" xml:space="preserve">
+    <value>New message from the customer — {0}</value>
+  </data>
+  <data name="SupplierInquiryMessage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; wrote to you in the request on measure in &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryMessage_Hint" xml:space="preserve">
+    <value>Read the message and reply from the console: the text is not in this e-mail.</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Subject" xml:space="preserve">
+    <value>Request closed by the customer — {0}</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; closed the request on measure in &lt;strong&gt;{1}&lt;/strong&gt;: there is no need to answer anymore.</value>
+  </data>
+  <data name="SupplierInquiryClosedByCustomer_Hint" xml:space="preserve">
+    <value>The conversation stays readable in the console.</value>
   </data>
 </root>

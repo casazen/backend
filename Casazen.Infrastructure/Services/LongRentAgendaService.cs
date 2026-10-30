@@ -6,6 +6,7 @@ using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
@@ -97,11 +98,15 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
             if (lease.Status != LeaseStatus.Registered)
                 continue;
 
-            if (Wants(LongRentDeadlineType.LeaseEnd) && RomeCalendar.DateInRome(lease.EndDate) is var endDate && Listed(endDate, canBeOverdue: false))
+            // The end of the period the lease is in now (LR-14): a lease that renewed by itself has its next end here, not the first one.
+            if (Wants(LongRentDeadlineType.LeaseEnd) && RomeCalendar.DateInRome(lease.CurrentTermEndDate) is var endDate && Listed(endDate, canBeOverdue: false))
                 items.Add(Of(LongRentDeadlineType.LeaseEnd, endDate, lease));
 
+            // Nothing left to give notice of once a notice is recorded (the lease ends with its period) or the lease was ended early.
             if (Wants(LongRentDeadlineType.Notice)
-                && LongRentDeadlineRules.NoticeDate(lease.ContractType, lease.EndDate) is { } noticeDate
+                && lease.NoticeOn is null
+                && lease.TerminatedOn is null
+                && LongRentDeadlineRules.NoticeDate(lease.ContractType, lease.CurrentTermEndDate) is { } noticeDate
                 && Listed(noticeDate, canBeOverdue: false))
             {
                 items.Add(Of(LongRentDeadlineType.Notice, noticeDate, lease));
@@ -173,11 +178,17 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
         var expiringUntil = todayStored.AddMonths(LeaseListViews.ExpiringWithinMonths);
         var firstOfMonth = new DateOnly(today.Year, today.Month, 1);
 
-        // The leases counted as the views of the lease list say (LeaseListViews): one grouped statement.
+        // The leases counted as the views of the lease list say (LeaseListViews): one grouped statement. "Soon" is the same rule as the
+        // "Expiring" view: the period ends within six months, or a notice or an early termination is recorded (LR-14).
         var groups = await db.LeaseContracts
             .AsNoTracking()
             .WithinScope(scope)
-            .GroupBy(l => new { l.Status, Ended = l.EndDate < todayStored, Soon = l.EndDate <= expiringUntil })
+            .GroupBy(l => new
+            {
+                l.Status,
+                Ended = l.CurrentTermEndDate < todayStored,
+                Soon = l.CurrentTermEndDate <= expiringUntil || l.NoticeOn != null || l.TerminatedOn != null,
+            })
             .Select(g => new { g.Key.Status, g.Key.Ended, g.Key.Soon, Count = g.Count() })
             .ToListAsync(cancellationToken);
         var leaseCounters = CountLeases(groups.Select(g => (g.Status, g.Ended, g.Soon, g.Count)));
@@ -251,7 +262,37 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
             firstOfMonth.ToString("yyyy-MM", CultureInfo.InvariantCulture),
             rents,
             checklist,
-            upcoming.Items.FirstOrDefault(d => !d.IsOverdue));
+            upcoming.Items.FirstOrDefault(d => !d.IsOverdue),
+            await NowAsync(scope, todayStored));
+    }
+
+    /// <summary>
+    /// The most urgent step for the landlord in absolute (LR-01b): the lease list of the caller, whole, with the stage and the next step it
+    /// already carries, and the best of the steps for the landlord (lowest priority, then earliest due day, then the lease id). Taken from
+    /// the list so that the overview and the list cannot say different things about the same lease, and so that it holds the leases that
+    /// <see cref="LoadLeasesAsync"/> leaves out of the agenda (a draft still being typed has a next step, and no deadline).
+    /// </summary>
+    private async Task<LongRentNow?> NowAsync(HostScope scope, DateTime todayStored)
+    {
+        var leases = await new LeaseContractRepository(db).GetSummariesAsync(scope, new LeaseListQuery(), todayStored);
+        var best = leases
+            .Where(l => l.NextStep is { Actor: LeaseNextStepActor.Landlord })
+            .OrderBy(l => l.NextStep!.Priority)
+            .ThenBy(l => l.NextStep!.DueOn is null)
+            .ThenBy(l => l.NextStep!.DueOn)
+            .ThenBy(l => l.Id)
+            .FirstOrDefault();
+
+        return best is { Stage: { } stage, NextStep: { } step }
+            ? new LongRentNow(
+                best.Id,
+                best.PropertyId,
+                best.Property?.Name ?? string.Empty,
+                best.TenantAnonymized ? null : best.TenantFirstName,
+                best.TenantAnonymized ? null : best.TenantLastName,
+                stage,
+                step)
+            : null;
     }
 
     /// <summary>The counters of the views of the lease list, from the groups (status, ended, ending soon) of the leases.</summary>
@@ -300,7 +341,7 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
         var rows = await db.LeaseContracts
             .AsNoTracking()
             .WithinScope(scope)
-            .Where(l => l.Status != LeaseStatus.Rejected && l.EndDate >= todayStored && (l.DraftData == null || l.Status != LeaseStatus.Draft))
+            .Where(l => l.Status != LeaseStatus.Rejected && l.CurrentTermEndDate >= todayStored && (l.DraftData == null || l.Status != LeaseStatus.Draft))
             .Select(l => new
             {
                 l.Id,
@@ -309,7 +350,9 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
                 l.Status,
                 l.ContractType,
                 l.StartDate,
-                l.EndDate,
+                l.CurrentTermEndDate,
+                l.NoticeOn,
+                l.TerminatedOn,
                 l.StipulaDate,
                 l.PropertyDeliveryDate,
                 l.QuesturaCommunicationDate,
@@ -328,7 +371,9 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
                 r.Status,
                 r.ContractType,
                 r.StartDate,
-                r.EndDate,
+                r.CurrentTermEndDate,
+                r.NoticeOn,
+                r.TerminatedOn,
                 r.StipulaDate,
                 r.PropertyDeliveryDate,
                 r.QuesturaCommunicationDate,
@@ -346,7 +391,9 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
         LeaseStatus Status,
         LeaseContractType ContractType,
         DateTime StartDate,
-        DateTime EndDate,
+        DateTime CurrentTermEndDate,
+        DateTime? NoticeOn,
+        DateTime? TerminatedOn,
         DateTime? StipulaDate,
         DateTime? PropertyDeliveryDate,
         DateTime? QuesturaCommunicationDate,

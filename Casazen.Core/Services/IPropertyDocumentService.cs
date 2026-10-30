@@ -6,7 +6,8 @@ namespace Casazen.Core.Services;
 
 public interface IPropertyDocumentService
 {
-    Task<PropertyDocument> UploadDocumentAsync(Guid propertyId, IFormFile file, DocumentType documentType, string uploadedBy);
+    /// <summary>Stores a document; for an APE, also what the automatic reading found (<see cref="PropertyDocumentUpload.ApeCheck"/>).</summary>
+    Task<PropertyDocumentUpload> UploadDocumentAsync(Guid propertyId, IFormFile file, DocumentType documentType, string uploadedBy);
     Task<IEnumerable<PropertyDocument>> GetByPropertyIdAsync(Guid propertyId);
     Task<PropertyDocument?> GetDocumentAsync(Guid documentId);
     Task DeleteDocumentAsync(Guid documentId);
@@ -23,4 +24,14 @@ public interface IPropertyDocumentService
     /// that is not 1-3 letters, digits or "+".
     /// </summary>
     Task<PropertyDocument> UpdateApeIdentificationAsync(PropertyDocument document, string? code, string? energyClass);
+
+    /// <summary>
+    /// Reads the code and the energy class of a stored APE again (one uploaded before they were read, or whose reading found
+    /// nothing): the OCR of the file and, for a code it does not show, the public register of the region. Only empty values are
+    /// filled; a code or a class typed by the landlord stays. 422 <c>document_not_ape</c> for another document type.
+    /// </summary>
+    Task<PropertyDocumentUpload> ReadApeIdentificationAsync(PropertyDocument document);
 }
+
+/// <summary>A document just stored and, for an APE, what its automatic reading found (null for any other type).</summary>
+public sealed record PropertyDocumentUpload(PropertyDocument Document, ApeUploadCheck? ApeCheck);

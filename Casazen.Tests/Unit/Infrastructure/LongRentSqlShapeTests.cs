@@ -216,8 +216,8 @@ public class LongRentSqlShapeTests
         Assert.Equal(2, statements.Count);
         Assert.Contains("FROM \"LeaseContracts\"", statements[0], StringComparison.Ordinal);
         Assert.Contains("FROM \"RentLedgerEntries\"", statements[1], StringComparison.Ordinal);
-        // Only the leases that can still carry a deadline: not rejected (7), not ended.
-        Assert.Contains("l.\"Status\" <> 7 AND l.\"EndDate\" >= @", statements[0], StringComparison.Ordinal);
+        // Only the leases that can still carry a deadline: not rejected (7), not ended (the end of the period the lease is in, LR-14).
+        Assert.Contains("l.\"Status\" <> 7 AND l.\"CurrentTermEndDate\" >= @", statements[0], StringComparison.Ordinal);
         // The installments: the earliest 501 (the limit and one more, to know it was cut), by due date then id, unpaid (0, 3).
         Assert.Contains("r.\"Status\" IN (0, 3)", statements[1], StringComparison.Ordinal);
         Assert.Contains("ORDER BY r.\"DueDate\", r.\"Id\"", statements[1], StringComparison.Ordinal);
@@ -250,9 +250,9 @@ public class LongRentSqlShapeTests
 
         await new LongRentAgendaService(db, new Clock()).GetOverviewAsync(Restricted);
 
-        // The leases counted by status, the numbers of the month, the installments behind, the leases that can carry a deadline, and
-        // the installments of the next days.
-        Assert.Equal(5, statements.Count);
+        // The leases counted by status, the numbers of the month, the installments behind, the leases that can carry a deadline, the
+        // installments of the next days, and the lease list "now" is taken from (LR-01b). A list with no lease sends nothing more.
+        Assert.Equal(6, statements.Count);
         Assert.Contains("GROUP BY s.\"Status\", s.\"Ended\", s.\"Soon\"", statements[0], StringComparison.Ordinal);
         Assert.Contains("GROUP BY s.\"Key\"", statements[1], StringComparison.Ordinal);
         Assert.Contains("GROUP BY r.\"LeaseContractId\"", statements[2], StringComparison.Ordinal);
@@ -318,7 +318,7 @@ public class LongRentSqlShapeTests
         var overview = await StatementsOfAsync(db => new LongRentAgendaService(db, new Clock()).GetOverviewAsync(Granted));
 
         Assert.Equal(2, deadlines.Count);
-        Assert.Equal(5, overview.Count);
+        Assert.Equal(6, overview.Count);
         Assert.All(deadlines.Concat(overview), AssertReadsTheGrants);
     }
 }

@@ -222,12 +222,38 @@ public class CorsPolicyTests
         Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
     }
 
-    private static async Task<HttpResponseMessage> PreflightAsync(WebApplication app, string origin)
+    [Fact]
+    public async Task Preflight_HubPathFromConfiguredOrigin_AllowsCredentialsAndTheSignalRHeader()
     {
-        using var request = new HttpRequestMessage(HttpMethod.Options, "/api/ping");
+        await using var app = await StartAsync(Environments.Production, new() { ["Cors:AllowedOrigins"] = WebApp });
+
+        using var response = await PreflightAsync(app, WebApp, "/hubs/ping", "authorization,x-signalr-user-agent");
+
+        Assert.Equal(WebApp, Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
+        Assert.Equal("true", Assert.Single(response.Headers.GetValues("Access-Control-Allow-Credentials")));
+        Assert.Contains("x-signalr-user-agent", response.Headers.GetValues("Access-Control-Allow-Headers").Single(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Preflight_HubPathFromUnknownOrigin_IsRejected()
+    {
+        await using var app = await StartAsync(Environments.Production, new() { ["Cors:AllowedOrigins"] = WebApp });
+
+        using var response = await PreflightAsync(app, "https://evil.example", "/hubs/ping");
+
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
+    private static async Task<HttpResponseMessage> PreflightAsync(
+        WebApplication app,
+        string origin,
+        string path = "/api/ping",
+        string requestHeaders = "authorization")
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Options, path);
         request.Headers.Add("Origin", origin);
         request.Headers.Add("Access-Control-Request-Method", "GET");
-        request.Headers.Add("Access-Control-Request-Headers", "authorization");
+        request.Headers.Add("Access-Control-Request-Headers", requestHeaders);
         return await app.GetTestClient().SendAsync(request);
     }
 
@@ -246,6 +272,7 @@ public class CorsPolicyTests
         var app = builder.Build();
         app.UseCors(CasazenCorsPolicyProvider.PolicyName);
         app.MapGet("/api/ping", () => "pong");
+        app.MapGet("/hubs/ping", () => "pong");
         try
         {
             await app.StartAsync();

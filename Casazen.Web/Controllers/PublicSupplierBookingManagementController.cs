@@ -172,6 +172,79 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.RejectProposalAsync(request.ToCredentials(), ct)));
     }
 
+    /// <summary>
+    /// Accepts the quote the supplier sent (SP-04b): the request is taken on the supplier's behalf at the time of the quote (the booking's
+    /// own unless the quote offered another), with the total of the quote as the price agreed; the time is checked again, and both are
+    /// told. The body carries <c>quoteSentAt</c> as <c>quote.sentAt</c> of the booking gave it. 404 <c>supplier_booking_not_found</c>; 422
+    /// <c>supplier_booking_no_quote</c>, <c>supplier_booking_quote_expired</c>, <c>supplier_booking_supplier_unavailable</c>; 409
+    /// <c>service_request_quote_changed</c> (the supplier replaced the quote: read it again), <c>supplier_slot_unavailable</c> (the time is
+    /// gone: the quote stays, the customer can turn it down or cancel), <c>service_request_state_changed</c>; 429.
+    /// </summary>
+    [HttpPost("quote/accept")]
+    [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [SupplierBookingManageRateLimit]
+    [RequestSizeLimit(ShowcaseBookingLimits.ManageMaxBodyBytes)]
+    [ProducesResponseType(typeof(PublicSupplierBookingViewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<PublicSupplierBookingViewResponse>> AcceptQuote(
+        [FromBody] SupplierBookingQuoteAnswerRequest request,
+        CancellationToken ct)
+    {
+        return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.AcceptQuoteAsync(request.ToCredentials(), request.QuoteSentAt!.Value, ct)));
+    }
+
+    /// <summary>
+    /// Turns the quote down (SP-04b): the quote goes, the request stays <c>Richiesto</c> at its time, the supplier has its whole time to
+    /// answer again and is told. Errors as <c>quote/accept</c>, but for the time.
+    /// </summary>
+    [HttpPost("quote/reject")]
+    [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [SupplierBookingManageRateLimit]
+    [RequestSizeLimit(ShowcaseBookingLimits.ManageMaxBodyBytes)]
+    [ProducesResponseType(typeof(PublicSupplierBookingViewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<PublicSupplierBookingViewResponse>> RejectQuote(
+        [FromBody] SupplierBookingQuoteAnswerRequest request,
+        CancellationToken ct)
+    {
+        return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.RejectQuoteAsync(request.ToCredentials(), request.QuoteSentAt!.Value, ct)));
+    }
+
+    /// <summary>
+    /// Writes in the conversation of a request on measure (SP-10b): <c>body</c>, 1 to 1000 characters of plain text, at most 200 messages a
+    /// request. The supplier is told by e-mail (the comune and "Nome C.", never the words), one e-mail for the messages of ten minutes.
+    /// Answers the booking as it is now, thread included. 404 <c>supplier_booking_not_found</c> (also for a booking that is not a request on
+    /// measure); 422 <c>service_request_message_invalid</c>, <c>service_request_thread_full</c>, <c>supplier_booking_supplier_unavailable</c>; 409
+    /// <c>service_request_thread_closed</c> (refused, cancelled or done), <c>service_request_state_changed</c>; 429.
+    /// </summary>
+    [HttpPost("messages")]
+    [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [SupplierBookingManageRateLimit]
+    [RequestSizeLimit(ShowcaseBookingLimits.ManageMaxBodyBytes)]
+    [ProducesResponseType(typeof(PublicSupplierBookingViewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<PublicSupplierBookingViewResponse>> PostMessage(
+        [FromBody] SupplierBookingMessageRequest request,
+        CancellationToken ct)
+    {
+        return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.PostMessageAsync(request.ToCredentials(), request.Body, ct)));
+    }
+
     /// <summary>A 422 that names the fields at fault, as the booking does.</summary>
     private ObjectResult RuleProblem(string code, string messageKey, IReadOnlyList<object> messageArgs, IReadOnlyList<string> fields)
     {

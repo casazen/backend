@@ -93,18 +93,28 @@ internal sealed class ServiceRequestTestKit : IDisposable
             ShowcaseNotifier,
             Microsoft.Extensions.Options.Options.Create(Options),
             NullLogger<ServiceRequestNotifier>.Instance);
+        // SP-REL: the reliability events of the suppliers are written by the real service over the same database, with the default weights.
+        Reliability = new SupplierReliabilityService(
+            db, Agenda, Microsoft.Extensions.Options.Options.Create(RankingOptions), NullLogger<SupplierReliabilityService>.Instance, Clock);
         Payments = new SupplierPaymentService(
             db,
             Gateway,
             Emails,
+            Push,
             links,
             Flags,
             Microsoft.Extensions.Options.Options.Create(PaymentOptions),
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Stripe:PublishableKey"] = PublishableKey }).Build(),
             JobScheduler,
             paymentLogger ?? NullLogger<SupplierPaymentService>.Instance,
-            Clock);
+            Clock,
+            Reliability);
         Matcher = ComuneTestServices.Matcher(db);
+
+        // SP-BKP: the choice of the backup suppliers over a plain ranking (the real one needs the whole supplier service); it is only
+        // reached with the feature flag SupplierRequestBackups on, which the kit leaves off until a test switches it on.
+        BackupSelector = new ServiceRequestBackupSelector(
+            new FakeSupplierRanking(db), Agenda, LegalTestServices.Legal(), db, NullLogger<ServiceRequestBackupSelector>.Instance);
         Service = new ServiceRequestService(
             db,
             new ServiceRequestRepository(db),
@@ -119,7 +129,10 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
             Payments,
             NullLogger<ServiceRequestService>.Instance,
-            Clock);
+            Clock,
+            Flags,
+            BackupSelector,
+            Reliability);
         Booking = new ShowcaseBookingService(
             db,
             Catalog,
@@ -130,6 +143,16 @@ internal sealed class ServiceRequestTestKit : IDisposable
             ShowcaseNotifier,
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
             NullLogger<ShowcaseBookingService>.Instance,
+            Clock);
+        Inquiry = new ShowcaseInquiryService(
+            db,
+            Catalog,
+            Matcher,
+            ComuneTestServices.Directory(db),
+            CustomerIndex,
+            ShowcaseNotifier,
+            Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
+            NullLogger<ShowcaseInquiryService>.Instance,
             Clock);
         Manager = new ShowcaseBookingManager(
             db,
@@ -152,6 +175,12 @@ internal sealed class ServiceRequestTestKit : IDisposable
     public ShowcaseBookingOptions ShowcaseOptions { get; }
 
     public SupplierPaymentsOptions PaymentOptions { get; }
+
+    /// <summary>The weights of the ranking the kit's reliability service uses: the defaults.</summary>
+    public SupplierRankingOptions RankingOptions { get; } = new();
+
+    /// <summary>The reliability events of the suppliers (SP-REL), written by the flows of the kit.</summary>
+    public SupplierReliabilityService Reliability { get; }
 
     public FakeSupplierPaymentGateway Gateway { get; }
 
@@ -196,7 +225,13 @@ internal sealed class ServiceRequestTestKit : IDisposable
 
     public ServiceRequestService Service { get; }
 
+    /// <summary>The choice of the backup suppliers of a request (SP-BKP), over <see cref="FakeSupplierRanking"/>.</summary>
+    public ServiceRequestBackupSelector BackupSelector { get; }
+
     public ShowcaseBookingService Booking { get; }
+
+    /// <summary>The request on measure from the same showcase (SP-10b): no slot, the words of the customer.</summary>
+    public ShowcaseInquiryService Inquiry { get; }
 
     /// <summary>The customer's own area of a booking (SP-11), on the real service request actions.</summary>
     public ShowcaseBookingManager Manager { get; }

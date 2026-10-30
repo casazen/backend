@@ -25,7 +25,9 @@ namespace Casazen.Web.Controllers;
 [ApiController]
 [Route("api/me/notifications")]
 [Authorize(Policy = CasazenPolicies.Authenticated)]
-public class MeNotificationsController(IInAppNotificationService notifications) : ControllerBase
+public class MeNotificationsController(
+    IInAppNotificationService notifications,
+    IInAppNotificationPublisher publisher) : ControllerBase
 {
     /// <summary>
     /// The caller's notifications, the most recent first. <paramref name="unread"/> lists only the unread ones;
@@ -85,6 +87,7 @@ public class MeNotificationsController(IInAppNotificationService notifications) 
             return Unauthorized();
 
         await notifications.MarkReadAsync(userId, id, cancellationToken);
+        await publisher.PublishAsync(userId, null, null, cancellationToken);
         return NoContent();
     }
 
@@ -99,6 +102,7 @@ public class MeNotificationsController(IInAppNotificationService notifications) 
             return Unauthorized();
 
         await notifications.MarkAllReadAsync(userId, cancellationToken);
+        await publisher.PublishAsync(userId, null, null, cancellationToken);
         return NoContent();
     }
 }

@@ -90,6 +90,36 @@ public sealed class ShowcaseBookingManager(
         return await AfterAsync(found, cancellationToken);
     }
 
+    public async Task<ShowcaseBookingView> AcceptQuoteAsync(
+        ShowcaseBookingCredentials credentials,
+        DateTime quoteSentAt,
+        CancellationToken cancellationToken = default)
+    {
+        var found = await IdentifyAsync(credentials, cancellationToken);
+        await actions.AcceptQuoteAsCustomerAsync(found.Row.Id, found.Supplier.OrgId, quoteSentAt, cancellationToken);
+        return await AfterAsync(found, cancellationToken);
+    }
+
+    public async Task<ShowcaseBookingView> RejectQuoteAsync(
+        ShowcaseBookingCredentials credentials,
+        DateTime quoteSentAt,
+        CancellationToken cancellationToken = default)
+    {
+        var found = await IdentifyAsync(credentials, cancellationToken);
+        await actions.RejectQuoteAsCustomerAsync(found.Row.Id, found.Supplier.OrgId, quoteSentAt, cancellationToken);
+        return await AfterAsync(found, cancellationToken);
+    }
+
+    public async Task<ShowcaseBookingView> PostMessageAsync(
+        ShowcaseBookingCredentials credentials,
+        string? body,
+        CancellationToken cancellationToken = default)
+    {
+        var found = await IdentifyAsync(credentials, cancellationToken);
+        await actions.PostMessageAsCustomerAsync(found.Row.Id, found.Supplier.OrgId, body, cancellationToken);
+        return await AfterAsync(found, cancellationToken);
+    }
+
     // ─── Who is asking ───────────────────────────────────────────────────────────────────────────────────────────────
 
     private sealed record Found(SupplierRow Supplier, ShowcaseBookingRow Row);
@@ -153,6 +183,10 @@ public sealed class ShowcaseBookingManager(
         var published = service is { IsRequestable: true };
         var supplierActive = supplier.Status == SupplierStatus.Active;
 
+        // The conversation of a request on measure (SP-10b): read now, which marks what the supplier wrote as read by the customer.
+        var onMeasure = row.Kind == ServiceRequestKind.Custom;
+        var thread = onMeasure ? await actions.ReadThreadAsCustomerAsync(row.Id, supplier.OrgId, cancellationToken) : null;
+
         var start = row.ScheduledStartUtc ?? row.CreatedAt;
         var end = row.ScheduledEndUtc ?? start;
         var proposalPending = row is { ProposedStartUtc: not null, ProposedEndUtc: not null, ProposedAt: not null };
@@ -160,6 +194,19 @@ public sealed class ShowcaseBookingManager(
 
         var proposal = proposalPending
             ? new ShowcaseBookingProposal(row.ProposedStartUtc!.Value, row.ProposedEndUtc!.Value, row.ProposedAt!.Value, answerBy, row.ProposalMessage)
+            : null;
+
+        // The quote the supplier sent (SP-04b): the customer has until the deadline of the request to answer it.
+        var quotePending = ServiceRequestQuoteRules.IsPending(row.Status, row.QuoteSentAt) && row.QuoteTotalCents is not null;
+        var quote = quotePending
+            ? new ShowcaseBookingQuote(
+                row.QuoteSentAt!.Value,
+                ServiceRequestJson.ReadQuoteLines(row.QuoteLinesJson),
+                row.QuoteTotalCents!.Value,
+                string.IsNullOrWhiteSpace(row.QuoteNote) ? null : row.QuoteNote,
+                row.QuoteScheduledStartUtc,
+                row.QuoteScheduledEndUtc,
+                row.ResponseDueAt)
             : null;
 
         var cancellation = row.Status == ServiceRequestStatus.Annullato
@@ -185,17 +232,25 @@ public sealed class ShowcaseBookingManager(
                 location?.Floor,
                 location?.AccessNotes),
             PriceOf(row),
-            row.Status == ServiceRequestStatus.Richiesto && !proposalPending ? row.ResponseDueAt : null,
+            row.Status == ServiceRequestStatus.Richiesto && !proposalPending && !quotePending ? row.ResponseDueAt : null,
             proposal,
             cancellation,
             row.Status == ServiceRequestStatus.Rifiutato && !string.IsNullOrWhiteSpace(row.RejectionReason) ? row.RejectionReason : null,
-            new ShowcaseBookingCancellationTerms(
-                ShowcaseBookingManagementRules.FreeCancellationUntil(start, hours),
-                ShowcaseBookingManagementRules.IsFreeCancellation(start, now, hours)),
+            // A request on measure has no work to start: closing it is always free (and its start is the day it was made).
+            onMeasure
+                ? new ShowcaseBookingCancellationTerms(start, IsFree: true)
+                : new ShowcaseBookingCancellationTerms(
+                    ShowcaseBookingManagementRules.FreeCancellationUntil(start, hours),
+                    ShowcaseBookingManagementRules.IsFreeCancellation(start, now, hours)),
             new ShowcaseBookingActions(
                 ShowcaseBookingManagementRules.CanCancel(row.Status, row.ScheduledStartUtc, now),
-                ShowcaseBookingManagementRules.CanReschedule(row.Status, row.ScheduledStartUtc is not null, supplierActive, published),
-                ShowcaseBookingManagementRules.CanRespondToProposal(row.Status, proposalPending, answerBy, now, supplierActive)));
+                ShowcaseBookingManagementRules.CanReschedule(row.Status, row.ScheduledStartUtc is not null, supplierActive, published, quotePending),
+                ShowcaseBookingManagementRules.CanRespondToProposal(row.Status, proposalPending, answerBy, now, supplierActive),
+                ShowcaseBookingManagementRules.CanRespondToQuote(row.Status, quotePending, row.ResponseDueAt, now, supplierActive)),
+            row.Kind,
+            thread,
+            thread is null ? null : ServiceRequestNegotiation.Of(row.Status, thread.Messages.Any(m => m.Author == ServiceRequestMessageAuthor.Supplier)),
+            quote);
     }
 
     /// <summary>
@@ -208,7 +263,11 @@ public sealed class ShowcaseBookingManager(
     {
         var final = ServiceRequestJson.ReadPriceLines(row.PriceLinesJson);
         var finalLines = row.FinalAmountCents is not null && final.Count > 0;
-        var lines = finalLines
+
+        // The lines of a quote the customer accepted (SP-04b) are the price of the work from the take on, before it is completed: the
+        // request keeps them with the total as the price agreed, and the estimate it was made with no longer says what it costs.
+        var agreedLines = !finalLines && row.QuotedAmountCents is not null && final.Any(line => line.Kind == ServiceRequestPriceLineKinds.Quote);
+        var lines = finalLines || agreedLines
             ? final
                 .Select(line => new ShowcaseBookingPriceLine(
                     line.Kind == ServiceRequestPriceLineKinds.Extra ? "extra" : "service",
@@ -219,14 +278,20 @@ public sealed class ShowcaseBookingManager(
                 .ToList()
             : ServiceRequestJson.ReadOptions(row.OptionsJson)
                 .Select(option => new ShowcaseBookingPriceLine(
-                    option.Code == ServiceRequestOptionCodes.Quantity ? "service" : "option",
+                    option.Code switch
+                    {
+                        ServiceRequestOptionCodes.Quantity => "service",
+                        // The surcharge of an urgent booking (SP-04c) is told apart so the page can say it in the customer's language.
+                        ServiceRequestOptionCodes.Urgent => "urgent",
+                        _ => "option",
+                    },
                     option.Label,
                     option.Quantity,
                     option.AmountCents,
                     (int)Math.Min(int.MaxValue, (long)option.AmountCents * option.Quantity)))
                 .ToList();
 
-        if (!finalLines && row.EstimatedAmountCents is { } estimate && !lines.Any(line => line.Kind == "service"))
+        if (!finalLines && !agreedLines && row.EstimatedAmountCents is { } estimate && !lines.Any(line => line.Kind == "service"))
         {
             var listed = lines.Sum(line => (long)line.AmountCents);
             if (listed < estimate)
@@ -281,6 +346,14 @@ public sealed class ShowcaseBookingManager(
                 ProposedEndUtc = r.ProposedEndUtc,
                 ProposedAt = r.ProposedAt,
                 ProposalMessage = r.ProposalMessage,
+                // The quote the supplier sent (SP-04b): what the customer is asked to answer, and no more — not who at the supplier sent it,
+                // not the story of the other quotes.
+                QuoteSentAt = r.QuoteSentAt,
+                QuoteLinesJson = r.QuoteLinesJson,
+                QuoteTotalCents = r.QuoteTotalCents,
+                QuoteNote = r.QuoteNote,
+                QuoteScheduledStartUtc = r.QuoteScheduledStartUtc,
+                QuoteScheduledEndUtc = r.QuoteScheduledEndUtc,
                 CancelledAt = r.CancelledAt,
                 CancelledBy = r.CancelledBy,
                 CancellationReason = r.CancellationReason,
@@ -288,6 +361,7 @@ public sealed class ShowcaseBookingManager(
                 LocationCity = r.LocationCity,
                 LocationPostalCode = r.LocationPostalCode,
                 CreatedAt = r.CreatedAt,
+                Kind = r.Kind,
             });
 
     /// <summary>
@@ -347,6 +421,18 @@ public sealed class ShowcaseBookingManager(
 
         public string? ProposalMessage { get; init; }
 
+        public DateTime? QuoteSentAt { get; init; }
+
+        public string QuoteLinesJson { get; init; } = "[]";
+
+        public int? QuoteTotalCents { get; init; }
+
+        public string? QuoteNote { get; init; }
+
+        public DateTime? QuoteScheduledStartUtc { get; init; }
+
+        public DateTime? QuoteScheduledEndUtc { get; init; }
+
         public DateTime? CancelledAt { get; init; }
 
         public ServiceRequestActorParty? CancelledBy { get; init; }
@@ -360,5 +446,7 @@ public sealed class ShowcaseBookingManager(
         public string? LocationPostalCode { get; init; }
 
         public DateTime CreatedAt { get; init; }
+
+        public ServiceRequestKind Kind { get; init; }
     }
 }

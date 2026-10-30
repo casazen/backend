@@ -1,0 +1,14 @@
+{
+  "leaseId": "7e570000-5eed-4000-8000-00000000000a",
+  "practices": [
+    {
+      "practiceId": "P-7e5700000000000a",
+      "status": "ClosedWithoutAttestation",
+      "statusChangedAt": "2026-10-10T21:38:00Z",
+      "submittedAt": "2026-10-07T21:38:00Z",
+      "comune": "Meda",
+      "comuneDiffersFromLink": false,
+      "closeReason": "withdrawn"
+    }
+  ]
+}

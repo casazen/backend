@@ -54,4 +54,87 @@ public enum LeaseEventType
     /// longer the contract. Payload: <c>withdrawn</c> or <c>review_reopened</c>.
     /// </summary>
     SentRevoked,
+
+    /// <summary>
+    /// The landlord brought in a contract already signed outside CasaZen (LR-13): the signed copy was uploaded with the day of the
+    /// signature and the draft of origin <c>Imported</c> became a Signed lease. Recorded together with <see cref="AllPartiesSigned"/>
+    /// (payload <c>imported</c>). No payload.
+    /// </summary>
+    Imported,
+
+    /// <summary>
+    /// The landlord recorded a notice of non-renewal (LR-14): the lease will end with the current period instead of renewing by itself.
+    /// Payload: <c>{landlord|tenant}:{yyyy-MM-dd}</c>, who gave it and the day it was given. No personal data.
+    /// </summary>
+    NoticeRecorded,
+
+    /// <summary>
+    /// The landlord took back a notice recorded by mistake (LR-14), so the lease renews by itself again at the end of the period.
+    /// Payload: the day the notice had been given (<c>yyyy-MM-dd</c>).
+    /// </summary>
+    NoticeRemoved,
+
+    /// <summary>
+    /// The lease was ended before the end of its period (LR-14): the end of the period moved to the chosen day and the installments
+    /// of the rent plan that start after it were cancelled. Payload: the last day of the lease (<c>yyyy-MM-dd</c>).
+    /// </summary>
+    Terminated,
+
+    /// <summary>
+    /// The lease renewed by itself (LR-14): nobody gave notice, so the end of the current period moved forward by one period of the
+    /// type (48 months for the libero, 24 for the concordato). One event per period. Payload: the new last day (<c>yyyy-MM-dd</c>).
+    /// </summary>
+    TermRenewed,
+
+    /// A platform admin accessed ConcordatoFacile data for this lease using their admin role (AC-NF04-3), bypassing payment or gift.
+    /// Payload: JSON with <c>userId</c> of the admin. No sensitive data.
+    /// </summary>
+    ConcordatoFacileAdminAccess,
+
+    /// <summary>
+    /// A ConcordatoFacile gift was consumed for this lease (ADR-006-R7). No payload.
+    /// </summary>
+    ConcordatoFacileGiftConsumed,
+
+    /// <summary>
+    /// The landlord generated a signed link to access the ConcordatoFacile partner portal (ADR-007-R8).
+    /// No URL or signature is stored, only the timestamp for audit and brief refresh window (ADR-008-R9).
+    /// </summary>
+    ConcordatoFacileLinkGenerated,
+
+    /// <summary>
+    /// The landlord accepted the privacy notice for this lease before the guided contract form could be opened (CF-BE). Payload: JSON
+    /// with <c>policyVersion</c>, the version of the notice that was current (<c>Legal:Documents:Privacy:Version</c>). No personal data.
+    /// The signed link is made only for a lease that has this event for the current version. Appended last: the stored integers of
+    /// the other types do not change.
+    /// </summary>
+    ConcordatoFacilePrivacyAccepted,
+
+    /// <summary>
+    /// The landlord recorded the withdrawal (recesso) the tenant sent (LR-OPS-1): the lease was ended early on the day the notice runs out
+    /// (a <see cref="Terminated"/> event is written with it). Payload: <c>{reason}:{receivedOn}:{effectiveOn}:{noticeMonths}</c>, the
+    /// reason name and the three facts, days as <c>yyyy-MM-dd</c>. No personal data. Appended last: the stored integers of the other types do not change.
+    /// </summary>
+    WithdrawalRecorded,
+
+    /// <summary>
+    /// The landlord marked a letter CasaZen had prepared as sent (LR-OPS-1). Payload: <c>{kind}:{means}:{sentOn}</c>, the names of
+    /// <c>LeaseLetterKind</c> and <c>LeaseLetterMeans</c> and the day as <c>yyyy-MM-dd</c>. Nothing else: CasaZen does not send the letter and
+    /// does not keep a copy of it. No personal data.
+    /// </summary>
+    LetterSent,
+
+    /// <summary>
+    /// The landlord recorded the renewal of the lease before the end of its period (LR-OPS-1): the end of the period moved forward and the
+    /// rent plan was extended. Payload: <c>{Standard|Agreed}:{from}:{to}</c>, the first and last day of the period added (<c>yyyy-MM-dd</c>).
+    /// Not the tacit renewal of the hourly job, which writes <see cref="TermRenewed"/>. No personal data.
+    /// </summary>
+    RenewalRecorded,
+
+    /// <summary>
+    /// The landlord recorded that he returned the security deposit (LR-OPS-1c). Payload: <c>{returnedOn}:{deposit}:{interestDue}:{deductions}:{returned}</c>,
+    /// the day as <c>yyyy-MM-dd</c> and the four sums in euros with two decimals and a dot. No reason of a deduction and no personal data: CasaZen
+    /// moves no money, it records what the landlord did outside it.
+    /// </summary>
+    DepositReturnRecorded,
 }

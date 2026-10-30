@@ -274,12 +274,16 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         string? actorUserId = null,
         CancellationToken cancellationToken = default,
         FieldUpdate<string> legalName = default,
-        FieldUpdate<string> registeredOffice = default)
+        FieldUpdate<string> registeredOffice = default,
+        FieldUpdate<string> contactPhone = default,
+        FieldUpdate<string> defaultLanguage = default)
     {
         // DB-03b-a: the operator data is validated only when the caller sends it, before anything is loaded or written: an
-        // invalid value changes nothing.
+        // invalid value changes nothing. The phone and the language of the account (AM-08b-b) follow the same rule.
         var normalizedLegalName = legalName.IsSent ? OrgOperatorRules.NormalizeLegalName(legalName.Value) : null;
         var normalizedRegisteredOffice = registeredOffice.IsSent ? OrgOperatorRules.NormalizeRegisteredOffice(registeredOffice.Value) : null;
+        var normalizedContactPhone = contactPhone.IsSent ? OrgSettingsRules.NormalizeContactPhone(contactPhone.Value) : null;
+        var normalizedDefaultLanguage = defaultLanguage.IsSent ? OrgSettingsRules.NormalizeDefaultLanguage(defaultLanguage.Value) : null;
 
         var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
         if (org is null)
@@ -334,6 +338,16 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
         if (slugChanged)
             activityLog?.Record(OrgActivity.Of(org.Id, OrgActivityType.OrgSlugChanged, actorUserId, org.Id.ToString()));
 
+        // The data of the company (AM-08b-b): one line when the operator data, the phone or the language of the account really
+        // change, never what they became. The contact email stays out of it, as it always was (the log would carry an address).
+        var companyDataChanged =
+            (legalName.IsSent && !string.Equals(org.LegalName, normalizedLegalName, StringComparison.Ordinal))
+            || (registeredOffice.IsSent && !string.Equals(org.RegisteredOffice, normalizedRegisteredOffice, StringComparison.Ordinal))
+            || (contactPhone.IsSent && !string.Equals(org.ContactPhone, normalizedContactPhone, StringComparison.Ordinal))
+            || (defaultLanguage.IsSent && !string.Equals(org.DefaultLanguage, normalizedDefaultLanguage, StringComparison.Ordinal));
+        if (companyDataChanged)
+            activityLog?.Record(OrgActivity.Of(org.Id, OrgActivityType.OrgSettingsChanged, actorUserId, org.Id.ToString()));
+
         org.Name = trimmedName;
         org.DisplayName = trimmedName;
         org.ContactEmail = normalizedEmail;
@@ -342,6 +356,10 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
             org.LegalName = normalizedLegalName;
         if (registeredOffice.IsSent)
             org.RegisteredOffice = normalizedRegisteredOffice;
+        if (contactPhone.IsSent)
+            org.ContactPhone = normalizedContactPhone;
+        if (defaultLanguage.IsSent)
+            org.DefaultLanguage = normalizedDefaultLanguage!;
         org.UpdatedAt = DateTime.UtcNow;
 
         try
@@ -355,6 +373,28 @@ public partial class OrgService(AppDbContext dbContext, IActivityLog? activityLo
 
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
+
+        return org;
+    }
+
+    public async Task<Org?> SetSupplierBackupsEnabledAsync(
+        Guid orgId,
+        bool enabled,
+        string? actorUserId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null)
+            return null;
+
+        if (org.SupplierBackupsEnabled != enabled)
+        {
+            // One line in the activity log (AM-02b): that the settings changed, never what they became.
+            activityLog?.Record(OrgActivity.Of(org.Id, OrgActivityType.OrgSettingsChanged, actorUserId, org.Id.ToString()));
+            org.SupplierBackupsEnabled = enabled;
+            org.UpdatedAt = DateTime.UtcNow;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
 
         return org;
     }

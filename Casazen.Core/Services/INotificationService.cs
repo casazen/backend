@@ -35,6 +35,13 @@ public interface INotificationService
     /// not configured, change not found), with a log entry: the change itself is never undone by a failed notice.
     /// </summary>
     Task<bool> SendPropertyModeChangeAsync(PropertyModeNotice notice, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Alerts property hosts that a booking requires manual biometric verification (NF-12, ADR-013). The guest's selfie
+    /// escalated, reached max attempts, or consent was declined. Sends an email to the org's contact address and a push
+    /// notification to property hosts, both queued on Hangfire.
+    /// </summary>
+    Task SendVerificationRequiredAlertAsync(VerificationAlert alert, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Which moment of a scheduled change of rental mode a <see cref="PropertyModeNotice"/> is about.</summary>
@@ -69,3 +76,8 @@ public sealed record OtaStayReviewAlert(
     Entities.Enums.OtaStayReviewReason Reason,
     DateTime? ChannelCheckIn = null,
     DateTime? ChannelCheckOut = null);
+
+/// <summary>
+/// A booking that requires manual biometric verification (NF-12, ADR-013).
+/// </summary>
+public sealed record VerificationAlert(Guid BookingId);

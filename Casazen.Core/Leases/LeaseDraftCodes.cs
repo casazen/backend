@@ -38,6 +38,7 @@ public static class LeaseNeedCodes
     // Step 1 · the property
     public const string PropertyMissing = "property_missing";
     public const string ApeMissing = "ape_missing";
+    public const string ApeIdentificationMissing = "ape_identification_missing";
     public const string CadastralMissing = "cadastral_missing";
 
     // Step 2 · the parties
@@ -58,12 +59,24 @@ public static class LeaseNeedCodes
     public const string ConcordatoDataInvalid = "concordato_data_invalid";
     public const string ConcordatoUnavailable = "concordato_unavailable";
     public const string RentOutOfBand = "rent_out_of_band";
+    public const string DepositMissing = "deposit_missing";
     public const string DepositInvalid = "deposit_invalid";
     public const string DepositTooHigh = "deposit_too_high";
 
-    // Step 4 · the start date
+    // Step 3 · the need of a transitory contract (TR): who has it and what it is
+    public const string TransitoryPartyMissing = "transitory_party_missing";
+    public const string TransitoryNeedMissing = "transitory_need_missing";
+
+    // Step 4 · the start date (and, for an imported or a transitory contract, the end it states)
     public const string StartMissing = "start_missing";
     public const string StartInvalid = "start_invalid";
+    public const string EndMissing = "end_missing";
+    public const string EndInvalid = "end_invalid";
+    public const string TermOutOfRange = "term_out_of_range";
+
+    // Step 4 · the documentation of the need of a transitory contract that lasts more than 30 days (TR)
+    public const string TransitoryDocumentationMissing = "transitory_documentation_missing";
+    public const string TransitoryDocumentationTooLong = "transitory_documentation_too_long";
 
     // Step 5 · model and attachments (the documents of the parties are checked, not copied)
     public const string PartyDocumentsDateInvalid = "party_documents_date_invalid";
@@ -92,4 +105,5 @@ public static class LeaseNeedCodes
     public const string TenantExtraEu = "tenant_extra_eu";
     public const string TemplateNotApproved = "template_not_approved";
     public const string DocumentsNotVerified = "documents_not_verified";
+    public const string TransitoryRentBandToCheck = "transitory_rent_band_to_check";
 }

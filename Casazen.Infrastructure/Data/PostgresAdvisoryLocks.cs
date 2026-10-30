@@ -141,6 +141,12 @@ internal static class PostgresAdvisoryLocks
         RentLease = 1_206,
 
         /// <summary>
+        /// One run of the hourly tacit renewal of the long-term leases (single key, session lock held for the whole run): two runs never
+        /// renew the same lease at once, even outside Hangfire's own lock (LR-14). Each lease is then renewed under its own row lock.
+        /// </summary>
+        LeaseTermRenewalRun = 1_208,
+
+        /// <summary>
         /// Photo gallery of one property (key: property id): two uploads, deletions or reorders never read and rewrite the
         /// photo list at the same time, so no photo is lost (PC-04).
         /// </summary>
@@ -155,10 +161,33 @@ internal static class PostgresAdvisoryLocks
         SupplierServiceCatalog = 1_302,
 
         /// <summary>
+        /// Content of the showcase of one supplier (key: supplier org id, <c>orgId.ToString("N")</c>): saving the draft, discarding it,
+        /// publishing, undoing, pausing and reopening the showcase, and the merge of duplicate supplier profiles (<c>fix-orphaned</c>) run one
+        /// at a time, so a save never lands on a publication that is being written and the version check is decided on the row as it is
+        /// (SP-13a). Taken <b>before</b> the calendar lock of the supplier when a change also writes <c>OnlineBookingEnabled</c>.
+        /// </summary>
+        SupplierShowcaseContent = 1_303,
+
+        /// <summary>
         /// One run of the automatic cancellation of the service requests nobody answered (single key, session lock held for the
         /// whole run): two runs never cancel and notify the same requests at once, even outside Hangfire's own lock (SP-04, D8).
         /// </summary>
         ServiceRequestAutoCancelRun = 1_310,
+
+        /// <summary>
+        /// One run of the recurring job that follows the groups of backup suppliers (single key, session lock held for the whole run): two
+        /// runs never promote a backup, open a second window or lapse the same group at once, even outside Hangfire's own lock (SP-BKP).
+        /// </summary>
+        ServiceRequestGroupRun = 1_314,
+
+        /// <summary>
+        /// One group of backup suppliers (key: the group id, <c>groupId.ToString("N")</c>, SP-BKP): the take of the primary or of a backup, the
+        /// pre-approval of a backup, a refusal or a cancellation of a member, the host's cancellation and the pass of the job change the
+        /// requests of the group one at a time, so exactly one of them has the job and the others are closed together with it. Always
+        /// taken <b>before</b> the calendar lock of a supplier (<see cref="SupplierCalendarSync"/>), never after: no cycle between a take and
+        /// the job that promotes a backup.
+        /// </summary>
+        ServiceRequestGroup = 1_315,
 
         /// <summary>
         /// One run of the upkeep of the bookings from the public showcases (single key, session lock held for the whole run): the
@@ -258,6 +287,27 @@ internal static class PostgresAdvisoryLocks
         /// delete the same drafts and their files at once, even outside Hangfire's own lock (LR-12, decision LR-D33).
         /// </summary>
         LeaseDraftRetentionRun = 1_207,
+
+        /// <summary>
+        /// The ConcordatoFacile checkout of one lease (key: lease id, <c>leaseId.ToString("N")</c>): two clicks on "pay" at the same time
+        /// open one Stripe Checkout Session and write one pending purchase, because the second request waits and then finds and reuses the
+        /// first (CF-BE, CF-FIX-FU3). Held for the whole checkout, Stripe calls included, as the checkout of the plans does.
+        /// </summary>
+        ConcordatoFacileCheckout = 1_209,
+
+        /// <summary>
+        /// The privacy acceptance of one lease for the ConcordatoFacile form (key: lease id, <c>leaseId.ToString("N")</c>): two requests at
+        /// the same time write one event, not two (CF-BE).
+        /// </summary>
+        ConcordatoFacilePrivacy = 1_210,
+
+        /// <summary>
+        /// The days of the leases of one property (key: property id, <c>propertyId.ToString("N")</c>): the check that no other lease covers the
+        /// same days and the step that makes a lease a contract (review confirmed, handed out for signature, signature or imported contract
+        /// recorded) run one at a time, so two leases of one property cannot both pass the check before either of them is written
+        /// (LR-OVERLAP). Always taken after the row lock of the lease, never before it.
+        /// </summary>
+        LeasePeriod = 1_211,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

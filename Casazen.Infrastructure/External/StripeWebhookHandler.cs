@@ -5,11 +5,14 @@ using Casazen.Core.OrgTeam;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
+using Casazen.Core.Options;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Npgsql;
 
 namespace Casazen.Infrastructure.External;
@@ -28,9 +31,18 @@ public class StripeWebhookHandler(
     DeferredChargeService deferredCharges,
     ISupplierPaymentWebhookService supplierPayments,
     ILogger<StripeWebhookHandler> logger,
-    IActivityLog? activityLog = null)
+    IActivityLog? activityLog = null,
+    ConcordatoFacilePaymentHandler? concordatoFacilePayments = null,
+    IConcordatoFacileGiftService? concordatoFacileGiftService = null,
+    IOptions<ConcordatoFacileOptions>? concordatoFacileOptions = null,
+    ISupplierShowcaseContentService? showcaseContent = null)
 {
     private const string DirectBookingKind = "direct-booking";
+
+    // ConcordatoFacile one-time payment (ADR-005). Optional like the activity log, so that the existing tests keep building the
+    // handler as they always did; the container always provides it.
+    private ConcordatoFacilePaymentHandler CfPayments =>
+        concordatoFacilePayments ??= new ConcordatoFacilePaymentHandler(dbContext, NullLogger<ConcordatoFacilePaymentHandler>.Instance);
 
     public Task HandleEventAsync(Event stripeEvent) =>
         HandleEventAsync(stripeEvent, WebhookSource.Platform);
@@ -52,7 +64,17 @@ public class StripeWebhookHandler(
     {
         await using var eventTransaction = await BeginEventTransactionAsync();
 
-        if (!await TryClaimEventAsync(stripeEvent, source))
+        // A ConcordatoFacile event (ADR-005) is claimed under its own source (R5). Decided once, here: the dispatch below reuses it.
+        var cfPayment = stripeEvent.Type == "payment_intent.succeeded"
+            && IsConcordatoFacilePayment(stripeEvent.Data.Object as PaymentIntent);
+        var cfRefund = stripeEvent.Type == "charge.refunded"
+            && await IsConcordatoFacileRefundAsync(stripeEvent.Data.Object as Charge);
+        // CF-BE: a payment of the service that failed or whose PaymentIntent was canceled. It closes the purchase only when the Checkout
+        // Session cannot succeed any more (ConcordatoFacilePaymentHandler.HandlePaymentNotCompletedAsync).
+        var cfPaymentEnded = stripeEvent.Type is "payment_intent.payment_failed" or "payment_intent.canceled"
+            && IsConcordatoFacilePayment(stripeEvent.Data.Object as PaymentIntent);
+
+        if (!await TryClaimEventAsync(stripeEvent, cfPayment || cfRefund || cfPaymentEnded ? WebhookSource.ConcordatoFacile : source))
         {
             if (eventTransaction is not null)
                 await eventTransaction.RollbackAsync();
@@ -97,6 +119,16 @@ public class StripeWebhookHandler(
                     rentNotice = await HandleRentChargeAsync(
                         (PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type, source, stripeEvent.Account);
                     break;
+                // ConcordatoFacile one-time payment (ADR-005): BEFORE the generic payment_intent.succeeded, like rent and service charges.
+                // CF payments are identified by leaseId in metadata without a "kind" field.
+                case "payment_intent.succeeded" when cfPayment:
+                    await CfPayments.HandlePaymentIntentSucceededAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent.Created);
+                    break;
+                // The same payments when they fail or are canceled (CF-BE): BEFORE the generic failure below, which knows nothing of them.
+                case "payment_intent.payment_failed" when cfPaymentEnded:
+                case "payment_intent.canceled" when cfPaymentEnded:
+                    await CfPayments.HandlePaymentNotCompletedAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type);
+                    break;
                 // The payment of a supplier's service (SP-15b, kind = service-charge): BEFORE the generic payment_intent.succeeded
                 // below, like the rent. Otherwise the event would be "processed" with no effect on the Connect endpoint (the generic
                 // handler drops every kind but direct-booking) or, on the platform endpoint, handed to the booking settlement.
@@ -120,13 +152,16 @@ public class StripeWebhookHandler(
                     break;
                 case "charge.refunded":
                     {
-                        // A refund of a supplier's service payment is recorded by the service payments (SP-15b); any other is a
-                        // booking payment's, as before.
-                        var serviceRefund = await HandleServiceChargeRefundedAsync(stripeEvent.Data.Object as Charge, stripeEvent.Account);
+                        // A refund of a supplier's service payment is recorded by the service payments (SP-15b); a CF refund is
+                        // handled by the CF handler (ADR-005-R7); any other is a booking payment's, as before.
+                        var charge = stripeEvent.Data.Object as Charge;
+                        var serviceRefund = await HandleServiceChargeRefundedAsync(charge, stripeEvent.Account);
                         if (serviceRefund is { Handled: true })
                             servicePaymentNotices = serviceRefund.Notices;
+                        else if (cfRefund)
+                            await CfPayments.HandleRefundAsync(charge!);
                         else
-                            succeededRefunds = await HandleChargeRefundedAsync(stripeEvent.Data.Object as Charge, source, stripeEvent.Account);
+                            succeededRefunds = await HandleChargeRefundedAsync(charge, source, stripeEvent.Account);
                         break;
                     }
                 case "refund.created":
@@ -349,6 +384,22 @@ public class StripeWebhookHandler(
         org.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync();
         await entitlementService.SyncFromSubscriptionAsync(org.Id);
+
+        // ADR-006-R1, ADR-006-R2: Grant ConcordatoFacile gift for biennial subscriptions
+        // Only on customer.subscription.created (not updated/deleted)
+        if (eventType == "customer.subscription.created" && concordatoFacileGiftService is not null)
+        {
+            var priceId = subscription.Items?.Data?.FirstOrDefault()?.Price?.Id;
+            if (!string.IsNullOrWhiteSpace(priceId) && IsBiennialSubscriptionPrice(priceId))
+            {
+                logger.LogInformation(
+                    "Biennial subscription {SubscriptionId} detected for org {OrgId} with price {PriceId}; granting ConcordatoFacile gift",
+                    subscription.Id,
+                    org.Id,
+                    priceId);
+                await concordatoFacileGiftService.GrantGiftAsync(org.Id, subscription.Id);
+            }
+        }
     }
 
     /// <summary>
@@ -579,6 +630,12 @@ public class StripeWebhookHandler(
         logger.LogInformation("Connect account updated: {AccountId}", account.Id);
         var snapshot = StripeConnectGateway.MapAccount(account);
         var update = await connectOnboardingService.ApplyAccountUpdatedAsync(snapshot);
+
+        // SP-13a: the bookings of the supplier's showcase follow its account. They close when it stops being able to take charges and
+        // payouts (the new bookings; those already made stay) and open again when it can, inside the transaction of the event.
+        if (showcaseContent is not null && update is { SupplierReadinessChanged: true, OrgId: { } supplierOrgId })
+            await showcaseContent.ReconcileBookingsAsync(supplierOrgId);
+
         return update is { SupplierBecameReady: true, OrgId: { } orgId } ? orgId : null;
     }
 
@@ -798,6 +855,28 @@ public class StripeWebhookHandler(
         string.Equals(kind, DeferredCharges.Kind, StringComparison.Ordinal);
 
     /// <summary>
+    /// Checks if a PaymentIntent is for a ConcordatoFacile purchase (ADR-005).
+    /// CF payments are identified by the presence of "leaseId" in metadata (without a "kind" field).
+    /// </summary>
+    private static bool IsConcordatoFacilePayment(PaymentIntent? paymentIntent) =>
+        paymentIntent is not null &&
+        paymentIntent.Metadata is not null &&
+        paymentIntent.Metadata.ContainsKey("leaseId") &&
+        !paymentIntent.Metadata.ContainsKey("kind");
+
+    /// <summary>
+    /// Checks if a Charge refund is associated with a ConcordatoFacile purchase (ADR-005-R7).
+    /// </summary>
+    private async Task<bool> IsConcordatoFacileRefundAsync(Charge? charge)
+    {
+        if (charge is null || string.IsNullOrWhiteSpace(charge.PaymentIntentId))
+            return false;
+
+        return await dbContext.ConcordatoFacilePurchases
+            .AnyAsync(p => p.StripePaymentIntentId == charge.PaymentIntentId);
+    }
+
+    /// <summary>
     /// An event of a deferred charge PaymentIntent ("Paga alla scadenza", BK-08, A3-14), from the Connect endpoint or the
     /// platform endpoint listening to connected accounts: succeeded, processing, failed (guest and host emailed once) or
     /// canceled. A success on a booking that is no longer confirmed is settled like a late checkout payment (BK-04).
@@ -912,5 +991,21 @@ public class StripeWebhookHandler(
             payment.ProcessedAt = DateTime.UtcNow;
         payment.UpdatedAt = DateTime.UtcNow;
         await paymentRepository.UpdateAsync(payment);
+    }
+
+    /// <summary>
+    /// Checks if a Stripe Price ID is in the configured BiennialPriceIds array (ADR-006-R2).
+    /// Returns false if the configuration is not available or the array is null/empty.
+    /// </summary>
+    private bool IsBiennialSubscriptionPrice(string priceId)
+    {
+        if (concordatoFacileOptions is null)
+            return false;
+
+        var biennialPriceIds = concordatoFacileOptions.Value.BiennialPriceIds;
+        if (biennialPriceIds is null || biennialPriceIds.Length == 0)
+            return false;
+
+        return Array.Exists(biennialPriceIds, id => string.Equals(id, priceId, StringComparison.Ordinal));
     }
 }

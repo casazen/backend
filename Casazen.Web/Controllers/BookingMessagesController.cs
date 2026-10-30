@@ -77,7 +77,7 @@ public class BookingMessagesController(
         if (!await IsAuthorizedAsync(id, BookingOperations.Write, cancellationToken))
             return NotFound();
 
-        return Ok(HostThreadDto.From(await messages.MarkReadAsync(id, cancellationToken)));
+        return Ok(HostThreadDto.From(await messages.MarkReadAsync(id, User.GetUserId(), cancellationToken)));
     }
 
     private async Task<bool> IsAuthorizedAsync(Guid bookingId, HostOperationRequirement operation, CancellationToken cancellationToken)

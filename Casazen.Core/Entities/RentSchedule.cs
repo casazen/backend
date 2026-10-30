@@ -36,6 +36,23 @@ public class RentSchedule : ITenantOwned
 
     public bool IsActive { get; set; }
 
+    /// <summary>
+    /// Whether the daily job emails the tenants a payment link for the installments coming due (LR-04a, decision LR-D19).
+    /// Tracking the rents and asking for them online are two different things: a plan created without saying so is
+    /// <b>off</b> (the landlord turns it on, or sends the link of one installment by hand), and the plans that existed
+    /// when the column was added are <b>on</b>, as they always were. Only the job reads it: the landlord's own payment
+    /// request, the link, the webhooks and the offline payment do not depend on it.
+    /// </summary>
+    public bool OnlineRequestsEnabled { get; set; }
+
+    /// <summary>
+    /// The day the rents are tracked from (LR-04a, decision LR-D17): no installment is generated for a period that ended
+    /// before it, so a lease that started long ago does not get years of installments «in ritardo». Null = from the start
+    /// of the lease. Kept with the plan so that every later builder of its installments (saving the plan again, the tacit
+    /// renewal of the lease) stops at the same day.
+    /// </summary>
+    public DateOnly? TrackFrom { get; set; }
+
     [MaxLength(255)]
     public string? LandlordStripeAccountId { get; set; }
 

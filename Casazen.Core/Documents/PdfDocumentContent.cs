@@ -24,8 +24,11 @@ public sealed record PdfDocumentContent(string Title, IReadOnlyList<PdfBlock> Bl
 /// <summary>A block of <see cref="PdfDocumentContent"/>.</summary>
 public abstract record PdfBlock;
 
-/// <summary>Heading of a section: level 1 is the largest; levels deeper than 3 render as level 3.</summary>
-public sealed record PdfHeading(string Text, int Level = 2) : PdfBlock;
+/// <summary>
+/// Heading of a section: level 1 is the largest; levels deeper than 3 render as level 3. With <paramref name="NewPage"/> the heading
+/// starts a new page (a document made of several parts, each at the top of its page).
+/// </summary>
+public sealed record PdfHeading(string Text, int Level = 2, bool NewPage = false) : PdfBlock;
 
 /// <summary>Paragraph wrapped to the page width; <c>\n</c> inside <see cref="Text"/> is a line break.</summary>
 public sealed record PdfParagraph(string Text, bool Bold = false) : PdfBlock;

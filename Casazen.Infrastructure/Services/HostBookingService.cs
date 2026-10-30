@@ -93,6 +93,9 @@ public sealed class HostBookingService(
             booking.TouristTax = price.TouristTax.AmountOrZero;
             booking.TouristTaxAmount = price.TouristTax.AmountOrZero;
             booking.TotalPrice = price.TotalPrice;
+            // The stay is priced anew (SR-06a): a price the host had agreed for the old dates and guests does not follow it.
+            booking.PriceOverridden = false;
+            booking.PriceOverrideNote = null;
             booking.NumberOfGuests = update.NumberOfGuests;
             booking.NumberOfAdults = adults;
             booking.NumberOfChildren = update.NumberOfChildren;

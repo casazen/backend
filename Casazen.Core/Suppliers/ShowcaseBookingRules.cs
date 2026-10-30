@@ -18,6 +18,11 @@ namespace Casazen.Core.Suppliers;
 /// <param name="PrivacyAccepted">The customer accepted the privacy notice.</param>
 /// <param name="PrivacyNoticeVersion">The version of the notice the page showed (it has to be the current one).</param>
 /// <param name="ConsentIp">The client address, as the server saw it (not sent by the client): consent evidence.</param>
+/// <param name="Urgent">
+/// The slot the customer picked is an urgent one (SP-04c, <c>GET …/slots?urgent=true</c>): the booking is judged against the urgent
+/// plan under the calendar lock, priced with the surcharge line, and the request is born <c>Urgency = High</c>. <c>false</c> is the
+/// booking every client made before.
+/// </param>
 public sealed record ShowcaseBookingInput(
     Guid ClientRequestId,
     string? Service,
@@ -37,7 +42,8 @@ public sealed record ShowcaseBookingInput(
     string? Locale,
     bool PrivacyAccepted,
     string? PrivacyNoticeVersion,
-    string? ConsentIp);
+    string? ConsentIp,
+    bool Urgent = false);
 
 /// <summary>A booking after <see cref="ShowcaseBookingRules.Normalize"/>: every value trimmed and checked.</summary>
 /// <param name="Quote">The choices of the estimate, ready for <see cref="SupplierQuoteCalculator.Validate"/>.</param>
@@ -151,7 +157,7 @@ public static class ShowcaseBookingRules
             input.ClientRequestId,
             service!,
             start,
-            new SupplierQuoteRequest(input.Quantity, input.SurfaceSqm, input.Options, comuneIstat ?? city, postalCode),
+            new SupplierQuoteRequest(input.Quantity, input.SurfaceSqm, input.Options, comuneIstat ?? city, postalCode, input.Urgent),
             comuneIstat,
             city!,
             postalCode!,
@@ -203,7 +209,8 @@ public static class ShowcaseBookingRules
         return string.Empty;
     }
 
-    private static string? Text(string? value, int maxLength, bool required, string field, List<string> invalid)
+    // The checks of the values a customer types, shared with the request on measure (ShowcaseInquiryRules, SP-10b).
+    internal static string? Text(string? value, int maxLength, bool required, string field, List<string> invalid)
     {
         var text = Collapse(value);
         if (text.Length == 0)
@@ -238,7 +245,7 @@ public static class ShowcaseBookingRules
         return text;
     }
 
-    private static string? FullName(string? value, List<string> invalid)
+    internal static string? FullName(string? value, List<string> invalid)
     {
         var name = Collapse(value);
         if (name.Length < 2 || name.Length > ShowcaseBookingLimits.FullNameMaxLength || name.Any(char.IsControl) || !name.Any(char.IsLetter))
@@ -250,7 +257,7 @@ public static class ShowcaseBookingRules
         return name;
     }
 
-    private static string? Email(string? value, List<string> invalid)
+    internal static string? Email(string? value, List<string> invalid)
     {
         var email = value?.Trim();
         if (string.IsNullOrEmpty(email)
@@ -268,7 +275,7 @@ public static class ShowcaseBookingRules
         return email;
     }
 
-    private static string? Phone(string? value, List<string> invalid)
+    internal static string? Phone(string? value, List<string> invalid)
     {
         var text = value?.Trim();
         var plus = text is not null && text.StartsWith('+');
@@ -293,7 +300,7 @@ public static class ShowcaseBookingRules
     private static string Collapse(string? value) =>
         string.Join(' ', (value ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
-    private static string Truncate(string? value, int maxLength)
+    internal static string Truncate(string? value, int maxLength)
     {
         var text = value?.Trim() ?? string.Empty;
         return text.Length <= maxLength ? text : text[..maxLength];

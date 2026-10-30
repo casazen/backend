@@ -76,7 +76,7 @@ public class AddPropertyMemberAccessMigrationPostgresTests : IAsyncLifetime
     public async Task Migrate_Up_AddsExactlyTheFinePermissions_AndKeepsEveryOtherOne()
     {
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var before = await PermissionsAsync(db);
 
         // Up to this migration only: the rows that appear are the ones this migration writes, whatever later ones seed.
@@ -93,7 +93,7 @@ public class AddPropertyMemberAccessMigrationPostgresTests : IAsyncLifetime
     public async Task Migrate_Up_TheGrantsTableAndTheColumnAreThereWithTheirRules()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
 
         Assert.Equal("1", await TextAsync("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'PropertyMemberAccesses'"));
         Assert.Equal(

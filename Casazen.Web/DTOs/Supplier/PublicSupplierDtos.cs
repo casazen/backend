@@ -46,6 +46,22 @@ public class PublicSupplierSupplementDto
 }
 
 /// <summary>
+/// What a service offers for an urgent request (SP-04c): on only when the service <b>and</b> the supplier accept it, with the
+/// surcharge the estimate adds. Off, with no surcharge, otherwise: the public never learns of a switch that has no effect.
+/// </summary>
+public class PublicSupplierUrgentDto
+{
+    /// <summary>True when an urgent slot (today or tomorrow, <c>GET …/slots?urgent=true</c>) can be booked for this service.</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>
+    /// The surcharge added to the estimate of an urgent request, in euro cents: the service's own, else the supplier's default
+    /// (a gross amount like the price). <c>0</c> when <see cref="Enabled"/> is false, and for an urgency with no surcharge.
+    /// </summary>
+    public int SurchargeCents { get; set; }
+}
+
+/// <summary>
 /// A published service of a supplier, as listed on its page (<c>GET api/public/suppliers/{slug}/services</c> and the
 /// <c>services</c> of <c>GET api/public/suppliers/{slug}</c>): what the card shows.
 /// </summary>
@@ -86,6 +102,16 @@ public class PublicSupplierServiceDto
 
     /// <summary>Absolute photo URLs in display order; the first is the cover.</summary>
     public IReadOnlyList<string> PhotoUrls { get; set; } = [];
+
+    /// <summary>Whether an urgent slot can be booked for this service, and the surcharge it adds (SP-04c).</summary>
+    public PublicSupplierUrgentDto Urgent { get; set; } = new();
+
+    /// <summary>
+    /// The first free slot of the service (UTC), from the same plan and cache as the slots (SP-13a); left out while the showcase does not take
+    /// bookings, and for a service with no free slot in the supplier's horizon. A slot shown is not a promise: the booking checks it again.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTime? NextSlotUtc { get; set; }
 }
 
 /// <summary>One service with its description and the structured supplements the estimate is computed from.</summary>
@@ -127,6 +153,13 @@ public class PublicSlotDto
 
     /// <summary>The same end on the clock of Rome, with its offset.</summary>
     public DateTimeOffset EndLocal { get; set; }
+
+    /// <summary>
+    /// True for a slot of the urgent plan (SP-04c, <c>…/slots?urgent=true</c>): booking it adds the urgent surcharge of the service.
+    /// Left out of a normal slot, which is as it always was.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Urgent { get; set; }
 }
 
 /// <summary>
@@ -164,6 +197,14 @@ public class PublicSlotsResponse
 
     /// <summary>One entry for every day of the window, in date order. Empty when the window starts after <see cref="BookableUntil"/>.</summary>
     public IReadOnlyList<PublicSlotDayDto> Days { get; set; } = [];
+
+    /// <summary>
+    /// True when these are the urgent slots (SP-04c, <c>urgent=true</c>): today and tomorrow, in the supplier's urgent window, from
+    /// 30 minutes from now; <see cref="BookableUntil"/> is then tomorrow, and <see cref="Days"/> is empty for a service or a supplier
+    /// that does not accept urgent requests. Left out of the normal slots, which are as they always were.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Urgent { get; set; }
 }
 
 // ─── Estimate ────────────────────────────────────────────────────────────────
@@ -210,15 +251,22 @@ public class PublicQuoteRequest
     /// <summary>Five digits. Checked for its shape and echoed; the supplier's zones are comuni, so it does not decide the coverage.</summary>
     [MaxLength(PublicShowcaseLimits.QuotePostalCodeMaxLength)]
     public string? PostalCode { get; set; }
+
+    /// <summary>
+    /// The customer asks for an urgent slot (SP-04c): the estimate gets one more line, the surcharge of the service
+    /// (<c>kind: Urgent</c>), inside the total. 422 <c>supplier_quote_invalid</c> on the field <c>urgent</c> for a service that does not
+    /// offer urgent requests (see <c>urgent</c> of the service). Left out or false: the estimate as it always was.
+    /// </summary>
+    public bool Urgent { get; set; }
 }
 
 /// <summary>One line of an estimate: <c>quantity × unitAmountCents = amountCents</c>.</summary>
 public class PublicQuoteLineDto
 {
-    /// <summary><c>Base</c> (the service's price) or <c>Supplement</c>.</summary>
+    /// <summary><c>Base</c> (the service's price), <c>Supplement</c> or <c>Urgent</c> (the surcharge of an urgent slot, once, last).</summary>
     public SupplierQuoteLineKind Kind { get; set; }
 
-    /// <summary>The supplement's code; <c>null</c> for the base price.</summary>
+    /// <summary>The supplement's code; <c>null</c> for the base price and the urgent surcharge.</summary>
     public string? Code { get; set; }
 
     /// <summary>The name of the service or the label of the supplement, as the supplier wrote it.</summary>
@@ -311,6 +359,7 @@ public static class PublicSupplierMapper
             DurationMinutes = slots.DurationMinutes,
             TimeZone = RomeCalendar.TimeZoneId,
             BookableUntil = slots.BookableUntil,
+            Urgent = slots.Urgent,
             Days = slots.Days
                 .Select(day => new PublicSlotDayDto
                 {
@@ -323,6 +372,7 @@ public static class PublicSupplierMapper
                             EndUtc = AsUtc(slot.EndUtc),
                             StartLocal = InRome(slot.StartUtc),
                             EndLocal = InRome(slot.EndUtc),
+                            Urgent = slots.Urgent,
                         })
                         .ToList(),
                 })
@@ -335,7 +385,8 @@ public static class PublicSupplierMapper
             request.SurfaceSqm,
             request.Options?.Select(option => option is null ? null : new SupplierQuoteOption(option.Code, option.Quantity)).ToList(),
             request.Comune,
-            request.PostalCode);
+            request.PostalCode,
+            request.Urgent);
 
     public static PublicQuoteResponse ToDto(PublicQuote result) =>
         new()
@@ -379,6 +430,7 @@ public static class PublicSupplierMapper
         dto.Included = service.Included;
         dto.Excluded = service.Excluded;
         dto.PhotoUrls = service.PhotoUrls;
+        dto.Urgent = new PublicSupplierUrgentDto { Enabled = service.Urgent.Enabled, SurchargeCents = service.Urgent.SurchargeCents };
         return dto;
     }
 

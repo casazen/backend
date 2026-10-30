@@ -84,6 +84,12 @@
   <data name="InternalServerErrorDetail" xml:space="preserve">
     <value>An unexpected error occurred. Please try again later.</value>
   </data>
+  <data name="IndexNowNotConfigured" xml:space="preserve">
+    <value>IndexNow service is not configured.</value>
+  </data>
+  <data name="IndexNowNoUrlsProvided" xml:space="preserve">
+    <value>No URLs provided for IndexNow notification.</value>
+  </data>
   <data name="ValidationError" xml:space="preserve">
     <value>One or more validation errors occurred.</value>
   </data>
@@ -117,6 +123,9 @@
   <data name="RateLimitedDetail" xml:space="preserve">
     <value>Too many requests in a short time. Try again in {0} seconds.</value>
   </data>
+  <data name="shares_not_hundred" xml:space="preserve">
+    <value>Ownership shares must sum to 100%</value>
+  </data>
   <data name="ServiceUnavailable" xml:space="preserve">
     <value>Service unavailable</value>
   </data>
@@ -137,6 +146,12 @@
   </data>
   <data name="StripeConnectAccountUnavailable" xml:space="preserve">
     <value>The connected Stripe account is no longer available: try again to connect a new one.</value>
+  </data>
+  <data name="StripeConnectDashboardNotReady" xml:space="preserve">
+    <value>Your Stripe account is not ready yet: connect Stripe or finish the verification, then you can open it from here.</value>
+  </data>
+  <data name="ConfigurationError" xml:space="preserve">
+    <value>Server configuration error. Contact support.</value>
   </data>
   <data name="ConnectReturnUrlNotConfigured" xml:space="preserve">
     <value>The public address of the app is not configured on the server: the Stripe connection cannot be started.</value>
@@ -288,11 +303,59 @@
   <data name="PropertyNotFound" xml:space="preserve">
     <value>Property not found</value>
   </data>
+  <data name="PropertyNotInTicino" xml:space="preserve">
+    <value>Property is not located in Canton Ticino</value>
+  </data>
+  <data name="SwissReportDateRequired" xml:space="preserve">
+    <value>Provide the report date.</value>
+  </data>
+  <data name="SwissPeriodFromRequired" xml:space="preserve">
+    <value>Provide the start date of the period.</value>
+  </data>
+  <data name="SwissPeriodToRequired" xml:space="preserve">
+    <value>Provide the end date of the period.</value>
+  </data>
+  <data name="SwissPeriodInvalid" xml:space="preserve">
+    <value>The end date of the period cannot be before its start date.</value>
+  </data>
+  <data name="SwissPeriodTooLong" xml:space="preserve">
+    <value>The period cannot be longer than {0} days.</value>
+  </data>
+  <data name="SwissReceiptTypeRequired" xml:space="preserve">
+    <value>Provide the receipt type: Police or OTR.</value>
+  </data>
+  <data name="SwissReceiptTypeInvalid" xml:space="preserve">
+    <value>Invalid receipt type: use "Police" (police notification) or "OTR" (overnight report).</value>
+  </data>
+  <data name="SwissReceiptReferenceRequired" xml:space="preserve">
+    <value>Provide the reference of the submission, for instance the confirmation number of the portal.</value>
+  </data>
+  <data name="SwissReceiptReferenceTooLong" xml:space="preserve">
+    <value>The reference cannot be longer than 200 characters.</value>
+  </data>
+  <data name="SwissReceiptFileRequired" xml:space="preserve">
+    <value>Attach the receipt file.</value>
+  </data>
+  <data name="SwissReceiptFileInvalid" xml:space="preserve">
+    <value>The receipt file is empty or larger than {0} MB.</value>
+  </data>
   <data name="BookingNotFound" xml:space="preserve">
     <value>Booking not found</value>
   </data>
   <data name="PaymentNotFound" xml:space="preserve">
     <value>Payment not found</value>
+  </data>
+  <data name="PracticeNotFound" xml:space="preserve">
+    <value>Practice not found</value>
+  </data>
+  <data name="GiftAlreadyConsumed" xml:space="preserve">
+    <value>The gift has already been used</value>
+  </data>
+  <data name="ConcordatoFacileAlreadyPurchased" xml:space="preserve">
+    <value>The guided contract creation is already paid for or activated on this contract: there is no need to pay again. If the access does not show up right away, try again in a moment.</value>
+  </data>
+  <data name="ConcordatoFacilePrivacyNotAccepted" xml:space="preserve">
+    <value>Before opening the contract creation form you must accept the privacy notice.</value>
   </data>
   <data name="GuestNotFound" xml:space="preserve">
     <value>Guest not found</value>
@@ -314,6 +377,12 @@
   </data>
   <data name="InvalidPhone" xml:space="preserve">
     <value>Invalid phone number</value>
+  </data>
+  <data name="InvalidSignature" xml:space="preserve">
+    <value>Invalid security signature</value>
+  </data>
+  <data name="InvalidTimestamp" xml:space="preserve">
+    <value>Invalid or malformed timestamp</value>
   </data>
   <data name="ManagedByStripe" xml:space="preserve">
     <value>Plan managed by Stripe. Use the billing portal.</value>
@@ -415,7 +484,10 @@
     <value>Filing sent to the provider: the contract is not registered yet. The status updates when the receipt of the Agenzia delle Entrate arrives.</value>
   </data>
   <data name="ApeInvalidContent" xml:space="preserve">
-    <value>The uploaded file is not a valid APE (energy performance certificate). The PDF content does not match an official attestato di prestazione energetica. Upload a valid official APE and try again.</value>
+    <value>A readable energy certificate could not be recognized. Upload all pages as a PDF or clear JPEG/PNG photos.</value>
+  </data>
+  <data name="LinkExpired" xml:space="preserve">
+    <value>The confirmation link has expired</value>
   </data>
   <data name="LeaseContractTemplateNotApproved" xml:space="preserve">
     <value>The contract template for this fiscal regime has not been approved by a lawyer yet: only the draft preview is available and the contract cannot be sent for signature.</value>
@@ -449,6 +521,105 @@
   </data>
   <data name="LeaseDraftValuesInvalid" xml:space="preserve">
     <value>The values sent do not have the shape this step of the draft expects.</value>
+  </data>
+  <data name="LeaseNotInForce" xml:space="preserve">
+    <value>The contract is not in force: it must be signed by every party and not rejected.</value>
+  </data>
+  <data name="LeaseTypeHasNoRenewal" xml:space="preserve">
+    <value>A transitory lease ends by itself at its expiry and does not renew: there is no notice to record.</value>
+  </data>
+  <data name="LeaseNoticeAlreadyRecorded" xml:space="preserve">
+    <value>A notice is already recorded for this contract: take it back before recording another.</value>
+  </data>
+  <data name="LeaseAlreadyTerminated" xml:space="preserve">
+    <value>The contract has already ended and that cannot be undone.</value>
+  </data>
+  <data name="LeaseNoticeDateInvalid" xml:space="preserve">
+    <value>The day of the notice cannot be before the contract starts or in the future.</value>
+  </data>
+  <data name="LeaseTermAlreadyEnded" xml:space="preserve">
+    <value>The period of the contract is over: the notice recorded can no longer be taken back.</value>
+  </data>
+  <data name="LeaseTerminationDateInvalid" xml:space="preserve">
+    <value>The last day of the contract must come after the start of the contract and no later than the end of the current period: from {0:d MMM yyyy} to {1:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseTerminationNotStarted" xml:space="preserve">
+    <value>The contract has not started yet, so it cannot be ended early. To cancel it you need a consensual termination, to be communicated to the Agenzia delle Entrate within {0} days.</value>
+  </data>
+  <data name="LeaseBusy" xml:space="preserve">
+    <value>The contract is being changed by another operation right now. Try again in a moment: this change was not applied.</value>
+  </data>
+  <data name="LeaseWithdrawalDateInvalid" xml:space="preserve">
+    <value>The day the withdrawal arrived cannot be before the start of the contract or in the future.</value>
+  </data>
+  <data name="LeaseWithdrawalNoticeInvalid" xml:space="preserve">
+    <value>The notice of the withdrawal must be a whole number of months from 1 to {0}.</value>
+  </data>
+  <data name="LeaseLetterDateInvalid" xml:space="preserve">
+    <value>The day you sent the letter cannot be before the start of the contract or in the future.</value>
+  </data>
+  <data name="LeaseDisdettaReasonRequired" xml:space="preserve">
+    <value>At the first expiry the notice must state one of the reasons the law allows: choose one.</value>
+  </data>
+  <data name="LeaseLetterUnavailable" xml:space="preserve">
+    <value>The text of this letter is not available right now. Try again later or write to support.</value>
+  </data>
+  <data name="LeaseRenewalEndInvalid" xml:space="preserve">
+    <value>The agreed period must end after the end of the current period: choose a day from {0:d MMM yyyy} to {1:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalBlockedByNotice" xml:space="preserve">
+    <value>A notice is recorded, so the lease does not renew. If the parties decided to renew it, take the notice back first.</value>
+  </data>
+  <data name="LeaseDepositNone" xml:space="preserve">
+    <value>The contract has no security deposit: there is nothing to return.</value>
+  </data>
+  <data name="LeaseDepositDatesInvalid" xml:space="preserve">
+    <value>The deposit must have been paid at least a day before it is returned, and the day of the return cannot be too far from the end of the contract.</value>
+  </data>
+  <data name="LeaseDepositRateInvalid" xml:space="preserve">
+    <value>The legal interest rate of each year is a percentage between 0 and {0} with at most two decimals, written once per year.</value>
+  </data>
+  <data name="LeaseDepositRateMissing" xml:space="preserve">
+    <value>The legal interest rate is missing for the years: {0}.</value>
+  </data>
+  <data name="LeaseDepositInterestPaidInvalid" xml:space="preserve">
+    <value>The interest already paid is a sum in euros with at most two decimals and is not more than the interest accrued.</value>
+  </data>
+  <data name="LeaseDepositDeductionInvalid" xml:space="preserve">
+    <value>Each deduction has a reason (at most {0} characters) and a sum above zero with at most two decimals; at most {1} deductions.</value>
+  </data>
+  <data name="LeaseDepositDeductionsExceed" xml:space="preserve">
+    <value>The deductions are more than the deposit and the interest due: the balance is not a return.</value>
+  </data>
+  <data name="LeaseDepositReturnDateInvalid" xml:space="preserve">
+    <value>The day of the return must be between the start of the contract and today: what you record has already happened.</value>
+  </data>
+  <data name="LeaseIstatWaived" xml:space="preserve">
+    <value>With the cedolare secca the update of the rent is suspended for as long as the option lasts: there is nothing to calculate.</value>
+  </data>
+  <data name="LeaseIstatNoIncrease" xml:space="preserve">
+    <value>With a zero or negative variation the rent does not go up: there is no update to ask for.</value>
+  </data>
+  <data name="LeaseIstatPercentInvalid" xml:space="preserve">
+    <value>The variation of the index and the share must be percentages above zero with at most two decimals, and the share cannot be above {0} percent.</value>
+  </data>
+  <data name="LeaseIstatNoRent" xml:space="preserve">
+    <value>The contract has no rent: there is nothing to update.</value>
+  </data>
+  <data name="LeaseLetterEffectDateInvalid" xml:space="preserve">
+    <value>The day the letter takes effect from must be between {0:d MMM yyyy} and {1:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalNotYet" xml:space="preserve">
+    <value>A renewal is recorded in the last stretch before the end, from {0:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalPeriodOver" xml:space="preserve">
+    <value>The period of the contract is already over: the lease renews by itself and CasaZen records the renewal.</value>
+  </data>
+  <data name="LeaseLetterNotApplicable" xml:space="preserve">
+    <value>This letter does not apply to this contract.</value>
+  </data>
+  <data name="LeasePeriodOverlaps" xml:space="preserve">
+    <value>This property already has a lease from {0:d MMM yyyy} to {1:d MMM yyyy}. Two leases cannot cover the same days: open the existing one or change the dates.</value>
   </data>
   <data name="RliChecklist_contract_signed" xml:space="preserve">
     <value>Contract signed by all parties</value>
@@ -519,6 +690,9 @@
   <data name="RliReceiptNotAvailable" xml:space="preserve">
     <value>The registration receipt is not available: the contract is not registered yet.</value>
   </data>
+  <data name="RegistrationReceiptSourceInvalid" xml:space="preserve">
+    <value>Give the receipt in one way only: the file sent now, or the document already uploaded to the contract.</value>
+  </data>
   <data name="ServiceRequestNotFound" xml:space="preserve">
     <value>Service request not found</value>
   </data>
@@ -545,6 +719,18 @@
   </data>
   <data name="BookingTooManyGuests" xml:space="preserve">
     <value>This property hosts at most {0} guests.</value>
+  </data>
+  <data name="BookingPriceOverrideInvalid" xml:space="preserve">
+    <value>The agreed price is not valid: it must cover at least the tourist tax, and the lodging part cannot exceed €100,000.</value>
+  </data>
+  <data name="BookingPriceNoteTooLong" xml:space="preserve">
+    <value>The note on the price can have at most 80 characters.</value>
+  </data>
+  <data name="BookingBlockDatesMismatch" xml:space="preserve">
+    <value>The dates are not those of the portal block you are completing: check them again.</value>
+  </data>
+  <data name="AvailabilityInvalidRequest" xml:space="preserve">
+    <value>The dates asked for are not valid: give the arrival and the departure (years 2000 to 2100) and, if you give one, a portal among Airbnb, BookingCom and Other.</value>
   </data>
   <data name="BookingCalendarRangeInvalid" xml:space="preserve">
     <value>The last day of the calendar cannot be before its first day.</value>
@@ -615,6 +801,12 @@
   <data name="OrgOperatorRegisteredOfficeTooLongInput" xml:space="preserve">
     <value>The registered office is too long.</value>
   </data>
+  <data name="OrgContactPhoneInvalid" xml:space="preserve">
+    <value>The phone number is not valid: use digits only, with an optional leading + (6 to 15 digits).</value>
+  </data>
+  <data name="OrgDefaultLanguageInvalid" xml:space="preserve">
+    <value>Unsupported language: choose Italian (it) or English (en).</value>
+  </data>
   <data name="OrgSlugInvalid" xml:space="preserve">
     <value>This web address (slug) is not valid: use {0} to {1} characters among letters, numbers and hyphens.</value>
   </data>
@@ -629,6 +821,9 @@
   </data>
   <data name="OrgBrandingThemeInvalid" xml:space="preserve">
     <value>This theme is not available for the public site.</value>
+  </data>
+  <data name="OrgBrandingFontInvalid" xml:space="preserve">
+    <value>This font pair is not available for the public site.</value>
   </data>
   <data name="OrgBrandingTaglineTooLong" xml:space="preserve">
     <value>The tagline cannot exceed {0} characters.</value>
@@ -711,6 +906,15 @@
   <data name="CheckInMarketingConsentUnavailable" xml:space="preserve">
     <value>Consent to promotional communications is not available for this check-in.</value>
   </data>
+  <data name="CheckInMarketingConsentMinor" xml:space="preserve">
+    <value>Consent to promotional communications can only be given by an adult guest.</value>
+  </data>
+  <data name="CheckInMarketingEmailRequired" xml:space="preserve">
+    <value>Enter the email address where you want to receive promotional communications.</value>
+  </data>
+  <data name="CheckInMarketingEmailInvalid" xml:space="preserve">
+    <value>Invalid email address.</value>
+  </data>
   <data name="GdprMarketingConsentHostGrantForbidden" xml:space="preserve">
     <value>Only the guest can give the marketing consent, on the check-in portal. The host can only withdraw it on the guest's documented request.</value>
   </data>
@@ -726,8 +930,14 @@
   <data name="DocumentFileMissing" xml:space="preserve">
     <value>The file of this document is no longer available: please upload it again.</value>
   </data>
+  <data name="DocumentNotFound" xml:space="preserve">
+    <value>The requested document does not exist or is not accessible.</value>
+  </data>
   <data name="SignedUrlUnavailable" xml:space="preserve">
     <value>The configured storage cannot create signed links: download the document from the application.</value>
+  </data>
+  <data name="SignatureMissing" xml:space="preserve">
+    <value>Security signature is missing</value>
   </data>
   <data name="ICalInvalidUrl" xml:space="preserve">
     <value>The calendar address is not valid: use a public https link (for example the iCal export link from Airbnb or Booking.com).</value>
@@ -798,6 +1008,12 @@
   </data>
   <data name="AlloggiatiRecordFileName" xml:space="preserve">
     <value>The file for the Alloggiati Web portal cannot be generated: the first or last name of guest {0} has characters the portal does not accept. Write them with letters of the Latin alphabet only, as on the document.</value>
+  </data>
+  <data name="questura_credentials_missing" xml:space="preserve">
+    <value>Questura credentials missing for this property.</value>
+  </data>
+  <data name="alloggiati_send_failed" xml:space="preserve">
+    <value>Alloggiati Web send failed.</value>
   </data>
   <data name="TouristTaxRateNotFound" xml:space="preserve">
     <value>Tourist tax rate not found.</value>
@@ -876,6 +1092,9 @@
   </data>
   <data name="TaxRateReducedRateInvalid" xml:space="preserve">
     <value>For the reduced rate enter both the maximum age (between the exemption age and 17) and the amount per person per night (between 0.01 and 1000 euros); fixed-amount rates only.</value>
+  </data>
+  <data name="TenantIsolationViolation" xml:space="preserve">
+    <value>Organization data isolation violation.</value>
   </data>
   <data name="PaymentNotRefundable" xml:space="preserve">
     <value>This payment cannot be refunded: only collected payments can be refunded.</value>
@@ -1081,6 +1300,12 @@
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Consent to receive offers is not available right now: try again without selecting it.</value>
   </data>
+  <data name="DirectBookingArrivalTimeInvalid" xml:space="preserve">
+    <value>The expected arrival time is not valid: choose a time (for example 15:30) or "after the check-in window".</value>
+  </data>
+  <data name="DirectBookingCurrencyNotSupported" xml:space="preserve">
+    <value>Direct bookings not supported for this currency</value>
+  </data>
   <data name="SupplierClaimInvalid" xml:space="preserve">
     <value>The link is not valid: register your business again or sign in with the account already linked.</value>
   </data>
@@ -1126,6 +1351,15 @@
   <data name="CheckInDateOfBirthInFuture" xml:space="preserve">
     <value>The date of birth cannot be in the future.</value>
   </data>
+  <data name="CheckInBiometricDocumentPhotoRequired" xml:space="preserve">
+    <value>Document photo is required for biometric verification.</value>
+  </data>
+  <data name="CheckInBiometricMaxAttemptsReached" xml:space="preserve">
+    <value>Maximum number of biometric verification attempts reached.</value>
+  </data>
+  <data name="CheckInBiometricMinorExcluded" xml:space="preserve">
+    <value>Biometric verification is not available for minors.</value>
+  </data>
   <data name="CheckInProvinceInvalid" xml:space="preserve">
     <value>Enter the two-letter province code (e.g. RM).</value>
   </data>
@@ -1137,6 +1371,27 @@
   </data>
   <data name="CheckInDocumentNumberInvalid" xml:space="preserve">
     <value>The document number may contain only letters and digits, at most {0}.</value>
+  </data>
+  <data name="CheckInDocumentProcessingFailed" xml:space="preserve">
+    <value>Document processing failed. Please try again or enter the data manually.</value>
+  </data>
+  <data name="CheckInDocumentRequired" xml:space="preserve">
+    <value>Document file is required.</value>
+  </data>
+  <data name="CheckInDocumentPhotoTypeUnsupported" xml:space="preserve">
+    <value>Document photo must be JPEG or PNG.</value>
+  </data>
+  <data name="CheckInDocumentTypeUnsupported" xml:space="preserve">
+    <value>Only JPEG and PNG images are supported.</value>
+  </data>
+  <data name="CheckInSelfieProcessingFailed" xml:space="preserve">
+    <value>Selfie processing failed. Please try again.</value>
+  </data>
+  <data name="CheckInSelfieRequired" xml:space="preserve">
+    <value>Selfie is required for biometric verification.</value>
+  </data>
+  <data name="CheckInSelfieTypeUnsupported" xml:space="preserve">
+    <value>Selfie must be JPEG or PNG.</value>
   </data>
   <data name="AlloggiatiCodeListUnknown" xml:space="preserve">
     <value>Unknown code list: use comuni, stati, documenti or luoghi.</value>
@@ -1179,6 +1434,12 @@
   </data>
   <data name="LeaseStipulaLeaseNotSigned" xml:space="preserve">
     <value>The contract is not signed yet: upload the PDF signed by every party together with the signing date.</value>
+  </data>
+  <data name="LeaseImportNotImported" xml:space="preserve">
+    <value>Only a contract declared as already signed outside CasaZen when the draft was created can be imported. A contract prepared in CasaZen is signed from its template.</value>
+  </data>
+  <data name="LeaseImportSourceInvalid" xml:space="preserve">
+    <value>Give the signed contract in one way only: the file sent now, or the document already uploaded to the draft.</value>
   </data>
   <data name="DirectBookingDeferredPaymentUnavailable" xml:space="preserve">
     <value>Paying at the deadline is not available for these dates: the arrival is too close. Choose another payment method.</value>
@@ -1261,6 +1522,18 @@
   <data name="GuestBookingCodeInvalid" xml:space="preserve">
     <value>The booking code is not valid: check the confirmation email.</value>
   </data>
+  <data name="HostContactEmailInvalid" xml:space="preserve">
+    <value>Enter a valid email address: the host will answer to it.</value>
+  </data>
+  <data name="HostContactMessageInvalid" xml:space="preserve">
+    <value>Write a message of at least 5 and at most 2000 characters.</value>
+  </data>
+  <data name="HostContactNameTooLong" xml:space="preserve">
+    <value>The name can have at most 100 characters.</value>
+  </data>
+  <data name="HostContactConsentRequired" xml:space="preserve">
+    <value>To write to the host you must agree that your message and your email address are sent to them.</value>
+  </data>
   <data name="GuestBookingEmailRequired" xml:space="preserve">
     <value>Enter the email address you booked with.</value>
   </data>
@@ -1272,6 +1545,12 @@
   </data>
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>The date range is not valid: the end date must be after the start date and the range cannot exceed {0} days.</value>
+  </data>
+  <data name="PublicCalendarInvalidRange" xml:space="preserve">
+    <value>The date range is not valid: the end date must be after the start date and the range cannot exceed {0} months.</value>
+  </data>
+  <data name="PublicStaysDatesInvalid" xml:space="preserve">
+    <value>The dates of the stay are not valid: give both the arrival and the departure, the departure must be after the arrival and the stay cannot exceed {0} nights.</value>
   </data>
   <data name="LeaseEndBeforeStart" xml:space="preserve">
     <value>The lease end date must be after the start date.</value>
@@ -1375,6 +1654,12 @@
   <data name="PropertyMinNightsInvalid" xml:space="preserve">
     <value>The minimum stay is not valid: use 1 to 30 nights, or no minimum.</value>
   </data>
+  <data name="PropertyMunicipalityNotInIstatList" xml:space="preserve">
+    <value>The property municipality could not be found in the ISTAT comuni list.</value>
+  </data>
+  <data name="PropertyMunicipalityNotSet" xml:space="preserve">
+    <value>The property municipality is not set. Please select the comune from the official ISTAT list.</value>
+  </data>
   <data name="PropertyWeekendSurchargeRange" xml:space="preserve">
     <value>The weekend surcharge must be between {1} and {2} percent.</value>
   </data>
@@ -1386,6 +1671,24 @@
   </data>
   <data name="PropertyHouseRulesTooLong" xml:space="preserve">
     <value>The house rules can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyBedsRange" xml:space="preserve">
+    <value>The number of beds must be a whole number between {1} and {2}.</value>
+  </data>
+  <data name="PropertyAreaSqmRange" xml:space="preserve">
+    <value>The area must be between {1} and {2} square metres.</value>
+  </data>
+  <data name="PropertyListingTitleTooLong" xml:space="preserve">
+    <value>The listing title can be at most {1} characters long.</value>
+  </data>
+  <data name="PropertyExtraGuestFeeRange" xml:space="preserve">
+    <value>The fee for each extra guest must be between {1} and {2} euros per night.</value>
+  </data>
+  <data name="PropertyQuietHoursIncomplete" xml:space="preserve">
+    <value>Quiet hours go together: give both the start and the end, or neither.</value>
+  </data>
+  <data name="PropertyListViewInvalid" xml:space="preserve">
+    <value>Invalid view: use "overview" or leave it empty.</value>
   </data>
   <data name="PropertyTimezoneInvalid" xml:space="preserve">
     <value>Invalid time zone: use an IANA identifier, for example Europe/Rome.</value>
@@ -1498,11 +1801,23 @@
   <data name="PricingSuggestionsNotEnabled" xml:space="preserve">
     <value>Seasonal suggestions are not enabled for this property: enable them before recalculating.</value>
   </data>
-  <data name="ServiceRequestBookingRequired" xml:space="preserve">
-    <value>In short-term rentals a supplier request is for a stay: choose the booking.</value>
-  </data>
   <data name="ServiceRequestBookingMismatch" xml:space="preserve">
     <value>The booking is not a stay of this property.</value>
+  </data>
+  <data name="ServiceRequestListInvalidView" xml:space="preserve">
+    <value>Invalid view: use one of the names all, pending, active, topay, done or needsaction.</value>
+  </data>
+  <data name="ServiceRequestListInvalidSort" xml:space="preserve">
+    <value>Invalid order: use scheduled, created or status, followed by :asc or :desc.</value>
+  </data>
+  <data name="ServiceRequestListInvalidRange" xml:space="preserve">
+    <value>Invalid date range: the start date is after the end date.</value>
+  </data>
+  <data name="ServiceRequestListInvalidText" xml:space="preserve">
+    <value>Invalid search text: use 2 to 60 characters, without control characters.</value>
+  </data>
+  <data name="ServiceRequestListInvalidCategory" xml:space="preserve">
+    <value>Invalid category: use one of the codes of GET /api/service-categories.</value>
   </data>
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>In long-term rentals a supplier request is for the property, not for a booking.</value>
@@ -1677,6 +1992,30 @@
   </data>
   <data name="OtaStayTotalPriceInvalid" xml:space="preserve">
     <value>The amount cannot be negative.</value>
+  </data>
+  <data name="OwnerIbanMissing" xml:space="preserve">
+    <value>The property owner does not have a registered IBAN.</value>
+  </data>
+  <data name="OwnerInvitationDailyLimitReached" xml:space="preserve">
+    <value>Daily invitation limit reached: maximum {0} invitations per organization every 24 hours.</value>
+  </data>
+  <data name="OwnerInvitationInvalid" xml:space="preserve">
+    <value>Invalid or expired invitation.</value>
+  </data>
+  <data name="OwnerInvitationUsed" xml:space="preserve">
+    <value>This invitation has already been accepted.</value>
+  </data>
+  <data name="OwnerInvitationRevoked" xml:space="preserve">
+    <value>This invitation has been revoked.</value>
+  </data>
+  <data name="OwnerInvitationExpired" xml:space="preserve">
+    <value>This invitation has expired.</value>
+  </data>
+  <data name="OwnerInvitationEmailMismatch" xml:space="preserve">
+    <value>Your account email does not match the invitation email.</value>
+  </data>
+  <data name="PropertyOwnerNotFound" xml:space="preserve">
+    <value>Property owner not found.</value>
   </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, period=Last30Days or period=Next30Days.</value>
@@ -2185,6 +2524,9 @@
   <data name="RentLeaseDatesInvalid" xml:space="preserve">
     <value>The lease dates do not allow a rent schedule.</value>
   </data>
+  <data name="RentTrackFromInvalid" xml:space="preserve">
+    <value>The date to track the rents from cannot be after the end of the lease.</value>
+  </data>
   <data name="RentBillingDayInvalid" xml:space="preserve">
     <value>The due day must be between {0} and {1}.</value>
   </data>
@@ -2251,11 +2593,26 @@
   <data name="LeaseListViewUnknown" xml:space="preserve">
     <value>The lease view is not valid: use All, Active, InPreparation, Expiring or Ended.</value>
   </data>
+  <data name="TenantNotFound" xml:space="preserve">
+    <value>Tenant not found.</value>
+  </data>
+  <data name="TenantListViewUnknown" xml:space="preserve">
+    <value>The tenant view is not valid: use All, Current or Former.</value>
+  </data>
+  <data name="LongRentPropertyViewUnknown" xml:space="preserve">
+    <value>The property view is not valid: use All, Rented or Free.</value>
+  </data>
   <data name="LongRentDeadlinesRangeInvalid" xml:space="preserve">
     <value>Enter a valid period: dates as yyyy-MM-dd, the end not before the start and at most 366 days.</value>
   </data>
   <data name="LongRentDeadlinesTypeUnknown" xml:space="preserve">
     <value>The deadline type is not valid: use RliRegistration, Questura, LeaseEnd, Notice or Rent.</value>
+  </data>
+  <data name="LongRentFiscalYearInvalid" xml:space="preserve">
+    <value>Enter a valid year: from 2000 to the current year.</value>
+  </data>
+  <data name="LongRentFiscalFormatInvalid" xml:space="preserve">
+    <value>That format is not available: the summary is downloaded as csv.</value>
   </data>
   <data name="SupplierActivationBlocked" xml:space="preserve">
     <value>The profile cannot be activated: some required items are missing.</value>
@@ -2326,6 +2683,24 @@
   <data name="SupplierServiceCopySuffix" xml:space="preserve">
     <value> (copy)</value>
   </data>
+  <data name="ShowcaseContentInvalid" xml:space="preserve">
+    <value>Some of the showcase content is not valid (fields: {0}). Check the texts, the color and the images and try again.</value>
+  </data>
+  <data name="ShowcaseVersionConflict" xml:space="preserve">
+    <value>The showcase was changed from another tab or by another user: reload the page and apply your change again.</value>
+  </data>
+  <data name="ShowcaseNotPublishable" xml:space="preserve">
+    <value>The showcase cannot be published yet: some required things are still missing (items: {0}). Check the "What is missing" list and try again.</value>
+  </data>
+  <data name="ShowcaseSupplierNotActive" xml:space="preserve">
+    <value>You can publish or reopen the showcase only with an active supplier profile: complete the activation first.</value>
+  </data>
+  <data name="ShowcaseNotPublished" xml:space="preserve">
+    <value>The showcase has not been published yet: there is nothing to pause or to reopen.</value>
+  </data>
+  <data name="ShowcaseUndoUnavailable" xml:space="preserve">
+    <value>The last publication can no longer be undone: too much time has passed or you changed something else meanwhile.</value>
+  </data>
   <data name="SupplierHoursInvalid" xml:space="preserve">
     <value>The working hours are not valid (fields: {0}). Check the bands: a day has at most 3, they cannot overlap, and each one must end after it starts (in minutes after midnight, from 0 to 1440).</value>
   </data>
@@ -2362,6 +2737,9 @@
   <data name="SupplierSettingsInvalid" xml:space="preserve">
     <value>The settings are not valid (fields: {0}). All five are required: automatic acceptance of regular customers, alert for new requests, reminder of the day before, alert for payments and time to answer (15 to 10080 minutes).</value>
   </data>
+  <data name="SupplierUrgentInvalid" xml:space="preserve">
+    <value>The urgent settings are not valid (fields: {0}). All four are required: urgent requests accepted (yes or no), start and end of the time window (minutes after midnight: the start from 0 to 1439, the end from 1 to 1440 and after the start) and surcharge (0 to 50000 cents).</value>
+  </data>
   <data name="SupplierSearchTargetRequired" xml:space="preserve">
     <value>Provide the municipality or the property to search for suppliers.</value>
   </data>
@@ -2385,6 +2763,12 @@
   </data>
   <data name="EmailRequired" xml:space="preserve">
     <value>Email is required.</value>
+  </data>
+  <data name="EmailMissing" xml:space="preserve">
+    <value>Email is required.</value>
+  </data>
+  <data name="EmailHashMissing" xml:space="preserve">
+    <value>The email_hash parameter is required</value>
   </data>
   <data name="PhoneRequired" xml:space="preserve">
     <value>Phone is required.</value>
@@ -2416,6 +2800,9 @@
   <data name="ConsentRequired" xml:space="preserve">
     <value>Consent is required.</value>
   </data>
+  <data name="ConsentRecordNotFound" xml:space="preserve">
+    <value>Consent record not found</value>
+  </data>
   <data name="InvalidPaymentOption" xml:space="preserve">
     <value>Invalid payment option.</value>
   </data>
@@ -2439,6 +2826,9 @@
   </data>
   <data name="EmailTooLong" xml:space="preserve">
     <value>Email cannot exceed 255 characters.</value>
+  </data>
+  <data name="ExpiresAtMissing" xml:space="preserve">
+    <value>Expiration date is required.</value>
   </data>
   <data name="PhoneTooLong" xml:space="preserve">
     <value>Phone number cannot exceed 20 characters.</value>
@@ -2487,6 +2877,9 @@
   </data>
   <data name="OrgAccessDenied" xml:space="preserve">
     <value>Access denied for this organization.</value>
+  </data>
+  <data name="OrgIdMissing" xml:space="preserve">
+    <value>The org_id parameter is required</value>
   </data>
   <data name="ApeRequired" xml:space="preserve">
     <value>The APE document is required before creating a lease contract.</value>
@@ -3051,5 +3444,345 @@
   </data>
   <data name="IdempotencyKeyInvalid" xml:space="preserve">
     <value>The request has no valid send key (Idempotency-Key header, 8 to 64 letters, digits or dashes).</value>
+  </data>
+  <data name="LeaseDocumentInvalid" xml:space="preserve"><value>Upload a valid PDF up to 20 MB.</value></data>
+  <data name="ApeIncomplete" xml:space="preserve">
+    <value>Missing or unreadable certificate data: {0}. Add all pages or replace unclear photos.</value>
+  </data>
+  <data name="ApeExpired" xml:space="preserve">
+    <value>The expiry date read from the certificate has passed. Upload a current certificate.</value>
+  </data>
+  <data name="ApeOcrUnavailable" xml:space="preserve">
+    <value>OCR is unavailable. No document was saved; please retry shortly.</value>
+  </data>
+  <data name="ApeIdentificationRequired" xml:space="preserve">
+    <value>We could not read all the data of the property's APE on our own. Enter the identification code and the energy class as printed on the certificate, then try again.</value>
+  </data>
+  <data name="ApeField_EnergyClass" xml:space="preserve">
+    <value>energy class</value>
+  </data>
+  <data name="ApeField_Performance" xml:space="preserve">
+    <value>EPgl index</value>
+  </data>
+  <data name="ApeField_CertificateCode" xml:space="preserve">
+    <value>certificate identification code</value>
+  </data>
+  <data name="ApeField_Address" xml:space="preserve">
+    <value>property address</value>
+  </data>
+  <data name="ApeField_Certifier" xml:space="preserve">
+    <value>certifier name</value>
+  </data>
+  <data name="ApeField_IssueDate" xml:space="preserve">
+    <value>valid issue date</value>
+  </data>
+  <data name="ApeField_ExpiryDate" xml:space="preserve">
+    <value>valid expiry date</value>
+  </data>
+  <data name="ConcordatoFacileGiftAlreadyExists" xml:space="preserve">
+    <value>The organization already has a complimentary practice for the guided creation of the contract.</value>
+  </data>
+  <data name="SubscriptionIdRequired" xml:space="preserve">
+    <value>The subscription ID is required.</value>
+  </data>
+  <data name="ReasonRequired" xml:space="preserve">
+    <value>The reason is required.</value>
+  </data>
+  <data name="ReasonTooLong" xml:space="preserve">
+    <value>The reason cannot exceed 500 characters.</value>
+  </data>
+  <data name="feature_requires_agency_tier" xml:space="preserve">
+    <value>This feature requires Agency tier</value>
+  </data>
+  <data name="tier_insufficient" xml:space="preserve">
+    <value>Insufficient tier for this operation</value>
+  </data>
+  <data name="TrustedSupplierNotFound" xml:space="preserve">
+    <value>Trusted supplier not found</value>
+  </data>
+  <data name="ApprovalItemNotFound" xml:space="preserve">
+    <value>Approval item not found</value>
+  </data>
+  <data name="OrgContextRequired" xml:space="preserve">
+    <value>Organization context required</value>
+  </data>
+  <data name="UserIdMissing" xml:space="preserve">
+    <value>User ID missing</value>
+  </data>
+  <data name="OwnerDoesNotOwnProperty" xml:space="preserve">
+    <value>The owner does not own this property</value>
+  </data>
+  <data name="StatementAlreadyExists" xml:space="preserve">
+    <value>A statement already exists for this owner, property, and period</value>
+  </data>
+  <data name="F24AlreadyExists" xml:space="preserve">
+    <value>F24 for this period already exists</value>
+  </data>
+  <data name="F24NotFound" xml:space="preserve">
+    <value>F24 not found for the requested period</value>
+  </data>
+  <data name="MixedCommissionCoOwnershipNotSupported" xml:space="preserve">
+    <value>Co-owner statements with different commission rates are not supported</value>
+  </data>
+  <data name="StatementNotApproved" xml:space="preserve">
+    <value>The statement is not in Approved status</value>
+  </data>
+  <data name="StatementNotDraft" xml:space="preserve">
+    <value>The statement is not in Draft status</value>
+  </data>
+  <data name="StatementCsvExportNotImplemented" xml:space="preserve">
+    <value>CSV export for statements not yet available</value>
+  </data>
+  <data name="StatementPdfExportNotImplemented" xml:space="preserve">
+    <value>PDF export for statements not yet available</value>
+  </data>
+  <data name="StatementNotFound" xml:space="preserve">
+    <value>Statement not found or does not belong to your organization</value>
+  </data>
+  <data name="InvoiceAlreadyExists" xml:space="preserve">
+    <value>An invoice already exists for this owner and period</value>
+  </data>
+  <data name="InvoiceMultipleSuppliers" xml:space="preserve">
+    <value>The statement contains lines for multiple owners: an invoice can have only one recipient</value>
+  </data>
+  <data name="StructuredAddressRequired" xml:space="preserve">
+    <value>The organization must have a complete structured address to issue electronic invoices</value>
+  </data>
+  <data name="InvoiceNotFound" xml:space="preserve">
+    <value>Invoice not found or does not belong to your organization</value>
+  </data>
+  <data name="InvoiceNotFinalized" xml:space="preserve">
+    <value>The invoice is still in draft: finalize it before downloading XML or PDF</value>
+  </data>
+  <data name="OrgMissingTaxCodes" xml:space="preserve">
+    <value>The organization must have at least a fiscal code or VAT number to issue electronic invoices</value>
+  </data>
+  <data name="OrgMissingRegisteredOffice" xml:space="preserve">
+    <value>The organization must have a registered office configured to issue electronic invoices</value>
+  </data>
+  <data name="Only approved campaigns can be scheduled" xml:space="preserve">
+    <value>Only approved campaigns can be scheduled.</value>
+  </data>
+  <data name="Only draft campaigns can be submitted for approval" xml:space="preserve">
+    <value>Only draft campaigns can be submitted for approval.</value>
+  </data>
+  <data name="Scheduled time must be in the future" xml:space="preserve">
+    <value>Scheduled time must be in the future.</value>
+  </data>
+  <data name="Segment condition JSON is invalid" xml:space="preserve">
+    <value>Segment condition JSON is invalid.</value>
+  </data>
+  <data name="VerificationNoSessionOrEmail" xml:space="preserve">
+    <value>The booking has no active check-in session or the guest has no email address</value>
+  </data>
+  <data name="VerificationNoteRequired" xml:space="preserve">
+    <value>A note is required when rejecting a verification</value>
+  </data>
+  <data name="VerificationNoPending" xml:space="preserve">
+    <value>The booking has no pending verification</value>
+  </data>
+  <data name="VerificationInvalidRequest" xml:space="preserve">
+    <value>Invalid verification request</value>
+  </data>
+  <data name="VerificationReasonRequired" xml:space="preserve">
+    <value>A rejection reason is required</value>
+  </data>
+  <data name="BatchAlreadyDownloadedOrPaid" xml:space="preserve">
+    <value>The batch has already been downloaded or paid</value>
+  </data>
+  <data name="BatchAlreadyPaid" xml:space="preserve">
+    <value>The batch has already been marked as paid</value>
+  </data>
+  <data name="BatchNotDownloaded" xml:space="preserve">
+    <value>The batch has not been downloaded yet</value>
+  </data>
+  <data name="InvalidDebitAccountIban" xml:space="preserve">
+    <value>The debit account IBAN is invalid</value>
+  </data>
+  <data name="InvalidXmlFormat" xml:space="preserve">
+    <value>The wire transfer file XML format is invalid</value>
+  </data>
+  <data name="InvalidXmlStructure" xml:space="preserve">
+    <value>The XML file structure does not comply with ISO 20022 standard</value>
+  </data>
+  <data name="MixedCurrenciesNotAllowed" xml:space="preserve">
+    <value>Cannot include statements in different currencies in the same batch</value>
+  </data>
+  <data name="NoStatementsProvided" xml:space="preserve">
+    <value>No statements provided to create the batch</value>
+  </data>
+  <data name="OwnerInvalidIban" xml:space="preserve">
+    <value>An owner has an invalid IBAN</value>
+  </data>
+  <data name="OwnerMissingIban" xml:space="preserve">
+    <value>An owner does not have an IBAN configured</value>
+  </data>
+  <data name="StatementsNotFoundOrNotOwned" xml:space="preserve">
+    <value>One or more statements were not found or do not belong to your organization</value>
+  </data>
+  <data name="StatementsNotPublished" xml:space="preserve">
+    <value>All statements must be published before creating a wire transfer batch</value>
+  </data>
+  <data name="StatementsAlreadyInBatch" xml:space="preserve">
+    <value>One or more statements are already included in a wire transfer batch</value>
+  </data>
+  <data name="BatchXmlNotFound" xml:space="preserve">
+    <value>The batch XML file was not found</value>
+  </data>
+  <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
+    <value>Access code not available or verification not passed</value>
+  </data>
+  <data name="GuestRefundChanged" xml:space="preserve">
+    <value>The refund changed while you were deciding: check the new amount and confirm again. Nothing has been cancelled.</value>
+  </data>
+  <data name="GuestCancelStayStarted" xml:space="preserve">
+    <value>The stay has already started: write to the host to cancel it.</value>
+  </data>
+  <data name="GuestCancelConfirmRequired" xml:space="preserve">
+    <value>Confirm that you want to cancel the booking to go on.</value>
+  </data>
+  <data name="ServiceRequestBookingRequired" xml:space="preserve">
+    <value>In short-term rentals a supplier request is for a stay: choose the booking.</value>
+  </data>
+  <data name="ServiceRequestBackupWaitsForPrimary" xml:space="preserve">
+    <value>You are a backup supplier: the job is yours only if the main supplier does not accept it in its time. For now you can accept as a backup.</value>
+  </data>
+  <data name="ServiceRequestPrimaryWindowPassed" xml:space="preserve">
+    <value>The time to accept has passed: the job went to a backup supplier that had already accepted.</value>
+  </data>
+  <data name="ServiceRequestBackupNotYourTurn" xml:space="preserve">
+    <value>Another backup accepted before you and comes first: if it cannot do it, it is your turn.</value>
+  </data>
+  <data name="ServiceRequestNotAWaitingBackup" xml:space="preserve">
+    <value>This request is not a backup request waiting for the main supplier.</value>
+  </data>
+  <data name="ServiceRequestBackupCannotPropose" xml:space="preserve">
+    <value>A backup cannot propose another time to the host: you can accept the requested time or refuse.</value>
+  </data>
+  <data name="ServiceRequestBackupCannotQuote" xml:space="preserve">
+    <value>A backup cannot send the host a quote: you can accept the request as it is or refuse.</value>
+  </data>
+  <data name="ServiceRequestBackupAlreadyActive" xml:space="preserve">
+    <value>The main supplier did not take the request: you can accept it directly, the first to accept gets the job.</value>
+  </data>
+  <data name="ServiceRequestBackupRaceClosed" xml:space="preserve">
+    <value>Another backup supplier has already accepted this job: the race is over and your backup request is no longer available. There is no penalty for you.</value>
+  </data>
+  <data name="ServiceRequestCannotQuote" xml:space="preserve">
+    <value>You can answer with a quote only a request that still waits for your answer.</value>
+  </data>
+  <data name="ServiceRequestQuoteInvalid" xml:space="preserve">
+    <value>Invalid quote: it needs 1 to {0} lines, each with a description of at most {1} characters and an amount above zero; the total can be at most {2} euro.</value>
+  </data>
+  <data name="ServiceRequestNoQuote" xml:space="preserve">
+    <value>This request has no quote to answer: the supplier may have withdrawn it, or the request has already changed.</value>
+  </data>
+  <data name="ServiceRequestQuoteChanged" xml:space="preserve">
+    <value>The supplier changed the quote while you were reading it. Read it again before answering: nothing was changed.</value>
+  </data>
+  <data name="SupplierBookingNoQuote" xml:space="preserve">
+    <value>This request has no quote to accept or turn down.</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired" xml:space="preserve">
+    <value>The time to answer the quote has passed: the request will cancel itself. You will be able to book again from the supplier's site.</value>
+  </data>
+  <data name="ServiceRequestQuoteLinesRequired" xml:space="preserve">
+    <value>The quote needs at least one line.</value>
+  </data>
+  <data name="ServiceRequestQuoteTooManyLines" xml:space="preserve">
+    <value>The quote can have at most {1} lines.</value>
+  </data>
+  <data name="ServiceRequestQuoteLineLabelRequired" xml:space="preserve">
+    <value>Each line of the quote needs a description.</value>
+  </data>
+  <data name="ServiceRequestQuoteLineLabelTooLong" xml:space="preserve">
+    <value>The description of a line can have at most {1} characters.</value>
+  </data>
+  <data name="ServiceRequestQuoteNoteTooLong" xml:space="preserve">
+    <value>The note can have at most {1} characters.</value>
+  </data>
+  <data name="ServiceRequestQuoteSentAtRequired" xml:space="preserve">
+    <value>Say which quote you are accepting or turning down.</value>
+  </data>
+  <data name="PropertySiteProfilePayloadTooLong" xml:space="preserve">
+    <value>The text sent is too long.</value>
+  </data>
+  <data name="PropertySiteProfileTextTooLong" xml:space="preserve">
+    <value>The text is too long: {0} characters at most.</value>
+  </data>
+  <data name="PropertySiteProfileItalianRequired" xml:space="preserve">
+    <value>Write the text in Italian too: it is the language the site uses when there is no translation.</value>
+  </data>
+  <data name="PropertySiteProfileTooManyHighlights" xml:space="preserve">
+    <value>You can add {0} highlights at most.</value>
+  </data>
+  <data name="PropertySiteProfileHighlightIconUnknown" xml:space="preserve">
+    <value>Choose the icon of the highlight from the ones offered.</value>
+  </data>
+  <data name="PropertySiteProfileTooManySafetyNotes" xml:space="preserve">
+    <value>You can add {0} safety notes at most.</value>
+  </data>
+  <data name="PropertySiteProfileTagUnknown" xml:space="preserve">
+    <value>This label does not exist: choose one of those offered.</value>
+  </data>
+  <data name="PropertySiteProfileFloorLevelInvalid" xml:space="preserve">
+    <value>The floor must be between {0} and {1} (0 is the ground floor).</value>
+  </data>
+  <data name="PropertySiteProfileRenovatedYearInvalid" xml:space="preserve">
+    <value>The renovation year must be between {0} and {1}.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyClassInvalid" xml:space="preserve">
+    <value>The energy class must be one of A4, A3, A2, A1, A, B, C, D, E, F, G.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyIndexInvalid" xml:space="preserve">
+    <value>The energy performance index must be between 0 and {0} kWh/m² per year.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyIndexWithoutClass" xml:space="preserve">
+    <value>Give the energy class together with the performance index.</value>
+  </data>
+  <data name="PropertySiteProfileCheckInWindowInvalid" xml:space="preserve">
+    <value>The latest arrival time must be after the earliest one.</value>
+  </data>
+  <data name="PropertySiteProfileVideoUrlInvalid" xml:space="preserve">
+    <value>The video must be a YouTube or Vimeo address (https).</value>
+  </data>
+  <data name="PropertySiteProfileTourUrlInvalid" xml:space="preserve">
+    <value>The virtual tour must be a Matterport address (https).</value>
+  </data>
+  <data name="PropertyFloorPlanNone" xml:space="preserve">
+    <value>Upload the image of the floor plan.</value>
+  </data>
+  <data name="PropertyFloorPlanInvalidType" xml:space="preserve">
+    <value>The floor plan must be a PNG or JPEG image.</value>
+  </data>
+  <data name="PropertyFloorPlanInvalidSize" xml:space="preserve">
+    <value>The image is empty or larger than {0} MB.</value>
+  </data>
+  <data name="PropertyFloorPlanLimitReached" xml:space="preserve">
+    <value>You can upload {0} floor plan levels at most.</value>
+  </data>
+  <data name="PropertyFloorPlanNotFound" xml:space="preserve">
+    <value>This floor plan level does not exist.</value>
+  </data>
+  <data name="PropertyFloorPlanAreaInvalid" xml:space="preserve">
+    <value>The area of the level must be between {0} and {1} m².</value>
+  </data>
+  <data name="PropertyPoiLimitReached" xml:space="preserve">
+    <value>You can add {0} points of interest at most.</value>
+  </data>
+  <data name="PropertyPoiMinutesInvalid" xml:space="preserve">
+    <value>The minutes must be between {0} and {1}.</value>
+  </data>
+  <data name="ServiceRequestThreadClosed" xml:space="preserve">
+    <value>This request is closed: no more messages can be added.</value>
+  </data>
+  <data name="ServiceRequestThreadFull" xml:space="preserve">
+    <value>The conversation has reached the largest number of messages. To go on, an offer is needed.</value>
+  </data>
+  <data name="ServiceRequestMessageInvalid" xml:space="preserve">
+    <value>The message is empty, too long or has characters that are not allowed. Write up to 1000 characters of plain text.</value>
+  </data>
+  <data name="ServiceRequestInquiryNeedsOffer" xml:space="preserve">
+    <value>A request on measure cannot be accepted directly nor given another time: the work, the price and the time are agreed with the customer in the conversation, with an offer.</value>
   </data>
 </root>

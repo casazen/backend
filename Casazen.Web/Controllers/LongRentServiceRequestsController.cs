@@ -22,7 +22,7 @@ namespace Casazen.Web.Controllers;
 /// <c>property.read</c> held in long-rent, the writes <c>property.write</c> held in long-rent, and each property is
 /// authorized as a <see cref="HostResource"/> with <see cref="LongRentPropertyOperations"/> (org, permission,
 /// ownership). Only what a landlord needs: find a supplier for the property, send the request, list the property's
-/// requests, mark a completed one paid. These endpoints reach only <see cref="ServiceRequestRentalContext.LongRent"/>
+/// requests (open or closed) and read one, mark a completed one paid. These endpoints reach only <see cref="ServiceRequestRentalContext.LongRent"/>
 /// requests; the supplier side (take, complete, reject) is the same as for short stays (<c>api/service-requests</c>).
 /// </summary>
 [ApiController]
@@ -40,7 +40,9 @@ public class LongRentServiceRequestsController(
 {
     /// <summary>
     /// The long-rent requests in the caller's scope, newest first; with <c>propertyId</c> only that property's (404 when
-    /// it is not in the caller's org, 403 when the caller may not read it).
+    /// it is not in the caller's org, 403 when the caller may not read it). <c>view=open</c> keeps the requests still to follow
+    /// (new, taken, in progress, completed and waiting to be paid), <c>view=closed</c> the ones that are over (paid, rejected,
+    /// cancelled), LR-08a; without it, or with any other value, every request. <c>status</c> narrows the same list further.
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(ServiceRequestListResponse), StatusCodes.Status200OK)]
@@ -52,6 +54,7 @@ public class LongRentServiceRequestsController(
         [FromQuery] string? status,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
+        [FromQuery] string? view = null,
         CancellationToken cancellationToken = default)
     {
         page = Math.Max(1, page);
@@ -63,6 +66,10 @@ public class LongRentServiceRequestsController(
         if (EnumNames.TryParseDefined<ServiceRequestStatus>(status, out var parsed))
             statusFilter = parsed;
 
+        ServiceRequestHostView? viewFilter = null;
+        if (EnumNames.TryParseDefined<ServiceRequestHostView>(view, out var parsedView))
+            viewFilter = parsedView;
+
         var scope = await GetHostScopeAsync(cancellationToken);
         if (scope is null) return Unauthorized();
 
@@ -73,15 +80,43 @@ public class LongRentServiceRequestsController(
         }
 
         var (items, total) = await serviceRequestService.ListForHostAsync(
-            scope, ServiceRequestRentalContext.LongRent, statusFilter, propertyId, bookingId: null, page, pageSize, cancellationToken);
+            scope, ServiceRequestRentalContext.LongRent, statusFilter, propertyId, bookingId: null, page, pageSize, viewFilter, cancellationToken);
 
         return Ok(new ServiceRequestListResponse
         {
-            Items = items.Select(ServiceRequestsController.MapDto),
+            Items = await ServiceRequestsController.MapForHostAsync(serviceRequestService, scope.OrgId, items, cancellationToken),
             Total = total,
             Page = page,
             PageSize = pageSize,
         });
+    }
+
+    /// <summary>
+    /// One long-rent request of the caller's scope (LR-08a), in the shape of the list (<see cref="ServiceRequestDto"/>): the dates of its
+    /// path (<c>createdAt</c>, <c>takenAt</c>, <c>startedAt</c>, <c>completedAt</c>, <c>paidAt</c>, <c>cancelledAt</c>) and its
+    /// <c>history</c> are in it. 404 <c>service_request_not_found</c> for a request that does not exist, that is of another org, that
+    /// is on a property outside the caller's scope (a collaborator "Solo alcuni") or that is a short-rent one; 403 when the caller may
+    /// not read the request's property (<c>property.read</c> in long-rent as a <see cref="HostResource"/>).
+    /// </summary>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ServiceRequestDto>> GetById(Guid id, CancellationToken cancellationToken)
+    {
+        var scope = await GetHostScopeAsync(cancellationToken);
+        if (scope is null) return Unauthorized();
+
+        var existing = await serviceRequestService.GetByIdForHostAsync(
+            id, scope, ServiceRequestRentalContext.LongRent, cancellationToken);
+        if (existing?.Property is null) return ServiceRequestsController.ServiceRequestNotFound(this);
+
+        var resource = new HostResource(existing.OrgId, existing.Property.OwnerId, existing.PropertyId);
+        if (!await authorizationService.IsAuthorizedAsync(User, resource, LongRentPropertyOperations.Read))
+            return Forbid();
+
+        return Ok((await ServiceRequestsController.MapForHostAsync(serviceRequestService, scope.OrgId, [existing], cancellationToken))[0]);
     }
 
     /// <summary>
@@ -97,6 +132,7 @@ public class LongRentServiceRequestsController(
     public async Task<ActionResult<PagedResultDto<SupplierPickerDto>>> GetSuppliers(
         [FromQuery] Guid propertyId,
         [FromQuery] string? category,
+        [FromServices] ISupplierMatchService matcher,
         CancellationToken cancellationToken)
     {
         var (property, denied) = await AuthorizePropertyAsync(propertyId, LongRentPropertyOperations.Read, cancellationToken);
@@ -106,12 +142,17 @@ public class LongRentServiceRequestsController(
 
         var listed = await comuneDirectory.GetByIstatCodesAsync(
             suppliers.SelectMany(SupplierComuniView.IstatCodes), cancellationToken);
+
+        // SP-REL: in the order of the ranking, like the list of the short-rent search (the first one marked "recommended" when it leads).
+        var scores = await matcher.ScoresAsync(suppliers, ServiceRequestUrgency.Normal, cancellationToken);
+        var items = SupplierPickerSearch.Apply(
+            suppliers.Select(sp => SupplierPickerDto.From(sp, listed)), q: null, SupplierPickerSort.Recommended, services: null, scores);
         return Ok(new PagedResultDto<SupplierPickerDto>
         {
-            Items = suppliers.Select(sp => SupplierPickerDto.From(sp, listed)).ToList(),
-            TotalCount = suppliers.Count,
+            Items = items,
+            TotalCount = items.Count,
             Page = 1,
-            PageSize = suppliers.Count,
+            PageSize = items.Count,
         });
     }
 
@@ -152,10 +193,12 @@ public class LongRentServiceRequestsController(
                 ServiceRequestRentalContext.LongRent,
                 request.ServiceListingId,
                 request.ScheduledStartUtc,
-                request.DurationMinutes),
+                request.DurationMinutes,
+                request.UseBackupSuppliers),
             cancellationToken);
 
-        return Created($"/api/long-rent/service-requests/{created.Id}", ServiceRequestsController.MapDto(created));
+        var dto = (await ServiceRequestsController.MapForHostAsync(serviceRequestService, orgId.Value, [created], cancellationToken))[0];
+        return Created($"/api/long-rent/service-requests/{created.Id}", dto);
     }
 
     /// <summary>
@@ -221,6 +264,43 @@ public class LongRentServiceRequestsController(
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
     public Task<ActionResult<ServiceRequestDto>> RejectProposal(Guid id, CancellationToken cancellationToken) =>
         HostActionAsync(id, hostOrgId => serviceRequestService.RejectProposalAsync(id, hostOrgId, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// The landlord accepts the quote the supplier sent for a long-rent request (SP-04b). Same rules and errors as the short-rent
+    /// <c>POST api/service-requests/{id}/quote/accept</c>: the body repeats <c>quote.sentAt</c> as read.
+    /// </summary>
+    [HttpPost("{id:guid}/quote/accept")]
+    [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult<ServiceRequestDto>> AcceptQuote(
+        Guid id,
+        [FromBody] AnswerServiceRequestQuoteRequest request,
+        CancellationToken cancellationToken) =>
+        HostActionAsync(
+            id, hostOrgId => serviceRequestService.AcceptQuoteAsync(id, hostOrgId, request.QuoteSentAt!.Value, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// The landlord turns the quote down (SP-04b). Same rules and errors as the short-rent <c>POST api/service-requests/{id}/quote/reject</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/quote/reject")]
+    [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult<ServiceRequestDto>> RejectQuote(
+        Guid id,
+        [FromBody] AnswerServiceRequestQuoteRequest request,
+        CancellationToken cancellationToken) =>
+        HostActionAsync(
+            id, hostOrgId => serviceRequestService.RejectQuoteAsync(id, hostOrgId, request.QuoteSentAt!.Value, cancellationToken), cancellationToken);
 
     /// <summary>
     /// A photo of the work of a long-rent request (SP-04), for its landlord (<c>property.read</c> in long-rent). Private file,

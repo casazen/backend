@@ -18,11 +18,14 @@ public static partial class PushRoutes
     /// <summary>Quick check-out of a booking.</summary>
     public static string BookingCheckout(Guid bookingId) => $"/bookings/{bookingId}/checkout";
 
+    /// <summary>Thread of messages with the guest of a booking.</summary>
+    public static string BookingMessages(Guid bookingId) => $"/bookings/{bookingId}/messages";
+
     /// <summary>True when <paramref name="route"/> is a screen the app can open from a push.</summary>
     public static bool IsAppRoute(string? route) => route is not null && AppRoutePattern().IsMatch(route);
 
     [GeneratedRegex(
-        "^(/properties|/bookings/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(/checkout)?)$",
+        "^(/properties|/bookings/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(/checkout|/messages)?)$",
         RegexOptions.CultureInvariant)]
     private static partial Regex AppRoutePattern();
 }

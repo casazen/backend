@@ -34,6 +34,11 @@ public class SharedPropertyPolicyTests
         "PropertiesController.GetById",
         "PropertiesController.GetDocumentSignedUrl",
         "PropertiesController.GetDocuments",
+        // SR-07a: how many properties the org has of how many its plan allows: the property limit counts the properties of both
+        // rental areas, so a landlord reads it too (it says nothing of the plan's name or the billing).
+        "PropertiesController.GetPlanUsage",
+        // The code and the class read again from a stored APE (and the register of Lombardy): they belong to the property core.
+        "PropertiesController.ReadApeIdentification",
         "PropertiesController.Update",
         // LT-10: the lease contract needs the cadastral data of the unit and the APE code and class (property core).
         "PropertiesController.UpdateApeIdentification",

@@ -129,17 +129,32 @@ public class OrgRoleActionMatrixTests
         { typeof(LeasesController), nameof(LeasesController.Create), Operators },
         { typeof(LeasesController), nameof(LeasesController.TriggerRegistration), Operators },
 
+        // LR-09: the tenants are read like the leases; their personal data in clear (the copy) and their erasure are for who may create a lease.
+        { typeof(LongRentTenantsController), nameof(LongRentTenantsController.GetAll), WithMoney },
+        { typeof(LongRentTenantsController), nameof(LongRentTenantsController.GetById), WithMoney },
+        { typeof(LongRentTenantsController), nameof(LongRentTenantsController.Export), Operators },
+        { typeof(LongRentTenantsController), nameof(LongRentTenantsController.RequestErasure), Operators },
+
         // LR-12: the guided draft of a lease is written, and read (it carries the parties in clear), by who may create a lease; the
         // rules of the area, which are figures and nothing personal, by who may read the leases.
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Create), Operators },
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Get), Operators },
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Save), Operators },
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.GetReview), Operators },
+        { typeof(LeaseDraftsController), nameof(LeaseDraftsController.GetReading), Operators },
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.ConfirmReview), Operators },
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.MarkSent), Operators },
         { typeof(LeaseDraftsController), nameof(LeaseDraftsController.Delete), Operators },
         { typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetRules), WithMoney },
         { typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetLandlordDefaults), Operators },
+
+        // CF-BE: the guided contract. What writes (the privacy acceptance, the gift of the plan, the signed link to the form) asks for
+        // lease.create like the draft, so the accountant, who only reads, cannot spend the gift of the org; the state is read with lease.read.
+        { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.AcceptPrivacy), Operators },
+        { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.ConsumeGift), Operators },
+        { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.GenerateLink), Operators },
+        { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.GetAccess), WithMoney },
+        { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.GetStatus), WithMoney },
 
         // The people of the org, and the properties each of them reaches.
         { typeof(OrgMembersController), nameof(OrgMembersController.List), Team },

@@ -13,7 +13,8 @@ namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// Anonymization of the parties of long-term leases (LT-12, A7-18, #179; docs/runbooks/gdpr.md § 7). The reference date
-/// is the lease's <see cref="LeaseContract.EndDate"/> (not the start date: a lease is in force until it ends), and a lease
+/// is the end of the period the lease is in, <see cref="LeaseContract.CurrentTermEndDate"/> (not the start date: a lease is in force
+/// until it ends; not the end the contract states either: a lease that renewed by itself goes on, LR-14), and a lease
 /// has ended the calendar day (Europe/Rome) after it. The retention period comes from <c>Gdpr:Retention:LeaseParties</c>
 /// with the same rules as the guest categories of CO-15 (<see cref="RetentionPeriodOptions"/>): without a period and a
 /// cited source nothing is anonymized by retention, and every run says so. An erasure request is honoured from the day
@@ -78,9 +79,9 @@ public sealed class LeasePartyPrivacyService(
         {
             result = new LeaseErasureResult(LeaseErasureStatus.Anonymized, null, 0);
         }
-        else if (!HasEnded(lease.EndDate, today))
+        else if (!HasEnded(lease.CurrentTermEndDate, today))
         {
-            result = new LeaseErasureResult(LeaseErasureStatus.Scheduled, EndedFrom(lease.EndDate), 0);
+            result = new LeaseErasureResult(LeaseErasureStatus.Scheduled, EndedFrom(lease.CurrentTermEndDate), 0);
         }
         else
         {
@@ -114,8 +115,8 @@ public sealed class LeasePartyPrivacyService(
         // Coarse filter in SQL, exact check in memory (month ends, RetentionPeriodOptions.CandidateStartBefore).
         var candidates = await db.LeaseContracts
             .Where(l => l.PartiesAnonymizedAt == null
-                && ((l.ErasureRequested && l.EndDate < today) || (configured && l.EndDate < candidateEndBefore)))
-            .Select(l => new { l.Id, l.EndDate, l.ErasureRequested })
+                && ((l.ErasureRequested && l.CurrentTermEndDate < today) || (configured && l.CurrentTermEndDate < candidateEndBefore)))
+            .Select(l => new { l.Id, EndDate = l.CurrentTermEndDate, l.ErasureRequested })
             .ToListAsync(cancellationToken);
         var dueIds = candidates
             .Where(c => (c.ErasureRequested && HasEnded(c.EndDate, today)) || (configured && period.HasEnded(c.EndDate, today)))
@@ -168,7 +169,7 @@ public sealed class LeasePartyPrivacyService(
                 .Where(p => p.LeaseContractId != lease.Id
                     && p.AnonymizedAt == null
                     && p.LeaseContract.OrgId == lease.OrgId
-                    && p.LeaseContract.EndDate >= today
+                    && p.LeaseContract.CurrentTermEndDate >= today
                     && codes.Contains(p.FiscalCode.Trim().ToUpper()))
                 .Select(p => p.FiscalCode.Trim().ToUpper())
                 .Distinct()
@@ -210,6 +211,11 @@ public sealed class LeasePartyPrivacyService(
             // Every party is anonymized (or the lease never had one: a draft whose entries are all incomplete lives in DraftData only):
             // the typed state goes too, whatever it holds for entries that never became a party (LR-12).
             lease.DraftData = null;
+
+            // The need of a transitory contract and the documents that prove it are free text that can say why a person lives where
+            // they live: they go with the parties (TR).
+            lease.TransitoryNeed = null;
+            lease.TransitoryDocumentation = null;
         }
         if (anonymizedIds.Count > 0 || kept == 0)
             lease.UpdatedAt = now;

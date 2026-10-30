@@ -23,9 +23,9 @@ namespace Casazen.Web.Controllers;
 /// evaluate the policy of the branch they take.
 /// </summary>
 /// <remarks>
-/// Decision D2 (SU-07): the host side here is the short-rent one, where a request is for one stay: <c>POST</c> needs a
-/// <c>bookingId</c> of the property, and the host endpoints reach only <see cref="ServiceRequestRentalContext.ShortRent"/>
-/// requests. Web and app list them the same way: <c>?bookingId=</c> for a stay, <c>?propertyId=</c> for a property.
+/// Decision D2 (SU-07): the host side here is the short-rent one, where a request is for the property and, when the host names one,
+/// a stay of it (<c>bookingId</c> of the property, optional since SR-08a), and the host endpoints reach only
+/// <see cref="ServiceRequestRentalContext.ShortRent"/> requests. Web and app list them the same way: <c>?bookingId=</c> for a stay, <c>?propertyId=</c> for a property.
 /// Long-rent requests (per property) live in <see cref="LongRentServiceRequestsController"/>.
 /// </remarks>
 [ApiController]
@@ -39,7 +39,8 @@ public class ServiceRequestsController(
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver,
     ISupplierOrgContextResolver supplierOrgContextResolver,
-    ISupplierPaymentService supplierPayments) : ControllerBase
+    ISupplierPaymentService supplierPayments,
+    IHostServiceRequestReader hostReader) : ControllerBase
 {
     /// <summary>
     /// AI-assisted supplier match (D11: behind <see cref="FeatureFlags.AiSupplierDiscovery"/>, off by default, 404 while
@@ -77,8 +78,8 @@ public class ServiceRequestsController(
     /// <summary>
     /// Sends a short-rent request for a stay of the property to a supplier. 400 <c>validation_error</c> for a malformed
     /// body (empty ids, notes over 1000 characters, no category); 404 <c>property_not_found</c> /
-    /// <c>supplier_not_found</c>; 422 for the rules (category code, stay of the property, supplier active and covering
-    /// the comune, <c>chargeToGuest</c>), with the codes of <see cref="ServiceRequestErrorCodes"/>.
+    /// <c>supplier_not_found</c>; 422 for the rules (category code, the stay, when given, being one of the property, supplier active and
+    /// covering the comune, <c>chargeToGuest</c>), with the codes of <see cref="ServiceRequestErrorCodes"/>.
     /// </summary>
     [HttpPost]
     [Authorize(Policy = CasazenPolicies.ServiceRequestWrite)]
@@ -111,10 +112,14 @@ public class ServiceRequestsController(
                 ServiceRequestRentalContext.ShortRent,
                 request.ServiceListingId,
                 request.ScheduledStartUtc,
-                request.DurationMinutes),
+                request.DurationMinutes,
+                request.UseBackupSuppliers),
             cancellationToken);
 
-        return CreatedAtAction(nameof(GetById), new { id = created.Id }, MapDto(created));
+        var dto = await HostDtoAsync(created, orgId.Value, cancellationToken);
+        // The host named no time: the request got the default one, and the answer says so (it may be tomorrow's 10:00).
+        dto.ScheduleDefaulted = request.ScheduledStartUtc is null;
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, dto);
     }
 
     /// <summary>
@@ -122,9 +127,22 @@ public class ServiceRequestsController(
     /// (<see cref="CasazenPolicies.Supplier"/>). <c>bookingId</c> lists one stay's requests, <c>propertyId</c> a
     /// property's (every stay, plus the older requests not traced to a stay): a booking or property that is not in the
     /// caller's org is 404, one the caller may not read is 403.
+    /// <para>
+    /// SR-08a, all optional and only for the host: <c>view</c> is a chip, <c>all</c> (default), <c>pending</c> (waiting for the
+    /// supplier), <c>active</c> (taken or in progress), <c>topay</c> (finished), <c>done</c> (paid, refused or cancelled) or
+    /// <c>needsaction</c> (asks something of the host, the definition of the Home); <c>supplierOrgId</c> and <c>category</c> (a code
+    /// of <c>GET api/service-categories</c>) narrow the list; <c>from</c> and <c>to</c> (<c>yyyy-MM-dd</c>, Europe/Rome days, both
+    /// included) keep the requests whose day of work (the scheduled time, else the day of the request) is in the range; <c>q</c> (2 to
+    /// 60 characters) looks in the name of the property, the supplier, the service and the category; <c>sort</c> is
+    /// <c>scheduled</c>, <c>created</c> or <c>status</c>, then <c>:asc</c> or <c>:desc</c> (newest first when missing).
+    /// Each request also says the city of the property, its stay, the contact of the supplier once it took the request, and what the
+    /// host can do about it (<c>hostAction</c>, <c>availableActions</c>). 400 <c>service_request_list_invalid_view</c>,
+    /// <c>…_invalid_sort</c>, <c>…_invalid_range</c>, <c>…_invalid_text</c> and <c>…_invalid_category</c>.
+    /// </para>
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(ServiceRequestListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ServiceRequestListResponse>> List(
@@ -134,6 +152,12 @@ public class ServiceRequestsController(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? view = null,
+        [FromQuery(Name = "supplierOrgId")] Guid? supplierFilter = null,
+        [FromQuery] string? category = null,
+        [FromQuery(Name = "from")] DateOnly? fromDay = null,
+        [FromQuery(Name = "to")] DateOnly? toDay = null,
+        [FromQuery] string? q = null,
+        [FromQuery] string? sort = null,
         CancellationToken cancellationToken = default)
     {
         page = Math.Max(1, page);
@@ -176,16 +200,101 @@ public class ServiceRequestsController(
         if (await AuthorizeListFiltersAsync(propertyId, bookingId, cancellationToken) is { } denied)
             return denied;
 
-        var (hostItems, hostTotal) = await serviceRequestService.ListForHostAsync(
-            scope, ServiceRequestRentalContext.ShortRent, statusFilter, propertyId, bookingId, page, pageSize, cancellationToken);
+        if (TryReadHostFilters(
+                view, statusFilter, propertyId, bookingId, supplierFilter, category, fromDay, toDay, q, sort, out var filters)
+            is { } invalid)
+            return invalid;
+
+        var result = await hostReader.ListAsync(scope, filters with { Page = page, PageSize = pageSize }, cancellationToken);
+
+        var listed = result.Items.Select(r => (Request: r, Dto: MapDto(r, result.Extras.GetValueOrDefault(r.Id)))).ToList();
+        await AttachGroupsAsync(serviceRequestService, scope.OrgId, listed, cancellationToken);
 
         return Ok(new ServiceRequestListResponse
         {
-            Items = hostItems.Select(MapDto),
-            Total = hostTotal,
-            Page = page,
-            PageSize = pageSize,
+            Items = listed.Select(item => item.Dto).ToList(),
+            Total = result.Total,
+            Page = result.Page,
+            PageSize = result.PageSize,
         });
+    }
+
+    /// <summary>
+    /// How many requests are in each chip of the host's list (SR-08a): <c>{ all, pending, active, toPay, done, needsAction }</c> for the
+    /// requests that satisfy the filters of <c>GET api/service-requests</c> but the chip (<c>view</c>), the page and the order. The first
+    /// four add up to <c>all</c>; <c>needsAction</c> overlaps them. One aggregate statement, filtered by the caller's org and scope like
+    /// the list. Same 400s as the list for the filters it takes, same 404 and 403 for <c>propertyId</c> and <c>bookingId</c>.
+    /// </summary>
+    [HttpGet("counts")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(ServiceRequestCountsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ServiceRequestCountsDto>> Counts(
+        [FromQuery] string? status,
+        [FromQuery] Guid? propertyId,
+        [FromQuery] Guid? bookingId,
+        [FromQuery(Name = "supplierOrgId")] Guid? supplierFilter = null,
+        [FromQuery] string? category = null,
+        [FromQuery(Name = "from")] DateOnly? fromDay = null,
+        [FromQuery(Name = "to")] DateOnly? toDay = null,
+        [FromQuery] string? q = null,
+        CancellationToken cancellationToken = default)
+    {
+        var scope = await GetHostScopeAsync(cancellationToken);
+        if (scope is null) return Unauthorized();
+
+        if (await AuthorizeListFiltersAsync(propertyId, bookingId, cancellationToken) is { } denied)
+            return denied;
+
+        ServiceRequestStatus? statusFilter = null;
+        if (EnumNames.TryParseDefined<ServiceRequestStatus>(status, out var parsed))
+            statusFilter = parsed;
+
+        if (TryReadHostFilters(
+                null, statusFilter, propertyId, bookingId, supplierFilter, category, fromDay, toDay, q, null, out var filters)
+            is { } invalid)
+            return invalid;
+
+        return Ok(ServiceRequestCountsDto.From(await hostReader.CountAsync(scope, filters, cancellationToken)));
+    }
+
+    // The filters of a request as a query, or the 400 that says which one is not understood (the same words for the list and for the
+    // counters of its chips). The page and its size are the caller's to add.
+    private ObjectResult? TryReadHostFilters(
+        string? view,
+        ServiceRequestStatus? status,
+        Guid? propertyId,
+        Guid? bookingId,
+        Guid? supplierOrgId,
+        string? category,
+        DateOnly? fromDay,
+        DateOnly? toDay,
+        string? q,
+        string? sort,
+        out HostServiceRequestQuery filters)
+    {
+        filters = new HostServiceRequestQuery();
+
+        if (!HostServiceRequestListRules.TryParseView(view, out var chip))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, HostServiceRequestListErrors.InvalidViewCode, "ServiceRequestListInvalidView");
+
+        if (!HostServiceRequestListRules.TryParseSort(sort, out var order))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, HostServiceRequestListErrors.InvalidSortCode, "ServiceRequestListInvalidSort");
+
+        if (fromDay is { } first && toDay is { } last && first > last)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, HostServiceRequestListErrors.InvalidRangeCode, "ServiceRequestListInvalidRange");
+
+        if (!HostServiceRequestListRules.TryNormalizeText(q, out var text))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, HostServiceRequestListErrors.InvalidTextCode, "ServiceRequestListInvalidText");
+
+        var categoryCode = ServiceCategories.Normalize(category);
+        if (categoryCode is not null && !ServiceCategories.IsKnown(categoryCode))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, HostServiceRequestListErrors.InvalidCategoryCode, "ServiceRequestListInvalidCategory");
+
+        filters = new HostServiceRequestQuery(chip, status, propertyId, bookingId, supplierOrgId, categoryCode, fromDay, toDay, text, order);
+        return null;
     }
 
     /// <summary>
@@ -219,7 +328,7 @@ public class ServiceRequestsController(
             id, scope, ServiceRequestRentalContext.ShortRent, cancellationToken);
         if (hostRequest is null) return ServiceRequestNotFound();
 
-        return Ok(MapDto(hostRequest));
+        return Ok(await HostDtoAsync(hostRequest, scope.OrgId, cancellationToken));
     }
 
     /// <summary>
@@ -249,6 +358,31 @@ public class ServiceRequestsController(
             ? null
             : new TakeServiceRequestCommand(request.ScheduledStartUtc, request.ScheduledEndUtc, request.QuotedAmountCents);
         var updated = await serviceRequestService.TakeAsync(id, supplierOrgId.Value, userId, command, cancellationToken);
+        return Ok(MapDtoForSupplier(updated));
+    }
+
+    /// <summary>
+    /// A backup supplier says it would take the job if the primary supplier does not (SP-BKP, the pre-approval): the request stays
+    /// <c>Richiesto</c> and holds no slot of the supplier's agenda; if the primary does not take the job in its window, the earliest backup to
+    /// accept has it. Accepting twice is not an error. 422 <c>service_request_not_a_waiting_backup</c> for a request that is not a backup
+    /// waiting for the primary; 422 <c>service_request_backup_already_active</c> in the second window (take the job instead); 409
+    /// <c>supplier_slot_unavailable</c> when its time is no longer free; 409 <c>service_request_state_changed</c> when the group closed
+    /// meanwhile. Not behind the feature flag: a group that exists is followed to the end.
+    /// </summary>
+    [HttpPost("{id:guid}/accept-as-backup")]
+    [Authorize(Policy = CasazenPolicies.Supplier)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServiceRequestDto>> AcceptAsBackup(Guid id, CancellationToken cancellationToken)
+    {
+        var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        var userId = User.GetUserId();
+        if (supplierOrgId is null || userId is null) return NotFound();
+
+        var updated = await serviceRequestService.AcceptAsBackupAsync(id, supplierOrgId.Value, userId, cancellationToken);
         return Ok(MapDtoForSupplier(updated));
     }
 
@@ -498,6 +632,106 @@ public class ServiceRequestsController(
         HostActionAsync(id, hostOrgId => serviceRequestService.RejectProposalAsync(id, hostOrgId, cancellationToken), cancellationToken);
 
     /// <summary>
+    /// The supplier answers a new request with a quote (SP-04b): lines (1 to 20, each a description and an amount in cents), a note, and
+    /// optionally another time instead of the one the request has. The request stays <c>Richiesto</c> with the quote waiting for the customer
+    /// (<c>quote</c> in the answer, with <c>sentAt</c> to send back when answering it), and the host is told. A new quote replaces the one
+    /// that waited and the proposed time (one offer at a time); the quote holds no slot. 400 <c>validation_error</c> for a malformed body, 422
+    /// <c>service_request_quote_invalid</c> for lines or a total outside the limits, <c>service_request_invalid_transition</c> unless the
+    /// request is new, <c>service_request_time_invalid</c>; 409 <c>supplier_slot_unavailable</c> / <c>supplier_commitment_conflict</c> for
+    /// another time the supplier cannot do. Same errors as <see cref="Take"/>.
+    /// </summary>
+    [HttpPost("{id:guid}/quote")]
+    [Authorize(Policy = CasazenPolicies.Supplier)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServiceRequestDto>> SendQuote(
+        Guid id,
+        [FromBody] SendServiceRequestQuoteRequest request,
+        CancellationToken cancellationToken)
+    {
+        var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        var userId = User.GetUserId();
+        if (supplierOrgId is null || userId is null) return NotFound();
+
+        var updated = await serviceRequestService.SendQuoteAsync(
+            id,
+            supplierOrgId.Value,
+            userId,
+            new SendServiceRequestQuoteCommand(
+                (request.Lines ?? []).Select(line => new ServiceRequestQuoteLine(line.Label, line.AmountCents)).ToList(),
+                request.Note,
+                request.ScheduledStartUtc,
+                request.ScheduledEndUtc),
+            cancellationToken);
+        return Ok(MapDtoForSupplier(updated));
+    }
+
+    /// <summary>
+    /// The supplier takes its quote back (SP-04b): the request is "to answer" again. 422 <c>service_request_no_quote</c> when none waits.
+    /// Same errors as <see cref="Take"/>.
+    /// </summary>
+    [HttpPost("{id:guid}/quote/withdraw")]
+    [Authorize(Policy = CasazenPolicies.Supplier)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<ServiceRequestDto>> WithdrawQuote(Guid id, CancellationToken cancellationToken)
+    {
+        var supplierOrgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        if (supplierOrgId is null) return NotFound();
+
+        var updated = await serviceRequestService.WithdrawQuoteAsync(id, supplierOrgId.Value, cancellationToken);
+        return Ok(MapDtoForSupplier(updated));
+    }
+
+    /// <summary>
+    /// The host accepts the quote the supplier sent (SP-04b): the request is taken on the supplier's behalf at the time of the quote,
+    /// with its total as the price agreed and its lines as the price lines (kind <c>quote</c>); the supplier is told. <c>property.write</c>
+    /// on the property. The body repeats <c>quote.sentAt</c> as read: another quote is 409 <c>service_request_quote_changed</c>, nothing
+    /// changes. The time is checked again with the supplier's agenda: 409 <c>supplier_slot_unavailable</c> / <c>supplier_commitment_conflict</c>
+    /// and the quote stays. 422 <c>service_request_no_quote</c> when none waits; 404 <c>service_request_not_found</c> outside the caller's scope.
+    /// </summary>
+    [HttpPost("{id:guid}/quote/accept")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult<ServiceRequestDto>> AcceptQuote(
+        Guid id,
+        [FromBody] AnswerServiceRequestQuoteRequest request,
+        CancellationToken cancellationToken) =>
+        HostActionAsync(
+            id, hostOrgId => serviceRequestService.AcceptQuoteAsync(id, hostOrgId, request.QuoteSentAt!.Value, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// The host turns the quote down (SP-04b): it goes, the request stays <c>Richiesto</c> as it was and the supplier is told, who can send
+    /// another quote, propose another time, take it as it is or reject it. Same errors as <see cref="AcceptQuote"/>, but for the time.
+    /// </summary>
+    [HttpPost("{id:guid}/quote/reject")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult<ServiceRequestDto>> RejectQuote(
+        Guid id,
+        [FromBody] AnswerServiceRequestQuoteRequest request,
+        CancellationToken cancellationToken) =>
+        HostActionAsync(
+            id, hostOrgId => serviceRequestService.RejectQuoteAsync(id, hostOrgId, request.QuoteSentAt!.Value, cancellationToken), cancellationToken);
+
+    /// <summary>
     /// The host reminds the supplier to answer a new request (SP-04): the supplier is told by email and push. At most one
     /// reminder every 6 hours (422 <c>service_request_remind_too_soon</c>); only while the request is new and the supplier has
     /// not proposed a time (422 <c>service_request_invalid_transition</c>). <c>property.write</c> on the property.
@@ -534,7 +768,7 @@ public class ServiceRequestsController(
             !await authorizationService.IsAuthorizedAsync(User, resource, PropertyOperations.Write))
             return Forbid();
 
-        return Ok(MapDto(await action(scope.OrgId)));
+        return Ok(await HostDtoAsync(await action(scope.OrgId), scope.OrgId, cancellationToken));
     }
 
     /// <summary>
@@ -616,7 +850,7 @@ public class ServiceRequestsController(
             return Forbid();
 
         var updated = await serviceRequestService.MarkPaidAsync(id, scope.OrgId, cancellationToken);
-        return Ok(MapDto(updated));
+        return Ok(await HostDtoAsync(updated, scope.OrgId, cancellationToken));
     }
 
     /// <summary>404 <c>service_request_not_found</c> (FD-05), also for a request outside the caller's scope.</summary>
@@ -674,6 +908,83 @@ public class ServiceRequestsController(
 
     /// <summary>The request as its host sees it: everything the host wrote and the supplier did.</summary>
     internal static ServiceRequestDto MapDto(ServiceRequest r) => Map(r, forSupplier: false);
+
+    /// <summary>
+    /// The requests as their host sees them, with the group of backup suppliers of each one that has one (SP-BKP): one read for all the groups
+    /// of the page, scoped by the host org. The order of <paramref name="requests"/> is kept. For the contexts without the extras of SR-08a
+    /// (long-rent).
+    /// </summary>
+    internal static async Task<List<ServiceRequestDto>> MapForHostAsync(
+        IServiceRequestService service,
+        Guid hostOrgId,
+        IReadOnlyList<ServiceRequest> requests,
+        CancellationToken cancellationToken)
+    {
+        var items = requests.Select(r => (Request: r, Dto: MapDto(r))).ToList();
+        await AttachGroupsAsync(service, hostOrgId, items, cancellationToken);
+        return [.. items.Select(item => item.Dto)];
+    }
+
+    /// <summary>
+    /// Puts the group of backup suppliers (SP-BKP) in the DTO of each request that belongs to one: a single read for all the groups of the
+    /// page, scoped by the host org, and none at all when no request has a group.
+    /// </summary>
+    internal static async Task AttachGroupsAsync(
+        IServiceRequestService service,
+        Guid hostOrgId,
+        IReadOnlyList<(ServiceRequest Request, ServiceRequestDto Dto)> items,
+        CancellationToken cancellationToken)
+    {
+        var groupIds = items.Where(item => item.Request.GroupId is not null).Select(item => item.Request.GroupId!.Value).Distinct().ToList();
+        if (groupIds.Count == 0)
+            return;
+
+        var groups = (await service.GetGroupViewsAsync(hostOrgId, groupIds, cancellationToken)).ToDictionary();
+        foreach (var (request, dto) in items)
+        {
+            if (request.GroupId is { } groupId && groups.TryGetValue(groupId, out var group))
+                dto.Group = ServiceRequestDtoParts.ToGroupDto(group);
+        }
+    }
+
+    /// <summary>
+    /// The request as the host of the short-rent context reads it (SR-08a): <see cref="MapDto(ServiceRequest)"/> and, from
+    /// <paramref name="extras"/>, the city of the property, the stay, the contact of the supplier and what the host can do. The supplier
+    /// never gets these: <see cref="MapDtoForSupplier"/> leaves them out.
+    /// </summary>
+    internal static ServiceRequestDto MapDto(ServiceRequest r, HostServiceRequestExtras? extras)
+    {
+        var dto = Map(r, forSupplier: false);
+        if (extras is null)
+            return dto;
+
+        dto.PropertyCity = extras.PropertyCity;
+        dto.Stay = extras.Stay is null
+            ? null
+            : new ServiceRequestStayDto
+            {
+                BookingId = extras.Stay.BookingId,
+                GuestName = extras.Stay.GuestName,
+                CheckIn = extras.Stay.CheckIn,
+                CheckOut = extras.Stay.CheckOut,
+            };
+        dto.SupplierContact = extras.SupplierContact is null
+            ? null
+            : new ServiceRequestSupplierContactDto { Phone = extras.SupplierContact.Phone, Email = extras.SupplierContact.Email };
+        dto.HostAction = new ServiceRequestHostActionDto { Kind = extras.Action.Kind, RemindAvailableAt = extras.Action.RemindAvailableAt };
+        dto.AvailableActions = extras.Action.Available;
+        return dto;
+    }
+
+    // The request of the host with its extras: one read for the stay and one for the contact, whatever the request, and the group of backup
+    // suppliers when it belongs to one (SP-BKP).
+    private async Task<ServiceRequestDto> HostDtoAsync(ServiceRequest request, Guid hostOrgId, CancellationToken cancellationToken)
+    {
+        var extras = await hostReader.DescribeAsync(hostOrgId, [request], cancellationToken);
+        var dto = MapDto(request, extras.GetValueOrDefault(request.Id));
+        await AttachGroupsAsync(serviceRequestService, hostOrgId, [(request, dto)], cancellationToken);
+        return dto;
+    }
 
     /// <summary>
     /// The request as the supplier it was sent to sees it, in the shape of the host endpoints (the answers of its own actions and
@@ -751,6 +1062,7 @@ public class ServiceRequestsController(
             CompletionNotes = r.CompletionNotes,
             WorkPhotos = ServiceRequestDtoParts.ToPhotoDtos(r.Id, ServiceRequestJson.ReadPhotos(r.WorkPhotosJson), photosPath),
             Proposal = ServiceRequestDtoParts.ToProposalDto(r.ProposedStartUtc, r.ProposedEndUtc, r.ProposedAt, r.ProposalMessage),
+            Quote = ServiceRequestDtoParts.ToQuoteDto(ServiceRequestQuoteRules.PendingOf(r)),
             LastRemindedAt = r.LastRemindedAt,
             PaymentMode = r.PaymentMode.ToString(),
             AutoAccepted = r.AutoAccepted,

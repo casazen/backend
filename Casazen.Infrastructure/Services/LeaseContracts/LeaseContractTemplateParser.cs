@@ -19,7 +19,8 @@ public sealed record ParsedLeaseContractTemplate(
 /// ## section_id | Heading (optional)
 /// Clause text with {{placeholder}}...
 /// </code>
-/// Whole-line <c>&lt;!-- ... --&gt;</c> comments are ignored. Nothing is invented: a section without text stays empty.
+/// Whole-line <c>&lt;!-- ... --&gt;</c> comments are ignored. Nothing is invented: a section without text stays empty. The heading of a
+/// section can carry placeholders like its text (the title cannot).
 /// </summary>
 public static partial class LeaseContractTemplateParser
 {
@@ -29,8 +30,15 @@ public static partial class LeaseContractTemplateParser
     [GeneratedRegex("^[a-z0-9_]{1,64}$", RegexOptions.CultureInvariant)]
     private static partial Regex SectionIdPattern();
 
-    public static ParsedLeaseContractTemplate Parse(string content)
+    public static ParsedLeaseContractTemplate Parse(string content) => Parse(content, LeaseContractPlaceholders.IsKnown);
+
+    /// <summary>
+    /// The same grammar for another family of files (the letters of the operations of a lease, LR-OPS-1): <paramref name="isKnownPlaceholder"/>
+    /// says which <c>{{names}}</c> the family uses.
+    /// </summary>
+    public static ParsedLeaseContractTemplate Parse(string content, Func<string, bool> isKnownPlaceholder)
     {
+        ArgumentNullException.ThrowIfNull(isKnownPlaceholder);
         var errors = new List<string>();
         var sections = new List<LeaseContractTemplateSection>();
         string? title = null;
@@ -47,7 +55,8 @@ public static partial class LeaseContractTemplateParser
             if (sections.Any(s => s.Id == currentId))
                 errors.Add($"section '{currentId}' appears more than once");
             else
-                sections.Add(new LeaseContractTemplateSection(currentId, currentHeading, text, ReadPlaceholders(currentId, text, errors)));
+                sections.Add(new LeaseContractTemplateSection(
+                    currentId, currentHeading, text, ReadPlaceholders(currentId, currentHeading is null ? text : $"{currentHeading}\n{text}", errors, isKnownPlaceholder)));
 
             buffer.Clear();
         }
@@ -105,20 +114,20 @@ public static partial class LeaseContractTemplateParser
         return (id, string.IsNullOrWhiteSpace(heading) ? null : heading);
     }
 
-    private static IReadOnlyList<string> ReadPlaceholders(string sectionId, string text, List<string> errors)
+    private static IReadOnlyList<string> ReadPlaceholders(string sectionId, string text, List<string> errors, Func<string, bool> isKnownPlaceholder)
     {
         var names = PlaceholderPattern().Matches(text)
             .Select(m => m.Groups[1].Value)
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
-        foreach (var unknown in names.Where(n => !LeaseContractPlaceholders.IsKnown(n)))
+        foreach (var unknown in names.Where(n => !isKnownPlaceholder(n)))
             errors.Add($"section '{sectionId}': unknown placeholder {{{{{unknown}}}}}");
 
         var withoutPlaceholders = PlaceholderPattern().Replace(text, string.Empty);
         if (withoutPlaceholders.Contains("{{", StringComparison.Ordinal) || withoutPlaceholders.Contains("}}", StringComparison.Ordinal))
             errors.Add($"section '{sectionId}': malformed placeholder (use {{{{name}}}} with lower-case letters, digits and '_')");
 
-        return names.Where(LeaseContractPlaceholders.IsKnown).ToList();
+        return names.Where(isKnownPlaceholder).ToList();
     }
 }

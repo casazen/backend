@@ -110,6 +110,18 @@ public class Booking : ITenantOwned
     public decimal TotalPrice { get; set; }
 
     /// <summary>
+    /// The host entered a total other than the quote's when creating the booking by hand (SR-06a,
+    /// <c>POST /api/bookings/manual</c>): <see cref="TotalPrice"/> is the price they agreed, <see cref="TouristTax"/> stays the
+    /// tax of the quote and <see cref="BasePrice"/> is what is left (<see cref="Services.ManualBookingRules.PriceOf"/>). False
+    /// for every other booking, and again after the host changes the dates or the guests, which prices the stay anew.
+    /// </summary>
+    public bool PriceOverridden { get; set; }
+
+    /// <summary>What the host wrote about the price they agreed (at most <see cref="Services.ManualBookingRules.PriceNoteMaxLength"/> characters); null when there is no note or no agreed price.</summary>
+    [MaxLength(Services.ManualBookingRules.PriceNoteMaxLength)]
+    public string? PriceOverrideNote { get; set; }
+
+    /// <summary>
     /// Tourist tax amount calculated based on city rates (Italian law)
     /// </summary>
     [Precision(18, 2)]
@@ -127,6 +139,15 @@ public class Booking : ITenantOwned
 
     [MaxLength(1000)]
     public string SpecialRequests { get; set; } = string.Empty;
+
+    /// <summary>
+    /// When the guest of a direct booking thinks they will arrive (DB-03b): <c>HH:mm</c>, or <c>late</c> for after the check-in window;
+    /// <c>null</c> when they did not say, and for every booking that does not come from the public checkout. A note for the host
+    /// ("arrivo previsto alle…"), never a rule (<see cref="Services.ArrivalTimeRules"/>). Cleared with the guest's other free-text data when
+    /// the guest is erased.
+    /// </summary>
+    [MaxLength(Services.ArrivalTimeRules.MaxLength)]
+    public string? ExpectedArrivalTime { get; set; }
 
     /// <summary>Payment option selected: Immediate (pay now), OnCancellationDeadline (pay on deadline), OnSite (pay at property).</summary>
     [Required]
@@ -171,7 +192,8 @@ public class Booking : ITenantOwned
     public DateTime? CheckoutWizardStartedAt { get; set; }
 
     /// <summary>
-    /// Why the system cancelled the booking; null when a person cancelled it (host, admin) or it is not cancelled.
+    /// Why the system cancelled the booking, or <see cref="BookingCancellationReason.GuestRequested"/> when the guest did; null when
+    /// the host or an admin cancelled it or it is not cancelled.
     /// Lets the payment webhook and support tell an expired checkout hold from a real cancellation (BK-21).
     /// </summary>
     public BookingCancellationReason? CancellationReason { get; set; }
@@ -303,6 +325,12 @@ public enum BookingCancellationReason
     /// <c>DirectBooking:DeferredChargeCancelAfterDays</c> days; nothing was collected, the dates were released (BK-08, A3-14).
     /// </summary>
     DeferredPaymentNotCompleted = 6,
+
+    /// <summary>
+    /// The guest cancelled the booking themselves, from the guest area or with the signed link the host sent (DB-08a, DB-08h).
+    /// A person's cancellation, but one the host did not make: the timeline tells it apart. Append-only: stored as 7.
+    /// </summary>
+    GuestRequested = 7,
 }
 
 public enum PaymentOption

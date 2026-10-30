@@ -77,7 +77,14 @@ public sealed class ShowcaseBookingService(
         if (!bookingSettings.OnlineBookingEnabled)
             throw ShowcaseBookingErrors.OfflineSupplier();
 
-        // What the customer chose has to fit the service; the supplier covers comuni, not postal codes (decision D10).
+        // An urgent slot (SP-04c) is for a service and a supplier that both accept urgent requests: the terms (and the surcharge the
+        // estimate adds) are worked out from the supplier's settings, read only for an urgent booking. A booking that is not urgent
+        // reads nothing more than before.
+        if (content.Quote.Urgent)
+            service = service.WithUrgent(await agenda.GetUrgentAsync(orgId, cancellationToken));
+
+        // What the customer chose has to fit the service; the supplier covers comuni, not postal codes (decision D10). An urgent slot
+        // for a service that does not offer one is a 422 on the field `urgent`, like in the estimate.
         var choices = SupplierQuoteCalculator.Validate(service, content.Quote);
         if (!await comuneMatcher.CoversAsync(supplier, new ComuneTarget(content.ComuneIstat, content.City), cancellationToken))
             throw ShowcaseBookingErrors.OutsideSupplierZone();
@@ -88,7 +95,11 @@ public sealed class ShowcaseBookingService(
 
         // The same function that priced the page prices the booking: the total the customer saw is the total the request carries.
         var quote = SupplierQuoteCalculator.Calculate(service, choices, insideArea: true);
-        var query = service.ToSlotQuery() ?? throw ServiceNotFound();
+
+        // The slot is judged below, under the calendar lock, by the planner of the kind the customer chose: the urgent plan for an
+        // urgent booking (its window, 30 minutes of notice, today and tomorrow), the normal one otherwise. The lock is the same for
+        // both, so an urgent and a normal booking of the same hour cannot both pass: the second finds the hold of the first.
+        var query = service.ToSlotQuery(choices.Urgent) ?? throw ServiceNotFound();
         var start = content.StartUtc;
 
         // A start the planner could never offer — in the past, beyond the largest horizon, or at an end of the calendar, where the
@@ -105,6 +116,13 @@ public sealed class ShowcaseBookingService(
         var token = ShowcaseBookingTokens.New();
         var holdId = Guid.NewGuid();
         var validMinutes = config.EmailVerificationMinutes;
+        if (choices.Urgent)
+        {
+            // An urgent slot is 30 minutes away at the soonest: the hold and its link never outlive the start of the work (a request
+            // born after the time it is for would be no use to anybody). With the 30 minutes of the configuration, nothing changes.
+            var minutesToStart = (int)Math.Floor((start - _clock.GetUtcNow().UtcDateTime).TotalMinutes);
+            validMinutes = Math.Clamp(minutesToStart, 1, validMinutes);
+        }
 
         var payload = new ShowcaseBookingPayload(
             bookable.ListingId,
@@ -124,7 +142,8 @@ public sealed class ShowcaseBookingService(
             content.AccessNotes,
             content.PrivacyNoticeVersion,
             DateTime.MinValue,
-            content.ConsentIp);
+            content.ConsentIp,
+            choices.Urgent);
 
         // Rendered before the hold is saved: a missing App:PublicSiteBaseUrl is a configuration error that has to stop the
         // booking, not a wrong link in an e-mail that holds a slot for nothing.
@@ -282,6 +301,13 @@ public sealed class ShowcaseBookingService(
             var settings = await agenda.GetBookingSettingsAsync(orgId, cancellationToken);
             customer = await UpsertCustomerAsync(orgId, hold, payload, now, cancellationToken);
 
+            // Decision D8: the supplier answers within SupplierSettings.RespondWithinMinutes (180 by default), or the request lapses
+            // (the always-on service-request-expiry job). An urgent request lapses at the latest when the work was due to start: an
+            // answer after that hour would be of no use to the customer, who must be able to look elsewhere.
+            var responseDueAt = now.AddMinutes(settings.RespondWithinMinutes);
+            if (payload.Urgent && hold.StartUtc < responseDueAt)
+                responseDueAt = hold.StartUtc;
+
             request = new ServiceRequest
             {
                 OrgId = orgId,
@@ -291,7 +317,9 @@ public sealed class ShowcaseBookingService(
                 PropertyId = null,
                 BookingId = null,
                 Category = payload.Category,
-                Urgency = ServiceRequestUrgency.Normal,
+                // An urgent slot (SP-04c) is an urgent request: the supplier reads it in `urgency`, and the surcharge is already in
+                // the estimate and in the options below.
+                Urgency = payload.Urgent ? ServiceRequestUrgency.High : ServiceRequestUrgency.Normal,
                 Notes = string.Empty,
                 Status = ServiceRequestStatus.Richiesto,
                 CreatedAt = now,
@@ -302,9 +330,7 @@ public sealed class ShowcaseBookingService(
                 EstimatedAmountCents = payload.EstimatedAmountCents,
                 ScheduledStartUtc = hold.StartUtc,
                 ScheduledEndUtc = hold.EndUtc,
-                // Decision D8: the supplier answers within SupplierSettings.RespondWithinMinutes (180 by default), or the request
-                // lapses (the always-on service-request-expiry job).
-                ResponseDueAt = now.AddMinutes(settings.RespondWithinMinutes),
+                ResponseDueAt = responseDueAt,
                 PublicCode = hold.PublicCode,
                 CustomerId = customer.Id,
                 LocationComuneIstat = payload.ComuneIstat,
@@ -337,7 +363,7 @@ public sealed class ShowcaseBookingService(
 
         logger.LogInformation("Showcase request {RequestId} of supplier {OrgId} created from hold {HoldId}", request.Id, orgId, holdId);
 
-        notifier.QueueRequestReceived(supplier, request, customer, request.ResponseDueAt!.Value);
+        await notifier.QueueRequestReceivedAsync(supplier, request, customer, request.ResponseDueAt!.Value, cancellationToken);
         return result;
     }
 

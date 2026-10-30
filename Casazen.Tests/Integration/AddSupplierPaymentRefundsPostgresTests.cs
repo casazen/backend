@@ -41,7 +41,7 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
     public async Task Migration_AppliesAndRevertsOnARealDatabase()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         Assert.Equal(RefundColumns.Length, await CountColumnsAsync(db, "ServiceRequestPaymentRefunds"));
         Assert.Equal(1, await CountColumnsAsync(db, "SupplierProfiles", "CommissionOverrideUntil"));
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
@@ -61,7 +61,7 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
     public async Task APaymentThatExistedBeforeTheMigration_KeepsItsData_AndHasNoRefunds()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         await db.GetService<IMigrator>().MigrateAsync(PreviousMigration(db));
         var parents = await SeedParentsAsync(db);
         var payment = parents.Payment;
@@ -256,7 +256,7 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
     private async Task<Parents> MigratedWithPaymentAsync()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         return await SeedParentsAsync(db);
     }
 

@@ -5,6 +5,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Search;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
@@ -304,6 +305,7 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
         var scope = host.Scope;
         var (rows, hasMore) = await TakeAsync(
             db.ServiceRequests.AsNoTracking()
+                .OnlyVisibleToHost()
                 .Where(r => r.OrgId == scope.OrgId && contexts.Contains(r.RentalContext) && r.Property != null)
                 .InScope(scope)
                 .WhereKeyMatches(query, _fullText)
@@ -339,6 +341,7 @@ public sealed class GlobalSearchService(AppDbContext db, ILogger<GlobalSearchSer
 
         // The suppliers that got a request from the org, within the scope: the preferred list (OrgTrustedSupplier) does not exist yet.
         var asked = db.ServiceRequests
+            .OnlyVisibleToHost()
             .Where(r => r.OrgId == scope.OrgId)
             .InScope(scope)
             .Select(r => r.SupplierOrgId);

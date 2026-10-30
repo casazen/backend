@@ -172,6 +172,8 @@ public class ServiceRequestSqlTests
         Assert.Contains("\"ResponseDueAt\" IS NOT NULL", sql);
         Assert.Contains("\"ResponseDueAt\" <= @", sql);
         Assert.Contains("\"ProposedStartUtc\" IS NULL", sql);
+        // SP-BKP: the requests of a group of backup suppliers lapse by the logic of the group, never one by one here.
+        Assert.Contains("\"GroupId\" IS NULL", sql);
         var orderBy = sql[sql.IndexOf("ORDER BY", StringComparison.Ordinal)..];
         Assert.StartsWith("ORDER BY", orderBy);
         Assert.Contains("\"ResponseDueAt\"", orderBy);

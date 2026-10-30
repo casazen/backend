@@ -74,13 +74,15 @@ public sealed class ShowcaseBookingNotifier(
 
     /// <summary>
     /// The address is checked and the request exists: the receipt to the customer, and the new request to the supplier (e-mail
-    /// and push, comune only). Never throws.
+    /// and push, comune only), unless the supplier turned off «Nuove richieste» (SP-16d, <see cref="SupplierNotificationKind.NewRequest"/>):
+    /// the customer's receipt does not depend on it. Never throws.
     /// </summary>
-    public void QueueRequestReceived(
+    public async Task QueueRequestReceivedAsync(
         SupplierProfile supplier,
         ServiceRequest request,
         ServiceCustomer customer,
-        DateTime respondByUtc)
+        DateTime respondByUtc,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -102,6 +104,9 @@ public sealed class ShowcaseBookingNotifier(
                     request.EstimatedAmountCents,
                     publicSiteLinks.SupplierBookingRequest(slug, request.PublicCode)),
                 EmailTemplates.Names.SupplierBookingReceipt);
+
+            if (!await SupplierNotificationPreferences.AllowsAsync(db, request.SupplierOrgId, SupplierNotificationKind.NewRequest, cancellationToken))
+                return;
 
             var italian = EmailTemplates.DefaultCulture;
             var comune = request.LocationCity ?? string.Empty;
@@ -132,6 +137,94 @@ public sealed class ShowcaseBookingNotifier(
         }
     }
 
+    // ─── The request on measure (SP-10b) ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The verification e-mail of a request on measure, rendered <b>before</b> the inquiry is saved: a missing <c>App:PublicSiteBaseUrl</c> is
+    /// a configuration error that must stop the request, not a wrong link in an e-mail.
+    /// </summary>
+    public EmailContent RenderInquiryVerification(
+        SupplierProfile supplier,
+        ShowcaseInquiryPayload payload,
+        Guid inquiryId,
+        string token,
+        int validMinutes) =>
+        EmailTemplates.SupplierInquiryVerification(
+            EmailTemplates.CultureOf(payload.Locale),
+            payload.FullName,
+            supplier.LegalName,
+            publicSiteLinks.SupplierInquiryConfirmation(SlugOf(supplier), inquiryId, token),
+            validMinutes);
+
+    /// <summary>
+    /// Queues the e-mail rendered by <see cref="RenderInquiryVerification"/> to the address the customer gave. <c>false</c> when it could not
+    /// be queued (the e-mail provider is not configured, the queue is down): the request then lets the inquiry go.
+    /// </summary>
+    public bool QueueInquiryVerification(string to, EmailContent email) =>
+        emailQueue.Enqueue(to, email, EmailTemplates.Names.SupplierInquiryVerification);
+
+    /// <summary>
+    /// The address is checked and the request on measure exists: the receipt to the customer, and the new request to the supplier (e-mail and
+    /// push, comune and "Nome C." only — never a word of the message). Never throws.
+    /// </summary>
+    public async Task QueueInquiryReceivedAsync(
+        SupplierProfile supplier,
+        ServiceRequest request,
+        ServiceCustomer customer,
+        DateTime respondByUtc,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var culture = EmailTemplates.CultureOf(customer.Locale);
+
+            emailQueue.Enqueue(
+                customer.Email,
+                EmailTemplates.SupplierInquiryReceipt(
+                    culture,
+                    customer.FullName,
+                    supplier.LegalName,
+                    request.PublicCode!,
+                    respondByUtc,
+                    publicSiteLinks.SupplierBookingRequest(SlugOf(supplier), request.PublicCode)),
+                EmailTemplates.Names.SupplierInquiryReceipt);
+
+            if (!await SupplierNotificationPreferences.AllowsAsync(
+                    db,
+                    request.SupplierOrgId,
+                    SupplierNotificationKind.NewRequest,
+                    cancellationToken))
+            {
+                return;
+            }
+
+            var italian = EmailTemplates.DefaultCulture;
+            var comune = request.LocationCity ?? string.Empty;
+            emailQueue.Enqueue(
+                supplier.Email,
+                EmailTemplates.SupplierInquiryNewRequest(
+                    italian,
+                    supplier.LegalName,
+                    request.ServiceNameSnapshot,
+                    comune,
+                    ShowcaseBookingRules.AbbreviateName(customer.FullName),
+                    respondByUtc,
+                    publicSiteLinks.SupplierInbox()),
+                EmailTemplates.Names.SupplierInquiryNewRequest);
+
+            var push = EmailTemplates.ServiceRequestCreatedPush(italian, request.Category, comune);
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.ServiceRequestCreated(request.Id),
+                PushAudience.SupplierOrg(request.SupplierOrgId),
+                new PushNotificationPayload(
+                    push.Title, push.Body, PushTypes.ServiceRequestCreated, BookingId: null, PushRoutes.Properties, request.Id));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Notifications of the showcase request on measure {Id} could not be queued", request.Id);
+        }
+    }
+
     // ─── What the supplier did, or CasaZen did for it: the customer ──────────────────────────────────────────────────
 
     /// <summary>
@@ -158,6 +251,14 @@ public sealed class ShowcaseBookingNotifier(
                 return;
 
             var culture = EmailTemplates.CultureOf(contact.Locale);
+
+            // A request on measure has no day and no time to tell (SP-10b): its own mails.
+            if (request.Kind == ServiceRequestKind.Custom)
+            {
+                QueueInquiryStatus(request, contact, supplier, culture);
+                return;
+            }
+
             var serviceName = request.ServiceNameSnapshot ?? EmailTemplates.ServiceCategoryLabel(culture, request.Category);
             var start = request.ScheduledStartUtc ?? request.CreatedAt;
             var showcaseUrl = SupplierPageOf(supplier);
@@ -195,6 +296,15 @@ public sealed class ShowcaseBookingNotifier(
                         contact.Email,
                         EmailTemplates.SupplierBookingProposalExpired(culture, contact.FullName, supplier.LegalName, serviceName, start, showcaseUrl),
                         EmailTemplates.Names.SupplierBookingProposalExpired);
+                    break;
+
+                case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.System
+                                                         && request.CancellationReason == ServiceRequestCancellationReasons.QuoteNotAnswered:
+                    // The supplier did answer, with a quote: it is the customer who did not (decision D24).
+                    emailQueue.Enqueue(
+                        contact.Email,
+                        EmailTemplates.SupplierBookingQuoteExpired(culture, contact.FullName, supplier.LegalName, serviceName, start, showcaseUrl),
+                        EmailTemplates.Names.SupplierBookingQuoteExpired);
                     break;
 
                 case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.System:
@@ -249,6 +359,38 @@ public sealed class ShowcaseBookingNotifier(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Customer e-mail for the time proposed on showcase request {Id} could not be queued", request.Id);
+        }
+    }
+
+    /// <summary>The supplier sent a quote (SP-04b): the mail to the customer, with the lines, the total and the time by which it has to answer. Never throws.</summary>
+    public async Task NotifyCustomerOfQuoteAsync(ServiceRequest request, ServiceRequestQuote quote, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var (contact, supplier) = await FindPartiesAsync(request, cancellationToken);
+            if (contact is null || supplier is null)
+                return;
+
+            var culture = EmailTemplates.CultureOf(contact.Locale);
+            emailQueue.Enqueue(
+                contact.Email,
+                EmailTemplates.ServiceRequestQuoteReceived(
+                    culture,
+                    contact.FullName,
+                    supplier.LegalName,
+                    ServiceNameOf(request, culture),
+                    quote.ScheduledStartUtc ?? request.ScheduledStartUtc ?? request.CreatedAt,
+                    quote is { ScheduledStartUtc: not null, ScheduledEndUtc: not null } ? quote.ScheduledEndUtc : null,
+                    quote.Lines,
+                    quote.TotalCents,
+                    quote.Note,
+                    quote.AnswerBy,
+                    RequestUrlOf(supplier, request)),
+                EmailTemplates.Names.ServiceRequestQuoteReceived);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Customer e-mail for the quote on showcase request {Id} could not be queued", request.Id);
         }
     }
 
@@ -314,19 +456,36 @@ public sealed class ShowcaseBookingNotifier(
             {
                 var italian = EmailTemplates.DefaultCulture;
                 var comune = request.LocationCity ?? string.Empty;
-                emailQueue.Enqueue(
-                    supplier.Email,
-                    EmailTemplates.SupplierBookingCancelledByCustomer(
-                        italian,
-                        supplier.LegalName,
-                        ServiceNameOf(request, italian),
-                        comune,
-                        ShortNameOf(contact),
-                        request.ScheduledStartUtc ?? request.CreatedAt,
-                        TextOfReason(request.CancellationReason),
-                        ShortNoticeHours(request),
-                        publicSiteLinks.SupplierInbox()),
-                    EmailTemplates.Names.SupplierBookingCancelledByCustomer);
+                if (request.Kind == ServiceRequestKind.Custom)
+                {
+                    // A request on measure has no day and no time to tell (SP-10b).
+                    emailQueue.Enqueue(
+                        supplier.Email,
+                        EmailTemplates.SupplierInquiryClosedByCustomer(
+                            italian,
+                            supplier.LegalName,
+                            comune,
+                            ShortNameOf(contact),
+                            TextOfReason(request.CancellationReason),
+                            publicSiteLinks.SupplierInbox()),
+                        EmailTemplates.Names.SupplierInquiryClosedByCustomer);
+                }
+                else
+                {
+                    emailQueue.Enqueue(
+                        supplier.Email,
+                        EmailTemplates.SupplierBookingCancelledByCustomer(
+                            italian,
+                            supplier.LegalName,
+                            ServiceNameOf(request, italian),
+                            comune,
+                            ShortNameOf(contact),
+                            request.ScheduledStartUtc ?? request.CreatedAt,
+                            TextOfReason(request.CancellationReason),
+                            ShortNoticeHours(request),
+                            publicSiteLinks.SupplierInbox()),
+                        EmailTemplates.Names.SupplierBookingCancelledByCustomer);
+                }
 
                 var push = EmailTemplates.ShowcaseCancelledByCustomerPush(italian, request.Category, comune);
                 pushNotifications.Enqueue(
@@ -343,7 +502,8 @@ public sealed class ShowcaseBookingNotifier(
 
         try
         {
-            if (supplier is not null && contact is not null)
+            // The receipt of the cancellation speaks of a day and a time: a request on measure has none, and the customer closed it itself.
+            if (supplier is not null && contact is not null && request.Kind != ServiceRequestKind.Custom)
             {
                 var culture = EmailTemplates.CultureOf(contact.Locale);
                 emailQueue.Enqueue(
@@ -474,6 +634,101 @@ public sealed class ShowcaseBookingNotifier(
     }
 
     /// <summary>
+    /// The customer accepted or turned down the quote (SP-04b): the supplier is told (e-mail and push, in Italian, comune and "Nome C." only)
+    /// and — when the customer accepted, which takes the request — the customer gets the same e-mail as when the supplier takes a request,
+    /// with the price of the quote. <paramref name="quote"/> is the quote that was answered (the request does not keep it anymore). Never throws.
+    /// </summary>
+    public async Task NotifyQuoteAnsweredByCustomerAsync(
+        ServiceRequest request,
+        bool accepted,
+        ServiceRequestQuote quote,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var supplier = await TryFindSupplierAsync(request, cancellationToken);
+            if (supplier is not null)
+            {
+                var contact = await TryFindCustomerAsync(request, cancellationToken);
+                var italian = EmailTemplates.DefaultCulture;
+                var comune = request.LocationCity ?? string.Empty;
+                emailQueue.Enqueue(
+                    supplier.Email,
+                    EmailTemplates.ServiceRequestQuoteAnswered(
+                        italian,
+                        supplier.LegalName,
+                        ServiceNameOf(request, italian),
+                        comune,
+                        ShortNameOf(contact),
+                        accepted,
+                        quote.TotalCents,
+                        accepted ? request.ScheduledStartUtc : null,
+                        publicSiteLinks.SupplierInbox()),
+                    EmailTemplates.Names.ServiceRequestQuoteAnswered);
+
+                var push = EmailTemplates.ServiceRequestQuoteAnsweredPush(italian, request.Category, comune, accepted);
+                pushNotifications.Enqueue(
+                    PushDeliveryKeys.ServiceRequestQuote(request.Id, quote.SentAt, accepted ? "accepted" : "rejected"),
+                    PushAudience.SupplierOrg(request.SupplierOrgId),
+                    new PushNotificationPayload(
+                        push.Title,
+                        push.Body,
+                        accepted ? PushTypes.ServiceRequestQuoteAccepted : PushTypes.ServiceRequestQuoteRejected,
+                        BookingId: null,
+                        PushRoutes.Properties,
+                        request.Id));
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Supplier notification for the answer of the customer to the quote of {Id} could not be queued", request.Id);
+        }
+
+        // The customer who accepts the quote has taken the request on the supplier's behalf: it gets the e-mail of a request taken.
+        if (accepted)
+            await NotifyCustomerOfStatusAsync(request, cancellationToken);
+    }
+
+    /// <summary>
+    /// The customer did not answer the quote and the request was cancelled by CasaZen (SP-04b): the supplier is told (e-mail and push) that
+    /// it is the customer who did not answer. The customer's own e-mail is <see cref="NotifyCustomerOfStatusAsync"/>. Never throws.
+    /// </summary>
+    public async Task NotifySupplierOfLapsedQuoteAsync(ServiceRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var supplier = await TryFindSupplierAsync(request, cancellationToken);
+            if (supplier is null)
+                return;
+
+            var contact = await TryFindCustomerAsync(request, cancellationToken);
+            var italian = EmailTemplates.DefaultCulture;
+            var comune = request.LocationCity ?? string.Empty;
+            emailQueue.Enqueue(
+                supplier.Email,
+                EmailTemplates.SupplierBookingQuoteLapsed(
+                    italian,
+                    supplier.LegalName,
+                    ServiceNameOf(request, italian),
+                    comune,
+                    ShortNameOf(contact),
+                    publicSiteLinks.SupplierInbox()),
+                EmailTemplates.Names.SupplierBookingQuoteLapsed);
+
+            var push = EmailTemplates.ServiceRequestQuoteExpiredPush(italian, request.Category, comune);
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.ServiceRequestStatus(request.Id, ServiceRequestStatus.Annullato),
+                PushAudience.SupplierOrg(request.SupplierOrgId),
+                new PushNotificationPayload(
+                    push.Title, push.Body, PushTypes.ServiceRequestQuoteExpired, BookingId: null, PushRoutes.Properties, request.Id));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Supplier notification for the lapsed quote of the showcase request {Id} could not be queued", request.Id);
+        }
+    }
+
+    /// <summary>
     /// The customer did not answer the time the supplier proposed and the request was cancelled by CasaZen: the supplier is told
     /// (e-mail and push) that it is the customer who did not answer. The customer's own e-mail is
     /// <see cref="NotifyCustomerOfStatusAsync"/>. Never throws.
@@ -510,6 +765,76 @@ public sealed class ShowcaseBookingNotifier(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Supplier notification for the lapsed proposal of the showcase request {Id} could not be queued", request.Id);
+        }
+    }
+
+    // ─── The conversation of a request on measure (SP-10b) ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The request on measure was refused by the supplier or closed because nobody answered in time: the mail to the customer, with the
+    /// reason the supplier gave and the way to the supplier's page. Taken (the offer accepted) and cancelled by the supplier come with the offer
+    /// (SP-10b-b) and send nothing here.
+    /// </summary>
+    private void QueueInquiryStatus(ServiceRequest request, ServiceCustomerContact contact, SupplierContact supplier, System.Globalization.CultureInfo culture)
+    {
+        switch (request.Status)
+        {
+            case ServiceRequestStatus.Rifiutato:
+                emailQueue.Enqueue(
+                    contact.Email,
+                    EmailTemplates.SupplierInquiryDeclined(culture, contact.FullName, supplier.LegalName, request.RejectionReason, SupplierPageOf(supplier)),
+                    EmailTemplates.Names.SupplierInquiryDeclined);
+                break;
+
+            case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.System:
+                emailQueue.Enqueue(
+                    contact.Email,
+                    EmailTemplates.SupplierInquiryExpired(culture, contact.FullName, supplier.LegalName, SupplierPageOf(supplier)),
+                    EmailTemplates.Names.SupplierInquiryExpired);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// A party wrote in the thread of a request on measure: the other one is told by e-mail. The customer hears of the supplier's reply, in its
+    /// language, with the link to the request page; the supplier hears of the customer's message in Italian, with the comune and "Nome C."
+    /// only. <b>Never the words</b>. Never throws.
+    /// </summary>
+    public async Task NotifyThreadMessageAsync(ServiceRequest request, ServiceRequestMessageAuthor author, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (author == ServiceRequestMessageAuthor.System)
+                return;
+
+            var (contact, supplier) = await FindPartiesAsync(request, cancellationToken);
+            if (contact is null || supplier is null)
+                return;
+
+            if (author == ServiceRequestMessageAuthor.Supplier)
+            {
+                emailQueue.Enqueue(
+                    contact.Email,
+                    EmailTemplates.SupplierInquiryReply(
+                        EmailTemplates.CultureOf(contact.Locale), contact.FullName, supplier.LegalName, RequestUrlOf(supplier, request)),
+                    EmailTemplates.Names.SupplierInquiryReply);
+                return;
+            }
+
+            // The customer wrote: the supplier is told in Italian, with the comune and "Nome C." only (decision D9) and never the words.
+            emailQueue.Enqueue(
+                supplier.Email,
+                EmailTemplates.SupplierInquiryMessage(
+                    EmailTemplates.DefaultCulture,
+                    supplier.LegalName,
+                    request.LocationCity ?? string.Empty,
+                    ShortNameOf(contact),
+                    publicSiteLinks.SupplierInbox()),
+                EmailTemplates.Names.SupplierInquiryMessage);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Notification of a message of the thread of the showcase request {Id} could not be queued", request.Id);
         }
     }
 

@@ -26,6 +26,14 @@ namespace Casazen.Core.Suppliers;
 /// <para><b>Daylight saving time</b> never moves a slot by hand: the bands become UTC instants first and the grid of slots
 /// is walked in real elapsed minutes, so on 29 March (a 23-hour day) nothing is offered in the skipped hour and on
 /// 25 October (a 25-hour day) the repeated hour offers its slots twice, once per pass.</para>
+/// <para><b>Urgent slots</b> (SP-04c, <see cref="SupplierSlotQuery.Urgent"/>, decision SP-D9) are the same plan with three differences:
+/// only today and tomorrow are open (later days are <see cref="SupplierDayClosure.BeyondHorizon"/>); the notice is
+/// <see cref="SupplierAgendaLimits.UrgentNoticeMinutes"/> minutes, whatever the supplier or the service asks; and the one band of
+/// the day is the urgent window of the supplier (<see cref="SupplierPlanningInput.Urgent"/>), also outside its working hours, in
+/// place of the working bands and the extra openings. A supplier that does not accept urgent requests has no urgent slot on any day
+/// (<see cref="SupplierDayClosure.UrgentNotOffered"/>). Everything else is unchanged: time off and the days closed by hand still close
+/// the day, and blocks, engagements, requests, holds, the pause, <c>MaxJobsPerDay</c>, the weekdays of the service, the step and
+/// the daylight saving time apply exactly as they do to a normal slot. A query without <c>Urgent</c> gives the plan it always gave.</para>
 /// </remarks>
 public static class SupplierSlotPlanner
 {
@@ -102,6 +110,9 @@ public static class SupplierSlotPlanner
         if (day < context.Today)
             return SupplierDayClosure.Past;
 
+        if (context.UrgentNotOffered)
+            return SupplierDayClosure.UrgentNotOffered;
+
         if (context.IsOnTimeOff(day))
             return SupplierDayClosure.TimeOff;
 
@@ -120,7 +131,7 @@ public static class SupplierSlotPlanner
         if (RomeCalendar.StartOfDayUtc(day.AddDays(1)) <= context.EarliestStartUtc)
             return SupplierDayClosure.WithinNotice;
 
-        if (day > context.Today.AddDays(context.Rules.HorizonDays))
+        if (day > context.Today.AddDays(context.HorizonDays))
             return SupplierDayClosure.BeyondHorizon;
 
         return null;
@@ -134,6 +145,15 @@ public static class SupplierSlotPlanner
     /// </summary>
     internal static List<SupplierInterval> BandsOf(DateOnly day, PlanningContext context)
     {
+        // An urgent plan has one band a day, the supplier's urgent window (outside its working hours too): the weekly bands and the
+        // extra openings are not part of it.
+        if (context.UrgentWindow is { } window)
+        {
+            var from = RomeCalendar.ToUtc(day, window.FromMinute);
+            var to = RomeCalendar.ToUtc(day, window.ToMinute);
+            return to > from ? [new SupplierInterval(from, to)] : [];
+        }
+
         var bands = new List<SupplierInterval>();
         foreach (var band in context.WeeklyBands(day.DayOfWeek))
         {
@@ -208,7 +228,22 @@ public static class SupplierSlotPlanner
 
             var nowUtc = UtcDateTime.Normalize(input.NowUtc);
             Today = DateOnly.FromDateTime(RomeCalendar.TodayAt(new DateTimeOffset(nowUtc)));
-            EarliestStartUtc = nowUtc.AddHours(Math.Max(0, query.MinNoticeHours ?? input.Rules.MinNoticeHours));
+
+            // An urgent plan (SP-04c): the supplier's urgent window in place of its hours, a fixed notice of 30 minutes (not the
+            // supplier's or the service's), today and tomorrow only. A supplier that does not accept urgent requests, or whose window
+            // has no length, has no urgent slot: every day is closed (UrgentNotOffered).
+            IsUrgent = query.Urgent;
+            if (IsUrgent)
+            {
+                UrgentWindow = input.Urgent is { IsOn: true } urgent ? urgent : null;
+                EarliestStartUtc = nowUtc.AddMinutes(SupplierAgendaLimits.UrgentNoticeMinutes);
+                HorizonDays = Math.Min(input.Rules.HorizonDays, SupplierAgendaLimits.UrgentHorizonDays);
+            }
+            else
+            {
+                EarliestStartUtc = nowUtc.AddHours(Math.Max(0, query.MinNoticeHours ?? input.Rules.MinNoticeHours));
+                HorizonDays = input.Rules.HorizonDays;
+            }
 
             _weekly = input.WeeklyHours
                 .Where(band => band.EndMinute > band.StartMinute)
@@ -257,8 +292,20 @@ public static class SupplierSlotPlanner
         /// <summary>Today in Europe/Rome.</summary>
         public DateOnly Today { get; }
 
-        /// <summary>The earliest instant a slot may start: now plus the notice.</summary>
+        /// <summary>The earliest instant a slot may start: now plus the notice (30 minutes for an urgent plan).</summary>
         public DateTime EarliestStartUtc { get; }
+
+        /// <summary>True for a plan of urgent slots (<see cref="SupplierSlotQuery.Urgent"/>).</summary>
+        public bool IsUrgent { get; }
+
+        /// <summary>The urgent window of the supplier, when the plan is urgent and the supplier accepts urgent requests; else <c>null</c>.</summary>
+        public SupplierUrgentSettings? UrgentWindow { get; }
+
+        /// <summary>True for a plan of urgent slots of a supplier that does not accept urgent requests: no day has a slot.</summary>
+        public bool UrgentNotOffered => IsUrgent && UrgentWindow is null;
+
+        /// <summary>How many days after today a day can still be booked: the supplier's horizon, and today plus one for an urgent plan.</summary>
+        public int HorizonDays { get; }
 
         /// <summary>What takes the supplier's time, each stretch widened by the buffer on both sides.</summary>
         public IReadOnlyList<SupplierInterval> Widened { get; }
@@ -267,7 +314,8 @@ public static class SupplierSlotPlanner
 
         public IEnumerable<SupplierInterval> ExtraOpeningsOn(DateOnly day) => _extraByDay[day];
 
-        public bool HasHours(DateOnly day) => _weekly[day.DayOfWeek].Any() || _extraByDay[day].Any();
+        public bool HasHours(DateOnly day) =>
+            IsUrgent ? UrgentWindow is not null : _weekly[day.DayOfWeek].Any() || _extraByDay[day].Any();
 
         public int JobsOn(DateOnly day) => _jobsByDay.GetValueOrDefault(day);
 

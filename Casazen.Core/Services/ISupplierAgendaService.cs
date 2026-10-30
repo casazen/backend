@@ -45,6 +45,9 @@ public sealed record SupplierClosedDay(DateOnly Date, SupplierAvailabilitySource
 /// True while a time the supplier proposed has no answer (the <see cref="Phase"/> is then <c>proposal_pending</c>). Filled by both
 /// reads, like <paramref name="Source"/>.
 /// </param>
+/// <param name="HasPendingQuote">
+/// True while a quote the supplier sent has no answer (SP-04b; the <see cref="Phase"/> is then <c>quote_pending</c>). Filled by both reads.
+/// </param>
 public sealed record SupplierAgendaRequest(
     Guid Id,
     DateOnly Date,
@@ -57,13 +60,14 @@ public sealed record SupplierAgendaRequest(
     string? ClientLabel = null,
     string? Comune = null,
     string Source = SupplierRequestSources.CasaZen,
-    bool HasPendingProposal = false)
+    bool HasPendingProposal = false,
+    bool HasPendingQuote = false)
 {
     /// <summary>True when the request has hours of its own (<see cref="StartUtc"/> and <see cref="EndUtc"/>).</summary>
     public bool HasHours => StartUtc is not null && EndUtc is not null;
 
     /// <summary>The phase of the request (<see cref="SupplierRequestPhases"/>): derived in one place, never stored.</summary>
-    public string Phase => SupplierRequestPhases.Of(Status, HasPendingProposal);
+    public string Phase => SupplierRequestPhases.Of(Status, HasPendingProposal, HasPendingQuote);
 }
 
 /// <summary>
@@ -205,6 +209,29 @@ public interface ISupplierAgendaService
     /// </summary>
     /// <exception cref="Exceptions.DomainRuleException"><see cref="SupplierAgendaErrors.SettingsInvalid"/> (with the fields).</exception>
     Task<SupplierSettingsView> ReplaceSettingsAsync(Guid supplierOrgId, SupplierSettingsInput input, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Turns the online bookings of the public showcase on or off (<c>SupplierSettings.OnlineBookingEnabled</c>, SP-13a). <b>The only writer</b>
+    /// of that switch: the showcase content service calls it when the supplier publishes, pauses or reopens the showcase and when its payments
+    /// account changes; the console's settings never do (decision SP-D29). Turning it off for a supplier that has no settings row writes
+    /// nothing; turning it on creates the row. Under the agenda lock, which joins the transaction of the caller.
+    /// </summary>
+    Task SetOnlineBookingEnabledAsync(Guid supplierOrgId, bool enabled, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The supplier's urgent settings (SP-04c, <c>GET api/supplier/availability/urgent</c>): whether it accepts urgent requests, the
+    /// window of the day they are accepted in and its default surcharge. <see cref="SupplierUrgentSettings.Default"/> (off, 07:00 to
+    /// 22:00, no surcharge) while the supplier never saved them; a read never creates the settings row. Read-only.
+    /// </summary>
+    Task<SupplierUrgentSettings> GetUrgentAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces the urgent settings (every field is needed); the rest of the settings row stays as it is. The row is created by the
+    /// first write, under the agenda lock, which every request flow takes before it plans a slot: a booking is judged on the settings
+    /// as they are saved.
+    /// </summary>
+    /// <exception cref="Exceptions.DomainRuleException"><see cref="SupplierAgendaErrors.UrgentInvalid"/> (with the fields).</exception>
+    Task<SupplierUrgentSettings> ReplaceUrgentAsync(Guid supplierOrgId, SupplierUrgentInput input, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// What the supplier's calendar shows from <paramref name="from"/> to <paramref name="to"/> (Europe/Rome days, both

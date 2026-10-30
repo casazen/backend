@@ -90,4 +90,7 @@ public enum AlloggiatiWebStatus
 
     /// <summary>The host declared having sent it on the portal (date in <see cref="AlloggiatiWebReport.ReportedAt"/>). CasaZen holds no receipt.</summary>
     InviatoManualmente = 6,
+
+    /// <summary>Transmitted via SOAP client, awaiting receipt retrieval (ADR-015). Set by <c>AlloggiatiSendJob</c> on successful send; moved to <c>Inviato</c> by <c>AlloggiatiReceiptJob</c> when the receipt is retrieved.</summary>
+    SentReceiptPending = 7,
 }

@@ -22,8 +22,11 @@ value through EF; the database only ever holds the encrypted payload.
 | `PropertyQuesturaCredentials.Username`, `Password`, `WsKey` | `Casazen.PropertyQuesturaCredentials` | CO-14 |
 | `ServiceCustomers.FullName`, `Email`, `Phone` and `ShowcaseBookingHolds.PayloadEncrypted` (property `Payload`: the same data before the e-mail check) | `Casazen.ServiceCustomer` | SP-10 |
 | `ServiceRequests.LocationAddress`, `LocationFloor`, `LocationAccessNotes` (requests from a supplier's showcase only) | `Casazen.ServiceRequest.Location` | SP-10 |
+| `ShowcaseInquiries.PayloadEncrypted` (property `Payload`: what the customer typed for a request on measure, its words included, until the e-mail is checked) | `Casazen.ServiceCustomer` | SP-10b |
+| `ServiceRequestMessages.BodyEncrypted` (property `Body`: the words of the thread of a request on measure, read only by its two parties) | `Casazen.ServiceRequestMessage` | SP-10b |
 | `LeaseContracts.DraftData` (the whole typed state of a lease draft, as JSON, while some value is missing; no length: the payload is longer than the text) | `Casazen.LeaseContract.Draft` | LR-12 |
 | `Parties.Residence` (the residence or registered office of a party of a lease, no length) | `Casazen.LeaseParty` | LR-12 |
+| `LeaseContracts.TransitoryNeed`, `LeaseContracts.TransitoryDocumentation` (the need that justifies a transitory lease and the documents that prove it, free text printed in art. 2 of the contract; no length) | `Casazen.LeaseContract.TransitoryNeed` | TR |
 
 `Guests` and `StayGuests` share one purpose on purpose: a payload copied from one table to the other by SQL (for example
 the CO-12 backfill) stays readable.

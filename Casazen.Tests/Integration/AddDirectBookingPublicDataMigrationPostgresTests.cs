@@ -40,7 +40,7 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
         var longTerm = Guid.NewGuid();
         await using (var db = _database!.CreateContext())
         {
-            db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+            await _database!.MigrateEmptyToAsync(PreviousMigration(db));
             await InsertOrgAsync(db, org);
             await InsertPropertyAsync(db, withRate, org, "Casa al mare", maxGuests: 4, nightlyRate: 187.50m);
             await InsertPropertyAsync(db, longTerm, org, "Locato", maxGuests: 0, nightlyRate: 0m);
@@ -73,7 +73,7 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
     public async Task Migration_NewColumns_AreThere_WithTheTypesTheModelMaps()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
 
         var rows = await db.Database
             .SqlQuery<string>($"""
@@ -104,7 +104,7 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
     {
         // The old release keeps running during a deploy: its INSERTs name neither column, and the defaults satisfy the CHECKs.
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         var org = Guid.NewGuid();
         var property = Guid.NewGuid();
         await InsertOrgAsync(db, org);
@@ -188,7 +188,7 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
     {
         // The whole path through the model: the entities write the new columns, the CHECKs and the lengths hold.
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         var org = new OrgEntity
         {
             Name = "Org DB-03",
@@ -236,7 +236,7 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
         var org = Guid.NewGuid();
         var property = Guid.NewGuid();
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         await InsertOrgAsync(db, org);
         await InsertPropertyAsync(db, property, org, "Casa", maxGuests: 2, nightlyRate: 90m);
         await db.Database.ExecuteSqlAsync($"""UPDATE "Properties" SET "MinNights" = 2, "WeekendSurchargePercent" = 10 WHERE "Id" = {property}""");
@@ -267,7 +267,7 @@ public class AddDirectBookingPublicDataMigrationPostgresTests : IAsyncLifetime
         var org = Guid.NewGuid();
         var property = Guid.NewGuid();
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         await InsertOrgAsync(db, org);
         await InsertPropertyAsync(db, property, org, "Casa", maxGuests: 2, nightlyRate: 90m);
         return property;

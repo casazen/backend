@@ -72,6 +72,8 @@ public partial class ServiceRequestService
                 ServiceRequestErrorCodes.InvalidTransition, ServiceRequestErrorCodes.CannotCancelMessageKey);
         }
 
+        var wasWaitingBackup = request.GroupRole == ServiceRequestGroupRole.Backup;
+
         await TransitionAsync(
             request,
             ServiceRequestStatus.Annullato,
@@ -88,8 +90,12 @@ public partial class ServiceRequestService
 
         if (actor == ServiceRequestActorParty.Host)
             await notifier.NotifySupplierCancelledAsync(request, cancellationToken);
-        else
+        else if (!wasWaitingBackup)
             await notifier.NotifyHostAsync(request, cancellationToken);
+
+        // SP-BKP: the host's cancellation closes the backups; a supplier that gives up its request (the primary, or a backup) changes who is
+        // in the race. The group is looked at right away.
+        await ResolveGroupAfterChangeAsync(request.GroupId, cancellationToken);
 
         return request;
     }
@@ -101,8 +107,8 @@ public partial class ServiceRequestService
     {
         var request = await GetRequestOfHostOrThrow(id, hostOrgId, cancellationToken);
 
-        // A reminder asks for an answer: only a new request waits for one, and not one with a proposal the host has to answer.
-        if (request.Status != ServiceRequestStatus.Richiesto || request.ProposedStartUtc is not null)
+        // A reminder asks for an answer: only a new request waits for one, and not one with a proposal or a quote the host has to answer.
+        if (request.Status != ServiceRequestStatus.Richiesto || request.ProposedStartUtc is not null || request.QuoteSentAt is not null)
         {
             throw new DomainRuleException(
                 ServiceRequestErrorCodes.InvalidTransition, ServiceRequestErrorCodes.CannotRemindMessageKey);
@@ -135,16 +141,25 @@ public partial class ServiceRequestService
     {
         ArgumentNullException.ThrowIfNull(command);
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
+        EnsureNotOnMeasure(request);
         if (request.Status != ServiceRequestStatus.Richiesto)
         {
             throw new DomainRuleException(
                 ServiceRequestErrorCodes.InvalidTransition, ServiceRequestErrorCodes.CannotProposeMessageKey);
         }
 
+        // SP-BKP: a backup answers the time asked or refuses; the host would be answering a supplier it did not choose.
+        if (request.GroupRole == ServiceRequestGroupRole.Backup)
+        {
+            throw new DomainRuleException(
+                ServiceRequestGroupErrorCodes.BackupCannotPropose, ServiceRequestGroupErrorCodes.BackupCannotProposeMessageKey);
+        }
+
         var start = UtcDateTime.Normalize(command.StartUtc);
         var end = command.EndUtc is { } requestedEnd ? UtcDateTime.Normalize(requestedEnd) : (DateTime?)null;
         var schedule = await ResolveScheduleAsync(request, supplierOrgId, start, end, cancellationToken);
         var message = string.IsNullOrWhiteSpace(command.Message) ? null : command.Message.Trim();
+        var dueBeforeAnswer = await ReplyDeadlineAsync(request, cancellationToken);
 
         IDbContextTransaction? transaction = await LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
         await using (transaction)
@@ -160,6 +175,13 @@ public partial class ServiceRequestService
             request.ProposalMessage = message;
             request.UpdatedAt = now;
 
+            // SP-04b: one offer at a time. A quote that waited gives way to the proposed time, as a quote gives way to a proposal.
+            if (request.QuoteSentAt is not null)
+            {
+                AppendQuoteEvent(request, ServiceRequestQuoteEventKinds.Withdrawn, UtcDateTime.TruncateToMicroseconds(now), request.QuoteTotalCents);
+                ClearQuote(request);
+            }
+
             // A showcase request has no host who may take as long as it needs: the customer has Suppliers:Showcase:
             // ProposalResponseMinutes to answer (the answer arrives with SP-11), then the request lapses like one nobody
             // answered. The deadline of the supplier is spent: the supplier did answer.
@@ -172,6 +194,8 @@ public partial class ServiceRequestService
 
         logger.LogInformation("ServiceRequest {Id}: the supplier proposed another time", request.Id);
 
+        // A proposal is an answer, and the deadline of the supplier is spent with it.
+        await RecordReplyAsync(request, dueBeforeAnswer, asBackup: false, cancellationToken);
         await notifier.NotifyTimeProposedAsync(request, cancellationToken);
         return request;
     }
@@ -233,6 +257,9 @@ public partial class ServiceRequestService
         }
 
         await notifier.NotifyProposalAnsweredAsync(request, accepted: true, proposedAt, cancellationToken);
+
+        // SP-BKP: accepting the primary's proposal is the take of its job: the backups that still wait are closed.
+        await ResolveGroupAfterChangeAsync(request.GroupId, cancellationToken);
         return request;
     }
 
@@ -248,12 +275,16 @@ public partial class ServiceRequestService
         // auto-cancel job away; if that deadline already passed while the host was deciding, start the window
         // again. Leaving the elapsed deadline would cancel the request as if nobody had answered.
         var now = Now();
-        if (request.ResponseDueAt is { } due && due <= now)
+        if (request.GroupId is null && request.ResponseDueAt is { } due && due <= now)
             request.ResponseDueAt = now.AddMinutes(options.Value.HostResponseMinutes);
 
         ClearProposal(request);
         request.UpdatedAt = now;
         await SaveAsync(request, "proposal rejected", cancellationToken);
+
+        // SP-BKP: the window of a group starts again the same way, for the primary and the backups together.
+        if (request.GroupId is { } groupId)
+            await ReopenGroupWindowAsync(groupId, cancellationToken);
 
         logger.LogInformation("ServiceRequest {Id}: the host turned the proposed time down", request.Id);
 

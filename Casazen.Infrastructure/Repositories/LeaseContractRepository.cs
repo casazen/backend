@@ -6,6 +6,7 @@ using Casazen.Core.Enums;
 using Casazen.Core.Leases;
 using Casazen.Core.Repositories;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Repositories;
@@ -55,7 +56,18 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 l.Parties.Count,
                 l.Parties.Any(p => p.Role == PartyRole.Tenant && p.IsExtraEU),
                 l.CreatedAt,
-                l.UpdatedAt))
+                l.UpdatedAt,
+                null,
+                null,
+                false,
+                null,
+                0,
+                0m,
+                null,
+                l.CurrentTermEndDate,
+                l.NoticeOn,
+                l.NoticeFrom,
+                l.TerminatedOn))
             .ToListAsync();
     }
 
@@ -138,6 +150,16 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 l.RegistrationDeadline,
                 l.CreatedAt,
                 l.UpdatedAt,
+                l.CurrentTermEndDate,
+                l.NoticeOn,
+                l.NoticeFrom,
+                l.TerminatedOn,
+                // What the path of the lease needs besides the above (LR-01b): plain columns of the lease, no other table in the statement.
+                l.Origin,
+                l.SentForSignatureAt,
+                l.ReviewConfirmedAt,
+                l.PropertyDeliveryDate,
+                l.QuesturaCommunicationDate,
                 PartyCount = l.Parties.Count,
                 HasExtraEUTenant = l.Parties.Any(p => p.Role == PartyRole.Tenant && p.IsExtraEU),
                 // The first tenant (the order entered), by three scalar subqueries on the unique index of the parties
@@ -151,6 +173,33 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 OverdueAmount = (decimal?)r.OverdueAmount ?? 0m,
                 OldestOverdue = (DateOnly?)r.OldestOverdue,
             }).ToListAsync();
+
+        // The stage and the next step of each row (LR-01b): decided by LeaseFlow from the row and, for the registered leases and the drafts,
+        // from the few statements of the reader (none when the list has neither), never one per lease.
+        var flows = await LeaseFlowReader.DeriveAsync(
+            context,
+            rows.Select(x => new LeaseFlowRow(
+                    x.Id,
+                    x.PropertyId,
+                    x.Status,
+                    x.Origin,
+                    x.ContractType,
+                    x.StartDate,
+                    x.CurrentTermEndDate,
+                    x.NoticeOn,
+                    x.TerminatedOn,
+                    x.StipulaDate,
+                    x.PropertyDeliveryDate,
+                    x.QuesturaCommunicationDate,
+                    x.HasExtraEUTenant,
+                    x.SentForSignatureAt,
+                    x.ReviewConfirmedAt,
+                    x.OverdueCount,
+                    x.OverdueAmount,
+                    x.OldestOverdue,
+                    x.NextDueDate))
+                .ToList(),
+            todayInRome);
 
         return rows
             .Select(x => new LeaseSummaryDto(
@@ -177,7 +226,14 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 NextRentDueDate: x.NextDueDate,
                 OverdueRentCount: x.OverdueCount,
                 OverdueRentAmount: x.OverdueAmount,
-                OverdueDays: x.OldestOverdue is { } oldest ? today.DayNumber - oldest.DayNumber : null))
+                OverdueDays: x.OldestOverdue is { } oldest ? today.DayNumber - oldest.DayNumber : null,
+                CurrentTermEndDate: x.CurrentTermEndDate,
+                NoticeOn: x.NoticeOn,
+                NoticeFrom: x.NoticeFrom,
+                TerminatedOn: x.TerminatedOn,
+                Stage: flows[x.Id].Stage,
+                NextStep: flows[x.Id].NextStep,
+                Progress: flows[x.Id].Progress))
             .ToList();
     }
 

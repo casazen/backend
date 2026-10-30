@@ -4,4 +4,5 @@ public enum WebhookSource
 {
     Platform,
     Connected,
+    ConcordatoFacile,
 }

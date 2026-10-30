@@ -88,6 +88,10 @@ builder.Services.AddScoped<IGuestService, GuestService>();
 builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
+builder.Services.AddScoped<IStatementService, StatementService>();
+builder.Services.AddScoped<IAgencyInvoiceService, AgencyInvoiceService>();
+builder.Services.AddScoped<IWireTransferService, WireTransferService>();
+builder.Services.AddScoped<IWithholdingService, WithholdingService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddCasazenEmail(builder.Configuration, builder.Environment);
 // Push notifications queued on Hangfire, sent to Expo in batches, receipts read later: MO-04.
@@ -96,6 +100,7 @@ builder.Services.AddCasazenPush(builder.Configuration);
 builder.Services.AddCasazenFileStorage(builder.Configuration);
 builder.Services.AddScoped<IStripeService, StripeService>();
 builder.Services.AddScoped<StripeWebhookHandler>();
+builder.Services.AddScoped<ConcordatoFacilePaymentHandler>();
 builder.Services.AddScoped<IStripeConnectGateway, StripeConnectGateway>();
 builder.Services.AddScoped<IConnectOnboardingService, ConnectOnboardingService>();
 // The supplier's Connect account on top of the same onboarding (SP-14): status, links and "Verificato"; no payment yet (SP-15).
@@ -107,14 +112,26 @@ builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
 builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
 builder.Services.AddCasazenAiProvider(builder.Configuration);
+// Agency tier B2B services
+builder.Services.AddScoped<ITrustedSupplierService, TrustedSupplierService>();
 // Lease services
 builder.Services.AddScoped<ILeaseWorkflowService, LeaseWorkflowService>();
+builder.Services.AddScoped<ILeaseDocumentService, LeaseDocumentService>();
+builder.Services.AddScoped<ILeaseDocumentExtractionService, LeaseDocumentExtractionService>();
+// The values of the receipt of a registration, read from the PDF when the person asks (CF-DOCS-REAL)
+builder.Services.AddScoped<ILeaseDocumentReadingService, LeaseDocumentReadingService>();
+// The text of a contract document, read on the server: the text the PDF carries, OCR for a scan or a photo (NL-DOCS)
+builder.Services.AddSingleton<IContractTextReader, ContractTextReader>();
 // Contract templates: final PDF only from a complete, lawyer-approved template (LT-03, A7-03)
 builder.Services.AddCasazenLeaseContractTemplates(builder.Configuration);
 // Signature: offline by default, provider only with Features:ESignProvider on and a configured provider (LT-02)
 builder.Services.AddCasazenLeaseSigning(builder.Configuration);
 // The guided draft of a lease and the retention of the abandoned drafts (LR-12)
 builder.Services.AddCasazenLongRentLeaseDrafts();
+// The end of a lease in force: the tacit renewal job, the notice of non-renewal, the early termination (LR-14)
+builder.Services.AddCasazenLongRentLeaseTerm();
+// What the landlord can do about the end of a lease: the letters CasaZen prepares, drafts until the product owner approves them (LR-OPS-1)
+builder.Services.AddCasazenLongRentLeaseOperations(builder.Configuration);
 
 // OTA partner adapters with resilience patterns: registered only with Features:OtaPartnerApi on (D10, FD-20)
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
@@ -177,6 +194,8 @@ builder.Services.AddScoped<GuestCheckInSendJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
 // SP-04: cancels the service requests nobody answered in time (scheduled only with Features:SupplierRequestAutoCancel on).
 builder.Services.AddScoped<ServiceRequestAutoCancelJob>();
+// SP-BKP: follows the windows of the groups of backup suppliers (always scheduled: the flag only gates the creation of groups).
+builder.Services.AddScoped<ServiceRequestGroupJob>();
 // SP-10: upkeep of the bookings from the suppliers' public showcases (holds, unanswered requests) and the reminders of the day
 // before; both are scheduled whatever the feature flags say.
 builder.Services.AddScoped<ServiceRequestExpiryJob>();
@@ -194,6 +213,8 @@ builder.Services.Configure<BookingsOptions>(
     builder.Configuration.GetSection(BookingsOptions.SectionName));
 builder.Services.Configure<SeoEventOptions>(
     builder.Configuration.GetSection(SeoEventOptions.SectionName));
+builder.Services.Configure<Casazen.Web.Controllers.IndexNowOptions>(
+    builder.Configuration.GetSection("IndexNow"));
 builder.Services.Configure<Casazen.Core.Options.PublicHostOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.PublicHostOptions.SectionName));
 // Vercel Domains API (BK-17): the token and the project of the web app, set by the product owner (D9).
@@ -404,6 +425,9 @@ if (hangfireStorage is not null)
 }
 
 app.MapControllers();
+// Real-time notifications (UI-12a): WebSockets, with server-sent events and long polling as fallbacks. Not behind response caching,
+// compression or a rate limiter (the app has none for it); the token arrives as ?access_token= (see AddCasazenAuthentication).
+app.MapHub<Casazen.Web.Hubs.NotificationsHub>(Casazen.Web.Hubs.NotificationsHub.Path);
 app.MapCasazenHealthChecks();
 
 // Log application URLs on startup

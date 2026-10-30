@@ -213,6 +213,81 @@ public class OrgSettingsIntegrationTests : IClassFixture<CasazenWebApplicationFa
     }
 
     [Fact]
+    public async Task UpdateMySettings_ContactPhoneAndLanguage_AreSavedForTheAdministratorAndNeverOnThePublicEndpoint()
+    {
+        var ownerId = $"auth0|settings-phone-{Guid.NewGuid():N}";
+        await _factory.SeedOrgForOwnerAsync(ownerId);
+        var slug = $"phone-org-{Guid.NewGuid():N}"[..30];
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.PutAsJsonAsync("/api/orgs/me/settings", new
+        {
+            name = "Phone Org",
+            slug,
+            contactEmail = "host@example.com",
+            contactEmailPublic = true,
+            contactPhone = "+39 333 123 4567",
+            defaultLanguage = "EN",
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("+393331234567", json.GetProperty("contactPhone").GetString());
+        Assert.Equal("en", json.GetProperty("defaultLanguage").GetString());
+
+        // A body that does not know the two fields leaves them as they are (AM-08b-b): a client of before never erases them.
+        var again = await client.PutAsJsonAsync("/api/orgs/me/settings", new
+        {
+            name = "Phone Org",
+            slug,
+            contactEmail = "host@example.com",
+            contactEmailPublic = true,
+        });
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+        var kept = await again.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("+393331234567", kept.GetProperty("contactPhone").GetString());
+        Assert.Equal("en", kept.GetProperty("defaultLanguage").GetString());
+
+        // Anyone can read the public page of the site: the phone of the account is not on it, even with the email published.
+        using var anonymousClient = _factory.CreateClient();
+        var publicResponse = await anonymousClient.GetAsync($"/api/public/orgs/{slug}");
+        Assert.Equal(HttpStatusCode.OK, publicResponse.StatusCode);
+        var publicText = await publicResponse.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("3331234567", publicText, StringComparison.Ordinal);
+        Assert.DoesNotContain("contactPhone", publicText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("contactPhone", "call me maybe", "org_contact_phone_invalid")]
+    [InlineData("defaultLanguage", "de", "org_default_language_invalid")]
+    public async Task UpdateMySettings_InvalidPhoneOrLanguage_Returns422AndChangesNothing(string field, string value, string code)
+    {
+        var ownerId = $"auth0|settings-invalid-{Guid.NewGuid():N}";
+        var org = await _factory.SeedOrgForOwnerAsync(ownerId);
+
+        using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        var response = await client.PutAsJsonAsync("/api/orgs/me/settings", new Dictionary<string, object>
+        {
+            ["name"] = "Renamed Org",
+            ["slug"] = org.Slug,
+            ["contactEmail"] = "host@example.com",
+            ["contactEmailPublic"] = false,
+            [field] = value,
+        });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        var json = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(code, json.GetProperty("code").GetString());
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var persisted = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == org.Id);
+        Assert.NotEqual("Renamed Org", persisted.Name);
+        Assert.Null(persisted.ContactPhone);
+        Assert.Equal("it", persisted.DefaultLanguage);
+    }
+
+    [Fact]
     public async Task UpdateMySettings_SlugChanged_OldPublicLinkResolvesToTheOrgWithItsNewSlug()
     {
         var ownerId = $"auth0|settings-alias-{Guid.NewGuid():N}";

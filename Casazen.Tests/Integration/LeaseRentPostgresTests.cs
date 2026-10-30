@@ -101,7 +101,9 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
     public async Task RunCollection_InstallmentComingDue_EmailsTheTenantOnceAndTheWebhookMarksItPaid()
     {
         var seeded = await SignedLeaseAsync("collect", connect: true);
-        (await seeded.Client.PutAsJsonAsync($"{RentPath(seeded)}/schedule", new { cadence = "Monthly", billingDayOfMonth = 5 })).EnsureSuccessStatusCode();
+        // LR-04a: the job writes to the tenants only for a plan the landlord switched online requests on for.
+        (await seeded.Client.PutAsJsonAsync(
+            $"{RentPath(seeded)}/schedule", new { cadence = "Monthly", billingDayOfMonth = 5, onlineRequests = true })).EnsureSuccessStatusCode();
 
         // 25/9: October is due on 5/10, beyond the lead days; September was already due when generated (landlord's call).
         await RunJobAsync();
@@ -151,6 +153,64 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
         Assert.Equal("Paid", after.GetProperty("state").GetString());
         var again = await tenant.PostAsJsonAsync($"/api/public/rent-payments/{installmentId}/payment-session", new { token });
         Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+    }
+
+    /// <summary>
+    /// LR-04a (decisions LR-D17 and LR-D19): the rent plan of a lease that is already running starts from the month the landlord
+    /// tracks it from, so no past period is born «in ritardo», and it writes to no tenant on its own until the landlord switches
+    /// the online requests on (saving the plan again keeps the day it is tracked from, and so does the tacit renewal of the lease,
+    /// which adds the new period without bringing the skipped months back).
+    /// </summary>
+    [PostgresFact]
+    public async Task Configure_RunningLeaseTrackedFromThisMonth_HasNoPastInstallmentAndTheJobWritesToNoTenantUntilOnlineRequestsAreOn()
+    {
+        var seeded = await SignedLeaseAsync("tracked", connect: true);
+
+        // Six months into the lease (it started on 1 September 2026): the rents are tracked from March.
+        factory.Clock.SetUtcNow(new DateTimeOffset(2027, 3, 12, 8, 0, 0, TimeSpan.Zero));
+        var configured = await ReadJson(await seeded.Client.PutAsJsonAsync(
+            $"{RentPath(seeded)}/schedule", new { cadence = "Monthly", billingDayOfMonth = 5, trackFrom = "2027-03-01" }));
+
+        var schedule = configured.GetProperty("schedule");
+        Assert.Equal("2027-03-01", schedule.GetProperty("trackFrom").GetString());
+        Assert.False(schedule.GetProperty("onlineRequestsEnabled").GetBoolean());
+        var installments = configured.GetProperty("installments").EnumerateArray().ToList();
+        Assert.Equal(42, installments.Count); // March 2027 to August 2030: the six months before it were never born
+        Assert.Equal("2027-03-01", installments[0].GetProperty("periodStart").GetString());
+        // Only the rent of the current month, due on the 5th and not paid on the 12th, is late; none of the months before it.
+        Assert.Single(installments, i => i.GetProperty("isOverdue").GetBoolean());
+        Assert.Equal(42, await CountInstallmentsAsync(seeded.LeaseId));
+
+        // 1 April: April falls due on the 5th, inside the lead days, but nobody switched the online requests on: no e-mail.
+        factory.Clock.SetUtcNow(new DateTimeOffset(2027, 4, 1, 6, 0, 0, TimeSpan.Zero));
+        await RunJobAsync();
+        Assert.Empty(EmailsTo(TenantEmail, seeded));
+
+        // The landlord switches them on (without repeating the day it is tracked from, which the plan keeps): the next run asks for April.
+        var switchedOn = await ReadJson(await seeded.Client.PutAsJsonAsync(
+            $"{RentPath(seeded)}/schedule", new { cadence = "Monthly", billingDayOfMonth = 5, onlineRequests = true }));
+        Assert.True(switchedOn.GetProperty("schedule").GetProperty("onlineRequestsEnabled").GetBoolean());
+        Assert.Equal("2027-03-01", switchedOn.GetProperty("schedule").GetProperty("trackFrom").GetString());
+        Assert.Equal(42, await CountInstallmentsAsync(seeded.LeaseId));
+        await RunJobAsync();
+        var request = Assert.Single(EmailsTo(TenantEmail, seeded));
+        Assert.Equal(EmailTemplates.Names.RentPaymentRequest, request.Template);
+        Assert.Equal(new DateOnly(2027, 4, 1), (await InstallmentAsync(LinkOf(request.Content).InstallmentId)).PeriodStart);
+
+        // The lease renews by itself (LR-14): the plan grows by the 48 months of the new period, and the six months it skipped stay away.
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var lease = await db.LeaseContracts.IgnoreQueryFilters().SingleAsync(l => l.Id == seeded.LeaseId);
+            lease.CurrentTermEndDate = lease.CurrentTermEndDate.AddMonths(48);
+            await db.SaveChangesAsync();
+
+            var added = await scope.ServiceProvider.GetRequiredService<IRentBillingService>().ExtendScheduleToCurrentTermAsync(seeded.LeaseId);
+
+            Assert.Equal(48, added);
+        }
+
+        Assert.Equal(90, await CountInstallmentsAsync(seeded.LeaseId));
     }
 
     [PostgresFact]

@@ -95,6 +95,25 @@ public class SaveSupplierRulesRequest
     public int? SlotStepMinutes { get; set; }
 }
 
+/// <summary>
+/// Body of <c>PUT api/supplier/availability/urgent</c> (SP-04c): the four urgent settings, all of them (<c>PUT</c> replaces them;
+/// one that is left out is a 422 <c>supplier_urgent_invalid</c> naming it, never reset to its default).
+/// </summary>
+public class SaveSupplierUrgentRequest
+{
+    /// <summary>The supplier accepts urgent requests, for the services that offer them too (off by default).</summary>
+    public bool? Enabled { get; set; }
+
+    /// <summary>Where the urgent window starts, in minutes after midnight on the clock of Rome (0 to 1439; default 420 = 07:00).</summary>
+    public int? FromMinute { get; set; }
+
+    /// <summary>Where it ends (1 to 1440, after <c>fromMinute</c>; default 1320 = 22:00). Outside the working hours too.</summary>
+    public int? ToMinute { get; set; }
+
+    /// <summary>The supplier's default surcharge, in euro cents (0 to 50000), for a service with none of its own (default 0).</summary>
+    public int? SurchargeCents { get; set; }
+}
+
 // ─── Responses ───────────────────────────────────────────────────────────────
 
 /// <summary>A band of working hours: minutes after midnight on the wall clock of Rome.</summary>
@@ -195,6 +214,26 @@ public class SupplierRulesDto
     public int HorizonDays { get; set; }
 
     public int SlotStepMinutes { get; set; }
+}
+
+/// <summary>
+/// Body of <c>GET</c> and <c>PUT api/supplier/availability/urgent</c> (SP-04c): whether the supplier accepts urgent requests (today and
+/// tomorrow, 30 minutes of notice), the window of the day they are accepted in (outside its working hours too) and its default
+/// surcharge. Off, 07:00 to 22:00, no surcharge while none was saved. A service has its own switch and surcharge
+/// (<c>urgentEnabled</c>, <c>urgentSurchargeCents</c> of <c>api/supplier/services</c>); the supplier's switch comes first.
+/// </summary>
+public class SupplierUrgentDto
+{
+    public bool Enabled { get; set; }
+
+    /// <summary>Minutes after midnight on the clock of Rome.</summary>
+    public int FromMinute { get; set; }
+
+    /// <summary>Minutes after midnight on the clock of Rome (1440 is midnight).</summary>
+    public int ToMinute { get; set; }
+
+    /// <summary>The surcharge in euro cents, a gross amount like the price (decision D4).</summary>
+    public int SurchargeCents { get; set; }
 }
 
 /// <summary>A day closed by hand or by the supplier's calendar feed.</summary>
@@ -374,6 +413,18 @@ public static class SupplierAgendaMapper
 
     public static SupplierRulesInput ToInput(SaveSupplierRulesRequest request) =>
         new(request.BufferMinutes, request.MaxJobsPerDay, request.MinNoticeHours, request.HorizonDays, request.SlotStepMinutes);
+
+    public static SupplierUrgentDto ToDto(SupplierUrgentSettings urgent) =>
+        new()
+        {
+            Enabled = urgent.Enabled,
+            FromMinute = urgent.FromMinute,
+            ToMinute = urgent.ToMinute,
+            SurchargeCents = urgent.SurchargeCents,
+        };
+
+    public static SupplierUrgentInput ToInput(SaveSupplierUrgentRequest request) =>
+        new(request.Enabled, request.FromMinute, request.ToMinute, request.SurchargeCents);
 
     public static SupplierCalendarDto ToDto(SupplierCalendar calendar) =>
         new()

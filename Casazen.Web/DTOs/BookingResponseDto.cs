@@ -31,6 +31,16 @@ public class BookingResponseDto
     public decimal CleaningFee { get; set; }
 
     public decimal TouristTax { get; set; }
+
+    /// <summary>
+    /// The host entered a total other than the quote's when they created the booking by hand (SR-06a): <see cref="TotalPrice"/> is the
+    /// price they agreed with the guest, <see cref="TouristTax"/> stays the tax of the quote.
+    /// </summary>
+    public bool PriceOverridden { get; set; }
+
+    /// <summary>The host's note on that price (at most 80 characters); <c>null</c> when there is none.</summary>
+    public string? PriceOverrideNote { get; set; }
+
     public string Currency { get; set; } = "EUR";
     public string Status { get; set; } = string.Empty;
 
@@ -38,6 +48,12 @@ public class BookingResponseDto
     public string? CancellationNote { get; set; }
     public string Source { get; set; } = string.Empty;
     public string SpecialRequests { get; set; } = string.Empty;
+
+    /// <summary>
+    /// When the guest said they would arrive (DB-03b), from the public checkout: <c>HH:mm</c>, or <c>late</c> for after the check-in window;
+    /// <c>null</c> when they did not say and for the bookings that do not come from the checkout. The note "arrivo previsto alle…".
+    /// </summary>
+    public string? ExpectedArrivalTime { get; set; }
 
     /// <summary>Immediate, OnCancellationDeadline or OnSite.</summary>
     public string PaymentOption { get; set; } = string.Empty;

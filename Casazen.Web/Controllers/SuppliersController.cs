@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
@@ -267,8 +268,10 @@ public class SuppliersController(
     /// <c>invalid_service_category</c> (SU-03). Since SR-09a each supplier also carries what a host weighs: up to three published
     /// <c>services</c>, the lowest <c>priceFromCents</c>, the measured <c>medianResponseMinutes</c>, the <c>verified</c> badge (an
     /// active profile with a VAT number, never the number itself) and the <c>showcaseSlug</c>; <c>q</c> keeps the suppliers whose
-    /// name or category matches and <c>sort</c> (<c>name</c>, <c>price</c>, <c>response</c>) orders them. The enrichment is two
-    /// reads for the whole list, whatever its size, and does not depend on the showcase flag.
+    /// name, category (code, Italian or English name) or service name matches, whatever the case and the accents, and <c>sort</c>
+    /// (<c>recommended</c> by default, <c>name</c>, <c>price</c>, <c>response</c>) orders them: <c>recommended</c> is the ranking of
+    /// SP-REL (load, bio, reliability), with the first supplier marked <c>recommended</c> when it is strictly ahead of the next. The
+    /// enrichment is two reads for the whole list, whatever its size, and does not depend on the showcase flag.
     /// </summary>
     [HttpGet]
     [Authorize(Policy = CasazenPolicies.PropertyRead)]
@@ -282,35 +285,15 @@ public class SuppliersController(
         [FromQuery] GetSuppliersQuery query,
         [FromServices] ISupplierServiceCatalogService catalog,
         [FromServices] ISupplierKpiService kpis,
+        [FromServices] ISupplierMatchService matcher,
         CancellationToken cancellationToken)
     {
         if (!SupplierPickerSearch.TryParseSort(query.Sort, out var sort))
             return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierSortInvalid");
 
-        var target = ComuneTarget.FromInput(query.Comune);
-
-        if (query.PropertyId is Guid pid)
-        {
-            var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
-            if (orgId is null)
-                return Unauthorized();
-
-            var property = await db.Properties
-                .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.Id == pid && p.OrgId == orgId.Value, cancellationToken);
-
-            if (property is null)
-                return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound");
-
-            if (!await authorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), PropertyOperations.Read))
-                return Forbid();
-
-            // The property's chosen comune (ISTAT code) when it has one, its written city otherwise (SU-04).
-            target = ComuneTarget.ForProperty(property);
-        }
-
-        if (target.IsEmpty)
-            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierSearchTargetRequired");
+        var (target, failure) = await ResolveSearchTargetAsync(query.PropertyId, query.Comune, cancellationToken);
+        if (failure is not null)
+            return failure;
 
         var suppliers = await supplierService.GetActiveByComuneAsync(target, query.Category, cancellationToken);
 
@@ -323,6 +306,12 @@ public class SuppliersController(
         var services = await catalog.ListPickerServicesAsync(orgIds, cancellationToken);
         var medians = await kpis.GetMedianResponseMinutesBatchAsync(orgIds, cancellationToken);
 
+        // SP-REL: the default order is the ranking, the same score that recommends a supplier and picks its backups. Read only for that
+        // order; the number is never sent, only the order and the "recommended" marker of the first one.
+        var scores = sort == SupplierPickerSort.Recommended
+            ? await matcher.ScoresAsync(suppliers, ServiceRequestUrgency.Normal, cancellationToken)
+            : null;
+
         var items = SupplierPickerSearch.Apply(
             suppliers.Select(sp => SupplierPickerDto.From(
                 sp,
@@ -330,7 +319,9 @@ public class SuppliersController(
                 services.TryGetValue(sp.OrgId, out var published) ? published : [],
                 medians.GetValueOrDefault(sp.OrgId))),
             query.Q,
-            sort);
+            sort,
+            services,
+            scores);
 
         return Ok(new PagedResultDto<SupplierPickerDto>
         {
@@ -339,5 +330,86 @@ public class SuppliersController(
             Page = 1,
             PageSize = items.Count,
         });
+    }
+
+    /// <summary>
+    /// One supplier of the area of a property, for its own page in the marketplace (MKT): the same entry as the list of
+    /// <see cref="GetSuppliers"/>, with the same fields and no more, but with <b>every</b> published service (the list carries the
+    /// first three). The target is the one of the list: <c>propertyId</c> (authorized as a <see cref="HostResource"/>) or
+    /// <c>comune</c>. 404 <c>supplier_not_found</c> when the supplier is not one the list would show there: not <c>Active</c>, or not
+    /// working in that comune. A supplier is never reachable by id alone.
+    /// </summary>
+    [HttpGet("{orgId:guid}")]
+    [Authorize(Policy = CasazenPolicies.PropertyRead)]
+    [ProducesResponseType(typeof(SupplierPickerDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SupplierPickerDto>> GetSupplier(
+        Guid orgId,
+        [FromQuery] Guid? propertyId,
+        [FromQuery] string? comune,
+        [FromServices] ISupplierServiceCatalogService catalog,
+        [FromServices] ISupplierKpiService kpis,
+        CancellationToken cancellationToken)
+    {
+        var (target, failure) = await ResolveSearchTargetAsync(propertyId, comune, cancellationToken);
+        if (failure is not null)
+            return failure;
+
+        var supplier = (await supplierService.GetActiveByComuneAsync(target, category: null, cancellationToken))
+            .FirstOrDefault(sp => sp.OrgId == orgId);
+        if (supplier is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ServiceRequestErrorCodes.SupplierNotFound, ServiceRequestErrorCodes.SupplierNotFoundMessageKey);
+
+        var listed = await comuneDirectory.GetByIstatCodesAsync(SupplierComuniView.IstatCodes(supplier), cancellationToken);
+        var services = await catalog.ListPickerServicesAsync([orgId], cancellationToken);
+        var medians = await kpis.GetMedianResponseMinutesBatchAsync([orgId], cancellationToken);
+
+        return Ok(SupplierPickerDto.From(
+            supplier,
+            listed,
+            services.TryGetValue(orgId, out var published) ? published : [],
+            medians.GetValueOrDefault(orgId),
+            maxServices: int.MaxValue));
+    }
+
+    /// <summary>
+    /// The comune the suppliers of the picker are looked up for: the one of the property when <paramref name="propertyId"/> is
+    /// given (the caller's own, authorized as a host resource; its chosen ISTAT code, else its written city, SU-04), else the one
+    /// typed (<paramref name="comune"/>). The failure is the answer to return: 401, 404 for a property that is not the caller's,
+    /// 403 for one the caller may not read, 400 when there is nothing to look up.
+    /// </summary>
+    private async Task<(ComuneTarget Target, ActionResult? Failure)> ResolveSearchTargetAsync(
+        Guid? propertyId,
+        string? comune,
+        CancellationToken cancellationToken)
+    {
+        var target = ComuneTarget.FromInput(comune);
+
+        if (propertyId is Guid pid)
+        {
+            var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+            if (orgId is null)
+                return (target, Unauthorized());
+
+            var property = await db.Properties
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == pid && p.OrgId == orgId.Value, cancellationToken);
+
+            if (property is null)
+                return (target, this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound"));
+
+            if (!await authorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), PropertyOperations.Read))
+                return (target, Forbid());
+
+            // The property's chosen comune (ISTAT code) when it has one, its written city otherwise (SU-04).
+            target = ComuneTarget.ForProperty(property);
+        }
+
+        return target.IsEmpty
+            ? (target, this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "SupplierSearchTargetRequired"))
+            : (target, null);
     }
 }

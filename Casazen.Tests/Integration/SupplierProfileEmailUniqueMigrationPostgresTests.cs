@@ -42,7 +42,7 @@ public class SupplierProfileEmailUniqueMigrationPostgresTests : IAsyncLifetime
         var request = Guid.NewGuid();
         await using (var db = _database!.CreateContext())
         {
-            db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+            await _database!.MigrateEmptyToAsync(PreviousMigration(db));
             await SeedHostAsync(db);
             // The older profile has the request, a supplier-only account and a day; the newer one is active.
             await InsertProfileAsync(db, older, " Dup@Example.com ", SupplierStatus.Pending, "2026-01-10", """["cleaning"]""");
@@ -90,7 +90,7 @@ public class SupplierProfileEmailUniqueMigrationPostgresTests : IAsyncLifetime
         var first = Guid.NewGuid();
         var second = Guid.NewGuid();
         await using var db = _database!.CreateContext();
-        db.GetService<IMigrator>().Migrate(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         await InsertProfileAsync(db, first, "shared@example.com", SupplierStatus.Active, "2026-01-10", "[]");
         await InsertProfileAsync(db, second, "SHARED@example.com", SupplierStatus.Pending, "2026-03-10", "[]");
         await InsertUserAsync(db, "auth0|su14-mig-first", orgId: first, supplierOrgId: first);
@@ -111,7 +111,7 @@ public class SupplierProfileEmailUniqueMigrationPostgresTests : IAsyncLifetime
     [PostgresFact]
     public async Task UniqueIndex_EmailDifferingOnlyInCaseAndSpaces_IsRejectedButBlankEmailsAreAllowed()
     {
-        _database!.MigrateToLatest();
+        await _database!.MigrateEmptyToAsync();
 
         await using (var db = _database.CreateContext())
         {

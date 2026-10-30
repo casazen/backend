@@ -21,7 +21,7 @@ public class PropertyDocumentService(
     IPropertyComplianceStatusService complianceStatus,
     ILogger<PropertyDocumentService> logger) : IPropertyDocumentService
 {
-    public async Task<PropertyDocument> UploadDocumentAsync(Guid propertyId, IFormFile file, DocumentType documentType, string uploadedBy)
+    public async Task<PropertyDocumentUpload> UploadDocumentAsync(Guid propertyId, IFormFile file, DocumentType documentType, string uploadedBy)
     {
         var orgId = await propertyRepository.GetOrgIdAsync(propertyId);
         if (orgId is null)
@@ -34,8 +34,16 @@ public class PropertyDocumentService(
             throw new DomainRuleException("invalid_document_file", "DocumentFileInvalid");
         }
 
+        ApeUploadCheck? apeCheck = null;
         if (documentType == DocumentType.Ape)
-            await apeCompliance.EnsureUploadedFileIsOfficialApeAsync(file);
+        {
+            // Legacy APE clients also persist a PDF. Other legacy APIs keep their existing file contract;
+            // the shared multi-page frontend sends a single assembled PDF for every document type.
+            file = await PhotoDocumentPdf.NormalizeAsync(file);
+            if (!storageService.ValidateDocument(file))
+                throw new DomainRuleException("invalid_document_file", "DocumentFileInvalid");
+            apeCheck = await apeCompliance.CheckUploadedApeAsync(file, await RegistryContextAsync(propertyId));
+        }
 
         var storageUrl = await storageService.UploadDocumentAsync(file, propertyId);
 
@@ -52,6 +60,9 @@ public class PropertyDocumentService(
                 UploadedBy = uploadedBy,
                 UploadedAt = DateTime.UtcNow
             };
+            // The code and the class read on the APE (or its code from the register): the contract states them, nobody has to type them.
+            if (apeCheck is not null)
+                ApplyReadIdentification(document, apeCheck);
 
             logger.LogInformation("Uploading document {FileName} of type {DocumentType} for property {PropertyId} by {UploadedBy}",
                 file.FileName, documentType, propertyId, uploadedBy);
@@ -67,7 +78,7 @@ public class PropertyDocumentService(
         }
 
         await complianceStatus.ReevaluateAsync(propertyId);
-        return saved;
+        return new PropertyDocumentUpload(saved, apeCheck);
     }
 
     public async Task<IEnumerable<PropertyDocument>> GetByPropertyIdAsync(Guid propertyId)
@@ -123,5 +134,53 @@ public class PropertyDocumentService(
         logger.LogInformation("APE identification updated. DocumentId={DocumentId} PropertyId={PropertyId}",
             document.Id, document.PropertyId);
         return await documentRepository.UpdateAsync(document);
+    }
+
+    public async Task<PropertyDocumentUpload> ReadApeIdentificationAsync(PropertyDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        if (document.DocumentType != DocumentType.Ape)
+            throw new DomainRuleException("document_not_ape", "DocumentNotApe");
+
+        await using var content = await storageService.OpenReadAsync(document.StorageUrl)
+            ?? throw new NotFoundException($"File of document {document.Id} not found") { Code = "document_file_missing", MessageKey = "NotFound" };
+        var check = await apeCompliance.ReadStoredApeAsync(content, await RegistryContextAsync(document.PropertyId));
+
+        // Only what is still empty: a code or a class the landlord typed is never replaced by a reading.
+        var code = document.ApeCode;
+        var energyClass = document.ApeEnergyClass;
+        if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(energyClass))
+        {
+            ApplyReadIdentification(document, check, keep: (code, energyClass));
+            if (document.ApeCode != code || document.ApeEnergyClass != energyClass)
+            {
+                logger.LogInformation("APE identification read from the document. DocumentId={DocumentId} PropertyId={PropertyId} Source={Source}",
+                    document.Id, document.PropertyId, check.CodeSource);
+                document = await documentRepository.UpdateAsync(document);
+            }
+        }
+        return new PropertyDocumentUpload(document, check);
+    }
+
+    /// <summary>The comune and the region of the property: where the register of the APE is asked for a code the file does not show.</summary>
+    private async Task<ApeRegistryContext?> RegistryContextAsync(Guid propertyId)
+    {
+        var property = await propertyRepository.GetByIdAsync(propertyId);
+        return property is null ? null : new ApeRegistryContext(property.City, property.RegionCode);
+    }
+
+    /// <summary>
+    /// Sets the code and the class a reading found, with the shape the hand entry has (LT-10); <paramref name="keep"/> are values
+    /// already there, which stay.
+    /// </summary>
+    private static void ApplyReadIdentification(PropertyDocument document, ApeUploadCheck check, (string? Code, string? EnergyClass) keep = default)
+    {
+        var code = check.CertificateCode?.Trim();
+        if (string.IsNullOrWhiteSpace(keep.Code) && code is { Length: > 0 } && code.Length <= ApeDocumentLimits.CodeMaxLength)
+            document.ApeCode = code;
+        var energyClass = check.EnergyClass?.Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(keep.EnergyClass) && energyClass is { Length: > 0 } && energyClass.Length <= ApeDocumentLimits.EnergyClassMaxLength
+            && energyClass.All(c => c is (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '+'))
+            document.ApeEnergyClass = energyClass;
     }
 }

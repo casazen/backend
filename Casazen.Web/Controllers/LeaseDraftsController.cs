@@ -1,9 +1,11 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Casazen.Core.Authorization;
+using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Leases;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Core.Validation;
 using Casazen.Web.Authorization;
 using Casazen.Web.Infrastructure;
@@ -37,6 +39,9 @@ public class LeaseDraftsController(
 
     /// <summary>The values of one save: a few kilobytes at most (ten landlords and ten tenants of a few hundred characters each).</summary>
     private const long SaveRequestLimit = 256 * 1024;
+
+    /// <summary>The signed contract (at most <see cref="LeaseSigningLimits.MaxSignedContractBytes"/>) plus the other form fields.</summary>
+    private const long ImportRequestLimit = LeaseSigningLimits.MaxSignedContractBytes + 64 * 1024;
 
     /// <summary>
     /// Creates a draft with only the property: 201 with the id, the version (1) and the flow (every step to do). No APE, no
@@ -111,9 +116,10 @@ public class LeaseDraftsController(
 
     /// <summary>
     /// The review of the draft: <c>checks</c> (<c>code</c>, <c>severity</c> Block · Warn · Info · Ok, <c>step</c>, <c>params</c>),
-    /// worst first. Blocks are what the flow says is missing; warnings are a start date already past, another contract of the
-    /// property in the same dates (one lets by rooms), a property let for short stays; to know: a non-EU tenant (Questura), a
-    /// template not approved yet. No personal data in the parameters.
+    /// worst first. Blocks are what the flow says is missing and another lease of the property that covers some of the same days
+    /// (<c>lease_overlap</c>, params <c>conflictingLeaseId</c>, <c>conflictingFrom</c>, <c>conflictingTo</c>; LR-OVERLAP); warnings are
+    /// a start date already past and a property let for short stays; to know: a non-EU tenant (Questura), a template not approved
+    /// yet. No personal data in the parameters.
     /// </summary>
     [HttpGet("{id:guid}/review")]
     [ProducesResponseType(typeof(LeaseReviewView), StatusCodes.Status200OK)]
@@ -127,7 +133,9 @@ public class LeaseDraftsController(
 
     /// <summary>
     /// Confirms the review: saves the moment and the impression of the values of the first five steps. 422 <c>lease_review_blocked</c>
-    /// while a check blocks. The body may be omitted; with <c>version</c> it is refused (409) if the draft moved on.
+    /// while a check blocks; 409 <c>lease_period_overlaps</c> (with <c>conflictingLeaseId</c>, <c>conflictingFrom</c>, <c>conflictingTo</c>)
+    /// when another lease of the property covers some of the same days (LR-OVERLAP). The body may be omitted; with <c>version</c> it is
+    /// refused (409) if the draft moved on.
     /// </summary>
     [HttpPost("{id:guid}/review/confirm")]
     [ProducesResponseType(typeof(LeaseDraftReviewResult), StatusCodes.Status200OK)]
@@ -154,7 +162,8 @@ public class LeaseDraftsController(
     /// Marks the contract as downloaded for the signature on paper: it needs the confirmed review and passes the same gate as
     /// <c>GET contract.pdf</c>, so the state never says something that download would refuse: 422
     /// <c>contract_template_not_approved</c> while the template is not approved (nothing changes), 422 <c>contract_data_missing</c>,
-    /// 422 <c>lease_review_not_confirmed</c>. It does not change the status of the lease: the signature stays the offline one.
+    /// 422 <c>lease_review_not_confirmed</c>, 409 <c>lease_period_overlaps</c> when another lease of the property has taken some of the
+    /// same days since (LR-OVERLAP). It does not change the status of the lease: the signature stays the offline one.
     /// </summary>
     [HttpPost("{id:guid}/sent")]
     [ProducesResponseType(typeof(LeaseDraftSentResult), StatusCodes.Status200OK)]
@@ -193,7 +202,103 @@ public class LeaseDraftsController(
         return NoContent();
     }
 
+    /// <summary>
+    /// How far the reading of the contract the owner uploaded has got (NL-DOCS): <c>state</c> None · Reading · Done · Failed, the
+    /// contract documents with their status, what was read and what became of each value (<c>fields</c>: the name of the field, the id of
+    /// the entry of the draft, Read · Agrees · Conflict · Unusable, how sure; never a value), the day of the signature the contract states and the
+    /// contract document the final import can use. The screen asks every few seconds while <c>Reading</c>, then reads the draft again.
+    /// </summary>
+    [HttpGet("{id:guid}/draft/reading")]
+    [ProducesResponseType(typeof(LeaseReadingDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetReading(Guid id, [FromServices] ILeaseDocumentService documents, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        var reading = await documents.GetReadingAsync(id, cancellationToken);
+        NoStore();
+        return Ok(reading);
+    }
+
+    /// <summary>
+    /// Imports a contract already signed outside CasaZen (LR-13, decisions LR-D2 and LR-D28): a PDF (checked on its content, at most
+    /// 20 MB, private bucket) and the day it was signed (not after today). The only way to a Signed lease without a contract template of
+    /// ours: <c>signed-document</c> and <c>sent</c> of a contract made in CasaZen go on answering 422
+    /// <c>contract_template_not_approved</c> until a template is approved. Only a draft created with <c>origin: Imported</c> whose
+    /// review has nothing blocking (steps 1 to 4 complete; no APE needed, no range of a concordato checked); the lease keeps its
+    /// <c>id</c>. Needs <c>lease.create</c> and <c>lease.sign</c> on the property of the lease: it records a signature. The signed PDF
+    /// is also the <c>Contract</c> document of the lease (<c>GET api/leases/{id}/documents</c>). The registration, if the contract is
+    /// already registered, is declared afterwards with <c>POST api/leases/{id}/registration/manual</c>. 409 <c>lease_not_draft</c>
+    /// (also for a second import), 409 <c>lease_draft_conflict</c> (the lease is busy: nothing was written), 422
+    /// <c>lease_import_not_imported_origin</c>, <c>lease_review_blocked</c>, <c>lease_signed_contract_invalid</c>,
+    /// <c>lease_stipula_date_in_future</c>; 409 <c>lease_period_overlaps</c> when another lease of the property covers some of the same
+    /// days (LR-OVERLAP; <c>conflictingLeaseId</c>, <c>conflictingFrom</c>, <c>conflictingTo</c>). Multipart fields: <c>stipulaDate</c> and the signed PDF, either <c>signedContract</c> (the
+    /// file) or <c>contractDocumentId</c> (the contract document already uploaded to this draft, NL-DOCS; 404 <c>document_not_found</c>
+    /// for another lease's or another org's), exactly one of the two (400 otherwise). Answers the masked detail of the lease, as
+    /// <c>signed-document</c> does.
+    /// </summary>
+    [HttpPost("{id:guid}/import")]
+    [Consumes("multipart/form-data")]
+    [Authorize(Policy = CasazenPolicies.LeaseSign)]
+    [RequestSizeLimit(ImportRequestLimit)]
+    [RequestFormLimits(MultipartBodyLengthLimit = ImportRequestLimit)]
+    [ProducesResponseType(typeof(LeaseDetailDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Import(
+        Guid id,
+        [FromForm] ImportContractForm form,
+        [FromServices] ILeaseSigningService signing,
+        [FromServices] ILeaseWorkflowService leases,
+        [FromServices] TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        if (User.GetUserId() is not { } userId)
+            return Unauthorized();
+        if (await AuthorizeLeaseToSignAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        // The signed PDF comes once: sent now, or already uploaded to this draft (the contract the owner gave to be read).
+        if ((form.SignedContract is null) == (form.ContractDocumentId is null))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, ProblemCodes.ValidationError, "LeaseImportSourceInvalid");
+
+        if (form.SignedContract is { } file)
+        {
+            await using var signedContract = file.OpenReadStream();
+            await signing.ImportSignedContractAsync(
+                id,
+                userId,
+                new ImportedContractDeclaration(form.StipulaDate!.Value, signedContract, file.Length, file.FileName),
+                cancellationToken);
+        }
+        else
+        {
+            await signing.ImportSignedContractFromDocumentAsync(
+                id, userId, new ImportedDocumentDeclaration(form.StipulaDate!.Value, form.ContractDocumentId!.Value), cancellationToken);
+        }
+
+        return Ok(LeaseDtoMapper.ToDetail((await leases.GetLeaseDetailAsync(id))!, clock.TodayInRome()));
+    }
+
     // ---- authorization -------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Authorizes <c>lease.create</c> <b>and</b> <c>lease.sign</c> on the property of the lease as a row of that property (the import
+    /// records a signature, so who may only create drafts cannot use it to sign): <c>null</c> when both are allowed, otherwise the
+    /// answer (404 <c>lease_not_found</c> for a lease of another org or none, 403).
+    /// </summary>
+    private async Task<IActionResult?> AuthorizeLeaseToSignAsync(Guid leaseId, CancellationToken cancellationToken)
+    {
+        if (await drafts.FindPropertyIdAsync(leaseId, cancellationToken) is not { } propertyId)
+            return this.ApiProblem(StatusCodes.Status404NotFound, LeaseNotFoundCode, "LeaseNotFound");
+
+        var resource = await hostResources.ForPropertyAsync(propertyId, cancellationToken);
+        if (resource is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, LeaseNotFoundCode, "LeaseNotFound");
+
+        return await authorizationService.IsAuthorizedAsync(User, resource, LeaseOperations.Create)
+            && await authorizationService.IsAuthorizedAsync(User, resource, LeaseOperations.Sign)
+                ? null
+                : Forbid();
+    }
 
     /// <summary>
     /// Authorizes <c>lease.create</c> on the property of the lease as a row of that property: <c>null</c> when allowed, otherwise
@@ -241,6 +346,20 @@ public class LeaseDraftsController(
     }
 
     private void NoStore() => Response.Headers.CacheControl = "private, no-store";
+}
+
+/// <summary>
+/// The import of a contract signed elsewhere: the day it was signed and its PDF — the file sent now, or the id of the contract document
+/// already uploaded to the draft (NL-DOCS), one of the two.
+/// </summary>
+public sealed class ImportContractForm
+{
+    [Required]
+    public DateTime? StipulaDate { get; set; }
+
+    public IFormFile? SignedContract { get; set; }
+
+    public Guid? ContractDocumentId { get; set; }
 }
 
 /// <summary>A new draft: the property and, optionally, how the lease came to be (<c>Created</c> by default).</summary>

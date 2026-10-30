@@ -84,6 +84,17 @@ public static class FeatureFlags
     public const string SupplierRequestAutoCancel = "SupplierRequestAutoCancel";
 
     /// <summary>
+    /// SP-BKP (product owner, 2026-10-29/30): backup suppliers for a host's request. With the flag on, a request a host sends to a
+    /// supplier (the primary) is sent at the same moment to up to three backups, declared as such: the primary has one hour
+    /// (<c>Suppliers:ServiceRequests:PrimaryResponseMinutes</c>) to take the job, and the first backup that accepts has it if the
+    /// primary does not. <b>Off by default</b>: it changes what the suppliers receive and what the host sees. The flag only gates the
+    /// <b>creation</b> of a group: a group that exists is followed to the end whatever the flag says (the recurring job
+    /// <c>service-request-groups</c> is always registered, and the suppliers' answers are not gated), so turning the flag off never
+    /// leaves a request hanging. A host can still turn the rule off for its org (<c>Org.SupplierBackupsEnabled</c>) or for one request.
+    /// </summary>
+    public const string SupplierRequestBackups = "SupplierRequestBackups";
+
+    /// <summary>
     /// SEO-INVITE (product owner, 2026-10-13): CasaZen is on private invitation, prices and the onboarding of new customers are
     /// not defined yet. Off (the default): the public SEO pages carry no call to action to sign up ("Pubblica la tua casa"):
     /// <c>cta</c> is <c>null</c> in <c>GET api/public/content/…</c> and the crawler page has no link to <c>/signup</c>. The
@@ -91,6 +102,24 @@ public static class FeatureFlags
     /// <c>Suppliers__AnyComune=false</c> with no pilot comuni (docs/runbooks/feature-flags.md).
     /// </summary>
     public const string SeoSignupCta = "SeoSignupCta";
+
+    /// E01/F01/US01 (ADR-010): B2B agency tier features including property owner registry, owner portal access,
+    /// monthly statements, withholding tax management, wire transfers, invoicing, internal staff activities,
+    /// and trusted supplier management. Off (default): <c>agency.*</c> policies return 403 feature_requires_agency_tier,
+    /// agency endpoints return 404, and frontend B2B routes are hidden. Gates all features requiring
+    /// <c>Org.PlanTier == PlanTier.Agency</c>.
+    /// </summary>
+    public const string AgencyTier = "AgencyTier";
+
+    /// <summary>
+    /// CF-FIX (product owner, 2026-10-25): the ConcordatoFacile service (ADR-005 to ADR-009), on in the test environment and off
+    /// in production until CasaZen confirms to ConcordatoFacile that the trial run and the privacy framework (v1.3 R24) are done.
+    /// Off: every endpoint of <c>ConcordatoFacileController</c> (checkout, access, gift, signed link, status, the practice
+    /// lookup of the upload page) and <c>POST api/leases/drafts/concordatofacile</c> answer 404, and the frontend does not show the
+    /// service. <b>Not behind it</b>: the processing of the Stripe webhooks (a payment already made is still recorded), the status
+    /// client, the startup validation of the <c>ConcordatoFacile</c> options and the gifts of the admin controller.
+    /// </summary>
+    public const string ConcordatoFacile = "ConcordatoFacile";
 
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
@@ -103,5 +132,8 @@ public static class FeatureFlags
         SupplierOnlinePayments,
         SupplierRequestAutoCancel,
         SeoSignupCta,
+        AgencyTier,
+        ConcordatoFacile,
+        SupplierRequestBackups,
     ];
 }

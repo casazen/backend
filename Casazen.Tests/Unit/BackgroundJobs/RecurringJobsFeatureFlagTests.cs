@@ -217,6 +217,34 @@ public class RecurringJobsFeatureFlagTests
         Assert.Equal(TimeZoneInfo.Utc, scheduled[ServiceRequestReminderJob.RecurringJobId].Options.TimeZone);
     }
 
+    // ─── SP-BKP: the groups of backup suppliers are followed whatever the flag of their creation says ───
+
+    [Fact]
+    public void Configure_TheBackupGroupsJob_IsRegisteredWhateverTheFlagsSay_EveryFiveMinutes_AndNeverRemoved()
+    {
+        Assert.Equal("service-request-groups", ServiceRequestGroupJob.RecurringJobId);
+
+        foreach (var flags in new[]
+                 {
+                     Flags(otaPartnerApi: false),
+                     Flags(otaPartnerApi: true, rliProvider: true, eSignProvider: true, supplierRequestAutoCancel: true),
+                 })
+        {
+            var manager = new Mock<IRecurringJobManager>();
+            var scheduled = new Dictionary<string, (string Cron, RecurringJobOptions Options)>();
+            manager
+                .Setup(m => m.AddOrUpdate(It.IsAny<string>(), It.IsAny<Job>(), It.IsAny<string>(), It.IsAny<RecurringJobOptions>()))
+                .Callback<string, Job, string, RecurringJobOptions>((id, _, cron, options) => scheduled[id] = (cron, options));
+
+            RecurringJobsRegistration.Configure(manager.Object, flags);
+
+            // A group made while SupplierRequestBackups was on has to be followed to the end after the flag is turned off.
+            Assert.Equal("*/5 * * * *", scheduled[ServiceRequestGroupJob.RecurringJobId].Cron);
+            Assert.Equal(TimeZoneInfo.Utc, scheduled[ServiceRequestGroupJob.RecurringJobId].Options.TimeZone);
+            manager.Verify(m => m.RemoveIfExists(ServiceRequestGroupJob.RecurringJobId), Times.Never);
+        }
+    }
+
     internal static IFeatureFlags Flags(
         bool otaPartnerApi,
         bool rliProvider = false,

@@ -19,10 +19,10 @@ using PaymentMethod = Casazen.Core.Entities.PaymentMethod;
 namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
-/// DB-08h (BK-02, BK-07, PO 2026-10-08): a guest cancels a paid booking with the signed link, over the real cancellation
-/// service and a fake Stripe. The refund is the policy's percent of the base price (tourist tax excluded, capped at what is
+/// DB-08h (BK-02, BK-07, PO 2026-10-08), DB-08a: a guest cancels a paid booking with the signed link, over the real cancellation
+/// service and a fake Stripe. The refund is the policy's percent of the base price plus the whole tourist tax (capped at what is
 /// refundable) and the answer is 200, whatever the policy refunds; an error leaves the link usable; a second click refunds
-/// nothing again.
+/// nothing again. The guest and the host get one email each.
 /// </summary>
 public class GuestBookingCancellationServiceTests : IDisposable
 {
@@ -59,28 +59,28 @@ public class GuestBookingCancellationServiceTests : IDisposable
 
     public void Dispose() => _db.Dispose();
 
-    // ── Paid booking: the policy's percent of the base price, tourist tax paid or not ─────────────────────────────
+    // ── Paid booking: the policy's percent of the base price, and the tourist tax in full when it was paid ────────
 
     // Base 400; with tax the guest paid 420. Rows: policy of the catalog, hours before the check-in day starts, tourist tax,
-    // refund. The tax stays out of the refund even at 100% (PO 2026-10-08; DB-D15 is open on it).
+    // refund. The percent applies to the 400; the tax comes back whatever the policy says (default of DB-D15 (1a), DB-08a).
     [Theory]
-    [InlineData(CatalogPolicies.Ampia, 48, 20, 400)]
+    [InlineData(CatalogPolicies.Ampia, 48, 20, 420)]
     [InlineData(CatalogPolicies.Ampia, 48, 0, 400)]
-    [InlineData(CatalogPolicies.Ampia, 23, 20, 0)]
-    [InlineData(CatalogPolicies.Intermedia, 130, 20, 400)]
-    [InlineData(CatalogPolicies.Intermedia, 50, 20, 200)]
+    [InlineData(CatalogPolicies.Ampia, 23, 20, 20)]
+    [InlineData(CatalogPolicies.Intermedia, 130, 20, 420)]
+    [InlineData(CatalogPolicies.Intermedia, 50, 20, 220)]
     [InlineData(CatalogPolicies.Intermedia, 50, 0, 200)]
-    [InlineData(CatalogPolicies.Intermedia, -1, 20, 0)]
-    [InlineData(CatalogPolicies.Contenuta, 400, 20, 400)]
+    [InlineData(CatalogPolicies.Intermedia, -1, 20, 20)]
+    [InlineData(CatalogPolicies.Contenuta, 400, 20, 420)]
     [InlineData(CatalogPolicies.Contenuta, 200, 0, 200)]
-    [InlineData(CatalogPolicies.Contenuta, 100, 20, 0)]
+    [InlineData(CatalogPolicies.Contenuta, 100, 20, 20)]
     [InlineData(CatalogPolicies.Anticipata, 800, 0, 400)]
-    [InlineData(CatalogPolicies.Anticipata, 400, 20, 200)]
+    [InlineData(CatalogPolicies.Anticipata, 400, 20, 220)]
     [InlineData(CatalogPolicies.Anticipata, 100, 0, 0)]
-    // DB-D2 (open): FullRefundHours = 0 gives 100% until the check-in day starts; the row changes with that decision.
-    [InlineData(CatalogPolicies.NonRimborsabile, 10, 20, 400)]
-    [InlineData(CatalogPolicies.NonRimborsabile, -1, 20, 0)]
-    public async Task CancelByGuestLinkAsync_PaidBooking_RefundsPolicyPercentOfBasePriceAndAnswersWithoutError(
+    // DB-D2 (a): "Non rimborsabile" refunds nothing of the stay at any time; the tax still goes back.
+    [InlineData(CatalogPolicies.NonRimborsabile, 10, 20, 20)]
+    [InlineData(CatalogPolicies.NonRimborsabile, -1, 20, 20)]
+    public async Task CancelByGuestLinkAsync_PaidBooking_RefundsPolicyPercentOfBasePriceAndTheTouristTax(
         string policy, double hoursBeforeCheckIn, int touristTax, int expectedRefund)
     {
         _now = HoursBeforeCheckIn(hoursBeforeCheckIn);
@@ -115,11 +115,10 @@ public class GuestBookingCancellationServiceTests : IDisposable
             Assert.Equal(expectedRefund == paid ? PaymentStatus.Refunded : PaymentStatus.PartiallyRefunded, payment.Status);
         }
 
-        // The cancellation succeeded: the link is spent. The guest gets the one cancellation email.
+        // The cancellation succeeded: the link is spent. The guest gets the one cancellation email, and the host is told.
         AssertLinkSpent(seed, booking);
-        var email = Assert.Single(_emails.Queued);
-        Assert.Equal(EmailTemplates.Names.GuestBookingCancelled, email.Template);
-        Assert.Equal("guest@example.com", email.To);
+        AssertTheGuestAndTheHostAreEmailedOnce();
+        Assert.Equal(BookingCancellationReason.GuestRequested, booking.CancellationReason);
     }
 
     [Fact]
@@ -150,16 +149,17 @@ public class GuestBookingCancellationServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CancelByGuestLinkAsync_PropertyWithoutPolicy_CancelsAndRefundsNothing()
+    public async Task CancelByGuestLinkAsync_PropertyWithoutPolicy_CancelsAndRefundsOnlyTheTouristTax()
     {
-        // BK-02: the guest's refund comes from the property's policy alone; with none there is no clause to refund by.
+        // BK-02: the guest's refund of the stay comes from the property's policy alone; with none there is no clause to refund by.
+        // The tourist tax (20 of the 420 paid) is not a clause: it is not due on a stay that does not happen (DB-D15 (1a)).
         var seed = await SeedAsync(policy: null);
 
         var result = await ClickAsync(seed);
 
-        Assert.Equal(0m, result.RefundAmount);
+        Assert.Equal(20m, result.RefundAmount);
         Assert.Equal(BookingStatus.Cancelled, (await StoredBookingAsync(seed.BookingId)).Status);
-        Assert.Empty(_refunds);
+        Assert.Equal(2_000, Assert.Single(_refunds).AmountCents);
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public class GuestBookingCancellationServiceTests : IDisposable
     {
         // FreeRefundDeadline is the floor of the host's cancellation; the guest's own is the policy alone (PO 2026-10-08).
         _now = HoursBeforeCheckIn(100);
-        var seed = await SeedAsync(policy: CatalogPolicies.Contenuta); // 100 h before: 0%
+        var seed = await SeedAsync(policy: CatalogPolicies.Contenuta); // 100 h before: 0% of the stay, the 20 of tax goes back
         var booking = await _db.Bookings.SingleAsync(b => b.Id == seed.BookingId);
         booking.FreeRefundDeadline = CheckIn;
         await _db.SaveChangesAsync();
@@ -175,8 +175,8 @@ public class GuestBookingCancellationServiceTests : IDisposable
 
         var result = await ClickAsync(seed);
 
-        Assert.Equal(0m, result.RefundAmount);
-        Assert.Empty(_refunds);
+        Assert.Equal(20m, result.RefundAmount);
+        Assert.Equal(2_000, Assert.Single(_refunds).AmountCents);
     }
 
     // ── Nothing to give back: deferred payment, request at the property ───────────────────────────────────────────
@@ -267,7 +267,7 @@ public class GuestBookingCancellationServiceTests : IDisposable
         Assert.Equal("booking_payment_in_progress", ex.Code);
         await AssertUntouchedAsync(seed, BookingStatus.Pending, PaymentStatus.Pending);
 
-        // The payment lands (webhook): the same link cancels now and refunds the policy's share of the base price.
+        // The payment lands (webhook): the same link cancels now and refunds the policy's share of the base price and the tax.
         await using (var webhook = NewContext())
         {
             var payment = await webhook.Payments.SingleAsync(p => p.Id == seed.PaymentId);
@@ -277,8 +277,8 @@ public class GuestBookingCancellationServiceTests : IDisposable
 
         var result = await ClickAsync(seed);
 
-        Assert.Equal(200m, result.RefundAmount);
-        Assert.Equal(20_000, Assert.Single(_refunds).AmountCents);
+        Assert.Equal(220m, result.RefundAmount);
+        Assert.Equal(22_000, Assert.Single(_refunds).AmountCents);
         AssertLinkSpent(seed, await StoredBookingAsync(seed.BookingId));
     }
 
@@ -308,11 +308,11 @@ public class GuestBookingCancellationServiceTests : IDisposable
         var result = await ClickAsync(seed);
 
         // The booking is cancelled and the refund is reserved: it is sent again with the same idempotency key.
-        Assert.Equal(200m, result.RefundAmount);
+        Assert.Equal(220m, result.RefundAmount);
         Assert.Equal(BookingStatus.Cancelled, (await StoredBookingAsync(seed.BookingId)).Status);
         var refund = Assert.Single(await _db.PaymentRefunds.AsNoTracking().ToListAsync());
         Assert.Equal(PaymentRefundStatus.Pending, refund.Status);
-        Assert.Equal(200m, refund.Amount);
+        Assert.Equal(220m, refund.Amount);
         _retries.Verify(r => r.ScheduleSubmit(refund.Id), Times.Once);
         AssertLinkSpent(seed, await StoredBookingAsync(seed.BookingId));
     }
@@ -335,12 +335,12 @@ public class GuestBookingCancellationServiceTests : IDisposable
         {
             Assert.Equal(BookingStatus.Cancelled, answer.Booking.Status);
             Assert.Equal(first.RefundAmount, answer.RefundAmount);
-            Assert.Equal(200m, answer.RefundAmount);
+            Assert.Equal(220m, answer.RefundAmount);
         }
 
         Assert.Single(_refunds);
         Assert.Single(await _db.PaymentRefunds.AsNoTracking().ToListAsync());
-        Assert.Single(_emails.Queued);
+        AssertTheGuestAndTheHostAreEmailedOnce(); // the repeated clicks send nothing
     }
 
     [Fact]
@@ -396,8 +396,8 @@ public class GuestBookingCancellationServiceTests : IDisposable
     public async Task CancelByGuestLinkAsync_AnotherClickCancelsFirst_AnswersWithItsOutcomeAndRefundsOnce()
     {
         // Two clicks at once, in the order the test fixes: the one that wins runs between the loser's read of the booking
-        // and the loser's cancellation. The booking is paid 420 and the policy gives back 200: the 220 left would be
-        // refundable a second time by a loser that still believed the booking was open.
+        // and the loser's cancellation. The booking is paid 420 and the policy gives back 220 (half of the 400 and the 20 of tax):
+        // the 200 left would be refundable a second time by a loser that still believed the booking was open.
         _now = HoursBeforeCheckIn(50);
         var seed = await SeedAsync(policy: CatalogPolicies.Intermedia);
         await using var winnerDb = NewContext();
@@ -412,10 +412,10 @@ public class GuestBookingCancellationServiceTests : IDisposable
         var result = await loser.CancelByGuestLinkAsync(seed.BookingId, seed.Token);
 
         Assert.Equal(BookingStatus.Cancelled, result.Booking.Status);
-        Assert.Equal(200m, result.RefundAmount);
-        Assert.Equal(20_000, Assert.Single(_refunds).AmountCents);
+        Assert.Equal(220m, result.RefundAmount);
+        Assert.Equal(22_000, Assert.Single(_refunds).AmountCents);
         Assert.Single(await _db.PaymentRefunds.AsNoTracking().ToListAsync());
-        Assert.Single(_emails.Queued); // the winner's email: the loser sends none
+        AssertTheGuestAndTheHostAreEmailedOnce(); // the winner's emails: the loser sends none
     }
 
     // ── The whole journey: the host sends the link, the guest follows the emailed URL ─────────────────────────────
@@ -437,9 +437,9 @@ public class GuestBookingCancellationServiceTests : IDisposable
 
         var result = await ClickAsync(seed, token: emailed);
 
-        Assert.Equal(200m, result.RefundAmount);
+        Assert.Equal(220m, result.RefundAmount);
         Assert.Equal(BookingStatus.Cancelled, (await StoredBookingAsync(seed.BookingId)).Status);
-        Assert.Equal(20_000, Assert.Single(_refunds).AmountCents);
+        Assert.Equal(22_000, Assert.Single(_refunds).AmountCents);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -472,6 +472,19 @@ public class GuestBookingCancellationServiceTests : IDisposable
 
     private async Task<Booking> StoredBookingAsync(Guid bookingId) =>
         await _db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
+
+    /// <summary>
+    /// The cancellation of the guest sends two emails and no more (DB-08a): the guest's, that says they cancelled it themselves, and the
+    /// host's. No "cancelled by the host" email, and no separate "refund confirmed" one.
+    /// </summary>
+    private void AssertTheGuestAndTheHostAreEmailedOnce()
+    {
+        var guest = Assert.Single(_emails.Queued, e => e.Template == EmailTemplates.Names.GuestBookingCancelled);
+        Assert.Equal("guest@example.com", guest.To);
+        var host = Assert.Single(_emails.Queued, e => e.Template == EmailTemplates.Names.HostBookingCancelledByGuest);
+        Assert.Equal("host@example.com", host.To);
+        Assert.Equal(2, _emails.Queued.Count);
+    }
 
     /// <summary>The error changed nothing: the booking and payment are as seeded, the link is still there, no refund, no email.</summary>
     private async Task AssertUntouchedAsync(

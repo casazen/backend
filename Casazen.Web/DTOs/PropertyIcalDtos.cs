@@ -69,6 +69,63 @@ public class PropertyIcalExportUrlDto
 }
 
 /// <summary>
+/// The calendars of all the host's properties in one read (SR-10b, <c>GET /api/properties/calendar-overview</c>): per active
+/// short-rent property of the caller's reach, its export link and its import feeds, with the two numbers the page may say about the
+/// sync so that it promises no frequency of its own.
+/// </summary>
+public sealed class HostCalendarOverviewDto
+{
+    /// <summary>Minutes between two rounds of the job that syncs every feed (<c>property-ical-sync</c>).</summary>
+    public int SyncEveryMinutes { get; init; }
+
+    /// <summary>A feed whose last try is older than this many minutes has not been synced for a while: the page marks it "to check".</summary>
+    public int StaleAfterMinutes { get; init; }
+
+    /// <summary>By name; a property with no feed is there too, with an empty <see cref="HostCalendarOverviewPropertyDto.Feeds"/>.</summary>
+    public IReadOnlyList<HostCalendarOverviewPropertyDto> Properties { get; init; } = [];
+}
+
+public sealed class HostCalendarOverviewPropertyDto
+{
+    public Guid PropertyId { get; init; }
+
+    public string PropertyName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The link the host pastes on the portals, or null while nobody asked for it (<c>GET /api/properties/{id}/ical/export-url</c>
+    /// creates it). Whoever has it sees the dates taken: the answer is <c>private, no-store</c> and the link is never logged.
+    /// </summary>
+    public string? ExportUrl { get; init; }
+
+    public IReadOnlyList<HostCalendarOverviewFeedDto> Feeds { get; init; } = [];
+}
+
+/// <summary>State of one import feed in the overview: the dashboard's contract (stable error code and localized message), never the URL.</summary>
+public sealed class HostCalendarOverviewFeedDto
+{
+    public Guid FeedId { get; init; }
+
+    /// <summary>Airbnb, BookingCom or Other.</summary>
+    public string Channel { get; init; } = string.Empty;
+
+    public string? Label { get; init; }
+
+    public DateTime? LastImportAt { get; init; }
+
+    /// <summary>Success, PartialFailure, Failure, Syncing; null when never synced.</summary>
+    public string? LastImportStatus { get; init; }
+
+    /// <summary>Stable code of the last sync error (<c>ical_unreachable</c>, ...).</summary>
+    public string? LastErrorCode { get; init; }
+
+    /// <summary>Localized message of <see cref="LastErrorCode"/>, never an exception message.</summary>
+    public string? LastError { get; init; }
+
+    /// <summary>A sync of the feed is queued or running (<c>LastImportStatus</c> is <c>Syncing</c>).</summary>
+    public bool Syncing { get; init; }
+}
+
+/// <summary>
 /// One entry of <c>GET /api/bookings/calendar</c>: a booking (<see cref="Type"/> <c>booking</c>, opens the booking
 /// detail) or a calendar block (<c>ical-block</c>: dates taken on another channel, it has no guest and no booking detail).
 /// </summary>

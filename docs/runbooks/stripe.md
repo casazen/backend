@@ -77,6 +77,7 @@ allow-list only (`PublicSiteLinks.BillingReturnPagePaths`, exact match, no query
 |---|---|
 | `/app/short-rent/settings/plan` (default), `/app/short-rent/settings/billing` | short-rent (host) |
 | `/app/long-rent/settings/plan`, `/app/long-rent/settings/billing` | long-rent (landlord with only long-term leases) |
+| `/app/account/billing` | account area (AM-08a-FU1): the single plan and billing page of the people of the account |
 
 The backend builds `{App__PublicSiteBaseUrl}{returnPath}?checkout=success|cancel` (portal: `{App__PublicSiteBaseUrl}{returnPath}`).
 Anything else (another page, an absolute URL, `//host`, a query string) answers **400 `validation_error`** before any
@@ -141,7 +142,7 @@ fallback of step 1.
 | Step | Behaviour | Code |
 |---|---|---|
 | Signature | Mandatory on both endpoints: `/webhooks/stripe` with `Stripe__WebhookSecret`, `/webhooks/stripe/connect` with `Stripe__ConnectWebhookSecret`. A wrong signature answers **400** `invalid_signature`. A missing secret, or the placeholder committed in `appsettings.json` (`whsec_YOUR_…`), answers **500** `stripe_webhook_not_configured`: the placeholder is public, so it is never used to verify. Stripe retries a non-2xx delivery | `Casazen.Web/Controllers/WebhooksController.cs` |
-| API version | `EventUtility.ConstructEvent` is called with `throwOnApiVersionMismatch: false` (A3-39): the event's own `api_version` field is **not** required to match this SDK build's pinned version (currently `2025-12-15.clover`, `Stripe.StripeConfiguration.ApiVersion`). If the Stripe dashboard endpoint is ever configured on a different API version, its events are still accepted (and the mismatch is visible in the "Received Stripe … webhook" log line, which now includes the event's api version) instead of being answered 400 forever. Signature verification is unaffected: a forged event with any `api_version` still answers 400. The tolerance is a safety net, not a configuration: **create both endpoints on the SDK's API version** (chosen when the endpoint is created in Dashboard → Developers → Webhooks), because the job deserializes the payload with this SDK's models and a field moved or renamed in another version reads as missing. | same |
+| API version | `EventUtility.ConstructEvent` is called with `throwOnApiVersionMismatch: false` (A3-39): the event's own `api_version` field is **not** required to match this SDK build's pinned version (currently `2025-12-15.clover`, `Stripe.StripeConfiguration.ApiVersion`). If the Stripe dashboard endpoint is ever configured on a different API version, its events are still accepted (and the mismatch is visible in the "Received Stripe … webhook" log line, which now includes the event's api version) instead of being answered 400 forever. Signature verification is unaffected: a forged event with any `api_version` still answers 400. The tolerance is what keeps the endpoints working today: the Dashboard no longer offers `2025-12-15.clover` when a destination is created (it proposes the most recent version, `2026-09-30.endive` at the time of writing; the Stripe API still accepts `api_version: 2025-12-15.clover` when a destination is created through the API), so the destinations of test and production are on `endive` while this SDK (Stripe.net 50.1.0) pins `clover` for the calls it sends (Stripe.net 53.0.0 pins `endive`: the upgrade is a separate piece of work, queued). The job deserializes the payload with this SDK's models, so a field moved or renamed in `endive` reads as missing. The incompatible changes of `endive` concern mostly the parameters of requests, not the events read here, but that is **not proven**: after creating or changing a destination send a test event to each (it answers 200) and check a real test payment end to end. Prefer the SDK's own version whenever the Dashboard or the API offers it. | same |
 | Queue | A verified event is queued on Hangfire (`StripeWebhookJob`) and acknowledged with 200 | same |
 | Claim | The job inserts the event id into `ProcessedStripeEvents` (primary key) **in the same transaction** as the business updates | `Casazen.Infrastructure/External/StripeWebhookHandler.cs` |
 | Duplicate delivered later | Finds the committed claim: skipped, log `Skipping duplicate Stripe event {EventId}` | same |
@@ -300,8 +301,10 @@ cancellation, with `Initiator = Guest`:
 
 - **Refund**: `CancellationRefundPolicy.EvaluateGuestRefund` is the one calculation: the percent of the property's
   cancellation policy (the host's overrides for stays under 28 nights, no `FreeRefundDeadline` floor) of
-  `Booking.BasePrice` (lodging and cleaning, **tourist tax excluded**), rounded to cents, never more than what is
-  refundable. A property without a policy refunds nothing. The host's cancellation, by contrast, owes the guest everything
+  `Booking.BasePrice` (lodging and cleaning), rounded to cents, **plus the whole tourist tax** (DB-08a, default of DB-D15 (1a):
+  not due on a stay that does not happen), never more than what is refundable. A property without a policy refunds only the
+  tax. The same figure is what the guest sees before confirming (guest area, [direct-booking.md](direct-booking.md) § 8.5;
+  `refund_changed` when it moved). The host's cancellation, by contrast, owes the guest everything
   refundable (PO 2026-10-08). The guest service decides the amount and the cancellation checks it again under its advisory
   lock: the guest's minimum is that same refund, so an amount below it (a payment changed between the two) is refused with
   422 rather than paid wrongly, and nothing is cancelled; a policy that refunds nothing needs no amount.
@@ -317,15 +320,13 @@ cancellation, with `Initiator = Guest`:
   cancellation, whoever cancelled it (this link, an earlier or simultaneous click, the host) and however many times the link
   is used, even after it expired. The guest's retry after a lost response therefore sees the success page. If the booking
   were confirmed again afterwards (a late payment, BK-04) the spent link is expired and cancels nothing.
-- **Known gaps until DB-08a**:
-  - the guest's confirmation is the host-cancellation email, worded "annullata dall'host", and the host is told nothing
-    (`BookingNotifier.BookingCancelledByHostAsync`);
-  - "Non rimborsabile" has `FullRefundHours = 0`, so until the check-in day starts the formula gives 100% of the base price
-    (DB-D2): do not send links for those bookings before it is decided;
-  - the refunds are submitted to Stripe after the commit with the request's cancellation token, so a client that drops in
-    that instant can leave a reserved refund pending without a retry (shared with the host's cancellation).
-- Not here: the preview of the refund, cancelling from the guest area and the `GuestSelfCancellation` flag (DB-08a), the open
-  decisions on the policies' semantics and the tourist tax in the refund (DB-D2, DB-D15).
+- **Closed by DB-08a**: the guest's confirmation says they cancelled it themselves and the host gets its own email
+  (`BookingNotifier.BookingCancelledByGuestAsync`); "Non rimborsabile" refunds nothing at any time (its `FullRefundHours` is now
+  the "never" window of ten years, migration `FixCancellationPolicyCatalog`, DB-D2 (a)); the cancel endpoints of the guest
+  (link and guest area) send the refunds to Stripe with a token that is not the request's, so a client that drops after the
+  commit leaves nothing reserved and unsent. The host's cancellation still uses the request's token (the debt DB-08h-F4).
+- The open decisions are defaults, to be confirmed: the policies' semantics and texts (DB-D2 (a)) and the tourist tax refunded in
+  full (DB-D15 (1a)); changing either is the function above plus the catalog rows.
 
 ### Stripe settings to check (product owner)
 
@@ -555,11 +556,23 @@ settings `Casazen.Core/Services/RentCharges.cs`, API `LeaseRentController` / `Pu
    lease's monthly rent × the months of the cadence). Periods are anchored on the lease start; each installment is due on
    the first due day on or after the start of its period. A final period shorter than the cadence gets **no installment**
    (no pro rata rule is assumed): the page shows it to the landlord. The cadence cannot change once an installment is
-   paid or has a PaymentIntent.
+   paid or has a PaymentIntent. **Two optional fields (LR-04a):** `trackFrom` (`yyyy-MM-dd`, for a lease that is already
+   running): no installment is generated for a period that **ended before** that day, so nothing is born overdue; the
+   period the day falls in is the first one, the periods stay anchored on the lease start, installments that already exist
+   are never touched or deleted because of it, a day after the end of the lease is refused (422
+   `rent_track_from_invalid`) and a day on or before the lease start means «from the start». The day is stored on the plan
+   (`RentSchedules.TrackFrom`): saving the plan again without it keeps it, and the tacit renewal of the lease
+   (`ExtendScheduleToCurrentTermAsync`, LR-14) builds the new periods with it, so the past never comes back. `onlineRequests`
+   (see 2).
 2. **Payment request**: the daily job emails the tenants (every tenant party with an email, not anonymized) a personal
    link `/rent/pay/{installmentId}?token=…` `RentBilling:PaymentRequestDaysBeforeDue` days before the due date (only for
    installments that were not already due when generated; older ones: the landlord marks them paid or sends the link
-   from the page). The landlord can (re)send the link of an installment at any time; a new link replaces the previous one.
+   from the page). **Only for a plan whose online requests are on** (`RentSchedules.OnlineRequestsEnabled`, LR-04a,
+   decision LR-D19): a plan created without `onlineRequests: true` has them **off** and the job writes to no tenant (the
+   landlord's choice, never an automatic e-mail from a new plan); the plans that existed when the column was added are on,
+   as they always were. `PUT …/schedule` with `onlineRequests` true/false changes it; absent keeps the current choice. The
+   job reads the flag again under the lock of the lease before writing. The landlord can (re)send the link of an
+   installment at any time whatever the flag says; a new link replaces the previous one.
 3. **Payment**: the tenant pays on the public page with the Stripe Payment Element, **direct charge on the org's
    connected account** (like the direct checkout): `Stripe-Account` header, automatic payment methods, no application fee
    (A3-40), `metadata.kind = rent-charge`, `metadata.rentLedgerEntryId`, `leaseId`, `orgId`, idempotency key
@@ -668,8 +681,16 @@ The payments page of the web app shows the message of the code with **"Riprova"*
 
 | Endpoint | Policy |
 |---|---|
-| `POST /api/connect/account`, `POST /api/connect/onboarding-link` | `RequireOrgBillingAdmin` (`CasazenPolicies.OrgBillingAdmin`, TN-3): a `Staff` collaborator gets 403 |
+| `POST /api/connect/account`, `POST /api/connect/onboarding-link`, `POST /api/connect/dashboard-link` | `RequireOrgBillingAdmin` (`CasazenPolicies.OrgBillingAdmin`, TN-3): a `Staff` collaborator gets 403 |
 | `GET /api/connect/status` | `payment.read` in short-rent |
+
+**«Gestisci su Stripe» (AM-08b-d).** `POST /api/connect/dashboard-link` (no body) answers `{ "url" }`: the single-use login link to the **Express
+Dashboard** of the org's own account (`POST /v1/accounts/{id}/login_links`, the `IStripeConnectGateway.CreateDashboardLoginLinkAsync` of the
+suppliers, SP-14), where the host sees balance, payouts and bank details. It **needs an account that is already linked** (the database says so; Stripe
+is not asked for the status) and never creates one: without an account, or when Stripe refuses the link because the onboarding is not complete, it
+answers **422 `stripe_connect_dashboard_not_ready`** (`StripeConnectDashboardNotReady`, Italian and English); a rate limit, an outage or a key problem
+are the 503 / 502 of the onboarding. The URL is a credential: not logged, not stored. The key of the platform needs what SP-14 already needs (the
+login links, section «Connect onboarding of the suppliers»).
 
 The Account Link pages are built by the API from `App__PublicSiteBaseUrl` (decision D3, same helper `PublicSiteLinks`
 as the billing return pages of PL-11): `return_url` =
@@ -962,12 +983,24 @@ The supplier's own view of its payments is `GET api/supplier/earnings` and its e
 2. Test mode (Staging, `Features__SupplierOnlinePayments=true`, a supplier with a ready test account): the supplier takes a request (`paymentMode: Online`), completes it with an amount; the host's address gets the email; `POST api/public/service-payments/{id}/payment-session` with the token returns a client secret; in the Stripe Dashboard (connected account → Payments) the PaymentIntent shows the application fee of the snapshot; pay it with `4242 4242 4242 4242` from a test page and check the fee in the Dashboard: the payment becomes `Paid` in CasaZen, the request `Pagato`, and the supplier gets the receipt. Try the restricted key too. Complete a request above the quote by more than 20 % and confirm it as the host.
 3. Test mode, the rest of SP-15b (the same Staging): pay with a SEPA test account from Stripe's test list that succeeds after a delay to see `Processing`, and with one that fails after the delay to see `Failed` and the email with a new link; pay with `4000 0000 0000 0002` (declined) to see `Failed` on the page; refund half from `POST api/admin/service-payments/{id}/refund` and check in the Dashboard (connected account) that the refund is paid from the supplier's balance and that **half of the application fee came back** (`refund_application_fee`), then refund the rest; refund a payment on the Dashboard and check that the event is recorded with `origin: Stripe`; create a dispute with `4000 0000 0000 0259` and check the error in the log and the email to the admins; set a supplier's own commission with `PUT api/admin/suppliers/{orgId}/commission` and check that the next payment carries it; download `GET api/admin/supplier-payments/export?month=…` and open it in a spreadsheet. In Hangfire check that `service-payment-sync` (every 15 minutes) and `service-payment-reminders` (07:30 UTC) are scheduled and run.
 
+## ConcordatoFacile: the one-time payment (CF-FIX)
+
+The EUR 119,00 payment of the ConcordatoFacile service (the process, the configuration and how to try it: `docs/integrations/concordatofacile/README.md`) is a Checkout Session in `payment` mode on the **platform account** (not Connect), created by `ConcordatoFacileCheckoutService` from the Price in `ConcordatoFacile__StripePriceId`. What this runbook adds to the webhooks above:
+
+- **Destination.** The platform destination ("Il tuo account", `/webhooks/stripe`) must include `payment_intent.succeeded` (it completes the purchase), `payment_intent.payment_failed` and `payment_intent.canceled` (they close a purchase whose Session can no longer succeed, see "Pending that is over"), `charge.refunded` (a full refund marks it `Refunded`) and `customer.subscription.created` (the gift of a 24-month plan). The Connect destination has nothing to do with it. Snapshot payloads, never thin; the address is the API's (`https://casazen-api.up.railway.app`, `https://casazen-api-test.up.railway.app`), not the site's: `casazen.space` answers 308 and `www.casazen.space` answers 405 to a POST.
+- **Routing.** `StripeWebhookHandler.IsConcordatoFacilePayment` recognizes the PaymentIntent by `leaseId` in its metadata **without a `kind` key** and hands it to `ConcordatoFacilePaymentHandler` before the generic `payment_intent.succeeded` case. The Checkout writes `orgId`, `leaseId` and `userId` on the Session **and** on the PaymentIntent (`payment_intent_data`), because Stripe does not copy the Session metadata to the PaymentIntent. The event is claimed in `ProcessedStripeEvents` with source `ConcordatoFacile`.
+- **Amount.** The purchase is completed only for 11900 cents `eur`; another amount is an error in the log and grants nothing.
+- **Return pages** (CF-END). The Session sends the person back to `{ConcordatoFacile__BaseUrl}/app/long-rent/leases/{leaseId}/guided-contract?checkout=success` or `…?checkout=cancelled`, the page of the guided route; the address names nobody. The old `…/concordatofacile?checkout=…` is kept by the frontend only as a redirect (it keeps the query) for the Sessions created before this change, which Stripe may still bring back for up to the 2 hours of their expiry.
+- **Never twice.** Before creating a Session the service answers 404 `lease_not_found` (a lease of another org) or 409 `concordatofacile_already_purchased` (paid, gift consumed, a Session `complete` and `paid` recorded on the spot, or a delayed payment in flight) without calling Stripe. Two clicks at the same moment open **one** Session and write **one** `Pending` purchase (CF-BE, CF-FIX-FU3): the checkout of a lease runs under a PostgreSQL advisory lock (`ConcordatoFacileCheckout`, held across the Stripe calls like the checkout of the plans) and the second request finds the first and reuses its open Session.
+- **Pending that is over** (CF-BE, CF-IMPORT-FU1 and CF-FIX-FU2). The Session is created with an explicit expiry of **2 hours** (`ConcordatoFacilePurchaseRules.CheckoutSessionLifetime`; Stripe accepts 30 minutes to 24 hours and defaults to 24). A purchase still `Pending` 2 hours and 10 minutes after its creation counts as **closed** (`Failed`, "payment failed or checkout session expired": no new state, no migration): it is not "already purchased", it is not reused and it does not keep the draft from being deleted (`LeaseDraftDeleter.IsDeletableAsync`, which takes the closed purchases with the draft). The checkout still asks Stripe for the state of every `Pending` purchase before opening a new Session, so a payment made and not yet recorded is completed, never charged twice. `payment_intent.payment_failed` and `payment_intent.canceled` of the service close the purchase **only if its Session can no longer succeed** (`expired`, or `complete` and not paid: a delayed method that failed); a card declined while the Session is `open` leaves it `Pending` (the customer tries another card), and a paid or refunded purchase is never touched. Not covered: a delayed payment method (SEPA) still in flight after 2 hours 10 minutes would count as closed for the deletion of the draft; the live account has none today.
+- **Try it** (test mode): pay with `4242 4242 4242 4242`; the PaymentIntent in the Dashboard shows the three metadata keys and no `kind`; the delivery of `payment_intent.succeeded` to the platform destination answers 200; a second click on "Paga" shows "Hai già accesso" and opens no Session. In live mode the test cards do not work: a test is a real payment of 119 €, refundable from the Dashboard.
+
 ## Operations
 
 | Situation | What to do |
 |---|---|
 | `Error handling Stripe event {EventId}` in the logs | Nothing while Hangfire retries. If the job ends in *Failed*, fix the cause, then requeue it from the Hangfire dashboard or resend the event from Stripe (Developers → Events → the event → Resend): processing is idempotent |
-| Log `Received Stripe … webhook` with an `api version` other than `2025-12-15.clover` | The endpoint is pinned to another API version (A3-39): events are accepted, but recreate that endpoint on the SDK's API version (new signing secret on Railway, then delete the old endpoint) and resend any event whose job failed |
+| Log `Received Stripe … webhook` with an `api version` other than `2025-12-15.clover` | Expected while the destinations are on `2026-09-30.endive` (A3-39 and the "API version" row above): the events are accepted. Only if a job fails on a field that moved or was renamed, compare the payload with the SDK's models, fix, and resend the event (Developers → Events → the event → Resend) |
 | Stripe shows failed deliveries with 500 `stripe_webhook_not_configured` | Set the signing secret of that endpoint on Railway (`docs/INFRA.md`), redeploy; Stripe retries on its own for up to 3 days, older events can be resent |
 | Log `Org {OrgId} has a second subscription …` | A duplicate subscription exists on Stripe (created before PL-10 or outside the app): the current one keeps the plan. Cancel the duplicate in Stripe and refund its payments |
 | Log `Checkout refused for org {OrgId}: Stripe subscription … (webhook pending?)` repeating for the same org | The org pays but its webhook was not applied: check failed `StripeWebhookJob` jobs and resend the `customer.subscription.*` event |

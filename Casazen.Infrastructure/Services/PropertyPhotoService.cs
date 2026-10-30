@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.SiteProfile;
 using Casazen.Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -55,16 +56,26 @@ public class PropertyPhotoService(
         EnsureRoom(current.Count, files.Count);
 
         var uploaded = new List<string>(files.Count);
+        var sizes = new Dictionary<string, (int Width, int Height)>(StringComparer.Ordinal);
         try
         {
             foreach (var file in files)
-                uploaded.Add(await images.UploadImageAsync(file, propertyId));
+            {
+                var url = await images.UploadImageAsync(file, propertyId);
+                uploaded.Add(url);
+
+                // The size of the photo in pixels (DB-11a), so the page reserves its room: a hint, never a reason to refuse the upload.
+                await using var content = file.OpenReadStream();
+                if (await ImageSizeReader.ReadAsync(content, cancellationToken) is { } size)
+                    sizes[url] = size;
+            }
 
             var gallery = await ChangeGalleryAsync(
                 propertyId,
                 property =>
                 {
                     EnsureRoom(property.PhotoUrls.Count, uploaded.Count);
+                    property.PhotoAltJson = PropertyPhotoMeta.WithSizes(property.PhotoAltJson, sizes);
                     return Task.FromResult<IReadOnlyList<string>>([.. property.PhotoUrls, .. uploaded]);
                 },
                 cancellationToken);
@@ -92,6 +103,8 @@ public class PropertyPhotoService(
                     throw PhotoNotFound(propertyId);
 
                 await DeleteObjectAsync(propertyId, photoUrl, cancellationToken);
+                // The alternative text and the size of a photo leave with it (DB-11a).
+                property.PhotoAltJson = PropertyPhotoMeta.Without(property.PhotoAltJson, photoUrl);
                 return [.. property.PhotoUrls.Where(url => !string.Equals(url, photoUrl, StringComparison.Ordinal))];
             },
             cancellationToken);

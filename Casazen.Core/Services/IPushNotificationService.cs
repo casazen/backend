@@ -65,6 +65,12 @@ public static class PushDeliveryKeys
     /// <summary>A new service request accepted automatically for a regular host (SP-04d), to the supplier: it replaces the push of the new request.</summary>
     public static string ServiceRequestAutoAccepted(Guid serviceRequestId) => $"service-request:{serviceRequestId:N}:auto-accepted";
 
+    /// <summary>The reminder of the day before the work (SP-16d), to the supplier: one per request, whatever the number of runs of the job.</summary>
+    public static string ServiceRequestDayBefore(Guid serviceRequestId) => $"service-request:{serviceRequestId:N}:day-before";
+
+    /// <summary>The payment of a job made through CasaZen (SP-16d), to the supplier: one per payment.</summary>
+    public static string ServicePaymentReceived(Guid paymentId) => $"service-payment:{paymentId:N}:received";
+
     /// <summary>
     /// A service request reached <paramref name="status"/>, to the host (or, for a cancellation, to the other party). The
     /// state machine reaches every status at most once (SU-10), so the key identifies the transition.
@@ -88,11 +94,28 @@ public static class PushDeliveryKeys
         $"service-request:{serviceRequestId:N}:proposal-{(accepted ? "accepted" : "rejected")}:{proposedAtUtc:yyyyMMddHHmmss}";
 
     /// <summary>
+    /// What happened to the quote sent at <paramref name="quoteSentAtUtc"/> (SP-04b): <paramref name="outcome"/> is <c>sent</c> (to the host),
+    /// <c>accepted</c>, <c>rejected</c> or <c>expired</c> (to the supplier). A request can be quoted again, so the instant of the quote is part of
+    /// the key: a retry of the job is one push, the next quote is another.
+    /// </summary>
+    public static string ServiceRequestQuote(Guid serviceRequestId, DateTime quoteSentAtUtc, string outcome) =>
+        $"service-request:{serviceRequestId:N}:quote-{outcome}:{quoteSentAtUtc.Ticks}";
+
+    /// <summary>
     /// The customer of a supplier's public showcase moved a new request to another time, to the supplier (SP-11). A request can be
     /// moved more than once, so the instant is part of the key: a retry of the job is one push, the next move is another.
     /// </summary>
     public static string ServiceRequestRescheduled(Guid serviceRequestId, DateTime rescheduledAtUtc) =>
         $"service-request:{serviceRequestId:N}:rescheduled:{rescheduledAtUtc:yyyyMMddHHmmss}";
+
+    /// <summary>
+    /// What happened to a backup supplier's request (SP-BKP): <paramref name="kind"/> is one of <c>invited</c>, <c>active</c>, <c>won</c>,
+    /// <c>closed</c>. A request of a group moves through each of them at most once, so the key identifies the event.
+    /// </summary>
+    public static string ServiceRequestBackup(Guid serviceRequestId, string kind) => $"service-request:{serviceRequestId:N}:backup-{kind}";
+
+    /// <summary>A message the guest of a direct booking wrote, to the host: one per message, so every message is one push.</summary>
+    public static string GuestMessage(Guid messageId) => $"booking-message:{messageId:N}";
 
     /// <summary>A booking confirmed without the host's action (payment, saved card), to the host.</summary>
     public static string NewBooking(Guid bookingId) => $"booking:{bookingId:N}:new";
@@ -110,6 +133,12 @@ public static class PushDeliveryKeys
     /// </summary>
     public static string OtaStayReview(Guid bookingId, OtaStayReviewReason reason, DateTime? channelCheckIn, DateTime? channelCheckOut) =>
         $"ota-stay-review:{bookingId:N}:{reason}:{channelCheckIn:yyyyMMdd}:{channelCheckOut:yyyyMMdd}";
+
+    /// <summary>
+    /// Biometric verification requires operator decision (NF-12, ADR-013): the guest's selfie escalated or reached max
+    /// attempts. One per booking, stable across retries.
+    /// </summary>
+    public static string VerificationRequired(Guid bookingId) => $"verification-required:{bookingId:N}";
 }
 
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
@@ -146,7 +175,41 @@ public static class PushTypes
 
     /// <summary>The customer of the public showcase moved a new request to another time (SP-11): pushed to the supplier org.</summary>
     public const string ServiceRequestRescheduled = "service-request-rescheduled";
+
+    /// <summary>A request was also sent to this supplier as a backup (SP-BKP): the job is its only if the primary does not take it. Pushed to the supplier org.</summary>
+    public const string ServiceRequestBackupInvited = "service-request-backup-invited";
+
+    /// <summary>The second window opened (SP-BKP): the primary did not take the job (or refused it), the backup can take it now. Pushed to the supplier org.</summary>
+    public const string ServiceRequestBackupActive = "service-request-backup-active";
+
+    /// <summary>The job of a request went to this backup, which had accepted (SP-BKP). Pushed to the supplier org.</summary>
+    public const string ServiceRequestBackupWon = "service-request-backup-won";
+
+    /// <summary>A backup request was closed (SP-BKP): the primary or another backup took the job, the host cancelled, or its time was no longer free. Pushed to the supplier org.</summary>
+    public const string ServiceRequestBackupClosed = "service-request-backup-closed";
+
+    /// <summary>The supplier sent a quote (SP-04b): pushed to the hosts of the property (a showcase customer has no app: it gets an e-mail).</summary>
+    public const string ServiceRequestQuoteSent = "service-request-quote-sent";
+
+    /// <summary>The host, or the customer of a showcase request, accepted the quote (SP-04b): pushed to the supplier org.</summary>
+    public const string ServiceRequestQuoteAccepted = "service-request-quote-accepted";
+
+    /// <summary>The host, or the customer of a showcase request, turned the quote down (SP-04b): pushed to the supplier org.</summary>
+    public const string ServiceRequestQuoteRejected = "service-request-quote-rejected";
+
+    /// <summary>The customer of a showcase request did not answer the quote in time and the request was cancelled (SP-04b): pushed to the supplier org.</summary>
+    public const string ServiceRequestQuoteExpired = "service-request-quote-expired";
+
+    /// <summary>The job of tomorrow, at 18:00 of the day before (SP-16d): pushed to the supplier org, for a request of any context. No address in it.</summary>
+    public const string ServiceRequestDayBefore = "service-request-day-before";
+
+    /// <summary>A payment made through CasaZen arrived (SP-16d): pushed to the supplier org with the net; <c>entityId</c> is the service request.</summary>
+    public const string ServicePaymentReceived = "service-payment-received";
+
     public const string NewBooking = "new-booking";
+
+    /// <summary>The guest of a direct booking wrote a message: pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its thread.</summary>
+    public const string GuestMessage = "guest-message";
     public const string GuestDataMissing = "guest-data-missing";
     public const string AlloggiatiDeadline = "alloggiati-deadline";
     public const string AlloggiatiOverdue = "alloggiati-overdue";
@@ -155,6 +218,9 @@ public static class PushTypes
 
     /// <summary>An OTA stay created from an iCal block is "da verificare" (CO-21): the app opens the booking from the route.</summary>
     public const string OtaStayReview = "ota-stay-review";
+
+    /// <summary>Biometric verification requires operator decision (NF-12, ADR-013): pushed to property hosts.</summary>
+    public const string VerificationRequired = "verification-required";
 
     /// <summary>
     /// Type of the push to the host when a service request reaches <paramref name="status"/>; <c>null</c> for a status that has

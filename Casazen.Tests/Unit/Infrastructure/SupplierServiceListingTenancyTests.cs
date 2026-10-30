@@ -102,6 +102,7 @@ public class SupplierServiceListingTenancyTests
                 "CK_SupplierServiceListings_DurationMinutes",
                 "CK_SupplierServiceListings_MinNoticeHours",
                 "CK_SupplierServiceListings_PriceFromCents",
+                "CK_SupplierServiceListings_UrgentSurchargeCents",
                 "CK_SupplierServiceListings_WeekdaysMask",
             },
             checks);

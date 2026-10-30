@@ -42,7 +42,8 @@ public partial class SupplierServiceRequestReader(
 
         var ownerPhones = await OwnerPhonesAsync(page, cancellationToken);
         var summaries = await PaymentSummariesAsync(supplierOrgId, page, cancellationToken);
-        return (page.Select(r => ToView(r, ownerPhones, summaries.GetValueOrDefault(r.Id), history: null)).ToList(), total);
+        var nowUtc = _clock.GetUtcNow().UtcDateTime;
+        return (page.Select(r => ToView(r, ownerPhones, summaries.GetValueOrDefault(r.Id), history: null, nowUtc)).ToList(), total);
     }
 
     /// <summary>
@@ -113,9 +114,13 @@ public partial class SupplierServiceRequestReader(
         if (query.Source is { } source)
             rows = rows.Where(r => r.Source == source);
 
-        // The tabs "da rispondere" and "in attesa": what the supplier did about a new request is the time it proposed (SP-04b adds the quote).
+        // The tabs "da rispondere" and "in attesa": what the supplier did about a new request is the time it proposed or the quote it sent.
         if (query.AwaitingCustomer is { } awaiting)
-            rows = awaiting ? rows.Where(r => r.ProposedStartUtc != null) : rows.Where(r => r.ProposedStartUtc == null);
+        {
+            rows = awaiting
+                ? rows.Where(r => r.ProposedStartUtc != null || r.QuoteSentAt != null)
+                : rows.Where(r => r.ProposedStartUtc == null && r.QuoteSentAt == null);
+        }
 
         if (!string.IsNullOrWhiteSpace(query.Text))
             rows = FilterByText(rows, query.Text.Trim());
@@ -223,10 +228,12 @@ public partial class SupplierServiceRequestReader(
                 row.CancelledBy,
                 PaidBy: row.PaidBy,
                 Requester: row.RentalContext == ServiceRequestRentalContext.Showcase ? ServiceRequestActorParty.Customer : ServiceRequestActorParty.Host,
-                AutoAccepted: row.AutoAccepted),
+                AutoAccepted: row.AutoAccepted,
+                // The supplier's console tells the story of the quotes too (SP-04b): the sent, turned down and taken back ones are steps.
+                QuoteEvents: ServiceRequestJson.ReadQuoteEvents(row.QuoteEventsJson)),
             takenByName);
 
-        return ToView(row, ownerPhones, summaries.GetValueOrDefault(row.Id), history);
+        return ToView(row, ownerPhones, summaries.GetValueOrDefault(row.Id), history, _clock.GetUtcNow().UtcDateTime);
     }
 
     public Task<IReadOnlyList<SupplierAgendaRequest>> ListForAgendaAsync(
@@ -291,10 +298,11 @@ public partial class SupplierServiceRequestReader(
         return row is { StartUtc: { } start, EndUtc: { } end }
             ? new SupplierAgendaRequest(
                 row.Id, RomeCalendar.DateInRome(start), row.Status, row.Category, start, end, row.ServiceListingId,
-                Source: source, HasPendingProposal: row.HasPendingProposal)
+                Source: source, HasPendingProposal: row.HasPendingProposal, HasPendingQuote: row.HasPendingQuote)
             : new SupplierAgendaRequest(
                 row.Id, RomeCalendar.DateInRome(row.CheckOutDate!.Value), row.Status, row.Category,
-                ServiceListingId: row.ServiceListingId, Source: source, HasPendingProposal: row.HasPendingProposal);
+                ServiceListingId: row.ServiceListingId, Source: source, HasPendingProposal: row.HasPendingProposal,
+                HasPendingQuote: row.HasPendingQuote);
     }
 
     /// <summary>
@@ -322,6 +330,9 @@ public partial class SupplierServiceRequestReader(
         db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
+            // SP-BKP: a backup that only waits for its primary holds nothing of the agenda; the backup that accepted does, from then on (the
+            // first backup that accepts closes the race and is the only one that can have the job), and frees the time if the primary takes it.
+            .OnlyHoldingSupplierTime()
             .Where(r => r.SupplierOrgId == supplierOrgId
                         && r.Status != ServiceRequestStatus.Rifiutato
                         && r.Status != ServiceRequestStatus.Annullato
@@ -349,7 +360,8 @@ public partial class SupplierServiceRequestReader(
                 r.Booking != null ? r.Booking.CheckOutDate : (DateTime?)null,
                 r.ServiceListingId,
                 r.Source,
-                r.ProposedStartUtc != null && r.ProposedEndUtc != null && r.ProposedAt != null));
+                r.ProposedStartUtc != null && r.ProposedEndUtc != null && r.ProposedAt != null,
+                r.QuoteSentAt != null));
 
     /// <summary>
     /// The same requests with the titles of the calendar (SP-03b): the name of the service, the org of the host, the name of the
@@ -374,7 +386,8 @@ public partial class SupplierServiceRequestReader(
                 r.Org.Name,
                 r.Customer != null ? r.Customer.FullName : null,
                 r.Property != null ? r.Property.City : r.LocationCity ?? string.Empty,
-                r.ProposedStartUtc != null && r.ProposedEndUtc != null && r.ProposedAt != null));
+                r.ProposedStartUtc != null && r.ProposedEndUtc != null && r.ProposedAt != null,
+                r.QuoteSentAt != null));
 
     /// <summary>A request of the agenda as read from the database.</summary>
     internal sealed record AgendaRow(
@@ -386,7 +399,8 @@ public partial class SupplierServiceRequestReader(
         DateTime? CheckOutDate,
         Guid? ServiceListingId,
         ServiceRequestSource Source,
-        bool HasPendingProposal);
+        bool HasPendingProposal,
+        bool HasPendingQuote);
 
     /// <summary>A request of the calendar as read from the database, with the columns its titles are made of.</summary>
     internal sealed record CalendarRow(
@@ -404,10 +418,11 @@ public partial class SupplierServiceRequestReader(
         string? HostName,
         string? CustomerFullName,
         string City,
-        bool HasPendingProposal)
+        bool HasPendingProposal,
+        bool HasPendingQuote)
     {
         /// <summary>The columns every read of the agenda has, as the light read would have returned them.</summary>
-        public AgendaRow Core => new(Id, Status, Category, StartUtc, EndUtc, CheckOutDate, ServiceListingId, Source, HasPendingProposal);
+        public AgendaRow Core => new(Id, Status, Category, StartUtc, EndUtc, CheckOutDate, ServiceListingId, Source, HasPendingProposal, HasPendingQuote);
     }
 
     /// <summary>The statuses in which a request has been taken by the supplier (<see cref="SupplierJobDisclosure.IsDisclosed"/>).</summary>
@@ -451,6 +466,14 @@ public partial class SupplierServiceRequestReader(
                 TakenAt = r.TakenAt,
                 TakenByUserId = r.TakenByUserId,
                 AutoAccepted = r.AutoAccepted,
+                Kind = r.Kind,
+                // SP-BKP: where the request is in its group of backup suppliers (none outside one). The group table has no tenant filter and is
+                // reached through the request, which the supplier org predicate above already scopes.
+                GroupRole = r.GroupRole,
+                BackupAcceptedAt = r.BackupAcceptedAt,
+                GroupPhase = r.Group != null ? (ServiceRequestGroupPhase?)r.Group.Phase : null,
+                GroupPrimaryDueAt = r.Group != null ? (DateTime?)r.Group.PrimaryDueAt : null,
+                GroupBackupDueAt = r.Group != null ? r.Group.BackupDueAt : null,
                 CompletedAt = r.CompletedAt,
                 PaidAt = r.PaidAt,
                 // Activity date of the inbox period and order (SupplierInboxStatusFilter): completion for completed and
@@ -489,6 +512,14 @@ public partial class SupplierServiceRequestReader(
                 ProposedEndUtc = r.ProposedEndUtc,
                 ProposedAt = r.ProposedAt,
                 ProposalMessage = r.ProposalMessage,
+                // The quote the supplier sent (SP-04b) and what happened to its quotes: the supplier's own words, nothing of the customer.
+                QuoteSentAt = r.QuoteSentAt,
+                QuoteLinesJson = r.QuoteLinesJson,
+                QuoteTotalCents = r.QuoteTotalCents,
+                QuoteNote = r.QuoteNote,
+                QuoteScheduledStartUtc = r.QuoteScheduledStartUtc,
+                QuoteScheduledEndUtc = r.QuoteScheduledEndUtc,
+                QuoteEventsJson = r.QuoteEventsJson,
                 // Only to search by it (q, SP-04e): never part of a view, the customer's credential stays out of the supplier's sight.
                 PublicCode = r.PublicCode,
                 PropertyId = r.PropertyId,
@@ -555,11 +586,44 @@ public partial class SupplierServiceRequestReader(
         return member is null ? null : $"{member.FirstName} {member.LastName}".Trim();
     }
 
+    /// <summary>
+    /// Where a request stands in its group of backup suppliers, as its supplier sees it (<see cref="SupplierJobBackup"/>): none outside a group,
+    /// nor for the primary once it has answered, nor for the primary a backup replaced. A backup's view is the same as any request before the
+    /// take: <see cref="ToView"/> discloses the property and the notes only for a disclosed status.
+    /// </summary>
+    private static SupplierJobBackup? BackupOf(SupplierRequestRow row, DateTime nowUtc)
+    {
+        if (row is not { GroupPhase: { } phase, GroupPrimaryDueAt: { } primaryDueAt })
+            return null;
+
+        switch (row.GroupRole)
+        {
+            case ServiceRequestGroupRole.Backup:
+            case ServiceRequestGroupRole.PromotedBackup:
+                return new SupplierJobBackup(
+                    SupplierBackupRoles.Backup,
+                    SupplierBackupStates.Of(row.GroupRole, row.Status, phase, primaryDueAt, nowUtc, row.BackupAcceptedAt),
+                    primaryDueAt,
+                    row.GroupBackupDueAt,
+                    row.BackupAcceptedAt);
+            case ServiceRequestGroupRole.Primary when row.Status == ServiceRequestStatus.Richiesto:
+                return new SupplierJobBackup(
+                    SupplierBackupRoles.Primary,
+                    SupplierBackupStates.Of(row.GroupRole, row.Status, phase, primaryDueAt, nowUtc, acceptedAt: null),
+                    primaryDueAt,
+                    row.GroupBackupDueAt,
+                    AcceptedAt: null);
+            default:
+                return null;
+        }
+    }
+
     private static SupplierServiceRequestView ToView(
         SupplierRequestRow row,
         IReadOnlyDictionary<string, string> ownerPhones,
         SupplierJobPayment? payment,
-        IReadOnlyList<ServiceRequestHistoryEntry>? history)
+        IReadOnlyList<ServiceRequestHistoryEntry>? history,
+        DateTime nowUtc)
     {
         var disclosed = SupplierJobDisclosure.IsDisclosed(row.Status);
 
@@ -663,8 +727,27 @@ public partial class SupplierServiceRequestReader(
             ServiceRequestJson.ReadPhotos(row.WorkPhotosJson),
             row.PaymentMode,
             payment,
-            row.AutoAccepted);
+            row.AutoAccepted,
+            row.Kind,
+            QuoteOf(row),
+            BackupOf(row, nowUtc));
     }
+
+    /// <summary>
+    /// The quote that waits for the customer's answer (SP-04b), or <c>null</c>. The deadline is the customer's, so it is told for a showcase
+    /// request only; the <c>ResponseDueAt</c> of a host's request is the supplier's own.
+    /// </summary>
+    private static ServiceRequestQuote? QuoteOf(SupplierRequestRow row) =>
+        ServiceRequestQuoteRules.IsPending(row.Status, row.QuoteSentAt) && row is { QuoteSentAt: { } sentAt, QuoteTotalCents: { } total }
+            ? new ServiceRequestQuote(
+                sentAt,
+                ServiceRequestJson.ReadQuoteLines(row.QuoteLinesJson),
+                total,
+                NullIfBlank(row.QuoteNote),
+                row.QuoteScheduledStartUtc,
+                row.QuoteScheduledEndUtc,
+                row.RentalContext == ServiceRequestRentalContext.Showcase ? row.ResponseDueAt : null)
+            : null;
 
     /// <summary>
     /// Who asked, as the supplier may know it (decision D9): the host's org for a host's request, a private customer of the public
@@ -702,6 +785,12 @@ public partial class SupplierServiceRequestReader(
         public DateTime? TakenAt { get; init; }
         public string? TakenByUserId { get; init; }
         public bool AutoAccepted { get; init; }
+        public ServiceRequestKind Kind { get; init; }
+        public ServiceRequestGroupRole GroupRole { get; init; }
+        public DateTime? BackupAcceptedAt { get; init; }
+        public ServiceRequestGroupPhase? GroupPhase { get; init; }
+        public DateTime? GroupPrimaryDueAt { get; init; }
+        public DateTime? GroupBackupDueAt { get; init; }
         public DateTime? CompletedAt { get; init; }
         public DateTime? PaidAt { get; init; }
         public DateTime ActivityAt { get; init; }
@@ -729,6 +818,13 @@ public partial class SupplierServiceRequestReader(
         public DateTime? ProposedEndUtc { get; init; }
         public DateTime? ProposedAt { get; init; }
         public string? ProposalMessage { get; init; }
+        public DateTime? QuoteSentAt { get; init; }
+        public string QuoteLinesJson { get; init; } = "[]";
+        public int? QuoteTotalCents { get; init; }
+        public string? QuoteNote { get; init; }
+        public DateTime? QuoteScheduledStartUtc { get; init; }
+        public DateTime? QuoteScheduledEndUtc { get; init; }
+        public string QuoteEventsJson { get; init; } = "[]";
         public string? PublicCode { get; init; }
         public Guid? PropertyId { get; init; }
         public string? PropertyName { get; init; }

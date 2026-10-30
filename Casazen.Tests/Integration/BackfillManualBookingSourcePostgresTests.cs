@@ -18,9 +18,7 @@ public class BackfillManualBookingSourcePostgresTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _database = await PostgresTestDatabase.CreateAsync();
-        await using var db = NewContext();
-        await db.Database.MigrateAsync();
+        _database = await PostgresTestDatabase.CreateMigratedAsync();
     }
 
     public async Task DisposeAsync()

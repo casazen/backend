@@ -17,6 +17,9 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     /// <summary>Supplier console inbox.</summary>
     public string SupplierInbox() => Build("/app/supplier/inbox");
 
+    /// <summary>A request in the supplier console (SP-16d, the reminder of the day before). Only the id of the request is in the link, no personal data.</summary>
+    public string SupplierRequest(Guid serviceRequestId) => Build($"/app/supplier/inbox/{serviceRequestId:D}");
+
     /// <summary>Guest self check-in page for a raw session token.</summary>
     public string GuestCheckIn(string token)
     {
@@ -201,6 +204,21 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     }
 
     /// <summary>
+    /// Page of the supplier's showcase where the customer checks the e-mail of a request on measure (SP-10b; the same route as the booking's,
+    /// <c>/fornitori/:slug/conferma</c>, told apart by the query key): the page reads <c>inquiry</c> from the query and <c>token</c> from the
+    /// <b>fragment</b> — which a browser never sends to a server, so the token is in no access log — and sends them to
+    /// <c>POST api/public/suppliers/{slug}/inquiries/{id}/confirm-email</c>. Only the id and the random token (single use, valid for the minutes
+    /// of the inquiry) are in the link, no personal data.
+    /// </summary>
+    public string SupplierInquiryConfirmation(string supplierSlug, Guid inquiryId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(supplierSlug);
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build(
+            $"/fornitori/{Uri.EscapeDataString(supplierSlug)}/conferma?inquiry={inquiryId:D}#token={Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>
     /// "La tua richiesta" on the supplier's showcase (route <c>/fornitori/:slug/richiesta</c>, SP-10, managed with SP-11): the
     /// customer finds a request there with its code and e-mail. With <paramref name="publicCode"/> the page opens with the code
     /// filled in (<c>?code=</c>, as <see cref="GuestBookings"/> does) and still asks for the e-mail before showing anything.
@@ -276,8 +294,15 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public const string BillingPagePath = "/app/short-rent/settings/plan";
 
     /// <summary>
+    /// Billing page of the account area (route <c>/app/account/billing</c> of the web app, AM-08a): the one page that holds the
+    /// plan and the billing of the org for the people of the account, so Stripe can bring them back to it (AM-08a-FU1).
+    /// </summary>
+    public const string AccountBillingPagePath = "/app/account/billing";
+
+    /// <summary>
     /// Allow-list of the pages Stripe may send the browser back to (PL-16, A1-36): the plan and billing pages of the web
-    /// app in each rental context, so a long-term landlord comes back to its own shell. Exact paths, no query string.
+    /// app in each rental context, so a long-term landlord comes back to its own shell, and the billing page of the
+    /// account area (AM-08a-FU1). Exact paths, no query string.
     /// </summary>
     public static readonly IReadOnlySet<string> BillingReturnPagePaths = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -285,6 +310,7 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         "/app/short-rent/settings/billing",
         "/app/long-rent/settings/plan",
         "/app/long-rent/settings/billing",
+        AccountBillingPagePath,
     };
 
     /// <summary>True when <paramref name="path"/> is exactly one of <see cref="BillingReturnPagePaths"/>.</summary>

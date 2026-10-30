@@ -5,6 +5,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
+using Casazen.Core.SiteProfile;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Infrastructure.Search;
@@ -48,6 +49,18 @@ public class AppDbContext(
     /// <summary>Custom domains to remove from the Vercel project (BK-17); not tenant-owned, read by the platform job only.</summary>
     public DbSet<PendingDomainRemoval> PendingDomainRemovals { get; set; } = null!;
     public DbSet<Property> Properties { get; set; } = null!;
+    public DbSet<PropertyOwner> PropertyOwners { get; set; } = null!;
+    public DbSet<PropertyOwnership> PropertyOwnerships { get; set; } = null!;
+    public DbSet<OwnerUser> OwnerUsers { get; set; } = null!;
+    public DbSet<OwnerMandate> OwnerMandates { get; set; } = null!;
+    public DbSet<OwnerStatement> OwnerStatements { get; set; } = null!;
+    public DbSet<StatementLine> StatementLines { get; set; } = null!;
+    public DbSet<AgencyInvoice> AgencyInvoices { get; set; } = null!;
+    public DbSet<WireBatch> WireBatches { get; set; } = null!;
+    public DbSet<WireBatchStatement> WireBatchStatements { get; set; } = null!;
+    public DbSet<WithholdingLog> WithholdingLogs { get; set; } = null!;
+    public DbSet<F24Record> F24Records { get; set; } = null!;
+    public DbSet<OwnerInvitation> OwnerInvitations { get; set; } = null!;
     public DbSet<Booking> Bookings { get; set; } = null!;
     public DbSet<Guest> Guests { get; set; } = null!;
     public DbSet<Payment> Payments { get; set; } = null!;
@@ -83,11 +96,20 @@ public class AppDbContext(
     public DbSet<OfficialSourceFetch> OfficialSourceFetches { get; set; } = null!;
     public DbSet<ComuneOfficialProfile> ComuneOfficialProfiles { get; set; } = null!;
     public DbSet<ComuneOfficialProfileVersion> ComuneOfficialProfileVersions { get; set; } = null!;
+
+    // Swiss municipalities from Ufficio federale di statistica (NF-02)
+    public DbSet<SwissMunicipality> SwissMunicipalities { get; set; } = null!;
+
+    // Swiss compliance receipts (Ticino police notifications, OTR tax reports, ADR-016)
+    public DbSet<SwissComplianceReceipt> SwissComplianceReceipts { get; set; } = null!;
+
     public DbSet<CancellationPolicy> CancellationPolicies { get; set; } = null!;
     public DbSet<PricingAdapterConfig> PricingAdapterConfigs { get; set; } = null!;
     public DbSet<PricingHistory> PricingHistories { get; set; } = null!;
     public DbSet<SeasonalPriceSuggestion> SeasonalPriceSuggestions { get; set; } = null!;
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
+    public DbSet<PropertyFloorPlan> PropertyFloorPlans { get; set; } = null!;
+    public DbSet<PropertyPoi> PropertyPois { get; set; } = null!;
     public DbSet<TestDataMarker> TestDataMarkers { get; set; } = null!;
     public DbSet<DemoEnvironmentSetting> DemoEnvironmentSettings { get; set; } = null!;
     public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
@@ -110,6 +132,18 @@ public class AppDbContext(
     public DbSet<SupplierServiceListing> SupplierServiceListings { get; set; } = null!;
 
     /// <summary>
+    /// Trusted supplier relationships for agency tier orgs (NF-21, ADR-020): an agency's preferred suppliers
+    /// with manual payment mode, 0% commission, and statement integration.
+    /// </summary>
+    public DbSet<TrustedSupplier> TrustedSuppliers { get; set; } = null!;
+
+    /// <summary>
+    /// Internal activities performed by staff on properties (NF-22): cleaning, maintenance, check-in assistance.
+    /// Staff sees only activities within their perimeter (PropertyMemberAccess).
+    /// </summary>
+    public DbSet<InternalActivity> InternalActivities { get; set; } = null!;
+
+    /// <summary>
     /// The supplier's agenda (SP-03): weekly working hours, time off, blocks and extra openings, and the settings row. All
     /// keyed by the supplier org and <b>not</b> tenant-filtered (see the TN-2 allow-list): only <c>SupplierAgendaService</c>
     /// (and the supplier repair) reads and writes them, always with an explicit <c>OrgId</c> predicate.
@@ -119,6 +153,20 @@ public class AppDbContext(
     public DbSet<SupplierBusyWindow> SupplierBusyWindows { get; set; } = null!;
     public DbSet<SupplierFreeCalendarEvent> SupplierFreeCalendarEvents { get; set; } = null!;
     public DbSet<SupplierSettings> SupplierSettings { get; set; } = null!;
+
+    /// <summary>
+    /// What weighs on the reliability of a supplier (SP-REL): replies in time, missed deadlines, completed jobs, disputes. Keyed by the
+    /// supplier org and <b>not</b> tenant-filtered (TN-2 allow-list): only <c>SupplierReliabilityService</c> reads and writes it, always
+    /// with an explicit supplier predicate.
+    /// </summary>
+    public DbSet<SupplierReliabilityEvent> SupplierReliabilityEvents { get; set; } = null!;
+
+    /// <summary>
+    /// The content of the suppliers' public showcases (SP-13a): the draft, the published version and the one before it, one row per
+    /// supplier. Keyed by the supplier org, <b>not</b> tenant-filtered (see the TN-2 allow-list): only
+    /// <c>SupplierShowcaseContentService</c> (and the supplier repair) reads and writes it, always with an explicit <c>OrgId</c> predicate.
+    /// </summary>
+    public DbSet<SupplierShowcaseContent> SupplierShowcaseContents { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
     public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
     public DbSet<HostInviteRecord> HostInviteRecords { get; set; } = null!;
@@ -133,11 +181,26 @@ public class AppDbContext(
     public DbSet<ServiceCustomer> ServiceCustomers { get; set; } = null!;
     public DbSet<ShowcaseBookingHold> ShowcaseBookingHolds { get; set; } = null!;
 
+    /// <summary>
+    /// The request on measure from a supplier's public showcase (SP-10b): the inquiry that waits for the e-mail check and the messages of
+    /// the thread of the request. Both keyed by the supplier org and <b>not</b> tenant-filtered (see the TN-2 allow-list); only the services
+    /// listed in <c>ShowcaseInquiryTenancyTests</c> touch them, always with an explicit <c>OrgId</c> predicate.
+    /// </summary>
+    public DbSet<ShowcaseInquiry> ShowcaseInquiries { get; set; } = null!;
+    public DbSet<ServiceRequestMessage> ServiceRequestMessages { get; set; } = null!;
+
     // Payment of the service requests inside CasaZen (SP-15a): two parties, not tenant-filtered.
     public DbSet<ServiceRequestPayment> ServiceRequestPayments { get; set; } = null!;
 
     // The refunds of a service payment (SP-15b): they belong to the payment, so they are not tenant-filtered either.
     public DbSet<ServiceRequestPaymentRefund> ServiceRequestPaymentRefunds { get; set; } = null!;
+
+    /// <summary>
+    /// The groups of backup suppliers (SP-BKP): a request and the backups it was sent to with it. Two parties and more (the host and
+    /// the suppliers of the backups) and a system job, so <b>not</b> tenant-filtered (see the TN-2 allow-list); only the code listed in
+    /// <c>ServiceRequestGroupTenancyTests</c> touches it, always with an explicit predicate.
+    /// </summary>
+    public DbSet<ServiceRequestGroup> ServiceRequestGroups { get; set; } = null!;
 
     // Property iCal OTA sync (US-018 / #294)
     public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
@@ -150,6 +213,17 @@ public class AppDbContext(
     // Guest self-service check-in portal (US-020 / #296)
     public DbSet<GuestCheckInSession> GuestCheckInSessions { get; set; } = null!;
 
+    // Guest identity document images for OCR (NF-10, ADR-013-R3)
+    public DbSet<DocumentImage> DocumentImages { get; set; } = null!;
+
+    // Biometric verification settings and audit logs (NF-11, ADR-013)
+    public DbSet<BiometricSettings> BiometricSettings { get; set; } = null!;
+    public DbSet<BiometricVerificationLog> BiometricVerificationLogs { get; set; } = null!;
+
+    // Property access codes and release logs (NF-13, E06/F03/US01/T01)
+    public DbSet<PropertyAccessCode> PropertyAccessCodes { get; set; } = null!;
+    public DbSet<AccessCodeReleaseLog> AccessCodeReleaseLogs { get; set; } = null!;
+
     // Native host app push tokens (US-025 / #299)
     public DbSet<DeviceRegistration> DeviceRegistrations { get; set; } = null!;
 
@@ -159,6 +233,9 @@ public class AppDbContext(
     // The bell of the shell: one row per user and event, written next to the push of the same event (UI-12a)
     public DbSet<InAppNotification> InAppNotifications { get; set; } = null!;
 
+    // Approval queue for items requiring human decision before taking effect (NF-06)
+    public DbSet<ApprovalQueueItem> ApprovalQueueItems { get; set; } = null!;
+
     public DbSet<TerritorialRentAgreement> TerritorialRentAgreements { get; set; } = null!;
     public DbSet<ConcordatoRentBand> ConcordatoRentBands { get; set; } = null!;
     public DbSet<TerritorialAgreementSignatory> TerritorialAgreementSignatories { get; set; } = null!;
@@ -167,6 +244,7 @@ public class AppDbContext(
     public DbSet<RegulatoryDataAuditEntry> RegulatoryDataAuditEntries { get; set; } = null!;
 
     // Long-term lease
+    public DbSet<LeaseDocument> LeaseDocuments { get; set; } = null!;
     public DbSet<LeaseContract> LeaseContracts { get; set; } = null!;
     public DbSet<Party> Parties { get; set; } = null!;
     public DbSet<LeaseRegistration> LeaseRegistrations { get; set; } = null!;
@@ -175,9 +253,31 @@ public class AppDbContext(
     public DbSet<LeaseSigner> LeaseSigners { get; set; } = null!;
     public DbSet<RentSchedule> RentSchedules { get; set; } = null!;
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
+
+    // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
+    public DbSet<ConcordatoFacilePurchase> ConcordatoFacilePurchases { get; set; } = null!;
+    public DbSet<ConcordatoFacileGift> ConcordatoFacileGifts { get; set; } = null!;
+
+    // Practices of the simulated ConcordatoFacile module: test environments only (CF-SIM)
+    public DbSet<CfSimulatedPractice> CfSimulatedPractices { get; set; } = null!;
+
     public DbSet<AppContextEntity> AppContexts { get; set; } = null!;
     public DbSet<ConsentRecord> ConsentRecords { get; set; } = null!;
     public DbSet<GuestConsentRecord> GuestConsentRecords { get; set; } = null!;
+    public DbSet<MarketingConsentRecord> MarketingConsentRecords { get; set; } = null!;
+    public DbSet<SuppressionListEntry> SuppressionListEntries { get; set; } = null!;
+
+    // CRM guest profiles for marketing and segmentation (NF-23, ADR-021)
+    public DbSet<GuestCrmProfile> GuestCrmProfiles { get; set; } = null!;
+
+    // Marketing campaigns and segments (NF-24, ADR-014)
+    public DbSet<GuestSegment> GuestSegments { get; set; } = null!;
+    public DbSet<Campaign> Campaigns { get; set; } = null!;
+
+    // Automation routines and execution log (NF-26, ADR-022)
+    public DbSet<Routine> Routines { get; set; } = null!;
+    public DbSet<RoutineExecution> RoutineExecutions { get; set; } = null!;
+
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
@@ -287,11 +387,18 @@ public class AppDbContext(
         // CO-15: audit of the operations on guest data; no foreign key to the guest, so it outlives a removed guest.
         modelBuilder.ApplyConfiguration(new GuestPrivacyAuditEntryConfiguration());
 
+        // NF-05: marketing suppression list with SHA-256 blind index for one-click unsubscribe (ADR-007-R18, R22).
+        modelBuilder.ApplyConfiguration(new SuppressionListEntryConfiguration());
+
         // CO-07: one safety checklist per property, going with it; its items go with the checklist. An evidence
         // document deleted by the host leaves the item without proof (SET NULL), never deletes the answer.
         modelBuilder.ApplyConfiguration(new PropertySafetyChecklistConfiguration());
 
         modelBuilder.ApplyConfiguration(new PropertySafetyChecklistItemConfiguration());
+
+        // DB-11a: the floor plan levels and the points of interest of a property, going with it; each carries the org of its property (TN-2).
+        modelBuilder.ApplyConfiguration(new PropertyFloorPlanConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyPoiConfiguration());
 
         modelBuilder.Entity<AlloggiatiCodeEntry>()
             .HasOne(e => e.Import)
@@ -337,6 +444,37 @@ public class AppDbContext(
             t.HasCheckConstraint(
                 "CK_Properties_WeekendSurchargePercent",
                 $"\"WeekendSurchargePercent\" BETWEEN 0 AND {(int)PropertyStayRules.MaxWeekendSurchargePercent}");
+        });
+
+        // SR-07a: the host's switch «Mostra la casa sul sito» starts true — in the migration, so every row that existed before the
+        // column keeps being on the site — and it is one more condition of PublicListing.IsPublished. The default is for the writers
+        // that do not know the column (the old release during a deploy, a raw INSERT); EF itself always writes the value of the
+        // entity: left to generate it, EF would take an explicit false for «not set» and the insert would write the default (true)
+        // in its place, putting back on the site a property its host hid.
+        // The other fields of the wizard (type, beds, area, headline, times, rules, fee) are nullable: null = never said.
+        modelBuilder.Entity<Property>()
+            .Property(p => p.PublishedOnSite)
+            .HasDefaultValue(true)
+            .ValueGeneratedNever();
+
+        // DB-11a: the site profile (floor, renovation year, energy class and index, kind of place, children, latest arrival, video and tour
+        // addresses, the JSON of the texts and of the photo alt texts). Every column is nullable: null = the host never said, which is
+        // every property that existed before them. The host API validates (SitePropertyProfileRules); the constraints keep any other
+        // writer honest. The ranges repeat the constants of SitePropertyProfileLimits.
+        modelBuilder.Entity<Property>().ToTable(t =>
+        {
+            t.HasCheckConstraint(
+                "CK_Properties_FloorLevel",
+                $"\"FloorLevel\" IS NULL OR \"FloorLevel\" BETWEEN {SitePropertyProfileLimits.MinFloorLevel} AND {SitePropertyProfileLimits.MaxFloorLevel}");
+            t.HasCheckConstraint(
+                "CK_Properties_RenovatedYear",
+                $"\"RenovatedYear\" IS NULL OR \"RenovatedYear\" >= {SitePropertyProfileLimits.MinRenovatedYear}");
+            t.HasCheckConstraint(
+                "CK_Properties_EnergyClass",
+                "\"EnergyClass\" IS NULL OR \"EnergyClass\" IN ('A4', 'A3', 'A2', 'A1', 'A', 'B', 'C', 'D', 'E', 'F', 'G')");
+            t.HasCheckConstraint(
+                "CK_Properties_EnergyIndex",
+                $"\"EnergyIndex\" IS NULL OR (\"EnergyClass\" IS NOT NULL AND \"EnergyIndex\" >= 0 AND \"EnergyIndex\" <= {SitePropertyProfileLimits.MaxEnergyIndex})");
         });
 
         // Indexes
@@ -506,6 +644,11 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new DemoEnvironmentSettingConfiguration());
         modelBuilder.ApplyConfiguration(new TestDataMarkerConfiguration());
 
+        modelBuilder.Entity<LeaseDocument>().HasOne(d => d.LeaseContract).WithMany()
+            .HasForeignKey(d => d.LeaseContractId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<LeaseDocument>().HasIndex(d => new { d.LeaseContractId, d.UploadedAt });
+        modelBuilder.Entity<LeaseDocument>().HasIndex(d => d.OrgId);
+
         // LeaseContract → Property (restrict to preserve history)
         modelBuilder.Entity<LeaseContract>()
             .HasOne(l => l.Property)
@@ -523,6 +666,10 @@ public class AppDbContext(
 
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.PropertyId);
         modelBuilder.Entity<LeaseContract>().HasIndex(l => l.Status);
+
+        // LR-14: what is asked of the leases of an org is asked of the end of the period they are in now (the lists, the deadlines, the
+        // occupancy of a property, the tacit renewal job), never of the end the contract states.
+        modelBuilder.Entity<LeaseContract>().HasIndex(l => new { l.OrgId, l.CurrentTermEndDate });
 
         // Party → LeaseContract (cascade)
         modelBuilder.Entity<Party>()
@@ -657,6 +804,11 @@ public class AppDbContext(
         modelBuilder.Entity<RentLedgerEntry>()
             .HasIndex(e => new { e.OrgId, e.DueDate });
 
+        // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
+        modelBuilder.ApplyConfiguration(new ConcordatoFacilePurchaseConfiguration());
+        modelBuilder.ApplyConfiguration(new ConcordatoFacileGiftConfiguration());
+        modelBuilder.ApplyConfiguration(new CfSimulatedPracticeConfiguration());
+
         // ─── Multi-tenant Org boundary (US-004) ──────────────────────────────────
         // Org tenant key with a unique Slug (AC1).
         modelBuilder.Entity<Org>()
@@ -665,6 +817,11 @@ public class AppDbContext(
 
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.StripeCustomerId);
+
+        // The language of the account (AM-08b-b): the orgs that exist when the column is added get Italian, the language they have always had.
+        modelBuilder.Entity<Org>()
+            .Property(o => o.DefaultLanguage)
+            .HasDefaultValue(Casazen.Core.OrgTeam.OrgInvitationRules.DefaultLanguage);
 
         // Previous public slugs of an org (PL-04, A1-23): shared links keep resolving and the value stays reserved.
         modelBuilder.Entity<OrgSlugAlias>()
@@ -937,6 +1094,13 @@ public class AppDbContext(
 
         modelBuilder.ApplyConfiguration(new SupplierSettingsConfiguration());
 
+        // SP-REL: the events of the reliability of a supplier, a child of its profile like the agenda.
+        modelBuilder.ApplyConfiguration(new SupplierReliabilityEventConfiguration());
+
+        // SP-13a: the content of the supplier's showcase (draft, published, previous). A child of the supplier profile in cascade, like
+        // the settings; xmin is the concurrency token.
+        modelBuilder.ApplyConfiguration(new SupplierShowcaseContentConfiguration());
+
         modelBuilder.Entity<SupplierInviteRecord>()
             .HasIndex(i => i.Email);
 
@@ -1040,9 +1204,30 @@ public class AppDbContext(
         // requests leave empty. The check holds for every row that exists before this migration.
         modelBuilder.ApplyConfiguration(new ServiceRequestShowcaseConfiguration());
 
+        // ─── Backup suppliers (SP-BKP) ───────────────────────────────────────────────────────────────────────────────
+        // A request and the backups it was sent to with it are tied by a group; the group's windows decide who has the job.
+        modelBuilder.ApplyConfiguration(new ServiceRequestGroupConfiguration());
+        modelBuilder.ApplyConfiguration(new ServiceRequestGroupMembershipConfiguration());
+
+        // Whether an org's requests also go to backup suppliers: on for every org that exists (the rule is general), so the migration gives
+        // the existing rows true. EF itself always writes the value of the entity: left to generate it, EF would take an explicit false for
+        // «not set» and the insert would write the default (true) in its place, turning the rule back on for an org that switched it off.
+        modelBuilder.Entity<Org>()
+            .Property(o => o.SupplierBackupsEnabled)
+            .HasDefaultValue(true)
+            .ValueGeneratedNever();
+
+        // ─── Quote with the customer's approval (SP-04b) ──────────────────────────────────────────────────────────────
+        // The offer a supplier makes on a request still waiting for its answer: its columns, and the checks that keep it true.
+        modelBuilder.ApplyConfiguration(new ServiceRequestQuoteConfiguration());
+
         modelBuilder.ApplyConfiguration(new ServiceCustomerConfiguration());
 
         modelBuilder.ApplyConfiguration(new ShowcaseBookingHoldConfiguration());
+
+        // The request on measure (SP-10b): the inquiry that waits for the e-mail check and the messages of its thread.
+        modelBuilder.ApplyConfiguration(new ShowcaseInquiryConfiguration());
+        modelBuilder.ApplyConfiguration(new ServiceRequestMessageConfiguration());
 
         // ─── Payment of the service requests inside CasaZen (SP-15a) ─────────────
         // The commission a supplier is charged instead of the platform's (an admin sets it, SP-15b): a percentage, 0 to 50.
@@ -1239,6 +1424,12 @@ public class AppDbContext(
 
         // A retried send with the same key loses the race on UIX_GuestMessages_ThreadId_IdempotencyKey (23505) and reads the first message.
         modelBuilder.ApplyConfiguration(new GuestMessageConfiguration());
+
+        // ─── Automation routines (NF-26, ADR-022) ────────────────────────────────
+        // Unique constraint on (RoutineId, EventId) ensures idempotence: a routine executes at most once per event (ADR-022-R7).
+        modelBuilder.Entity<RoutineExecution>()
+            .HasIndex(e => new { e.RoutineId, e.EventId })
+            .IsUnique();
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
         // tenant one) so it composes independently: IgnoreQueryFilters([TenantQueryFilter]) (entitlement counts,

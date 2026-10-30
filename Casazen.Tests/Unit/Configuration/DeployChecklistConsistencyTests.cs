@@ -53,12 +53,15 @@ public class DeployChecklistConsistencyTests
         ["SafeExternalHttp"] = typeof(Casazen.Infrastructure.Http.SafeExternalHttpOptions),
         ["Rli"] = typeof(RliOptions),
         ["LeaseTemplates"] = typeof(LeaseTemplateOptions),
+        ["LeaseLetters"] = typeof(LeaseLetterOptions),
         ["ShortStayFiscal"] = typeof(ShortStayFiscalOptions),
         ["CedolareAdvisory"] = typeof(CedolareAdvisoryOptions),
         ["Cors"] = typeof(CorsOriginOptions),
         ["Seo"] = typeof(SeoBootstrapOptions),
         ["Vercel"] = typeof(VercelDomainsOptions),
         ["SupplierPayments"] = typeof(SupplierPaymentsOptions),
+        ["ApeRegistry"] = typeof(ApeRegistryOptions),
+        ["ConcordatoFacile"] = typeof(ConcordatoFacileOptions),
     };
 
     /// <summary>Roots whose keys are composed at runtime (no literal in the code, not in <c>appsettings.json</c>), with why.</summary>

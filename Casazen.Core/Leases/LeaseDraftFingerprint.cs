@@ -42,6 +42,17 @@ public static class LeaseDraftFingerprint
 
         Field(text, "start", LeaseDraftRules.ParseDate(values.StartDate)?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? LeaseDraftRules.Clean(values.StartDate));
 
+        // A transitory contract states its own end, who has its need, the need and the documentation of it (TR): all of them are printed in the
+        // contract, so a change withdraws the review. They are left out for every other type, which keeps the impression of the reviews
+        // already confirmed exactly as it was.
+        if (LeaseDraftRules.ParseContractType(values.ContractType) == LeaseContractType.Transitorio)
+        {
+            Field(text, "end", LeaseDraftRules.ParseDate(values.EndDate)?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? LeaseDraftRules.Clean(values.EndDate));
+            Field(text, "t.party", LeaseDraftRules.ParseNeedParty(values.TransitoryParty)?.ToString() ?? LeaseDraftRules.Clean(values.TransitoryParty)?.ToLowerInvariant());
+            Field(text, "t.need", LeaseDraftRules.Clean(values.TransitoryNeed));
+            Field(text, "t.documentation", LeaseDraftRules.Clean(values.TransitoryDocumentation));
+        }
+
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString()))).ToLowerInvariant();
     }
 

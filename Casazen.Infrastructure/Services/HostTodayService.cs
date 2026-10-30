@@ -172,6 +172,7 @@ public sealed class HostTodayService(
 
         var requests = await db.ServiceRequests
             .AsNoTracking()
+            .OnlyVisibleToHost()
             .Where(r => r.OrgId == scope.OrgId
                 && r.RentalContext == ServiceRequestRentalContext.ShortRent
                 && r.Category == ServiceCategories.Cleaning
@@ -238,6 +239,7 @@ public sealed class HostTodayService(
     // A request with no property is nobody's here.
     private IQueryable<ServiceRequest> HostServiceRequestsInScope(HostScope scope) => db.ServiceRequests
         .AsNoTracking()
+        .OnlyVisibleToHost()
         .Where(r => r.OrgId == scope.OrgId && r.RentalContext == ServiceRequestRentalContext.ShortRent && r.Property != null)
         .InScope(scope);
 
@@ -256,7 +258,7 @@ public sealed class HostTodayService(
             .Select(r => new ServiceRequestToAnswer(
                 r.Id,
                 r.Status,
-                r.ProposedStartUtc != null,
+                r.ProposedStartUtc != null || r.QuoteSentAt != null,
                 r.FinalAmountNeedsConfirmation,
                 r.ScheduledStartUtc,
                 r.BookingId,

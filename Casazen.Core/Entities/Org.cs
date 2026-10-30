@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.OrgTeam;
 
 namespace Casazen.Core.Entities;
 
@@ -33,6 +34,12 @@ public class Org
     [Required]
     public PlanTier PlanTier { get; set; } = PlanTier.Starter;
 
+    /// <summary>
+    /// Tier downgrade flag: when tier is Agency and this is true, B2B mutations return 403 tier_insufficient
+    /// but reads succeed (ADR-010-R5). Agency data is retained in read-only mode.
+    /// </summary>
+    public bool IsAgencyTierDowngraded { get; set; }
+
     [Required, MaxLength(200)]
     public string DisplayName { get; set; } = string.Empty;
 
@@ -44,6 +51,13 @@ public class Org
 
     [MaxLength(50)]
     public string? PublicThemeId { get; set; }
+
+    /// <summary>
+    /// The font pair of the public site (DB-01): one of <c>PublicSiteFonts.All</c> (editoriale, moderno, classico). Null = the
+    /// font its theme starts with. Set by the branding endpoint, read anonymously through <c>PublicOrgDto</c>.
+    /// </summary>
+    [MaxLength(20)]
+    public string? PublicFontId { get; set; }
 
     [MaxLength(2048)]
     public string? HeroImageUrl { get; set; }
@@ -95,6 +109,31 @@ public class Org
     /// </summary>
     [MaxLength(300)]
     public string? RegisteredOffice { get; set; }
+
+    /// <summary>
+    /// Phone number of the account (AM-08b-b): how CasaZen or the team can reach the org by phone. <c>+</c> or digits only, 6 to 15
+    /// digits (<c>OrgSettingsRules.NormalizeContactPhone</c>, the rule of <see cref="PublicPhone"/>). Unlike <see cref="PublicPhone"/> it
+    /// is <b>never published</b>: no public DTO carries it, only the org's own administrators read it back
+    /// (<c>GET/PUT api/orgs/me/settings</c>). Null = not entered.
+    /// </summary>
+    [MaxLength(20)]
+    public string? ContactPhone { get; set; }
+
+    /// <summary>
+    /// Language of the account (AM-08b-b): <c>it</c> (default) or <c>en</c>. It is the language of the emails the org sends to its team
+    /// when nobody chooses another (the default of <c>OrgInvitation.Language</c>). The language of the guests is theirs to choose, not
+    /// the org's. Existing orgs have <c>it</c>.
+    /// </summary>
+    [MaxLength(2)]
+    public string DefaultLanguage { get; set; } = OrgInvitationRules.DefaultLanguage;
+
+    /// <summary>
+    /// Whether a request this org sends to a supplier is also sent to up to three backup suppliers, declared as such (SP-BKP): the
+    /// primary has one hour, and the first backup that accepts has the job if the primary does not. <b>On by default</b>, because the
+    /// rule is general; the org turns it off with <c>PUT api/orgs/me/service-request-settings</c> and a single request can turn it off
+    /// too (<c>useBackupSuppliers</c>). It only matters while the feature flag <c>SupplierRequestBackups</c> is on.
+    /// </summary>
+    public bool SupplierBackupsEnabled { get; set; } = true;
 
     [MaxLength(255)]
     public string ContactEmail { get; set; } = string.Empty;

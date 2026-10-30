@@ -56,6 +56,29 @@ public class FileStorageIntegrationTests : IClassFixture<CasazenWebApplicationFa
     }
 
     [PostgresFact]
+    public async Task LegacyCinPngUpload_KeepsNameAndBytesExpectedByActivationWizard()
+    {
+        var ownerId = NewOwner();
+        var property = await _factory.SeedPropertyAsync(ownerId);
+        using var owner = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
+        using var form = new MultipartFormDataContent();
+        var png = new ByteArrayContent(PngBytes);
+        png.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        form.Add(png, "file", "CinCertificate.png");
+        form.Add(new StringContent("CinCertificate"), "documentType");
+
+        var response = await owner.PostAsync($"/api/properties/{property.Id}/documents", form);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        using var metadata = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("CinCertificate.png", metadata.RootElement.GetProperty("fileName").GetString());
+        var download = await owner.GetAsync(metadata.RootElement.GetProperty("downloadUrl").GetString());
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal(PngBytes, await download.Content.ReadAsByteArrayAsync());
+        Assert.Equal("image/png", download.Content.Headers.ContentType?.MediaType);
+    }
+
+    [PostgresFact]
     public async Task DownloadDocument_UserOfAnotherOrg_IsDeniedWithoutFileContent()
     {
         var ownerId = NewOwner();

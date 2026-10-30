@@ -437,6 +437,15 @@ public class BookingsController(
         // check, which would answer "too many guests (0)" for a property without guest capacity.
         PropertyRentalModeRules.EnsureShortRent(property);
 
+        // ADR-001-R10: direct booking for CHF properties not supported in phase 1 (deferred per D-02).
+        if (property.Currency != "EUR")
+        {
+            return this.ApiProblem(
+                StatusCodes.Status501NotImplemented,
+                DirectBookingErrorCodes.CurrencyNotSupported,
+                "DirectBookingCurrencyNotSupported");
+        }
+
         if (request.NumberOfGuests > property.MaxGuests)
         {
             return this.ApiProblem(

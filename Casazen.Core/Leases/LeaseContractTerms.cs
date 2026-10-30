@@ -32,6 +32,26 @@ public static class LeaseContractTerms
     public const int TransitorioMaximumMonths = 18;
 
     /// <summary>
+    /// A transitory contract that lasts more than this many days must prove its need with documentation attached to the contract
+    /// (D.M. 16/01/2017 art. 2 c. 4); one of 30 days or less is free of that and of the band of the rent (art. 2 c. 2).
+    /// </summary>
+    public const int TransitorioDocumentationAfterDays = 30;
+
+    /// <summary>
+    /// In the municipalities with more than this many inhabitants the rent of a transitory contract is defined inside the bands of the
+    /// territorial agreement (D.M. 16/01/2017 art. 2 c. 2). CasaZen does not check it (TR-FU1): the review only tells the landlord.
+    /// </summary>
+    public const int TransitorioBandFromInhabitants = 10_000;
+
+    /// <summary>
+    /// True when a transitory contract from <paramref name="startDate"/> to the inclusive <paramref name="endDate"/> lasts more than
+    /// <see cref="TransitorioDocumentationAfterDays"/> days, so its need must be documented (art. 2 c. 4). An end before the start lasts
+    /// no days.
+    /// </summary>
+    public static bool TransitoryNeedsDocumentation(DateTime startDate, DateTime endDate) =>
+        (endDate.Date - startDate.Date).Days + 1 > TransitorioDocumentationAfterDays;
+
+    /// <summary>
     /// Legacy combined value (template, IMU notice, cedolare advisory): a concordato lease is always
     /// <see cref="FiscalRegime.CanoneConcordato"/>; the other types follow the tax regime.
     /// </summary>
@@ -58,26 +78,44 @@ public static class LeaseContractTerms
     /// </summary>
     public static void EnsureTerm(LeaseContractType type, DateTime startDate, DateTime endDate)
     {
-        if (LeaseTerm.Between(startDate, endDate) is not { } term || endDate.Date <= startDate.Date)
-            throw new DomainRuleException(LeaseTermErrorCodes.EndBeforeStart, "LeaseEndBeforeStart");
+        if (CheckTerm(type, startDate, endDate) is { } problem)
+            throw new DomainRuleException(problem.Code, problem.MessageKey);
+    }
 
-        switch (type)
+    /// <summary>
+    /// The check of <see cref="EnsureTerm"/> without the exception (LR-13: the guided draft of an imported contract reports the problem
+    /// as something to fix, it does not refuse the request): <c>null</c> when the term is allowed. Without a type only the order of the
+    /// dates is checked.
+    /// </summary>
+    public static LeaseTermProblem? CheckTerm(LeaseContractType? type, DateTime startDate, DateTime endDate)
+    {
+        if (LeaseTerm.Between(startDate, endDate) is not { } term || endDate.Date <= startDate.Date)
+            return new LeaseTermProblem(LeaseTermErrorCodes.EndBeforeStart, "LeaseEndBeforeStart", null, null);
+
+        return type switch
         {
-            case LeaseContractType.Libero when term.Months < LiberoMinimumMonths:
-                throw new DomainRuleException(LeaseTermErrorCodes.TooShort, "LeaseTermTooShortLibero");
-            case LeaseContractType.Concordato when term.Months < ConcordatoMinimumMonths:
-                throw new DomainRuleException(LeaseTermErrorCodes.TooShort, "LeaseTermTooShortConcordato");
-            case LeaseContractType.Transitorio when term.Months < TransitorioMinimumMonths:
-                throw new DomainRuleException(LeaseTermErrorCodes.TooShort, "LeaseTermOutOfRangeTransitorio");
-            case LeaseContractType.Transitorio when IsLongerThan(term, TransitorioMaximumMonths):
-                throw new DomainRuleException(LeaseTermErrorCodes.TooLong, "LeaseTermOutOfRangeTransitorio");
-        }
+            LeaseContractType.Libero when term.Months < LiberoMinimumMonths =>
+                new LeaseTermProblem(LeaseTermErrorCodes.TooShort, "LeaseTermTooShortLibero", LiberoMinimumMonths, null),
+            LeaseContractType.Concordato when term.Months < ConcordatoMinimumMonths =>
+                new LeaseTermProblem(LeaseTermErrorCodes.TooShort, "LeaseTermTooShortConcordato", ConcordatoMinimumMonths, null),
+            LeaseContractType.Transitorio when term.Months < TransitorioMinimumMonths =>
+                new LeaseTermProblem(LeaseTermErrorCodes.TooShort, "LeaseTermOutOfRangeTransitorio", TransitorioMinimumMonths, TransitorioMaximumMonths),
+            LeaseContractType.Transitorio when IsLongerThan(term, TransitorioMaximumMonths) =>
+                new LeaseTermProblem(LeaseTermErrorCodes.TooLong, "LeaseTermOutOfRangeTransitorio", TransitorioMinimumMonths, TransitorioMaximumMonths),
+            _ => null,
+        };
     }
 
     /// <summary>True when <paramref name="term"/> is longer than exactly <paramref name="months"/> months.</summary>
     public static bool IsLongerThan(LeaseTerm term, int months) =>
         term.Months > months || (term.Months == months && term.Days > 0);
 }
+
+/// <summary>
+/// What is wrong with a term (<see cref="LeaseContractTerms.CheckTerm"/>): the code and the message key of the 422 it would be, and the
+/// limits of the type in whole months (<c>MaxMonths</c> only where the type has one).
+/// </summary>
+public sealed record LeaseTermProblem(string Code, string MessageKey, int? MinMonths, int? MaxMonths);
 
 /// <summary>Stable codes of the canone concordato checks at lease creation (LT-10, A7-12), answered as 422.</summary>
 public static class ConcordatoErrorCodes

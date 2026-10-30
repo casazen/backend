@@ -36,9 +36,7 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        _database = await PostgresTestDatabase.CreateAsync();
-        await using (var db = _database.CreateContext())
-            await db.Database.MigrateAsync();
+        _database = await PostgresTestDatabase.CreateMigratedAsync();
 
         _kit = new OrgInvitationTestKit(() => _database.CreateContext());
     }
@@ -55,7 +53,7 @@ public class InAppNotificationsPostgresTests : IAsyncLifetime
         new(db, _clock, NullLogger<InAppNotificationService>.Instance);
 
     private InAppNotificationJob Job(AppDbContext db) =>
-        new(db, _clock, NullLogger<InAppNotificationJob>.Instance);
+        new(db, _clock, new NoOpInAppNotificationPublisher(), NullLogger<InAppNotificationJob>.Instance);
 
     /// <summary>One run of the job on a context of its own, the way a Hangfire worker takes it.</summary>
     private async Task RunJobAsync(string deliveryKey, QueuedInAppNotification queued)

@@ -140,6 +140,7 @@ public static class ICalFeedParser
             }
 
             var summary = Clean(calendarEvent.Summary, keepSpaces: true);
+            var currency = ExtractCurrency(calendarEvent);
             var isSeries = calendarEvent.RecurrenceId is null
                 && (calendarEvent.RecurrenceRules.Count > 0 || calendarEvent.RecurrenceDates.Count > 0);
 
@@ -150,7 +151,7 @@ public static class ICalFeedParser
             {
                 var end = calendarEvent.DtEnd
                     ?? (calendarEvent.Duration > TimeSpan.Zero ? start.Add(calendarEvent.Duration) : null);
-                Add(uid, summary, start, end, inWindowOnly: false, transparent, recurring);
+                Add(uid, summary, start, end, inWindowOnly: false, transparent, recurring, currency);
                 return;
             }
 
@@ -176,12 +177,12 @@ public static class ICalFeedParser
                 if ((occurrenceEnd is null || !occurrenceEnd.GreaterThan(occurrenceStart)) && occurrence.Period.Duration > TimeSpan.Zero)
                     occurrenceEnd = occurrenceStart.Add(occurrence.Period.Duration);
 
-                Add(uid, summary, occurrenceStart, occurrenceEnd, inWindowOnly: true, transparent, recurring);
+                Add(uid, summary, occurrenceStart, occurrenceEnd, inWindowOnly: true, transparent, recurring, currency);
             }
         }
 
         private void Add(
-            string? uid, string? summary, IDateTime start, IDateTime? end, bool inWindowOnly, bool transparent, bool recurring)
+            string? uid, string? summary, IDateTime start, IDateTime? end, bool inWindowOnly, bool transparent, bool recurring, string? currency)
         {
             if (ToSpan(start, end) is not { } span)
             {
@@ -195,7 +196,7 @@ public static class ICalFeedParser
                 return;
 
             var occurrence = new ICalOccurrence(
-                uid, summary, span.StartDate, span.EndDate, span.LastDay, span.StartUtc, span.EndUtc, span.IsAllDay, recurring);
+                uid, summary, span.StartDate, span.EndDate, span.LastDay, span.StartUtc, span.EndUtc, span.IsAllDay, recurring, currency);
             if (!transparent)
                 _occurrences.Add(occurrence);
             else if (span.LastDay >= transparentFrom)
@@ -328,6 +329,15 @@ public static class ICalFeedParser
 
     private static bool IsTransparent(CalendarEvent calendarEvent) =>
         string.Equals(calendarEvent.Transparency?.Trim(), TransparencyType.Transparent, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Extract X-CURRENCY custom property from the event (ADR-002-R8, NF-02); null when not present.</summary>
+    private static string? ExtractCurrency(CalendarEvent calendarEvent)
+    {
+        var property = calendarEvent.Properties.FirstOrDefault(p =>
+            string.Equals(p.Name, "X-CURRENCY", StringComparison.OrdinalIgnoreCase));
+        var value = property?.Value?.ToString()?.Trim().ToUpperInvariant();
+        return !string.IsNullOrWhiteSpace(value) && value.Length == 3 ? value : null;
+    }
 
     private static bool IsMoreThanDaily(RecurrencePattern rule) =>
         rule.Frequency is FrequencyType.None or FrequencyType.Secondly or FrequencyType.Minutely or FrequencyType.Hourly

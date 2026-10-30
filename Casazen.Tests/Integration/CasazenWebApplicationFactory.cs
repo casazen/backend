@@ -10,6 +10,7 @@ using Casazen.Tests.Unit.Services;
 using Casazen.Web.Extensions;
 using Hangfire;
 using Hangfire.Common;
+using Hangfire.InMemory;
 using Hangfire.States;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
@@ -109,6 +110,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["RateLimiting:GuestSessionPerCode:PermitLimit"] = "1000",
                 ["RateLimiting:GuestMessageSend:PermitLimit"] = "1000",
                 ["RateLimiting:GuestMessagePerSession:PermitLimit"] = "1000",
+                ["RateLimiting:GuestBookingCancel:PermitLimit"] = "1000",
+                ["RateLimiting:GuestBookingCancelPerBooking:PermitLimit"] = "1000",
                 ["RateLimiting:HostMessageSend:PermitLimit"] = "1000",
                 ["RateLimiting:PublicIcal:PermitLimit"] = "1000",
                 ["RateLimiting:PublicRegistration:PermitLimit"] = "1000",
@@ -171,6 +174,10 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             RemoveAllOf<IDataProtectionProvider>(services);
             services.AddSingleton<IDataProtectionProvider>(SharedDataProtectionProvider);
 
+            // Initialize Hangfire with in-memory storage for integration tests
+            // This allows services to enqueue background jobs without a real Hangfire server
+            GlobalConfiguration.Configuration.UseInMemoryStorage();
+
             RemoveService<IBackgroundJobClient>(services);
             BackgroundJobClientMock
                 .Setup(c => c.Create(It.IsAny<Job>(), It.IsAny<IState>()))
@@ -213,9 +220,12 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
             RemoveAllOf<IApeComplianceService>(services);
             var ape = new Mock<IApeComplianceService>();
             ape.Setup(s => s.EnsurePropertyHasValidApeAsync(It.IsAny<Guid>())).Returns(Task.CompletedTask);
-            ape.Setup(s => s.EnsureUploadedFileIsOfficialApeAsync(It.IsAny<IFormFile>()))
-                .Returns(Task.CompletedTask);
+            ape.Setup(s => s.CheckUploadedApeAsync(It.IsAny<IFormFile>(), It.IsAny<ApeRegistryContext?>()))
+                .ReturnsAsync(ApeUploadCheck.Passed);
             services.AddSingleton(ape.Object);
+            // The public register of the APE is never asked from a test: a suite that needs it gives its own answer.
+            RemoveAllOf<IApeRegistryLookup>(services);
+            services.AddSingleton(Mock.Of<IApeRegistryLookup>());
         });
     }
 

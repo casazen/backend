@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.SiteProfile;
 
 namespace Casazen.Core.Demo;
 
@@ -15,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-10-13.1";
+    public const string Version = "2026-10-30.2";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -30,9 +31,35 @@ public static class DemoShowcaseCatalog
         public const string LongStayCadastral = "long-stay-cadastral";
         public const string BookingUpcoming = "booking-upcoming";
         public const string BookingPast = "booking-past";
+        public const string BookingManualLight = "booking-manual-light";
         public const string HostInvitePending = "host-invite-pending";
         public const string HostInviteUsed = "host-invite-used";
         public const string HostInviteExpired = "host-invite-expired";
+        public const string PropertyOwnerAgency = "property-owner-agency";
+        public const string AgencyInvoiceIssued = "agency-invoice-issued";
+        public const string CampaignDraft = "campaign-draft";
+        public const string CampaignApproved = "campaign-approved";
+        public const string CampaignSent = "campaign-sent";
+        public const string AgencyPropertiesCrossRegion = "agency-properties-cross-region";
+        public const string OwnerShares = "owner-shares";
+        public const string OwnerMandate = "owner-mandate";
+        public const string StaffCollaborator = "staff-collaborator";
+        public const string TrustedSupplier = "trusted-supplier";
+        public const string BookingOtaIcal = "booking-ota-ical";
+        public const string CheckInPending = "checkin-pending";
+        public const string CheckInBiometricPassed = "checkin-biometric-passed";
+        public const string CheckInOperatorVerified = "checkin-operator-verified";
+        public const string CheckInRejected = "checkin-rejected";
+        public const string AlloggiatiSentReceiptPending = "alloggiati-sent-receipt-pending";
+        public const string AlloggiatiRegistered = "alloggiati-registered";
+        public const string StatementPublished = "statement-published";
+        public const string WithholdingSummary = "withholding-summary";
+        public const string F24Record = "f24-record";
+        public const string WireBatchGenerated = "wire-batch-generated";
+        public const string RoutineActive = "routine-active";
+        public const string RoutineTestMode = "routine-test-mode";
+        public const string PropertyWizardFields = "property-wizard-fields";
+        public const string PropertySiteProfile = "property-site-profile";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -44,9 +71,35 @@ public static class DemoShowcaseCatalog
         Scenario.LongStayCadastral,
         Scenario.BookingUpcoming,
         Scenario.BookingPast,
+        Scenario.BookingManualLight,
         Scenario.HostInvitePending,
         Scenario.HostInviteUsed,
         Scenario.HostInviteExpired,
+        Scenario.PropertyOwnerAgency,
+        Scenario.AgencyInvoiceIssued,
+        Scenario.CampaignDraft,
+        Scenario.CampaignApproved,
+        Scenario.CampaignSent,
+        Scenario.AgencyPropertiesCrossRegion,
+        Scenario.OwnerShares,
+        Scenario.OwnerMandate,
+        Scenario.StaffCollaborator,
+        Scenario.TrustedSupplier,
+        Scenario.BookingOtaIcal,
+        Scenario.CheckInPending,
+        Scenario.CheckInBiometricPassed,
+        Scenario.CheckInOperatorVerified,
+        Scenario.CheckInRejected,
+        Scenario.AlloggiatiSentReceiptPending,
+        Scenario.AlloggiatiRegistered,
+        Scenario.StatementPublished,
+        Scenario.WithholdingSummary,
+        Scenario.F24Record,
+        Scenario.WireBatchGenerated,
+        Scenario.RoutineActive,
+        Scenario.RoutineTestMode,
+        Scenario.PropertyWizardFields,
+        Scenario.PropertySiteProfile,
     ];
 
     /// <summary>
@@ -58,6 +111,57 @@ public static class DemoShowcaseCatalog
         new("in-attesa", "host.demo.in-attesa@example.com", "Ciao, provaci anche tu (invito di dimostrazione).", -1, DemoHostInviteState.Pending, Scenario.HostInvitePending),
         new("accettato", "host.demo.accettato@example.com", null, -10, DemoHostInviteState.Used, Scenario.HostInviteUsed),
         new("scaduto", "host.demo.scaduto@example.com", null, -20, DemoHostInviteState.Expired, Scenario.HostInviteExpired),
+    ];
+
+    /// <summary>
+    /// Property owners of the agency demo (ADR-012): multiple owners with fiscal code and IBAN to exercise the
+    /// encryption, ownership shares, mandates with commission rates, the list endpoint with masked IBAN, and the financial read endpoint.
+    /// </summary>
+    public static IReadOnlyList<DemoPropertyOwnerTemplate> PropertyOwners { get; } =
+    [
+        new("mario-rossi", "Mario", "Rossi", "proprietario.demo@example.com", "+39 333 1234567",
+            "RSSMRA70A01H501X", "IT60X0542811101000000123456", OwnerTaxRegime.Private, 100m, 15m, Scenario.PropertyOwnerAgency),
+        new("giulia-bianchi", "Giulia", "Bianchi", "giulia.proprietario@example.com", "+39 334 9876543",
+            "BNCGLI75C42F205Z", "IT28W8000000292100645211151", OwnerTaxRegime.Private, 50m, 12m, Scenario.OwnerShares),
+        new("luca-verdi", "Luca", "Verdi", "luca.proprietario@example.com", "+39 335 1122334",
+            "VRDLCU80D15F205A", "IT10J0200805017000105432100", OwnerTaxRegime.Private, 50m, 12m, Scenario.OwnerShares),
+        new("anna-ferrari", "Anna", "Ferrari", "anna.proprietario@example.com", "+39 336 5544332",
+            "FRRNNA85E50H501B", "IT07X0300203280284975071923", OwnerTaxRegime.VatHolder, 100m, 18m, Scenario.OwnerMandate),
+    ];
+
+    /// <summary>
+    /// Agency invoices demo (ADR-019): one issued invoice to demonstrate the invoice generation flow.
+    /// Series is the year, invoice number is sequential, amounts are test data.
+    /// </summary>
+    public static IReadOnlyList<DemoAgencyInvoiceTemplate> AgencyInvoices { get; } =
+    [
+        new("fattura-001", "mario-rossi", "2026", "1", 10, 2026, 100.00m, 22.00m, Scenario.AgencyInvoiceIssued),
+    ];
+
+    /// <summary>
+    /// Guest segments for marketing campaigns (NF-24): simple condition to demo segment UI and recipient filtering.
+    /// Empty condition JSON matches all guests (with consent filtering applied at send time).
+    /// </summary>
+    public static IReadOnlyList<DemoGuestSegmentTemplate> GuestSegments { get; } =
+    [
+        new("ospiti-fedeli", "Ospiti fedeli (DEMO)", "{\"version\":\"1.0\",\"groups\":[]}", Scenario.CampaignDraft),
+    ];
+
+    /// <summary>
+    /// Marketing campaigns (NF-24): one in each status to demonstrate the campaign lifecycle.
+    /// Email addresses are @example.com, data clearly marked as TEST.
+    /// </summary>
+    public static IReadOnlyList<DemoCampaignTemplate> Campaigns { get; } =
+    [
+        new("bozza", "ospiti-fedeli", "Offerta TEST - Sconto primavera (BOZZA)",
+            "<p>Caro ospite,</p><p>Ti offriamo uno sconto del 15% per soggiorni primaverili. <strong>QUESTA È UNA EMAIL DI TEST</strong>.</p>",
+            false, CampaignStatus.Draft, -5, null, null, 0, 0, Scenario.CampaignDraft),
+        new("approvata", "ospiti-fedeli", "Novità TEST - Nuova struttura disponibile",
+            "<p>Ciao,</p><p>Abbiamo una nuova villa sul lago disponibile per prenotazioni. <strong>QUESTA È UNA EMAIL DI TEST</strong>.</p>",
+            false, CampaignStatus.Approved, -3, null, null, 0, 0, Scenario.CampaignApproved),
+        new("inviata", "ospiti-fedeli", "Grazie TEST - Fine estate",
+            "<p>Grazie per averci scelto quest'estate! <strong>QUESTA È UNA EMAIL DI TEST</strong>.</p>",
+            true, CampaignStatus.Sent, -10, -7, -7, 42, 3, Scenario.CampaignSent),
     ];
 
     public static IReadOnlyList<DemoPropertyTemplate> Properties { get; } =
@@ -75,11 +179,61 @@ public static class DemoShowcaseCatalog
             NightlyRate: 180m,
             CleaningFee: 40m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast],
+            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile],
+            Profile: new DemoPropertyProfile(
+                AccommodationType.HouseOrVilla, 5, 140, "Villa sul lago con giardino (demo)",
+                new TimeOnly(15, 0), new TimeOnly(10, 0), SmokingPolicy.No, PetsPolicy.OnRequest, PartiesPolicy.No,
+                new TimeOnly(22, 0), new TimeOnly(8, 0), 20m),
+            // DB-11a: what the host says about the house on its public page: invented like the rest of the demo, no video or tour (nothing
+            // of a third party is embedded from a demo).
+            SiteProfile: new SitePropertyProfileInput(
+                FloorLevel: 0,
+                RenovatedYear: 2022,
+                EnergyClass: "C",
+                EnergyIndex: 112.5m,
+                AreaKind: null,
+                ChildrenWelcome: true,
+                CheckInTo: new TimeOnly(20, 0),
+                VideoUrl: null,
+                TourUrl: null,
+                Zone: new LocalizedTextInput("Lungolago di Como (demo)", "Como lakefront (demo)"),
+                Near: new LocalizedTextInput("A cinque minuti a piedi dal lago", "Five minutes on foot from the lake"),
+                FloorNote: new LocalizedTextInput("Piano terra, senza scale", "Ground floor, no stairs"),
+                OutdoorNote: new LocalizedTextInput("Giardino di 300 m² con accesso al lago", "300 m² garden with lake access"),
+                CheckInMethod: new LocalizedTextInput("In autonomia, con cassetta a codice", "Self check-in with a code key box"),
+                RulesNote: new LocalizedTextInput("Dimostrazione: silenzio dopo le 22.", "Demo: quiet after 10 pm."),
+                Highlights:
+                [
+                    new SiteHighlightInput("sunset", new LocalizedTextInput("Vista sul lago", "Lake view"), new LocalizedTextInput("Tramonti dal giardino.", "Sunsets from the garden.")),
+                    new SiteHighlightInput("trees", new LocalizedTextInput("Giardino privato", "Private garden"), null),
+                    new SiteHighlightInput("key", new LocalizedTextInput("Check-in autonomo", "Self check-in"), null),
+                ],
+                SafetyNotes: [new LocalizedTextInput("Rilevatore di fumo", "Smoke detector"), new LocalizedTextInput("Estintore", "Fire extinguisher")],
+                Tags: []),
+            Pois:
+            [
+                new(PoiKind.Beach, "Lido di Como (demo)", "Como lido (demo)", PoiTravelMode.Walk, 6, CompassPoint.S, 450),
+                new(PoiKind.Food, "Trattoria sul lungolago (demo)", "Lakefront trattoria (demo)", PoiTravelMode.Walk, 3, CompassPoint.SE, 250),
+                new(PoiKind.Sight, "Funicolare per Brunate (demo)", "Brunate funicular (demo)", PoiTravelMode.Walk, 15, CompassPoint.NE, 1300),
+                new(PoiKind.Transport, "Stazione di Como San Giovanni (demo)", "Como San Giovanni station (demo)", PoiTravelMode.Car, 10, CompassPoint.W, 3200),
+            ],
             Bookings:
             [
                 new("arrivo", "Giulia", "Bianchi", "ospite.demo.arrivo@example.com", 14, 4, BookingStatus.Confirmed, Scenario.BookingUpcoming),
                 new("partito", "Marco", "Rossi", "ospite.demo.partito@example.com", -20, 4, BookingStatus.CheckedOut, Scenario.BookingPast),
+                // SR-06a: entered by hand with only the name and the email, at a price agreed over the phone (the guest gives the rest with the online check-in).
+                new(
+                    "a-mano",
+                    "Elena",
+                    string.Empty,
+                    "ospite.demo.a-mano@example.com",
+                    40,
+                    3,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingManualLight,
+                    BookingSource.Manual,
+                    AgreedTotal: 500m,
+                    PriceNote: "Concordato al telefono (dimostrazione)"),
             ]),
         new(
             Key: "appartamento-brera",
@@ -95,6 +249,10 @@ public static class DemoShowcaseCatalog
             CleaningFee: 30m,
             Cadastral: null,
             Scenarios: [Scenario.PublishedLombardia],
+            Profile: new DemoPropertyProfile(
+                AccommodationType.Apartment, 2, 55, null,
+                new TimeOnly(14, 0), new TimeOnly(11, 0), SmokingPolicy.OutdoorsOnly, PetsPolicy.No, PartiesPolicy.No,
+                new TimeOnly(22, 0), new TimeOnly(8, 0), null),
             Bookings: []),
         new(
             Key: "casa-trastevere",
@@ -109,8 +267,15 @@ public static class DemoShowcaseCatalog
             NightlyRate: 160m,
             CleaningFee: 35m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLazio],
-            Bookings: []),
+            Scenarios: [Scenario.PublishedLazio, Scenario.AlloggiatiRegistered],
+            Profile: new DemoPropertyProfile(
+                AccommodationType.Apartment, 3, 70, "Casa nel cuore di Trastevere (demo)",
+                new TimeOnly(15, 0), new TimeOnly(10, 30), SmokingPolicy.No, PetsPolicy.Yes, PartiesPolicy.OnRequest,
+                new TimeOnly(23, 0), new TimeOnly(7, 0), 15m),
+            Bookings:
+            [
+                new("past-guest-roma", "Francesca", "Romano", "francesca.demo@example.com", -15, 5, BookingStatus.CheckedOut, Scenario.AlloggiatiRegistered),
+            ]),
         new(
             Key: "bilocale-navigli",
             Name: "Bilocale Navigli (demo)",
@@ -140,7 +305,190 @@ public static class DemoShowcaseCatalog
             CleaningFee: 20m,
             Cadastral: null,
             Scenarios: [Scenario.ActivationPending],
+            Profile: new DemoPropertyProfile(
+                AccommodationType.RoomOrSuite, 1, 28, null,
+                null, null, null, null, null,
+                null, null, null),
             Bookings: []),
+        new(
+            Key: "attico-firenze",
+            Name: "Attico Firenze (demo)",
+            Place: new DemoPlace("Firenze", "048017", "TOS", "50122", "Via dei Calzaiuoli 8"),
+            Description: "Annuncio di dimostrazione a Firenze. Dati, CIN e documenti sono inventati e segnati come test.",
+            Mode: RentalMode.Short,
+            Publish: true,
+            Bedrooms: 2,
+            Bathrooms: 2,
+            MaxGuests: 5,
+            NightlyRate: 200m,
+            CleaningFee: 45m,
+            Cadastral: null,
+            Scenarios: [Scenario.AgencyPropertiesCrossRegion],
+            Bookings:
+            [
+                new("airbnb-ical", "Thomas", "Schmidt", "thomas.demo@example.com", 7, 3, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.Airbnb),
+            ]),
+        new(
+            Key: "loft-torino",
+            Name: "Loft Torino (demo)",
+            Place: new DemoPlace("Torino", "001272", "PIE", "10123", "Via Garibaldi 25"),
+            Description: "Annuncio di dimostrazione a Torino. Dati, CIN e documenti sono inventati e segnati come test.",
+            Mode: RentalMode.Short,
+            Publish: true,
+            Bedrooms: 1,
+            Bathrooms: 1,
+            MaxGuests: 2,
+            NightlyRate: 120m,
+            CleaningFee: 25m,
+            Cadastral: null,
+            Scenarios: [Scenario.AgencyPropertiesCrossRegion, Scenario.CheckInRejected],
+            Bookings:
+            [
+                new("rejected-guest", "Paolo", "Neri", "paolo.demo@example.com", -5, 2, BookingStatus.CheckedOut, Scenario.CheckInRejected),
+            ]),
+        new(
+            Key: "villa-lugano",
+            Name: "Villa Lugano (demo)",
+            Place: new DemoPlace("Lugano", "999999", "TIC", "6900", "Via Nassa 15"),
+            Description: "Annuncio di dimostrazione a Lugano, Ticino. Dati, CIN e documenti sono inventati e segnati come test.",
+            Mode: RentalMode.Short,
+            Publish: true,
+            Bedrooms: 4,
+            Bathrooms: 3,
+            MaxGuests: 8,
+            NightlyRate: 250m,
+            CleaningFee: 60m,
+            Cadastral: null,
+            Scenarios: [Scenario.AgencyPropertiesCrossRegion],
+            Bookings: []),
+        new(
+            Key: "chalet-locarno",
+            Name: "Chalet Locarno (demo)",
+            Place: new DemoPlace("Locarno", "999998", "TIC", "6600", "Via della Motta 8"),
+            Description: "Annuncio di dimostrazione a Locarno, Ticino. Dati, CIN e documenti sono inventati e segnati come test.",
+            Mode: RentalMode.Short,
+            Publish: true,
+            Bedrooms: 3,
+            Bathrooms: 2,
+            MaxGuests: 6,
+            NightlyRate: 190m,
+            CleaningFee: 50m,
+            Cadastral: null,
+            Scenarios: [Scenario.AgencyPropertiesCrossRegion],
+            Bookings: []),
+        new(
+            Key: "appartamento-napoli",
+            Name: "Appartamento Napoli (demo)",
+            Place: new DemoPlace("Napoli", "063049", "CAM", "80134", "Via Toledo 156"),
+            Description: "Annuncio di dimostrazione a Napoli. Dati, CIN e documenti sono inventati e segnati come test.",
+            Mode: RentalMode.Short,
+            Publish: true,
+            Bedrooms: 2,
+            Bathrooms: 1,
+            MaxGuests: 4,
+            NightlyRate: 150m,
+            CleaningFee: 35m,
+            Cadastral: null,
+            Scenarios: [Scenario.AgencyPropertiesCrossRegion],
+            Bookings: []),
+        new(
+            Key: "villa-amalfi",
+            Name: "Villa Amalfi (demo)",
+            Place: new DemoPlace("Amalfi", "065006", "CAM", "84011", "Via Lorenzo d'Amalfi 3"),
+            Description: "Annuncio di dimostrazione ad Amalfi. Dati, CIN e documenti sono inventati e segnati come test.",
+            Mode: RentalMode.Short,
+            Publish: true,
+            Bedrooms: 3,
+            Bathrooms: 2,
+            MaxGuests: 6,
+            NightlyRate: 220m,
+            CleaningFee: 55m,
+            Cadastral: null,
+            Scenarios: [Scenario.AgencyPropertiesCrossRegion],
+            Bookings:
+            [
+                new("booking-com-ical", "Marie", "Dubois", "marie.demo@example.com", 21, 5, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.BookingCom),
+            ]),
+    ];
+
+    /// <summary>
+    /// Staff members of the agency demo: collaborators who handle guests and properties.
+    /// </summary>
+    public static IReadOnlyList<DemoStaffTemplate> StaffMembers { get; } =
+    [
+        new("sofia-conte", "Sofia", "Conte", "sofia.staff@example.com", "+39 340 1234567", OrgRole.Collaborator, Scenario.StaffCollaborator),
+        new("marco-galli", "Marco", "Galli", "marco.staff@example.com", "+39 341 7654321", OrgRole.Collaborator, Scenario.StaffCollaborator),
+    ];
+
+    /// <summary>
+    /// Trusted suppliers of the agency demo: one trusted supplier to demonstrate supplier management.
+    /// </summary>
+    public static IReadOnlyList<DemoSupplierTemplate> Suppliers { get; } =
+    [
+        new("pulizie-express", "Pulizie Express DEMO", "Servizio pulizie di fiducia (DEMO)", "info@pulizieexpress.example.com",
+            "+39 342 9988776", true, Scenario.TrustedSupplier),
+    ];
+
+    /// <summary>
+    /// Check-in verifications demo: all verification states to demonstrate the biometric and operator verification flow.
+    /// No real faces - only recorded biometric outcomes.
+    /// </summary>
+    public static IReadOnlyList<DemoCheckInTemplate> CheckIns { get; } =
+    [
+        new("pending-verification", "villa-lago", "arrivo", "Pending", null, false, false, Scenario.CheckInPending),
+        new("biometric-passed", "attico-firenze", "airbnb-ical", "Completed", BiometricOutcome.Accept, true, false, Scenario.CheckInBiometricPassed),
+        new("operator-verified", "villa-amalfi", "booking-com-ical", "Completed", BiometricOutcome.Escalate, true, true, Scenario.CheckInOperatorVerified),
+        new("rejected", "loft-torino", "rejected-guest", "Rejected", BiometricOutcome.Reject, false, false, Scenario.CheckInRejected),
+    ];
+
+    /// <summary>
+    /// Alloggiati reports demo: reports in all states including SentReceiptPending with a fake receipt.
+    /// </summary>
+    public static IReadOnlyList<DemoAlloggiatiTemplate> AlloggiatiReports { get; } =
+    [
+        new("sent-receipt-pending", "villa-lago", "partito", RegistrationStatus.SentToProvider, true, false, Scenario.AlloggiatiSentReceiptPending),
+        new("registered", "casa-trastevere", "past-guest-roma", RegistrationStatus.Registered, true, true, Scenario.AlloggiatiRegistered),
+    ];
+
+    /// <summary>
+    /// Published owner statements demo (ADR-017): one published statement to demonstrate the statement lifecycle.
+    /// </summary>
+    public static IReadOnlyList<DemoStatementTemplate> Statements { get; } =
+    [
+        new("statement-2026-09", "mario-rossi", 9, 2026, StatementStatus.Published, 2500.00m, 375.00m, 2125.00m, Scenario.StatementPublished),
+    ];
+
+    /// <summary>
+    /// Withholding summaries demo: one summary to demonstrate the withholding tax calculation.
+    /// </summary>
+    public static IReadOnlyList<DemoWithholdingTemplate> WithholdingSummaries { get; } =
+    [
+        new("withholding-2026-q3", "mario-rossi", 3, 2026, 1200.00m, 240.00m, Scenario.WithholdingSummary),
+    ];
+
+    /// <summary>
+    /// F24 records demo: one F24 record to demonstrate the F24 tax payment flow.
+    /// </summary>
+    public static IReadOnlyList<DemoF24Template> F24Records { get; } =
+    [
+        new("f24-2026-09", "mario-rossi", 9, 2026, 240.00m, "1001", Scenario.F24Record),
+    ];
+
+    /// <summary>
+    /// Wire batches demo: one generated batch to demonstrate the wire transfer batch lifecycle.
+    /// </summary>
+    public static IReadOnlyList<DemoWireBatchTemplate> WireBatches { get; } =
+    [
+        new("batch-2026-10", 10, 2026, WireBatchStatus.Generated, 4, 8500.00m, Scenario.WireBatchGenerated),
+    ];
+
+    /// <summary>
+    /// Automation routines demo: one active and one test-mode routine to demonstrate the routine engine.
+    /// </summary>
+    public static IReadOnlyList<DemoRoutineTemplate> Routines { get; } =
+    [
+        new("welcome-message", "Messaggio di benvenuto (DEMO)", RoutineEventType.BeforeCheckin, 1, RoutineActionType.MessageToGuest, false, Scenario.RoutineActive),
+        new("checkout-reminder", "Promemoria checkout (TEST)", RoutineEventType.BeforeCheckout, 1, RoutineActionType.MessageToGuest, true, Scenario.RoutineTestMode),
     ];
 }
 
@@ -161,7 +509,10 @@ public sealed record DemoBookingTemplate(
     int CheckInOffsetDays,
     int Nights,
     BookingStatus Status,
-    string Scenario);
+    string Scenario,
+    BookingSource Source = BookingSource.Local,
+    decimal? AgreedTotal = null,
+    string? PriceNote = null);
 
 public sealed record DemoPropertyTemplate(
     string Key,
@@ -177,7 +528,35 @@ public sealed record DemoPropertyTemplate(
     decimal CleaningFee,
     DemoCadastral? Cadastral,
     IReadOnlyList<string> Scenarios,
-    IReadOnlyList<DemoBookingTemplate> Bookings);
+    IReadOnlyList<DemoBookingTemplate> Bookings,
+    DemoPropertyProfile? Profile = null,
+    SitePropertyProfileInput? SiteProfile = null,
+    IReadOnlyList<DemoPoi>? Pois = null);
+
+/// <summary>
+/// A point of interest of a demo property (DB-11a): invented like the rest of the demo. The distance is stored through the same rounding as a host's
+/// (<see cref="PoiDistance"/>), so a demo can never hold a figure a host could not.
+/// </summary>
+public sealed record DemoPoi(PoiKind Kind, string NameIt, string NameEn, PoiTravelMode Mode, int Minutes, CompassPoint Direction, int DistanceMeters);
+
+/// <summary>
+/// The fields of the wizard «Aggiungi immobile» (SR-07a) a demo property carries, so the list and the cards of the host are not
+/// empty. Invented like the rest of the demo; a property without a profile keeps them unset, as every real property that existed
+/// before the wizard. The rules are consistent with the house rules text of the demo (no smoking, quiet after 22:00).
+/// </summary>
+public sealed record DemoPropertyProfile(
+    AccommodationType Type,
+    int Beds,
+    int AreaSqm,
+    string? ListingTitle,
+    TimeOnly? CheckInFrom,
+    TimeOnly? CheckOutBy,
+    SmokingPolicy? Smoking,
+    PetsPolicy? Pets,
+    PartiesPolicy? Parties,
+    TimeOnly? QuietHoursFrom,
+    TimeOnly? QuietHoursTo,
+    decimal? ExtraGuestFeePerNight);
 
 /// <summary>State a demo host invite is created in.</summary>
 public enum DemoHostInviteState
@@ -194,4 +573,151 @@ public sealed record DemoHostInviteTemplate(
     string? Message,
     int CreatedOffsetDays,
     DemoHostInviteState State,
+    string Scenario);
+
+/// <summary>
+/// A property owner of the agency demo (ADR-012): fiscal code and IBAN are test data, encrypted at rest.
+/// Includes ownership share percentage and mandate commission rate.
+/// </summary>
+public sealed record DemoPropertyOwnerTemplate(
+    string Key,
+    string FirstName,
+    string LastName,
+    string Email,
+    string? Phone,
+    string FiscalCode,
+    string Iban,
+    OwnerTaxRegime TaxRegime,
+    decimal OwnershipSharePercent,
+    decimal CommissionRate,
+    string Scenario);
+
+/// <summary>A guest segment for demo campaigns (NF-24): condition is empty to match all consented guests.</summary>
+public sealed record DemoGuestSegmentTemplate(
+    string Key,
+    string Name,
+    string ConditionJson,
+    string Scenario);
+
+/// <summary>A marketing campaign for demo (NF-24): created <paramref name="CreatedOffsetDays"/> days from today.</summary>
+public sealed record DemoCampaignTemplate(
+    string Key,
+    string SegmentKey,
+    string Subject,
+    string Body,
+    bool IsAiGenerated,
+    CampaignStatus Status,
+    int CreatedOffsetDays,
+    int? ScheduledOffsetDays,
+    int? SentOffsetDays,
+    int SentCount,
+    int ErrorCount,
+    string Scenario);
+
+/// <summary>An agency invoice for demo (ADR-019): one issued invoice with test amounts.</summary>
+public sealed record DemoAgencyInvoiceTemplate(
+    string Key,
+    string OwnerKey,
+    string Series,
+    string InvoiceNumber,
+    int Month,
+    int Year,
+    decimal TaxableBase,
+    decimal VatRate,
+    string Scenario);
+
+/// <summary>A staff member of the agency demo: collaborator role to demonstrate staff management.</summary>
+public sealed record DemoStaffTemplate(
+    string Key,
+    string FirstName,
+    string LastName,
+    string Email,
+    string? Phone,
+    OrgRole Role,
+    string Scenario);
+
+/// <summary>A trusted supplier of the agency demo: demonstrates supplier management and service requests.</summary>
+public sealed record DemoSupplierTemplate(
+    string Key,
+    string Name,
+    string Description,
+    string Email,
+    string? Phone,
+    bool IsTrusted,
+    string Scenario);
+
+/// <summary>
+/// A check-in verification demo: demonstrates all verification states.
+/// No real faces - only recorded biometric outcomes.
+/// </summary>
+public sealed record DemoCheckInTemplate(
+    string Key,
+    string PropertyKey,
+    string BookingKey,
+    string VerificationStatus,
+    BiometricOutcome? BiometricOutcome,
+    bool HasConsent,
+    bool OperatorVerified,
+    string Scenario);
+
+/// <summary>An alloggiati report demo: demonstrates report states including SentReceiptPending with fake receipt.</summary>
+public sealed record DemoAlloggiatiTemplate(
+    string Key,
+    string PropertyKey,
+    string BookingKey,
+    RegistrationStatus Status,
+    bool HasFakeReceipt,
+    bool IsRegistered,
+    string Scenario);
+
+/// <summary>A published owner statement demo (ADR-017): demonstrates the statement lifecycle.</summary>
+public sealed record DemoStatementTemplate(
+    string Key,
+    string OwnerKey,
+    int Month,
+    int Year,
+    StatementStatus Status,
+    decimal GrossRevenue,
+    decimal Commission,
+    decimal NetAmount,
+    string Scenario);
+
+/// <summary>A withholding summary demo: demonstrates the withholding tax calculation.</summary>
+public sealed record DemoWithholdingTemplate(
+    string Key,
+    string OwnerKey,
+    int Quarter,
+    int Year,
+    decimal TaxableBase,
+    decimal WithholdingAmount,
+    string Scenario);
+
+/// <summary>An F24 record demo: demonstrates the F24 tax payment flow.</summary>
+public sealed record DemoF24Template(
+    string Key,
+    string OwnerKey,
+    int Month,
+    int Year,
+    decimal Amount,
+    string TaxCode,
+    string Scenario);
+
+/// <summary>A wire batch demo: demonstrates the wire transfer batch lifecycle (ADR-017).</summary>
+public sealed record DemoWireBatchTemplate(
+    string Key,
+    int Month,
+    int Year,
+    WireBatchStatus Status,
+    int TransferCount,
+    decimal TotalAmount,
+    string Scenario);
+
+/// <summary>An automation routine demo (NF-26): demonstrates active and test-mode routines.</summary>
+public sealed record DemoRoutineTemplate(
+    string Key,
+    string Name,
+    RoutineEventType EventType,
+    int DaysBefore,
+    RoutineActionType ActionType,
+    bool IsTestMode,
     string Scenario);

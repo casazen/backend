@@ -36,7 +36,7 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
     public async Task Migration_AppliesAndRevertsOnARealDatabase()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
         Assert.Equal(1, await CountIndexesAsync(db));
 
@@ -51,7 +51,7 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
     public async Task Migration_OverATableThatHoldsWindows_Applies_AndIsPartial()
     {
         await using var db = _database!.CreateContext();
-        await db.GetService<IMigrator>().MigrateAsync(PreviousMigration(db));
+        await _database!.MigrateEmptyToAsync(PreviousMigration(db));
         var org = await SeedSupplierAsync(db);
         // What exists before SP-05: windows set by hand, no UID, even two at the same hour.
         db.SupplierBusyWindows.Add(Window(org, null, Ten, SupplierBusyWindowKind.Block, SupplierBusyWindowSource.Manual));
@@ -75,7 +75,7 @@ public class AddSupplierBusyWindowFeedKeyPostgresTests : IAsyncLifetime
     public async Task Index_RefusesTheSameOccurrenceOfASupplierTwice_AndNothingElse()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         var orgA = await SeedSupplierAsync(db);
         var orgB = await SeedSupplierAsync(db);
         db.SupplierBusyWindows.Add(Window(orgA, "uid", Ten, SupplierBusyWindowKind.External, SupplierBusyWindowSource.ICalFeed));

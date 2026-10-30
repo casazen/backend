@@ -87,7 +87,9 @@ public class OrgsController(
     /// for an unusable slug, 409 <c>org_slug_taken</c> when another org uses it. The previous slug keeps resolving
     /// to the org (shared links), see <c>IOrgService.UpdateSettingsAsync</c>. Since DB-03b-a it also writes the operator data
     /// that the footer of the booking site shows (<c>legalName</c>, <c>registeredOffice</c>; left out = unchanged, blank = cleared,
-    /// 422 <c>org_operator_*_too_long</c> above the limit), under the same policy as the rest of the body.
+    /// 422 <c>org_operator_*_too_long</c> above the limit), under the same policy as the rest of the body. Since AM-08b-b it also
+    /// writes the phone of the account (<c>contactPhone</c>, never published; 422 <c>org_contact_phone_invalid</c>) and its language
+    /// (<c>defaultLanguage</c>, <c>it</c> or <c>en</c>; 422 <c>org_default_language_invalid</c>), left out = unchanged.
     /// </summary>
     [HttpPut("me/settings")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
@@ -118,7 +120,10 @@ public class OrgsController(
             legalName: dto.LegalNameSent ? FieldUpdate<string>.Set(dto.LegalName) : FieldUpdate<string>.Unchanged,
             registeredOffice: dto.RegisteredOfficeSent
                 ? FieldUpdate<string>.Set(dto.RegisteredOffice)
-                : FieldUpdate<string>.Unchanged);
+                : FieldUpdate<string>.Unchanged,
+            // AM-08b-b: the phone (never published) and the language of the account change only when the body carries them.
+            contactPhone: dto.ContactPhoneSent ? FieldUpdate<string>.Set(dto.ContactPhone) : FieldUpdate<string>.Unchanged,
+            defaultLanguage: dto.DefaultLanguageSent ? FieldUpdate<string>.Set(dto.DefaultLanguage) : FieldUpdate<string>.Unchanged);
         if (updated is null)
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
 
@@ -126,6 +131,54 @@ public class OrgsController(
             publicHostResolver.InvalidateOrgHosts(updated, publicHostOptions.Value.NormalizedBaseDomain, previousSlug);
 
         return Ok(OrgSettingsDto.FromOrg(updated));
+    }
+
+    /// <summary>
+    /// The caller org's rules for the requests it sends to suppliers (SP-BKP): whether a request also goes to up to three backup
+    /// suppliers (on by default). Org policy <see cref="CasazenPolicies.OrgBillingAdmin"/>, like the rest of the org's settings.
+    /// </summary>
+    [HttpGet("me/service-request-settings")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    [ProducesResponseType(typeof(OrgServiceRequestSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrgServiceRequestSettingsDto>> GetMyServiceRequestSettings(CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
+
+        var org = await orgService.GetByIdAsync(orgId.Value, cancellationToken);
+        if (org is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        return Ok(new OrgServiceRequestSettingsDto { UseBackupSuppliers = org.SupplierBackupsEnabled });
+    }
+
+    /// <summary>
+    /// Turns on or off the org's default for sending its requests to backup suppliers too (SP-BKP). A request already sent is not touched:
+    /// the choice is read when a request is created.
+    /// </summary>
+    [HttpPut("me/service-request-settings")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    [ProducesResponseType(typeof(OrgServiceRequestSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<OrgServiceRequestSettingsDto>> UpdateMyServiceRequestSettings(
+        [FromBody] OrgServiceRequestSettingsDto dto,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
+
+        var updated = await orgService.SetSupplierBackupsEnabledAsync(orgId.Value, dto.UseBackupSuppliers, User.GetUserId(), cancellationToken);
+        if (updated is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "OrganizationNotFound");
+
+        return Ok(new OrgServiceRequestSettingsDto { UseBackupSuppliers = updated.SupplierBackupsEnabled });
     }
 
     /// <summary>Returns available plan tiers and property limits.</summary>
@@ -217,6 +270,7 @@ public class OrgsController(
         var entitlement = await entitlementService.GetEntitlementAsync(orgId, cancellationToken);
         var canUseCustomDomain = await entitlementService.CanUseCustomDomainAsync(orgId, cancellationToken);
         var seats = await seatService.GetUsageAsync(orgId, cancellationToken);
+        var org = await orgService.GetByIdAsync(orgId, cancellationToken);
 
         return new EntitlementDto
         {
@@ -228,6 +282,7 @@ public class OrgsController(
             CanAddProperty = entitlement.CanAddProperty,
             CanUseCustomDomain = canUseCustomDomain,
             CanInviteMember = seats.CanInvite,
+            IsAgency = org?.PlanTier == Core.Entities.Enums.PlanTier.Agency,
         };
     }
 }

@@ -21,11 +21,18 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
 {
     private LongRentWorld _world = null!;
 
+    /// <summary>
+    /// The property the drafts of these tests are written on: owner A's, ready, and with no lease. P1 of the world has four, which cover
+    /// the days of the drafts here, and two leases of one property cannot cover the same days (LR-OVERLAP).
+    /// </summary>
+    private Guid _draftProperty;
+
     public async Task InitializeAsync()
     {
         _world = await LongRentWorld.SeedAsync(factory);
-        foreach (var property in new[] { _world.P1, _world.P2, _world.P3 })
+        foreach (var property in new[] { _world.P2, _world.P3 })
             await factory.MakeReadyAsync(property);
+        _draftProperty = await AddPropertyAsync(_world.OwnerId);
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
@@ -92,7 +99,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
 
         foreach (var response in new[]
                  {
-                     await anonymous.PostAsync("/api/leases/drafts", Body($$"""{"propertyId":"{{_world.P1}}"}""")),
+                     await anonymous.PostAsync("/api/leases/drafts", Body($$"""{"propertyId":"{{_draftProperty}}"}""")),
                      await anonymous.GetAsync($"/api/leases/{id}/draft"),
                      await anonymous.PatchAsync($"/api/leases/{id}/draft", Body("""{"version":1,"step":2,"values":{}}""")),
                      await anonymous.GetAsync($"/api/leases/{id}/review"),
@@ -120,7 +127,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
 
         foreach (var response in new[]
                  {
-                     await shortHost.PostAsync("/api/leases/drafts", Body($$"""{"propertyId":"{{_world.P1}}"}""")),
+                     await shortHost.PostAsync("/api/leases/drafts", Body($$"""{"propertyId":"{{_draftProperty}}"}""")),
                      await shortHost.GetAsync($"/api/leases/{id}/draft"),
                      await shortHost.PatchAsync($"/api/leases/{id}/draft", Body("""{"version":1,"step":2,"values":{}}""")),
                      await shortHost.GetAsync($"/api/leases/{id}/review"),
@@ -142,7 +149,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     {
         using var client = Owner();
 
-        var response = await client.PostAsync("/api/leases/drafts", Body($$"""{"propertyId":"{{_world.P1}}"}"""));
+        var response = await client.PostAsync("/api/leases/drafts", Body($$"""{"propertyId":"{{_draftProperty}}"}"""));
 
         var created = await ExpectAsync(response, HttpStatusCode.Created);
         var id = created.GetProperty("id").GetGuid();
@@ -165,7 +172,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     {
         using var client = Owner();
 
-        var (id, _) = await CreateAsync(client, _world.P1, origin: "Imported");
+        var (id, _) = await CreateAsync(client, _draftProperty, origin: "Imported");
 
         Assert.Equal(LeaseOrigin.Imported, (await LoadAsync(id)).Origin);
         var draft = await JsonAsync(await client.GetAsync($"/api/leases/{id}/draft"));
@@ -179,7 +186,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         using var client = Owner();
 
         var problem = await ExpectAsync(
-            await client.PostAsync("/api/leases/drafts", Body($$"""{"propertyId":"{{_world.P1}}","origin":"Rented"}""")),
+            await client.PostAsync("/api/leases/drafts", Body($$"""{"propertyId":"{{_draftProperty}}","origin":"Rented"}""")),
             HttpStatusCode.BadRequest);
 
         Assert.Equal("validation_error", problem.GetProperty("code").GetString());
@@ -210,9 +217,9 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         // The colleague owns P3 only: P1 is another property of the org (403, not 404: it exists for them).
         Assert.Equal(
             HttpStatusCode.Forbidden,
-            (await colleague.PostAsync("/api/leases/drafts", Body($$"""{"propertyId":"{{_world.P1}}"}"""))).StatusCode);
+            (await colleague.PostAsync("/api/leases/drafts", Body($$"""{"propertyId":"{{_draftProperty}}"}"""))).StatusCode);
         await CreateAsync(colleague, _world.P3);
-        await CreateAsync(manager, _world.P1);
+        await CreateAsync(manager, _draftProperty);
     }
 
     [Fact]
@@ -235,12 +242,12 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task Save_IncompleteAndWrongValues_Are200_NeverA4xx_AndTheFlowSaysWhatIsMissing()
     {
         using var client = Owner();
-        var (id, version) = await CreateAsync(client, _world.P1);
+        var (id, version) = await CreateAsync(client, _draftProperty);
 
         var s2 = await PatchAsync(client, id, version, 2, """
             {"landlords":[{"firstName":"Mario","lastName":"Rossi","fiscalCode":"NOT-A-CODE","citizenship":"IT","residence":"Bari"}],"tenants":[{"firstName":"Giulia"}]}
             """);
-        var s3 = await PatchAsync(client, id, s2.GetProperty("version").GetInt32(), 3, """{"contractType":"Transitorio","monthlyRent":-50,"securityDeposit":99}""");
+        var s3 = await PatchAsync(client, id, s2.GetProperty("version").GetInt32(), 3, """{"contractType":"Studenti","monthlyRent":-50,"securityDeposit":99}""");
         var s4 = await PatchAsync(client, id, s3.GetProperty("version").GetInt32(), 4, """{"startDate":"next spring"}""");
 
         var flow = s4.GetProperty("flow");
@@ -257,7 +264,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task Get_TakesItUpIdentical_ValuesFlowVersionOriginAndTheStepReached()
     {
         using var client = Owner();
-        var (id, version) = await CreateAsync(client, _world.P1);
+        var (id, version) = await CreateAsync(client, _draftProperty);
         var s2 = await PatchAsync(client, id, version, 2, """
             {"landlords":[{"firstName":"Mario","lastName":"Rossi","fiscalCode":"RSSMRA80A01H501U","citizenship":"it","residence":"  Bari  ","contactEmail":"x"}],
              "tenants":[{"firstName":"Giulia","lastName":"Verdi"}]}
@@ -278,7 +285,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         Assert.Equal(JsonValueKind.Null, draft.GetProperty("reviewConfirmedAt").ValueKind);
         Assert.Equal(JsonValueKind.Null, draft.GetProperty("sentForSignatureAt").ValueKind);
         var values = draft.GetProperty("values");
-        Assert.Equal(_world.P1, values.GetProperty("propertyId").GetGuid());
+        Assert.Equal(_draftProperty, values.GetProperty("propertyId").GetGuid());
         var landlord = values.GetProperty("landlords")[0];
         Assert.Equal(s2.GetProperty("landlordIds")[0].GetGuid(), landlord.GetProperty("id").GetGuid());
         Assert.Equal(("Mario", "Rossi", "RSSMRA80A01H501U", "it", "  Bari  ", "x"),
@@ -297,7 +304,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     {
         using var client = Owner();
 
-        var (id, _) = await CompleteAsync(client, _world.P1);
+        var (id, _) = await CompleteAsync(client, _draftProperty, startDate: "2026-11-01");
 
         var lease = await LoadAsync(id);
         Assert.Null(lease.DraftData);
@@ -317,7 +324,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task Save_AnIncompleteDraft_IsInTheListWithItsStartingValues_NotAsAnythingElse()
     {
         using var client = Owner();
-        var (id, _) = await CreateAsync(client, _world.P1);
+        var (id, _) = await CreateAsync(client, _draftProperty);
 
         var list = await JsonAsync(await client.GetAsync("/api/leases"));
 
@@ -339,7 +346,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task Save_OnAnOldVersion_Is409WithTheCode_AndNothingIsWritten()
     {
         using var client = Owner();
-        var (id, version) = await CreateAsync(client, _world.P1);
+        var (id, version) = await CreateAsync(client, _draftProperty);
         var first = await PatchAsync(client, id, version, 3, """{"monthlyRent":900}""");
 
         // The second tab still has the version it opened with.
@@ -367,7 +374,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task Save_AWrongShape_Is400(string body)
     {
         using var client = Owner();
-        var (id, _) = await CreateAsync(client, _world.P1);
+        var (id, _) = await CreateAsync(client, _draftProperty);
 
         var response = await client.PatchAsync($"/api/leases/{id}/draft", Body(body));
 
@@ -383,7 +390,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task Save_ValuesThatAreNotTheShapeOfTheStep_AreAProblemWithTheValidationCode_ThatNamesNoValue(string body)
     {
         using var client = Owner();
-        var (id, _) = await CreateAsync(client, _world.P1);
+        var (id, _) = await CreateAsync(client, _draftProperty);
 
         var problem = await ExpectProblemAsync(await client.PatchAsync($"/api/leases/{id}/draft", Body(body)), HttpStatusCode.BadRequest, "validation_error");
 
@@ -394,7 +401,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task Save_MoreThanTenTenants_Is422()
     {
         using var client = Owner();
-        var (id, version) = await CreateAsync(client, _world.P1);
+        var (id, version) = await CreateAsync(client, _draftProperty);
         var eleven = string.Join(",", Enumerable.Range(0, 11).Select(i => $$"""{"firstName":"T{{i}}"}"""));
 
         await ExpectProblemAsync(
@@ -407,7 +414,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task Save_ANumberTooBigToHold_IsAWrongValueReportedInTheFlow_NotA400()
     {
         using var client = Owner();
-        var (id, version) = await CreateAsync(client, _world.P1);
+        var (id, version) = await CreateAsync(client, _draftProperty);
 
         var saved = await PatchAsync(client, id, version, 3, """{"monthlyRent":1e30,"securityDeposit":-1e30}""");
 
@@ -418,7 +425,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task Save_AnythingOver256KB_IsRefused()
     {
         using var client = Owner();
-        var (id, version) = await CreateAsync(client, _world.P1);
+        var (id, version) = await CreateAsync(client, _draftProperty);
         var huge = new string('a', 300 * 1024);
 
         var response = await client.PatchAsync($"/api/leases/{id}/draft", SaveBody(version, 2, $$"""{"landlords":[{"firstName":"{{huge}}"}]}"""));
@@ -442,7 +449,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         // P1 belongs to the owner of the org, the colleague is not org-wide.
         Assert.Equal(
             HttpStatusCode.Forbidden,
-            (await colleague.PatchAsync($"/api/leases/{id}/draft", SaveBody(version, 1, PropertyValues(_world.P1)))).StatusCode);
+            (await colleague.PatchAsync($"/api/leases/{id}/draft", SaveBody(version, 1, PropertyValues(_draftProperty)))).StatusCode);
         Assert.Equal(_world.P3, (await LoadAsync(id)).PropertyId);
         Assert.Equal(version, (await LoadAsync(id)).DraftVersion);
         _ = await ExpectAsync(
@@ -457,7 +464,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task ADraftOfAnotherProperty_IsInvisibleToAMemberWhoCannotHandleIt_EveryEndpointSays403_AndAnotherOrgSays404()
     {
         using var owner = Owner();
-        var (id, version) = await CompleteAsync(owner, _world.P1);
+        var (id, version) = await CompleteAsync(owner, _draftProperty);
         using var colleague = _world.ColleagueClient(factory);
         var strangerId = $"auth0|lr12-other-org-{Guid.NewGuid():N}";
         await factory.SeedOrgForOwnerAsync(strangerId);
@@ -518,7 +525,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     {
         using var owner = Owner();
         var response = await owner.PostAsync("/api/leases", Body($$"""
-            {"propertyId":"{{_world.P1}}","contractType":"Libero","taxRegime":"CedolareSecca","startDate":"2026-12-01T00:00:00Z","endDate":"2030-11-30T00:00:00Z",
+            {"propertyId":"{{_draftProperty}}","contractType":"Libero","taxRegime":"CedolareSecca","startDate":"2026-12-01T00:00:00Z","endDate":"2030-11-30T00:00:00Z",
              "monthlyRent":950,"securityDeposit":1900,
              "parties":[{"role":"Landlord","firstName":"Mario","lastName":"Rossi","fiscalCode":"RSSMRA80A01H501U","citizenship":"IT","contactEmail":"mario@example.com"},
                         {"role":"Tenant","firstName":"Giulia","lastName":"Verdi","fiscalCode":"VRDGLI85B02F205A","citizenship":"IT","contactEmail":"giulia@example.com"}]}
@@ -546,8 +553,8 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task Review_WithBlocks_CannotBeConfirmed_422_AndTheCompleteOneCan_ThenAChangeWithdrawsIt()
     {
         using var client = Owner();
-        var (blockedId, _) = await CreateAsync(client, _world.P1);
-        var (id, version) = await CompleteAsync(client, _world.P1);
+        var (blockedId, _) = await CreateAsync(client, _draftProperty);
+        var (id, version) = await CompleteAsync(client, _draftProperty);
 
         await ExpectProblemAsync(await client.PostAsync($"/api/leases/{blockedId}/review/confirm", Body("{}")), HttpStatusCode.UnprocessableEntity, "lease_review_blocked");
         var review = await JsonAsync(await client.GetAsync($"/api/leases/{id}/review"));
@@ -573,7 +580,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task Review_ConfirmWithAnOldVersion_Is409_AndWithdrawingWorks()
     {
         using var client = Owner();
-        var (id, version) = await CompleteAsync(client, _world.P1);
+        var (id, version) = await CompleteAsync(client, _draftProperty);
 
         await ExpectProblemAsync(
             await client.PostAsync($"/api/leases/{id}/review/confirm", Body($$"""{"version":{{version - 1}}}""")),
@@ -593,7 +600,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task Sent_WithATemplateNotApproved_Is422_AndTheStateDoesNotChange()
     {
         using var client = Owner();
-        var (id, _) = await CompleteAsync(client, _world.P1);
+        var (id, _) = await CompleteAsync(client, _draftProperty);
         await ExpectProblemAsync(await client.PostAsync($"/api/leases/{id}/sent", Body("{}")), HttpStatusCode.UnprocessableEntity, "lease_review_not_confirmed");
         var confirmed = await ExpectAsync(await client.PostAsync($"/api/leases/{id}/review/confirm", Body("{}")), HttpStatusCode.OK);
 
@@ -616,7 +623,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task Delete_ADraft_Is204_AndItIsGone_WithItsPartiesAndEvents()
     {
         using var client = Owner();
-        var (id, _) = await CompleteAsync(client, _world.P1);
+        var (id, _) = await CompleteAsync(client, _draftProperty);
 
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync($"/api/leases/{id}")).StatusCode);
 
@@ -656,7 +663,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task TheMaskedDetail_GainsTheNewFieldsAtTheEnd_AndNeverShowsTheResidenceTheFiscalCodeOrTheEmail()
     {
         using var client = Owner();
-        var (id, version) = await CompleteAsync(client, _world.P1);
+        var (id, version) = await CompleteAsync(client, _draftProperty);
         var tenantId = (await JsonAsync(await client.GetAsync($"/api/leases/{id}/draft"))).GetProperty("values").GetProperty("tenants")[0].GetProperty("id").GetGuid();
         await PatchAsync(client, id, version, 5, $$"""{"parties":[{"id":"{{tenantId}}","documentsVerifiedOn":"2026-10-01"}]}""");
 
@@ -708,7 +715,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
     public async Task LandlordDefaults_ForAMemberWhoReachesOnlyTheirOwnProperty_NeverCarryTheResidenceOfAnotherMembersLease()
     {
         using var owner = Owner();
-        await CompleteAsync(owner, _world.P1);
+        await CompleteAsync(owner, _draftProperty);
         using var colleague = _world.ColleagueClient(factory);
 
         var theirs = await ExpectAsync(await colleague.GetAsync("/api/long-rent/landlord-defaults"), HttpStatusCode.OK);
@@ -746,7 +753,7 @@ public class LeaseDraftApiIntegrationTests(LeaseDraftFactory factory) : IClassFi
         Assert.Equal(6, rules.GetProperty("noticeMonths").GetInt32());
         Assert.Equal(30, rules.GetProperty("registrationDays").GetInt32());
         Assert.Equal(3, rules.GetProperty("depositMaxRents").GetInt32());
-        Assert.Equal(["Libero", "Concordato"], rules.GetProperty("availableTypes").EnumerateArray().Select(t => t.GetString()));
+        Assert.Equal(["Libero", "Concordato", "Transitorio"], rules.GetProperty("availableTypes").EnumerateArray().Select(t => t.GetString()));
     }
 }
 
@@ -755,10 +762,13 @@ public class LeaseDraftSentIntegrationTests(LeaseDraftApprovedTemplatesFactory f
 {
     private LongRentWorld _world = null!;
 
+    /// <summary>The property the drafts are written on: owner A's, ready, with no lease (two leases of one property cannot cover the same days, LR-OVERLAP).</summary>
+    private Guid _draftProperty;
+
     public async Task InitializeAsync()
     {
         _world = await LongRentWorld.SeedAsync(factory);
-        await factory.MakeReadyAsync(_world.P1);
+        _draftProperty = await factory.AddReadyPropertyAsync(_world.OrgId, _world.OwnerId);
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
@@ -767,7 +777,7 @@ public class LeaseDraftSentIntegrationTests(LeaseDraftApprovedTemplatesFactory f
     public async Task Sent_WithAnApprovedTemplate_SetsTheMoment_KeepsTheStatus_AndItCanBeTakenBack()
     {
         using var client = _world.OwnerClient(factory);
-        var (id, _) = await CompleteAsync(client, _world.P1);
+        var (id, _) = await CompleteAsync(client, _draftProperty);
         var confirmed = await ExpectAsync(await client.PostAsync($"/api/leases/{id}/review/confirm", Body("{}")), HttpStatusCode.OK);
         Assert.Equal(["not_sent"], NeedCodes(confirmed.GetProperty("flow"), 7));
 
@@ -797,7 +807,7 @@ public class LeaseDraftSentIntegrationTests(LeaseDraftApprovedTemplatesFactory f
     public async Task Sent_AValueChangedAfterwards_WithdrawsTheConfirmationAndTheDownloadWithIt()
     {
         using var client = _world.OwnerClient(factory);
-        var (id, _) = await CompleteAsync(client, _world.P1);
+        var (id, _) = await CompleteAsync(client, _draftProperty);
         await ExpectAsync(await client.PostAsync($"/api/leases/{id}/review/confirm", Body("{}")), HttpStatusCode.OK);
         var sent = await ExpectAsync(await client.PostAsync($"/api/leases/{id}/sent", Body("{}")), HttpStatusCode.OK);
 

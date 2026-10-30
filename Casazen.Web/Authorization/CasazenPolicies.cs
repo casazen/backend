@@ -109,6 +109,12 @@ public static class CasazenPolicies
     public const string AlloggiatiSubmit = ShortRent + HostPermissions.AlloggiatiSubmit;
 
     /// <summary>
+    /// Decide on manual biometric verification (NF-12, ADR-013): approve or reject guest check-in after biometric
+    /// escalation. Owner, admins, and property managers only (NOT staff per D-08). Short-rent context.
+    /// </summary>
+    public const string VerificationDecision = ShortRent + "verification.decision";
+
+    /// <summary>
     /// Read a property's long-term side that is not a lease: the long-rent service requests (D2, SU-07). Long-rent
     /// context only, so a short-rent <c>property.read</c> never reaches it; the row is checked with
     /// <see cref="LongRentPropertyOperations"/>.
@@ -122,6 +128,45 @@ public static class CasazenPolicies
     public const string LeaseCreate = LongRent + "lease.create";
     public const string LeaseSign = LongRent + "lease.sign";
     public const string LeaseRegister = LongRent + "lease.register";
+
+    /// <summary>Agency tier B2B policies (ADR-010, ADR-012): all require <c>Org.PlanTier == PlanTier.Agency</c>.</summary>
+    private const string Agency = "RequireAgencyTier:";
+
+    /// <summary>View property owner list and details (agency B2B, ADR-012).</summary>
+    public const string AgencyOwnerView = Agency + "agency.owner.view";
+
+    /// <summary>View full IBAN of property owners (requires audit log, agency B2B, ADR-012-R3).</summary>
+    public const string AgencyOwnerFinancialRead = Agency + "agency.owner.financial.read";
+
+    /// <summary>Create, edit and publish monthly statements (agency B2B).</summary>
+    internal const string AgencyStatementManage = Agency + "agency.statement.manage";
+
+    /// <summary>View monthly statements (agency B2B).</summary>
+    internal const string AgencyStatementView = Agency + "agency.statement.view";
+
+    /// <summary>Create and issue invoices (agency B2B).</summary>
+    internal const string AgencyInvoiceManage = Agency + "agency.invoice.manage";
+
+    /// <summary>Manage withholding tax (agency B2B).</summary>
+    internal const string AgencyWithholdingManage = Agency + "agency.withholding.manage";
+
+    /// <summary>Create wire transfer batches (agency B2B).</summary>
+    internal const string AgencyWireManage = Agency + "agency.wire.manage";
+
+    /// <summary>Manage internal staff activities (agency B2B).</summary>
+    internal const string AgencyActivityManage = Agency + "agency.activity.manage";
+
+    /// <summary>Manage trusted suppliers (agency B2B).</summary>
+    internal const string AgencySupplierManage = Agency + "agency.supplier.manage";
+
+    /// <summary>Invite and manage property owners (agency B2B, ADR-011-R4).</summary>
+    public const string AgencyOwnerManage = Agency + "agency.owner.manage";
+
+    /// <summary>
+    /// Owner portal access (ADR-011): checks JWT claim context=owner_portal and resolves OwnerUserId.
+    /// MUST NOT include host roles. Enforced on every owner portal endpoint.
+    /// </summary>
+    public const string OwnerPortal = "OwnerPortal";
 
     /// <summary>
     /// Invite, change, deactivate, reactivate and remove the people of the caller's org (AM-02): the permission
@@ -151,9 +196,30 @@ public static class CasazenPolicies
         GuestRead, GuestWrite,
         OtaRead, OtaWrite,
         ServiceRequestWrite, GuestManage, AlloggiatiSubmit,
+        VerificationDecision,
         LongRentPropertyRead, LongRentPropertyWrite,
         LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
         OrgMembersManage, OrgActivityRead,
+    ];
+
+    /// <summary>The agency tier policies registered at startup (ADR-010, ADR-012).</summary>
+    public static IReadOnlyList<string> AgencyPolicies { get; } =
+    [
+        AgencyOwnerView,
+        AgencyOwnerFinancialRead,
+        AgencyOwnerManage,
+        AgencyStatementManage,
+        AgencyStatementView,
+        AgencyInvoiceManage,
+        AgencyWithholdingManage,
+        AgencyWireManage,
+        AgencyActivityManage,
+        AgencySupplierManage,
+        AgencyStatementManage,
+        AgencyStatementView,
+        AgencyInvoiceManage,
+        AgencyWithholdingManage,
+        AgencyWireManage,
     ];
 
     /// <summary>

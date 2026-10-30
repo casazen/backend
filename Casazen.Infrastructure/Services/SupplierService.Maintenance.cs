@@ -260,9 +260,15 @@ public partial class SupplierService
                 set => set.SetProperty(p => p.SupplierOrgId, keeperId).SetProperty(p => p.UpdatedAt, now),
                 cancellationToken);
 
+        // The content of the showcase (SP-13a) is a child of the profile too: the keeper's stays, the duplicate's moves only when the
+        // keeper has none, and counts with the rows of the showcase. It comes first: its lock is taken before the calendar lock of the
+        // supplier (the order every change of the content follows), and the move of the showcase below takes the calendar locks.
+        var showcaseContentMoved = await MoveShowcaseContentAsync(keeperId, duplicateId, now, cancellationToken);
+
         // The public showcase (SP-10): its requests belong to the supplier org itself (OrgId = SupplierOrgId, not a host org), so
         // they move with the supplier; its customers and unverified holds are children of the profile like the agenda.
         var showcaseRowsMoved = await MoveShowcaseAsync(keeperId, duplicateId, cancellationToken);
+        showcaseRowsMoved += showcaseContentMoved;
 
         // A day the keeper already has keeps the keeper's value: the keeper is the profile in use.
         var daysMoved = await db.SupplierAvailability
@@ -386,6 +392,15 @@ public partial class SupplierService
             .Where(h => h.OrgId == duplicateId)
             .ExecuteDeleteAsync(cancellationToken);
 
+        // The requests on measure (SP-10b): the ones that wait for an e-mail check go like the holds, and the messages of the requests that
+        // moved follow them (they carry the supplier org of their request).
+        await db.ShowcaseInquiries
+            .Where(i => i.OrgId == duplicateId)
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.ServiceRequestMessages
+            .Where(m => m.OrgId == duplicateId)
+            .ExecuteUpdateAsync(set => set.SetProperty(m => m.OrgId, keeperId), cancellationToken);
+
         return moved;
     }
 
@@ -449,6 +464,33 @@ public partial class SupplierService
         }
 
         return duplicateListings.Count;
+    }
+
+    /// <summary>
+    /// Moves the content of the duplicate's showcase (SP-13a: draft, published version and the one before it) to the keeper when the
+    /// keeper has none, and returns the rows moved (0 or 1). The keeper is the profile in use: its own content stays as it is, and the
+    /// duplicate's goes with the duplicate profile (cascade).
+    /// </summary>
+    private async Task<int> MoveShowcaseContentAsync(Guid keeperId, Guid duplicateId, DateTime now, CancellationToken cancellationToken)
+    {
+        // The content changes of both suppliers wait for the merge and then find their row where it belongs.
+        await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db,
+            cancellationToken,
+            (PostgresAdvisoryLocks.Scope.SupplierShowcaseContent, keeperId.ToString("N")),
+            (PostgresAdvisoryLocks.Scope.SupplierShowcaseContent, duplicateId.ToString("N")));
+
+        // SupplierShowcaseContents is keyed by the supplier org and not tenant-filtered (TN-2 allow-list): both orgs are explicit.
+        if (!await db.SupplierShowcaseContents.Where(c => c.OrgId == duplicateId).AnyAsync(cancellationToken)
+            || await db.SupplierShowcaseContents.Where(c => c.OrgId == keeperId).AnyAsync(cancellationToken))
+        {
+            return 0;
+        }
+
+        // The key of the row is the org, which an entity update cannot change: one statement, both orgs explicit.
+        return await db.Database.ExecuteSqlAsync(
+            $"UPDATE \"SupplierShowcaseContents\" SET \"OrgId\" = {keeperId}, \"UpdatedAt\" = {now} WHERE \"OrgId\" = {duplicateId}",
+            cancellationToken);
     }
 
     /// <summary>

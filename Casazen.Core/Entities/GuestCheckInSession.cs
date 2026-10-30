@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
@@ -47,6 +48,18 @@ public class GuestCheckInSession : ITenantOwned
     public string? LinkEmailError { get; set; }
 
     public DateTime? CompletedAt { get; set; }
+
+    /// <summary>
+    /// Number of biometric (face comparison) attempts in this session (NF-11, ADR-013-R5).
+    /// Max 3 attempts per session; after max, escalates to operator verification.
+    /// </summary>
+    public int BiometricAttempts { get; set; } = 0;
+
+    /// <summary>
+    /// Outcome of the face comparison (NF-11, ADR-013-R5): Accept, Escalate, or Reject.
+    /// Null before any attempt or when biometric consent was declined.
+    /// </summary>
+    public BiometricOutcome? BiometricOutcome { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

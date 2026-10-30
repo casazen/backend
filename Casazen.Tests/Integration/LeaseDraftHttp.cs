@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
@@ -58,10 +59,23 @@ internal static class LeaseDraftHttp
         HttpClient client, Guid id, int version, int step, string values, HttpStatusCode status = HttpStatusCode.OK) =>
         await ExpectAsync(await client.PatchAsync($"/api/leases/{id}/draft", SaveBody(version, step, values)), status);
 
-    /// <summary>Saves the five data steps with valid values; returns the draft and the version after the last save.</summary>
+    private static readonly ConcurrentDictionary<Guid, int> StartSlots = new();
+
+    /// <summary>
+    /// A start date that no lease made here before on the same property covers (two leases of one property cannot cover the same days,
+    /// LR-OVERLAP): 1 January 2031, then five years later at every call (the first period of a libero lasts four years).
+    /// </summary>
+    public static string FreeStartFor(Guid propertyId) =>
+        $"{2031 + 5 * (StartSlots.AddOrUpdate(propertyId, 0, (_, slot) => slot + 1))}-01-01";
+
+    /// <summary>
+    /// Saves the five data steps with valid values; returns the draft and the version after the last save. The start date is the next
+    /// one <see cref="FreeStartFor"/> gives for the property unless the test names one.
+    /// </summary>
     public static async Task<(Guid Id, int Version)> CompleteAsync(
-        HttpClient client, Guid propertyId, string tenantFiscalCode = TenantFiscalCode, string startDate = "2026-11-01")
+        HttpClient client, Guid propertyId, string tenantFiscalCode = TenantFiscalCode, string? startDate = null)
     {
+        startDate ??= FreeStartFor(propertyId);
         var (id, version) = await CreateAsync(client, propertyId);
         version = (await PatchAsync(client, id, version, 1, PropertyValues(propertyId))).GetProperty("version").GetInt32();
         version = (await PatchAsync(client, id, version, 2, $$"""

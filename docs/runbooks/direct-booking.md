@@ -49,6 +49,8 @@ panel "Richieste da approvare" and badges in the bookings list.
 | `RateLimiting__PublicGuestSession__PermitLimit` / `__WindowSeconds` | Opening a guest session, per client IP (§ 8.4) | 10 per 300 s | DB-06a |
 | `RateLimiting__GuestSessionPerCode__PermitLimit` / `__WindowSeconds` | Opening a guest session, per booking code, whatever the IP and the address (§ 8.4) | 10 per 900 s | DB-06a |
 | `GuestArea__SessionMinutes` | How long a guest session lasts, in minutes; no refresh, never above 1440 (24 hours), never below 5 (§ 8.4) | **120** | DB-06a, decision DB-D21 |
+| `RateLimiting__GuestBookingCancel__PermitLimit` / `__WindowSeconds` | The guest cancelling a booking (guest area and the host's link), per client IP (§ 8.5) | 10 per 600 s | DB-08a |
+| `RateLimiting__GuestBookingCancelPerBooking__PermitLimit` / `__WindowSeconds` | Same, per booking, whatever the IP (§ 8.5) | 5 per 900 s | DB-08a |
 | `App__PublicSiteBaseUrl`, `Email__*` | Links and delivery of the emails | — | required, see [email.md](email.md) |
 
 A changed value applies to new requests and new confirmations: a request already waiting keeps the deadline stored in
@@ -221,10 +223,13 @@ its own translation of the code (`apiErrors.codes.*`, `getProblemMessage`). `Boo
   offered, 422 if forced). The quote (`POST /api/public/bookings/quote`) answers
   `paymentOptions: { deferredPaymentAvailable, deferredChargeDate, freeCancellationUntil }` and the checkout shows the
   button "Paga più tardi: la carta viene salvata ora e addebitata il {data}" only from it.
-- **"Cancellazione gratuita fino a …"** is not shown anywhere: the guest has **no self-service cancellation** (only the host
-  cancels, BK-02), so `freeCancellationUntil` is always `null` (`DirectBookingPaymentRules.GuestSelfCancellationAvailable`
-  = false). The guest booking page shows "Pagamento previsto per {data}" for the deferred payment instead. When a guest
-  cancellation exists, set the flag and the checkout shows the text again from the quote.
+- **"Cancellazione gratuita fino a …"** (DB-08a): the guest cancels by themselves from the guest area (§ 8.5), so the quote's
+  `freeCancellationUntil` is the free refund deadline **when it is true**: the stay has a cancellation policy that refunds in full
+  (not "Non rimborsabile", not a stay the host marked non-refundable) and that day is today or later
+  (`DirectBookingPaymentRules.IsFreeCancellationPromised`); otherwise `null` and the checkout says nothing. "Free" is free: the
+  guest gets back the price of the stay **and** the tourist tax (§ 8.5). The deadline of a new booking is worked out with the
+  policy **of the stay** (`CancellationRefundPolicy.EffectivePolicy`: the catalog policy with the host's overrides for a stay
+  under 28 nights), the same the cancellation applies; the bookings made before keep the day they were given.
 - The refund floor of a host cancellation (BK-02) keeps using `FreeRefundDeadline`: for new bookings of a property with a
   policy it now coincides with the policy's full refund window instead of check-in − 7.
 
@@ -382,6 +387,61 @@ Code: `Casazen.Core/Services/IGuestSessionService.cs`, `Casazen.Infrastructure/S
 `Casazen.Web/Infrastructure/GuestSessionCodeRateLimiter.cs`. Frontend: `src/features/public-booking/guest-bookings-page.tsx` (the form,
 "Esci" and `guest-area-slot.tsx`, where the messages of the guest hook in), `src/api/guest-session.api.ts`, `src/lib/guest-session.ts`,
 `src/queries/use-guest-session.ts`. Test: `GuestBookingLookupPostgresTests.GuestSession_…` (tenancy, uniform 404).
+
+### 8.5 The guest cancels from the guest area (DB-08a)
+
+The guest sees **what they would get back** and cancels, with the code and the email of § 8.4 and no email link in between (PO choice,
+DB-D3). No flag: it is always on and does not depend on the booking site v2. The cancellation goes through the existing services
+(`GuestBookingCancellationService` → `BookingCancellationService`, the same as the host's link of DB-08h): no new way to move money.
+
+| Endpoint | Auth | Answers |
+|---|---|---|
+| `GET /api/public/guest/bookings/{code}/cancellation` | Bearer (§ 8.4), `PublicBookingLookup` | 200 the **preview**; 401; **404 `guest_booking_not_found`** |
+| `POST /api/public/guest/bookings/{code}/cancel` `{ confirm: true, expectedRefundAmount }` + header `Idempotency-Key` | Bearer (§ 8.4); `GuestBookingCancel` (10 per 10 min per IP) and `GuestBookingCancelPerBooking` (5 per 15 min per booking) | 200 `{ status, refundAmount, refundStatus }`; **409 `refund_changed`** (+ `preview`); 409 `booking_payment_in_progress`; 422 `guest_cancel_stay_started`, `booking_not_cancellable_by_guest`, `guest_cancel_confirmation_required`, `refund_amount_invalid`, `idempotency_key_invalid`; 401; 404; 429 |
+| `GET /api/public/bookings/{id}/cancellation?token=` (the page of the host's link `/book/{slug}/bookings/{id}/cancel?token=`) | the link token; `PublicBookingLookup` | the same preview, the token **not spent**; 400 `guest_cancel_token_missing`; 422 `guest_cancel_token_invalid` / `_expired`; 404 |
+| `POST /api/public/bookings/{id}/cancel?token=` (DB-08h) + optional body `{ expectedRefundAmount }` | the link token; `GuestBookingCancel` | as above; without the body it cancels as before; with it, 409 `refund_changed` leaves the link usable |
+
+- **The refund, one calculation** (`CancellationRefundPolicy.EvaluateGuestRefund`, used by the preview and by the cancellation, which checks
+  it again under its lock): the **percent of the stay's policy** (the catalog policy of the property, with the host's overrides for a stay
+  under 28 nights) of `BasePrice` (lodging and cleaning) **plus the whole tourist tax**, never more than what is still refundable. The
+  default of DB-D15 (1a), to be confirmed with the consultant: the tax is a debt to the municipality, not due on a stay that does not
+  happen. If the PO decides otherwise the change is in that function and in the five catalog texts (migration `FixCancellationPolicyCatalog`).
+  A property without a policy refunds only the tax. A refund is never "done" before Stripe confirms it: `refundStatus` is `pending`
+  until the refund webhook, `confirmed` after, `none` when nothing goes back.
+- **The preview** (`GuestCancellationPreview`): `cancellable`, `reason` (`already_cancelled`, `stay_started`, `not_cancellable_status`,
+  `payment_in_progress`), `kind` (`cancel`; `withdrawRequest` for a request to pay at the property that the host has not accepted;
+  `deferredNoCharge` for "Paga alla scadenza" with nothing charged yet), `paidAmount`, `alreadyRefundedAmount`, `refundPercent`,
+  `refundAmount`, `retainedAmount` (+ `retainedBecause: "policy"`), the `policy` (`slug`, `name`, `description`: the description only
+  while the host's overrides did not change the windows), the last day (Europe/Rome, included) of the full and of the partial refund
+  (`fullRefundUntil`, `partialRefundPercent`, `partialRefundUntil`: the last **whole** day at least that many hours before the start of
+  the check-in day, as the free refund deadline of § 7.5), the `stay` (property and dates), `outcome` for a booking already cancelled
+  and `generatedAt`. Every figure comes from here; no booking code, nothing personal.
+- **What the guest area cancels.** Confirmed bookings and requests not yet accepted, **until the check-in day begins** (Europe/Rome): from
+  then on (`stay_started`, also a checked-in or checked-out stay) the guest writes to the host (DB-D3: no cancellation during a stay).
+  The link the host sent still works for a stay in progress. A payment that is settling (`Processing`) blocks it
+  (`payment_in_progress`). A booking already cancelled answers **200 with the outcome** of its cancellation and refunds nothing again.
+- **`refund_changed`.** The POST works the refund out again; if it is not `expectedRefundAmount` (a threshold of the policy was crossed
+  between the preview and the click, a payment changed) **nothing is cancelled** and the 409 carries the new `preview` in the problem
+  (`preview` extension) for the screen to show and ask again.
+- **Idempotency.** It is the cancelled state that stops a second refund: a repeated POST (same `Idempotency-Key`, another, or the
+  link and the area one after the other) answers the same 200 and creates no second refund (advisory locks per booking and payment, the
+  cancellation reads the booking again under them). The header is required (8-64 characters) so a client cannot cancel without a key
+  of its own. The cancellation is not tied to the request being open: a guest who closes the page does not leave a refund reserved and
+  never sent.
+- **Safety, DB-D3 (a).** Short session (§ 8.4), explicit confirmation of the amount, per-IP and per-booking limits, no cancellation
+  during the stay, the refund cannot exceed the policy, an email to the guest ("annullata come hai chiesto", the amount, "di solito
+  5-10 giorni", "se non sei stato tu scrivi all'host") **and** one to the host (`host-booking-cancelled-by-guest`, the amount refunded and
+  kept, the link to the booking), so an abuse is seen. The cancellation is stored with `Bookings.CancellationReason = GuestRequested`
+  (the host's timeline says "annullata dall'ospite"). Logs: booking id, channel, percent and amount; no email, no code, no token.
+- **Not done yet.** Card brand and last four digits in the guest's email; the cancellation of paid extras (DB-15); an English version of
+  the emails (DB-18); a demo scenario.
+
+Code: `Casazen.Core/Services/CancellationRefundPolicy.cs` (`EvaluateGuestRefund`, `RefundWindows`, `NeverFullRefundHours`),
+`GuestCancellationPreview.cs`, `IGuestBookingCancellationService.cs`, `DirectBookingPaymentRules.cs`;
+`Casazen.Infrastructure/Services/GuestBookingCancellationService.cs`, `BookingCancellationService.cs`, `BookingNotifier.cs`;
+`Casazen.Web/Controllers/GuestCancellationController.cs`, `PublicGuestBookingCancellationController.cs`,
+`Casazen.Web/Infrastructure/GuestBookingCancelRateLimiter.cs`, `GuestCancellationProblems.cs`, `DTOs/GuestCancellationDtos.cs`.
+Test: `GuestSelfCancellationPostgresTests` (the amount shown is the amount refunded, per property, once, never for another guest).
 
 ## 9. Deferred charge of "Paga più tardi" (BK-08)
 
@@ -599,6 +659,28 @@ what the code did before, and the migration rewrites no data.
 - A "pay at the property" request has its own cap (`onsite_request_too_many_nights`, § 2): a minimum above that cap leaves
   the card as the only way to book.
 
+### 11.2a The cancellation policy and its dates, for the public pages (DB-03b)
+
+Two additive read fields, no flag, no migration. Both come from the one rule of the guest area (§ 8.5: `CancellationRefundPolicy`,
+`EffectivePolicy`, `RefundWindows`), so what a page promises is what the cancellation then does.
+
+- **`cancellationPolicy`** in the public property detail (`GET /api/public/orgs/{slug}/properties/{slugOrId}` and `GET /api/properties/{id}/public`),
+  `null` for a property without a policy: `{ slug, name, description, fullRefundHours, partialRefundHours, partialRefundPercent, hostOverrideApplies,
+  longStayNights }`. It is the policy of a **normal stay** (under `longStayNights` = 28 nights): the catalog policy with what the host changed of it.
+  A window the policy does not have is **`null`**, never a number that means «never»: `fullRefundHours: null` is «Non rimborsabile» (no full refund at any
+  time), `partialRefundHours`/`partialRefundPercent: null` is a policy with no partial window. `hostOverrideApplies` = the host changed the hours or
+  the percentage; then `description` (the text of the catalog) is `null`, since it would say something else. From 28 nights the catalog policy applies as it
+  is, whatever the host changed: the quote below says the real dates of a stay. `cancellationPolicySummary` stays as it was.
+- **`cancellation`** in the quote (`POST /api/public/bookings/quote`): `{ fullRefundUntil, partialRefundPercent, partialRefundUntil, selfServiceAvailable }`
+  for the stay asked, worked out on the policy **of that stay**. The dates are the **last whole days** (Europe/Rome, `yyyy-MM-dd`, included) that end at least
+  that many hours before the start of the check-in day, daylight saving included: a date shown is never a promise an hour too long. A date already past is
+  `null` (a page never says «gratuita fino a ieri»), and so is a window the policy does not have. `fullRefundUntil` is the same day as
+  `paymentOptions.freeCancellationUntil` while it is ahead. `selfServiceAvailable` is `true` for every direct booking since DB-08a (the guest cancels
+  from the guest area, § 8.5); a page shows the dates only when it is true.
+- **Fixed on the way.** `CancellationRefundPolicy.RefundWindows` dropped the partial window of every sound policy (its test compared the days the
+  wrong way round): the guest-area preview never carried `partialRefundUntil`. The amount of the refund was never affected (it comes from
+  `EvaluateGuestRefund`). Test: `PublicCancellationPolicyIntegrationTests`.
+
 ### 11.3 The weekend surcharge
 
 - **A weekend night** is a night that starts on a Friday or on a Saturday, by its Europe/Rome calendar date
@@ -652,6 +734,71 @@ nights, which is `nightlyRate x nights` without a surcharge) and adds `lines`, t
 - The lines before `Total` add up to it, to the cent (`StayPricingTests`, `DirectBookingPublicDataIntegrationTests`). The
   frontend shows them and never adds euros itself.
 
+### 11.4a The search of the site: `stays`, the calendar of the site, places, similar houses (DB-07a)
+
+One call for the whole site instead of one per house. All anonymous, read only, no flag, no migration, under `/api/public/orgs/{slug}`
+(a former slug of the org resolves, 404 for a site that does not):
+
+| Endpoint | What it gives | Limit |
+|---|---|---|
+| `GET …/stays?checkin&checkout&adults&children&pets&where&minPrice&maxPrice&bedrooms&bathrooms&minSqm&amenities&rules&tags&sort&page&pageSize` | every published house of the site (50 at most) with the card, `availability` and `price`; `alternatives` when nothing is free | `PublicStaySearch` 60 / min per IP |
+| `GET …/calendar?from&to&adults&children` | per day of the site: `anyAvailable`, `fromPriceCents`, `minNights` (the «Quando» field of the home); 13 months at most | `PublicStaySearch` |
+| `GET …/destinations` | the comuni of the published houses `{ id, label, comune, count }`: `id` is the value of `where` | `PublicRead` |
+| `GET …/properties/{slugOrId}/similar?max=3` | up to 6 other houses: same kind of place (pool, sea, terrace, garden, pets), same comune, near price; cards with the lowest price per night, no stay | `PublicRead` |
+
+- **`stays` card.** `id`, `slug`, `name`, `comune`, `zone` (`{it, en}` as the host wrote it, `null` = not said), `latitude`/`longitude` **rounded** (§ 11.7, no address anywhere), the first
+  five `photos`, `bedrooms`, `bathrooms`, `maxGuests`, `areaSqm`, the main `amenities` (names of `PropertyAmenity`, six at most), `tags` (the labels of the house: the ones the host chose and the ones
+  its data give, § 14),
+  `rating {count, average}` (`null` without public reviews), `availability`, `price` and, **with dates**, `cancellation` `{ fullRefundUntil, partialRefundPercent,
+  partialRefundUntil, selfServiceAvailable }`: what cancelling costs for that stay on the policy of the house with what the host changed of it, the dates of the quote
+  of the same stay (§ 11.2a, Europe/Rome, a date already past is `null`); `null` without dates and for a house with no cancellation policy.
+- **`availability`** `{ available, reason, minNights, firstFreeCheckIn }`. `reason`, in this order: `past` (check-in before today), `not_bookable`
+  (the host cannot take a payment yet, § 11.5), `guests` (the party is larger than `maxGuests`), `pets` (`pets=true` and the house refuses pets; «on request»
+  does not refuse), `busy` (a night is taken: booking, hold, request, iCal or manual block, the same read as § 11.9), `min_nights`. A house that is not free **stays in
+  the list** after the free ones. `firstFreeCheckIn` = the check-in asked when the house is free; for `busy` and `min_nights` the first day (from the check-in asked,
+  not before today) a stay as long as the one asked and at least the minimum stay is free within 150 days; `null` for the other reasons. Without dates every house is
+  `available: true` (there is nothing to be taken) and `firstFreeCheckIn` is `null`.
+- **`price`** `{ currency, perNightCents, totalCents, includesTouristTax }`. **`totalCents` is the total of the quote** of that stay for that party, to the cent, from
+  the same functions (`StayPricing.Lodging`, `TouristTaxCalculator.Calculate`): nights (rate, weekend surcharge, prices the host confirmed) + cleaning + tourist tax
+  when it can be calculated. It is `null` without dates and when the quote would refuse the stay (too many guests, shorter than the minimum, in the past).
+  `perNightCents` is the nights divided by their number (cleaning and tax not in it), or, without dates, the lowest night of the next 30 days («da X € a notte»).
+  `includesTouristTax`: `exact`, `estimated` (children are in the party and the rate of the comune depends on age: **every child is counted as 17, a payer**, the
+  quote of the checkout, which asks the ages, gives the exact figure) or `notIncluded` (no rate for the comune: the total has no tax, as in the quote).
+- **`alternatives`**: only when dates were given and **no** house that passes the filters is free; up to 3 ranges as long as the stay, offsets +1, −1, +2, −2, +3, −3, +4, +5, +6,
+  +7, +10, +14, +21 days (not before today), with `availableCount` (houses that sleep the party, accept the pet and are free) and `fromPerNightCents`; oldest first.
+- **Filters.** `where` (a destination `id` or a comune name), `bedrooms`/`bathrooms`/`minSqm` (at least; a house that did not say its size is not shown for `minSqm`),
+  `minPrice`/`maxPrice` (per night, on `perNightCents`), `amenities` (names of `PropertyAmenity`, the house has all), `rules` = `pets` (accepts pets), `selfCheckin`
+  (amenity), `smoking` (rule «yes», else the amenity), `parties` (rule «on request»), `children` (only a house whose host said that children are welcome); `tags` (`mare,centro,piscina,pet,campagna,terrazza,vista-mare`: the house has
+  all of them, the host's and the data's). **Not applied, and said so** in `unsupportedFilters`: a value no house can match (`amenities:Foo`, `rules:Foo`, `tags:Foo`). Never an error.
+- **Sort** `recommended` (default: by name, until the editor can order the houses), `priceAsc`, `priceDesc` (on the total, per night without dates), `rating`, `largest`;
+  `page` from 1 and `pageSize` (50 at most; left out, every house).
+- **Errors.** 422 `public_stays_dates_invalid` (one date only, departure not after arrival, more than 366 nights); 422 `public_site_calendar_range_invalid`; 400 for a
+  value out of range (adults 1-50, children 0-50, page size 1-50…); 429 per client IP.
+- **Tenancy and privacy.** The houses are those of the org of the site and no other org's; a signed-in host of another org gets the answer everybody gets (the queries
+  name the org and ignore the tenant filter). Nothing says who stays or whether a night is a booking or a block.
+- **Cost.** Per request, whatever the number of houses: the houses (1 read), the taken nights of all of them (2), the prices the hosts confirmed (1), the tourist tax rates
+  of the stay (1) and the ratings (1); the taken nights are loaded from 21 days before the check-in to 150 days after it. The answer of `stays` and of the site calendar is
+  **kept for `PublicRead__CacheSeconds` seconds** (30 by default, `0` = off) in a bounded cache (256 answers, a new one is simply not kept when it is full), per org and
+  query; nothing invalidates it (`generatedAt` says when it was worked out, the quote and the checkout never read it, so a stale list cannot make a booking wrong).
+
+#### 11.4b The same search across all the sites: `/api/public/stays` (the public `/search` of CasaZen)
+
+The same contract and the same functions (`PublicStayPlanner`, `StayPricing`, `TouristTaxCalculator`: one definition of price and availability), with `scope = Platform`; no flag, no
+migration. `GET api/public/stays` (the parameters of `stays`), `GET api/public/stays/calendar?where&from&to&adults&children` and `GET api/public/stays/destinations`; same limits
+(`PublicStaySearch` 60 / min per IP; `destinations` `PublicRead`). The old `GET api/properties/search` is untouched.
+
+- **Which houses.** Published (`PublicListing.IsPublished`, which includes «Mostra la casa sul sito»), of an active org, **and of an org that can take a booking now**
+  (`Org.AcceptsDirectPayments`): a card that ends on «not bookable» is not offered. At most 500 houses are read (by name; past that a search that does not run in memory is needed,
+  debt SEARCH-GLOBAL-FU3); the written comune of each house feeds `destinations` (100 places at most).
+- **What changes from a site.** `where` is what the visitor typed: the id of a destination, or any text that the comune or the zone the host wrote contains, or a phrase that contains the
+  comune (`lago di como`). `recommended` is the best rated first (then by name). **Only the houses that are free for the stay are listed in `items`**, paged (`pageSize` 24 by default, 50
+  at most): `totalCount` counts the houses that pass the filters, `availableCount` the free ones, and `alternatives` still come when none is free.
+- **The card** is the one of `stays` plus `orgSlug` and `hostName` (the name the host chose for the site, else the name of the org): the site of the house is `/book/{orgSlug}/property/{slug}`.
+  The position is the rounded one (§ 11.7), no address.
+- **`facets`** (only here): over the houses of the place asked, before the other filters: `minNightCents`/`maxNightCents` (base rates), `maxGuests`, `minAreaSqm`/`maxAreaSqm`, `petsAllowed`,
+  `tags [{tag, count}]`: what the sliders, the guests and the label chips of the page offer.
+- **Cache** as § 11.4a, keys `platform-stays`, `platform-calendar` and `platform-destinations`.
+
 ### 11.5 Public host data and `acceptsBookings`
 
 - `acceptsBookings` is **the rule of the checkout**: the org has a Stripe connected account that is allowed to charge
@@ -679,6 +826,20 @@ nights, which is `nightlyRate x nights` without a surcharge) and adds `lines`, t
 - The host reads it in the GDPR tab and can only **withdraw** it on the guest's documented request ([gdpr.md](gdpr.md)); the
   withdrawal keeps the version of the text the guest agreed to. The tab labels the source (`GuestConsentSource`): the
   frontend needs the label for `BookingCheckout` (follow-up FE).
+
+### 11.6a The expected arrival time (DB-03b)
+
+- `POST /api/public/bookings` accepts `expectedArrivalTime`, optional, from step 2 of the checkout: `HH:mm` (`15:30`; `9:30` is read as
+  `09:30`) or `late` for "after the check-in window". Left out, `null` or blank = the guest did not say. Anything else is **422
+  `direct_booking_arrival_time_invalid`** before anything is written (IT/EN message). Stored on the new nullable
+  `Bookings.ExpectedArrivalTime` (`varchar(5)`; migration `AddBookingExpectedArrivalTime`, additive, no backfill, no flag).
+- **It is a note for the host, not a rule**: it moves no price, no availability and no check. The check-in window of the property is **not**
+  enforced (the property has no end of window, and an optional preference must never be what stops a paid booking); the checkout offers
+  the hours of the window and "after …" itself. The quote does not take it.
+- The host reads it as `expectedArrivalTime` in the booking DTO (`GET /api/bookings`, `GET /api/bookings/{id}`; `null` for a booking that did
+  not come from the checkout): the note "arrivo previsto alle…". It is in the data export of the guest (`GuestExportBooking.ExpectedArrivalTime`)
+  and is cleared, with the special requests, when the guest is erased ([gdpr.md](gdpr.md)).
+- Rollback: deploy the previous release (it ignores the column); `Down` drops it and the values are lost.
 
 ### 11.7 Public coordinates (privacy)
 
@@ -720,6 +881,113 @@ FROM casazen_prod."Orgs";
   the schema before the migration, defaults, CHECKs, old writer, Down/Up) and `DirectCheckoutMarketingConsentPostgresTests`
   (two checkouts at once, payment not started, cascade, GDPR tab).
 
+### 11.9 The calendar with the price of every night (DB-03b)
+
+`GET /api/public/properties/{propertyId}/calendar?from=yyyy-MM-dd&to=yyyy-MM-dd` and, for a property of a site,
+`GET /api/public/orgs/{slug}/properties/{slugOrId}/calendar` (same query): the night that starts on each day, to draw the calendar of the
+property page, the stay pickers and the checkout. Anonymous, `PublicRead` (per client IP), no flag, no migration.
+
+```json
+{ "propertyId": "…", "startDate": "2026-10-30", "endDate": "2027-10-30", "today": "2026-10-30", "currency": "EUR",
+  "generatedAt": "2026-10-30T09:12:44Z",
+  "days": [ { "date": "2026-10-30", "available": true, "nightlyPriceCents": 17250, "minNights": 2 }, … ] }
+```
+
+- **Range.** `from` defaults to today (Europe/Rome), `to` (excluded) to `from` + 12 months; at most **13 months**, otherwise 422
+  `public_calendar_range_invalid`. Days before today are not listed (`startDate` is the first day listed, `today` tells what "past" is).
+  404 `public_property_not_found` (the same message of the availability) for a property that does not exist or is not published
+  (`PublicListing.IsPublished`, active org); the slug route answers a plain 404 for an org that does not resolve, its former slugs too.
+- **`available`** = a stay can start that night: no booking that is not cancelled, no hold within its time, no "pay at the property"
+  request waiting for the host, no iCal block, no manual block. It is **the same read as the availability** (`PublicOccupancyReader`,
+  shared with `PublicAvailabilityService`: `PropertyOccupancy` + `CheckoutHolds.OccupiesDates`), so a night shown as taken is a night
+  the checkout refuses and the other way round. The check-out day of a stay is available. A booking, a host block and an iCal block
+  look the same, and nothing says who stays: the answer carries dates, booleans and numbers only.
+- **`nightlyPriceCents`** = `StayPricing.NightPrice`, the function the quote adds the nights up with (`StayPricing.Lodging` of one
+  night): the nightly rate, `+ weekendSurchargePercent` on a Friday or a Saturday (rounded to the cent), or the price the host confirmed
+  for that date (§ 11.3). It is the first line of the quote of a one-night stay on that date, to the cent (test
+  `Calendar_EveryNightPrice_IsWhatTheQuoteAddsUpForThatNight_*`); there is no second calculation. It is also given for a taken night.
+  The quote stays the only authority on a **total**: the calendar says nothing of cleaning, tourist tax or the length of the stay.
+- **`minNights`** = the shortest stay that can start that day: the property's minimum (§ 11.2), 1 when it has none. It is per day on
+  purpose: the minimum by date (D20, SR-11) will fill the same field with no change of contract.
+- **Cache.** None: four small reads (the property, the bookings, the blocks, the prices the host confirmed) for any range, behind
+  the per-IP limit. `generatedAt` says when the answer was worked out.
+- **Prices the host confirmed are public data**: `PricingAdapterService.GetAppliedNightlyPricesAsync` names the property and ignores
+  the tenant filter, so a signed-in host of another org who looks at the site sees the prices everybody sees (the quote did not
+  guarantee it before).
+### 11.10 Writing to the host: «Scrivi a {host}» (DB-03b)
+
+`POST /api/public/orgs/{slug}/contact` (anonymous, no flag, no migration, no entity): a visitor of the booking site who has no booking yet
+writes a few lines to the host, who gets them by email and answers from their mailbox.
+
+```json
+{ "email": "anna@example.com", "message": "Ciao, c'è posto a Ferragosto?", "name": "Anna", "propertyId": "…", "lang": "en",
+  "consent": true, "website": "" }
+```
+
+- **Answer.** `202` with no body, **the same for every org that exists**: whether it publishes its contact email on the site
+  (`ContactEmailPublic` is about showing the address, the form never shows it), has one or not, and whether the honeypot caught the call.
+  The answer never says whether the message reached anybody. `404` for a site that does not resolve (its former slugs do, PL-04); `400`
+  `validation_error` for a body that breaks the limits, `host_contact_consent_required` when `consent` is not `true`,
+  `host_contact_email_invalid` (a plain address only, no display name), `host_contact_message_invalid` (5 to 2000 characters once trimmed);
+  `429` `rate_limited` (see below). The body is capped at 16 KB; `name` up to 100 characters; `lang` is `it` or `en` (anything else is
+  ignored); `propertyId` counts only if it is a published property of that org, otherwise it is ignored and tells nothing.
+- **Honeypot.** `website` is a field no person fills: when it has a value the call is answered `202` and nothing is sent.
+- **Limits.** Per client IP (`PublicContact`, 5 / 10 min) and per address and org (`HostContactPerEmail`, 3 / day, counted under the id of
+  the org, so a former slug shares the budget; its 429 always names the whole window). Variables in [proxy-ip.md](proxy-ip.md).
+- **The email** (`host-contact-message`, one per accepted message, to `Orgs.ContactEmail`, in Italian like the other emails to the host)
+  carries the text of the visitor (HTML-encoded, line breaks kept), their address and name, the property with a link to its page and the
+  language of the site they were reading; the subject has no personal data. Its **`Reply-To` is the visitor's address**, so the host answers
+  by replying; the sender stays the configured one (`EmailContent.ReplyTo`, `IEmailService.SendEmailAsync(…, replyTo)`; a message with a
+  reply-to goes through its own Hangfire job `SendWithReplyToAsync`, the emails without it through the job they always used). It is the
+  consequence of a person's action (the visitor sent the form), never automatic, and it is the only email that leaves.
+- **Privacy.** Nothing is stored. The log has the org id and whether the email was queued, never the address, the name or the text. The text
+  lives in the Hangfire job of the email until the job is deleted, like the body of every other email. An org without a contact email
+  drops the message quietly (log line with the org id).
+- **Not done here.** A copy or a receipt to the visitor, a per-org cap against a distributed flood, a thread of the conversation in the
+  app, the languages of the email to the host (Italian only).
+
+### 11.10 Writing to the host: «Scrivi a {host}» (DB-03b)
+
+`POST /api/public/orgs/{slug}/contact` (anonymous, no flag, no migration, no entity): a visitor of the booking site who has no booking yet
+writes a few lines to the host, who gets them by email and answers from their mailbox.
+
+```json
+{ "email": "anna@example.com", "message": "Ciao, c'è posto a Ferragosto?", "name": "Anna", "propertyId": "…", "lang": "en",
+  "consent": true, "website": "" }
+```
+
+- **Answer.** `202` with no body, **the same for every org that exists**: whether it publishes its contact email on the site
+  (`ContactEmailPublic` is about showing the address, the form never shows it), has one or not, and whether the honeypot caught the call.
+  The answer never says whether the message reached anybody. `404` for a site that does not resolve (its former slugs do, PL-04); `400`
+  `validation_error` for a body that breaks the limits, `host_contact_consent_required` when `consent` is not `true`,
+  `host_contact_email_invalid` (a plain address only, no display name), `host_contact_message_invalid` (5 to 2000 characters once trimmed);
+  `429` `rate_limited` (see below). The body is capped at 16 KB; `name` up to 100 characters; `lang` is `it` or `en` (anything else is
+  ignored); `propertyId` counts only if it is a published property of that org, otherwise it is ignored and tells nothing.
+- **Honeypot.** `website` is a field no person fills: when it has a value the call is answered `202` and nothing is sent.
+- **Limits.** Per client IP (`PublicContact`, 5 / 10 min) and per address and org (`HostContactPerEmail`, 3 / day, counted under the id of
+  the org, so a former slug shares the budget; its 429 always names the whole window). Variables in [proxy-ip.md](proxy-ip.md).
+- **The email** (`host-contact-message`, one per accepted message, to `Orgs.ContactEmail`, in Italian like the other emails to the host)
+  carries the text of the visitor (HTML-encoded, line breaks kept), their address and name, the property with a link to its page and the
+  language of the site they were reading; the subject has no personal data. Its **`Reply-To` is the visitor's address**, so the host answers
+  by replying; the sender stays the configured one (`EmailContent.ReplyTo`, `IEmailService.SendEmailAsync(…, replyTo)`; a message with a
+  reply-to goes through its own Hangfire job `SendWithReplyToAsync`, the emails without it through the job they always used). It is the
+  consequence of a person's action (the visitor sent the form), never automatic, and it is the only email that leaves.
+- **Privacy.** Nothing is stored. The log has the org id and whether the email was queued, never the address, the name or the text. The text
+  lives in the Hangfire job of the email until the job is deleted, like the body of every other email. An org without a contact email
+  drops the message quietly (log line with the org id).
+- **Not done here.** A copy or a receipt to the visitor, a per-org cap against a distributed flood, a thread of the conversation in the
+  app, the languages of the email to the host (Italian only).
+
+### 11.11 The amenity catalog (DB-11a)
+
+`GET api/public/amenities` (anonymous, `PublicRead` limit, `Cache-Control: public, max-age=3600`) is the reference list the public property page
+reads so it never shows a raw code: `groups` (the five of the design, in order: `comfort`, `kitchen`, `bedbath`, `outdoor`, `safety`, each with
+`label {it, en}`) and `amenities`, one entry for **every** `PropertyAmenity` (`name` is the enum member name, which is what `amenities` of the public
+property DTOs carries; `icon` is an icon of the booking site; `group`; `label {it, en}`). The labels say what the amenity says and no more (`Pool` is
+«Piscina», not «Piscina privata»: the host's data do not tell whether it is shared). The list lives in code (`AmenityCatalog`); a new amenity without an
+entry fails `PublicAmenityCatalogIntegrationTests`. The design lists five services the enum does not have (bed linen, hair dryer, loungers, outdoor
+shower, sea view): they are not in the catalog and a host cannot state them until the enum grows (append only).
+
 ## 12. Who runs the site: operator data in the footer (DB-03b-a)
 
 Task DB-03b-a of the redesign wave (reduced DB-03b, decision DB-D14 (a)). The booking site of a host shows, in its footer, the
@@ -744,3 +1012,111 @@ of the settings page is marked as a draft until then. Publication is never block
   Rollback: deploy the previous release (it ignores the columns); `Down` drops them and the values entered are lost.
 - **Not done here** (proposed IDs in `results/DB-03b-a.md`): a structured registered office (street, town, province, postal
   code), the registry number (REA), a warning in a publication checklist, the same data in the JSON-LD of the site.
+
+## 13. Themes and font pairs of the public site (DB-01)
+
+Task DB-01 of the redesign wave. The booking site of a host has three themes, **Terra** (terracotta on cream), **Mare** (petrol
+blue on white) and **Città** (ink on stone), and three font pairs, **Editoriale**, **Moderno** and **Classico**. The tokens live in
+the frontend (`src/styles/public-tokens.css`, mirrored in `src/lib/public-site-themes.ts`); the backend only keeps the lists of
+the accepted ids (`PublicSiteThemes`, `PublicSiteFonts`).
+
+- **Ids.** `Orgs.PublicThemeId`: `terra` (the default), `mare`, `citta`. `Orgs.PublicFontId` (varchar 20, new, `NULL`): `editoriale`,
+  `moderno`, `classico`; `NULL` is the font its theme starts with (Terra and Mare: Editoriale, Città: Moderno). Both are written by
+  `PUT /api/orgs/me/branding` (422 `org_branding_theme_invalid` / `org_branding_font_invalid`); `publicFontId` is optional there: a
+  client that does not send it never erases the choice. Both are read by `GET /api/public/orgs/{slug}`, `GET /api/public/resolve-host`
+  and `GET /api/orgs/me/branding`.
+- **Migration `AddPublicSiteFontAndThemeIds`** (additive column, plus a rewrite of data). Before DB-01 the ids were `mare` (terracotta
+  on cream), `montagna` (green) and `urban` (indigo). `mare` now names a different look, so the migration moves `mare` and `montagna`
+  to `terra` and `urban` to `citta`; an org of `montagna` or `urban` that never picked a colour of its own gets the colour its theme
+  gave (`#2e6a4a`, `#2f3bd1`), so the part of the look that survives is kept. An org without a theme stays without one (it was the
+  terracotta default and is `terra` now). The reading code still understands `montagna` and `urban` (`PublicSiteThemes.Resolve`) for
+  two releases, because the frontend is deployed after the migration; they are no longer accepted when written.
+- **Order of the release.** The migration goes out with the backend, the frontend after it: between the two, a host that had `mare`
+  already reads `terra` (rewritten) and the old frontend does not know it, so it shows its default theme for a few minutes (the same
+  terracotta look). A write from a console that is still the old release and sends `montagna` or `urban` gets a 422; a reload fixes it.
+- **Rollback.** Deploy the previous release; `Down` maps `terra` back to `mare` and `citta` to `urban` and drops the column (the new
+  `mare` has no old twin and an old release shows it as terracotta; the colours written by `Up` stay, they are the host's colour now).
+- **Tests.** Unit: `OrgBrandingRulesTests`, `OrgBrandingServiceTests`, `PublicOrgControllerTests`, `LegacyRowsSchemaTests`. HTTP:
+  `OrgBrandingIntegrationTests`. PostgreSQL (CI): `AddPublicSiteFontAndThemeIdsMigrationPostgresTests` (stored ids and colours before
+  the migration, written by SQL, and what each becomes).
+
+## 14. The site profile of a property (DB-11a)
+
+Task DB-11a of the redesign wave, first piece: the optional facts and texts the property page of the booking site shows **when the host
+filled them in**, and the host API that writes them. Nothing is shown that the host did not say, nothing here is read to decide a booking,
+a price or a refund, and no field can hold an address or an exact position. The fields of the wizard «Aggiungi immobile» (SR-07a: area,
+beds, rules, times, the switch «Mostra la casa sul sito») keep their one owner (`PUT api/properties/{id}`); this piece adds the rest.
+What is read by the public page, the JSON-LD, the amenity catalog and the filters of the search comes in the next pieces.
+
+- **API.** `GET api/properties/{id}/site-profile` (`property.read`) and `PUT api/properties/{id}/site-profile` (`property.write`), short-rent
+  only, authorized like the photos (TN-3): the property of the caller's org (another org's is 404), a colleague without ownership or an
+  org-wide role is 403, a signed-in colleague with an org-wide role is audited (`PropertySiteProfile.Update`). **The `PUT` replaces the whole
+  profile**: what the body leaves out, or sends as `null`/empty, is cleared, so the editor sends everything it shows. It answers with what is stored.
+  A property in long-term mode (`RentalMode.Long`) has no page: 422 `property_not_bookable_in_long_mode`.
+- **Columns of `Properties`** (all nullable, `null` = the host never said): `FloorLevel` (-3 to 60, 0 = ground floor), `RenovatedYear` (1800 to this
+  year, Rome), `EnergyClass` (`A4`…`G`, upper-case) and `EnergyIndex` (kWh/m² per year, 0 to 9999, two decimals, **only with a class**), `AreaKind`
+  (`Country`/`Coast`/`Historic`), `ChildrenWelcome`, `CheckInTo` (the latest arrival, whole minutes, after `CheckInFrom` when that is set),
+  `VideoUrl`, `TourUrl`, and two JSON columns: `SiteProfileJson` (the texts below) and `PhotoAltJson` (the alt text and size of the photos: created
+  here, written by the photo piece). The ranges are also `CHECK` constraints, so no other writer can store a class that does not exist.
+- **The energy class is never filled in by the system** (DB-D18): the APE document of the property stays private and is not copied. A host that
+  does not say it shows none.
+- **Texts** (`SiteProfileJson`, `{ it, en }`; Italian always, English if the host wants, **nothing is translated** for them, DB-D8): `zone` (120
+  characters), `near` (160), `floorNote` (120), `outdoorNote` (200), `checkInMethod` (200), `rulesNote` (500, the only one with line breaks), up to 3
+  `highlights` (an icon of the fixed list, a title of 60 and a line of 200) and up to 10 `safetyNotes` (160). An English text without the Italian one is
+  422 `property_site_profile_italian_required`; a text over its limit is 422 `property_site_profile_text_too_long`. Texts are trimmed and cleaned of
+  control characters before they are stored; they are plain text.
+- **Labels of the site** (`tags`): `mare`, `centro`, `piscina`, `pet`, `campagna`, `terrazza`, `vista-mare`. The host chooses any; the data of the house
+  add theirs and the host cannot remove them (`derivedTags` in the answer): a pool gives `piscina`, a terrace `terrazza`, pets welcome (the amenity or the
+  rule «Yes») `pet`, the coast or a beach `mare`, a historic centre `centro`, the countryside `campagna`. `vista-mare` comes only from the host. Unknown
+  label: 422 `property_site_profile_tag_unknown`.
+- **Highlight icons** (fixed list, 422 `property_site_profile_highlight_icon_unknown`): `waves walk volume-x trees sunset sun landmark key door umbrella
+  mountain panorama wine boat parking coffee flame wifi paw bed heart star home utensils snow sparkles shield lock tv droplet map-pin car train`.
+- **Video and tour** (DB-D17): the host pastes the address they copy from the provider and **only the canonical embed address is stored**, built from the
+  identifier: YouTube (any watch, short, `youtu.be` or embed form) → `https://www.youtube-nocookie.com/embed/{id}`, Vimeo → `https://player.vimeo.com/video/{id}`
+  (`?h=` for an unlisted video), Matterport → `https://my.matterport.com/show/?m={id}`. `https` only, the default port, no credentials, an exact host (a
+  lookalike such as `youtube.com.evil.example` is refused), nothing of the original query (no autoplay). Anything else: 422
+  `property_site_profile_video_url_invalid` / `_tour_url_invalid`. The page loads them **after the visitor's click**; its frame must allow the three hosts
+  (`frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://my.matterport.com`).
+- **Other 422 codes** (each with the `field` that broke the rule): `property_site_profile_floor_level_invalid`, `_renovated_year_invalid`,
+  `_energy_class_invalid`, `_energy_index_invalid`, `_energy_index_without_class`, `_check_in_window_invalid`, `_too_many_highlights`, `_too_many_safety_notes`.
+- **Migration `AddPropertySiteProfile`**: eleven nullable columns and four constraints on `Properties`, no data touched, no flag, no environment variable.
+  Rollback: deploy the previous release (it ignores the columns); `Down` drops them and what the hosts wrote is lost.
+- **The public page (second piece).** `profile` in `PublicPropertyDetailDto`, on both routes (`GET api/public/orgs/{slug}/properties/{slugOrId}` and
+  `GET api/properties/{id}/public`; one projection, `PropertyService.DetailRow`, built by `PublicPropertyProfileBuilder`): `headline` (the listing title of the
+  wizard), `accommodationType`, `beds`, `areaSqm`, `floorLevel`, `floorNote`, `outdoorNote`, `renovatedYear`, `energy {class, index}`, `areaKind`, `zone`, `near`,
+  `tags` (the host's and the ones the data give, in the order of the vocabulary), `highlights`, `safetyNotes`, `rules` and the `video` / `tour` (`{url, provider}`).
+  **Only what the host said**: a member never said is `null` (a list: empty), `rules` is `null` when none of its members is set, and the page does not draw
+  that section. `rules` = `checkIn {from, to, method}`, `checkOutBy`, `quietHours {from, to}` (a pair or nothing), `pets` / `smoking` / `parties` (the wizard's
+  answers: `No`, `OnRequest`/`OutdoorsOnly`, `Yes`), `childrenWelcome`, `note`. A latest arrival that is not after the earliest (the wizard moved the
+  earliest later) is left out. The extra-guest fee of the wizard is **not** published: the quote does not charge it (SR-07a-FU1). Texts are `{it, en}`; the page
+  shows English only when the host wrote it. The columns that hold the texts as stored (`SiteProfileJson`, `PhotoAltJson`) are never part of a response.
+- **JSON-LD** of the property page (`VacationRental`): `containsPlace.floorSize` (m², `MTK`), `checkinTime`, `checkoutTime` and `petsAllowed` are written when the host
+  stated them (`false` only when the pets rule says No); nothing else is added, no `aggregateRating`.
+- **Demo.** The showcase property «Villa del Lago» carries a site profile (scenario `property-site-profile`, catalog `2026-10-30.1`), applied through the same rules as the
+  host form; no video or tour (nothing of a third party is embedded from a demo).
+- **Photos: alternative text and size (third piece).** `GET` / `PUT api/properties/{id}/site-profile/photos` (same permissions as the profile): the gallery in display order, each
+  photo `{ url, alt {it, en}, width, height }`. The `PUT` lists the photos that have an alternative text (Italian always, English if the host wants, 200 characters, same rules as the
+  texts above, `field: photos`) and the gallery photos it does not list **lose theirs**; an address that is not in the gallery is 404 `property_photo_not_found`; the size is not
+  part of the body. The map lives in `Properties.PhotoAltJson` and **follows the gallery under the same lock as the photo service**: an upload reads the size of the
+  file (PNG, JPEG or WebP header, no decoding; a JPEG a phone took on its side gives its width and height swapped, as the browser draws it; unreadable = no size, the upload is
+  never refused for it) and a deleted photo takes its text and size with it. A photo uploaded before this existed has no size. The public detail lists `photos` next to
+  `photoUrls`, which stays. **No resized variants**: nothing in the stack resizes images (no library, no CDN transform), so `srcset` is left to a later decision; the size lets the page
+  reserve the room and load the first photo with priority.
+- **Floor plan (fourth piece).** `GET` / `POST` / `PUT {planId}` / `DELETE {planId}` on `api/properties/{id}/site-profile/floor-plans` (same permissions): at most **six levels**, each a **PNG or
+  JPEG of 5 MB at most checked on its content** (a text named `.png` is 422 `property_floor_plan_invalid_type`), uploaded as multipart (`image`, `nameIt` required, `nameEn`,
+  `level` -3 to 60 with 0 = ground floor, `areaSqm`), stored in the property's own folder of the public bucket (`properties/{id}/floorplans/`), its size read from the file. The page lists the
+  levels lowest floor first. 422 `property_floor_plan_none` / `_invalid_type` / `_invalid_size` / `_limit_reached` / `_area_invalid` and the usual `property_site_profile_*` with the `field`;
+  404 `property_floor_plan_not_found`. Deleting removes the object first and the row after; the limit is checked under the property's media lock (the one of the photos).
+- **Points of interest (fourth piece).** `GET` / `PUT api/properties/{id}/site-profile/pois`: the host sends the whole list (**twelve at most**, an empty list removes them all):
+  `kind` (`Beach`, `Food`, `Shop`, `Transport`, `Sight`, `Health`, `Parking`), `name` (Italian required), `mode` (`Walk`/`Car`), `minutes` (1 to 600), `direction` (one of eight points:
+  `N` `NE` `E` `SE` `S` `SW` `W` `NW`) and `distanceMeters`. **Privacy**: a point is never a position. The side is one of eight points, the distance is **stored rounded** (100 m below 1 km,
+  250 m below 5 km, 500 m below 20 km, then 1 km) and **never closer than 200 m**, and nothing is worked out from the coordinates of the property: a known place a few metres away on
+  a known side would give the door away whatever the rounding of the coordinates. 422 `property_poi_limit_reached`, `property_poi_minutes_invalid`, `property_site_profile_italian_required` (`field: pois`).
+- **Public page.** `profile.floorPlans` `[ { id, level, name, imageUrl, width, height, areaSqm } ]` and `profile.pois` `[ { kind, name, mode, minutes, direction, distanceMeters } ]`, both on the
+  detail only, never in a list. The demo property «Villa del Lago» carries four points (catalog `2026-10-30.2`); no floor plan image in a demo.
+- **Migration `AddPropertyFloorPlansAndPois`**: two new tables (`PropertyFloorPlans`, `PropertyPois`, tenant-owned, cascade with their property) and their constraints; no existing row is touched.
+  Rollback: `Down` drops them (what the hosts entered is lost; the image objects stay in the bucket).
+- **Not here**: the amenity catalog is `GET api/public/amenities` (§ 11.11) and the filters of the search on labels and children are in § 11.4a.
+- **Tests.** Unit: `SiteEmbedUrlsTests` (what an embed address can become), `SitePropertyProfileRulesTests` (clean, canonical, within the limits and the
+  vocabularies). HTTP: `PropertySiteProfileIntegrationTests` (replace, read back, a mistake saves nothing, another org / a colleague / anonymous / long-term).
+  PostgreSQL (CI): `AddPropertySiteProfileMigrationPostgresTests` (existing properties come out empty and published as before; the constraints), `LegacyRowsSchemaTests`.

@@ -1,0 +1,14 @@
+{
+  "leaseId": "7e570000-5eed-4000-8000-000000000005",
+  "practices": [
+    {
+      "practiceId": "P-7e57000000000005",
+      "status": "SignedReceived",
+      "statusChangedAt": "2026-10-20T21:38:00Z",
+      "submittedAt": "2026-10-15T21:38:00Z",
+      "comune": "Brugherio",
+      "comuneDiffersFromLink": false,
+      "closeReason": null
+    }
+  ]
+}

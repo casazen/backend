@@ -8,8 +8,8 @@ namespace Casazen.Core.Services;
 
 /// <summary>
 /// A host request to a supplier. <paramref name="RentalContext"/> is the context the host opened it in (D2): a
-/// short-rent request is for one stay and needs <paramref name="BookingId"/>; a long-rent request is for the property
-/// and takes no booking. See <see cref="ServiceRequestErrorCodes"/>.
+/// short-rent request is for the property and, when the host names it, one of its stays (<paramref name="BookingId"/>, SR-08a: the stay
+/// is optional); a long-rent request is for the property and takes no booking. See <see cref="ServiceRequestErrorCodes"/>.
 /// </summary>
 /// <param name="ServiceListingId">
 /// The service of the supplier's catalog the request is for (SP-04): it must be an active service of that supplier, of the
@@ -26,6 +26,11 @@ namespace Casazen.Core.Services;
 /// catalog service is chosen. The supplier sees it and can take another job the same day only when the intervals do not
 /// overlap. A full working day is occupied only when this interval covers those hours, never by omitting the time.
 /// </param>
+/// <param name="UseBackupSuppliers">
+/// SP-BKP: whether the request is also sent to up to three backup suppliers, declared as such. <c>null</c> (the default) follows the org's
+/// choice (<c>Org.SupplierBackupsEnabled</c>, on by default); <c>false</c> sends it to the chosen supplier alone, as before. It only matters
+/// while the feature flag <c>SupplierRequestBackups</c> is on, and never for a request accepted automatically (SP-04d).
+/// </param>
 public record CreateServiceRequestCommand(
     Guid OrgId,
     string UserId,
@@ -39,7 +44,8 @@ public record CreateServiceRequestCommand(
     ServiceRequestRentalContext RentalContext = ServiceRequestRentalContext.ShortRent,
     Guid? ServiceListingId = null,
     DateTime? ScheduledStartUtc = null,
-    int? DurationMinutes = null);
+    int? DurationMinutes = null,
+    bool? UseBackupSuppliers = null);
 
 /// <summary>
 /// What the supplier adds when it takes a request (SP-04): a time for a request that has none, and the price it commits to.
@@ -67,6 +73,22 @@ public record CompleteServiceRequestCommand(
 /// </summary>
 /// <param name="EndUtc">The end of the proposed time; when left out, the start plus the duration of the request's service.</param>
 public record ProposeServiceRequestTimeCommand(DateTime StartUtc, DateTime? EndUtc = null, string? Message = null);
+
+/// <summary>
+/// A quote for a new request, sent by the supplier (SP-04b): the lines (the total is what they add up to), an optional note, and optionally
+/// another time instead of the one the request already has.
+/// </summary>
+/// <param name="Lines">From one to twenty lines (<see cref="ServiceRequestQuoteRules.Normalize"/>).</param>
+/// <param name="ScheduledStartUtc">
+/// Another time for the work, offered with the quote: it replaces the time of the request only if the customer accepts. Without it the quote
+/// leans on the time the request already has.
+/// </param>
+/// <param name="ScheduledEndUtc">The end of that other time; when left out, the start plus the duration of the request's service.</param>
+public record SendServiceRequestQuoteCommand(
+    IReadOnlyList<ServiceRequestQuoteLine> Lines,
+    string? Note = null,
+    DateTime? ScheduledStartUtc = null,
+    DateTime? ScheduledEndUtc = null);
 
 /// <summary>
 /// The outcome for one request of a batch (<see cref="IServiceRequestService.AcceptManyAsync"/>): accepted, or the code and
@@ -127,9 +149,6 @@ public static class ServiceRequestErrorCodes
     /// </summary>
     public const string StateChanged = "service_request_state_changed";
 
-    /// <summary>A short-rent request without <c>bookingId</c>: in short-term rental a request is for one stay.</summary>
-    public const string BookingRequired = "service_request_booking_required";
-
     /// <summary>The <c>bookingId</c> is not a booking of the request's property in the host's org (or does not exist).</summary>
     public const string BookingMismatch = "service_request_booking_mismatch";
 
@@ -179,7 +198,22 @@ public static class ServiceRequestErrorCodes
     /// <summary>422 (SP-04): the host answers a proposal that does not exist (never made, or already answered).</summary>
     public const string NoProposal = "service_request_no_proposal";
 
-    /// <summary>422 (SP-04): a file of the work photos is not an accepted image.</summary>
+    /// <summary>
+    /// 422 (SP-04b): the quote is not valid: not from one to twenty lines, a line without a description or with an amount outside the bounds
+    /// of a request, or a total above them.
+    /// </summary>
+    public const string QuoteInvalid = "service_request_quote_invalid";
+
+    /// <summary>422 (SP-04b): the request has no quote waiting to be answered or withdrawn (never sent, withdrawn, already answered, or the request moved on).</summary>
+    public const string NoQuote = "service_request_no_quote";
+
+    /// <summary>
+    /// 409 (SP-04b): the supplier replaced or withdrew the quote after the customer read it, so the answer is not about the quote that waits:
+    /// nothing was changed, and the customer reads the quote again.
+    /// </summary>
+    public const string QuoteChanged = "service_request_quote_changed";
+
+    /// <summary>422 (SP-04b): a file of the work photos is not an accepted image.</summary>
     public const string PhotoInvalid = "service_request_photo_invalid";
 
     /// <summary>422 (SP-04): the request already has the most photos it can keep.</summary>
@@ -189,7 +223,6 @@ public static class ServiceRequestErrorCodes
     public const string PhotoNotFound = "service_request_photo_not_found";
 
     /// <summary>SharedResources keys of the messages of the codes above.</summary>
-    public const string BookingRequiredMessageKey = "ServiceRequestBookingRequired";
     public const string BookingMismatchMessageKey = "ServiceRequestBookingMismatch";
     public const string BookingNotAllowedMessageKey = "ServiceRequestBookingNotAllowed";
     public const string NotFoundMessageKey = "ServiceRequestNotFound";
@@ -221,6 +254,10 @@ public static class ServiceRequestErrorCodes
     public const string FinalAmountInvalidMessageKey = "ServiceRequestFinalAmountInvalid";
     public const string RemindTooSoonMessageKey = "ServiceRequestRemindTooSoon";
     public const string NoProposalMessageKey = "ServiceRequestNoProposal";
+    public const string CannotQuoteMessageKey = "ServiceRequestCannotQuote";
+    public const string QuoteInvalidMessageKey = "ServiceRequestQuoteInvalid";
+    public const string NoQuoteMessageKey = "ServiceRequestNoQuote";
+    public const string QuoteChangedMessageKey = "ServiceRequestQuoteChanged";
     public const string PhotoInvalidMessageKey = "ServiceRequestPhotoInvalid";
     public const string PhotoLimitReachedMessageKey = "ServiceRequestPhotoLimit";
     public const string PhotoNotFoundMessageKey = "ServiceRequestPhotoNotFound";
@@ -228,7 +265,6 @@ public static class ServiceRequestErrorCodes
     /// <summary>Every <c>SharedResources</c> key the service raises (a test checks that each one exists in Italian and English).</summary>
     public static IReadOnlyList<string> MessageKeys { get; } =
     [
-        BookingRequiredMessageKey,
         BookingMismatchMessageKey,
         BookingNotAllowedMessageKey,
         NotFoundMessageKey,
@@ -260,6 +296,10 @@ public static class ServiceRequestErrorCodes
         FinalAmountInvalidMessageKey,
         RemindTooSoonMessageKey,
         NoProposalMessageKey,
+        CannotQuoteMessageKey,
+        QuoteInvalidMessageKey,
+        NoQuoteMessageKey,
+        QuoteChangedMessageKey,
         PhotoInvalidMessageKey,
         PhotoLimitReachedMessageKey,
         PhotoNotFoundMessageKey,
@@ -362,6 +402,36 @@ public interface IServiceRequestService
     Task<ServiceRequest> RejectProposalAsync(Guid id, Guid hostOrgId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The supplier answers a new request with a quote (SP-04b): the request stays <c>Richiesto</c> with the quote waiting for the customer
+    /// (the host, or the private customer of a showcase request), who is told. A new quote replaces the one that waited, and takes the place
+    /// of a proposed time (one offer at a time). Another time offered with the quote is checked with the planner under the supplier's calendar
+    /// lock, as the time of a proposal is, and does not hold the slot. A showcase customer has
+    /// <c>Suppliers:Showcase:ProposalResponseMinutes</c> to answer; a host has no deadline. 422 <see cref="ServiceRequestErrorCodes.QuoteInvalid"/>.
+    /// </summary>
+    Task<ServiceRequest> SendQuoteAsync(
+        Guid id,
+        Guid supplierOrgId,
+        string userId,
+        SendServiceRequestQuoteCommand command,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The supplier takes its quote back (SP-04b): the request is "to answer" again. 422 <see cref="ServiceRequestErrorCodes.NoQuote"/> when none waits.
+    /// </summary>
+    Task<ServiceRequest> WithdrawQuoteAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The host accepts the quote that waits (SP-04b): the request is taken on the supplier's behalf (<c>Richiesto → PresoInCarico</c>) at the
+    /// time of the quote, with its total as the agreed price and its lines as the price lines (kind <c>quote</c>); the supplier is told. The
+    /// time is checked again under the supplier's calendar lock: if it is gone, 409 and the quote stays. <paramref name="quoteSentAt"/> is
+    /// the version the host read: another one is 409 <see cref="ServiceRequestErrorCodes.QuoteChanged"/>. Another org's request is not found.
+    /// </summary>
+    Task<ServiceRequest> AcceptQuoteAsync(Guid id, Guid hostOrgId, DateTime quoteSentAt, CancellationToken cancellationToken = default);
+
+    /// <summary>The host turns the quote down (SP-04b): it goes, the request stays <c>Richiesto</c> and the supplier starts again; the supplier is told.</summary>
+    Task<ServiceRequest> RejectQuoteAsync(Guid id, Guid hostOrgId, DateTime quoteSentAt, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Marks a completed request of <paramref name="hostOrgId"/> as paid; another org's request is not found. A request paid
     /// inside CasaZen (<see cref="ServiceRequestPaymentMode.Online"/>, SP-15a) cannot be marked by hand: 422
     /// <see cref="ServicePaymentErrors.OnlinePayment"/>.
@@ -434,7 +504,9 @@ public interface IServiceRequestService
     /// <summary>
     /// The requests of <paramref name="rentalContext"/> in the host scope, newest first. Web and app use the same
     /// filters (SU-07): <paramref name="bookingId"/> for a stay (short-rent), <paramref name="propertyId"/> for a
-    /// property (both contexts). The caller authorizes the booking or property it filters on.
+    /// property (both contexts). The caller authorizes the booking or property it filters on. <paramref name="view"/>
+    /// (LR-08a) keeps the open or the closed requests (<see cref="ServiceRequestHostView"/>); <c>null</c> keeps all of them,
+    /// and it narrows <paramref name="status"/> when both are given.
     /// </summary>
     Task<(IReadOnlyList<ServiceRequest> Items, int Total)> ListForHostAsync(
         HostScope scope,
@@ -444,11 +516,45 @@ public interface IServiceRequestService
         Guid? bookingId,
         int page,
         int pageSize,
+        ServiceRequestHostView? view = null,
         CancellationToken cancellationToken = default);
     Task<(IReadOnlyList<ServiceRequest> Items, int Total)> ListForSupplierAsync(
         Guid supplierOrgId,
         bool openOnly,
         int page,
         int pageSize,
+        CancellationToken cancellationToken = default);
+
+    // ─── Backup suppliers (SP-BKP) ───
+
+    /// <summary>
+    /// A backup supplier says it would take the job if the primary does not (the pre-approval, <c>POST api/service-requests/{id}/accept-as-backup</c>):
+    /// the request stays <c>Richiesto</c> and holds no slot, but if the primary does not take the job in its window this backup, the earliest
+    /// to accept, has it. Accepting twice is not an error. 422 <see cref="ServiceRequestGroupErrorCodes.NotAWaitingBackup"/> for a request that is
+    /// not a backup waiting; 422 <see cref="ServiceRequestGroupErrorCodes.BackupAlreadyActive"/> in the second window (take the job instead); 409
+    /// <see cref="ServiceRequestErrorCodes.SlotUnavailable"/> when its time is no longer free for the supplier.
+    /// </summary>
+    Task<ServiceRequest> AcceptAsBackupAsync(
+        Guid id,
+        Guid supplierOrgId,
+        string userId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// One pass over a group of backup suppliers, under its lock: closes it if the primary took the job or the host cancelled, hands the job
+    /// to the earliest backup that accepted when the primary is out (its slot checked again; the next one when it is not free), opens the second
+    /// window when none could, and lapses the requests when it has passed. Idempotent; called by the recurring job <c>service-request-groups</c>
+    /// and right after a refusal or a cancellation of a member. Never throws for a group it cannot handle: it answers
+    /// <see cref="ServiceRequestGroupResolution.Conflict"/> and the next pass looks again.
+    /// </summary>
+    Task<ServiceRequestGroupResolution> ResolveGroupAsync(Guid groupId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The groups with the given ids as the host org <paramref name="hostOrgId"/> sees them: where each is, the primary and the backups with
+    /// their state, and who took the job. Only groups of that org (another org's id is simply missing from the answer).
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, ServiceRequestGroupView>> GetGroupViewsAsync(
+        Guid hostOrgId,
+        IReadOnlyCollection<Guid> groupIds,
         CancellationToken cancellationToken = default);
 }

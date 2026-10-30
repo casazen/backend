@@ -8,6 +8,7 @@ using Casazen.Core.Pricing;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.SiteProfile;
 using Casazen.Core.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -53,7 +54,7 @@ public class PropertyService(
         var policies = await repository.GetCancellationPoliciesAsync();
         return policies
             .Select(p => new CancellationPolicyOptionDto(
-                p.Id, p.Name, p.Description, p.FullRefundHours, p.PartialRefundPercent, p.PartialRefundHours))
+                p.Id, p.Name, p.Description, p.FullRefundHours, p.PartialRefundPercent, p.PartialRefundHours, p.Slug))
             .ToList();
     }
 
@@ -85,6 +86,8 @@ public class PropertyService(
         property.CinCode = CinFormat.Normalize(property.CinCode);
         NormalizeLocation(property);
         NormalizeStayRules(property);
+        PropertyHouseRules.Normalize(property);
+        ApplyCountryDefaults(property);
         property.Slug = await ResolveSlugForCreateAsync(property.OrgId, property.Name, property.Slug);
         await EnsureCancellationPolicyExistsAsync(property);
         try
@@ -105,6 +108,10 @@ public class PropertyService(
         property.CinCode = CinFormat.Normalize(property.CinCode);
         NormalizeLocation(property);
         NormalizeStayRules(property);
+        PropertyHouseRules.Normalize(property);
+        // Country/Currency are not yet updateable via UpdatePropertyRequest, so don't apply defaults on update.
+        // This preserves existing timezone values (PATCH semantics, A2-04).
+        // When Country becomes updateable, ApplyCountryDefaults should only run when country is being changed.
         if (!string.IsNullOrWhiteSpace(property.Slug))
         {
             property.Slug = PropertySlugHelper.NormalizeOptional(property.Slug);
@@ -158,6 +165,32 @@ public class PropertyService(
             throw new DomainRuleException(PropertyStayRules.WeekendSurchargeInvalidCode, "PropertyWeekendSurchargeInvalid");
 
         property.WeekendSurchargePercent = PropertyStayRules.NormalizeWeekendSurcharge(property.WeekendSurchargePercent);
+    }
+
+    /// <summary>
+    /// Derives currency and timezone from country code (ADR-001-R7): IT -> EUR, Europe/Rome; CH -> CHF, Europe/Zurich.
+    /// Ensures the country is stored in uppercase.
+    /// </summary>
+    private static void ApplyCountryDefaults(Property property)
+    {
+        property.Country = property.Country?.ToUpperInvariant() ?? "IT";
+
+        switch (property.Country)
+        {
+            case "IT":
+                property.Currency = "EUR";
+                property.Timezone = "Europe/Rome";
+                break;
+            case "CH":
+                property.Currency = "CHF";
+                property.Timezone = "Europe/Zurich";
+                break;
+            default:
+                // Unknown country defaults to IT
+                property.Currency = "EUR";
+                property.Timezone = "Europe/Rome";
+                break;
+        }
     }
 
     /// <summary>
@@ -319,38 +352,10 @@ public class PropertyService(
     {
         var row = await repository.GetSearchQueryable(PublicPropertySearchCriteria.None)
             .Where(p => p.Id == id)
-            .Select(p => new PublicPropertyDetailRow
-            {
-                Id = p.Id,
-                Slug = p.Slug,
-                OrgSlug = p.Org.Slug,
-                Name = p.Name,
-                Description = p.Description,
-                City = p.City,
-                PostalCode = p.PostalCode,
-                Latitude = p.Latitude,
-                Longitude = p.Longitude,
-                Bedrooms = p.Bedrooms,
-                Bathrooms = p.Bathrooms,
-                MaxGuests = p.MaxGuests,
-                NightlyRate = p.NightlyRate,
-                CleaningFee = p.CleaningFee,
-                Amenities = p.Amenities,
-                PhotoUrls = p.PhotoUrls,
-                CinCode = p.CinCode,
-                Timezone = p.Timezone,
-                HouseRules = p.HouseRules,
-                CancellationPolicySummary = p.CancellationPolicy != null ? p.CancellationPolicy.Description : string.Empty,
-                MinNights = p.MinNights,
-                WeekendSurchargePercent = p.WeekendSurchargePercent,
-                OrgStripeConnectedAccountId = p.Org.StripeConnectedAccountId,
-                OrgConnectChargesEnabled = p.Org.ConnectChargesEnabled,
-                OrgHostName = p.Org.HostName,
-                OrgPublicPhone = p.Org.PublicPhone,
-            })
+            .Select(DetailRow)
             .FirstOrDefaultAsync();
 
-        return row is null ? null : MapPublicPropertyDetail(row);
+        return row is null ? null : await WithSiteMediaAsync(MapPublicPropertyDetail(row));
     }
 
     public async Task<PublicPropertyDetailDto?> GetPublicPropertyForOrgAsync(string slugOrId, Guid orgId)
@@ -362,38 +367,26 @@ public class PropertyService(
             query = query.Where(p => p.Slug == slugOrId);
 
         var row = await query
-            .Select(p => new PublicPropertyDetailRow
-            {
-                Id = p.Id,
-                Slug = p.Slug,
-                OrgSlug = p.Org.Slug,
-                Name = p.Name,
-                Description = p.Description,
-                City = p.City,
-                PostalCode = p.PostalCode,
-                Latitude = p.Latitude,
-                Longitude = p.Longitude,
-                Bedrooms = p.Bedrooms,
-                Bathrooms = p.Bathrooms,
-                MaxGuests = p.MaxGuests,
-                NightlyRate = p.NightlyRate,
-                CleaningFee = p.CleaningFee,
-                Amenities = p.Amenities,
-                PhotoUrls = p.PhotoUrls,
-                CinCode = p.CinCode,
-                Timezone = p.Timezone,
-                HouseRules = p.HouseRules,
-                CancellationPolicySummary = p.CancellationPolicy != null ? p.CancellationPolicy.Description : string.Empty,
-                MinNights = p.MinNights,
-                WeekendSurchargePercent = p.WeekendSurchargePercent,
-                OrgStripeConnectedAccountId = p.Org.StripeConnectedAccountId,
-                OrgConnectChargesEnabled = p.Org.ConnectChargesEnabled,
-                OrgHostName = p.Org.HostName,
-                OrgPublicPhone = p.Org.PublicPhone,
-            })
+            .Select(DetailRow)
             .FirstOrDefaultAsync();
 
-        return row is null ? null : MapPublicPropertyDetail(row);
+        return row is null ? null : await WithSiteMediaAsync(MapPublicPropertyDetail(row));
+    }
+
+    /// <summary>The floor plan levels and the points of interest of the page (DB-11a): two small reads of the property named, never of a list.</summary>
+    private async Task<PublicPropertyDetailDto> WithSiteMediaAsync(PublicPropertyDetailDto page)
+    {
+        var media = await repository.GetSiteMediaAsync(page.Id);
+        page.Profile.FloorPlans =
+        [
+            .. media.FloorPlans.Select(f => new PublicFloorPlanDto(
+                f.Id, f.Level, new LocalizedText(f.NameIt, f.NameEn), f.ImageUrl, f.ImageWidth, f.ImageHeight, f.AreaSqm)),
+        ];
+        page.Profile.Pois =
+        [
+            .. media.Pois.Select(p => new PublicPoiDto(p.Kind, new LocalizedText(p.NameIt, p.NameEn), p.Mode, p.Minutes, p.Direction, p.DistanceMeters)),
+        ];
+        return page;
     }
 
     public async Task<PropertyDetailResponse> GetPropertyDetailAsync(Guid propertyId)
@@ -676,12 +669,85 @@ public class PropertyService(
         Timezone = row.Timezone,
         HouseRules = row.HouseRules,
         CancellationPolicySummary = row.CancellationPolicySummary,
+        CancellationPolicy = PublicCancellation.PolicyOf(
+            row.CatalogPolicy,
+            new HostCancellationOverrides(
+                row.OverrideFullRefundHours, row.OverridePartialRefundHours, row.OverridePartialRefundPercent, row.OverrideRefundType)),
         MinNights = row.MinNights,
         WeekendSurchargePercent = row.WeekendSurchargePercent,
         Currency = "EUR",
         AcceptsBookings = Org.AcceptsDirectPayments(row.OrgStripeConnectedAccountId, row.OrgConnectChargesEnabled),
         HostName = row.OrgHostName,
         PublicPhone = row.OrgPublicPhone,
+        // DB-11a: what the host said about the house, only what they filled in.
+        Profile = PublicPropertyProfileBuilder.Build(new PublicProfileSource(
+            row.ListingTitle, row.AccommodationType, row.Beds, row.AreaSqm, row.FloorLevel, row.RenovatedYear, row.EnergyClass,
+            row.EnergyIndex, row.AreaKind, row.ChildrenWelcome, row.CheckInFrom, row.CheckInTo, row.CheckOutBy, row.QuietHoursFrom,
+            row.QuietHoursTo, row.SmokingPolicy, row.PetsPolicy, row.PartiesPolicy, row.VideoUrl, row.TourUrl, row.SiteProfileJson,
+            row.Amenities)),
+        // DB-11a: the photos with the alternative text the host wrote and the size read at the upload (photoUrls stays).
+        Photos = PropertyPhotoMeta.Of(row.PhotoUrls, row.PhotoAltJson),
+    };
+
+    /// <summary>
+    /// What the public page of a property reads, in one place for both ways to ask for it (by id and by org and slug). The cancellation
+    /// policy is the catalog row with the columns the host changed of it (DB-03b: <see cref="PublicCancellation"/> builds the page's view).
+    /// </summary>
+    private static readonly System.Linq.Expressions.Expression<Func<Property, PublicPropertyDetailRow>> DetailRow = p => new PublicPropertyDetailRow
+    {
+        Id = p.Id,
+        Slug = p.Slug,
+        OrgSlug = p.Org.Slug,
+        Name = p.Name,
+        Description = p.Description,
+        City = p.City,
+        PostalCode = p.PostalCode,
+        Latitude = p.Latitude,
+        Longitude = p.Longitude,
+        Bedrooms = p.Bedrooms,
+        Bathrooms = p.Bathrooms,
+        MaxGuests = p.MaxGuests,
+        NightlyRate = p.NightlyRate,
+        CleaningFee = p.CleaningFee,
+        Amenities = p.Amenities,
+        PhotoUrls = p.PhotoUrls,
+        CinCode = p.CinCode,
+        Timezone = p.Timezone,
+        HouseRules = p.HouseRules,
+        CancellationPolicySummary = p.CancellationPolicy != null ? p.CancellationPolicy.Description : string.Empty,
+        MinNights = p.MinNights,
+        WeekendSurchargePercent = p.WeekendSurchargePercent,
+        OrgStripeConnectedAccountId = p.Org.StripeConnectedAccountId,
+        OrgConnectChargesEnabled = p.Org.ConnectChargesEnabled,
+        OrgHostName = p.Org.HostName,
+        OrgPublicPhone = p.Org.PublicPhone,
+        CatalogPolicy = p.CancellationPolicy,
+        OverrideFullRefundHours = p.CancellationFullRefundHours,
+        OverridePartialRefundHours = p.CancellationPartialRefundHours,
+        OverridePartialRefundPercent = p.CancellationPartialRefundPercent,
+        OverrideRefundType = p.CancellationRefundType,
+        ListingTitle = p.ListingTitle,
+        AccommodationType = p.AccommodationType,
+        Beds = p.Beds,
+        AreaSqm = p.AreaSqm,
+        FloorLevel = p.FloorLevel,
+        RenovatedYear = p.RenovatedYear,
+        EnergyClass = p.EnergyClass,
+        EnergyIndex = p.EnergyIndex,
+        AreaKind = p.AreaKind,
+        ChildrenWelcome = p.ChildrenWelcome,
+        CheckInFrom = p.CheckInFrom,
+        CheckInTo = p.CheckInTo,
+        CheckOutBy = p.CheckOutBy,
+        QuietHoursFrom = p.QuietHoursFrom,
+        QuietHoursTo = p.QuietHoursTo,
+        SmokingPolicy = p.SmokingPolicy,
+        PetsPolicy = p.PetsPolicy,
+        PartiesPolicy = p.PartiesPolicy,
+        VideoUrl = p.VideoUrl,
+        TourUrl = p.TourUrl,
+        SiteProfileJson = p.SiteProfileJson,
+        PhotoAltJson = p.PhotoAltJson,
     };
 
     private class PublicPropertyRow
@@ -713,11 +779,42 @@ public class PropertyService(
         public int? MinNights { get; init; }
         public decimal WeekendSurchargePercent { get; init; }
 
+        // The cancellation policy of the property (DB-03b): the catalog row, null without one, and what the host changed of it.
+        public CancellationPolicy? CatalogPolicy { get; init; }
+        public int? OverrideFullRefundHours { get; init; }
+        public int? OverridePartialRefundHours { get; init; }
+        public decimal? OverridePartialRefundPercent { get; init; }
+        public HostCancellationRefundType OverrideRefundType { get; init; }
+
         // The columns of the org the public page reads (DB-03): whether it can take a payment, how the host is named, the
         // phone the host chose to publish.
         public string? OrgStripeConnectedAccountId { get; init; }
         public bool OrgConnectChargesEnabled { get; init; }
         public string? OrgHostName { get; init; }
         public string? OrgPublicPhone { get; init; }
+
+        // What the host said about the house (SR-07a wizard fields and the DB-11a site profile): built into the profile of the page.
+        public string? ListingTitle { get; init; }
+        public AccommodationType? AccommodationType { get; init; }
+        public int? Beds { get; init; }
+        public int? AreaSqm { get; init; }
+        public int? FloorLevel { get; init; }
+        public int? RenovatedYear { get; init; }
+        public string? EnergyClass { get; init; }
+        public decimal? EnergyIndex { get; init; }
+        public PropertyAreaKind? AreaKind { get; init; }
+        public bool? ChildrenWelcome { get; init; }
+        public TimeOnly? CheckInFrom { get; init; }
+        public TimeOnly? CheckInTo { get; init; }
+        public TimeOnly? CheckOutBy { get; init; }
+        public TimeOnly? QuietHoursFrom { get; init; }
+        public TimeOnly? QuietHoursTo { get; init; }
+        public SmokingPolicy? SmokingPolicy { get; init; }
+        public PetsPolicy? PetsPolicy { get; init; }
+        public PartiesPolicy? PartiesPolicy { get; init; }
+        public string? VideoUrl { get; init; }
+        public string? TourUrl { get; init; }
+        public string? SiteProfileJson { get; init; }
+        public string? PhotoAltJson { get; init; }
     }
 }

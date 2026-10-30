@@ -41,6 +41,9 @@ public static partial class GuestMessageRules
     /// <summary>Characters of the last message of the guest shown in the host's list.</summary>
     public const int PreviewLength = 140;
 
+    /// <summary>How many threads with unread messages the badges endpoint returns at most (the ones with the latest guest message first).</summary>
+    public const int UnreadThreadsMax = 200;
+
     public const int DefaultPageSize = 20;
     public const int MaxPageSize = 50;
 

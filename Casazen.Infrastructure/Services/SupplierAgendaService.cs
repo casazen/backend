@@ -295,6 +295,73 @@ public class SupplierAgendaService(
         return ToView(settings);
     }
 
+    public async Task SetOnlineBookingEnabledAsync(Guid supplierOrgId, bool enabled, CancellationToken cancellationToken = default)
+    {
+        // The row is shared with the rules, the settings and the working hours: the same lock. Inside the transaction of the caller (the
+        // showcase content service takes its own lock first, then this one) it joins it and the caller commits.
+        await using var transaction = await LockAgendaAsync(supplierOrgId, cancellationToken);
+
+        var now = Now();
+        SupplierSettings? settings;
+        if (enabled)
+        {
+            settings = await EnsureSettingsAsync(supplierOrgId, now, cancellationToken);
+        }
+        else
+        {
+            // Closing what was never opened writes nothing, not even a row.
+            settings = await SettingsOf(supplierOrgId).FirstOrDefaultAsync(cancellationToken);
+            if (settings is null)
+                return;
+        }
+
+        if (settings.OnlineBookingEnabled == enabled)
+            return;
+
+        settings.OnlineBookingEnabled = enabled;
+        settings.UpdatedAt = now;
+
+        await db.SaveChangesAsync(cancellationToken);
+        await CommitAsync(transaction, cancellationToken);
+
+        logger.LogInformation("Supplier {OrgId}: online bookings of the showcase turned {State}", supplierOrgId, enabled ? "on" : "off");
+    }
+
+    // ─── Urgent requests (SP-04c) ────────────────────────────────────────────────
+
+    public async Task<SupplierUrgentSettings> GetUrgentAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
+        await SettingsOf(supplierOrgId)
+            .AsNoTracking()
+            .Select(s => new SupplierUrgentSettings(s.UrgentEnabled, s.UrgentFromMinute, s.UrgentToMinute, s.UrgentSurchargeCents))
+            .FirstOrDefaultAsync(cancellationToken)
+        ?? SupplierUrgentSettings.Default;
+
+    public async Task<SupplierUrgentSettings> ReplaceUrgentAsync(
+        Guid supplierOrgId,
+        SupplierUrgentInput input,
+        CancellationToken cancellationToken = default)
+    {
+        var content = SupplierUrgentRules.Normalize(input);
+
+        // The row is shared with the rules, the settings and the working hours, and every request flow takes this lock before it
+        // plans a slot: a booking is judged on the urgent settings as they are saved.
+        await using var transaction = await LockAgendaAsync(supplierOrgId, cancellationToken);
+
+        var now = Now();
+        var settings = await EnsureSettingsAsync(supplierOrgId, now, cancellationToken);
+        settings.UrgentEnabled = content.Enabled;
+        settings.UrgentFromMinute = content.FromMinute;
+        settings.UrgentToMinute = content.ToMinute;
+        settings.UrgentSurchargeCents = content.SurchargeCents;
+        settings.UpdatedAt = now;
+
+        await db.SaveChangesAsync(cancellationToken);
+        await CommitAsync(transaction, cancellationToken);
+
+        logger.LogInformation("Supplier {OrgId}: urgent settings replaced", supplierOrgId);
+        return ToUrgent(settings);
+    }
+
     // ─── Calendar and planner ────────────────────────────────────────────────────
 
     public async Task<SupplierCalendar> GetCalendarAsync(
@@ -342,7 +409,10 @@ public class SupplierAgendaService(
     {
         SupplierAgendaRange.Ensure(from, to, SupplierSlotPlanner.MaxRangeDays);
 
-        var rules = await GetRulesAsync(supplierOrgId, cancellationToken);
+        // One read of the settings row for the rules and for the urgent settings (SP-04c; only a plan of urgent slots reads them).
+        var settings = await SettingsOf(supplierOrgId).AsNoTracking().FirstOrDefaultAsync(cancellationToken);
+        var rules = settings is null ? SupplierPlanningRules.Default : ToRules(settings);
+        var urgent = settings is null ? SupplierUrgentSettings.Default : ToUrgent(settings);
         var hours = await HoursOf(supplierOrgId).AsNoTracking().ToListAsync(cancellationToken);
         var closedDays = await ClosedDaysOfAsync(supplierOrgId, from, to, cancellationToken);
         var timeOff = await TimeOffOverlappingAsync(supplierOrgId, from, to, cancellationToken);
@@ -407,7 +477,8 @@ public class SupplierAgendaService(
             occupancies,
             // Which of the closed days the calendar feed closed (an all-day event): the planner closes them all alike, the conflict
             // detector (SP-03b) calls that "another engagement" and not "a day off".
-            closedDays.Where(day => day.Source == SupplierAvailabilitySource.ICalFeed).Select(day => day.Date).ToHashSet());
+            closedDays.Where(day => day.Source == SupplierAvailabilitySource.ICalFeed).Select(day => day.Date).ToHashSet(),
+            urgent);
     }
 
     public Task<IReadOnlyList<SupplierDayPlan>> PlanAsync(
@@ -545,6 +616,9 @@ public class SupplierAgendaService(
             settings.NotifyDayBeforeReminder,
             settings.NotifyPaymentMarked,
             settings.RespondWithinMinutes);
+
+    private static SupplierUrgentSettings ToUrgent(SupplierSettings settings) =>
+        new(settings.UrgentEnabled, settings.UrgentFromMinute, settings.UrgentToMinute, settings.UrgentSurchargeCents);
 
     private static SupplierPlanningRules ToRules(SupplierSettings settings) =>
         new(

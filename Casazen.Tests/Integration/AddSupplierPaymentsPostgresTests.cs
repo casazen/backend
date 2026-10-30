@@ -43,7 +43,7 @@ public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
     public async Task Migration_AppliesAndRevertsOnARealDatabase()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         Assert.Equal(PaymentColumns.Length, await CountColumnsAsync(db, "ServiceRequestPayments"));
         Assert.Equal(3, await CountColumnsAsync(db, "ServiceRequests", "PaymentMode", "FinalAmountConfirmedAt", "PaidBy"));
         Assert.Equal(1, await CountColumnsAsync(db, "SupplierProfiles", "CommissionPercentOverride"));
@@ -63,7 +63,7 @@ public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
     public async Task ARequestWrittenWithoutTheNewColumns_IsManual()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         var parents = await SeedParentsAsync(db);
         var id = Guid.NewGuid();
 
@@ -381,7 +381,7 @@ public class AddSupplierPaymentsPostgresTests : IAsyncLifetime
     private async Task<Parents> MigratedWithRequestAsync()
     {
         await using var db = _database!.CreateContext();
-        await db.Database.MigrateAsync();
+        await _database!.MigrateEmptyToAsync();
         return await SeedParentsAsync(db);
     }
 
