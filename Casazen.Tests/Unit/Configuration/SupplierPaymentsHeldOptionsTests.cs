@@ -27,6 +27,9 @@ public class SupplierPaymentsHeldOptionsTests
         Assert.Equal(720, options.TransferRetryMaxMinutes);
         Assert.Equal(5, options.TransferAlertAfterAttempts);
 
+        // What a host pays goes through CasaZen unless an environment switches it off (SP-15c-b, the way back to the direct charge).
+        Assert.True(options.HeldForHosts);
+
         // The block is treated as usable for far less than the 4 days 18 hours (114 hours) of the shortest card block.
         Assert.True(options.AuthorizationValidity < TimeSpan.FromHours(114));
         Assert.True(SupplierPaymentsOptions.MaxAuthorizationValidityHours < 114);

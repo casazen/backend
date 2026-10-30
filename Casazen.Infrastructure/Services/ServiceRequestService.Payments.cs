@@ -68,6 +68,24 @@ public partial class ServiceRequestService
         return request;
     }
 
+    public async Task<ServiceRequest> ConfirmOkAsHostAsync(
+        Guid id,
+        Guid hostOrgId,
+        CancellationToken cancellationToken = default)
+    {
+        // Another org's request (and a showcase one) is not found. The host proved who it is by owning the request.
+        var request = await GetRequestOfHostOrThrow(id, hostOrgId, cancellationToken);
+        if (funds is null || request.PaymentMode != ServiceRequestPaymentMode.Online)
+            throw new DomainRuleException(ServicePaymentErrors.NotConfirmable, ServicePaymentErrors.NotConfirmableMessageKey);
+
+        await funds.ConfirmOkAsync(request.Id, cancellationToken);
+
+        // The release may have made the request paid: the answer is the request as it is now.
+        await db.Entry(request).ReloadAsync(cancellationToken);
+        logger.LogInformation("ServiceRequest {Id}: the host said all fine ({Status})", request.Id, request.Status);
+        return request;
+    }
+
     public async Task<ServiceRequestPayment> RequestPaymentAsync(
         Guid id,
         Guid supplierOrgId,

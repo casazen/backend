@@ -99,10 +99,18 @@ public static class CommissionExportRowType
 
     /// <summary>A refund that succeeded in the month: the commission that went back (negative amounts).</summary>
     public const string Refund = "refund";
+
+    /// <summary>
+    /// The commission CasaZen <b>retained</b> from money it held (SP-15c-b): the day the supplier was paid (the transfer), or, when the supplier
+    /// was at fault and got nothing, the day the last refund to the payer succeeded. Gross is what stayed with CasaZen of the payer's money (the
+    /// price minus what was given back), the commission is CasaZen's whole commission, the net what the supplier got. A payment refunded in full
+    /// has no such row: CasaZen kept nothing.
+    /// </summary>
+    public const string Retained = "retained";
 }
 
 /// <summary>One line of the monthly commission export.</summary>
-/// <param name="Type"><see cref="CommissionExportRowType"/>.</param>
+/// <param name="Type"><see cref="CommissionExportRowType"/>: a payment collected through Stripe (direct charge), a refund of one, or the commission retained from money CasaZen held.</param>
 /// <param name="Date">The day, in Rome, the payment was paid or the refund succeeded.</param>
 /// <param name="SupplierVatNumber">The supplier's P.IVA as it is on its profile: the fiscal datum the invoice and a future DAC7 report need.</param>
 /// <param name="GrossCents">What the payer paid (negative for a refund: what was given back).</param>

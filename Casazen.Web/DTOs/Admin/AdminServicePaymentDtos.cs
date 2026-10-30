@@ -209,6 +209,14 @@ public sealed class RefundServicePaymentRequest
     /// <summary>Why: an internal note of at most 500 characters. It is never sent to Stripe.</summary>
     [MaxLength(ServicePaymentLimits.OfflineNoteMaxLength, ErrorMessage = ServicePaymentErrors.RefundReasonTooLongMessageKey)]
     public string? Reason { get; set; }
+
+    /// <summary>
+    /// SP-15c-b, rule R4 — for the money CasaZen holds, before it is released: the supplier was at fault, so the payer gets back what the supplier
+    /// would have been paid (the price minus the commission), CasaZen keeps its commission and the supplier gets nothing. <c>amountCents</c> may
+    /// ask for less but never for more than that. Left out or false (rule R5, cancelling is always free): everything still refundable goes back,
+    /// the commission included. Not for a direct charge (422).
+    /// </summary>
+    public bool KeepCommission { get; set; }
 }
 
 /// <summary>The commission applied to a supplier (<c>GET/PUT api/admin/suppliers/{orgId}/commission</c>).</summary>

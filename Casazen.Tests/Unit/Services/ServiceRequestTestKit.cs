@@ -48,7 +48,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
         Clock = clock ?? TimeProvider.System;
         Options = options ?? new ServiceRequestOptions();
         ShowcaseOptions = showcaseOptions ?? new ShowcaseBookingOptions { PrivacyNoticeVersion = PrivacyNoticeVersion };
-        PaymentOptions = paymentOptions ?? new SupplierPaymentsOptions { CommissionPercent = 10m };
+        // The tests of SP-15a/15b exercise the direct charge on the supplier's account, so the kit pins that model; the money CasaZen holds for
+        // a host (SP-15c-b) is tried by the tests that ask for it (HeldForHosts = true).
+        PaymentOptions = paymentOptions ?? new SupplierPaymentsOptions { CommissionPercent = 10m, HeldForHosts = false };
         Gateway = gateway ?? new FakeSupplierPaymentGateway();
         PlatformGateway = platformGateway ?? new FakePlatformPaymentGateway();
         Flags = flags ?? new TestFeatureFlags();
@@ -108,7 +110,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             paymentLogger ?? NullLogger<SupplierPaymentService>.Instance,
             Clock,
             PlatformGateway,
-            Customers);
+            Customers,
+            Penalties);
         Matcher = ComuneTestServices.Matcher(db);
         Service = new ServiceRequestService(
             db,
@@ -155,6 +158,7 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Service,
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
             Clock,
+            Payments,
             Payments);
     }
 
@@ -175,6 +179,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
 
     /// <summary>The gateway of the money CasaZen holds (SP-15c-a): never reaches Stripe.</summary>
     public FakePlatformPaymentGateway PlatformGateway { get; }
+
+    /// <summary>Records the penalties the disputes decided for the customer give a supplier (SP-15c-c); nothing reaches a ranking.</summary>
+    public RecordingSupplierDisputePenalties Penalties { get; } = new();
 
     /// <summary>Records the supplier orgs whose pending payment requests were queued (SP-15b); nothing reaches Hangfire.</summary>
     public RecordingSupplierPaymentJobScheduler JobScheduler { get; } = new();

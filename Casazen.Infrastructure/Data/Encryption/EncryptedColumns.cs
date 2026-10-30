@@ -55,6 +55,13 @@ public static class EncryptedColumns
     /// </summary>
     public const string ServiceRequestLocationPurpose = "Casazen.ServiceRequest.Location";
 
+    /// <summary>
+    /// Purpose of the words of a complaint about a job paid through CasaZen (SP-15c-c): what the payer wrote, what the supplier answered and the
+    /// note of the admin who decided (<see cref="ServicePaymentDispute"/>). Free text about a person's home and a job done in it; read by the people
+    /// it concerns and by the admins, never searched. Never change it.
+    /// </summary>
+    public const string ServicePaymentDisputePurpose = "Casazen.ServicePaymentDispute";
+
     /// <summary>Purpose of the AI provider key saved from the admin panel. Never change it: stored keys would become unreadable.</summary>
     public const string PlatformAiSettingsPurpose = "Casazen.PlatformAiSettings";
 
@@ -147,6 +154,12 @@ public static class EncryptedColumns
             nameof(ServiceRequest.LocationAddress),
             nameof(ServiceRequest.LocationFloor),
             nameof(ServiceRequest.LocationAccessNotes)),
+        // SP-15c-c: the words of a complaint about a job paid through CasaZen.
+        new EncryptedEntity<ServicePaymentDispute>(
+            ServicePaymentDisputePurpose,
+            nameof(ServicePaymentDispute.CustomerText),
+            nameof(ServicePaymentDispute.SupplierReply),
+            nameof(ServicePaymentDispute.AdminNote)),
         new EncryptedEntity<PlatformAiSettings>(
             PlatformAiSettingsPurpose,
             nameof(PlatformAiSettings.ApiKey)),

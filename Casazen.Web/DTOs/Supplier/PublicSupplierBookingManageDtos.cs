@@ -50,6 +50,22 @@ public class SupplierBookingCancelRequest : SupplierBookingAccessRequest
     public string? Reason { get; set; }
 }
 
+/// <summary>
+/// Body of <c>POST api/public/supplier-bookings/report-problem</c> (SP-15c-c): who the customer is, what is wrong and, in its words, why. Text only: no
+/// photos. A reason that is not one of the five, or a text that is too long, is 422 <c>service_dispute_invalid</c> naming the field.
+/// </summary>
+public class SupplierBookingReportProblemRequest : SupplierBookingAccessRequest
+{
+    /// <summary><c>not_done</c>, <c>incomplete</c>, <c>poor_quality</c>, <c>not_as_described</c> or <c>other</c>.</summary>
+    [Required(ErrorMessage = ServiceDisputeErrors.FormInvalidMessageKey)]
+    [MaxLength(32, ErrorMessage = ServiceDisputeErrors.FormInvalidMessageKey)]
+    public string? Reason { get; set; }
+
+    /// <summary>What the customer writes, at most 1000 characters; required when the reason is <c>other</c>.</summary>
+    [MaxLength(ServiceDisputeLimits.TextMaxLength + 200, ErrorMessage = ServiceDisputeErrors.FormInvalidMessageKey)]
+    public string? Text { get; set; }
+}
+
 /// <summary>Body of <c>POST api/public/supplier-bookings/reschedule</c>: who the customer is, and the slot it wants.</summary>
 public class SupplierBookingRescheduleRequest : SupplierBookingAccessRequest
 {
@@ -154,6 +170,51 @@ public class PublicSupplierBookingPaymentDto
     public DateTime? ReleaseAtUtc { get; set; }
 
     public DateTimeOffset? ReleaseAtLocal { get; set; }
+
+    /// <summary>
+    /// SP-15c-c: the customer's complaint about the job — while it is open (the money is stopped) and after it was decided; left out when there is none.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicSupplierBookingDisputeDto? Dispute { get; set; }
+}
+
+/// <summary>
+/// The customer's complaint about a job paid inside CasaZen (SP-15c-c), as the customer reads it: its own words, the state, the decision. Never the
+/// supplier's reply (the customer is told that it replied) nor the note of the admin who decided.
+/// </summary>
+public class PublicSupplierBookingDisputeDto
+{
+    /// <summary><c>AwaitingSupplier</c>, <c>AwaitingDecision</c>, <c>ResolvedForSupplier</c>, <c>ResolvedForCustomer</c> or <c>Withdrawn</c>.</summary>
+    public string Status { get; set; } = string.Empty;
+
+    /// <summary><c>not_done</c>, <c>incomplete</c>, <c>poor_quality</c>, <c>not_as_described</c> or <c>other</c>.</summary>
+    public string Reason { get; set; } = string.Empty;
+
+    /// <summary>The supplier never marked the work completed and the time agreed for it ended.</summary>
+    public bool NoShow { get; set; }
+
+    /// <summary>CasaZen itself opened the complaint (the no-show), not the customer.</summary>
+    public bool OpenedByCasaZen { get; set; }
+
+    /// <summary>What the customer wrote.</summary>
+    public string? Text { get; set; }
+
+    public DateTime OpenedAt { get; set; }
+
+    /// <summary>When the supplier's time to reply ends; then the complaint goes to the CasaZen team anyway.</summary>
+    public DateTime SupplierReplyDueAt { get; set; }
+
+    /// <summary>The supplier replied; what it wrote is not shown.</summary>
+    public bool SupplierReplied { get; set; }
+
+    /// <summary>When it was decided or taken back.</summary>
+    public DateTime? ResolvedAt { get; set; }
+
+    /// <summary>What goes back to the customer, in cents, when it was decided for the customer.</summary>
+    public int? RefundCents { get; set; }
+
+    /// <summary>The refund that was decided has been made.</summary>
+    public bool Settled { get; set; }
 }
 
 public class PublicSupplierBookingServiceDto
@@ -311,6 +372,15 @@ public class PublicSupplierBookingActionsDto
     /// and the supplier is paid at once.
     /// </summary>
     public bool CanConfirmOk { get; set; }
+
+    /// <summary>
+    /// SP-15c-c: the customer may report a problem (<c>POST api/public/supplier-bookings/report-problem</c>) — the work is done and the time to speak up
+    /// has not ended (<c>payment.releaseAtUtc</c>), or the supplier never marked it completed and the time agreed for it has ended.
+    /// </summary>
+    public bool CanReportProblem { get; set; }
+
+    /// <summary>SP-15c-c: a complaint is open and the customer may take it back (<c>POST api/public/supplier-bookings/withdraw-problem</c>).</summary>
+    public bool CanWithdrawProblem { get; set; }
 }
 
 /// <summary>Maps the customer's view of a booking to the API DTO.</summary>
@@ -404,6 +474,8 @@ public static class PublicSupplierBookingViewMapper
                 CanRespondToProposal = view.Actions.CanRespondToProposal,
                 CanRespondToQuote = view.Actions.CanRespondToQuote,
                 CanConfirmOk = view.Actions.CanConfirmOk,
+                CanReportProblem = view.Actions.CanReportProblem,
+                CanWithdrawProblem = view.Actions.CanWithdrawProblem,
             },
             Payment = view.Payment is { } payment
                 ? new PublicSupplierBookingPaymentDto
@@ -414,6 +486,22 @@ public static class PublicSupplierBookingViewMapper
                     RefundedCents = payment.RefundedCents,
                     ReleaseAtUtc = payment.ReleaseAtUtc is { } releaseAt ? AsUtc(releaseAt) : null,
                     ReleaseAtLocal = payment.ReleaseAtUtc is { } localReleaseAt ? RomeCalendar.ToRome(localReleaseAt) : null,
+                    Dispute = payment.Dispute is { } dispute
+                        ? new PublicSupplierBookingDisputeDto
+                        {
+                            Status = dispute.Status,
+                            Reason = dispute.Reason,
+                            NoShow = dispute.NoShow,
+                            OpenedByCasaZen = dispute.OpenedByCasaZen,
+                            Text = dispute.Text,
+                            OpenedAt = AsUtc(dispute.OpenedAt),
+                            SupplierReplyDueAt = AsUtc(dispute.SupplierReplyDueAt),
+                            SupplierReplied = dispute.SupplierReplied,
+                            ResolvedAt = dispute.ResolvedAt is { } resolvedAt ? AsUtc(resolvedAt) : null,
+                            RefundCents = dispute.RefundCents,
+                            Settled = dispute.Settled,
+                        }
+                        : null,
                 }
                 : null,
         };

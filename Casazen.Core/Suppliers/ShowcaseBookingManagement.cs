@@ -63,7 +63,42 @@ public sealed record ShowcaseBookingView(
 /// <param name="Currency">Uppercase ISO currency.</param>
 /// <param name="RefundedCents">What was given back to the customer.</param>
 /// <param name="ReleaseAtUtc">While the money is held and the work is done: when it goes to the supplier if the customer says nothing; otherwise <c>null</c>.</param>
-public sealed record ShowcaseBookingPaymentView(string Status, int AmountCents, string Currency, int RefundedCents, DateTime? ReleaseAtUtc);
+/// <param name="Dispute">SP-15c-c: the customer's complaint about the job, while it is open and after it was decided; <c>null</c> when there is none.</param>
+public sealed record ShowcaseBookingPaymentView(
+    string Status,
+    int AmountCents,
+    string Currency,
+    int RefundedCents,
+    DateTime? ReleaseAtUtc,
+    ShowcaseBookingDisputeView? Dispute = null);
+
+/// <summary>
+/// The customer's complaint about the job, as the customer reads it (SP-15c-c): its own words, the state and the decision. The supplier's reply and
+/// the note of the admin who decided are not in it; the customer is told that the supplier replied, not what it wrote.
+/// </summary>
+/// <param name="Status"><c>AwaitingSupplier</c>, <c>AwaitingDecision</c>, <c>ResolvedForSupplier</c>, <c>ResolvedForCustomer</c> or <c>Withdrawn</c>.</param>
+/// <param name="Reason"><c>not_done</c>, <c>incomplete</c>, <c>poor_quality</c>, <c>not_as_described</c> or <c>other</c>.</param>
+/// <param name="NoShow">The supplier never marked the work completed and the time agreed for it ended.</param>
+/// <param name="OpenedByCasaZen">CasaZen itself opened it (the no-show), not the customer.</param>
+/// <param name="Text">What the customer wrote.</param>
+/// <param name="OpenedAt">When it was opened.</param>
+/// <param name="SupplierReplyDueAt">When the supplier's time to reply ends.</param>
+/// <param name="SupplierReplied">The supplier replied.</param>
+/// <param name="ResolvedAt">When it was decided or taken back.</param>
+/// <param name="RefundCents">What goes back to the customer, when it was decided for the customer.</param>
+/// <param name="Settled">The refund that was decided has been made.</param>
+public sealed record ShowcaseBookingDisputeView(
+    string Status,
+    string Reason,
+    bool NoShow,
+    bool OpenedByCasaZen,
+    string? Text,
+    DateTime OpenedAt,
+    DateTime SupplierReplyDueAt,
+    bool SupplierReplied,
+    DateTime? ResolvedAt,
+    int? RefundCents,
+    bool Settled);
 
 /// <summary>
 /// The quote the supplier sent for the booking and the customer has not answered (SP-04b): the lines and the total, the note, the other
@@ -143,12 +178,16 @@ public sealed record ShowcaseBookingCancellationTerms(DateTime FreeUntilUtc, boo
 
 /// <summary>What the customer may do now with the booking (<see cref="ShowcaseBookingManagementRules"/>).</summary>
 /// <param name="CanConfirmOk">SP-15c-a: the work is done and CasaZen holds the money: the customer may say "all fine" and the supplier is paid at once.</param>
+/// <param name="CanReportProblem">SP-15c-c: the customer may report a problem — the work is done and the time to speak up has not ended, or the supplier never marked it completed and the time agreed for it has ended.</param>
+/// <param name="CanWithdrawProblem">SP-15c-c: a complaint of the customer is open and the customer may take it back.</param>
 public sealed record ShowcaseBookingActions(
     bool CanCancel,
     bool CanReschedule,
     bool CanRespondToProposal,
     bool CanRespondToQuote = false,
-    bool CanConfirmOk = false);
+    bool CanConfirmOk = false,
+    bool CanReportProblem = false,
+    bool CanWithdrawProblem = false);
 
 /// <summary>
 /// Codes (ProblemDetails <c>code</c>) and message keys (<c>SharedResources.resx</c>, Italian and English) of what the customer's
