@@ -127,6 +127,10 @@ public class BookingService(
                 DirectBookingErrorCodes.MarketingConsentUnavailable, "DirectBookingMarketingConsentUnavailable");
         }
 
+        // DB-03b: the optional expected arrival time is a note for the host: only its shape is checked, before anything is written.
+        if (!ArrivalTimeRules.TryNormalize(input.ExpectedArrivalTime, out var expectedArrivalTime))
+            throw new DomainRuleException(DirectBookingErrorCodes.ArrivalTimeInvalid, "DirectBookingArrivalTimeInvalid");
+
         var property = await GetBookablePropertyAsync(input.PropertyId);
 
         var org = await orgService.GetByIdAsync(property.OrgId);
@@ -194,6 +198,7 @@ public class BookingService(
             NumberOfChildren = input.NumberOfChildren,
             NumberOfGuests = totalGuests,
             SpecialRequests = input.SpecialRequests ?? string.Empty,
+            ExpectedArrivalTime = expectedArrivalTime,
             Status = BookingStatus.Pending,
             Source = BookingSource.Direct,
             BasePrice = basePrice,
