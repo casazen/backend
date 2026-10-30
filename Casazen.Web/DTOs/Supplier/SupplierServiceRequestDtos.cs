@@ -160,6 +160,30 @@ public class SupplierServiceRequestDto
     /// <c>Completato</c>. The same object in the inbox, in <c>today</c> and in the detail.
     /// </summary>
     public SupplierRequestPaymentDto? Payment { get; set; }
+
+    /// <summary>
+    /// SP-BKP: where the request stands in its group of backup suppliers, <b>null</b> for a request sent to this supplier alone. A request the
+    /// supplier receives <b>as a backup</b> is declared as such here (<c>role: backup</c>): the job is its only if the primary supplier does
+    /// not take it by <c>primaryDueAt</c>; until then it can accept as a backup (<c>POST api/service-requests/{id}/accept-as-backup</c>) or
+    /// refuse. Like any request before the take it shows the comune, the time and the price, never the property or the host's notes.
+    /// </summary>
+    public SupplierBackupDto? Backup { get; set; }
+}
+
+/// <summary>
+/// The backup side of a request for its supplier (SP-BKP). <c>role</c>: <c>primary</c> (the host chose this supplier, which has until
+/// <c>primaryDueAt</c> for the priority) or <c>backup</c>. <c>state</c> (an open set; show a generic wording for a value you do not know):
+/// for a backup <c>waiting</c> (the primary has its window), <c>accepted</c> (it said it would take the job), <c>active</c> (the second window:
+/// it can take the job now, until <c>backupDueAt</c>, and the first to do so has it), <c>won</c> (it took the job in place of the primary) or
+/// <c>closed</c>; for the primary <c>priority</c> (within its window), <c>late</c> (the window passed: still in the race without the priority).
+/// </summary>
+public class SupplierBackupDto
+{
+    public string Role { get; set; } = string.Empty;
+    public string State { get; set; } = string.Empty;
+    public DateTime PrimaryDueAt { get; set; }
+    public DateTime? BackupDueAt { get; set; }
+    public DateTime? AcceptedAt { get; set; }
 }
 
 /// <summary><c>GET /api/supplier/inbox/{id}</c>: the request and its history (SU-08).</summary>
@@ -516,6 +540,16 @@ public static class SupplierServiceRequestMapper
         dto.AutoAccepted = view.AutoAccepted;
         dto.Phase = view.Phase;
         dto.Payment = view.Payment is null ? null : SupplierRequestPaymentDto.From(view.Payment);
+        dto.Backup = view.Backup is null
+            ? null
+            : new SupplierBackupDto
+            {
+                Role = view.Backup.Role,
+                State = view.Backup.State,
+                PrimaryDueAt = view.Backup.PrimaryDueAt,
+                BackupDueAt = view.Backup.BackupDueAt,
+                AcceptedAt = view.Backup.AcceptedAt,
+            };
         return dto;
     }
 }

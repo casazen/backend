@@ -94,6 +94,8 @@ public sealed class SupplierClientsService(
         var requests = db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
+            // SP-BKP: a host whose request the supplier only waits to take as a backup is not its client (yet).
+            .WithoutWaitingBackups()
             .Where(r => r.SupplierOrgId == supplierOrgId
                         && r.Status != ServiceRequestStatus.Rifiutato
                         && r.Status != ServiceRequestStatus.Annullato);
@@ -132,6 +134,7 @@ public sealed class SupplierClientsService(
         db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
+            .WithoutWaitingBackups()
             .Where(r => r.SupplierOrgId == supplierOrgId
                         && (r.CustomerId ?? r.OrgId) == clientId
                         && r.Status != ServiceRequestStatus.Rifiutato

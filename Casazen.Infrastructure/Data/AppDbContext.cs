@@ -177,6 +177,13 @@ public class AppDbContext(
     // The refunds of a service payment (SP-15b): they belong to the payment, so they are not tenant-filtered either.
     public DbSet<ServiceRequestPaymentRefund> ServiceRequestPaymentRefunds { get; set; } = null!;
 
+    /// <summary>
+    /// The groups of backup suppliers (SP-BKP): a request and the backups it was sent to with it. Two parties and more (the host and
+    /// the suppliers of the backups) and a system job, so <b>not</b> tenant-filtered (see the TN-2 allow-list); only the code listed in
+    /// <c>ServiceRequestGroupTenancyTests</c> touches it, always with an explicit predicate.
+    /// </summary>
+    public DbSet<ServiceRequestGroup> ServiceRequestGroups { get; set; } = null!;
+
     // Property iCal OTA sync (US-018 / #294)
     public DbSet<CalendarBlock> CalendarBlocks { get; set; } = null!;
     public DbSet<PropertyICalFeed> PropertyICalFeeds { get; set; } = null!;
@@ -1151,6 +1158,19 @@ public class AppDbContext(
         // (a property, never a customer, a code or a place of their own); nothing is asked of BookingId there, which older
         // requests leave empty. The check holds for every row that exists before this migration.
         modelBuilder.ApplyConfiguration(new ServiceRequestShowcaseConfiguration());
+
+        // ─── Backup suppliers (SP-BKP) ───────────────────────────────────────────────────────────────────────────────
+        // A request and the backups it was sent to with it are tied by a group; the group's windows decide who has the job.
+        modelBuilder.ApplyConfiguration(new ServiceRequestGroupConfiguration());
+        modelBuilder.ApplyConfiguration(new ServiceRequestGroupMembershipConfiguration());
+
+        // Whether an org's requests also go to backup suppliers: on for every org that exists (the rule is general), so the migration gives
+        // the existing rows true. EF itself always writes the value of the entity: left to generate it, EF would take an explicit false for
+        // «not set» and the insert would write the default (true) in its place, turning the rule back on for an org that switched it off.
+        modelBuilder.Entity<Org>()
+            .Property(o => o.SupplierBackupsEnabled)
+            .HasDefaultValue(true)
+            .ValueGeneratedNever();
 
         modelBuilder.ApplyConfiguration(new ServiceCustomerConfiguration());
 

@@ -1698,4 +1698,82 @@
   <data name="HostBookingCancelledByGuest_Retained" xml:space="preserve">
     <value>Amount that stays with you: &lt;strong&gt;€{0}&lt;/strong&gt;.</value>
   </data>
+  <data name="ServiceRequestBackupInvited_Subject" xml:space="preserve">
+    <value>Request as a backup supplier — {0}</value>
+  </data>
+  <data name="ServiceRequestBackupInvited_Body" xml:space="preserve">
+    <value>You received a request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; as a &lt;strong&gt;backup supplier&lt;/strong&gt;: the customer also sent it to the supplier they chose, who has until &lt;strong&gt;{2}&lt;/strong&gt; to accept it. The job will be yours only if that supplier does not accept.</value>
+  </data>
+  <data name="ServiceRequestBackupInvited_Hint" xml:space="preserve">
+    <value>You can say now that you accept as a backup: if the main supplier does not answer, the job goes to the first backup that accepted. Your calendar stays free until the job is assigned to you. The address, the property name and the host's notes are shown once the job is yours.</value>
+  </data>
+  <data name="ServiceRequestBackupActive_Subject" xml:space="preserve">
+    <value>You can accept the request now — {0}</value>
+  </data>
+  <data name="ServiceRequestBackupActive_Body" xml:space="preserve">
+    <value>The main supplier did not take the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;. You can now accept it as a backup: the first to accept gets the job. You have until &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestBackupWon_Subject" xml:space="preserve">
+    <value>The job is yours — {0}</value>
+  </data>
+  <data name="ServiceRequestBackupWon_Body" xml:space="preserve">
+    <value>The main supplier did not take the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;: as you had accepted, the job is &lt;strong&gt;yours&lt;/strong&gt;.</value>
+  </data>
+  <data name="ServiceRequestBackupWon_Hint" xml:space="preserve">
+    <value>You find the address and the host's contact in the console. If you can no longer do it, cancel the request from the console before the work starts.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_Subject" xml:space="preserve">
+    <value>Backup request closed — {0}</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_PrimaryTookIt_Body" xml:space="preserve">
+    <value>The main supplier accepted the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt;: your backup request is closed.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_TakenByBackup_Body" xml:space="preserve">
+    <value>Another backup accepted the request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; before you: the request is closed.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_RequestCancelledByHost_Body" xml:space="preserve">
+    <value>The request for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; was cancelled: there is no job left to take.</value>
+  </data>
+  <data name="ServiceRequestBackupClosed_SlotUnavailable_Body" xml:space="preserve">
+    <value>The job for &lt;strong&gt;{0}&lt;/strong&gt; in &lt;strong&gt;{1}&lt;/strong&gt; was to go to you, but the time was no longer free in your calendar: it went on to another backup.</value>
+  </data>
+  <data name="ServiceRequestTakenByBackup_Subject" xml:space="preserve">
+    <value>Supplier request taken by a backup — {0}</value>
+  </data>
+  <data name="ServiceRequestTakenByBackup_Body" xml:space="preserve">
+    <value>The supplier you chose did not answer in time: the request for &lt;strong&gt;{0}&lt;/strong&gt; for &lt;strong&gt;{1}&lt;/strong&gt; was &lt;strong&gt;taken by {2}&lt;/strong&gt;, who had been told they were a backup.</value>
+  </data>
+  <data name="ServiceRequestTakenByBackup_Hint" xml:space="preserve">
+    <value>You do not need to do anything: the request goes on as usual and the main supplier was told that it did not answer in time.</value>
+  </data>
+  <data name="Push_ServiceRequestBackupInvited_Title" xml:space="preserve">
+    <value>Request as a backup</value>
+  </data>
+  <data name="Push_ServiceRequestBackupInvited_Body" xml:space="preserve">
+    <value>{0} in {1}: you are a backup, the job is yours only if the main supplier does not accept.</value>
+  </data>
+  <data name="Push_ServiceRequestBackupActive_Title" xml:space="preserve">
+    <value>You can accept now</value>
+  </data>
+  <data name="Push_ServiceRequestBackupActive_Body" xml:space="preserve">
+    <value>{0} in {1}: the main supplier did not answer, the first to accept gets the job.</value>
+  </data>
+  <data name="Push_ServiceRequestBackupWon_Title" xml:space="preserve">
+    <value>The job is yours</value>
+  </data>
+  <data name="Push_ServiceRequestBackupWon_Body" xml:space="preserve">
+    <value>{0} in {1}: the main supplier did not answer and the job went to you.</value>
+  </data>
+  <data name="Push_ServiceRequestBackupClosed_Title" xml:space="preserve">
+    <value>Backup request closed</value>
+  </data>
+  <data name="Push_ServiceRequestBackupClosed_Body" xml:space="preserve">
+    <value>{0} in {1}: the backup request is closed.</value>
+  </data>
+  <data name="Push_ServiceRequestTakenByBackup_Title" xml:space="preserve">
+    <value>Request taken by a backup</value>
+  </data>
+  <data name="Push_ServiceRequestTakenByBackup_Body" xml:space="preserve">
+    <value>{0} at {1}: the main supplier did not answer, {2} took it.</value>
+  </data>
 </root>

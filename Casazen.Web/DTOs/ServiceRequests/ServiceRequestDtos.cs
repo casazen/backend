@@ -57,6 +57,13 @@ public class CreateServiceRequestRequest
     /// supplier cannot overlap with a job already accepted.
     /// </summary>
     public int? DurationMinutes { get; set; }
+
+    /// <summary>
+    /// SP-BKP: whether the request is also sent to up to three backup suppliers, declared as such (the chosen supplier has one hour, and the
+    /// first backup that accepts has the job if it does not). Left out: the choice of the org (on by default). <c>false</c> sends the request
+    /// to the chosen supplier alone. Ignored while the feature flag <c>SupplierRequestBackups</c> is off.
+    /// </summary>
+    public bool? UseBackupSuppliers { get; set; }
 }
 
 /// <summary>Body of <c>POST api/service-requests/{id}/reject</c>: the reason is required (A4-18).</summary>
@@ -301,6 +308,50 @@ public class ServiceRequestDto
     /// itself, so it was born <c>PresoInCarico</c> and no member of the supplier took it. <c>false</c> for every other request.
     /// </summary>
     public bool AutoAccepted { get; set; }
+
+    /// <summary>
+    /// SP-BKP: the group of backup suppliers the request belongs to, as its host sees it: where it is, the supplier the host chose and the
+    /// backups with their state, and who took the job. <c>null</c> for a request sent to one supplier only. Filled by the host endpoints
+    /// that read a request (list, detail, creation); the answers of the actions do not carry it.
+    /// </summary>
+    public ServiceRequestGroupDto? Group { get; set; }
+}
+
+/// <summary>
+/// The group of backup suppliers of a request as its host sees it (SP-BKP). <c>phase</c> is <c>PrimaryWindow</c> (the chosen supplier has
+/// until <c>primaryDueAt</c>; the backups can only say they would take the job), <c>BackupWindow</c> (the chosen supplier did not take it or
+/// refused: every supplier still waiting can, until <c>backupDueAt</c>, and the first has it) or <c>Closed</c>. An open set.
+/// </summary>
+public class ServiceRequestGroupDto
+{
+    public Guid Id { get; set; }
+    public string Phase { get; set; } = string.Empty;
+    public DateTime PrimaryDueAt { get; set; }
+    public DateTime? BackupDueAt { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? ClosedAt { get; set; }
+
+    /// <summary>The request the host follows first (the chosen supplier, or the backup that replaced it), then the one it replaced, then the backups.</summary>
+    public IEnumerable<ServiceRequestGroupMemberDto> Members { get; set; } = [];
+}
+
+/// <summary>
+/// One request of a group (SP-BKP). <c>role</c>: <c>Primary</c> (the supplier the host chose), <c>Backup</c> (declared as a backup),
+/// <c>ReplacedPrimary</c> (the chosen supplier that did not answer in time and was replaced) or <c>PromotedBackup</c> (the backup that took the
+/// job). <c>acceptedAt</c> is when a backup said it would take the job; <c>tookTheJob</c> marks the request that was taken;
+/// <c>cancellationReason</c> is the code of a request closed by CasaZen (<c>NoResponse</c>, <c>PrimaryTookIt</c>, <c>TakenByBackup</c>,
+/// <c>RequestCancelledByHost</c>, <c>BackupSlotUnavailable</c>).
+/// </summary>
+public class ServiceRequestGroupMemberDto
+{
+    public Guid RequestId { get; set; }
+    public string Role { get; set; } = string.Empty;
+    public Guid SupplierOrgId { get; set; }
+    public string SupplierName { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTime? AcceptedAt { get; set; }
+    public bool TookTheJob { get; set; }
+    public string? CancellationReason { get; set; }
 }
 
 /// <summary>
@@ -396,6 +447,28 @@ public static class ServiceRequestDtoParts
             }).ToList(),
         };
     }
+
+    /// <summary>The group of backup suppliers of a request as its host sees it (SP-BKP).</summary>
+    public static ServiceRequestGroupDto ToGroupDto(ServiceRequestGroupView group) => new()
+    {
+        Id = group.Id,
+        Phase = group.Phase.ToString(),
+        PrimaryDueAt = group.PrimaryDueAt,
+        BackupDueAt = group.BackupDueAt,
+        CreatedAt = group.CreatedAt,
+        ClosedAt = group.ClosedAt,
+        Members = group.Members.Select(member => new ServiceRequestGroupMemberDto
+        {
+            RequestId = member.RequestId,
+            Role = member.Role.ToString(),
+            SupplierOrgId = member.SupplierOrgId,
+            SupplierName = member.SupplierName,
+            Status = member.Status.ToString(),
+            AcceptedAt = member.AcceptedAt,
+            TookTheJob = member.TookTheJob,
+            CancellationReason = member.CancellationReason,
+        }).ToList(),
+    };
 
     public static ServiceRequestProposalDto? ToProposalDto(DateTime? startUtc, DateTime? endUtc, DateTime? proposedAt, string? message) =>
         startUtc is { } start && endUtc is { } end && proposedAt is { } at

@@ -105,6 +105,11 @@ internal sealed class ServiceRequestTestKit : IDisposable
             paymentLogger ?? NullLogger<SupplierPaymentService>.Instance,
             Clock);
         Matcher = ComuneTestServices.Matcher(db);
+
+        // SP-BKP: the choice of the backup suppliers over a plain ranking (the real one needs the whole supplier service); it is only
+        // reached with the feature flag SupplierRequestBackups on, which the kit leaves off until a test switches it on.
+        BackupSelector = new ServiceRequestBackupSelector(
+            new FakeSupplierRanking(db), Agenda, LegalTestServices.Legal(), db, NullLogger<ServiceRequestBackupSelector>.Instance);
         Service = new ServiceRequestService(
             db,
             new ServiceRequestRepository(db),
@@ -119,7 +124,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
             Payments,
             NullLogger<ServiceRequestService>.Instance,
-            Clock);
+            Clock,
+            Flags,
+            BackupSelector);
         Booking = new ShowcaseBookingService(
             db,
             Catalog,
@@ -195,6 +202,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
     public SupplierPaymentService Payments { get; }
 
     public ServiceRequestService Service { get; }
+
+    /// <summary>The choice of the backup suppliers of a request (SP-BKP), over <see cref="FakeSupplierRanking"/>.</summary>
+    public ServiceRequestBackupSelector BackupSelector { get; }
 
     public ShowcaseBookingService Booking { get; }
 

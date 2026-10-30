@@ -42,7 +42,8 @@ public partial class SupplierServiceRequestReader(
 
         var ownerPhones = await OwnerPhonesAsync(page, cancellationToken);
         var summaries = await PaymentSummariesAsync(supplierOrgId, page, cancellationToken);
-        return (page.Select(r => ToView(r, ownerPhones, summaries.GetValueOrDefault(r.Id), history: null)).ToList(), total);
+        var nowUtc = _clock.GetUtcNow().UtcDateTime;
+        return (page.Select(r => ToView(r, ownerPhones, summaries.GetValueOrDefault(r.Id), history: null, nowUtc)).ToList(), total);
     }
 
     /// <summary>
@@ -226,7 +227,7 @@ public partial class SupplierServiceRequestReader(
                 AutoAccepted: row.AutoAccepted),
             takenByName);
 
-        return ToView(row, ownerPhones, summaries.GetValueOrDefault(row.Id), history);
+        return ToView(row, ownerPhones, summaries.GetValueOrDefault(row.Id), history, _clock.GetUtcNow().UtcDateTime);
     }
 
     public Task<IReadOnlyList<SupplierAgendaRequest>> ListForAgendaAsync(
@@ -322,6 +323,8 @@ public partial class SupplierServiceRequestReader(
         db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
+            // SP-BKP: a backup that only waits for its primary holds nothing of the agenda (the slot is checked when the job is assigned to it).
+            .WithoutWaitingBackups()
             .Where(r => r.SupplierOrgId == supplierOrgId
                         && r.Status != ServiceRequestStatus.Rifiutato
                         && r.Status != ServiceRequestStatus.Annullato
@@ -451,6 +454,13 @@ public partial class SupplierServiceRequestReader(
                 TakenAt = r.TakenAt,
                 TakenByUserId = r.TakenByUserId,
                 AutoAccepted = r.AutoAccepted,
+                // SP-BKP: where the request is in its group of backup suppliers (none outside one). The group table has no tenant filter and is
+                // reached through the request, which the supplier org predicate above already scopes.
+                GroupRole = r.GroupRole,
+                BackupAcceptedAt = r.BackupAcceptedAt,
+                GroupPhase = r.Group != null ? (ServiceRequestGroupPhase?)r.Group.Phase : null,
+                GroupPrimaryDueAt = r.Group != null ? (DateTime?)r.Group.PrimaryDueAt : null,
+                GroupBackupDueAt = r.Group != null ? r.Group.BackupDueAt : null,
                 CompletedAt = r.CompletedAt,
                 PaidAt = r.PaidAt,
                 // Activity date of the inbox period and order (SupplierInboxStatusFilter): completion for completed and
@@ -555,11 +565,44 @@ public partial class SupplierServiceRequestReader(
         return member is null ? null : $"{member.FirstName} {member.LastName}".Trim();
     }
 
+    /// <summary>
+    /// Where a request stands in its group of backup suppliers, as its supplier sees it (<see cref="SupplierJobBackup"/>): none outside a group,
+    /// nor for the primary once it has answered, nor for the primary a backup replaced. A backup's view is the same as any request before the
+    /// take: <see cref="ToView"/> discloses the property and the notes only for a disclosed status.
+    /// </summary>
+    private static SupplierJobBackup? BackupOf(SupplierRequestRow row, DateTime nowUtc)
+    {
+        if (row is not { GroupPhase: { } phase, GroupPrimaryDueAt: { } primaryDueAt })
+            return null;
+
+        switch (row.GroupRole)
+        {
+            case ServiceRequestGroupRole.Backup:
+            case ServiceRequestGroupRole.PromotedBackup:
+                return new SupplierJobBackup(
+                    SupplierBackupRoles.Backup,
+                    SupplierBackupStates.Of(row.GroupRole, row.Status, phase, primaryDueAt, nowUtc, row.BackupAcceptedAt),
+                    primaryDueAt,
+                    row.GroupBackupDueAt,
+                    row.BackupAcceptedAt);
+            case ServiceRequestGroupRole.Primary when row.Status == ServiceRequestStatus.Richiesto:
+                return new SupplierJobBackup(
+                    SupplierBackupRoles.Primary,
+                    SupplierBackupStates.Of(row.GroupRole, row.Status, phase, primaryDueAt, nowUtc, acceptedAt: null),
+                    primaryDueAt,
+                    row.GroupBackupDueAt,
+                    AcceptedAt: null);
+            default:
+                return null;
+        }
+    }
+
     private static SupplierServiceRequestView ToView(
         SupplierRequestRow row,
         IReadOnlyDictionary<string, string> ownerPhones,
         SupplierJobPayment? payment,
-        IReadOnlyList<ServiceRequestHistoryEntry>? history)
+        IReadOnlyList<ServiceRequestHistoryEntry>? history,
+        DateTime nowUtc)
     {
         var disclosed = SupplierJobDisclosure.IsDisclosed(row.Status);
 
@@ -663,7 +706,8 @@ public partial class SupplierServiceRequestReader(
             ServiceRequestJson.ReadPhotos(row.WorkPhotosJson),
             row.PaymentMode,
             payment,
-            row.AutoAccepted);
+            row.AutoAccepted,
+            BackupOf(row, nowUtc));
     }
 
     /// <summary>
@@ -702,6 +746,11 @@ public partial class SupplierServiceRequestReader(
         public DateTime? TakenAt { get; init; }
         public string? TakenByUserId { get; init; }
         public bool AutoAccepted { get; init; }
+        public ServiceRequestGroupRole GroupRole { get; init; }
+        public DateTime? BackupAcceptedAt { get; init; }
+        public ServiceRequestGroupPhase? GroupPhase { get; init; }
+        public DateTime? GroupPrimaryDueAt { get; init; }
+        public DateTime? GroupBackupDueAt { get; init; }
         public DateTime? CompletedAt { get; init; }
         public DateTime? PaidAt { get; init; }
         public DateTime ActivityAt { get; init; }

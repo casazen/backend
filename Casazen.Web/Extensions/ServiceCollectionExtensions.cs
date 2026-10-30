@@ -643,6 +643,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IShowcaseRequestCustomerActions>(provider => provider.GetRequiredService<ServiceRequestService>());
         // Automatic cancellation of the requests nobody answered (SP-04, D8): the recurring job runs only with the flag on.
         services.AddScoped<IServiceRequestAutoCancelService, ServiceRequestAutoCancelService>();
+        // Backup suppliers of a host's request (SP-BKP, flag SupplierRequestBackups for the creation of groups only): the choice of the backups
+        // and the always-on pass over the groups that follows their windows.
+        services.AddScoped<ServiceRequestBackupSelector>();
+        services.AddScoped<IServiceRequestGroupRunService, ServiceRequestGroupRunService>();
         // The suppliers a host already asked for a job, for «Le mie app» of the marketplace (MKT, SR-09c): a view of its requests.
         services.AddScoped<IHostSupplierUsageReader, HostSupplierUsageReader>();
 

@@ -72,6 +72,8 @@ public partial class ServiceRequestService
                 ServiceRequestErrorCodes.InvalidTransition, ServiceRequestErrorCodes.CannotCancelMessageKey);
         }
 
+        var wasWaitingBackup = request.GroupRole == ServiceRequestGroupRole.Backup;
+
         await TransitionAsync(
             request,
             ServiceRequestStatus.Annullato,
@@ -88,8 +90,12 @@ public partial class ServiceRequestService
 
         if (actor == ServiceRequestActorParty.Host)
             await notifier.NotifySupplierCancelledAsync(request, cancellationToken);
-        else
+        else if (!wasWaitingBackup)
             await notifier.NotifyHostAsync(request, cancellationToken);
+
+        // SP-BKP: the host's cancellation closes the backups; a supplier that gives up its request (the primary, or a backup) changes who is
+        // in the race. The group is looked at right away.
+        await ResolveGroupAfterChangeAsync(request.GroupId, cancellationToken);
 
         return request;
     }
@@ -139,6 +145,13 @@ public partial class ServiceRequestService
         {
             throw new DomainRuleException(
                 ServiceRequestErrorCodes.InvalidTransition, ServiceRequestErrorCodes.CannotProposeMessageKey);
+        }
+
+        // SP-BKP: a backup answers the time asked or refuses; the host would be answering a supplier it did not choose.
+        if (request.GroupRole == ServiceRequestGroupRole.Backup)
+        {
+            throw new DomainRuleException(
+                ServiceRequestGroupErrorCodes.BackupCannotPropose, ServiceRequestGroupErrorCodes.BackupCannotProposeMessageKey);
         }
 
         var start = UtcDateTime.Normalize(command.StartUtc);
@@ -233,6 +246,9 @@ public partial class ServiceRequestService
         }
 
         await notifier.NotifyProposalAnsweredAsync(request, accepted: true, proposedAt, cancellationToken);
+
+        // SP-BKP: accepting the primary's proposal is the take of its job: the backups that still wait are closed.
+        await ResolveGroupAfterChangeAsync(request.GroupId, cancellationToken);
         return request;
     }
 
@@ -248,12 +264,16 @@ public partial class ServiceRequestService
         // auto-cancel job away; if that deadline already passed while the host was deciding, start the window
         // again. Leaving the elapsed deadline would cancel the request as if nobody had answered.
         var now = Now();
-        if (request.ResponseDueAt is { } due && due <= now)
+        if (request.GroupId is null && request.ResponseDueAt is { } due && due <= now)
             request.ResponseDueAt = now.AddMinutes(options.Value.HostResponseMinutes);
 
         ClearProposal(request);
         request.UpdatedAt = now;
         await SaveAsync(request, "proposal rejected", cancellationToken);
+
+        // SP-BKP: the window of a group starts again the same way, for the primary and the backups together.
+        if (request.GroupId is { } groupId)
+            await ReopenGroupWindowAsync(groupId, cancellationToken);
 
         logger.LogInformation("ServiceRequest {Id}: the host turned the proposed time down", request.Id);
 

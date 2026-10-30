@@ -34,7 +34,7 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="ShowcaseBookingNotifier"/>, and there is no push to a host. What goes to the supplier is the same, with the comune
 /// of the request itself instead of the one of a property.</para>
 /// </remarks>
-public sealed class ServiceRequestNotifier(
+public sealed partial class ServiceRequestNotifier(
     AppDbContext db,
     IEmailQueue emailQueue,
     PublicSiteLinks publicSiteLinks,

@@ -175,6 +175,21 @@ internal static class PostgresAdvisoryLocks
         ServiceRequestAutoCancelRun = 1_310,
 
         /// <summary>
+        /// One run of the recurring job that follows the groups of backup suppliers (single key, session lock held for the whole run): two
+        /// runs never promote a backup, open a second window or lapse the same group at once, even outside Hangfire's own lock (SP-BKP).
+        /// </summary>
+        ServiceRequestGroupRun = 1_314,
+
+        /// <summary>
+        /// One group of backup suppliers (key: the group id, <c>groupId.ToString("N")</c>, SP-BKP): the take of the primary or of a backup, the
+        /// pre-approval of a backup, a refusal or a cancellation of a member, the host's cancellation and the pass of the job change the
+        /// requests of the group one at a time, so exactly one of them has the job and the others are closed together with it. Always
+        /// taken <b>before</b> the calendar lock of a supplier (<see cref="SupplierCalendarSync"/>), never after: no cycle between a take and
+        /// the job that promotes a backup.
+        /// </summary>
+        ServiceRequestGroup = 1_315,
+
+        /// <summary>
         /// One run of the upkeep of the bookings from the public showcases (single key, session lock held for the whole run): the
         /// holds past their expiry are deleted and the showcase requests nobody answered are cancelled and told once, even
         /// outside Hangfire's own lock (SP-10).

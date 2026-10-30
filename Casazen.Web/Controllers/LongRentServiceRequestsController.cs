@@ -84,7 +84,7 @@ public class LongRentServiceRequestsController(
 
         return Ok(new ServiceRequestListResponse
         {
-            Items = items.Select(ServiceRequestsController.MapDto),
+            Items = await ServiceRequestsController.MapForHostAsync(serviceRequestService, scope.OrgId, items, cancellationToken),
             Total = total,
             Page = page,
             PageSize = pageSize,
@@ -116,7 +116,7 @@ public class LongRentServiceRequestsController(
         if (!await authorizationService.IsAuthorizedAsync(User, resource, LongRentPropertyOperations.Read))
             return Forbid();
 
-        return Ok(ServiceRequestsController.MapDto(existing));
+        return Ok((await ServiceRequestsController.MapForHostAsync(serviceRequestService, scope.OrgId, [existing], cancellationToken))[0]);
     }
 
     /// <summary>
@@ -187,10 +187,12 @@ public class LongRentServiceRequestsController(
                 ServiceRequestRentalContext.LongRent,
                 request.ServiceListingId,
                 request.ScheduledStartUtc,
-                request.DurationMinutes),
+                request.DurationMinutes,
+                request.UseBackupSuppliers),
             cancellationToken);
 
-        return Created($"/api/long-rent/service-requests/{created.Id}", ServiceRequestsController.MapDto(created));
+        var dto = (await ServiceRequestsController.MapForHostAsync(serviceRequestService, orgId.Value, [created], cancellationToken))[0];
+        return Created($"/api/long-rent/service-requests/{created.Id}", dto);
     }
 
     /// <summary>

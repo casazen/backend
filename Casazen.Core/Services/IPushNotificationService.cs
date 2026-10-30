@@ -94,6 +94,12 @@ public static class PushDeliveryKeys
     public static string ServiceRequestRescheduled(Guid serviceRequestId, DateTime rescheduledAtUtc) =>
         $"service-request:{serviceRequestId:N}:rescheduled:{rescheduledAtUtc:yyyyMMddHHmmss}";
 
+    /// <summary>
+    /// What happened to a backup supplier's request (SP-BKP): <paramref name="kind"/> is one of <c>invited</c>, <c>active</c>, <c>won</c>,
+    /// <c>closed</c>. A request of a group moves through each of them at most once, so the key identifies the event.
+    /// </summary>
+    public static string ServiceRequestBackup(Guid serviceRequestId, string kind) => $"service-request:{serviceRequestId:N}:backup-{kind}";
+
     /// <summary>A message the guest of a direct booking wrote, to the host: one per message, so every message is one push.</summary>
     public static string GuestMessage(Guid messageId) => $"booking-message:{messageId:N}";
 
@@ -155,6 +161,18 @@ public static class PushTypes
 
     /// <summary>The customer of the public showcase moved a new request to another time (SP-11): pushed to the supplier org.</summary>
     public const string ServiceRequestRescheduled = "service-request-rescheduled";
+
+    /// <summary>A request was also sent to this supplier as a backup (SP-BKP): the job is its only if the primary does not take it. Pushed to the supplier org.</summary>
+    public const string ServiceRequestBackupInvited = "service-request-backup-invited";
+
+    /// <summary>The second window opened (SP-BKP): the primary did not take the job (or refused it), the backup can take it now. Pushed to the supplier org.</summary>
+    public const string ServiceRequestBackupActive = "service-request-backup-active";
+
+    /// <summary>The job of a request went to this backup, which had accepted (SP-BKP). Pushed to the supplier org.</summary>
+    public const string ServiceRequestBackupWon = "service-request-backup-won";
+
+    /// <summary>A backup request was closed (SP-BKP): the primary or another backup took the job, the host cancelled, or its time was no longer free. Pushed to the supplier org.</summary>
+    public const string ServiceRequestBackupClosed = "service-request-backup-closed";
     public const string NewBooking = "new-booking";
 
     /// <summary>The guest of a direct booking wrote a message: pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its thread.</summary>

@@ -208,6 +208,30 @@ public class ServiceRequest
     /// <summary>When the host last reminded the supplier to answer (at most one reminder every 6 hours).</summary>
     public DateTime? LastRemindedAt { get; set; }
 
+    // ─── Backup suppliers (SP-BKP) ───────────────────────────────────────────────────────────────────────────────────
+    // The request of a host sent to a supplier (the primary) and, at the same moment, to up to three backups: one row each, with the
+    // same data, tied by the group. All four columns are empty (GroupRole None) on every request that is not part of a group.
+
+    /// <summary>The group the request belongs to; <c>null</c> for a request sent to one supplier only (the rule until backups).</summary>
+    public Guid? GroupId { get; set; }
+
+    /// <summary>
+    /// What the request is in its group: <see cref="ServiceRequestGroupRole.None"/> outside any group. A backup stays
+    /// <see cref="ServiceRequestStatus.Richiesto"/> and is hidden from the host's lists until it is promoted
+    /// (<see cref="ServiceRequestGroupRole.PromotedBackup"/>); the primary it replaces becomes <see cref="ServiceRequestGroupRole.ReplacedPrimary"/>.
+    /// </summary>
+    public ServiceRequestGroupRole GroupRole { get; set; } = ServiceRequestGroupRole.None;
+
+    /// <summary>
+    /// When a backup said it would take the job if the primary does not (the pre-approval): the earliest one wins when the primary's
+    /// window ends. <c>null</c> for a backup that did not accept and for every request that is not a backup.
+    /// </summary>
+    public DateTime? BackupAcceptedAt { get; set; }
+
+    /// <summary>The member of the backup supplier who gave the pre-approval: the one recorded as having taken the job when it wins.</summary>
+    [MaxLength(255)]
+    public string? BackupAcceptedByUserId { get; set; }
+
     // ─── Another time proposed by the supplier (SP-04) ───────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -303,4 +327,8 @@ public class ServiceRequest
     /// <summary>The private customer of a showcase request; <c>null</c> for a host's request.</summary>
     [ForeignKey(nameof(CustomerId))]
     public ServiceCustomer? Customer { get; set; }
+
+    /// <summary>The group of the primary and its backups this request belongs to; <c>null</c> outside a group.</summary>
+    [ForeignKey(nameof(GroupId))]
+    public ServiceRequestGroup? Group { get; set; }
 }

@@ -3569,4 +3569,22 @@
   <data name="GuestCancelConfirmRequired" xml:space="preserve">
     <value>Conferma di voler annullare la prenotazione per procedere.</value>
   </data>
+  <data name="ServiceRequestBackupWaitsForPrimary" xml:space="preserve">
+    <value>Sei un fornitore di riserva: il lavoro è tuo solo se il fornitore principale non lo accetta nel suo tempo. Per ora puoi accettare come riserva.</value>
+  </data>
+  <data name="ServiceRequestPrimaryWindowPassed" xml:space="preserve">
+    <value>Il tempo per accettare è scaduto: il lavoro è passato a un fornitore di riserva che aveva già accettato.</value>
+  </data>
+  <data name="ServiceRequestBackupNotYourTurn" xml:space="preserve">
+    <value>Un'altra riserva ha accettato prima di te e ha la precedenza: se non può farlo, tocca a te.</value>
+  </data>
+  <data name="ServiceRequestNotAWaitingBackup" xml:space="preserve">
+    <value>Questa richiesta non è una richiesta di riserva in attesa del fornitore principale.</value>
+  </data>
+  <data name="ServiceRequestBackupCannotPropose" xml:space="preserve">
+    <value>Una riserva non può proporre un altro orario all'host: puoi accettare l'orario richiesto oppure rifiutare.</value>
+  </data>
+  <data name="ServiceRequestBackupAlreadyActive" xml:space="preserve">
+    <value>Il fornitore principale non ha preso in carico la richiesta: puoi accettarla direttamente, il primo che accetta ha il lavoro.</value>
+  </data>
 </root>

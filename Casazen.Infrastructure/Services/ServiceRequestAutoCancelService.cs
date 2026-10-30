@@ -95,7 +95,9 @@ public sealed class ServiceRequestAutoCancelService(
     /// oldest deadline first, at most <see cref="MaxPerRun"/>. ServiceRequest has two parties and no tenant filter (TN-2
     /// allow-list): the job works across every org, so the filters of the host are off and the predicate is the state of the
     /// request itself. A request of the public showcase is not one of them (it is
-    /// <see cref="DueShowcaseIdsOf"/>).
+    /// <see cref="DueShowcaseIdsOf"/>), nor is one that belongs to a group of backup suppliers (SP-BKP): the primary and the backups lapse,
+    /// or are given the job, by the logic of the group (<c>IServiceRequestService.ResolveGroupAsync</c>, run by the job
+    /// <c>service-request-groups</c>), never one by one here.
     /// </summary>
     /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
     internal static IQueryable<Guid> DueIdsOf(AppDbContext db, DateTime nowUtc) =>
@@ -106,7 +108,8 @@ public sealed class ServiceRequestAutoCancelService(
                         && r.Status == ServiceRequestStatus.Richiesto
                         && r.ResponseDueAt != null
                         && r.ResponseDueAt <= nowUtc
-                        && r.ProposedStartUtc == null)
+                        && r.ProposedStartUtc == null
+                        && r.GroupId == null)
             .OrderBy(r => r.ResponseDueAt)
             .ThenBy(r => r.Id)
             .Select(r => r.Id)
@@ -156,6 +159,7 @@ public sealed class ServiceRequestAutoCancelService(
                 || (request.RentalContext == ServiceRequestRentalContext.Showcase) != showcase
                 || request.ResponseDueAt is not { } due
                 || due > now
+                || request.GroupId is not null
                 || (!showcase && request.ProposedStartUtc is not null)
                 || !ServiceRequestStateMachine.CanCancel(request.Status, ServiceRequestActorParty.System))
             {

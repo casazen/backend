@@ -51,6 +51,11 @@ namespace Casazen.Core.Suppliers;
 /// record or is <c>Completato</c>. Filled by the reader (<see cref="SupplierJobPayment"/>); null in a view built without it.
 /// </param>
 /// <param name="AutoAccepted">The request was born taken: accepted automatically for a regular host (SP-04d); its take is a step of CasaZen itself in <paramref name="History"/>.</param>
+/// <param name="Backup">
+/// SP-BKP: where the request stands in its group of backup suppliers (<see cref="SupplierJobBackup"/>): <b>null</b> for a request sent to this
+/// supplier alone. A backup is declared as such to its supplier, who sees what it sees before any take (decision D9): the comune, the
+/// time, the price, never the property or the host's notes.
+/// </param>
 public sealed record SupplierServiceRequestView(
     Guid Id,
     ServiceRequestRentalContext RentalContext,
@@ -82,7 +87,8 @@ public sealed record SupplierServiceRequestView(
     IReadOnlyList<ServiceRequestPhoto> WorkPhotos,
     ServiceRequestPaymentMode PaymentMode = ServiceRequestPaymentMode.Manual,
     SupplierJobPayment? Payment = null,
-    bool AutoAccepted = false)
+    bool AutoAccepted = false,
+    SupplierJobBackup? Backup = null)
 {
     /// <summary>
     /// The phase of the request (SP-04e): <see cref="SupplierRequestPhases"/>, derived from the status and the proposed time in one

@@ -65,15 +65,60 @@ public class SupplierMatchService(
             return new SupplierMatchResult(null, [], external, external.Count > 0);
         }
 
+        var scored = await ScoreAsync(suppliers, urgency, cancellationToken);
+
+        var top = scored[0];
+        var (reason, reasonByAi) = aiEnabled && ServiceCategories.IsKnown(category)
+            ? await BuildMatchReasonAsync(orgId, top.Profile, category, urgency, top.Load, cancellationToken)
+            : (BuildStaticReason(top.Profile, top.Load), false);
+        var recommended = ToCandidate(top.Profile, top.Score, reason, reasonByAi);
+        var alternatives = scored
+            .Skip(1)
+            .Take(3)
+            .Select(x => ToCandidate(x.Profile, x.Score, BuildStaticReason(x.Profile, x.Load)))
+            .ToList();
+
+        logger.LogInformation(
+            "Supplier match for property {PropertyId}: recommended {SupplierOrgId} (score {Score})",
+            propertyId, recommended.OrgId, recommended.MatchScore);
+
+        return new SupplierMatchResult(recommended, alternatives, [], false);
+    }
+
+    public async Task<IReadOnlyList<RankedSupplier>> RankActiveAsync(
+        ComuneTarget target,
+        string category,
+        ServiceRequestUrgency urgency,
+        CancellationToken cancellationToken = default)
+    {
+        category = ServiceCategories.Require(category);
+        var suppliers = await supplierService.GetActiveByComuneAsync(target, category, cancellationToken);
+        if (suppliers.Count == 0)
+            return [];
+
+        var scored = await ScoreAsync(suppliers, urgency, cancellationToken);
+        return [.. scored.Select(x => new RankedSupplier(x.Profile, x.Score, x.Load))];
+    }
+
+    /// <summary>
+    /// The suppliers with their score, best first: 70, minus 8 for each open request up to 40, plus the urgency, plus 5 for a bio. The
+    /// open requests are the ones the supplier holds or may hold: a backup that only waits for its primary (SP-BKP) is not load.
+    /// </summary>
+    private async Task<List<(Casazen.Core.Entities.SupplierProfile Profile, int Score, int Load)>> ScoreAsync(
+        IReadOnlyList<Casazen.Core.Entities.SupplierProfile> suppliers,
+        ServiceRequestUrgency urgency,
+        CancellationToken cancellationToken)
+    {
         var supplierIds = suppliers.Select(s => s.OrgId).ToList();
         var openCounts = await db.ServiceRequests
             .AsNoTracking()
+            .WithoutWaitingBackups()
             .Where(sr => supplierIds.Contains(sr.SupplierOrgId) && OpenStatuses.Contains(sr.Status))
             .GroupBy(sr => sr.SupplierOrgId)
             .Select(g => new { SupplierOrgId = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.SupplierOrgId, x => x.Count, cancellationToken);
 
-        var scored = suppliers
+        return suppliers
             .Select(sp =>
             {
                 var load = openCounts.GetValueOrDefault(sp.OrgId, 0);
@@ -92,23 +137,6 @@ public class SupplierMatchService(
             .OrderByDescending(x => x.Score)
             .ThenBy(x => x.Load)
             .ToList();
-
-        var top = scored[0];
-        var (reason, reasonByAi) = aiEnabled && ServiceCategories.IsKnown(category)
-            ? await BuildMatchReasonAsync(orgId, top.Profile, category, urgency, top.Load, cancellationToken)
-            : (BuildStaticReason(top.Profile, top.Load), false);
-        var recommended = ToCandidate(top.Profile, top.Score, reason, reasonByAi);
-        var alternatives = scored
-            .Skip(1)
-            .Take(3)
-            .Select(x => ToCandidate(x.Profile, x.Score, BuildStaticReason(x.Profile, x.Load)))
-            .ToList();
-
-        logger.LogInformation(
-            "Supplier match for property {PropertyId}: recommended {SupplierOrgId} (score {Score})",
-            propertyId, recommended.OrgId, recommended.MatchScore);
-
-        return new SupplierMatchResult(recommended, alternatives, [], false);
     }
 
     /// <summary>

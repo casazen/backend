@@ -3569,4 +3569,22 @@
   <data name="GuestCancelConfirmRequired" xml:space="preserve">
     <value>Confirm that you want to cancel the booking to go on.</value>
   </data>
+  <data name="ServiceRequestBackupWaitsForPrimary" xml:space="preserve">
+    <value>You are a backup supplier: the job is yours only if the main supplier does not accept it in its time. For now you can accept as a backup.</value>
+  </data>
+  <data name="ServiceRequestPrimaryWindowPassed" xml:space="preserve">
+    <value>The time to accept has passed: the job went to a backup supplier that had already accepted.</value>
+  </data>
+  <data name="ServiceRequestBackupNotYourTurn" xml:space="preserve">
+    <value>Another backup accepted before you and comes first: if it cannot do it, it is your turn.</value>
+  </data>
+  <data name="ServiceRequestNotAWaitingBackup" xml:space="preserve">
+    <value>This request is not a backup request waiting for the main supplier.</value>
+  </data>
+  <data name="ServiceRequestBackupCannotPropose" xml:space="preserve">
+    <value>A backup cannot propose another time to the host: you can accept the requested time or refuse.</value>
+  </data>
+  <data name="ServiceRequestBackupAlreadyActive" xml:space="preserve">
+    <value>The main supplier did not take the request: you can accept it directly, the first to accept gets the job.</value>
+  </data>
 </root>
