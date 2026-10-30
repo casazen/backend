@@ -104,6 +104,30 @@ public interface ILeaseOperationsService
     Task<LeaseLetterFile> BuildRiconsegnaAsync(Guid leaseId, DateOnly? handoverOn, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The statement of the return of the security deposit worked out from the legal rates of the years it was held (typed by the landlord), the
+    /// interest already paid and the sums kept. Nothing is written.
+    /// </summary>
+    /// <exception cref="NotFoundException">404 <c>lease_not_found</c>.</exception>
+    /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>.</exception>
+    /// <exception cref="DomainRuleException">422 <c>lease_deposit_none</c>, <c>lease_letter_not_applicable</c> (the lease is not ending), <c>lease_deposit_dates_invalid</c>, <c>lease_deposit_rate_invalid</c>, <c>lease_deposit_rate_missing</c>, <c>lease_deposit_interest_paid_invalid</c>, <c>lease_deposit_deduction_invalid</c>, <c>lease_deposit_deductions_exceed</c>.</exception>
+    Task<LeaseDepositCalculationDto> CalculateDepositReturnAsync(Guid leaseId, LeaseDepositReturnInput input, CancellationToken cancellationToken = default);
+
+    /// <summary>The draft of the statement of the return of the deposit, with the same numbers as <see cref="CalculateDepositReturnAsync"/>.</summary>
+    /// <exception cref="NotFoundException">404 <c>lease_not_found</c>.</exception>
+    /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>.</exception>
+    /// <exception cref="DomainRuleException">422 the ones of <see cref="CalculateDepositReturnAsync"/> and <c>lease_letter_unavailable</c>.</exception>
+    Task<LeaseLetterFile> BuildRestituzioneCauzioneAsync(Guid leaseId, LeaseDepositReturnInput input, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records that the landlord returned the deposit on <c>input.ReturnedOn</c> (a day from the start of the lease up to today): an event
+    /// <c>DepositReturnRecorded</c> with the sums of the statement, and nothing more. CasaZen moves no money and the deposit of the lease does not change.
+    /// </summary>
+    /// <exception cref="NotFoundException">404 <c>lease_not_found</c>.</exception>
+    /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>.</exception>
+    /// <exception cref="DomainRuleException">422 the ones of <see cref="CalculateDepositReturnAsync"/> and <c>lease_deposit_return_date_invalid</c>.</exception>
+    Task RecordDepositReturnAsync(Guid leaseId, LeaseDepositReturnInput input, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Records that the landlord sent a letter on <paramref name="sentOn"/> (a day from the start of the lease up to today) by
     /// <paramref name="means"/>: an event <c>LetterSent</c> in the history, and nothing more (the lease does not change).
     /// </summary>

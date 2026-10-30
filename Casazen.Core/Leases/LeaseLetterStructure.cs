@@ -73,11 +73,43 @@ public static class LeaseLetterPlaceholders
     /// <summary>The day the property is handed back.</summary>
     public const string HandoverOn = "data_riconsegna";
 
+    /// <summary>The deposit of the lease, in euros: «1.950,00».</summary>
+    public const string DepositAmount = "deposito_importo";
+
+    /// <summary>The day the deposit was paid.</summary>
+    public const string DepositPaidOn = "deposito_data";
+
+    /// <summary>The day the deposit is returned.</summary>
+    public const string ReturnDate = "data_restituzione";
+
+    /// <summary>The interest of each year the deposit was held, one line per year.</summary>
+    public const string InterestDetail = "interessi_dettaglio";
+
+    /// <summary>The interest accrued over all the years, in euros.</summary>
+    public const string InterestTotal = "interessi_totale";
+
+    /// <summary>The interest the landlord already paid the tenant, in euros.</summary>
+    public const string InterestPaidAmount = "interessi_corrisposti";
+
+    /// <summary>The interest still due: accrued minus paid, in euros.</summary>
+    public const string InterestDueAmount = "interessi_dovuti";
+
+    /// <summary>The sums the landlord keeps from the deposit and why, one line each.</summary>
+    public const string DeductionsList = "trattenute_elenco";
+
+    /// <summary>The total of the sums kept, in euros (0,00 when none).</summary>
+    public const string DeductionsTotal = "trattenute_totale";
+
+    /// <summary>What is returned to the tenant, in euros.</summary>
+    public const string ReturnedAmount = "importo_restituito";
+
     public static readonly IReadOnlyList<string> All =
     [
         Landlords, LandlordsDetail, Tenants, TenantsDetail, PropertyAddress, ContractType, StartDate, PeriodEnd,
         ReceivedOn, EndsOn, NoticeMonths, NewPeriodStart, NewPeriodEnd, NeedReason,
         CurrentRent, FoiPercent, SharePercent, AppliedPercent, IncreaseAmount, NewRent, EffectiveOn, HandoverOn,
+        DepositAmount, DepositPaidOn, ReturnDate, InterestDetail, InterestTotal, InterestPaidAmount, InterestDueAmount,
+        DeductionsList, DeductionsTotal, ReturnedAmount,
     ];
 
     public static bool IsKnown(string name) => All.Contains(name, StringComparer.Ordinal);
@@ -100,6 +132,12 @@ public static class LeaseLetterFlags
 
     /// <summary>The renewal is an extension to a day the parties agreed on.</summary>
     public const string RenewalAgreed = "renewal-agreed";
+
+    /// <summary>The landlord keeps some sums from the deposit: the statement lists them.</summary>
+    public const string WithDeductions = "with-deductions";
+
+    /// <summary>The landlord already paid some of the interest during the lease: the statement says so.</summary>
+    public const string InterestPaid = "interest-paid";
 
     /// <summary>The reason of the first expiry the landlord chose.</summary>
     public static string Reason(LeaseDisdettaReason reason) => $"reason:{reason}";
@@ -129,6 +167,7 @@ public static class LeaseLetterStructure
         LeaseLetterKind.AggiornamentoIstat => "2026-11-bozza-v1",
         LeaseLetterKind.OpzioneCedolare => "2026-11-bozza-v1",
         LeaseLetterKind.Riconsegna => "2026-11-bozza-v1",
+        LeaseLetterKind.RestituzioneCauzione => "2026-11-bozza-v1",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown letter"),
     };
 
@@ -228,6 +267,30 @@ public static class LeaseLetterStructure
         new("chiusura"),
     ];
 
+    private static readonly IReadOnlyList<LeaseLetterSectionDefinition> RestituzioneCauzioneSections =
+    [
+        new("mittente", RequiredPlaceholders: [LeaseLetterPlaceholders.LandlordsDetail]),
+        new("destinatario", RequiredPlaceholders: [LeaseLetterPlaceholders.TenantsDetail]),
+        new("oggetto", RequiredPlaceholders: [LeaseLetterPlaceholders.PropertyAddress]),
+        new(
+            "deposito",
+            RequiredPlaceholders: [LeaseLetterPlaceholders.DepositAmount, LeaseLetterPlaceholders.DepositPaidOn, LeaseLetterPlaceholders.ReturnDate]),
+        new("interessi", RequiredPlaceholders: [LeaseLetterPlaceholders.InterestDetail, LeaseLetterPlaceholders.InterestTotal]),
+        new(
+            "interessi_corrisposti",
+            LeaseLetterFlags.InterestPaid,
+            [LeaseLetterPlaceholders.InterestPaidAmount, LeaseLetterPlaceholders.InterestDueAmount]),
+        new("trattenute", LeaseLetterFlags.WithDeductions, [LeaseLetterPlaceholders.DeductionsList, LeaseLetterPlaceholders.DeductionsTotal]),
+        new(
+            "restituzione",
+            RequiredPlaceholders:
+            [
+                LeaseLetterPlaceholders.DepositAmount, LeaseLetterPlaceholders.InterestDueAmount, LeaseLetterPlaceholders.DeductionsTotal,
+                LeaseLetterPlaceholders.ReturnedAmount, LeaseLetterPlaceholders.ReturnDate,
+            ]),
+        new("chiusura"),
+    ];
+
     /// <summary>The sections the file of <paramref name="kind"/> must contain, in the order they are printed.</summary>
     public static IReadOnlyList<LeaseLetterSectionDefinition> Sections(LeaseLetterKind kind) => kind switch
     {
@@ -238,6 +301,7 @@ public static class LeaseLetterStructure
         LeaseLetterKind.AggiornamentoIstat => AggiornamentoIstatSections,
         LeaseLetterKind.OpzioneCedolare => OpzioneCedolareSections,
         LeaseLetterKind.Riconsegna => RiconsegnaSections,
+        LeaseLetterKind.RestituzioneCauzione => RestituzioneCauzioneSections,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown letter"),
     };
 }

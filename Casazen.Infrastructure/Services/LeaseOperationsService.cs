@@ -60,6 +60,7 @@ public sealed class LeaseOperationsService(
         var istat = LeaseIstatRules.Facts(lease, today);
         var cedolare = LeaseOperationRules.CedolareNotice(lease, today);
         var handover = LeaseOperationRules.Handover(lease);
+        var deposit = LeaseOperationRules.Deposit(lease, today);
 
         // The lease of the same property that already covers days of the standard renewal: told before the person tries (the server refuses it too).
         LeasePeriodConflictDto? conflict = null;
@@ -100,7 +101,16 @@ public sealed class LeaseOperationsService(
             new LeaseIstatOperationDto(
                 istat.Available, istat.CurrentRent, istat.DefaultSharePercent, istat.MaxSharePercent, istat.MinEffectiveOn, istat.MaxEffectiveOn),
             new LeaseCedolareNoticeDto(cedolare.Available, cedolare.MinEffectiveOn, cedolare.MaxEffectiveOn),
-            new LeaseHandoverOperationDto(handover.Available, handover.MinOn, handover.MaxOn, handover.SuggestedOn));
+            new LeaseHandoverOperationDto(handover.Available, handover.MinOn, handover.MaxOn, handover.SuggestedOn),
+            new LeaseDepositOperationDto(
+                deposit.Available,
+                deposit.Amount,
+                deposit.PaidOn,
+                deposit.MinPaidOn,
+                deposit.SuggestedReturnOn,
+                deposit.MaxReturnOn,
+                LeaseDepositRules.MaxDeductions,
+                RecordedDepositReturn(lease)));
     }
 
     // ---- the letters -----------------------------------------------------------------------------------------------
@@ -278,6 +288,137 @@ public sealed class LeaseOperationsService(
         values[LeaseLetterPlaceholders.HandoverOn] = handoverOn is { } handedOn ? LeaseLetterData.Day(handedOn) : null;
 
         return Build(lease, LeaseLetterKind.Riconsegna, new HashSet<string>(StringComparer.Ordinal), values, $"riconsegna-{lease.Id}.pdf");
+    }
+
+    public async Task<LeaseDepositCalculationDto> CalculateDepositReturnAsync(
+        Guid leaseId, LeaseDepositReturnInput input, CancellationToken cancellationToken = default)
+    {
+        var lease = await db.LeaseContracts.AsNoTracking().FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken) ?? throw NotFound(leaseId);
+        return ToDto(CalculateDeposit(lease, input));
+    }
+
+    public async Task<LeaseLetterFile> BuildRestituzioneCauzioneAsync(
+        Guid leaseId, LeaseDepositReturnInput input, CancellationToken cancellationToken = default)
+    {
+        var lease = await LoadForLetterAsync(leaseId, cancellationToken);
+        var statement = CalculateDeposit(lease, input);
+
+        var values = LeaseLetterData.Common(lease);
+        values[LeaseLetterPlaceholders.DepositAmount] = LeaseLetterData.Money(statement.Deposit);
+        values[LeaseLetterPlaceholders.DepositPaidOn] = LeaseLetterData.Day(statement.From);
+        values[LeaseLetterPlaceholders.ReturnDate] = LeaseLetterData.Day(statement.To);
+        values[LeaseLetterPlaceholders.InterestDetail] = string.Join(
+            '\n', statement.Years.Select(y => LeaseLetterData.YearInterestLine(y.Year, y.RatePercent, y.Days, y.DaysInYear, y.Interest)));
+        values[LeaseLetterPlaceholders.InterestTotal] = LeaseLetterData.Money(statement.Interest);
+        values[LeaseLetterPlaceholders.InterestPaidAmount] = LeaseLetterData.Money(statement.InterestPaid);
+        values[LeaseLetterPlaceholders.InterestDueAmount] = LeaseLetterData.Money(statement.InterestDue);
+        values[LeaseLetterPlaceholders.DeductionsList] = string.Join(
+            '\n', statement.Deductions.Select(d => $"{d.Reason}: euro {LeaseLetterData.Money(d.Amount)}"));
+        values[LeaseLetterPlaceholders.DeductionsTotal] = LeaseLetterData.Money(statement.DeductionsTotal);
+        values[LeaseLetterPlaceholders.ReturnedAmount] = LeaseLetterData.Money(statement.Returned);
+
+        var flags = new HashSet<string>(StringComparer.Ordinal);
+        if (statement.Deductions.Count > 0)
+            flags.Add(LeaseLetterFlags.WithDeductions);
+        if (statement.InterestPaid > 0)
+            flags.Add(LeaseLetterFlags.InterestPaid);
+
+        return Build(lease, LeaseLetterKind.RestituzioneCauzione, flags, values, $"restituzione-cauzione-{lease.Id}.pdf");
+    }
+
+    public async Task RecordDepositReturnAsync(Guid leaseId, LeaseDepositReturnInput input, CancellationToken cancellationToken = default)
+    {
+        var lease = await db.LeaseContracts.FirstOrDefaultAsync(l => l.Id == leaseId, cancellationToken) ?? throw NotFound(leaseId);
+        var statement = CalculateDeposit(lease, input);
+
+        // What is recorded has already happened: from the start of the lease to today.
+        if (input.ReturnedOn > _clock.TodayInRomeAsDateOnly() || input.ReturnedOn < RomeCalendar.DateInRome(lease.StartDate))
+            throw new DomainRuleException(LeaseLifecycleCodes.DepositReturnDateInvalid, "LeaseDepositReturnDateInvalid");
+
+        // The sums of the statement and nothing else: no reason of a deduction, no name. The lease and its deposit do not change.
+        db.LeaseEvents.Add(new LeaseEvent
+        {
+            LeaseContractId = lease.Id,
+            EventType = LeaseEventType.DepositReturnRecorded,
+            OccurredAt = _clock.GetUtcNow().UtcDateTime,
+            Payload = string.Join(
+                ':', Format(input.ReturnedOn), Euros(statement.Deposit), Euros(statement.InterestDue), Euros(statement.DeductionsTotal), Euros(statement.Returned)),
+        });
+        await db.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation("Lease deposit return recorded. LeaseId={LeaseId} Deductions={Deductions}", lease.Id, statement.Deductions.Count);
+    }
+
+    /// <summary>
+    /// The checks the calculation, the statement and the record of the return of the deposit share: the lease is in force, is ending and has a
+    /// deposit; the days are plausible; then the rules of <see cref="LeaseDepositRules.Calculate"/>, whose refusals become the answers of the API.
+    /// </summary>
+    private static LeaseDepositCalculation CalculateDeposit(LeaseContract lease, LeaseDepositReturnInput input)
+    {
+        EnsureInForce(lease);
+        if (lease.SecurityDeposit is not > 0)
+            throw new DomainRuleException(LeaseLifecycleCodes.DepositNone, "LeaseDepositNone");
+        if (!LeaseDepositRules.Applies(lease))
+            throw new DomainRuleException(LeaseLifecycleCodes.LetterNotApplicable, "LeaseLetterNotApplicable");
+
+        var start = RomeCalendar.DateInRome(lease.StartDate);
+        var end = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
+        var paidOn = input.DepositPaidOn ?? start;
+        if (paidOn < start.AddYears(-1) || input.ReturnedOn > end.AddYears(LeaseDepositRules.MaxYearsAfterEnd))
+            throw new DomainRuleException(LeaseLifecycleCodes.DepositDatesInvalid, "LeaseDepositDatesInvalid");
+
+        var outcome = LeaseDepositRules.Calculate(lease.SecurityDeposit.Value, paidOn, input.ReturnedOn, input.Rates, input.InterestPaid, input.Deductions);
+        return outcome.Problem switch
+        {
+            LeaseDepositProblem.None => outcome.Calculation!,
+            LeaseDepositProblem.DatesInvalid => throw new DomainRuleException(LeaseLifecycleCodes.DepositDatesInvalid, "LeaseDepositDatesInvalid"),
+            LeaseDepositProblem.RateInvalid => throw new DomainRuleException(
+                LeaseLifecycleCodes.DepositRateInvalid, "LeaseDepositRateInvalid", LeaseDepositRules.MaxRatePercent),
+            LeaseDepositProblem.RateMissing => throw new DomainRuleException(
+                LeaseLifecycleCodes.DepositRateMissing, "LeaseDepositRateMissing", string.Join(", ", outcome.MissingYears)),
+            LeaseDepositProblem.InterestPaidInvalid => throw new DomainRuleException(
+                LeaseLifecycleCodes.DepositInterestPaidInvalid, "LeaseDepositInterestPaidInvalid"),
+            LeaseDepositProblem.DeductionInvalid => throw new DomainRuleException(
+                LeaseLifecycleCodes.DepositDeductionInvalid, "LeaseDepositDeductionInvalid", LeaseDepositRules.MaxReasonLength, LeaseDepositRules.MaxDeductions),
+            LeaseDepositProblem.DeductionsExceed => throw new DomainRuleException(
+                LeaseLifecycleCodes.DepositDeductionsExceed, "LeaseDepositDeductionsExceed"),
+            _ => throw new InvalidOperationException($"Unknown deposit problem {outcome.Problem}"),
+        };
+    }
+
+    private static LeaseDepositCalculationDto ToDto(LeaseDepositCalculation c) => new(
+        c.Deposit,
+        c.From,
+        c.To,
+        c.Years.Select(y => new LeaseDepositYearDto(y.Year, y.RatePercent, y.Days, y.DaysInYear, y.Interest)).ToList(),
+        c.Interest,
+        c.InterestPaid,
+        c.InterestDue,
+        c.Deductions.Select(d => new LeaseDepositDeductionDto(d.Reason, d.Amount)).ToList(),
+        c.DeductionsTotal,
+        c.Returned);
+
+    /// <summary>A sum of euros as the payload of an event writes it: two decimals and a dot, whatever the culture.</summary>
+    private static string Euros(decimal amount) => amount.ToString("F2", CultureInfo.InvariantCulture);
+
+    /// <summary>The return of the deposit the landlord recorded last (the payload <c>{returnedOn}:{deposit}:{interestDue}:{deductions}:{returned}</c>), or <c>null</c>.</summary>
+    private static LeaseDepositRecordDto? RecordedDepositReturn(LeaseContract lease)
+    {
+        foreach (var e in lease.Events.Where(e => e.EventType == LeaseEventType.DepositReturnRecorded).OrderByDescending(e => e.OccurredAt))
+        {
+            var parts = e.Payload?.Split(':');
+            if (parts is { Length: 5 }
+                && TryDay(parts[0], out var returnedOn)
+                && decimal.TryParse(parts[1], NumberStyles.Number, CultureInfo.InvariantCulture, out var deposit)
+                && decimal.TryParse(parts[2], NumberStyles.Number, CultureInfo.InvariantCulture, out var interestDue)
+                && decimal.TryParse(parts[3], NumberStyles.Number, CultureInfo.InvariantCulture, out var deductions)
+                && decimal.TryParse(parts[4], NumberStyles.Number, CultureInfo.InvariantCulture, out var returned))
+            {
+                return new LeaseDepositRecordDto(returnedOn, deposit, interestDue, deductions, returned);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
