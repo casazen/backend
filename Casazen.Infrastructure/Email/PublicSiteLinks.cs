@@ -201,6 +201,21 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     }
 
     /// <summary>
+    /// Page of the supplier's showcase where the customer checks the e-mail of a request on measure (SP-10b; the same route as the booking's,
+    /// <c>/fornitori/:slug/conferma</c>, told apart by the query key): the page reads <c>inquiry</c> from the query and <c>token</c> from the
+    /// <b>fragment</b> — which a browser never sends to a server, so the token is in no access log — and sends them to
+    /// <c>POST api/public/suppliers/{slug}/inquiries/{id}/confirm-email</c>. Only the id and the random token (single use, valid for the minutes
+    /// of the inquiry) are in the link, no personal data.
+    /// </summary>
+    public string SupplierInquiryConfirmation(string supplierSlug, Guid inquiryId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(supplierSlug);
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build(
+            $"/fornitori/{Uri.EscapeDataString(supplierSlug)}/conferma?inquiry={inquiryId:D}#token={Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>
     /// "La tua richiesta" on the supplier's showcase (route <c>/fornitori/:slug/richiesta</c>, SP-10, managed with SP-11): the
     /// customer finds a request there with its code and e-mail. With <paramref name="publicCode"/> the page opens with the code
     /// filled in (<c>?code=</c>, as <see cref="GuestBookings"/> does) and still asks for the e-mail before showing anything.

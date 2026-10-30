@@ -48,6 +48,25 @@ public interface ILeaseOperationsService
         Guid leaseId, DateOnly receivedOn, TenantWithdrawalReason reason, int? noticeMonths, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The agreement of the parties to renew or extend the lease, for the period from <paramref name="startsOn"/> to <paramref name="endsOn"/>
+    /// (<paramref name="agreed"/>: an extension to a day agreed on; otherwise the standard renewal). It is built from the days given, so it can
+    /// be prepared before the renewal is recorded and downloaded again after.
+    /// </summary>
+    /// <exception cref="NotFoundException">404 <c>lease_not_found</c>.</exception>
+    /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>.</exception>
+    /// <exception cref="DomainRuleException">422 <c>lease_letter_not_applicable</c> (a type that does not renew), <c>lease_renewal_end_invalid</c>, <c>lease_letter_unavailable</c>.</exception>
+    Task<LeaseLetterFile> BuildRinnovoAsync(
+        Guid leaseId, DateOnly startsOn, DateOnly endsOn, bool agreed, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The confirmation that the need of a transitory lease goes on, from the landlord to the tenant, to be sent before the end of the lease.
+    /// </summary>
+    /// <exception cref="NotFoundException">404 <c>lease_not_found</c>.</exception>
+    /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>.</exception>
+    /// <exception cref="DomainRuleException">422 <c>lease_letter_not_applicable</c> (not a transitory lease, or the need is the tenant's), <c>lease_letter_unavailable</c>.</exception>
+    Task<LeaseLetterFile> BuildConfermaEsigenzaAsync(Guid leaseId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Records that the landlord sent a letter on <paramref name="sentOn"/> (a day from the start of the lease up to today) by
     /// <paramref name="means"/>: an event <c>LetterSent</c> in the history, and nothing more (the lease does not change).
     /// </summary>

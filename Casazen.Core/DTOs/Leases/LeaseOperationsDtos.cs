@@ -1,3 +1,4 @@
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Leases;
 
 namespace Casazen.Core.DTOs.Leases;
@@ -13,7 +14,9 @@ namespace Casazen.Core.DTOs.Leases;
 public sealed record LeaseOperationsDto(
     LeaseDisdettaOperationDto Disdetta,
     LeaseWithdrawalOperationDto Withdrawal,
-    IReadOnlyList<LeaseLetterStateDto> Letters);
+    IReadOnlyList<LeaseLetterStateDto> Letters,
+    LeaseRenewalOperationDto Renewal,
+    LeaseTransitoryConfirmationDto TransitoryConfirmation);
 
 /// <summary>The state of a letter kind: its text is approved or still a draft, and the last time the landlord marked it as sent.</summary>
 public sealed record LeaseLetterStateDto(LeaseLetterKind Kind, bool Approved, LeaseLetterSentDto? Sent);
@@ -49,3 +52,33 @@ public sealed record LeaseWithdrawalOperationDto(
 
 /// <summary>A withdrawal that was recorded: the day it was received, why, the last day of the lease and the months of notice used.</summary>
 public sealed record LeaseWithdrawalRecordDto(DateOnly ReceivedOn, TenantWithdrawalReason Reason, DateOnly EffectiveOn, int NoticeMonths);
+
+/// <summary>
+/// The renewal of the lease. <c>Available</c>: it can be recorded now (from <c>OpensOn</c>, the last day to give notice, to the end of the period;
+/// recording one moves the end forward and closes the window until the next period's). The standard renewal starts on <c>StartsOn</c> and ends on
+/// <c>StandardEnd</c> (<c>StandardMonths</c> months); an extension the parties agreed on can end on any later day up to <c>LatestAgreedEnd</c>.
+/// <c>Conflict</c> is the lease of the same property that already covers some of the days of the standard renewal (it would be refused with
+/// 409 <c>lease_period_overlaps</c>), <c>Recorded</c> the renewal recorded for the period the lease is in now (null once the lease has moved on).
+/// </summary>
+public sealed record LeaseRenewalOperationDto(
+    bool Available,
+    DateOnly OpensOn,
+    DateOnly StartsOn,
+    DateOnly StandardEnd,
+    int StandardMonths,
+    DateOnly LatestAgreedEnd,
+    LeasePeriodConflictDto? Conflict,
+    LeaseRenewalRecordDto? Recorded);
+
+/// <summary>The lease that is in the way of a period: its id (not a person) and the first and last day it covers.</summary>
+public sealed record LeasePeriodConflictDto(Guid LeaseId, DateOnly From, DateOnly To);
+
+/// <summary>A renewal that was recorded: whether it was agreed on a day (otherwise the standard one) and the period it added.</summary>
+public sealed record LeaseRenewalRecordDto(bool Agreed, DateOnly From, DateOnly To);
+
+/// <summary>
+/// The confirmation of the need of a transitory lease. <c>Applies</c>: it is a transitory lease in force and the need has to be confirmed in
+/// writing before the end (<c>ConfirmBy</c>, its last day). <c>Available</c>: the need is the landlord's, so CasaZen prepares the letter;
+/// <c>Holder</c> says whose it is (<c>Landlord</c> or <c>Tenant</c>, or none when the contract does not say).
+/// </summary>
+public sealed record LeaseTransitoryConfirmationDto(bool Applies, bool Available, PartyRole? Holder, DateOnly ConfirmBy);

@@ -16,6 +16,18 @@ public enum LeaseLetterKind
 
     /// <summary>The landlord's acknowledgement of the tenant's withdrawal (recesso).</summary>
     PresaAttoRecesso = 1,
+
+    /// <summary>
+    /// The agreement of the parties to renew or to extend the lease (LR-OPS-1): the standard renewal at the expiry, or an extension to a
+    /// day they agreed on. Both parties sign it; it is not sent.
+    /// </summary>
+    Rinnovo = 2,
+
+    /// <summary>
+    /// The confirmation, sent before the expiry, that the need that justified a transitory lease goes on (D.M. 16/01/2017); the landlord
+    /// prepares it when the need is his.
+    /// </summary>
+    ConfermaEsigenza = 3,
 }
 
 /// <summary>How the person sent a letter (<c>Segna come inviata</c>): written in the history of the lease with the day, nothing else.</summary>
@@ -72,6 +84,8 @@ public static class LeaseLetterKinds
     {
         LeaseLetterKind.Disdetta => "disdetta",
         LeaseLetterKind.PresaAttoRecesso => "presa-atto-recesso",
+        LeaseLetterKind.Rinnovo => "rinnovo",
+        LeaseLetterKind.ConfermaEsigenza => "conferma-esigenza",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown letter"),
     };
 
@@ -105,6 +119,22 @@ public sealed record LeaseDisdettaFacts(bool Available, bool FirstPeriod, DateOn
 /// <param name="MaxReceivedOn">The last day (today).</param>
 public sealed record LeaseWithdrawalFacts(bool Available, DateOnly MinReceivedOn, DateOnly MaxReceivedOn);
 
+/// <summary>What the landlord can do about the renewal of a lease today (<see cref="LeaseOperationRules.Renewal"/>).</summary>
+/// <param name="Available">The lease is in force, renews by itself, has no notice, is not ended, its period is not over and the stretch before the end has begun: a renewal can be recorded.</param>
+/// <param name="OpensOn">The first day a renewal can be recorded: the last day to give notice, the day the stretch before the end begins. Recording a renewal moves the end forward, so it closes the window until the next period's.</param>
+/// <param name="StartsOn">The first day of the new period (the day after the period the lease is in).</param>
+/// <param name="StandardEnd">The last day of the standard renewal (the months of the type, <see cref="LongRentRules"/>).</param>
+/// <param name="StandardMonths">The months of the standard renewal; 0 for a type that does not renew.</param>
+/// <param name="LatestAgreedEnd">The furthest day an extension agreed by the parties can end on (a sanity bound, <see cref="LeaseOperationRules.MaxAgreedExtensionYears"/>).</param>
+public sealed record LeaseRenewalFacts(bool Available, DateOnly OpensOn, DateOnly StartsOn, DateOnly StandardEnd, int StandardMonths, DateOnly LatestAgreedEnd);
+
+/// <summary>What the landlord can do about the confirmation of the need of a transitory lease today (<see cref="LeaseOperationRules.TransitoryConfirmation"/>).</summary>
+/// <param name="Applies">A transitory lease in force whose period is not over: the need has to be confirmed before it ends.</param>
+/// <param name="Available">The need is the landlord's, so he prepares the letter; when it is the tenant's the tenant confirms.</param>
+/// <param name="Holder">Whose need it is, as the contract states it; <c>null</c> when the lease does not say.</param>
+/// <param name="ConfirmBy">The day before which the confirmation has to be sent: the last day of the lease. The law's lead time, if it gives one, is to be confirmed (LR-D29).</param>
+public sealed record LeaseTransitoryConfirmationFacts(bool Applies, bool Available, PartyRole? Holder, DateOnly ConfirmBy);
+
 /// <summary>
 /// The rules of the operations of a lease in force (LR-OPS-1), pure: when a notice is on time, what a withdrawal ends the lease on, which
 /// operation makes sense now. The months and days are the figures of <see cref="LongRentRules"/> and <see cref="LongRentDeadlineRules"/>,
@@ -114,6 +144,9 @@ public static class LeaseOperationRules
 {
     /// <summary>The longest notice, in months, a landlord can type for a withdrawal by contractual faculty: a sanity bound, not a figure of law.</summary>
     public const int MaxContractualNoticeMonths = 12;
+
+    /// <summary>How far past the end of the period an extension agreed by the parties can go, in years: a sanity bound against a typo, not a figure of law.</summary>
+    public const int MaxAgreedExtensionYears = 20;
 
     /// <summary>The period the lease is in is the first one it has: it has not renewed by itself yet (<see cref="LeaseContract.EndDate"/> does not move).</summary>
     public static bool IsFirstPeriod(LeaseContract lease)
@@ -148,6 +181,44 @@ public static class LeaseOperationRules
         var periodEnd = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
         var available = LeaseRenewal.IsInForce(lease.Status) && lease.TerminatedOn is null && start <= today && periodEnd >= today;
         return new LeaseWithdrawalFacts(available, start, today);
+    }
+
+    /// <summary>
+    /// The renewal the landlord can record now: the standard one (the months of the type, from the day after the period) or an extension to a
+    /// day the parties agreed on. Only in the last stretch before the end — from the last day to give notice, when the renewal is the thing the
+    /// parties decide — so that recording one (which moves the end forward) closes the window until the next period's. Not while a notice is
+    /// recorded (it has to be taken back first) nor once the period is over (the hourly job renews it).
+    /// </summary>
+    public static LeaseRenewalFacts Renewal(LeaseContract lease, DateOnly today)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+
+        var periodEnd = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
+        var months = LongRentRules.RenewalMonths(lease.ContractType);
+        var standardEnd = LeaseRenewal.NextEnd(lease.CurrentTermEndDate, lease.ContractType) is { } next ? RomeCalendar.DateInRome(next) : periodEnd;
+        var opensOn = LongRentDeadlineRules.NoticeDate(lease.ContractType, periodEnd) ?? periodEnd;
+        var available = LeaseRenewal.IsInForce(lease.Status)
+                        && months is not null
+                        && lease.TerminatedOn is null
+                        && lease.NoticeOn is null
+                        && periodEnd >= today
+                        && today >= opensOn;
+
+        return new LeaseRenewalFacts(available, opensOn, periodEnd.AddDays(1), standardEnd, months ?? 0, periodEnd.AddYears(MaxAgreedExtensionYears));
+    }
+
+    /// <summary>The confirmation of the need of a transitory lease: whether it applies, whose it is and the day before which it has to be sent.</summary>
+    public static LeaseTransitoryConfirmationFacts TransitoryConfirmation(LeaseContract lease, DateOnly today)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+
+        var periodEnd = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
+        var applies = lease.ContractType == LeaseContractType.Transitorio
+                      && LeaseRenewal.IsInForce(lease.Status)
+                      && lease.TerminatedOn is null
+                      && periodEnd >= today;
+
+        return new LeaseTransitoryConfirmationFacts(applies, applies && lease.TransitoryParty == PartyRole.Landlord, lease.TransitoryParty, periodEnd);
     }
 
     /// <summary>The notice, in months, of a withdrawal: the one of the rules for serious reasons, the one typed (or the rules') for the contractual faculty.</summary>

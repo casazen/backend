@@ -131,6 +131,16 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
             NullLogger<ShowcaseBookingService>.Instance,
             Clock);
+        Inquiry = new ShowcaseInquiryService(
+            db,
+            Catalog,
+            Matcher,
+            ComuneTestServices.Directory(db),
+            CustomerIndex,
+            ShowcaseNotifier,
+            Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
+            NullLogger<ShowcaseInquiryService>.Instance,
+            Clock);
         Manager = new ShowcaseBookingManager(
             db,
             Customers,
@@ -197,6 +207,9 @@ internal sealed class ServiceRequestTestKit : IDisposable
     public ServiceRequestService Service { get; }
 
     public ShowcaseBookingService Booking { get; }
+
+    /// <summary>The request on measure from the same showcase (SP-10b): no slot, the words of the customer.</summary>
+    public ShowcaseInquiryService Inquiry { get; }
 
     /// <summary>The customer's own area of a booking (SP-11), on the real service request actions.</summary>
     public ShowcaseBookingManager Manager { get; }

@@ -659,6 +659,28 @@ what the code did before, and the migration rewrites no data.
 - A "pay at the property" request has its own cap (`onsite_request_too_many_nights`, § 2): a minimum above that cap leaves
   the card as the only way to book.
 
+### 11.2a The cancellation policy and its dates, for the public pages (DB-03b)
+
+Two additive read fields, no flag, no migration. Both come from the one rule of the guest area (§ 8.5: `CancellationRefundPolicy`,
+`EffectivePolicy`, `RefundWindows`), so what a page promises is what the cancellation then does.
+
+- **`cancellationPolicy`** in the public property detail (`GET /api/public/orgs/{slug}/properties/{slugOrId}` and `GET /api/properties/{id}/public`),
+  `null` for a property without a policy: `{ slug, name, description, fullRefundHours, partialRefundHours, partialRefundPercent, hostOverrideApplies,
+  longStayNights }`. It is the policy of a **normal stay** (under `longStayNights` = 28 nights): the catalog policy with what the host changed of it.
+  A window the policy does not have is **`null`**, never a number that means «never»: `fullRefundHours: null` is «Non rimborsabile» (no full refund at any
+  time), `partialRefundHours`/`partialRefundPercent: null` is a policy with no partial window. `hostOverrideApplies` = the host changed the hours or
+  the percentage; then `description` (the text of the catalog) is `null`, since it would say something else. From 28 nights the catalog policy applies as it
+  is, whatever the host changed: the quote below says the real dates of a stay. `cancellationPolicySummary` stays as it was.
+- **`cancellation`** in the quote (`POST /api/public/bookings/quote`): `{ fullRefundUntil, partialRefundPercent, partialRefundUntil, selfServiceAvailable }`
+  for the stay asked, worked out on the policy **of that stay**. The dates are the **last whole days** (Europe/Rome, `yyyy-MM-dd`, included) that end at least
+  that many hours before the start of the check-in day, daylight saving included: a date shown is never a promise an hour too long. A date already past is
+  `null` (a page never says «gratuita fino a ieri»), and so is a window the policy does not have. `fullRefundUntil` is the same day as
+  `paymentOptions.freeCancellationUntil` while it is ahead. `selfServiceAvailable` is `true` for every direct booking since DB-08a (the guest cancels
+  from the guest area, § 8.5); a page shows the dates only when it is true.
+- **Fixed on the way.** `CancellationRefundPolicy.RefundWindows` dropped the partial window of every sound policy (its test compared the days the
+  wrong way round): the guest-area preview never carried `partialRefundUntil`. The amount of the refund was never affected (it comes from
+  `EvaluateGuestRefund`). Test: `PublicCancellationPolicyIntegrationTests`.
+
 ### 11.3 The weekend surcharge
 
 - **A weekend night** is a night that starts on a Friday or on a Saturday, by its Europe/Rome calendar date

@@ -82,14 +82,20 @@ public static class CancellationRefundPolicy
     /// Policy used for a stay: catalog, or the host's percentages / periods / refund type when the stay is shorter than
     /// <see cref="LongStayNightsUnchanged"/>.
     /// </summary>
-    public static CancellationPolicy? EffectivePolicy(Property? property, int nights)
+    public static CancellationPolicy? EffectivePolicy(Property? property, int nights) =>
+        property is null ? null : EffectivePolicy(property.CancellationPolicy, HostCancellationOverrides.Of(property), nights);
+
+    /// <summary>
+    /// The same rule on the two things it reads, for the places that have them as columns and not as a <see cref="Property"/> (the
+    /// public read of a property, DB-03b): the catalog policy and what the host changed of it.
+    /// </summary>
+    public static CancellationPolicy? EffectivePolicy(CancellationPolicy? catalog, HostCancellationOverrides overrides, int nights)
     {
-        var catalog = property?.CancellationPolicy;
         if (catalog is null)
             return null;
         if (nights >= LongStayNightsUnchanged)
             return catalog;
-        if (property!.CancellationRefundType == HostCancellationRefundType.NonRefundable)
+        if (overrides.RefundType == HostCancellationRefundType.NonRefundable)
         {
             return new CancellationPolicy
             {
@@ -105,9 +111,9 @@ public static class CancellationRefundPolicy
         {
             Name = catalog.Name,
             Description = catalog.Description,
-            FullRefundHours = property.CancellationFullRefundHours ?? catalog.FullRefundHours,
-            PartialRefundHours = property.CancellationPartialRefundHours ?? catalog.PartialRefundHours,
-            PartialRefundPercent = property.CancellationPartialRefundPercent ?? catalog.PartialRefundPercent,
+            FullRefundHours = overrides.FullRefundHours ?? catalog.FullRefundHours,
+            PartialRefundHours = overrides.PartialRefundHours ?? catalog.PartialRefundHours,
+            PartialRefundPercent = overrides.PartialRefundPercent ?? catalog.PartialRefundPercent,
         };
     }
 
@@ -204,9 +210,10 @@ public static class CancellationRefundPolicy
         if (partialPercent <= 0)
             return new GuestRefundWindows(full, null, null);
 
-        // A partial window that ends before the full one starts to count is not a window of its own (a policy written upside down).
+        // The partial window runs after the full one (less notice, less refund), so its last day is later than the last day of the full
+        // one. A partial window that ends on that day or before it is not a window of its own (a policy written upside down).
         var partial = LastWholeDayAtLeast(startOfCheckInDay, policy.PartialRefundHours);
-        return full is { } fullUntil && partial >= fullUntil
+        return full is { } fullUntil && partial <= fullUntil
             ? new GuestRefundWindows(full, null, null)
             : new GuestRefundWindows(full, partialPercent, partial);
     }
