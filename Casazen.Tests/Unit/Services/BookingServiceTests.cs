@@ -617,6 +617,70 @@ public class BookingServiceTests
     }
 
     [Fact]
+    public async Task QuoteDirectBookingAsync_HouseInSwissFrancs_QuotesInFrancsAndAHouseInEurosStaysInEuros()
+    {
+        // CHF-MONEY: the currency of a quote is the one of its property, never a constant; same rates, no conversion.
+        var swiss = ConnectReadyProperty();
+        swiss.Country = "CH";
+        swiss.Currency = StayCurrency.SwissFranc;
+        var italian = ConnectReadyProperty();
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        var inFrancs = await _service.QuoteDirectBookingAsync(new DirectBookingQuoteInput(swiss.Id, checkIn, checkIn.AddDays(3), 2, 0));
+        var inEuros = await _service.QuoteDirectBookingAsync(new DirectBookingQuoteInput(italian.Id, checkIn, checkIn.AddDays(3), 2, 0));
+
+        Assert.Equal("CHF", inFrancs.Currency);
+        Assert.Equal("EUR", inEuros.Currency);
+        Assert.Equal(inEuros.TotalPrice, inFrancs.TotalPrice);
+    }
+
+    [Fact]
+    public async Task QuoteDirectBookingAsync_CurrencyTheProductDoesNotTake_Throws422BeforeAnyPrice()
+    {
+        var property = ConnectReadyProperty();
+        property.Currency = "USD";
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.QuoteDirectBookingAsync(
+            new DirectBookingQuoteInput(property.Id, checkIn, checkIn.AddDays(3), 2, 0)));
+
+        Assert.Equal(DirectBookingErrorCodes.CurrencyNotSupported, ex.Code);
+    }
+
+    [Theory]
+    [InlineData(StayCurrency.SwissFranc, "chf")]
+    [InlineData(StayCurrency.Euro, "eur")]
+    public async Task CreateDirectBookingAsync_ImmediatePayment_ChargesTheTotalOfTheQuoteInTheCurrencyOfTheProperty(
+        string currency, string expectedStripeCurrency)
+    {
+        // The PaymentIntent is in the currency the guest was quoted, with the amount of the quote in its minor units (two decimals for
+        // both): a house in francs is never charged in euros.
+        var property = ConnectReadyProperty();
+        property.Currency = currency;
+        property.NightlyRate = 150m;
+        _mockRepository.Setup(x => x.AddAsync(It.IsAny<Booking>())).ReturnsAsync((Booking b) => b);
+        string? chargedCurrency = null;
+        long chargedCents = 0;
+        _mockStripe
+            .Setup(x => x.CreateConnectedAccountPaymentIntentAsync(
+                It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
+            .Callback((string _, long cents, string stripeCurrency, Dictionary<string, string> _) =>
+            {
+                chargedCents = cents;
+                chargedCurrency = stripeCurrency;
+            })
+            .ReturnsAsync(new Stripe.PaymentIntent { Id = "pi_money", ClientSecret = "pi_money_secret" });
+        var checkIn = TimeProvider.System.TodayInRome().AddDays(30);
+
+        var result = await _service.CreateDirectBookingAsync(DirectInput(property.Id, checkIn, checkIn.AddDays(2), PaymentOption.Immediate));
+
+        Assert.Equal(expectedStripeCurrency, chargedCurrency);
+        Assert.Equal(30_000, chargedCents);
+        Assert.Equal(currency, result.Currency);
+        Assert.Equal(300m, result.Amount);
+    }
+
+    [Fact]
     public async Task CreateDirectBookingAsync_MarketingConsentWithAVersion_IsRecordedOnTheGuestAndInTheRegisterInOneInsert()
     {
         var service = NewServiceWithSettings(("Gdpr:MarketingConsentVersion", " marketing-2026-10 "));

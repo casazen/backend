@@ -34,7 +34,8 @@ public sealed class OnSiteRequestNotifier(
                 data.CheckOutDate,
                 data.TotalPrice,
                 links.OnSiteRequestConfirmation(data.OrgSlug, data.BookingId, token),
-                confirmBy);
+                confirmBy,
+                data.Currency);
             return (data.GuestEmail, content);
         });
 
@@ -54,7 +55,8 @@ public sealed class OnSiteRequestNotifier(
                 data.NumberOfGuests,
                 data.TotalPrice,
                 answerBy,
-                links.HostBookingRequests());
+                links.HostBookingRequests(),
+                data.Currency);
             return (data.HostEmail, content);
         });
 
@@ -104,7 +106,8 @@ public sealed class OnSiteRequestNotifier(
                     b.CheckOutDate,
                     b.NumberOfGuests,
                     b.TotalPrice,
-                    b.RequestExpiresAt))
+                    b.RequestExpiresAt,
+                    b.Property.Currency))
                 .SingleOrDefaultAsync(cancellationToken);
             if (data is null)
             {
@@ -139,5 +142,10 @@ public sealed class OnSiteRequestNotifier(
         DateTime CheckOutDate,
         int NumberOfGuests,
         decimal TotalPrice,
-        DateTime? RequestExpiresAt);
+        DateTime? RequestExpiresAt,
+        string PropertyCurrency)
+    {
+        /// <summary>The amount to pay at the property is in the currency of the property (CHF-MONEY).</summary>
+        public string Currency => Casazen.Core.Services.StayCurrency.Normalize(PropertyCurrency);
+    }
 }

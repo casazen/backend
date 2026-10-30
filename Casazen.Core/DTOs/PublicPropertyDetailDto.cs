@@ -28,8 +28,6 @@ public class PublicPropertyDetailDto : PublicPropertyDto
     /// </summary>
     public decimal WeekendSurchargePercent { get; set; }
 
-    public string Currency { get; set; } = "EUR";
-
     /// <summary>A guest can book now: the org of the property can take a payment (same value as <c>PublicOrgDto.AcceptsBookings</c>, DB-03).</summary>
     public bool AcceptsBookings { get; set; }
 

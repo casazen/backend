@@ -33,8 +33,6 @@ public sealed class GuestBookingCancellationService(
     ILogger<GuestBookingCancellationService> logger,
     TimeProvider? timeProvider = null) : IGuestBookingCancellationService
 {
-    private const string Currency = "EUR";
-
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task SendCancelLinkAsync(Guid bookingId, CancellationToken cancellationToken = default)
@@ -178,8 +176,8 @@ public sealed class GuestBookingCancellationService(
         // Logged before the cancellation: if it is refused (a rule, a payment in progress, Stripe) this is what was asked. Ids and
         // amounts only: nothing that names the guest.
         logger.LogInformation(
-            "Guest self-cancellation of booking {BookingId} from the {Channel}: policy {PolicyPercent}%, refund {RefundAmount} EUR",
-            bookingId, channel, preview.RefundPercent, preview.RefundAmount);
+            "Guest self-cancellation of booking {BookingId} from the {Channel}: policy {PolicyPercent}%, refund {RefundAmount} {Currency}",
+            bookingId, channel, preview.RefundPercent, preview.RefundAmount, preview.Currency);
 
         // The cancellation spends the link (if the guest has one) in its own transaction, and only when it succeeds: any error leaves
         // the link usable until it expires.
@@ -250,6 +248,8 @@ public sealed class GuestBookingCancellationService(
         CancellationToken cancellationToken)
     {
         var now = _clock.GetUtcNow();
+        // The amounts of the preview are in the currency of the charge, which is the one of the property (CHF-MONEY).
+        var currency = StayCurrency.ForProperty(booking.Property);
         var catalog = booking.Property.CancellationPolicy;
         var policy = CancellationRefundPolicy.EffectivePolicy(booking);
         var policyInfo = catalog is null
@@ -281,7 +281,7 @@ public sealed class GuestBookingCancellationService(
                 Cancellable: false,
                 reason,
                 kind,
-                Currency,
+                currency,
                 quote.PaidAmount,
                 alreadyRefunded,
                 RefundPercent: 0m,
@@ -306,7 +306,7 @@ public sealed class GuestBookingCancellationService(
             Cancellable: true,
             Reason: null,
             kind,
-            Currency,
+            currency,
             quote.PaidAmount,
             alreadyRefunded,
             decision.Percent,

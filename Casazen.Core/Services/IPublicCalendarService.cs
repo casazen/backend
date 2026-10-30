@@ -39,7 +39,7 @@ public interface IPublicCalendarService
 /// <param name="From">First day listed: the requested one, or today when that is earlier (days in the past are not listed).</param>
 /// <param name="To">The end of the range, excluded, as requested.</param>
 /// <param name="Today">Today in Europe/Rome: the days before it are over.</param>
-/// <param name="Currency">ISO 4217, always EUR.</param>
+/// <param name="Currency">ISO 4217 code of the property (<see cref="StayCurrency"/>, EUR or CHF): the price of every day is in it.</param>
 /// <param name="Days">One entry for each day from <paramref name="From"/> to <paramref name="To"/>, in order.</param>
 /// <param name="GeneratedAt">When the answer was worked out (UTC).</param>
 public sealed record PublicCalendar(

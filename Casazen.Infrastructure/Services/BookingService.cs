@@ -425,6 +425,12 @@ public class BookingService(
         IReadOnlyList<int>? childrenAges,
         CancellationToken cancellationToken = default)
     {
+        // The stay is priced, and later charged and refunded, in the currency of its property (CHF-MONEY): the quote carries it, and the
+        // PaymentIntent of the checkout takes it from the quote. A currency the product does not take is refused before any price is given.
+        var currency = StayCurrency.ForProperty(property);
+        if (!StayCurrency.IsSupported(currency))
+            throw new DomainRuleException(DirectBookingErrorCodes.CurrencyNotSupported, "DirectBookingCurrencyNotSupported");
+
         var nights = (checkOut - checkIn).Days;
         var checkInDate = RomeCalendar.DateInRome(checkIn);
 
@@ -463,7 +469,7 @@ public class BookingService(
             basePrice,
             touristTax,
             basePrice + touristTax.AmountOrZero,
-            "EUR",
+            currency,
             freeRefundDeadline,
             DirectBookingPaymentRules.OptionsFor(freeRefundDeadline, _clock.TodayInRome(), effectivePolicy),
             lodging,
@@ -484,7 +490,7 @@ public class BookingService(
             paymentIntent = await stripeService.CreateConnectedAccountPaymentIntentAsync(
                 stripeConnectedAccountId,
                 amountCents,
-                currency.ToLowerInvariant(),
+                StayCurrency.ForStripe(currency),
                 metadata);
         }
         catch (Exception ex)

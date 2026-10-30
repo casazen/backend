@@ -76,6 +76,30 @@ public class DirectBookingChargeJobTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_HouseInSwissFrancs_ChargesTheSavedCardInFrancsNotInEuros()
+    {
+        // CHF-MONEY: the stay was priced, and the card saved, for francs; the charge at the deadline is in the currency of the property.
+        await using var context = CreateContext();
+        var booking = await SeedChargeableBookingAsync(context, currency: StayCurrency.SwissFranc);
+        SetupCharge("succeeded", "pi_deadline_chf");
+
+        await RunJobAsync(context, Day0);
+
+        _stripe.Verify(s => s.ChargePaymentMethodAsync(
+            Account,
+            "cus_123",
+            "pm_123",
+            12345,
+            "chf",
+            It.Is<Dictionary<string, string>>(m => m["bookingId"] == booking.Id.ToString()),
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _stripe.Verify(s => s.ChargePaymentMethodAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>(), "eur",
+            It.IsAny<Dictionary<string, string>>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_PaymentIntentProcessing_MarksProcessingNotCompleted()
     {
         await using var context = CreateContext();
@@ -356,7 +380,8 @@ public class DirectBookingChargeJobTests
         string paymentDescription = DeferredCharges.PaymentDescription,
         string transactionId = "seti_pending",
         DateTime? deadline = null,
-        DateTime? checkIn = null)
+        DateTime? checkIn = null,
+        string currency = StayCurrency.Euro)
     {
         var org = new OrgEntity
         {
@@ -382,6 +407,7 @@ public class DirectBookingChargeJobTests
             Bathrooms = 1,
             MaxGuests = 2,
             NightlyRate = 100m,
+            Currency = currency,
         };
         var guest = new Guest
         {

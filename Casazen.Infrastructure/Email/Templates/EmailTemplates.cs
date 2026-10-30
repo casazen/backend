@@ -416,23 +416,27 @@ public static partial class EmailTemplates
             .Build("AlloggiatiDeadline_Subject", propertyName, checkInDate);
     }
 
-    /// <summary>A refund confirmed by Stripe, to the guest (BK-02). <paramref name="amountEur"/> is in euro.</summary>
+    /// <summary>
+    /// A refund confirmed by Stripe, to the guest (BK-02). <paramref name="amountEur"/> is in <paramref name="currency"/>, the one of the
+    /// property (the parameter keeps its old name; CHF-MONEY).
+    /// </summary>
     public static EmailContent GuestRefundConfirmed(
         CultureInfo culture,
         string guestName,
         string propertyName,
         DateTime checkInDate,
-        decimal amountEur) =>
+        decimal amountEur,
+        string currency = Casazen.Core.Services.StayCurrency.Default) =>
         new EmailHtmlBuilder(culture)
             .Paragraph("Booking_Greeting", guestName)
-            .Paragraph("GuestRefundConfirmed_Body", amountEur.ToString("N2", culture), propertyName, checkInDate)
+            .Paragraph("GuestRefundConfirmed_Body", Money(amountEur, currency, culture), propertyName, checkInDate)
             .Paragraph("GuestRefundConfirmed_Method")
             .Muted("GuestRefundConfirmed_Timing")
             .Build("GuestRefundConfirmed_Subject", propertyName);
 
     /// <summary>
     /// A payment that arrived when the dates were no longer available, refunded in full once Stripe confirmed the
-    /// refund (BK-04, A3-04), to the guest. <paramref name="amountEur"/> is in euro.
+    /// refund (BK-04, A3-04), to the guest. <paramref name="amountEur"/> is in <paramref name="currency"/>, the one of the property.
     /// </summary>
     public static EmailContent GuestPaymentRefundedDatesUnavailable(
         CultureInfo culture,
@@ -440,11 +444,12 @@ public static partial class EmailTemplates
         string propertyName,
         DateTime checkInDate,
         DateTime checkOutDate,
-        decimal amountEur) =>
+        decimal amountEur,
+        string currency = Casazen.Core.Services.StayCurrency.Default) =>
         new EmailHtmlBuilder(culture)
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph("GuestPaymentRefundedDatesUnavailable_Body", propertyName, checkInDate, checkOutDate)
-            .Paragraph("GuestPaymentRefundedDatesUnavailable_Refund", amountEur.ToString("N2", culture))
+            .Paragraph("GuestPaymentRefundedDatesUnavailable_Refund", Money(amountEur, currency, culture))
             .Paragraph("GuestRefundConfirmed_Method")
             .Muted("GuestRefundConfirmed_Timing")
             .Build("GuestPaymentRefundedDatesUnavailable_Subject", propertyName);
@@ -458,7 +463,8 @@ public static partial class EmailTemplates
     /// host if it was not them (DB-D3).
     /// <paramref name="refundedEur"/> is what Stripe already confirmed at the cancellation: that refund gets no separate
     /// <see cref="GuestRefundConfirmed"/>. <paramref name="refundStartedEur"/> is what Stripe has not confirmed yet: its
-    /// <see cref="GuestRefundConfirmed"/> follows. Amounts in euro; the host's reason is never passed here.
+    /// <see cref="GuestRefundConfirmed"/> follows. Amounts in <paramref name="currency"/>, the one of the property; the host's reason is
+    /// never passed here.
     /// </summary>
     public static EmailContent GuestBookingCancelled(
         CultureInfo culture,
@@ -470,7 +476,8 @@ public static partial class EmailTemplates
         decimal refundStartedEur,
         BookingHostContact hostContact,
         BookingCancellationEmailCause cause = BookingCancellationEmailCause.Host,
-        decimal retainedEur = 0m)
+        decimal retainedEur = 0m,
+        string currency = Casazen.Core.Services.StayCurrency.Default)
     {
         var byGuest = cause == BookingCancellationEmailCause.Guest;
         var builder = new EmailHtmlBuilder(culture)
@@ -490,14 +497,14 @@ public static partial class EmailTemplates
         if (refundedEur > 0m)
         {
             builder
-                .Paragraph("GuestBookingCancelled_Refunded", Amount(refundedEur, culture))
+                .Paragraph("GuestBookingCancelled_Refunded", Money(refundedEur, currency, culture))
                 .Paragraph("GuestRefundConfirmed_Method")
                 .Muted(byGuest ? "GuestBookingCancelled_RefundTimingByGuest" : "GuestRefundConfirmed_Timing");
         }
 
         if (refundStartedEur > 0m)
         {
-            builder.Paragraph("GuestBookingCancelled_Refund", Amount(refundStartedEur, culture));
+            builder.Paragraph("GuestBookingCancelled_Refund", Money(refundStartedEur, currency, culture));
             if (byGuest)
                 builder.Muted("GuestBookingCancelled_RefundTimingByGuest");
         }
@@ -505,7 +512,7 @@ public static partial class EmailTemplates
         if (byGuest)
         {
             if (retainedEur > 0m)
-                builder.Paragraph("GuestBookingCancelled_Retained", Amount(retainedEur, culture));
+                builder.Paragraph("GuestBookingCancelled_Retained", Money(retainedEur, currency, culture));
             builder.Muted("GuestBookingCancelled_NotYou");
         }
 
@@ -530,9 +537,9 @@ public static partial class EmailTemplates
             .Paragraph("HostBookingCancelledByGuest_Body", guestFullName, booking.PropertyName, booking.CheckInDate, booking.CheckOutDate)
             .Paragraph("HostBookingCancelledByGuest_Dates");
         if (refundedEur > 0m)
-            builder.Paragraph("HostBookingCancelledByGuest_Refund", Amount(refundedEur, culture));
+            builder.Paragraph("HostBookingCancelledByGuest_Refund", Money(refundedEur, booking.Currency, culture));
         if (retainedEur > 0m)
-            builder.Paragraph("HostBookingCancelledByGuest_Retained", Amount(retainedEur, culture));
+            builder.Paragraph("HostBookingCancelledByGuest_Retained", Money(retainedEur, booking.Currency, culture));
 
         return builder
             .Paragraph("Booking_Code", booking.BookingCode)
@@ -574,13 +581,14 @@ public static partial class EmailTemplates
         {
             case BookingConfirmationKind.PaidOnline or BookingConfirmationKind.PaidOnlineLate:
                 if (paidEur > 0m)
-                    builder.Paragraph("GuestBookingConfirmed_Paid", Amount(paidEur, culture));
+                    builder.Paragraph("GuestBookingConfirmed_Paid", Money(paidEur, booking.Currency, culture));
                 break;
             case BookingConfirmationKind.DeferredCharge:
-                builder.Paragraph(DeferredKey("GuestBookingConfirmed", deferredChargeDate), Amount(booking.Total, culture), deferredChargeDate);
+                builder.Paragraph(
+                    DeferredKey("GuestBookingConfirmed", deferredChargeDate), Money(booking.Total, booking.Currency, culture), deferredChargeDate);
                 break;
             case BookingConfirmationKind.OnSite:
-                builder.Paragraph("GuestBookingConfirmed_OnSite", Amount(booking.Total, culture));
+                builder.Paragraph("GuestBookingConfirmed_OnSite", Money(booking.Total, booking.Currency, culture));
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown confirmation kind.");
@@ -622,9 +630,14 @@ public static partial class EmailTemplates
 
         builder.Paragraph("Booking_Code", booking.BookingCode).List(SummaryLines(booking, culture));
         if (kind == BookingConfirmationKind.DeferredCharge)
-            builder.Paragraph(DeferredKey("HostBookingConfirmed", deferredChargeDate), Amount(booking.Total, culture), deferredChargeDate);
+        {
+            builder.Paragraph(
+                DeferredKey("HostBookingConfirmed", deferredChargeDate), Money(booking.Total, booking.Currency, culture), deferredChargeDate);
+        }
         else if (paidEur > 0m)
-            builder.Paragraph("HostBookingConfirmed_Paid", Amount(paidEur, culture));
+        {
+            builder.Paragraph("HostBookingConfirmed_Paid", Money(paidEur, booking.Currency, culture));
+        }
 
         return builder
             .Button("HostBookingConfirmed_Cta", bookingUrl)
@@ -684,12 +697,13 @@ public static partial class EmailTemplates
         DateTime checkOutDate,
         decimal amountEur,
         string confirmUrl,
-        DateTime confirmByUtc)
+        DateTime confirmByUtc,
+        string currency = Casazen.Core.Services.StayCurrency.Default)
     {
         var builder = new EmailHtmlBuilder(culture);
         return builder
             .Paragraph("Booking_Greeting", guestName)
-            .Paragraph("OnSiteRequestReceived_Body", propertyName, checkInDate, checkOutDate, amountEur.ToString("N2", culture))
+            .Paragraph("OnSiteRequestReceived_Body", propertyName, checkInDate, checkOutDate, Money(amountEur, currency, culture))
             .Paragraph("OnSiteRequestReceived_Action", builder.FormatInstant(confirmByUtc))
             .Button("OnSiteRequestReceived_Cta", confirmUrl)
             .LinkFallback("Booking_LinkFallback", confirmUrl)
@@ -711,7 +725,8 @@ public static partial class EmailTemplates
         int guests,
         decimal amountEur,
         DateTime answerByUtc,
-        string requestsUrl)
+        string requestsUrl,
+        string currency = Casazen.Core.Services.StayCurrency.Default)
     {
         var builder = new EmailHtmlBuilder(culture);
         return builder
@@ -722,7 +737,7 @@ public static partial class EmailTemplates
                 checkInDate,
                 checkOutDate,
                 guests,
-                amountEur.ToString("N2", culture))
+                Money(amountEur, currency, culture))
             .Paragraph("OnSiteRequestToHost_Action", builder.FormatInstant(answerByUtc))
             .Muted("OnSiteRequestToHost_NotConfirmedYet")
             .Button("OnSiteRequestToHost_Cta", requestsUrl)
@@ -777,7 +792,7 @@ public static partial class EmailTemplates
             .Paragraph("Booking_Greeting", guestName)
             .Paragraph(
                 "GuestDeferredChargeFailed_Body",
-                Amount(booking.Total, culture),
+                Money(booking.Total, booking.Currency, culture),
                 booking.PropertyName,
                 booking.CheckInDate,
                 booking.CheckOutDate)
@@ -811,7 +826,7 @@ public static partial class EmailTemplates
         var builder = new EmailHtmlBuilder(culture)
             .Paragraph(
                 "HostDeferredChargeFailed_Body",
-                Amount(booking.Total, culture),
+                Money(booking.Total, booking.Currency, culture),
                 guestFullName,
                 booking.PropertyName,
                 booking.CheckInDate,
@@ -901,12 +916,12 @@ public static partial class EmailTemplates
     {
         yield return ("Booking_Summary_Nights", [booking.Nights]);
         yield return ("Booking_Summary_Guests", [booking.Guests]);
-        yield return ("Booking_Summary_Lodging", [Amount(booking.Lodging, culture)]);
+        yield return ("Booking_Summary_Lodging", [Money(booking.Lodging, booking.Currency, culture)]);
         if (booking.CleaningFee > 0m)
-            yield return ("Booking_Summary_Cleaning", [Amount(booking.CleaningFee, culture)]);
+            yield return ("Booking_Summary_Cleaning", [Money(booking.CleaningFee, booking.Currency, culture)]);
         if (booking.TouristTax > 0m)
-            yield return ("Booking_Summary_TouristTax", [Amount(booking.TouristTax, culture)]);
-        yield return ("Booking_Summary_Total", [Amount(booking.Total, culture)]);
+            yield return ("Booking_Summary_TouristTax", [Money(booking.TouristTax, booking.Currency, culture)]);
+        yield return ("Booking_Summary_Total", [Money(booking.Total, booking.Currency, culture)]);
     }
 
     /// <summary>
@@ -927,6 +942,23 @@ public static partial class EmailTemplates
         chargeDate is null ? $"{prefix}_Deferred" : $"{prefix}_DeferredOn";
 
     private static string Amount(decimal amountEur, CultureInfo culture) => amountEur.ToString("N2", culture);
+
+    /// <summary>
+    /// An amount of a booking as the guest or the host reads it, with its currency (CHF-MONEY): <c>1.262,00 €</c> in Italian and
+    /// <c>€1,262.00</c> in English for the euro (as the texts have always written it), <c>CHF 1.262,00</c> and <c>CHF 1,262.00</c> for
+    /// the franc. The texts of the booking emails carry no symbol of their own: the amount they are given has it.
+    /// </summary>
+    private static string Money(decimal amount, string? currency, CultureInfo culture)
+    {
+        var number = amount.ToString("N2", culture);
+        var code = Casazen.Core.Services.StayCurrency.Normalize(currency);
+        if (code != Casazen.Core.Services.StayCurrency.Euro)
+            return $"{code} {number}";
+
+        return string.Equals(culture.TwoLetterISOLanguageName, "it", StringComparison.OrdinalIgnoreCase)
+            ? $"{number} €"
+            : $"€{number}";
+    }
 }
 
 /// <summary>Why the guest's booking was cancelled (<see cref="EmailTemplates.GuestBookingCancelled"/>).</summary>
@@ -959,9 +991,9 @@ public enum BookingConfirmationKind
 }
 
 /// <summary>
-/// What the booking emails show of a booking (BK-10), in euro as recorded on it: <see cref="Lodging"/> is the nightly
-/// part (<c>BasePrice - CleaningFee</c>), <see cref="Total"/> includes cleaning and the tourist tax (BK-03).
-/// <see cref="BookingCode"/> is the code "Le mie prenotazioni" asks for (<c>Booking.BookingCode</c>, formatted, BK-11).
+/// What the booking emails show of a booking (BK-10), as recorded on it and in <see cref="Currency"/>, the one of its property
+/// (CHF-MONEY): <see cref="Lodging"/> is the nightly part (<c>BasePrice - CleaningFee</c>), <see cref="Total"/> includes cleaning and the
+/// tourist tax (BK-03). <see cref="BookingCode"/> is the code "Le mie prenotazioni" asks for (<c>Booking.BookingCode</c>, formatted, BK-11).
 /// </summary>
 public sealed record BookingEmailSummary(
     string BookingCode,
@@ -972,7 +1004,8 @@ public sealed record BookingEmailSummary(
     decimal Lodging,
     decimal CleaningFee,
     decimal TouristTax,
-    decimal Total)
+    decimal Total,
+    string Currency = Casazen.Core.Services.StayCurrency.Default)
 {
     public int Nights => Math.Max(0, (CheckOutDate.Date - CheckInDate.Date).Days);
 }

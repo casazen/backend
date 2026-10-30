@@ -290,6 +290,22 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
     }
 
     [Fact]
+    public async Task GetProperty_HouseInSwissFrancs_SaysFrancsInTheTextAndInTheOffer()
+    {
+        // CHF-MONEY: the price a crawler reads is in the currency of the house, not always in euros.
+        var org = await SeedOrgAsync();
+        var property = await SeedPropertyAsync(org, "Casa Ceresio", city: "Lugano", currency: "CHF");
+
+        var html = await GetHtmlAsync($"/api/public/seo/orgs/{org.Slug}/properties/{property.Slug}");
+
+        Assert.Contains("Da CHF 150 a notte", html);
+        var rental = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "VacationRental");
+        Assert.Equal(
+            "CHF",
+            rental.GetProperty("makesOffer")[0].GetProperty("priceSpecification").GetProperty("priceCurrency").GetString());
+    }
+
+    [Fact]
     public async Task GetProperty_WithoutValidCin_DoesNotShowOrPublishTheCinAndIdentifiesByPropertyId()
     {
         var org = await SeedOrgAsync();
@@ -889,12 +905,14 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         bool paused = false,
         bool active = true,
         PropertyComplianceStatus compliance = PropertyComplianceStatus.Active,
-        List<PropertyAmenity>? amenities = null)
+        List<PropertyAmenity>? amenities = null,
+        string currency = "EUR")
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var property = new Property
         {
+            Currency = currency,
             OwnerId = $"auth0|owner-{Guid.NewGuid():N}",
             OrgId = org.Id,
             Name = name,

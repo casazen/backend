@@ -30,8 +30,6 @@ public sealed class BookingCancellationService(
     ILogger<BookingCancellationService> logger,
     TimeProvider? timeProvider = null) : IBookingCancellationService
 {
-    private const string Currency = "EUR";
-
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task<BookingCancellationQuote> GetQuoteAsync(Guid bookingId, CancellationToken cancellationToken = default)
@@ -132,11 +130,12 @@ public sealed class BookingCancellationService(
         }
 
         logger.LogInformation(
-            "Booking {BookingId} cancelled by the {Initiator}: {RefundCount} refund(s) of {RefundAmount} EUR, {IntentCount} intent(s) canceled",
+            "Booking {BookingId} cancelled by the {Initiator}: {RefundCount} refund(s) of {RefundAmount} {Currency}, {IntentCount} intent(s) canceled",
             booking.Id,
             request.Initiator,
             reserved.Count,
             reserved.Sum(r => r.Amount),
+            StayCurrency.ForProperty(booking.Property),
             canceledIntents);
 
         var submitted = new List<PaymentRefund>();
@@ -231,7 +230,8 @@ public sealed class BookingCancellationService(
             booking.Id,
             booking.Status,
             IsCancellable(booking.Status),
-            Currency,
+            // The refund is in the currency of the charge, which is the one of the property (CHF-MONEY): Stripe refunds in it.
+            StayCurrency.ForProperty(booking.Property),
             paid,
             refunded,
             pending,

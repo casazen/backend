@@ -20,7 +20,8 @@ public record PublicCalendarResponse
     /// <summary>Today in Europe/Rome: the days before it are over.</summary>
     public DateOnly Today { get; init; }
 
-    public string Currency { get; init; } = "EUR";
+    /// <summary>ISO 4217 code of the property (EUR or CHF, <see cref="StayCurrency"/>): <see cref="PublicCalendarDayResponse.NightlyPriceCents"/> is in cents of it.</summary>
+    public string Currency { get; init; } = StayCurrency.Default;
 
     /// <summary>One entry for each day from <see cref="StartDate"/> to <see cref="EndDate"/>, in order.</summary>
     public List<PublicCalendarDayResponse> Days { get; init; } = [];

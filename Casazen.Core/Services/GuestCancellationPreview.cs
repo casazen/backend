@@ -65,7 +65,7 @@ public sealed record GuestCancellationPolicyInfo(string Slug, string Name, strin
 public sealed record GuestCancellationStay(string PropertyName, DateOnly CheckInDate, DateOnly CheckOutDate);
 
 /// <summary>What happened when a booking was already cancelled: the refund of its cancellation and where it stands.</summary>
-/// <param name="RefundAmount">What the cancellation decided to refund (EUR).</param>
+/// <param name="RefundAmount">What the cancellation decided to refund (in the currency of the stay).</param>
 /// <param name="RefundStatus"><see cref="GuestCancellationRefundStatuses"/>.</param>
 public sealed record GuestCancellationOutcome(decimal RefundAmount, string RefundStatus);
 
@@ -108,7 +108,7 @@ public static class GuestCancellationRefundStatuses
 /// <param name="Cancellable">The guest can cancel now from where they are.</param>
 /// <param name="Reason">Why not, when <paramref name="Cancellable"/> is false (<see cref="GuestCancellationReasons"/>).</param>
 /// <param name="Kind"><see cref="GuestCancellationKinds"/>.</param>
-/// <param name="Currency">ISO 4217, EUR.</param>
+/// <param name="Currency">ISO 4217 code of the property (<see cref="StayCurrency"/>, EUR or CHF): the amounts below are in it, as the charge and its refund are.</param>
 /// <param name="PaidAmount">Collected by Stripe so far (refunds not taken out).</param>
 /// <param name="AlreadyRefundedAmount">Already refunded or being refunded before now (the host may have refunded part of it).</param>
 /// <param name="RefundPercent">The share of the price of the stay the policy grants now, 0–100.</param>
