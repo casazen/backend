@@ -34,7 +34,8 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("mare", json.GetProperty("publicThemeId").GetString());
+        Assert.Equal("terra", json.GetProperty("publicThemeId").GetString());
+        Assert.Equal(JsonValueKind.Null, json.GetProperty("publicFontId").ValueKind);
         Assert.Equal(JsonValueKind.Null, json.GetProperty("logoUrl").ValueKind);
         Assert.Equal(JsonValueKind.Null, json.GetProperty("primaryColor").ValueKind);
         Assert.Equal(org.Slug, json.GetProperty("slug").GetString());
@@ -70,7 +71,8 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
         var response = await client.PutAsJsonAsync("/api/orgs/me/branding", new
         {
             primaryColor = "#1A6B8F",
-            publicThemeId = "montagna",
+            publicThemeId = "mare",
+            publicFontId = "Classico",
             tagline = "Baite  in quota",
         });
 
@@ -82,7 +84,8 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
         var publicOrg = await anonymous.GetFromJsonAsync<JsonElement>($"/api/public/orgs/{slug}");
         Assert.Equal("#1a6b8f", publicOrg.GetProperty("primaryColor").GetString());
         Assert.Equal("#1a6b8f", publicOrg.GetProperty("themeColor").GetString());
-        Assert.Equal("montagna", publicOrg.GetProperty("publicThemeId").GetString());
+        Assert.Equal("mare", publicOrg.GetProperty("publicThemeId").GetString());
+        Assert.Equal("classico", publicOrg.GetProperty("publicFontId").GetString());
         Assert.Equal("Baite in quota", publicOrg.GetProperty("tagline").GetString());
     }
 
@@ -96,7 +99,7 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
         var response = await client.PutAsJsonAsync("/api/orgs/me/branding", new
         {
             primaryColor = "red;}body{x",
-            publicThemeId = "urban",
+            publicThemeId = "citta",
             tagline = "x",
         });
 
@@ -227,12 +230,12 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
         Assert.Equal(JsonValueKind.Null, before.GetProperty("branding").GetProperty("tagline").ValueKind);
 
         using var client = _factory.CreateAuthenticatedClient(ownerId, "PropertyOwner");
-        var response = await client.PutAsJsonAsync("/api/orgs/me/branding", new { publicThemeId = "urban", tagline = "Nel cuore della città" });
+        var response = await client.PutAsJsonAsync("/api/orgs/me/branding", new { publicThemeId = "citta", tagline = "Nel cuore della città" });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var after = await anonymous.GetFromJsonAsync<JsonElement>(host);
         Assert.Equal("Nel cuore della città", after.GetProperty("branding").GetProperty("tagline").GetString());
-        Assert.Equal("urban", after.GetProperty("branding").GetProperty("publicThemeId").GetString());
+        Assert.Equal("citta", after.GetProperty("branding").GetProperty("publicThemeId").GetString());
     }
 
     // ─── Public profile of the booking site (DB-03) ─────────────────────────────────────────────────
@@ -279,7 +282,7 @@ public class OrgBrandingIntegrationTests : IClassFixture<CasazenWebApplicationFa
             HttpStatusCode.OK,
             (await client.PutAsJsonAsync("/api/orgs/me/branding", new { subtitle = "Sottotitolo", hostName = "Giulia", publicPhone = "0832123456" })).StatusCode);
 
-        var response = await client.PutAsJsonAsync("/api/orgs/me/branding", new { primaryColor = "#1A6B8F", publicThemeId = "urban", tagline = "Nuovo slogan" });
+        var response = await client.PutAsJsonAsync("/api/orgs/me/branding", new { primaryColor = "#1A6B8F", publicThemeId = "citta", tagline = "Nuovo slogan" });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();

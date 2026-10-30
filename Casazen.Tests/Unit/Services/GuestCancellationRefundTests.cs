@@ -7,11 +7,12 @@ using Xunit;
 namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
-/// BK-02, BK-07 (PO 2026-10-08), DB-08h: the refund a guest gets when they cancel themselves, from the one function that
+/// BK-02, BK-07 (PO 2026-10-08), DB-08h, DB-08a: the refund a guest gets when they cancel themselves, from the one function that
 /// calculates it (<see cref="CancellationRefundPolicy.EvaluateGuestRefund"/>).
 /// <list type="bullet">
 /// <item>Refund = percent of the property's cancellation policy only — no CasaZen floor (FreeRefundDeadline ignored).</item>
-/// <item>Refund base = BasePrice (tourist tax excluded), never more than what is still refundable.</item>
+/// <item>Refund base = BasePrice (lodging and cleaning); the tourist tax comes back in full besides (DB-D15 (1a)); never more than
+/// what is still refundable.</item>
 /// </list>
 /// What the cancellation does with it (host 100%, guest the policy's refund) is in <c>BookingCancellationServiceTests</c>
 /// and <c>GuestBookingCancellationServiceTests</c>.
@@ -58,9 +59,10 @@ public class GuestCancellationRefundTests
         Assert.False(GuestCancellationTokens.TokenMatches(null, "any-token"));
     }
 
-    // ── The five policies of the catalog: percent of BasePrice, tourist tax paid or not ──
-    // Base 400, tourist tax 20: the guest paid 420 (or 400 without the tax). The tax stays out of the refund even at 100%
-    // (PO 2026-10-08; whether it should be refunded is the open decision DB-D15).
+    // ── The five policies of the catalog: percent of BasePrice, and the tourist tax in full when it was paid ──
+    // Base 400, tourist tax 20: the guest paid 420 (or 400 without the tax). The percent applies to the 400; the 20 of tax is not
+    // due on a stay that does not happen, so it goes back whatever the policy says (default of DB-D15 (1a), DB-08a). The last
+    // column is the refund of the stay alone; with the tax paid it is 20 more.
 
     [Theory]
     [InlineData(CatalogPolicies.Ampia, 48, 100, 400)]
@@ -79,12 +81,12 @@ public class GuestCancellationRefundTests
     [InlineData(CatalogPolicies.Anticipata, 800, 100, 400)]
     [InlineData(CatalogPolicies.Anticipata, 400, 50, 200)]
     [InlineData(CatalogPolicies.Anticipata, 100, 0, 0)]
-    // DB-D2 (open): with FullRefundHours = 0 the formula gives 100% until the check-in day starts. The row pins today's
-    // behaviour so that the decision, when it is taken (DB-08a), has to change this test with the catalog.
-    [InlineData(CatalogPolicies.NonRimborsabile, 10, 100, 400)]
+    // DB-D2 (a): "Non rimborsabile" refunds nothing of the stay at any time, however far the check-in is.
+    [InlineData(CatalogPolicies.NonRimborsabile, 10, 0, 0)]
+    [InlineData(CatalogPolicies.NonRimborsabile, 5000, 0, 0)]
     [InlineData(CatalogPolicies.NonRimborsabile, -1, 0, 0)]
-    public void EvaluateGuestRefund_CatalogPolicy_RefundsPolicyPercentOfBasePriceWhetherOrNotTaxWasPaid(
-        string slug, double hoursBeforeCheckIn, int expectedPercent, int expectedRefund)
+    public void EvaluateGuestRefund_CatalogPolicy_RefundsPolicyPercentOfBasePriceAndTheWholeTouristTax(
+        string slug, double hoursBeforeCheckIn, int expectedPercent, int expectedStayRefund)
     {
         var now = NowHoursBeforeCheckIn(hoursBeforeCheckIn);
         var withTax = new Booking { CheckInDate = CheckIn, BasePrice = 400m, TouristTax = 20m, TotalPrice = 420m };
@@ -94,9 +96,9 @@ public class GuestCancellationRefundTests
         var paidWithoutTax = CancellationRefundPolicy.EvaluateGuestRefund(withoutTax, Catalog(slug), now, refundableAmount: 400m);
 
         Assert.Equal(expectedPercent, paidWithTax.Percent);
-        Assert.Equal(expectedRefund, paidWithTax.Amount);
+        Assert.Equal(expectedStayRefund + 20, paidWithTax.Amount);
         Assert.Equal(expectedPercent, paidWithoutTax.Percent);
-        Assert.Equal(expectedRefund, paidWithoutTax.Amount);
+        Assert.Equal(expectedStayRefund, paidWithoutTax.Amount);
     }
 
     [Fact]
@@ -110,14 +112,14 @@ public class GuestCancellationRefundTests
     }
 
     [Fact]
-    public void EvaluateGuestRefund_BaseIsBasePrice_NotTotalPrice()
+    public void EvaluateGuestRefund_BaseIsBasePrice_NotTotalPrice_AndTheTaxComesBackInFull()
     {
-        // 50% policy, BasePrice 400, tourist tax 50, TotalPrice 450: 50% of 400, not of 450.
+        // 50% policy, BasePrice 400, tourist tax 50, TotalPrice 450: 50% of 400 (not of 450) and the 50 of tax in full.
         var booking = new Booking { CheckInDate = CheckIn, BasePrice = 400m, TouristTax = 50m, TotalPrice = 450m };
 
         var decision = CancellationRefundPolicy.EvaluateGuestRefund(booking, Catalog(CatalogPolicies.Intermedia), NowHoursBeforeCheckIn(50), 450m);
 
-        Assert.Equal(200m, decision.Amount);
+        Assert.Equal(250m, decision.Amount);
     }
 
     [Fact]
