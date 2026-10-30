@@ -570,6 +570,30 @@
   <data name="LeaseRenewalBlockedByNotice" xml:space="preserve">
     <value>A notice is recorded, so the lease does not renew. If the parties decided to renew it, take the notice back first.</value>
   </data>
+  <data name="LeaseDepositNone" xml:space="preserve">
+    <value>The contract has no security deposit: there is nothing to return.</value>
+  </data>
+  <data name="LeaseDepositDatesInvalid" xml:space="preserve">
+    <value>The deposit must have been paid at least a day before it is returned, and the day of the return cannot be too far from the end of the contract.</value>
+  </data>
+  <data name="LeaseDepositRateInvalid" xml:space="preserve">
+    <value>The legal interest rate of each year is a percentage between 0 and {0} with at most two decimals, written once per year.</value>
+  </data>
+  <data name="LeaseDepositRateMissing" xml:space="preserve">
+    <value>The legal interest rate is missing for the years: {0}.</value>
+  </data>
+  <data name="LeaseDepositInterestPaidInvalid" xml:space="preserve">
+    <value>The interest already paid is a sum in euros with at most two decimals and is not more than the interest accrued.</value>
+  </data>
+  <data name="LeaseDepositDeductionInvalid" xml:space="preserve">
+    <value>Each deduction has a reason (at most {0} characters) and a sum above zero with at most two decimals; at most {1} deductions.</value>
+  </data>
+  <data name="LeaseDepositDeductionsExceed" xml:space="preserve">
+    <value>The deductions are more than the deposit and the interest due: the balance is not a return.</value>
+  </data>
+  <data name="LeaseDepositReturnDateInvalid" xml:space="preserve">
+    <value>The day of the return must be between the start of the contract and today: what you record has already happened.</value>
+  </data>
   <data name="LeaseIstatWaived" xml:space="preserve">
     <value>With the cedolare secca the update of the rent is suspended for as long as the option lasts: there is nothing to calculate.</value>
   </data>
