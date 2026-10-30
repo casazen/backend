@@ -16,7 +16,9 @@ public sealed record LeaseOperationsDto(
     LeaseWithdrawalOperationDto Withdrawal,
     IReadOnlyList<LeaseLetterStateDto> Letters,
     LeaseRenewalOperationDto Renewal,
-    LeaseTransitoryConfirmationDto TransitoryConfirmation);
+    LeaseTransitoryConfirmationDto TransitoryConfirmation,
+    LeaseIstatOperationDto Istat,
+    LeaseCedolareNoticeDto CedolareNotice);
 
 /// <summary>The state of a letter kind: its text is approved or still a draft, and the last time the landlord marked it as sent.</summary>
 public sealed record LeaseLetterStateDto(LeaseLetterKind Kind, bool Approved, LeaseLetterSentDto? Sent);
@@ -82,3 +84,30 @@ public sealed record LeaseRenewalRecordDto(bool Agreed, DateOnly From, DateOnly 
 /// <c>Holder</c> says whose it is (<c>Landlord</c> or <c>Tenant</c>, or none when the contract does not say).
 /// </summary>
 public sealed record LeaseTransitoryConfirmationDto(bool Applies, bool Available, PartyRole? Holder, DateOnly ConfirmBy);
+
+/// <summary>
+/// The ISTAT update of the rent. <c>Available</c>: the lease is in force, has a rent and is not under the cedolare secca (which suspends every
+/// update), so a calculation and a letter make sense. <c>CurrentRent</c> is the monthly rent today; <c>DefaultSharePercent</c> the share the
+/// window suggests (the contract states the real one, to be confirmed) and <c>MaxSharePercent</c> the most a share can be; the update can start
+/// from a day between <c>MinEffectiveOn</c> (never in the past) and <c>MaxEffectiveOn</c> (the end of the period).
+/// </summary>
+public sealed record LeaseIstatOperationDto(
+    bool Available,
+    decimal CurrentRent,
+    decimal DefaultSharePercent,
+    decimal MaxSharePercent,
+    DateOnly MinEffectiveOn,
+    DateOnly MaxEffectiveOn);
+
+/// <summary>
+/// The communication of the cedolare secca to the tenant. <c>Available</c>: the lease is in force and under the cedolare secca; the option can be
+/// said to apply from a day between <c>MinEffectiveOn</c> and <c>MaxEffectiveOn</c>.
+/// </summary>
+public sealed record LeaseCedolareNoticeDto(bool Available, DateOnly MinEffectiveOn, DateOnly MaxEffectiveOn);
+
+/// <summary>
+/// The ISTAT update worked out by the server (<c>POST api/leases/{id}/istat/calculate</c>): the rent today, the variation and the share typed,
+/// what they make in percent of the rent, the increase and the new monthly rent (both to the cent). Nothing is written.
+/// </summary>
+public sealed record LeaseIstatCalculationDto(
+    decimal CurrentRent, decimal FoiPercent, decimal SharePercent, decimal AppliedPercent, decimal Increase, decimal NewRent);

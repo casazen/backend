@@ -64,7 +64,7 @@ public sealed class SupplierClientsService(
                     NullIfBlank(job.ServiceName),
                     job.Category,
                     job.Status,
-                    SupplierRequestPhases.Of(job.Status, hasPendingProposal: job.HasProposal),
+                    SupplierRequestPhases.Of(job.Status, hasPendingProposal: job.HasProposal, hasPendingQuote: job.HasQuote),
                     job.ScheduledStart,
                     job.CompletedAt,
                     job.FinalAmountCents ?? job.QuotedAmountCents ?? job.EstimatedAmountCents))
@@ -145,6 +145,7 @@ public sealed class SupplierClientsService(
                 Category = r.Category,
                 Status = r.Status,
                 HasProposal = r.ProposedStartUtc != null,
+                HasQuote = r.QuoteSentAt != null,
                 ScheduledStart = r.ScheduledStartUtc,
                 CompletedAt = r.CompletedAt,
                 EstimatedAmountCents = r.EstimatedAmountCents,
@@ -247,6 +248,7 @@ public sealed class SupplierClientsService(
         public string Category { get; init; } = string.Empty;
         public ServiceRequestStatus Status { get; init; }
         public bool HasProposal { get; init; }
+        public bool HasQuote { get; init; }
         public DateTime? ScheduledStart { get; init; }
         public DateTime? CompletedAt { get; init; }
         public int? EstimatedAmountCents { get; init; }

@@ -28,8 +28,16 @@ public static class ServiceRequestCancellationReasons
     /// </summary>
     public const string CancelledByCustomer = "CancelledByCustomer";
 
+    /// <summary>
+    /// A request from the public showcase whose supplier had sent a quote and whose customer did not answer before the deadline
+    /// (SP-04b, <c>Suppliers:Showcase:ProposalResponseMinutes</c>): cancelled by CasaZen (<c>CancelledBy = System</c>), but the supplier did
+    /// answer — it is the customer who did not. Its own code, so no party is told the other one stayed silent (decision D24). The client
+    /// translates it, it is not a sentence.
+    /// </summary>
+    public const string QuoteNotAnswered = "QuoteNotAnswered";
+
     /// <summary>True for a value of <c>CancellationReason</c> that is one of the codes above and not text a person wrote.</summary>
-    public static bool IsCode(string? reason) => reason is NoResponse or ProposalNotAnswered or CancelledByCustomer;
+    public static bool IsCode(string? reason) => reason is NoResponse or ProposalNotAnswered or CancelledByCustomer or QuoteNotAnswered;
 }
 
 /// <summary>The kinds of line of <see cref="ServiceRequestPriceLine"/>.</summary>
@@ -40,6 +48,9 @@ public static class ServiceRequestPriceLineKinds
 
     /// <summary>An extra the supplier added when it completed the work (a bathroom more, extra linen).</summary>
     public const string Extra = "extra";
+
+    /// <summary>A line of the quote the customer accepted (SP-04b): the lines of an accepted quote are the price of the work.</summary>
+    public const string Quote = "quote";
 }
 
 /// <summary>One line of the price of a completed request (<c>ServiceRequest.PriceLinesJson</c>); the lines add up to the final amount.</summary>
@@ -111,6 +122,10 @@ public static class ServiceRequestPricing
     /// <param name="declaredFinalAmountCents">The total the supplier declared, or <c>null</c> to compute it.</param>
     /// <param name="extras">The extras, already trimmed or not (they are trimmed here).</param>
     /// <param name="baseLabel">What the base line is called (the name of the service).</param>
+    /// <param name="agreedLines">
+    /// The lines of the quote the customer accepted (SP-04b), if any: when they add up to the price of the work itself (the total less the
+    /// extras) they take the place of the single base line, so the final price keeps the lines the customer approved.
+    /// </param>
     /// <exception cref="DomainRuleException">
     /// <see cref="ServiceRequestErrorCodes.AmountInvalid"/> for an amount or an extra outside its limits;
     /// <see cref="ServiceRequestErrorCodes.FinalAmountInvalid"/> when the declared total does not cover the extras.
@@ -119,7 +134,8 @@ public static class ServiceRequestPricing
         int? referenceAmountCents,
         int? declaredFinalAmountCents,
         IReadOnlyList<ServiceRequestExtra>? extras,
-        string baseLabel)
+        string baseLabel,
+        IReadOnlyList<ServiceRequestPriceLine>? agreedLines = null)
     {
         var lines = new List<ServiceRequestPriceLine>();
         var extraLines = NormalizeExtras(extras);
@@ -147,7 +163,13 @@ public static class ServiceRequestPricing
             throw AmountInvalid();
 
         if (baseAmount > 0)
-            lines.Add(new ServiceRequestPriceLine(ServiceRequestPriceLineKinds.Base, baseLabel.Trim(), (int)baseAmount));
+        {
+            if (agreedLines is { Count: > 0 } && agreedLines.Sum(line => (long)line.AmountCents) == baseAmount)
+                lines.AddRange(agreedLines);
+            else
+                lines.Add(new ServiceRequestPriceLine(ServiceRequestPriceLineKinds.Base, baseLabel.Trim(), (int)baseAmount));
+        }
+
         lines.AddRange(extraLines.Select(extra => new ServiceRequestPriceLine(ServiceRequestPriceLineKinds.Extra, extra.Label, extra.AmountCents)));
 
         return new ServiceRequestFinalPrice(total > 0 ? (int)total : null, lines);
@@ -213,6 +235,12 @@ public static class ServiceRequestJson
 
     /// <summary>The photos stored in <paramref name="json"/>; an empty list for a missing or unreadable value.</summary>
     public static IReadOnlyList<ServiceRequestPhoto> ReadPhotos(string? json) => Read<ServiceRequestPhoto>(json);
+
+    /// <summary>The lines of a quote stored in <paramref name="json"/> (SP-04b); an empty list for a missing or unreadable value.</summary>
+    public static IReadOnlyList<ServiceRequestQuoteLine> ReadQuoteLines(string? json) => Read<ServiceRequestQuoteLine>(json);
+
+    /// <summary>The events of the quotes of a request stored in <paramref name="json"/> (SP-04b), oldest first; an empty list for a missing or unreadable value.</summary>
+    public static IReadOnlyList<ServiceRequestQuoteEvent> ReadQuoteEvents(string? json) => Read<ServiceRequestQuoteEvent>(json);
 
     private static List<T> Read<T>(string? json)
     {

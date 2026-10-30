@@ -27,6 +27,7 @@ public class SupplierAgendaTenancyTests
         ["Casazen.Infrastructure/Services/SupplierAgendaService.cs"] = "The agenda: every statement carries the OrgId predicate.",
         ["Casazen.Infrastructure/Services/SupplierService.Maintenance.cs"] = "The repair that merges duplicate supplier profiles moves the agenda of the duplicate org.",
         ["Casazen.Infrastructure/Services/CalendarSyncService.cs"] = "The iCal sync writes the windows of hours of the supplier's feed (SP-05), under the lock of the supplier: every statement carries the OrgId predicate and only touches the windows of the feed.",
+        ["Casazen.Infrastructure/Services/SupplierNotificationPreferences.cs"] = "SP-16d: the one place that decides whether an informative notice goes to a supplier; it reads the three notification switches of one supplier, with the OrgId predicate, and writes nothing.",
     };
 
     private static readonly string[] DbSetNames =
@@ -280,6 +281,7 @@ public class SupplierAgendaTenancyTests
     [InlineData("Casazen.Infrastructure/Services/SupplierAgendaService.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierService.Maintenance.cs")]
     [InlineData("Casazen.Infrastructure/Services/CalendarSyncService.cs")]
+    [InlineData("Casazen.Infrastructure/Services/SupplierNotificationPreferences.cs")]
     public void EveryStatementOnTheTables_CarriesTheOrgPredicateOrIsAnInsert(string relative)
     {
         var text = CodeWithoutComments(File.ReadAllText(Path.Combine(FindRepositoryRoot(), relative.Replace('/', Path.DirectorySeparatorChar))));

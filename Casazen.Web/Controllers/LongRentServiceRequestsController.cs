@@ -258,6 +258,43 @@ public class LongRentServiceRequestsController(
         HostActionAsync(id, hostOrgId => serviceRequestService.RejectProposalAsync(id, hostOrgId, cancellationToken), cancellationToken);
 
     /// <summary>
+    /// The landlord accepts the quote the supplier sent for a long-rent request (SP-04b). Same rules and errors as the short-rent
+    /// <c>POST api/service-requests/{id}/quote/accept</c>: the body repeats <c>quote.sentAt</c> as read.
+    /// </summary>
+    [HttpPost("{id:guid}/quote/accept")]
+    [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult<ServiceRequestDto>> AcceptQuote(
+        Guid id,
+        [FromBody] AnswerServiceRequestQuoteRequest request,
+        CancellationToken cancellationToken) =>
+        HostActionAsync(
+            id, hostOrgId => serviceRequestService.AcceptQuoteAsync(id, hostOrgId, request.QuoteSentAt!.Value, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// The landlord turns the quote down (SP-04b). Same rules and errors as the short-rent <c>POST api/service-requests/{id}/quote/reject</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/quote/reject")]
+    [Authorize(Policy = CasazenPolicies.LongRentPropertyWrite)]
+    [ProducesResponseType(typeof(ServiceRequestDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public Task<ActionResult<ServiceRequestDto>> RejectQuote(
+        Guid id,
+        [FromBody] AnswerServiceRequestQuoteRequest request,
+        CancellationToken cancellationToken) =>
+        HostActionAsync(
+            id, hostOrgId => serviceRequestService.RejectQuoteAsync(id, hostOrgId, request.QuoteSentAt!.Value, cancellationToken), cancellationToken);
+
+    /// <summary>
     /// A photo of the work of a long-rent request (SP-04), for its landlord (<c>property.read</c> in long-rent). Private file,
     /// never cached. The supplier reads its photos at <c>GET api/service-requests/{id}/photos/{photoId}</c>.
     /// </summary>
