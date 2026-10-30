@@ -301,7 +301,9 @@ public partial class ServiceRequestService
             throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
         }
 
-        // The request as committed now: the caller checked a copy read before the lock, and the group may have closed it meanwhile.
+        // The request as committed now: the caller checked a copy read before the lock, and the group may have closed it meanwhile (a
+        // backup that lost the race says so plainly).
+        ThrowIfRaceClosed(request);
         if (request.Status != ServiceRequestStatus.Richiesto)
         {
             throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
