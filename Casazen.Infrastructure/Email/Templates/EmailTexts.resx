@@ -1709,6 +1709,7 @@
   </data>
   <data name="SupplierInquiryNewRequest_Hint" xml:space="preserve">
     <value>Leggi la richiesta e rispondi dalla console. Il nome completo e i contatti del cliente si vedono quando prendi in carico la richiesta.</value>
+  </data>
   <data name="GuestBookingCancelled_BodyByGuest" xml:space="preserve">
     <value>la tua prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt; è stata annullata, come hai chiesto.</value>
   </data>
