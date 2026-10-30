@@ -42,7 +42,7 @@ public class PublicSupplierInquiryController(
     /// Keeps what the customer wrote and sends the customer the e-mail that checks the address. 201 with the id of the inquiry and when
     /// the link lapses; the same <c>clientRequestId</c> is the same inquiry. The supplier receives nothing until the address is checked. 404
     /// <c>not_found</c> (supplier), <c>supplier_service_not_found</c>; 422 <c>supplier_booking_invalid</c> (with <c>fields</c>),
-    /// <c>supplier_booking_consent_required</c> / <c>_outdated</c>, <c>supplier_booking_outside_zone</c>; 429 <c>rate_limited</c> (per IP, per
+    /// <c>supplier_booking_consent_required</c> / <c>_outdated</c>, <c>supplier_booking_outside_zone</c>, <c>supplier_booking_offline</c> (the supplier paused the showcase, SP-13a); 429 <c>rate_limited</c> (per IP, per
     /// address, or three requests of the address waiting).
     /// </summary>
     [HttpPost]
@@ -79,6 +79,11 @@ public class PublicSupplierInquiryController(
                         DateTimeKind.Utc),
                 });
         }
+
+        // SP-13a: a showcase the supplier paused takes no new request on measure either, with the answer the slots and the estimate give.
+        // The check of an address written before the pause is not gated: that customer is answered all the same.
+        if (await showcase.IsPausedAsync(supplier, ct))
+            throw ShowcaseBookingErrors.OfflineSupplier();
 
         try
         {

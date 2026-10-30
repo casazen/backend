@@ -158,6 +158,90 @@ public class PublicSupplierInquiryIntegrationTests(PublicBookingFactory factory)
     }
 
     [Fact]
+    public async Task Inquiry_TheCustomerReadsAndWritesInItsOwnArea_TheSupplierIsToldWithoutTheWords_AndTheCustomerClosesTheRequest()
+    {
+        var supplier = await PublicBookingTestData.SeedAsync(factory);
+        var email = PublicBookingTestData.NewEmail();
+        using var client = factory.CreateClient();
+        var created = await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/inquiries", Body(email));
+        var inquiryId = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var (_, token) = LinkOf(Assert.Single(factory.EmailsTo(email)));
+        var confirmed = await client.PostAsJsonAsync($"/api/public/suppliers/{supplier.Slug}/inquiries/{inquiryId}/confirm-email", new { token });
+        var code = (await confirmed.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("publicCode").GetString();
+        var access = new { slug = supplier.Slug, code, email };
+
+        // 1. The customer finds its request again: a request on measure, waiting for the supplier, with its own words as the first message.
+        var lookup = await client.PostAsJsonAsync("/api/public/supplier-bookings/lookup", access);
+        Assert.Equal(HttpStatusCode.OK, lookup.StatusCode);
+        AssertPrivateAnswer(lookup);
+        var waiting = await lookup.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Custom", waiting.GetProperty("kind").GetString());
+        Assert.Equal("AwaitingSupplier", waiting.GetProperty("negotiation").GetString());
+        Assert.True(waiting.GetProperty("thread").GetProperty("canWrite").GetBoolean());
+        var first = Assert.Single(waiting.GetProperty("thread").GetProperty("messages").EnumerateArray());
+        Assert.Equal("customer", first.GetProperty("author").GetString());
+        Assert.Equal(Words, first.GetProperty("body").GetString());
+
+        // 2. The supplier answers; the customer sees it as new, once.
+        var requestId = Assert.Single((await supplier.InboxAsync(factory)).GetProperty("items").EnumerateArray()).GetProperty("id").GetGuid();
+        using var asSupplier = supplier.Client(factory);
+        Assert.Equal(
+            HttpStatusCode.Created,
+            (await asSupplier.PostAsJsonAsync($"/api/supplier/requests/{requestId}/messages", new { body = "Posso passare giovedì per un sopralluogo." })).StatusCode);
+        var talking = await (await client.PostAsJsonAsync("/api/public/supplier-bookings/lookup", access)).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("InConversation", talking.GetProperty("negotiation").GetString());
+        var answer = talking.GetProperty("thread").GetProperty("messages").EnumerateArray().Last();
+        Assert.Equal("supplier", answer.GetProperty("author").GetString());
+        Assert.True(IsNull(answer, "readAt"));
+        var read = await (await client.PostAsJsonAsync("/api/public/supplier-bookings/lookup", access)).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(IsNull(read.GetProperty("thread").GetProperty("messages").EnumerateArray().Last(), "readAt"));
+
+        // 3. The customer writes (after the quiet period of the first message): the supplier is told with "Nome C." and never the words.
+        using (factory.MoveClock(TimeSpan.FromMinutes(11)))
+        {
+            var posted = await client.PostAsJsonAsync(
+                "/api/public/supplier-bookings/messages", new { slug = supplier.Slug, code, email, body = "Perfetto, venerdì alle nove va bene?" });
+            Assert.Equal(HttpStatusCode.OK, posted.StatusCode);
+            AssertPrivateAnswer(posted);
+            Assert.Equal(3, (await posted.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("thread").GetProperty("messages").GetArrayLength());
+        }
+
+        var toSupplier = Assert.Single(factory.EmailsTo(supplier.ContactEmail), e => e.Template == EmailTemplates.Names.SupplierInquiryMessage);
+        var mailed = toSupplier.Content.Subject + toSupplier.Content.HtmlBody;
+        Assert.Contains("Mario R.", mailed);
+        foreach (var secret in PublicBookingTestData.Secrets(email).Append("venerdì").Append("alle nove"))
+            Assert.DoesNotContain(secret, mailed, StringComparison.OrdinalIgnoreCase);
+        var supplierThread = await asSupplier.GetFromJsonAsync<JsonElement>($"/api/supplier/requests/{requestId}/thread");
+        Assert.Equal(3, supplierThread.GetProperty("messages").GetArrayLength());
+        Assert.True(IsNull(supplierThread.GetProperty("messages").EnumerateArray().Last(), "readAt"));
+
+        // 4. Who is not the customer is the same 404, and the thread is not touched.
+        await AssertProblemAsync(
+            await client.PostAsJsonAsync(
+                "/api/public/supplier-bookings/messages", new { slug = supplier.Slug, code, email = PublicBookingTestData.NewEmail(), body = "Sono io, davvero." }),
+            HttpStatusCode.NotFound,
+            "supplier_booking_not_found");
+
+        // 5. The customer closes the request: free, the supplier is told without a day, the thread is closed for both.
+        var cancelled = await client.PostAsJsonAsync("/api/public/supplier-bookings/cancel", new { slug = supplier.Slug, code, email, reason = "Ho trovato un altro fornitore" });
+        Assert.Equal(HttpStatusCode.OK, cancelled.StatusCode);
+        var closed = await cancelled.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Annullato", closed.GetProperty("status").GetString());
+        Assert.Equal("Closed", closed.GetProperty("negotiation").GetString());
+        Assert.False(closed.GetProperty("thread").GetProperty("canWrite").GetBoolean());
+        Assert.Contains(factory.EmailsTo(supplier.ContactEmail), e => e.Template == EmailTemplates.Names.SupplierInquiryClosedByCustomer);
+        Assert.DoesNotContain(factory.EmailsTo(email), e => e.Template == EmailTemplates.Names.SupplierBookingCancellationReceipt);
+        await AssertProblemAsync(
+            await client.PostAsJsonAsync("/api/public/supplier-bookings/messages", new { slug = supplier.Slug, code, email, body = "Un ultimo pensiero." }),
+            HttpStatusCode.Conflict,
+            "service_request_thread_closed");
+        await AssertProblemAsync(
+            await asSupplier.PostAsJsonAsync($"/api/supplier/requests/{requestId}/messages", new { body = "Capisco, grazie lo stesso." }),
+            HttpStatusCode.Conflict,
+            "service_request_thread_closed");
+    }
+
+    [Fact]
     public async Task Inquiry_EveryAnswerIsPrivate_AndNeitherTheAnswersNorTheLogsCarryAnythingPersonalOrTheWords()
     {
         var supplier = await PublicBookingTestData.SeedAsync(factory);

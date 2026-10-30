@@ -27,6 +27,7 @@ public class ShowcaseInquiryTenancyTests
         ["Casazen.Infrastructure/Services/ServiceRequestService.Thread.cs"] = "The conversation of a request on measure: every read of the thread carries the OrgId predicate of the supplier, the rest is an insert.",
         ["Casazen.Infrastructure/Services/SupplierService.Maintenance.cs"] = "The repair that merges duplicate supplier profiles drops the inquiries of the duplicate org and moves the messages of its requests; both orgs are explicit.",
         ["Casazen.Infrastructure/Services/ServiceRequestExpiryService.cs"] = "System job: deletes the inquiries whose time has passed, whoever they belong to (ExpiredInquiryIdsOf reads ids only).",
+        ["Casazen.Infrastructure/Services/ServiceCustomerPrivacyService.cs"] = "System job: the nightly retention deletes the messages of the requests on measure that are over, whoever they belong to (ids only, never the text).",
     };
 
     private static readonly Regex AnyTableUse = new(
@@ -151,6 +152,37 @@ public class ShowcaseInquiryTenancyTests
             "ShowcaseInquiries and ServiceRequestMessages are not tenant-filtered (keyed by the supplier org): any other reader must " +
             "filter by the supplier OrgId itself. Use ShowcaseInquiryService, or add the file to AllowedFiles with its reason and an " +
             "explicit OrgId predicate: " + string.Join(", ", offenders));
+    }
+
+    // The retention is a system job: its statements on the messages are across suppliers on purpose, and read ids only.
+    private static readonly Regex RetentionContinuation = new(
+        @"^\.Any\((?<x>\w+)=>\k<x>\.ServiceRequestId==|^\.AsNoTracking\(\)\.Where\((?<y>\w+)=>\w+\.Contains\(\k<y>\.ServiceRequestId\)\)\.Select\(\w+=>\w+\.Id\)|^\.RemoveRange\(",
+        RegexOptions.Compiled);
+
+    [Fact]
+    public void TheRetentionJob_ReadsAndDeletesTheMessagesAcrossSuppliersOnPurpose_ByIdAndNeverTheirText()
+    {
+        var text = File.ReadAllText(
+            Path.Combine(FindRepositoryRoot(), "Casazen.Infrastructure", "Services", "ServiceCustomerPrivacyService.cs"));
+        var statements = DbSetUse.Matches(text);
+        Assert.NotEmpty(statements);
+
+        var offenders = statements
+            .Select(m => Regex.Replace(m.Groups["rest"].Value, @"\s+", string.Empty))
+            .Where(rest => !RetentionContinuation.IsMatch(rest))
+            .Select(rest => rest[..Math.Min(rest.Length, 60)])
+            .ToList();
+
+        Assert.True(
+            offenders.Count == 0,
+            "The retention may only look for the requests that have messages, list the ids of the messages of the requests that are due and "
+            + "delete them by key: " + string.Join(" | ", offenders));
+
+        // The candidates are read from the requests, with no text and no tenant predicate (the job works across every supplier).
+        using var db = NewNpgsqlContext();
+        var sql = ServiceCustomerPrivacyService.CandidateThreadsOf(db, new DateTime(2024, 10, 30, 0, 0, 0, DateTimeKind.Utc)).ToQueryString();
+        Assert.Contains("EXISTS", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("BodyEncrypted", sql, StringComparison.Ordinal);
     }
 
     [Theory]

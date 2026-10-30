@@ -117,6 +117,7 @@ public class EndpointAuthorizationArchitectureTests
         ["PublicSupplierBookingManagementController.Reschedule"] = "The customer moves its own new request to another free slot, proving it with the code and the e-mail address in the body (SP-11, behind SupplierShowcaseBooking, rate limited per IP and per address).",
         ["PublicSupplierBookingManagementController.AcceptProposal"] = "The customer accepts the other time the supplier proposed for its own booking, proving it with the code and the e-mail address in the body (SP-11, behind SupplierShowcaseBooking, rate limited per IP and per address).",
         ["PublicSupplierBookingManagementController.RejectProposal"] = "The customer turns down the other time the supplier proposed for its own booking, proving it with the code and the e-mail address in the body (SP-11, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+        ["PublicSupplierBookingManagementController.PostMessage"] = "The customer writes in the conversation of its own request on measure, proving it with the code and the e-mail address in the body (SP-10b, behind SupplierShowcaseBooking, rate limited per IP and per address); any other booking is the same 404.",
     };
 
     private static IEnumerable<MethodInfo> PublicBookingManagementActions() =>

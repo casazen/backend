@@ -172,6 +172,31 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.RejectProposalAsync(request.ToCredentials(), ct)));
     }
 
+    /// <summary>
+    /// Writes in the conversation of a request on measure (SP-10b): <c>body</c>, 1 to 1000 characters of plain text, at most 200 messages a
+    /// request. The supplier is told by e-mail (the comune and "Nome C.", never the words), one e-mail for the messages of ten minutes.
+    /// Answers the booking as it is now, thread included. 404 <c>supplier_booking_not_found</c> (also for a booking that is not a request on
+    /// measure); 422 <c>service_request_message_invalid</c>, <c>service_request_thread_full</c>, <c>supplier_booking_supplier_unavailable</c>; 409
+    /// <c>service_request_thread_closed</c> (refused, cancelled or done), <c>service_request_state_changed</c>; 429.
+    /// </summary>
+    [HttpPost("messages")]
+    [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [SupplierBookingManageRateLimit]
+    [RequestSizeLimit(ShowcaseBookingLimits.ManageMaxBodyBytes)]
+    [ProducesResponseType(typeof(PublicSupplierBookingViewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<PublicSupplierBookingViewResponse>> PostMessage(
+        [FromBody] SupplierBookingMessageRequest request,
+        CancellationToken ct)
+    {
+        return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.PostMessageAsync(request.ToCredentials(), request.Body, ct)));
+    }
+
     /// <summary>A 422 that names the fields at fault, as the booking does.</summary>
     private ObjectResult RuleProblem(string code, string messageKey, IReadOnlyList<object> messageArgs, IReadOnlyList<string> fields)
     {

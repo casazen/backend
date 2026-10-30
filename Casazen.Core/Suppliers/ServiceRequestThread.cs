@@ -43,6 +43,36 @@ public static class ServiceRequestThreadRules
 }
 
 /// <summary>
+/// Where the negotiation of a request on measure is (SP-10b), told to the customer. <b>Derived, never stored</b>: from the status of the request
+/// and from whether the supplier wrote in the thread. The offer (SP-10b-b) adds its own states to the ones of the conversation.
+/// </summary>
+public static class ServiceRequestNegotiation
+{
+    /// <summary>New, and the supplier has not written yet.</summary>
+    public const string AwaitingSupplier = "AwaitingSupplier";
+
+    /// <summary>New, and the supplier wrote: the two are talking.</summary>
+    public const string InConversation = "InConversation";
+
+    /// <summary>The work is agreed (the request was taken, started or done).</summary>
+    public const string Agreed = "Agreed";
+
+    /// <summary>The supplier refused the request.</summary>
+    public const string Declined = "Declined";
+
+    /// <summary>Cancelled by the customer or closed because nobody answered in time.</summary>
+    public const string Closed = "Closed";
+
+    public static string Of(ServiceRequestStatus status, bool supplierWrote) => status switch
+    {
+        ServiceRequestStatus.Richiesto => supplierWrote ? InConversation : AwaitingSupplier,
+        ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso or ServiceRequestStatus.Completato or ServiceRequestStatus.Pagato => Agreed,
+        ServiceRequestStatus.Rifiutato => Declined,
+        _ => Closed,
+    };
+}
+
+/// <summary>
 /// Stable codes (ProblemDetails <c>code</c>) and message keys (<c>SharedResources.resx</c>, Italian and English) of the conversation of a
 /// request on measure (SP-10b). The codes are snake_case and never renamed: the frontend branches on them. A request that is not the
 /// caller's, is not a request on measure or does not exist is the plain 404 of the service requests.
