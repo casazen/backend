@@ -499,6 +499,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILongRentFiscalReportService, LongRentFiscalReportService>();
         // The tenants of the area (LR-09): the people read from the parties of the leases, the copy of their data and their erasure.
         services.AddScoped<ILongRentTenantService, LongRentTenantService>();
+        // The properties of the area with the APE, the cadastral data, who holds them and the change of mode programmed (LR-07a).
+        services.AddScoped<ILongRentPropertyService, LongRentPropertyService>();
         services.AddScoped<ISeoContentService, SeoContentService>();
         services.AddScoped<IGuestAccessService, GuestAccessService>();
         services.AddScoped<IGuestCheckInService, GuestCheckInService>();
@@ -669,6 +671,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceCustomerReader, ServiceCustomerReader>();
         services.AddScoped<ShowcaseBookingNotifier>();
         services.AddScoped<IShowcaseBookingService, ShowcaseBookingService>();
+        // The request on measure from the same showcase (SP-10b): no slot, the words of the customer, a thread with the supplier.
+        services.AddScoped<IShowcaseInquiryService, ShowcaseInquiryService>();
         // The customer's own area of a booking (SP-11): find it with the code and the e-mail, cancel it, move it, answer a proposed time.
         services.AddScoped<IShowcaseBookingManager, ShowcaseBookingManager>();
         // The upkeep (expiry of holds and of unanswered showcase requests), the reminders of the day before and the retention of the

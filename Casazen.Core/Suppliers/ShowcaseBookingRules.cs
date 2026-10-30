@@ -209,7 +209,8 @@ public static class ShowcaseBookingRules
         return string.Empty;
     }
 
-    private static string? Text(string? value, int maxLength, bool required, string field, List<string> invalid)
+    // The checks of the values a customer types, shared with the request on measure (ShowcaseInquiryRules, SP-10b).
+    internal static string? Text(string? value, int maxLength, bool required, string field, List<string> invalid)
     {
         var text = Collapse(value);
         if (text.Length == 0)
@@ -244,7 +245,7 @@ public static class ShowcaseBookingRules
         return text;
     }
 
-    private static string? FullName(string? value, List<string> invalid)
+    internal static string? FullName(string? value, List<string> invalid)
     {
         var name = Collapse(value);
         if (name.Length < 2 || name.Length > ShowcaseBookingLimits.FullNameMaxLength || name.Any(char.IsControl) || !name.Any(char.IsLetter))
@@ -256,7 +257,7 @@ public static class ShowcaseBookingRules
         return name;
     }
 
-    private static string? Email(string? value, List<string> invalid)
+    internal static string? Email(string? value, List<string> invalid)
     {
         var email = value?.Trim();
         if (string.IsNullOrEmpty(email)
@@ -274,7 +275,7 @@ public static class ShowcaseBookingRules
         return email;
     }
 
-    private static string? Phone(string? value, List<string> invalid)
+    internal static string? Phone(string? value, List<string> invalid)
     {
         var text = value?.Trim();
         var plus = text is not null && text.StartsWith('+');
@@ -299,7 +300,7 @@ public static class ShowcaseBookingRules
     private static string Collapse(string? value) =>
         string.Join(' ', (value ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
 
-    private static string Truncate(string? value, int maxLength)
+    internal static string Truncate(string? value, int maxLength)
     {
         var text = value?.Trim() ?? string.Empty;
         return text.Length <= maxLength ? text : text[..maxLength];

@@ -44,6 +44,12 @@ public static class EncryptedColumns
     public const string ServiceCustomerPurpose = "Casazen.ServiceCustomer";
 
     /// <summary>
+    /// Purpose of the words of the thread of a request on measure (SP-10b): <see cref="ServiceRequestMessage.Body"/>, free text a person
+    /// wrote for the other party. Its own purpose, because it is read by the two parties of the request and by nobody else. Never change it.
+    /// </summary>
+    public const string ServiceRequestMessagePurpose = "Casazen.ServiceRequestMessage";
+
+    /// <summary>
     /// Purpose of the place of the work of a request from the public showcase (SP-10): street address, floor and access notes of
     /// <see cref="ServiceRequest"/>. The comune and the postal code are not encrypted: the supplier sees them before it takes the request.
     /// </summary>
@@ -129,6 +135,13 @@ public static class EncryptedColumns
         new EncryptedEntity<ShowcaseBookingHold>(
             ServiceCustomerPurpose,
             nameof(ShowcaseBookingHold.Payload)),
+        // SP-10b: the request on measure that waits for the e-mail check (the same data as the hold, plus the words) and the thread.
+        new EncryptedEntity<ShowcaseInquiry>(
+            ServiceCustomerPurpose,
+            nameof(ShowcaseInquiry.Payload)),
+        new EncryptedEntity<ServiceRequestMessage>(
+            ServiceRequestMessagePurpose,
+            nameof(ServiceRequestMessage.Body)),
         new EncryptedEntity<ServiceRequest>(
             ServiceRequestLocationPurpose,
             nameof(ServiceRequest.LocationAddress),
