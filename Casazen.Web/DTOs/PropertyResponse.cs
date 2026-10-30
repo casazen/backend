@@ -159,6 +159,13 @@ public sealed class PropertyResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? SuspensionReasons { get; init; }
 
+    /// <summary>
+    /// The change of rental mode waiting for its day (PM-02, AM-13b): the same shape as `GET /api/properties/{id}/mode` gives, so the list
+    /// can say «passa ad affitto lungo dal …» without asking each property; left out when none is scheduled.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PropertyModeChangeDto? ScheduledModeChange { get; init; }
+
     public static PropertyResponse From(Property property, PropertyOverview? overview = null)
     {
         ArgumentNullException.ThrowIfNull(property);
@@ -171,6 +178,7 @@ public sealed class PropertyResponse
             CoverPhotoUrl = overview?.CoverPhotoUrl,
             SiteVisibility = overview?.SiteVisibility,
             SuspensionReasons = overview?.SuspensionReasons,
+            ScheduledModeChange = overview?.ScheduledModeChange is { } scheduled ? PropertyModeChangeDto.From(scheduled) : null,
             Id = property.Id,
             OwnerId = property.OwnerId,
             ResponsibleUserId = property.ResponsibleUserId,
