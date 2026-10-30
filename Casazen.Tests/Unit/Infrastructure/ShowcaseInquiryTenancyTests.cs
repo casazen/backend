@@ -159,12 +159,18 @@ public class ShowcaseInquiryTenancyTests
         @"^\.Any\((?<x>\w+)=>\k<x>\.ServiceRequestId==|^\.AsNoTracking\(\)\.Where\((?<y>\w+)=>\w+\.Contains\(\k<y>\.ServiceRequestId\)\)\.Select\(\w+=>\w+\.Id\)|^\.RemoveRange\(",
         RegexOptions.Compiled);
 
+    // The listing of the ids is laid out over four lines (about 130 characters with the indentation), more than the window of DbSetUse, which
+    // would cut it before its Select. Read through a lookahead, so two statements close to each other are both examined.
+    private static readonly Regex RetentionDbSetUse = new(
+        @"db\.(?<set>ShowcaseInquiries|ServiceRequestMessages)(?=(?<rest>[\s\S]{0,200}))",
+        RegexOptions.Compiled);
+
     [Fact]
     public void TheRetentionJob_ReadsAndDeletesTheMessagesAcrossSuppliersOnPurpose_ByIdAndNeverTheirText()
     {
         var text = File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "Casazen.Infrastructure", "Services", "ServiceCustomerPrivacyService.cs"));
-        var statements = DbSetUse.Matches(text);
+        var statements = RetentionDbSetUse.Matches(text);
         Assert.NotEmpty(statements);
 
         var offenders = statements
