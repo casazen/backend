@@ -61,6 +61,7 @@ public sealed class BookingCancellationService(
         Booking booking;
         var reserved = new List<PaymentRefund>();
         int canceledIntents;
+        var retained = 0m;
         await using (var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(db, cancellationToken, locks.ToArray()))
         {
             // Whatever the caller read before this lock may be old by now: a click that was first has cancelled the booking
@@ -87,6 +88,10 @@ public sealed class BookingCancellationService(
             booking.CancelledAt = now;
             booking.CancellationNote = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
             booking.UpdatedAt = now;
+
+            // The host's timeline tells the guest's own cancellation apart from the host's (DB-08a).
+            if (request.Initiator == BookingCancellationInitiator.Guest)
+                booking.CancellationReason = BookingCancellationReason.GuestRequested;
 
             // The guest's cancel link is spent by the cancellation that succeeds, in the same transaction: an error above
             // leaves it usable until it expires. The hash stays, so a second click is recognised and answered with the
@@ -119,6 +124,9 @@ public sealed class BookingCancellationService(
                 remaining -= part;
             }
 
+            // What stays with the host of what could have been refunded: the host is told when the guest cancels (DB-08a).
+            retained = Math.Max(0m, quote.RefundableAmount - reserved.Sum(r => r.Amount));
+
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
         }
@@ -135,16 +143,23 @@ public sealed class BookingCancellationService(
         foreach (var refund in reserved)
             submitted.Add(await refundService.SubmitAsync(refund, throwOnTransientFailure: false, cancellationToken, notifyGuest: false));
 
-        await NotifyGuestAsync(booking.Id, submitted, cancellationToken);
+        await NotifyAsync(booking.Id, submitted, request.Initiator, retained, cancellationToken);
         return new BookingCancellationResult(booking, submitted, canceledIntents);
     }
 
     /// <summary>
     /// One "booking cancelled" email to the guest with the refund: what Stripe confirmed at once (whose own "refund
     /// confirmed" email is claimed here, so the guest does not get two) and what is still in progress (confirmed by a
-    /// later email). The cancellation is already saved: a failure here is logged and never undoes it.
+    /// later email). When the guest cancelled, the email says so (it is not "cancelled by the host") and the host gets one too,
+    /// with the refund and what stays with them (DB-08a). The cancellation is already saved: a failure here is logged and never
+    /// undoes it.
     /// </summary>
-    private async Task NotifyGuestAsync(Guid bookingId, IReadOnlyList<PaymentRefund> refunds, CancellationToken cancellationToken)
+    private async Task NotifyAsync(
+        Guid bookingId,
+        IReadOnlyList<PaymentRefund> refunds,
+        BookingCancellationInitiator initiator,
+        decimal retainedAmount,
+        CancellationToken cancellationToken)
     {
         var refunded = 0m;
         var started = 0m;
@@ -169,7 +184,10 @@ public sealed class BookingCancellationService(
             logger.LogError(ex, "Refund notifications of cancelled booking {BookingId} could not be claimed", bookingId);
         }
 
-        await notifier.BookingCancelledByHostAsync(bookingId, refunded, started, cancellationToken);
+        if (initiator == BookingCancellationInitiator.Guest)
+            await notifier.BookingCancelledByGuestAsync(bookingId, refunded, started, retainedAmount, cancellationToken);
+        else
+            await notifier.BookingCancelledByHostAsync(bookingId, refunded, started, cancellationToken);
     }
 
     private static bool IsCancellable(BookingStatus status) =>

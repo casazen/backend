@@ -417,6 +417,17 @@ public class AppDbContext(
                 $"\"WeekendSurchargePercent\" BETWEEN 0 AND {(int)PropertyStayRules.MaxWeekendSurchargePercent}");
         });
 
+        // SR-07a: the host's switch «Mostra la casa sul sito» starts true — in the migration, so every row that existed before the
+        // column keeps being on the site — and it is one more condition of PublicListing.IsPublished. The default is for the writers
+        // that do not know the column (the old release during a deploy, a raw INSERT); EF itself always writes the value of the
+        // entity: left to generate it, EF would take an explicit false for «not set» and the insert would write the default (true)
+        // in its place, putting back on the site a property its host hid.
+        // The other fields of the wizard (type, beds, area, headline, times, rules, fee) are nullable: null = never said.
+        modelBuilder.Entity<Property>()
+            .Property(p => p.PublishedOnSite)
+            .HasDefaultValue(true)
+            .ValueGeneratedNever();
+
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
 
@@ -757,6 +768,11 @@ public class AppDbContext(
 
         modelBuilder.Entity<Org>()
             .HasIndex(o => o.StripeCustomerId);
+
+        // The language of the account (AM-08b-b): the orgs that exist when the column is added get Italian, the language they have always had.
+        modelBuilder.Entity<Org>()
+            .Property(o => o.DefaultLanguage)
+            .HasDefaultValue(Casazen.Core.OrgTeam.OrgInvitationRules.DefaultLanguage);
 
         // Previous public slugs of an org (PL-04, A1-23): shared links keep resolving and the value stays reserved.
         modelBuilder.Entity<OrgSlugAlias>()

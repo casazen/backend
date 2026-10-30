@@ -412,6 +412,55 @@ public class OrgActivityEventsTests
     }
 
     [Fact]
+    public async Task UpdateSettings_CompanyData_WritesOneLine_ThatSaysItChangedAndNotWhatItBecame()
+    {
+        var (org, _) = await _kit.SeedOwnerOrgAsync();
+
+        // The legal name, the registered office, the phone and the language together (AM-08b-b): one line, and none of them in it.
+        await using (var db = _kit.NewDb())
+        {
+            var stored = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == org.Id);
+            await Orgs(db).UpdateSettingsAsync(
+                org.Id,
+                stored.Name,
+                stored.Slug,
+                stored.ContactEmail,
+                stored.ContactEmailPublic,
+                OwnerId,
+                legalName: FieldUpdate<string>.Set("Mare Segreto S.r.l."),
+                registeredOffice: FieldUpdate<string>.Set("Via Segreta 1, Bari"),
+                contactPhone: FieldUpdate<string>.Set("+39 333 123 4567"),
+                defaultLanguage: FieldUpdate<string>.Set("EN"));
+        }
+
+        var line = Assert.Single(await LinesAsync(org.Id));
+        Assert.Equal(
+            (OrgActivityType.OrgSettingsChanged, OwnerId, org.Id.ToString(), OrgActivitySubjectType.Org, "{}"),
+            (line.Type, line.ActorUserId, line.SubjectId, line.SubjectType, line.DetailsJson));
+        var everything = JsonSerializer.Serialize(line);
+        foreach (var value in new[] { "Segret", "Bari", "3331234567" })
+            Assert.DoesNotContain(value, everything, StringComparison.OrdinalIgnoreCase);
+
+        // The same values again, or fields that are not sent: nothing for the log.
+        await using (var db = _kit.NewDb())
+        {
+            var stored = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == org.Id);
+            Assert.Equal(("+393331234567", "en"), (stored.ContactPhone, stored.DefaultLanguage));
+            await Orgs(db).UpdateSettingsAsync(
+                org.Id,
+                stored.Name,
+                stored.Slug,
+                stored.ContactEmail,
+                stored.ContactEmailPublic,
+                OwnerId,
+                legalName: FieldUpdate<string>.Set("  Mare   Segreto S.r.l. "),
+                contactPhone: FieldUpdate<string>.Set("+393331234567"));
+        }
+
+        Assert.Single(await LinesAsync(org.Id));
+    }
+
+    [Fact]
     public async Task UpdateSettings_ASlugAnotherOrgUses_IsRefusedAndWritesNoLine()
     {
         var (org, _) = await _kit.SeedOwnerOrgAsync("auth0|owner-a");
