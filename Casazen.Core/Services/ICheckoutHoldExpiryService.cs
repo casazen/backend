@@ -26,6 +26,23 @@ public interface ICheckoutHoldExpiryService
         DateTime checkIn,
         DateTime checkOut,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Most bookings handled by one <see cref="CloseOpenPaymentsOfCancelledBookingsAsync"/> run; the rest waits for the next one.</summary>
+    const int CancelledBookingsBatchSize = 50;
+
+    /// <summary>
+    /// The payments a cancelled booking left open (the recurring <c>checkout-hold-expiry</c> job, after the expiry). A payment of a
+    /// <see cref="Entities.BookingStatus.Cancelled"/> booking is never money to collect, yet cancellations that did not carry their
+    /// payments (the cleanup before the BK-21 job changed only the booking, and any path added since) left them
+    /// <see cref="Entities.PaymentStatus.Pending"/> or <see cref="Entities.PaymentStatus.Failed"/>, listed as "to collect" for ever.
+    /// For each such booking, oldest first and at most <see cref="CancelledBookingsBatchSize"/> per run, under its row lock: the
+    /// intents are released on the connected account they live on, exactly as the expiry does, and then those payments become
+    /// <see cref="Entities.PaymentStatus.Canceled"/>. The booking itself is not touched (not its status, nor when or why it was
+    /// cancelled). When Stripe says the guest has paid or is paying, nothing is cancelled: a PaymentIntent's payment row becomes
+    /// <see cref="Entities.PaymentStatus.Processing"/>, which records the answer and needs a person (no job settles a payment of a
+    /// cancelled booking: what to do with a late payment is the payment webhook's decision). Idempotent: a closed booking leaves the set.
+    /// </summary>
+    Task<CancelledBookingPaymentsRun> CloseOpenPaymentsOfCancelledBookingsAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>Outcome of one expiry run.</summary>
@@ -36,4 +53,14 @@ public interface ICheckoutHoldExpiryService
 public sealed record CheckoutHoldExpiryRun(int Expired, int LeftToWebhook, int Skipped, int Failed)
 {
     public static CheckoutHoldExpiryRun Empty { get; } = new(0, 0, 0, 0);
+}
+
+/// <summary>Outcome of one <see cref="ICheckoutHoldExpiryService.CloseOpenPaymentsOfCancelledBookingsAsync"/> run.</summary>
+/// <param name="Closed">Cancelled bookings whose open payments became <see cref="Entities.PaymentStatus.Canceled"/>.</param>
+/// <param name="InFlight">Cancelled bookings whose guest has paid or is paying on Stripe: not closed, a person has to look.</param>
+/// <param name="Skipped">Bookings taken by a concurrent run, or with nothing open left when locked.</param>
+/// <param name="Failed">Bookings not closed because of an error (Stripe unreachable, unexpected intent state): retried by the next run.</param>
+public sealed record CancelledBookingPaymentsRun(int Closed, int InFlight, int Skipped, int Failed)
+{
+    public static CancelledBookingPaymentsRun Empty { get; } = new(0, 0, 0, 0);
 }
