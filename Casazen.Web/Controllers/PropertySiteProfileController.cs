@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
+using Casazen.Core.DTOs;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
@@ -24,6 +25,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.PropertyRead)]
 public class PropertySiteProfileController(
     IPropertySiteProfileService profiles,
+    IPropertyPhotoAltService photoAlt,
     IPropertyService properties,
     IAuthorizationService hostAuthorization,
     IAdminAccessAuditService adminAccessAuditService,
@@ -88,6 +90,56 @@ public class PropertySiteProfileController(
 
         logger.LogInformation("Site profile of property {PropertyId} of org {OrgId} saved", id, property!.OrgId);
         return Ok(view);
+    }
+
+    /// <summary>
+    /// The photos of the gallery in display order, each with its alternative text and size in pixels (<c>null</c> = the host wrote none / not known).
+    /// </summary>
+    /// <response code="200">The photos.</response>
+    /// <response code="403">The caller may not read this property.</response>
+    /// <response code="404">No property with this id in the caller's org.</response>
+    [HttpGet("photos")]
+    [ProducesResponseType(typeof(IReadOnlyList<PublicPropertyPhotoDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<PublicPropertyPhotoDto>>> GetPhotos(Guid id, CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizeAsync(id, PropertyOperations.Read);
+        if (denied is not null)
+            return denied;
+
+        var photos = await photoAlt.GetAsync(id, cancellationToken);
+        return photos is null ? NotFound() : Ok(photos);
+    }
+
+    /// <summary>
+    /// Saves the alternative text of the photos (Italian always, English if the host wants): the body lists the photos that have one, and the
+    /// gallery photos it does not list lose theirs, so the editor sends them all. The size of a photo is read from the file when it is uploaded
+    /// and is not part of the body. Answers with the gallery as stored.
+    /// </summary>
+    /// <response code="200">The photos as stored.</response>
+    /// <response code="400"><c>validation_error</c>: a text is absurdly long.</response>
+    /// <response code="403">The caller may not change this property.</response>
+    /// <response code="404">No property in the caller's org, or <c>property_photo_not_found</c>: an address that is not in its gallery.</response>
+    /// <response code="422"><c>property_site_profile_italian_required</c> or <c>_text_too_long</c> with <c>field: photos</c>. Nothing is saved.</response>
+    [HttpPut("photos")]
+    [Authorize(Policy = CasazenPolicies.PropertyWrite)]
+    [ProducesResponseType(typeof(IReadOnlyList<PublicPropertyPhotoDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<IReadOnlyList<PublicPropertyPhotoDto>>> PutPhotos(
+        Guid id,
+        [FromBody] PropertyPhotoAltRequest request,
+        CancellationToken cancellationToken)
+    {
+        var (_, denied) = await AuthorizeAsync(id, PropertyOperations.Write, "PropertySiteProfile.PhotoAlt");
+        if (denied is not null)
+            return denied;
+
+        var photos = await photoAlt.SaveAsync(id, request.ToInput(), cancellationToken);
+        return photos is null ? NotFound() : Ok(photos);
     }
 
     /// <summary>

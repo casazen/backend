@@ -669,6 +669,8 @@ public class PropertyService(
             row.EnergyIndex, row.AreaKind, row.ChildrenWelcome, row.CheckInFrom, row.CheckInTo, row.CheckOutBy, row.QuietHoursFrom,
             row.QuietHoursTo, row.SmokingPolicy, row.PetsPolicy, row.PartiesPolicy, row.VideoUrl, row.TourUrl, row.SiteProfileJson,
             row.Amenities)),
+        // DB-11a: the photos with the alternative text the host wrote and the size read at the upload (photoUrls stays).
+        Photos = PropertyPhotoMeta.Of(row.PhotoUrls, row.PhotoAltJson),
     };
 
     /// <summary>
@@ -729,6 +731,7 @@ public class PropertyService(
         VideoUrl = p.VideoUrl,
         TourUrl = p.TourUrl,
         SiteProfileJson = p.SiteProfileJson,
+        PhotoAltJson = p.PhotoAltJson,
     };
 
     private class PublicPropertyRow
@@ -796,5 +799,6 @@ public class PropertyService(
         public string? VideoUrl { get; init; }
         public string? TourUrl { get; init; }
         public string? SiteProfileJson { get; init; }
+        public string? PhotoAltJson { get; init; }
     }
 }

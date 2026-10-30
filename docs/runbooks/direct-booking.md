@@ -1031,8 +1031,16 @@ What is read by the public page, the JSON-LD, the amenity catalog and the filter
   stated them (`false` only when the pets rule says No); nothing else is added, no `aggregateRating`.
 - **Demo.** The showcase property «Villa del Lago» carries a site profile (scenario `property-site-profile`, catalog `2026-10-30.1`), applied through the same rules as the
   host form; no video or tour (nothing of a third party is embedded from a demo).
-- **Not here** (next pieces of DB-11a): the amenity catalog is `GET api/public/amenities` (§ 11.11); the filters of the search on labels and children, floor plans and
-  points of interest, alternative text and size of the photos.
+- **Photos: alternative text and size (third piece).** `GET` / `PUT api/properties/{id}/site-profile/photos` (same permissions as the profile): the gallery in display order, each
+  photo `{ url, alt {it, en}, width, height }`. The `PUT` lists the photos that have an alternative text (Italian always, English if the host wants, 200 characters, same rules as the
+  texts above, `field: photos`) and the gallery photos it does not list **lose theirs**; an address that is not in the gallery is 404 `property_photo_not_found`; the size is not
+  part of the body. The map lives in `Properties.PhotoAltJson` and **follows the gallery under the same lock as the photo service**: an upload reads the size of the
+  file (PNG, JPEG or WebP header, no decoding; a JPEG a phone took on its side gives its width and height swapped, as the browser draws it; unreadable = no size, the upload is
+  never refused for it) and a deleted photo takes its text and size with it. A photo uploaded before this existed has no size. The public detail lists `photos` next to
+  `photoUrls`, which stays. **No resized variants**: nothing in the stack resizes images (no library, no CDN transform), so `srcset` is left to a later decision; the size lets the page
+  reserve the room and load the first photo with priority.
+- **Not here** (next pieces of DB-11a): the amenity catalog is `GET api/public/amenities` (§ 11.11); the filters of the search on labels and children are in § 11.4a; floor plans
+  and points of interest.
 - **Tests.** Unit: `SiteEmbedUrlsTests` (what an embed address can become), `SitePropertyProfileRulesTests` (clean, canonical, within the limits and the
   vocabularies). HTTP: `PropertySiteProfileIntegrationTests` (replace, read back, a mistake saves nothing, another org / a colleague / anonymous / long-term).
   PostgreSQL (CI): `AddPropertySiteProfileMigrationPostgresTests` (existing properties come out empty and published as before; the constraints), `LegacyRowsSchemaTests`.
