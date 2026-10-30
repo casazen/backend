@@ -681,8 +681,16 @@ The payments page of the web app shows the message of the code with **"Riprova"*
 
 | Endpoint | Policy |
 |---|---|
-| `POST /api/connect/account`, `POST /api/connect/onboarding-link` | `RequireOrgBillingAdmin` (`CasazenPolicies.OrgBillingAdmin`, TN-3): a `Staff` collaborator gets 403 |
+| `POST /api/connect/account`, `POST /api/connect/onboarding-link`, `POST /api/connect/dashboard-link` | `RequireOrgBillingAdmin` (`CasazenPolicies.OrgBillingAdmin`, TN-3): a `Staff` collaborator gets 403 |
 | `GET /api/connect/status` | `payment.read` in short-rent |
+
+**«Gestisci su Stripe» (AM-08b-d).** `POST /api/connect/dashboard-link` (no body) answers `{ "url" }`: the single-use login link to the **Express
+Dashboard** of the org's own account (`POST /v1/accounts/{id}/login_links`, the `IStripeConnectGateway.CreateDashboardLoginLinkAsync` of the
+suppliers, SP-14), where the host sees balance, payouts and bank details. It **needs an account that is already linked** (the database says so; Stripe
+is not asked for the status) and never creates one: without an account, or when Stripe refuses the link because the onboarding is not complete, it
+answers **422 `stripe_connect_dashboard_not_ready`** (`StripeConnectDashboardNotReady`, Italian and English); a rate limit, an outage or a key problem
+are the 503 / 502 of the onboarding. The URL is a credential: not logged, not stored. The key of the platform needs what SP-14 already needs (the
+login links, section «Connect onboarding of the suppliers»).
 
 The Account Link pages are built by the API from `App__PublicSiteBaseUrl` (decision D3, same helper `PublicSiteLinks`
 as the billing return pages of PL-11): `return_url` =
