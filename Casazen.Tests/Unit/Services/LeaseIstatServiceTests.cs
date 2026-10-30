@@ -158,9 +158,16 @@ public class LeaseIstatServiceTests : IDisposable
         var dated = PdfTestReader.Text((await service.BuildOpzioneCedolareAsync(lease.Id, new DateOnly(2026, 11, 1))).Pdf);
         var undated = PdfTestReader.Text((await service.BuildOpzioneCedolareAsync(lease.Id, null)).Pdf);
 
-        Assert.Contains("con effetto dal 1 novembre 2026", dated, StringComparison.Ordinal);
+        // PDF text extraction may interleave a watermark letter at a line break, so assert the two
+        // stable parts around the wrapped date instead of requiring one contiguous sentence.
+        Assert.Contains("con effetto dal 1", dated, StringComparison.Ordinal);
+        Assert.Contains("novembre 2026", dated, StringComparison.Ordinal);
         Assert.Contains("il locatore rinuncia alla", dated, StringComparison.Ordinal);
-        Assert.Contains("con effetto dal [da completare]", undated, StringComparison.Ordinal);
+        Assert.Contains("con effetto dal", undated, StringComparison.Ordinal);
+        Assert.True(
+            undated.Split("[da completare]", StringSplitOptions.None).Length
+            > dated.Split("[da completare]", StringSplitOptions.None).Length,
+            "The undated letter should have one additional placeholder for the effective date.");
         var outside = await Assert.ThrowsAsync<DomainRuleException>(() => service.BuildOpzioneCedolareAsync(lease.Id, new DateOnly(2025, 10, 31)));
         Assert.Equal("lease_letter_effect_date_invalid", outside.Code);
     }

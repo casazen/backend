@@ -167,11 +167,12 @@ public sealed class ShowcaseBookingNotifier(
     /// The address is checked and the request on measure exists: the receipt to the customer, and the new request to the supplier (e-mail and
     /// push, comune and "Nome C." only — never a word of the message). Never throws.
     /// </summary>
-    public void QueueInquiryReceived(
+    public async Task QueueInquiryReceivedAsync(
         SupplierProfile supplier,
         ServiceRequest request,
         ServiceCustomer customer,
-        DateTime respondByUtc)
+        DateTime respondByUtc,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -187,6 +188,15 @@ public sealed class ShowcaseBookingNotifier(
                     respondByUtc,
                     publicSiteLinks.SupplierBookingRequest(SlugOf(supplier), request.PublicCode)),
                 EmailTemplates.Names.SupplierInquiryReceipt);
+
+            if (!await SupplierNotificationPreferences.AllowsAsync(
+                    db,
+                    request.SupplierOrgId,
+                    SupplierNotificationKind.NewRequest,
+                    cancellationToken))
+            {
+                return;
+            }
 
             var italian = EmailTemplates.DefaultCulture;
             var comune = request.LocationCity ?? string.Empty;
