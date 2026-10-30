@@ -61,6 +61,9 @@ public static class RateLimitingServiceCollectionExtensions
         // The global search of the palette (UI-13a): per signed-in person as well, since the palette asks at every pause in typing.
         new(RateLimitPolicies.GlobalSearch, 60, OneMinute, PartitionByUser: true),
 
+        // The slots of a supplier's service read by the host (SR-08a): the planner runs for each read, per signed-in person as well.
+        new(RateLimitPolicies.HostSupplierSlots, 60, OneMinute, PartitionByUser: true),
+
         // The host answering a guest (DB-14a): per signed-in person as well, since the answer is an email to somebody else.
         new(RateLimitPolicies.HostMessageSend, 60, TimeSpan.FromMinutes(10), PartitionByUser: true),
 
