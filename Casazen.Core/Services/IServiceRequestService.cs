@@ -69,6 +69,22 @@ public record CompleteServiceRequestCommand(
 public record ProposeServiceRequestTimeCommand(DateTime StartUtc, DateTime? EndUtc = null, string? Message = null);
 
 /// <summary>
+/// A quote for a new request, sent by the supplier (SP-04b): the lines (the total is what they add up to), an optional note, and optionally
+/// another time instead of the one the request already has.
+/// </summary>
+/// <param name="Lines">From one to twenty lines (<see cref="ServiceRequestQuoteRules.Normalize"/>).</param>
+/// <param name="ScheduledStartUtc">
+/// Another time for the work, offered with the quote: it replaces the time of the request only if the customer accepts. Without it the quote
+/// leans on the time the request already has.
+/// </param>
+/// <param name="ScheduledEndUtc">The end of that other time; when left out, the start plus the duration of the request's service.</param>
+public record SendServiceRequestQuoteCommand(
+    IReadOnlyList<ServiceRequestQuoteLine> Lines,
+    string? Note = null,
+    DateTime? ScheduledStartUtc = null,
+    DateTime? ScheduledEndUtc = null);
+
+/// <summary>
 /// The outcome for one request of a batch (<see cref="IServiceRequestService.AcceptManyAsync"/>): accepted, or the code and
 /// the message of the error that stopped it (the other requests of the batch are not affected).
 /// </summary>
@@ -176,7 +192,22 @@ public static class ServiceRequestErrorCodes
     /// <summary>422 (SP-04): the host answers a proposal that does not exist (never made, or already answered).</summary>
     public const string NoProposal = "service_request_no_proposal";
 
-    /// <summary>422 (SP-04): a file of the work photos is not an accepted image.</summary>
+    /// <summary>
+    /// 422 (SP-04b): the quote is not valid: not from one to twenty lines, a line without a description or with an amount outside the bounds
+    /// of a request, or a total above them.
+    /// </summary>
+    public const string QuoteInvalid = "service_request_quote_invalid";
+
+    /// <summary>422 (SP-04b): the request has no quote waiting to be answered or withdrawn (never sent, withdrawn, already answered, or the request moved on).</summary>
+    public const string NoQuote = "service_request_no_quote";
+
+    /// <summary>
+    /// 409 (SP-04b): the supplier replaced or withdrew the quote after the customer read it, so the answer is not about the quote that waits:
+    /// nothing was changed, and the customer reads the quote again.
+    /// </summary>
+    public const string QuoteChanged = "service_request_quote_changed";
+
+    /// <summary>422 (SP-04b): a file of the work photos is not an accepted image.</summary>
     public const string PhotoInvalid = "service_request_photo_invalid";
 
     /// <summary>422 (SP-04): the request already has the most photos it can keep.</summary>
@@ -217,6 +248,10 @@ public static class ServiceRequestErrorCodes
     public const string FinalAmountInvalidMessageKey = "ServiceRequestFinalAmountInvalid";
     public const string RemindTooSoonMessageKey = "ServiceRequestRemindTooSoon";
     public const string NoProposalMessageKey = "ServiceRequestNoProposal";
+    public const string CannotQuoteMessageKey = "ServiceRequestCannotQuote";
+    public const string QuoteInvalidMessageKey = "ServiceRequestQuoteInvalid";
+    public const string NoQuoteMessageKey = "ServiceRequestNoQuote";
+    public const string QuoteChangedMessageKey = "ServiceRequestQuoteChanged";
     public const string PhotoInvalidMessageKey = "ServiceRequestPhotoInvalid";
     public const string PhotoLimitReachedMessageKey = "ServiceRequestPhotoLimit";
     public const string PhotoNotFoundMessageKey = "ServiceRequestPhotoNotFound";
@@ -255,6 +290,10 @@ public static class ServiceRequestErrorCodes
         FinalAmountInvalidMessageKey,
         RemindTooSoonMessageKey,
         NoProposalMessageKey,
+        CannotQuoteMessageKey,
+        QuoteInvalidMessageKey,
+        NoQuoteMessageKey,
+        QuoteChangedMessageKey,
         PhotoInvalidMessageKey,
         PhotoLimitReachedMessageKey,
         PhotoNotFoundMessageKey,
@@ -355,6 +394,36 @@ public interface IServiceRequestService
 
     /// <summary>The host turns the proposal down (SP-04): the request stays <c>Richiesto</c> as it was; the supplier is told.</summary>
     Task<ServiceRequest> RejectProposalAsync(Guid id, Guid hostOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The supplier answers a new request with a quote (SP-04b): the request stays <c>Richiesto</c> with the quote waiting for the customer
+    /// (the host, or the private customer of a showcase request), who is told. A new quote replaces the one that waited, and takes the place
+    /// of a proposed time (one offer at a time). Another time offered with the quote is checked with the planner under the supplier's calendar
+    /// lock, as the time of a proposal is, and does not hold the slot. A showcase customer has
+    /// <c>Suppliers:Showcase:ProposalResponseMinutes</c> to answer; a host has no deadline. 422 <see cref="ServiceRequestErrorCodes.QuoteInvalid"/>.
+    /// </summary>
+    Task<ServiceRequest> SendQuoteAsync(
+        Guid id,
+        Guid supplierOrgId,
+        string userId,
+        SendServiceRequestQuoteCommand command,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The supplier takes its quote back (SP-04b): the request is "to answer" again. 422 <see cref="ServiceRequestErrorCodes.NoQuote"/> when none waits.
+    /// </summary>
+    Task<ServiceRequest> WithdrawQuoteAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The host accepts the quote that waits (SP-04b): the request is taken on the supplier's behalf (<c>Richiesto → PresoInCarico</c>) at the
+    /// time of the quote, with its total as the agreed price and its lines as the price lines (kind <c>quote</c>); the supplier is told. The
+    /// time is checked again under the supplier's calendar lock: if it is gone, 409 and the quote stays. <paramref name="quoteSentAt"/> is
+    /// the version the host read: another one is 409 <see cref="ServiceRequestErrorCodes.QuoteChanged"/>. Another org's request is not found.
+    /// </summary>
+    Task<ServiceRequest> AcceptQuoteAsync(Guid id, Guid hostOrgId, DateTime quoteSentAt, CancellationToken cancellationToken = default);
+
+    /// <summary>The host turns the quote down (SP-04b): it goes, the request stays <c>Richiesto</c> and the supplier starts again; the supplier is told.</summary>
+    Task<ServiceRequest> RejectQuoteAsync(Guid id, Guid hostOrgId, DateTime quoteSentAt, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Marks a completed request of <paramref name="hostOrgId"/> as paid; another org's request is not found. A request paid

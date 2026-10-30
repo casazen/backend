@@ -49,10 +49,32 @@ public static class LeaseLetterPlaceholders
     /// <summary>The need that justified a transitory lease, as the landlord wrote it in the contract.</summary>
     public const string NeedReason = "esigenza_motivo";
 
+    /// <summary>The monthly rent the lease has today, in euros: «650,00».</summary>
+    public const string CurrentRent = "canone_attuale";
+
+    /// <summary>The variation of the FOI index the landlord typed, in percent: «3,2».</summary>
+    public const string FoiPercent = "variazione_foi";
+
+    /// <summary>The share of the variation the contract recognizes, in percent: «75».</summary>
+    public const string SharePercent = "quota_istat";
+
+    /// <summary>What the update makes in percent of the rent: «2,4».</summary>
+    public const string AppliedPercent = "aumento_percentuale";
+
+    /// <summary>The increase of the monthly rent, in euros: «15,60».</summary>
+    public const string IncreaseAmount = "aumento_importo";
+
+    /// <summary>The monthly rent after the update, in euros: «665,60».</summary>
+    public const string NewRent = "nuovo_canone";
+
+    /// <summary>The day an update or an option takes effect from.</summary>
+    public const string EffectiveOn = "data_efficacia";
+
     public static readonly IReadOnlyList<string> All =
     [
         Landlords, LandlordsDetail, Tenants, TenantsDetail, PropertyAddress, ContractType, StartDate, PeriodEnd,
         ReceivedOn, EndsOn, NoticeMonths, NewPeriodStart, NewPeriodEnd, NeedReason,
+        CurrentRent, FoiPercent, SharePercent, AppliedPercent, IncreaseAmount, NewRent, EffectiveOn,
     ];
 
     public static bool IsKnown(string name) => All.Contains(name, StringComparer.Ordinal);
@@ -101,6 +123,8 @@ public static class LeaseLetterStructure
         LeaseLetterKind.PresaAttoRecesso => "2026-11-bozza-v1",
         LeaseLetterKind.Rinnovo => "2026-11-bozza-v1",
         LeaseLetterKind.ConfermaEsigenza => "2026-11-bozza-v1",
+        LeaseLetterKind.AggiornamentoIstat => "2026-11-bozza-v1",
+        LeaseLetterKind.OpzioneCedolare => "2026-11-bozza-v1",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown letter"),
     };
 
@@ -160,6 +184,34 @@ public static class LeaseLetterStructure
         new("chiusura"),
     ];
 
+    private static readonly IReadOnlyList<LeaseLetterSectionDefinition> AggiornamentoIstatSections =
+    [
+        new("mittente", RequiredPlaceholders: [LeaseLetterPlaceholders.LandlordsDetail]),
+        new("destinatario", RequiredPlaceholders: [LeaseLetterPlaceholders.TenantsDetail]),
+        new("oggetto", RequiredPlaceholders: [LeaseLetterPlaceholders.PropertyAddress]),
+        new("richiesta", RequiredPlaceholders: [LeaseLetterPlaceholders.CurrentRent, LeaseLetterPlaceholders.EffectiveOn]),
+        new(
+            "calcolo",
+            RequiredPlaceholders:
+            [
+                LeaseLetterPlaceholders.FoiPercent, LeaseLetterPlaceholders.SharePercent, LeaseLetterPlaceholders.AppliedPercent,
+                LeaseLetterPlaceholders.IncreaseAmount, LeaseLetterPlaceholders.NewRent,
+            ]),
+        new("invio"),
+        new("chiusura"),
+    ];
+
+    private static readonly IReadOnlyList<LeaseLetterSectionDefinition> OpzioneCedolareSections =
+    [
+        new("mittente", RequiredPlaceholders: [LeaseLetterPlaceholders.LandlordsDetail]),
+        new("destinatario", RequiredPlaceholders: [LeaseLetterPlaceholders.TenantsDetail]),
+        new("oggetto", RequiredPlaceholders: [LeaseLetterPlaceholders.PropertyAddress]),
+        new("opzione", RequiredPlaceholders: [LeaseLetterPlaceholders.EffectiveOn]),
+        new("rinuncia"),
+        new("invio"),
+        new("chiusura"),
+    ];
+
     /// <summary>The sections the file of <paramref name="kind"/> must contain, in the order they are printed.</summary>
     public static IReadOnlyList<LeaseLetterSectionDefinition> Sections(LeaseLetterKind kind) => kind switch
     {
@@ -167,6 +219,8 @@ public static class LeaseLetterStructure
         LeaseLetterKind.PresaAttoRecesso => PresaAttoRecessoSections,
         LeaseLetterKind.Rinnovo => RinnovoSections,
         LeaseLetterKind.ConfermaEsigenza => ConfermaEsigenzaSections,
+        LeaseLetterKind.AggiornamentoIstat => AggiornamentoIstatSections,
+        LeaseLetterKind.OpzioneCedolare => OpzioneCedolareSections,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown letter"),
     };
 }
