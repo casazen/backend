@@ -39,8 +39,8 @@ public partial class SupplierServiceRequestReader
             .Where(r => r.SupplierOrgId == supplierOrgId)
             .GroupBy(_ => 1)
             .Select(g => new TabCounts(
-                g.Count(r => r.Status == ServiceRequestStatus.Richiesto && r.ProposedStartUtc == null),
-                g.Count(r => r.Status == ServiceRequestStatus.Richiesto && r.ProposedStartUtc != null),
+                g.Count(r => r.Status == ServiceRequestStatus.Richiesto && r.ProposedStartUtc == null && r.QuoteSentAt == null),
+                g.Count(r => r.Status == ServiceRequestStatus.Richiesto && (r.ProposedStartUtc != null || r.QuoteSentAt != null)),
                 g.Count(r => r.Status == ServiceRequestStatus.PresoInCarico || r.Status == ServiceRequestStatus.InCorso),
                 g.Count(r => r.Status == ServiceRequestStatus.Completato),
                 g.Count(r => r.Status == ServiceRequestStatus.Pagato

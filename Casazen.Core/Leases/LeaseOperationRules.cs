@@ -28,6 +28,18 @@ public enum LeaseLetterKind
     /// prepares it when the need is his.
     /// </summary>
     ConfermaEsigenza = 3,
+
+    /// <summary>
+    /// The landlord's request to the tenant to update the rent by the variation of the FOI index (LR-OPS-1c). The numbers are worked out by
+    /// <see cref="LeaseIstatRules"/>; the contract has to give the faculty, and the letter is never prepared under the cedolare secca.
+    /// </summary>
+    AggiornamentoIstat = 4,
+
+    /// <summary>
+    /// The communication to the tenant, by registered mail, that the landlord has chosen the cedolare secca, with the renunciation of every
+    /// update of the rent for as long as the option lasts (D.Lgs. 23/2011, art. 3).
+    /// </summary>
+    OpzioneCedolare = 5,
 }
 
 /// <summary>How the person sent a letter (<c>Segna come inviata</c>): written in the history of the lease with the day, nothing else.</summary>
@@ -86,6 +98,8 @@ public static class LeaseLetterKinds
         LeaseLetterKind.PresaAttoRecesso => "presa-atto-recesso",
         LeaseLetterKind.Rinnovo => "rinnovo",
         LeaseLetterKind.ConfermaEsigenza => "conferma-esigenza",
+        LeaseLetterKind.AggiornamentoIstat => "aggiornamento-istat",
+        LeaseLetterKind.OpzioneCedolare => "opzione-cedolare",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown letter"),
     };
 
@@ -134,6 +148,12 @@ public sealed record LeaseRenewalFacts(bool Available, DateOnly OpensOn, DateOnl
 /// <param name="Holder">Whose need it is, as the contract states it; <c>null</c> when the lease does not say.</param>
 /// <param name="ConfirmBy">The day before which the confirmation has to be sent: the last day of the lease. The law's lead time, if it gives one, is to be confirmed (LR-D29).</param>
 public sealed record LeaseTransitoryConfirmationFacts(bool Applies, bool Available, PartyRole? Holder, DateOnly ConfirmBy);
+
+/// <summary>What the landlord can do about the communication of the cedolare secca to the tenant today (<see cref="LeaseOperationRules.CedolareNotice"/>).</summary>
+/// <param name="Available">The lease is in force, not ended, under the cedolare secca and its period is not over: the communication can be prepared.</param>
+/// <param name="MinEffectiveOn">The first day the option can be said to apply from (the start of the lease).</param>
+/// <param name="MaxEffectiveOn">The last day (the end of the period the lease is in).</param>
+public sealed record LeaseCedolareNoticeFacts(bool Available, DateOnly MinEffectiveOn, DateOnly MaxEffectiveOn);
 
 /// <summary>
 /// The rules of the operations of a lease in force (LR-OPS-1), pure: when a notice is on time, what a withdrawal ends the lease on, which
@@ -219,6 +239,24 @@ public static class LeaseOperationRules
                       && periodEnd >= today;
 
         return new LeaseTransitoryConfirmationFacts(applies, applies && lease.TransitoryParty == PartyRole.Landlord, lease.TransitoryParty, periodEnd);
+    }
+
+    /// <summary>
+    /// Whether the communication of the cedolare secca to the tenant (with the renunciation of the updates of the rent) can be prepared: a lease
+    /// in force that is under the cedolare secca. The contracts made in CasaZen already say it in a clause; the letter is for the others and for
+    /// an option chosen later.
+    /// </summary>
+    public static LeaseCedolareNoticeFacts CedolareNotice(LeaseContract lease, DateOnly today)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+
+        var start = RomeCalendar.DateInRome(lease.StartDate);
+        var periodEnd = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
+        var available = LeaseRenewal.IsInForce(lease.Status)
+                        && lease.TerminatedOn is null
+                        && LeaseIstatRules.UpdatesWaived(lease)
+                        && periodEnd >= today;
+        return new LeaseCedolareNoticeFacts(available, start, periodEnd);
     }
 
     /// <summary>The notice, in months, of a withdrawal: the one of the rules for serious reasons, the one typed (or the rules') for the contractual faculty.</summary>

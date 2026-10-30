@@ -61,27 +61,50 @@ public sealed class ServiceRequestNotifier(
             request.ScheduledStartUtc,
             request.EstimatedAmountCents);
 
-    /// <summary>Queues the email rendered by <see cref="RenderCreatedEmail"/> and the push of the new request.</summary>
-    public void QueueCreated(ServiceRequest request, string supplierEmail, EmailContent email, string comune)
+    /// <summary>
+    /// Queues the email rendered by <see cref="RenderCreatedEmail"/> and the push of the new request, unless the supplier turned off
+    /// «Nuove richieste» (SP-16d, <see cref="SupplierNotificationKind.NewRequest"/>). The request is already saved: a failure is logged,
+    /// never turned into an error for the host.
+    /// </summary>
+    public async Task QueueCreatedAsync(
+        ServiceRequest request,
+        string supplierEmail,
+        EmailContent email,
+        string comune,
+        CancellationToken cancellationToken)
     {
-        emailQueue.Enqueue(supplierEmail, email, EmailTemplates.Names.ServiceRequestCreated);
-        QueueSupplierPush(
-            request,
-            PushDeliveryKeys.ServiceRequestCreated(request.Id),
-            PushTypes.ServiceRequestCreated,
-            EmailTemplates.ServiceRequestCreatedPush(EmailTemplates.DefaultCulture, request.Category, comune));
+        try
+        {
+            if (!await SupplierNotificationPreferences.AllowsAsync(db, request.SupplierOrgId, SupplierNotificationKind.NewRequest, cancellationToken))
+                return;
+
+            emailQueue.Enqueue(supplierEmail, email, EmailTemplates.Names.ServiceRequestCreated);
+            QueueSupplierPush(
+                request,
+                PushDeliveryKeys.ServiceRequestCreated(request.Id),
+                PushTypes.ServiceRequestCreated,
+                EmailTemplates.ServiceRequestCreatedPush(EmailTemplates.DefaultCulture, request.Category, comune));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Supplier notification for new service request {Id} could not be queued", request.Id);
+        }
     }
 
     /// <summary>
     /// A new request that was accepted automatically for a regular host (SP-04d): email and push to the supplier, <b>instead of</b> the
-    /// ones of a new request (<see cref="QueueCreated"/>), since there is nothing left to answer. Like the other notifications of
+    /// ones of a new request (<see cref="QueueCreatedAsync"/>), since there is nothing left to answer. Like the other notifications of
     /// the supplier it names the comune, the time and the amount, never the property or the host; the address and the host's contact
-    /// are in the console, as after any take. Called with the request as it is stored (with its property), after the save.
+    /// are in the console, as after any take. Called with the request as it is stored (with its property), after the save. It is the notice
+    /// of a new request, so it follows the same switch (SP-16d, «Nuove richieste»).
     /// </summary>
     public async Task NotifySupplierAutoAcceptedAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         try
         {
+            if (!await SupplierNotificationPreferences.AllowsAsync(db, request.SupplierOrgId, SupplierNotificationKind.NewRequest, cancellationToken))
+                return;
+
             var supplier = await FindSupplierAsync(request, cancellationToken);
             var comune = ComuneOf(request);
             if (supplier is not null)
@@ -227,6 +250,99 @@ public sealed class ServiceRequestNotifier(
         }
     }
 
+    // ─── The quote (SP-04b) ──────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The supplier sent a quote: email and push to the host (the email links to the page of the stay when the request has one), or, for
+    /// a showcase request, the email to its customer. The request is the one just saved, with the quote on it. Never throws.
+    /// </summary>
+    public async Task NotifyQuoteSentAsync(ServiceRequest request, CancellationToken cancellationToken)
+    {
+        if (ServiceRequestQuoteRules.PendingOf(request) is not { } quote)
+            return;
+
+        if (request.RentalContext == ServiceRequestRentalContext.Showcase)
+        {
+            await showcase.NotifyCustomerOfQuoteAsync(request, quote, cancellationToken);
+            return;
+        }
+
+        try
+        {
+            var italian = EmailTemplates.DefaultCulture;
+            var supplier = await FindSupplierAsync(request, cancellationToken);
+            var hostEmail = await db.Orgs
+                .AsNoTracking()
+                .Where(o => o.Id == request.OrgId)
+                .Select(o => o.ContactEmail)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            var offeredTime = quote is { ScheduledStartUtc: not null, ScheduledEndUtc: not null };
+            var email = EmailTemplates.ServiceRequestQuoteReceived(
+                italian,
+                customerName: null,
+                supplier?.LegalName ?? string.Empty,
+                request.ServiceNameSnapshot ?? EmailTemplates.ServiceCategoryLabel(italian, request.Category),
+                quote.ScheduledStartUtc ?? request.ScheduledStartUtc ?? request.CreatedAt,
+                offeredTime ? quote.ScheduledEndUtc : null,
+                quote.Lines,
+                quote.TotalCents,
+                quote.Note,
+                answerByUtc: null,
+                request.BookingId is { } bookingId ? publicSiteLinks.HostBooking(bookingId) : null);
+            emailQueue.Enqueue(hostEmail, email, EmailTemplates.Names.ServiceRequestQuoteReceived);
+
+            var push = EmailTemplates.ServiceRequestQuoteSentPush(italian, request.Category, PropertyNameOf(request));
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.ServiceRequestQuote(request.Id, quote.SentAt, "sent"),
+                PushAudience.PropertyHosts(request.PropertyId ?? throw new InvalidOperationException("A host's request has a property")),
+                new PushNotificationPayload(
+                    push.Title, push.Body, PushTypes.ServiceRequestQuoteSent, request.BookingId, HostRoute(request), request.Id));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Notification of the quote sent for service request {Id} could not be queued", request.Id);
+        }
+    }
+
+    /// <summary>
+    /// The host accepted or turned down the quote (SP-04b): email and push to the supplier. <paramref name="quote"/> is the quote that was
+    /// answered (the request does not keep it anymore); an accepted one names the time the request has now.
+    /// </summary>
+    public async Task NotifyQuoteAnsweredAsync(ServiceRequest request, bool accepted, ServiceRequestQuote quote, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var italian = EmailTemplates.DefaultCulture;
+            var supplier = await FindSupplierAsync(request, cancellationToken);
+            var comune = ComuneOf(request);
+            if (supplier is not null)
+            {
+                var email = EmailTemplates.ServiceRequestQuoteAnswered(
+                    italian,
+                    supplier.LegalName,
+                    request.ServiceNameSnapshot ?? EmailTemplates.ServiceCategoryLabel(italian, request.Category),
+                    comune,
+                    customerShortName: string.Empty,
+                    accepted,
+                    quote.TotalCents,
+                    accepted ? request.ScheduledStartUtc : null,
+                    publicSiteLinks.SupplierInbox());
+                emailQueue.Enqueue(supplier.Email, email, EmailTemplates.Names.ServiceRequestQuoteAnswered);
+            }
+
+            QueueSupplierPush(
+                request,
+                PushDeliveryKeys.ServiceRequestQuote(request.Id, quote.SentAt, accepted ? "accepted" : "rejected"),
+                accepted ? PushTypes.ServiceRequestQuoteAccepted : PushTypes.ServiceRequestQuoteRejected,
+                EmailTemplates.ServiceRequestQuoteAnsweredPush(italian, request.Category, comune, accepted));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Answer to the quote of service request {Id} could not be queued", request.Id);
+        }
+    }
+
     // ─── What the host did: the supplier ─────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -245,6 +361,15 @@ public sealed class ServiceRequestNotifier(
             && request.CancellationReason == ServiceRequestCancellationReasons.ProposalNotAnswered)
         {
             await showcase.NotifySupplierOfLapsedProposalAsync(request, cancellationToken);
+            return;
+        }
+
+        // The same for a quote the customer did not answer (SP-04b): the supplier answered, and it is the customer who did not.
+        if (request.RentalContext == ServiceRequestRentalContext.Showcase
+            && cancelledBy == ServiceRequestActorParty.System
+            && request.CancellationReason == ServiceRequestCancellationReasons.QuoteNotAnswered)
+        {
+            await showcase.NotifySupplierOfLapsedQuoteAsync(request, cancellationToken);
             return;
         }
 
@@ -303,6 +428,14 @@ public sealed class ServiceRequestNotifier(
         DateTime proposedAt,
         CancellationToken cancellationToken) =>
         showcase.NotifyProposalAnsweredByCustomerAsync(request, accepted, proposedAt, cancellationToken);
+
+    /// <summary>The customer accepted or turned down the quote (SP-04b): the supplier is told (and the customer, on acceptance).</summary>
+    public Task NotifyShowcaseQuoteAnsweredAsync(
+        ServiceRequest request,
+        bool accepted,
+        ServiceRequestQuote quote,
+        CancellationToken cancellationToken) =>
+        showcase.NotifyQuoteAnsweredByCustomerAsync(request, accepted, quote, cancellationToken);
 
     /// <summary>The host reminds the supplier to answer (SP-04): email and push. One key per reminder, so a retry sends nothing twice.</summary>
     public async Task NotifyReminderAsync(ServiceRequest request, CancellationToken cancellationToken)
@@ -368,12 +501,16 @@ public sealed class ServiceRequestNotifier(
 
     /// <summary>
     /// Email and push to the supplier after the host marked a request as paid (SU-09). The supplier is notified whatever its
-    /// status: a suspended supplier is still owed what it completed.
+    /// status: a suspended supplier is still owed what it completed. It is the notice «Pagamenti ricevuti»
+    /// (<see cref="SupplierNotificationKind.PaymentReceived"/>, SP-16d): a supplier that turned it off is not sent it.
     /// </summary>
     public async Task NotifySupplierPaidAsync(ServiceRequest request, CancellationToken cancellationToken)
     {
         try
         {
+            if (!await SupplierNotificationPreferences.AllowsAsync(db, request.SupplierOrgId, SupplierNotificationKind.PaymentReceived, cancellationToken))
+                return;
+
             var supplier = await FindSupplierAsync(request, cancellationToken);
             if (supplier is not null)
             {
@@ -399,6 +536,62 @@ public sealed class ServiceRequestNotifier(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Supplier notification for paid service request {Id} could not be queued", request.Id);
+        }
+    }
+
+    // ─── The day before: the supplier (SP-16d) ───────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The reminder of tomorrow's job to the supplier (SP-16d), for a request of any context: e-mail and push, in Italian, with the service,
+    /// the time and the comune, and a link to the request. <b>Never the address or the contact of the customer</b>: they are in the console,
+    /// behind the take (decision D9), and the arguments of a queued job are no place for them. <c>true</c>: queued. <c>false</c>: it could not
+    /// be queued (no profile, no time, an error). <c>null</c>: not sent, because the supplier turned «Promemoria del giorno prima» off
+    /// (<see cref="SupplierNotificationKind.DayBeforeReminder"/>) or is suspended. Called by the job after it marked the request as reminded,
+    /// so a retry of the job sends nothing twice. The request comes with its property (for the comune).
+    /// </summary>
+    public async Task<bool?> NotifySupplierDayBeforeAsync(ServiceRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (request.ScheduledStartUtc is not { } start)
+                return false;
+
+            if (!await SupplierNotificationPreferences.AllowsAsync(db, request.SupplierOrgId, SupplierNotificationKind.DayBeforeReminder, cancellationToken))
+                return null;
+
+            // SupplierProfile is keyed by the supplier org and not tenant-filtered; scoped by the request's supplier org.
+            var supplier = await db.SupplierProfiles
+                .AsNoTracking()
+                .Where(sp => sp.OrgId == request.SupplierOrgId)
+                .Select(sp => new { sp.Email, sp.LegalName, sp.Status })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (supplier is null)
+                return false;
+
+            // A suspended supplier takes no work: it is not reminded of a job it cannot do.
+            if (supplier.Status != SupplierStatus.Active)
+                return null;
+
+            var italian = EmailTemplates.DefaultCulture;
+            var comune = ComuneOf(request);
+            var serviceName = request.ServiceNameSnapshot ?? EmailTemplates.ServiceCategoryLabel(italian, request.Category);
+            var queued = emailQueue.Enqueue(
+                supplier.Email,
+                EmailTemplates.ServiceRequestDayBefore(
+                    italian, supplier.LegalName, serviceName, comune, start, request.ScheduledEndUtc, publicSiteLinks.SupplierRequest(request.Id)),
+                EmailTemplates.Names.ServiceRequestDayBefore);
+
+            QueueSupplierPush(
+                request,
+                PushDeliveryKeys.ServiceRequestDayBefore(request.Id),
+                PushTypes.ServiceRequestDayBefore,
+                EmailTemplates.ServiceRequestDayBeforePush(italian, serviceName, comune, start));
+            return queued;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Reminder of the day before to the supplier of service request {Id} could not be queued", request.Id);
+            return false;
         }
     }
 

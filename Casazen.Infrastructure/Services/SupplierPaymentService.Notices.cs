@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -58,29 +59,44 @@ public sealed partial class SupplierPaymentService
         }
     }
 
-    /// <summary>The receipt to the supplier: price gross, the commission, the net. The net is before Stripe's own fees and nothing is said about the payout.</summary>
+    /// <summary>
+    /// The receipt to the supplier: price gross, the commission, the net, by e-mail, and a push with the net (SP-16d). The net is before Stripe's
+    /// own fees and nothing is said about the payout. It is the notice «Pagamenti ricevuti»
+    /// (<see cref="SupplierNotificationKind.PaymentReceived"/>): a supplier that turned it off is sent neither. It is not sent for a payment the
+    /// supplier recorded as received outside CasaZen (that path creates no <c>Received</c> notice).
+    /// </summary>
     private async Task SendReceiptAsync(ServiceRequestPayment payment, CancellationToken cancellationToken)
     {
+        if (!await SupplierNotificationPreferences.AllowsAsync(db, payment.SupplierOrgId, SupplierNotificationKind.PaymentReceived, cancellationToken))
+            return;
+
+        var context = await ReadContextAsync(payment, cancellationToken);
         var recipient = await ReadSupplierEmailAsync(payment.SupplierOrgId, cancellationToken);
         if (string.IsNullOrWhiteSpace(recipient))
         {
             logger.LogWarning("Service payment {PaymentId} paid: supplier {SupplierOrgId} has no email, no receipt queued", payment.Id, payment.SupplierOrgId);
-            return;
+        }
+        else
+        {
+            var content = EmailTemplates.ServicePaymentReceived(
+                EmailTemplates.DefaultCulture,
+                context.ServiceName,
+                context.PropertyName,
+                payment.AmountCents,
+                payment.CommissionPercent,
+                payment.ApplicationFeeCents,
+                payment.NetCents,
+                payment.PaidAt ?? Now(),
+                links.SupplierInbox());
+            if (!emailQueue.Enqueue(recipient, content, EmailTemplates.Names.ServicePaymentReceived))
+                logger.LogWarning("The receipt of service payment {PaymentId} was not queued", payment.Id);
         }
 
-        var context = await ReadContextAsync(payment, cancellationToken);
-        var content = EmailTemplates.ServicePaymentReceived(
-            EmailTemplates.DefaultCulture,
-            context.ServiceName,
-            context.PropertyName,
-            payment.AmountCents,
-            payment.CommissionPercent,
-            payment.ApplicationFeeCents,
-            payment.NetCents,
-            payment.PaidAt ?? Now(),
-            links.SupplierInbox());
-        if (!emailQueue.Enqueue(recipient, content, EmailTemplates.Names.ServicePaymentReceived))
-            logger.LogWarning("The receipt of service payment {PaymentId} was not queued", payment.Id);
+        var push = EmailTemplates.ServicePaymentReceivedPush(EmailTemplates.DefaultCulture, context.ServiceName, payment.NetCents);
+        pushNotifications.Enqueue(
+            PushDeliveryKeys.ServicePaymentReceived(payment.Id),
+            PushAudience.SupplierOrg(payment.SupplierOrgId),
+            new PushNotificationPayload(push.Title, push.Body, PushTypes.ServicePaymentReceived, BookingId: null, PushRoutes.Properties, payment.ServiceRequestId));
     }
 
     /// <summary>The alert to every active platform admin: a payment to review, or a dispute to answer. Ids and codes only.</summary>

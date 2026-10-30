@@ -323,6 +323,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPublicAvailabilityService, PublicAvailabilityService>();
         // The calendar of a property on the booking site: availability and price of every night, from the quote's own functions (DB-03b).
         services.AddScoped<IPublicCalendarService, PublicCalendarService>();
+        // The search of a booking site (the houses for a stay, the calendar of the whole site, the places, the houses that look alike) and
+        // the small cache that keeps its answers for a few seconds (DB-07a).
+        services.AddSingleton<PublicReadCache>();
+        services.AddScoped<IPublicSiteSearchService, PublicSiteSearchService>();
         // Host dashboard KPIs per period and iCal feeds widget (PC-16).
         services.AddScoped<IHostDashboardService, HostDashboardService>();
         // The host's day in one read: stays of the day, requests, things to do (SR-03). What the cockpit items lack is a service apart.
@@ -594,6 +598,8 @@ public static class ServiceCollectionExtensions
         // instead, and the supplier's own preview of the slots of a service (no cache, no flag, draft and paused services too).
         services.AddScoped<ISupplierConflictService, SupplierConflictService>();
         services.AddScoped<ISupplierSlotPreviewService, SupplierSlotPreviewService>();
+        // What the host reads of a supplier to ask it for an intervention: its published services and their free slots (SR-08a).
+        services.AddScoped<IHostSupplierCatalogService, HostSupplierCatalogService>();
         // Admin list, suspension and invites of the suppliers (SU-12, A4-29).
         services.AddScoped<ISupplierAdminService, SupplierAdminService>();
         // Invitation of new independent hosts by admins and hosts: limits are configuration (HostInvites), validated at startup.
@@ -679,6 +685,8 @@ public static class ServiceCollectionExtensions
         // The upkeep (expiry of holds and of unanswered showcase requests), the reminders of the day before and the retention of the
         // customers' data: their recurring jobs are registered whatever the flags say.
         services.AddScoped<IServiceRequestExpiryService, ServiceRequestExpiryService>();
+        // The reminder of the day before to the supplier (SP-16d) is the second pass of the same job: the reminders service takes it in.
+        services.AddScoped<SupplierDayBeforeReminders>();
         services.AddScoped<IServiceRequestReminderService, ServiceRequestReminderService>();
         services.AddScoped<IServiceCustomerPrivacyService, ServiceCustomerPrivacyService>();
         // The reads of the payments of a request for the supplier console: the summary of a job, the counters and the figures of the
@@ -732,6 +740,8 @@ public static class ServiceCollectionExtensions
         // Messages between the guest of a direct booking and the host (DB-14a): the thread, its two sides and the two emails
         // that are the consequence of a message (docs/runbooks/guest-messages.md).
         services.AddScoped<IGuestMessageService, GuestMessageService>();
+        // «Scrivi a {host}» of the booking site: the visitor's message as one email to the host, answered from their mailbox (DB-03b).
+        services.AddScoped<IHostContactService, HostContactService>();
         services.AddScoped<NotificationRouter>();
         services.AddScoped<INotificationChannel, EmailNotificationChannel>();
         services.AddScoped<INotificationChannel, DashboardNotificationChannel>();

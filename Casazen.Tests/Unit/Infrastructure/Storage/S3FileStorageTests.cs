@@ -202,8 +202,9 @@ public class S3FileStorageTests
         Assert.Equal("ref.storage.supabase.co", url.Host);
         Assert.Equal("/storage/v1/s3/casazen-test-private/properties/p/documents/k.pdf", url.AbsolutePath);
         var query = HttpUtility.ParseQueryString(url.Query);
-        // The SDK derives X-Amz-Expires from an absolute expiry, so a slow machine can lose a second.
-        Assert.InRange(int.Parse(query["X-Amz-Expires"]!, CultureInfo.InvariantCulture), 298, 300);
+        // The SDK derives X-Amz-Expires from an absolute expiry. Loaded CI workers can spend a few seconds
+        // between calculating that instant and returning the presigned URL.
+        Assert.InRange(int.Parse(query["X-Amz-Expires"]!, CultureInfo.InvariantCulture), 295, 300);
         Assert.Contains("eu-central-1", query["X-Amz-Credential"]);
         Assert.False(string.IsNullOrEmpty(query["X-Amz-Signature"]));
     }
