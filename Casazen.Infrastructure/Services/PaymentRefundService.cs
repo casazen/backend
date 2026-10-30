@@ -189,13 +189,16 @@ public sealed class PaymentRefundService(
                     GuestFirstName = r.Payment.Booking.Guest.FirstName,
                     GuestEmail = r.Payment.Booking.Guest.Email,
                     PropertyName = r.Payment.Booking.Property.Name,
+                    PropertyCurrency = r.Payment.Booking.Property.Currency,
                 })
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (details is null)
                 return;
 
-            // The automatic refund of a late payment tells the guest why the booking was not confirmed (BK-04).
+            // The automatic refund of a late payment tells the guest why the booking was not confirmed (BK-04). The amount is in the
+            // currency of the charge, which is the one of the property (CHF-MONEY).
+            var currency = StayCurrency.Normalize(details.PropertyCurrency);
             var latePayment = details.IdempotencyKey.StartsWith(LatePaymentRefundKeyPrefix, StringComparison.Ordinal);
             var email = latePayment
                 ? EmailTemplates.GuestPaymentRefundedDatesUnavailable(
@@ -204,13 +207,15 @@ public sealed class PaymentRefundService(
                     details.PropertyName,
                     details.CheckInDate,
                     details.CheckOutDate,
-                    details.Amount)
+                    details.Amount,
+                    currency)
                 : EmailTemplates.GuestRefundConfirmed(
                     EmailTemplates.DefaultCulture,
                     details.GuestFirstName,
                     details.PropertyName,
                     details.CheckInDate,
-                    details.Amount);
+                    details.Amount,
+                    currency);
             var template = latePayment
                 ? EmailTemplates.Names.GuestPaymentRefundedDatesUnavailable
                 : EmailTemplates.Names.GuestRefundConfirmed;
