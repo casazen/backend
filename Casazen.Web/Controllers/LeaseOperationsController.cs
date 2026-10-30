@@ -151,7 +151,22 @@ public class LeaseOperationsController(
     }
 
     /// <summary>
-    /// Marks a letter (<c>disdetta</c>, <c>presa-atto-recesso</c>, <c>conferma-esigenza</c>, <c>aggiornamento-istat</c>, <c>opzione-cedolare</c>) as sent on <c>sentOn</c> (a day from the start of the lease up to today) by
+    /// The draft of the minutes of the handover of the property at the end of the lease, as a PDF, dated <c>handoverOn</c> when given. The
+    /// state of the property, the readings of the meters and the keys are lines the parties fill in by hand. 422
+    /// <c>lease_letter_not_applicable</c> when the lease is not ending, <c>lease_letter_effect_date_invalid</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/letters/riconsegna")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Riconsegna(Guid id, [FromBody] RiconsegnaLetterDto dto, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        return Pdf(await operations.BuildRiconsegnaAsync(id, dto.HandoverOn, cancellationToken));
+    }
+
+    /// <summary>
+    /// Marks a letter (<c>disdetta</c>, <c>presa-atto-recesso</c>, <c>conferma-esigenza</c>, <c>aggiornamento-istat</c>, <c>opzione-cedolare</c>, <c>riconsegna</c>) as sent on <c>sentOn</c> (a day from the start of the lease up to today) by
     /// <c>means</c>: an event in the history of the lease and nothing else, the lease does not change. 200 with the operations of the lease; 404
     /// for a letter that does not exist; 409 <c>lease_not_in_force</c>; 422 <c>lease_letter_date_invalid</c>.
     /// </summary>
@@ -216,6 +231,9 @@ public sealed record AggiornamentoIstatLetterDto(
 
 /// <summary>The communication of the cedolare secca: the first day the option applies from, when the person says it.</summary>
 public sealed record OpzioneCedolareLetterDto(DateOnly? EffectiveFrom = null);
+
+/// <summary>The minutes of the handover: the day it takes place, when the person says it.</summary>
+public sealed record RiconsegnaLetterDto(DateOnly? HandoverOn = null);
 
 /// <summary>A letter marked as sent: the day (<c>yyyy-MM-dd</c>, from the start of the lease up to today) and how.</summary>
 public sealed record MarkLetterSentDto(

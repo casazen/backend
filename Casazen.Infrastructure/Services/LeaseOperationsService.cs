@@ -59,6 +59,7 @@ public sealed class LeaseOperationsService(
         var confirmation = LeaseOperationRules.TransitoryConfirmation(lease, today);
         var istat = LeaseIstatRules.Facts(lease, today);
         var cedolare = LeaseOperationRules.CedolareNotice(lease, today);
+        var handover = LeaseOperationRules.Handover(lease);
 
         // The lease of the same property that already covers days of the standard renewal: told before the person tries (the server refuses it too).
         LeasePeriodConflictDto? conflict = null;
@@ -98,7 +99,8 @@ public sealed class LeaseOperationsService(
             new LeaseTransitoryConfirmationDto(confirmation.Applies, confirmation.Available, confirmation.Holder, confirmation.ConfirmBy),
             new LeaseIstatOperationDto(
                 istat.Available, istat.CurrentRent, istat.DefaultSharePercent, istat.MaxSharePercent, istat.MinEffectiveOn, istat.MaxEffectiveOn),
-            new LeaseCedolareNoticeDto(cedolare.Available, cedolare.MinEffectiveOn, cedolare.MaxEffectiveOn));
+            new LeaseCedolareNoticeDto(cedolare.Available, cedolare.MinEffectiveOn, cedolare.MaxEffectiveOn),
+            new LeaseHandoverOperationDto(handover.Available, handover.MinOn, handover.MaxOn, handover.SuggestedOn));
     }
 
     // ---- the letters -----------------------------------------------------------------------------------------------
@@ -258,6 +260,24 @@ public sealed class LeaseOperationsService(
         values[LeaseLetterPlaceholders.EffectiveOn] = effectiveFrom is { } firstDay ? LeaseLetterData.Day(firstDay) : null;
 
         return Build(lease, LeaseLetterKind.OpzioneCedolare, new HashSet<string>(StringComparer.Ordinal), values, $"opzione-cedolare-{lease.Id}.pdf");
+    }
+
+    public async Task<LeaseLetterFile> BuildRiconsegnaAsync(Guid leaseId, DateOnly? handoverOn, CancellationToken cancellationToken = default)
+    {
+        var lease = await LoadForLetterAsync(leaseId, cancellationToken);
+        EnsureInForce(lease);
+
+        // Only a lease that is going to end or has ended has a handover to prepare.
+        var facts = LeaseOperationRules.Handover(lease);
+        if (!facts.Available)
+            throw new DomainRuleException(LeaseLifecycleCodes.LetterNotApplicable, "LeaseLetterNotApplicable");
+        if (handoverOn is { } day && (day < facts.MinOn || day > facts.MaxOn))
+            throw new DomainRuleException(LeaseLifecycleCodes.LetterEffectDateInvalid, "LeaseLetterEffectDateInvalid", facts.MinOn, facts.MaxOn);
+
+        var values = LeaseLetterData.Common(lease);
+        values[LeaseLetterPlaceholders.HandoverOn] = handoverOn is { } handedOn ? LeaseLetterData.Day(handedOn) : null;
+
+        return Build(lease, LeaseLetterKind.Riconsegna, new HashSet<string>(StringComparer.Ordinal), values, $"riconsegna-{lease.Id}.pdf");
     }
 
     /// <summary>

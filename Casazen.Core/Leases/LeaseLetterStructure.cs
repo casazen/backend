@@ -70,11 +70,14 @@ public static class LeaseLetterPlaceholders
     /// <summary>The day an update or an option takes effect from.</summary>
     public const string EffectiveOn = "data_efficacia";
 
+    /// <summary>The day the property is handed back.</summary>
+    public const string HandoverOn = "data_riconsegna";
+
     public static readonly IReadOnlyList<string> All =
     [
         Landlords, LandlordsDetail, Tenants, TenantsDetail, PropertyAddress, ContractType, StartDate, PeriodEnd,
         ReceivedOn, EndsOn, NoticeMonths, NewPeriodStart, NewPeriodEnd, NeedReason,
-        CurrentRent, FoiPercent, SharePercent, AppliedPercent, IncreaseAmount, NewRent, EffectiveOn,
+        CurrentRent, FoiPercent, SharePercent, AppliedPercent, IncreaseAmount, NewRent, EffectiveOn, HandoverOn,
     ];
 
     public static bool IsKnown(string name) => All.Contains(name, StringComparer.Ordinal);
@@ -125,6 +128,7 @@ public static class LeaseLetterStructure
         LeaseLetterKind.ConfermaEsigenza => "2026-11-bozza-v1",
         LeaseLetterKind.AggiornamentoIstat => "2026-11-bozza-v1",
         LeaseLetterKind.OpzioneCedolare => "2026-11-bozza-v1",
+        LeaseLetterKind.Riconsegna => "2026-11-bozza-v1",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown letter"),
     };
 
@@ -212,6 +216,18 @@ public static class LeaseLetterStructure
         new("chiusura"),
     ];
 
+    private static readonly IReadOnlyList<LeaseLetterSectionDefinition> RiconsegnaSections =
+    [
+        new("parti", RequiredPlaceholders: [LeaseLetterPlaceholders.LandlordsDetail, LeaseLetterPlaceholders.TenantsDetail]),
+        new("oggetto", RequiredPlaceholders: [LeaseLetterPlaceholders.PropertyAddress]),
+        new("riconsegna", RequiredPlaceholders: [LeaseLetterPlaceholders.HandoverOn, LeaseLetterPlaceholders.PeriodEnd]),
+        new("stato"),
+        new("contatori"),
+        new("chiavi"),
+        new("annotazioni"),
+        new("chiusura"),
+    ];
+
     /// <summary>The sections the file of <paramref name="kind"/> must contain, in the order they are printed.</summary>
     public static IReadOnlyList<LeaseLetterSectionDefinition> Sections(LeaseLetterKind kind) => kind switch
     {
@@ -221,6 +237,7 @@ public static class LeaseLetterStructure
         LeaseLetterKind.ConfermaEsigenza => ConfermaEsigenzaSections,
         LeaseLetterKind.AggiornamentoIstat => AggiornamentoIstatSections,
         LeaseLetterKind.OpzioneCedolare => OpzioneCedolareSections,
+        LeaseLetterKind.Riconsegna => RiconsegnaSections,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown letter"),
     };
 }

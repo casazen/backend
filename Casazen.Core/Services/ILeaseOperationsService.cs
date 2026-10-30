@@ -95,6 +95,15 @@ public interface ILeaseOperationsService
     Task<LeaseLetterFile> BuildOpzioneCedolareAsync(Guid leaseId, DateOnly? effectiveFrom, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The minutes of the handover of the property at the end of the lease, dated <paramref name="handoverOn"/> when given (otherwise the
+    /// letter leaves the day to complete). The state, the readings of the meters and the keys are lines the parties fill in by hand.
+    /// </summary>
+    /// <exception cref="NotFoundException">404 <c>lease_not_found</c>.</exception>
+    /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>.</exception>
+    /// <exception cref="DomainRuleException">422 <c>lease_letter_not_applicable</c> (the lease is not ending), <c>lease_letter_effect_date_invalid</c>, <c>lease_letter_unavailable</c>.</exception>
+    Task<LeaseLetterFile> BuildRiconsegnaAsync(Guid leaseId, DateOnly? handoverOn, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Records that the landlord sent a letter on <paramref name="sentOn"/> (a day from the start of the lease up to today) by
     /// <paramref name="means"/>: an event <c>LetterSent</c> in the history, and nothing more (the lease does not change).
     /// </summary>

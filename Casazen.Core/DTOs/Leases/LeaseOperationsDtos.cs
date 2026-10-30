@@ -18,7 +18,8 @@ public sealed record LeaseOperationsDto(
     LeaseRenewalOperationDto Renewal,
     LeaseTransitoryConfirmationDto TransitoryConfirmation,
     LeaseIstatOperationDto Istat,
-    LeaseCedolareNoticeDto CedolareNotice);
+    LeaseCedolareNoticeDto CedolareNotice,
+    LeaseHandoverOperationDto Handover);
 
 /// <summary>The state of a letter kind: its text is approved or still a draft, and the last time the landlord marked it as sent.</summary>
 public sealed record LeaseLetterStateDto(LeaseLetterKind Kind, bool Approved, LeaseLetterSentDto? Sent);
@@ -104,6 +105,13 @@ public sealed record LeaseIstatOperationDto(
 /// said to apply from a day between <c>MinEffectiveOn</c> and <c>MaxEffectiveOn</c>.
 /// </summary>
 public sealed record LeaseCedolareNoticeDto(bool Available, DateOnly MinEffectiveOn, DateOnly MaxEffectiveOn);
+
+/// <summary>
+/// The handover of the property at the end of the lease. <c>Available</c>: the lease is ending (a notice is recorded, it was ended early, or it
+/// is of a type that ends by itself), so the minutes can be prepared; they can be dated from <c>MinOn</c> to <c>MaxOn</c>, and the window
+/// suggests <c>SuggestedOn</c>, the last day of the lease.
+/// </summary>
+public sealed record LeaseHandoverOperationDto(bool Available, DateOnly MinOn, DateOnly MaxOn, DateOnly SuggestedOn);
 
 /// <summary>
 /// The ISTAT update worked out by the server (<c>POST api/leases/{id}/istat/calculate</c>): the rent today, the variation and the share typed,
