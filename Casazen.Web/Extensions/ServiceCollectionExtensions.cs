@@ -321,6 +321,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBookingService, BookingService>();
         // Public availability of the booking site, same nights as the booking checks (BK-05).
         services.AddScoped<IPublicAvailabilityService, PublicAvailabilityService>();
+        // The calendar of a property on the booking site: availability and price of every night, from the quote's own functions (DB-03b).
+        services.AddScoped<IPublicCalendarService, PublicCalendarService>();
         // Host dashboard KPIs per period and iCal feeds widget (PC-16).
         services.AddScoped<IHostDashboardService, HostDashboardService>();
         // The host's day in one read: stays of the day, requests, things to do (SR-03). What the cockpit items lack is a service apart.

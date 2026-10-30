@@ -1495,6 +1495,9 @@
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>L'intervallo di date non è valido: la data di fine deve essere successiva a quella di inizio e l'intervallo non può superare {0} giorni.</value>
   </data>
+  <data name="PublicCalendarInvalidRange" xml:space="preserve">
+    <value>L'intervallo di date non è valido: la data di fine deve essere successiva a quella di inizio e l'intervallo non può superare {0} mesi.</value>
+  </data>
   <data name="LeaseEndBeforeStart" xml:space="preserve">
     <value>La data di fine del contratto deve essere successiva alla data di inizio.</value>
   </data>

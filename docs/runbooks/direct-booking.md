@@ -794,6 +794,40 @@ FROM casazen_prod."Orgs";
   the schema before the migration, defaults, CHECKs, old writer, Down/Up) and `DirectCheckoutMarketingConsentPostgresTests`
   (two checkouts at once, payment not started, cascade, GDPR tab).
 
+### 11.9 The calendar with the price of every night (DB-03b)
+
+`GET /api/public/properties/{propertyId}/calendar?from=yyyy-MM-dd&to=yyyy-MM-dd` and, for a property of a site,
+`GET /api/public/orgs/{slug}/properties/{slugOrId}/calendar` (same query): the night that starts on each day, to draw the calendar of the
+property page, the stay pickers and the checkout. Anonymous, `PublicRead` (per client IP), no flag, no migration.
+
+```json
+{ "propertyId": "…", "startDate": "2026-10-30", "endDate": "2027-10-30", "today": "2026-10-30", "currency": "EUR",
+  "generatedAt": "2026-10-30T09:12:44Z",
+  "days": [ { "date": "2026-10-30", "available": true, "nightlyPriceCents": 17250, "minNights": 2 }, … ] }
+```
+
+- **Range.** `from` defaults to today (Europe/Rome), `to` (excluded) to `from` + 12 months; at most **13 months**, otherwise 422
+  `public_calendar_range_invalid`. Days before today are not listed (`startDate` is the first day listed, `today` tells what "past" is).
+  404 `public_property_not_found` (the same message of the availability) for a property that does not exist or is not published
+  (`PublicListing.IsPublished`, active org); the slug route answers a plain 404 for an org that does not resolve, its former slugs too.
+- **`available`** = a stay can start that night: no booking that is not cancelled, no hold within its time, no "pay at the property"
+  request waiting for the host, no iCal block, no manual block. It is **the same read as the availability** (`PublicOccupancyReader`,
+  shared with `PublicAvailabilityService`: `PropertyOccupancy` + `CheckoutHolds.OccupiesDates`), so a night shown as taken is a night
+  the checkout refuses and the other way round. The check-out day of a stay is available. A booking, a host block and an iCal block
+  look the same, and nothing says who stays: the answer carries dates, booleans and numbers only.
+- **`nightlyPriceCents`** = `StayPricing.NightPrice`, the function the quote adds the nights up with (`StayPricing.Lodging` of one
+  night): the nightly rate, `+ weekendSurchargePercent` on a Friday or a Saturday (rounded to the cent), or the price the host confirmed
+  for that date (§ 11.3). It is the first line of the quote of a one-night stay on that date, to the cent (test
+  `Calendar_EveryNightPrice_IsWhatTheQuoteAddsUpForThatNight_*`); there is no second calculation. It is also given for a taken night.
+  The quote stays the only authority on a **total**: the calendar says nothing of cleaning, tourist tax or the length of the stay.
+- **`minNights`** = the shortest stay that can start that day: the property's minimum (§ 11.2), 1 when it has none. It is per day on
+  purpose: the minimum by date (D20, SR-11) will fill the same field with no change of contract.
+- **Cache.** None: four small reads (the property, the bookings, the blocks, the prices the host confirmed) for any range, behind
+  the per-IP limit. `generatedAt` says when the answer was worked out.
+- **Prices the host confirmed are public data**: `PricingAdapterService.GetAppliedNightlyPricesAsync` names the property and ignores
+  the tenant filter, so a signed-in host of another org who looks at the site sees the prices everybody sees (the quote did not
+  guarantee it before).
+
 ## 12. Who runs the site: operator data in the footer (DB-03b-a)
 
 Task DB-03b-a of the redesign wave (reduced DB-03b, decision DB-D14 (a)). The booking site of a host shows, in its footer, the
