@@ -40,10 +40,19 @@ public static class LeaseLetterPlaceholders
     /// <summary>The months of notice (from the rules of the area, or the one the contract gives a withdrawal).</summary>
     public const string NoticeMonths = "preavviso_mesi";
 
+    /// <summary>The first day of the period a renewal or an extension adds.</summary>
+    public const string NewPeriodStart = "data_inizio_periodo";
+
+    /// <summary>The last day of the period a renewal or an extension adds.</summary>
+    public const string NewPeriodEnd = "data_fine_periodo";
+
+    /// <summary>The need that justified a transitory lease, as the landlord wrote it in the contract.</summary>
+    public const string NeedReason = "esigenza_motivo";
+
     public static readonly IReadOnlyList<string> All =
     [
         Landlords, LandlordsDetail, Tenants, TenantsDetail, PropertyAddress, ContractType, StartDate, PeriodEnd,
-        ReceivedOn, EndsOn, NoticeMonths,
+        ReceivedOn, EndsOn, NoticeMonths, NewPeriodStart, NewPeriodEnd, NeedReason,
     ];
 
     public static bool IsKnown(string name) => All.Contains(name, StringComparer.Ordinal);
@@ -60,6 +69,12 @@ public static class LeaseLetterFlags
 
     /// <summary>The notice is given at a later expiry: no reason is asked.</summary>
     public const string LaterPeriod = "later-period";
+
+    /// <summary>The renewal is the standard one of the type (the months the lease renews for).</summary>
+    public const string RenewalStandard = "renewal-standard";
+
+    /// <summary>The renewal is an extension to a day the parties agreed on.</summary>
+    public const string RenewalAgreed = "renewal-agreed";
 
     /// <summary>The reason of the first expiry the landlord chose.</summary>
     public static string Reason(LeaseDisdettaReason reason) => $"reason:{reason}";
@@ -84,6 +99,8 @@ public static class LeaseLetterStructure
     {
         LeaseLetterKind.Disdetta => "2026-11-bozza-v1",
         LeaseLetterKind.PresaAttoRecesso => "2026-11-bozza-v1",
+        LeaseLetterKind.Rinnovo => "2026-11-bozza-v1",
+        LeaseLetterKind.ConfermaEsigenza => "2026-11-bozza-v1",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown letter"),
     };
 
@@ -121,11 +138,35 @@ public static class LeaseLetterStructure
         new("chiusura"),
     ];
 
+    private static readonly IReadOnlyList<LeaseLetterSectionDefinition> RinnovoSections =
+    [
+        new("parti", RequiredPlaceholders: [LeaseLetterPlaceholders.LandlordsDetail, LeaseLetterPlaceholders.TenantsDetail]),
+        new("oggetto", RequiredPlaceholders: [LeaseLetterPlaceholders.PropertyAddress]),
+        new("rinnovo", LeaseLetterFlags.RenewalStandard, [LeaseLetterPlaceholders.NewPeriodStart, LeaseLetterPlaceholders.NewPeriodEnd]),
+        new("proroga", LeaseLetterFlags.RenewalAgreed, [LeaseLetterPlaceholders.NewPeriodStart, LeaseLetterPlaceholders.NewPeriodEnd]),
+        new("condizioni"),
+        new("registrazione"),
+        new("chiusura"),
+    ];
+
+    private static readonly IReadOnlyList<LeaseLetterSectionDefinition> ConfermaEsigenzaSections =
+    [
+        new("mittente", RequiredPlaceholders: [LeaseLetterPlaceholders.LandlordsDetail]),
+        new("destinatario", RequiredPlaceholders: [LeaseLetterPlaceholders.TenantsDetail]),
+        new("oggetto", RequiredPlaceholders: [LeaseLetterPlaceholders.PropertyAddress]),
+        new("conferma", RequiredPlaceholders: [LeaseLetterPlaceholders.NeedReason, LeaseLetterPlaceholders.PeriodEnd]),
+        new("effetti"),
+        new("invio"),
+        new("chiusura"),
+    ];
+
     /// <summary>The sections the file of <paramref name="kind"/> must contain, in the order they are printed.</summary>
     public static IReadOnlyList<LeaseLetterSectionDefinition> Sections(LeaseLetterKind kind) => kind switch
     {
         LeaseLetterKind.Disdetta => DisdettaSections,
         LeaseLetterKind.PresaAttoRecesso => PresaAttoRecessoSections,
+        LeaseLetterKind.Rinnovo => RinnovoSections,
+        LeaseLetterKind.ConfermaEsigenza => ConfermaEsigenzaSections,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown letter"),
     };
 }

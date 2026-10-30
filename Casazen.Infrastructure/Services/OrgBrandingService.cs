@@ -28,6 +28,9 @@ public class OrgBrandingService(
         var hostName = update.HostName.IsSent ? OrgBrandingRules.NormalizeHostName(update.HostName.Value) : null;
         var publicPhone = update.PublicPhone.IsSent ? OrgBrandingRules.NormalizePublicPhone(update.PublicPhone.Value) : null;
 
+        // DB-01: the font pair is optional in the same way, so the appearance form of before never erases the choice.
+        var fontId = update.PublicFontId.IsSent ? OrgBrandingRules.NormalizeFontId(update.PublicFontId.Value) : null;
+
         var org = await dbContext.Orgs.FirstOrDefaultAsync(o => o.Id == orgId, cancellationToken);
         if (org is null)
             return null;
@@ -41,6 +44,8 @@ public class OrgBrandingService(
             org.HostName = hostName;
         if (update.PublicPhone.IsSent)
             org.PublicPhone = publicPhone;
+        if (update.PublicFontId.IsSent)
+            org.PublicFontId = fontId;
         org.UpdatedAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
         return org;

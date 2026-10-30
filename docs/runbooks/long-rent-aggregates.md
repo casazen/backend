@@ -290,7 +290,7 @@ ORDER BY "OccurredAt";
 
 ### 10.9 Le operazioni del contratto: lettere in bozza, disdetta e recesso (LR-OPS-1)
 
-Il «come» delle azioni di questo capitolo: la bozza della lettera di disdetta da mandare all'inquilino (con i motivi che la legge ammette alla prima scadenza), il **recesso del conduttore** (`POST /api/leases/{id}/withdrawal`: il giorno di ricezione più il preavviso diventa l'ultimo giorno del contratto, con **le stesse regole e gli stessi effetti** della cessazione anticipata di § 10.2.1; due eventi in coda a `LeaseEventType`: `WithdrawalRecorded` e `LetterSent`) e «Segna come inviata». Le lettere sono bozze non approvate finché il PO non le approva con `LeaseLetters__Variants__…`; nulla parte verso il conduttore. Tutto è in [`lease-operations.md`](lease-operations.md). Nuovi codici: `lease_withdrawal_date_invalid`, `lease_withdrawal_notice_invalid`, `lease_letter_date_invalid`, `lease_disdetta_reason_required`, `lease_letter_unavailable`.
+Il «come» delle azioni di questo capitolo: la bozza della lettera di disdetta da mandare all'inquilino (con i motivi che la legge ammette alla prima scadenza), il **recesso del conduttore** (`POST /api/leases/{id}/withdrawal`: il giorno di ricezione più il preavviso diventa l'ultimo giorno del contratto, con **le stesse regole e gli stessi effetti** della cessazione anticipata di § 10.2.1; due eventi in coda a `LeaseEventType`: `WithdrawalRecorded` e `LetterSent`) e «Segna come inviata». Le lettere sono bozze non approvate finché il PO non le approva con `LeaseLetters__Variants__…`; nulla parte verso il conduttore. Tutto è in [`lease-operations.md`](lease-operations.md). Il **rinnovo esplicito** (`POST /api/leases/{id}/renewal`, 1b) formalizza un rinnovo o una proroga nell'ultimo tratto prima della fine del periodo (dall'ultimo giorno per la disdetta; registrarlo sposta la fine e chiude la finestra fino a quella del periodo dopo) con le regole di LR-OVERLAP (nuovo periodo libero) e il piano dei canoni esteso; il rinnovo tacito del job (§ 10.4) non cambia. Nuovi codici: `lease_withdrawal_date_invalid`, `lease_withdrawal_notice_invalid`, `lease_letter_date_invalid`, `lease_disdetta_reason_required`, `lease_letter_unavailable`, `lease_renewal_end_invalid`, `lease_renewal_blocked_by_notice`, `lease_renewal_period_over`, `lease_renewal_not_yet`, `lease_letter_not_applicable`.
 
 ## 11. Il percorso del contratto: stato e prossimo passo (LR-01b)
 
@@ -348,7 +348,23 @@ L'elenco: l'istruzione di sempre, più **una** che chiede quali tra i contratti 
 
 ### 11.5 Cosa non c'è (versione ridotta)
 
-`progress` (avanzamento), i filtri `stage` e `actor`, `stages` e `todo` della Panoramica, `canEdit`, il filtro `leaseId` e i tipi `LeaseStart` e `DepositReturn` delle scadenze, `flow` nel dettaglio: la riga dell'elenco è l'unico posto dove un contratto ha `stage` e `nextStep` (il dettaglio `GET /api/leases/{id}` non li porta ancora). I valori di legge restano quelli di `LongRentRules` (LR-D29).
+i filtri `stage` e `actor` (la lista si filtra e si ordina sul client: è intera e non paginata), `stages` e `todo` della Panoramica, `canEdit`, il filtro `leaseId` e i tipi `LeaseStart` e `DepositReturn` delle scadenze, `flow` nel dettaglio: la riga dell'elenco è l'unico posto dove un contratto ha `stage` e `nextStep` (il dettaglio `GET /api/leases/{id}` non li porta ancora). I valori di legge restano quelli di `LongRentRules` (LR-D29).
+
+### 11.6 L'avanzamento (`progress`, LR-02b)
+
+Ogni riga dell'elenco porta anche `progress { kind, unit, done, total, percent }`, deciso dalla stessa funzione (`LeaseFlow.ProgressOf`): la barra
+e le parole sono dell'interfaccia, i numeri sono del server. `percent` va da 0 a 100.
+
+| Stato | `kind` / `unit` | `done` di `total` |
+|---|---|---|
+| Bozza, dati da completare | `Setup` / `Steps` | i passi dati della bozza (1–5) senza nulla che manca, su **8** |
+| In revisione | `Setup` / `Steps` | 5, oppure 6 a revisione confermata, su 8 |
+| In firma | `Setup` / `Steps` | 6 su 8 (contratto scaricato per la firma) |
+| Firmato (da registrare) | `Setup` / `Steps` | 7 su 8; l'ottavo passo, la registrazione, è quello che lo fa partire |
+| In corso, in scadenza | `Term` / `Years` o `Months` | l'anno (o il mese, se il periodo è più corto di 12 mesi) in cui si trova, sugli anni (mesi) del periodo **in corso** (`CurrentTermEndDate`, LR-14: un contratto rinnovato conta gli anni dall'inizio del primo periodo); `percent` = giorni trascorsi su giorni del periodo |
+| Concluso | `End` / `Steps` | 8 su 8, 100 |
+
+Nessuna istruzione SQL in più: per le bozze serve il flusso che il lettore già costruisce (§ 11.4).
 
 ## 12. Report fiscale per contratto, per il commercialista (LR-11b)
 

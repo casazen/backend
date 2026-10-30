@@ -162,6 +162,71 @@ public sealed class LeaseTermService(
             cancellationToken);
     }
 
+    public async Task RecordRenewalAsync(Guid leaseId, DateOnly? agreedEnd, CancellationToken cancellationToken = default)
+    {
+        int installments;
+        DateOnly to;
+        await using (var transaction = await BeginLockedAsync(leaseId, lockRent: true, cancellationToken))
+        {
+            var lease = await LoadForUpdateAsync(leaseId, ignoreTenant: false, cancellationToken);
+            EnsureInForce(lease);
+            if (!LeaseRenewal.Renews(lease.ContractType))
+                throw new DomainRuleException(LeaseLifecycleCodes.TypeHasNoRenewal, "LeaseTypeHasNoRenewal");
+            EnsureNotTerminated(lease);
+            if (lease.NoticeOn is not null)
+                throw new DomainConflictException(LeaseLifecycleCodes.RenewalBlockedByNotice, "LeaseRenewalBlockedByNotice");
+
+            // Once the period is over the lease renews by itself and the hourly job writes it: a second path would add a period twice.
+            var periodEnd = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
+            var today = _clock.TodayInRomeAsDateOnly();
+            if (periodEnd < today)
+                throw new DomainConflictException(LeaseLifecycleCodes.RenewalPeriodOver, "LeaseRenewalPeriodOver");
+
+            // Only in the last stretch before the end, when the parties decide: recording one moves the end forward, so it cannot be done twice in a row.
+            var opensOn = LongRentDeadlineRules.NoticeDate(lease.ContractType, periodEnd) ?? periodEnd;
+            if (today < opensOn)
+                throw new DomainRuleException(LeaseLifecycleCodes.RenewalNotYet, "LeaseRenewalNotYet", opensOn);
+
+            var from = periodEnd.AddDays(1);
+            if (agreedEnd is { } agreed)
+            {
+                var furthest = periodEnd.AddYears(LeaseOperationRules.MaxAgreedExtensionYears);
+                if (agreed < from || agreed > furthest)
+                    throw new DomainRuleException(LeaseLifecycleCodes.RenewalEndInvalid, "LeaseRenewalEndInvalid", from, furthest);
+                to = agreed;
+            }
+            else
+            {
+                to = RomeCalendar.DateInRome(LeaseRenewal.NextEnd(lease.CurrentTermEndDate, lease.ContractType)!.Value);
+            }
+
+            // A new period may not cover the days of another lease of the property (LR-OVERLAP): checked under the lock of the property,
+            // inside this transaction, after the row of the lease.
+            await LeasePeriodGuard.EnsureFreeAsync(db, lease.PropertyId, lease.Id, ToStoredDate(from), ToStoredDate(to), cancellationToken);
+
+            var now = UtcNow;
+            lease.CurrentTermEndDate = ToStoredDate(to);
+            lease.UpdatedAt = now;
+            db.LeaseEvents.Add(new LeaseEvent
+            {
+                LeaseContractId = lease.Id,
+                EventType = LeaseEventType.RenewalRecorded,
+                OccurredAt = now,
+                Payload = $"{(agreedEnd is null ? "Standard" : "Agreed")}:{Format(from)}:{Format(to)}",
+            });
+            await db.SaveChangesAsync(cancellationToken);
+
+            // The plan of the rent follows, in the same transaction, once the new end is saved (the tacit renewal does the same).
+            installments = await rentBilling.ExtendScheduleToCurrentTermAsync(leaseId, cancellationToken);
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+        }
+
+        logger.LogInformation(
+            "Lease renewal recorded. LeaseId={LeaseId} Agreed={Agreed} CurrentTermEndDate={End} InstallmentsAdded={Installments}",
+            leaseId, agreedEnd is not null, Format(to), installments);
+    }
+
     /// <summary>The withdrawal of the tenant an early termination carries: what the history writes next to the <c>Terminated</c> event.</summary>
     private sealed record TenantWithdrawal(TenantWithdrawalReason Reason, DateOnly ReceivedOn, DateOnly EffectiveOn, int NoticeMonths);
 
