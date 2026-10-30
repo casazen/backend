@@ -659,6 +659,28 @@ what the code did before, and the migration rewrites no data.
 - A "pay at the property" request has its own cap (`onsite_request_too_many_nights`, § 2): a minimum above that cap leaves
   the card as the only way to book.
 
+### 11.2a The cancellation policy and its dates, for the public pages (DB-03b)
+
+Two additive read fields, no flag, no migration. Both come from the one rule of the guest area (§ 8.5: `CancellationRefundPolicy`,
+`EffectivePolicy`, `RefundWindows`), so what a page promises is what the cancellation then does.
+
+- **`cancellationPolicy`** in the public property detail (`GET /api/public/orgs/{slug}/properties/{slugOrId}` and `GET /api/properties/{id}/public`),
+  `null` for a property without a policy: `{ slug, name, description, fullRefundHours, partialRefundHours, partialRefundPercent, hostOverrideApplies,
+  longStayNights }`. It is the policy of a **normal stay** (under `longStayNights` = 28 nights): the catalog policy with what the host changed of it.
+  A window the policy does not have is **`null`**, never a number that means «never»: `fullRefundHours: null` is «Non rimborsabile» (no full refund at any
+  time), `partialRefundHours`/`partialRefundPercent: null` is a policy with no partial window. `hostOverrideApplies` = the host changed the hours or
+  the percentage; then `description` (the text of the catalog) is `null`, since it would say something else. From 28 nights the catalog policy applies as it
+  is, whatever the host changed: the quote below says the real dates of a stay. `cancellationPolicySummary` stays as it was.
+- **`cancellation`** in the quote (`POST /api/public/bookings/quote`): `{ fullRefundUntil, partialRefundPercent, partialRefundUntil, selfServiceAvailable }`
+  for the stay asked, worked out on the policy **of that stay**. The dates are the **last whole days** (Europe/Rome, `yyyy-MM-dd`, included) that end at least
+  that many hours before the start of the check-in day, daylight saving included: a date shown is never a promise an hour too long. A date already past is
+  `null` (a page never says «gratuita fino a ieri»), and so is a window the policy does not have. `fullRefundUntil` is the same day as
+  `paymentOptions.freeCancellationUntil` while it is ahead. `selfServiceAvailable` is `true` for every direct booking since DB-08a (the guest cancels
+  from the guest area, § 8.5); a page shows the dates only when it is true.
+- **Fixed on the way.** `CancellationRefundPolicy.RefundWindows` dropped the partial window of every sound policy (its test compared the days the
+  wrong way round): the guest-area preview never carried `partialRefundUntil`. The amount of the refund was never affected (it comes from
+  `EvaluateGuestRefund`). Test: `PublicCancellationPolicyIntegrationTests`.
+
 ### 11.3 The weekend surcharge
 
 - **A weekend night** is a night that starts on a Friday or on a Saturday, by its Europe/Rome calendar date
@@ -793,6 +815,40 @@ FROM casazen_prod."Orgs";
   `OrgBrandingIntegrationTests`. PostgreSQL (CI): `AddDirectBookingPublicDataMigrationPostgresTests` (rows written by SQL at
   the schema before the migration, defaults, CHECKs, old writer, Down/Up) and `DirectCheckoutMarketingConsentPostgresTests`
   (two checkouts at once, payment not started, cascade, GDPR tab).
+
+### 11.9 The calendar with the price of every night (DB-03b)
+
+`GET /api/public/properties/{propertyId}/calendar?from=yyyy-MM-dd&to=yyyy-MM-dd` and, for a property of a site,
+`GET /api/public/orgs/{slug}/properties/{slugOrId}/calendar` (same query): the night that starts on each day, to draw the calendar of the
+property page, the stay pickers and the checkout. Anonymous, `PublicRead` (per client IP), no flag, no migration.
+
+```json
+{ "propertyId": "…", "startDate": "2026-10-30", "endDate": "2027-10-30", "today": "2026-10-30", "currency": "EUR",
+  "generatedAt": "2026-10-30T09:12:44Z",
+  "days": [ { "date": "2026-10-30", "available": true, "nightlyPriceCents": 17250, "minNights": 2 }, … ] }
+```
+
+- **Range.** `from` defaults to today (Europe/Rome), `to` (excluded) to `from` + 12 months; at most **13 months**, otherwise 422
+  `public_calendar_range_invalid`. Days before today are not listed (`startDate` is the first day listed, `today` tells what "past" is).
+  404 `public_property_not_found` (the same message of the availability) for a property that does not exist or is not published
+  (`PublicListing.IsPublished`, active org); the slug route answers a plain 404 for an org that does not resolve, its former slugs too.
+- **`available`** = a stay can start that night: no booking that is not cancelled, no hold within its time, no "pay at the property"
+  request waiting for the host, no iCal block, no manual block. It is **the same read as the availability** (`PublicOccupancyReader`,
+  shared with `PublicAvailabilityService`: `PropertyOccupancy` + `CheckoutHolds.OccupiesDates`), so a night shown as taken is a night
+  the checkout refuses and the other way round. The check-out day of a stay is available. A booking, a host block and an iCal block
+  look the same, and nothing says who stays: the answer carries dates, booleans and numbers only.
+- **`nightlyPriceCents`** = `StayPricing.NightPrice`, the function the quote adds the nights up with (`StayPricing.Lodging` of one
+  night): the nightly rate, `+ weekendSurchargePercent` on a Friday or a Saturday (rounded to the cent), or the price the host confirmed
+  for that date (§ 11.3). It is the first line of the quote of a one-night stay on that date, to the cent (test
+  `Calendar_EveryNightPrice_IsWhatTheQuoteAddsUpForThatNight_*`); there is no second calculation. It is also given for a taken night.
+  The quote stays the only authority on a **total**: the calendar says nothing of cleaning, tourist tax or the length of the stay.
+- **`minNights`** = the shortest stay that can start that day: the property's minimum (§ 11.2), 1 when it has none. It is per day on
+  purpose: the minimum by date (D20, SR-11) will fill the same field with no change of contract.
+- **Cache.** None: four small reads (the property, the bookings, the blocks, the prices the host confirmed) for any range, behind
+  the per-IP limit. `generatedAt` says when the answer was worked out.
+- **Prices the host confirmed are public data**: `PricingAdapterService.GetAppliedNightlyPricesAsync` names the property and ignores
+  the tenant filter, so a signed-in host of another org who looks at the site sees the prices everybody sees (the quote did not
+  guarantee it before).
 
 ## 12. Who runs the site: operator data in the footer (DB-03b-a)
 

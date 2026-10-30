@@ -24,6 +24,12 @@ internal sealed class ServiceRequestShowcaseConfiguration : IEntityTypeConfigura
             .HasFilter("\"PublicCode\" IS NOT NULL")
             .HasDatabaseName("UIX_ServiceRequests_SupplierOrgId_PublicCode");
 
+        // A request on measure (SP-10b) exists only in the showcase context.
+        entity.ToTable(t => t.HasCheckConstraint(
+            "CK_ServiceRequests_Kind",
+            $"\"Kind\" = {(int)ServiceRequestKind.Standard} "
+            + $"OR (\"Kind\" = {(int)ServiceRequestKind.Custom} AND \"RentalContext\" = {(int)ServiceRequestRentalContext.Showcase})"));
+
         entity.ToTable(t => t.HasCheckConstraint(
             "CK_ServiceRequests_Context",
             $"(\"RentalContext\" = {(int)ServiceRequestRentalContext.Showcase} "

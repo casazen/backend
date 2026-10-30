@@ -193,8 +193,11 @@ public class PricingAdapterService(
         DateOnly toExclusive,
         CancellationToken cancellationToken = default)
     {
+        // The price of a night is public data of a property (the quote and the calendar of the booking site read it): it names the
+        // property, so a signed-in host of another org who looks at the site sees the same price as everybody else.
         return await db.SeasonalPriceSuggestions
             .AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(s => s.PropertyId == propertyId
                 && s.AppliedPrice != null
                 && s.StayDate >= fromInclusive
