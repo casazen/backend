@@ -195,7 +195,8 @@ public class ShowcasePaidBookingTests
         // The receipt says the amount is blocked, not "you pay nothing now"; the supplier is told the amount is already blocked.
         var receipt = Assert.Single(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.SupplierBookingReceipt);
         Assert.Contains("bloccato", receipt.Content.HtmlBody, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("non paghi nulla", receipt.Content.HtmlBody, StringComparison.OrdinalIgnoreCase);
+        // "non paghi nulla adesso" is the line of a booking with no payment; the note of a blocked one says "non paghi nulla" only about a refusal.
+        Assert.DoesNotContain("non paghi nulla adesso", receipt.Content.HtmlBody, StringComparison.OrdinalIgnoreCase);
         var news = Assert.Single(s.Emails.Snapshot(), e => e.Template == EmailTemplates.Names.SupplierBookingNewRequest);
         Assert.Contains("bloccato sulla carta", news.Content.HtmlBody, StringComparison.OrdinalIgnoreCase);
     }
@@ -556,6 +557,7 @@ public class ShowcasePaidBookingTests
     public async Task AllFine_OfABookingThatIsNotPaidInsideCasaZen_HasNothingToConfirm()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
+        await s.EnableBookingAsync();
         var (request, credentials) = await s.BookedForManagementAsync();
 
         var refusal = await Assert.ThrowsAsync<DomainRuleException>(async () => await s.Kit.Manager.ConfirmOkAsync(credentials));

@@ -178,7 +178,14 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
             if (current.Status != "requires_capture")
                 return Task.FromResult(current);
 
-            var charged = current with { Status = "succeeded", AmountCapturableCents = 0, AmountReceivedCents = current.AmountCents };
+            // A captured PaymentIntent has a charge (the source of the transfer to the supplier), as on Stripe.
+            var charged = current with
+            {
+                Status = "succeeded",
+                AmountCapturableCents = 0,
+                AmountReceivedCents = current.AmountCents,
+                LatestChargeId = current.LatestChargeId ?? $"ch_{paymentIntentId}",
+            };
             _intents[paymentIntentId] = charged;
             return Task.FromResult(charged);
         }
@@ -194,7 +201,13 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
             if (_chargeOnNextCancel && current.Status == "requires_capture")
             {
                 _chargeOnNextCancel = false;
-                var charged = current with { Status = "succeeded", AmountCapturableCents = 0, AmountReceivedCents = current.AmountCents };
+                var charged = current with
+                {
+                    Status = "succeeded",
+                    AmountCapturableCents = 0,
+                    AmountReceivedCents = current.AmountCents,
+                    LatestChargeId = current.LatestChargeId ?? $"ch_{paymentIntentId}",
+                };
                 _intents[paymentIntentId] = charged;
                 return Task.FromResult(charged);
             }

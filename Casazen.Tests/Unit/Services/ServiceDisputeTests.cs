@@ -966,6 +966,7 @@ public class ServiceDisputeTests
     public async Task Customer_ReportsAProblem_ForABookingNotPaidInsideCasaZen_HasNothingToReport()
     {
         using var s = await ServiceRequestScenario.CreateAsync();
+        await s.EnableBookingAsync();
         var (_, credentials) = await s.BookedForManagementAsync();
 
         var refusal = await Assert.ThrowsAsync<DomainRuleException>(

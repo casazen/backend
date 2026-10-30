@@ -33,9 +33,10 @@ public class SupplierAgendaTenancyTests
     private static readonly string[] DbSetNames =
         ["SupplierWorkingHours", "SupplierTimeOff", "SupplierBusyWindows", "SupplierSettings"];
 
-    // Any way to reach a table from code: the DbSet through whatever the context variable is called, or Set<T>().
+    // Any way to reach a table from code: the DbSet through whatever the context variable is called, or Set<T>(). A DbSet is never called, so
+    // a method of the same name (links.SupplierSettings(), the link to the settings page of the supplier) is not a use of the table.
     private static readonly Regex AnyTableUse = new(
-        @"\.(SupplierWorkingHours|SupplierTimeOff|SupplierBusyWindows|SupplierSettings)\b|Set<(SupplierWorkingHours|SupplierTimeOff|SupplierBusyWindow|SupplierSettings)>\(",
+        @"\.(SupplierWorkingHours|SupplierTimeOff|SupplierBusyWindows|SupplierSettings)\b(?!\()|Set<(SupplierWorkingHours|SupplierTimeOff|SupplierBusyWindow|SupplierSettings)>\(",
         RegexOptions.Compiled);
 
     // The statements of the two files that are allowed to: they call the context "db".

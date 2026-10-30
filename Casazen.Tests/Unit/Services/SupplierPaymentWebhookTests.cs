@@ -127,7 +127,7 @@ public class SupplierPaymentWebhookTests
     [Fact]
     public async Task Succeeded_APaymentWithoutCommission_IsPaidWithNoFeeOnTheIntent()
     {
-        using var s = await ServiceRequestScenario.CreateAsync(paymentOptions: new Core.Options.SupplierPaymentsOptions { CommissionPercent = 0m });
+        using var s = await ServiceRequestScenario.CreateAsync(paymentOptions: new Core.Options.SupplierPaymentsOptions { CommissionPercent = 0m, HeldForHosts = false });
         var opened = await s.OpenedAsync();
         Assert.Null(opened.Intent.ApplicationFeeCents);
 

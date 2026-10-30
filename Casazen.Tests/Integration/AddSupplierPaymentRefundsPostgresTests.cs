@@ -329,8 +329,21 @@ public class AddSupplierPaymentRefundsPostgresTests : IAsyncLifetime
             PaidAt = DateTime.UtcNow,
             PaidVia = ServicePaymentChannel.Stripe,
         };
-        db.ServiceRequestPayments.Add(payment);
-        await db.SaveChangesAsync();
+
+        // Plain SQL for the payment as well, for the same reason: saved through the model it writes the columns the held payments add
+        // (SP-15c-a: AuthorizationExpiresAt, CapturedAt, ...), which do not exist at the schema right before AddSupplierPaymentRefunds.
+        // Those columns are nullable or have a default, so the same statement works on the latest schema too.
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "ServiceRequestPayments" (
+                "Id", "ServiceRequestId", "SupplierOrgId", "PayerKind", "PayerOrgId", "AmountCents", "Currency", "CommissionPercent",
+                "ApplicationFeeCents", "NetCents", "Status", "PaymentIntentCount", "SentCount", "RefundedCents", "LineItemsJson",
+                "PaidAt", "PaidVia", "CreatedAt", "UpdatedAt")
+            VALUES (
+                {payment.Id}, {payment.ServiceRequestId}, {payment.SupplierOrgId}, {(int)payment.PayerKind}, {payment.PayerOrgId},
+                {payment.AmountCents}, {payment.Currency}, {payment.CommissionPercent}, {payment.ApplicationFeeCents}, {payment.NetCents},
+                {(int)payment.Status}, {payment.PaymentIntentCount}, {payment.SentCount}, {payment.RefundedCents}, {payment.LineItemsJson},
+                {payment.PaidAt}, {(int?)payment.PaidVia}, {payment.CreatedAt}, {payment.UpdatedAt});
+            """);
         return new Parents(hostOrg.Id, property.Id, supplierOrg.Id, request.Id, payment.Id);
     }
 
