@@ -120,14 +120,18 @@ public static class SeoJsonLd
         decimal NightlyRate,
         string Currency,
         string? OrgName,
-        string? OrgUrl);
+        string? OrgUrl,
+        int? FloorSizeSqm = null,
+        TimeOnly? CheckInTime = null,
+        TimeOnly? CheckOutTime = null,
+        bool PetsNotAllowed = false);
 
     /// <summary>
     /// <c>VacationRental</c> of a property page (spec-branded-booking-site AC12). The whole property is rented
-    /// (<c>EntirePlace</c>: a booking is per property). Left out because the data model does not hold them: check-in and
-    /// check-out times, <c>aggregateRating</c> (no review system), a "pets not allowed" rule (an absent amenity is not
-    /// a rule) and availability (it depends on the dates). The nightly price is a <c>makesOffer</c> of the business:
-    /// schema.org has no <c>offers</c> on a lodging business.
+    /// (<c>EntirePlace</c>: a booking is per property). Only what the host said goes in (DB-11a): the floor size, the check-in and
+    /// check-out times and the pets rule are written when the host stated them (a "pets not allowed" rule only when the host said No: an
+    /// absent amenity is not a rule). Left out: <c>aggregateRating</c> (until the reviews are on the page) and availability (it depends on
+    /// the dates). The nightly price is a <c>makesOffer</c> of the business: schema.org has no <c>offers</c> on a lodging business.
     /// </summary>
     public static JsonObject VacationRental(VacationRentalData data)
     {
@@ -146,6 +150,9 @@ public static class SeoJsonLd
                 : null),
             ("numberOfBedrooms", JsonValue.Create(data.Bedrooms)),
             ("numberOfBathroomsTotal", data.Bathrooms > 0 ? JsonValue.Create(data.Bathrooms) : null),
+            ("floorSize", data.FloorSizeSqm is > 0
+                ? Node("QuantitativeValue", ("value", JsonValue.Create(data.FloorSizeSqm.Value)), ("unitCode", Text("MTK")))
+                : null),
             ("amenityFeature", amenities.Count > 0 ? amenities : null));
 
         var hasAddress = !string.IsNullOrWhiteSpace(data.City) || !string.IsNullOrWhiteSpace(data.PostalCode);
@@ -191,7 +198,10 @@ public static class SeoJsonLd
                     ("longitude", JsonValue.Create(longitude)))
                 : null),
             ("containsPlace", place),
-            ("petsAllowed", data.PetsAllowed ? JsonValue.Create(true) : null),
+            ("checkinTime", data.CheckInTime is { } checkIn ? Text(checkIn.ToString("HH:mm", CultureInfo.InvariantCulture)) : null),
+            ("checkoutTime", data.CheckOutTime is { } checkOut ? Text(checkOut.ToString("HH:mm", CultureInfo.InvariantCulture)) : null),
+            // A rule the host stated: «Yes» (or the amenity) is true, «No» is false; «on request» and a rule never given say nothing.
+            ("petsAllowed", data.PetsAllowed ? JsonValue.Create(true) : data.PetsNotAllowed ? JsonValue.Create(false) : null),
             ("brand", string.IsNullOrWhiteSpace(data.OrgName)
                 ? null
                 : Node("Organization", ("name", Text(data.OrgName)), ("url", Text(data.OrgUrl)))),

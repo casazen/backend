@@ -1018,8 +1018,29 @@ What is read by the public page, the JSON-LD, the amenity catalog and the filter
   `_energy_class_invalid`, `_energy_index_invalid`, `_energy_index_without_class`, `_check_in_window_invalid`, `_too_many_highlights`, `_too_many_safety_notes`.
 - **Migration `AddPropertySiteProfile`**: eleven nullable columns and four constraints on `Properties`, no data touched, no flag, no environment variable.
   Rollback: deploy the previous release (it ignores the columns); `Down` drops them and what the hosts wrote is lost.
-- **Not here** (next pieces of DB-11a): the public property page and its JSON-LD reading this profile, the amenity catalog, the filters of the search on
-  labels and children, floor plans and points of interest, alternative text and size of the photos.
+- **The public page (second piece).** `profile` in `PublicPropertyDetailDto`, on both routes (`GET api/public/orgs/{slug}/properties/{slugOrId}` and
+  `GET api/properties/{id}/public`; one projection, `PropertyService.DetailRow`, built by `PublicPropertyProfileBuilder`): `headline` (the listing title of the
+  wizard), `accommodationType`, `beds`, `areaSqm`, `floorLevel`, `floorNote`, `outdoorNote`, `renovatedYear`, `energy {class, index}`, `areaKind`, `zone`, `near`,
+  `tags` (the host's and the ones the data give, in the order of the vocabulary), `highlights`, `safetyNotes`, `rules` and the `video` / `tour` (`{url, provider}`).
+  **Only what the host said**: a member never said is `null` (a list: empty), `rules` is `null` when none of its members is set, and the page does not draw
+  that section. `rules` = `checkIn {from, to, method}`, `checkOutBy`, `quietHours {from, to}` (a pair or nothing), `pets` / `smoking` / `parties` (the wizard's
+  answers: `No`, `OnRequest`/`OutdoorsOnly`, `Yes`), `childrenWelcome`, `note`. A latest arrival that is not after the earliest (the wizard moved the
+  earliest later) is left out. The extra-guest fee of the wizard is **not** published: the quote does not charge it (SR-07a-FU1). Texts are `{it, en}`; the page
+  shows English only when the host wrote it. The columns that hold the texts as stored (`SiteProfileJson`, `PhotoAltJson`) are never part of a response.
+- **JSON-LD** of the property page (`VacationRental`): `containsPlace.floorSize` (m², `MTK`), `checkinTime`, `checkoutTime` and `petsAllowed` are written when the host
+  stated them (`false` only when the pets rule says No); nothing else is added, no `aggregateRating`.
+- **Demo.** The showcase property «Villa del Lago» carries a site profile (scenario `property-site-profile`, catalog `2026-10-30.1`), applied through the same rules as the
+  host form; no video or tour (nothing of a third party is embedded from a demo).
+- **Photos: alternative text and size (third piece).** `GET` / `PUT api/properties/{id}/site-profile/photos` (same permissions as the profile): the gallery in display order, each
+  photo `{ url, alt {it, en}, width, height }`. The `PUT` lists the photos that have an alternative text (Italian always, English if the host wants, 200 characters, same rules as the
+  texts above, `field: photos`) and the gallery photos it does not list **lose theirs**; an address that is not in the gallery is 404 `property_photo_not_found`; the size is not
+  part of the body. The map lives in `Properties.PhotoAltJson` and **follows the gallery under the same lock as the photo service**: an upload reads the size of the
+  file (PNG, JPEG or WebP header, no decoding; a JPEG a phone took on its side gives its width and height swapped, as the browser draws it; unreadable = no size, the upload is
+  never refused for it) and a deleted photo takes its text and size with it. A photo uploaded before this existed has no size. The public detail lists `photos` next to
+  `photoUrls`, which stays. **No resized variants**: nothing in the stack resizes images (no library, no CDN transform), so `srcset` is left to a later decision; the size lets the page
+  reserve the room and load the first photo with priority.
+- **Not here** (next pieces of DB-11a): the amenity catalog is `GET api/public/amenities` (§ 11.11); the filters of the search on labels and children are in § 11.4a; floor plans
+  and points of interest.
 - **Tests.** Unit: `SiteEmbedUrlsTests` (what an embed address can become), `SitePropertyProfileRulesTests` (clean, canonical, within the limits and the
   vocabularies). HTTP: `PropertySiteProfileIntegrationTests` (replace, read back, a mistake saves nothing, another org / a colleague / anonymous / long-term).
   PostgreSQL (CI): `AddPropertySiteProfileMigrationPostgresTests` (existing properties come out empty and published as before; the constraints), `LegacyRowsSchemaTests`.

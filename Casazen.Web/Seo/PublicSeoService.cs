@@ -274,7 +274,11 @@ public sealed class PublicSeoService(
             row.NightlyRate,
             Currency,
             orgName,
-            orgUrl);
+            orgUrl,
+            row.AreaSqm,
+            row.CheckInFrom,
+            row.CheckOutBy,
+            row.PetsPolicy == PetsPolicy.No);
 
         var breadcrumb = SeoJsonLd.BreadcrumbList([(orgName, orgUrl), (row.Name, canonical)]);
 
@@ -638,6 +642,10 @@ public sealed class PublicSeoService(
         CinCode = p.CinCode,
         HouseRules = p.HouseRules,
         CancellationPolicySummary = p.CancellationPolicy != null ? p.CancellationPolicy.Description : string.Empty,
+        AreaSqm = p.AreaSqm,
+        CheckInFrom = p.CheckInFrom,
+        CheckOutBy = p.CheckOutBy,
+        PetsPolicy = p.PetsPolicy,
     };
 
     /// <summary>
@@ -778,5 +786,11 @@ public sealed class PublicSeoService(
         public string? CinCode { get; init; }
         public string HouseRules { get; init; } = string.Empty;
         public string CancellationPolicySummary { get; init; } = string.Empty;
+
+        // What the host said (SR-07a), for the structured data of the page (DB-11a).
+        public int? AreaSqm { get; init; }
+        public TimeOnly? CheckInFrom { get; init; }
+        public TimeOnly? CheckOutBy { get; init; }
+        public PetsPolicy? PetsPolicy { get; init; }
     }
 }
