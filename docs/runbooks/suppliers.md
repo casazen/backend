@@ -2614,13 +2614,12 @@ the migration `AddHeldServicePayments`: `FundsModel`, the held states exist only
 The admin list and detail show the new statuses by name. A card dispute (a chargeback) is recorded on the payment (`CardDisputeId`, `CardDisputeStatus`,
 `CardDisputeAt`); after the release it is **CasaZen's loss** and nothing is recovered from the supplier (VT-D22). The admin refund
 (`POST api/admin/service-payments/{id}/refund`) works on held money before the release (any amount up to what was paid minus what was refunded) and is
-refused after it. The commission export (SP-15b) lists direct charges only: the held money's commission rows are SP-15c-b.
+refused after it. The commission export (SP-15b) lists the direct charges as before and, since SP-15c-b, the commission CasaZen retained from the money it held as `retained` rows (38.9).
 
 ### 38.6 Not done here (follow-ups)
 
-- The host's requests on this cycle, the "all fine" and "report a
-  problem" for hosts, the admin export of the commission kept, **SP-15c-b**; the complaint, the dispute and the penalty, **SP-15c-c**; the screens,
-  **SP-15c-d** (after SP-12b).
+- The host's requests on this cycle, the host's "all fine", the admin refund R4/R5 and the export of the commission kept are **SP-15c-b** (38.9); the
+  complaint ("report a problem", also for hosts), the dispute and the penalty, **SP-15c-c**; the screens, **SP-15c-d** (after SP-12b).
 - A shorter Stripe timeout for the platform client; an admin action to settle `NeedsReview` for a held payment; the recovery of a card dispute after the
   release (decision of the product owner, VT-D16).
 
@@ -2690,6 +2689,43 @@ e-mail before the card shows `awaitingPayment`); let another hold lapse: its Pay
 card is charged (`Held`); cancel as the customer before and after the acceptance: block released, then full refund; refuse a booking: block released;
 complete and press "all fine": one transfer of the net to the connected account. With the flag off: the same booking is made as before (no
 `payment`, a manual request).
+
+### 38.9 The host's payments on the held cycle — SP-15c-b
+
+What a **host** pays for a job the supplier completed (the link of SP-15b, or the host's own session) now goes through CasaZen too, unless
+`SupplierPayments__HeldForHosts` is `false` (default `true`: the way back to the direct charge of SP-15a in an environment, without a deploy; it only
+decides the payments **created from then on**, an existing payment keeps the model it was created with).
+
+| Step | What happens | Where |
+|---|---|---|
+| 1 | The supplier completes: `PlanAsync` creates the payment `Requested`, `FundsModel = PlatformHeld`, `TransferGroup = service-request-{id}`, commission snapshotted (no fee is ever sent to Stripe: the commission is the part that is not transferred); the link goes to the host exactly as in SP-15b (same token, same e-mails, same reminders, same "late" flag). | `NewPaymentAsync` |
+| 2 | The host opens the link (`POST api/public/service-payments/{id}/payment-session`) or its own session (`POST api/service-requests/{id}/payment-session`, long-rent twin): a PaymentIntent **on the platform**, automatic capture, cards only, transfer group of the request; reused while payable with the same amount and no fee, replaced otherwise, never replaced if Stripe says it was paid or is in progress (the payment shows as processing, the webhook settles it). `stripeAccountId` is **null**: Stripe.js is loaded with the publishable key alone. A supplier whose account cannot receive money any more collects nothing (409 `service_payment_supplier_not_ready`). | `OpenHeldSessionAsync` (`FundsSession.cs`) |
+| 3 | `payment_intent.succeeded` (checked against the payment: platform, PaymentIntent, amount, currency, no fee) makes the payment `Held` and sets `ReleaseAt = charge + SupplierPayments__ReleaseAfterMinutes` (R3: a host pays after the work). A refused card is `payment_intent.payment_failed`: the payment is `Failed` with the code and payable again with the same PaymentIntent. The `service-payment-sync` job (every 15 min) reads the PaymentIntent of the open held payments touched in the last 3 days (not in the last 10 minutes) and records a charge whose event was lost. | `ApplyChargeEvent`, `ApplyHeldPaymentFailed`, `SynchronizeHeldPaymentAsync` |
+| 4 | The supplier is paid by the `service-funds` job once `ReleaseAt` has passed, or at once when the host says "all fine": `POST api/service-requests/{id}/confirm-ok` (long-rent: `POST api/long-rent/service-requests/{id}/confirm-ok`), same permission as `mark-paid`; 404 for another org's request, 422 `service_payment_not_confirmable` when there is nothing to release (not paid yet, closed, stopped). One transfer of the net, whatever the number of runs or clicks; the request becomes `Pagato` at the release, not at the charge. | `ConfirmOkAsHostAsync` |
+| 5 | The supplier cannot ask for or remind a payment the host has paid (409 `service_payment_held`), but can still ask for, remind and — as a traced exception — declare **received outside CasaZen** a payment still to be made: its PaymentIntent **on the platform** is canceled first, one that was paid meanwhile wins (processing, 409). | `RequestPaymentAsync`, `RecordOfflineAsync` |
+
+**Admin refund** (`POST api/admin/service-payments/{id}/refund`): by default everything still refundable goes back from the platform's balance, the
+commission included (**R5**, cancelling is always free); with `"keepCommission": true` only what the supplier would have been paid goes back (the price
+minus the commission, minus what was already refunded), CasaZen keeps the commission and the supplier gets nothing (**R4**, the supplier was at fault; the
+amount may be lower but never higher). Either way **only before the release**: after the transfer the money is the supplier's (422
+`service_payment_not_refundable`). `keepCommission` on a direct charge is 422.
+
+**Commission export** (`GET api/admin/supplier-payments/export?year=&month=`): a new row type `retained` for the money CasaZen held, one per payment, on the
+day the commission became CasaZen's — the day of the transfer, or, for a payment where the supplier got nothing, the day of the last refund that
+succeeded. `gross` is what stayed with CasaZen of the payer's money (the price minus what was given back), `commission` is CasaZen's commission, `net`
+what the supplier got. A payment refunded in full has no row. The rows of the direct charge (`payment`, `refund`) are unchanged.
+
+**Residual risks / decisions to confirm**
+
+- The model of a payment is fixed when it is created: a payment created while `HeldForHosts` was on stays held if it is switched off, and the other way
+  round. The tests of SP-15a/15b pin the direct charge (`HeldForHosts = false` in their harness); the held cycle has its own (`HostHeldPaymentTests`).
+- The Payment Element must be loaded **without** `stripeAccount` for a held payment (the frontend, SP-15c-d); a client that still sends the account of
+  a direct charge would not find the PaymentIntent.
+- A host that pays a `Failed` held payment again reuses the same PaymentIntent; the sync job reads open payments for 3 days after the last touch, a
+  lost event after that is settled by the next session or by an admin (`NeedsReview` is not reached from here).
+- The host's DTO does not carry the payment yet (status, amount, `releaseAt`, whether "all fine" is possible): the host page reads the request status
+  (`Completato` until the release, `Pagato` after) and the payment page of the link. A payment block in the host's DTO is a follow-up (SP-15c-b2).
+- "Segnala un problema" for hosts (and the long-rent twin) is the complaint of SP-15c-c.
 
 ## 27. Read models for the console: "Oggi" and "Richieste" — SP-04e
 

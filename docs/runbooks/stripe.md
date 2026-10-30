@@ -995,7 +995,7 @@ The payer pays CasaZen, not the supplier. The card is **blocked** when the custo
 |---|---|---|
 | `Stripe-Account` header | **none** (the platform account) | the PaymentIntent exists on the platform; `StripePlatformPaymentGateway` never sets an account |
 | `application_fee_amount` | **never** | the commission is the part CasaZen does not transfer; `ApplicationFeeArchitectureTests` fails if the gateway sets a fee or asks to refund one |
-| `capture_method` | `manual` for the booking of a showcase customer (the block), automatic for a host who pays from a link (SP-15c-b) | R1/R2: block at the booking, charge at the acceptance |
+| `capture_method` | `manual` for the booking of a showcase customer (the block), automatic for a host who pays from a link (SP-15c-b: the work is done, the card is charged when the host pays) | R1/R2: block at the booking, charge at the acceptance |
 | `payment_method_types` | `["card"]` | a block exists only for cards (VT-D22); the Payment Element still handles 3-D Secure |
 | `transfer_group` | `service-hold-{holdId:N}` for a booking (the request does not exist yet), `service-request-{requestId:N}` otherwise; kept on the payment (`TransferGroup`) | the intent, its refunds and its transfer carry it; the release looks for a transfer of the group before it makes one |
 | `metadata` | `kind = service-charge`, `funds = platform-held`, `showcaseHoldId` / `serviceRequestPaymentId`, `serviceRequestId`, `supplierOrgId` | ids only; the webhook routes on `kind` before the generic `payment_intent.succeeded` |
@@ -1017,9 +1017,13 @@ The payer pays CasaZen, not the supplier. The card is **blocked** when the custo
 
 **Stripe does not retry a failed transfer** (VT-D22): a 4xx raises `TransferAttempts`, makes the payment `TransferFailed` with the Stripe code and delays the next try (`TransferRetryBaseMinutes`, doubling to `TransferRetryMaxMinutes`); a supplier whose account cannot receive money yet, or an answer that does not come, only delays it. After `TransferAlertAfterAttempts` refusals the admins get one e-mail. The funds are the supplier's when the funds of the **charge** are available (about six days in test mode), not at the release: no text promises a payout time.
 
+### The host's payment (SP-15c-b)
+
+What a host pays for a completed job (`POST api/public/service-payments/{id}/payment-session`, or `POST api/service-requests/{id}/payment-session` and its long-rent twin) is a PaymentIntent **on the platform**, `capture_method` automatic, `payment_method_types = ["card"]`, `transfer_group = service-request-{requestId:N}`, metadata `serviceRequestPaymentId` / `serviceRequestId` / `supplierOrgId`, idempotency key `service-charge:{paymentId:N}:{n}`; the answer has `stripeAccountId` **null** (Stripe.js is loaded with the publishable key alone). `payment_intent.succeeded` (and, if the event is lost, the `service-payment-sync` job) makes the payment `Held` with `ReleaseAt` = charge + `ReleaseAfterMinutes`; the `service-funds` job (or the host's "all fine", `POST api/service-requests/{id}/confirm-ok`) transfers the net. `SupplierPayments__HeldForHosts=false` keeps the direct charge of SP-15a for the payments created from then on. Admin refunds: `keepCommission: true` returns only the supplier's part (rule R4), the default everything (R5); neither after the release. See [`suppliers.md`](suppliers.md) § 38.9.
+
 ### Parameters (`SupplierPayments__*`, all validated at startup)
 
-`AuthorizationValidityHours` (48, 1 to 96: far below the 4 days 18 hours of a Visa charged without the cardholder present), `ReleaseAfterMinutes` (60), `MaxHoldDays` (60) and `HoldWarningDays` (7) (the longest CasaZen means to hold money, a decision of the product owner after Stripe's answer, VT-D22 question 2: the admins are *warned*, nothing moves), `TransferRetryBaseMinutes` (15), `TransferRetryMaxMinutes` (720), `TransferAlertAfterAttempts` (5). The commission stays `CommissionPercent` / the supplier's override, snapshotted when the payment is created. See [`deploy-checklist.md`](deploy-checklist.md).
+`AuthorizationValidityHours` (48, 1 to 96: far below the 4 days 18 hours of a Visa charged without the cardholder present), `ReleaseAfterMinutes` (60), `MaxHoldDays` (60) and `HoldWarningDays` (7) (the longest CasaZen means to hold money, a decision of the product owner after Stripe's answer, VT-D22 question 2: the admins are *warned*, nothing moves), `TransferRetryBaseMinutes` (15), `TransferRetryMaxMinutes` (720), `TransferAlertAfterAttempts` (5), `HeldForHosts` (true, SP-15c-b). The commission stays `CommissionPercent` / the supplier's override, snapshotted when the payment is created. See [`deploy-checklist.md`](deploy-checklist.md).
 
 ### Webhook events (platform endpoint, snapshot)
 
