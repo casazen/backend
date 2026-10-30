@@ -311,11 +311,17 @@ public class Property : ITenantOwned
     /// <summary>
     /// Complete for the contract: sheet, parcel, category and income (the subaltern is optional, LT-10).
     /// </summary>
-    public bool HasCadastralData =>
-        !string.IsNullOrWhiteSpace(CadastralSheet)
-        && !string.IsNullOrWhiteSpace(CadastralParcel)
-        && !string.IsNullOrWhiteSpace(CadastralCategory)
-        && CadastralIncome is not null;
+    public bool HasCadastralData => IsCadastralDataComplete(CadastralSheet, CadastralParcel, CadastralCategory, CadastralIncome);
+
+    /// <summary>
+    /// The rule of <see cref="HasCadastralData"/> for four values read without the property (a query that selects only the columns, like the
+    /// list of the long-term properties, LR-07a): the one rule of the contract.
+    /// </summary>
+    public static bool IsCadastralDataComplete(string? sheet, string? parcel, string? category, decimal? income) =>
+        !string.IsNullOrWhiteSpace(sheet)
+        && !string.IsNullOrWhiteSpace(parcel)
+        && !string.IsNullOrWhiteSpace(category)
+        && income is not null;
 
     /// <summary>
     /// ISO 3166-1 alpha-2 country code (e.g. "IT", "CH"). Non-null, default IT (ADR-001-R7).
