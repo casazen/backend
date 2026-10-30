@@ -118,7 +118,7 @@ existed before FD-10 are the old *global* limits, now applied per IP.
 | `TenantPrivacy` | `GET api/long-rent/tenants/{id}/export` (the copy of a tenant's personal data) and `POST api/long-rent/tenants/{id}/erasure-request` (LR-09). **Per signed-in person**: one file holds every personal datum of somebody and the erasure cannot be taken back | 10 / 10 min | `RateLimiting__TenantPrivacy__PermitLimit` |
 | `SupplierShowcaseSave` | `PATCH api/supplier/showcase/content` (the autosave of the showcase editor, SP-13a). **Per signed-in person**: the editor saves at every pause in typing and the people of one office share an address | 120 / min | `RateLimiting__SupplierShowcaseSave__PermitLimit` |
 
-The window of every policy is `RateLimiting__{Policy}__WindowSeconds` (60, or 600 for `PublicRegistration`, `OrgAccessRequest`, `PublicReviewSubmit`, `GuestMessageSend`, `GuestBookingCancel`, `HostMessageSend`, `TenantPrivacy` and `PublicSupplierBookingCreate`, 3600 for `GuestMessagePerSession`, 3600 for `SupplierBookingCreatePerEmail`, 900 for `SupplierBookingManagePerEmail` and `GuestBookingCancelPerBooking`).
+The window of every policy is `RateLimiting__{Policy}__WindowSeconds` (60, or 600 for `PublicRegistration`, `OrgAccessRequest`, `PublicReviewSubmit`, `GuestMessageSend`, `GuestBookingCancel`, `HostMessageSend`, `PublicContact`, `TenantPrivacy` and `PublicSupplierBookingCreate`, 3600 for `GuestMessagePerSession`, 3600 for `SupplierBookingCreatePerEmail`, 900 for `SupplierBookingManagePerEmail` and `GuestBookingCancelPerBooking`, 86400 for `HostContactPerEmail`).
 
 Notes:
 
