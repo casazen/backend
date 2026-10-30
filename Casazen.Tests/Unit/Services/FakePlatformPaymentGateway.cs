@@ -26,6 +26,7 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
     private Exception? _failNextCapture;
     private Exception? _failNextTransfer;
     private Exception? _failNextList;
+    private Exception? _failNextRefund;
     private bool _loseNextTransferAnswer;
     private bool _chargeOnNextCancel;
 
@@ -122,6 +123,9 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
 
     public void FailNextList(Exception exception) => _failNextList = exception;
 
+    /// <summary>The next refund is refused (or cannot be asked): nothing exists on this fake Stripe afterwards.</summary>
+    public void FailNextRefund(Exception exception) => _failNextRefund = exception;
+
     /// <summary>The next transfer is created on Stripe but the answer never comes back (a timeout): the next try must find it, not make another.</summary>
     public void LoseNextTransferAnswer() => _loseNextTransferAnswer = true;
 
@@ -214,6 +218,12 @@ internal sealed class FakePlatformPaymentGateway : IPlatformPaymentGateway
             RefundRequests.Add(request);
             if (_refundsByKey.TryGetValue(request.IdempotencyKey, out var existing))
                 return Task.FromResult(existing);
+
+            if (_failNextRefund is { } failure)
+            {
+                _failNextRefund = null;
+                throw failure;
+            }
 
             Find(request.PaymentIntentId);
             var metadata = new Dictionary<string, string>(request.Metadata) { ["kind"] = "service-charge-refund" };
