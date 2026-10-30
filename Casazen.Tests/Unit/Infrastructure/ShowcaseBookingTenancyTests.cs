@@ -29,6 +29,7 @@ public class ShowcaseBookingTenancyTests
     {
         ["Casazen.Infrastructure/Services/ShowcaseBookingService.cs"] = "The booking: HoldsOf and CustomerByEmailOf carry the OrgId predicate, the rest is an insert or a remove of a row it loaded that way.",
         ["Casazen.Infrastructure/Services/ShowcaseHoldReader.cs"] = "The holds the slot planner counts: LiveHoldsOf carries the OrgId predicate.",
+        ["Casazen.Infrastructure/Services/ShowcaseInquiryService.cs"] = "The request on measure (SP-10b): reads the customer and the holds through the helpers of the booking (CustomerByEmailOf, HoldsOf) and only adds the customer it creates.",
         ["Casazen.Infrastructure/Services/ServiceCustomerReader.cs"] = "The contact of a customer for the e-mails: CustomerOf carries the OrgId predicate.",
         ["Casazen.Infrastructure/Services/SupplierService.Maintenance.cs"] = "The repair that merges duplicate supplier profiles moves the customers of the duplicate org; both orgs are explicit.",
     };
@@ -316,6 +317,7 @@ public class ShowcaseBookingTenancyTests
     [Theory]
     [InlineData("Casazen.Infrastructure/Services/ShowcaseBookingService.cs")]
     [InlineData("Casazen.Infrastructure/Services/ShowcaseHoldReader.cs")]
+    [InlineData("Casazen.Infrastructure/Services/ShowcaseInquiryService.cs")]
     [InlineData("Casazen.Infrastructure/Services/ServiceCustomerReader.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierService.Maintenance.cs")]
     public void EveryStatementOnTheTables_CarriesTheOrgPredicateOrIsAnInsertOrARemove(string relative)

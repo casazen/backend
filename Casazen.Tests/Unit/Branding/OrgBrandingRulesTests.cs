@@ -39,9 +39,9 @@ public class OrgBrandingRulesTests
     }
 
     [Theory]
-    [InlineData("mare", "mare")]
-    [InlineData(" Montagna ", "montagna")]
-    [InlineData("URBAN", "urban")]
+    [InlineData("terra", "terra")]
+    [InlineData(" Mare ", "mare")]
+    [InlineData("CITTA", "citta")]
     public void NormalizeThemeId_SupportedTheme_ReturnsLowerCaseId(string input, string expected)
     {
         Assert.Equal(expected, OrgBrandingRules.NormalizeThemeId(input));
@@ -56,10 +56,31 @@ public class OrgBrandingRulesTests
     [Theory]
     [InlineData("collina")]
     [InlineData("dark")]
+    [InlineData("montagna")]
+    [InlineData("urban")]
     public void NormalizeThemeId_UnsupportedTheme_ThrowsThemeInvalid(string input)
     {
+        // montagna and urban are read as aliases but never written: a console from before DB-01 cannot store them any more.
         var ex = Assert.Throws<DomainRuleException>(() => OrgBrandingRules.NormalizeThemeId(input));
         Assert.Equal(OrgBrandingRules.ThemeInvalidCode, ex.Code);
+    }
+
+    [Theory]
+    [InlineData("editoriale", "editoriale")]
+    [InlineData(" Moderno ", "moderno")]
+    [InlineData("CLASSICO", "classico")]
+    public void NormalizeFontId_SupportedFont_ReturnsLowerCaseId(string input, string expected)
+    {
+        Assert.Equal(expected, OrgBrandingRules.NormalizeFontId(input));
+    }
+
+    [Theory]
+    [InlineData("comic")]
+    [InlineData("Fraunces")]
+    public void NormalizeFontId_UnsupportedFont_ThrowsFontInvalid(string input)
+    {
+        var ex = Assert.Throws<DomainRuleException>(() => OrgBrandingRules.NormalizeFontId(input));
+        Assert.Equal(OrgBrandingRules.FontInvalidCode, ex.Code);
     }
 
     [Fact]
@@ -245,10 +266,13 @@ public class OrgBrandingRulesTests
     }
 
     [Theory]
-    [InlineData(null, "mare")]
-    [InlineData("montagna", "montagna")]
-    [InlineData("Urban", "urban")]
-    [InlineData("legacy-theme", "mare")]
+    [InlineData(null, "terra")]
+    [InlineData("terra", "terra")]
+    [InlineData("Mare", "mare")]
+    [InlineData("citta", "citta")]
+    [InlineData("montagna", "terra")]
+    [InlineData("Urban", "citta")]
+    [InlineData("legacy-theme", "terra")]
     public void PublicSiteThemesResolve_StoredValue_ReturnsRenderedTheme(string? stored, string expected)
     {
         Assert.Equal(expected, PublicSiteThemes.Resolve(stored));

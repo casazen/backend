@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Validation;
 using Casazen.Web.DTOs.Supplier;
@@ -7,7 +8,7 @@ using Casazen.Web.DTOs.Supplier;
 namespace Casazen.Web.DTOs.ServiceRequests;
 
 /// <summary>
-/// Body of <c>POST api/service-requests</c> (short-rent: <see cref="BookingId"/> required, a stay of the property) and
+/// Body of <c>POST api/service-requests</c> (short-rent: <see cref="BookingId"/> optional, a stay of the property when given, SR-D3) and
 /// <c>POST api/long-rent/service-requests</c> (long-rent: no <see cref="BookingId"/>), decision D2 (SU-07).
 /// </summary>
 /// <remarks>
@@ -20,6 +21,10 @@ public class CreateServiceRequestRequest
     [NotEmptyGuid(ErrorMessage = "ServiceRequestPropertyRequired")]
     public Guid PropertyId { get; set; }
 
+    /// <summary>
+    /// The stay the request is for (short-rent only), a booking of the property: optional since SR-08a, a request can be for the house
+    /// alone. A booking that is not a stay of the property is 422 <c>service_request_booking_mismatch</c>.
+    /// </summary>
     [NotEmptyGuid(ErrorMessage = "ServiceRequestBookingInvalid")]
     public Guid? BookingId { get; set; }
 
@@ -47,8 +52,9 @@ public class CreateServiceRequestRequest
     /// <summary>
     /// The start of the work (UTC). With <see cref="DurationMinutes"/> the end is the start plus that duration, so the supplier
     /// sees when the job is and how long it lasts. With a catalog service and no duration, the service's duration gives the end
-    /// and the start is checked against the agenda (409 <c>supplier_slot_unavailable</c>). Without a start the time is
-    /// "da concordare" and the job occupies the whole day once the supplier takes it.
+    /// and the start is checked against the agenda (409 <c>supplier_slot_unavailable</c>). Without a start the request gets 10:00
+    /// (Europe/Rome) of the stay's check-out day or, without a stay, of today (of tomorrow once today's 10:00 has gone by), for the
+    /// duration given, the service's or 120 minutes.
     /// </summary>
     public DateTime? ScheduledStartUtc { get; set; }
 
@@ -357,6 +363,96 @@ public class ServiceRequestDto
     /// itself, so it was born <c>PresoInCarico</c> and no member of the supplier took it. <c>false</c> for every other request.
     /// </summary>
     public bool AutoAccepted { get; set; }
+
+    // ─── What the host reads besides the request (SR-08a): null for the supplier and in the long-rent context ───
+
+    /// <summary>The city of the property, as the host wrote it; <c>null</c> when the supplier reads the request, or the property has none.</summary>
+    public string? PropertyCity { get; set; }
+
+    /// <summary>
+    /// The stay the request is for (its guest and dates) or <c>null</c> when it is for the house alone. <b>Only the host gets it</b>:
+    /// the guest is the host's, and the supplier never sees the guest (decision D9).
+    /// </summary>
+    public ServiceRequestStayDto? Stay { get; set; }
+
+    /// <summary>
+    /// How to reach the supplier, <b>from the moment it took the request</b> (<c>PresoInCarico</c> on); <c>null</c> before it and for the
+    /// supplier itself.
+    /// </summary>
+    public ServiceRequestSupplierContactDto? SupplierContact { get; set; }
+
+    /// <summary>
+    /// The one thing the host is asked to do about the request, worked out by the server from the state machine: the page shows it and
+    /// has no state logic of its own. <c>null</c> for the supplier and in the long-rent context.
+    /// </summary>
+    public ServiceRequestHostActionDto? HostAction { get; set; }
+
+    /// <summary>
+    /// Every action the host can do now, the <see cref="HostAction"/> first: <c>remind</c>, <c>acceptProposal</c>, <c>rejectProposal</c>,
+    /// <c>confirmFinalAmount</c>, <c>pay</c>, <c>markPaid</c>, <c>requestAgain</c>, <c>cancel</c>. <b>An open set</b>. <c>null</c> for the
+    /// supplier and in the long-rent context.
+    /// </summary>
+    public IEnumerable<string>? AvailableActions { get; set; }
+
+    /// <summary>
+    /// Only in the answer of <c>POST api/service-requests</c>: <c>true</c> when the host named no time and the request got the default
+    /// one (10:00 of the check-out day or, without a stay, of today or, once that has gone by, of tomorrow), so the page can say it.
+    /// <c>null</c> everywhere else.
+    /// </summary>
+    public bool? ScheduleDefaulted { get; set; }
+}
+
+/// <summary>The stay a request is for, as its host reads it (SR-08a).</summary>
+public class ServiceRequestStayDto
+{
+    public Guid BookingId { get; set; }
+
+    /// <summary>First and last name of the guest of the booking.</summary>
+    public string GuestName { get; set; } = string.Empty;
+
+    /// <summary>Arrival day (<c>yyyy-MM-dd</c>).</summary>
+    public DateOnly CheckIn { get; set; }
+
+    /// <summary>Departure day (<c>yyyy-MM-dd</c>).</summary>
+    public DateOnly CheckOut { get; set; }
+}
+
+/// <summary>The phone and the e-mail of the supplier of a request it took (SR-08a).</summary>
+public class ServiceRequestSupplierContactDto
+{
+    public string? Phone { get; set; }
+    public string? Email { get; set; }
+}
+
+/// <summary>What the host is asked to do about a request (SR-08a, <see cref="HostRequestActionKinds"/>).</summary>
+public class ServiceRequestHostActionDto
+{
+    /// <summary><c>none</c>, <c>remind</c>, <c>acceptProposal</c>, <c>confirmFinalAmount</c>, <c>pay</c>, <c>markPaid</c> or <c>requestAgain</c>. An open set.</summary>
+    public string Kind { get; set; } = HostRequestActionKinds.None;
+
+    /// <summary>With <c>none</c> on a request that waits for the supplier: the instant the host can remind it again (UTC).</summary>
+    public DateTime? RemindAvailableAt { get; set; }
+}
+
+/// <summary>How many requests are in each chip of the host's list (SR-08a, <c>GET api/service-requests/counts</c>).</summary>
+public class ServiceRequestCountsDto
+{
+    public int All { get; set; }
+    public int Pending { get; set; }
+    public int Active { get; set; }
+    public int ToPay { get; set; }
+    public int Done { get; set; }
+    public int NeedsAction { get; set; }
+
+    public static ServiceRequestCountsDto From(HostServiceRequestCounts counts) => new()
+    {
+        All = counts.All,
+        Pending = counts.Pending,
+        Active = counts.Active,
+        ToPay = counts.ToPay,
+        Done = counts.Done,
+        NeedsAction = counts.NeedsAction,
+    };
 }
 
 /// <summary>

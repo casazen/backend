@@ -132,6 +132,84 @@ public sealed class ShowcaseBookingNotifier(
         }
     }
 
+    // ─── The request on measure (SP-10b) ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The verification e-mail of a request on measure, rendered <b>before</b> the inquiry is saved: a missing <c>App:PublicSiteBaseUrl</c> is
+    /// a configuration error that must stop the request, not a wrong link in an e-mail.
+    /// </summary>
+    public EmailContent RenderInquiryVerification(
+        SupplierProfile supplier,
+        ShowcaseInquiryPayload payload,
+        Guid inquiryId,
+        string token,
+        int validMinutes) =>
+        EmailTemplates.SupplierInquiryVerification(
+            EmailTemplates.CultureOf(payload.Locale),
+            payload.FullName,
+            supplier.LegalName,
+            publicSiteLinks.SupplierInquiryConfirmation(SlugOf(supplier), inquiryId, token),
+            validMinutes);
+
+    /// <summary>
+    /// Queues the e-mail rendered by <see cref="RenderInquiryVerification"/> to the address the customer gave. <c>false</c> when it could not
+    /// be queued (the e-mail provider is not configured, the queue is down): the request then lets the inquiry go.
+    /// </summary>
+    public bool QueueInquiryVerification(string to, EmailContent email) =>
+        emailQueue.Enqueue(to, email, EmailTemplates.Names.SupplierInquiryVerification);
+
+    /// <summary>
+    /// The address is checked and the request on measure exists: the receipt to the customer, and the new request to the supplier (e-mail and
+    /// push, comune and "Nome C." only — never a word of the message). Never throws.
+    /// </summary>
+    public void QueueInquiryReceived(
+        SupplierProfile supplier,
+        ServiceRequest request,
+        ServiceCustomer customer,
+        DateTime respondByUtc)
+    {
+        try
+        {
+            var culture = EmailTemplates.CultureOf(customer.Locale);
+
+            emailQueue.Enqueue(
+                customer.Email,
+                EmailTemplates.SupplierInquiryReceipt(
+                    culture,
+                    customer.FullName,
+                    supplier.LegalName,
+                    request.PublicCode!,
+                    respondByUtc,
+                    publicSiteLinks.SupplierBookingRequest(SlugOf(supplier), request.PublicCode)),
+                EmailTemplates.Names.SupplierInquiryReceipt);
+
+            var italian = EmailTemplates.DefaultCulture;
+            var comune = request.LocationCity ?? string.Empty;
+            emailQueue.Enqueue(
+                supplier.Email,
+                EmailTemplates.SupplierInquiryNewRequest(
+                    italian,
+                    supplier.LegalName,
+                    request.ServiceNameSnapshot,
+                    comune,
+                    ShowcaseBookingRules.AbbreviateName(customer.FullName),
+                    respondByUtc,
+                    publicSiteLinks.SupplierInbox()),
+                EmailTemplates.Names.SupplierInquiryNewRequest);
+
+            var push = EmailTemplates.ServiceRequestCreatedPush(italian, request.Category, comune);
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.ServiceRequestCreated(request.Id),
+                PushAudience.SupplierOrg(request.SupplierOrgId),
+                new PushNotificationPayload(
+                    push.Title, push.Body, PushTypes.ServiceRequestCreated, BookingId: null, PushRoutes.Properties, request.Id));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Notifications of the showcase request on measure {Id} could not be queued", request.Id);
+        }
+    }
+
     // ─── What the supplier did, or CasaZen did for it: the customer ──────────────────────────────────────────────────
 
     /// <summary>

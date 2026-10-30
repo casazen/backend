@@ -92,6 +92,21 @@ public class EndpointAuthorizationArchitectureTests
     };
 
     /// <summary>
+    /// The anonymous endpoints of the request on measure from the supplier showcase (SP-10b), each with the reason it is public: the
+    /// customer has no account, and the first call only keeps what it wrote until the customer's e-mail is checked.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> PublicSupplierInquiry = new Dictionary<string, string>
+    {
+        ["PublicSupplierInquiryController.Create"] = "A customer without an account asks an active supplier for something on measure and leaves the data of the request and its words; nothing reaches the supplier until the e-mail is checked (SP-10b, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+        ["PublicSupplierInquiryController.ConfirmEmail"] = "The customer follows the link of the verification e-mail: the token in the body is the secret, and only then the request exists (SP-10b, behind SupplierShowcaseBooking, rate limited).",
+    };
+
+    private static IEnumerable<MethodInfo> PublicInquiryActions() =>
+        typeof(PublicSupplierInquiryController)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => !m.IsSpecialName && m.GetCustomAttributes(inherit: true).OfType<IActionHttpMethodProvider>().Any());
+
+    /// <summary>
     /// The anonymous endpoints of the customer's own area of a booking made from the supplier showcase (SP-11), each with the reason it
     /// is public: the customer has no account, and proves it is the one who booked with the code of the booking and its e-mail address.
     /// </summary>
@@ -250,6 +265,60 @@ public class EndpointAuthorizationArchitectureTests
 
         Assert.Equal("api/public/suppliers/{slug}/bookings", route?.Template);
         Assert.NotNull(typeof(PublicSupplierBookingController).GetCustomAttribute<AllowAnonymousAttribute>());
+    }
+
+    [Fact]
+    public void PublicSupplierInquiry_EveryAnonymousAction_IsListedWithItsReason()
+    {
+        var anonymous = Actions()
+            .Where(a => a.IsAnonymous && a.Key.StartsWith(nameof(PublicSupplierInquiryController) + ".", StringComparison.Ordinal))
+            .Select(a => a.Key)
+            .Order()
+            .ToList();
+
+        Assert.Equal(PublicSupplierInquiry.Keys.Order(), anonymous);
+        Assert.All(PublicSupplierInquiry, entry => Assert.True(entry.Value.Length >= 40, $"{entry.Key}: say why it is public"));
+    }
+
+    [Fact]
+    public void PublicSupplierInquiry_EveryAction_IsBehindTheFlag_RateLimited_AndBoundedInSize()
+    {
+        var registered = RateLimitingServiceCollectionExtensions.Policies.Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(PublicSupplierInquiry.Count, PublicInquiryActions().Count());
+        foreach (var action in PublicInquiryActions())
+        {
+            // The flag is read by the middleware that runs before authentication and model binding: every action carries the attribute.
+            var gates = action.GetCustomAttributes<FeatureGateAttribute>(inherit: true).Select(g => g.Flag).ToList();
+            Assert.Equal(new[] { FeatureFlags.SupplierShowcaseBooking }, gates);
+
+            var policy = RateLimitPolicyOf(action);
+            Assert.False(string.IsNullOrEmpty(policy), $"{action.Name} has no rate limit");
+            Assert.Contains(policy!, registered);
+
+            var limit = action.GetCustomAttribute<RequestSizeLimitAttribute>();
+            Assert.NotNull(limit);
+            Assert.True(GetBytes(limit) <= 64 * 1024, $"{action.Name}: the body of an anonymous call is small");
+        }
+
+        Assert.Empty(typeof(PublicSupplierInquiryController).GetCustomAttributes<FeatureGateAttribute>(inherit: true));
+    }
+
+    [Fact]
+    public void PublicSupplierInquiry_TheCreateHasTheLimitsOfTheBooking_TheCheckUsesTheLookupOne_TheRoutesAreUnderThePublicSuppliersPrefix()
+    {
+        var create = typeof(PublicSupplierInquiryController).GetMethod(nameof(PublicSupplierInquiryController.Create))!;
+        var confirm = typeof(PublicSupplierInquiryController).GetMethod(nameof(PublicSupplierInquiryController.ConfirmEmail))!;
+
+        Assert.Equal(RateLimitPolicies.PublicSupplierBookingCreate, RateLimitPolicyOf(create));
+        // The second limit, per e-mail address and supplier, runs next to the one per IP (and is the booking's own).
+        Assert.Single(create.GetCustomAttributes<SupplierBookingEmailRateLimitAttribute>());
+        Assert.Equal(RateLimitPolicies.PublicBookingLookup, RateLimitPolicyOf(confirm));
+        Assert.Empty(confirm.GetCustomAttributes<SupplierBookingEmailRateLimitAttribute>());
+
+        var route = typeof(PublicSupplierInquiryController).GetCustomAttribute<RouteAttribute>();
+        Assert.Equal("api/public/suppliers/{slug}/inquiries", route?.Template);
+        Assert.NotNull(typeof(PublicSupplierInquiryController).GetCustomAttribute<AllowAnonymousAttribute>());
     }
 
     [Fact]

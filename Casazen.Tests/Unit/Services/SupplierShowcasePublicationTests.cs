@@ -225,6 +225,32 @@ public class SupplierShowcasePublicationTests
         Assert.False(await SwitchAsync());
     }
 
+    // ─── What the public reads ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Public_ReadsTheLastPublication_NeverTheDraft_AndNothingOfAnotherSupplier()
+    {
+        await SeedAsync(accountReady: true);
+        var service = Build().Service;
+
+        // A draft is not public.
+        await service.SaveDraftAsync(OrgA, 0, Patch("""{"tagline":"Bozza"}"""));
+        Assert.Null(await Build().Service.GetPublishedAsync(OrgA));
+
+        // Published, then the supplier writes a new draft: the public still reads what was published.
+        await Build().Service.PublishAsync(OrgA, null);
+        await Build().Service.SaveDraftAsync(OrgA, 0, Patch("""{"tagline":"Nuova bozza"}"""));
+
+        var published = await Build().Service.GetPublishedAsync(OrgA);
+        Assert.Equal("Bozza", published!.Content.Tagline);
+        Assert.False(published.Paused);
+        Assert.Null(await Build().Service.GetPublishedAsync(Guid.NewGuid()));
+
+        // The paused showcase is still published, and says so.
+        await Build().Service.PauseAsync(OrgA);
+        Assert.True((await Build().Service.GetPublishedAsync(OrgA))!.Paused);
+    }
+
     // ─── helpers ─────────────────────────────────────────────────────────────────
 
     private static JsonObject Patch(string json) => (JsonObject)JsonNode.Parse(json)!;

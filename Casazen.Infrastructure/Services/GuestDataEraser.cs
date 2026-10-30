@@ -260,15 +260,19 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         return records.Count;
     }
 
-    /// <summary>Special requests are written by the guest (preferences, possibly health data): not needed for the accounts.</summary>
+    /// <summary>
+    /// Special requests are written by the guest (preferences, possibly health data): not needed for the accounts. The expected arrival
+    /// time the guest gave at the checkout (DB-03b) goes with them: a preference of that person, not an accounting record.
+    /// </summary>
     private async Task<int> ClearSpecialRequestsAsync(Guid guestId, DateTime now, CancellationToken cancellationToken)
     {
         var bookings = await db.Bookings
-            .Where(b => b.GuestId == guestId && b.SpecialRequests != "")
+            .Where(b => b.GuestId == guestId && (b.SpecialRequests != "" || b.ExpectedArrivalTime != null))
             .ToListAsync(cancellationToken);
         foreach (var booking in bookings)
         {
             booking.SpecialRequests = string.Empty;
+            booking.ExpectedArrivalTime = null;
             booking.UpdatedAt = now;
         }
 

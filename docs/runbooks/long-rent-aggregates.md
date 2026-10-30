@@ -290,7 +290,7 @@ ORDER BY "OccurredAt";
 
 ### 10.9 Le operazioni del contratto: lettere in bozza, disdetta e recesso (LR-OPS-1)
 
-Il «come» delle azioni di questo capitolo: la bozza della lettera di disdetta da mandare all'inquilino (con i motivi che la legge ammette alla prima scadenza), il **recesso del conduttore** (`POST /api/leases/{id}/withdrawal`: il giorno di ricezione più il preavviso diventa l'ultimo giorno del contratto, con **le stesse regole e gli stessi effetti** della cessazione anticipata di § 10.2.1; due eventi in coda a `LeaseEventType`: `WithdrawalRecorded` e `LetterSent`) e «Segna come inviata». Le lettere sono bozze non approvate finché il PO non le approva con `LeaseLetters__Variants__…`; nulla parte verso il conduttore. Tutto è in [`lease-operations.md`](lease-operations.md). Nuovi codici: `lease_withdrawal_date_invalid`, `lease_withdrawal_notice_invalid`, `lease_letter_date_invalid`, `lease_disdetta_reason_required`, `lease_letter_unavailable`.
+Il «come» delle azioni di questo capitolo: la bozza della lettera di disdetta da mandare all'inquilino (con i motivi che la legge ammette alla prima scadenza), il **recesso del conduttore** (`POST /api/leases/{id}/withdrawal`: il giorno di ricezione più il preavviso diventa l'ultimo giorno del contratto, con **le stesse regole e gli stessi effetti** della cessazione anticipata di § 10.2.1; due eventi in coda a `LeaseEventType`: `WithdrawalRecorded` e `LetterSent`) e «Segna come inviata». Le lettere sono bozze non approvate finché il PO non le approva con `LeaseLetters__Variants__…`; nulla parte verso il conduttore. Tutto è in [`lease-operations.md`](lease-operations.md). Il **rinnovo esplicito** (`POST /api/leases/{id}/renewal`, 1b) formalizza un rinnovo o una proroga nell'ultimo tratto prima della fine del periodo (dall'ultimo giorno per la disdetta; registrarlo sposta la fine e chiude la finestra fino a quella del periodo dopo) con le regole di LR-OVERLAP (nuovo periodo libero) e il piano dei canoni esteso; il rinnovo tacito del job (§ 10.4) non cambia. Nuovi codici: `lease_withdrawal_date_invalid`, `lease_withdrawal_notice_invalid`, `lease_letter_date_invalid`, `lease_disdetta_reason_required`, `lease_letter_unavailable`, `lease_renewal_end_invalid`, `lease_renewal_blocked_by_notice`, `lease_renewal_period_over`, `lease_renewal_not_yet`, `lease_letter_not_applicable`.
 
 ## 11. Il percorso del contratto: stato e prossimo passo (LR-01b)
 
@@ -489,3 +489,25 @@ l'anonimizzazione di un contratto finito riguarda tutte le sue parti non tratten
 - **LR-09-FU1** sollecito diretto dalla scheda della persona (oggi la scheda porta al registro dei canoni del mese in ritardo) · **FU2** la
   cancellazione solo della persona e non delle altre parti dei contratti finiti · **FU3** «Esporta i contatti» di tutte le persone · **FU4** la
   voce di cancellazione nel registro attività dell'org (serve un tipo nuovo in `OrgActivityType`).
+
+## 14. Immobili: APE, catasto, «poi libero» e cambio di modalità (LR-07a)
+
+`GET api/long-rent/properties` dà, per ogni immobile attivo in modalità lunga che il chiamante raggiunge (`HostScope`, in SQL), ciò che l'elenco
+degli immobili e quello dei contratti non dicono. **Solo letture**: nessuna tabella, nessuna migrazione, nessun flag. Policy di classe
+`property.read` del contesto lungo. Quattro istruzioni qualunque sia il numero di immobili: gli immobili, i loro documenti APE, i cambi di modalità
+programmati e, solo per chi può leggere i contratti, l'elenco dei contratti dell'area (lo stesso della pagina Contratti: lo stato di un contratto è
+quello che la pagina mostra). Il resto è in memoria. `Cache-Control: private, no-store`.
+
+| Campo | Cosa dice |
+|---|---|
+| `ape` / `apeValid` / `apeClass` | `Missing` (nessun certificato), `ToConfirm` (c'è un file ma non codice e classe: il locatore li conferma digitandoli), `Identified` (codice **e** classe registrati; `apeValid` vero, `apeClass` = classe del più recente). È la regola della bozza del contratto e di `ApeComplianceService` (che accetta subito un certificato identificato): **il contenuto del file non si rilegge in un elenco**, si legge al caricamento e alla creazione del contratto. |
+| `cadastralComplete` | Foglio, particella, categoria e rendita (il subalterno è facoltativo): `Property.IsCadastralDataComplete`, la regola di `HasCadastralData`. |
+| `status` | `Rented` (un contratto in vigore: stato `Active` o `Expiring`, cioè registrato e non finito alla fine del periodo in corso, LR-14), `InPreparation` (nessuno in vigore ma uno in arrivo: bozza, revisione, in firma, firmato da registrare: l'immobile è libero da affittare), `Free`. **`null`** se il chiamante non può leggere i contratti. |
+| `currentLease` | Il contratto che tiene l'immobile: tra quelli in vigore, quello iniziato per ultimo (uno registrato in anticipo, un rinnovo che parte il mese prossimo, non lo tiene finché ne corre un altro). `leaseId`, `stage`, `currentTermEndDate`, `noticeOn` e **`freeFrom`** = il primo giorno libero **solo se il contratto non prosegue** (disdetta o termine anticipato registrati, o tipo che non si rinnova: il transitorio); `null` per un contratto che nessuno ha disdetto, che si rinnova da solo (D5): l'immobile resta affittato. |
+| `preparingLease` | Se non ce n'è uno in vigore: il contratto in arrivo toccato per ultimo, `leaseId` e `stage`. |
+| `scheduledModeChange` | Il cambio di modalità programmato (PM-02): `toMode` e `effectiveDate`. |
+
+`view=All|Rented|Free` (400 `validation_error` per altro; `Free` comprende `InPreparation`) e `q` (nome, indirizzo, città, interno) sono facoltativi.
+Senza `lease.read` lo stato e i contratti sono `null` e `Rented`/`Free` non contengono nulla: non si indovina. **Mai** il nome di un conduttore, un'e-mail
+o un importo: quelli restano nell'elenco dei contratti. Rimandato: **LR-07a-FU1** la classe e la scadenza dell'APE rilette dal file (oggi solo ciò che è
+registrato) · **FU2** il «poi libero» per i contratti con rinnovo che il locatore non vuole più (serve la disdetta registrata, LR-OPS-1).

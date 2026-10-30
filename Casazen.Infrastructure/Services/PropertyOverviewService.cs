@@ -32,6 +32,8 @@ public sealed class PropertyOverviewService(
         var shortStay = properties.Where(PropertyRentalModeRules.IsShort).ToList();
         var steps = await complianceStatus.GetBlockingStepsManyAsync(shortStay, cancellationToken);
         var withFeed = await PropertiesWithAFeedAsync(shortStay, cancellationToken);
+        // The change of mode that waits for its day, for a property in either mode (AM-13b): one query for the page.
+        var scheduled = await ScheduledModeChangesAsync(properties, cancellationToken);
 
         // The occupancy is told of an activated property only: a pending or paused one has nothing to be occupied by.
         var activeIds = shortStay
@@ -43,16 +45,17 @@ public sealed class PropertyOverviewService(
             : (await dashboard.GetLast30DaysOccupancyAsync(activeIds, cancellationToken)).ToDictionary(o => o.Key, o => o.Value);
 
         return properties.Select(property => PropertyRentalModeRules.IsShort(property)
-            ? DescribeShortStay(property, steps[property.Id], withFeed.Contains(property.Id), occupancy)
+            ? DescribeShortStay(property, steps[property.Id], withFeed.Contains(property.Id), occupancy, scheduled.GetValueOrDefault(property.Id))
             : new PropertyOverview(
-                property.Id, null, null, null, property.PhotoUrls.Count, CoverOf(property), null, null)).ToList();
+                property.Id, null, null, null, property.PhotoUrls.Count, CoverOf(property), null, null, scheduled.GetValueOrDefault(property.Id))).ToList();
     }
 
     private static PropertyOverview DescribeShortStay(
         Property property,
         IReadOnlyList<ComplianceActivationStep> steps,
         bool hasFeed,
-        IReadOnlyDictionary<Guid, HostDashboardOccupancy> occupancy)
+        IReadOnlyDictionary<Guid, HostDashboardOccupancy> occupancy,
+        PropertyModeChange? scheduledModeChange)
     {
         var lifecycle = PropertyLifecycle.StatusOf(property);
         return new PropertyOverview(
@@ -63,7 +66,21 @@ public sealed class PropertyOverviewService(
             property.PhotoUrls.Count,
             CoverOf(property),
             PropertyLifecycle.VisibilityOf(property),
-            lifecycle == PropertyLifecycleStatus.Suspended ? property.ComplianceSuspensionReasons ?? [] : null);
+            lifecycle == PropertyLifecycleStatus.Suspended ? property.ComplianceSuspensionReasons ?? [] : null,
+            scheduledModeChange);
+    }
+
+    // The change of rental mode each property has waiting for its day (PM-02): at most one open change per property (a partial unique
+    // index), so the answer is one row per property. Applied, cancelled and failed changes are history and stay out.
+    private async Task<Dictionary<Guid, PropertyModeChange>> ScheduledModeChangesAsync(
+        IReadOnlyList<Property> properties,
+        CancellationToken cancellationToken)
+    {
+        var ids = properties.Select(p => p.Id).ToList();
+        return await db.PropertyModeChanges
+            .AsNoTracking()
+            .Where(c => ids.Contains(c.PropertyId) && c.Status == PropertyModeChangeStatus.Scheduled)
+            .ToDictionaryAsync(c => c.PropertyId, cancellationToken);
     }
 
     // The properties that have a calendar feed, as the wizard counts it (ComplianceWizardService, the «ical» step): a feed with an

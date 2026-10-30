@@ -282,6 +282,14 @@ public class ServiceRequest
     public ServiceRequestSource Source { get; set; } = ServiceRequestSource.Host;
 
     /// <summary>
+    /// What the request asks for (SP-10b): <see cref="ServiceRequestKind.Standard"/> for every request there was before, and for a booking
+    /// at a free slot; <see cref="ServiceRequestKind.Custom"/> for a request on measure, born without a time and carried on in a thread of
+    /// messages (<see cref="ServiceRequestMessage"/>). Not a status: the lifecycle is the same. Only a showcase request can be
+    /// <c>Custom</c> (<c>CK_ServiceRequests_Kind</c>).
+    /// </summary>
+    public ServiceRequestKind Kind { get; set; } = ServiceRequestKind.Standard;
+
+    /// <summary>
     /// The code the customer reads in the e-mails and types, with the e-mail address, to manage the booking (SP-11):
     /// <see cref="Services.BookingCodes"/>, 10 characters, unique for the supplier. Set on a showcase request only.
     /// </summary>

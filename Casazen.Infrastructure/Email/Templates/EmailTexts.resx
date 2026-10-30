@@ -1671,6 +1671,72 @@
   <data name="VerificationRequiredPush_Body" xml:space="preserve">
     <value>La prenotazione di {0} a {1} richiede verifica manuale.</value>
   </data>
+  <data name="SupplierInquiryVerification_Subject" xml:space="preserve">
+    <value>Conferma la tua richiesta a {0}</value>
+  </data>
+  <data name="SupplierInquiryVerification_Body" xml:space="preserve">
+    <value>Hai scritto a &lt;strong&gt;{0}&lt;/strong&gt; per una richiesta su misura. Conferma il tuo indirizzo email per inviarla: finché non lo fai, il fornitore non riceve nulla.</value>
+  </data>
+  <data name="SupplierInquiryVerification_Valid" xml:space="preserve">
+    <value>Il link funziona per {0} minuti. Dopo, potrai rifare la richiesta.</value>
+  </data>
+  <data name="SupplierInquiryVerification_Cta" xml:space="preserve">
+    <value>Conferma e invia la richiesta</value>
+  </data>
+  <data name="SupplierInquiryVerification_Ignore" xml:space="preserve">
+    <value>Se non hai fatto tu questa richiesta, ignora questo messaggio: non succede nulla.</value>
+  </data>
+  <data name="SupplierInquiryReceipt_Subject" xml:space="preserve">
+    <value>Richiesta inviata a {0}</value>
+  </data>
+  <data name="SupplierInquiryReceipt_Body" xml:space="preserve">
+    <value>Abbiamo inviato la tua richiesta a &lt;strong&gt;{0}&lt;/strong&gt;. La conversazione con il fornitore è nella pagina della richiesta.</value>
+  </data>
+  <data name="SupplierInquiryReceipt_Deadline" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ha tempo fino alle &lt;strong&gt;{1}&lt;/strong&gt; per risponderti. Se non lo fa, la richiesta si chiude e te lo diciamo.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Subject" xml:space="preserve">
+    <value>Nuova richiesta su misura — {0}</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Body" xml:space="preserve">
+    <value>Hai ricevuto una richiesta su misura a &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Service" xml:space="preserve">
+    <value>Riguarda: &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Deadline" xml:space="preserve">
+    <value>Rispondi entro le &lt;strong&gt;{0}&lt;/strong&gt;: dopo quell'ora la richiesta si chiude da sola. Il tuo primo messaggio ferma il conto.</value>
+  </data>
+  <data name="SupplierInquiryNewRequest_Hint" xml:space="preserve">
+    <value>Leggi la richiesta e rispondi dalla console. Il nome completo e i contatti del cliente si vedono quando prendi in carico la richiesta.</value>
+  </data>
+  <data name="GuestBookingCancelled_BodyByGuest" xml:space="preserve">
+    <value>la tua prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt; è stata annullata, come hai chiesto.</value>
+  </data>
+  <data name="GuestBookingCancelled_RefundTimingByGuest" xml:space="preserve">
+    <value>Di solito l'accredito compare entro 5-10 giorni, ma dipende dalla tua banca o dall'emittente della carta.</value>
+  </data>
+  <data name="GuestBookingCancelled_Retained" xml:space="preserve">
+    <value>Come previsto dalla politica di cancellazione della struttura, &lt;strong&gt;{0} €&lt;/strong&gt; non vengono rimborsati.</value>
+  </data>
+  <data name="GuestBookingCancelled_NotYou" xml:space="preserve">
+    <value>Se non sei stato tu ad annullarla, scrivi subito all'host.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Subject" xml:space="preserve">
+    <value>Prenotazione annullata dall'ospite - {0} (arrivo {1})</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Body" xml:space="preserve">
+    <value>{0} ha annullato la prenotazione presso &lt;strong&gt;{1}&lt;/strong&gt; dal &lt;strong&gt;{2}&lt;/strong&gt; al &lt;strong&gt;{3}&lt;/strong&gt; (dall'area ospite o con il link di annullamento che hai inviato).</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Dates" xml:space="preserve">
+    <value>Le date sono di nuovo disponibili sul sito di prenotazione e nel calendario esportato verso le OTA.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Refund" xml:space="preserve">
+    <value>Rimborso all'ospite, come previsto dalla politica di cancellazione: &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostBookingCancelledByGuest_Retained" xml:space="preserve">
+    <value>Importo che resta a te: &lt;strong&gt;{0} €&lt;/strong&gt;.</value>
+  </data>
   <data name="ServiceRequestQuoteReceived_Subject" xml:space="preserve">
     <value>{0} ti ha inviato un preventivo</value>
   </data>

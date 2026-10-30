@@ -526,6 +526,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("DeferredChargeLastAttemptOn")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ExpectedArrivalTime")
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
                     b.Property<string>("ExternalId")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -3000,6 +3004,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("PlanTier")
                         .HasColumnType("integer");
+
+                    b.Property<string>("PublicFontId")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
 
                     b.Property<int>("PublicHostMode")
                         .HasColumnType("integer");
@@ -6486,6 +6494,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("FinalAmountNeedsConfirmation")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("LastRemindedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -6700,6 +6711,8 @@ namespace Casazen.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_ServiceRequests_Context", "(\"RentalContext\" = 2 AND \"PropertyId\" IS NULL AND \"BookingId\" IS NULL AND \"Source\" = 1 AND \"CustomerId\" IS NOT NULL AND \"PublicCode\" IS NOT NULL AND \"LocationCity\" IS NOT NULL) OR (\"RentalContext\" IN (0, 1) AND \"PropertyId\" IS NOT NULL AND \"Source\" = 0 AND \"CustomerId\" IS NULL AND \"PublicCode\" IS NULL AND \"LocationComuneIstat\" IS NULL AND \"LocationCity\" IS NULL AND \"LocationPostalCode\" IS NULL AND \"LocationAddress\" IS NULL AND \"LocationFloor\" IS NULL AND \"LocationAccessNotes\" IS NULL)");
 
+                            t.HasCheckConstraint("CK_ServiceRequests_Kind", "\"Kind\" = 0 OR (\"Kind\" = 1 AND \"RentalContext\" = 2)");
+
                             t.HasCheckConstraint("CK_ServiceRequests_ProposedInterval", "(\"ProposedStartUtc\" IS NULL AND \"ProposedEndUtc\" IS NULL AND \"ProposedAt\" IS NULL) OR (\"ProposedStartUtc\" IS NOT NULL AND \"ProposedEndUtc\" IS NOT NULL AND \"ProposedAt\" IS NOT NULL AND \"ProposedEndUtc\" > \"ProposedStartUtc\")");
 
                             t.HasCheckConstraint("CK_ServiceRequests_Quote", "(\"QuoteSentAt\" IS NULL AND \"QuoteSentByUserId\" IS NULL AND \"QuoteTotalCents\" IS NULL AND \"QuoteNote\" IS NULL AND \"QuoteScheduledStartUtc\" IS NULL AND \"QuoteScheduledEndUtc\" IS NULL AND \"QuoteLinesJson\" = '[]'::jsonb) OR (\"QuoteSentAt\" IS NOT NULL AND \"Status\" = 0 AND \"QuoteTotalCents\" BETWEEN 1 AND 10000000 AND jsonb_array_length(\"QuoteLinesJson\") BETWEEN 1 AND 20 AND ((\"QuoteScheduledStartUtc\" IS NULL AND \"QuoteScheduledEndUtc\" IS NULL) OR (\"QuoteScheduledStartUtc\" IS NOT NULL AND \"QuoteScheduledEndUtc\" IS NOT NULL AND \"QuoteScheduledEndUtc\" > \"QuoteScheduledStartUtc\")))");
@@ -6707,6 +6720,45 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_ServiceRequests_QuoteOffer", "\"QuoteSentAt\" IS NULL OR \"ProposedStartUtc\" IS NULL");
 
                             t.HasCheckConstraint("CK_ServiceRequests_ScheduledInterval", "(\"ScheduledStartUtc\" IS NULL AND \"ScheduledEndUtc\" IS NULL) OR (\"ScheduledStartUtc\" IS NOT NULL AND \"ScheduledEndUtc\" IS NOT NULL AND \"ScheduledEndUtc\" > \"ScheduledStartUtc\")");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ServiceRequestMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Author")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("BodyEncrypted");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ServiceRequestId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServiceRequestId");
+
+                    b.HasIndex("OrgId", "ServiceRequestId", "CreatedAt")
+                        .HasDatabaseName("IX_ServiceRequestMessages_OrgId_ServiceRequestId_CreatedAt");
+
+                    b.ToTable("ServiceRequestMessages", t =>
+                        {
+                            t.HasCheckConstraint("CK_ServiceRequestMessages_Author", "\"Author\" IN (0, 1, 2)");
                         });
                 });
 
@@ -7001,6 +7053,64 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_ShowcaseBookingHolds_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
 
                             t.HasCheckConstraint("CK_ShowcaseBookingHolds_Interval", "\"StartUtc\" < \"EndUtc\"");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ShowcaseInquiry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ClientRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EmailHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Payload")
+                        .HasColumnType("text")
+                        .HasColumnName("PayloadEncrypted");
+
+                    b.Property<Guid?>("ServiceRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("IX_ShowcaseInquiries_ExpiresAt");
+
+                    b.HasIndex("ServiceRequestId");
+
+                    b.HasIndex("OrgId", "ClientRequestId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_ShowcaseInquiries_OrgId_ClientRequestId");
+
+                    b.HasIndex("OrgId", "EmailHash")
+                        .HasDatabaseName("IX_ShowcaseInquiries_OrgId_EmailHash");
+
+                    b.ToTable("ShowcaseInquiries", t =>
+                        {
+                            t.HasCheckConstraint("CK_ShowcaseInquiries_Expiry", "\"ExpiresAt\" > \"CreatedAt\"");
                         });
                 });
 
@@ -10189,6 +10299,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("SupplierOrg");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.ServiceRequestMessage", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.ServiceRequest", "ServiceRequest")
+                        .WithMany()
+                        .HasForeignKey("ServiceRequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ServiceRequest");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.ServiceRequestPayment", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", "PayerOrg")
@@ -10227,6 +10348,22 @@ namespace Casazen.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.ShowcaseBookingHold", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.ServiceRequest", null)
+                        .WithMany()
+                        .HasForeignKey("ServiceRequestId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("SupplierProfile");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.ShowcaseInquiry", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
                         .WithMany()
