@@ -48,6 +48,7 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.PublicSupplierSlots, 60, OneMinute),
         new(RateLimitPolicies.PublicSupplierQuote, 30, OneMinute),
         new(RateLimitPolicies.PublicSupplierBookingCreate, 5, TimeSpan.FromMinutes(10)),
+        new(RateLimitPolicies.PublicContact, 5, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.PublicInvitationLookup, 20, OneMinute),
         new(RateLimitPolicies.PublicReviewSubmit, 10, TimeSpan.FromMinutes(10)),
         new(RateLimitPolicies.GuestMessageSend, 30, TimeSpan.FromMinutes(10)),
@@ -96,6 +97,9 @@ public static class RateLimitingServiceCollectionExtensions
         // Per email and supplier limit of the booking from a supplier's showcase ([SupplierBookingEmailRateLimit], SP-10), next to
         // its per-IP policy.
         services.AddSingleton<SupplierBookingEmailRateLimiter>();
+
+        // Per email and org limit of the contact form of the booking site (DB-03b), next to its per-IP policy PublicContact.
+        services.AddSingleton<HostContactEmailRateLimiter>();
 
         // Per email and supplier limit of the customer's own area of a booking ([SupplierBookingManageRateLimit], SP-11), next to the
         // per-IP policy PublicGuestBookingLookup.

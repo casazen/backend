@@ -1638,6 +1638,36 @@
   <data name="HostReplyToGuest_Why" xml:space="preserve">
     <value>You receive this email because the host replied to you. We send at most one every 10 minutes per conversation.</value>
   </data>
+  <data name="HostContact_Subject" xml:space="preserve">
+    <value>New message from your booking site</value>
+  </data>
+  <data name="HostContact_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; wrote to you from your booking site.</value>
+  </data>
+  <data name="HostContact_Property" xml:space="preserve">
+    <value>They were looking at &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostContact_PropertyLink" xml:space="preserve">
+    <value>The page of the property:</value>
+  </data>
+  <data name="HostContact_MessageLabel" xml:space="preserve">
+    <value>Message</value>
+  </data>
+  <data name="HostContact_Reply" xml:space="preserve">
+    <value>To answer, reply to this email: your reply goes straight to &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostContact_Lang" xml:space="preserve">
+    <value>The visitor was reading the site in {0}.</value>
+  </data>
+  <data name="HostContact_Lang_it" xml:space="preserve">
+    <value>Italian</value>
+  </data>
+  <data name="HostContact_Lang_en" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="HostContact_Why" xml:space="preserve">
+    <value>You receive this email because your booking site has a form to write to you. The visitor agreed that the message and their email address are sent to you. If it does not look like a real contact, ignore it.</value>
+  </data>
   <data name="GuestNewPhotoRequest_Subject" xml:space="preserve">
     <value>New photo requested for your stay — {0}</value>
   </data>
