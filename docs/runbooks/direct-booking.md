@@ -945,3 +945,50 @@ the accepted ids (`PublicSiteThemes`, `PublicSiteFonts`).
 - **Tests.** Unit: `OrgBrandingRulesTests`, `OrgBrandingServiceTests`, `PublicOrgControllerTests`, `LegacyRowsSchemaTests`. HTTP:
   `OrgBrandingIntegrationTests`. PostgreSQL (CI): `AddPublicSiteFontAndThemeIdsMigrationPostgresTests` (stored ids and colours before
   the migration, written by SQL, and what each becomes).
+
+## 14. The site profile of a property (DB-11a)
+
+Task DB-11a of the redesign wave, first piece: the optional facts and texts the property page of the booking site shows **when the host
+filled them in**, and the host API that writes them. Nothing is shown that the host did not say, nothing here is read to decide a booking,
+a price or a refund, and no field can hold an address or an exact position. The fields of the wizard «Aggiungi immobile» (SR-07a: area,
+beds, rules, times, the switch «Mostra la casa sul sito») keep their one owner (`PUT api/properties/{id}`); this piece adds the rest.
+What is read by the public page, the JSON-LD, the amenity catalog and the filters of the search comes in the next pieces.
+
+- **API.** `GET api/properties/{id}/site-profile` (`property.read`) and `PUT api/properties/{id}/site-profile` (`property.write`), short-rent
+  only, authorized like the photos (TN-3): the property of the caller's org (another org's is 404), a colleague without ownership or an
+  org-wide role is 403, a signed-in colleague with an org-wide role is audited (`PropertySiteProfile.Update`). **The `PUT` replaces the whole
+  profile**: what the body leaves out, or sends as `null`/empty, is cleared, so the editor sends everything it shows. It answers with what is stored.
+  A property in long-term mode (`RentalMode.Long`) has no page: 422 `property_not_bookable_in_long_mode`.
+- **Columns of `Properties`** (all nullable, `null` = the host never said): `FloorLevel` (-3 to 60, 0 = ground floor), `RenovatedYear` (1800 to this
+  year, Rome), `EnergyClass` (`A4`…`G`, upper-case) and `EnergyIndex` (kWh/m² per year, 0 to 9999, two decimals, **only with a class**), `AreaKind`
+  (`Country`/`Coast`/`Historic`), `ChildrenWelcome`, `CheckInTo` (the latest arrival, whole minutes, after `CheckInFrom` when that is set),
+  `VideoUrl`, `TourUrl`, and two JSON columns: `SiteProfileJson` (the texts below) and `PhotoAltJson` (the alt text and size of the photos: created
+  here, written by the photo piece). The ranges are also `CHECK` constraints, so no other writer can store a class that does not exist.
+- **The energy class is never filled in by the system** (DB-D18): the APE document of the property stays private and is not copied. A host that
+  does not say it shows none.
+- **Texts** (`SiteProfileJson`, `{ it, en }`; Italian always, English if the host wants, **nothing is translated** for them, DB-D8): `zone` (120
+  characters), `near` (160), `floorNote` (120), `outdoorNote` (200), `checkInMethod` (200), `rulesNote` (500, the only one with line breaks), up to 3
+  `highlights` (an icon of the fixed list, a title of 60 and a line of 200) and up to 10 `safetyNotes` (160). An English text without the Italian one is
+  422 `property_site_profile_italian_required`; a text over its limit is 422 `property_site_profile_text_too_long`. Texts are trimmed and cleaned of
+  control characters before they are stored; they are plain text.
+- **Labels of the site** (`tags`): `mare`, `centro`, `piscina`, `pet`, `campagna`, `terrazza`, `vista-mare`. The host chooses any; the data of the house
+  add theirs and the host cannot remove them (`derivedTags` in the answer): a pool gives `piscina`, a terrace `terrazza`, pets welcome (the amenity or the
+  rule «Yes») `pet`, the coast or a beach `mare`, a historic centre `centro`, the countryside `campagna`. `vista-mare` comes only from the host. Unknown
+  label: 422 `property_site_profile_tag_unknown`.
+- **Highlight icons** (fixed list, 422 `property_site_profile_highlight_icon_unknown`): `waves walk volume-x trees sunset sun landmark key door umbrella
+  mountain panorama wine boat parking coffee flame wifi paw bed heart star home utensils snow sparkles shield lock tv droplet map-pin car train`.
+- **Video and tour** (DB-D17): the host pastes the address they copy from the provider and **only the canonical embed address is stored**, built from the
+  identifier: YouTube (any watch, short, `youtu.be` or embed form) → `https://www.youtube-nocookie.com/embed/{id}`, Vimeo → `https://player.vimeo.com/video/{id}`
+  (`?h=` for an unlisted video), Matterport → `https://my.matterport.com/show/?m={id}`. `https` only, the default port, no credentials, an exact host (a
+  lookalike such as `youtube.com.evil.example` is refused), nothing of the original query (no autoplay). Anything else: 422
+  `property_site_profile_video_url_invalid` / `_tour_url_invalid`. The page loads them **after the visitor's click**; its frame must allow the three hosts
+  (`frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://my.matterport.com`).
+- **Other 422 codes** (each with the `field` that broke the rule): `property_site_profile_floor_level_invalid`, `_renovated_year_invalid`,
+  `_energy_class_invalid`, `_energy_index_invalid`, `_energy_index_without_class`, `_check_in_window_invalid`, `_too_many_highlights`, `_too_many_safety_notes`.
+- **Migration `AddPropertySiteProfile`**: eleven nullable columns and four constraints on `Properties`, no data touched, no flag, no environment variable.
+  Rollback: deploy the previous release (it ignores the columns); `Down` drops them and what the hosts wrote is lost.
+- **Not here** (next pieces of DB-11a): the public property page and its JSON-LD reading this profile, the amenity catalog, the filters of the search on
+  labels and children, floor plans and points of interest, alternative text and size of the photos.
+- **Tests.** Unit: `SiteEmbedUrlsTests` (what an embed address can become), `SitePropertyProfileRulesTests` (clean, canonical, within the limits and the
+  vocabularies). HTTP: `PropertySiteProfileIntegrationTests` (replace, read back, a mistake saves nothing, another org / a colleague / anonymous / long-term).
+  PostgreSQL (CI): `AddPropertySiteProfileMigrationPostgresTests` (existing properties come out empty and published as before; the constraints), `LegacyRowsSchemaTests`.

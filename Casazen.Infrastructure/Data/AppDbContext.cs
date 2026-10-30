@@ -5,6 +5,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Options;
+using Casazen.Core.SiteProfile;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Infrastructure.Search;
@@ -435,6 +436,26 @@ public class AppDbContext(
             .Property(p => p.PublishedOnSite)
             .HasDefaultValue(true)
             .ValueGeneratedNever();
+
+        // DB-11a: the site profile (floor, renovation year, energy class and index, kind of place, children, latest arrival, video and tour
+        // addresses, the JSON of the texts and of the photo alt texts). Every column is nullable: null = the host never said, which is
+        // every property that existed before them. The host API validates (SitePropertyProfileRules); the constraints keep any other
+        // writer honest. The ranges repeat the constants of SitePropertyProfileLimits.
+        modelBuilder.Entity<Property>().ToTable(t =>
+        {
+            t.HasCheckConstraint(
+                "CK_Properties_FloorLevel",
+                $"\"FloorLevel\" IS NULL OR \"FloorLevel\" BETWEEN {SitePropertyProfileLimits.MinFloorLevel} AND {SitePropertyProfileLimits.MaxFloorLevel}");
+            t.HasCheckConstraint(
+                "CK_Properties_RenovatedYear",
+                $"\"RenovatedYear\" IS NULL OR \"RenovatedYear\" >= {SitePropertyProfileLimits.MinRenovatedYear}");
+            t.HasCheckConstraint(
+                "CK_Properties_EnergyClass",
+                "\"EnergyClass\" IS NULL OR \"EnergyClass\" IN ('A4', 'A3', 'A2', 'A1', 'A', 'B', 'C', 'D', 'E', 'F', 'G')");
+            t.HasCheckConstraint(
+                "CK_Properties_EnergyIndex",
+                $"\"EnergyIndex\" IS NULL OR (\"EnergyClass\" IS NOT NULL AND \"EnergyIndex\" >= 0 AND \"EnergyIndex\" <= {SitePropertyProfileLimits.MaxEnergyIndex})");
+        });
 
         // Indexes
         modelBuilder.Entity<Property>().HasIndex(p => p.OwnerId);
