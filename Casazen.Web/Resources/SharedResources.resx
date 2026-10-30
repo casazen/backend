@@ -3698,4 +3698,28 @@
   <data name="PropertySiteProfileTourUrlInvalid" xml:space="preserve">
     <value>Il tour virtuale deve essere un indirizzo Matterport (https).</value>
   </data>
+  <data name="PropertyFloorPlanNone" xml:space="preserve">
+    <value>Carica l'immagine della planimetria.</value>
+  </data>
+  <data name="PropertyFloorPlanInvalidType" xml:space="preserve">
+    <value>La planimetria deve essere un'immagine PNG o JPEG.</value>
+  </data>
+  <data name="PropertyFloorPlanInvalidSize" xml:space="preserve">
+    <value>L'immagine è vuota o supera {0} MB.</value>
+  </data>
+  <data name="PropertyFloorPlanLimitReached" xml:space="preserve">
+    <value>Puoi caricare al massimo {0} livelli di planimetria.</value>
+  </data>
+  <data name="PropertyFloorPlanNotFound" xml:space="preserve">
+    <value>Questo livello della planimetria non esiste.</value>
+  </data>
+  <data name="PropertyFloorPlanAreaInvalid" xml:space="preserve">
+    <value>La superficie del livello deve essere compresa tra {0} e {1} m².</value>
+  </data>
+  <data name="PropertyPoiLimitReached" xml:space="preserve">
+    <value>Puoi indicare al massimo {0} punti di interesse.</value>
+  </data>
+  <data name="PropertyPoiMinutesInvalid" xml:space="preserve">
+    <value>I minuti devono essere compresi tra {0} e {1}.</value>
+  </data>
 </root>
