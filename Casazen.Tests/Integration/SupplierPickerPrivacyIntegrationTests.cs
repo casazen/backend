@@ -20,10 +20,11 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
     private const string VatNumber = "IT01234567890";
     private const string StripeAccount = "acct_1PrivateConnectAccount";
 
+    // "recommended" (SP-REL) is only whether this supplier is the best-ranked one of the list: the score behind it is never sent.
     private static readonly string[] PickerFields =
     [
         "orgId", "legalName", "phone", "email", "categories", "comuni", "bio", "photoUrls",
-        "services", "priceFromCents", "priceFromUnit", "medianResponseMinutes", "verified", "showcaseSlug",
+        "services", "priceFromCents", "priceFromUnit", "medianResponseMinutes", "verified", "showcaseSlug", "recommended",
     ];
 
     private static readonly string[] ServiceFields =
@@ -132,6 +133,70 @@ public class SupplierPickerPrivacyIntegrationTests(CasazenWebApplicationFactory 
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/suppliers/{Guid.NewGuid()}?comune={comune}")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync($"/api/suppliers/{active.OrgId}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/suppliers/{active.OrgId}?propertyId={Guid.NewGuid()}")).StatusCode);
+    }
+
+    [Fact]
+    public async Task GetSuppliers_ListsTheBestRankedSupplierFirst_AndMarksItRecommended_ButNeverSendsTheScore()
+    {
+        var comune = $"Pick{Guid.NewGuid():N}"[..12];
+        foreach (var _ in Enumerable.Range(0, 3))
+            await SeedSupplierAsync(comune, SupplierStatus.Active, VatNumber);
+
+        await factory.SeedOrgForOwnerAsync();
+        using var client = factory.CreateAuthenticatedClient(roles: "PropertyOwner");
+
+        // With the same history for everybody, the list is by name and nobody is "the" recommended one.
+        var byName = await ListAsync(client, comune, "name");
+        var neutral = await ListAsync(client, comune, null);
+        Assert.Equal(byName.Select(s => s.OrgId), neutral.Select(s => s.OrgId));
+        Assert.DoesNotContain(neutral, s => s.Recommended);
+
+        // The supplier that comes last by name answers in time and does its jobs: from now on it leads the default list.
+        var best = byName[^1].OrgId;
+        await SeedReliabilityAsync(best, SupplierReliabilityEventKind.RepliedInTime, 3);
+        await SeedReliabilityAsync(best, SupplierReliabilityEventKind.JobCompletedClean, 3);
+
+        var ranked = await ListAsync(client, comune, null);
+        var explicitRanking = await ListAsync(client, comune, "recommended");
+        var stillByName = await ListAsync(client, comune, "name");
+
+        Assert.Equal(best, ranked[0].OrgId);
+        Assert.True(ranked[0].Recommended);
+        Assert.DoesNotContain(ranked.Skip(1), s => s.Recommended);
+        Assert.Equal(ranked.Select(s => s.OrgId), explicitRanking.Select(s => s.OrgId));
+        Assert.Equal(byName.Select(s => s.OrgId), stillByName.Select(s => s.OrgId));
+        Assert.DoesNotContain(stillByName, s => s.Recommended);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync($"/api/suppliers?comune={comune}&sort=rating")).StatusCode);
+    }
+
+    private static async Task<(Guid OrgId, bool Recommended)[]> ListAsync(HttpClient client, string comune, string? sort)
+    {
+        var response = await client.GetAsync($"/api/suppliers?comune={comune}" + (sort is null ? string.Empty : $"&sort={sort}"));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var raw = await response.Content.ReadAsStringAsync();
+        // The ranking is an order and one boolean: no score, no points, no history in the answer.
+        Assert.DoesNotContain("score", raw, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("points", raw, StringComparison.OrdinalIgnoreCase);
+        var items = JsonDocument.Parse(raw).RootElement.GetProperty("items");
+        return items.EnumerateArray().Select(item => (item.GetProperty("orgId").GetGuid(), item.GetProperty("recommended").GetBoolean())).ToArray();
+    }
+
+    private async Task SeedReliabilityAsync(Guid supplierOrgId, SupplierReliabilityEventKind kind, int count)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        for (var i = 0; i < count; i++)
+        {
+            db.SupplierReliabilityEvents.Add(new SupplierReliabilityEvent
+            {
+                SupplierOrgId = supplierOrgId,
+                Kind = kind,
+                RequestId = Guid.NewGuid(),
+                OccurredAt = DateTime.UtcNow.AddDays(-1),
+            });
+        }
+
+        await db.SaveChangesAsync();
     }
 
     private static async Task<Guid[]> SearchAsync(HttpClient client, string comune, string q)

@@ -912,6 +912,9 @@
   <data name="ServiceRequestExpired_Body" xml:space="preserve">
     <value>La richiesta di &lt;strong&gt;{0}&lt;/strong&gt; a &lt;strong&gt;{1}&lt;/strong&gt; è stata &lt;strong&gt;annullata&lt;/strong&gt;: non hai risposto entro il termine.</value>
   </data>
+  <data name="ServiceRequestExpired_PointsHint" xml:space="preserve">
+    <value>Le richieste a cui non si risponde in tempo fanno scendere il punteggio di affidabilità: chi risponde puntuale compare più in alto nell'elenco dei fornitori.</value>
+  </data>
   <data name="ServiceRequestReminder_Subject" xml:space="preserve">
     <value>Promemoria: richiesta in attesa di risposta — {0}</value>
   </data>

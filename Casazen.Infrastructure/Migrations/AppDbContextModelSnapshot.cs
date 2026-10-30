@@ -7880,6 +7880,50 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierReliabilityEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AsBackup")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SupplierOrgId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupplierOrgId", "OccurredAt")
+                        .HasDatabaseName("IX_SupplierReliabilityEvents_Supplier_OccurredAt");
+
+                    b.HasIndex("SupplierOrgId", "RequestId", "Kind")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_SupplierReliabilityEvents_Request")
+                        .HasFilter("\"RequestId\" IS NOT NULL");
+
+                    b.ToTable("SupplierReliabilityEvents", t =>
+                        {
+                            t.HasCheckConstraint("CK_SupplierReliabilityEvents_Kind", "\"Kind\" IN (1, 2, 3, 4)");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.SupplierServiceListing", b =>
                 {
                     b.Property<Guid>("Id")
@@ -10556,6 +10600,17 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Org");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierReliabilityEvent", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithMany()
+                        .HasForeignKey("SupplierOrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SupplierProfile");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SupplierServiceListing", b =>

@@ -132,6 +132,7 @@ public class LongRentServiceRequestsController(
     public async Task<ActionResult<PagedResultDto<SupplierPickerDto>>> GetSuppliers(
         [FromQuery] Guid propertyId,
         [FromQuery] string? category,
+        [FromServices] ISupplierMatchService matcher,
         CancellationToken cancellationToken)
     {
         var (property, denied) = await AuthorizePropertyAsync(propertyId, LongRentPropertyOperations.Read, cancellationToken);
@@ -141,12 +142,17 @@ public class LongRentServiceRequestsController(
 
         var listed = await comuneDirectory.GetByIstatCodesAsync(
             suppliers.SelectMany(SupplierComuniView.IstatCodes), cancellationToken);
+
+        // SP-REL: in the order of the ranking, like the list of the short-rent search (the first one marked "recommended" when it leads).
+        var scores = await matcher.ScoresAsync(suppliers, ServiceRequestUrgency.Normal, cancellationToken);
+        var items = SupplierPickerSearch.Apply(
+            suppliers.Select(sp => SupplierPickerDto.From(sp, listed)), q: null, SupplierPickerSort.Recommended, services: null, scores);
         return Ok(new PagedResultDto<SupplierPickerDto>
         {
-            Items = suppliers.Select(sp => SupplierPickerDto.From(sp, listed)).ToList(),
-            TotalCount = suppliers.Count,
+            Items = items,
+            TotalCount = items.Count,
             Page = 1,
-            PageSize = suppliers.Count,
+            PageSize = items.Count,
         });
     }
 

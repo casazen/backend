@@ -912,6 +912,9 @@
   <data name="ServiceRequestExpired_Body" xml:space="preserve">
     <value>The &lt;strong&gt;{0}&lt;/strong&gt; request in &lt;strong&gt;{1}&lt;/strong&gt; was &lt;strong&gt;cancelled&lt;/strong&gt;: you did not answer in time.</value>
   </data>
+  <data name="ServiceRequestExpired_PointsHint" xml:space="preserve">
+    <value>Requests that are not answered in time lower your reliability score: suppliers who answer promptly are listed higher.</value>
+  </data>
   <data name="ServiceRequestReminder_Subject" xml:space="preserve">
     <value>Reminder: request waiting for your answer — {0}</value>
   </data>

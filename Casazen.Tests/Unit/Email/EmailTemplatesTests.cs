@@ -647,6 +647,27 @@ public class EmailTemplatesTests
     }
 
     [Fact]
+    public void ServiceRequestCancelledToSupplier_SaysTheMissedAnswerCostsPoints_OnlyWhenItDid()
+    {
+        var english = CultureInfo.GetCultureInfo("en");
+        var lost = EmailTemplates.ServiceRequestCancelledToSupplier(
+            EmailTemplates.DefaultCulture, "Pulizie Srl", "cleaning", "Roma", ServiceRequestActorParty.System, "NoResponse", Link, lostPoints: true);
+        var lostInEnglish = EmailTemplates.ServiceRequestCancelledToSupplier(
+            english, "Pulizie Srl", "cleaning", "Rome", ServiceRequestActorParty.System, "NoResponse", Link, lostPoints: true);
+        var excused = EmailTemplates.ServiceRequestCancelledToSupplier(
+            EmailTemplates.DefaultCulture, "Pulizie Srl", "cleaning", "Roma", ServiceRequestActorParty.System, "NoResponse", Link, lostPoints: false);
+        var byHost = EmailTemplates.ServiceRequestCancelledToSupplier(
+            EmailTemplates.DefaultCulture, "Pulizie Srl", "cleaning", "Roma", ServiceRequestActorParty.Host, "Ospiti partiti prima", Link, lostPoints: true);
+
+        Assert.Contains("punteggio di affidabilità", lost.HtmlBody);
+        Assert.Contains("reliability score", lostInEnglish.HtmlBody);
+        // A supplier that was excused, and one whose request the host cancelled, are told nothing about points.
+        Assert.DoesNotContain("punteggio", excused.HtmlBody);
+        Assert.DoesNotContain("punteggio", byHost.HtmlBody);
+        Assert.Equal(excused.Subject, lost.Subject);
+    }
+
+    [Fact]
     public void ServiceRequestTimeProposed_GivesTheProposedIntervalInItalianTimeAndTheMessageAndALinkWhenThereIsOne()
     {
         var withLink = EmailTemplates.ServiceRequestTimeProposed(

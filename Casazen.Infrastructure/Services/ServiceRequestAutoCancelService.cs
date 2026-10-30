@@ -1,11 +1,13 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -25,7 +27,9 @@ public sealed class ServiceRequestAutoCancelService(
     ServiceRequestNotifier notifier,
     IFeatureFlags featureFlags,
     ILogger<ServiceRequestAutoCancelService> logger,
-    TimeProvider? timeProvider = null) : IServiceRequestAutoCancelService
+    TimeProvider? timeProvider = null,
+    ISupplierReliabilityService? reliability = null,
+    IOptions<ServiceRequestOptions>? requestOptions = null) : IServiceRequestAutoCancelService
 {
     internal const string RunLockKey = "service-request-auto-cancel";
 
@@ -139,6 +143,18 @@ public sealed class ServiceRequestAutoCancelService(
         Failed,
     }
 
+    /// <summary>
+    /// When the request began to wait for the supplier's answer: its creation, or the start of the last window when the deadline was
+    /// restarted (a proposal or a quote the host turned down), that is <c>Suppliers:ServiceRequests:HostResponseMinutes</c> before the
+    /// deadline. The supplier is judged on the time it really had.
+    /// </summary>
+    private DateTime WaitStartOf(ServiceRequest request, DateTime dueUtc)
+    {
+        var window = (requestOptions?.Value ?? new ServiceRequestOptions()).HostResponseMinutes;
+        var start = dueUtc.AddMinutes(-window);
+        return start > request.CreatedAt ? start : request.CreatedAt;
+    }
+
     private async Task<Outcome> CancelAsync(Guid id, DateTime now, bool showcase, CancellationToken cancellationToken)
     {
         // One request at a time, read again: what the run listed a moment ago may have been answered since.
@@ -189,10 +205,18 @@ public sealed class ServiceRequestAutoCancelService(
 
             logger.LogInformation("ServiceRequest {Id}: Richiesto -> Annullato, no answer before the deadline", id);
 
+            // SP-REL: a request of a host that nobody answered costs the supplier points, unless it could not have answered (paused, on
+            // time off, outside its working hours while the request waited): then it loses none and is not told it did. The bookings
+            // from a showcase are not part of the ranking. What the supplier is told is decided by the winner, after the save.
+            var lostPoints = !showcase
+                && reliability is not null
+                && await reliability.RecordNoReplyAsync(
+                    request.SupplierOrgId, request.Id, WaitStartOf(request, due), due, asBackup: false, cancellationToken);
+
             // After the save, by the winner only: the host (or the customer of a showcase request) is told that nobody answered,
-            // the supplier that it lost the request.
+            // the supplier that it lost the request (and, when it did, the points).
             await notifier.NotifyHostAsync(request, cancellationToken);
-            await notifier.NotifySupplierCancelledAsync(request, cancellationToken);
+            await notifier.NotifySupplierCancelledAsync(request, cancellationToken, lostPoints);
             return Outcome.Cancelled;
         }
         catch (DbUpdateConcurrencyException)

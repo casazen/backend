@@ -52,7 +52,8 @@ public partial class ServiceRequestService(
     IOptions<ShowcaseBookingOptions> showcaseOptions,
     ISupplierPaymentService payments,
     ILogger<ServiceRequestService> logger,
-    TimeProvider? timeProvider = null) : IServiceRequestService
+    TimeProvider? timeProvider = null,
+    ISupplierReliabilityService? reliability = null) : IServiceRequestService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -403,6 +404,9 @@ public partial class ServiceRequestService(
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
         EnsureCan(request, ServiceRequestStatus.PresoInCarico, ServiceRequestErrorCodes.CannotTakeMessageKey);
 
+        // The deadline the request had when the supplier answered: the take clears it, the ranking (SP-REL) needs it.
+        var dueBeforeAnswer = request.ResponseDueAt;
+
         if (command?.QuotedAmountCents is { } quote)
             ServiceRequestPricing.EnsureValidAmount(quote);
 
@@ -452,6 +456,7 @@ public partial class ServiceRequestService(
             await CommitAsync(transaction, cancellationToken);
         }
 
+        await RecordReplyAsync(request, dueBeforeAnswer, cancellationToken);
         await notifier.NotifyHostAsync(request, cancellationToken);
         return request;
     }
@@ -610,6 +615,7 @@ public partial class ServiceRequestService(
 
         // The link goes out after the save, and only the winner of the transition sends it.
         await payments.AnnounceAsync(plan, request, cancellationToken);
+        await RecordCompletedAsync(request, cancellationToken);
         await notifier.NotifyHostAsync(request, cancellationToken);
         return request;
     }
@@ -623,6 +629,7 @@ public partial class ServiceRequestService(
         // The API requires a reason of at most 500 characters (400 validation_error, A4-18): a blank one is a bug here.
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
+        var dueBeforeAnswer = request.ResponseDueAt;
 
         await TransitionAsync(
             request,
@@ -635,6 +642,9 @@ public partial class ServiceRequestService(
                 ClearProposal(r);
             },
             cancellationToken);
+
+        // Saying no in time is an answer in time (SP-REL): the host can ask somebody else at once.
+        await RecordReplyAsync(request, dueBeforeAnswer, cancellationToken);
 
         // A6-08: the host learns of the rejection by email and push, like of the other supplier decisions.
         await notifier.NotifyHostAsync(request, cancellationToken);

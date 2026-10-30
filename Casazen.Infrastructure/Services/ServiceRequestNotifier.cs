@@ -348,8 +348,13 @@ public sealed class ServiceRequestNotifier(
     /// <summary>
     /// Email and push to the supplier when the request was cancelled by the host, or by CasaZen because nobody answered in
     /// time (<see cref="ServiceRequest.CancelledBy"/> says which). The supplier is told whatever its status.
+    /// <paramref name="lostReliabilityPoints"/> adds to the email of a request nobody answered that the missed answer costs the supplier
+    /// points of its reliability (SP-REL), which is what puts it lower in the lists; false when it was excused (paused, time off, closed).
     /// </summary>
-    public async Task NotifySupplierCancelledAsync(ServiceRequest request, CancellationToken cancellationToken)
+    public async Task NotifySupplierCancelledAsync(
+        ServiceRequest request,
+        CancellationToken cancellationToken,
+        bool lostReliabilityPoints = false)
     {
         if (request.CancelledBy is not { } cancelledBy || cancelledBy == ServiceRequestActorParty.Supplier)
             return;
@@ -391,7 +396,8 @@ public sealed class ServiceRequestNotifier(
                     comune,
                     cancelledBy,
                     request.CancellationReason,
-                    publicSiteLinks.SupplierInbox());
+                    publicSiteLinks.SupplierInbox(),
+                    lostReliabilityPoints);
                 emailQueue.Enqueue(supplier.Email, email, EmailTemplates.Names.ServiceRequestCancelledToSupplier);
             }
 
