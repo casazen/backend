@@ -2512,6 +2512,9 @@
   <data name="TenantListViewUnknown" xml:space="preserve">
     <value>The tenant view is not valid: use All, Current or Former.</value>
   </data>
+  <data name="LongRentPropertyViewUnknown" xml:space="preserve">
+    <value>The property view is not valid: use All, Rented or Free.</value>
+  </data>
   <data name="LongRentDeadlinesRangeInvalid" xml:space="preserve">
     <value>Enter a valid period: dates as yyyy-MM-dd, the end not before the start and at most 366 days.</value>
   </data>
