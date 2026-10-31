@@ -199,7 +199,7 @@ public sealed partial class SupplierPaymentService
         pushNotifications.Enqueue(
             PushDeliveryKeys.ServicePaymentReceived(payment.Id),
             PushAudience.SupplierOrg(payment.SupplierOrgId),
-            new PushNotificationPayload(push.Title, push.Body, PushTypes.ServicePaymentReceived, BookingId: null, PushRoutes.Properties, payment.ServiceRequestId));
+            new PushNotificationPayload(push.Title, push.Body, PushTypes.ServicePaymentReceived, BookingId: null, PushRoutes.SupplierRequest(payment.ServiceRequestId), payment.ServiceRequestId));
     }
 
     /// <summary>The alert to every active platform admin: a payment to review, or a dispute to answer. Ids and codes only.</summary>
