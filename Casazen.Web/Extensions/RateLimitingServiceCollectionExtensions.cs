@@ -74,6 +74,9 @@ public static class RateLimitingServiceCollectionExtensions
 
         // The autosave of the showcase editor (SP-13a): per signed-in person as well, since the editor saves at every pause in typing.
         new(RateLimitPolicies.SupplierShowcaseSave, 120, OneMinute, PartitionByUser: true),
+
+        // The upload and the removal of the images of the showcase (SP-13b): per signed-in person, a full gallery in a sitting and little more.
+        new(RateLimitPolicies.SupplierShowcaseMedia, 40, TimeSpan.FromMinutes(10), PartitionByUser: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

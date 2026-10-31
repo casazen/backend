@@ -11,12 +11,18 @@ public sealed record ServiceRequestMessageView(Guid Id, ServiceRequestMessageAut
 /// <summary>The thread of a request on measure: its messages in the order they were written, and whether a party can still add one.</summary>
 /// <param name="CanWrite">The request is open (new, taken or in progress) and the party that reads it is allowed to write.</param>
 /// <param name="RespondBy">The instant the supplier has to answer by, while nobody answered; <c>null</c> once it did.</param>
+/// <param name="Offer">SP-10b-b, the supplier's reading only: the offer that waits for the customer's answer; <c>null</c> when there is none (and always for the customer's reading, whose offer is in its own area).</param>
+/// <param name="Negotiation">SP-10b-b, the supplier's reading only: where the negotiation is (<see cref="ServiceRequestNegotiation"/>).</param>
+/// <param name="CanSendOffer">SP-10b-b, the supplier's reading only: the request is new, the supplier is active and it may send an offer (a new one replaces the one that waits).</param>
 public sealed record ServiceRequestThread(
     Guid RequestId,
     ServiceRequestStatus Status,
     bool CanWrite,
     DateTime? RespondBy,
-    IReadOnlyList<ServiceRequestMessageView> Messages);
+    IReadOnlyList<ServiceRequestMessageView> Messages,
+    ServiceRequestOffer? Offer = null,
+    string? Negotiation = null,
+    bool CanSendOffer = false);
 
 /// <summary>
 /// The rules of the conversation of a request on measure (SP-10b): when it is open, and when the other party is told of a new message.
@@ -43,8 +49,9 @@ public static class ServiceRequestThreadRules
 }
 
 /// <summary>
-/// Where the negotiation of a request on measure is (SP-10b), told to the customer. <b>Derived, never stored</b>: from the status of the request
-/// and from whether the supplier wrote in the thread. The offer (SP-10b-b) adds its own states to the ones of the conversation.
+/// Where the negotiation of a request on measure is (SP-10b, SP-10b-b), told to the customer and to the supplier. <b>Derived, never stored</b>:
+/// from the status of the request, from whether the supplier wrote in the thread, from the offer that waits and from what became of the last one.
+/// An open set: the frontend shows the states it knows and treats any other as <see cref="InConversation"/>.
 /// </summary>
 public static class ServiceRequestNegotiation
 {
@@ -54,22 +61,53 @@ public static class ServiceRequestNegotiation
     /// <summary>New, and the supplier wrote: the two are talking.</summary>
     public const string InConversation = "InConversation";
 
-    /// <summary>The work is agreed (the request was taken, started or done).</summary>
+    /// <summary>New, and the supplier sent an offer that waits for the customer's answer (SP-10b-b).</summary>
+    public const string OfferSent = "OfferSent";
+
+    /// <summary>
+    /// The customer accepted an offer that is paid inside CasaZen and its card is to be blocked (or is, and the acceptance is being completed): the
+    /// request is taken when the card is blocked (SP-10b-b). The offer still stands, and the customer can still turn it down.
+    /// </summary>
+    public const string AwaitingPayment = "AwaitingPayment";
+
+    /// <summary>New, and the customer turned the last offer down: the conversation goes on and the supplier can send another one (SP-10b-b).</summary>
+    public const string OfferDeclined = "OfferDeclined";
+
+    /// <summary>The work is agreed (the offer was accepted: the request was taken, started or done).</summary>
     public const string Agreed = "Agreed";
 
     /// <summary>The supplier refused the request.</summary>
     public const string Declined = "Declined";
 
+    /// <summary>The customer did not answer the offer in time, so the request closed (SP-10b-b).</summary>
+    public const string Expired = "Expired";
+
     /// <summary>Cancelled by the customer or closed because nobody answered in time.</summary>
     public const string Closed = "Closed";
 
-    public static string Of(ServiceRequestStatus status, bool supplierWrote) => status switch
-    {
-        ServiceRequestStatus.Richiesto => supplierWrote ? InConversation : AwaitingSupplier,
-        ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso or ServiceRequestStatus.Completato or ServiceRequestStatus.Pagato => Agreed,
-        ServiceRequestStatus.Rifiutato => Declined,
-        _ => Closed,
-    };
+    /// <param name="status">The status of the request.</param>
+    /// <param name="supplierWrote">The supplier wrote at least once in the thread.</param>
+    /// <param name="offerPending">An offer waits for the customer's answer.</param>
+    /// <param name="lastOfferDeclined">The last thing that happened to an offer is that the customer turned it down.</param>
+    /// <param name="cancellationReason">The reason of a cancelled request, to tell an offer that lapsed from the rest.</param>
+    /// <param name="awaitingPayment">The customer accepted the offer and its card has not completed the payment yet.</param>
+    public static string Of(
+        ServiceRequestStatus status,
+        bool supplierWrote,
+        bool offerPending = false,
+        bool lastOfferDeclined = false,
+        string? cancellationReason = null,
+        bool awaitingPayment = false) => status switch
+        {
+            ServiceRequestStatus.Richiesto when offerPending && awaitingPayment => AwaitingPayment,
+            ServiceRequestStatus.Richiesto when offerPending => OfferSent,
+            ServiceRequestStatus.Richiesto when lastOfferDeclined => OfferDeclined,
+            ServiceRequestStatus.Richiesto => supplierWrote ? InConversation : AwaitingSupplier,
+            ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso or ServiceRequestStatus.Completato or ServiceRequestStatus.Pagato => Agreed,
+            ServiceRequestStatus.Rifiutato => Declined,
+            ServiceRequestStatus.Annullato when cancellationReason == ServiceRequestCancellationReasons.QuoteNotAnswered => Expired,
+            _ => Closed,
+        };
 }
 
 /// <summary>

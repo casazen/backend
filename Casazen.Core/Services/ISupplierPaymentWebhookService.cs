@@ -119,6 +119,12 @@ public enum ServicePaymentNoticeKind
 
     /// <summary>An admin must look at a complaint (SP-15c-c): it waits for a decision, the target to decide passed, or the refund that was decided did not go through.</summary>
     DisputeAdminAlert,
+
+    /// <summary>
+    /// The customer's card was blocked for the offer it accepted on a request on measure (SP-10b-b): the request is taken now. Sends nothing by
+    /// itself; the handler of the webhook completes the acceptance (<see cref="IServiceRequestOfferCompletion"/>) once the event is committed.
+    /// </summary>
+    OfferBlocked,
 }
 
 /// <summary>An email to send once the webhook transaction has committed.</summary>
@@ -127,12 +133,14 @@ public enum ServicePaymentNoticeKind
 /// <param name="RefundId">The refund, for <see cref="ServicePaymentNoticeKind.Refunded"/>.</param>
 /// <param name="Detail">A short, plain description for the admins (a mismatch code, a dispute id and reason): ids and codes only, no personal data.</param>
 /// <param name="DisputeId">The dispute, for the notices of a complaint (<see cref="ServicePaymentNoticeKind.DisputeOpened"/> and the ones after it).</param>
+/// <param name="RequestId">The service request the payment is for, for <see cref="ServicePaymentNoticeKind.OfferBlocked"/>.</param>
 public sealed record ServicePaymentNotice(
     ServicePaymentNoticeKind Kind,
     Guid PaymentId,
     Guid? RefundId = null,
     string? Detail = null,
-    Guid? DisputeId = null);
+    Guid? DisputeId = null,
+    Guid? RequestId = null);
 
 /// <summary>What the service payments did with a refund or dispute event.</summary>
 /// <param name="Handled">The PaymentIntent belongs to a service payment. False: it is not one of ours, and the caller treats the event as before (the refunds of the booking payments).</param>

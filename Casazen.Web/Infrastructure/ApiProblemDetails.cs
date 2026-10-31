@@ -40,6 +40,8 @@ public static class ApiProblemDetails
         [StatusCodes.Status403Forbidden] = new("Forbidden", "ForbiddenDetail", "https://tools.ietf.org/html/rfc9110#section-15.5.4"),
         [StatusCodes.Status404NotFound] = new("NotFound", "NotFoundDetail", "https://tools.ietf.org/html/rfc9110#section-15.5.5"),
         [StatusCodes.Status409Conflict] = new("Conflict", "ConflictDetail", "https://tools.ietf.org/html/rfc9110#section-15.5.10"),
+        [StatusCodes.Status413PayloadTooLarge] = new("PayloadTooLarge", "PayloadTooLargeDetail", "https://tools.ietf.org/html/rfc9110#section-15.5.14"),
+        [StatusCodes.Status415UnsupportedMediaType] = new("UnsupportedMediaType", "UnsupportedMediaTypeDetail", "https://tools.ietf.org/html/rfc9110#section-15.5.16"),
         [StatusCodes.Status422UnprocessableEntity] = new("BusinessRuleViolation", "BusinessRuleViolationDetail", "https://tools.ietf.org/html/rfc9110#section-15.5.21"),
         [StatusCodes.Status429TooManyRequests] = new("TooManyRequests", "TooManyRequestsDetail", "https://tools.ietf.org/html/rfc6585#section-4"),
         [StatusCodes.Status500InternalServerError] = new("InternalServerError", "InternalServerErrorDetail", "https://tools.ietf.org/html/rfc9110#section-15.6.1"),

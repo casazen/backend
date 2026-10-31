@@ -28,6 +28,18 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     }
 
     /// <summary>
+    /// Page of the web app where a guest stops the marketing e-mails of an org (route <c>/unsubscribe</c>, DEB-01; the page is a frontend
+    /// task). <paramref name="signedQuery"/> (<c>orgId</c>, <c>emailHash</c>, <c>expiresAt</c>, <c>signature</c>, built by
+    /// <see cref="MarketingUnsubscribeLinks"/>) travels in the <b>fragment</b>, which a browser never sends to a server, so it is in no
+    /// access log: the page reads it and posts it unchanged as the query of <c>POST api/public/marketing/unsubscribe</c>. Never the address.
+    /// </summary>
+    public string MarketingUnsubscribe(string signedQuery)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(signedQuery);
+        return Build($"/unsubscribe#{signedQuery}");
+    }
+
+    /// <summary>
     /// Supplier registration page of the web app for an invite (SU-01). Only the token is in the link: the page reads
     /// email and comune from the API, so no personal data ends up in URLs and logs.
     /// </summary>

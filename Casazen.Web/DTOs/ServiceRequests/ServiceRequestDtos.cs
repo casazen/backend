@@ -28,6 +28,14 @@ public class CreateServiceRequestRequest
     [NotEmptyGuid(ErrorMessage = "ServiceRequestBookingInvalid")]
     public Guid? BookingId { get; set; }
 
+    /// <summary>
+    /// The lease contract a long-term rental request is made for (LR-03c, the sheet of a contract): a lease of the property, in the host's
+    /// org (404 <c>lease_not_found</c> otherwise, 422 <c>service_request_lease_mismatch</c> for the lease of another property). Long-rent only:
+    /// the short-rent <c>POST api/service-requests</c> does not read it. A link and nothing more: nothing of the tenant goes to the supplier.
+    /// </summary>
+    [NotEmptyGuid(ErrorMessage = "ServiceRequestLeaseInvalid")]
+    public Guid? LeaseId { get; set; }
+
     [NotEmptyGuid(ErrorMessage = "ServiceRequestSupplierRequired")]
     public Guid SupplierOrgId { get; set; }
 
@@ -282,6 +290,12 @@ public class ServiceRequestDto
     /// <summary>The host's property; <c>null</c> for a request from the supplier's public showcase (SP-10), which has none.</summary>
     public Guid? PropertyId { get; set; }
     public string? PropertyName { get; set; }
+
+    /// <summary>
+    /// The lease contract a long-rent request was made for, when it was asked from the sheet of that contract (LR-03c); <c>null</c> otherwise.
+    /// <b>Only the host gets it</b>: the supplier's views leave it out (decision LR-D22, nothing of the tenancy goes to the supplier).
+    /// </summary>
+    public Guid? LeaseId { get; set; }
     public Guid SupplierOrgId { get; set; }
     public string? SupplierName { get; set; }
     public string Category { get; set; } = string.Empty;

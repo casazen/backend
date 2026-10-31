@@ -133,8 +133,11 @@ Template names are those of the logs (`Email <template> queued`). "Queued" = `IE
 | `supplier-inquiry-verification` | customer of a supplier's showcase | the customer wrote a request on measure: the link that checks its address, the token in the fragment (SP-10b) | `ShowcaseBookingNotifier`, queued |
 | `supplier-inquiry-receipt` | customer | the address is checked: the code and the time by which the supplier answers (never the customer's words) | same |
 | `supplier-inquiry-new-request` | supplier | the address is checked: new request on measure with comune, the service when there is one and "Nome C." only (D9); **never a word of the message** | same |
+| `supplier-inquiry-reply-reminder` | supplier | a request on measure that nobody answered yet, at half of the time the supplier has and 10 minutes before the deadline, once each (SP-10c): the comune, "Nome C." and the time to answer by, that after it the request closes and the customer is told; **never the words of the customer**, no address, no contact. An operational notice: no switch of «Notifiche» hides it. Push `service-request-reply-reminder` next to it | `service-request-expiry` job → `ShowcaseReplyReminderService` → `ShowcaseBookingNotifier`, queued |
 | `supplier-inquiry-reply` | customer | the supplier wrote in the thread of the request on measure: a link to the request page, **never the words**; one e-mail for the messages of ten minutes (SP-10b) | `ServiceRequestService` → `ShowcaseBookingNotifier`, queued |
-| `supplier-inquiry-declined`, `-expired` | customer | the supplier refused the request on measure (with its reason), or did not answer in time and the job closed it; no day and no time in them (SP-10b) | `ServiceRequestNotifier` → `ShowcaseBookingNotifier`, queued |
+| `supplier-inquiry-declined`, `-expired` | customer | the supplier refused the request on measure (with its reason), or did not answer in time and the job closed it; no day and no time in them (SP-10b). `-expired` ends with up to three other suppliers of the comune and category that take bookings (name as a link to its page, «Verificato», the typical time to answer, the «da €» of its service), or says plainly that there is none to suggest for now, and says nothing about them when they could not be looked for; it promises no call back (SP-10c, suppliers.md § 34.11) | `ServiceRequestNotifier` → `ShowcaseBookingNotifier`, queued |
+| `supplier-inquiry-offer-expired` | customer | the supplier had answered the request on measure with an offer and the customer did not answer it in time, so the job closed the request: it says the customer is the one who did not answer, never that the supplier was silent (D24, SP-10b-b) | `ServiceRequestNotifier` → `ShowcaseBookingNotifier`, queued |
+| `supplier-inquiry-offer-not-completed` | customer | the customer accepted an offer paid inside CasaZen and blocked its card, but the request could not be taken (the time of the offer is gone, or the card could not be charged): says that **nothing was charged and the block was removed**, that the request is still open, and where to go on (SP-10b-b) | `ServiceRequestService` → `ServiceRequestNotifier` → `ShowcaseBookingNotifier`, queued |
 | `supplier-inquiry-message` | supplier | the customer wrote in the thread of the request on measure: the comune and "Nome C." only, **never the words**; one e-mail for the messages of ten minutes (SP-10b) | `ServiceRequestService` → `ShowcaseBookingNotifier`, queued |
 | `supplier-inquiry-closed-by-customer` | supplier | the customer closed its request on measure: who ("Nome C."), where, the reason it wrote; no day and no time, and the customer gets no receipt (SP-10b) | `ShowcaseBookingNotifier`, queued |
 | `supplier-booking-accepted`, `-declined`, `-time-proposed`, `-cancelled`, `-expired` | customer | the supplier took, refused, proposed another time for, or cancelled the request; nobody answered in time (the job) | `ServiceRequestNotifier` → `ShowcaseBookingNotifier`, queued |
@@ -223,6 +226,25 @@ request on the supplier's behalf. The customer gets nothing for moving the booki
   banned-phrase test (`SupplierBookingEmailTemplatesTests`) covers the six templates, every variant of them, in both languages.
 - **Pushes**: the supplier's devices, deduplicated by `PushDeliveryKeys` (`service-request:{id}:rescheduled:{time}` is new; the others reuse the key of
   the status or of the answer). The mobile app does not know the type `service-request-rescheduled` yet (mobile follow-up): until it does, it is for the app to handle an unknown type.
+
+## Marketing campaigns: the unsubscribe link (DEB-01)
+
+The e-mails of a campaign (NF-24, `CampaignService.SendCampaignAsync`, Hangfire job `CampaignSendJob`) used to carry an unsigned link with the
+guest's address in the query, on a hard-coded host (`https://app.casazen.com/unsubscribe?org=…&email=…`). Since DEB-01 (2026-10-31):
+
+- **The link is signed** (`MarketingUnsubscribeLinks`, ADR-007-R18): HMAC-SHA256 with `SIGNED_LINK_SECRET` of `emailHash + "." + expiresAt`, valid 30 days.
+  `emailHash` is the SHA-256 index of the normalized address, the one of the suppression list: **no address in any URL**. The same class checks the link in
+  `POST api/public/marketing/unsubscribe` (constant-time comparison), so building and checking cannot drift.
+- **In the body**: `App__PublicSiteBaseUrl/unsubscribe#orgId=…&emailHash=…&expiresAt=…&signature=…`, the values in the fragment (never sent to a server, so in no
+  access log). **The page `/unsubscribe` of the web app is a frontend follow-up**: it reads the fragment and posts it unchanged as the query of
+  `POST /api/public/marketing/unsubscribe`.
+- **In the headers** (`IEmailService.SendEmailWithHeadersAsync`, Resend `headers`): `List-Unsubscribe: <App__ApiBaseUrl/api/public/marketing/unsubscribe?…>` and
+  `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 2369, RFC 8058): Gmail, Yahoo and the others show their own «Unsubscribe» and post to the API
+  themselves. Left out when `App__ApiBaseUrl` is not an https URL; the link in the body is still there.
+- **Variables**: `SIGNED_LINK_SECRET` (a long random secret, shared by the signed links of ADR-007-R20; the unsubscribe endpoint already needed it) and
+  `App__PublicSiteBaseUrl` on every environment that sends campaigns. Without them **no campaign e-mail leaves**: the job fails with
+  `EmailConfigurationException` and Hangfire retries it. Rotating the secret invalidates the links already sent.
+- **Logs**: `CampaignService` and `PublicMarketingController` never log an address (the unsubscribe logs carry the org and the hash only).
 
 ## Adding a new email
 

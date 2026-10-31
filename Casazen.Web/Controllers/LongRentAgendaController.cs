@@ -37,7 +37,9 @@ public class LongRentAgendaController(
     /// already done is not listed. A window that contains today also carries what is past and still open, flagged
     /// <c>isOverdue</c>. The last day of notice is six months before the end of a 4+4 or 3+2 contract (a transitory has none). IMU
     /// and ISTAT are not listed. <c>truncated</c>: more installments were due than the answer carries (the earliest 500).
-    /// 400 for a window or a type that is not valid.
+    /// 400 for a window or a type that is not valid. <c>leaseId</c> (LR-03c, the sheet of a contract) keeps the deadlines of that lease
+    /// alone: it narrows what the caller's scope already reaches, so a lease of another org, or outside the caller's properties, gives an
+    /// empty list like a lease with no deadline in the window.
     /// </summary>
     [HttpGet("deadlines")]
     [ProducesResponseType(typeof(LongRentDeadlines), StatusCodes.Status200OK)]
@@ -46,6 +48,7 @@ public class LongRentAgendaController(
         [FromQuery] string? from = null,
         [FromQuery] string? to = null,
         [FromQuery] string? type = null,
+        [FromQuery] Guid? leaseId = null,
         CancellationToken cancellationToken = default)
     {
         var today = _clock.TodayInRomeAsDateOnly();
@@ -72,7 +75,7 @@ public class LongRentAgendaController(
         if (scope is null)
             return Unauthorized();
 
-        return Ok(await agenda.GetDeadlinesAsync(scope, new LongRentDeadlinesQuery(start, end, typeFilter), cancellationToken));
+        return Ok(await agenda.GetDeadlinesAsync(scope, new LongRentDeadlinesQuery(start, end, typeFilter, leaseId), cancellationToken));
     }
 
     /// <summary>

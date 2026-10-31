@@ -419,6 +419,62 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
     }
 
     [Fact]
+    public async Task PublicProperty_NoPositionOfTheHost_IsTheCentreOfItsComuneOnEveryRouteThatGivesItOut()
+    {
+        // The host never gave a position (0, 0 = "not set") but chose the comune from the official list: Como, ISTAT 013075.
+        var (org, property) = await SeedAsync(
+            p =>
+            {
+                p.Latitude = 0m;
+                p.Longitude = 0m;
+                p.City = "Como";
+                p.ComuneIstatCode = "013075";
+            });
+        using var client = _factory.CreateClient();
+
+        var list = await client.GetFromJsonAsync<JsonElement>($"/api/public/orgs/{org.Slug}/properties");
+        var detail = await client.GetFromJsonAsync<JsonElement>($"/api/public/orgs/{org.Slug}/properties/{property.Slug}");
+        var byId = await client.GetFromJsonAsync<JsonElement>($"/api/properties/{property.Id}/public");
+        var search = await client.GetFromJsonAsync<JsonElement>("/api/properties/search?city=Como");
+
+        var shown = new[] { list[0], detail, byId, search.EnumerateArray().First(p => p.GetProperty("id").GetGuid() == property.Id) };
+        foreach (var dto in shown)
+        {
+            // The centre of Como is 45.8103, 9.0861: shown to about a kilometre, like any position.
+            Assert.Equal(45.81m, dto.GetProperty("latitude").GetDecimal());
+            Assert.Equal(9.09m, dto.GetProperty("longitude").GetDecimal());
+        }
+
+        // The record of the host is not touched: its position stays "not set", so that the one the host gives later is the one that counts.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var stored = await db.Properties.IgnoreQueryFilters().AsNoTracking().SingleAsync(p => p.Id == property.Id);
+        Assert.Equal(0m, stored.Latitude);
+        Assert.Equal(0m, stored.Longitude);
+    }
+
+    [Fact]
+    public async Task CrawlerPage_NoPositionOfTheHost_PublishesNoCoordinatesNotEvenTheCentreOfTheComune()
+    {
+        var (org, property) = await SeedAsync(
+            p =>
+            {
+                p.Latitude = 0m;
+                p.Longitude = 0m;
+                p.City = "Como";
+                p.ComuneIstatCode = "013075";
+            });
+        using var client = _factory.CreateClient();
+
+        var html = await client.GetStringAsync($"/api/public/seo/orgs/{org.Slug}/properties/{property.Slug}");
+
+        // The page is really there (a 404 would pass the check below for nothing), and a search engine is not told a place that is only a guess.
+        Assert.Contains(property.Name, html);
+        Assert.DoesNotContain("\"latitude\"", html);
+        Assert.DoesNotContain("\"longitude\"", html);
+    }
+
+    [Fact]
     public async Task CrawlerPage_JsonLdCarriesTheRoundedPositionOnly()
     {
         var (org, property) = await SeedAsync(

@@ -5,9 +5,11 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using System.Net;
 using System.Text.Json;
 
 namespace Casazen.Infrastructure.Services;
@@ -18,6 +20,7 @@ public class CampaignService(
     IConditionEvaluator conditionEvaluator,
     ISuppressionService suppressionService,
     Infrastructure.External.IEmailService emailService,
+    MarketingUnsubscribeLinks unsubscribeLinks,
     IBackgroundJobClient backgroundJobClient,
     TimeProvider timeProvider,
     ILogger<CampaignService> logger) : ICampaignService
@@ -198,6 +201,15 @@ public class CampaignService(
             return;
         }
 
+        // DEB-01: a marketing e-mail leaves only with its signed unsubscribe link. Without the secret or the public URL of the web app
+        // nothing is sent and the job fails, so the error shows and the job is retried.
+        if (!unsubscribeLinks.IsConfigured)
+        {
+            throw new EmailConfigurationException(
+                $"Campaign {campaignId} not sent: {MarketingUnsubscribeLinks.SecretVariable} or App:PublicSiteBaseUrl is missing, " +
+                "so the unsubscribe link cannot be built.");
+        }
+
         // Re-evaluate segment recipients at send time (AC-NF24-2)
         var scope = new HostScope(campaign.OrgId); // Job runs without user context, org-wide scope
         var recipients = await GetRecipientsAsync(campaign.SegmentId, campaign.OrgId, scope, cancellationToken);
@@ -221,11 +233,13 @@ public class CampaignService(
         {
             try
             {
-                // Build email body with UTM params and unsubscribe link
-                var enrichedBody = EnrichEmailBody(campaign.Body, campaign.OrgId, campaignId, email);
+                // Build email body with UTM params and the signed unsubscribe link (DEB-01: no address in it)
+                var unsubscribe = unsubscribeLinks.Create(campaign.OrgId, email);
+                var enrichedBody = EnrichEmailBody(campaign.Body, campaignId, unsubscribe.PageUrl);
 
-                // Send via IEmailService (no tracking pixel, AC-NF24-8)
-                var result = await emailService.SendEmailAsync(email, campaign.Subject, enrichedBody);
+                // Send via IEmailService (no tracking pixel, AC-NF24-8), with the one-click unsubscribe headers
+                var result = await emailService.SendEmailWithHeadersAsync(
+                    email, campaign.Subject, enrichedBody, UnsubscribeHeaders(unsubscribe));
                 if (result.Success)
                     sentCount++;
                 else
@@ -233,7 +247,8 @@ public class CampaignService(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error sending campaign {CampaignId} to {Email}", campaignId, email);
+                // Never the address in the log (DEB-01).
+                logger.LogError(ex, "Error sending campaign {CampaignId} to one recipient", campaignId);
                 errorCount++;
             }
         }
@@ -262,17 +277,30 @@ public class CampaignService(
     }
 
     /// <summary>
-    /// Enriches email body with UTM params and one-click unsubscribe link (AC-NF24-7, AC-NF24-9).
+    /// <c>List-Unsubscribe</c> and <c>List-Unsubscribe-Post</c> (RFC 2369, RFC 8058): the mail client offers the unsubscribe itself and
+    /// posts to the one-click endpoint. None when the API has no public https URL: the link in the body is still there.
     /// </summary>
-    private string EnrichEmailBody(string body, Guid orgId, Guid campaignId, string email)
+    internal static IReadOnlyDictionary<string, string> UnsubscribeHeaders(MarketingUnsubscribeLink link) =>
+        link.OneClickUrl is { } oneClick
+            ? new Dictionary<string, string>
+            {
+                ["List-Unsubscribe"] = $"<{oneClick}>",
+                ["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click",
+            }
+            : new Dictionary<string, string>();
+
+    /// <summary>
+    /// Enriches email body with UTM params and the signed one-click unsubscribe link (AC-NF24-7, AC-NF24-9, DEB-01): the link is the page
+    /// of the web app (<see cref="MarketingUnsubscribeLinks"/>), with the SHA-256 index of the address and never the address.
+    /// </summary>
+    private static string EnrichEmailBody(string body, Guid campaignId, string unsubscribeUrl)
     {
         // Add UTM parameters to links (AC-NF24-9)
         var utmParams = $"utm_source=campaign&utm_medium=email&utm_campaign={campaignId}";
         body = AddUtmParametersToLinks(body, utmParams);
 
-        // Generate one-click unsubscribe link (AC-NF24-7)
-        // TODO: This should use a proper signed unsubscribe token service (shared with NF-05)
-        var unsubscribeLink = $"https://app.casazen.com/unsubscribe?org={orgId}&email={Uri.EscapeDataString(email)}&campaign={campaignId}";
+        // One-click unsubscribe link (AC-NF24-7), added after the UTM parameters so it carries none.
+        var unsubscribeLink = WebUtility.HtmlEncode(unsubscribeUrl);
 
         // Append unsubscribe footer
         var footer = $@"

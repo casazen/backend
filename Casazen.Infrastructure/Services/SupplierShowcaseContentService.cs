@@ -64,7 +64,12 @@ public class SupplierShowcaseContentService(
         var row = await Contents(supplierOrgId).FirstOrDefaultAsync(cancellationToken);
         EnsureVersion(row, version, supplierOrgId);
 
-        var document = ShowcaseContentRules.ApplyPatch(row?.DraftJson, patch, ContextOf(supplierOrgId, facts));
+        // The images the upload stored (SP-13b), read under the lock: the cleanup takes the same lock, so it cannot remove one between this check
+        // and the save. Not read at all while neither the draft nor the change mentions the folder of the showcase images.
+        var uploaded = MentionsShowcaseImages(row?.DraftJson) || MentionsShowcaseImages(patch.ToJsonString())
+            ? await UploadedImageKeysAsync(supplierOrgId, cancellationToken)
+            : EmptyKeys;
+        var document = ShowcaseContentRules.ApplyPatch(row?.DraftJson, patch, ContextOf(supplierOrgId, facts, uploaded));
 
         var now = Now();
         row ??= Add(supplierOrgId, now);
@@ -283,6 +288,29 @@ public class SupplierShowcaseContentService(
             : new PublishedShowcase(ShowcaseContentRules.Read(row.PublishedJson), row.PausedAt is not null, row.PublishedAt);
     }
 
+    public async Task<IReadOnlySet<string>> FindKeysInUseAsync(
+        Guid supplierOrgId,
+        IReadOnlyCollection<string> keys,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        if (keys.Count == 0)
+            return EmptyKeys;
+
+        var row = await Contents(supplierOrgId)
+            .AsNoTracking()
+            .Select(c => new { c.DraftJson, c.PublishedJson, c.PreviousPublishedJson })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (row is null)
+            return EmptyKeys;
+
+        // The keys have a random name and no character a JSON string would write differently: they appear in the text exactly as they are.
+        var documents = new[] { row.DraftJson, row.PublishedJson, row.PreviousPublishedJson };
+        return keys
+            .Where(key => documents.Any(json => json is not null && json.Contains(key, StringComparison.Ordinal)))
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
     public async Task<ShowcasePublication> GetPublicationAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)
     {
         var row = await Contents(supplierOrgId)
@@ -431,20 +459,37 @@ public class SupplierShowcaseContentService(
     /// What the rules need that is not in the content: the supplier's active services (a service paused or deleted is not shown) and
     /// whether an image is an object of the supplier's own folder of the public storage.
     /// </summary>
-    private ShowcaseContentContext ContextOf(Guid orgId, Facts facts) =>
-        new(url => IsOwnImage(orgId, url), facts.ActiveSlugs);
+    private ShowcaseContentContext ContextOf(Guid orgId, Facts facts, IReadOnlySet<string> uploaded) =>
+        new(url => IsOwnImage(orgId, url, uploaded), facts.ActiveSlugs);
 
     /// <summary>
     /// True for the URL of an object in the supplier's own folder of the public bucket (<c>suppliers/{orgId}/</c>): the photos of its
-    /// profile and services and, later, the media of its showcase. A content can never point to somebody else's file or to a site.
+    /// profile and services and the images of its showcase. A content can never point to somebody else's file or to a site. In the folder
+    /// of the showcase images (<c>suppliers/{orgId}/showcase/</c>) only a file the upload stored counts (<paramref name="uploaded"/>, the keys
+    /// of the supplier's rows of <c>SupplierShowcaseMedia</c>): a name somebody made up, or a file the cleanup removed since, is not an image.
     /// </summary>
-    private bool IsOwnImage(Guid orgId, string url)
+    private bool IsOwnImage(Guid orgId, string url, IReadOnlySet<string> uploaded)
     {
         var key = storage.TryGetPublicKey(url);
-        return key is not null
-               && StorageKeys.IsValid(key)
-               && key.StartsWith(StorageKeys.SupplierFolder(orgId), StringComparison.Ordinal);
+        if (key is null || !StorageKeys.IsValid(key) || !key.StartsWith(StorageKeys.SupplierFolder(orgId), StringComparison.Ordinal))
+            return false;
+
+        return !key.StartsWith(StorageKeys.SupplierShowcaseFolder(orgId), StringComparison.Ordinal) || uploaded.Contains(key);
     }
+
+    private static readonly IReadOnlySet<string> EmptyKeys = new HashSet<string>(StringComparer.Ordinal);
+
+    private static bool MentionsShowcaseImages(string? json) =>
+        json is not null && json.Contains("/showcase/", StringComparison.Ordinal);
+
+    /// <summary>The keys of the images the supplier uploaded for its showcase (the rows of <c>SupplierShowcaseMedia</c> of this org, and no other).</summary>
+    private async Task<IReadOnlySet<string>> UploadedImageKeysAsync(Guid orgId, CancellationToken cancellationToken) =>
+        (await db.SupplierShowcaseMedia
+            .AsNoTracking()
+            .Where(m => m.OrgId == orgId)
+            .Select(m => m.StorageKey)
+            .ToListAsync(cancellationToken))
+        .ToHashSet(StringComparer.Ordinal);
 
     /// <summary>The version the client read must be the current one: another tab, the wizard or another member changed it since.</summary>
     private void EnsureVersion(SupplierShowcaseContent? row, uint version, Guid orgId)

@@ -1,0 +1,13 @@
+# The centre of every comune of Italy, by ISTAT code: the seed Casazen.Infrastructure/Data/Seeds/comuni-centroidi.csv.
+# Wikidata: comune of Italy (Q747074, or a sparse municipality, Q954172: a comune with no main settlement) with an ISTAT code (P635)
+# and a coordinate (P625), not dissolved (P576), with its name in Italian (the name is how a code that ISTAT has not published yet is matched).
+# Wikidata is CC0.
+SELECT DISTINCT ?istat ?coord ?label WHERE {
+  VALUES ?class { wd:Q747074 wd:Q954172 }
+  ?comune wdt:P31/wdt:P279* ?class ;
+          wdt:P635 ?istat ;
+          wdt:P625 ?coord .
+  FILTER NOT EXISTS { ?comune wdt:P576 ?dissolved }
+  OPTIONAL { ?comune rdfs:label ?label . FILTER(LANG(?label) = "it") }
+}
+ORDER BY ?istat

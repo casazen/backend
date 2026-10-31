@@ -146,7 +146,7 @@ internal static class ImageSizeReader
     }
 
     /// <summary>The orientation (1 to 8) of the EXIF block of an APP1 segment; <c>null</c> when it has none.</summary>
-    private static int? ExifOrientation(ReadOnlySpan<byte> app1)
+    internal static int? ExifOrientation(ReadOnlySpan<byte> app1)
     {
         // "Exif" and two zero bytes, then a TIFF header: byte order (II or MM), 42, the offset of the first directory.
         if (app1.Length < 14 || !app1[..6].SequenceEqual("Exif\0\0"u8))

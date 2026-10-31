@@ -52,7 +52,7 @@ EAS has three environments: `development`, `preview`, `production` (expo.dev →
 | `EXPO_PUBLIC_API_URL` | Railway `test` public URL, `https://<railway-test-host>` (same as GitHub variable `RAILWAY_TEST_URL`) | Railway `production` public URL (`RAILWAY_PROD_URL`) | Usually unset: developers use `.env` (`http://<LAN IP>:5000`) |
 | `EXPO_PUBLIC_WEB_URL` | Vercel staging deployment of `develop`, `https://<staging-host>` | `https://casazen-app.vercel.app` | unset |
 | `EXPO_PUBLIC_AUTH0_DOMAIN` | test tenant, e.g. `casazen-test.eu.auth0.com` (host name only, no `https://`) | production tenant, e.g. `casazen.eu.auth0.com` | unset |
-| `EXPO_PUBLIC_AUTH0_CLIENT_ID` | client id of the **Native** app `CasaZen Host (mobile)` in the test tenant ([auth0.md](auth0.md) section 7), never the SPA client id | client id of the **Native** app in the production tenant | unset: developers set it in `.env` (Native app of the dev/test tenant). It has **no** local default |
+| `EXPO_PUBLIC_AUTH0_CLIENT_ID` | client id of the **Native** app `CasaZen (mobile)` in the test tenant ([auth0.md](auth0.md) section 7), never the SPA client id | client id of the **Native** app in the production tenant | unset: developers set it in `.env` (Native app of the dev/test tenant). It has **no** local default |
 | `EXPO_PUBLIC_AUTH0_AUDIENCE` | API identifier of the test tenant (auth0.md section 2, e.g. `https://casazen-api`) | API identifier of the production tenant | unset |
 | `EXPO_PUBLIC_E2E_DEMO` | **do not set** | **do not set** | optional, `1` only for the Maestro demo button in Metro bundles |
 
@@ -192,7 +192,7 @@ Audit defects A6-05 (registration never succeeded), A6-06 (device id shared by p
 | New booking confirmed without the host (payment, saved card): `new-booking` (MO-04) | hosts of the property | `/bookings/{bookingId}` |
 | Supplier decision on a request tied to a stay: `service-request-taken`, `service-request-completed`, `service-request-rejected` (the rejection since MO-04) | hosts of the property | `/bookings/{bookingId}` |
 | Same, request **without** a stay (long-rent, or short-rent created before SU-07) | hosts of the property | `/properties` (the app has no service request screen; `/service-requests/{id}` used to open nothing) |
-| New request: `service-request-created` (MO-04) | users of the supplier org | `/properties`, no `bookingId` (the stay is the host's; the app has no supplier screens yet) |
+| Every push about a service request to the supplier org: `service-request-created` (MO-04), the answer of a customer of the showcase, a payment received | users of the supplier org | `/supplier/requests/{serviceRequestId}`, no `bookingId` (the stay is the host's); the supplier area of the app opens the request. An app version without that area opens on its usual screen |
 | Check-out reminder: `checkout-reminder` | hosts of the property | `/bookings/{bookingId}/checkout` |
 
 "Hosts of the property": its owner and the Admin / PropertyManager users of its org, active, on phones registered in that org. "Users of the supplier org": active users linked to it (`User.SupplierOrgId`, or members of the supplier org), on every phone they registered. Pushes of a service request also carry `serviceRequestId` in `data`. Titles and texts are specific to each type, Italian and English in `EmailTexts.resx` / `EmailTexts.en.resx` (`Push_*`, `StayAlertPush_*`); they show the property, category and dates, never a guest name or the supplier's rejection reason (that one is in the host email).
@@ -203,7 +203,7 @@ An unknown route falls back to `bookingId` when the push has one, otherwise the 
 
 Expo delivers Android pushes through **FCM HTTP v1**; the legacy FCM server key is no longer accepted by Google.
 
-1. [Firebase console](https://console.firebase.google.com) → create (or open) the project `casazen` → **Add app → Android**, package **`it.casazen.host`** (`android.package` in `app.json`). Download `google-services.json`. It holds the Firebase app identifiers and an API key restricted to this app: not a server secret, but it stays **out of git** (`.gitignore`).
+1. [Firebase console](https://console.firebase.google.com) → create (or open) the project `casazen` → **Add app → Android**, package **`it.casazen.app`** (`android.package` in `app.json`; if an Android app `it.casazen.host` was registered earlier, add a new one: the package of a Firebase app cannot be changed). Download `google-services.json`. It holds the Firebase app identifiers and an API key restricted to this app: not a server secret, but it stays **out of git** (`.gitignore`).
 2. Upload it as an EAS **file** variable, in every environment you build Android in:
    ```bash
    export EAS_PROJECT_ID=<uuid>
@@ -331,7 +331,7 @@ Without the variable and without enhanced security, pushes work as before (no he
       minute; tap → the booking opens. The host still gets the rejection email.
 - [ ] Public site: pay a booking with a Stripe test card → the host gets "Nuova prenotazione confermata" (property, dates,
       guests; no guest name). A host-accepted "pay at the property" request sends no such push (the host confirmed it).
-- [ ] Host: create a request → the supplier's registered phones (if any: the host app has no supplier screens yet) get
+- [ ] Host: create a request → the supplier's registered phones (a supplier account signed in the app) get
       "Nuova richiesta di servizio".
 - [ ] Railway logs: `Push … queued`, then `Push …: N of N messages accepted by Expo`; 15–30 minutes later `Push receipts:
       … checked, … delivered`.
