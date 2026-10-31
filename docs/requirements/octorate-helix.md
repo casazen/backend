@@ -575,7 +575,8 @@ immobile (modulo rapido, wizard, vecchia attivazione) vanno ridotti a uno.
    disponibilità, prezzi e prenotazioni, ma i contenuti si cambiano sul canale (S18). L'interfaccia
    non lo nasconde: lo stato è «Contenuti gestiti su Expedia», e il wizard offre un passo guidato
    con i testi e le foto pronti da copiare e la pagina del canale da aprire (LST-12). Per Quokka
-   Expedia è un canale obbligatorio (S2): il limite resta nel go/no-go del pilota.
+   Expedia è un canale obbligatorio (S2): il PO ha accettato il limite il 31/10 («non ci possiamo
+   fare nulla»), quindi non blocca il pilota.
 3. Le modifiche fatte fuori da CasaZen (in Octorate o su una OTA) si rilevano a ogni lettura
    periodica e con `CONTENT_NOTIFICATION`, e si mostrano come «Modificato fuori da CasaZen» con
    la scelta «Tieni la versione di CasaZen» o «Prendi la nuova versione»; mai sovrascrittura
@@ -892,7 +893,7 @@ automatico dopo DEB-08; Ticino e OTR di Q1-15 dopo la correzione del formato e d
 inclusi) dentro gli stessi wizard; l'utente vede la stessa interfaccia e lo stesso stato, cambia
 solo il mittente.
 
-#### CHK-11 — Identificazione biometrica dell'ospite e codice della serratura · P0 ⚖
+#### CHK-11 — Identificazione biometrica dell'ospite e codice della serratura · P0
 
 1. **Decisione del PO (31/10):** l'identificazione di persona non è praticabile; si usa la verifica
    biometrica dal vivo che CasaZen sta sviluppando (Q1-10…Q1-13). **Il selfie lo fa solo l'ospite
@@ -909,11 +910,11 @@ solo il mittente.
    parte solo dopo la sua decisione. La videochiamata è il ripiego, non il percorso normale.
 4. Per l'ospite verificato si registrano metodo (biometrico o operatore), esito, istante, tentativi, modello
    e versione, soglie; mai immagini, selfie o vettori conservati (cancellazione immediata, Q1-11).
-5. Consenso biometrico esplicito, separato e rifiutabile (chi rifiuta passa all'operatore); DPIA e
-   verifica legale prima dell'attivazione (⚖). Le fonti del benchmark riportano che una verifica a
-   distanza dal vivo può soddisfare l'obbligo di identificazione indicato dal Consiglio di Stato il
-   21/11/2025 (Appendice A), e che basti verificare l'ospite che lascia il documento: da confermare
-   con il legale.
+5. Consenso biometrico esplicito, separato e rifiutabile (chi rifiuta passa all'operatore).
+   **Confermato dal legale (riferito dal PO il 31/10):** la verifica a distanza dal vivo del solo
+   ospite che lascia il documento vale come identificazione; testo del consenso biometrico e DPIA
+   approvati. Le fonti del benchmark sulla decisione del Consiglio di Stato del 21/11/2025 restano
+   in Appendice A come contesto.
 6. **Stato attuale:** i componenti esistono ma sono segnaposto (lettura del documento vuota,
    vivacità sempre vera, somiglianza fissa: §4.5) e gli endpoint pubblici vanno spenti finché non
    sono reali (DEB-01); il completamento è DEB-09.
@@ -925,7 +926,7 @@ solo il mittente.
 Prova: il codice della serratura non parte mai senza una verifica superata (biometrica o
 dell'operatore) dell'ospite che ha lasciato il documento; nessuna immagine conservata.
 
-#### CHK-14 — Agente AI di verifica dell'identità · P0 ⚖
+#### CHK-14 — Agente AI di verifica dell'identità · P0
 
 Richiesta del PO (31/10): un agente AI specializzato nel riconoscimento facciale coordina lo scan
 biometrico e valuta se è ok. Si costruisce **sopra** la pipeline già decisa in ADR-013 (verifica nel
@@ -957,8 +958,8 @@ backend, modelli specializzati, esito a tre livelli, cancellazione immediata), n
    del legale (PO-21): UE, accordo sul trattamento, nessuna conservazione, nessun addestramento sui
    dati.
 6. **Intervento umano sempre possibile** (GDPR art. 22): un «non ok» automatico non è definitivo,
-   l'ospite può chiedere la verifica dell'operatore e la ottiene. Avviso di trasparenza AI Act art. 50
-   nella pagina del selfie.
+   l'ospite può chiedere la verifica dell'operatore e la ottiene. L'ospite è informato del confronto
+   automatico del volto dal testo del consenso biometrico (approvato); nessun'altra dicitura AI.
 7. **Qualità:** falsi accoppiamenti e falsi rifiuti misurati con lo strumento di taratura di Q1-11,
    soglie provvisorie dichiarate tali, monitoraggio degli esiti (quota passata all'operatore),
    interruttore per organizzazione; esito entro pochi secondi dalla ripresa (obiettivo da misurare).
@@ -1243,8 +1244,13 @@ ogni thread porta al profilo del cliente (CRM-01).
    sincronizzazione (OCT-11).
 6. Ogni messaggio inviato mostra all'host se l'ha scritto una persona o l'assistente, e quale
    regola l'ha fatto partire.
-7. Trasparenza (AI Act art. 50) nell'interfaccia; dicitura verso l'ospite secondo la decisione del
-   PO (D-11 della fase 1, ⚖). Dati al modello secondo PO-09.
+7. **Nessuna dicitura AI verso gli ospiti** (decisione del PO del 31/10, confermata dal legale
+   secondo il PO; chiude D-11 della fase 1): i messaggi partono come messaggi dell'host o
+   dell'agenzia. L'avviso di trasparenza resta nell'interfaccia di CasaZen per chi usa l'assistente.
+   Nota tecnica: per le risposte inviate in automatico senza revisione umana l'AI Act (art. 50, in
+   vigore dal 2 agosto 2026) prevede di informare la persona che interagisce con un sistema AI; se in
+   futuro servisse, si aggiunge una riga una sola volta nell'informativa del check-in, con un
+   interruttore, senza toccare i messaggi. Dati al modello secondo PO-09.
 
 Prove: un messaggio di una categoria sensibile non parte mai in automatico; sotto la soglia non
 parte nulla senza approvazione.
@@ -1405,8 +1411,9 @@ IVA, codice destinatario).
    manager se già lo usa, nessuno perché se ne occupa il commercialista: PO-05) e quale documento
    per il proprio regime (privato senza partita IVA, partita IVA ordinaria o forfettaria, agenzia
    con doppia intestazione proprietario e agenzia), con domande semplici e un esempio del
-   documento. Le regole (tipo di documento, IVA, bollo, natura delle operazioni) sono validate da
-   un commercialista prima del rilascio (⚖) e stanno in configurazione, non nel codice sparso.
+   documento. L'impostazione delle regole (tipo di documento per regime, IVA, bollo, natura delle
+   operazioni) è confermata (riferito dal PO il 31/10); le regole stanno in configurazione, non nel
+   codice sparso.
 2. Mai due emittenti per la stessa organizzazione: se l'host emette i documenti nel pannello
    Octorate (a mano, perché via API non si può, S18), CasaZen li legge (FIS-04) e non emette.
 
@@ -1474,7 +1481,8 @@ del trattamento. Quindi:
 - **Si fa, senza consenso esplicito:** email ai clienti che hanno comprato un soggiorno e hanno
   dato l'email a CasaZen (prenotazione diretta, check-in), per soggiorni analoghi, con
   informativa al momento della raccolta e disiscrizione in ogni messaggio («soft opt-in»,
-  art. 130 c. 4 Codice privacy): PO-07, da confermare con il legale.
+  art. 130 c. 4 Codice privacy): PO-07, deciso e confermato dal legale (riferito dal PO il 31/10);
+  sostituisce il «no» della fase 1 (D-10).
 - **Si fa, con consenso:** WhatsApp, SMS, offerte a chi non ha comprato, pubblici pubblicitari.
   Il consenso si chiede nei momenti che CasaZen controlla: check-in (esiste), pagina dell'ospite,
   pagina di benvenuto con QR nell'appartamento, checkout del sito diretto; con un incentivo
@@ -2237,7 +2245,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | PO-04 | Chi calcola la tassa di soggiorno? | CasaZen (regole e tariffe per comune già presenti), come confermato da Octorate (S18); scrive i valori per ospite in Octorate solo se l'host emette documenti nel pannello Octorate (D20) | CHK-07 | No |
 | PO-05 | Chi emette i documenti fiscali delle prenotazioni? | CasaZen (Octorate non li genera via API, S18); se l'host li emette già a mano nel pannello Octorate, CasaZen li legge e non emette; mai entrambi per la stessa organizzazione | FIS-02 | No |
 | PO-06 | Quale intermediario SDI per l'invio reale delle fatture elettroniche emesse da CasaZen? | Nessun invio reale finché non è scelto: XML generato, validato e scaricabile, stato «da inviare» | FIS-05 | Solo l'invio reale |
-| PO-07 | Email di marketing ai clienti diretti e agli ospiti che hanno dato l'email a CasaZen nel check-in senza consenso esplicito («soft opt-in», art. 130 c. 4 Codice privacy) | **Sì**, con informativa al momento della raccolta, solo per servizi analoghi (soggiorni), disiscrizione in ogni messaggio; cambia il default D-10 della fase 1; ⚖ conferma del legale prima dell'attivazione in produzione | CRM-02, CRM-03, CRM-06 | Solo l'attivazione in produzione |
+| PO-07 | Email di marketing ai clienti diretti e agli ospiti che hanno dato l'email a CasaZen nel check-in senza consenso esplicito («soft opt-in», art. 130 c. 4 Codice privacy) | **Deciso dal PO il 31/10, confermato dal legale:** sì, con informativa al momento della raccolta, solo per servizi analoghi (soggiorni), disiscrizione in ogni messaggio; sostituisce il default D-10 della fase 1 | CRM-02, CRM-03, CRM-06 | No |
 | PO-08 | Invio automatico delle risposte AI | Acceso solo per le situazioni che l'organizzazione ha configurato, sopra la soglia (default 0,85), mai per le categorie sensibili e mai dove la policy del canale non è confermata (D4 della v1.3); periodo iniziale di due settimane in sola bozza per ogni nuova situazione, con la percentuale di bozze approvate senza modifiche come misura | MSG-06, MSG-07 | No |
 | PO-09 | Dati personali verso il modello AI per rispondere ai messaggi (la regola attuale è «nessun dato personale nei prompt») | Modello ospitato nell'UE con accordo sul trattamento (D8 della v10); minimizzazione: nomi, contatti, codici e documenti sostituiti da segnaposto; testo del messaggio inviato perché necessario; ⚖ informativa | MSG-07, AI | Solo l'attivazione dell'AI sui messaggi |
 | PO-10 | Avvisi predefiniti | Push e contatore in-app per i nuovi messaggi degli ospiti e per le scadenze di legge; riepilogo email giornaliero; popup solo per scadenze entro 24 ore | UX-08, MSG-05 | No |
@@ -2248,10 +2256,17 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | PO-15 | Foto degli annunci raggiungibili da Octorate tramite URL pubblico | Sì, solo per le foto degli annunci (sono già pubbliche sulle OTA), con indirizzi non indovinabili; i documenti degli ospiti restano privati | LST-06 | No |
 | PO-16 | Chi comanda prezzi e disponibilità? | CasaZen è l'unico scrittore per gli immobili collegati; le regole automatiche di Octorate (chiusure automatiche, prezzi derivati, revenue) restano spente o lette e mostrate | LST-09, LST-10 | No |
 | PO-17 | Dati degli ospiti presi da Octorate per il CRM | Solo dati della prenotazione e del soggiorno; i contatti letti con `contactInfo` solo per il servizio (messaggi, check-in, fattura), mai per il marketing | CRM-07 | No |
-| PO-18 | Come si identifica l'ospite? | **Deciso dal PO il 31/10:** verifica biometrica dal vivo del solo ospite che lascia il documento (capogruppo o capofamiglia: selfie dalla fotocamera confrontato con il suo documento, dal link del check-in o dal QR all'ingresso), esito immediato e codice della serratura subito dopo; l'identificazione di persona non è praticabile; ripiego: verifica dell'operatore in videochiamata. Validità legale della verifica a distanza dal vivo, consenso biometrico e DPIA da confermare con il legale ⚖ | CHK-11, DEB-09 | Solo l'attivazione in produzione |
+| PO-18 | Come si identifica l'ospite? | **Deciso dal PO il 31/10:** verifica biometrica dal vivo del solo ospite che lascia il documento (capogruppo o capofamiglia: selfie dalla fotocamera confrontato con il suo documento, dal link del check-in o dal QR all'ingresso), esito immediato e codice della serratura subito dopo; l'identificazione di persona non è praticabile; ripiego: verifica dell'operatore in videochiamata. Confermati dal legale (31/10): validità della verifica a distanza dal vivo del solo capogruppo, consenso biometrico e DPIA | CHK-11, DEB-09 | No |
 | PO-19 | Quando CasaZen crea una struttura nuova su Octorate, il proprietario riceve da Octorate le credenziali del suo account (`welcome_user`)? | **Deciso dal PO il 31/10:** no. CasaZen crea la struttura con `welcome_user` falso, l'esperienza resta in CasaZen e il token arriva con la creazione; le credenziali si attivano solo su richiesta del proprietario o alla sua uscita da CasaZen, con la procedura da concordare con Octorate (D11, D27) | §9.1, LST-02, LST-03 | No |
 | PO-20 | Nome pubblico, descrizione e icona dell'app CasaZen su Octorate (oggi «Luca La Malfa», visibile nella pagina di consenso) e visibilità nell'elenco delle API di Octorate (`secretVisibility`, oggi vero) | Nome «CasaZen» con icona e descrizione IT/EN impostati subito in test (`postConfiguration`); app non visibile nell'elenco (`secretVisibility` falso) fino alla certificazione, poi decisione commerciale | §9.1, UX-12 | No |
 | PO-21 | Chi confronta il volto: i modelli specializzati eseguiti nel backend di CasaZen (ADR-013) o un fornitore esterno specializzato? | Modelli nel backend (default, già deciso in ADR-013); un fornitore esterno solo se la taratura non raggiunge gli obiettivi, con valutazione legale (UE, accordo sul trattamento, nessuna conservazione) ⚖ | CHK-14 | No |
+
+**Conferme e decisioni del 31/10 (riferite dal PO).** Il legale ha confermato: validità della
+verifica biometrica a distanza dal vivo del solo ospite che lascia il documento, testo del
+consenso biometrico e DPIA, soft opt-in (PO-07), impostazione delle regole dei documenti fiscali.
+Il PO ha deciso: nessuna dicitura AI verso gli ospiti (MSG-07); per Expedia contenuti gestiti sul
+canale, accettato per il pilota (LST-01). I testi preparati da CasaZen (consensi, informative)
+si possono usare.
 
 ### 14.2 Domande a Octorate (si aggiungono a D1–D14)
 
@@ -2319,7 +2334,9 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   ADR-013 (CHK-14, AI-13, PO-21). Modello di autorizzazione corretto: un consenso copre tutte le
   strutture visibili all'utente Octorate (per un'agenzia tutta la rete, un solo token), non un
   consenso per appartamento; domanda D33. Wizard di onboarding con Octorate che estende la
-  checklist di attivazione esistente (§6.9, ONB-01…05, pacchetto O1).
+  checklist di attivazione esistente (§6.9, ONB-01…05, pacchetto O1). Conferme del legale riferite
+  dal PO (verifica biometrica del capogruppo, consenso e DPIA, soft opt-in, regole fiscali), nessuna
+  dicitura AI verso gli ospiti, Expedia accettata con i contenuti sul canale.
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
   authorization code flow, whitelist delle callback, access token di 24 ore, refresh token senza
   scadenza, N proprietà = N consensi e token; account test attivo, credenziali non marcate valide;
