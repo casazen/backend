@@ -365,6 +365,16 @@ public class ServiceRequest
     public DateTime? SupplierReminderSentAt { get; set; }
 
     /// <summary>
+    /// When the reminder at half of the time to answer was queued for the supplier of a request on measure that nobody had answered yet (SP-10c, job
+    /// <c>service-request-expiry</c>, <see cref="Suppliers.ShowcaseReplyReminderRules"/>): once per request. It is saved before the mail and the push are
+    /// queued, only if nobody touched the request since it was read, so a supplier that answered meanwhile is not reminded. Null on every other request.
+    /// </summary>
+    public DateTime? ReplyReminderHalfSentAt { get; set; }
+
+    /// <summary>The same for the last reminder, ten minutes before the deadline (SP-10c).</summary>
+    public DateTime? ReplyReminderLastSentAt { get; set; }
+
+    /// <summary>
     /// Optimistic concurrency token (A4-19): mapped to PostgreSQL's <c>xmin</c> system column, which changes with every
     /// update of the row (no column of its own). Two transitions that read the same state cannot both be saved: the
     /// second save fails and the caller gets 409 <c>service_request_state_changed</c>.

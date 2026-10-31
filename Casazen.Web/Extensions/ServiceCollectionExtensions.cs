@@ -707,6 +707,11 @@ public static class ServiceCollectionExtensions
         // The upkeep (expiry of holds and of unanswered showcase requests), the reminders of the day before and the retention of the
         // customers' data: their recurring jobs are registered whatever the flags say.
         services.AddScoped<IServiceRequestExpiryService, ServiceRequestExpiryService>();
+        // The second pass of the same job (SP-10c): the supplier of a request on measure nobody answered is reminded at half of its time and ten
+        // minutes before the deadline, each once.
+        services.AddScoped<IShowcaseReplyReminderService, ShowcaseReplyReminderService>();
+        // The other suppliers offered to the customer of a request nobody answered (SP-10c): at most three, over the one ranking of the platform.
+        services.AddScoped<IShowcaseAlternativesService, ShowcaseAlternativesService>();
         // The reminder of the day before to the supplier (SP-16d) is the second pass of the same job: the reminders service takes it in.
         services.AddScoped<SupplierDayBeforeReminders>();
         services.AddScoped<IServiceRequestReminderService, ServiceRequestReminderService>();

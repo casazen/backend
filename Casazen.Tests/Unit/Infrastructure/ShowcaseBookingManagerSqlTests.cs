@@ -88,6 +88,57 @@ public class ShowcaseBookingManagerSqlTests
     }
 
     [Fact]
+    public void TheBasisOfTheAlternatives_IsOneRequestOfTheSupplier_AndReadsOnlyTheCategoryAndTheComune()
+    {
+        using var db = NewNpgsqlContext(encrypted: true);
+
+        var sql = Normalize(ShowcaseBookingManager.AlternativesBasisOf(db, Guid.NewGuid(), Guid.NewGuid()).ToQueryString());
+
+        // SP-10c: scoped by the supplier org, the request and the showcase context; the category and the place of the work (the code and the name of
+        // the comune), nothing the customer wrote and nothing encrypted.
+        Assert.Matches("\"SupplierOrgId\" = @", sql);
+        Assert.Matches("\"Id\" = @", sql);
+        Assert.Matches("\"RentalContext\" = 2", sql);
+        foreach (var column in new[] { "Category", "LocationComuneIstat", "LocationCity" })
+            Assert.Single(Regex.Matches(sql, $"\"{column}\""));
+        foreach (var column in new[]
+                 {
+                     "LocationAddress", "LocationFloor", "LocationAccessNotes", "LocationPostalCode", "Notes", "CustomerId", "PublicCode", "Status", "QuoteEventsJson",
+                 })
+        {
+            Assert.DoesNotContain($"\"{column}\"", sql, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void TheRequestsWaitingForTheirSuppliersFirstAnswer_AreListedWithTheFewColumnsTheRuleNeeds_AndNothingTheCustomerWrote()
+    {
+        using var db = NewNpgsqlContext(encrypted: true);
+
+        var sql = Normalize(ShowcaseReplyReminderService.WaitingOf(db, DateTime.UtcNow).ToQueryString());
+
+        // SP-10c: the showcase context, requests on measure, still new, with a deadline ahead, no offer waiting and the last reminder not sent.
+        Assert.Matches("\"RentalContext\" = 2", sql);
+        Assert.Contains("\"Kind\" = ", sql, StringComparison.Ordinal);
+        Assert.Contains("\"Status\" = ", sql, StringComparison.Ordinal);
+        Assert.Matches("\"ResponseDueAt\" > @", sql);
+        Assert.Contains("\"QuoteSentAt\" IS NULL", sql, StringComparison.Ordinal);
+        Assert.Contains("\"ReplyReminderLastSentAt\" IS NULL", sql, StringComparison.Ordinal);
+        foreach (var column in new[] { "Id", "CreatedAt", "ResponseDueAt", "ReplyReminderHalfSentAt" })
+            Assert.Contains($"\"{column}\"", sql, StringComparison.Ordinal);
+
+        // It reads no payload: not the place, not the notes, not the customer, not the contacts of the supplier.
+        foreach (var column in new[]
+                 {
+                     "LocationAddress", "LocationFloor", "LocationAccessNotes", "LocationCity", "Notes", "CustomerId", "PublicCode", "ProposalMessage",
+                     "QuoteNote", "QuoteLinesJson", "WorkPhotosJson",
+                 })
+        {
+            Assert.DoesNotContain($"\"{column}\"", sql, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void TheSupplier_IsFoundBySlugOnly_AndYieldsTheOrgItsStatusItsNameAndItsSlug()
     {
         using var db = NewNpgsqlContext();

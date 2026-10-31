@@ -208,6 +208,15 @@ public interface IShowcaseBookingManager
     /// <see cref="ServiceRequestThreadErrors.Closed"/> (refused, cancelled or done), <c>service_request_state_changed</c>.
     /// </exception>
     Task<ShowcaseBookingView> PostMessageAsync(ShowcaseBookingCredentials credentials, string? body, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The other suppliers the customer can turn to when <b>CasaZen closed its request because the supplier did not answer in time</b> (SP-10c): at
+    /// most three, that cover the comune and have the category of the request, whose showcase is published, not paused and takes bookings, best first
+    /// by the one ranking of the platform; never the supplier of the request, never a personal datum. For a booking that is in any other state the
+    /// list is empty: the alternatives are the way out of a silence, they are never a list of suppliers behind every request. Read-only.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>: no booking matches (see the remarks).</exception>
+    Task<IReadOnlyList<ShowcaseAlternative>> ListAlternativesAsync(ShowcaseBookingCredentials credentials, CancellationToken cancellationToken = default);
 }
 
 /// <summary>The outcome of the customer's acceptance of an offer (SP-10b-b): the request, and the session of the card when it still has to be blocked.</summary>

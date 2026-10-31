@@ -2036,7 +2036,7 @@ undoes the change. The customer's e-mails are in the language it chose (`it` / `
 | `supplier-booking-time-proposed` | customer | the supplier proposes another time: both times, its message, the time to answer by |
 | `supplier-booking-reminder` | customer | 18:00 of the day before |
 | `supplier-booking-cancelled` | customer | the supplier cancels it, with its reason |
-| `supplier-booking-expired` | customer | nobody answered in time (the supplier is told by the existing mail of SP-04) |
+| `supplier-booking-expired` | customer | nobody answered in time (the supplier is told by the existing mail of SP-04); it lists up to three other suppliers of the comune and category that take bookings (SP-10c, section 34.11) |
 
 **Only what is true** (D24): the deadlines named are the ones the jobs enforce, nothing says the supplier answers "in an hour" or that
 the price is "guaranteed", and nothing is said about payment (nothing is paid with this request). A test searches every template in both
@@ -3727,7 +3727,8 @@ request (`Richiesto`, `PresoInCarico` ... `Rifiutato`, `Annullato`), so the mobi
 - the comune the customer gave (`LocationCity`, and `LocationComuneIstat` when it picked one from the official list) and nothing else of the place: the street comes later;
 - the service it is about when the customer named one (`ServiceListingId`, `ServiceNameSnapshot`, its category), else the first category of the supplier;
 - `ResponseDueAt` = the moment the address is checked + `Suppliers__Showcase__InquiryResponseMinutes` (60; 5 to 1440, out of range: **startup**). If the supplier does not answer by then the always-on job `service-request-expiry` cancels the
-  request with the reason `NoResponse`, as it does with a booking nobody answered; the first message of the supplier stops the clock (next part);
+  request with the reason `NoResponse`, as it does with a booking nobody answered; the first message of the supplier stops the clock (next part). The reminders to the supplier, the points a silence costs and
+  the other suppliers offered to the customer are section 34.11 (SP-10c);
 - `Notes` empty: what the customer wrote is the first **message** (34.4).
 
 ### 34.2 Endpoints
@@ -3895,6 +3896,53 @@ A card blocked for an offer is usable for `SupplierPayments:AuthorizationValidit
 - [ ] Test environment with the payments on and the supplier's Stripe account ready (section 25): `lookup` has `offer.paymentRequired: true`; `offer/accept` answers `negotiation: "AwaitingPayment"` and a `paymentSession`; confirming the card with Stripe's test card makes the request `PresoInCarico` within seconds (the webhook), the PaymentIntent is `succeeded` for the total and the payment is `Held`; with the test card that requires 3-D Secure the same; with a declined card nothing is taken and the session can be used again. With the supplier busy at that time (another job at the same hour) the customer reads 409 and the PaymentIntent is `canceled`.
 - [ ] As the customer: `lookup` has `offer`, `negotiation: "OfferSent"`, `actions.canRespondToOffer: true` and no `quote`; `offer/accept` with a wrong `offerSentAt` is 409 `service_request_offer_changed`, with the right one the request is `PresoInCarico` at the offer's time and total, the supplier gets its mail and push, a second
       `offer/accept` is 422 `supplier_booking_no_offer`; `offer/decline` leaves `negotiation: "OfferDeclined"` and the request open ten days later.
+
+### 34.11 The hour to answer, the reminders and the other suppliers — SP-10c
+
+Redesign wave task SP-10c (branch `feature/rd-supplier-reply-sla`, backend only, stacked on SP-10b-b): **no new flag** (the new call rides on `SupplierShowcaseBooking`), migration `AddServiceRequestReplyReminders` (additive: two nullable `timestamptz` columns on
+`ServiceRequests`; it goes down by dropping them). The interview of 9 October (Q7): «risposte dirette entro massimo un'ora, altrimenti ti vengono proposti altri fornitori». What SP-10b already did: the request on measure has `ResponseDueAt` = the moment the address is checked +
+`Suppliers__Showcase__InquiryResponseMinutes` (60), the supplier's first message stops the clock, and `service-request-expiry` closes the request (`Annullato`, `CancelledBy = System`, reason `NoResponse`) and tells the customer. What this task adds:
+
+**1. The reminders to the supplier** (the second pass of `service-request-expiry`, after the requests whose deadline passed were closed: `ShowcaseReplyReminderService`, the rules in `ShowcaseReplyReminderRules`). While a request on measure is `Richiesto`, has a deadline and no offer waiting for
+the customer, the supplier is reminded **at half of the time it has** (30 minutes into the hour) and **10 minutes before the deadline**, by e-mail (`supplier-inquiry-reply-reminder`, Italian: the comune, "Nome C." and the time to answer by; never the words of the customer, the
+address or the contacts) and by push (`service-request-reply-reminder`, key `service-request:{id}:reply-reminder-half|last`). **Once each**: `ServiceRequests.ReplyReminderHalfSentAt` and `ReplyReminderLastSentAt` are saved **before** the mail and the push are queued, and only if nobody touched
+the request since it was read (`xmin`): a supplier whose message, offer or refusal is saved at the same moment wins and is not reminded, and a crash between the save and the queue loses a reminder, never doubles it. A run that is late sends only the last call; a wait of 20 minutes or less has only the last
+call and one of 10 or less none. The job runs every 5 minutes, so the last call reaches the supplier between 5 and 10 minutes before the deadline. A supplier that is not `Active` is not reminded (and the request is not marked, so it still is once it is back). It is an **operational notice**, like the
+reminder of a host: no switch of «Notifiche» hides it (the supplier has to act, or the request closes).
+
+**2. The silence weighs on the supplier.** When the job closes a request on measure that the supplier never answered, `ServiceRequestAutoCancelService` writes **`NoReplyInTime`** (section 37: `ISupplierReliabilityService.RecordNoReplyAsync`, `AsBackup = false`, the wait counted from the creation of the request
+to the deadline) and the mail to the supplier says that it costs points when it does (no penalty when the supplier could not have answered: not active, time off, outside its working hours). **Only this event** is written for a request on measure: an answer in time earns no `RepliedInTime`, a completed job no
+`JobCompletedClean`, and the bookings from a showcase still neither earn nor cost points; a request the **customer** let lapse (`QuoteNotAnswered`, `ProposalNotAnswered`) is never the supplier's silence. The weights are those of `SupplierRanking:*` (proposals still to approve, VT-D17): nothing new is
+configured here. (Follow-up SP-10c-FU1: the symmetric credit, if the product owner wants it.)
+
+**3. The other suppliers** (`IShowcaseAlternativesService`, `ShowcaseAlternativesService`; the rules in `ShowcaseAlternativeRules`). When CasaZen closed a request **because the supplier did not answer in time** — and only then: `Annullato`, `CancelledBy = System`, `NoResponse`; not a refusal, not a cancellation by
+the customer, not an offer or a time the customer did not answer — the customer is offered **up to 3 alternatives**: the `Active` suppliers that cover the comune of the request (the ISTAT code when the customer chose it, the name otherwise) and have the category of the request — `ISupplierMatchService.RankActiveAsync`,
+**the one ranking** of section 37, the same score and the same weights as for the hosts — **whose showcase is published, not paused and takes bookings** (`bookingsOpen`, VT-D7: it includes the flag `SupplierOnlinePayments` and the supplier's payments account, so **with the payments off, as in production today,
+no showcase takes bookings and the list is empty**), never the supplier of the request. At most 12 suppliers are looked at, best first, to find the 3. For each: `name`, `slug`, `coverUrl` and `coverAlt`, `verified` («Verificato»), `medianResponseMinutes` (measured, from 5 requests in 90 days; absent until
+then) and `service`, the service of the same category with the lowest «da» price (`slug`, `name`, `fromPriceCents` absent when on quote, `priceUnit` `PerJob`, `PerHour`, `PerSet` or `PerSquareMeter`, `requiresQuote`); **no score, no id, no contact, no address, and no way to list suppliers**. A failure of the
+ranking is an empty list (logged), never an error.
+- *Where the customer meets them.* (a) **`POST api/public/supplier-bookings/alternatives`** with the body `{ slug, code, email }` of `lookup`: the same proof of who is asking, the same uniform 404 `supplier_booking_not_found`, the same two limits with one 429 `rate_limited`, the same `noindex` and `no-store`,
+  behind `SupplierShowcaseBooking`; it answers `{ "alternatives": [ … ] }`, and for a request in any other state the list is empty (200). (b) **`alternatives`** in `lookup` and in every answer of the area, with the same members, **present only for a request closed for want of an answer** (an empty list when there is
+  nobody to suggest: the page then says so plainly) and absent for every other booking. (c) The e-mails of the closed request, `supplier-inquiry-expired` (a request on measure) and `supplier-booking-expired` (a booking on a listed service, whose term stays the supplier's own `RespondWithinMinutes`, 180 by default):
+  a list of names that link to the public pages, each with «Verificato», the typical time to answer and the «da €» of its service; with nobody to suggest the mail says «Per ora non abbiamo altri fornitori da proporti per questa richiesta.», and when the alternatives could not be looked for at all it says nothing about them.
+  **Nothing promises a call back** (decision D24).
+
+**For the frontend** (SP-12c, the customer's page): `lookup.alternatives?: Alternative[]` and `POST …/alternatives → { alternatives: Alternative[] }`, `Alternative = { name, slug, coverUrl?, coverAlt?, verified, medianResponseMinutes?, service?: { slug, name, fromPriceCents?, priceUnit, requiresQuote } }`; the link to a
+supplier is `/fornitori/{slug}` and to its service `/fornitori/{slug}/servizi/{service.slug}`. For the supplier's console (SP-08e) the reminders are e-mail and push only: nothing new in the API, and `negotiation` of a request closed for want of an answer is what it was.
+
+**Decisions applied (defaults, nothing asked).** (1) The reminders at half of the time and at 10 minutes are in the code (`ShowcaseReplyReminderRules.LastLead`), not configuration. (2) The alternatives are 3 at most and at most 12 are looked at (`ShowcaseAlternativesLimits`). (3) `bookingsOpen` is required, as the task says
+(VT-D7). (4) The order is the one ranking, with the reliability on as SP-REL left it (`SupplierRanking:ReliabilityEnabled`): to keep the public order neutral until VT-D17 is approved set `SupplierRanking__ReliabilityEnabled=false` (it neutralises the order the hosts see too). (5) For a booking on a listed service the
+term and the closing are unchanged: only the customer's mail gets the alternatives, and no `NoReplyInTime` is written (its hours are the supplier's own setting).
+
+**Known limits.** No reminder to the customer, and no push that says «we found you another supplier» (the customer has no app); the e-mail is written when the request closes, the page looks again every time. Follow-ups: SP-10c-FU1 the symmetric `RepliedInTime` credit for requests on measure; SP-10c-FU2 booking an alternative straight from
+the page of the closed request (copying the customer's data), if the product owner wants it.
+
+**After a deploy.**
+- [ ] Migration `AddServiceRequestReplyReminders` applied (`ServiceRequests.ReplyReminderHalfSentAt` and `ReplyReminderLastSentAt`, null on every existing row). **If backend #721 (`AddSupplierShowcaseMedia`) enters before or after this task, regenerate this migration on top of it** (`dotnet ef migrations add AddServiceRequestReplyReminders`): the two are independent, they only share the model snapshot.
+- [ ] With `Features__SupplierShowcaseBooking` **off** (production): `POST api/public/supplier-bookings/alternatives` answers 404 `not_found`; with no request on measure nothing is reminded.
+- [ ] Test environment, flag on, `Suppliers__Showcase__InquiryResponseMinutes` left at 60: a request on measure left alone gets the supplier one e-mail and one push at about 30 minutes and another pair at about 50; answering with a message before stops them; at 60 minutes the request closes, the customer gets `supplier-inquiry-expired`, the supplier
+      the cancellation mail, and a `NoReplyInTime` row is in `SupplierReliabilityEvents` for the request.
+- [ ] Same environment with `Features__SupplierOnlinePayments` on and a second supplier of the same comune and category whose showcase is published and takes bookings: the closed request's `lookup` and `POST …/alternatives` list it (not the first supplier, not a paused or unpublished one), and the customer's e-mail links to its page.
 
 ## 34. The quote with the customer's approval — SP-04b
 
@@ -4246,7 +4294,7 @@ One score ranks the suppliers (`Casazen.Core.Suppliers.SupplierRanking`, pure fu
 |---|---|---|
 | `RepliedInTime` | The supplier takes, refuses, proposes another time or sends a quote on a new request **before its `ResponseDueAt`** (saying no in time counts). Answering twice adds nothing. | `+1` each, up to `+10` |
 | `JobCompletedClean` | `CompleteAsync` moves the request to `Completato`. | `+2` each, up to `+20` |
-| `NoReplyInTime` | The job `service-request-auto-cancel` cancels a request of a host nobody answered (the supplier the host chose: `AsBackup = false`). In a group of backups (SP-BKP, section 36) the groups pass writes it: for the primary when its hour ends without an answer (when the second window opens, or when a backup takes the job in its place), and for each backup that stayed silent through both windows when the group lapses with `NoResponse` (`AsBackup = true`). A backup closed by the race, or released because the primary took the job, gets none. | `−10` for the supplier chosen, `−2` (`20 %`, `BackupPenaltyShare`) for a backup |
+| `NoReplyInTime` | The job `service-request-auto-cancel` cancels a request of a host nobody answered (the supplier the host chose: `AsBackup = false`). The job `service-request-expiry` writes it too for a request on measure of a public showcase that the supplier never answered in its hour (SP-10c, section 34.11). In a group of backups (SP-BKP, section 36) the groups pass writes it: for the primary when its hour ends without an answer (when the second window opens, or when a backup takes the job in its place), and for each backup that stayed silent through both windows when the group lapses with `NoResponse` (`AsBackup = true`). A backup closed by the race, or released because the primary took the job, gets none. | `−10` for the supplier chosen, `−2` (`20 %`, `BackupPenaltyShare`) for a backup |
 | `DisputeOpened` | `charge.dispute.created` of Stripe on the payment of the request (`SupplierPaymentService.ApplyDisputeCreatedAsync`). It takes back the `+2` of that job. **Until SP-15c-c (the claim a host opens from CasaZen) exists, disputes come only from Stripe chargebacks**; that task records the same event with `RecordAsync`. | `−12` |
 
 Rules, all in `SupplierRanking:*` (zero them, or `ReliabilityEnabled=false`, and the ranking is the one of before; the events are still recorded, so the weights can be changed later and applied to what already happened):
@@ -4254,7 +4302,7 @@ Rules, all in `SupplierRanking:*` (zero them, or `ReliabilityEnabled=false`, and
 - **Window**: the events of the last `WindowDays` (90) days. A supplier with no event starts neutral (`0`).
 - **Caps**: the bonuses stop at `+10` and `+20`; the penalties stop together at `MaxTotalPenalty` (`40`), so one bad month never zeroes a supplier, and the score stays within 1..100.
 - **A missed deadline is not held against a supplier that could not answer.** `RecordNoReplyAsync` looks at the time the request waited (from the creation, or from the start of the last window when the deadline was restarted, to the deadline): no penalty when the supplier was not `Active`, was on time off every day of it, or when the whole window falls outside its working hours (a Sunday, the night). A supplier that wrote **no working hours** is taken to have been there. The request lapses all the same; only the points are not taken, and the e-mail does not say they were.
-- **Only the requests of the hosts count** (short rent and long rent). A booking from a supplier's own public showcase neither earns nor costs points: its customer chose the supplier and the deadline is the supplier's own setting.
+- **Only the requests of the hosts count** (short rent and long rent). A booking from a supplier's own public showcase neither earns nor costs points: its customer chose the supplier and the deadline is the supplier's own setting. The one exception (SP-10c, section 34.11): a **request on measure** that the supplier never answered in its hour writes `NoReplyInTime` (the hour is the rule of the platform, not the supplier's setting); nothing else of a showcase request counts.
 - **Nothing is written for what the supplier did not choose**: a backup closed because another one accepted first, or released because the primary accepted, loses nothing (SP-BKP).
 - **A failure to write an event never fails the operation** (it is logged); the event is written after the change is saved, by the winner only.
 
