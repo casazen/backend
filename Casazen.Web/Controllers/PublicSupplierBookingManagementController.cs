@@ -384,6 +384,34 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.PostMessageAsync(request.ToCredentials(), request.Body, ct)));
     }
 
+    /// <summary>
+    /// The other suppliers the customer can turn to when <b>CasaZen closed its request because the supplier did not answer in time</b> (SP-10c): at
+    /// most three, that cover the comune and have the category of the request, whose showcase is published, not paused and takes bookings, best first by
+    /// the one ranking of the platform; for each its name, slug, cover, «Verificato», the typical time to answer and the «da €» of the service that
+    /// corresponds. Never the supplier of the request, never a personal datum, and an empty list for a booking in any other state: they are the way out
+    /// of a silence, not a list of suppliers. The same proof of who is asking and the same limits as <c>lookup</c> (one uniform 404, one 429 for both
+    /// limits). The same list is in <c>lookup</c> (<c>alternatives</c>) and in the e-mail of the lapsed request. 404 <c>supplier_booking_not_found</c>;
+    /// 400 <c>validation_error</c>; 429 <c>rate_limited</c>.
+    /// </summary>
+    [HttpPost("alternatives")]
+    [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [SupplierBookingManageRateLimit]
+    [RequestSizeLimit(ShowcaseBookingLimits.ManageMaxBodyBytes)]
+    [ProducesResponseType(typeof(PublicSupplierBookingAlternativesResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<PublicSupplierBookingAlternativesResponse>> Alternatives(
+        [FromBody] SupplierBookingAccessRequest request,
+        CancellationToken ct)
+    {
+        return Ok(new PublicSupplierBookingAlternativesResponse
+        {
+            Alternatives = PublicSupplierAlternativeMapper.ToDtos(await bookings.ListAlternativesAsync(request.ToCredentials(), ct)),
+        });
+    }
+
     /// <summary>A 422 that names the fields at fault, as the booking does.</summary>
     private ObjectResult RuleProblem(string code, string messageKey, IReadOnlyList<object> messageArgs, IReadOnlyList<string> fields)
     {

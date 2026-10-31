@@ -2172,4 +2172,64 @@
   <data name="ServiceDisputeAlert_Dispute" xml:space="preserve">
     <value>Segnalazione: {0}</value>
   </data>
+  <data name="SupplierInquiryReminder_Subject" xml:space="preserve">
+    <value>Promemoria: una richiesta su misura aspetta la tua risposta — {0}</value>
+  </data>
+  <data name="SupplierInquiryReminder_Body" xml:space="preserve">
+    <value>La richiesta su misura a &lt;strong&gt;{0}&lt;/strong&gt; è ancora senza risposta.</value>
+  </data>
+  <data name="SupplierInquiryLastCall_Subject" xml:space="preserve">
+    <value>Ultimi minuti per rispondere — {0}</value>
+  </data>
+  <data name="SupplierInquiryLastCall_Body" xml:space="preserve">
+    <value>Mancano pochi minuti alla scadenza della richiesta su misura a &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryReminder_Deadline" xml:space="preserve">
+    <value>Rispondi entro le &lt;strong&gt;{0}&lt;/strong&gt;: dopo quell'ora la richiesta si chiude da sola e il cliente ne viene avvisato. Il tuo primo messaggio ferma il conto.</value>
+  </data>
+  <data name="Push_ShowcaseReplyReminder_Title" xml:space="preserve">
+    <value>Richiesta su misura in attesa</value>
+  </data>
+  <data name="Push_ShowcaseReplyReminder_Body" xml:space="preserve">
+    <value>{0} a {1}: rispondi entro le {2}, altrimenti la richiesta si chiude.</value>
+  </data>
+  <data name="Push_ShowcaseReplyLastCall_Title" xml:space="preserve">
+    <value>Ultimi minuti per rispondere</value>
+  </data>
+  <data name="Push_ShowcaseReplyLastCall_Body" xml:space="preserve">
+    <value>{0} a {1}: rispondi entro le {2}, poi la richiesta si chiude.</value>
+  </data>
+  <data name="SupplierAlternatives_Intro" xml:space="preserve">
+    <value>Questi fornitori della tua zona accettano prenotazioni su CasaZen:</value>
+  </data>
+  <data name="SupplierAlternatives_None" xml:space="preserve">
+    <value>Per ora non abbiamo altri fornitori da proporti per questa richiesta.</value>
+  </data>
+  <data name="SupplierAlternative_Verified" xml:space="preserve">
+    <value>Verificato</value>
+  </data>
+  <data name="SupplierAlternative_Median" xml:space="preserve">
+    <value>risponde in circa {0} min</value>
+  </data>
+  <data name="SupplierAlternative_MedianHours" xml:space="preserve">
+    <value>risponde in circa {0} h</value>
+  </data>
+  <data name="SupplierAlternative_From" xml:space="preserve">
+    <value>{0}: da {1} {2}</value>
+  </data>
+  <data name="SupplierAlternative_OnQuote" xml:space="preserve">
+    <value>{0}: su preventivo</value>
+  </data>
+  <data name="SupplierAlternative_Unit_PerJob" xml:space="preserve">
+    <value>a intervento</value>
+  </data>
+  <data name="SupplierAlternative_Unit_PerHour" xml:space="preserve">
+    <value>all'ora</value>
+  </data>
+  <data name="SupplierAlternative_Unit_PerSet" xml:space="preserve">
+    <value>a set</value>
+  </data>
+  <data name="SupplierAlternative_Unit_PerSquareMeter" xml:space="preserve">
+    <value>al m²</value>
+  </data>
 </root>
