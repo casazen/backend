@@ -498,12 +498,14 @@ public class ShowcaseReplyDeadlineTests
         var request = await s.InquiredAsync(supplier);
         s.Clock.Advance(Hour + TimeSpan.FromMinutes(1));
         await Job(s).RunAsync();
+        // The job itself looked for the alternatives once, to tell the customer when it closed the request: only what the call adds counts.
+        var queriesOfTheJob = alternatives.Queries.Count;
 
         var credentials = new ShowcaseBookingCredentials(slug, code ?? ShowcaseManageScenario.CredentialsOf(request.PublicCode!).Code, email);
 
         var error = await Assert.ThrowsAsync<NotFoundException>(() => s.Kit.Manager.ListAlternativesAsync(credentials));
         Assert.Equal(ShowcaseBookingManagementErrors.NotFound, error.Code);
-        Assert.Empty(alternatives.Queries);
+        Assert.Equal(queriesOfTheJob, alternatives.Queries.Count);
     }
 
     // ─── The mail ───

@@ -78,7 +78,8 @@ public class ShowcaseReplyReminderRulesTests
     {
         Assert.Equal(ShowcaseReplyReminder.None, Due(240, 119));
         Assert.Equal(ShowcaseReplyReminder.Half, Due(240, 120));
-        Assert.Equal(ShowcaseReplyReminder.None, Due(240, 229));
+        // The half reminder went: nothing is due until the last call opens (a half reminder never sent would stay due until then).
+        Assert.Equal(ShowcaseReplyReminder.None, Due(240, 229, halfSent: true));
         Assert.Equal(ShowcaseReplyReminder.Last, Due(240, 230));
     }
 
