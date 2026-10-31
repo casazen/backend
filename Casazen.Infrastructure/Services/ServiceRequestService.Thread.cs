@@ -109,6 +109,9 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
         Func<Exception> notFound,
         CancellationToken cancellationToken)
     {
+        // The columns of the offer and the trace of the quotes are read for the supplier only: the customer reads its offer in its own area, with
+        // the statement that keeps these columns out of it (ShowcaseBookingManager.RowsOf).
+        var forSupplier = reader == ServiceRequestMessageAuthor.Supplier;
         var request = await db.ServiceRequests
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -116,7 +119,20 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
                         && r.SupplierOrgId == supplierOrgId
                         && r.RentalContext == ServiceRequestRentalContext.Showcase
                         && r.Kind == ServiceRequestKind.Custom)
-            .Select(r => new { r.Status, r.ResponseDueAt })
+            .Select(r => new
+            {
+                r.Status,
+                r.ResponseDueAt,
+                r.Kind,
+                r.QuoteSentAt,
+                r.QuoteLinesJson,
+                r.QuoteTotalCents,
+                r.QuoteNote,
+                r.QuoteScheduledStartUtc,
+                r.QuoteScheduledEndUtc,
+                r.QuoteEventsJson,
+                r.CancellationReason,
+            })
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw notFound();
 
@@ -138,14 +154,41 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
             await db.SaveChangesAsync(cancellationToken);
         }
 
-        var canWrite = ServiceRequestThreadRules.IsOpen(request.Status)
-                       && await ReadSupplierStatusAsync(supplierOrgId, cancellationToken) == SupplierStatus.Active;
+        var supplierActive = await ReadSupplierStatusAsync(supplierOrgId, cancellationToken) == SupplierStatus.Active;
+        var canWrite = ServiceRequestThreadRules.IsOpen(request.Status) && supplierActive;
+
+        // What only the supplier's reading adds (SP-10b-b): the offer that waits, where the negotiation is, and whether it may send an offer.
+        ServiceRequestOffer? offer = null;
+        string? negotiation = null;
+        if (forSupplier)
+        {
+            offer = ServiceRequestOfferRules.PendingOf(
+                request.Kind,
+                request.Status,
+                request.QuoteSentAt,
+                request.QuoteLinesJson,
+                request.QuoteTotalCents,
+                request.QuoteNote,
+                request.QuoteScheduledStartUtc,
+                request.QuoteScheduledEndUtc,
+                request.ResponseDueAt);
+            negotiation = ServiceRequestNegotiation.Of(
+                request.Status,
+                messages.Any(m => m.Author == ServiceRequestMessageAuthor.Supplier) || ServiceRequestOfferRules.HasHistory(request.QuoteEventsJson),
+                offerPending: offer is not null,
+                lastOfferDeclined: ServiceRequestOfferRules.LastOfferDeclined(request.QuoteEventsJson),
+                cancellationReason: request.CancellationReason);
+        }
+
         return new ServiceRequestThread(
             id,
             request.Status,
             canWrite,
-            request.Status == ServiceRequestStatus.Richiesto ? request.ResponseDueAt : null,
-            views);
+            request.Status == ServiceRequestStatus.Richiesto && offer is null ? request.ResponseDueAt : null,
+            views,
+            offer,
+            negotiation,
+            forSupplier && ServiceRequestOfferRules.CanSend(request.Kind, request.Status, supplierActive));
     }
 
     /// <summary>
@@ -181,7 +224,10 @@ public partial class ServiceRequestService : IServiceRequestThreadActions
         db.ServiceRequestMessages.Add(message);
 
         request.UpdatedAt = now;
-        if (author == ServiceRequestMessageAuthor.Supplier && request.Status == ServiceRequestStatus.Richiesto)
+
+        // The first reply of the supplier stops the hour it has to answer. While an offer waits the clock is the customer's (the time it has to
+        // answer the offer, SP-10b-b): a line the supplier writes beside its offer must not stop it, or the offer would never lapse.
+        if (author == ServiceRequestMessageAuthor.Supplier && request.Status == ServiceRequestStatus.Richiesto && request.QuoteSentAt is null)
             request.ResponseDueAt = null;
 
         await SaveAsync(request, "thread message", cancellationToken);

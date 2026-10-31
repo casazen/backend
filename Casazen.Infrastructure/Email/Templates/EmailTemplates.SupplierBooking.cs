@@ -271,19 +271,25 @@ public static partial class EmailTemplates
             .Build("SupplierBookingCancelled_Subject", supplierName);
     }
 
-    /// <summary>Nobody answered in time and CasaZen cancelled the request, to the customer.</summary>
+    /// <summary>
+    /// Nobody answered in time and CasaZen cancelled the request, to the customer, with the other suppliers that could help when they were looked for
+    /// (<paramref name="alternatives"/>, SP-10c: an empty list says that there is none to suggest for now).
+    /// </summary>
     public static EmailContent SupplierBookingExpired(
         CultureInfo culture,
         string customerName,
         string supplierName,
         string serviceName,
         DateTime startUtc,
-        string showcaseUrl)
+        string showcaseUrl,
+        IReadOnlyList<EmailAlternative>? alternatives = null)
     {
         var builder = new EmailHtmlBuilder(culture);
-        return builder
+        builder
             .Paragraph("SupplierBooking_Greeting", customerName)
-            .Paragraph("SupplierBookingExpired_Body", supplierName, serviceName, builder.FormatInstant(startUtc))
+            .Paragraph("SupplierBookingExpired_Body", supplierName, serviceName, builder.FormatInstant(startUtc));
+        AppendAlternatives(builder, culture, alternatives);
+        return builder
             .Muted("SupplierBookingExpired_Hint")
             .Button("SupplierBookingExpired_Cta", showcaseUrl)
             .Build("SupplierBookingExpired_Subject", supplierName);

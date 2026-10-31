@@ -3812,6 +3812,33 @@
   <data name="ServiceRequestInquiryNeedsOffer" xml:space="preserve">
     <value>A request on measure cannot be accepted directly nor given another time: the work, the price and the time are agreed with the customer in the conversation, with an offer.</value>
   </data>
+  <data name="ServiceRequestOfferInvalid" xml:space="preserve">
+    <value>Invalid offer: it needs 1 to {0} lines, each with a description of at most {1} characters, a quantity from 1 to {2} and a unit price above zero; the total can be at most {3} euro.</value>
+  </data>
+  <data name="ServiceRequestCannotOffer" xml:space="preserve">
+    <value>You can send an offer only for a request on measure that still waits for your answer.</value>
+  </data>
+  <data name="ServiceRequestNoOffer" xml:space="preserve">
+    <value>This request has no offer to take back: it may already have been accepted, turned down or withdrawn.</value>
+  </data>
+  <data name="SupplierBookingNoOffer" xml:space="preserve">
+    <value>This request has no offer to accept or turn down.</value>
+  </data>
+  <data name="SupplierBookingOfferExpired" xml:space="preserve">
+    <value>The time to answer the offer has passed: the request will close by itself. You will be able to make a new request from the supplier's page.</value>
+  </data>
+  <data name="ServiceRequestOfferChanged" xml:space="preserve">
+    <value>The supplier changed or withdrew the offer while you were reading it. Read it again before answering: nothing was changed.</value>
+  </data>
+  <data name="ServiceRequestOfferQuantityOutOfRange" xml:space="preserve">
+    <value>The quantity must be between {1} and {2}.</value>
+  </data>
+  <data name="ServiceRequestOfferStartRequired" xml:space="preserve">
+    <value>Say when you could do the work.</value>
+  </data>
+  <data name="ServiceRequestOfferSentAtRequired" xml:space="preserve">
+    <value>Say which offer you are accepting or turning down.</value>
+  </data>
   <data name="ServiceDisputeNotFound" xml:space="preserve">
     <value>There is no report for this request.</value>
   </data>

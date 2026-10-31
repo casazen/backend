@@ -114,6 +114,12 @@ public static class PushDeliveryKeys
     /// </summary>
     public static string ServiceRequestBackup(Guid serviceRequestId, string kind) => $"service-request:{serviceRequestId:N}:backup-{kind}";
 
+    /// <summary>
+    /// A reminder to answer a request on measure of a public showcase (SP-10c), to the supplier: <paramref name="kind"/> is <c>half</c> or <c>last</c>.
+    /// Each is sent at most once per request, so the key identifies the reminder.
+    /// </summary>
+    public static string ServiceRequestReplyReminder(Guid serviceRequestId, string kind) => $"service-request:{serviceRequestId:N}:reply-reminder-{kind}";
+
     /// <summary>A message the guest of a direct booking wrote, to the host: one per message, so every message is one push.</summary>
     public static string GuestMessage(Guid messageId) => $"booking-message:{messageId:N}";
 
@@ -163,6 +169,9 @@ public static class PushTypes
 
     /// <summary>The host reminds the supplier to answer (SP-04): pushed to the supplier org.</summary>
     public const string ServiceRequestReminder = "service-request-reminder";
+
+    /// <summary>CasaZen reminds the supplier that a request on measure of its showcase waits for its answer and will close (SP-10c): pushed to the supplier org.</summary>
+    public const string ServiceRequestReplyReminder = "service-request-reply-reminder";
 
     /// <summary>The supplier proposes another time (SP-04): pushed to the host.</summary>
     public const string ServiceRequestTimeProposed = "service-request-time-proposed";

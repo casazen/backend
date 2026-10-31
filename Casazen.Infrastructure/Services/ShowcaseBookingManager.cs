@@ -42,7 +42,8 @@ public sealed class ShowcaseBookingManager(
     IOptions<ShowcaseBookingOptions> options,
     TimeProvider? timeProvider = null,
     ISupplierFundsService? funds = null,
-    IServiceDisputeService? disputes = null) : IShowcaseBookingManager
+    IServiceDisputeService? disputes = null,
+    IShowcaseAlternativesService? alternatives = null) : IShowcaseBookingManager
 {
     /// <summary>
     /// What a slug and a code that cannot be valid are looked up as: values that match nothing (a slug never starts with a hyphen, a code
@@ -119,6 +120,29 @@ public sealed class ShowcaseBookingManager(
         return await AfterAsync(found, cancellationToken);
     }
 
+    public async Task<ShowcaseBookingView> AcceptOfferAsync(
+        ShowcaseBookingCredentials credentials,
+        DateTime offerSentAt,
+        CancellationToken cancellationToken = default)
+    {
+        var found = await IdentifyAsync(credentials, cancellationToken);
+        var acceptance = await actions.AcceptOfferAsCustomerAsync(found.Row.Id, found.Supplier.OrgId, offerSentAt, cancellationToken);
+
+        // The session of the card travels in the answer of this call only (SP-10b-b): the view built from the database never carries a secret.
+        var view = await AfterAsync(found, cancellationToken);
+        return acceptance.PaymentSession is null ? view : view with { PaymentSession = acceptance.PaymentSession };
+    }
+
+    public async Task<ShowcaseBookingView> DeclineOfferAsync(
+        ShowcaseBookingCredentials credentials,
+        DateTime offerSentAt,
+        CancellationToken cancellationToken = default)
+    {
+        var found = await IdentifyAsync(credentials, cancellationToken);
+        await actions.DeclineOfferAsCustomerAsync(found.Row.Id, found.Supplier.OrgId, offerSentAt, cancellationToken);
+        return await AfterAsync(found, cancellationToken);
+    }
+
     public async Task<ShowcaseBookingView> ConfirmOkAsync(
         ShowcaseBookingCredentials credentials,
         CancellationToken cancellationToken = default)
@@ -173,6 +197,14 @@ public sealed class ShowcaseBookingManager(
         var found = await IdentifyAsync(credentials, cancellationToken);
         await actions.PostMessageAsCustomerAsync(found.Row.Id, found.Supplier.OrgId, body, cancellationToken);
         return await AfterAsync(found, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ShowcaseAlternative>> ListAlternativesAsync(
+        ShowcaseBookingCredentials credentials,
+        CancellationToken cancellationToken = default)
+    {
+        var found = await IdentifyAsync(credentials, cancellationToken);
+        return await AlternativesOfAsync(found, cancellationToken) ?? Array.Empty<ShowcaseAlternative>();
     }
 
     // ─── Who is asking ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -251,9 +283,27 @@ public sealed class ShowcaseBookingManager(
             ? new ShowcaseBookingProposal(row.ProposedStartUtc!.Value, row.ProposedEndUtc!.Value, row.ProposedAt!.Value, answerBy, row.ProposalMessage)
             : null;
 
-        // The quote the supplier sent (SP-04b): the customer has until the deadline of the request to answer it.
+        // The quote the supplier sent (SP-04b): the customer has until the deadline of the request to answer it. For a request on measure the
+        // quote is its offer (SP-10b-b, the same engine): it is told as an offer and answered with the offer endpoints, never as a quote.
         var quotePending = ServiceRequestQuoteRules.IsPending(row.Status, row.QuoteSentAt) && row.QuoteTotalCents is not null;
-        var quote = quotePending
+        var offer = onMeasure
+            ? ServiceRequestOfferRules.PendingOf(
+                row.Kind,
+                row.Status,
+                row.QuoteSentAt,
+                row.QuoteLinesJson,
+                row.QuoteTotalCents,
+                row.QuoteNote,
+                row.QuoteScheduledStartUtc,
+                row.QuoteScheduledEndUtc,
+                row.ResponseDueAt)
+            : null;
+
+        // How the last offer ended, for the negotiation: read only for a new request on measure with no offer waiting, from a statement of its own.
+        var offerEvents = onMeasure && row.Status == ServiceRequestStatus.Richiesto && offer is null
+            ? await QuoteEventsOf(db, supplier.OrgId, row.Id).FirstOrDefaultAsync(cancellationToken)
+            : null;
+        var quote = quotePending && !onMeasure
             ? new ShowcaseBookingQuote(
                 row.QuoteSentAt!.Value,
                 ServiceRequestJson.ReadQuoteLines(row.QuoteLinesJson),
@@ -274,12 +324,28 @@ public sealed class ShowcaseBookingManager(
             : null;
 
         // SP-15c-a: the money of a booking paid inside CasaZen, read through the funds service (the payments table is not read here).
-        var held = funds is not null && row.PaymentMode == ServiceRequestPaymentMode.Online
+        var paidInside = row.PaymentMode == ServiceRequestPaymentMode.Online;
+        var held = funds is not null && (paidInside || offer is not null)
             ? await funds.FindHeldPaymentAsync(row.Id, cancellationToken)
             : null;
 
+        // SP-10b-b: an offer the customer accepted and whose card is not blocked yet (or is, and the request is being taken) has a payment of its own
+        // before the request is paid inside CasaZen: it is shown while it is the one made for the offer that stands, never a card of an earlier offer.
+        if (!paidInside && held is not null
+            && !(offer is not null
+                 && held is { PayerKind: ServicePayerKind.Private, Status: ServicePaymentStatus.Requested or ServicePaymentStatus.Failed or ServicePaymentStatus.Authorized or ServicePaymentStatus.Held }
+                 && ServiceRequestOfferRules.IsPaymentOfOffer(held.CreatedAt, held.AmountCents, offer.SentAt, offer.TotalCents)))
+        {
+            held = null;
+        }
+
+        var awaitingPayment = offer is not null && held is not null;
+        bool? offerPaymentRequired = offer is null
+            ? null
+            : awaitingPayment || (funds is not null && await funds.CanAuthorizeAsync(supplier.OrgId, offer.TotalCents, cancellationToken));
+
         // SP-15c-c: the customer's complaint about the job, read through the dispute service (the disputes table is not read here either).
-        var dispute = held is not null && disputes is not null
+        var dispute = held is not null && paidInside && disputes is not null
             ? await disputes.FindDisputeForPayerAsync(row.Id, cancellationToken)
             : null;
         var disputeOpen = dispute is not null && ServiceDisputeRules.IsOpen(dispute.Status);
@@ -321,8 +387,9 @@ public sealed class ShowcaseBookingManager(
             proposal,
             cancellation,
             row.Status == ServiceRequestStatus.Rifiutato && !string.IsNullOrWhiteSpace(row.RejectionReason) ? row.RejectionReason : null,
-            // A request on measure has no work to start: closing it is always free (and its start is the day it was made).
-            onMeasure
+            // A request on measure has no work to start until its offer is accepted: closing it is always free (and its start is the day it was
+            // made). Once the offer is accepted it has a time like any booking, and the terms are those of a booking.
+            onMeasure && row.ScheduledStartUtc is null
                 ? new ShowcaseBookingCancellationTerms(start, IsFree: true)
                 : new ShowcaseBookingCancellationTerms(
                     ShowcaseBookingManagementRules.FreeCancellationUntil(start, hours),
@@ -331,15 +398,47 @@ public sealed class ShowcaseBookingManager(
                 ShowcaseBookingManagementRules.CanCancel(row.Status, row.ScheduledStartUtc, now),
                 ShowcaseBookingManagementRules.CanReschedule(row.Status, row.ScheduledStartUtc is not null, supplierActive, published, quotePending),
                 ShowcaseBookingManagementRules.CanRespondToProposal(row.Status, proposalPending, answerBy, now, supplierActive),
-                ShowcaseBookingManagementRules.CanRespondToQuote(row.Status, quotePending, row.ResponseDueAt, now, supplierActive),
+                !onMeasure && ShowcaseBookingManagementRules.CanRespondToQuote(row.Status, quotePending, row.ResponseDueAt, now, supplierActive),
                 canConfirmOk,
                 canReportProblem,
-                disputeOpen),
+                disputeOpen,
+                onMeasure && ShowcaseBookingManagementRules.CanRespondToOffer(row.Status, offer is not null, row.ResponseDueAt, now, supplierActive)),
             row.Kind,
             thread,
-            thread is null ? null : ServiceRequestNegotiation.Of(row.Status, thread.Messages.Any(m => m.Author == ServiceRequestMessageAuthor.Supplier)),
+            thread is null
+                ? null
+                : ServiceRequestNegotiation.Of(
+                    row.Status,
+                    thread.Messages.Any(m => m.Author == ServiceRequestMessageAuthor.Supplier) || ServiceRequestOfferRules.HasHistory(offerEvents),
+                    offerPending: offer is not null,
+                    lastOfferDeclined: ServiceRequestOfferRules.LastOfferDeclined(offerEvents),
+                    cancellationReason: row.CancellationReason,
+                    awaitingPayment: awaitingPayment),
             quote,
-            payment);
+            payment,
+            offer,
+            offerPaymentRequired,
+            Alternatives: await AlternativesOfAsync(found, cancellationToken));
+    }
+
+    /// <summary>
+    /// SP-10c: the other suppliers to offer the customer of a request that CasaZen closed because the supplier did not answer in time
+    /// (<see cref="ShowcaseAlternativeRules.Offers"/>); <c>null</c> for any other booking, and when no service looks for them. Looked for with the
+    /// comune and the category of the request, read by a statement of their own, and never with anything the customer typed.
+    /// </summary>
+    private async Task<IReadOnlyList<ShowcaseAlternative>?> AlternativesOfAsync(Found found, CancellationToken cancellationToken)
+    {
+        var row = found.Row;
+        if (alternatives is null || !ShowcaseAlternativeRules.Offers(row.Status, row.CancelledBy, row.CancellationReason))
+            return null;
+
+        var basis = await AlternativesBasisOf(db, found.Supplier.OrgId, row.Id).FirstOrDefaultAsync(cancellationToken);
+        if (basis is null)
+            return Array.Empty<ShowcaseAlternative>();
+
+        return await alternatives.FindAsync(
+            new ShowcaseAlternativesQuery(found.Supplier.OrgId, basis.Category, basis.ComuneIstat, basis.City),
+            cancellationToken);
     }
 
     /// <summary>The complaint as the customer reads it: its own words, the state and the decision; never the supplier's reply nor the admin's note.</summary>
@@ -375,8 +474,8 @@ public sealed class ShowcaseBookingManager(
                 .Select(line => new ShowcaseBookingPriceLine(
                     line.Kind == ServiceRequestPriceLineKinds.Extra ? "extra" : "service",
                     line.Label,
-                    1,
-                    line.AmountCents,
+                    line.Quantity ?? 1,
+                    line.UnitAmountCents ?? line.AmountCents,
                     line.AmountCents))
                 .ToList()
             : ServiceRequestJson.ReadOptions(row.OptionsJson)
@@ -480,6 +579,34 @@ public sealed class ShowcaseBookingManager(
             .AsNoTracking()
             .Where(r => r.Id == requestId && r.SupplierOrgId == supplierOrgId && r.RentalContext == ServiceRequestRentalContext.Showcase)
             .Select(r => new ShowcaseBookingLocation(r.LocationAddress, r.LocationFloor, r.LocationAccessNotes));
+
+    /// <summary>
+    /// The trace of the quotes and offers of one showcase request of <paramref name="supplierOrgId"/>: only its last event is ever used (to tell an
+    /// offer the customer turned down from one the supplier took back), and nothing of it is returned. A statement of its own so the one of the
+    /// view never selects it (<c>ShowcaseBookingManagerSqlTests</c>).
+    /// </summary>
+    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
+    internal static IQueryable<string> QuoteEventsOf(AppDbContext db, Guid supplierOrgId, Guid requestId) =>
+        db.ServiceRequests
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.Id == requestId && r.SupplierOrgId == supplierOrgId && r.RentalContext == ServiceRequestRentalContext.Showcase)
+            .Select(r => r.QuoteEventsJson);
+
+    /// <summary>
+    /// What the alternatives of a request that lapsed are looked for with (SP-10c): its category and its comune (the ISTAT code when the customer chose
+    /// it, the name as written otherwise) — not the address, not the words of the customer.
+    /// </summary>
+    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
+    internal static IQueryable<AlternativesBasis> AlternativesBasisOf(AppDbContext db, Guid supplierOrgId, Guid requestId) =>
+        db.ServiceRequests
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.Id == requestId && r.SupplierOrgId == supplierOrgId && r.RentalContext == ServiceRequestRentalContext.Showcase)
+            .Select(r => new AlternativesBasis(r.Category, r.LocationComuneIstat, r.LocationCity));
+
+    /// <summary>The place and the category the alternatives of a lapsed request are looked for with.</summary>
+    internal sealed record AlternativesBasis(string Category, string? ComuneIstat, string? City);
 
     /// <summary>The supplier of a booking: what the customer's view and the rules need of its profile.</summary>
     internal sealed record SupplierRow(Guid OrgId, SupplierStatus Status, string LegalName, string Slug);

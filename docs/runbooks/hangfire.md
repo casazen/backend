@@ -50,7 +50,7 @@ and production never block each other.
 | `direct-booking-charge` | 06:00 | `DirectBookingChargeJob.ExecuteAsync` | 300 s |
 | `rent-collection` (LT-06: payment links of the rent installments coming due, payments in flight read again, see [§12](#12-rent-collection-lt-06)) | 07:00 | `RentCollectionJob.ExecuteAsync` (plus a PostgreSQL advisory lock per lease) | 300 s |
 | `checkout-hold-expiry` (BK-21 and BK-06, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
-| `service-request-expiry` (SP-10: deletes the booking holds past their expiry, cancels the showcase requests nobody answered and tells the customer; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | `*/5` | `ServiceRequestExpiryJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 60 s |
+| `service-request-expiry` (SP-10: deletes the booking holds past their expiry, cancels the showcase requests nobody answered and tells the customer, then reminds the suppliers of the requests on measure that still wait for an answer (SP-10c); **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | `*/5` | `ServiceRequestExpiryJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 60 s |
 | `service-request-reminders` (SP-10: the reminder to the customer of a showcase request, and SP-16d: to the supplier of any taken request, 18:00 Rome of the day before; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | hourly | `ServiceRequestReminderJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 300 s |
 | `service-request-auto-cancel` (SP-04, D8: cancels the new service requests nobody answered; only with `Features:SupplierRequestAutoCancel=true`, otherwise removed at startup, see [suppliers.md](suppliers.md) § 21.8) | `*/10` | `ServiceRequestAutoCancelJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 requests per run) | 60 s |
 | `service-request-groups` (SP-BKP: follows the windows of the groups of backup suppliers: the job goes to the backup that accepted first, the second window opens, the requests nobody took lapse; **always registered**, see [§16](#16-backup-suppliers-sp-bkp)) | `*/5` | `ServiceRequestGroupJob.ExecuteAsync` (plus a PostgreSQL session lock per run and the lock of each group, at most 500 groups per run) | 60 s |
@@ -612,7 +612,7 @@ reminded of, also after the flag is turned off (with it off, a run finds nothing
   `supplier-booking-proposal-expired` and the supplier `supplier-booking-proposal-lapsed` (SP-11, [suppliers.md § 24](suppliers.md#24-the-customers-own-area-find-cancel-move-and-answer-a-proposed-time--sp-11)). The same
   for a quote the customer did not answer (SP-04b: the deadline of a quote sent on a showcase request is the customer's too): reason `QuoteNotAnswered`, the customer is told `supplier-booking-quote-expired` and the
   supplier `supplier-booking-quote-lapsed` ([suppliers.md § 34](suppliers.md)). It is the code of `service-request-auto-cancel` with the showcase scope, **without that
-  job's flag**: the host job stays behind `Features:SupplierRequestAutoCancel` (and, like a pending proposal, a pending quote keeps a host's request out of it: a host has no deadline), the two never touch each other's requests.
+  job's flag**: the host job stays behind `Features:SupplierRequestAutoCancel` (and, like a pending proposal, a pending quote keeps a host's request out of it: a host has no deadline), the two never touch each other's requests. **Second pass (SP-10c, `ShowcaseReplyReminderService`), after the cancellations:** the supplier of a request on measure (`Kind = Custom`) that is still `Richiesto`, has a `ResponseDueAt` ahead and no offer waiting for the customer is reminded by e-mail and push at half of the time it has and 10 minutes before the deadline (`supplier-inquiry-reply-reminder`, push `service-request-reply-reminder`), each **once**: `ReplyReminderHalfSentAt` and `ReplyReminderLastSentAt` are saved before the mail is queued and only if the row is unchanged (`xmin`: a supplier that answers at the same moment wins and is not reminded). At most 500 rows per pass; a failure of the pass is logged and never undoes the cancellations; the run counts `RemindersSent`. Closing a request on measure writes `NoReplyInTime` and the customer's mail lists up to three other suppliers ([suppliers.md § 34.11](suppliers.md)).
 - `service-request-reminders` (hourly, `ServiceRequestReminderJob`, wait 300 s). One run under a session lock looks at the showcase
   requests the supplier took (`PresoInCarico`) whose work starts in the next 48 hours and which have no `ReminderSentAt`, and sends the
   reminder to those for which 18:00 Europe/Rome of the day before has come and the work has not started, **if the supplier took the
@@ -635,6 +635,11 @@ WHERE "RentalContext" = 2 AND "Status" = 0 AND "ResponseDueAt" < now() - interva
 
 -- Reminders sent in the last day
 SELECT count(*) FROM casazen_prod."ServiceRequests" WHERE "ReminderSentAt" > now() - interval '1 day';
+
+-- Reminders to answer a request on measure, sent in the last day (SP-10c): half of the time / ten minutes before the deadline
+SELECT count(*) FILTER (WHERE "ReplyReminderHalfSentAt" > now() - interval '1 day') AS half,
+       count(*) FILTER (WHERE "ReplyReminderLastSentAt" > now() - interval '1 day') AS last_call
+FROM casazen_prod."ServiceRequests" WHERE "Kind" = 1;
 ```
 
 The nightly `gdpr-data-retention` also applies `Gdpr:Retention:SupplierCustomers` to the customers of the suppliers

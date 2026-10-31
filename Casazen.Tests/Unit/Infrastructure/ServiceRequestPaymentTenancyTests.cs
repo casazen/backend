@@ -33,6 +33,7 @@ public class ServiceRequestPaymentTenancyTests
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Notices.cs"] = "The emails after a commit (SP-15b): the payment is read by its id.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Funds.cs"] = "The money CasaZen holds (SP-15c-a): the payment born with the request, the charge when the supplier accepts and the money given back when the request closes; by request id or payment id, under the payment lock.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsRelease.cs"] = "The release of the held money to the supplier (SP-15c-a): one payment, by id, under the payment lock; the payer's confirmation reads it back by id.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsOffer.cs"] = "The card of the offer a customer accepts on a request on measure (SP-10b-b): the payment of the request, by request id, created and dropped under the payment lock.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsSession.cs"] = "The session of a host who pays the money CasaZen holds (SP-15c-b): the payment by id and request, under the payment lock, after the link or the host's org was checked.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsWebhook.cs"] = "The Stripe events of the held money (SP-15c-a): the payment found by its transfer (or the payment id of its metadata), then read by id under the payment lock.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.FundsJobs.cs"] = "The system job of the held money (SP-15c-a): it runs over the payments in a state, across every supplier, and handles each payment by id under its lock; a job has no tenant.",
@@ -231,6 +232,7 @@ public class ServiceRequestPaymentTenancyTests
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Notices.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Funds.cs")]
+    [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.FundsOffer.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.FundsRelease.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.FundsWebhook.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.FundsJobs.cs")]

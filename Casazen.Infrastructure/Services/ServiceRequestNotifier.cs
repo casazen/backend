@@ -424,6 +424,10 @@ public sealed partial class ServiceRequestNotifier(
         CancellationToken cancellationToken) =>
         showcase.NotifyThreadMessageAsync(request, author, cancellationToken);
 
+    /// <summary>The acceptance of an offer paid inside CasaZen could not be completed after the card was blocked: the customer is told that nothing was charged (SP-10b-b).</summary>
+    public Task NotifyShowcaseOfferNotCompletedAsync(ServiceRequest request, bool timeGone, CancellationToken cancellationToken) =>
+        showcase.NotifyOfferNotCompletedAsync(request, timeGone, cancellationToken);
+
     /// <summary>The customer cancelled its showcase request: the supplier is told, and the customer gets the receipt.</summary>
     public Task NotifyShowcaseCancelledByCustomerAsync(ServiceRequest request, CancellationToken cancellationToken) =>
         showcase.NotifyCancelledByCustomerAsync(request, cancellationToken);

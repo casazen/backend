@@ -1,5 +1,6 @@
 using System.Globalization;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Utilities;
 
 namespace Casazen.Infrastructure.Email.Templates;
 
@@ -113,6 +114,18 @@ public static partial class EmailTemplates
     /// <summary>The customer of the public showcase did not answer the proposed time and the request was cancelled (SP-11), to the supplier.</summary>
     public static PushText ShowcaseProposalLapsedPush(CultureInfo culture, string category, string comune) =>
         Push(culture, "Push_ShowcaseProposalLapsed", ServiceCategoryLabel(culture, category), comune);
+
+    /// <summary>
+    /// A request on measure of the public showcase waits for the supplier's answer (SP-10c), to the supplier (comune only): at half of the time it has
+    /// (<paramref name="lastCall"/> false) and ten minutes before the deadline (true), with the time to answer by in Italian time.
+    /// </summary>
+    public static PushText ShowcaseReplyReminderPush(CultureInfo culture, string category, string comune, DateTime respondByUtc, bool lastCall) =>
+        Push(
+            culture,
+            lastCall ? "Push_ShowcaseReplyLastCall" : "Push_ShowcaseReplyReminder",
+            ServiceCategoryLabel(culture, category),
+            comune,
+            RomeCalendar.ToRome(respondByUtc).ToString("HH:mm", culture));
 
     /// <summary>Service request marked as paid by the host, to the supplier (SU-09).</summary>
     public static PushText ServiceRequestPaidPush(CultureInfo culture, string category, string propertyName) =>

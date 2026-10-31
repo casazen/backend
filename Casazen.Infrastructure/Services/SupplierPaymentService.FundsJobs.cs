@@ -73,7 +73,10 @@ public sealed partial class SupplierPaymentService
                     .Where(p => p.FundsModel == ServiceFundsModel.PlatformHeld
                                 && (p.Status == ServicePaymentStatus.Authorized
                                     || p.Status == ServicePaymentStatus.Held
-                                    || p.Status == ServicePaymentStatus.TransferFailed))
+                                    || p.Status == ServicePaymentStatus.TransferFailed
+                                    // SP-10b-b: the card of an offer that never came, on a request that closed.
+                                    || ((p.Status == ServicePaymentStatus.Requested || p.Status == ServicePaymentStatus.Failed)
+                                        && p.PayerKind == ServicePayerKind.Private)))
                 join r in db.ServiceRequests.IgnoreQueryFilters().AsNoTracking() on p.ServiceRequestId equals r.Id
                 where r.Status == ServiceRequestStatus.Annullato || r.Status == ServiceRequestStatus.Rifiutato
                 orderby p.UpdatedAt

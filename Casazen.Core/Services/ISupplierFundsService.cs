@@ -19,6 +19,13 @@ public sealed record HoldAuthorizationRequest(Guid HoldId, Guid SupplierOrgId, i
 /// <param name="Currency">Uppercase ISO currency.</param>
 public sealed record HoldAuthorization(string PaymentIntentId, string ClientSecret, string PublishableKey, int AmountCents, string Currency);
 
+/// <summary>What the customer's browser needs to block the card for the offer it accepted (SP-10b-b), with the Payment Element.</summary>
+/// <param name="ClientSecret">A credential: sent once to the payer's browser, never logged and never stored.</param>
+/// <param name="PublishableKey">The platform's publishable key.</param>
+/// <param name="AmountCents">The amount that is blocked: the total of the offer.</param>
+/// <param name="Currency">Uppercase ISO currency.</param>
+public sealed record OfferPaymentSession(string ClientSecret, string PublishableKey, int AmountCents, string Currency);
+
 /// <summary>The facts of a successful card block, from the verified webhook, that turn a hold into a request with a payment.</summary>
 /// <param name="PaymentIntentId">The PaymentIntent that blocks the card.</param>
 /// <param name="AmountCents">The amount blocked (equal to the amount the hold asked for: the webhook checks it).</param>
@@ -110,6 +117,27 @@ public interface ISupplierFundsService
     /// no later deadline than this, so it closes while the block is still usable. Pure; no Stripe, no database.
     /// </summary>
     DateTime LatestResponseAt(DateTime authorizedAt);
+
+    // ─── The offer of a request on measure (SP-10b-b) ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The customer of a request on measure accepts the offer and the offer is paid inside CasaZen (<see cref="CanAuthorizeAsync"/> for its total):
+    /// creates the payment of the request (<see cref="ServicePaymentStatus.Requested"/>, platform funds, private payer, the commission snapshotted) and
+    /// the PaymentIntent that blocks the card for the total (<c>capture_method = manual</c>), and returns what the browser needs to confirm it. The
+    /// request is <b>not</b> taken: it is when the card is blocked (the webhook, or the customer's next acceptance), under the supplier's calendar
+    /// lock, charging the card before the request changes state. Asked again for the same offer it returns the same PaymentIntent. A payment made
+    /// for an earlier offer is dropped first (one live payment per request). Returns <c>null</c> when the card is already blocked or charged for this
+    /// very offer: the caller takes the request. 409 <see cref="ServicePaymentErrors.InFlight"/> when the request has money that is not a block waiting
+    /// for a card. A Stripe failure is a <c>StripeException</c> (the API answers 503 <c>payment_provider_error</c>) and nothing is saved.
+    /// </summary>
+    Task<OfferPaymentSession?> OpenOfferPaymentAsync(ServiceRequest request, ServiceRequestOffer offer, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The offer of a request on measure ended without being taken (the customer turned it down, the supplier replaced or took it back): the block on
+    /// the card, or the PaymentIntent still waiting for a card, is dropped; money already charged is given back in full. Never throws for a Stripe or a
+    /// database failure (it is logged and the funds job settles it later). Idempotent; a request with no such payment is left alone.
+    /// </summary>
+    Task CancelOfferPaymentAsync(Guid requestId, CancellationToken cancellationToken = default);
 
     // ─── The life of the request ─────────────────────────────────────────────────────────────────────────────────────
 

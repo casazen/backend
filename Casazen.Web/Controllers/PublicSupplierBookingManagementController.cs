@@ -221,6 +221,65 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
     }
 
     /// <summary>
+    /// Accepts the offer the supplier sent for the customer's request on measure (SP-10b-b): the request is taken on the supplier's behalf at the time
+    /// and the total of the offer, the time is checked again under the supplier's calendar lock, and both are told. The body carries
+    /// <c>offerSentAt</c> as <c>offer.sentAt</c> of the booking gave it. Any booking that is not a request on measure is the same 404 as one that does not
+    /// exist. <b>When the offer is paid inside CasaZen</b> (<c>offer.paymentRequired</c>; the payments flag on, the supplier able to receive them) the
+    /// request is <b>not</b> taken by this call: the answer is the booking still <c>Richiesto</c> with <c>negotiation: "AwaitingPayment"</c>, <c>payment.status:
+    /// "awaiting_card"</c> and <c>paymentSession</c> (<c>clientSecret</c>, <c>publishableKey</c>, <c>amountCents</c>) — the Payment Element blocks the card
+    /// for the total, then the request is taken (the server does it when Stripe reports the block; this call made again also does it, and answers
+    /// <c>PresoInCarico</c>). The page polls <c>lookup</c> or calls this again until <c>status</c> is <c>PresoInCarico</c>; asked again before the card
+    /// is blocked it returns the same session. The card is charged only when the request is taken, never for a time that is gone: then nothing is
+    /// charged and the block is released. 404 <c>supplier_booking_not_found</c>; 422 <c>supplier_booking_no_offer</c>, <c>supplier_booking_offer_expired</c>,
+    /// <c>supplier_booking_supplier_unavailable</c>; 409 <c>service_request_offer_changed</c> (the supplier replaced or withdrew the offer: read it
+    /// again), <c>supplier_slot_unavailable</c> / <c>supplier_commitment_conflict</c> (the time is gone: the offer stays, the customer can turn it down,
+    /// write to the supplier or cancel), <c>payment_authorization_expired</c> / <c>payment_capture_failed</c> (the block lapsed or the card could not be
+    /// charged: nothing was charged, ask for the card again), <c>service_payment_in_flight</c> (money of an earlier attempt is being looked at),
+    /// <c>service_request_state_changed</c> (two acceptances, or the supplier acted at the same moment: one wins and nothing is done twice); 503
+    /// <c>payment_provider_error</c> (the card could not be asked for now; nothing was saved); 429.
+    /// </summary>
+    [HttpPost("offer/accept")]
+    [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [SupplierBookingManageRateLimit]
+    [RequestSizeLimit(ShowcaseBookingLimits.ManageMaxBodyBytes)]
+    [ProducesResponseType(typeof(PublicSupplierBookingViewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<PublicSupplierBookingViewResponse>> AcceptOffer(
+        [FromBody] SupplierBookingOfferAnswerRequest request,
+        CancellationToken ct)
+    {
+        return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.AcceptOfferAsync(request.ToCredentials(), request.OfferSentAt!.Value, ct)));
+    }
+
+    /// <summary>
+    /// Turns the offer down (SP-10b-b): the offer goes, the request stays <c>Richiesto</c> and the conversation goes on (<c>negotiation</c> is
+    /// <c>OfferDeclined</c> until the supplier sends another; no clock runs on the supplier), and the supplier is told. Errors as <c>offer/accept</c>,
+    /// but for the time.
+    /// </summary>
+    [HttpPost("offer/decline")]
+    [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [SupplierBookingManageRateLimit]
+    [RequestSizeLimit(ShowcaseBookingLimits.ManageMaxBodyBytes)]
+    [ProducesResponseType(typeof(PublicSupplierBookingViewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<PublicSupplierBookingViewResponse>> DeclineOffer(
+        [FromBody] SupplierBookingOfferAnswerRequest request,
+        CancellationToken ct)
+    {
+        return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.DeclineOfferAsync(request.ToCredentials(), request.OfferSentAt!.Value, ct)));
+    }
+
+    /// <summary>
     /// SP-15c-a, "Tutto a posto": the customer says the work is fine, and the money CasaZen holds for a booking paid inside CasaZen goes to the
     /// supplier at once, without waiting for the hour after the work. Same proof of who is asking as the other actions of this area, same limits,
     /// same uniform 404. Answers the booking as it is now (<c>payment</c> and <c>actions.canConfirmOk</c> included); asking again once the supplier was
@@ -323,6 +382,34 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
         CancellationToken ct)
     {
         return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.PostMessageAsync(request.ToCredentials(), request.Body, ct)));
+    }
+
+    /// <summary>
+    /// The other suppliers the customer can turn to when <b>CasaZen closed its request because the supplier did not answer in time</b> (SP-10c): at
+    /// most three, that cover the comune and have the category of the request, whose showcase is published, not paused and takes bookings, best first by
+    /// the one ranking of the platform; for each its name, slug, cover, «Verificato», the typical time to answer and the «da €» of the service that
+    /// corresponds. Never the supplier of the request, never a personal datum, and an empty list for a booking in any other state: they are the way out
+    /// of a silence, not a list of suppliers. The same proof of who is asking and the same limits as <c>lookup</c> (one uniform 404, one 429 for both
+    /// limits). The same list is in <c>lookup</c> (<c>alternatives</c>) and in the e-mail of the lapsed request. 404 <c>supplier_booking_not_found</c>;
+    /// 400 <c>validation_error</c>; 429 <c>rate_limited</c>.
+    /// </summary>
+    [HttpPost("alternatives")]
+    [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [SupplierBookingManageRateLimit]
+    [RequestSizeLimit(ShowcaseBookingLimits.ManageMaxBodyBytes)]
+    [ProducesResponseType(typeof(PublicSupplierBookingAlternativesResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<PublicSupplierBookingAlternativesResponse>> Alternatives(
+        [FromBody] SupplierBookingAccessRequest request,
+        CancellationToken ct)
+    {
+        return Ok(new PublicSupplierBookingAlternativesResponse
+        {
+            Alternatives = PublicSupplierAlternativeMapper.ToDtos(await bookings.ListAlternativesAsync(request.ToCredentials(), ct)),
+        });
     }
 
     /// <summary>A 422 that names the fields at fault, as the booking does.</summary>

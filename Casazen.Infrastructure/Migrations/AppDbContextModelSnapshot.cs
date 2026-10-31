@@ -6914,6 +6914,12 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("RentalContext")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("ReplyReminderHalfSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ReplyReminderLastSentAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("ResponseDueAt")
                         .HasColumnType("timestamp with time zone");
 
