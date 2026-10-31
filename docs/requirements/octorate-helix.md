@@ -235,7 +235,13 @@ senza perdersi e senza perdere quello che ha scritto?».
    collegamenti da push, email e «Da fare» riaprano lo stesso passo con gli stessi dati.
 4. Focus intrappolato nel livello, tastiera ed `Esc` gestiti, lettori di schermo informati del
    cambio di passo.
-5. Si costruisce sul kit di wizard esistente (`components/shared/wizard/wizard-shell.tsx`,
+5. Ciò che serve per decidere (riepilogo della prenotazione, dati dell'immobile, scadenza) sta
+   **dentro** il livello, in un pannello laterale richiudibile: l'utente non ha mai bisogno della
+   pagina coperta (rischio segnalato per i wizard modali, Appendice A).
+6. Un processo lungo si apre con il suo **piano**: le parti con stato «Fatto», «Da fare» o «Non
+   ancora possibile» con il motivo (per esempio «serve prima il collegamento del canale»), e si
+   chiude con «Controlla e conferma» che riporta a ogni parte da correggere.
+7. Si costruisce sul kit di wizard esistente (`components/shared/wizard/wizard-shell.tsx`,
    `wizard-summary.tsx`, `wizard-done.tsx`, `ui/stepper.tsx`, passo in `?step=`), già usato da
    otto flussi: il livello è il contenitore in cui il kit si apre, non un secondo kit. Entrano nel
    kit anche i flussi che oggi lo evitano: la vecchia attivazione
@@ -361,6 +367,9 @@ Prova: un collaboratore con perimetro «Solo alcuni» non vede voci di altri imm
    ore di silenzio (default 22–8; un obbligo di legge che scade dentro la finestra la supera),
    riepilogo giornaliero, preferenze per tipo e canale con lo stesso modello di MSG-05. Gli
    avvisi di obblighi di legge non si spengono del tutto: si sceglie il canale, almeno uno resta.
+   Consigli e suggerimenti sono spenti per default.
+5. **Successo silenzioso, eccezione evidente**: ciò che va a buon fine si registra senza
+   disturbare (stato e cronologia); si avvisa per ciò che richiede una persona.
 
 Accettazione: un invio Alloggiati in sospeso produce push e popup ai tempi configurati; il
 rinvio rispetta la scadenza; le preferenze sono rispettate.
@@ -410,6 +419,14 @@ Per ogni wizard: percorso completo dall'inizio alla fine; «Salva ed esci» e ri
 stesso passo con gli stessi dati; nessuna uscita (UX-02); sessione scaduta; controllo di
 accessibilità automatico su ogni passo; viewport mobile. Prima del rilascio di un processo
 il PO fa una prova d'uso con almeno cinque persone non esperte (gate G3, fuori da Helix).
+
+#### UX-15 — «Fallo per me» · P2
+
+In ogni wizard di configurazione (collegamento dei canali, adempimenti, emissione dei documenti)
+l'utente può chiedere che lo completi il supporto di CasaZen: la richiesta porta con sé la bozza,
+crea un'attività per lo staff della piattaforma e l'utente vede lo stato in «Da fare». È la
+corsia per chi non arriverà mai in fondo da solo (configurazione assistita offerta anche da altri
+operatori, Appendice A); ogni azione dello staff resta nel registro dell'organizzazione.
 
 ## 6. Requisiti per processo
 
@@ -474,11 +491,11 @@ registrati, righe costruite dagli ospiti del soggiorno, `Tabella`, profilo «Ges
 Appartamenti», ricevuta archiviata, pagina dei rapporti con endpoint esistenti. Serve agli immobili
 non collegati (CHK-03) e allo scaricamento delle ricevute (CHK-04).
 
-#### DEB-09 — Verifica dell'operatore e codice d'accesso · P2
+#### DEB-09 — Verifica dell'operatore e codice d'accesso · P1
 
-Fuori dal perimetro di questo documento (Q1-12, Q1-13) ma da tenere coerente: chiave del permesso
-uguale tra frontend e backend e assegnata ai ruoli, decisione manuale registrata, rilascio del
-codice collegato; spento finché non è completo.
+Serve a CHK-11 (identificazione dal vivo, ⚖): chiave del permesso uguale tra frontend e backend e
+assegnata ai ruoli, decisione manuale registrata con il modo dell'identificazione, rilascio del
+codice collegato e possibile solo dopo; spento finché non è completo.
 
 #### DEB-10 — Catena finanziaria dell'agenzia · P1
 
@@ -562,6 +579,13 @@ pubblicare → riepilogo e pubblicazione.
 3. AI-01 propone i testi e l'ordine delle foto; AI-03 segnala ciò che manca per ciascun canale.
 4. La pubblicazione crea o aggiorna la struttura in Octorate e invia ai canali scelti; un errore su
    un canale non annulla gli altri (UX-05, punto 2).
+5. Le regole dei canali si vedono nel passo in cui servono (per esempio il numero minimo di foto
+   chiesto da un portale) e non solo all'invio; un dato che può aspettare (il CIN in attesa del
+   comune) si rimanda con «Lo inserisco dopo», che crea una voce in «Da fare» e blocca solo la
+   pubblicazione sui canali che lo esigono.
+6. «Duplica un annuncio» per chi gestisce appartamenti simili: copia tutto tranne foto, indirizzo
+   e codici, poi apre il wizard sui passi da completare (modello del wizard di Octorate,
+   Appendice A).
 
 #### LST-04 — Informazioni generali e codici · P0
 
@@ -714,7 +738,12 @@ Prova: nessun ospite con `draft` falso verso Octorate se il mittente dell'immobi
    trasmissione, raccoglie o verifica le credenziali dove servono (modulo esistente in sola
    scrittura), controlla la configurazione della Polizia in Octorate (`policeAccount.valid`,
    `autorun`) se leggibile (D17); se va fatta sul sito del channel manager, sotto-passo guidato con
-   verifica al ritorno (UX-02, punto 3).
+   verifica al ritorno (UX-02, punto 3). In Octorate la configurazione documentata è una pagina di
+   impostazioni (credenziali, chiave del web service, numero della struttura per camera, «Test di
+   connessione» → «Attivata» → invio automatico giornaliero; Appendice A): il wizard la spiega con
+   le stesse parole e chiude con un passo «Prova del collegamento» che mostra «Attivo» solo a
+   verifica riuscita. Se le funzioni di adempimento di Octorate richiedono il suo modulo gestionale
+   a pagamento, il wizard lo dice prima di iniziare (D17).
 3. Lo stesso modello vale per i flussi ISTAT (CHK-05) e per gli immobili svizzeri (notifica del
    Ticino, Q1-15).
 
@@ -735,7 +764,10 @@ Prova: nessun ospite con `draft` falso verso Octorate se il mittente dell'immobi
    collegamento alla pagina giusta e il caricamento del PDF in CasaZen (trascina il file);
    promemoria il giorno dopo.
 4. Una ricevuta mancante il giorno dopo l'invio, o un ospite non inviato entro la scadenza
-   (24 ore dall'arrivo; subito per soggiorni brevi), crea un avviso urgente (UX-08).
+   (24 ore dall'arrivo; subito, e al massimo entro 6 ore, per i soggiorni fino a 24 ore), crea un
+   avviso urgente (UX-08).
+5. Soggiorni oltre 30 notti: secondo la documentazione di Octorate non partono in automatico
+   (Appendice A): CasaZen li riconosce e crea una voce «Invia a mano» con il file pronto.
 
 Prova: con il mittente «channel manager» il client di CasaZen non esegue mai `Send`.
 
@@ -748,7 +780,11 @@ Prova: con il mittente «channel manager» il client di CasaZen non esegue mai `
    flusso regionale è implementato; base di partenza `docs/runbooks/istat-flussi-regionali.md` e
    `docs/runbooks/ross1000.md`) oppure il portale regionale con istruzioni guidate.
 3. Una tabella per regione dice il sistema usato, chi invia, la scadenza e come si ottiene la
-   prova; i territori non noti restano «da definire», senza ipotesi.
+   prova; i territori non noti restano «da definire», senza ipotesi. Come fa Octorate (avviso rosso
+   per una regione non supportata, Appendice A), il wizard dice subito se la regione dell'immobile
+   è coperta, prima di chiedere qualunque dato.
+4. Octorate manda l'esito ISTAT per email all'host (non via API): il passo «Prova del mese»
+   chiede di caricare quella email o la ricevuta del portale, con promemoria.
 
 #### CHK-06 — Check-in e check-out · P0
 
@@ -801,6 +837,21 @@ automatico dopo DEB-08; Ticino e OTR di Q1-15 dopo la correzione del formato e d
 inclusi) dentro gli stessi wizard; l'utente vede la stessa interfaccia e lo stesso stato, cambia
 solo il mittente.
 
+#### CHK-11 — Identificazione dell'ospite · P1 ⚖
+
+1. Le fonti raccolte il 31/10 (Appendice A) riportano che il Consiglio di Stato, il 21 novembre
+   2025, ha confermato l'obbligo di identificare l'ospite di persona; una verifica a distanza **dal
+   vivo** (videochiamata, verifica in tempo reale) può bastare, una foto del documento con un
+   codice d'accesso automatico no. Le fonti non concordano sul numero della sentenza: la verifica
+   del legale precede qualunque testo verso gli utenti.
+2. Per ogni ospite adulto CasaZen registra **come** è avvenuta l'identificazione (di persona,
+   videochiamata, verifica biometrica dal vivo quando sarà reale: Q1-11), chi l'ha fatta e quando;
+   il wizard di arrivo ha un passo «Riconosci gli ospiti» con una casella per ospite.
+3. Il codice d'accesso si rilascia solo a identificazione registrata (Q1-13, DEB-09); il self
+   check-in senza un passo dal vivo è segnalato all'host come non conforme secondo PO-18.
+
+Prova: nessun rilascio del codice senza identificazione registrata per ogni ospite adulto.
+
 ### 6.3 Marketplace e integrazioni (MKT)
 
 **Octorate.** Via API si leggono i portali con categoria `OTA` o `EXTERNAL_TOOL`, requisiti di
@@ -821,7 +872,9 @@ API o connessioni OAuth verso terzi.
 1. Nella cornice esistente, cinque gruppi: **Canali di vendita** (portali `OTA` letti via API),
    **Strumenti collegati** (portali `EXTERNAL_TOOL`), **Funzioni del channel manager** (moduli
    della licenza), **Servizi per la casa** (marketplace dei fornitori esistente), **Partner**
-   (catalogo curato dall'admin di CasaZen, PO-11).
+   (catalogo curato dall'admin di CasaZen, PO-11, ordinato per lavoro da fare — vendere, accedere
+   all'immobile, adempimenti, pulizie, prezzi, amministrazione — prendendo come riferimento le
+   categorie del «Partner Hub» pubblico di Octorate, Appendice A).
 2. Ogni scheda: nome, logo, beneficio in una riga, costo se noto e chi lo fattura, stato per
    l'organizzazione o l'immobile (Attivo, Non attivo, In attesa, Da sistemare).
 3. «Le mie app» diventa «Attivi»: integrazioni e fornitori in uso insieme.
@@ -951,6 +1004,10 @@ ogni thread porta al profilo del cliente (CRM-01).
 5. Wizard «Insegna all'assistente» nel livello guidato: situazioni → risposte proposte dai dati
    dell'immobile → automatico o con conferma → prova su messaggi d'esempio (simulatore senza
    invio) → attivazione.
+6. **Lezioni**: quando l'utente corregge o rifiuta una bozza, l'assistente propone il fatto o la
+   regola da imparare («il parcheggio è gratuito solo nel weekend») e l'utente la approva con un
+   ambito: questo immobile, tutti gli immobili, l'organizzazione (modello già usato dal mercato,
+   Appendice A). Nessuna lezione entra senza approvazione.
 
 #### MSG-07 — Ranking di confidenza e invio · P1
 
@@ -966,11 +1023,16 @@ ogni thread porta al profilo del cliente (CRM-01).
    link prima della prenotazione; niente cambi di data Booking.com via chat; OCT-11).
 3. Altrimenti bozza nella coda di approvazione con avviso «Bozza pronta» e azioni rapide
    «Approva» e «Modifica» anche dalla push.
-4. Periodo iniziale in sola bozza per ogni nuova situazione (PO-08) con la misura «approvate senza
-   modifiche»; il passaggio all'automatico lo propone CasaZen e lo decide l'utente.
-5. Interruttore per organizzazione, immobile e situazione; l'assistente AI di Octorate resta
-   spento sui thread gestiti da CasaZen, verificato a ogni sincronizzazione (OCT-11).
-6. Trasparenza (AI Act art. 50) nell'interfaccia; dicitura verso l'ospite secondo la decisione del
+4. Tre livelli di fiducia per situazione: **bozza** (default, PO-08: periodo iniziale con la misura
+   «approvate senza modifiche»), **automatico** (sopra soglia), **automatico con eccezioni**
+   (le eccezioni vanno all'operatore con urgenza e scadenza). Il passaggio di livello lo propone
+   CasaZen e lo decide l'utente.
+5. Interruttore per organizzazione, immobile e situazione; gli assistenti AI di Octorate (per
+   thread e l'agente dei messaggi) restano spenti sui thread gestiti da CasaZen, verificato a ogni
+   sincronizzazione (OCT-11).
+6. Ogni messaggio inviato mostra all'host se l'ha scritto una persona o l'assistente, e quale
+   regola l'ha fatto partire.
+7. Trasparenza (AI Act art. 50) nell'interfaccia; dicitura verso l'ospite secondo la decisione del
    PO (D-11 della fase 1, ⚖). Dati al modello secondo PO-09.
 
 Prove: un messaggio di una categoria sensibile non parte mai in automatico; sotto la soglia non
@@ -991,6 +1053,15 @@ filtro «Recensioni» nell'hub; bozze di risposta con AI-06 e approvazione.
 
 WhatsApp e SMS restano fuori finché non c'è il fornitore (oggi esistono solo come valori di un
 enum); l'email come canale per gli ospiti diretti segue MSG-03.
+
+#### MSG-11 — Messaggi programmati visibili per prenotazione · P1
+
+Ogni prenotazione mostra la linea dei messaggi che partiranno da soli (dalle routine: istruzioni
+prima dell'arrivo, link del check-in, ringraziamento), con «Modifica», «Salta» e «Invia ora»; un
+messaggio con un dato mancante (per esempio il codice d'accesso non ancora rilasciabile) non parte
+e crea una voce in «Da fare»; l'host è avvisato quando un messaggio è saltato o inviato fuori
+orario (modello dei messaggi programmati delle OTA, Appendice A). Niente è programmato per default
+finché l'utente non attiva una routine.
 
 ### 6.5 Prenotazioni e calendario (BKG)
 
@@ -1351,6 +1422,11 @@ I tre numeri principali e «Da fare» anche sull'app.
 | AI-11 | Da fare | Ordine per urgenza, raggruppamenti, momento migliore dei promemoria, una riga sul perché | AUTOMATICA | P1 |
 | AI-12 | Tutti i wizard | Assistente dentro «Aiuto»: risponde sul passo corrente con le guide di CasaZen e compila campi su richiesta; non conferma mai al posto dell'utente | PROPONE E APPROVI | P2 |
 
+Esempi di mercato per ogni automazione e la modalità che usano gli altri operatori: Appendice A,
+parte C. Il mercato converge sullo stesso schema: bozza per default, automatico per argomento con
+soglie ed escalation, etichetta che distingue persona e AI, conoscenza per immobile presa dai dati
+dell'annuncio.
+
 Nota tecnica: Octorate prevede tra le categorie dei partner `MODEL_CONTEXT_PROTOCOL` (§10.1):
 non serve a questa versione, ma conferma che un accesso «da agente» alle sue API è previsto;
 nessun uso senza ADR.
@@ -1663,12 +1739,12 @@ completo, dal dato alla schermata, dimostrabile con l'adattatore Mock.
 |---|---|---|---|
 | S0 — Sicurezza e privacy | — | DEB-01 | Prove di DEB-01; nessuna dipendenza da Octorate; da fare subito |
 | H0 — Gap e contratti | — | Confronto con il codice corrente per le otto aree, per i wizard esistenti (elenco delle uscite, UX-02) e per lo stato reale della fase 1 (§4.5); snapshot API o blocco esplicito; ADR di §8.4; matrice delle capacità; autorità dei dati; backlog requisito → operazione → prova | Backlog completo; nessun requisito senza fonte |
-| U0 — Livello guidato e «Da fare» | H0 | UX-01…UX-11: livello guidato, bozze sul server, sotto-passi, indirizzi dei passi, servizio unico «Da fare», preferenze e avvisi (push, email, popup; DEB-07); conversione dei wizard esistenti al livello e rimozione delle uscite | UX-14 sui wizard esistenti; nessuna dipendenza da Octorate |
+| U0 — Livello guidato e «Da fare» | H0 | UX-01…UX-13 (UX-15 dopo): livello guidato, bozze sul server, sotto-passi, indirizzi dei passi, servizio unico «Da fare», preferenze e avvisi (push, email, popup; DEB-07); conversione dei wizard esistenti al livello e rimozione delle uscite | UX-14 sui wizard esistenti; nessuna dipendenza da Octorate |
 | H1 — Fondazioni del connettore | H0 | DEB-02 (bus di eventi con outbox) e OCT-01…03, 08, 09, 13, 14: adattatore Mock e client, OAuth per proprietà, webhook in entrata e riconciliazione sul bus, resilienza, interruttori, stato delle connessioni | Isolamento per tenant e proprietà; nessuna chiamata live dal Mock; duplicati e fuori ordine senza effetti doppi |
 | H2 — Annunci e ARI | H1, U0 | LST-01…12 | Import, creazione, modifica e pubblicazione per canale in Mock, con errori parziali per canale |
 | H3 — Prenotazioni e calendario | H1 | BKG-01…09 | Creazione, modifica e cancellazione in Mock; webhook duplicati, persi e fuori ordine; nessun doppio scrittore con iCal |
-| H4 — Check-in e adempimenti | H3, U0 | CHK-01…10, DEB-08 | Dati dell'ospite fino a Octorate in Mock; mittente unico; ricevuta dal server finto Alloggiati; tassa al centesimo |
-| H5 — Messaggi e AI | H3, U0 | MSG-01…10, AI-06, DEB-03, DEB-06 | Hub con thread OTA simulati e diretti; soglia di confidenza, categorie sensibili, approvazione da push |
+| H4 — Check-in e adempimenti | H3, U0 | CHK-01…11, DEB-08, DEB-09 | Dati dell'ospite fino a Octorate in Mock; mittente unico; ricevuta dal server finto Alloggiati; tassa al centesimo; nessun codice d'accesso senza identificazione registrata |
+| H5 — Messaggi e AI | H3, U0 | MSG-01…11, AI-06, DEB-03, DEB-06 | Hub con thread OTA simulati e diretti; soglia di confidenza, categorie sensibili, approvazione da push |
 | H6 — Documenti, clienti e report | H3 (H4 per la tassa) | FIS-01…07, CRM-01…08, REP-01…08, DEB-04, DEB-05, DEB-10 | Emittente unico; documenti Octorate simulati letti; pubblico raggiungibile per base giuridica; report coerenti con le prenotazioni |
 | H7 — Marketplace | H1, U0 | MKT-01…07 | Catalogo dalle tre fonti; attivazione e disattivazione di un portale simulato; stato |
 | H8 — Sandbox | H2–H7, credenziali valide | Prove del contratto API con l'account test (ex H5 della v1.3): OAuth e rinnovo, letture prima delle scritture, errori 400/401/403/404/422, 403 di quota, 550, timeout, webhook | Rapporto per capacità; le celle con effetti sulle OTA restano «da provare in produzione» |
@@ -1679,7 +1755,7 @@ completo, dal dato alla schermata, dimostrabile con l'adattatore Mock.
 CHK-07 (calcolo della tassa, già in CasaZen); FIS-02/05 per l'emissione di CasaZen; REP sui dati
 già presenti; CRM-02/03/06/08 (base giuridica dei contatti e correzioni delle campagne); MSG-05
 (preferenze di notifica) e l'hub sui thread diretti esistenti. Tutto il resto parte con
-l'adattatore Mock. DEB-09 e DEB-11 seguono le priorità della fase 1, non questo documento.
+l'adattatore Mock. DEB-11 segue le priorità della fase 1, non questo documento.
 
 Ogni PR cita gli identificativi dei requisiti, aggiorna matrice e prove, documenta migrazioni e
 configurazione, resta nel suo pacchetto e non attiva la produzione. Report separati per prove
@@ -1733,14 +1809,15 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | PO-15 | Foto degli annunci raggiungibili da Octorate tramite URL pubblico | Sì, solo per le foto degli annunci (sono già pubbliche sulle OTA), con indirizzi non indovinabili; i documenti degli ospiti restano privati | LST-06 | No |
 | PO-16 | Chi comanda prezzi e disponibilità? | CasaZen è l'unico scrittore per gli immobili collegati; le regole automatiche di Octorate (chiusure automatiche, prezzi derivati, revenue) restano spente o lette e mostrate | LST-09, LST-10 | No |
 | PO-17 | Dati degli ospiti presi da Octorate per il CRM | Solo dati della prenotazione e del soggiorno; i contatti letti con `contactInfo` solo per il servizio (messaggi, check-in, fattura), mai per il marketing | CRM-07 | No |
+| PO-18 | Come si identifica l'ospite dopo la decisione del Consiglio di Stato del novembre 2025 (da verificare con il legale)? | L'host o lo staff registra in CasaZen l'identificazione di persona o in videochiamata per ogni ospite adulto; la verifica biometrica dal vivo si aggiunge quando Q1-11 sarà reale; il codice d'accesso parte solo dopo; il self check-in senza passo dal vivo è segnalato come non conforme ⚖ | CHK-11, DEB-09 | Solo i testi verso gli utenti |
 
 ### 14.2 Domande a Octorate (si aggiungono a D1–D14)
 
 | ID | Domanda | Perché serve |
 |---|---|---|
 | D15 | Quali sistemi regionali ISTAT invia Octorate (per regione) e come si configurano; esiste un esito leggibile? | CHK-05, PO-03 |
-| D16 | Esiste un elenco dei partner del vostro marketplace leggibile da un partner, con requisiti e modalità di attivazione? | MKT-01 |
-| D17 | `policeAccount` (codice, chiave del web service, `autorun`) si può scrivere via API con il consenso del proprietario? Cosa significa `valid`? | CHK-03 |
+| D16 | Esiste un elenco dei partner del vostro marketplace (il «Partner Hub» pubblico) leggibile da un partner, con requisiti, modalità di attivazione e stato per proprietà? | MKT-01 |
+| D17 | `policeAccount` (codice, chiave del web service, `autorun`, numero della struttura per camera) si può scrivere via API con il consenso del proprietario? Cosa significa `valid`? Alloggiati, ISTAT e tassa di soggiorno richiedono il vostro modulo gestionale (costo, licenza)? | CHK-03 |
 | D18 | `policeSentStatus` e `policeSentTime` sono valorizzati per ogni invio, anche per gli errori? Esiste o è prevista la ricevuta via API? Il resoconto del 30/10 dice che gli esiti sono solo nella vostra interfaccia | CHK-04 |
 | D19 | `createDoubleHeadingInvoice` e `issueSummaryDocument` sono utilizzabili da un partner? Con quali permessi e licenza? Il resoconto del 30/10 dice che non ci sono API di creazione | FIS-02 |
 | D20 | Come calcolate `touristTax`? Le regole si configurano via API? Se il partner scrive `cityTaxPrice` e `cityTaxExemption` per ospite, prevalgono sul vostro calcolo? | CHK-07 |
@@ -1757,14 +1834,18 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   processi con CasaZen unico punto di accesso. Aggiunti: base del codice al 30/10 (§4), regole UX
   vincolanti con l'aggiunta del 31/10 (wizard su livello separato, mai fuori dal processo, «Da
   fare», push e popup) (§5), requisiti per processo (§6), mappa delle automazioni AI (§7),
-  autorità dei dati estesa (§8.2), decisioni PO-01…17 e domande D15–D26 (§14), benchmark UX
+  autorità dei dati estesa (§8.2), decisioni PO-01…18 e domande D15–D26 (§14), benchmark UX
   (Appendice A). Verifica della specifica del 31/10 (S13): check-in e Polizia, ospiti, tassa di
   soggiorno, fatture con stato SDI, pagamenti, prodotti extra, politiche, licenze, portali e
   strumenti esterni; tre punti in contrasto con il resoconto S7 (esito per ospite dell'invio alla
   Polizia, calcolo della tassa, creazione di documenti fiscali) da confermare per iscritto.
   Cambio di una decisione precedente: per gli immobili collegati a Octorate l'invio ad Alloggiati
   passa a Octorate (la v10 D12 lo assegnava a CasaZen); il client di CasaZen (Q1-14) resta per
-  gli altri immobili e per scaricare le ricevute (PO-02). Pacchetti riorganizzati: U0 e H0–H10.
+  gli altri immobili e per scaricare le ricevute (PO-02). Pacchetti riorganizzati: S0, U0 e
+  H0–H10. Dal benchmark: identificazione dell'ospite dopo la decisione del Consiglio di Stato del
+  novembre 2025 riportata dalle fonti (CHK-11, PO-18, ⚖), piano del processo e informazioni dentro
+  il livello guidato (UX-01), «fallo per me» (UX-15), lezioni e livelli di fiducia dell'AI
+  (MSG-06, MSG-07), messaggi programmati visibili (MSG-11).
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
   authorization code flow, whitelist delle callback, access token di 24 ore, refresh token senza
   scadenza, N proprietà = N consensi e token; account test attivo, credenziali non marcate valide;
@@ -1775,3 +1856,125 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 - **1.1 · 23 ottobre 2026:** verifica contro S5 (164 percorsi, 208 operazioni) e S6: recensioni,
   eventi webhook e consegna, CIN, quota ed errori, sandbox; risposte D1–D14, correzioni e matrice.
 - **1.0 · 21 ottobre 2026:** prima stesura.
+
+## Appendice A — Benchmark UX (31/10/2026)
+
+**Metodo e limiti.** Ricerca web del 31/10/2026 su documentazione e pagine pubbliche, senza accesso
+ai prodotti. Sigle: [D] documentazione, [M] marketing del fornitore, [3P] fonte terza, † pagina non
+leggibile direttamente (riassunto del motore di ricerca). Non leggibili: centri di assistenza di
+Guesty, Guesty for Hosts, Hostaway e Smoobu, `partner.booking.com`, gran parte di `lodgify.com`; per
+Octorate si è usata la community (articoli forse datati). Molte funzioni AI del 2026 sono annunciate
+o in prova. Una pagina del blog di Chekin conteneva istruzioni nascoste per gli assistenti AI: sono
+state ignorate. I riferimenti tra parentesi quadre rimandano a A.6.
+
+### A.1 Cinque risultati che cambiano i requisiti
+
+1. **Nessuno documenta il wizard come livello sovrapposto.** I flussi documentati sono pagine
+   dedicate e riprendibili (bozza nel wizard degli annunci di Octorate [O10], «continua la
+   registrazione» di Booking.com † [B1]); le linee guida sui wizard avvertono che un wizard modale
+   può nascondere informazioni che servono [X3]. Da qui UX-01 punti 5 e 6: livello a tutto schermo
+   con le informazioni utili dentro, passi visibili, «Salva ed esci» sempre presente.
+2. **Identificazione dell'ospite.** Le fonti [X1][X2] riportano la decisione del Consiglio di Stato
+   del 21/11/2025: identificazione di persona; una verifica a distanza dal vivo può bastare, foto
+   del documento più codice automatico no. Il numero della sentenza differisce tra le fonti (5732
+   [X1], 9101/2025 [C3]). Solo Chekin e Vikey documentano un passo dal vivo [C3][V1]. Da qui CHK-11
+   e PO-18 (⚖, non è un parere legale).
+3. **Adempimenti italiani: modulo del gestionale o partner.** Octorate li fa nel suo gestionale con
+   una configurazione tecnica [O7][O9][O11]; Lodgify e Smoobu rimandano a Chekin [L1][S1]; il
+   collegamento Chekin–Octorate importa solo le prenotazioni [C4]. Due mittenti per lo stesso
+   immobile producono schedine doppie (inferenza): da qui CHK-03.
+4. **Prerequisiti a metà percorso.** I flussi migliori rimandano ciò che può aspettare (il CIN nel
+   wizard di Octorate [O10]) o dicono «non ancora possibile» con il motivo [X4]; i peggiori mandano
+   l'utente altrove (creare prima l'annuncio su Airbnb † [G4], nuovo account per gli utenti Octorate
+   [C4]). Da qui UX-02 e LST-03.
+5. **Marketplace.** Nessuno documenta lo stato per partner né cosa succede disattivando: MKT-04 e
+   MKT-05 vanno progettati da CasaZen.
+
+### A.2 Cosa fanno le piattaforme
+
+| Piattaforma | Guida e attività | Messaggi e AI | Adempimenti e marketplace |
+|---|---|---|---|
+| Guesty (e Guesty for Hosts) | Import guidato degli annunci Airbnb con stati per annuncio e riprova; pulsante «importa» visibile finché non si importa † [G4] | Suggerimenti AI inviati o modificati dall'host † [G1]; dal 2026 invio automatico con soglie, categorie, regole per immobile ed escalation [M][G2]; agenti per attività, traduzioni, prezzi, prenotazioni a rischio, risposte alle recensioni, report [M][G3] | Marketplace con ricerca e pagina del partner; «collega» crea un token da copiare dal partner † [G5]; elenco pubblico di circa 350 partner [G6] |
+| Airbnb (host) | Scheda «Oggi» con promemoria e avvisi; richieste con conto alla rovescia di 24 ore [A1][A2]; creazione dell'annuncio in tre fasi [A6] | Messaggi programmati per evento, nulla per default, linea per prenotazione con Modifica, Salta, Invia ora e avviso se saltati [A3]; notifiche per categoria e canale, quelle legali e di sicurezza non disattivabili [A4]; risposte AI dai dati dell'annuncio, etichettate, da maggio 2026 [A5] | — |
+| Lodgify | — | Assistente AI con modifica prima dell'invio [3P][L6]; co-host AI che segnala solo ciò che serve decidere, prezzi dinamici, in prova [3P][L3] | Guida Alloggiati e CIN; check-in tramite Chekin [L1][L2]; collegamento dei canali con mappatura fatta dal loro team † [L5]; marketplace con chiave API da copiare † [L4] |
+| Krossbooking | Demo di 30 giorni con istruzioni al primo accesso [K1] | — | Invio schedine automatico, report ISTAT, tassa automatica con report trimestrale [M][K1]; portale dell'ospite con passi scelti per canale e appartamento (condizioni, firma, dati, documento, selfie facoltativo, extra, tassa) e conferma dell'host in un clic [M][K2] |
+| Dolcebot | Avvio fatto dal loro team dopo un'intervista sull'immobile [M][D1] | Assistente AI su WhatsApp, Booking e Airbnb; le eccezioni vanno in un pannello prioritario; nessuna approvazione descritta [M][D1][D3] | Linea temporale per prenotazione: Alloggiati tracciato, ISTAT giornaliero, tassa per notte con ricevuta e rendiconto per il comune, promemoria per i dati mancanti, codice della porta solo a documenti e tassa completi [M][D2]; documenti fiscali alla conferma [M][D5]; nessun passo dal vivo [D4] |
+| Octorate | Wizard degli annunci in sei passi con bozza, duplicazione (senza foto), CIN rimandabile, regole dei portali nel passo [D][O10] | Inbox unica per OTA, WhatsApp ed email [O5]; agente AI dei messaggi con escalation per urgenza, etichetta AI o persona, «lezioni» approvate con un ambito [M][O6] | Alloggiati come pagina di impostazioni: credenziali, chiave del web service, numero della struttura per camera, «Test di connessione», «Attivata», invio giornaliero; oltre 30 notti a mano; file di riserva [D][O7][O8]; ISTAT per regione con avviso se non supportata, esito per email, storico [D][O9]; tassa con regole per struttura ed esportazioni [O11]; Partner Hub per categorie con modulo di richiesta, senza stato [O4] |
+| Chekin | — | — | Link all'ospite, dati, documento e selfie (premium), firma, pagamenti; revisione dell'host prima dell'invio [M][C2]; Alloggiati entro 24 ore, ISTAT entro il 5, tassa con PayTourist, ricevute archiviate per 5 anni [M][C1]; non garantisce il riconoscimento di persona [C3] |
+| Vikey | — | — | Link dopo la prenotazione, documento, pagamento anche della tassa, firma, videochiamata di benvenuto facoltativa [M][V1]; prezzo per unità [V2] |
+| Smoobu | Percorso dei primi 30 giorni descritto in un articolo, senza wizard [S2] | AI tramite strumenti esterni [S3] | Nessun adempimento nativo, rimanda a Chekin; tabella dei portali ISTAT per regione [S1] |
+| Hostaway | — | Risposte AI in bozza per default, automatiche per argomento a scelta; base di conoscenza per annuncio, regole, prova in sandbox, filtro sul tono con escalation [M][H1][H2] | Marketplace con oltre 200 partner in categorie; chiave API generata dal cliente [H3] |
+| Booking.com (extranet) | Registrazione salvata a ogni passo, «Continua» dalla home ed email di promemoria; lista di controllo nella home † [B1]; opportunità con «Agisci», «Scopri», «Forse più tardi» † [B2] | Notifiche sì o no per tipo, quando e come † [B3]; risposte automatiche dal 2025 [3P][B4] | — |
+
+### A.3 Pattern adottati e dove
+
+| # | Pattern | Requisito | Esempi |
+|---|---|---|---|
+| 1 | Piano del processo con stati e «non ancora possibile», controllo finale | UX-01 p. 6 | [X4], [O10] |
+| 2 | Livello con passi visibili, salvataggio continuo, «Salva ed esci» | UX-01, UX-03 | [X3], [O10], [B1] |
+| 3 | Ripresa dalla scheda «Da fare» | UX-03, UX-07 | [B1], [G4] |
+| 4 | Prerequisito come sotto-passo; rinvio di ciò che può aspettare | UX-02, LST-03 | [O10], [X4] |
+| 5 | Prima importa, poi scrivi; avanzamento e riprova per elemento | LST-02 | [G4], [O1], [O10] |
+| 6 | Corsia «fallo per me» | UX-15 | [D1], [O1], [L5] |
+| 7 | Valori predefiniti da regione e comune | CHK-05, CHK-07 | [O9], [C1], [S1] |
+| 8 | «Oggi» con poche schede per scadenza e un pulsante | UX-07 | [A1], [A2], [O3], [L3] |
+| 9 | Escalation con conto alla rovescia | UX-08, CHK-04 | [A1], [A4], [L1], [C1] |
+| 10 | Successo silenzioso, eccezione evidente | UX-08 | [A3], [O9], [O6] |
+| 11 | Pochi gruppi di notifiche; obblighi non silenziabili; consigli spenti; riepilogo giornaliero | UX-08, MSG-05 | [A4], [B3] |
+| 12 | Prova dell'invio come oggetto visibile, archivio di 5 anni | CHK-04, CHK-08 | [C1], [L1], [O8], [D2] |
+| 13 | Passo di prova del collegamento | CHK-03, MKT-03 | [O7], [O8] |
+| 14 | Il sistema rincorre l'ospite, l'host conferma con un clic | CHK-01 | [D2], [K2], [C2] |
+| 15 | Registro dell'identificazione dal vivo | CHK-11 | [C3], [V1], [X1], [X2] |
+| 16 | Linea dei messaggi programmati con Modifica, Salta, Invia ora | MSG-11 | [A3] |
+| 17 | Tre livelli di fiducia dell'AI, prova in sandbox, etichetta AI o persona, lezioni con ambito | MSG-06, MSG-07 | [H1], [H2], [G2], [O6], [A5] |
+| 18 | Marketplace per lavori da fare: scheda, collegamento, stato, testo di disattivazione | MKT-01…05 | [H3], [G5], [O4] |
+
+### A.4 AI: cosa fa il mercato
+
+| Processo | Opportunità | Modalità consigliata | Esempi | In CasaZen |
+|---|---|---|---|---|
+| Annunci | Bozza di titolo, descrizioni e dotazioni da indirizzo, foto o annuncio esistente; controllo delle regole dei portali | Propone e approvi | [A8] (solo USA per ora), [G3], [O10] | AI-01, AI-03 |
+| Traduzioni | Lingue mancanti dal testo approvato, segnalate come tradotte | Automatica | [G3] | AI-02 |
+| Prezzi | Suggerimenti di prezzo e soggiorno minimo; automatico solo tra minimo e massimo dell'host | Propone e approvi | [A9], [G3], [L3] | AI-04 |
+| Prenotazioni | Riepilogo della richiesta con rischi, dati mancanti, solleciti all'ospite | Automatica la segnalazione, approvi la decisione | [A1], [G3] | AI-07 |
+| Check-in e adempimenti | Precompilazione dal documento, controlli, promemoria, invii, tassa, nuovi tentativi | Automatica; identità ed errori con approvazione | [D2], [O7], [O9], [C1], [V2] | AI-05 |
+| Messaggi | Risposte di routine per argomento con escalation; il resto in bozza | Automatica per argomento, bozza per default | [H2], [A5], [B4], [G2], [O6] | AI-06, MSG-07 |
+| Attività | Attività da messaggi, recensioni e partenze | Automatica la creazione, propone l'incaricato | [G3], [D1], [H1] | AI-07 |
+| Recensioni | Bozze di risposta, analisi | Propone e approvi | [G3], [H1] | MSG-09 |
+| Documenti fiscali | Ricevuta o fattura agli eventi della prenotazione; invio allo SDI dopo l'OK | Automatica la bozza, approvi l'invio | [D5], [O12], [O2] | AI-08 |
+| Clienti e marketing | Testi del sito diretto, richieste di recensione, offerte | Propone e approvi | [L3], [G3], [H1], [S2] | AI-09 |
+| Report | Riepiloghi settimanali e domande in parole | Automatica, sola lettura | [G3], [A9] | AI-10 |
+| Avvio | Import di annuncio e calendario, valori per regione, «cosa manca» | Automatico l'import, propone il resto | [G4], [O1], [O10] | LST-02, UX-10 |
+
+Diversi fornitori non dicono se l'utente approva (preparazione degli annunci di Airbnb, testi di
+Guesty, sito diretto di Lodgify): la modalità in tabella è una raccomandazione.
+
+### A.5 Adempimenti italiani a confronto
+
+| Piattaforma | Alloggiati Web | ISTAT e regioni | Tassa di soggiorno | Prova e ricevute | Check-in online dell'ospite |
+|---|---|---|---|---|---|
+| Octorate | Invio giornaliero automatico dopo credenziali, chiave e numero della struttura; oltre 30 notti a mano [O7][O8] | Elenco delle regioni, automatico o manuale, file di riserva; più strutture dal giugno 2026 [O9][O12] | Regole per struttura (fissa o percentuale, esenzioni), esportazioni; PayTourist con file † [O11][O13] | Stato «Attivata», storico, nuovo invio; esito ISTAT per email; ricevuta ufficiale non trovata [O8][O9] | Link, dati, documenti, firma, stato per prenotazione; scansione e selfie non descritti [O3] |
+| Krossbooking | Invio automatico [M][K1] | Report ISTAT; invio non descritto [K1] | Calcolo automatico, report trimestrale, pagamento nel portale [K1][K2] | Non trovato | Portale con documento, selfie facoltativo, conferma dell'host [K2] |
+| Dolcebot | Automatico all'arrivo, tracciato [M][D2] | Dati giornalieri; conferma non descritta [D2] | Per notte e ospite, incassata al check-in, ricevuta e rendiconto per il comune [D2] | Linea temporale e archivio; nessuna ricevuta ufficiale descritta [D2] | Modulo guidato con controlli e promemoria; nessuna scansione o passo dal vivo [D2][D4] |
+| Chekin | Entro 24 ore, invio serale [M][C1] | Entro il 5 del mese, tabella per regione [M][C1] | Con PayTourist [M][C1] | Ricevute archiviate 5 anni, esportabili [M][C1] | Link, documento e selfie (premium), firma, pagamento; verifica dal vivo all'arrivo [C2][C3] |
+| Vikey | Invio al portale [M][V1] | Non chiaro [V2] | Modulo con pagamento online [M][V1][V2] | Non trovato | Link, documento, firma, videochiamata; selfie nel piano superiore [V1][V2] |
+| Lodgify | Tramite integrazioni; dichiara l'archivio delle ricevute [M][L1][L2] | Non trattato [L2] | Non trattato [L1] | L'host deve conservare le ricevute [L2] | Tramite Chekin [L1] |
+| Smoobu | Non nativo, tramite Chekin [S1] | Tramite Chekin; tabella per regione [S1] | Non descritto | Non trovato | Tramite Chekin [S1] |
+| Guesty, Hostaway | Non trovato in modo nativo; partner † [G8] | Non trovato | Non trovato | Non trovato | Partner |
+
+Sul CIN: lo trattano solo il wizard di Octorate (un campo) e la guida di Lodgify (spiegazione).
+
+### A.6 Fonti
+
+- Guesty: [G1]† https://help.guesty.com/hc/en-gb/articles/16697585390621-Using-ReplyAI-in-your-Inbox-messages · [G2] https://yourtechdiet.com/news/guesty-launches-replyai-autopilot-and-ai-task-creation-to-power-proactive-operations-inside-the-pms/ · [G3] https://www.guesty.com/features/ai-for-short-term-rentals/ · [G4]† https://help.guestyforhosts.com/hc/en-gb/articles/9350503315229-Getting-Started-by-Connecting-to-Airbnb · [G5]† https://help.guesty.com/hc/en-gb/articles/9371171208733-Marketplace-overview · [G6] https://www.guesty.com/integrations-marketplace/ · [G8]† https://www.guesty.com/it/blog/come-costruire-il-check-in-perfetto/
+- Airbnb: [A1] https://www.airbnb.com/resources/hosting-homes/a/reservations-redesigned-765 · [A2] https://www.airbnb.com/resources/hosting-homes/a/new-hosting-tools-to-help-grow-your-business-738 · [A3] https://www.airbnb.com/help/article/2897 · [A4] https://www.airbnb.com/help/article/14 · [A5] https://www.airbnb.com/resources/hosting-homes/a/respond-faster-in-the-messages-tab-770 · [A6] https://www.airbnb.com/resources/hosting-homes/a/how-to-finish-listing-your-space-461 · [A7] https://www.chameleon.io/inspiration/airbnb-value-reminder · [A8] https://www.rentalscaleup.com/airbnb-ai-strategy-2026-summer-release/ · [A9] https://www.rentalscaleup.com/airbnb-2026-fall-update-hosts/
+- Lodgify: [L1] https://www.lodgify.com/blog/it/alloggiati-web/ · [L2] https://encyclopedia.lodgify.com/it/invio-automatico-schedine · [L3] https://www.thehostreport.com/news/lodgify-launches-dynamic-pricing-an-ai-co-host-and-a-chatgpt-direct-booking-pilot · [L4]† https://www.houfy.com/help/how-to-connect-lodgify-with-houfy-14515090 · [L5]† https://www.lodgify.com/vacation-rental-channel-manager/airbnb/ · [L6]† https://www.travolution.com/news/travel-sectors/accommodation/lodgify-launches-ai-assistant-to-optimise-guest-communications/
+- Krossbooking: [K1] https://www.krossbooking.com/caratteristiche · [K2] https://www.krossbooking.com/kdoor/
+- Dolcebot: [D1] https://www.dolcebot.com/ · [D2] https://www.dolcebot.com/registrare-ospiti-senza-errori-alloggiati-istat-imposta-soggiorno/ · [D3] https://www.dolcebot.com/automatizzare-comunicazioni-ospiti-affitti-brevi-2026/ · [D4] https://www.dolcebot.com/check-in-perfetto-senza-consegna-chiavi-guida-host-pm/ · [D5] https://www.dolcebot.com/gestione-documenti-fiscali-affitti-turistici/
+- Octorate: [O1] https://www.octorate.com/ · [O2] https://www.octorate.com/it/pms/ · [O3] https://www.octorate.com/self-check-in/ · [O4] https://www.octorate.com/partner-hub/ · [O5] https://www.octorate.com/unified-inbox/ · [O6] https://www.octorate.com/ai-agent-for-hotels/ · [O7] https://community.octorate.com/post/5eaab840f1ea4840883cc4dc · [O8] https://community.octorate.com/articles-u84kjj5k/post/guida-alla-risoluzione-dei-problemi-di-connessione-tra-octorate-e-il-65FbIMCUmPzZfjF · [O9] https://community.octorate.com/articles-u84kjj5k/post/come-inviare-i-dati-all-istat-wkAW0YIw9js5EPE · [O10] https://community.octorate.com/articles-u84kjj5k/post/utilizza-il-nostro-assistente-per-la-creazione-del-tuo-annuncio-6WrThOzc84QknoN · [O11] https://community.octorate.com/articles-u84kjj5k/post/tassa-di-soggiorno---tassa-turistica-Eq2UWtq9r3hgwf8 · [O12] https://community.octorate.com/webinar-ko91w8bv/post/webinar-giugno-2026-le-ultime-novita-di-octorate-0qUw6ANR5K5bJOT · [O13]† https://community.octorate.com/articles-u84kjj5k/post/paytourist-ODpCbeEUqGVS6iZ
+- Chekin: [C1] https://chekin.com/en/legal-compliance/italy/ · [C2] https://chekin.com/en/online-check-in/ · [C3] https://chekin.com/it/blog/riconoscimento-de-visu-affitti-brevi/ · [C4] https://support.chekin.com/en/octorate-integration-chekin-help-center
+- Vikey: [V1] https://get.vikey.it/self-check-in/ · [V2] https://vikey.it/en/pricing/ · [V3] https://vikey.it/tassa-soggiorno-affitti-brevi-guida-2025/
+- Smoobu: [S1] https://www.smoobu.com/it/guides/istat-affitti-brevi/ · [S2] https://www.smoobu.com/en/blog/the-smoobu-feature-roadmap-for-your-first-30-days/ · [S3] https://www.smoobu.com/en/blog/best-ai-tools-for-vacation-rental-messaging/
+- Hostaway: [H1] https://www.hostaway.com/features/hostaway-ai/ · [H2] https://changelog.hostaway.com/ai-auto-reply-is-finally-here!-333474 · [H3] https://www.hostaway.com/marketplace/
+- Booking.com: [B1]† https://partner.booking.com/en-us/help/working-booking/going-live/registering-your-property · [B2]† https://partner.booking.com/en-us/help/growing-your-business/increase-revenue/opportunity-center · [B3]† https://partner.booking.com/en-us/help/reservations/contact-extranet/setting-templates-automatic-replies-and-message-notifications · [B4] https://www.altexsoft.com/travel-industry-news/booking-com-rolls-out-ai-agents-for-guest-support/
+- Norme e UX: [X1] https://www.misterlex.it/doc/affitti-brevi-obbligatorio-riconoscimento-de-visu-distanza/ · [X2] https://www.ilfattoquotidiano.it/2025/11/21/affitti-brevi-self-check-in-vietato-consiglio-di-stato-sentenza-oggi-news/8203757/ · [X3] https://www.nngroup.com/articles/wizards/ · [X4] https://design-system.service.gov.uk/patterns/complete-multiple-tasks/
