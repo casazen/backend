@@ -11,11 +11,13 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// Monthly owner statements (ADR-017). Statements are generated per property owner per property per month,
 /// with revenue breakdown, commission, expenses, and net payable computed with banker's rounding.
-/// Co-owners each receive their own statement, split by percentage (ADR-017-R3/R4).
+/// Co-owners each receive their own statement, split by percentage (ADR-017-R3/R4). Reading and exporting needs
+/// <c>agency.statement.view</c>, generating, approving and publishing <c>agency.statement.manage</c> too (DEB-01: it was the owner
+/// view, which the property manager holds).
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = CasazenPolicies.AgencyOwnerView)]
+[Authorize(Policy = CasazenPolicies.AgencyStatementView)]
 public class StatementsController(
     AppDbContext db,
     IStatementService statementService,
@@ -88,6 +90,7 @@ public class StatementsController(
     /// The statement is created in Draft status with line items for all bookings collected in that month.
     /// </summary>
     [HttpPost("generate")]
+    [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
     [ProducesResponseType(typeof(OwnerStatementDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<OwnerStatementDto>> Generate([FromBody] GenerateStatementRequest request)
@@ -142,6 +145,7 @@ public class StatementsController(
     /// An Approved statement must be reviewed by the host or agency before publishing.
     /// </summary>
     [HttpPost("{id:guid}/approve")]
+    [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
@@ -162,6 +166,7 @@ public class StatementsController(
     /// Any corrections after publication must be made via adjustment rows in the next month's statement (ADR-017-R5).
     /// </summary>
     [HttpPost("{id:guid}/publish")]
+    [Authorize(Policy = CasazenPolicies.AgencyStatementManage)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]

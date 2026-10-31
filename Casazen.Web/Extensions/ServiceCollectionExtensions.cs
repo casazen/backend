@@ -233,6 +233,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAuthorizationHandler, HostResourceAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, OrgBillingAdminAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, AgencyTierAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, AgencyPermissionAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, OwnerPortalAuthorizationHandler>();
 
         // The complete policy set (TN-3): see CasazenPolicies for how to choose one.
@@ -258,11 +259,16 @@ public static class ServiceCollectionExtensions
                 policy.Requirements.Add(new ContextPermissionRequirement(contextKeys, permissionKey)));
         }
 
-        // Agency tier policies (ADR-010): all require Org.PlanTier == PlanTier.Agency
+        // Agency tier policies (ADR-010): Org.PlanTier == PlanTier.Agency and, since DEB-01, the agency permission of the policy
+        // held by the caller's org role (OrgRoleCatalog.AgencyPermissionsOf).
         foreach (var policyName in CasazenPolicies.AgencyPolicies)
         {
+            var permissionKey = CasazenPolicies.ParseAgencyPolicy(policyName);
             builder.AddPolicy(policyName, policy =>
-                policy.Requirements.Add(new AgencyTierRequirement()));
+            {
+                policy.Requirements.Add(new AgencyTierRequirement());
+                policy.Requirements.Add(new AgencyPermissionRequirement(permissionKey));
+            });
         }
 
         return services;
