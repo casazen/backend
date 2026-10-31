@@ -42,7 +42,8 @@ public sealed class ShowcaseBookingManager(
     IOptions<ShowcaseBookingOptions> options,
     TimeProvider? timeProvider = null,
     ISupplierFundsService? funds = null,
-    IServiceDisputeService? disputes = null) : IShowcaseBookingManager
+    IServiceDisputeService? disputes = null,
+    IShowcaseAlternativesService? alternatives = null) : IShowcaseBookingManager
 {
     /// <summary>
     /// What a slug and a code that cannot be valid are looked up as: values that match nothing (a slug never starts with a hyphen, a code
@@ -196,6 +197,14 @@ public sealed class ShowcaseBookingManager(
         var found = await IdentifyAsync(credentials, cancellationToken);
         await actions.PostMessageAsCustomerAsync(found.Row.Id, found.Supplier.OrgId, body, cancellationToken);
         return await AfterAsync(found, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ShowcaseAlternative>> ListAlternativesAsync(
+        ShowcaseBookingCredentials credentials,
+        CancellationToken cancellationToken = default)
+    {
+        var found = await IdentifyAsync(credentials, cancellationToken);
+        return await AlternativesOfAsync(found, cancellationToken) ?? Array.Empty<ShowcaseAlternative>();
     }
 
     // ─── Who is asking ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -408,7 +417,28 @@ public sealed class ShowcaseBookingManager(
             quote,
             payment,
             offer,
-            offerPaymentRequired);
+            offerPaymentRequired,
+            Alternatives: await AlternativesOfAsync(found, cancellationToken));
+    }
+
+    /// <summary>
+    /// SP-10c: the other suppliers to offer the customer of a request that CasaZen closed because the supplier did not answer in time
+    /// (<see cref="ShowcaseAlternativeRules.Offers"/>); <c>null</c> for any other booking, and when no service looks for them. Looked for with the
+    /// comune and the category of the request, read by a statement of their own, and never with anything the customer typed.
+    /// </summary>
+    private async Task<IReadOnlyList<ShowcaseAlternative>?> AlternativesOfAsync(Found found, CancellationToken cancellationToken)
+    {
+        var row = found.Row;
+        if (alternatives is null || !ShowcaseAlternativeRules.Offers(row.Status, row.CancelledBy, row.CancellationReason))
+            return null;
+
+        var basis = await AlternativesBasisOf(db, found.Supplier.OrgId, row.Id).FirstOrDefaultAsync(cancellationToken);
+        if (basis is null)
+            return Array.Empty<ShowcaseAlternative>();
+
+        return await alternatives.FindAsync(
+            new ShowcaseAlternativesQuery(found.Supplier.OrgId, basis.Category, basis.ComuneIstat, basis.City),
+            cancellationToken);
     }
 
     /// <summary>The complaint as the customer reads it: its own words, the state and the decision; never the supplier's reply nor the admin's note.</summary>
@@ -562,6 +592,21 @@ public sealed class ShowcaseBookingManager(
             .AsNoTracking()
             .Where(r => r.Id == requestId && r.SupplierOrgId == supplierOrgId && r.RentalContext == ServiceRequestRentalContext.Showcase)
             .Select(r => r.QuoteEventsJson);
+
+    /// <summary>
+    /// What the alternatives of a request that lapsed are looked for with (SP-10c): its category and its comune (the ISTAT code when the customer chose
+    /// it, the name as written otherwise) — not the address, not the words of the customer.
+    /// </summary>
+    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
+    internal static IQueryable<AlternativesBasis> AlternativesBasisOf(AppDbContext db, Guid supplierOrgId, Guid requestId) =>
+        db.ServiceRequests
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.Id == requestId && r.SupplierOrgId == supplierOrgId && r.RentalContext == ServiceRequestRentalContext.Showcase)
+            .Select(r => new AlternativesBasis(r.Category, r.LocationComuneIstat, r.LocationCity));
+
+    /// <summary>The place and the category the alternatives of a lapsed request are looked for with.</summary>
+    internal sealed record AlternativesBasis(string Category, string? ComuneIstat, string? City);
 
     /// <summary>The supplier of a booking: what the customer's view and the rules need of its profile.</summary>
     internal sealed record SupplierRow(Guid OrgId, SupplierStatus Status, string LegalName, string Slug);

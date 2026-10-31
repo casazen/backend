@@ -198,6 +198,99 @@ public class PublicSupplierBookingViewResponse
     /// <summary>SP-15c-a: the money of a booking paid inside CasaZen; left out when the booking is not.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PublicSupplierBookingPaymentDto? Payment { get; set; }
+
+    /// <summary>
+    /// SP-10c: the other suppliers offered to the customer of a request that <b>CasaZen closed because the supplier did not answer in time</b>
+    /// (<c>status</c> <c>Annullato</c>, cancelled by <c>system</c>): at most three, best first; an empty list when there is none to suggest for now.
+    /// Left out for every other booking (the same list is in <c>POST …/alternatives</c>).
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<PublicSupplierAlternativeDto>? Alternatives { get; set; }
+}
+
+/// <summary>The answer of <c>POST api/public/supplier-bookings/alternatives</c> (SP-10c): the other suppliers the customer can turn to.</summary>
+public class PublicSupplierBookingAlternativesResponse
+{
+    /// <summary>At most three, best first; empty when the request is not one that lapsed for want of an answer, or when there is none to suggest.</summary>
+    public List<PublicSupplierAlternativeDto> Alternatives { get; set; } = [];
+}
+
+/// <summary>
+/// Another supplier offered to the customer of a request nobody answered (SP-10c): what its public showcase says about it and what is measured, and the
+/// way to its page (<c>/fornitori/{slug}</c>). No contact, no address, no score, no id.
+/// </summary>
+public class PublicSupplierAlternativeDto
+{
+    /// <summary>The name of the supplier, as on its showcase.</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>The slug of its showcase.</summary>
+    public string Slug { get; set; } = string.Empty;
+
+    /// <summary>The cover photo of its showcase; left out when it has none.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CoverUrl { get; set; }
+
+    /// <summary>The alternative text of the cover; left out when there is none.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CoverAlt { get; set; }
+
+    /// <summary>«Verificato», as on its showcase.</summary>
+    public bool Verified { get; set; }
+
+    /// <summary>The typical time to answer in minutes, measured (the median of the last 90 days, from five requests); left out until it is.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? MedianResponseMinutes { get; set; }
+
+    /// <summary>The service of the supplier that corresponds to the request (same category), with its «da €»; left out when it has none published there.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicSupplierAlternativeServiceDto? Service { get; set; }
+}
+
+/// <summary>The service of an alternative that corresponds to the request: where to book it, and its «da €».</summary>
+public class PublicSupplierAlternativeServiceDto
+{
+    /// <summary>The slug of the service on the supplier's showcase (<c>/fornitori/{supplier}/servizi/{slug}</c>).</summary>
+    public string Slug { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>The «da» price in euro cents; left out when the service is on quote.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? FromPriceCents { get; set; }
+
+    /// <summary>What the price is for: <c>PerJob</c>, <c>PerHour</c>, <c>PerSet</c> or <c>PerSquareMeter</c>.</summary>
+    public SupplierServicePriceUnit PriceUnit { get; set; }
+
+    /// <summary>The customer waits for the supplier's offer: no estimate is given.</summary>
+    public bool RequiresQuote { get; set; }
+}
+
+/// <summary>Maps the alternatives of the customer's view to the API DTOs.</summary>
+public static class PublicSupplierAlternativeMapper
+{
+    public static List<PublicSupplierAlternativeDto> ToDtos(IEnumerable<ShowcaseAlternative> alternatives) =>
+        alternatives
+            .Select(alternative => new PublicSupplierAlternativeDto
+            {
+                Name = alternative.Name,
+                Slug = alternative.Slug,
+                CoverUrl = alternative.CoverUrl,
+                CoverAlt = alternative.CoverAlt,
+                Verified = alternative.Verified,
+                MedianResponseMinutes = alternative.MedianResponseMinutes,
+                Service = alternative.Service is { } service
+                    ? new PublicSupplierAlternativeServiceDto
+                    {
+                        Slug = service.Slug,
+                        Name = service.Name,
+                        FromPriceCents = service.FromPriceCents,
+                        PriceUnit = service.PriceUnit,
+                        RequiresQuote = service.RequiresQuote,
+                    }
+                    : null,
+            })
+            .ToList();
 }
 
 /// <summary>What the customer's browser needs to block the card for the offer it accepted (SP-10b-b).</summary>
@@ -613,6 +706,7 @@ public static class PublicSupplierBookingViewMapper
                     Currency = session.Currency,
                 }
                 : null,
+            Alternatives = view.Alternatives is { } alternatives ? PublicSupplierAlternativeMapper.ToDtos(alternatives) : null,
             Payment = view.Payment is { } payment
                 ? new PublicSupplierBookingPaymentDto
                 {

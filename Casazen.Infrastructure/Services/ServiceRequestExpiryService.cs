@@ -22,13 +22,17 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="IShowcaseBookingService.ReleaseExpiredHoldAsync"/> — the block first, under the supplier's calendar lock, then the hold — and a
 /// hold whose block could not be released is <b>kept</b> for the next run. A hold that became a request is deleted as before: its PaymentIntent
 /// belongs to the payment now and is never touched here.</para>
+/// <para><b>The reminders (SP-10c)</b> are the last pass, after the requests whose deadline had passed were closed: the supplier of a request on
+/// measure that nobody answered is reminded at half of the time it has and ten minutes before the deadline, each once
+/// (<see cref="IShowcaseReplyReminderService"/>). A failure of that pass is logged and never undoes the upkeep above it.</para>
 /// </remarks>
 public sealed class ServiceRequestExpiryService(
     AppDbContext db,
     IServiceRequestAutoCancelService autoCancel,
     ILogger<ServiceRequestExpiryService> logger,
     TimeProvider? timeProvider = null,
-    IShowcaseBookingService? holds = null) : IServiceRequestExpiryService
+    IShowcaseBookingService? holds = null,
+    IShowcaseReplyReminderService? reminders = null) : IServiceRequestExpiryService
 {
     internal const string RunLockKey = "service-request-expiry";
 
@@ -48,15 +52,35 @@ public sealed class ServiceRequestExpiryService(
         // check and lapse alike, so the run counts them together.
         var holdsDeleted = await DeleteExpiredHoldsAsync(cancellationToken) + await DeleteExpiredInquiriesAsync(cancellationToken);
         var cancellation = await autoCancel.CancelUnansweredShowcaseAsync(cancellationToken);
+        var reminded = await SendRemindersAsync(cancellationToken);
 
-        if (holdsDeleted > 0 || cancellation.Cancelled > 0 || cancellation.Failed > 0)
+        if (holdsDeleted > 0 || cancellation.Cancelled > 0 || cancellation.Failed > 0 || reminded.Sent > 0)
         {
             logger.LogInformation(
-                "Service request expiry: {Holds} holds deleted, {Cancelled} showcase requests cancelled, {Conflicts} changed under the run, {Failed} failed",
-                holdsDeleted, cancellation.Cancelled, cancellation.Conflicts, cancellation.Failed);
+                "Service request expiry: {Holds} holds deleted, {Cancelled} showcase requests cancelled, {Conflicts} changed under the run, {Failed} failed, {Reminders} reminders queued",
+                holdsDeleted, cancellation.Cancelled, cancellation.Conflicts, cancellation.Failed, reminded.Sent);
         }
 
-        return new ServiceRequestExpiryRun(Skipped: false, holdsDeleted, cancellation.Cancelled, cancellation.Conflicts, cancellation.Failed);
+        return new ServiceRequestExpiryRun(
+            Skipped: false, holdsDeleted, cancellation.Cancelled, cancellation.Conflicts, cancellation.Failed, reminded.Sent);
+    }
+
+    /// <summary>The reminders to the suppliers of the requests on measure nobody answered yet (SP-10c); a pass that fails is logged and counted as nothing.</summary>
+    private async Task<ShowcaseReplyReminderRun> SendRemindersAsync(CancellationToken cancellationToken)
+    {
+        if (reminders is null)
+            return ShowcaseReplyReminderRun.Empty;
+
+        try
+        {
+            return await reminders.SendDueAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            db.ChangeTracker.Clear();
+            logger.LogError(ex, "Service request expiry: the reminders to the suppliers could not be sent; the next run tries again");
+            return ShowcaseReplyReminderRun.Empty;
+        }
     }
 
     /// <summary>

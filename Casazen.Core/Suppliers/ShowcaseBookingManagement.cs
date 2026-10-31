@@ -40,6 +40,11 @@ public sealed record ShowcaseBookingAccessKey(string Slug, string Code, string E
 /// <param name="Offer">The offer the supplier sent for a request on measure and the customer has not answered (SP-10b-b); <c>null</c> when there is none, and for any other booking.</param>
 /// <param name="OfferPaymentRequired">SP-10b-b, with an <paramref name="Offer"/>: accepting it is paid inside CasaZen (the card is blocked, then charged when the request is taken); <c>null</c> without an offer.</param>
 /// <param name="PaymentSession">SP-10b-b: what the browser needs to block the card, only in the answer of the acceptance that asks for a card; <c>null</c> in every other answer.</param>
+/// <param name="Alternatives">
+/// SP-10c: the other suppliers offered to the customer of a request that <b>CasaZen closed because the supplier did not answer in time</b>
+/// (<see cref="ShowcaseAlternativeRules.Offers"/>), at most three, best first; an empty list when there is none to offer; <c>null</c> for every other
+/// booking, whose answer is what it always was.
+/// </param>
 public sealed record ShowcaseBookingView(
     string PublicCode,
     ServiceRequestStatus Status,
@@ -62,7 +67,8 @@ public sealed record ShowcaseBookingView(
     ShowcaseBookingPaymentView? Payment = null,
     ServiceRequestOffer? Offer = null,
     bool? OfferPaymentRequired = null,
-    OfferPaymentSession? PaymentSession = null);
+    OfferPaymentSession? PaymentSession = null,
+    IReadOnlyList<ShowcaseAlternative>? Alternatives = null);
 
 /// <summary>
 /// The money of a booking paid inside CasaZen as its customer reads it (SP-15c-a): what the card is blocked or charged for, where the money

@@ -37,7 +37,8 @@ public sealed class ShowcaseBookingNotifier(
     PublicSiteLinks publicSiteLinks,
     IPushNotificationService pushNotifications,
     IOptions<ShowcaseBookingOptions> options,
-    ILogger<ShowcaseBookingNotifier> logger)
+    ILogger<ShowcaseBookingNotifier> logger,
+    IShowcaseAlternativesService? alternatives = null)
 {
     private sealed record SupplierContact(string Email, string LegalName, string? Slug);
 
@@ -258,10 +259,16 @@ public sealed class ShowcaseBookingNotifier(
 
             var culture = EmailTemplates.CultureOf(contact.Locale);
 
+            // SP-10c: a request CasaZen closed because the supplier did not answer in time comes with the other suppliers that could help.
+            var alternativeLinks = AlternativeLinks(
+                ShowcaseAlternativeRules.Offers(request.Status, request.CancelledBy, request.CancellationReason)
+                    ? await FindAlternativesAsync(request, cancellationToken)
+                    : null);
+
             // A request on measure has no day and no time to tell (SP-10b): its own mails.
             if (request.Kind == ServiceRequestKind.Custom)
             {
-                QueueInquiryStatus(request, contact, supplier, culture);
+                QueueInquiryStatus(request, contact, supplier, culture, alternativeLinks);
                 return;
             }
 
@@ -318,7 +325,7 @@ public sealed class ShowcaseBookingNotifier(
                 case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.System:
                     emailQueue.Enqueue(
                         contact.Email,
-                        EmailTemplates.SupplierBookingExpired(culture, contact.FullName, supplier.LegalName, serviceName, start, showcaseUrl),
+                        EmailTemplates.SupplierBookingExpired(culture, contact.FullName, supplier.LegalName, serviceName, start, showcaseUrl, alternativeLinks),
                         EmailTemplates.Names.SupplierBookingExpired);
                     break;
 
@@ -776,6 +783,48 @@ public sealed class ShowcaseBookingNotifier(
         }
     }
 
+    // ─── The supplier is reminded to answer (SP-10c) ──────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A request on measure that nobody answered yet: the supplier is reminded by e-mail and push (Italian, the comune and "Nome C." only, the time to
+    /// answer by, never the words of the customer) — at half of the time it has, and ten minutes before the deadline when <paramref name="lastCall"/>
+    /// is true. An operational notice like the reminder of a host: no switch of «Notifiche» hides it, because it is the supplier that has to act (the
+    /// request closes otherwise, and the missed answer weighs on its reliability). Called after the mark of the reminder is saved, by the winner only.
+    /// Never throws.
+    /// </summary>
+    public async Task NotifySupplierOfReplyReminderAsync(ServiceRequest request, bool lastCall, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (request.ResponseDueAt is not { } respondBy)
+                return;
+
+            var supplier = await TryFindSupplierAsync(request, cancellationToken);
+            if (supplier is null)
+                return;
+
+            var contact = await TryFindCustomerAsync(request, cancellationToken);
+            var italian = EmailTemplates.DefaultCulture;
+            var comune = request.LocationCity ?? string.Empty;
+            emailQueue.Enqueue(
+                supplier.Email,
+                EmailTemplates.SupplierInquiryReplyReminder(
+                    italian, supplier.LegalName, comune, ShortNameOf(contact), respondBy, lastCall, publicSiteLinks.SupplierInbox()),
+                EmailTemplates.Names.SupplierInquiryReplyReminder);
+
+            var push = EmailTemplates.ShowcaseReplyReminderPush(italian, request.Category, comune, respondBy, lastCall);
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.ServiceRequestReplyReminder(request.Id, lastCall ? "last" : "half"),
+                PushAudience.SupplierOrg(request.SupplierOrgId),
+                new PushNotificationPayload(
+                    push.Title, push.Body, PushTypes.ServiceRequestReplyReminder, BookingId: null, PushRoutes.Properties, request.Id));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Reminder to answer the showcase request on measure {Id} could not be queued", request.Id);
+        }
+    }
+
     // ─── The conversation of a request on measure (SP-10b) ───────────────────────────────────────────────────────────
 
     /// <summary>
@@ -784,7 +833,12 @@ public sealed class ShowcaseBookingNotifier(
     /// by the supplier (after it had been taken, or before), or closed because the supplier did not answer in time or because the customer did not
     /// answer the offer in time (each told the truth: decision D24).
     /// </summary>
-    private void QueueInquiryStatus(ServiceRequest request, ServiceCustomerContact contact, SupplierContact supplier, System.Globalization.CultureInfo culture)
+    private void QueueInquiryStatus(
+        ServiceRequest request,
+        ServiceCustomerContact contact,
+        SupplierContact supplier,
+        System.Globalization.CultureInfo culture,
+        IReadOnlyList<EmailTemplates.EmailAlternative>? alternativeLinks)
     {
         switch (request.Status)
         {
@@ -842,7 +896,7 @@ public sealed class ShowcaseBookingNotifier(
             case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.System:
                 emailQueue.Enqueue(
                     contact.Email,
-                    EmailTemplates.SupplierInquiryExpired(culture, contact.FullName, supplier.LegalName, SupplierPageOf(supplier)),
+                    EmailTemplates.SupplierInquiryExpired(culture, contact.FullName, supplier.LegalName, SupplierPageOf(supplier), alternativeLinks),
                     EmailTemplates.Names.SupplierInquiryExpired);
                 break;
         }
@@ -916,6 +970,32 @@ public sealed class ShowcaseBookingNotifier(
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The other suppliers to offer the customer of a request CasaZen closed for want of an answer (SP-10c): <c>null</c> when they cannot be looked for
+    /// (nothing is said about them), an empty list when none qualifies (the mail says so). Never throws.
+    /// </summary>
+    private async Task<IReadOnlyList<ShowcaseAlternative>?> FindAlternativesAsync(ServiceRequest request, CancellationToken cancellationToken)
+    {
+        if (alternatives is null)
+            return null;
+
+        try
+        {
+            return await alternatives.FindAsync(
+                new ShowcaseAlternativesQuery(request.SupplierOrgId, request.Category, request.LocationComuneIstat, request.LocationCity),
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "The alternatives for the lapsed showcase request {Id} could not be looked for", request.Id);
+            return null;
+        }
+    }
+
+    /// <summary>The alternatives as the mails show them: each with the link to its public page.</summary>
+    private IReadOnlyList<EmailTemplates.EmailAlternative>? AlternativeLinks(IReadOnlyList<ShowcaseAlternative>? found) =>
+        found?.Select(alternative => new EmailTemplates.EmailAlternative(alternative, publicSiteLinks.SupplierShowcase(alternative.Slug))).ToList();
 
     private async Task<(ServiceCustomerContact? Contact, SupplierContact? Supplier)> FindPartiesAsync(
         ServiceRequest request,
