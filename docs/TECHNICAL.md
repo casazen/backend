@@ -154,8 +154,12 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | `POST` | `/api/auth/logout` | JWT | Logout / invalidate session side-effects |
 | `GET` | `/api/users` | Admin | Paginated user list |
 | `GET` | `/api/users/{id}` | Admin | User detail |
-| `GET` | `/api/users/me` | JWT | Current user profile |
+| `GET` | `/api/users/me` | JWT | Current user profile; `emailVerified` (bool) says Auth0 verified the account's email (the Action claim `https://casazen.app/email_verified`, else the Management API), also in the answer of `PUT` |
 | `PUT` | `/api/users/me` | JWT | Update current user profile |
+| `GET` | `/api/guest/bookings?scope=upcoming\|past&page=1&pageSize=20` | Policy `GuestAccount` (any signed-in account) | The mobile app's «Le mie prenotazioni»: the direct bookings, of any booking site, whose guest has the account's **verified** email; `{ items, total, page, pageSize }`, `pageSize` up to 50; upcoming = check-out today or later in Europe/Rome by check-in ascending, past by check-in descending; the lapsed holds (`Expired`, `DatesUnavailable`) are not listed; 400 `validation_error` for another `scope`, **403 `guest_email_not_verified`**, 429 (`GuestAccountRead`, per person) ([direct-booking.md](runbooks/direct-booking.md) § 8.6) |
+| `GET` | `/api/guest/bookings/{id}` | same | One booking of the account: the body of `GET /api/public/guest/bookings/{code}` plus `id` and `orgSlug`; **404 `guest_booking_not_found`** for a booking that is not the account's, an unknown id or a string that is not an id |
+| `POST` | `/api/guest/bookings/{id}/session` | same; `GuestAccountSession` | Opens the guest-area session of the booking's site for the account's email: `{ accessToken, expiresAt, bookingCode, orgSlug }` (the `gs1.` token of `POST /api/public/guest/session`, same length), to reuse the cancellation and the messages of `api/public/guest/*` without asking the guest for the code |
+| `DELETE` | `/api/guest/account` | Policy `GuestAccount`; `GuestAccountDelete`; needs no verified email | The guest deletes their own account (store rule «delete account in the app»): Auth0 first, then the CasaZen row; 204; **409 `guest_account_is_professional`** (host org, supplier link or administrator role: support removes those); 502 with an `auth0_*` code and nothing removed; a second call answers 401. Bookings and guest records of the hosts stay ([gdpr.md](runbooks/gdpr.md) § 11) |
 | `POST` | `/api/users/onboarding` | JWT | Submit user onboarding payload |
 | `PUT` | `/api/users/onboarding` | JWT | Update user onboarding payload |
 | `PUT` | `/api/users/{id}/role` | Admin | Change user role |

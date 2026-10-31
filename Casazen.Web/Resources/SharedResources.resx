@@ -1513,6 +1513,24 @@
   <data name="GuestCheckInLinkUnavailable" xml:space="preserve">
     <value>Il link per il check-in online non può essere inviato ora: la prenotazione non è confermata, il check-in è già completato oppure non è ancora il momento.</value>
   </data>
+  <data name="GuestEmailNotVerified" xml:space="preserve">
+    <value>Conferma il tuo indirizzo email per vedere le tue prenotazioni: apri il link del messaggio di verifica che hai ricevuto alla registrazione, poi accedi di nuovo.</value>
+  </data>
+  <data name="GuestAccountBookingNotFound" xml:space="preserve">
+    <value>Questa prenotazione non risulta tra le tue.</value>
+  </data>
+  <data name="GuestAccountScopeUnknown" xml:space="preserve">
+    <value>Il filtro delle prenotazioni non è valido: usa «upcoming» (in arrivo) o «past» (passate).</value>
+  </data>
+  <data name="GuestAccountIsProfessional" xml:space="preserve">
+    <value>Questo account gestisce anche strutture o servizi su CasaZen e non si può eliminare dall'app: scrivi all'assistenza di CasaZen.</value>
+  </data>
+  <data name="GuestAccountDeleteFailed" xml:space="preserve">
+    <value>Non siamo riusciti a eliminare l'account e non è stato rimosso nulla: riprova tra poco.</value>
+  </data>
+  <data name="GuestAccountDeleteBlocked" xml:space="preserve">
+    <value>L'account non si può eliminare in automatico perché ha ancora dati collegati: scrivi all'assistenza di CasaZen.</value>
+  </data>
   <data name="GuestBookingOrgRequired" xml:space="preserve">
     <value>Il sito di prenotazione non è indicato: apri di nuovo «Le mie prenotazioni» dal sito della struttura.</value>
   </data>

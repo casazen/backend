@@ -77,6 +77,13 @@ public static class RateLimitingServiceCollectionExtensions
 
         // The upload and the removal of the images of the showcase (SP-13b): per signed-in person, a full gallery in a sitting and little more.
         new(RateLimitPolicies.SupplierShowcaseMedia, 40, TimeSpan.FromMinutes(10), PartitionByUser: true),
+
+        // The signed-in guest of the mobile app (GuestAccountController): per person, since the people of one network share an address.
+        // The reads at every opening of a screen and pull to refresh; the session is minted when the guest enters the cancellation or the
+        // messages of a booking and lasts hours; the deletion cannot be taken back, and a few tries leave room for the retry after a 502.
+        new(RateLimitPolicies.GuestAccountRead, 60, OneMinute, PartitionByUser: true),
+        new(RateLimitPolicies.GuestAccountSession, 20, TimeSpan.FromMinutes(10), PartitionByUser: true),
+        new(RateLimitPolicies.GuestAccountDelete, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

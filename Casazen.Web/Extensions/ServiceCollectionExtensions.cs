@@ -248,6 +248,11 @@ public static class ServiceCollectionExtensions
                 .AddAuthenticationSchemes(GuestSessionDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
                 .RequireClaim(GuestSessionDefaults.OrgIdClaim))
+            // The person who books as a guest with a CasaZen account (the mobile app's guest area): a signed-in account with a subject
+            // and nothing else, since a guest has no host org, no supplier link and no role. The actions check the verified email.
+            .AddPolicy(CasazenPolicies.GuestAccount, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireAssertion(context => !string.IsNullOrWhiteSpace(context.User.GetUserId())))
             // Owner portal access (ADR-011): context=owner_portal claim, MUST NOT include host roles.
             .AddPolicy(CasazenPolicies.OwnerPortal, policy =>
                 policy.Requirements.Add(new OwnerPortalRequirement()));
@@ -775,6 +780,9 @@ public static class ServiceCollectionExtensions
         // The tokens are sealed with Data Protection (the key ring in the database), so every replica reads them.
         services.AddSingleton<GuestSessionTokens>();
         services.AddScoped<IGuestSessionService, GuestSessionService>();
+        // The bookings of the guest who has an account (the mobile app, GuestAccountController): the direct bookings of any site whose guest
+        // has the account's verified email, and the same guest-area session opened for them (docs/runbooks/direct-booking.md § 8.6).
+        services.AddScoped<IGuestAccountBookingService, GuestAccountBookingService>();
         // Verified reviews of the stays (DB-12a, docs/runbooks/site-reviews.md): the public reads and the guest's review, the host's
         // answers, reports and invitations, and the staff's decisions. The signed link is made by Data Protection, nothing is stored for it.
         services.AddSingleton<ReviewLinkTokens>();
