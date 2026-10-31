@@ -574,7 +574,7 @@ immobile (modulo rapido, wizard, vecchia attivazione) vanno ridotti a uno.
 2. **Eccezione dichiarata: Expedia e gli altri canali solo collegati.** CasaZen ne gestisce
    disponibilità, prezzi e prenotazioni, ma i contenuti si cambiano sul canale (S18). L'interfaccia
    non lo nasconde: lo stato è «Contenuti gestiti su Expedia», e il wizard offre un passo guidato
-   con i testi e le foto pronti da copiare e la pagina del canale da aprire (LST-12). Per Quokka
+   con i testi e le foto pronti da copiare e la pagina del canale da aprire (LST-12, LST-13). Per Quokka
    Expedia è un canale obbligatorio (S2): il PO ha accettato il limite il 31/10 («non ci possiamo
    fare nulla»), quindi non blocca il pilota.
 3. Le modifiche fatte fuori da CasaZen (in Octorate o su una OTA) si rilevano a ogni lettura
@@ -716,6 +716,32 @@ mai con gli aiuti di testo `addTextToHouseRules` e `addTextToField` (§10.1).
 2. Completezza per canale dai campi richiesti dal portale (`meta/content`) e dai controlli di
    AI-03.
 3. Un errore di pubblicazione crea una voce in «Da fare» (UX-07).
+
+#### LST-13 — Expedia senza fatica: solo ciò che è cambiato, pronto da incollare · P0
+
+Richiesta del PO (31/10): rendere facile a Quokka la modifica degli annunci su Expedia, i cui
+contenuti non passano da Octorate (S18).
+
+1. **Solo le differenze.** CasaZen ricorda per ogni annuncio Expedia la versione dei contenuti già
+   riportata su Expedia. Quando un testo, una foto, una dotazione o una regola cambia, nasce una voce
+   in «Da fare» («Aggiorna su Expedia: 3 modifiche») che elenca solo quello che è cambiato.
+2. **Pronto da incollare.** Il passo guidato mostra campo per campo il valore nuovo con il pulsante
+   «Copia», nell'ordine e con le etichette delle pagine di Expedia; le dotazioni sono già tradotte nei
+   nomi di Expedia; le foto nuove si scaricano già ordinate e rinominate; le lingue sono quelle già
+   preparate (AI-02).
+3. **Un clic per arrivare.** Un collegamento apre la pagina giusta dell'extranet di Expedia per quella
+   struttura (identificativo dal mapping): l'utente non deve cercarla.
+4. **Chiusura.** «Fatto» registra la versione riportata su Expedia e chiude la voce; «Lo faccio dopo»
+   la tiene in «Da fare» con un promemoria.
+5. **Per l'agenzia.** Un elenco unico di tutti gli annunci Expedia con modifiche in sospeso, con
+   esportazione in blocco (un file per struttura) per chi aggiorna più annunci di seguito; con «Fallo
+   per me» (UX-15) l'aggiornamento lo fa il supporto di CasaZen.
+6. **In seguito (P2, da verificare):** se Octorate non aggiungerà Expedia ai contenuti (domanda 14
+   della mail), valutare un collegamento diretto di CasaZen alle API dei contenuti di Expedia
+   riservate ai partner di connettività.
+
+Prova: una modifica a un contenuto genera la voce Expedia solo per gli annunci collegati a Expedia, e
+la voce si chiude solo con «Fatto».
 
 ### 6.2 Check-in e adempimenti (CHK)
 
@@ -1638,7 +1664,7 @@ si era rimasti (UX-03). Le parti richiamano i requisiti già definiti:
    ritorno al passo e verifica), mapping, import di prenotazioni e calendario, spegnimento dell'iCal
    di quel canale senza doppioni (LST-02, BKG-01).
 4. **Annunci.** Controllo dei contenuti importati per canale, solo i passi con dati mancanti
-   (LST-03, AI-03); per Expedia la guida ai contenuti gestiti sul canale (LST-12).
+   (LST-03, AI-03); per Expedia i contenuti pronti da incollare (LST-13).
 5. **Prezzi e regole.** Prezzo base, piani tariffari, restrizioni, politiche; regole automatiche di
    Octorate spente (PO-16; LST-09…LST-11).
 6. **Adempimenti.** Per ogni immobile: mittente Alloggiati (CHK-03) con il passaggio guidato sul
@@ -2187,7 +2213,7 @@ completo, dal dato alla schermata, dimostrabile con l'adattatore Mock.
 | H0 — Gap e contratti | — | Confronto con il codice corrente per le otto aree, per i wizard esistenti (elenco delle uscite, UX-02) e per lo stato reale della fase 1 (§4.5); snapshot API o blocco esplicito; ADR di §8.4; matrice delle capacità; autorità dei dati; backlog requisito → operazione → prova | Backlog completo; nessun requisito senza fonte |
 | U0 — Livello guidato e «Da fare» | H0 | UX-01…UX-13 (UX-15 dopo): livello guidato, bozze sul server, sotto-passi, indirizzi dei passi, servizio unico «Da fare», preferenze e avvisi (push, email, popup; DEB-07); conversione dei wizard esistenti al livello e rimozione delle uscite | UX-14 sui wizard esistenti; nessuna dipendenza da Octorate |
 | H1 — Fondazioni del connettore | H0 | DEB-02 (bus di eventi con outbox) e OCT-01…03, 08, 09, 13, 14: adattatore Mock e client, OAuth per proprietà, webhook in entrata e riconciliazione sul bus, resilienza, interruttori, stato delle connessioni | Isolamento per tenant e proprietà; nessuna chiamata live dal Mock; duplicati e fuori ordine senza effetti doppi |
-| H2 — Annunci e ARI | H1, U0 | LST-01…12 | Import, creazione, modifica e pubblicazione per canale in Mock, con errori parziali per canale |
+| H2 — Annunci e ARI | H1, U0 | LST-01…13 | Import, creazione, modifica e pubblicazione per canale in Mock, con errori parziali per canale |
 | H3 — Prenotazioni e calendario | H1 | BKG-01…09 | Creazione, modifica e cancellazione in Mock; webhook duplicati, persi e fuori ordine; nessun doppio scrittore con iCal |
 | H4 — Check-in e adempimenti | H3, U0 | CHK-01…14, DEB-08, DEB-09 | Dati dell'ospite fino a Octorate in Mock; mittente unico; ricevuta dal server finto Alloggiati; tassa al centesimo; nessun codice d'accesso senza identificazione registrata |
 | H5 — Messaggi e AI | H3, U0 | MSG-01…11, AI-06, DEB-03, DEB-06 | Hub con thread OTA simulati e diretti; soglia di confidenza, categorie sensibili, approvazione da push |
@@ -2336,7 +2362,8 @@ si possono usare.
   consenso per appartamento; domanda D33. Wizard di onboarding con Octorate che estende la
   checklist di attivazione esistente (§6.9, ONB-01…05, pacchetto O1). Conferme del legale riferite
   dal PO (verifica biometrica del capogruppo, consenso e DPIA, soft opt-in, regole fiscali), nessuna
-  dicitura AI verso gli ospiti, Expedia accettata con i contenuti sul canale.
+  dicitura AI verso gli ospiti, Expedia accettata con i contenuti sul canale e resa semplice da
+  aggiornare (LST-13).
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
   authorization code flow, whitelist delle callback, access token di 24 ore, refresh token senza
   scadenza, N proprietà = N consensi e token; account test attivo, credenziali non marcate valide;
