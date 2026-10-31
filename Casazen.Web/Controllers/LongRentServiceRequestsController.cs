@@ -42,7 +42,9 @@ public class LongRentServiceRequestsController(
     /// The long-rent requests in the caller's scope, newest first; with <c>propertyId</c> only that property's (404 when
     /// it is not in the caller's org, 403 when the caller may not read it). <c>view=open</c> keeps the requests still to follow
     /// (new, taken, in progress, completed and waiting to be paid), <c>view=closed</c> the ones that are over (paid, rejected,
-    /// cancelled), LR-08a; without it, or with any other value, every request. <c>status</c> narrows the same list further.
+    /// cancelled), LR-08a; without it, or with any other value, every request. <c>status</c> narrows the same list further, and so does
+    /// <c>leaseId</c> (LR-03c, the sheet of a contract): the requests made for that lease. It only narrows what the caller's scope already
+    /// reaches, so a lease of another org gives an empty list (not a 404).
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(ServiceRequestListResponse), StatusCodes.Status200OK)]
@@ -55,6 +57,7 @@ public class LongRentServiceRequestsController(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 20,
         [FromQuery] string? view = null,
+        [FromQuery] Guid? leaseId = null,
         CancellationToken cancellationToken = default)
     {
         page = Math.Max(1, page);
@@ -80,7 +83,7 @@ public class LongRentServiceRequestsController(
         }
 
         var (items, total) = await serviceRequestService.ListForHostAsync(
-            scope, ServiceRequestRentalContext.LongRent, statusFilter, propertyId, bookingId: null, page, pageSize, viewFilter, cancellationToken);
+            scope, ServiceRequestRentalContext.LongRent, statusFilter, propertyId, bookingId: null, page, pageSize, viewFilter, leaseId, cancellationToken);
 
         return Ok(new ServiceRequestListResponse
         {
@@ -158,7 +161,9 @@ public class LongRentServiceRequestsController(
 
     /// <summary>
     /// Sends a long-rent request for the property to the supplier. A <c>bookingId</c> is refused (422
-    /// <c>service_request_booking_not_allowed</c>): in long-term rental the request is for the property. Same
+    /// <c>service_request_booking_not_allowed</c>): in long-term rental the request is for the property. A <c>leaseId</c> (LR-03c, asked from
+    /// the sheet of a contract) ties it to that lease: 404 <c>lease_not_found</c> for a lease that is not the org's, 422
+    /// <c>service_request_lease_mismatch</c> for one of another property; nothing of the tenant goes to the supplier. Same
     /// validation and errors as the short-rent <c>POST api/service-requests</c> otherwise (400, 404, 422, SU-10).
     /// </summary>
     [HttpPost]
@@ -194,7 +199,8 @@ public class LongRentServiceRequestsController(
                 request.ServiceListingId,
                 request.ScheduledStartUtc,
                 request.DurationMinutes,
-                request.UseBackupSuppliers),
+                request.UseBackupSuppliers,
+                request.LeaseId),
             cancellationToken);
 
         var dto = (await ServiceRequestsController.MapForHostAsync(serviceRequestService, orgId.Value, [created], cancellationToken))[0];

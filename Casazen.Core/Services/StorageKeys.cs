@@ -9,6 +9,7 @@ namespace Casazen.Core.Services;
 /// <item><c>properties/{propertyId}/photos/{file}</c> — public bucket</item>
 /// <item><c>properties/{propertyId}/floorplans/{file}</c> — public bucket (DB-11a)</item>
 /// <item><c>suppliers/{supplierOrgId}/photos/{file}</c> — public bucket</item>
+/// <item><c>suppliers/{supplierOrgId}/showcase/{file}</c> — public bucket (logo, cover and photos of the jobs of the supplier's showcase, SP-13b)</item>
 /// <item><c>properties/{propertyId}/documents/{file}</c> — private bucket</item>
 /// <item><c>guest-documents/{orgId}/{guestId}/{file}</c> — private bucket</item>
 /// <item><c>orgs/{orgId}/branding/{logo|hero}/{file}</c> — public bucket (BK-12)</item>
@@ -38,6 +39,18 @@ public static partial class StorageKeys
     /// </summary>
     public static string SupplierFolder(Guid supplierOrgId) =>
         $"suppliers/{supplierOrgId}/";
+
+    /// <summary>
+    /// The folder of the images of a supplier's showcase (<c>suppliers/{supplierOrgId}/showcase/</c>, SP-13b), inside <see cref="SupplierFolder"/>:
+    /// the logo, the cover and the photos of the jobs the supplier uploaded from the editor. A file here is one the upload stored (the content of
+    /// a showcase may point only to those, never to a name somebody made up).
+    /// </summary>
+    public static string SupplierShowcaseFolder(Guid supplierOrgId) =>
+        $"suppliers/{supplierOrgId}/showcase/";
+
+    /// <summary>An image of a supplier's showcase (public bucket, SP-13b); <paramref name="fileName"/> is random: nobody can guess the address of another one.</summary>
+    public static string SupplierShowcaseImage(Guid supplierOrgId, string fileName) =>
+        $"suppliers/{supplierOrgId}/showcase/{fileName}";
 
     public static string PropertyDocument(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/documents/{fileName}";

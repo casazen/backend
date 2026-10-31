@@ -47,6 +47,14 @@ public static class RecurringJobsRegistration
 
         ConfigureServicePayments(recurringJobManager);
 
+        // SP-13b: the images of the showcases that neither the draft, nor the published version, nor the one before it point to are removed
+        // after a day, every night. Always registered: a file that exists costs money whatever a flag says; with none to remove a run finds nothing.
+        recurringJobManager.AddOrUpdate<SupplierShowcaseMediaCleanupJob>(
+            SupplierShowcaseMediaCleanupJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            SupplierShowcaseMediaCleanupJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         recurringJobManager.AddOrUpdate<DynamicPricingJob>(
             DynamicPricingJob.RecurringJobId,
             job => job.ExecuteAsync(),

@@ -6792,6 +6792,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("LastRemindedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("LeaseContractId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("LocationAccessNotes")
                         .HasColumnType("text");
 
@@ -7009,6 +7012,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex(new[] { "GroupId" }, "IX_ServiceRequests_GroupId")
                         .HasFilter("\"GroupId\" IS NOT NULL");
 
+                    b.HasIndex(new[] { "LeaseContractId" }, "IX_ServiceRequests_LeaseContractId")
+                        .HasFilter("\"LeaseContractId\" IS NOT NULL");
+
                     b.HasIndex(new[] { "GroupId" }, "UIX_ServiceRequests_GroupId_Primary")
                         .IsUnique()
                         .HasFilter("\"GroupRole\" = 1");
@@ -7026,6 +7032,8 @@ namespace Casazen.Infrastructure.Migrations
                             t.HasCheckConstraint("CK_ServiceRequests_GroupRole", "(\"GroupId\" IS NULL AND \"GroupRole\" = 0 AND \"BackupAcceptedAt\" IS NULL AND \"BackupAcceptedByUserId\" IS NULL) OR (\"GroupId\" IS NOT NULL AND \"GroupRole\" BETWEEN 1 AND 4)");
 
                             t.HasCheckConstraint("CK_ServiceRequests_Kind", "\"Kind\" = 0 OR (\"Kind\" = 1 AND \"RentalContext\" = 2)");
+
+                            t.HasCheckConstraint("CK_ServiceRequests_LeaseContract", "\"LeaseContractId\" IS NULL OR \"RentalContext\" = 1");
 
                             t.HasCheckConstraint("CK_ServiceRequests_ProposedInterval", "(\"ProposedStartUtc\" IS NULL AND \"ProposedEndUtc\" IS NULL AND \"ProposedAt\" IS NULL) OR (\"ProposedStartUtc\" IS NOT NULL AND \"ProposedEndUtc\" IS NOT NULL AND \"ProposedAt\" IS NOT NULL AND \"ProposedEndUtc\" > \"ProposedStartUtc\")");
 
@@ -8587,6 +8595,59 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasKey("OrgId");
 
                     b.ToTable("SupplierShowcaseContents");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierShowcaseMedia", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Bytes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_SupplierShowcaseMedia_StorageKey");
+
+                    b.HasIndex("OrgId", "CreatedAt")
+                        .HasDatabaseName("IX_SupplierShowcaseMedia_OrgId_CreatedAt");
+
+                    b.ToTable("SupplierShowcaseMedia", t =>
+                        {
+                            t.HasCheckConstraint("CK_SupplierShowcaseMedia_Bytes", "\"Bytes\" > 0");
+
+                            t.HasCheckConstraint("CK_SupplierShowcaseMedia_Kind", "\"Kind\" IN ('logo', 'cover', 'work', 'before')");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.SupplierTimeOff", b =>
@@ -10828,6 +10889,11 @@ namespace Casazen.Infrastructure.Migrations
                         .HasForeignKey("GroupId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("Casazen.Core.Entities.LeaseContract", null)
+                        .WithMany()
+                        .HasForeignKey("LeaseContractId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("Casazen.Core.Entities.Org", "Org")
                         .WithMany()
                         .HasForeignKey("OrgId")
@@ -11123,6 +11189,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
                         .WithOne()
                         .HasForeignKey("Casazen.Core.Entities.SupplierShowcaseContent", "OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SupplierProfile");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierShowcaseMedia", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

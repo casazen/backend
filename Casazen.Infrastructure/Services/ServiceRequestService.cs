@@ -101,6 +101,7 @@ public partial class ServiceRequestService(
         }
 
         await EnsureBookingRuleAsync(command, cancellationToken);
+        await EnsureLeaseRuleAsync(command, cancellationToken);
 
         if (command.ChargeToGuest)
         {
@@ -145,6 +146,7 @@ public partial class ServiceRequestService(
             BookingId = command.BookingId,
             RentalContext = command.RentalContext,
             PropertyId = command.PropertyId,
+            LeaseContractId = command.LeaseContractId,
             SupplierOrgId = command.SupplierOrgId,
             Category = category,
             Urgency = command.Urgency,
@@ -303,6 +305,48 @@ public partial class ServiceRequestService(
         {
             throw new DomainRuleException(
                 ServiceRequestErrorCodes.BookingMismatch, ServiceRequestErrorCodes.BookingMismatchMessageKey);
+        }
+    }
+
+    /// <summary>
+    /// LR-03c: a long-rent request can be made for one lease of its property (the sheet of a contract). The lease must be the host's own and
+    /// on the request's property: another org's answers like a missing one (404 <see cref="ServiceRequestErrorCodes.LeaseNotFound"/>), one
+    /// of another property is 422 <see cref="ServiceRequestErrorCodes.LeaseMismatch"/>, and a request that is not a long-rent one takes
+    /// none (422 <see cref="ServiceRequestErrorCodes.LeaseNotAllowed"/>). A link and nothing more: nothing of the lease, of its tenant or of
+    /// its people is read, copied or sent on to the supplier (decision LR-D22).
+    /// </summary>
+    private async Task EnsureLeaseRuleAsync(CreateServiceRequestCommand command, CancellationToken cancellationToken)
+    {
+        if (command.LeaseContractId is not { } leaseId)
+            return;
+
+        if (command.RentalContext != ServiceRequestRentalContext.LongRent)
+        {
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.LeaseNotAllowed, ServiceRequestErrorCodes.LeaseNotAllowedMessageKey);
+        }
+
+        // IgnoreQueryFilters (tenant only): scoped by the explicit OrgId predicate (same reason as the property lookup in CreateAsync).
+        var leaseProperty = await db.LeaseContracts
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(l => l.Id == leaseId && l.OrgId == command.OrgId)
+            .Select(l => (Guid?)l.PropertyId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (leaseProperty is null)
+        {
+            throw new NotFoundException($"Lease {leaseId} not found for the service request")
+            {
+                Code = ServiceRequestErrorCodes.LeaseNotFound,
+                MessageKey = ServiceRequestErrorCodes.LeaseNotFoundMessageKey,
+            };
+        }
+
+        if (leaseProperty != command.PropertyId)
+        {
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.LeaseMismatch, ServiceRequestErrorCodes.LeaseMismatchMessageKey);
         }
     }
 
@@ -949,6 +993,7 @@ public partial class ServiceRequestService(
         int page,
         int pageSize,
         ServiceRequestHostView? view = null,
+        Guid? leaseContractId = null,
         CancellationToken cancellationToken = default)
     {
         // IgnoreQueryFilters: scoped by the explicit host OrgId predicate (see GetByIdForHostAsync).
@@ -976,6 +1021,10 @@ public partial class ServiceRequestService(
 
         if (bookingId is not null)
             query = query.Where(r => r.BookingId == bookingId.Value);
+
+        // The sheet of a contract (LR-03c): narrows the list already limited to the scope, so another org's lease gives an empty one.
+        if (leaseContractId is not null)
+            query = query.Where(r => r.LeaseContractId == leaseContractId.Value);
 
         return MaterializeServiceRequestPageAsync(query, page, pageSize, cancellationToken);
     }

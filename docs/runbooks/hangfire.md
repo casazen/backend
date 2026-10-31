@@ -66,6 +66,7 @@ and production never block each other.
 | `org-invitation-maintenance` (AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days; see [org-team.md](org-team.md#15-emails-and-the-maintenance-job)) | hourly at :10 | `OrgInvitationMaintenanceJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run and the org's seats lock per invitation) | 300 s |
 | `org-activity-retention` (AM-02b: deletes the lines of the org activity log older than `OrgTeam__ActivityRetentionMonths`, 12 by default, in batches of 500 and at most 100 batches a run; see [org-team.md](org-team.md#34-retention-12-months)) | 03:40 | `OrgActivityRetentionJob.ExecuteAsync` (plus a PostgreSQL session advisory lock per run) | 300 s |
 | `in-app-notification-retention` (UI-12a: deletes the in-app notifications older than 90 days, read or not, in one statement; see [§15](#15-in-app-notifications-ui-12a)) | 03:45 | `InAppNotificationRetentionJob.ExecuteAsync` | 300 s |
+| `supplier-showcase-media-cleanup` (SP-13b: removes the images of the suppliers' showcases that neither the draft, nor the published version, nor the one before it point to, once they are a day old; **always scheduled**, see [suppliers.md](suppliers.md) § 33b) | 04:20 | `SupplierShowcaseMediaCleanupJob.ExecuteAsync` (plus a PostgreSQL session lock per run and the supplier's showcase content lock per supplier) | 300 s |
 
 On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…ReportGuestAsync:<bookingId>`), so two
 submissions of the same booking to Alloggiati Web never run at once. `PushDeliveryJob.SendAsync` (MO-04) locks per
@@ -262,13 +263,13 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
   ORDER BY env, lastheartbeat DESC;
 
-  -- 37 recurring jobs in each schema with every flag on; 32 with the defaults
+  -- 38 recurring jobs in each schema with every flag on; 33 with the defaults
   -- (Features:OtaPartnerApi, Features:RliProvider, Features:ESignProvider and Features:SupplierRequestAutoCancel off:
   -- ota-sync-all, booking-pull-all, lease-registration-status-poll, lease-sign-status-poll and
   -- service-request-auto-cancel are the five that appear only with their flag on; every other job, among them
   -- service-request-expiry, service-request-reminders, service-request-groups (SP-BKP, whatever
   -- Features:SupplierRequestBackups says), org-invitation-maintenance, org-activity-retention,
-  -- service-payment-sync, service-payment-reminders, in-app-notification-retention (UI-12a),
+  -- service-payment-sync, service-payment-reminders, in-app-notification-retention (UI-12a), supplier-showcase-media-cleanup (SP-13b),
   -- property-mode-change (PM-02), lease-draft-retention (LR-12), lease-term-renewal (LR-14) and
   -- lease-notice-reminder (LR-11c-a), is in both counts)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'

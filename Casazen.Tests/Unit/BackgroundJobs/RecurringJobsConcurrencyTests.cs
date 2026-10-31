@@ -32,6 +32,7 @@ public class RecurringJobsConcurrencyTests
         "service-funds",
         "property-mode-change",
         "lease-draft-retention",
+        "supplier-showcase-media-cleanup",
     ];
 
     [Fact]

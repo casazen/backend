@@ -344,14 +344,16 @@ public sealed class PublicSiteSearchService(
             var profile = SitePropertyProfileJson.Parse(row.SiteProfileJson);
             var tags = SitePropertyProfileRules.EffectiveTags(
                 profile.Tags, SitePropertyProfileRules.DerivedTags(row.Amenities, row.AreaKind, row.PetsPolicy));
+            // The position the public sees: rounded to about 1 km, and for a house whose host gave none, the centre of its comune.
+            var (latitude, longitude) = PublicPropertyPosition.Of(row.Latitude, row.Longitude, row.ComuneIstatCode);
             houses.Add(new PublicStayHouse(
                 row.Id,
                 row.Slug,
                 row.Name,
                 row.City,
                 row.ComuneIstatCode,
-                PropertyAddress.ToPublicCoordinate(row.Latitude),
-                PropertyAddress.ToPublicCoordinate(row.Longitude),
+                latitude,
+                longitude,
                 row.PhotoUrls.Take(5).ToList(),
                 row.Bedrooms,
                 row.Bathrooms,
