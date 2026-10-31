@@ -187,6 +187,7 @@ Percorsi: backend da `Casazen.*`, frontend da `src/`.
 | Alloggiati | Percorso manuale reale: `AlloggiatiController` (riepilogo, stato, file da 168 caratteri, «segna come inviato»), stati onesti con vincolo sulla ricevuta, tabelle ufficiali aggiornate, avvisi orari (`StayAlertService`), credenziali per immobile cifrate e in sola scrittura | Invio automatico e ricevute: vedi §4.5; nessun archivio delle ricevute; `AlloggiatiPage` chiama endpoint inesistenti |
 | ISTAT e flussi regionali | Analisi: `docs/runbooks/istat-flussi-regionali.md` (nove famiglie di portali), `docs/runbooks/ross1000.md` | Nessuna implementazione (per decisione) |
 | Tassa di soggiorno | `TouristTaxCalculator` (tariffa per notte, stagioni, categorie, tetto di notti, età, percentuale con tetto; mai zero presunto), tariffe con fonte e livello di verifica, aggiornamento giornaliero, CRUD dell'admin; report per comune e mese (`GET api/fiscal/reports/tourist-tax`) | Solo 16 comuni; esenzioni per residenti e altre; tetti annuali; collegamenti ai portali, scadenze, ricevute; i soggiorni OTA di solito non hanno importo |
+| Cruscotto della conformità | Pagina `/app/short-rent/compliance` (`compliance-summary-page.tsx`, `lib/cockpit-model.ts`), riquadro della Home (`compliance-summary-widget.tsx`), `GET /api/compliance/summary` con voci azione + id (`ComplianceCockpitAction`), job orario `stay-alerts` con avvisi a stadi via email e push (`StayAlertState`), stato dell'immobile (`PropertyComplianceStatus`, `PropertyComplianceCheckJob`), scadenze CIN (`CinDeadlineAlertJob`), dashboard Alloggiati | Semaforo con prova, ISTAT, tassa, ricevute, collegamenti, preferenze per persona, popup, riepilogo mensile (CHK-12) |
 | Documenti di conformità | `PropertyDocument` (CIN, APE, licenza…), linea temporale della prenotazione, registri di privacy e di attività dell'organizzazione | Ricevute degli adempimenti; registro degli eventi di conformità |
 | Pagamenti | `Payment`, `PaymentRefund`, `PaymentsController`, rimborsi Stripe, pagamenti manuali, CSV dal browser | Commissione Stripe, accredito, commissione OTA |
 | Fatture | `PlatformInvoiceService` (CasaZen → organizzazione, solo server, SDI non configurato); `AgencyInvoiceService` (prototipo: §4.5) | Ricevute e fatture all'ospite; dati dell'emittente |
@@ -363,7 +364,8 @@ altro utente o da un'altra organizzazione.
 6. **Una sola fonte sul backend** per web, mobile, email e push: confluiscono le logiche oggi
    sparse, che restano come viste della stessa lista: prossimo passo della prenotazione e
    dell'immobile (`booking-next-step.ts`, `property-next-step.tsx`), righe di compliance
-   (`compliance-summary-widget.tsx`), checklist di attivazione (`GET api/onboarding/status`).
+   (`compliance-summary-widget.tsx` e `GET /api/compliance/summary`, il cui schema azione + id è il
+   modello delle voci), checklist di attivazione (`GET api/onboarding/status`).
 
 Prova: un collaboratore con perimetro «Solo alcuni» non vede voci di altri immobili.
 
@@ -506,11 +508,14 @@ registrati, righe costruite dagli ospiti del soggiorno, `Tabella`, profilo «Ges
 Appartamenti», ricevuta archiviata, pagina dei rapporti con endpoint esistenti. Serve agli immobili
 non collegati (CHK-03) e allo scaricamento delle ricevute (CHK-04).
 
-#### DEB-09 — Verifica dell'operatore e codice d'accesso · P1
+#### DEB-09 — Verifica biometrica, operatore e codice della serratura · P0
 
-Serve a CHK-11 (identificazione dal vivo, ⚖): chiave del permesso uguale tra frontend e backend e
-assegnata ai ruoli, decisione manuale registrata con il modo dell'identificazione, rilascio del
-codice collegato e possibile solo dopo; spento finché non è completo.
+È il cuore di CHK-11 (decisione PO-18): lettura del documento, selfie con controllo di vivacità e
+confronto reali (oggi segnaposto: Q1-10, Q1-11), consenso biometrico registrato, coda
+dell'operatore utilizzabile (chiave del permesso uguale tra frontend e backend e assegnata ai
+ruoli), decisione manuale registrata, rilascio del codice della serratura collegato e possibile
+solo dopo una verifica superata, QR all'ingresso funzionante (oggi la pagina non è raggiungibile).
+Spento finché non è completo (DEB-01).
 
 #### DEB-10 — Catena finanziaria dell'agenzia · P1
 
@@ -746,9 +751,8 @@ ricevuta archiviata.
    stessi principi di §5 valgono per il suo percorso (un passo per volta, salvataggio, ripresa
    dal link).
 5. Lettura del documento: la foto del documento precompila i campi solo quando la lettura MRZ è
-   reale (oggi restituisce sempre nulla, §4.5); fino ad allora inserimento manuale guidato. Selfie
-   e confronto del volto restano nel perimetro di Q1-11 e non sono richiesti da questo documento;
-   gli endpoint pubblici che oggi danno esiti fissi si spengono (DEB-01).
+   reale (oggi restituisce sempre nulla, §4.5); fino ad allora inserimento manuale guidato. La foto
+   del documento serve anche al confronto con il selfie di CHK-11.
 
 Prove: nessun documento o dato Alloggiati alimenta CRM o segmenti (regola esistente Q1-05);
 isolamento per organizzazione.
@@ -879,48 +883,92 @@ automatico dopo DEB-08; Ticino e OTR di Q1-15 dopo la correzione del formato e d
 inclusi) dentro gli stessi wizard; l'utente vede la stessa interfaccia e lo stesso stato, cambia
 solo il mittente.
 
-#### CHK-11 — Identificazione dell'ospite · P1 ⚖
+#### CHK-11 — Identificazione biometrica dell'ospite e codice della serratura · P0 ⚖
 
-1. Le fonti raccolte il 31/10 (Appendice A) riportano che il Consiglio di Stato, il 21 novembre
-   2025, ha confermato l'obbligo di identificare l'ospite di persona; una verifica a distanza **dal
-   vivo** (videochiamata, verifica in tempo reale) può bastare, una foto del documento con un
-   codice d'accesso automatico no. Le fonti non concordano sul numero della sentenza: la verifica
-   del legale precede qualunque testo verso gli utenti.
-2. Per ogni ospite adulto CasaZen registra **come** è avvenuta l'identificazione (di persona,
-   videochiamata, verifica biometrica dal vivo quando sarà reale: Q1-11), chi l'ha fatta e quando;
-   il wizard di arrivo ha un passo «Riconosci gli ospiti» con una casella per ospite.
-3. Il codice d'accesso si rilascia solo a identificazione registrata (Q1-13, DEB-09); il self
-   check-in senza un passo dal vivo è segnalato all'host come non conforme secondo PO-18.
+1. **Decisione del PO (31/10):** l'identificazione di persona non è praticabile; si usa la verifica
+   biometrica dal vivo che CasaZen sta sviluppando (Q1-10…Q1-13). Ogni ospite adulto fa un selfie
+   dalla fotocamera, chiesto nel percorso di check-in aperto dalla email (link firmato) oppure dal QR
+   all'ingresso dell'immobile; CasaZen lo confronta con la foto del documento caricata nel check-in e
+   risponde **subito**.
+2. **Il volto corrisponde:** la verifica è registrata e il codice della serratura dell'immobile
+   (impostato dall'host, Q1-13; nessuna integrazione con le serrature, D9 della v10) compare nella
+   schermata finale e parte per messaggio, subito.
+3. **Non corrisponde, consenso biometrico rifiutato, minore o errore:** nessun codice. L'operatore
+   riceve subito un avviso (push, email, cruscotto) e verifica in videochiamata (Q1-12); il codice
+   parte solo dopo la sua decisione. La videochiamata è il ripiego, non il percorso normale.
+4. Per ogni ospite si registrano metodo (biometrico o operatore), esito, istante, tentativi, modello
+   e versione, soglie; mai immagini, selfie o vettori conservati (cancellazione immediata, Q1-11).
+5. Consenso biometrico esplicito, separato e rifiutabile (chi rifiuta passa all'operatore); DPIA e
+   verifica legale prima dell'attivazione (⚖). Le fonti del benchmark riportano che una verifica a
+   distanza dal vivo può soddisfare l'obbligo di identificazione indicato dal Consiglio di Stato il
+   21/11/2025 (Appendice A): da confermare con il legale.
+6. **Stato attuale:** i componenti esistono ma sono segnaposto (lettura del documento vuota,
+   vivacità sempre vera, somiglianza fissa: §4.5) e gli endpoint pubblici vanno spenti finché non
+   sono reali (DEB-01); il completamento è DEB-09.
+7. Nel cruscotto (CHK-12) l'identificazione è un adempimento con il suo semaforo: verde a verifica
+   superata per tutti gli ospiti adulti, giallo in attesa dei selfie prima dell'arrivo, rosso con
+   l'arrivo vicino senza verifica o quando serve l'operatore.
 
-Prova: nessun rilascio del codice senza identificazione registrata per ogni ospite adulto.
+Prova: il codice della serratura non parte mai senza una verifica superata (biometrica o
+dell'operatore) di tutti gli ospiti adulti; nessuna immagine conservata.
 
 #### CHK-12 — Quadro della conformità: «sono in regola?» · P0
 
-1. Una pagina «Conformità», più un riquadro nella Home e nelle schede di immobile e prenotazione,
-   risponde a una sola domanda: **sono in regola o devo fare qualcosa?** Per ogni immobile, soggiorno
-   e adempimento (Alloggiati, ISTAT, tassa di soggiorno, CIN) un semaforo:
-   - **verde «In regola»**: Alloggiati con la ricevuta acquisita che comprende gli ospiti del
-     soggiorno; ISTAT con la prova del periodo; tassa calcolata, dichiarata e versata per il periodo
-     chiuso, con le ricevute; CIN valido;
-   - **giallo «In corso»**: tutto pronto e affidato a chi invia (Octorate o CasaZen), entro la
-     scadenza, in attesa della ricevuta o della prova;
-   - **rosso «Devi fare qualcosa»**: dati mancanti, collegamento all'ente non attivo, scadenza vicina
-     o superata, ricevuta mancante il giorno dopo, soggiorno breve che il giro giornaliero non coprirà
-     in tempo, soggiorno oltre 30 notti, tariffa della tassa mancante, prova ISTAT mancante a fine
-     periodo.
-2. Ogni rosso dice cosa fare in una frase e ha «Fai ora» (wizard al passo giusto); push e popup
-   secondo UX-08.
-3. Il verde si dà **solo con una prova** archiviata (ricevuta, prova caricata, ricevuta di
-   versamento), mai sulla sola notizia che l'invio è partito: «Affidato a Octorate» è giallo.
-4. Riepilogo mensile nella pagina e per email: «Ottobre: 42 soggiorni, tutto in regola» oppure
-   l'elenco di ciò che manca.
-5. Salute dei collegamenti per immobile: collegamento Alloggiati e ISTAT su Octorate attivo o no
+**Si estende il cruscotto che CasaZen ha già, non se ne crea un altro.** Esistono oggi: la pagina
+«Conformità» (`/app/short-rent/compliance`, `compliance-summary-page.tsx`, modello
+`lib/cockpit-model.ts`) con le righe di ciò che l'host deve fare e gli immobili in ordine; il
+riquadro nella Home (`compliance-summary-widget.tsx`); l'API `GET /api/compliance/summary`, che manda
+conteggi e voci con un'azione (`ComplianceCockpitAction`: attivare l'immobile, completare il
+check-in, check-out, inviare Alloggiati, risolvere un invio fallito, confermare l'immobile pronto) e
+l'id dell'oggetto, mai un percorso del frontend; il job orario `stay-alerts` con email e push a stadi
+(dati dell'ospite mancanti, scadenza Alloggiati vicina, scaduta con promemoria giornalieri limitati,
+invio fallito, promemoria di check-out), ogni stadio mandato una volta sola grazie a
+`StayAlertState`; lo stato dell'immobile (`PropertyComplianceStatus` con `PropertyComplianceCheckJob`
+e il wizard di attivazione); le scadenze del CIN (`CinDeadlineAlertJob`, pagina CIN); la dashboard
+Alloggiati e gli stati onesti (`Inviato` solo con ricevuta). CHK-12 aggiunge:
+
+1. **Semaforo per adempimento** su ogni riga, immobile e soggiorno: la pagina passa da «cosa fare»
+   a «sono in regola?».
+   - **Verde «In regola»** solo con una prova archiviata: Alloggiati `Inviato` con ricevuta, prova
+     ISTAT del periodo, tassa dichiarata e versata con le ricevute, CIN valido.
+   - **Giallo «In corso»**: dati affidati a chi invia (Octorate o CasaZen) entro la scadenza, in
+     attesa della ricevuta. Anche `InviatoManualmente` resta giallo finché non si carica la
+     ricevuta.
+   - **Rosso «Devi fare qualcosa»**: gli stati e le scadenze che oggi generano voci e avvisi, più i
+     casi nuovi dei punti 2 e 3.
+2. **Voci e azioni nuove** del cruscotto, come valori nuovi in sola aggiunta di
+   `ComplianceCockpitAction` e con lo stesso schema azione + id: completare la verifica d'identità
+   (selfie mancanti o decisione dell'operatore, CHK-11),
+   caricare la ricevuta Alloggiati, attivare o ricollegare l'invio su Octorate, inviare a mano un
+   soggiorno oltre 30 notti o un soggiorno breve che il giro giornaliero non copre, caricare la
+   prova ISTAT del periodo, inserire la tariffa della tassa del comune, dichiarare e versare la
+   tassa del periodo, rinnovare le credenziali della Polizia.
+3. **Stadi di avviso nuovi** nello stesso job e con lo stesso meccanismo (`StayAlertType` e
+   `StayAlertKind` in sola aggiunta): ricevuta mancante il giorno dopo l'invio, soggiorno breve a
+   rischio, soggiorno oltre 30 notti, collegamento all'ente non attivo; per i periodi (ISTAT,
+   tassa) avvisi di periodo con lo stesso schema a stadi. Destinatari secondo le preferenze per
+   persona (MSG-05) e popup di UX-08: oggi gli avvisi vanno all'email dell'organizzazione e a un
+   pubblico push fisso.
+4. **Mittente.** «Affidato al channel manager» è un valore nuovo, in sola aggiunta, degli stati
+   Alloggiati o un attributo del mittente (decisione ADR): giallo fino alla ricevuta.
+5. **Home, immobile, prenotazione.** Il riquadro della Home riassume in una riga («Tutto in regola»
+   oppure «3 cose da fare») e porta il primo rosso nel blocco «Adesso»; le schede di immobile e
+   prenotazione mostrano il semaforo dei loro adempimenti nei componenti «prossimo passo» che già
+   esistono (`booking-next-step`, `property-next-step`).
+6. **Riepilogo mensile** per email con i modelli email esistenti: «Ottobre: 42 soggiorni, tutto in
+   regola» oppure l'elenco di ciò che manca.
+7. **Salute dei collegamenti** per immobile: invio Alloggiati e ISTAT su Octorate attivo o no
    (`policeAccount.valid`, se leggibile: D17), ultimo giro automatico di Octorate (`lastCron`, se
    leggibile), credenziali della Polizia presenti in CasaZen per scaricare le ricevute.
-6. Le ricevute si consultano in un solo posto (CHK-08, REP-04): per soggiorno, per giorno e per
-   periodo, scaricabili, conservate 5 anni.
+8. **Ricevute in un solo posto.** La pagina dei rapporti Alloggiati
+   (`/app/short-rent/alloggiati/reports`, che oggi chiama endpoint inesistenti: DEB-08) diventa
+   l'archivio di CHK-08, per soggiorno, giorno e periodo, con scaricamento e conservazione per 5
+   anni.
+9. **Una sola fonte.** Le voci del cruscotto alimentano «Da fare» (UX-07) senza duplicati; lo schema
+   azione + id del cruscotto è il modello di tutte le voci di «Da fare».
 
-Prova: nessun verde senza una prova archiviata.
+Prova: nessun verde senza una prova archiviata; ogni stadio di avviso parte una volta sola (meccanismo
+esistente).
 
 #### CHK-13 — Esiti dalle email di Octorate · P2, da verificare
 
@@ -938,7 +986,7 @@ delle email con il fornitore in uso è un tema ADR.
 | Cambio o cancellazione | `RESERVATION_CHANGE` e `RESERVATION_CANCELLED` aggiornano o chiudono la pratica e gli ospiti già mandati a Octorate | CasaZen | Sì |
 | Tre giorni prima | Link del check-in all'ospite e promemoria per i dati mancanti | CasaZen | Sì |
 | Prima dell'arrivo | L'ospite compila i dati (Alloggiati, statistici, esenzioni della tassa); l'host completa o corregge | Ospite e host | Guidato |
-| Arrivo | Identificazione dal vivo registrata (CHK-11), stato `CHECKIN_END` verso Octorate | Host | No: è un obbligo di persona |
+| Prima dell'arrivo o alla porta | Selfie dal vivo confrontato con il documento (dal link del check-in o dal QR all'ingresso), esito immediato; se corrisponde parte subito il codice della serratura, altrimenti l'operatore verifica in videochiamata (CHK-11); all'arrivo stato `CHECKIN_END` verso Octorate | Ospite e CasaZen; operatore solo in eccezione | Sì |
 | Dati completi | Gli ospiti vanno a Octorate con `draft` falso (CHK-02) | CasaZen | Sì |
 | Invio alla Polizia | Giro automatico giornaliero di Octorate, se il collegamento è «Attivata» nel suo pannello; oltre 30 notti a mano | Octorate | Sì, una volta al giorno (orario: D31) |
 | Giorno dopo | Ricevuta della Polizia scaricata e confrontata con gli ospiti attesi (CHK-04); senza credenziali, caricamento guidato | CasaZen o host | Sì con le credenziali |
@@ -2050,7 +2098,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | PO-15 | Foto degli annunci raggiungibili da Octorate tramite URL pubblico | Sì, solo per le foto degli annunci (sono già pubbliche sulle OTA), con indirizzi non indovinabili; i documenti degli ospiti restano privati | LST-06 | No |
 | PO-16 | Chi comanda prezzi e disponibilità? | CasaZen è l'unico scrittore per gli immobili collegati; le regole automatiche di Octorate (chiusure automatiche, prezzi derivati, revenue) restano spente o lette e mostrate | LST-09, LST-10 | No |
 | PO-17 | Dati degli ospiti presi da Octorate per il CRM | Solo dati della prenotazione e del soggiorno; i contatti letti con `contactInfo` solo per il servizio (messaggi, check-in, fattura), mai per il marketing | CRM-07 | No |
-| PO-18 | Come si identifica l'ospite dopo la decisione del Consiglio di Stato del novembre 2025 (da verificare con il legale)? | L'host o lo staff registra in CasaZen l'identificazione di persona o in videochiamata per ogni ospite adulto; la verifica biometrica dal vivo si aggiunge quando Q1-11 sarà reale; il codice d'accesso parte solo dopo; il self check-in senza passo dal vivo è segnalato come non conforme ⚖ | CHK-11, DEB-09 | Solo i testi verso gli utenti |
+| PO-18 | Come si identifica l'ospite? | **Deciso dal PO il 31/10:** verifica biometrica dal vivo (selfie dalla fotocamera confrontato con il documento, dal link del check-in o dal QR all'ingresso), esito immediato e codice della serratura subito dopo; l'identificazione di persona non è praticabile; ripiego: verifica dell'operatore in videochiamata. Validità legale della verifica a distanza dal vivo, consenso biometrico e DPIA da confermare con il legale ⚖ | CHK-11, DEB-09 | Solo l'attivazione in produzione |
 | PO-19 | Quando CasaZen crea una struttura nuova su Octorate, il proprietario riceve da Octorate le credenziali del suo account (`welcome_user`)? | **Deciso dal PO il 31/10:** no. CasaZen crea la struttura con `welcome_user` falso, l'esperienza resta in CasaZen e il token arriva con la creazione; le credenziali si attivano solo su richiesta del proprietario o alla sua uscita da CasaZen, con la procedura da concordare con Octorate (D11, D27) | §9.1, LST-02, LST-03 | No |
 | PO-20 | Nome pubblico, descrizione e icona dell'app CasaZen su Octorate (oggi «Luca La Malfa», visibile nella pagina di consenso) e visibilità nell'elenco delle API di Octorate (`secretVisibility`, oggi vero) | Nome «CasaZen» con icona e descrizione IT/EN impostati subito in test (`postConfiguration`); app non visibile nell'elenco (`secretVisibility` falso) fino alla certificazione, poi decisione commerciale | §9.1, UX-12 | No |
 
@@ -2111,7 +2159,10 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   cambiare (PO-20), indirizzo base da correggere, azioni operative in §9.1; guide di Octorate
   (S19) riassunte in §10.5; nuove domande D28–D30. Flusso completo degli adempimenti con i limiti
   dell'automazione, quadro della conformità con semaforo (CHK-12), esiti dalle email di Octorate
-  (CHK-13), domande D31–D32.
+  (CHK-13), domande D31–D32. Decisione del PO sull'identificazione (PO-18): verifica biometrica dal
+  vivo con esito immediato e codice della serratura, niente identificazione di persona, operatore
+  in videochiamata come ripiego (CHK-11, DEB-09 in P0); CHK-12 riscritto come estensione del
+  cruscotto di conformità esistente.
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
   authorization code flow, whitelist delle callback, access token di 24 ore, refresh token senza
   scadenza, N proprietà = N consensi e token; account test attivo, credenziali non marcate valide;
