@@ -460,6 +460,11 @@ primo e non aspetta Octorate.
 
 #### DEB-01 — Sicurezza e privacy · P0, subito
 
+**Stato al 31/10: fatto** con la PR backend #728, in `develop`: le policy dell'Agenzia controllano
+il permesso del ruolo, gli endpoint del documento e del selfie sono dietro un flag spento, i link di
+disiscrizione delle campagne sono firmati. Restano da verificare in CI e da collaudare; le voci di
+menu dei moduli non finiti (punto 3) seguono CRM-08.
+
 1. **Permessi dell'Agenzia.** Le policy `agency.*` controllano solo il livello dell'organizzazione
    (`AgencyTierAuthorizationHandler`): qualunque membro di un'organizzazione Agenzia, collaboratori
    e contabili compresi, passa anche `agency.owner.financial.read` (IBAN completo dei proprietari)
@@ -2029,7 +2034,7 @@ completo, dal dato alla schermata, dimostrabile con l'adattatore Mock.
 
 | Pacchetto | Dipende da | Contenuto | Prove di uscita |
 |---|---|---|---|
-| S0 — Sicurezza e privacy | — | DEB-01 | Prove di DEB-01; nessuna dipendenza da Octorate; da fare subito |
+| S0 — Sicurezza e privacy | — | DEB-01 | Fatto il 31/10 con la PR backend #728 |
 | H0 — Gap e contratti | — | Confronto con il codice corrente per le otto aree, per i wizard esistenti (elenco delle uscite, UX-02) e per lo stato reale della fase 1 (§4.5); snapshot API o blocco esplicito; ADR di §8.4; matrice delle capacità; autorità dei dati; backlog requisito → operazione → prova | Backlog completo; nessun requisito senza fonte |
 | U0 — Livello guidato e «Da fare» | H0 | UX-01…UX-13 (UX-15 dopo): livello guidato, bozze sul server, sotto-passi, indirizzi dei passi, servizio unico «Da fare», preferenze e avvisi (push, email, popup; DEB-07); conversione dei wizard esistenti al livello e rimozione delle uscite | UX-14 sui wizard esistenti; nessuna dipendenza da Octorate |
 | H1 — Fondazioni del connettore | H0 | DEB-02 (bus di eventi con outbox) e OCT-01…03, 08, 09, 13, 14: adattatore Mock e client, OAuth per proprietà, webhook in entrata e riconciliazione sul bus, resilienza, interruttori, stato delle connessioni | Isolamento per tenant e proprietà; nessuna chiamata live dal Mock; duplicati e fuori ordine senza effetti doppi |
