@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Exceptions;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,13 +13,14 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// Public (no-auth) marketing consent double opt-in and unsubscribe endpoints (NF-05, ADR-007-R17, R18, R21, R22).
-/// Verifies HMAC-signed confirmation and unsubscribe links.
+/// Verifies HMAC-signed confirmation and unsubscribe links. The logs never carry the e-mail address (DEB-01).
 /// </summary>
 [ApiController]
 [Route("api/public/marketing")]
 [AllowAnonymous]
 public class PublicMarketingController(
     AppDbContext db,
+    MarketingUnsubscribeLinks unsubscribeLinks,
     ILogger<PublicMarketingController> logger) : ControllerBase
 {
     /// <summary>
@@ -78,9 +80,7 @@ public class PublicMarketingController(
 
         if (signature.ToLowerInvariant() != expectedSignature)
         {
-            logger.LogWarning(
-                "Invalid HMAC signature for marketing email confirmation: guestId={GuestId}, email={Email}",
-                guestId, email);
+            logger.LogWarning("Invalid HMAC signature for marketing email confirmation: guestId={GuestId}", guestId);
             return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "invalid_signature", "InvalidSignature");
         }
 
@@ -97,9 +97,7 @@ public class PublicMarketingController(
         // Already confirmed: idempotent success
         if (consentRecord.EmailConfirmed)
         {
-            logger.LogInformation(
-                "Marketing email already confirmed: guestId={GuestId}, email={Email}",
-                guestId, email);
+            logger.LogInformation("Marketing email already confirmed: guestId={GuestId}", guestId);
             return Ok(new { confirmed = true, alreadyConfirmed = true });
         }
 
@@ -107,16 +105,16 @@ public class PublicMarketingController(
         consentRecord.EmailConfirmed = true;
         await db.SaveChangesAsync(HttpContext.RequestAborted);
 
-        logger.LogInformation(
-            "Marketing email confirmed via double opt-in: guestId={GuestId}, email={Email}",
-            guestId, email);
+        logger.LogInformation("Marketing email confirmed via double opt-in: guestId={GuestId}", guestId);
 
         return Ok(new { confirmed = true, alreadyConfirmed = false });
     }
 
     /// <summary>
     /// One-click unsubscribe via HMAC-signed link (NF-05, ADR-007-R18, R22).
-    /// ADR-007-R18: HMAC-SHA256 of emailHash + "." + expiresAt, 30-day expiration.
+    /// ADR-007-R18: HMAC-SHA256 of emailHash + "." + expiresAt, 30-day expiration, checked by <see cref="MarketingUnsubscribeLinks"/>,
+    /// which also builds the links of the campaigns (DEB-01). It is the target of their <c>List-Unsubscribe</c> header too: a mail client
+    /// posts <c>List-Unsubscribe=One-Click</c> here (RFC 8058), a body this action does not read.
     /// ADR-007-R22: Adds to SuppressionListEntry on valid signature.
     /// </summary>
     /// <param name="emailHash">SHA-256 hash of the normalized email address</param>
@@ -144,40 +142,23 @@ public class PublicMarketingController(
         if (orgId == Guid.Empty)
             return this.ApiProblem(StatusCodes.Status400BadRequest, "org_id_missing", "OrgIdMissing");
 
-        // Check link expiration
-        if (!DateTime.TryParseExact(expiresAt, "yyyy-MM-ddTHH:mm:ssZ",
-            System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
-            out var expirationTime))
+        // Expiry and HMAC signature (ADR-007-R18)
+        switch (unsubscribeLinks.Verify(emailHash, expiresAt, signature))
         {
-            return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "invalid_timestamp", "InvalidTimestamp");
-        }
-
-        if (DateTime.UtcNow > expirationTime)
-        {
-            return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "link_expired", "LinkExpired");
-        }
-
-        // Verify HMAC signature (ADR-007-R18)
-        var secret = Environment.GetEnvironmentVariable("SIGNED_LINK_SECRET");
-        if (string.IsNullOrWhiteSpace(secret))
-        {
-            logger.LogError("SIGNED_LINK_SECRET environment variable is not configured");
-            return this.ApiProblem(StatusCodes.Status500InternalServerError, "configuration_error", "ConfigurationError");
-        }
-
-        var payload = $"{emailHash}.{expiresAt}";
-        var payloadBytes = Encoding.UTF8.GetBytes(payload);
-        var secretBytes = Encoding.UTF8.GetBytes(secret);
-        var hash = HMACSHA256.HashData(secretBytes, payloadBytes);
-        var expectedSignature = Convert.ToHexString(hash).ToLowerInvariant();
-
-        if (signature.ToLowerInvariant() != expectedSignature)
-        {
-            logger.LogWarning(
-                "Invalid HMAC signature for unsubscribe: orgId={OrgId}, emailHash={EmailHash}",
-                orgId, emailHash);
-            return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "invalid_signature", "InvalidSignature");
+            case MarketingUnsubscribeCheck.Valid:
+                break;
+            case MarketingUnsubscribeCheck.InvalidTimestamp:
+                return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "invalid_timestamp", "InvalidTimestamp");
+            case MarketingUnsubscribeCheck.Expired:
+                return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "link_expired", "LinkExpired");
+            case MarketingUnsubscribeCheck.NotConfigured:
+                logger.LogError("{Variable} is not configured: unsubscribe links cannot be checked", MarketingUnsubscribeLinks.SecretVariable);
+                return this.ApiProblem(StatusCodes.Status500InternalServerError, "configuration_error", "ConfigurationError");
+            case MarketingUnsubscribeCheck.InvalidSignature:
+                logger.LogWarning(
+                    "Invalid HMAC signature for unsubscribe: orgId={OrgId}, emailHash={EmailHash}",
+                    orgId, emailHash);
+                return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "invalid_signature", "InvalidSignature");
         }
 
         // ADR-007-R22: Add to suppression list

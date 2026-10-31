@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -38,6 +39,13 @@ public class PublicGuestCheckInController(
 {
     /// <summary>Problem code of a submit on a session the guest has already completed (409).</summary>
     public const string AlreadySubmittedCode = "checkin_already_submitted";
+
+    /// <summary>
+    /// Largest request of <c>/document</c> and <c>/selfie</c> (10 MB). Their multipart body is buffered in memory up to this size
+    /// (<see cref="RequestFormLimitsAttribute.MemoryBufferThreshold"/>), so an image is never spilled to a temporary file on disk
+    /// (ADR-013-R2): the default threshold is 64 KB.
+    /// </summary>
+    public const int MaxImageRequestBytes = 10_000_000;
 
     /// <summary>
     /// Returns booking context for the guest form. Transitions session Inviato→InCompilazione on first open.
@@ -171,10 +179,13 @@ public class PublicGuestCheckInController(
     /// Uploads identity document image and extracts data via MRZ or OCR (NF-10, ADR-009-R22).
     /// Returns extracted fields for guest confirmation. Does NOT store the image (Ticino compliance,
     /// ADR-013-R6). Supports passport (TD-3), ID card (TD-1), and residence permit.
+    /// Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default (DEB-01): MRZ and OCR are placeholders.
     /// </summary>
     [HttpPost("{token}/document")]
+    [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
     [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
-    [RequestSizeLimit(10_000_000)] // 10 MB max
+    [RequestSizeLimit(MaxImageRequestBytes)]
+    [RequestFormLimits(MemoryBufferThreshold = MaxImageRequestBytes, MultipartBodyLengthLimit = MaxImageRequestBytes)]
     public async Task<ActionResult<DocumentUploadResponse>> UploadDocument(
         string token,
         [FromForm] IFormFile document)
@@ -292,10 +303,13 @@ public class PublicGuestCheckInController(
     /// All image processing is in-memory only with immediate deletion (ADR-013-R2).
     /// Max 3 attempts per session, then auto-escalates to operator queue (ADR-013-R5).
     /// Minors (DOB &lt; 18 years) are excluded from biometric verification (ADR-013-R9).
+    /// Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default (DEB-01): liveness and face match are placeholders.
     /// </summary>
     [HttpPost("{token}/selfie")]
+    [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
     [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
-    [RequestSizeLimit(10_000_000)] // 10 MB max
+    [RequestSizeLimit(MaxImageRequestBytes)]
+    [RequestFormLimits(MemoryBufferThreshold = MaxImageRequestBytes, MultipartBodyLengthLimit = MaxImageRequestBytes)]
     public async Task<ActionResult<SelfieUploadResponse>> UploadSelfie(
         string token,
         [FromForm] IFormFile selfie,
