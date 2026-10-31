@@ -1041,6 +1041,7 @@ public class ServiceRequestsController(
             RentalContext = r.RentalContext.ToString(),
             PropertyId = r.PropertyId,
             PropertyName = disclosed ? r.Property?.Name : null,
+            LeaseId = forSupplier ? null : r.LeaseContractId,
             SupplierOrgId = r.SupplierOrgId,
             SupplierName = r.SupplierOrg?.DisplayName ?? r.SupplierOrg?.Name,
             Category = r.Category,

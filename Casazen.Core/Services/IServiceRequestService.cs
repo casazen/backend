@@ -31,6 +31,12 @@ namespace Casazen.Core.Services;
 /// choice (<c>Org.SupplierBackupsEnabled</c>, on by default); <c>false</c> sends it to the chosen supplier alone, as before. It only matters
 /// while the feature flag <c>SupplierRequestBackups</c> is on, and never for a request accepted automatically (SP-04d).
 /// </param>
+/// <param name="LeaseContractId">
+/// LR-03c: the lease contract a long-rent request is made for, when the landlord asks from the sheet of that contract. It must be a lease of
+/// the host's org on the request's property (404 <see cref="ServiceRequestErrorCodes.LeaseNotFound"/> for another org's or a missing one, 422
+/// <see cref="ServiceRequestErrorCodes.LeaseMismatch"/> for one of another property); a short-rent request takes none (422
+/// <see cref="ServiceRequestErrorCodes.LeaseNotAllowed"/>). A link only: nothing of the tenant goes to the supplier.
+/// </param>
 public record CreateServiceRequestCommand(
     Guid OrgId,
     string UserId,
@@ -45,7 +51,8 @@ public record CreateServiceRequestCommand(
     Guid? ServiceListingId = null,
     DateTime? ScheduledStartUtc = null,
     int? DurationMinutes = null,
-    bool? UseBackupSuppliers = null);
+    bool? UseBackupSuppliers = null,
+    Guid? LeaseContractId = null);
 
 /// <summary>
 /// What the supplier adds when it takes a request (SP-04): a time for a request that has none, and the price it commits to.
@@ -155,6 +162,15 @@ public static class ServiceRequestErrorCodes
     /// <summary>A long-rent request with a <c>bookingId</c>: in long-term rental a request is for the property.</summary>
     public const string BookingNotAllowed = "service_request_booking_not_allowed";
 
+    /// <summary>404 (LR-03c): the <c>leaseId</c> is not a lease of the host's org (or does not exist): another org's answers like a missing one.</summary>
+    public const string LeaseNotFound = "lease_not_found";
+
+    /// <summary>422 (LR-03c): the <c>leaseId</c> is a lease of the host's org, but of another property than the request's.</summary>
+    public const string LeaseMismatch = "service_request_lease_mismatch";
+
+    /// <summary>422 (LR-03c): a request that is not a long-rent one with a lease: only a long-term rental request can be made for a contract.</summary>
+    public const string LeaseNotAllowed = "service_request_lease_not_allowed";
+
     /// <summary>
     /// 409 (SP-04): the time asked is not a free slot of the supplier's agenda (it was taken by someone else meanwhile, it is
     /// outside the working hours, in a time off or too soon). The caller picks another slot.
@@ -225,6 +241,9 @@ public static class ServiceRequestErrorCodes
     /// <summary>SharedResources keys of the messages of the codes above.</summary>
     public const string BookingMismatchMessageKey = "ServiceRequestBookingMismatch";
     public const string BookingNotAllowedMessageKey = "ServiceRequestBookingNotAllowed";
+    public const string LeaseNotFoundMessageKey = "ServiceRequestLeaseNotFound";
+    public const string LeaseMismatchMessageKey = "ServiceRequestLeaseMismatch";
+    public const string LeaseNotAllowedMessageKey = "ServiceRequestLeaseNotAllowed";
     public const string NotFoundMessageKey = "ServiceRequestNotFound";
     public const string SupplierNotFoundMessageKey = "SupplierProfileNotFound";
     public const string PropertyNotFoundMessageKey = "PropertyNotFound";
@@ -267,6 +286,9 @@ public static class ServiceRequestErrorCodes
     [
         BookingMismatchMessageKey,
         BookingNotAllowedMessageKey,
+        LeaseNotFoundMessageKey,
+        LeaseMismatchMessageKey,
+        LeaseNotAllowedMessageKey,
         NotFoundMessageKey,
         SupplierNotFoundMessageKey,
         PropertyNotFoundMessageKey,
@@ -515,7 +537,8 @@ public interface IServiceRequestService
     /// filters (SU-07): <paramref name="bookingId"/> for a stay (short-rent), <paramref name="propertyId"/> for a
     /// property (both contexts). The caller authorizes the booking or property it filters on. <paramref name="view"/>
     /// (LR-08a) keeps the open or the closed requests (<see cref="ServiceRequestHostView"/>); <c>null</c> keeps all of them,
-    /// and it narrows <paramref name="status"/> when both are given.
+    /// and it narrows <paramref name="status"/> when both are given. <paramref name="leaseContractId"/> (LR-03c) keeps the requests made
+    /// for one lease: it only narrows the list already limited to the scope, so a lease of another org gives an empty one.
     /// </summary>
     Task<(IReadOnlyList<ServiceRequest> Items, int Total)> ListForHostAsync(
         HostScope scope,
@@ -526,6 +549,7 @@ public interface IServiceRequestService
         int page,
         int pageSize,
         ServiceRequestHostView? view = null,
+        Guid? leaseContractId = null,
         CancellationToken cancellationToken = default);
     Task<(IReadOnlyList<ServiceRequest> Items, int Total)> ListForSupplierAsync(
         Guid supplierOrgId,

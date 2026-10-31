@@ -1220,6 +1220,9 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new ServiceRequestGroupConfiguration());
         modelBuilder.ApplyConfiguration(new ServiceRequestGroupMembershipConfiguration());
 
+        // The lease a long-rent request is about (LR-03c): a link, set only when the landlord asks from the sheet of the contract.
+        modelBuilder.ApplyConfiguration(new ServiceRequestLeaseConfiguration());
+
         // Whether an org's requests also go to backup suppliers: on for every org that exists (the rule is general), so the migration gives
         // the existing rows true. EF itself always writes the value of the entity: left to generate it, EF would take an explicit false for
         // «not set» and the insert would write the default (true) in its place, turning the rule back on for an org that switched it off.

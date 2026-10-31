@@ -232,6 +232,17 @@ public class ServiceRequest
     [MaxLength(255)]
     public string? BackupAcceptedByUserId { get; set; }
 
+    // ─── The lease the request is about (LR-03c) ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The lease contract a long-rent request was made for (LR-03c, LR-08a-FU1), when the landlord made it from the sheet of that contract:
+    /// always a lease of the request's own org and property (the service checks it). <c>null</c> on every request made before, on a
+    /// long-rent request made for the property alone and on every short-rent and showcase one (<c>CK_ServiceRequests_LeaseContract</c>).
+    /// A link and nothing more: no datum of the tenant goes with the request and the supplier's views never carry it (decision LR-D22).
+    /// Set to null by the database if the lease is ever deleted for good (a draft is); the request stays one for the property.
+    /// </summary>
+    public Guid? LeaseContractId { get; set; }
+
     // ─── Another time proposed by the supplier (SP-04) ───────────────────────────────────────────────────────────────
 
     /// <summary>
