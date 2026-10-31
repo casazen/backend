@@ -98,16 +98,16 @@ public static class ServiceRequestNegotiation
         bool lastOfferDeclined = false,
         string? cancellationReason = null,
         bool awaitingPayment = false) => status switch
-    {
-        ServiceRequestStatus.Richiesto when offerPending && awaitingPayment => AwaitingPayment,
-        ServiceRequestStatus.Richiesto when offerPending => OfferSent,
-        ServiceRequestStatus.Richiesto when lastOfferDeclined => OfferDeclined,
-        ServiceRequestStatus.Richiesto => supplierWrote ? InConversation : AwaitingSupplier,
-        ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso or ServiceRequestStatus.Completato or ServiceRequestStatus.Pagato => Agreed,
-        ServiceRequestStatus.Rifiutato => Declined,
-        ServiceRequestStatus.Annullato when cancellationReason == ServiceRequestCancellationReasons.QuoteNotAnswered => Expired,
-        _ => Closed,
-    };
+        {
+            ServiceRequestStatus.Richiesto when offerPending && awaitingPayment => AwaitingPayment,
+            ServiceRequestStatus.Richiesto when offerPending => OfferSent,
+            ServiceRequestStatus.Richiesto when lastOfferDeclined => OfferDeclined,
+            ServiceRequestStatus.Richiesto => supplierWrote ? InConversation : AwaitingSupplier,
+            ServiceRequestStatus.PresoInCarico or ServiceRequestStatus.InCorso or ServiceRequestStatus.Completato or ServiceRequestStatus.Pagato => Agreed,
+            ServiceRequestStatus.Rifiutato => Declined,
+            ServiceRequestStatus.Annullato when cancellationReason == ServiceRequestCancellationReasons.QuoteNotAnswered => Expired,
+            _ => Closed,
+        };
 }
 
 /// <summary>
