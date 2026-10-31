@@ -100,13 +100,13 @@ introdurre automazioni AI: §5 e §7.
 | Tema | v1.3 (30/10) | v2.0 | Effetto |
 |---|---|---|---|
 | Perimetro | Solo channel management | Otto processi; CasaZen unico punto di accesso | Nuove aree §6.1–6.8; le fondazioni `OCT` restano (§8.1) |
-| Annunci | OCT-04/05/06: mapping, editor dei contenuti, ARI | Gestione completa: import, creazione, modifica, pubblicazione per canale | `LST`; OCT-05 diventa la base dell'editor |
-| Check-in e adempimenti | Esclusi (dipendenza futura) | Inclusi: dati degli ospiti verso Octorate, invio Alloggiati e ISTAT da Octorate, esiti | `CHK`; da conciliare con il client Alloggiati di CasaZen (Q1-14): PO-02 |
-| Tassa di soggiorno | Interamente CasaZen (S7) | Verificato su S13: Octorate ha importo ed esenzioni per ospite, nessuna API per configurarne le regole | CasaZen calcola e scrive l'esito in Octorate (CHK-07) |
-| Marketplace | Assente | Catalogo, attivazione e stato di partner e integrazioni | `MKT`; l'API copre solo portali, strumenti esterni e licenza (§10) |
+| Annunci | OCT-04/05/06: mapping, editor dei contenuti, ARI | Gestione completa: import, creazione, modifica, pubblicazione per canale | `LST`; OCT-05 diventa la base dell'editor; contenuti e creazione solo verso Booking.com, Airbnb, Vrbo, HomeToGo e Holidu, gli altri canali (Expedia compresa) solo collegati (S18) |
+| Check-in e adempimenti | Esclusi (dipendenza futura) | Inclusi: dati degli ospiti verso Octorate, invio Alloggiati e ISTAT da Octorate, esiti | `CHK`; da conciliare con il client Alloggiati di CasaZen (Q1-14): PO-02; collegamento agli enti solo dal pannello Octorate ed esiti non disponibili via API (S18) |
+| Tassa di soggiorno | Interamente CasaZen (S7) | Confermato da S18: si gestisce sull'infrastruttura di CasaZen (S13 mostra campi per ospite ma nessuna API per le regole) | CasaZen calcola (CHK-07); scrittura in Octorate solo se serve ai documenti di Octorate (D20) |
+| Marketplace | Assente | Catalogo, attivazione e stato di partner e integrazioni | `MKT`; l'API copre solo portali, strumenti esterni e licenza (§10); i partner si attivano sul loro sito, mai da Octorate (S18) |
 | Messaggi | OCT-10/11: inbox OTA, AI in bozza | Hub unico, notifiche configurabili, AI con soglia di confidenza | `MSG` |
 | Prenotazioni | OCT-07/08/09: import, webhook, riconciliazione | Bidirezionale: creazione, modifica, cancellazione, pagamenti, calendario | `BKG` |
-| Fatturazione | Esclusa | Documenti Octorate letti con lo stato SDI; CasaZen emette dove Octorate non lo fa | `FIS`; la creazione via API è da chiarire (D19) |
+| Fatturazione | Esclusa | Documenti Octorate letti con lo stato SDI; CasaZen emette | `FIS`; nessuna creazione di documenti via API (S18), anche se la specifica ha due operazioni di creazione |
 | Clienti e marketing | Escluso | Database clienti alimentato da Octorate; contatto lecito senza blocchi inutili | `CRM` |
 | Report | Escluso (nessuna API Octorate) | Report e pacchetto per il commercialista calcolati da CasaZen | `REP` |
 | UX | Non trattata | Regole vincolanti: wizard su livello, mai fuori dal processo, «Da fare», avvisi | `UX` |
@@ -136,9 +136,13 @@ S1–S11 sono le fonti della v1.3, aggiornate dove indicato; S12–S17 sono nuov
 | S15 | Requisiti Quokka fase 1 (`Sessions/prospect-quokka360/requisiti-fase1-helix.md`, Q1-01…29) e ADR-010…022 | Funzioni già costruite da riusare: consensi, coda di approvazione, condizioni, servizio AI, routine e bus di eventi, Alloggiati, rendiconti, fatture dell'agenzia, CRM |
 | S16 | Benchmark UX del 31/10/2026 (ricerca web su Guesty, Airbnb, Lodgify, Krossbooking, Dolcebot e altri), Appendice A | Pattern di guida, avvisi e automazione; le affermazioni di marketing sono segnate come tali |
 | S17 | Manuale del web service Alloggiati, sintesi in `.claude/context/regulations/alloggiati.md` §4 | La ricevuta è per giorno e per utenza, non per schedina (base di CHK-04) |
+| S18 | Email originale di Octorate (Hospitality Engineering) con le risposte punto per punto, testo incollato dal PO in chat il 31/10/2026; coincide con la parte tecnica del resoconto S7 (che riportava anche offerta commerciale e recensioni) | Dati sensibili solo con IP statici, anche in sandbox; canali con contenuti e creazione (Booking.com, Airbnb, Vrbo, HomeToGo, Holidu) e canali solo collegabili; schedine Alloggiati e ISTAT e check-in via API, invio da Octorate, collegamento agli enti dal pannello Octorate, esiti non via API; tassa di soggiorno sull'infrastruttura di CasaZen; partner attivati sul loro sito; messaggi integrati per Booking.com, Airbnb, Vrbo ed Expedia, gli altri via email, WhatsApp o chat di Octorate; prenotazioni dirette e da portale senza differenze; nessuna generazione di documenti fiscali via API; anagrafiche e dati di fatturazione degli ospiti; nessun report via API |
 
-Dove S13 contraddice S7 (resoconto di Octorate) la v2.0 lo segnala e chiede conferma scritta
-(§14): non dà per buona né l'una né l'altra versione.
+Precedenze: S18 (testo originale di Octorate) prevale su S7 (il riassunto del PO). Un'operazione
+presente nella specifica S13 ma dichiarata non disponibile da S18 **non si usa** finché Octorate
+non la conferma per iscritto (per esempio la creazione di documenti fiscali); dove S13 mostra un
+dato che S18 dice non disponibile (l'esito per ospite degli invii alla Polizia), CasaZen non ci
+costruisce sopra nulla e lo verifica solo in sandbox (D18).
 
 ## 4. Base del codice al 30/10 (S14)
 
@@ -528,8 +532,11 @@ disponibilità, costi, tariffa, prezzi, regole di prenotazione, cancellazione) e
 cancellazione, contratto di locazione, invio finale), foto della struttura, catalogo delle
 dotazioni (`meta/octorateAmenities`) e dei campi per portale (`meta/content`,
 `meta/contentPageFields`), traduzione delle descrizioni mancanti, stato dei processi di
-pubblicazione e webhook `CONTENT_NOTIFICATION`. `pushQueue` solo per Booking.com, Airbnb e Vrbo;
-Expedia da confermare; nessun campo CIN dedicato (D2). Import degli annunci già presenti sui
+pubblicazione e webhook `CONTENT_NOTIFICATION`. Octorate conferma (S18) che contenuti e creazione
+di proprietà e camere arrivano su **Booking.com, Airbnb, Vrbo, HomeToGo e Holidu**; gli altri canali,
+**Expedia compresa**, si possono solo collegare (disponibilità, prezzi e prenotazioni) e i loro
+contenuti restano sul canale. Entrambi i processi sono «abbastanza complicati» (S18): servono
+wizard e stati chiari. Nessun campo CIN dedicato (D2). Import degli annunci già presenti sui
 canali con `IMPORT_ROOMS`, `IMPORT_RESERVATIONS`, `IMPORT_CALENDAR` e mapping (D6).
 
 **CasaZen oggi (§4).** Un immobile è un'unità prenotabile. Completi: dati generali, CIN e codici,
@@ -547,14 +554,19 @@ immobile (modulo rapido, wizard, vecchia attivazione) vanno ridotti a uno.
 #### LST-01 — CasaZen fonte unica dei contenuti · P0
 
 1. Per un immobile collegato, i contenuti si modificano in CasaZen e CasaZen li propaga a Octorate
-   e ai canali (autorità in §8.2). L'utente non deve aprire né Octorate né le extranet delle OTA
-   per le funzioni coperte dalla matrice (§11).
-2. Le modifiche fatte fuori da CasaZen (in Octorate o su una OTA) si rilevano a ogni lettura
+   e ai canali che li ricevono (Booking.com, Airbnb, Vrbo, HomeToGo, Holidu; autorità in §8.2).
+   L'utente non deve aprire né Octorate né le extranet di quei canali.
+2. **Eccezione dichiarata: Expedia e gli altri canali solo collegati.** CasaZen ne gestisce
+   disponibilità, prezzi e prenotazioni, ma i contenuti si cambiano sul canale (S18). L'interfaccia
+   non lo nasconde: lo stato è «Contenuti gestiti su Expedia», e il wizard offre un passo guidato
+   con i testi e le foto pronti da copiare e la pagina del canale da aprire (LST-12). Per Quokka
+   Expedia è un canale obbligatorio (S2): il limite resta nel go/no-go del pilota.
+3. Le modifiche fatte fuori da CasaZen (in Octorate o su una OTA) si rilevano a ogni lettura
    periodica e con `CONTENT_NOTIFICATION`, e si mostrano come «Modificato fuori da CasaZen» con
    la scelta «Tieni la versione di CasaZen» o «Prendi la nuova versione»; mai sovrascrittura
    silenziosa.
-3. Ogni campo ha uno stato per canale (UX-09): bozza, in invio, accettato dal channel manager,
-   pubblicato sulla OTA, da correggere (con il motivo in parole semplici).
+4. Ogni campo ha uno stato per canale (UX-09): bozza, in invio, accettato dal channel manager,
+   pubblicato sulla OTA, da correggere (con il motivo in parole semplici), gestito sul canale.
 
 Prova: una modifica fatta in Octorate non viene sovrascritta senza una scelta dell'utente.
 
@@ -589,7 +601,9 @@ pubblicare → riepilogo e pubblicazione.
    confluiscono in questo flusso.
 3. AI-01 propone i testi e l'ordine delle foto; AI-03 segnala ciò che manca per ciascun canale.
 4. La pubblicazione crea o aggiorna la struttura in Octorate e invia ai canali scelti; un errore su
-   un canale non annulla gli altri (UX-05, punto 2).
+   un canale non annulla gli altri (UX-05, punto 2). Nel passo «Canali» quelli che ricevono i
+   contenuti si attivano da qui; per i canali solo collegabili serve un annuncio già esistente sul
+   canale e il wizard lo dice prima, con la guida per crearlo.
 5. Le regole dei canali si vedono nel passo in cui servono (per esempio il numero minimo di foto
    chiesto da un portale) e non solo all'invio; un dato che può aspettare (il CIN in attesa del
    comune) si rimanda con «Lo inserisco dopo», che crea una voce in «Da fare» e blocca solo la
@@ -671,8 +685,10 @@ mai con gli aiuti di testo `addTextToHouseRules` e `addTextToField` (§10.1).
 #### LST-12 — Stato della pubblicazione e completezza per canale · P0
 
 1. Per ogni immobile un riquadro semplice: per canale «Pubblicato», «In attesa», «Da
-   correggere» (con «Correggi» che apre il passo giusto del wizard), stato di approvazione Airbnb
-   (`airbnbApprovalStatus`).
+   correggere» (con «Correggi» che apre il passo giusto del wizard), «Contenuti gestiti sul
+   canale» per i canali solo collegati (con «Aggiorna su Expedia», un passo guidato che mostra i
+   testi e le foto attuali di CasaZen da copiare e ricorda di farlo dopo ogni modifica), stato di
+   approvazione Airbnb (`airbnbApprovalStatus`).
 2. Completezza per canale dai campi richiesti dal portale (`meta/content`) e dai controlli di
    AI-03.
 3. Un errore di pubblicazione crea una voce in «Da fare» (UX-07).
@@ -681,11 +697,13 @@ mai con gli aiuti di testo `addTextToHouseRules` e `addTextToField` (§10.1).
 
 **Octorate.** Ospiti del check-in in scrittura per prenotazione con tutti i campi richiesti da
 Alloggiati e dai flussi statistici, tipi di documento e città con i codici della Polizia, `draft`
-per rivedere prima dell'invio, stato check-in, check-out e no show, esito dell'invio per ospite
-in lettura (`policeSentStatus`, `policeSentTime`), configurazione della Polizia nella struttura
-(`policeAccount`), importo ed esenzione della tassa per ospite. Non c'è: un'operazione per avviare
-l'invio, le ricevute, le impostazioni e gli esiti ISTAT, la configurazione delle regole della
-tassa (§9.2, §10.2).
+per rivedere prima dell'invio, stato check-in, check-out e no show, configurazione della Polizia
+nella struttura (`policeAccount`), importo ed esenzione della tassa per ospite. Octorate conferma
+(S18): le schedine Alloggiati e ISTAT e il check-in si creano via API, **l'invio lo fa Octorate**,
+il **collegamento ai portali degli enti si fa solo dal pannello Octorate**, gli **esiti si vedono
+solo nel pannello e non via API** (i campi per ospite `policeSentStatus` e `policeSentTime` della
+specifica non sono quindi una base affidabile), la **tassa di soggiorno si gestisce in CasaZen**.
+Non c'è un'operazione per avviare l'invio né per le ricevute (§9.2, §10.2).
 
 **CasaZen oggi (§4).** Reali: check-in online dell'ospite con tutti i campi Alloggiati e i codici
 ufficiali (solo IT ed EN, la pagina si apre in italiano senza scelta della lingua), stato di
@@ -747,9 +765,11 @@ Prova: nessun ospite con `draft` falso verso Octorate se il mittente dell'immobi
    cambio di mittente richiede la conferma che l'altro è spento.
 2. Wizard «Attiva l'invio automatico alla Polizia»: spiega la delega dell'incaricato alla
    trasmissione, raccoglie o verifica le credenziali dove servono (modulo esistente in sola
-   scrittura), controlla la configurazione della Polizia in Octorate (`policeAccount.valid`,
-   `autorun`) se leggibile (D17); se va fatta sul sito del channel manager, sotto-passo guidato con
-   verifica al ritorno (UX-02, punto 3). In Octorate la configurazione documentata è una pagina di
+   scrittura) e porta l'utente al **pannello Octorate**, l'unico posto in cui si collega il portale
+   dell'ente (S18): passaggio guidato secondo UX-02 punto 3, con istruzioni brevi e ritorno allo
+   stesso passo; al ritorno CasaZen legge `policeAccount.valid` e `autorun` se la lettura è
+   permessa (D17), altrimenti chiede «Hai visto lo stato Attivata?». In Octorate la
+   configurazione documentata è una pagina di
    impostazioni (credenziali, chiave del web service, numero della struttura per camera, «Test di
    connessione» → «Attivata» → invio automatico giornaliero; Appendice A): il wizard la spiega con
    le stesse parole e chiude con un passo «Prova del collegamento» che mostra «Attivo» solo a
@@ -760,10 +780,10 @@ Prova: nessun ospite con `draft` falso verso Octorate se il mittente dell'immobi
 
 #### CHK-04 — Esito dell'invio e ricevuta · P0 (Mock), P1 (live)
 
-1. Dopo l'orario di invio previsto CasaZen legge per ogni ospite `policeSentStatus` e
-   `policeSentTime` e mostra «Inviato alla Polizia il …», «Non ancora inviato» o «Da verificare»
-   (D18). Se S7 è confermato e i campi restano vuoti, lo stato è «Affidato al channel manager»
-   con la prova del punto 2 o 3.
+1. Gli esiti degli invii non sono disponibili via API (S18): dopo l'invio dei dati a Octorate lo
+   stato è «Affidato a Octorate» e diventa «Inviato, ricevuta acquisita» con la prova del punto 2
+   o 3. Se in sandbox i campi `policeSentStatus` e `policeSentTime` risultano valorizzati (D18),
+   CasaZen li mostra come informazione in più, mai come prova.
 2. **Ricevuta ufficiale dalla Polizia**: la ricevuta di Alloggiati è per giorno e per utenza (S17),
    quindi comprende anche le schedine inviate da Octorate. Se l'host affida a CasaZen le
    credenziali Alloggiati (modulo esistente, cifrate, sola scrittura), CasaZen scarica ogni giorno
@@ -784,8 +804,9 @@ Prova: con il mittente «channel manager» il client di CasaZen non esegue mai `
 
 #### CHK-05 — Statistiche ISTAT e regionali · P1
 
-1. Dove Octorate invia i flussi della regione (D15) e l'host l'ha configurato: CasaZen fornisce i
-   dati degli ospiti (CHK-02) e mostra lo stato «Affidato al channel manager», con un promemoria
+1. Dove Octorate invia i flussi della regione (D15) e l'host ha collegato il portale regionale dal
+   pannello Octorate (l'unico posto possibile, S18; passo guidato come in CHK-03): CasaZen
+   fornisce i dati degli ospiti (CHK-02) e mostra lo stato «Affidato a Octorate», con un promemoria
    mensile «Controlla che i dati del mese siano stati inviati» e una prova da caricare.
 2. Altrove: file e promemoria di Q1-15 solo con il tracciato ufficiale acquisito (oggi nessun
    flusso regionale è implementato; base di partenza `docs/runbooks/istat-flussi-regionali.md` e
@@ -812,11 +833,12 @@ Prova: con il mittente «channel manager» il client di CasaZen non esegue mai `
    tetto di notti, esenzioni) per ospite e per notte; le esenzioni per età sono automatiche, le
    altre l'host le sceglie da un elenco con parole semplici, abbinato ai motivi di Octorate
    (`cityTaxExemption`).
-2. CasaZen scrive per ospite `cityTaxPrice`, `cityTaxExemption` ed `excludeCityTax` quando la
-   tassa l'ha incassata il canale (per alcuni comuni Airbnb la incassa e la versa: va gestito per
-   canale e comune, senza far pagare due volte l'ospite).
-3. Confronto con `touristTax` calcolata da Octorate: una differenza crea una voce in «Da fare»
-   (D20).
+2. La tassa si gestisce in CasaZen (S18). Quando la incassa il canale (per alcuni comuni Airbnb la
+   incassa e la versa) CasaZen lo registra per canale e comune, senza far pagare due volte
+   l'ospite.
+3. Scrittura in Octorate dei valori per ospite (`cityTaxPrice`, `cityTaxExemption`,
+   `excludeCityTax`) solo se servono ai documenti che l'host emette nel pannello Octorate (D20);
+   altrimenti nessuna scrittura e nessun confronto.
 4. Riepiloghi per comune e periodo per la dichiarazione e il versamento (riuso del report della
    tassa esistente, `GET api/fiscal/reports/tourist-tax`), con collegamento al portale del comune,
    scadenze in «Da fare» e archivio delle ricevute (CHK-08).
@@ -867,9 +889,10 @@ Prova: nessun rilascio del codice senza identificazione registrata per ogni ospi
 
 **Octorate.** Via API si leggono i portali con categoria `OTA` o `EXTERNAL_TOOL`, requisiti di
 collegamento e funzioni; le connessioni si creano, modificano, disattivano ed elencano; i moduli
-della licenza si leggono (scrittura da confermare, D21). **Non esiste un elenco delle app dei
-partner del marketplace Octorate né un modo di attivarle via API** (D16): i partner terzi si
-collegano a Octorate con il proprio accesso e il consenso del proprietario (§9.2).
+della licenza si leggono (scrittura da confermare, D21). Octorate conferma (S18): l'elenco dei
+partner è il **Partner Hub** pubblico e **le integrazioni si completano sempre sul sito del
+partner, mai da Octorate**; non esiste quindi un modo di elencarle o attivarle via API (D16
+chiusa).
 
 **CasaZen oggi (§4).** Marketplace dei fornitori completo (richieste, preventivi, riserve,
 commissione; pagamenti online e vetrina dietro flag) con la cornice a schede «Scopri»,
@@ -908,8 +931,10 @@ Wizard nel livello guidato, diverso per tipo:
   (`MARK_CONNECTED`) → esito.
 - **Funzione del channel manager:** richiesta guidata (PO-12, D21), stato «Richiesto» finché
   l'attivazione non risulta dalla licenza.
-- **Partner senza API:** passaggi guidati con lista di controllo, «Ho fatto» e verifica dove
-  possibile (connessioni, licenza); altrimenti stato dichiarato dall'utente con la data.
+- **Partner del Partner Hub:** l'attivazione avviene sul sito del partner (S18). Il wizard
+  prepara tutto quello che serve (dati della struttura, cosa scegliere, cosa autorizzare), apre il
+  sito del partner nella stessa scheda e accoglie l'utente al ritorno; lo stato è dichiarato
+  dall'utente con la data, verificato solo dove una connessione o la licenza lo mostrano.
 - **Servizi per la casa:** flusso esistente, invariato.
 
 #### MKT-04 — Stato delle integrazioni attive · P0
@@ -976,10 +1001,14 @@ CasaZen decisa in ADR; allegati dove il canale li supporta.
 1. Risposta nel thread: verso le OTA tramite Octorate, verso i diretti con il servizio esistente.
 2. Nuovo messaggio all'ospite di una prenotazione: l'hub sceglie il canale (thread OTA se esiste,
    altrimenti thread diretto o email).
-3. Modelli di CasaZen con variabili sostituite in CasaZen; modelli di Octorate in lettura;
+3. Canali senza chat integrata (tutti tranne Booking.com, Airbnb, Vrbo ed Expedia, S18): il
+   portale comunica telefono ed email dell'ospite, quindi la conversazione passa per email,
+   WhatsApp (quando ci sarà il fornitore, MSG-10) o la chat di Octorate; i contatti si leggono con
+   `contactInfo` solo per questo scopo e solo con gli IP statici in whitelist (S18).
+4. Modelli di CasaZen con variabili sostituite in CasaZen; modelli di Octorate in lettura;
    traduzione (AI-06 o traduzione di Octorate); offerte speciali e pre-approvazione solo dove
    confermate (D3).
-4. Stato del messaggio (inviato, errore, da verificare); un secondo clic o un nuovo tentativo non
+5. Stato del messaggio (inviato, errore, da verificare); un secondo clic o un nuovo tentativo non
    duplica il messaggio (OCT-10).
 
 #### MSG-04 — Associazione a prenotazione e cliente · P0
@@ -1178,8 +1207,10 @@ fare»; anomalie di AI-07.
 proforma) con stato SDI se l'integrazione «treasury» è attiva, PDF di riepilogo per prenotazione,
 pagamenti e incassi collegati; impostazioni di fatturazione della struttura e scomposizione della
 commissione del property manager (`splitCommissionPropertyManager`, fattura a doppia intestazione).
-La **creazione** via API è in contrasto tra S13 (esistono due operazioni) e S7 (non esiste): D19.
-Modulo `invoice` e stampante fiscale nella licenza.
+Octorate conferma (S18): **nessuna generazione di documenti fiscali via API** per ora; si
+recuperano solo le anagrafiche dei clienti e i documenti generati in Octorate. Le due operazioni
+di creazione presenti nella specifica (`createDoubleHeadingInvoice`, `issueSummaryDocument`)
+quindi non si usano (D19 chiusa). Modulo `invoice` e stampante fiscale nella licenza.
 
 **CasaZen oggi (§4).** Pagamenti e rimborsi completi (senza commissione Stripe, accredito e
 commissione OTA); report fiscali annuali completi (redditi, cedolare stimata, ritenute subite,
@@ -1205,8 +1236,8 @@ IVA, codice destinatario).
    con doppia intestazione proprietario e agenzia), con domande semplici e un esempio del
    documento. Le regole (tipo di documento, IVA, bollo, natura delle operazioni) sono validate da
    un commercialista prima del rilascio (⚖) e stanno in configurazione, non nel codice sparso.
-2. Mai due emittenti per la stessa organizzazione: se emette il channel manager, CasaZen legge
-   (FIS-04) e non emette.
+2. Mai due emittenti per la stessa organizzazione: se l'host emette i documenti nel pannello
+   Octorate (a mano, perché via API non si può, S18), CasaZen li legge (FIS-04) e non emette.
 
 #### FIS-03 — Emissione da CasaZen · P1
 
@@ -1246,9 +1277,10 @@ PDF veri, XML FatturaPA, CSV ed Excel per gli elenchi; pacchetto mensile per il 
 
 ### 6.7 Clienti e marketing (CRM)
 
-**Octorate.** Rubrica degli ospiti (elenco, dettaglio, inserimento, modifica, suggerimenti); email,
-telefono e PEC solo con permesso speciale, ogni lettura registrata, e con gli IP statici in
-whitelist (S7); nessun campo di consenso. Per le prenotazioni Booking.com l'email è un indirizzo
+**Octorate.** Rubrica degli ospiti (elenco, dettaglio, inserimento, modifica, suggerimenti); via
+API solo anagrafica e dati di fatturazione dell'ospite, nient'altro (S18); email, telefono e PEC
+solo con permesso speciale, ogni lettura registrata, e con gli IP statici in whitelist anche in
+sandbox (S7, S18); nessun campo di consenso. Per le prenotazioni Booking.com l'email è un indirizzo
 di inoltro; Airbnb non fornisce l'email dell'ospite.
 
 **CasaZen oggi (§4).** Anagrafica degli ospiti completa (una email, un solo consenso al marketing
@@ -1611,18 +1643,24 @@ manager per autorizzare CasaZen, poi torni qui»), apre la pagina di consenso ne
 scheda e la callback riporta **allo stesso passo dello stesso wizard**, con la bozza intatta.
 Se l'utente chiude la pagina, il wizard riprende dal passo salvato (UX-03).
 
-### 9.2 Confini con Octorate: resoconto (S7) e specifica (S13)
+### 9.2 Confini con Octorate: risposte di Octorate (S18) e specifica (S13)
 
-| Area | Cosa dice S7 (30/10) | Cosa mostra S13 (31/10) | Posizione della v2.0 |
+Octorate ha risposto per iscritto punto per punto (S18, testo originale incollato dal PO il 31/10;
+S7 ne era il riassunto). Dove la specifica S13 mostra di più, vale S18 finché Octorate non conferma
+diversamente (§3, precedenze).
+
+| Area | Cosa dice Octorate (S18) | Cosa mostra la specifica (S13) | Posizione della v2.0 |
 |---|---|---|---|
-| Check-in e Polizia | CasaZen crea schedine e check-in e genera i dati Alloggiati e ISTAT; l'invio lo fa Octorate; gli esiti sono solo nella UI Octorate | Ospiti del check-in in scrittura con tutti i campi Alloggiati e statistici; per ospite `policeSentTime` e `policeSentStatus` in lettura; nella struttura `policeAccount` (`autorun`, `valid`, `lastCron`); nessuna operazione per avviare l'invio o scaricare la ricevuta; impostazioni ISTAT solo nella UI (tipi di log `ISTAT_SETTINGS_EDIT`) | CasaZen scrive gli ospiti e Octorate invia (PO-02); CasaZen legge l'esito per ospite e prende la ricevuta ufficiale dal web service della Polizia (CHK-04); ISTAT con prova guidata (CHK-05). D17, D18 |
-| Tassa di soggiorno | Interamente CasaZen | `touristTax` della prenotazione «calcolata al momento»; per ospite `cityTaxPrice`, `cityTaxExemption` (30 motivi), `excludeCityTax` se incassata dal canale; modello `TaxImpl` inviato ai portali; nessuna operazione per le regole | CasaZen è il calcolatore di riferimento e scrive importo ed esenzione per ospite (CHK-07). D20 |
-| Documenti fiscali | Lettura di documenti già generati e dei dati di fatturazione; nessuna API di creazione | Lettura con tipo e stato SDI (`fiscalInvoiceGroup`, solo con integrazione «treasury»); PDF di riepilogo; **esistono** `createDoubleHeadingInvoice` e `issueSummaryDocument` | Lettura sì; creazione solo dopo conferma scritta (D19); altrimenti emette CasaZen (FIS-02) |
-| Report | Nessuna API | Confermato: nessuna operazione di report | CasaZen calcola dai dati di prenotazioni, pagamenti e documenti (REP) |
-| Recensioni | Solo Airbnb | Confermato (v1.3 OCT-12) | Invariato |
-| Dati degli ospiti | Senza IP statici in whitelist niente email, telefono e dati sensibili | `contactInfo` con permesso speciale, ogni lettura registrata (`CONTACT_INFO_SHOWN`); elenchi con `emailAvailable` e `phoneAvailable`; nessun campo di consenso | Lettura solo quando serve al servizio (messaggi, check-in, fattura), mai in blocco per il marketing (CRM-07). D24 |
-| Marketplace | — | `meta/portals` con `portalCategory` `OTA` o `EXTERNAL_TOOL`, connessioni attivabili e disattivabili; moduli in `license`; nessun elenco delle app dei partner | MKT con tre fonti (portali via API, moduli, catalogo curato da CasaZen). D16, D21, D23 |
-| Messaggi | API per Airbnb, Booking.com, Vrbo, Expedia | Confermato; più `readAll`, membri dei thread, traduzione, modelli | `MSG` |
+| Contenuti e canali | Tutto ciò che è stato chiesto (proprietà, camere, contenuti, tariffe, disponibilità) è disponibile via API. Booking.com, Airbnb, Vrbo, HomeToGo e Holidu ricevono contenuti e vi si creano proprietà e camere; gli altri canali si possono solo collegare. Entrambi i processi sono complessi | `pushQueue` solo per `booking_xml`, `airbnb_xml`, `homeaway`; invio per connessione per gli altri; Expedia nei metadati | Editor unico per i cinque canali con contenuti; **Expedia e gli altri canali solo collegati**: i loro contenuti si gestiscono sul canale, con una guida dentro il wizard (LST-01, LST-12, §11.1) |
+| Check-in e Polizia | Via API si creano le schedine Alloggiati e ISTAT e il check-in dell'ospite; l'invio agli enti lo fa Octorate; il collegamento ai portali degli enti si fa **solo dal pannello Octorate**; gli esiti si vedono nel pannello e **non** sono disponibili via API | Ospiti del check-in in scrittura con tutti i campi Alloggiati e statistici; per ospite `policeSentTime` e `policeSentStatus`; nella struttura `policeAccount` (`autorun`, `valid`, `lastCron`); nessuna operazione per avviare l'invio o scaricare la ricevuta | CasaZen scrive gli ospiti e Octorate invia (PO-02). Collegamento agli enti: passo guidato sul pannello Octorate (CHK-03). Esito: «Affidato a Octorate» con la ricevuta ufficiale scaricata dal web service della Polizia o caricata (CHK-04); i campi di S13 si verificano in sandbox e non sono la base del prodotto (D18). ISTAT con prova guidata (CHK-05) |
+| Tassa di soggiorno | Va gestita sull'infrastruttura di CasaZen | `touristTax` «calcolata al momento»; per ospite `cityTaxPrice`, `cityTaxExemption` (30 motivi), `excludeCityTax`; nessuna operazione per le regole | CasaZen calcola, riepiloga e ricorda le scadenze (CHK-07); scrive i valori per ospite in Octorate solo se servono ai documenti emessi in Octorate (D20) |
+| Documenti fiscali | Nessuna generazione via API per ora; si recuperano solo anagrafiche dei clienti e documenti fiscali generati in Octorate | Lettura con tipo e stato SDI (`fiscalInvoiceGroup`); PDF di riepilogo; esistono `createDoubleHeadingInvoice` e `issueSummaryDocument` | Le due operazioni di creazione **non si usano**. Emette CasaZen (FIS-02, FIS-03); i documenti creati nel pannello Octorate si leggono (FIS-04) |
+| Prenotazioni | Nessuna vera differenza tra prenotazione diretta e da portale | Stesso modello per tutte; `otaId` e componenti di prezzo | Un solo modello in CasaZen (BKG); le dirette nascono in CasaZen e vanno in Octorate come le altre (BKG-03) |
+| Report | Nessun report via API: il partner costruisce le proprie statistiche dai soggiorni | Confermato | CasaZen calcola dai dati di prenotazioni, pagamenti e documenti (REP) |
+| Recensioni | — (S6 e S7: solo Airbnb) | Tre operazioni, risposta solo Airbnb | Invariato (OCT-12, MSG-09) |
+| Dati degli ospiti | Anagrafica e dati di fatturazione dell'ospite; nessun altro dato. Dati sensibili (email, telefono) solo con accesso limitato a IP statici, **anche in sandbox** | `contactInfo` con permesso speciale, ogni lettura registrata; `emailAvailable`, `phoneAvailable`; nessun campo di consenso | IP statici prima di qualunque prova con dati sensibili; lettura solo per il servizio, mai in blocco per il marketing (CRM-07). D24 |
+| Marketplace | Elenco dei partner nel Partner Hub pubblico; le integrazioni si completano sul sito del partner, **mai da Octorate** | `meta/portals` con `OTA` o `EXTERNAL_TOOL`; connessioni; moduli in `license`; nessun elenco dei partner | Catalogo curato da CasaZen sul modello del Partner Hub; attivazione guidata sul sito del partner con stato dichiarato dall'utente (MKT-01, MKT-03). D16 chiusa |
+| Messaggi | Integrati per Booking.com, Airbnb, Vrbo ed Expedia; gli altri portali danno telefono ed email dell'ospite: si scrive per email, WhatsApp o con la chat di Octorate | Chat con processori `CHANNEL`, `WHATSAPP`, `MAIL`, `DIRECT`; `readAll`, membri, traduzione, modelli | Hub per i quattro canali integrati; per gli altri thread su email o WhatsApp con i contatti letti da `contactInfo` (servono gli IP statici) o sulla chat di Octorate (MSG-03, MSG-10) |
 
 ## 10. Inventario API verificato (OpenAPI del 31/10/2026, S13)
 
@@ -1712,9 +1750,11 @@ operazioni, risposta solo Airbnb; webhook anche per chat e contenuti; quota esau
 `ApiQuotaException`, nessun 429; rete di test senza OTA; inventario di 208 operazioni.
 
 Rispetto alla v1.3: le operazioni di check-in, ospiti, fatture, pagamenti, prodotti extra e
-politiche non sono più fuori perimetro (§10.2); il resoconto S7 va corretto o confermato in tre
-punti (esito per ospite dell'invio alla Polizia, calcolo della tassa, creazione di documenti
-fiscali): §9.2.
+politiche non sono più fuori perimetro (§10.2). I tre punti in cui la specifica sembrava andare
+oltre il resoconto S7 (esito per ospite dell'invio alla Polizia, calcolo della tassa, creazione
+di documenti fiscali) sono chiusi dalle risposte originali di Octorate (S18) a favore di S7: gli
+esiti non sono disponibili via API, la tassa è di CasaZen, i documenti fiscali non si generano
+via API (§9.2).
 
 ## 11. Matrice delle capacità
 
@@ -1730,9 +1770,9 @@ sono sconosciuti.
 | Airbnb | documentato (S5–S7) | documentato (`airbnb_xml`, `airbnbApprovalStatus`) | lettura, risposta e recensione dell'host documentate | API documentata (S7); funzioni specifiche da provare |
 | Booking.com | documentato (S5–S7) | documentato (`booking_xml`) | non supportato | API documentata (S7); cambio date solo da extranet |
 | Vrbo | documentato (S5–S7) | documentato (`homeaway`) | non supportato | API documentata (S7) |
-| Expedia | documentato (S5–S7) | sconosciuto: assente da `pushQueue`, presente nei metadati | non supportato | API documentata (S7) |
-| HomeToGo (opzionale) | documentato (S5–S7) | sconosciuto | non supportato | nessuna API OTA confermata |
-| Holidu (opzionale) | collegamento documentato (S7) | sconosciuto | non supportato | nessuna API OTA confermata |
+| Expedia | documentato (S5–S7) | **non supportato (S18)**: solo collegamento; contenuti e creazione dall'extranet di Expedia | non supportato | API documentata (S7, S18) |
+| HomeToGo (opzionale) | documentato (S5–S7) | documentato (S18): contenuti e creazione di proprietà e camere | non supportato | nessuna chat integrata: email, WhatsApp o chat di Octorate (S18) |
+| Holidu (opzionale) | documentato (S7, S18) | documentato (S18): contenuti e creazione di proprietà e camere | non supportato | nessuna chat integrata: email, WhatsApp o chat di Octorate (S18) |
 | Google Vacation Rentals (opzionale) | non supportato in Europa (S6) | — | — | — |
 
 La rete di test non è collegabile ai portali (S6): nessuna cella con effetti sulle OTA può
@@ -1743,23 +1783,23 @@ produzione (G3/G4).
 
 | Processo | Capacità tramite Octorate | Stato al 31/10 | Fonte | Se manca |
 |---|---|---|---|---|
-| Annunci | contenuti, foto, servizi, unità, tariffe, regole, push per canale | documentato | S5, S13 | — (CIN ed Expedia: D2) |
+| Annunci | contenuti, foto, servizi, unità, tariffe, regole, push per canale | documentato per Booking.com, Airbnb, Vrbo, HomeToGo, Holidu; gli altri solo collegamento | S5, S13, S18 | contenuti di Expedia sul canale (LST-12); CIN: D2 |
 | Annunci | traduzione delle descrizioni mancanti | documentato | S13 | AI di CasaZen (AI-02) |
 | Check-in | scrittura degli ospiti con dati Alloggiati e statistici | documentato | S7, S13 | — |
 | Check-in | stato check-in, check-out, no show | documentato | S13 | solo in CasaZen |
-| Alloggiati | invio automatico da Octorate | documentato, dipende da `policeAccount` configurato | S7, S13 | client CasaZen (Q1-14) o file manuale |
-| Alloggiati | esito per ospite (`policeSentStatus`, `policeSentTime`) | documentato in S13, smentito da S7 | S7, S13 | prova guidata (CHK-04) |
+| Alloggiati | invio automatico da Octorate | documentato; collegamento all'ente solo dal pannello Octorate | S7, S13, S18 | client CasaZen (Q1-14) o file manuale |
+| Alloggiati | esito per ospite (`policeSentStatus`, `policeSentTime`) | non disponibile via API (S18); campi presenti in S13 da verificare in sandbox | S13, S18 | ricevuta della Polizia o caricamento (CHK-04) |
 | Alloggiati | ricevuta PDF | non supportato via Octorate | S7, S13 | `Ricevuta` del web service della Polizia (S17) oppure caricamento |
-| ISTAT | invio da Octorate | documentato in generale; regioni sconosciute | S7 | file di CasaZen (Q1-15) o portale regionale |
+| ISTAT | invio da Octorate | documentato in generale; collegamento solo dal pannello Octorate; regioni sconosciute | S7, S18 | file di CasaZen (Q1-15) o portale regionale |
 | ISTAT | esito | non supportato | S7 | prova guidata e caricamento (CHK-05) |
-| Tassa di soggiorno | importo ed esenzioni per ospite e prenotazione | documentato | S13 | calcolo CasaZen (CHK-07) |
+| Tassa di soggiorno | importo ed esenzioni per ospite e prenotazione | campi presenti (S13); la tassa va gestita da CasaZen (S18) | S13, S18 | calcolo CasaZen (CHK-07) |
 | Tassa di soggiorno | configurazione delle regole via API | non trovato | S13 | regole in CasaZen |
 | Fatture | lettura con stato SDI e PDF | documentato | S7, S13 | — |
-| Fatture | creazione | contraddittorio (S13 sì, S7 no) | S7, S13 | emissione CasaZen (FIS-02) |
+| Fatture | creazione | non disponibile (S18), anche se la specifica ha due operazioni | S7, S13, S18 | emissione CasaZen (FIS-02) |
 | Pagamenti | lettura e registrazione sulla prenotazione | documentato | S5, S13 | — |
-| Ospiti e contatti | rubrica; contatti con permesso speciale e IP statici | documentato | S7, S13 | dati raccolti da CasaZen nel check-in |
+| Ospiti e contatti | anagrafica e dati di fatturazione; contatti con permesso speciale e IP statici, anche in sandbox | documentato | S7, S13, S18 | dati raccolti da CasaZen nel check-in |
 | Marketplace | portali e strumenti esterni attivabili | documentato | S13 | — |
-| Marketplace | elenco e attivazione delle app dei partner | non supportato | S13 | catalogo curato da CasaZen (MKT-01) |
+| Marketplace | elenco e attivazione delle app dei partner | non supportato: Partner Hub pubblico, attivazione sul sito del partner (S18) | S13, S18 | catalogo curato da CasaZen (MKT-01, MKT-03) |
 | Marketplace | moduli in licenza | documentato in lettura; scrittura da confermare | S13 | richiesta guidata (MKT-05) |
 | Report | statistiche e report | non supportato | S7, S13 | calcolo CasaZen (REP) |
 
@@ -1829,10 +1869,10 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | ID | Domanda | Default proposto | Requisiti | Blocca |
 |---|---|---|---|---|
 | PO-01 | Il channel manager si nomina nell'interfaccia? | No, tranne dove l'utente deve agire sul suo sito (consenso, prove non disponibili via API), con una dicitura neutra («il tuo channel manager») e il nome solo nella pagina di consenso | UX-12, LST-02, CHK-04 | No |
-| PO-02 | Chi invia ad Alloggiati per gli immobili collegati a Octorate? | Octorate (mandato S12); CasaZen scarica la ricevuta ufficiale con `Ricevuta` se l'host gli affida le credenziali; il client di CasaZen (Q1-14) resta per gli immobili non collegati; **mai due mittenti automatici** per lo stesso immobile | CHK-03, CHK-04 | No |
+| PO-02 | Chi invia ad Alloggiati per gli immobili collegati a Octorate? | Octorate (mandato S12; il collegamento all'ente si fa nel pannello Octorate, S18); CasaZen scarica la ricevuta ufficiale con `Ricevuta` se l'host gli affida le credenziali; il client di CasaZen (Q1-14) resta per gli immobili non collegati; **mai due mittenti automatici** per lo stesso immobile | CHK-03, CHK-04 | No |
 | PO-03 | Chi invia i flussi ISTAT? | Octorate dove copre la regione (D15); file di CasaZen (Q1-15) o portale regionale altrove | CHK-05 | No |
-| PO-04 | Chi calcola la tassa di soggiorno? | CasaZen (regole e tariffe per comune già presenti) e scrive importo ed esenzione per ospite in Octorate; avviso se Octorate calcola un valore diverso | CHK-07 | No |
-| PO-05 | Chi emette i documenti fiscali delle prenotazioni? | CasaZen; se l'organizzazione usa già la fatturazione di Octorate, CasaZen la legge e non emette; mai entrambi per la stessa organizzazione | FIS-02 | No |
+| PO-04 | Chi calcola la tassa di soggiorno? | CasaZen (regole e tariffe per comune già presenti), come confermato da Octorate (S18); scrive i valori per ospite in Octorate solo se l'host emette documenti nel pannello Octorate (D20) | CHK-07 | No |
+| PO-05 | Chi emette i documenti fiscali delle prenotazioni? | CasaZen (Octorate non li genera via API, S18); se l'host li emette già a mano nel pannello Octorate, CasaZen li legge e non emette; mai entrambi per la stessa organizzazione | FIS-02 | No |
 | PO-06 | Quale intermediario SDI per l'invio reale delle fatture elettroniche emesse da CasaZen? | Nessun invio reale finché non è scelto: XML generato, validato e scaricabile, stato «da inviare» | FIS-05 | Solo l'invio reale |
 | PO-07 | Email di marketing ai clienti diretti e agli ospiti che hanno dato l'email a CasaZen nel check-in senza consenso esplicito («soft opt-in», art. 130 c. 4 Codice privacy) | **Sì**, con informativa al momento della raccolta, solo per servizi analoghi (soggiorni), disiscrizione in ogni messaggio; cambia il default D-10 della fase 1; ⚖ conferma del legale prima dell'attivazione in produzione | CRM-02, CRM-03, CRM-06 | Solo l'attivazione in produzione |
 | PO-08 | Invio automatico delle risposte AI | Acceso solo per le situazioni che l'organizzazione ha configurato, sopra la soglia (default 0,85), mai per le categorie sensibili e mai dove la policy del canale non è confermata (D4 della v1.3); periodo iniziale di due settimane in sola bozza per ogni nuova situazione, con la percentuale di bozze approvate senza modifiche come misura | MSG-06, MSG-07 | No |
@@ -1853,15 +1893,15 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | ID | Domanda | Perché serve |
 |---|---|---|
 | D15 | Quali sistemi regionali ISTAT invia Octorate (per regione) e come si configurano; esiste un esito leggibile? | CHK-05, PO-03 |
-| D16 | Esiste un elenco dei partner del vostro marketplace (il «Partner Hub» pubblico) leggibile da un partner, con requisiti, modalità di attivazione e stato per proprietà? | MKT-01 |
-| D17 | `policeAccount` (codice, chiave del web service, `autorun`, numero della struttura per camera) si può scrivere via API con il consenso del proprietario? Cosa significa `valid`? Alloggiati, ISTAT e tassa di soggiorno richiedono il vostro modulo gestionale (costo, licenza)? | CHK-03 |
-| D18 | `policeSentStatus` e `policeSentTime` sono valorizzati per ogni invio, anche per gli errori? Esiste o è prevista la ricevuta via API? Il resoconto del 30/10 dice che gli esiti sono solo nella vostra interfaccia | CHK-04 |
-| D19 | `createDoubleHeadingInvoice` e `issueSummaryDocument` sono utilizzabili da un partner? Con quali permessi e licenza? Il resoconto del 30/10 dice che non ci sono API di creazione | FIS-02 |
-| D20 | Come calcolate `touristTax`? Le regole si configurano via API? Se il partner scrive `cityTaxPrice` e `cityTaxExemption` per ospite, prevalgono sul vostro calcolo? | CHK-07 |
+| D16 | **Risposta S18:** l'elenco dei partner è il Partner Hub pubblico e le integrazioni si completano sempre sul sito del partner, mai da Octorate. Chiusa | MKT-01, MKT-03 |
+| D17 | **In parte risposta da S18:** il collegamento ai portali degli enti si fa solo dal pannello Octorate. Resta da chiedere: `policeAccount.valid` e `autorun` sono leggibili via API per verificare il collegamento dal wizard? Alloggiati e ISTAT richiedono il vostro modulo gestionale (costo, licenza)? | CHK-03 |
+| D18 | **In parte risposta da S18:** gli esiti degli invii non sono disponibili via API. Resta da chiarire, a bassa priorità, che cosa indicano i campi `policeSentStatus` e `policeSentTime` della specifica e se una ricevuta via API è prevista | CHK-04 |
+| D19 | **Risposta S18:** nessuna generazione di documenti fiscali via API «al momento»; si leggono anagrafiche e documenti generati in Octorate. Chiusa; da riaprire solo se Octorate annuncia la funzione | FIS-02 |
+| D20 | **In parte risposta da S18:** la tassa si gestisce in CasaZen. Resta da chiedere solo per chi emette documenti nel pannello Octorate: i valori per ospite scritti da CasaZen vengono usati nei documenti? | CHK-07 |
 | D21 | Un partner può attivare o cambiare la licenza di una proprietà (moduli `chat`, `invoice`…)? Con quale modello commerciale? | MKT-05, PO-12 |
 | D22 | Quale `category` è assegnata a CasaZen e quale tetto di quota in lettura ne deriva? | OCT-13, quote |
 | D23 | Quali sono oggi i portali `EXTERNAL_TOOL` e come si collegano? | MKT-01 |
-| D24 | Il permesso `contactInfo`/`sensitiveData` per CasaZen: condizioni, vincoli d'uso, procedura per gli IP statici | CRM-07, MSG |
+| D24 | **In parte risposta da S18:** senza accesso limitato a IP statici niente dati sensibili, neanche in sandbox. Resta da chiedere: procedura e tempi per registrare gli IP, condizioni e vincoli d'uso del permesso `contactInfo` | CRM-07, MSG-03 |
 | D25 | Oltre alla mail del mattino, quali notifiche Octorate riceve l'host e come si spengono per gli immobili gestiti da CasaZen? | UX-08, MSG-05 |
 | D26 | Lo stato `CHECKIN_END`, `CHECKOUT_END`, `NO_SHOW` ha effetti verso le OTA o verso gli invii? | CHK-06 |
 | D27 | Una struttura creata via API con `welcome_user` falso: come si consegnano in seguito le credenziali al proprietario (su sua richiesta o quando lascia CasaZen)? Esiste un'operazione o una procedura, e il proprietario conserva struttura, collegamenti alle OTA e storico? | PO-19, D11 |
@@ -1888,6 +1928,13 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   le strutture già su Octorate, token alla creazione per quelle nuove) e PO-19, decisa dal PO lo
   stesso giorno (struttura creata con `welcome_user` falso, credenziali solo su richiesta o
   all'uscita; domanda D27); fonti S1–S11 riportate per intero in §3.
+  Risposte originali di Octorate (S18, incollate dal PO il 31/10): contenuti e creazione solo verso
+  Booking.com, Airbnb, Vrbo, HomeToGo e Holidu, Expedia e gli altri canali solo collegati
+  (eccezione dichiarata in LST-01 e LST-12); collegamento agli enti solo dal pannello Octorate ed
+  esiti non disponibili via API (CHK-03, CHK-04, CHK-05); tassa di soggiorno in CasaZen; nessuna
+  generazione di documenti fiscali via API (FIS); partner attivati sul loro sito (MKT-03); messaggi
+  degli altri portali via email, WhatsApp o chat di Octorate (MSG-03); dati sensibili solo con IP
+  statici anche in sandbox. D16 e D19 chiuse; D17, D18, D20 e D24 in parte.
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
   authorization code flow, whitelist delle callback, access token di 24 ore, refresh token senza
   scadenza, N proprietà = N consensi e token; account test attivo, credenziali non marcate valide;
