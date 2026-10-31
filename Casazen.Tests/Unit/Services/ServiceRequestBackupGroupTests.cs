@@ -103,6 +103,8 @@ public class ServiceRequestBackupGroupTests
         var backup = Assert.Single(await BackupsOfAsync(s, (await s.ReadAsync(primary.Id)).GroupId!.Value));
         var push = Assert.Single(s.Pushes, p => p.Payload.Type == PushTypes.ServiceRequestBackupInvited);
         Assert.Equal(PushAudience.SupplierOrg(alfa), push.Audience);
+        // The tap opens the request in the supplier area of the app, not the host's property list.
+        Assert.Equal(PushRoutes.SupplierRequest(backup.Id), push.Payload.Route);
         Assert.Equal(PushDeliveryKeys.ServiceRequestBackup(backup.Id, "invited"), push.DeliveryKey);
         // The chosen supplier still gets the email of a new request, and is not told about the backups.
         Assert.Single(s.Emails.Snapshot(), e => e.To == "supplier@test.com" && e.Template == EmailTemplates.Names.ServiceRequestCreated);

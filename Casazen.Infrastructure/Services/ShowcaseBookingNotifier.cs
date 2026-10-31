@@ -135,7 +135,7 @@ public sealed class ShowcaseBookingNotifier(
                 PushDeliveryKeys.ServiceRequestCreated(request.Id),
                 PushAudience.SupplierOrg(request.SupplierOrgId),
                 new PushNotificationPayload(
-                    push.Title, push.Body, PushTypes.ServiceRequestCreated, BookingId: null, PushRoutes.Properties, request.Id));
+                    push.Title, push.Body, PushTypes.ServiceRequestCreated, BookingId: null, PushRoutes.SupplierRequest(request.Id), request.Id));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -223,7 +223,7 @@ public sealed class ShowcaseBookingNotifier(
                 PushDeliveryKeys.ServiceRequestCreated(request.Id),
                 PushAudience.SupplierOrg(request.SupplierOrgId),
                 new PushNotificationPayload(
-                    push.Title, push.Body, PushTypes.ServiceRequestCreated, BookingId: null, PushRoutes.Properties, request.Id));
+                    push.Title, push.Body, PushTypes.ServiceRequestCreated, BookingId: null, PushRoutes.SupplierRequest(request.Id), request.Id));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -500,7 +500,7 @@ public sealed class ShowcaseBookingNotifier(
                     PushDeliveryKeys.ServiceRequestStatus(request.Id, ServiceRequestStatus.Annullato),
                     PushAudience.SupplierOrg(request.SupplierOrgId),
                     new PushNotificationPayload(
-                        push.Title, push.Body, PushTypes.ServiceRequestCancelled, BookingId: null, PushRoutes.Properties, request.Id));
+                        push.Title, push.Body, PushTypes.ServiceRequestCancelled, BookingId: null, PushRoutes.SupplierRequest(request.Id), request.Id));
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -576,7 +576,7 @@ public sealed class ShowcaseBookingNotifier(
                 PushDeliveryKeys.ServiceRequestRescheduled(request.Id, request.UpdatedAt),
                 PushAudience.SupplierOrg(request.SupplierOrgId),
                 new PushNotificationPayload(
-                    push.Title, push.Body, PushTypes.ServiceRequestRescheduled, BookingId: null, PushRoutes.Properties, request.Id));
+                    push.Title, push.Body, PushTypes.ServiceRequestRescheduled, BookingId: null, PushRoutes.SupplierRequest(request.Id), request.Id));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -627,7 +627,7 @@ public sealed class ShowcaseBookingNotifier(
                         push.Body,
                         accepted ? PushTypes.ServiceRequestProposalAccepted : PushTypes.ServiceRequestProposalRejected,
                         BookingId: null,
-                        PushRoutes.Properties,
+                        PushRoutes.SupplierRequest(request.Id),
                         request.Id));
             }
         }
@@ -683,7 +683,7 @@ public sealed class ShowcaseBookingNotifier(
                         push.Body,
                         accepted ? PushTypes.ServiceRequestQuoteAccepted : PushTypes.ServiceRequestQuoteRejected,
                         BookingId: null,
-                        PushRoutes.Properties,
+                        PushRoutes.SupplierRequest(request.Id),
                         request.Id));
             }
         }
@@ -728,7 +728,7 @@ public sealed class ShowcaseBookingNotifier(
                 PushDeliveryKeys.ServiceRequestStatus(request.Id, ServiceRequestStatus.Annullato),
                 PushAudience.SupplierOrg(request.SupplierOrgId),
                 new PushNotificationPayload(
-                    push.Title, push.Body, PushTypes.ServiceRequestQuoteExpired, BookingId: null, PushRoutes.Properties, request.Id));
+                    push.Title, push.Body, PushTypes.ServiceRequestQuoteExpired, BookingId: null, PushRoutes.SupplierRequest(request.Id), request.Id));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -768,7 +768,7 @@ public sealed class ShowcaseBookingNotifier(
                 PushDeliveryKeys.ServiceRequestStatus(request.Id, ServiceRequestStatus.Annullato),
                 PushAudience.SupplierOrg(request.SupplierOrgId),
                 new PushNotificationPayload(
-                    push.Title, push.Body, PushTypes.ServiceRequestCancelled, BookingId: null, PushRoutes.Properties, request.Id));
+                    push.Title, push.Body, PushTypes.ServiceRequestCancelled, BookingId: null, PushRoutes.SupplierRequest(request.Id), request.Id));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
