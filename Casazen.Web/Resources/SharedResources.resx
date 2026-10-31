@@ -1822,6 +1822,18 @@
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>Negli affitti lunghi la richiesta al fornitore è legata all'immobile, non a una prenotazione.</value>
   </data>
+  <data name="ServiceRequestLeaseNotFound" xml:space="preserve">
+    <value>Il contratto non è stato trovato.</value>
+  </data>
+  <data name="ServiceRequestLeaseMismatch" xml:space="preserve">
+    <value>Il contratto non riguarda questo immobile.</value>
+  </data>
+  <data name="ServiceRequestLeaseNotAllowed" xml:space="preserve">
+    <value>Un contratto si può indicare solo nelle richieste degli affitti lunghi.</value>
+  </data>
+  <data name="ServiceRequestLeaseInvalid" xml:space="preserve">
+    <value>Il contratto indicato non è valido.</value>
+  </data>
   <data name="QuesturaCredentialsUsernameRequired" xml:space="preserve">
     <value>Inserisci il nome utente di Alloggiati Web.</value>
   </data>

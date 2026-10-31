@@ -1822,6 +1822,18 @@
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>In long-term rentals a supplier request is for the property, not for a booking.</value>
   </data>
+  <data name="ServiceRequestLeaseNotFound" xml:space="preserve">
+    <value>The lease was not found.</value>
+  </data>
+  <data name="ServiceRequestLeaseMismatch" xml:space="preserve">
+    <value>The lease is not for this property.</value>
+  </data>
+  <data name="ServiceRequestLeaseNotAllowed" xml:space="preserve">
+    <value>A lease can only be named in a long-term rental request.</value>
+  </data>
+  <data name="ServiceRequestLeaseInvalid" xml:space="preserve">
+    <value>The lease given is not valid.</value>
+  </data>
   <data name="QuesturaCredentialsUsernameRequired" xml:space="preserve">
     <value>Enter the Alloggiati Web username.</value>
   </data>
