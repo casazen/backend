@@ -186,6 +186,10 @@ public sealed class ServiceRequestAutoCancelService(
     /// </summary>
     private DateTime WaitStartOf(ServiceRequest request, DateTime dueUtc)
     {
+        // A request on measure from a showcase waits from the moment it was made: its clock is never restarted (SP-10c).
+        if (request.RentalContext == ServiceRequestRentalContext.Showcase)
+            return request.CreatedAt;
+
         var window = (requestOptions?.Value ?? new ServiceRequestOptions()).HostResponseMinutes;
         var start = dueUtc.AddMinutes(-window);
         return start > request.CreatedAt ? start : request.CreatedAt;
@@ -251,8 +255,14 @@ public sealed class ServiceRequestAutoCancelService(
 
             // SP-REL: a request of a host that nobody answered costs the supplier points, unless it could not have answered (paused, on
             // time off, outside its working hours while the request waited): then it loses none and is not told it did. The bookings
-            // from a showcase are not part of the ranking. What the supplier is told is decided by the winner, after the save.
-            var lostPoints = !showcase
+            // from a showcase are not part of the ranking, except the requests on measure (SP-10c): their hour is the rule of the platform
+            // (Suppliers:Showcase:InquiryResponseMinutes), not the supplier's own setting, and the missed answer is written as the same event
+            // (NoReplyInTime). A request the customer let lapse (a proposal or an offer it did not answer) is never the supplier's silence.
+            // What the supplier is told is decided by the winner, after the save.
+            var supplierStayedSilent = request.CancellationReason == ServiceRequestCancellationReasons.NoResponse;
+            var countsForRanking = !showcase || request.Kind == ServiceRequestKind.Custom;
+            var lostPoints = countsForRanking
+                && supplierStayedSilent
                 && reliability is not null
                 && deadline is { } dueAt
                 && await reliability.RecordNoReplyAsync(

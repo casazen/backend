@@ -15,7 +15,7 @@ pagamento). Codice: `LeasesController`, `LongRentRentsController`, `LongRentAgen
 | `GET /api/long-rent/rents?month=&status=&page=&pageSize=` | `lease.read` | Registro canoni del mese con i numeri del mese (§ 3) |
 | `POST /api/long-rent/rents/{id}/reminder` | `lease.create` | Sollecito e-mail di un canone, nota facoltativa (§ 4) |
 | `POST /api/long-rent/rents/reminders` | `lease.create` | Sollecito di massa (da 1 a 50 canoni, stessa nota) |
-| `GET /api/long-rent/deadlines?from=&to=&type=` | `lease.read` | Scadenze in ordine di data (§ 5) |
+| `GET /api/long-rent/deadlines?from=&to=&type=&leaseId=` | `lease.read` | Scadenze in ordine di data (§ 5) |
 | `GET /api/long-rent/overview` | `lease.read` | Numeri d'area, checklist e prossima scadenza (§ 5) |
 | `GET /api/long-rent/fiscal?year=` e `/fiscal/export?year=` | `lease.read` | Report fiscale per contratto (stima per il commercialista) e il suo CSV (§ 12) |
 
@@ -118,7 +118,7 @@ Solo e-mail, **a mano**: nessun invio automatico, nessun SMS né WhatsApp.
 
 `GET /api/long-rent/deadlines`: `from` e `to` (`yyyy-MM-dd`, estremi inclusi; default oggi e oggi + 90 giorni; al massimo 366 giorni,
 altro = 400 `long_rent_deadlines_range_invalid`), `type` facoltativo (`RliRegistration`, `Questura`, `LeaseEnd`, `Notice`, `Rent`; altro =
-400 `long_rent_deadlines_type_unknown`).
+400 `long_rent_deadlines_type_unknown`) e `leaseId` facoltativo (LR-03c, la scheda di un contratto: restringe a quel contratto, in SQL, ciò che l'ambito del chiamante già raggiunge; un contratto di un'altra organizzazione, fuori ambito o senza scadenze nella finestra dà un elenco vuoto, non un 404).
 
 | Tipo | Data | Compare finché |
 |---|---|---|

@@ -1,0 +1,17 @@
+{
+  "source": "Wikidata (CC0 1.0): comuni of Italy with an ISTAT code (P635) and a coordinate (P625); the centre of the comune as Wikidata gives it, to four decimals",
+  "license": "CC0 1.0",
+  "endpoint": "https://query.wikidata.org/sparql",
+  "query": "scripts/comuni-centroidi.rq",
+  "builtBy": "scripts/build-comuni-centroidi.mjs",
+  "retrievedAt": "2026-10-31",
+  "wikidataResponseSha256": "7aa4918ab15ede2d637735ea0e560f6ec30f6df8fda4ee3cb44b94d18719d61c",
+  "istatListSha256": "57eaf945182fc64fa05f80f1a5fb2a84cff55ebde2af6e3947a731776e7809e0",
+  "rows": 8033,
+  "comuniOfTheIstatList": 7896,
+  "comuniWithACentre": 7896,
+  "comuniMatchedByName": 137,
+  "comuniWithoutACentre": 0,
+  "codesOfWikidataLeftOut": 156,
+  "seedSha256": "835e1d3f85a7469ede81c8a18e840e0980d5081a550e717cbb312bfbf41f71fc"
+}

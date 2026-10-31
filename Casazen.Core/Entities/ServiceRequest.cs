@@ -232,6 +232,17 @@ public class ServiceRequest
     [MaxLength(255)]
     public string? BackupAcceptedByUserId { get; set; }
 
+    // ─── The lease the request is about (LR-03c) ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The lease contract a long-rent request was made for (LR-03c, LR-08a-FU1), when the landlord made it from the sheet of that contract:
+    /// always a lease of the request's own org and property (the service checks it). <c>null</c> on every request made before, on a
+    /// long-rent request made for the property alone and on every short-rent and showcase one (<c>CK_ServiceRequests_LeaseContract</c>).
+    /// A link and nothing more: no datum of the tenant goes with the request and the supplier's views never carry it (decision LR-D22).
+    /// Set to null by the database if the lease is ever deleted for good (a draft is); the request stays one for the property.
+    /// </summary>
+    public Guid? LeaseContractId { get; set; }
+
     // ─── Another time proposed by the supplier (SP-04) ───────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -363,6 +374,16 @@ public class ServiceRequest
     /// existed before the column have no value and are judged by the same rule: the work must still be ahead.
     /// </summary>
     public DateTime? SupplierReminderSentAt { get; set; }
+
+    /// <summary>
+    /// When the reminder at half of the time to answer was queued for the supplier of a request on measure that nobody had answered yet (SP-10c, job
+    /// <c>service-request-expiry</c>, <see cref="Suppliers.ShowcaseReplyReminderRules"/>): once per request. It is saved before the mail and the push are
+    /// queued, only if nobody touched the request since it was read, so a supplier that answered meanwhile is not reminded. Null on every other request.
+    /// </summary>
+    public DateTime? ReplyReminderHalfSentAt { get; set; }
+
+    /// <summary>The same for the last reminder, ten minutes before the deadline (SP-10c).</summary>
+    public DateTime? ReplyReminderLastSentAt { get; set; }
 
     /// <summary>
     /// Optimistic concurrency token (A4-19): mapped to PostgreSQL's <c>xmin</c> system column, which changes with every

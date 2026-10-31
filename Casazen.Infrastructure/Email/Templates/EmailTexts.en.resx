@@ -2022,6 +2022,30 @@
   <data name="SupplierInquiryExpired_Hint" xml:space="preserve">
     <value>You have paid nothing. You can write again or ask another supplier.</value>
   </data>
+  <data name="SupplierInquiryOfferExpired_Subject" xml:space="preserve">
+    <value>Request to {0} closed: offer not answered</value>
+  </data>
+  <data name="SupplierInquiryOfferExpired_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; had sent you an offer for your request, but you did not answer in time, so we closed the request.</value>
+  </data>
+  <data name="SupplierInquiryOfferExpired_Hint" xml:space="preserve">
+    <value>You have paid nothing. You can make a new request from the supplier's page.</value>
+  </data>
+  <data name="SupplierInquiryOfferNotCompleted_Subject" xml:space="preserve">
+    <value>Offer from {0} not completed: you have paid nothing</value>
+  </data>
+  <data name="SupplierInquiryOfferNotCompleted_Body" xml:space="preserve">
+    <value>We could not complete the acceptance of the offer from &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryOfferNotCompleted_TimeGone" xml:space="preserve">
+    <value>The time of the offer is no longer available.</value>
+  </data>
+  <data name="SupplierInquiryOfferNotCompleted_Payment" xml:space="preserve">
+    <value>The payment did not go through.</value>
+  </data>
+  <data name="SupplierInquiryOfferNotCompleted_Hint" xml:space="preserve">
+    <value>We have charged you nothing and the block on your card was removed. The request stays open: you can write to the supplier or answer the offer again from the page of the request.</value>
+  </data>
   <data name="SupplierInquiryClosed_Cta" xml:space="preserve">
     <value>Go to the supplier's page</value>
   </data>
@@ -2147,5 +2171,65 @@
   </data>
   <data name="ServiceDisputeAlert_Dispute" xml:space="preserve">
     <value>Report: {0}</value>
+  </data>
+  <data name="SupplierInquiryReminder_Subject" xml:space="preserve">
+    <value>Reminder: a request on measure is waiting for your answer — {0}</value>
+  </data>
+  <data name="SupplierInquiryReminder_Body" xml:space="preserve">
+    <value>The request on measure in &lt;strong&gt;{0}&lt;/strong&gt; has no answer yet.</value>
+  </data>
+  <data name="SupplierInquiryLastCall_Subject" xml:space="preserve">
+    <value>Last minutes to answer — {0}</value>
+  </data>
+  <data name="SupplierInquiryLastCall_Body" xml:space="preserve">
+    <value>The request on measure in &lt;strong&gt;{0}&lt;/strong&gt; is about to run out of time.</value>
+  </data>
+  <data name="SupplierInquiryReminder_Deadline" xml:space="preserve">
+    <value>Answer by &lt;strong&gt;{0}&lt;/strong&gt;: after that time the request is closed automatically and the customer is told. Your first message stops the clock.</value>
+  </data>
+  <data name="Push_ShowcaseReplyReminder_Title" xml:space="preserve">
+    <value>Request on measure waiting</value>
+  </data>
+  <data name="Push_ShowcaseReplyReminder_Body" xml:space="preserve">
+    <value>{0} in {1}: answer by {2}, or the request closes.</value>
+  </data>
+  <data name="Push_ShowcaseReplyLastCall_Title" xml:space="preserve">
+    <value>Last minutes to answer</value>
+  </data>
+  <data name="Push_ShowcaseReplyLastCall_Body" xml:space="preserve">
+    <value>{0} in {1}: answer by {2}, then the request closes.</value>
+  </data>
+  <data name="SupplierAlternatives_Intro" xml:space="preserve">
+    <value>These suppliers in your area take bookings on CasaZen:</value>
+  </data>
+  <data name="SupplierAlternatives_None" xml:space="preserve">
+    <value>For now we have no other suppliers to suggest for this request.</value>
+  </data>
+  <data name="SupplierAlternative_Verified" xml:space="preserve">
+    <value>Verified</value>
+  </data>
+  <data name="SupplierAlternative_Median" xml:space="preserve">
+    <value>usually answers in about {0} min</value>
+  </data>
+  <data name="SupplierAlternative_MedianHours" xml:space="preserve">
+    <value>usually answers in about {0} h</value>
+  </data>
+  <data name="SupplierAlternative_From" xml:space="preserve">
+    <value>{0}: from {1} {2}</value>
+  </data>
+  <data name="SupplierAlternative_OnQuote" xml:space="preserve">
+    <value>{0}: on quote</value>
+  </data>
+  <data name="SupplierAlternative_Unit_PerJob" xml:space="preserve">
+    <value>per job</value>
+  </data>
+  <data name="SupplierAlternative_Unit_PerHour" xml:space="preserve">
+    <value>per hour</value>
+  </data>
+  <data name="SupplierAlternative_Unit_PerSet" xml:space="preserve">
+    <value>per set</value>
+  </data>
+  <data name="SupplierAlternative_Unit_PerSquareMeter" xml:space="preserve">
+    <value>per m²</value>
   </data>
 </root>

@@ -424,6 +424,10 @@ public sealed partial class ServiceRequestNotifier(
         CancellationToken cancellationToken) =>
         showcase.NotifyThreadMessageAsync(request, author, cancellationToken);
 
+    /// <summary>The acceptance of an offer paid inside CasaZen could not be completed after the card was blocked: the customer is told that nothing was charged (SP-10b-b).</summary>
+    public Task NotifyShowcaseOfferNotCompletedAsync(ServiceRequest request, bool timeGone, CancellationToken cancellationToken) =>
+        showcase.NotifyOfferNotCompletedAsync(request, timeGone, cancellationToken);
+
     /// <summary>The customer cancelled its showcase request: the supplier is told, and the customer gets the receipt.</summary>
     public Task NotifyShowcaseCancelledByCustomerAsync(ServiceRequest request, CancellationToken cancellationToken) =>
         showcase.NotifyCancelledByCustomerAsync(request, cancellationToken);
@@ -638,8 +642,8 @@ public sealed partial class ServiceRequestNotifier(
 
     /// <summary>
     /// A push to the supplier org (A6-08). The stay belongs to the host (the supplier cannot open it), so the push carries no
-    /// booking and opens the property list of the app, which has no supplier screens yet; <c>serviceRequestId</c> is in the
-    /// data for a supplier app.
+    /// booking and opens the request in the supplier area of the app (<c>/supplier/requests/{id}</c>); <c>serviceRequestId</c> is in the
+    /// data too.
     /// </summary>
     private void QueueSupplierPush(ServiceRequest request, string deliveryKey, string type, PushText text)
     {
@@ -648,7 +652,7 @@ public sealed partial class ServiceRequestNotifier(
             pushNotifications.Enqueue(
                 deliveryKey,
                 PushAudience.SupplierOrg(request.SupplierOrgId),
-                new PushNotificationPayload(text.Title, text.Body, type, BookingId: null, PushRoutes.Properties, request.Id));
+                new PushNotificationPayload(text.Title, text.Body, type, BookingId: null, PushRoutes.SupplierRequest(request.Id), request.Id));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

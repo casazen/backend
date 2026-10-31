@@ -160,4 +160,12 @@ public static class RateLimitPolicies
     /// people of one office share an address. The body is small and bounded; the limit keeps a script from rewriting a draft in a loop.
     /// </summary>
     public const string SupplierShowcaseSave = "SupplierShowcaseSave";
+
+    /// <summary>
+    /// The upload and the removal of the images of the showcase (<c>POST</c> and <c>DELETE api/supplier/showcase/media</c>, SP-13b). A policy of a
+    /// signed-in endpoint, partitioned by <b>person</b> like <see cref="SupplierShowcaseSave"/>: each upload reads a file of up to 10 MB, checks it,
+    /// rewrites it and stores it, so it has a limit of its own. A full gallery is 24 photos, a logo and a cover: 40 in ten minutes leave room for
+    /// trying a few more, and no more than a script could waste.
+    /// </summary>
+    public const string SupplierShowcaseMedia = "SupplierShowcaseMedia";
 }

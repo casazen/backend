@@ -233,6 +233,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAuthorizationHandler, HostResourceAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, OrgBillingAdminAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, AgencyTierAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, AgencyPermissionAuthorizationHandler>();
         services.AddScoped<IAuthorizationHandler, OwnerPortalAuthorizationHandler>();
 
         // The complete policy set (TN-3): see CasazenPolicies for how to choose one.
@@ -258,11 +259,16 @@ public static class ServiceCollectionExtensions
                 policy.Requirements.Add(new ContextPermissionRequirement(contextKeys, permissionKey)));
         }
 
-        // Agency tier policies (ADR-010): all require Org.PlanTier == PlanTier.Agency
+        // Agency tier policies (ADR-010): Org.PlanTier == PlanTier.Agency and, since DEB-01, the agency permission of the policy
+        // held by the caller's org role (OrgRoleCatalog.AgencyPermissionsOf).
         foreach (var policyName in CasazenPolicies.AgencyPolicies)
         {
+            var permissionKey = CasazenPolicies.ParseAgencyPolicy(policyName);
             builder.AddPolicy(policyName, policy =>
-                policy.Requirements.Add(new AgencyTierRequirement()));
+            {
+                policy.Requirements.Add(new AgencyTierRequirement());
+                policy.Requirements.Add(new AgencyPermissionRequirement(permissionKey));
+            });
         }
 
         return services;
@@ -592,6 +598,9 @@ public static class ServiceCollectionExtensions
         // The content of the supplier's showcase (SP-13a): the draft, the published version, and the changes between them. Rows keyed
         // by the supplier org, not tenant-filtered; every change under the SupplierShowcaseContent lock.
         services.AddScoped<ISupplierShowcaseContentService, SupplierShowcaseContentService>();
+        // The images of the supplier's showcase (SP-13b): the logo, the cover and the photos of the jobs it uploads from the editor, and the daily
+        // cleanup of the ones nothing points to. Rows keyed by the supplier org, not tenant-filtered; every change under the content lock.
+        services.AddScoped<ISupplierShowcaseMediaService, SupplierShowcaseMediaService>();
         // The anonymous read side of the supplier showcase (SP-09): services, free slots and price estimate, behind the flag
         // SupplierShowcaseBooking. The slot plans are kept 30 seconds per replica (a singleton: not tied to a request).
         services.AddSingleton<PublicSupplierSlotCache>();
@@ -670,6 +679,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IShowcaseRequestCustomerActions>(provider => provider.GetRequiredService<ServiceRequestService>());
         // The conversation of a request on measure (SP-10b): the supplier reads the thread and writes in it.
         services.AddScoped<IServiceRequestThreadActions>(provider => provider.GetRequiredService<ServiceRequestService>());
+        services.AddScoped<IServiceRequestOfferActions>(provider => provider.GetRequiredService<ServiceRequestService>());
+        services.AddScoped<IServiceRequestOfferCompletion>(provider => provider.GetRequiredService<ServiceRequestService>());
         // Automatic cancellation of the requests nobody answered (SP-04, D8): the recurring job runs only with the flag on.
         services.AddScoped<IServiceRequestAutoCancelService, ServiceRequestAutoCancelService>();
         // Backup suppliers of a host's request (SP-BKP, flag SupplierRequestBackups for the creation of groups only): the choice of the backups
@@ -705,6 +716,11 @@ public static class ServiceCollectionExtensions
         // The upkeep (expiry of holds and of unanswered showcase requests), the reminders of the day before and the retention of the
         // customers' data: their recurring jobs are registered whatever the flags say.
         services.AddScoped<IServiceRequestExpiryService, ServiceRequestExpiryService>();
+        // The second pass of the same job (SP-10c): the supplier of a request on measure nobody answered is reminded at half of its time and ten
+        // minutes before the deadline, each once.
+        services.AddScoped<IShowcaseReplyReminderService, ShowcaseReplyReminderService>();
+        // The other suppliers offered to the customer of a request nobody answered (SP-10c): at most three, over the one ranking of the platform.
+        services.AddScoped<IShowcaseAlternativesService, ShowcaseAlternativesService>();
         // The reminder of the day before to the supplier (SP-16d) is the second pass of the same job: the reminders service takes it in.
         services.AddScoped<SupplierDayBeforeReminders>();
         services.AddScoped<IServiceRequestReminderService, ServiceRequestReminderService>();

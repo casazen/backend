@@ -68,7 +68,7 @@ public partial class ServiceRequestService
 
     /// <summary>
     /// Ties the new <paramref name="primary"/> to a group and adds the group and one request per backup to the context, to be saved with it in
-    /// one go. A backup request has the same data as the primary's (host, property, stay, category, notes, time, price) and is waiting
+    /// one go. A backup request has the same data as the primary's (host, property, lease, stay, category, notes, time, price) and is waiting
     /// (<c>Richiesto</c>); it has no catalog service of its own (the primary's service is another supplier's), only the name the host saw.
     /// </summary>
     private IReadOnlyList<(ServiceRequest Request, SupplierProfile Supplier)> AttachBackupGroup(
@@ -98,6 +98,7 @@ public partial class ServiceRequestService
                     BookingId = primary.BookingId,
                     RentalContext = primary.RentalContext,
                     PropertyId = primary.PropertyId,
+                    LeaseContractId = primary.LeaseContractId,
                     SupplierOrgId = supplier.OrgId,
                     Category = primary.Category,
                     Urgency = primary.Urgency,

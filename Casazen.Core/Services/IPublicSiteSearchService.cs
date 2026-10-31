@@ -262,7 +262,10 @@ public sealed record PublicStayFacetTag(string Tag, int Count);
 
 /// <summary>A house of the site as the list shows it. Nothing private: the position is rounded, there is no address.</summary>
 /// <param name="Zone">The zone the host wrote (DB-11a), in Italian and, if written, English; <c>null</c> = not said.</param>
-/// <param name="Latitude">Rounded to about a kilometre (<see cref="Entities.PropertyAddress.ToPublicCoordinate"/>).</param>
+/// <param name="Latitude">
+/// Rounded to about a kilometre (<see cref="Entities.PropertyAddress.ToPublicCoordinate"/>); for a house whose host gave no position, the
+/// centre of its comune (<c>0, 0</c> only when the comune is not known either).
+/// </param>
 /// <param name="Photos">The first photos, the first is the cover.</param>
 /// <param name="Amenities">The main ones, as the names of <see cref="Enums.PropertyAmenity"/>.</param>
 /// <param name="Tags">Labels of the house: the ones the host chose and the ones its data give (a pool, pets welcome, the coast...), in the order of the vocabulary.</param>

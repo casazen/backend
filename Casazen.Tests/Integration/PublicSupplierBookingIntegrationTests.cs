@@ -85,7 +85,9 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
         Assert.Contains(factory.EmailsTo(email), e => e.Template == EmailTemplates.Names.SupplierBookingReceipt);
         var toSupplier = Assert.Single(factory.EmailsTo(supplier.ContactEmail), e => e.Template == EmailTemplates.Names.SupplierBookingNewRequest);
         Assert.DoesNotContain("Rossi", toSupplier.Content.Subject + toSupplier.Content.HtmlBody);
-        Assert.Contains(factory.Pushes.ToArray(), p => p.Audience == PushAudience.SupplierOrg(supplier.OrgId));
+        Assert.Contains(
+            factory.Pushes.ToArray(),
+            p => p.Audience == PushAudience.SupplierOrg(supplier.OrgId) && PushRoutes.IsAppRoute(p.Payload.Route) && p.Payload.Route.StartsWith("/supplier/requests/", StringComparison.Ordinal));
 
         // 5. The supplier sees "Nome C." and the comune; the street waits for the take.
         var inbox = await supplier.InboxAsync(factory);

@@ -5,8 +5,12 @@ using Casazen.Core.Utilities;
 
 namespace Casazen.Core.Suppliers;
 
-/// <summary>One line of a quote (SP-04b): what it is for and how much, in cents of euro, gross as declared (decision D4: no VAT split).</summary>
-public sealed record ServiceRequestQuoteLine(string Label, int AmountCents);
+/// <summary>
+/// One line of a quote (SP-04b): what it is for and how much, in cents of euro, gross as declared (decision D4: no VAT split).
+/// <paramref name="Quantity"/> and <paramref name="UnitAmountCents"/> are written by the offer on a request on measure (SP-10b-b), where
+/// <paramref name="AmountCents"/> is always their product; a quote of SP-04b has neither (they are left out of the JSON when null).
+/// </summary>
+public sealed record ServiceRequestQuoteLine(string Label, int AmountCents, int? Quantity = null, int? UnitAmountCents = null);
 
 /// <summary>The <c>kind</c> of a <see cref="ServiceRequestQuoteEvent"/>.</summary>
 public static class ServiceRequestQuoteEventKinds
@@ -135,7 +139,7 @@ public static class ServiceRequestQuoteRules
 
     /// <summary>The lines of a quote as the price lines of the request that took it (kind <see cref="ServiceRequestPriceLineKinds.Quote"/>).</summary>
     public static IReadOnlyList<ServiceRequestPriceLine> AsPriceLines(IReadOnlyList<ServiceRequestQuoteLine> lines) =>
-        lines.Select(line => new ServiceRequestPriceLine(ServiceRequestPriceLineKinds.Quote, line.Label, line.AmountCents)).ToList();
+        lines.Select(line => new ServiceRequestPriceLine(ServiceRequestPriceLineKinds.Quote, line.Label, line.AmountCents, line.Quantity, line.UnitAmountCents)).ToList();
 
     /// <summary>
     /// <paramref name="events"/> with <paramref name="added"/> at the end, keeping the last <see cref="ServiceRequestLimits.MaxQuoteEvents"/>:

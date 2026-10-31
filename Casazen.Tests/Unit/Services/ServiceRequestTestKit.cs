@@ -42,7 +42,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
         FakeSupplierPaymentGateway? gateway = null,
         TestFeatureFlags? flags = null,
         Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null,
-        FakePlatformPaymentGateway? platformGateway = null)
+        FakePlatformPaymentGateway? platformGateway = null,
+        IShowcaseAlternativesService? alternatives = null)
     {
         Db = db;
         Clock = clock ?? TimeProvider.System;
@@ -56,6 +57,7 @@ internal sealed class ServiceRequestTestKit : IDisposable
         Flags = flags ?? new TestFeatureFlags();
         Emails = emails ?? new RecordingEmailQueue();
         Push = push ?? Mock.Of<IPushNotificationService>();
+        Alternatives = alternatives;
 
         var storageOptions = Microsoft.Extensions.Options.Options.Create(new StorageOptions
         {
@@ -88,7 +90,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             links,
             Push,
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
-            NullLogger<ShowcaseBookingNotifier>.Instance);
+            NullLogger<ShowcaseBookingNotifier>.Instance,
+            alternatives);
         Notifier = new ServiceRequestNotifier(
             db,
             Emails,
@@ -171,7 +174,10 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
             Clock,
             Payments,
-            Payments);
+            Payments,
+            alternatives);
+        // SP-10c: the second pass of the expiry job, over the same notifier.
+        Reminders = new ShowcaseReplyReminderService(db, ShowcaseNotifier, NullLogger<ShowcaseReplyReminderService>.Instance, Clock);
     }
 
     /// <summary>The publishable key the payment sessions of the kit carry.</summary>
@@ -252,6 +258,12 @@ internal sealed class ServiceRequestTestKit : IDisposable
 
     /// <summary>The customer's own area of a booking (SP-11), on the real service request actions.</summary>
     public ShowcaseBookingManager Manager { get; }
+
+    /// <summary>The other suppliers offered to the customer of a request nobody answered (SP-10c): none unless a test gives the kit one.</summary>
+    public IShowcaseAlternativesService? Alternatives { get; }
+
+    /// <summary>The reminders to the supplier of a request on measure nobody answered yet (SP-10c): the second pass of the expiry job.</summary>
+    public ShowcaseReplyReminderService Reminders { get; }
 
     public void Dispose()
     {
