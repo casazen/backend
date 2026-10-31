@@ -519,7 +519,8 @@ non collegati (CHK-03) e allo scaricamento delle ricevute (CHK-04).
 confronto reali (oggi segnaposto: Q1-10, Q1-11), consenso biometrico registrato, coda
 dell'operatore utilizzabile (chiave del permesso uguale tra frontend e backend e assegnata ai
 ruoli), decisione manuale registrata, rilascio del codice della serratura collegato e possibile
-solo dopo una verifica superata, QR all'ingresso funzionante (oggi la pagina non è raggiungibile).
+solo dopo una verifica superata, QR all'ingresso funzionante (oggi la pagina non è raggiungibile),
+agente AI di verifica dell'identità (CHK-14).
 Spento finché non è completo (DEB-01).
 
 #### DEB-10 — Catena finanziaria dell'agenzia · P1
@@ -895,7 +896,8 @@ solo il mittente.
    che lascia il documento** (ospite singolo, capofamiglia o capogruppo, come per Alloggiati), non
    ogni ospite adulto: dalla fotocamera, nel percorso di check-in aperto dalla email (link firmato)
    oppure dal QR all'ingresso dell'immobile. CasaZen lo confronta con la foto del suo documento
-   caricata nel check-in e risponde **subito**.
+   caricata nel check-in e risponde **subito**; lo scan lo coordina e lo valuta l'agente AI di
+   verifica dell'identità (CHK-14).
 2. **Il volto corrisponde:** la verifica è registrata e il codice della serratura dell'immobile
    (impostato dall'host, Q1-13; nessuna integrazione con le serrature, D9 della v10) compare nella
    schermata finale e parte per messaggio, subito.
@@ -919,6 +921,47 @@ solo il mittente.
 
 Prova: il codice della serratura non parte mai senza una verifica superata (biometrica o
 dell'operatore) dell'ospite che ha lasciato il documento; nessuna immagine conservata.
+
+#### CHK-14 — Agente AI di verifica dell'identità · P0 ⚖
+
+Richiesta del PO (31/10): un agente AI specializzato nel riconoscimento facciale coordina lo scan
+biometrico e valuta se è ok. Si costruisce **sopra** la pipeline già decisa in ADR-013 (verifica nel
+backend, modelli specializzati, esito a tre livelli, cancellazione immediata), non al posto suo.
+
+1. **Coordina lo scan dall'inizio alla fine**, dal vivo, nel percorso dell'ospite che lascia il
+   documento (CHK-11):
+   - guida la ripresa in tempo reale e nella lingua dell'ospite: inquadratura, luce, occhiali o
+     mascherina, documento leggibile senza riflessi;
+   - controlla la qualità della foto del documento e del selfie prima del confronto e chiede di
+     ripetere quando non basta;
+   - esegue i controlli con i modelli specializzati di ADR-013 (rilevamento del volto, anti foto di
+     foto, confronto del volto) e la lettura MRZ del documento (cifre di controllo, scadenza,
+     coerenza con i dati inseriti nel check-in).
+2. **Valuta se è ok** combinando i risultati: «ok» solo se vivacità superata, documento valido e non
+   scaduto, MRZ coerente e somiglianza sopra la soglia di accettazione (`BiometricSettings`); «da
+   rivedere» passa all'operatore; «non ok» dà un nuovo tentativo e poi l'operatore (esito a tre
+   livelli e numero massimo di tentativi di ADR-013). Con «ok» parte subito il codice della serratura
+   (CHK-11).
+3. **Spiega** l'esito in parole semplici all'ospite e, con i motivi tecnici (quale controllo, quali
+   valori, quali soglie), all'operatore che deve decidere.
+4. **Decisione verificabile, non a sentimento:** l'agente applica soglie e regole configurate e
+   versionate; ogni esito è spiegabile e registrato senza immagini (`BiometricVerificationLog`:
+   esito, tentativi, modello e versione, soglie, motivi).
+5. **Confini non negoziabili:** volti e documenti non escono dall'infrastruttura di CasaZen; **nessun
+   modello linguistico generico riceve immagini di volti o di documenti**. Il servizio AI generale
+   (`IAiProvider`) serve solo per i testi di guida e per le spiegazioni, senza immagini né dati
+   personali (PO-09). Un fornitore esterno specializzato è un'alternativa solo con decisione del PO e
+   del legale (PO-21): UE, accordo sul trattamento, nessuna conservazione, nessun addestramento sui
+   dati.
+6. **Intervento umano sempre possibile** (GDPR art. 22): un «non ok» automatico non è definitivo,
+   l'ospite può chiedere la verifica dell'operatore e la ottiene. Avviso di trasparenza AI Act art. 50
+   nella pagina del selfie.
+7. **Qualità:** falsi accoppiamenti e falsi rifiuti misurati con lo strumento di taratura di Q1-11,
+   soglie provvisorie dichiarate tali, monitoraggio degli esiti (quota passata all'operatore),
+   interruttore per organizzazione; esito entro pochi secondi dalla ripresa (obiettivo da misurare).
+
+Prova: nessuna immagine esce dal backend né finisce in log, code o database; un «ok» richiede tutti i
+controlli superati; un «non ok» non blocca mai la richiesta di verifica dell'operatore.
 
 #### CHK-12 — Quadro della conformità: «sono in regola?» · P0
 
@@ -1589,6 +1632,7 @@ I tre numeri principali e «Da fare» anche sull'app.
 | AI-10 | Report | Riepilogo del mese in parole («a ottobre hai incassato X, +12% rispetto a ottobre scorso»), avvisi su cali e anomalie, domande in linguaggio naturale sui propri dati (sola lettura) | AUTOMATICA | P2 |
 | AI-11 | Da fare | Ordine per urgenza, raggruppamenti, momento migliore dei promemoria, una riga sul perché | AUTOMATICA | P1 |
 | AI-12 | Tutti i wizard | Assistente dentro «Aiuto»: risponde sul passo corrente con le guide di CasaZen e compila campi su richiesta; non conferma mai al posto dell'utente | PROPONE E APPROVI | P2 |
+| AI-13 | Check-in | Agente di verifica dell'identità (CHK-14): guida lo scan del capogruppo, controlla qualità, vivacità e documento, confronta il volto con i modelli specializzati del backend, valuta l'esito con soglie, spiega e passa all'operatore; nessuna immagine a modelli linguistici generici | AUTOMATICA entro le soglie, operatore sotto soglia o su richiesta | P0 |
 
 Esempi di mercato per ogni automazione e la modalità che usano gli altri operatori: Appendice A,
 parte C. Il mercato converge sullo stesso schema: bozza per default, automatico per argomento con
@@ -2040,7 +2084,7 @@ completo, dal dato alla schermata, dimostrabile con l'adattatore Mock.
 | H1 — Fondazioni del connettore | H0 | DEB-02 (bus di eventi con outbox) e OCT-01…03, 08, 09, 13, 14: adattatore Mock e client, OAuth per proprietà, webhook in entrata e riconciliazione sul bus, resilienza, interruttori, stato delle connessioni | Isolamento per tenant e proprietà; nessuna chiamata live dal Mock; duplicati e fuori ordine senza effetti doppi |
 | H2 — Annunci e ARI | H1, U0 | LST-01…12 | Import, creazione, modifica e pubblicazione per canale in Mock, con errori parziali per canale |
 | H3 — Prenotazioni e calendario | H1 | BKG-01…09 | Creazione, modifica e cancellazione in Mock; webhook duplicati, persi e fuori ordine; nessun doppio scrittore con iCal |
-| H4 — Check-in e adempimenti | H3, U0 | CHK-01…13, DEB-08, DEB-09 | Dati dell'ospite fino a Octorate in Mock; mittente unico; ricevuta dal server finto Alloggiati; tassa al centesimo; nessun codice d'accesso senza identificazione registrata |
+| H4 — Check-in e adempimenti | H3, U0 | CHK-01…14, DEB-08, DEB-09 | Dati dell'ospite fino a Octorate in Mock; mittente unico; ricevuta dal server finto Alloggiati; tassa al centesimo; nessun codice d'accesso senza identificazione registrata |
 | H5 — Messaggi e AI | H3, U0 | MSG-01…11, AI-06, DEB-03, DEB-06 | Hub con thread OTA simulati e diretti; soglia di confidenza, categorie sensibili, approvazione da push |
 | H6 — Documenti, clienti e report | H3 (H4 per la tassa) | FIS-01…07, CRM-01…08, REP-01…08, DEB-04, DEB-05, DEB-10 | Emittente unico; documenti Octorate simulati letti; pubblico raggiungibile per base giuridica; report coerenti con le prenotazioni |
 | H7 — Marketplace | H1, U0 | MKT-01…07 | Catalogo dalle tre fonti; attivazione e disattivazione di un portale simulato; stato |
@@ -2109,6 +2153,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | PO-18 | Come si identifica l'ospite? | **Deciso dal PO il 31/10:** verifica biometrica dal vivo del solo ospite che lascia il documento (capogruppo o capofamiglia: selfie dalla fotocamera confrontato con il suo documento, dal link del check-in o dal QR all'ingresso), esito immediato e codice della serratura subito dopo; l'identificazione di persona non è praticabile; ripiego: verifica dell'operatore in videochiamata. Validità legale della verifica a distanza dal vivo, consenso biometrico e DPIA da confermare con il legale ⚖ | CHK-11, DEB-09 | Solo l'attivazione in produzione |
 | PO-19 | Quando CasaZen crea una struttura nuova su Octorate, il proprietario riceve da Octorate le credenziali del suo account (`welcome_user`)? | **Deciso dal PO il 31/10:** no. CasaZen crea la struttura con `welcome_user` falso, l'esperienza resta in CasaZen e il token arriva con la creazione; le credenziali si attivano solo su richiesta del proprietario o alla sua uscita da CasaZen, con la procedura da concordare con Octorate (D11, D27) | §9.1, LST-02, LST-03 | No |
 | PO-20 | Nome pubblico, descrizione e icona dell'app CasaZen su Octorate (oggi «Luca La Malfa», visibile nella pagina di consenso) e visibilità nell'elenco delle API di Octorate (`secretVisibility`, oggi vero) | Nome «CasaZen» con icona e descrizione IT/EN impostati subito in test (`postConfiguration`); app non visibile nell'elenco (`secretVisibility` falso) fino alla certificazione, poi decisione commerciale | §9.1, UX-12 | No |
+| PO-21 | Chi confronta il volto: i modelli specializzati eseguiti nel backend di CasaZen (ADR-013) o un fornitore esterno specializzato? | Modelli nel backend (default, già deciso in ADR-013); un fornitore esterno solo se la taratura non raggiunge gli obiettivi, con valutazione legale (UE, accordo sul trattamento, nessuna conservazione) ⚖ | CHK-14 | No |
 
 ### 14.2 Domande a Octorate (si aggiungono a D1–D14)
 
@@ -2139,7 +2184,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   processi con CasaZen unico punto di accesso. Aggiunti: base del codice al 30/10 (§4), regole UX
   vincolanti con l'aggiunta del 31/10 (wizard su livello separato, mai fuori dal processo, «Da
   fare», push e popup) (§5), requisiti per processo (§6), mappa delle automazioni AI (§7),
-  autorità dei dati estesa (§8.2), decisioni PO-01…20 e domande D15–D32 (§14), benchmark UX
+  autorità dei dati estesa (§8.2), decisioni PO-01…21 e domande D15–D32 (§14), benchmark UX
   (Appendice A). Verifica della specifica del 31/10 (S13): check-in e Polizia, ospiti, tassa di
   soggiorno, fatture con stato SDI, pagamenti, prodotti extra, politiche, licenze, portali e
   strumenti esterni; tre punti in contrasto con il resoconto S7 (esito per ospite dell'invio alla
@@ -2171,7 +2216,8 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   vivo del solo ospite che lascia il documento, con esito immediato e codice della serratura,
   niente identificazione di persona, operatore
   in videochiamata come ripiego (CHK-11, DEB-09 in P0); CHK-12 riscritto come estensione del
-  cruscotto di conformità esistente.
+  cruscotto di conformità esistente. Agente AI di verifica dell'identità sopra la pipeline di
+  ADR-013 (CHK-14, AI-13, PO-21).
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
   authorization code flow, whitelist delle callback, access token di 24 ore, refresh token senza
   scadenza, N proprietà = N consensi e token; account test attivo, credenziali non marcate valide;
