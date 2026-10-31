@@ -1,8 +1,8 @@
 # Requirements Helix — CasaZen × Octorate: un solo punto di accesso
 
 Versione 2.0 · 31 ottobre 2026 · Stato: **requisiti pronti per Helix** (nuovo mandato del PO
-del 31/10). Account test Octorate attivo; credenziali consegnate ma non ancora validate
-(avviso «current credentials have expired» in S10).
+del 31/10, decisioni del PO prese lo stesso giorno: §14.1). Credenziali del partner verificate il
+31/10 dagli ambienti test e produzione di CasaZen (S20); l'account Octorate è ancora in sandbox.
 
 La v2.0 allarga il perimetro dal solo channel management (v1.3) agli otto processi che il PO
 vuole gestire interamente da CasaZen, con Octorate dietro le quinte; aggiunge regole UX
@@ -886,8 +886,8 @@ Prova: con il mittente «channel manager» il client di CasaZen non esegue mai `
    incassa e la versa) CasaZen lo registra per canale e comune, senza far pagare due volte
    l'ospite.
 3. Scrittura in Octorate dei valori per ospite (`cityTaxPrice`, `cityTaxExemption`,
-   `excludeCityTax`) solo se servono ai documenti che l'host emette nel pannello Octorate (D20);
-   altrimenti nessuna scrittura e nessun confronto.
+   `excludeCityTax`) quando i documenti fiscali li emette Octorate (prima scelta del PO, PO-05) e
+   se Octorate li usa nei documenti (D20); altrimenti nessuna scrittura e nessun confronto.
 4. Riepiloghi per comune e periodo per la dichiarazione e il versamento (riuso del report della
    tassa esistente, `GET api/fiscal/reports/tourist-tax`), con collegamento al portale del comune,
    scadenze in «Da fare» e archivio delle ricevute (CHK-08).
@@ -1335,6 +1335,9 @@ costruito; il dispatcher delle routine non è mai chiamato).
    rendiconti dei proprietari).
 4. Il soggiorno OTA creato da un blocco iCal resta per gli immobili non collegati; per quelli
    collegati l'import iCal di un canale si spegne al passaggio al connettore, senza doppioni.
+5. Le prenotazioni del motore di prenotazione di Octorate sul sito dell'agenzia (PO-05, D34)
+   entrano come le altre e restano riconoscibili come dirette: contano come dirette per i
+   documenti fiscali (FIS-02) e per il marketing (CRM-07).
 
 Prove: un evento duplicato non duplica la prenotazione; isolamento per organizzazione.
 
@@ -1413,7 +1416,10 @@ commissione del property manager (`splitCommissionPropertyManager`, fattura a do
 Octorate conferma (S18): **nessuna generazione di documenti fiscali via API** per ora; si
 recuperano solo le anagrafiche dei clienti e i documenti generati in Octorate. Le due operazioni
 di creazione presenti nella specifica (`createDoubleHeadingInvoice`, `issueSummaryDocument`)
-quindi non si usano (D19 chiusa). Modulo `invoice` e stampante fiscale nella licenza.
+quindi non si usano (D19 chiusa). Modulo `invoice` e stampante fiscale nella licenza. Il PO
+preferisce che i documenti li emetta Octorate, anche per le prenotazioni del suo motore di
+prenotazione sul sito dell'agenzia (modulo `bookingEngine`): se e come si può fare è la domanda
+D34 (PO-05).
 
 **CasaZen oggi (§4).** Pagamenti e rimborsi completi (senza commissione Stripe, accredito e
 commissione OTA); report fiscali annuali completi (redditi, cedolare stimata, ritenute subite,
@@ -1433,17 +1439,29 @@ IVA, codice destinatario).
 
 #### FIS-02 — Emittente unico e documento giusto · P0
 
-1. Wizard «Come emetti i documenti?» per l'organizzazione: chi emette (CasaZen, il channel
-   manager se già lo usa, nessuno perché se ne occupa il commercialista: PO-05) e quale documento
-   per il proprio regime (privato senza partita IVA, partita IVA ordinaria o forfettaria, agenzia
-   con doppia intestazione proprietario e agenzia), con domande semplici e un esempio del
-   documento. L'impostazione delle regole (tipo di documento per regime, IVA, bollo, natura delle
-   operazioni) è confermata (riferito dal PO il 31/10); le regole stanno in configurazione, non nel
-   codice sparso.
-2. Mai due emittenti per la stessa organizzazione: se l'host emette i documenti nel pannello
-   Octorate (a mano, perché via API non si può, S18), CasaZen li legge (FIS-04) e non emette.
+1. Chi emette (decisione del PO, PO-05):
+   - **prima scelta, Octorate:** se Octorate può emettere i documenti di tutte le prenotazioni,
+     comprese quelle del suo motore di prenotazione sul sito dell'agenzia e le dirette create da
+     CasaZen (D34), si emette tutto da Octorate e CasaZen li legge (FIS-04); CasaZen scrive in
+     Octorate i dati che servono (dati di fatturazione raccolti nel check-in, FIS-01; tassa per
+     ospite, CHK-07);
+   - **altrimenti, CasaZen:** emette solo per le prenotazioni dirette, cioè quelle del sito di
+     CasaZen e del sito dell'agenzia collegato al motore di prenotazione (FIS-03); per le
+     prenotazioni delle OTA CasaZen non emette documenti;
+   - se Octorate consente solo l'emissione a mano dal suo pannello, la scelta torna al PO con la
+     risposta D34.
+2. Wizard «Come emetti i documenti?» per l'organizzazione: chi emette secondo il punto 1 (oppure
+   nessuno, perché se ne occupa il commercialista) e quale documento per il proprio regime (privato
+   senza partita IVA, partita IVA ordinaria o forfettaria, agenzia con doppia intestazione
+   proprietario e agenzia), con domande semplici e un esempio del documento. L'impostazione delle
+   regole (tipo di documento per regime, IVA, bollo, natura delle operazioni) è confermata
+   (riferito dal PO il 31/10); le regole stanno in configurazione, non nel codice sparso.
+3. Mai due emittenti per la stessa prenotazione: dove emette Octorate, anche a mano nel suo
+   pannello, CasaZen legge (FIS-04) e non emette.
 
 #### FIS-03 — Emissione da CasaZen · P1
+
+Solo se Octorate non può emettere (PO-05, D34) e solo per le prenotazioni dirette (FIS-02).
 
 1. Bozza al check-out o su richiesta (AI-08), emissione con conferma; numerazione senza buchi per
    emittente e sezionale (si riusa quella di `AgencyInvoiceService`); note di credito; bollo dove
@@ -1505,7 +1523,8 @@ del trattamento. Quindi:
   link del check-in, promemoria della prenotazione, ringraziamento dopo la partenza senza
   promozioni), via chat della OTA o email.
 - **Si fa, senza consenso esplicito:** email ai clienti che hanno comprato un soggiorno e hanno
-  dato l'email a CasaZen (prenotazione diretta, check-in), per soggiorni analoghi, con
+  dato l'email a CasaZen (prenotazione diretta, check-in) o al motore di prenotazione del sito
+  dell'agenzia (PO-17), per soggiorni analoghi, con
   informativa al momento della raccolta e disiscrizione in ogni messaggio («soft opt-in»,
   art. 130 c. 4 Codice privacy): PO-07, deciso e confermato dal legale (riferito dal PO il 31/10);
   sostituisce il «no» della fase 1 (D-10).
@@ -1574,8 +1593,12 @@ soppressione al momento dell'invio.
 
 #### CRM-07 — Contatti presi da Octorate · P0
 
-`contactInfo` solo per finalità di servizio (messaggi, check-in, fattura), registrato; mai
-esportazioni in blocco; prerequisito degli IP statici (S7); PO-17.
+`contactInfo` letto per la singola prenotazione e registrato, per il servizio (messaggi,
+check-in, fattura). I recapiti dei clienti diretti arrivati dal motore di prenotazione del sito
+dell'agenzia entrano anche nel marketing con il soft opt-in (PO-07, PO-17), se le condizioni d'uso
+di Octorate lo consentono (D24) e l'informativa è stata mostrata alla prenotazione (D34); origine
+e base giuridica secondo CRM-02. Mai gli indirizzi di inoltro delle OTA, mai esportazioni o letture
+in blocco; prerequisito degli IP statici (S7).
 
 #### CRM-08 — Correzioni di conformità delle campagne · P0 (prima di qualunque invio reale)
 
@@ -1676,8 +1699,9 @@ si era rimasti (UX-03). Le parti richiamano i requisiti già definiti:
    serratura per immobile, QR da stampare (CHK-11, CHK-14).
 8. **Messaggi e AI.** Preferenze di notifica (MSG-05), standard di comunicazione e situazioni
    (MSG-06), messaggi programmati (MSG-11).
-9. **Documenti fiscali.** Chi emette, regime, dati dell'emittente, intermediario SDI oppure «se ne
-   occupa il commercialista» (FIS-02).
+9. **Documenti fiscali.** Chi emette (Octorate se può, altrimenti CasaZen per le sole prenotazioni
+   dirette: PO-05), regime, dati dell'emittente, intermediario SDI oppure «se ne occupa il
+   commercialista» (FIS-02).
 10. **Partner.** Integrazioni facoltative dal marketplace (MKT).
 11. **Riepilogo e attivazione.** Semaforo per flusso e per immobile (attivo, da completare con il
     motivo, non disponibile con il perché), prova finale in sola lettura (una prenotazione importata di
@@ -1806,6 +1830,7 @@ osservato e origine.
 | Disponibilità, prezzi, restrizioni | CasaZen | Unico scrittore (PO-16) | Regole automatiche di Octorate spente o lette |
 | Prenotazioni delle OTA | OTA via Octorate | Octorate → CasaZen | In CasaZen solo ciò che l'OTA consente (BKG-03) |
 | Prenotazioni dirette e manuali | CasaZen | CasaZen → Octorate | Bloccano la disponibilità su tutti i canali |
+| Prenotazioni del motore di prenotazione Octorate (sito dell'agenzia) | Octorate | Octorate → CasaZen | Dirette per documenti e marketing (PO-05, PO-17, D34) |
 | Pagamenti diretti | Stripe tramite CasaZen | CasaZen → Octorate (registrazione) | Un ACK di Octorate non rende pagata una prenotazione |
 | Pagamenti delle OTA | OTA via Octorate | Octorate → CasaZen | Commissione dai componenti di prezzo |
 | Dati degli ospiti per il check-in | CasaZen (raccolta) | CasaZen → Octorate | Documenti mai inviati a Octorate come immagini |
@@ -1813,7 +1838,7 @@ osservato e origine.
 | Flussi ISTAT | Octorate dove configurato (PO-03) | Octorate | Altrove file di CasaZen |
 | Tassa di soggiorno | CasaZen (PO-04) | CasaZen → Octorate | Confronto con il valore di Octorate |
 | Stato di check-in e check-out | CasaZen | CasaZen → Octorate | Eventi sul bus |
-| Documenti fiscali | Emittente unico per organizzazione (PO-05) | CasaZen oppure Octorate | Mai entrambi |
+| Documenti fiscali | Un solo emittente per prenotazione (PO-05): Octorate se può (D34), altrimenti CasaZen per le sole prenotazioni dirette | Octorate → CasaZen (lettura) oppure CasaZen | Mai entrambi per la stessa prenotazione |
 | Messaggi delle OTA | OTA via Octorate | Lettura e invio tramite Octorate | Copia in CasaZen per hub, ricerca e AI |
 | Messaggi diretti | CasaZen | CasaZen | Thread esistenti |
 | Recensioni | OTA (Airbnb via Octorate) e sito CasaZen | — | Risposte solo Airbnb via API |
@@ -1856,7 +1881,8 @@ Numeri assegnati dalla fase ADR di Helix.
 5. Politica AI dei messaggi: situazioni, confidenza, soglie, categorie sensibili, dati al modello
    (PO-08, PO-09).
 6. Mittente unico degli adempimenti e ricevute (emenda ADR-015) (PO-02, PO-03).
-7. Emittente unico dei documenti fiscali (emenda ADR-019) (PO-05, PO-06).
+7. Emittente unico dei documenti fiscali per prenotazione, Octorate o CasaZen (emenda ADR-019)
+   (PO-05, PO-06, D34).
 8. Contatti leciti per il marketing: fonti, base giuridica, soft opt-in, soppressione (PO-07,
    PO-17); collegamento con l'abbinamento degli ospiti (emenda ADR-021).
 9. Catalogo del marketplace e attivazioni (MKT).
@@ -2000,11 +2026,11 @@ diversamente (§3, precedenze).
 | Contenuti e canali | Tutto ciò che è stato chiesto (proprietà, camere, contenuti, tariffe, disponibilità) è disponibile via API. Booking.com, Airbnb, Vrbo, HomeToGo e Holidu ricevono contenuti e vi si creano proprietà e camere; gli altri canali si possono solo collegare. Entrambi i processi sono complessi | `pushQueue` solo per `booking_xml`, `airbnb_xml`, `homeaway`; invio per connessione per gli altri; Expedia nei metadati | Editor unico per i cinque canali con contenuti; **Expedia e gli altri canali solo collegati**: i loro contenuti si gestiscono sul canale, con una guida dentro il wizard (LST-01, LST-12, §11.1) |
 | Check-in e Polizia | Via API si creano le schedine Alloggiati e ISTAT e il check-in dell'ospite; l'invio agli enti lo fa Octorate; il collegamento ai portali degli enti si fa **solo dal pannello Octorate**; gli esiti si vedono nel pannello e **non** sono disponibili via API | Ospiti del check-in in scrittura con tutti i campi Alloggiati e statistici; per ospite `policeSentTime` e `policeSentStatus`; nella struttura `policeAccount` (`autorun`, `valid`, `lastCron`); nessuna operazione per avviare l'invio o scaricare la ricevuta | CasaZen scrive gli ospiti e Octorate invia (PO-02). Collegamento agli enti: passo guidato sul pannello Octorate (CHK-03). Esito: «Affidato a Octorate» con la ricevuta ufficiale scaricata dal web service della Polizia o caricata (CHK-04); i campi di S13 si verificano in sandbox e non sono la base del prodotto (D18). ISTAT con prova guidata (CHK-05) |
 | Tassa di soggiorno | Va gestita sull'infrastruttura di CasaZen | `touristTax` «calcolata al momento»; per ospite `cityTaxPrice`, `cityTaxExemption` (30 motivi), `excludeCityTax`; nessuna operazione per le regole | CasaZen calcola, riepiloga e ricorda le scadenze (CHK-07); scrive i valori per ospite in Octorate solo se servono ai documenti emessi in Octorate (D20) |
-| Documenti fiscali | Nessuna generazione via API per ora; si recuperano solo anagrafiche dei clienti e documenti fiscali generati in Octorate | Lettura con tipo e stato SDI (`fiscalInvoiceGroup`); PDF di riepilogo; esistono `createDoubleHeadingInvoice` e `issueSummaryDocument` | Le due operazioni di creazione **non si usano**. Emette CasaZen (FIS-02, FIS-03); i documenti creati nel pannello Octorate si leggono (FIS-04) |
+| Documenti fiscali | Nessuna generazione via API per ora; si recuperano solo anagrafiche dei clienti e documenti fiscali generati in Octorate | Lettura con tipo e stato SDI (`fiscalInvoiceGroup`); PDF di riepilogo; esistono `createDoubleHeadingInvoice` e `issueSummaryDocument` | Le due operazioni di creazione **non si usano**. Prima scelta del PO: emette Octorate, anche per il suo motore di prenotazione, e CasaZen legge (FIS-04), se Octorate lo consente (D34); altrimenti emette CasaZen per le sole prenotazioni dirette (FIS-02, FIS-03) |
 | Prenotazioni | Nessuna vera differenza tra prenotazione diretta e da portale | Stesso modello per tutte; `otaId` e componenti di prezzo | Un solo modello in CasaZen (BKG); le dirette nascono in CasaZen e vanno in Octorate come le altre (BKG-03) |
 | Report | Nessun report via API: il partner costruisce le proprie statistiche dai soggiorni | Confermato | CasaZen calcola dai dati di prenotazioni, pagamenti e documenti (REP) |
 | Recensioni | — (S6 e S7: solo Airbnb) | Tre operazioni, risposta solo Airbnb | Invariato (OCT-12, MSG-09) |
-| Dati degli ospiti | Anagrafica e dati di fatturazione dell'ospite; nessun altro dato. Dati sensibili (email, telefono) solo con accesso limitato a IP statici, **anche in sandbox** | `contactInfo` con permesso speciale, ogni lettura registrata; `emailAvailable`, `phoneAvailable`; nessun campo di consenso | IP statici prima di qualunque prova con dati sensibili; lettura solo per il servizio, mai in blocco per il marketing (CRM-07). D24 |
+| Dati degli ospiti | Anagrafica e dati di fatturazione dell'ospite; nessun altro dato. Dati sensibili (email, telefono) solo con accesso limitato a IP statici, **anche in sandbox** | `contactInfo` con permesso speciale, ogni lettura registrata; `emailAvailable`, `phoneAvailable`; nessun campo di consenso | IP statici prima di qualunque prova con dati sensibili; lettura per la singola prenotazione, per il servizio e, per i clienti diretti del motore di prenotazione, anche per il marketing con il soft opt-in; mai in blocco (CRM-07, PO-17). D24 |
 | Marketplace | Elenco dei partner nel Partner Hub pubblico; le integrazioni si completano sul sito del partner, **mai da Octorate** | `meta/portals` con `OTA` o `EXTERNAL_TOOL`; connessioni; moduli in `license`; nessun elenco dei partner | Catalogo curato da CasaZen sul modello del Partner Hub; attivazione guidata sul sito del partner con stato dichiarato dall'utente (MKT-01, MKT-03). D16 chiusa |
 | Messaggi | Integrati per Booking.com, Airbnb, Vrbo ed Expedia; gli altri portali danno telefono ed email dell'ospite: si scrive per email, WhatsApp o con la chat di Octorate | Chat con processori `CHANNEL`, `WHATSAPP`, `MAIL`, `DIRECT`; `readAll`, membri, traduzione, modelli | Hub per i quattro canali integrati; per gli altri thread su email o WhatsApp con i contatti letti da `contactInfo` (servono gli IP statici) o sulla chat di Octorate (MSG-03, MSG-10) |
 
@@ -2055,7 +2081,9 @@ solo nella collection, da confermare prima dell'uso.
 
 Restano fuori perimetro: operazioni su carte di credito, rete di strutture (`/accommodation/network`),
 stanze PMS (`/rest/v1/pms`), creazione di portali API (`/rest/v1/portal/apiportal`, riservata a chi
-riceve ARI), motore di prenotazione Octorate.
+riceve ARI). Il motore di prenotazione di Octorate non è una funzione di CasaZen, ma l'agenzia può
+usarlo sul proprio sito (modulo `bookingEngine`, PO-05, D34): le sue prenotazioni entrano come le
+altre (BKG-01).
 
 Helix deve riacquisire OpenAPI e collection con data, hash e provenienza, e generare il client
 con un comando riproducibile; per ogni requisito registrare `operationId`, corpo, risposta,
@@ -2068,7 +2096,7 @@ dimostra che il partner CasaZen possa usarlo: lo dimostrano i permessi della con
 Le risposte D1–D14 della v1.3 (§5.1: annuncio da zero, campi di contenuto e CIN, messaggi,
 risposte automatiche, recensioni, annunci esistenti, ARI e quota, prenotazioni, Stripe e
 dirette, altri canali, titolarità e uscita, sandbox, convenzioni, costo e licenza) restano valide
-e sono riportate integralmente qui sotto; le nuove domande D15–D33 sono in §14.2.
+e sono riportate integralmente qui sotto; le nuove domande D15–D35 sono in §14.2.
 
 | ID | Domanda | Specifica | Resta da chiedere |
 |---|---|---|---|
@@ -2221,11 +2249,13 @@ completo, dal dato alla schermata, dimostrabile con l'adattatore Mock.
 | H7 — Marketplace | H1, U0 | MKT-01…07 | Catalogo dalle tre fonti; attivazione e disattivazione di un portale simulato; stato |
 | O1 — Onboarding | H1–H7, U0 | ONB-01…05: il percorso che accende tutti i flussi, anche in blocco per le agenzie | Agenzia DEMO configurata da zero in Mock, 10 immobili in blocco, ripresa a metà percorso, nessun flusso attivo senza prerequisiti |
 | H8 — Sandbox | H2–H7, credenziali valide | Prove del contratto API con l'account test (ex H5 della v1.3): OAuth e rinnovo, letture prima delle scritture, errori 400/401/403/404/422, 403 di quota, 550, timeout, webhook | Rapporto per capacità; le celle con effetti sulle OTA restano «da provare in produzione» |
-| H9 — Preparazione del pilota | H8, approvazioni | Import in sola lettura, confronto dei mapping, convivenza con il sistema attuale, rollback, soglie (ex H6) | G3 |
+| H8b — Banco di prova in produzione | H8, licenza di produzione (D35) | Un annuncio reale non di Quokka collegato alle OTA (PO-22): pubblicazione dei contenuti, prezzi e disponibilità, una prenotazione da un canale (anche fatta dal team) con modifica e cancellazione, messaggi, check-in con invio, documento fiscale; alla fine disattivazione pulita | Ogni capacità «da provare in produzione» ha una prova registrata o un blocco dichiarato |
+| H9 — Preparazione del pilota | H8b, approvazioni | Import in sola lettura, confronto dei mapping, convivenza con il sistema attuale, rollback, soglie (ex H6) | G3 |
 | H10 — Osservazione del pilota | H9, autorizzazione | 5–10 proprietà per 30 giorni (proposta S3/S4), controlli e rapporti (ex H7) | G4 |
 
 **Si può iniziare subito, senza Octorate:** S0 (prima di tutto), U0 per intero; DEB-02 e DEB-05;
-CHK-07 (calcolo della tassa, già in CasaZen); FIS-02/05 per l'emissione di CasaZen; REP sui dati
+CHK-07 (calcolo della tassa, già in CasaZen); FIS-02 e FIS-05 (FIS-03, l'emissione di CasaZen,
+aspetta la risposta D34: PO-05); REP sui dati
 già presenti; CRM-02/03/06/08 (base giuridica dei contatti e correzioni delle campagne); MSG-05
 (preferenze di notifica) e l'hub sui thread diretti esistenti. Tutto il resto parte con
 l'adattatore Mock. DEB-11 segue le priorità della fase 1, non questo documento.
@@ -2241,9 +2271,10 @@ del simulatore e prove contrattuali ufficiali.
   ripristino compresi; prove UX-14 verdi su ogni wizard; simulazione sempre dichiarata.
 - **G2 — Sandbox.** OAuth e capacità disponibili provate con evidenze; rapporto separato delle
   capacità mancanti. La rete di test non collega le OTA (S6): contenuti, ARI, prenotazioni da OTA,
-  messaggi e recensioni sulle OTA risultano «da provare in produzione».
+  messaggi e recensioni sulle OTA risultano «da provare in produzione» e si provano sul banco di
+  prova (H8b, PO-22).
 - **G3 — Pronti al pilota.** Autorizzazione commerciale e operativa, proprietà e durata concordate,
-  certificazione breve dell'account da parte di Octorate (S19), mapping verificati, permessi API necessari (compresi `checkIn`, `invoices`, `contactInfo` se
+  certificazione breve dell'account da parte di Octorate (S19), banco di prova superato (H8b, PO-22), mapping verificati, permessi API necessari (compresi `checkIn`, `invoices`, `contactInfo` se
   usati), mittente degli adempimenti deciso per ogni immobile, rollback e responsabilità definiti;
   prova d'uso del PO con almeno cinque persone non esperte su: collegamento dei canali, modifica
   di un annuncio, check-in con invio, risposta a un messaggio, documento fiscale.
@@ -2259,33 +2290,36 @@ produzione fa parte della consegna di questo documento.
 
 ## 14. Decisioni del PO e domande a Octorate
 
-### 14.1 Decisioni del PO, con default
+### 14.1 Decisioni del PO
 
-Helix procede con il default; una decisione diversa del PO cambia solo i requisiti indicati.
+Il PO ha deciso tutte le voci il 31/10 (intervista e conferme del legale). «Confermato» vuol dire
+che il PO ha scelto la proposta; dove ha deciso diversamente la riga lo dice. Una decisione
+cambiata in seguito tocca solo i requisiti indicati.
 
-| ID | Domanda | Default proposto | Requisiti | Blocca |
+| ID | Domanda | Decisione | Requisiti | Blocca |
 |---|---|---|---|---|
-| PO-01 | Il channel manager si nomina nell'interfaccia? | No, tranne dove l'utente deve agire sul suo sito (consenso, prove non disponibili via API), con una dicitura neutra («il tuo channel manager») e il nome solo nella pagina di consenso | UX-12, LST-02, CHK-04 | No |
-| PO-02 | Chi invia ad Alloggiati per gli immobili collegati a Octorate? | Octorate (mandato S12; il collegamento all'ente si fa nel pannello Octorate, S18); CasaZen scarica la ricevuta ufficiale con `Ricevuta` se l'host gli affida le credenziali; il client di CasaZen (Q1-14) resta per gli immobili non collegati; **mai due mittenti automatici** per lo stesso immobile | CHK-03, CHK-04 | No |
-| PO-03 | Chi invia i flussi ISTAT? | Octorate dove copre la regione (D15); file di CasaZen (Q1-15) o portale regionale altrove | CHK-05 | No |
-| PO-04 | Chi calcola la tassa di soggiorno? | CasaZen (regole e tariffe per comune già presenti), come confermato da Octorate (S18); scrive i valori per ospite in Octorate solo se l'host emette documenti nel pannello Octorate (D20) | CHK-07 | No |
-| PO-05 | Chi emette i documenti fiscali delle prenotazioni? | CasaZen (Octorate non li genera via API, S18); se l'host li emette già a mano nel pannello Octorate, CasaZen li legge e non emette; mai entrambi per la stessa organizzazione | FIS-02 | No |
-| PO-06 | Quale intermediario SDI per l'invio reale delle fatture elettroniche emesse da CasaZen? | Nessun invio reale finché non è scelto: XML generato, validato e scaricabile, stato «da inviare» | FIS-05 | Solo l'invio reale |
+| PO-01 | Il channel manager si nomina nell'interfaccia? | **Confermato dal PO il 31/10:** no, tranne dove l'utente deve agire sul suo sito (consenso, prove non disponibili via API), con una dicitura neutra («il tuo channel manager») e il nome solo nella pagina di consenso | UX-12, LST-02, CHK-04 | No |
+| PO-02 | Chi invia ad Alloggiati per gli immobili collegati a Octorate? | **Confermato dal PO il 31/10:** Octorate (mandato S12; il collegamento all'ente si fa nel pannello Octorate, S18); CasaZen scarica la ricevuta ufficiale con `Ricevuta` se l'host gli affida le credenziali; il client di CasaZen (Q1-14) resta per gli immobili non collegati; **mai due mittenti automatici** per lo stesso immobile | CHK-03, CHK-04 | No |
+| PO-03 | Chi invia i flussi ISTAT? | **Confermato dal PO il 31/10:** Octorate dove copre la regione (D15); file di CasaZen (Q1-15) o portale regionale altrove | CHK-05 | No |
+| PO-04 | Chi calcola la tassa di soggiorno? | **Chiusa dalla risposta di Octorate (S18), senza scelta del PO:** CasaZen (regole e tariffe per comune già presenti); scrive i valori per ospite in Octorate quando i documenti li emette Octorate (PO-05) e se Octorate li usa (D20) | CHK-07 | No |
+| PO-05 | Chi emette i documenti fiscali delle prenotazioni? | **Deciso dal PO il 31/10:** prima scelta Octorate: se con il suo motore di prenotazione e la sua fatturazione i documenti si possono emettere da Octorate (D34), si emette tutto da lì e CasaZen li legge (FIS-04). Altrimenti li emette CasaZen, ma solo per le prenotazioni dirette (sito di CasaZen e sito dell'agenzia collegato al motore di prenotazione); per le prenotazioni delle OTA CasaZen non emette. Mai due emittenti per la stessa prenotazione | FIS-02, FIS-03, FIS-04 | No |
+| PO-06 | Quale intermediario SDI per l'invio reale delle fatture elettroniche emesse da CasaZen? | **Confermato dal PO il 31/10:** si sceglie dopo; fino ad allora nessun invio reale: XML generato, validato e scaricabile, stato «da inviare». Non serve per i documenti emessi da Octorate (PO-05) | FIS-03 | Solo l'invio reale |
 | PO-07 | Email di marketing ai clienti diretti e agli ospiti che hanno dato l'email a CasaZen nel check-in senza consenso esplicito («soft opt-in», art. 130 c. 4 Codice privacy) | **Deciso dal PO il 31/10, confermato dal legale:** sì, con informativa al momento della raccolta, solo per servizi analoghi (soggiorni), disiscrizione in ogni messaggio; sostituisce il default D-10 della fase 1 | CRM-02, CRM-03, CRM-06 | No |
-| PO-08 | Invio automatico delle risposte AI | Acceso solo per le situazioni che l'organizzazione ha configurato, sopra la soglia (default 0,85), mai per le categorie sensibili e mai dove la policy del canale non è confermata (D4 della v1.3); periodo iniziale di due settimane in sola bozza per ogni nuova situazione, con la percentuale di bozze approvate senza modifiche come misura | MSG-06, MSG-07 | No |
-| PO-09 | Dati personali verso il modello AI per rispondere ai messaggi (la regola attuale è «nessun dato personale nei prompt») | Modello ospitato nell'UE con accordo sul trattamento (D8 della v10); minimizzazione: nomi, contatti, codici e documenti sostituiti da segnaposto; testo del messaggio inviato perché necessario; ⚖ informativa | MSG-07, AI | Solo l'attivazione dell'AI sui messaggi |
-| PO-10 | Avvisi predefiniti | Push e contatore in-app per i nuovi messaggi degli ospiti e per le scadenze di legge; riepilogo email giornaliero; popup solo per scadenze entro 24 ore | UX-08, MSG-05 | No |
-| PO-11 | Chi cura il catalogo dei partner e con quali partner si parte? | L'admin di piattaforma di CasaZen; all'avvio solo i portali e gli strumenti letti via API più i servizi CasaZen; i partner terzi quando Octorate fornisce l'elenco (D16) | MKT-01, MKT-06 | No |
-| PO-12 | CasaZen attiva i moduli in licenza di Octorate (chat, fatture, pulizie…) per conto dell'host? | Solo come richiesta guidata finché il modello commerciale (rivenditore o no) non è deciso con Octorate (D21) | MKT-05 | No |
-| PO-13 | Strutture con più unità (più appartamenti nello stesso edificio) | Un annuncio = una unità; più unità in una struttura dopo il pilota (gli hotel restano esclusi, v1.3) | LST-08 | No |
-| PO-14 | Notifiche push anche nel browser (oltre all'app) | Sì, facoltative, chieste solo dopo il primo avviso utile | UX-08 | No |
-| PO-15 | Foto degli annunci raggiungibili da Octorate tramite URL pubblico | Sì, solo per le foto degli annunci (sono già pubbliche sulle OTA), con indirizzi non indovinabili; i documenti degli ospiti restano privati | LST-06 | No |
-| PO-16 | Chi comanda prezzi e disponibilità? | CasaZen è l'unico scrittore per gli immobili collegati; le regole automatiche di Octorate (chiusure automatiche, prezzi derivati, revenue) restano spente o lette e mostrate | LST-09, LST-10 | No |
-| PO-17 | Dati degli ospiti presi da Octorate per il CRM | Solo dati della prenotazione e del soggiorno; i contatti letti con `contactInfo` solo per il servizio (messaggi, check-in, fattura), mai per il marketing | CRM-07 | No |
+| PO-08 | Invio automatico delle risposte AI | **Confermato dal PO il 31/10:** acceso solo per le situazioni che l'organizzazione ha configurato, sopra la soglia (0,85 di partenza), mai per le categorie sensibili e mai dove la policy del canale non è confermata (D4 della v1.3); periodo iniziale di due settimane in sola bozza per ogni nuova situazione, con la percentuale di bozze approvate senza modifiche come misura | MSG-06, MSG-07 | No |
+| PO-09 | Dati personali verso il modello AI per rispondere ai messaggi (la regola attuale è «nessun dato personale nei prompt») | **Il PO non ha espresso preferenze il 31/10, vale la proposta:** modello ospitato nell'UE con accordo sul trattamento (D8 della v10); minimizzazione: nomi, contatti, codici e documenti sostituiti da segnaposto; testo del messaggio inviato perché necessario; ⚖ informativa | MSG-07, AI | Solo l'attivazione dell'AI sui messaggi |
+| PO-10 | Avvisi predefiniti | **Confermato dal PO il 31/10:** push e contatore in-app per i nuovi messaggi degli ospiti e per le scadenze di legge; riepilogo email giornaliero; popup solo per scadenze entro 24 ore | UX-08, MSG-05 | No |
+| PO-11 | Chi cura il catalogo dei partner e con quali partner si parte? | **Confermato dal PO il 31/10:** l'admin di piattaforma di CasaZen; all'avvio i portali e gli strumenti letti via API più i servizi CasaZen; i partner terzi presi dal Partner Hub pubblico di Octorate, con l'attivazione sul sito del partner (D16) | MKT-01, MKT-06 | No |
+| PO-12 | CasaZen attiva i moduli in licenza di Octorate (chat, fatture, pulizie…) per conto dell'host? | **Confermato dal PO il 31/10:** solo come richiesta guidata finché il modello commerciale (rivenditore o no) non è deciso con Octorate (D21) | MKT-05 | No |
+| PO-13 | Strutture con più unità (più appartamenti nello stesso edificio) | **Confermato dal PO il 31/10:** un annuncio = una unità; più unità in una struttura dopo il pilota (gli hotel restano esclusi, v1.3) | LST-08 | No |
+| PO-14 | Notifiche push anche nel browser (oltre all'app) | **Confermato dal PO il 31/10:** sì, facoltative, chieste solo dopo il primo avviso utile | UX-08 | No |
+| PO-15 | Foto degli annunci raggiungibili da Octorate tramite URL pubblico | **Confermato dal PO il 31/10:** sì, solo per le foto degli annunci (sono già pubbliche sulle OTA), con indirizzi non indovinabili; i documenti degli ospiti restano privati | LST-06 | No |
+| PO-16 | Chi comanda prezzi e disponibilità? | **Confermato dal PO il 31/10:** CasaZen è l'unico scrittore per gli immobili collegati; le regole automatiche di Octorate (chiusure automatiche, prezzi derivati, revenue) restano spente o lette e mostrate | LST-09, LST-10 | No |
+| PO-17 | Dati degli ospiti presi da Octorate per il CRM | **Deciso dal PO il 31/10:** dati della prenotazione e del soggiorno; i contatti letti con `contactInfo` servono al servizio (messaggi, check-in, fattura); quelli dei clienti diretti (sito di CasaZen, già coperto da PO-07, e motore di prenotazione del sito dell'agenzia) entrano anche nel marketing con il soft opt-in, se le condizioni d'uso di Octorate lo consentono (D24) e l'informativa è mostrata alla prenotazione (D34); mai gli indirizzi di inoltro delle OTA, mai letture in blocco | CRM-02, CRM-07 | No |
 | PO-18 | Come si identifica l'ospite? | **Deciso dal PO il 31/10:** verifica biometrica dal vivo del solo ospite che lascia il documento (capogruppo o capofamiglia: selfie dalla fotocamera confrontato con il suo documento, dal link del check-in o dal QR all'ingresso), esito immediato e codice della serratura subito dopo; l'identificazione di persona non è praticabile; ripiego: verifica dell'operatore in videochiamata. Confermati dal legale (31/10): validità della verifica a distanza dal vivo del solo capogruppo, consenso biometrico e DPIA | CHK-11, DEB-09 | No |
 | PO-19 | Quando CasaZen crea una struttura nuova su Octorate, il proprietario riceve da Octorate le credenziali del suo account (`welcome_user`)? | **Deciso dal PO il 31/10:** no. CasaZen crea la struttura con `welcome_user` falso, l'esperienza resta in CasaZen e il token arriva con la creazione; le credenziali si attivano solo su richiesta del proprietario o alla sua uscita da CasaZen, con la procedura da concordare con Octorate (D11, D27) | §9.1, LST-02, LST-03 | No |
-| PO-20 | Nome pubblico, descrizione e icona dell'app CasaZen su Octorate (oggi «Luca La Malfa», visibile nella pagina di consenso) e visibilità nell'elenco delle API di Octorate (`secretVisibility`, oggi vero) | Nome «CasaZen» con icona e descrizione IT/EN impostati subito in test (`postConfiguration`); app non visibile nell'elenco (`secretVisibility` falso) fino alla certificazione, poi decisione commerciale | §9.1, UX-12 | No |
-| PO-21 | Chi confronta il volto: i modelli specializzati eseguiti nel backend di CasaZen (ADR-013) o un fornitore esterno specializzato? | Modelli nel backend (default, già deciso in ADR-013); un fornitore esterno solo se la taratura non raggiunge gli obiettivi, con valutazione legale (UE, accordo sul trattamento, nessuna conservazione) ⚖ | CHK-14 | No |
+| PO-20 | Nome pubblico, descrizione e icona dell'app CasaZen su Octorate (oggi «Luca La Malfa», visibile nella pagina di consenso) e visibilità nell'elenco delle API di Octorate (`secretVisibility`, oggi vero) | **Confermato dal PO il 31/10:** nome «CasaZen» con icona e descrizione IT/EN impostati subito in test (`postConfiguration`); app non visibile nell'elenco (`secretVisibility` falso) fino alla certificazione, poi decisione commerciale | §9.1, UX-12 | No |
+| PO-21 | Chi confronta il volto: i modelli specializzati eseguiti nel backend di CasaZen (ADR-013) o un fornitore esterno specializzato? | **Confermato dal PO il 31/10:** modelli nel backend (già deciso in ADR-013); un fornitore esterno solo se la taratura non raggiunge gli obiettivi, con valutazione legale (UE, accordo sul trattamento, nessuna conservazione) ⚖ | CHK-14 | No |
+| PO-22 | Prima del pilota Quokka si prova su un annuncio reale che non è di Quokka? | **Deciso dal PO il 31/10:** sì. Un annuncio reale, non di Quokka, collegato alle OTA con una licenza Octorate di produzione: si provano pubblicazione, prezzi e disponibilità, prenotazioni, messaggi, check-in con invio e documenti prima di toccare i dati di Quokka (banco di prova H8b; D35) | §12, §13 | Solo l'avvio del pilota |
 
 **Conferme e decisioni del 31/10 (riferite dal PO).** Il legale ha confermato: validità della
 verifica biometrica a distanza dal vivo del solo ospite che lascia il documento, testo del
@@ -2293,6 +2327,13 @@ consenso biometrico e DPIA, soft opt-in (PO-07), impostazione delle regole dei d
 Il PO ha deciso: nessuna dicitura AI verso gli ospiti (MSG-07); per Expedia contenuti gestiti sul
 canale, accettato per il pilota (LST-01). I testi preparati da CasaZen (consensi, informative)
 si possono usare.
+
+**Intervista del 31/10.** Il PO ha risposto a tutte le domande ancora aperte. Ha confermato le
+proposte, con due cambi: PO-05 (prima scelta Octorate per i documenti fiscali, anche con il suo
+motore di prenotazione sul sito dell'agenzia; CasaZen emette solo per le prenotazioni dirette) e
+PO-17 (i recapiti dei clienti diretti del motore di prenotazione entrano anche nel marketing con il
+soft opt-in). Su PO-09 nessuna preferenza: vale la proposta. Nuova PO-22: banco di prova su un
+annuncio reale prima del pilota. Nuove domande a Octorate: D34 e D35.
 
 ### 14.2 Domande a Octorate (si aggiungono a D1–D14)
 
@@ -2303,7 +2344,7 @@ si possono usare.
 | D17 | **In parte risposta da S18:** il collegamento ai portali degli enti si fa solo dal pannello Octorate. Resta da chiedere: `policeAccount.valid` e `autorun` sono leggibili via API per verificare il collegamento dal wizard? Alloggiati e ISTAT richiedono il vostro modulo gestionale (costo, licenza)? | CHK-03 |
 | D18 | **In parte risposta da S18:** gli esiti degli invii non sono disponibili via API. Resta da chiarire, a bassa priorità, che cosa indicano i campi `policeSentStatus` e `policeSentTime` della specifica e se una ricevuta via API è prevista | CHK-04 |
 | D19 | **Risposta S18:** nessuna generazione di documenti fiscali via API «al momento»; si leggono anagrafiche e documenti generati in Octorate. Chiusa; da riaprire solo se Octorate annuncia la funzione | FIS-02 |
-| D20 | **In parte risposta da S18:** la tassa si gestisce in CasaZen. Resta da chiedere solo per chi emette documenti nel pannello Octorate: i valori per ospite scritti da CasaZen vengono usati nei documenti? | CHK-07 |
+| D20 | **In parte risposta da S18:** la tassa si gestisce in CasaZen. Resta da chiedere, ora che il PO preferisce che i documenti li emetta Octorate (PO-05): i valori per ospite scritti da CasaZen vengono usati nei documenti? | CHK-07 |
 | D21 | Un partner può attivare o cambiare la licenza di una proprietà (moduli `chat`, `invoice`…)? Con quale modello commerciale? | MKT-05, PO-12 |
 | D22 | Quale `category` è assegnata a CasaZen e quale tetto di quota in lettura ne deriva? | OCT-13, quote |
 | D23 | Quali sono oggi i portali `EXTERNAL_TOOL` e come si collegano? | MKT-01 |
@@ -2317,6 +2358,8 @@ si possono usare.
 | D31 | Alloggiati tramite Octorate: a che ora parte l'invio automatico giornaliero? Come gestite i soggiorni fino a 24 ore (invio entro 6 ore) e quelli oltre 30 notti? Avvisate l'host di un invio fallito, e come? `lastCron` e `valid` di `policeAccount` sono leggibili via API? | CHK-04, CHK-12 |
 | D32 | ISTAT tramite Octorate: per ogni regione periodicità e scadenze dell'invio; l'esito arriva per email: a quale indirizzo, si può aggiungerne uno di CasaZen, in quale formato? | CHK-05, CHK-13 |
 | D33 | Un'agenzia con circa 250 appartamenti in una rete Octorate: un solo consenso dell'utente amministratore dà un token valido per tutte le strutture della rete? Le strutture aggiunte dopo entrano nello stesso token? Si può revocare l'accesso a una singola struttura? La quota è per struttura o per token? | §9.1, LST-02 |
+| D34 | **Documenti fiscali e motore di prenotazione (PO-05).** (a) Octorate può emettere in automatico, senza passaggi a mano nel pannello, ricevute e fatture, compresa la fattura elettronica allo SDI, per tutte le prenotazioni: OTA, motore di prenotazione e dirette create da CasaZen via API? Con quali moduli (`invoice`, `fiscalPrinter`) e costi? (b) L'agenzia può usare il motore di prenotazione di Octorate sul proprio sito (modulo `bookingEngine`): come si integra, quanto costa, e le prenotazioni arrivano a CasaZen come le altre (webhook `RESERVATION_*`), riconoscibili come dirette? (c) Il motore mostra l'informativa privacy dell'agenzia al momento della prenotazione (serve al soft opt-in, PO-17)? | FIS-02, BKG-01, CRM-07 |
+| D35 | **Banco di prova prima del pilota (PO-22).** La rete di test non collega le OTA (S6): si può attivare in produzione, con licenza, una struttura reale non di Quokka collegata ai canali, per provare pubblicazione, prezzi, prenotazioni e messaggi? Con quali costi e tempi, e come si disattiva alla fine? | §12 (H8b), G3 |
 
 ## 15. Revisioni
 
@@ -2324,7 +2367,7 @@ si possono usare.
   processi con CasaZen unico punto di accesso. Aggiunti: base del codice al 30/10 (§4), regole UX
   vincolanti con l'aggiunta del 31/10 (wizard su livello separato, mai fuori dal processo, «Da
   fare», push e popup) (§5), requisiti per processo (§6), mappa delle automazioni AI (§7),
-  autorità dei dati estesa (§8.2), decisioni PO-01…21 e domande D15–D33 (§14), benchmark UX
+  autorità dei dati estesa (§8.2), decisioni PO-01…22 e domande D15–D35 (§14), benchmark UX
   (Appendice A). Verifica della specifica del 31/10 (S13): check-in e Polizia, ospiti, tassa di
   soggiorno, fatture con stato SDI, pagamenti, prodotti extra, politiche, licenze, portali e
   strumenti esterni; tre punti in contrasto con il resoconto S7 (esito per ospite dell'invio alla
@@ -2363,7 +2406,13 @@ si possono usare.
   checklist di attivazione esistente (§6.9, ONB-01…05, pacchetto O1). Conferme del legale riferite
   dal PO (verifica biometrica del capogruppo, consenso e DPIA, soft opt-in, regole fiscali), nessuna
   dicitura AI verso gli ospiti, Expedia accettata con i contenuti sul canale e resa semplice da
-  aggiornare (LST-13).
+  aggiornare (LST-13). Intervista del PO del 31/10: tutte le decisioni di §14.1 prese; cambiano
+  PO-05 (documenti fiscali emessi da Octorate se possibile, anche con il suo motore di
+  prenotazione sul sito dell'agenzia, altrimenti da CasaZen per le sole prenotazioni dirette:
+  FIS-02, D34) e PO-17 (recapiti dei clienti diretti del motore di prenotazione anche per il
+  marketing con il soft opt-in: CRM-07); nuova PO-22 con il banco di prova in produzione (H8b,
+  D35). Su richiesta del PO questa versione è l'ingresso della prossima run di Helix, al posto dei
+  requisiti della fase 1.
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
   authorization code flow, whitelist delle callback, access token di 24 ore, refresh token senza
   scadenza, N proprietà = N consensi e token; account test attivo, credenziali non marcate valide;
