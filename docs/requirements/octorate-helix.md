@@ -1653,10 +1653,11 @@ annunci dai canali (D6).
 - Railway, ambiente `test`, servizio `backend`: ci sono `Octorate__ClientId`, `Octorate__ClientSecret`,
   `Octorate__ApiBaseUrl`, `Octorate__FrontendBaseUrl` e `Octorate__AuthorizationEndpoint`; client id,
   URL e secret coincidono con l'email S10 (il secret confrontato per impronta, mai stampato).
-  Ambiente `production`: **nessuna variabile Octorate**. Il PO ha chiesto il 31/10 che anche la
-  produzione sia configurata: la scrittura tentata da Claude è stata bloccata dal controllo di
-  sicurezza sulle scritture nei secret store, quindi resta da fare (azione 7). Nel codice di
-  `develop` nessuna riga legge ancora queste variabili.
+  Ambiente `production`: su richiesta del PO del 31/10 le cinque variabili sono state aggiunte lo
+  stesso giorno con il connettore Railway, senza ridistribuire: stessi valori di test tranne
+  `Octorate__ApiBaseUrl` = `https://api.octorate.com/connect`. Verificate con lo stesso controllo:
+  valori uguali all'email, accesso 200, account `SANDBOX`. Nel codice di `develop` nessuna riga
+  legge ancora queste variabili: valgono dal primo rilascio che le usa.
 - Accesso con le credenziali applicative (`apilogin`): risposta 200, token valido circa 36 ore
   (`expires_in` 129599 secondi; la guida del 2019 diceva un'ora).
 - `GET /rest/v1/api/configuration`: ambiente `SANDBOX`, attivo, nessuna manutenzione, metodo
@@ -1675,7 +1676,8 @@ annunci dai canali (D6).
 
 1. Nome pubblico, descrizione e icona dell'app su Octorate: «CasaZen» invece del nome personale,
    con `postConfiguration` finché si è in test (PO-20).
-2. `Octorate__ApiBaseUrl` su Railway test = `https://api.octorate.com/connect`.
+2. `Octorate__ApiBaseUrl` su Railway test = `https://api.octorate.com/connect` (in test c'è ancora il
+   valore dell'email; in produzione è già corretto).
 3. Redirect URI della callback CasaZen di test in whitelist quando l'endpoint esiste
    (`postConfiguration`); in produzione via `openapi@octorate.com`.
 4. Chiedere a Octorate di togliere il permesso `cardDetail` (CasaZen non tratta carte: minimo
@@ -1685,12 +1687,10 @@ annunci dai canali (D6).
    di `Octorate__ClientSecret`, non il nome.
 6. IP statici dell'ambiente di test comunicati a Octorate prima di qualunque prova con dati
    sensibili degli ospiti (S18, D24).
-7. **Produzione:** le stesse cinque variabili su Railway `production`, servizio `backend`, con i
-   valori di test tranne `Octorate__ApiBaseUrl` = `https://api.octorate.com/connect`, senza
-   ridistribuire (nessun codice le usa ancora); poi verifica in sola lettura (nomi, confronto
-   per impronta, accesso). Anche configurata, la produzione resta limitata alle strutture di
-   test finché Octorate non certifica l'account e lo passa da `SANDBOX` a `PRODUCTION` (S19); la
-   redirect URI di produzione va in whitelist via `openapi@octorate.com` (S9).
+7. **Produzione:** variabili fatte e verificate il 31/10. Resta che la produzione è limitata alle
+   strutture di test finché Octorate non certifica l'account e lo passa da `SANDBOX` a
+   `PRODUCTION` (S19), e che la redirect URI di produzione va in whitelist via
+   `openapi@octorate.com` (S9).
 
 **Per l'utente inesperto (UX-02):** il consenso è un passo del wizard «Collega i tuoi canali»
 (LST-02): una schermata spiega in una frase cosa succede («ti portiamo sul sito del channel
@@ -2044,7 +2044,8 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   generazione di documenti fiscali via API (FIS); partner attivati sul loro sito (MKT-03); messaggi
   degli altri portali via email, WhatsApp o chat di Octorate (MSG-03); dati sensibili solo con IP
   statici anche in sandbox. D16 e D19 chiuse; D17, D18, D20 e D24 in parte. Verifica tecnica del
-  31/10 (S20): variabili Railway test corrette e credenziali valide, nome pubblico dell'app da
+  31/10 (S20): variabili Railway test corrette e credenziali valide, produzione configurata e
+  verificata lo stesso giorno su richiesta del PO, nome pubblico dell'app da
   cambiare (PO-20), indirizzo base da correggere, azioni operative in §9.1; guide di Octorate
   (S19) riassunte in §10.5; nuove domande D28–D30.
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
