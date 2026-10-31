@@ -81,6 +81,45 @@ public class PublicSiteSearchIntegrationTests : IClassFixture<CasazenWebApplicat
     }
 
     [Fact]
+    public async Task Stays_AHouseWhoseHostGaveNoPositionIsAtTheCentreOfItsComune_AndOneThatGaveItKeepsIt()
+    {
+        var city = $"Posizione{Guid.NewGuid():N}";
+        // Without a position (0, 0 = "not set") but with the comune chosen from the official list: Como, ISTAT 013075.
+        var (org, withoutPosition) = await SeedOrgWithHouseAsync("Casa Senza Posizione", city, p =>
+        {
+            p.Latitude = 0m;
+            p.Longitude = 0m;
+            p.ComuneIstatCode = "013075";
+        });
+        // Without a position and without a comune: nothing to put it by.
+        var withoutComune = await SeedHouseAsync(org.Id, "Casa Senza Comune", city, p =>
+        {
+            p.Latitude = 0m;
+            p.Longitude = 0m;
+        });
+        // With the position the host gave: it stays theirs, to about a kilometre, whatever the comune says.
+        var withPosition = await SeedHouseAsync(org.Id, "Casa Con Posizione", city, p =>
+        {
+            p.Latitude = 45.464211m;
+            p.Longitude = 9.191383m;
+            p.ComuneIstatCode = "013075";
+        });
+        using var client = _factory.CreateClient();
+
+        var stays = await GetStaysAsync(client, org.Slug, "adults=2");
+
+        var cards = stays.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("id").GetGuid());
+        Assert.Equal(3, cards.Count);
+        // The centre of Como is 45.8103, 9.0861.
+        Assert.Equal(45.81m, cards[withoutPosition].GetProperty("latitude").GetDecimal());
+        Assert.Equal(9.09m, cards[withoutPosition].GetProperty("longitude").GetDecimal());
+        Assert.Equal(0m, cards[withoutComune].GetProperty("latitude").GetDecimal());
+        Assert.Equal(0m, cards[withoutComune].GetProperty("longitude").GetDecimal());
+        Assert.Equal(45.46m, cards[withPosition].GetProperty("latitude").GetDecimal());
+        Assert.Equal(9.19m, cards[withPosition].GetProperty("longitude").GetDecimal());
+    }
+
+    [Fact]
     public async Task Stays_TheLabelsAndTheChildrenRuleFilterTheList_AndTheCardSaysWhatCancellingCostsWithTheDatesOfTheQuote()
     {
         var city = $"Etichette{Guid.NewGuid():N}";
@@ -259,11 +298,11 @@ public class PublicSiteSearchIntegrationTests : IClassFixture<CasazenWebApplicat
         return (org, propertyId);
     }
 
-    private async Task<Guid> SeedHouseAsync(Guid orgId, string name, string city)
+    private async Task<Guid> SeedHouseAsync(Guid orgId, string name, string city, Action<Property>? configure = null)
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        return await AddHouseAsync(db, orgId, name, city, null);
+        return await AddHouseAsync(db, orgId, name, city, configure);
     }
 
     private static async Task<Guid> AddHouseAsync(AppDbContext db, Guid orgId, string name, string city, Action<Property>? configure)
