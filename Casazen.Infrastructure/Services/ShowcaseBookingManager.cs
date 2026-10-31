@@ -125,8 +125,11 @@ public sealed class ShowcaseBookingManager(
         CancellationToken cancellationToken = default)
     {
         var found = await IdentifyAsync(credentials, cancellationToken);
-        await actions.AcceptOfferAsCustomerAsync(found.Row.Id, found.Supplier.OrgId, offerSentAt, cancellationToken);
-        return await AfterAsync(found, cancellationToken);
+        var acceptance = await actions.AcceptOfferAsCustomerAsync(found.Row.Id, found.Supplier.OrgId, offerSentAt, cancellationToken);
+
+        // The session of the card travels in the answer of this call only (SP-10b-b): the view built from the database never carries a secret.
+        var view = await AfterAsync(found, cancellationToken);
+        return acceptance.PaymentSession is null ? view : view with { PaymentSession = acceptance.PaymentSession };
     }
 
     public async Task<ShowcaseBookingView> DeclineOfferAsync(
@@ -312,12 +315,28 @@ public sealed class ShowcaseBookingManager(
             : null;
 
         // SP-15c-a: the money of a booking paid inside CasaZen, read through the funds service (the payments table is not read here).
-        var held = funds is not null && row.PaymentMode == ServiceRequestPaymentMode.Online
+        var paidInside = row.PaymentMode == ServiceRequestPaymentMode.Online;
+        var held = funds is not null && (paidInside || offer is not null)
             ? await funds.FindHeldPaymentAsync(row.Id, cancellationToken)
             : null;
 
+        // SP-10b-b: an offer the customer accepted and whose card is not blocked yet (or is, and the request is being taken) has a payment of its own
+        // before the request is paid inside CasaZen: it is shown while it is the one made for the offer that stands, never a card of an earlier offer.
+        if (!paidInside && held is not null
+            && !(offer is not null
+                 && held is { PayerKind: ServicePayerKind.Private, Status: ServicePaymentStatus.Requested or ServicePaymentStatus.Failed or ServicePaymentStatus.Authorized or ServicePaymentStatus.Held }
+                 && ServiceRequestOfferRules.IsPaymentOfOffer(held.CreatedAt, held.AmountCents, offer.SentAt, offer.TotalCents)))
+        {
+            held = null;
+        }
+
+        var awaitingPayment = offer is not null && held is not null;
+        bool? offerPaymentRequired = offer is null
+            ? null
+            : awaitingPayment || (funds is not null && await funds.CanAuthorizeAsync(supplier.OrgId, offer.TotalCents, cancellationToken));
+
         // SP-15c-c: the customer's complaint about the job, read through the dispute service (the disputes table is not read here either).
-        var dispute = held is not null && disputes is not null
+        var dispute = held is not null && paidInside && disputes is not null
             ? await disputes.FindDisputeForPayerAsync(row.Id, cancellationToken)
             : null;
         var disputeOpen = dispute is not null && ServiceDisputeRules.IsOpen(dispute.Status);
@@ -384,10 +403,12 @@ public sealed class ShowcaseBookingManager(
                     thread.Messages.Any(m => m.Author == ServiceRequestMessageAuthor.Supplier) || ServiceRequestOfferRules.HasHistory(offerEvents),
                     offerPending: offer is not null,
                     lastOfferDeclined: ServiceRequestOfferRules.LastOfferDeclined(offerEvents),
-                    cancellationReason: row.CancellationReason),
+                    cancellationReason: row.CancellationReason,
+                    awaitingPayment: awaitingPayment),
             quote,
             payment,
-            offer);
+            offer,
+            offerPaymentRequired);
     }
 
     /// <summary>The complaint as the customer reads it: its own words, the state and the decision; never the supplier's reply nor the admin's note.</summary>

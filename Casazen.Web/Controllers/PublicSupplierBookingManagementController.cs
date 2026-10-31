@@ -224,11 +224,19 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
     /// Accepts the offer the supplier sent for the customer's request on measure (SP-10b-b): the request is taken on the supplier's behalf at the time
     /// and the total of the offer, the time is checked again under the supplier's calendar lock, and both are told. The body carries
     /// <c>offerSentAt</c> as <c>offer.sentAt</c> of the booking gave it. Any booking that is not a request on measure is the same 404 as one that does not
-    /// exist. 404 <c>supplier_booking_not_found</c>; 422 <c>supplier_booking_no_offer</c>, <c>supplier_booking_offer_expired</c>,
+    /// exist. <b>When the offer is paid inside CasaZen</b> (<c>offer.paymentRequired</c>; the payments flag on, the supplier able to receive them) the
+    /// request is <b>not</b> taken by this call: the answer is the booking still <c>Richiesto</c> with <c>negotiation: "AwaitingPayment"</c>, <c>payment.status:
+    /// "awaiting_card"</c> and <c>paymentSession</c> (<c>clientSecret</c>, <c>publishableKey</c>, <c>amountCents</c>) — the Payment Element blocks the card
+    /// for the total, then the request is taken (the server does it when Stripe reports the block; this call made again also does it, and answers
+    /// <c>PresoInCarico</c>). The page polls <c>lookup</c> or calls this again until <c>status</c> is <c>PresoInCarico</c>; asked again before the card
+    /// is blocked it returns the same session. The card is charged only when the request is taken, never for a time that is gone: then nothing is
+    /// charged and the block is released. 404 <c>supplier_booking_not_found</c>; 422 <c>supplier_booking_no_offer</c>, <c>supplier_booking_offer_expired</c>,
     /// <c>supplier_booking_supplier_unavailable</c>; 409 <c>service_request_offer_changed</c> (the supplier replaced or withdrew the offer: read it
     /// again), <c>supplier_slot_unavailable</c> / <c>supplier_commitment_conflict</c> (the time is gone: the offer stays, the customer can turn it down,
-    /// write to the supplier or cancel), <c>service_request_state_changed</c> (two acceptances, or the supplier acted at the same moment: one wins and
-    /// nothing is done twice); 429.
+    /// write to the supplier or cancel), <c>payment_authorization_expired</c> / <c>payment_capture_failed</c> (the block lapsed or the card could not be
+    /// charged: nothing was charged, ask for the card again), <c>service_payment_in_flight</c> (money of an earlier attempt is being looked at),
+    /// <c>service_request_state_changed</c> (two acceptances, or the supplier acted at the same moment: one wins and nothing is done twice); 503
+    /// <c>payment_provider_error</c> (the card could not be asked for now; nothing was saved); 429.
     /// </summary>
     [HttpPost("offer/accept")]
     [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]

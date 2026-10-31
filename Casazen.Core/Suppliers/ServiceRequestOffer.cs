@@ -133,6 +133,14 @@ public static class ServiceRequestOfferRules
     }
 
     /// <summary>
+    /// True when a payment is the one made for the offer sent at <paramref name="offerSentAt"/>: for its total, and created after the supplier sent it. An offer
+    /// that was replaced is newer than the payment made for the one before, so that payment is not the offer's, whatever it was for: the card the
+    /// customer blocked is never charged for an offer it did not read.
+    /// </summary>
+    public static bool IsPaymentOfOffer(DateTime paymentCreatedAt, int paymentAmountCents, DateTime offerSentAt, int offerTotalCents) =>
+        paymentAmountCents == offerTotalCents && paymentCreatedAt >= offerSentAt;
+
+    /// <summary>
     /// True when an offer was ever sent on the request (its trace is not empty): the supplier has answered, even if it never wrote in the thread.
     /// </summary>
     public static bool HasHistory(string? quoteEventsJson) => ServiceRequestJson.ReadQuoteEvents(quoteEventsJson).Count > 0;

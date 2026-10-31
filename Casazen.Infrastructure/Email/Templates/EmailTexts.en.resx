@@ -2031,6 +2031,21 @@
   <data name="SupplierInquiryOfferExpired_Hint" xml:space="preserve">
     <value>You have paid nothing. You can make a new request from the supplier's page.</value>
   </data>
+  <data name="SupplierInquiryOfferNotCompleted_Subject" xml:space="preserve">
+    <value>Offer from {0} not completed: you have paid nothing</value>
+  </data>
+  <data name="SupplierInquiryOfferNotCompleted_Body" xml:space="preserve">
+    <value>We could not complete the acceptance of the offer from &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryOfferNotCompleted_TimeGone" xml:space="preserve">
+    <value>The time of the offer is no longer available.</value>
+  </data>
+  <data name="SupplierInquiryOfferNotCompleted_Payment" xml:space="preserve">
+    <value>The payment did not go through.</value>
+  </data>
+  <data name="SupplierInquiryOfferNotCompleted_Hint" xml:space="preserve">
+    <value>We have charged you nothing and the block on your card was removed. The request stays open: you can write to the supplier or answer the offer again from the page of the request.</value>
+  </data>
   <data name="SupplierInquiryClosed_Cta" xml:space="preserve">
     <value>Go to the supplier's page</value>
   </data>

@@ -97,6 +97,14 @@ public class ServiceRequestOfferDto
 
     /// <summary>The instant the customer has to answer by; after it the request is cancelled by CasaZen.</summary>
     public DateTime? ValidUntil { get; set; }
+
+    /// <summary>
+    /// The customer's reading only (left out for the supplier): accepting the offer is paid inside CasaZen — the customer's card is blocked for
+    /// <c>totalCents</c> and the request is taken when it is (<c>negotiation</c> <c>AwaitingPayment</c> meanwhile). <c>false</c>: the offer is taken
+    /// at once and the supplier is paid outside CasaZen, as for a quote.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? PaymentRequired { get; set; }
 }
 
 /// <summary>Answer of <c>POST api/supplier/requests/{id}/offer</c> and <c>…/offer/withdraw</c> (SP-10b-b).</summary>
@@ -117,9 +125,10 @@ public class SupplierRequestOfferResponse
 /// <summary>Maps the offer to the API DTOs, for the supplier and for the customer.</summary>
 public static class ServiceRequestOfferMapper
 {
-    public static ServiceRequestOfferDto ToDto(ServiceRequestOffer offer) =>
+    public static ServiceRequestOfferDto ToDto(ServiceRequestOffer offer, bool? paymentRequired = null) =>
         new()
         {
+            PaymentRequired = paymentRequired,
             SentAt = AsUtc(offer.SentAt),
             Lines = offer.Lines
                 .Select(line => new ServiceRequestOfferLineDto

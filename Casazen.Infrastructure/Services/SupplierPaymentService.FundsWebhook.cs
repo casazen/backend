@@ -94,6 +94,11 @@ public sealed partial class SupplierPaymentService
         ServicePaymentIntentEvent paymentEvent,
         DateTime now)
     {
+        // SP-10b-b: the card of an offer the customer accepted was blocked. The payment of such an offer is born waiting for the card; the block is
+        // what it was waiting for, if it is the one that was asked for. Only a private payer's: a host pays at once and never blocks a card.
+        if (payment is { Status: ServicePaymentStatus.Requested or ServicePaymentStatus.Failed, PayerKind: ServicePayerKind.Private })
+            return ApplyOfferBlockEvent(payment, observation, paymentEvent, now);
+
         if (payment.Status != ServicePaymentStatus.Authorized)
             return null;
 
@@ -109,6 +114,43 @@ public sealed partial class SupplierPaymentService
             "Held payment {PaymentId}: the block {PaymentIntentId} (event {EventId}) differs from what was asked for ({Mismatches}). It is held for a review",
             payment.Id, paymentEvent.PaymentIntentId, paymentEvent.EventId, code);
         return new ServicePaymentNotice(ServicePaymentNoticeKind.FundsAlert, payment.Id, Detail: code);
+    }
+
+    /// <summary>
+    /// The card of the offer a customer accepted on a request on measure is blocked (SP-10b-b). Checked against the payment like every block (the
+    /// platform's own PaymentIntent, the whole total, nothing charged, no fee); then the payment is <c>Authorized</c> and the notice tells the handler of
+    /// the webhook to take the request, once this event is committed. A block that is not what was asked for goes to review and takes nothing.
+    /// </summary>
+    private ServicePaymentNotice? ApplyOfferBlockEvent(
+        ServiceRequestPayment payment,
+        HeldChargeObservation observation,
+        ServicePaymentIntentEvent paymentEvent,
+        DateTime now)
+    {
+        var mismatches = HeldChargeVerification.AuthorizationMismatches(ExpectationOf(payment), observation);
+        if (mismatches.Count > 0)
+        {
+            var code = ServiceChargeVerification.ReviewCode(mismatches);
+            payment.Status = ServicePaymentStatus.NeedsReview;
+            payment.FailureCode = Truncate(code, 100);
+            payment.UpdatedAt = now;
+            logger.LogError(
+                "Held payment {PaymentId}: the block {PaymentIntentId} (event {EventId}) of an accepted offer differs from what was asked for ({Mismatches}). It is held for a review",
+                payment.Id, paymentEvent.PaymentIntentId, paymentEvent.EventId, code);
+            return new ServicePaymentNotice(ServicePaymentNoticeKind.FundsAlert, payment.Id, Detail: code);
+        }
+
+        // Stripe's time of the block is used unless it is in the future (a clock that runs behind ours).
+        var authorizedAt = paymentEvent.OccurredAt is { } at && at < now ? at : now;
+        payment.Status = ServicePaymentStatus.Authorized;
+        payment.AuthorizedAt = authorizedAt;
+        payment.AuthorizationExpiresAt = HeldPaymentRules.AuthorizationExpiry(authorizedAt, options.Value.AuthorizationValidity);
+        payment.FailureCode = null;
+        payment.UpdatedAt = now;
+        logger.LogInformation(
+            "Held payment {PaymentId} of request {RequestId}: the card is blocked for the accepted offer (event {EventId})",
+            payment.Id, payment.ServiceRequestId, paymentEvent.EventId);
+        return new ServicePaymentNotice(ServicePaymentNoticeKind.OfferBlocked, payment.Id, RequestId: payment.ServiceRequestId);
     }
 
     /// <summary>
