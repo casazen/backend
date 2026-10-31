@@ -128,8 +128,8 @@ S1–S11 sono le fonti della v1.3, aggiornate dove indicato; S12–S17 sono nuov
 | S7 | Resoconto conclusivo dello scambio CasaZen × Octorate, consegnato dal PO il 30/10/2026 (testo riportato, email originali non allegate) | Conferme finali su copertura API, IP statici, canali, compliance, messaggistica, recensioni, documenti fiscali, reporting, offerta commerciale e disponibilità a consegnare le credenziali |
 | S8 | `CasaZen_Octorate_Integration_Checklist.md`, consegnata dal PO il 30/10/2026 (file esterno, non copiato nel repository) | Checklist di provisioning, sicurezza, mapping, sync, prenotazioni, webhook, guest, messaggistica, compliance, fatturazione, review, reporting, test e rollout; è backlog operativo, non evidenza di funzionalità già implementate |
 | S9 | Email Octorate «istruzioni per accedere», riportata dal PO il 30/10/2026; testo integrale ripetuto dal PO in chat il 31/10/2026 (non contiene segreti) | Flusso OAuth authorization code, whitelist redirect URI, durata token, link alla documentazione e canale di supporto; fonte operativa più recente per l'autenticazione |
-| S10 | Email Octorate con credenziali partner, riportata dal PO il 30/10/2026 (valori segreti deliberatamente omessi) | Host frontend/API, accesso limitato alle proprietà test, un'autorizzazione e una coppia di token per proprietà. L'email contiene anche la frase «current credentials have expired»: validità dei valori consegnati da verificare, non presumere |
-| S11 | Email di attivazione account «CasaZen calendar master», riportata dal PO il 30/10/2026 (username, password, email e ID omessi) | Conferma che l'account utente del network di test è stato attivato; le credenziali UI servono al login/autorizzazione del proprietario e non sono credenziali applicative CasaZen |
+| S10 | Email Octorate con credenziali partner, riportata dal PO il 30/10/2026 (valori segreti deliberatamente omessi) | Host frontend/API, accesso limitato alle proprietà test, un'autorizzazione e una coppia di token per proprietà. Testo integrale incollato dal PO il 31/10 (segreti non riportati). La frase «current credentials have expired» riguarda le credenziali precedenti: quelle dell'email sono le stesse configurate su Railway test e funzionano (S20) |
+| S11 | Email di attivazione account «CasaZen calendar master», riportata dal PO il 30/10/2026 (username, password, email e ID omessi) | Conferma che l'account utente del network di test è stato attivato; le credenziali UI servono al login/autorizzazione del proprietario e non sono credenziali applicative CasaZen. Testo incollato dal PO il 31/10: la password dell'utente di test va cambiata nel pannello Octorate (impostazioni → utenti) perché è passata in chat |
 | S12 | Mandato del PO in chat, 31/10/2026: otto processi, diktat UX, aggiunta su wizard, avvisi e ricerca | Perimetro e regole UX della v2.0; prevale su S1–S2 per il perimetro |
 | S13 | OpenAPI e collection Postman riscaricate il 31/10/2026: OpenAPI 3.0.1 `1.0.DEVEL`, 164 percorsi, 208 operazioni, 178 schemi, sha256 `4d36489bd35827f863c78a47fbb765cc33eb8923ab4f98cc62c2e41b28f23989`; Postman sha256 `073708db3897495e601cd73edf046c5bd15412672188ec03eb5bf9a40bb18ba0` | Verifica per check-in, ospiti, tassa, fatture, pagamenti, prodotti extra, licenze e portali (§10); copie non nel repository (licenza «Proprietary») |
 | S14 | Codice di `develop` del 30/10: backend `ea90482c`, frontend `ad3008c0`, mobile `3cf8dd7` | Base del codice (§4) |
@@ -137,6 +137,8 @@ S1–S11 sono le fonti della v1.3, aggiornate dove indicato; S12–S17 sono nuov
 | S16 | Benchmark UX del 31/10/2026 (ricerca web su Guesty, Airbnb, Lodgify, Krossbooking, Dolcebot e altri), Appendice A | Pattern di guida, avvisi e automazione; le affermazioni di marketing sono segnate come tali |
 | S17 | Manuale del web service Alloggiati, sintesi in `.claude/context/regulations/alloggiati.md` §4 | La ricevuta è per giorno e per utenza, non per schedina (base di CHK-04) |
 | S18 | Email originale di Octorate (Hospitality Engineering) con le risposte punto per punto, testo incollato dal PO in chat il 31/10/2026; coincide con la parte tecnica del resoconto S7 (che riportava anche offerta commerciale e recensioni) | Dati sensibili solo con IP statici, anche in sandbox; canali con contenuti e creazione (Booking.com, Airbnb, Vrbo, HomeToGo, Holidu) e canali solo collegabili; schedine Alloggiati e ISTAT e check-in via API, invio da Octorate, collegamento agli enti dal pannello Octorate, esiti non via API; tassa di soggiorno sull'infrastruttura di CasaZen; partner attivati sul loro sito; messaggi integrati per Booking.com, Airbnb, Vrbo ed Expedia, gli altri via email, WhatsApp o chat di Octorate; prenotazioni dirette e da portale senza differenze; nessuna generazione di documenti fiscali via API; anagrafiche e dati di fatturazione degli ospiti; nessun report via API |
+| S19 | Guide pubbliche di Octorate lette il 31/10/2026: `api.octorate.com/connect` (indice), `start.html` (30/10/2019), `showcases/authentication.html` (17/06/2019), `showcases/new_property.html` (05/11/2019), `showcases/airbnb.html` (30/10/2019), `showcases/new_rate.html` (19/03/2020), `showcases/new_network.html` (05/11/2019), `showcase.html`, `faqs.html` (29/10/2019) | Dettagli di autenticazione, creazione di strutture, tariffe derivate, reti, contenuti Airbnb, quota, certificazione e contatti (§10.5). Sono del 2019–2020: dove contraddicono la specifica S13 vale S13 |
+| S20 | Verifica tecnica in sola lettura del 31/10/2026: variabili Octorate su Railway (nomi e confronto dei valori senza stamparli), accesso con le credenziali applicative e lettura di `GET /rest/v1/api/configuration` | Credenziali valide; configurazione reale del partner CasaZen (§9.1) |
 
 Precedenze: S18 (testo originale di Octorate) prevale su S7 (il riassunto del PO). Un'operazione
 presente nella specifica S13 ma dichiarata non disponibile da S18 **non si usa** finché Octorate
@@ -603,7 +605,10 @@ pubblicare → riepilogo e pubblicazione.
 4. La pubblicazione crea o aggiorna la struttura in Octorate e invia ai canali scelti; un errore su
    un canale non annulla gli altri (UX-05, punto 2). Nel passo «Canali» quelli che ricevono i
    contenuti si attivano da qui; per i canali solo collegabili serve un annuncio già esistente sul
-   canale e il wizard lo dice prima, con la guida per crearlo.
+   canale e il wizard lo dice prima, con la guida per crearlo. Anche sui canali che ricevono i
+   contenuti l'accesso al canale lo fa l'host sul pannello Octorate e alcuni canali chiedono
+   un'approvazione o un accordo commerciale prima di mettere online l'annuncio (S19, D29): lo stato
+   resta «In attesa del canale» con la spiegazione.
 5. Le regole dei canali si vedono nel passo in cui servono (per esempio il numero minimo di foto
    chiesto da un portale) e non solo all'invio; un dato che può aspettare (il CIN in attesa del
    comune) si rimanda con «Lo inserisco dopo», che crea una voce in «Da fare» e blocca solo la
@@ -639,6 +644,10 @@ ogni OTA riceve il CIN si decide con la risposta a D2 (candidati `legalId`, `leg
 2. Octorate scarica le foto da un indirizzo: CasaZen espone le sole foto degli annunci con
    indirizzi pubblici non indovinabili (PO-15); stato della coda per foto (`photos/queue`).
 3. Eliminare o sostituire una foto in CasaZen la toglie o la sostituisce sui canali.
+4. Via API tutte le foto vanno a tutti i canali; la scelta per canale si fa solo nel pannello
+   Octorate (S19). CasaZen usa quindi un solo insieme di foto per tutti i canali; caricamento
+   asincrono (massimo 20 MB per foto, oltre il limite attuale di CasaZen di 10 MB) con controllo
+   del compito e salvataggio dell'id della foto in Octorate per non ricaricarla.
 
 #### LST-07 — Servizi, dotazioni e caratteristiche · P0
 
@@ -926,7 +935,8 @@ fattura, quali dati vengono condivisi (privacy), come si disattiva, domande freq
 Wizard nel livello guidato, diverso per tipo:
 
 - **Canale o strumento via API:** immobili → credenziali o accesso al canale (se
-  `requiresTokenAuthentication`, l'utente completa l'accesso sul sito indicato: UX-02 punto 3) →
+  `requiresTokenAuthentication`, l'utente completa l'accesso al canale sul pannello Octorate, come prevede Octorate (S19): UX-02
+  punto 3) →
   connessione (`POST /rest/v1/connection/{acc}`) → import e abbinamento (LST-02) → attivazione
   (`MARK_CONNECTED`) → esito.
 - **Funzione del channel manager:** richiesta guidata (PO-12, D21), stato «Richiesto» finché
@@ -1592,12 +1602,19 @@ nel repository:
    proprietà. CasaZen non riceve né conserva username e password Octorate.
 3. Octorate reindirizza alla callback CasaZen con `code`. S9 dice «pochi secondi», S5 indicava
    3 minuti: scambio immediato, nessuna durata minima presunta; un codice scaduto riavvia il
-   consenso.
+   consenso. Lo scambio è una chiamata da server a server, `POST .../rest/v1/identity/token` in
+   `application/x-www-form-urlencoded` con `client_id`, `client_secret`, `redirect_uri`,
+   `grant_type=code` e `code`; la risposta contiene `access_token`, `refresh_token` ed `expireDate`
+   (S19). Il refresh token arriva **solo** alla prima autorizzazione: si salva subito.
 4. Il backend scambia il codice con il client secret e conserva cifrati access e refresh token.
    L'access token dura 24 ore; il refresh token non scade secondo S9. La scadenza è scritta nel
    token stesso: CasaZen la legge da lì, non la presume, e prima di ogni chiamata rinnova un token
    scaduto o vicino alla scadenza. Rinnovo single-flight per proprietà; mai token nel browser o
-   nei log.
+   nei log. Se il proprietario ha già autorizzato, riportarlo al link di autorizzazione lo
+   rimanda subito alla callback senza chiedere di nuovo (S19): è il modo di ricollegare. In casi
+   rari (problema di sicurezza, scollegamento voluto dal cliente) il refresh token viene annullato:
+   CasaZen mostra «Ricollega il canale» in «Da fare» invece di fallire in silenzio. In caso di
+   compromissione Octorate può revocare subito tutti i token, su richiesta.
 5. L'autorizzazione è per proprietà: **N appartamenti indipendenti = N consensi e N coppie di
    token**. Storage, lock, revoca, audit e salute sono per tenant + ambiente +
    `OctorateAccommodationId`, non globali per agenzia.
@@ -1631,11 +1648,49 @@ si mostra, PO-01) e sceglie da solo l'ingresso giusto: l'utente non deve sapere 
 consenso OAuth. Chi usa un altro channel manager passa dal secondo ingresso, con l'import degli
 annunci dai canali (D6).
 
-Configurazione già fatta il 30/10/2026: nel secret store Railway del solo ambiente backend
-`test` ci sono `Octorate__ClientId`, `Octorate__ClientSecret`, `Octorate__ApiBaseUrl`,
-`Octorate__FrontendBaseUrl` e `Octorate__AuthorizationEndpoint`; niente in `production`,
-Vercel o GitHub. Prima dell'implementazione verificare che le credenziali siano valide; se
-scadute, ruotare il secret senza cambiare i nomi.
+**Verifica del 31/10/2026 (S20, sola lettura).**
+
+- Railway, ambiente `test`, servizio `backend`: ci sono `Octorate__ClientId`, `Octorate__ClientSecret`,
+  `Octorate__ApiBaseUrl`, `Octorate__FrontendBaseUrl` e `Octorate__AuthorizationEndpoint`; client id,
+  URL e secret coincidono con l'email S10 (il secret confrontato per impronta, mai stampato).
+  Ambiente `production`: **nessuna variabile Octorate**. Il PO ha chiesto il 31/10 che anche la
+  produzione sia configurata: la scrittura tentata da Claude è stata bloccata dal controllo di
+  sicurezza sulle scritture nei secret store, quindi resta da fare (azione 7). Nel codice di
+  `develop` nessuna riga legge ancora queste variabili.
+- Accesso con le credenziali applicative (`apilogin`): risposta 200, token valido circa 36 ore
+  (`expires_in` 129599 secondi; la guida del 2019 diceva un'ora).
+- `GET /rest/v1/api/configuration`: ambiente `SANDBOX`, attivo, nessuna manutenzione, metodo
+  `OAUTH`; **nome pubblico «Luca La Malfa»** (è il nome che il proprietario vede nella pagina di
+  consenso); `secretVisibility` vero (l'app compare nell'elenco delle API disponibili agli utenti
+  Octorate); redirect URI solo `https://localhost/`; quota `quotaLimit` 164 e `quotaStatus` 2
+  subito dopo due chiamate (sembra il consumo, non il residuo che dice la specifica: da
+  chiarire); permessi `accommodation`, `content`, `reservation` e `cardDetail` in lettura e
+  scrittura, `license` nessuno; `category` non restituita (D22).
+- **Indirizzo base delle chiamate:** funziona `https://api.octorate.com/connect` con i percorsi
+  `/rest/v1/...` (server della specifica). Il «base path» dell'email S10,
+  `https://api.octorate.com/octobook/rest`, risponde 404 sui percorsi `/v1/...`: il valore di
+  `Octorate__ApiBaseUrl` va portato a `https://api.octorate.com/connect` (D30).
+
+**Azioni operative prima dello sviluppo** (nessuna è automatica):
+
+1. Nome pubblico, descrizione e icona dell'app su Octorate: «CasaZen» invece del nome personale,
+   con `postConfiguration` finché si è in test (PO-20).
+2. `Octorate__ApiBaseUrl` su Railway test = `https://api.octorate.com/connect`.
+3. Redirect URI della callback CasaZen di test in whitelist quando l'endpoint esiste
+   (`postConfiguration`); in produzione via `openapi@octorate.com`.
+4. Chiedere a Octorate di togliere il permesso `cardDetail` (CasaZen non tratta carte: minimo
+   privilegio, PCI) (D30).
+5. Cambiare la password dell'utente di test nel pannello Octorate e valutare la rotazione del
+   client secret: entrambi sono passati in chat il 31/10. Una rotazione cambia solo il valore
+   di `Octorate__ClientSecret`, non il nome.
+6. IP statici dell'ambiente di test comunicati a Octorate prima di qualunque prova con dati
+   sensibili degli ospiti (S18, D24).
+7. **Produzione:** le stesse cinque variabili su Railway `production`, servizio `backend`, con i
+   valori di test tranne `Octorate__ApiBaseUrl` = `https://api.octorate.com/connect`, senza
+   ridistribuire (nessun codice le usa ancora); poi verifica in sola lettura (nomi, confronto
+   per impronta, accesso). Anche configurata, la produzione resta limitata alle strutture di
+   test finché Octorate non certifica l'account e lo passa da `SANDBOX` a `PRODUCTION` (S19); la
+   redirect URI di produzione va in whitelist via `openapi@octorate.com` (S9).
 
 **Per l'utente inesperto (UX-02):** il consenso è un passo del wizard «Collega i tuoi canali»
 (LST-02): una schermata spiega in una frase cosa succede («ti portiamo sul sito del channel
@@ -1722,7 +1777,7 @@ dimostra che il partner CasaZen possa usarlo: lo dimostrano i permessi della con
 Le risposte D1–D14 della v1.3 (§5.1: annuncio da zero, campi di contenuto e CIN, messaggi,
 risposte automatiche, recensioni, annunci esistenti, ARI e quota, prenotazioni, Stripe e
 dirette, altri canali, titolarità e uscita, sandbox, convenzioni, costo e licenza) restano valide
-e sono riportate integralmente qui sotto; le nuove domande D15–D27 sono in §14.2.
+e sono riportate integralmente qui sotto; le nuove domande D15–D30 sono in §14.2.
 
 | ID | Domanda | Specifica | Resta da chiedere |
 |---|---|---|---|
@@ -1755,6 +1810,56 @@ oltre il resoconto S7 (esito per ospite dell'invio alla Polizia, calcolo della t
 di documenti fiscali) sono chiusi dalle risposte originali di Octorate (S18) a favore di S7: gli
 esiti non sono disponibili via API, la tassa è di CasaZen, i documenti fiscali non si generano
 via API (§9.2).
+
+### 10.5 Dalle guide di Octorate (S19)
+
+Le guide sono del 2019–2020: servono per il «come», la specifica S13 resta la fonte dei campi.
+
+- **Ambienti e certificazione.** Un'API in modalità sandbox può generare dati di prova; per la
+  produzione Octorate fa una breve certificazione e marca l'account come pronto (G3).
+- **Utenti.** Octorate distingue affiliato, API member e utente; per lavorare servono almeno API
+  member (CasaZen) e utente (il proprietario).
+- **Quota.** La guida del 2019 indica 100 chiamate per struttura ogni 5 minuti; la configurazione
+  reale oggi dice `quotaLimit` 164 (S20): CasaZen legge la quota dalla configurazione e non la
+  scrive nel codice.
+- **Creazione di una struttura.** Campi minimi dell'esempio: nome, indirizzo, città, CAP,
+  `isoCountry`, `isoCurrency` (codici ISO), latitudine e longitudine (obbligatorie), email,
+  telefono, nome e cognome del referente. Risposta `codice` e `status` `created` (oppure l'id di una
+  struttura già creata). Errori 400 `ApiParamsExemption` con l'elenco dei campi in `nested`
+  (`human_name`, `machine_name`, `message`): il wizard li riporta sul campo e sul passo giusti;
+  l'intestazione `Accept-Language` può dare i messaggi in italiano. 401/403 `ApiKeyInvalid`.
+- **Camere e tariffe.** In Octorate camera e tariffa sono prodotti: «Doppia» e «Doppia non
+  rimborsabile» sono due prodotti legati da una regola derivata (`derivedRule`: genitore, stessa
+  disponibilità, soggiorno, restrizioni e chiusure, prezzo in percentuale o incremento,
+  arrotondamento). Le tariffe di LST-09 (non rimborsabile, sconti) si modellano così; per Airbnb
+  si collega di solito solo la tariffa standard con l'occupazione più bassa.
+- **Reti.** Una rete raccoglie più strutture in un solo calendario; non si possono modificare reti
+  esistenti, solo crearne di nuove; sul conto radice funzionano solo alcune letture. Per Vrbo la
+  guida indica spesso la configurazione «multiaccount» in rete: da chiarire per appartamenti di
+  proprietari diversi (D28).
+- **Collegamento a un canale.** Se la connessione non esiste si può creare via API, ma **l'accesso
+  al canale lo fa il cliente sul pannello Octorate**; il collegamento sul canale deve esistere
+  prima di inviare contenuti. Alcuni canali chiedono un'approvazione o un accordo commerciale con
+  l'host prima di mettere online l'annuncio (LST-03, LST-12, D29).
+- **Contenuti.** Airbnb vuole i contenuti per prodotto (annuncio, descrizioni, regole, dotazioni,
+  stanze, foto, costi, invio); Booking.com e Vrbo anche a livello di struttura. Descrizioni come
+  mappe per lingua con valore di riserva e titolo personalizzabile per canale. Politiche di
+  cancellazione Airbnb da leggere dai metadati (nell'esempio `flexible`, `moderate`,
+  `super_strict_30`, `super_strict_60`). Dotazioni: si cerca il codice per canale nei metadati e
+  si aggiunge al prodotto. Le guide di invio dei contenuti esistono solo per Airbnb; quelle per
+  Booking.com e Vrbo risultano «in arrivo» dal 2019 (D29).
+- **Foto.** Una foto caricata su un prodotto è visibile anche nel motore di prenotazione di Octorate;
+  via API tutte le foto risultano inviate a tutti i canali: la scelta per canale si fa solo nel
+  pannello Octorate. Caricamento asincrono, massimo 20 MB per foto, controllo del compito con il
+  suo id e salvataggio dell'id della foto per non ricaricarla (LST-06).
+- **Contenuti diversi per canale.** Supporto limitato per camere e tariffe (si inviano dati
+  condivisibili); possibile per le impostazioni di ogni connessione.
+- **Errori.** 404 e 400 indicano dati mancanti, 550 un canale che non può soddisfare la richiesta;
+  per i 5xx di Octorate il supporto è `tech@octorate.com`.
+- **Contatti.** Sviluppo e assistenza tecnica in inglese `development@octorate.com` (S10); whitelist
+  di produzione e prezzi `openapi@octorate.com`; errori 5xx `tech@octorate.com`. Octorate offre anche
+  una documentazione di prodotto su Gitbook e un assistente GPT per l'integrazione (non
+  necessari).
 
 ## 11. Matrice delle capacità
 
@@ -1846,7 +1951,7 @@ del simulatore e prove contrattuali ufficiali.
   capacità mancanti. La rete di test non collega le OTA (S6): contenuti, ARI, prenotazioni da OTA,
   messaggi e recensioni sulle OTA risultano «da provare in produzione».
 - **G3 — Pronti al pilota.** Autorizzazione commerciale e operativa, proprietà e durata concordate,
-  mapping verificati, permessi API necessari (compresi `checkIn`, `invoices`, `contactInfo` se
+  certificazione breve dell'account da parte di Octorate (S19), mapping verificati, permessi API necessari (compresi `checkIn`, `invoices`, `contactInfo` se
   usati), mittente degli adempimenti deciso per ogni immobile, rollback e responsabilità definiti;
   prova d'uso del PO con almeno cinque persone non esperte su: collegamento dei canali, modifica
   di un annuncio, check-in con invio, risposta a un messaggio, documento fiscale.
@@ -1887,6 +1992,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | PO-17 | Dati degli ospiti presi da Octorate per il CRM | Solo dati della prenotazione e del soggiorno; i contatti letti con `contactInfo` solo per il servizio (messaggi, check-in, fattura), mai per il marketing | CRM-07 | No |
 | PO-18 | Come si identifica l'ospite dopo la decisione del Consiglio di Stato del novembre 2025 (da verificare con il legale)? | L'host o lo staff registra in CasaZen l'identificazione di persona o in videochiamata per ogni ospite adulto; la verifica biometrica dal vivo si aggiunge quando Q1-11 sarà reale; il codice d'accesso parte solo dopo; il self check-in senza passo dal vivo è segnalato come non conforme ⚖ | CHK-11, DEB-09 | Solo i testi verso gli utenti |
 | PO-19 | Quando CasaZen crea una struttura nuova su Octorate, il proprietario riceve da Octorate le credenziali del suo account (`welcome_user`)? | **Deciso dal PO il 31/10:** no. CasaZen crea la struttura con `welcome_user` falso, l'esperienza resta in CasaZen e il token arriva con la creazione; le credenziali si attivano solo su richiesta del proprietario o alla sua uscita da CasaZen, con la procedura da concordare con Octorate (D11, D27) | §9.1, LST-02, LST-03 | No |
+| PO-20 | Nome pubblico, descrizione e icona dell'app CasaZen su Octorate (oggi «Luca La Malfa», visibile nella pagina di consenso) e visibilità nell'elenco delle API di Octorate (`secretVisibility`, oggi vero) | Nome «CasaZen» con icona e descrizione IT/EN impostati subito in test (`postConfiguration`); app non visibile nell'elenco (`secretVisibility` falso) fino alla certificazione, poi decisione commerciale | §9.1, UX-12 | No |
 
 ### 14.2 Domande a Octorate (si aggiungono a D1–D14)
 
@@ -1905,6 +2011,9 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | D25 | Oltre alla mail del mattino, quali notifiche Octorate riceve l'host e come si spengono per gli immobili gestiti da CasaZen? | UX-08, MSG-05 |
 | D26 | Lo stato `CHECKIN_END`, `CHECKOUT_END`, `NO_SHOW` ha effetti verso le OTA o verso gli invii? | CHK-06 |
 | D27 | Una struttura creata via API con `welcome_user` falso: come si consegnano in seguito le credenziali al proprietario (su sua richiesta o quando lascia CasaZen)? Esiste un'operazione o una procedura, e il proprietario conserva struttura, collegamenti alle OTA e storico? | PO-19, D11 |
+| D28 | Vrbo: la vostra guida indica la configurazione «multiaccount» in rete. Per appartamenti indipendenti di proprietari diversi (un consenso e un token per struttura) come si gestiscono contenuti e collegamento? | LST-01, §10.5 |
+| D29 | Per creare un annuncio nuovo via API su Booking.com, Airbnb, Vrbo, HomeToGo e Holidu cosa deve già avere l'host sul canale (account, contratto, struttura) e quali approvazioni restano sul canale? Esistono guide aggiornate per i contenuti di Booking.com e Vrbo (in arrivo dal 2019)? | LST-03, LST-12 |
+| D30 | Configurazione del partner CasaZen: togliere il permesso `cardDetail` (non serve); confermare l'indirizzo base `https://api.octorate.com/connect` (quello dell'email risponde 404 sui percorsi `/v1`); significato di `quotaStatus` (2 dopo due chiamate); `category` assegnata (D22) | §9.1, OCT-13 |
 
 ## 15. Revisioni
 
@@ -1912,7 +2021,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   processi con CasaZen unico punto di accesso. Aggiunti: base del codice al 30/10 (§4), regole UX
   vincolanti con l'aggiunta del 31/10 (wizard su livello separato, mai fuori dal processo, «Da
   fare», push e popup) (§5), requisiti per processo (§6), mappa delle automazioni AI (§7),
-  autorità dei dati estesa (§8.2), decisioni PO-01…19 e domande D15–D27 (§14), benchmark UX
+  autorità dei dati estesa (§8.2), decisioni PO-01…20 e domande D15–D30 (§14), benchmark UX
   (Appendice A). Verifica della specifica del 31/10 (S13): check-in e Polizia, ospiti, tassa di
   soggiorno, fatture con stato SDI, pagamenti, prodotti extra, politiche, licenze, portali e
   strumenti esterni; tre punti in contrasto con il resoconto S7 (esito per ospite dell'invio alla
@@ -1934,7 +2043,10 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   esiti non disponibili via API (CHK-03, CHK-04, CHK-05); tassa di soggiorno in CasaZen; nessuna
   generazione di documenti fiscali via API (FIS); partner attivati sul loro sito (MKT-03); messaggi
   degli altri portali via email, WhatsApp o chat di Octorate (MSG-03); dati sensibili solo con IP
-  statici anche in sandbox. D16 e D19 chiuse; D17, D18, D20 e D24 in parte.
+  statici anche in sandbox. D16 e D19 chiuse; D17, D18, D20 e D24 in parte. Verifica tecnica del
+  31/10 (S20): variabili Railway test corrette e credenziali valide, nome pubblico dell'app da
+  cambiare (PO-20), indirizzo base da correggere, azioni operative in §9.1; guide di Octorate
+  (S19) riassunte in §10.5; nuove domande D28–D30.
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
   authorization code flow, whitelist delle callback, access token di 24 ore, refresh token senza
   scadenza, N proprietà = N consensi e token; account test attivo, credenziali non marcate valide;
