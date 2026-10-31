@@ -12,7 +12,7 @@ ripresi e aggiornati in §9–§11.
 
 **Indice.** §0 Come usarlo · §1 Mandato · §2 Cosa cambia rispetto alla v1.3 · §3 Fonti ·
 §4 Base del codice e stato reale della fase 1 · §5 Regole UX · §6 Requisiti (6.0 debiti della
-fase 1, 6.1–6.8 processi) · §7 Automazioni AI ·
+fase 1, 6.1–6.8 processi, 6.9 onboarding) · §7 Automazioni AI ·
 §8 Architettura, autorità dei dati e ADR · §9 Contratto OAuth e confini con Octorate ·
 §10 Inventario API · §11 Matrice delle capacità · §12 Pacchetti Helix · §13 Gate ·
 §14 Decisioni del PO e domande a Octorate · §15 Revisioni · Appendice A Benchmark UX
@@ -24,7 +24,8 @@ fase 1, 6.1–6.8 processi) · §7 Automazioni AI ·
   adempimenti), `MKT` (marketplace), `MSG` (messaggi), `BKG` (prenotazioni e calendario), `FIS`
   (fatturazione e documenti fiscali), `CRM` (clienti e marketing), `REP` (report e documenti);
   i trasversali sono `UX` (§5) e `AI` (§7); `DEB` sono i debiti della fase 1 da chiudere prima o
-  insieme ai processi (§6.0). L'intake di Helix può tenere una feature per requisito.
+  insieme ai processi (§6.0); `ONB` è l'onboarding con Octorate (§6.9). L'intake di Helix può
+  tenere una feature per requisito.
 - **Priorità.** **P0** = demo completa con l'adattatore Mock e fondazioni; **P1** = live dove la
   capacità Octorate è provata o confermata per iscritto; **P2** = dopo il pilota, oppure dipende
   da una decisione o da una terza parte (§14).
@@ -401,7 +402,8 @@ mobile, email e push.
 
 #### UX-10 — Percorsi di wizard collegati · P0
 
-1. I wizard formano percorsi. Primo percorso, «Inizia con CasaZen»: collega i canali (LST-02) →
+1. I wizard formano percorsi. Primo percorso, «Inizia con CasaZen» (il wizard di onboarding
+   ONB-01): collega i canali (LST-02) →
    controlla gli annunci importati (LST-03) → prezzi e calendario (LST-09) → check-in online e
    adempimenti (CHK-01, CHK-03) → messaggi e AI (MSG-06) → documenti fiscali (FIS-02).
 2. La lista del percorso è compatta (`ChecklistCompact`, oppure `NextStepCard` per il solo passo
@@ -1602,6 +1604,86 @@ AI-10: riepilogo del mese, avvisi su cali e anomalie, domande in linguaggio natu
 
 I tre numeri principali e «Da fare» anche sull'app.
 
+### 6.9 Onboarding e configurazione iniziale (ONB)
+
+**Cosa c'è già (§4).** La checklist di attivazione arriva dal server (`GET api/onboarding/status`:
+account, organizzazione, immobile, CIN, pagamenti, sito pubblicato, prima prenotazione) ed è mostrata
+da `activation-checklist.tsx`; esistono il wizard di attivazione dell'immobile
+(`compliance/activation-wizard.tsx`, oggi fuori dal kit dei wizard) e il wizard dell'immobile.
+L'onboarding con Octorate **estende** questa checklist e questi wizard, non ne crea di paralleli.
+
+#### ONB-01 — Wizard «Attiva CasaZen con Octorate» · P0
+
+Un solo percorso nel livello guidato (UX-01, UX-10) porta l'host o l'agenzia da zero a tutti i flussi
+attivi. In apertura il piano con lo stato delle parti (UX-01 punto 6) e «Cosa ti serve»: credenziali
+Alloggiati con la chiave del web service, credenziali ISTAT della regione, dati fiscali, accesso
+alle OTA, codice della serratura. Ogni parte si può rimandare con «Lo faccio dopo», che crea una
+voce in «Da fare», tranne quando è il prerequisito della parte successiva; si riprende sempre da dove
+si era rimasti (UX-03). Le parti richiamano i requisiti già definiti:
+
+1. **Collegamento a Octorate.** «Le tue strutture sono già su Octorate?» Sì: un consenso per account
+   o rete (§9.1). No: CasaZen crea le strutture, in rete per le agenzie, senza mandare credenziali
+   al proprietario (PO-19).
+2. **Strutture.** Abbinamento proposto in automatico tra strutture Octorate e immobili di CasaZen,
+   con conferma dell'utente, oppure creazione degli immobili che mancano (LST-02, LST-03).
+3. **Canali.** Per ogni OTA: collegamento (accesso al canale sul pannello Octorate quando serve, con
+   ritorno al passo e verifica), mapping, import di prenotazioni e calendario, spegnimento dell'iCal
+   di quel canale senza doppioni (LST-02, BKG-01).
+4. **Annunci.** Controllo dei contenuti importati per canale, solo i passi con dati mancanti
+   (LST-03, AI-03); per Expedia la guida ai contenuti gestiti sul canale (LST-12).
+5. **Prezzi e regole.** Prezzo base, piani tariffari, restrizioni, politiche; regole automatiche di
+   Octorate spente (PO-16; LST-09…LST-11).
+6. **Adempimenti.** Per ogni immobile: mittente Alloggiati (CHK-03) con il passaggio guidato sul
+   pannello Octorate per collegare la Polizia (credenziali, chiave del web service, numero della
+   struttura per camera, «Test di connessione», «Attivata», invio giornaliero) e verifica al
+   ritorno; credenziali Alloggiati affidate anche a CasaZen per scaricare le ricevute (facoltativo,
+   consigliato: CHK-04); ISTAT della regione (CHK-05); tariffe della tassa del comune (CHK-07); CIN.
+7. **Identificazione e accesso.** Verifica biometrica attiva, testi del consenso, codice della
+   serratura per immobile, QR da stampare (CHK-11, CHK-14).
+8. **Messaggi e AI.** Preferenze di notifica (MSG-05), standard di comunicazione e situazioni
+   (MSG-06), messaggi programmati (MSG-11).
+9. **Documenti fiscali.** Chi emette, regime, dati dell'emittente, intermediario SDI oppure «se ne
+   occupa il commercialista» (FIS-02).
+10. **Partner.** Integrazioni facoltative dal marketplace (MKT).
+11. **Riepilogo e attivazione.** Semaforo per flusso e per immobile (attivo, da completare con il
+    motivo, non disponibile con il perché), prova finale in sola lettura (una prenotazione importata di
+    recente passa per tutti i flussi senza effetti), attivazione con conferma; ciò che resta va in «Da
+    fare».
+
+#### ONB-02 — Agenzie: configurazione in blocco · P0
+
+Con molti immobili (per esempio 250) le scelte si fanno una volta e si applicano a tutti o a una
+selezione (filtri per comune, regione, canale). I dati che cambiano per immobile (comune e tassa,
+regione e ISTAT, numero della struttura Alloggiati per camera, codice della serratura) si compilano
+in una tabella o si importano da un file CSV o Excel, con il controllo degli errori riga per riga.
+Avanzamento per immobile («142 di 250 pronti»); attivazione progressiva: prima un gruppo pilota
+(5–10 immobili, H10), poi gli altri.
+
+#### ONB-03 — Stato dell'attivazione per flusso e per immobile · P0
+
+Ogni flusso (annunci, prenotazioni, check-in e adempimenti, messaggi, documenti, report) ha uno stato
+per immobile: «Attivo», «Da completare» (con il motivo e «Fai ora»), «Non disponibile» (con il
+perché, per esempio Expedia senza contenuti). La checklist esistente (`GET api/onboarding/status`) si
+estende con queste voci e alimenta «Da fare» (UX-07). Un flusso si attiva su un immobile solo con i
+suoi prerequisiti verificati: collegamento valido, mapping confermato, mittente unico.
+
+#### ONB-04 — Passaggi sul pannello Octorate guidati e verificati · P0
+
+I passi che Octorate permette solo dal suo pannello (collegamento alla Polizia e all'ISTAT, accesso
+ai canali) sono sotto-passi guidati secondo UX-02 punto 3: istruzioni brevi con immagini, apertura
+nella stessa scheda, ritorno allo stesso passo, verifica automatica dove possibile (D17, D31),
+altrimenti conferma dell'utente. Un passo lasciato a metà crea sempre una voce in «Da fare»; con
+«Fallo per me» (UX-15) lo completa il supporto di CasaZen.
+
+#### ONB-05 — Riaprire e cambiare · P1
+
+L'onboarding non si usa una volta sola: dalle impostazioni dell'integrazione si riapre ogni parte per
+cambiare il mittente, aggiungere un canale o nuovi immobili, ricollegare dopo la revoca di un token
+(«Ricollega il canale», §9.1).
+
+Prova: un flusso non risulta attivo su un immobile senza i prerequisiti verificati; nemmeno
+dall'onboarding si possono avere due mittenti automatici per lo stesso immobile.
+
 ## 7. Automazioni AI
 
 **Principi.**
@@ -2103,6 +2185,7 @@ completo, dal dato alla schermata, dimostrabile con l'adattatore Mock.
 | H5 — Messaggi e AI | H3, U0 | MSG-01…11, AI-06, DEB-03, DEB-06 | Hub con thread OTA simulati e diretti; soglia di confidenza, categorie sensibili, approvazione da push |
 | H6 — Documenti, clienti e report | H3 (H4 per la tassa) | FIS-01…07, CRM-01…08, REP-01…08, DEB-04, DEB-05, DEB-10 | Emittente unico; documenti Octorate simulati letti; pubblico raggiungibile per base giuridica; report coerenti con le prenotazioni |
 | H7 — Marketplace | H1, U0 | MKT-01…07 | Catalogo dalle tre fonti; attivazione e disattivazione di un portale simulato; stato |
+| O1 — Onboarding | H1–H7, U0 | ONB-01…05: il percorso che accende tutti i flussi, anche in blocco per le agenzie | Agenzia DEMO configurata da zero in Mock, 10 immobili in blocco, ripresa a metà percorso, nessun flusso attivo senza prerequisiti |
 | H8 — Sandbox | H2–H7, credenziali valide | Prove del contratto API con l'account test (ex H5 della v1.3): OAuth e rinnovo, letture prima delle scritture, errori 400/401/403/404/422, 403 di quota, 550, timeout, webhook | Rapporto per capacità; le celle con effetti sulle OTA restano «da provare in produzione» |
 | H9 — Preparazione del pilota | H8, approvazioni | Import in sola lettura, confronto dei mapping, convivenza con il sistema attuale, rollback, soglie (ex H6) | G3 |
 | H10 — Osservazione del pilota | H9, autorizzazione | 5–10 proprietà per 30 giorni (proposta S3/S4), controlli e rapporti (ex H7) | G4 |
@@ -2235,7 +2318,8 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   cruscotto di conformità esistente. Agente AI di verifica dell'identità sopra la pipeline di
   ADR-013 (CHK-14, AI-13, PO-21). Modello di autorizzazione corretto: un consenso copre tutte le
   strutture visibili all'utente Octorate (per un'agenzia tutta la rete, un solo token), non un
-  consenso per appartamento; domanda D33.
+  consenso per appartamento; domanda D33. Wizard di onboarding con Octorate che estende la
+  checklist di attivazione esistente (§6.9, ONB-01…05, pacchetto O1).
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
   authorization code flow, whitelist delle callback, access token di 24 ore, refresh token senza
   scadenza, N proprietà = N consensi e token; account test attivo, credenziali non marcate valide;
