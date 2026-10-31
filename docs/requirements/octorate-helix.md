@@ -115,12 +115,21 @@ introdurre automazioni AI: §5 e §7.
 
 ## 3. Fonti
 
-S1–S11 come nella v1.3: planning e intervista del PO, Quokka v10, i due docx Octorate del 21/10,
-OpenAPI e Postman del 23/10, risposta di Octorate del 23/10, resoconto finale e checklist del
-30/10, email OAuth, credenziali e attivazione del 30/10. Nuove fonti:
+S1–S11 sono le fonti della v1.3, aggiornate dove indicato; S12–S17 sono nuove.
 
 | ID | Fonte | Uso |
 |---|---|---|
+| S1 | [Planning attivo](../../Sessions/PLANNING.md), [intervista PO](../../Sessions/INTERVISTA-PLANNING-2026-10-20.md) | Priorità Quokka, nessuna scadenza fissata, proprietà/territori del pilota da concordare |
+| S2 | Quokka v10, in `develop` dal 30/10 ([PR #553](https://github.com/casazen/backend/pull/553)), `Sessions/prospect-quokka360/analisi-funzionalita.md`, §1 R1/R5/R8/R12, §2 D4/D9/D15, §3.1 e Allegato A | Chat e contenuti obbligatori; recensioni mantenute; scelta fornitore ancora in verifica |
+| S3 | `CasaZen_Octorate_Analisi_Integrazione.docx`, v1.0, 21/10/2026, §3–13 | Proposta tecnica/commerciale caricata dal PO |
+| S4 | `CasaZen_Octorate_Guida_Tecnica_Implementazione_Pilota.docx`, v1.0, 21/10/2026, §3–12 | Architettura, demo, test e gate proposti |
+| S5 | [OpenAPI ufficiale](https://api.octorate.com/connect/rest/v1/integration/openapi.yaml), [documentazione Postman](https://documenter.getpostman.com/view/12991460/2s93RKzb52) | Letti il 23/10/2026: OpenAPI 3.0.1 `1.0.DEVEL`, 164 percorsi e 208 operazioni, licenza «Proprietary»; collection pubblica Postman. Da riacquisire con data e hash prima di generare DTO/payload; le copie non sono nel repository |
+| S6 | Risposta scritta di Octorate al PO, 23/10/2026 (testo riportato dal PO, non allegato) | Dichiarazioni su canali, recensioni, webhook, messaggi, camere e rete di test: valgono come `documentato` con fonte S6, non come prova sandbox (§6) |
+| S7 | Resoconto conclusivo dello scambio CasaZen × Octorate, consegnato dal PO il 30/10/2026 (testo riportato, email originali non allegate) | Conferme finali su copertura API, IP statici, canali, compliance, messaggistica, recensioni, documenti fiscali, reporting, offerta commerciale e disponibilità a consegnare le credenziali |
+| S8 | `CasaZen_Octorate_Integration_Checklist.md`, consegnata dal PO il 30/10/2026 (file esterno, non copiato nel repository) | Checklist di provisioning, sicurezza, mapping, sync, prenotazioni, webhook, guest, messaggistica, compliance, fatturazione, review, reporting, test e rollout; è backlog operativo, non evidenza di funzionalità già implementate |
+| S9 | Email Octorate «istruzioni per accedere», riportata dal PO il 30/10/2026; testo integrale ripetuto dal PO in chat il 31/10/2026 (non contiene segreti) | Flusso OAuth authorization code, whitelist redirect URI, durata token, link alla documentazione e canale di supporto; fonte operativa più recente per l'autenticazione |
+| S10 | Email Octorate con credenziali partner, riportata dal PO il 30/10/2026 (valori segreti deliberatamente omessi) | Host frontend/API, accesso limitato alle proprietà test, un'autorizzazione e una coppia di token per proprietà. L'email contiene anche la frase «current credentials have expired»: validità dei valori consegnati da verificare, non presumere |
+| S11 | Email di attivazione account «CasaZen calendar master», riportata dal PO il 30/10/2026 (username, password, email e ID omessi) | Conferma che l'account utente del network di test è stato attivato; le credenziali UI servono al login/autorizzazione del proprietario e non sono credenziali applicative CasaZen |
 | S12 | Mandato del PO in chat, 31/10/2026: otto processi, diktat UX, aggiunta su wizard, avvisi e ricerca | Perimetro e regole UX della v2.0; prevale su S1–S2 per il perimetro |
 | S13 | OpenAPI e collection Postman riscaricate il 31/10/2026: OpenAPI 3.0.1 `1.0.DEVEL`, 164 percorsi, 208 operazioni, 178 schemi, sha256 `4d36489bd35827f863c78a47fbb765cc33eb8923ab4f98cc62c2e41b28f23989`; Postman sha256 `073708db3897495e601cd73edf046c5bd15412672188ec03eb5bf9a40bb18ba0` | Verifica per check-in, ospiti, tassa, fatture, pagamenti, prodotti extra, licenze e portali (§10); copie non nel repository (licenza «Proprietary») |
 | S14 | Codice di `develop` del 30/10: backend `ea90482c`, frontend `ad3008c0`, mobile `3cf8dd7` | Base del codice (§4) |
@@ -558,7 +567,9 @@ capienza; l'utente conferma) → importa → riepilogo.
 
 1. Per gli annunci già presenti sui canali si conservano gli identificativi esistenti (D6); un
    abbinamento ambiguo resta da confermare e blocca le scritture su quell'immobile (OCT-04).
-2. Un immobile non ancora presente in Octorate si crea da CasaZen solo con LST-03.
+2. Un immobile non ancora presente in Octorate si crea da CasaZen solo con LST-03, che ottiene il
+   token della proprietà alla creazione senza consenso separato. Il wizard sceglie l'ingresso con
+   una sola domanda iniziale (i due ingressi di §9.1; PO-19 per le credenziali del proprietario).
 3. La sincronizzazione iCal dell'immobile passa al connettore canale per canale senza doppie
    importazioni (ADR-002, OCT-03 della v1.3 §3).
 
@@ -1535,12 +1546,14 @@ Numeri assegnati dalla fase ADR di Helix.
 
 ## 9. Contratto OAuth e confini con Octorate
 
-### 9.1 Contratto OAuth (v1.3, invariato)
+### 9.1 Contratto OAuth (S9, testo confermato dal PO il 31/10)
 
 S9 e S10 chiudono i seguenti punti operativi senza autorizzare l'uso dei segreti nel frontend o
 nel repository:
 
-1. CasaZen genera il link sul frontend Octorate con `client_id`, `redirect_uri` e `state`.
+1. CasaZen genera il link sul frontend Octorate con `client_id` (chiave pubblica del partner),
+   `redirect_uri` codificata e `state`, secondo il modello di S9:
+   `https://admin.octorate.com/octobook/identity/oauth.xhtml?client_id=<client_id>&redirect_uri=<redirect_uri codificata>&state=<state>`.
    Octorate descrive `state` come opzionale ma consigliato; CasaZen lo rende obbligatorio,
    monouso, a scadenza e legato a tenant, utente e redirect attesi.
 2. Il proprietario dell'appartamento accede direttamente a Octorate e autorizza quella
@@ -1549,8 +1562,10 @@ nel repository:
    3 minuti: scambio immediato, nessuna durata minima presunta; un codice scaduto riavvia il
    consenso.
 4. Il backend scambia il codice con il client secret e conserva cifrati access e refresh token.
-   L'access token dura 24 ore; il refresh token non scade secondo S9. Rinnovo preventivo e
-   single-flight per proprietà; mai token nel browser o nei log.
+   L'access token dura 24 ore; il refresh token non scade secondo S9. La scadenza è scritta nel
+   token stesso: CasaZen la legge da lì, non la presume, e prima di ogni chiamata rinnova un token
+   scaduto o vicino alla scadenza. Rinnovo single-flight per proprietà; mai token nel browser o
+   nei log.
 5. L'autorizzazione è per proprietà: **N appartamenti indipendenti = N consensi e N coppie di
    token**. Storage, lock, revoca, audit e salute sono per tenant + ambiente +
    `OctorateAccommodationId`, non globali per agenzia.
@@ -1561,7 +1576,27 @@ base API `https://api.octorate.com/octobook/rest`; autorizzazione
 `/octobook/identity/oauth.xhtml` sul frontend Octorate; token e refresh con le operazioni
 ufficiali `token` e `refresh`. Le redirect URI di test e di produzione vanno entrambe in
 whitelist (test: `postConfiguration`; produzione: `openapi@octorate.com`); il default
-`https://localhost/` va sostituito con la callback CasaZen, che non esiste ancora.
+`https://localhost/` va sostituito con la callback CasaZen, che non esiste ancora. Riferimenti di
+S9: operazioni `postConfiguration`, `token` e `refresh` nella documentazione
+(`https://api.octorate.com/connect/redocly.html`), video passo passo dell'autenticazione
+(`https://api.octorate.com/connect/showcases/authentication.html`), supporto tecnico
+`openapi@octorate.com`.
+
+**Due ingressi.** Il consenso OAuth presuppone che il proprietario abbia già le credenziali della
+sua struttura su Octorate (S9: «il cliente accede con le credenziali create all'interno della
+propria struttura»). Quindi:
+
+- **struttura già su Octorate** → consenso OAuth nel wizard «Collega i tuoi canali» (LST-02);
+- **struttura nuova, creata da CasaZen** con `POST /rest/v2/accommodation` (`ApiOperations`,
+  LST-03) → la risposta contiene già il refresh token della proprietà, quindi non serve un
+  consenso separato; con `welcome_user` vero (default di Octorate) il proprietario riceve da
+  Octorate un'email con le credenziali. Se mandarla o no è la decisione PO-19, legata
+  all'uscita da CasaZen (D11).
+
+Il wizard chiede all'inizio «Le tue strutture sono già su Octorate?» (uno dei punti in cui il nome
+si mostra, PO-01) e sceglie da solo l'ingresso giusto: l'utente non deve sapere cosa sia un
+consenso OAuth. Chi usa un altro channel manager passa dal secondo ingresso, con l'import degli
+annunci dai canali (D6).
 
 Configurazione già fatta il 30/10/2026: nel secret store Railway del solo ambiente backend
 `test` ci sono `Octorate__ClientId`, `Octorate__ClientSecret`, `Octorate__ApiBaseUrl`,
@@ -1810,6 +1845,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | PO-16 | Chi comanda prezzi e disponibilità? | CasaZen è l'unico scrittore per gli immobili collegati; le regole automatiche di Octorate (chiusure automatiche, prezzi derivati, revenue) restano spente o lette e mostrate | LST-09, LST-10 | No |
 | PO-17 | Dati degli ospiti presi da Octorate per il CRM | Solo dati della prenotazione e del soggiorno; i contatti letti con `contactInfo` solo per il servizio (messaggi, check-in, fattura), mai per il marketing | CRM-07 | No |
 | PO-18 | Come si identifica l'ospite dopo la decisione del Consiglio di Stato del novembre 2025 (da verificare con il legale)? | L'host o lo staff registra in CasaZen l'identificazione di persona o in videochiamata per ogni ospite adulto; la verifica biometrica dal vivo si aggiunge quando Q1-11 sarà reale; il codice d'accesso parte solo dopo; il self check-in senza passo dal vivo è segnalato come non conforme ⚖ | CHK-11, DEB-09 | Solo i testi verso gli utenti |
+| PO-19 | Quando CasaZen crea una struttura nuova su Octorate, il proprietario riceve da Octorate le credenziali del suo account (`welcome_user`)? | No per default: l'esperienza resta in CasaZen e il token arriva con la creazione; le credenziali si attivano su richiesta o all'uscita da CasaZen, con una procedura da concordare con Octorate (D11) | §9.1, LST-02, LST-03 | No |
 
 ### 14.2 Domande a Octorate (si aggiungono a D1–D14)
 
@@ -1834,7 +1870,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   processi con CasaZen unico punto di accesso. Aggiunti: base del codice al 30/10 (§4), regole UX
   vincolanti con l'aggiunta del 31/10 (wizard su livello separato, mai fuori dal processo, «Da
   fare», push e popup) (§5), requisiti per processo (§6), mappa delle automazioni AI (§7),
-  autorità dei dati estesa (§8.2), decisioni PO-01…18 e domande D15–D26 (§14), benchmark UX
+  autorità dei dati estesa (§8.2), decisioni PO-01…19 e domande D15–D26 (§14), benchmark UX
   (Appendice A). Verifica della specifica del 31/10 (S13): check-in e Polizia, ospiti, tassa di
   soggiorno, fatture con stato SDI, pagamenti, prodotti extra, politiche, licenze, portali e
   strumenti esterni; tre punti in contrasto con il resoconto S7 (esito per ospite dell'invio alla
@@ -1845,7 +1881,10 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   H0–H10. Dal benchmark: identificazione dell'ospite dopo la decisione del Consiglio di Stato del
   novembre 2025 riportata dalle fonti (CHK-11, PO-18, ⚖), piano del processo e informazioni dentro
   il livello guidato (UX-01), «fallo per me» (UX-15), lezioni e livelli di fiducia dell'AI
-  (MSG-06, MSG-07), messaggi programmati visibili (MSG-11).
+  (MSG-06, MSG-07), messaggi programmati visibili (MSG-11). Testo integrale di S9 confermato dal
+  PO il 31/10: modello del link, scadenza letta dal token, riferimenti, due ingressi (consenso per
+  le strutture già su Octorate, token alla creazione per quelle nuove) e PO-19; fonti S1–S11
+  riportate per intero in §3.
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
   authorization code flow, whitelist delle callback, access token di 24 ore, refresh token senza
   scadenza, N proprietà = N consensi e token; account test attivo, credenziali non marcate valide;
