@@ -256,6 +256,10 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
             request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
             var now = NowToTheMicrosecond();
 
+            // The offer of a request on measure is answered with the offer endpoints (SP-10b-b), which are the only way it is taken.
+            if (request.Kind == ServiceRequestKind.Custom)
+                throw ShowcaseBookingQuoteErrors.QuoteMissing();
+
             // Accepting takes the request on the supplier's behalf: a supplier suspended meanwhile cannot take work.
             quote = await RequireQuoteToAnswerAsync(request, supplierOrgId, quoteSentAt, now, cancellationToken);
 
@@ -280,6 +284,11 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
     {
         var request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
         var now = NowToTheMicrosecond();
+
+        // The offer of a request on measure is answered with the offer endpoints (SP-10b-b).
+        if (request.Kind == ServiceRequestKind.Custom)
+            throw ShowcaseBookingQuoteErrors.QuoteMissing();
+
         var quote = await RequireQuoteToAnswerAsync(request, supplierOrgId, quoteSentAt, now, cancellationToken);
 
         // The request goes back to being a new one at its own time: the deadline that stood on it was the customer's, and the supplier
@@ -297,6 +306,76 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         return request;
     }
 
+    // ─── The offer on a request on measure (SP-10b-b) ─────────────────────────────────────────────────────────────────
+
+    public async Task<ServiceRequest> AcceptOfferAsCustomerAsync(
+        Guid id,
+        Guid supplierOrgId,
+        DateTime offerSentAt,
+        CancellationToken cancellationToken = default)
+    {
+        ServiceRequest request;
+        ServiceRequestQuote offer;
+        await using (var transaction = await LockSupplierCalendarAsync(supplierOrgId, cancellationToken))
+        {
+            // Read after the lock: whoever held it before is seen, so an offer the supplier replaced a moment ago, a request the supplier or
+            // another call closed, and a time another booking took are judged as they are now. Of two acceptances of the same offer the
+            // second finds the request taken (no offer waits) or loses the row version: one transition, never two.
+            request = await GetRequestOnMeasureOrThrow(id, supplierOrgId, cancellationToken);
+            var now = NowToTheMicrosecond();
+
+            // Accepting takes the request on the supplier's behalf: a supplier suspended meanwhile cannot take work.
+            offer = await RequireQuoteToAnswerAsync(request, supplierOrgId, offerSentAt, now, cancellationToken, asOffer: true);
+
+            // The time of the offer is checked again under the lock, with the planner and the jobs the supplier already accepted. A time that
+            // is gone is 409 and nothing is saved: the offer stays, and the customer can turn it down, ask for another one, or cancel. The
+            // price of the request is the total of the offer, whatever the supplier or anybody else does afterwards.
+            await TakeOnQuoteAsync(request, offer, await ResolvePaymentModeAsync(request, cancellationToken), now, cancellationToken);
+            await CommitAsync(transaction, cancellationToken);
+        }
+
+        logger.LogInformation("ServiceRequest {Id}: its customer accepted the offer", request.Id);
+
+        // Committed: both parties are told even if the customer has gone.
+        await notifier.NotifyShowcaseQuoteAnsweredAsync(request, accepted: true, offer, CancellationToken.None);
+        return request;
+    }
+
+    public async Task<ServiceRequest> DeclineOfferAsCustomerAsync(
+        Guid id,
+        Guid supplierOrgId,
+        DateTime offerSentAt,
+        CancellationToken cancellationToken = default)
+    {
+        var request = await GetRequestOnMeasureOrThrow(id, supplierOrgId, cancellationToken);
+        var now = NowToTheMicrosecond();
+        var offer = await RequireQuoteToAnswerAsync(request, supplierOrgId, offerSentAt, now, cancellationToken, asOffer: true);
+
+        // The offer goes and the conversation goes on: no clock runs on the supplier (it answered), and the deadline that stood on the request
+        // was the customer's. Nothing is held or released: no lock, the check of the row version is enough.
+        await RestartSupplierDeadlineAsync(request, now, cancellationToken);
+        ClearQuote(request);
+        AppendQuoteEvent(request, ServiceRequestQuoteEventKinds.Rejected, now, offer.TotalCents);
+        request.UpdatedAt = now;
+        await SaveAsync(request, "offer declined by the customer", cancellationToken);
+
+        logger.LogInformation("ServiceRequest {Id}: its customer turned the offer down", request.Id);
+
+        // Committed: the supplier is told even if the customer has gone.
+        await notifier.NotifyShowcaseQuoteAnsweredAsync(request, accepted: false, offer, CancellationToken.None);
+        return request;
+    }
+
+    /// <summary>
+    /// The request on measure <paramref name="id"/> of the supplier org, tracked. 404 <see cref="ShowcaseBookingManagementErrors.NotFound"/> for anything
+    /// else: a booking from a slot, a host's request, one of another supplier, one that does not exist.
+    /// </summary>
+    private async Task<ServiceRequest> GetRequestOnMeasureOrThrow(Guid id, Guid supplierOrgId, CancellationToken cancellationToken)
+    {
+        var request = await GetShowcaseRequestOrThrow(id, supplierOrgId, cancellationToken);
+        return request.Kind == ServiceRequestKind.Custom ? request : throw ShowcaseBookingManagementErrors.BookingNotFound();
+    }
+
     /// <summary>
     /// The quote a new showcase request is waiting for its customer to answer, while there is still time to: 422
     /// <see cref="ShowcaseBookingQuoteErrors.NoQuote"/> when there is none (never sent, withdrawn, answered, or the request moved on),
@@ -312,21 +391,28 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         Guid supplierOrgId,
         DateTime quoteSentAt,
         DateTime now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool asOffer = false)
     {
-        var quote = ServiceRequestQuoteRules.PendingOf(request) ?? throw ShowcaseBookingQuoteErrors.QuoteMissing();
+        // The offer of a request on measure is the quote of SP-04b under its own codes (the frontend branches on them): same rules, same order.
+        var quote = ServiceRequestQuoteRules.PendingOf(request)
+            ?? throw (asOffer ? ServiceRequestOfferErrors.OfferMissing() : ShowcaseBookingQuoteErrors.QuoteMissing());
         if (!ServiceRequestQuoteRules.IsSameVersion(quote.SentAt, quoteSentAt))
-            throw new DomainConflictException(ServiceRequestErrorCodes.QuoteChanged, ServiceRequestErrorCodes.QuoteChangedMessageKey);
+        {
+            throw asOffer
+                ? ServiceRequestOfferErrors.ChangedOffer()
+                : new DomainConflictException(ServiceRequestErrorCodes.QuoteChanged, ServiceRequestErrorCodes.QuoteChangedMessageKey);
+        }
 
         if (quote.AnswerBy is not { } answerBy || answerBy <= now)
-            throw ShowcaseBookingQuoteErrors.QuoteLapsed();
+            throw asOffer ? ServiceRequestOfferErrors.OfferLapsed() : ShowcaseBookingQuoteErrors.QuoteLapsed();
 
         var supplierActive = await ReadSupplierStatusAsync(supplierOrgId, cancellationToken) == SupplierStatus.Active;
         if (!supplierActive)
             throw ShowcaseBookingErrors.InactiveSupplier();
 
         if (!ShowcaseBookingManagementRules.CanRespondToQuote(request.Status, quotePending: true, answerBy, now, supplierActive))
-            throw ShowcaseBookingQuoteErrors.QuoteMissing();
+            throw asOffer ? ServiceRequestOfferErrors.OfferMissing() : ShowcaseBookingQuoteErrors.QuoteMissing();
 
         return quote;
     }

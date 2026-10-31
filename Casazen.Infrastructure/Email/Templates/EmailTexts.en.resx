@@ -2022,6 +2022,15 @@
   <data name="SupplierInquiryExpired_Hint" xml:space="preserve">
     <value>You have paid nothing. You can write again or ask another supplier.</value>
   </data>
+  <data name="SupplierInquiryOfferExpired_Subject" xml:space="preserve">
+    <value>Request to {0} closed: offer not answered</value>
+  </data>
+  <data name="SupplierInquiryOfferExpired_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; had sent you an offer for your request, but you did not answer in time, so we closed the request.</value>
+  </data>
+  <data name="SupplierInquiryOfferExpired_Hint" xml:space="preserve">
+    <value>You have paid nothing. You can make a new request from the supplier's page.</value>
+  </data>
   <data name="SupplierInquiryClosed_Cta" xml:space="preserve">
     <value>Go to the supplier's page</value>
   </data>

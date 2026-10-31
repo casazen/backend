@@ -72,6 +72,22 @@ public class ShowcaseBookingManagerSqlTests
     }
 
     [Fact]
+    public void TheTraceOfTheOffers_ComesFromAStatementOfItsOwn_ScopedBySupplierRequestAndContext_AndReadsNothingElse()
+    {
+        using var db = NewNpgsqlContext(encrypted: true);
+
+        var sql = Normalize(ShowcaseBookingManager.QuoteEventsOf(db, Guid.NewGuid(), Guid.NewGuid()).ToQueryString());
+
+        // SP-10b-b: only the last event is used (an offer turned down is not an offer taken back); the view of the booking never selects the trace.
+        Assert.Matches("\"SupplierOrgId\" = @", sql);
+        Assert.Matches("\"Id\" = @", sql);
+        Assert.Matches("\"RentalContext\" = 2", sql);
+        Assert.Single(Regex.Matches(sql, "\"QuoteEventsJson\""));
+        foreach (var column in new[] { "QuoteSentAt", "QuoteTotalCents", "QuoteLinesJson", "Status", "PublicCode", "LocationCity", "LocationAddress", "CustomerId" })
+            Assert.DoesNotContain($"\"{column}\"", sql, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheSupplier_IsFoundBySlugOnly_AndYieldsTheOrgItsStatusItsNameAndItsSlug()
     {
         using var db = NewNpgsqlContext();

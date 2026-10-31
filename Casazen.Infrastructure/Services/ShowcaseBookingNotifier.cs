@@ -779,19 +779,64 @@ public sealed class ShowcaseBookingNotifier(
     // ─── The conversation of a request on measure (SP-10b) ───────────────────────────────────────────────────────────
 
     /// <summary>
-    /// The request on measure was refused by the supplier or closed because nobody answered in time: the mail to the customer, with the
-    /// reason the supplier gave and the way to the supplier's page. Taken (the offer accepted) and cancelled by the supplier come with the offer
-    /// (SP-10b-b) and send nothing here.
+    /// What the customer of a request on measure is told when the status changes by the act of the supplier or of CasaZen: the request was taken
+    /// (the customer accepted the offer: the same mail as a booking the supplier took, with the time and the price of the offer), refused, cancelled
+    /// by the supplier (after it had been taken, or before), or closed because the supplier did not answer in time or because the customer did not
+    /// answer the offer in time (each told the truth: decision D24).
     /// </summary>
     private void QueueInquiryStatus(ServiceRequest request, ServiceCustomerContact contact, SupplierContact supplier, System.Globalization.CultureInfo culture)
     {
         switch (request.Status)
         {
+            case ServiceRequestStatus.PresoInCarico when request.ScheduledStartUtc is { } start:
+                emailQueue.Enqueue(
+                    contact.Email,
+                    EmailTemplates.SupplierBookingAccepted(
+                        culture,
+                        contact.FullName,
+                        supplier.LegalName,
+                        ServiceNameOf(request, culture),
+                        start,
+                        request.QuotedAmountCents,
+                        request.EstimatedAmountCents,
+                        ServiceRequestReminderRules.WillBeSent(start, request.TakenAt ?? DateTime.MaxValue),
+                        RequestUrlOf(supplier, request),
+                        cardCharged: request.PaymentMode == ServiceRequestPaymentMode.Online),
+                    EmailTemplates.Names.SupplierBookingAccepted);
+                break;
+
             case ServiceRequestStatus.Rifiutato:
                 emailQueue.Enqueue(
                     contact.Email,
                     EmailTemplates.SupplierInquiryDeclined(culture, contact.FullName, supplier.LegalName, request.RejectionReason, SupplierPageOf(supplier)),
                     EmailTemplates.Names.SupplierInquiryDeclined);
+                break;
+
+            case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.Supplier && request.ScheduledStartUtc is { } cancelledStart:
+                // The supplier cancelled a job it had agreed: the mail of a booking cancelled by its supplier.
+                emailQueue.Enqueue(
+                    contact.Email,
+                    EmailTemplates.SupplierBookingCancelled(
+                        culture, contact.FullName, supplier.LegalName, ServiceNameOf(request, culture), cancelledStart, TextOfReason(request.CancellationReason), SupplierPageOf(supplier)),
+                    EmailTemplates.Names.SupplierBookingCancelled);
+                break;
+
+            case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.Supplier:
+                // The supplier gave the request up before any offer was accepted: it cannot do it, as when it refuses.
+                emailQueue.Enqueue(
+                    contact.Email,
+                    EmailTemplates.SupplierInquiryDeclined(
+                        culture, contact.FullName, supplier.LegalName, TextOfReason(request.CancellationReason), SupplierPageOf(supplier)),
+                    EmailTemplates.Names.SupplierInquiryDeclined);
+                break;
+
+            case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.System
+                                                     && request.CancellationReason == ServiceRequestCancellationReasons.QuoteNotAnswered:
+                // The supplier did answer, with an offer: it is the customer who did not (decision D24).
+                emailQueue.Enqueue(
+                    contact.Email,
+                    EmailTemplates.SupplierInquiryOfferExpired(culture, contact.FullName, supplier.LegalName, SupplierPageOf(supplier)),
+                    EmailTemplates.Names.SupplierInquiryOfferExpired);
                 break;
 
             case ServiceRequestStatus.Annullato when request.CancelledBy == ServiceRequestActorParty.System:

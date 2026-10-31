@@ -3800,6 +3800,33 @@
   <data name="ServiceRequestInquiryNeedsOffer" xml:space="preserve">
     <value>Una richiesta su misura non si accetta direttamente e non si propone per essa un altro orario: lavoro, prezzo e orario si concordano con il cliente nella conversazione, con una proposta.</value>
   </data>
+  <data name="ServiceRequestOfferInvalid" xml:space="preserve">
+    <value>Offerta non valida: servono da 1 a {0} voci, ciascuna con una descrizione di al massimo {1} caratteri, una quantità da 1 a {2} e un prezzo unitario maggiore di zero; il totale può arrivare al massimo a {3} euro.</value>
+  </data>
+  <data name="ServiceRequestCannotOffer" xml:space="preserve">
+    <value>Puoi mandare un'offerta solo per una richiesta su misura ancora in attesa della tua risposta.</value>
+  </data>
+  <data name="ServiceRequestNoOffer" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessuna offerta da ritirare: potrebbe essere già stata accettata, rifiutata o ritirata.</value>
+  </data>
+  <data name="SupplierBookingNoOffer" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessuna offerta da accettare o rifiutare.</value>
+  </data>
+  <data name="SupplierBookingOfferExpired" xml:space="preserve">
+    <value>Il tempo per rispondere all'offerta è scaduto: la richiesta si chiude da sola. Potrai fare una nuova richiesta dalla pagina del fornitore.</value>
+  </data>
+  <data name="ServiceRequestOfferChanged" xml:space="preserve">
+    <value>Il fornitore ha modificato o ritirato l'offerta mentre la leggevi. Rileggila prima di rispondere: non abbiamo cambiato nulla.</value>
+  </data>
+  <data name="ServiceRequestOfferQuantityOutOfRange" xml:space="preserve">
+    <value>La quantità deve essere compresa tra {1} e {2}.</value>
+  </data>
+  <data name="ServiceRequestOfferStartRequired" xml:space="preserve">
+    <value>Indica quando potresti fare il lavoro.</value>
+  </data>
+  <data name="ServiceRequestOfferSentAtRequired" xml:space="preserve">
+    <value>Indica quale offerta stai accettando o rifiutando.</value>
+  </data>
   <data name="ServiceDisputeNotFound" xml:space="preserve">
     <value>Non c'è nessuna segnalazione per questa richiesta.</value>
   </data>

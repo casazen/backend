@@ -221,6 +221,57 @@ public class PublicSupplierBookingManagementController(IShowcaseBookingManager b
     }
 
     /// <summary>
+    /// Accepts the offer the supplier sent for the customer's request on measure (SP-10b-b): the request is taken on the supplier's behalf at the time
+    /// and the total of the offer, the time is checked again under the supplier's calendar lock, and both are told. The body carries
+    /// <c>offerSentAt</c> as <c>offer.sentAt</c> of the booking gave it. Any booking that is not a request on measure is the same 404 as one that does not
+    /// exist. 404 <c>supplier_booking_not_found</c>; 422 <c>supplier_booking_no_offer</c>, <c>supplier_booking_offer_expired</c>,
+    /// <c>supplier_booking_supplier_unavailable</c>; 409 <c>service_request_offer_changed</c> (the supplier replaced or withdrew the offer: read it
+    /// again), <c>supplier_slot_unavailable</c> / <c>supplier_commitment_conflict</c> (the time is gone: the offer stays, the customer can turn it down,
+    /// write to the supplier or cancel), <c>service_request_state_changed</c> (two acceptances, or the supplier acted at the same moment: one wins and
+    /// nothing is done twice); 429.
+    /// </summary>
+    [HttpPost("offer/accept")]
+    [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [SupplierBookingManageRateLimit]
+    [RequestSizeLimit(ShowcaseBookingLimits.ManageMaxBodyBytes)]
+    [ProducesResponseType(typeof(PublicSupplierBookingViewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<PublicSupplierBookingViewResponse>> AcceptOffer(
+        [FromBody] SupplierBookingOfferAnswerRequest request,
+        CancellationToken ct)
+    {
+        return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.AcceptOfferAsync(request.ToCredentials(), request.OfferSentAt!.Value, ct)));
+    }
+
+    /// <summary>
+    /// Turns the offer down (SP-10b-b): the offer goes, the request stays <c>Richiesto</c> and the conversation goes on (<c>negotiation</c> is
+    /// <c>OfferDeclined</c> until the supplier sends another; no clock runs on the supplier), and the supplier is told. Errors as <c>offer/accept</c>,
+    /// but for the time.
+    /// </summary>
+    [HttpPost("offer/decline")]
+    [FeatureGate(FeatureFlags.SupplierShowcaseBooking)]
+    [EnableRateLimiting(RateLimitPolicies.PublicGuestBookingLookup)]
+    [SupplierBookingManageRateLimit]
+    [RequestSizeLimit(ShowcaseBookingLimits.ManageMaxBodyBytes)]
+    [ProducesResponseType(typeof(PublicSupplierBookingViewResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<PublicSupplierBookingViewResponse>> DeclineOffer(
+        [FromBody] SupplierBookingOfferAnswerRequest request,
+        CancellationToken ct)
+    {
+        return Ok(PublicSupplierBookingViewMapper.ToDto(await bookings.DeclineOfferAsync(request.ToCredentials(), request.OfferSentAt!.Value, ct)));
+    }
+
+    /// <summary>
     /// SP-15c-a, "Tutto a posto": the customer says the work is fine, and the money CasaZen holds for a booking paid inside CasaZen goes to the
     /// supplier at once, without waiting for the hour after the work. Same proof of who is asking as the other actions of this area, same limits,
     /// same uniform 404. Answers the booking as it is now (<c>payment</c> and <c>actions.canConfirmOk</c> included); asking again once the supplier was

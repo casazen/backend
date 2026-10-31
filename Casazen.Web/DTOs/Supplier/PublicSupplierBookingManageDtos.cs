@@ -94,6 +94,17 @@ public class SupplierBookingQuoteAnswerRequest : SupplierBookingAccessRequest
 }
 
 /// <summary>
+/// Body of <c>POST api/public/supplier-bookings/offer/accept</c> and <c>…/offer/decline</c> (SP-10b-b): who the customer is, and the offer it read, by
+/// the instant the supplier sent it (<c>offer.sentAt</c> of the booking, repeated as it was given). If the supplier replaced or withdrew the offer
+/// meanwhile the answer is 409 <c>service_request_offer_changed</c> and nothing changes.
+/// </summary>
+public class SupplierBookingOfferAnswerRequest : SupplierBookingAccessRequest
+{
+    [Required(ErrorMessage = "ServiceRequestOfferSentAtRequired")]
+    public DateTime? OfferSentAt { get; set; }
+}
+
+/// <summary>
 /// Answer of every call of the customer's own area (200): the booking as it is now and what the customer can do with it. Built from
 /// <see cref="ShowcaseBookingView"/>; times are UTC instants with their Rome offset next to them (the two passes of the hour that
 /// happens twice when the clocks go back are told apart by the offset).
@@ -159,11 +170,21 @@ public class PublicSupplierBookingViewResponse
     public PublicSupplierBookingThreadDto? Thread { get; set; }
 
     /// <summary>
-    /// Where the negotiation of a request on measure is: <c>AwaitingSupplier</c>, <c>InConversation</c>, <c>Agreed</c>, <c>Declined</c> or <c>Closed</c>
-    /// (an open set: the offer of the next task adds states). Left out for any other booking.
+    /// Where the negotiation of a request on measure is: <c>AwaitingSupplier</c>, <c>InConversation</c>, <c>OfferSent</c> (an offer waits for the
+    /// customer: <see cref="Offer"/>), <c>OfferDeclined</c> (the customer turned the last one down), <c>Agreed</c> (the offer was accepted),
+    /// <c>Declined</c> (the supplier refused), <c>Expired</c> (the customer did not answer the offer in time) or <c>Closed</c>. An open set: treat an
+    /// unknown state as <c>InConversation</c>. Left out for any other booking.
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Negotiation { get; set; }
+
+    /// <summary>
+    /// SP-10b-b: the offer the supplier sent for a request on measure and the customer has not answered (lines with their quantity and price of one, the
+    /// total, the proposed time and the instant the customer has to answer by); left out when there is none, and for any other booking. The customer
+    /// answers it with <c>POST …/offer/accept</c> or <c>…/offer/decline</c>, repeating <c>offer.sentAt</c>. A request on measure never has a <c>quote</c>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ServiceRequestOfferDto? Offer { get; set; }
 
     /// <summary>SP-15c-a: the money of a booking paid inside CasaZen; left out when the booking is not.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -407,6 +428,12 @@ public class PublicSupplierBookingActionsDto
 
     /// <summary>SP-15c-c: a complaint is open and the customer may take it back (<c>POST api/public/supplier-bookings/withdraw-problem</c>).</summary>
     public bool CanWithdrawProblem { get; set; }
+
+    /// <summary>
+    /// SP-10b-b: an offer waits on a request on measure, its time to answer has not passed and the supplier is active: the customer may accept it
+    /// (<c>POST api/public/supplier-bookings/offer/accept</c>) or turn it down (<c>…/offer/decline</c>).
+    /// </summary>
+    public bool CanRespondToOffer { get; set; }
 }
 
 /// <summary>The conversation of a request on measure, as its customer reads it (SP-10b).</summary>
@@ -531,6 +558,7 @@ public static class PublicSupplierBookingViewMapper
                 CanConfirmOk = view.Actions.CanConfirmOk,
                 CanReportProblem = view.Actions.CanReportProblem,
                 CanWithdrawProblem = view.Actions.CanWithdrawProblem,
+                CanRespondToOffer = view.Actions.CanRespondToOffer,
             },
             Kind = view.Kind == ServiceRequestKind.Custom ? nameof(ServiceRequestKind.Custom) : null,
             Thread = view.Thread is { } thread
@@ -550,6 +578,7 @@ public static class PublicSupplierBookingViewMapper
                 }
                 : null,
             Negotiation = view.Negotiation,
+            Offer = view.Offer is { } offer ? ServiceRequestOfferMapper.ToDto(offer) : null,
             Payment = view.Payment is { } payment
                 ? new PublicSupplierBookingPaymentDto
                 {

@@ -35,8 +35,9 @@ public sealed record ShowcaseBookingAccessKey(string Slug, string Code, string E
 /// </param>
 /// <param name="Thread">The conversation of a request on measure, with the supplier's messages marked as read; <c>null</c> for any other booking.</param>
 /// <param name="Negotiation">Where the negotiation is (<see cref="ServiceRequestNegotiation"/>); <c>null</c> for any other booking.</param>
-/// <param name="Quote">The quote the supplier sent and the customer has not answered (SP-04b); <c>null</c> when there is none.</param>
+/// <param name="Quote">The quote the supplier sent and the customer has not answered (SP-04b); <c>null</c> when there is none. Never set for a request on measure, whose quote is its <paramref name="Offer"/>.</param>
 /// <param name="Payment">The money of a booking paid inside CasaZen (SP-15c-a); <c>null</c> when the booking is not.</param>
+/// <param name="Offer">The offer the supplier sent for a request on measure and the customer has not answered (SP-10b-b); <c>null</c> when there is none, and for any other booking.</param>
 public sealed record ShowcaseBookingView(
     string PublicCode,
     ServiceRequestStatus Status,
@@ -56,7 +57,8 @@ public sealed record ShowcaseBookingView(
     ServiceRequestThread? Thread = null,
     string? Negotiation = null,
     ShowcaseBookingQuote? Quote = null,
-    ShowcaseBookingPaymentView? Payment = null);
+    ShowcaseBookingPaymentView? Payment = null,
+    ServiceRequestOffer? Offer = null);
 
 /// <summary>
 /// The money of a booking paid inside CasaZen as its customer reads it (SP-15c-a): what the card is blocked or charged for, where the money
@@ -189,6 +191,7 @@ public sealed record ShowcaseBookingCancellationTerms(DateTime FreeUntilUtc, boo
 /// <param name="CanConfirmOk">SP-15c-a: the work is done and CasaZen holds the money: the customer may say "all fine" and the supplier is paid at once.</param>
 /// <param name="CanReportProblem">SP-15c-c: the customer may report a problem — the work is done and the time to speak up has not ended, or the supplier never marked it completed and the time agreed for it has ended.</param>
 /// <param name="CanWithdrawProblem">SP-15c-c: a complaint of the customer is open and the customer may take it back.</param>
+/// <param name="CanRespondToOffer">SP-10b-b: an offer waits on a request on measure, its time to answer has not passed and the supplier is active: the customer may accept it or turn it down.</param>
 public sealed record ShowcaseBookingActions(
     bool CanCancel,
     bool CanReschedule,
@@ -196,7 +199,8 @@ public sealed record ShowcaseBookingActions(
     bool CanRespondToQuote = false,
     bool CanConfirmOk = false,
     bool CanReportProblem = false,
-    bool CanWithdrawProblem = false);
+    bool CanWithdrawProblem = false,
+    bool CanRespondToOffer = false);
 
 /// <summary>
 /// Codes (ProblemDetails <c>code</c>) and message keys (<c>SharedResources.resx</c>, Italian and English) of what the customer's
@@ -355,6 +359,18 @@ public static class ShowcaseBookingManagementRules
         && supplierActive
         && answerByUtc is { } answerBy
         && nowUtc < answerBy;
+
+    /// <summary>
+    /// True when the customer may accept or turn down the offer of a request on measure (SP-10b-b): the same rule as the quote of SP-04b, which
+    /// the offer is (the request is new, the offer waits, the deadline to answer has not passed and the supplier is active).
+    /// </summary>
+    public static bool CanRespondToOffer(
+        ServiceRequestStatus status,
+        bool offerPending,
+        DateTime? validUntilUtc,
+        DateTime nowUtc,
+        bool supplierActive) =>
+        CanRespondToQuote(status, offerPending, validUntilUtc, nowUtc, supplierActive);
 
     /// <summary>
     /// True when the customer may accept or turn down the proposed time: the request is new, a proposal is waiting, the deadline to

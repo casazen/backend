@@ -54,7 +54,7 @@ public static partial class EmailTemplates
         builder
             .Paragraph("ServiceRequestQuoteReceived_Body", supplierName, serviceName, FormatEuro(totalCents, culture))
             .Paragraph("ServiceRequestQuoteReceived_Lines")
-            .ValueList(lines.Select(line => $"{line.Label}: {FormatEuro(line.AmountCents, culture)}"))
+            .ValueList(lines.Select(line => QuoteLineText(culture, line)))
             .Paragraph(
                 "ServiceRequestQuoteReceived_When",
                 endUtc is { } end ? FormatInterval(builder, startUtc, end) : builder.FormatInstant(startUtc))
@@ -67,6 +67,15 @@ public static partial class EmailTemplates
 
         return builder.Build("ServiceRequestQuoteReceived_Subject", supplierName);
     }
+
+    /// <summary>
+    /// A line of a quote as the mail says it: the label and the amount, and — for a line of the offer on a request on measure (SP-10b-b) — how many
+    /// at what price of one.
+    /// </summary>
+    private static string QuoteLineText(CultureInfo culture, ServiceRequestQuoteLine line) =>
+        line is { Quantity: > 1, UnitAmountCents: { } unit }
+            ? $"{line.Label} ({line.Quantity} × {FormatEuro(unit, culture)}): {FormatEuro(line.AmountCents, culture)}"
+            : $"{line.Label}: {FormatEuro(line.AmountCents, culture)}";
 
     /// <summary>
     /// The customer (the host, or the private customer of a showcase request) accepted or turned down the quote, to the supplier (Italian).

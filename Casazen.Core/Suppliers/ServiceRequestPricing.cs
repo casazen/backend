@@ -86,8 +86,12 @@ public static class ServiceRequestPriceLineKinds
     public const string Quote = "quote";
 }
 
-/// <summary>One line of the price of a completed request (<c>ServiceRequest.PriceLinesJson</c>); the lines add up to the final amount.</summary>
-public sealed record ServiceRequestPriceLine(string Kind, string Label, int AmountCents);
+/// <summary>
+/// One line of the price of a completed request (<c>ServiceRequest.PriceLinesJson</c>); the lines add up to the final amount.
+/// <paramref name="Quantity"/> and <paramref name="UnitAmountCents"/> are there only for a line that came from the offer on a request on measure
+/// (SP-10b-b), whose amount is their product; every other line has neither (they are left out of the JSON when null).
+/// </summary>
+public sealed record ServiceRequestPriceLine(string Kind, string Label, int AmountCents, int? Quantity = null, int? UnitAmountCents = null);
 
 /// <summary>An extra the supplier asks for on top of the agreed price when it completes the work.</summary>
 public sealed record ServiceRequestExtra(string Label, int AmountCents);

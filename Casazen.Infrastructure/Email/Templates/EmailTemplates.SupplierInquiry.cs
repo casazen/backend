@@ -25,6 +25,7 @@ public static partial class EmailTemplates
         public const string SupplierInquiryExpired = "supplier-inquiry-expired";
         public const string SupplierInquiryMessage = "supplier-inquiry-message";
         public const string SupplierInquiryClosedByCustomer = "supplier-inquiry-closed-by-customer";
+        public const string SupplierInquiryOfferExpired = "supplier-inquiry-offer-expired";
     }
 
     /// <summary>
@@ -114,6 +115,21 @@ public static partial class EmailTemplates
             .Muted("SupplierInquiryExpired_Hint")
             .Button("SupplierInquiryClosed_Cta", showcaseUrl)
             .Build("SupplierInquiryExpired_Subject", supplierName);
+    }
+
+    /// <summary>
+    /// The supplier did answer the request on measure, with an offer, and the customer did not answer the offer in time, so the request was closed:
+    /// to the customer. Not the words of <see cref="SupplierInquiryExpired"/>, where it is the supplier that did not answer (decision D24).
+    /// </summary>
+    public static EmailContent SupplierInquiryOfferExpired(CultureInfo culture, string customerName, string supplierName, string showcaseUrl)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        return builder
+            .Paragraph("SupplierBooking_Greeting", customerName)
+            .Paragraph("SupplierInquiryOfferExpired_Body", supplierName)
+            .Muted("SupplierInquiryOfferExpired_Hint")
+            .Button("SupplierInquiryClosed_Cta", showcaseUrl)
+            .Build("SupplierInquiryOfferExpired_Subject", supplierName);
     }
 
     /// <summary>

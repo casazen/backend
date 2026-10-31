@@ -3822,6 +3822,68 @@ measure**, and they are not in the JSON of a booking at all.
 - [ ] As the customer (code and address of that request): `POST api/public/supplier-bookings/lookup` has `kind: "Custom"`, `negotiation` and the `thread` with the supplier's message as new, then as read; `POST …/messages` is 200 with the thread, the supplier's e-mail has the comune, "Nome C." and none
       of the words; a booking (not on measure) answers the same lookup as before, with none of the three members; `POST …/cancel` closes the request for free, the supplier is told without a day, the customer gets no receipt, and a new message from either side is 409 `service_request_thread_closed`.
 
+### 34.10 The offer and its acceptance — SP-10b-b
+
+Redesign wave task SP-10b-b (branch `feature/rd-supplier-inquiry-offer`, backend only): **no new flag, no migration**. The offer is the **quote of SP-04b** (the section "The quote with the customer's approval", just below) under the vocabulary of the conversation —
+decision SP-D30: one engine, never a second mechanism. Same columns on `ServiceRequests` (`Quote*`), same one-offer-at-a-time rule (a new offer replaces the old one), same version (`QuoteSentAt`, the instant the supplier sent it), same deadline of the customer
+(`Suppliers__Showcase__ProposalResponseMinutes`, 24 hours: the *validity* of the offer), same trace of events, same calendar lock. What a request on measure adds: an offer **always brings its time**, its lines say **how many of what**, the customer answers it with its own
+endpoints, and no clock runs on the supplier once it has answered.
+
+**For the frontends (SP-08e: the supplier; SP-12c: the customer)** the whole contract is in the two tables below. Times are UTC instants; the customer's answers carry the Rome offset next to them (`startLocal`, `endLocal`).
+
+*The supplier* (policy `Supplier`, the org from its supplier link; only requests of the kind `Custom`: any other id is the same 404 `service_request_not_found`):
+
+| Endpoint | What |
+|---|---|
+| `POST api/supplier/requests/{id}/offer` | Body: `{ lines: [{ label, quantity, unitAmountCents }], startUtc, endUtc?, note? }`. 1 to 20 lines, `label` at most 120 characters, `quantity` 1 to 999, `unitAmountCents` 1 to 10,000,000; the amount of a line is `quantity × unitAmountCents` and the total is what they add up to (at most 100,000 euro): computed by the server, never typed. `startUtc` is required (whole minutes); `endUtc` too unless the request names a service with a duration (a request on measure usually names none: **send `endUtc`**). `note` at most 500. 200 `{ requestId, status: "Richiesto", negotiation: "OfferSent", offer }`. The customer is e-mailed and has 24 hours. A new offer replaces the one that waits. 400 `validation_error`; 404; 422 `service_request_offer_invalid` (lines/quantities/prices/total), `service_request_cannot_offer` (the request is not new), `service_request_time_invalid` (no end, or an end not after the start), `service_request_supplier_not_active` or the code of the Terms to accept again; 409 `supplier_slot_unavailable` / `supplier_commitment_conflict` (a time the supplier cannot do: outside its hours, taken, closed), `service_request_state_changed` |
+| `POST api/supplier/requests/{id}/offer/withdraw` | The supplier takes the offer back: the request stays new, the conversation goes on, no clock runs. 200 `{ requestId, status, negotiation: "InConversation", offer: null }`; 422 `service_request_no_offer` (none waits); 409 `service_request_state_changed` |
+| `GET api/supplier/requests/{id}/thread` | Now also `negotiation` (see below), `offer` (the one that waits, or `null`) and `canSendOffer` (the request is new and the supplier is active). `respondBy` is the supplier's own deadline and is `null` while an offer waits (the clock is the customer's) |
+
+*The offer* (`offer`, in the supplier's thread and in the customer's lookup): `{ sentAt, lines: [{ label, quantity, unitAmountCents, amountCents }], totalCents, currency: "EUR", note?, startUtc, endUtc, startLocal, endLocal, validUntil }`. `sentAt` is the **version**: the
+customer repeats it when it answers.
+
+*The customer* (the area of section 24: `slug`, `code` and `email` in the body, behind `SupplierShowcaseBooking`, rate limited per IP and per address, one 404 for everything that does not identify a booking — a booking that is not a request on measure included):
+
+| Member / endpoint | What |
+|---|---|
+| `offer` in the answer of `lookup` and of every action | The offer that waits (above); left out when there is none and for every other booking. A request on measure never has a `quote`; a booking from a slot never has an `offer` |
+| `negotiation` | Derived, never stored (an open set: treat an unknown state as `InConversation`): `AwaitingSupplier`, `InConversation`, **`OfferSent`** (an offer waits), **`OfferDeclined`** (the customer turned the last one down and the supplier has not sent another), `Agreed` (taken), `Declined` (the supplier refused), **`Expired`** (the customer did not answer the offer in time and the request closed), `Closed` |
+| `actions.canRespondToOffer` | An offer waits, its `validUntil` has not passed and the supplier is active. (`canRespondToQuote` is `false` for a request on measure; `canReschedule` too: the time is the offer's) |
+| `POST api/public/supplier-bookings/offer/accept` | Body: `{ slug, code, email, offerSentAt }` (`offerSentAt` = `offer.sentAt` as read). The request is **taken on the supplier's behalf** (`Richiesto → PresoInCarico`) at the time and the total of the offer; the answer is the booking as it is now (`status: "PresoInCarico"`, `negotiation: "Agreed"`, `startUtc`/`endUtc` = the offer's, `price.quotedAmountCents` = the total, `price.lines` with their `quantity` and `unitAmountCents`). 404 `supplier_booking_not_found`; 422 `supplier_booking_no_offer` (none waits: never sent, withdrawn, **already accepted**, or the request closed), `supplier_booking_offer_expired`, `supplier_booking_supplier_unavailable`; 409 `service_request_offer_changed` (the supplier replaced or withdrew it: read it again), `supplier_slot_unavailable` / `supplier_commitment_conflict` (**the time is gone: nothing changed and the offer stands** — the customer can turn it down, write to the supplier or cancel), `service_request_state_changed`; 429 |
+| `POST api/public/supplier-bookings/offer/decline` | Same body. The offer goes, the request stays `Richiesto`, `negotiation` is `OfferDeclined`, **no clock runs on the supplier** (it answered; the conversation is not closed behind the customer's back), the supplier is told. Same errors, but for the time |
+
+The old quote endpoints do not answer an offer: `POST api/public/supplier-bookings/quote/accept|reject` of a request on measure is 422 `supplier_booking_no_quote`, and `POST api/service-requests/{id}/quote` (the supplier's) on one is 422 `supplier_inquiry_needs_offer`, like `take` and `propose-time`.
+
+**Money and the time (the rules the tests prove).**
+- The price agreed is the **total of the offer** (`QuotedAmountCents`), the lines are the price lines of the work (kind `quote`, with `quantity` and `unitAmountCents`), and the time of the request becomes the offer's. A supplier cannot change either afterwards: the completion
+  keeps the lines the customer accepted, and a different final amount is the usual decision-D7 case.
+- The offer **holds no slot**. The time is judged by the slot planner when the offer is sent (409 if it is not a free slot) and **again, under the supplier's calendar lock, when the customer accepts**: of the offer and another job on the same hour the first to be saved wins, the loser
+  gets 409 `supplier_slot_unavailable` and **nothing changes**. Two acceptances of the same offer: the first takes the request, the second finds no offer (422 `supplier_booking_no_offer`) and nothing is told twice.
+- *Payment.* In this part the acceptance takes the request with `PaymentMode = Manual` (the supplier records what it received outside CasaZen, section 26), exactly as for a quote; `SupplierOnlinePayments` stays off and is not touched. The payment inside CasaZen at the moment of the
+  acceptance (the card blocked for the total of the offer, charged when the request is taken) is the next part of the task.
+- *The deadline.* The customer has `Suppliers__Showcase__ProposalResponseMinutes` (24 hours) from the instant the supplier sent the offer (`validUntil`). After it the always-on job `service-request-expiry` cancels the request (`Annullato`, by CasaZen, reason
+  `QuoteNotAnswered`, `negotiation: "Expired"`) and tells **the truth to both**: the customer that it did not answer the offer (`supplier-inquiry-offer-expired`), the supplier that the customer did not (`supplier-booking-quote-lapsed` + push `service-request-quote-expired`) — never that the
+  supplier was silent (decision D24). The supplier loses no point of its reliability (a showcase request is outside the ranking).
+- An offer turned down or taken back leaves `ResponseDueAt` empty: the first reply of the supplier (its offer is one) stopped the hour of section 34.1 for good.
+
+**What is told, and to whom** (all queued after the change is saved, by the winner only; nothing parts for a person who did nothing): the offer → the customer, `service-request-quote-received` (the lines say "2 × 45,00 €" when they have a quantity, the total, the time, the note and
+the deadline; the time is said not to be reserved before the customer accepts); the acceptance → the supplier (`service-request-quote-answered`, "Nome C." and the comune only, + push `service-request-quote-accepted`) and the customer (`supplier-booking-accepted` with the time and the price);
+the "no" → the supplier (same mail, + push `service-request-quote-rejected`); the supplier cancelling a job it had agreed → the customer (`supplier-booking-cancelled`), and giving the request up before any offer was accepted → `supplier-inquiry-declined`. Until this task these last
+two sent the customer nothing.
+
+**Decisions applied (defaults, nothing asked).** (1) The validity of the offer is the existing 24-hour setting of the customer's answers, not a second one per offer; a per-offer validity is a follow-up (SP-10b-b-FU1). (2) When the offer lapses the whole request closes (the engine of
+the quote); keeping the conversation after an expiry is a follow-up (SP-10b-b-FU2). (3) `negotiation` stays derived (the last event of the trace of the quotes tells "turned down" from "taken back"; read from a statement of its own so the view of the booking still selects no trace).
+(4) An offer's `endUtc` is required in practice because a request on measure names no service.
+
+**Known limits.** The offer carries lines, a total, a time and a note: no deposit, no instalments, no attachments, no VAT split (gross as declared, D4). The offer in the console of the supplier is read from the thread (`GET …/thread`), not from the inbox row. The payment inside CasaZen at the
+acceptance is the next part of the task; the customer's reminder before the offer lapses is not built (SP-10b-b-FU3).
+
+**After a deploy.**
+- [ ] No migration. With `Features__SupplierShowcaseBooking` **off** (production): the two customer endpoints answer 404 `not_found` as before; the supplier's ones need a request on measure, which cannot exist.
+- [ ] Test environment, flag on: as the supplier, `POST api/supplier/requests/{id}/offer` on a request on measure with an `endUtc` is 200 and the customer gets one e-mail with the total; the same body on a booking from a slot, on another supplier's request and on a missing id is the same 404; a Sunday is 409 `supplier_slot_unavailable`.
+- [ ] As the customer: `lookup` has `offer`, `negotiation: "OfferSent"`, `actions.canRespondToOffer: true` and no `quote`; `offer/accept` with a wrong `offerSentAt` is 409 `service_request_offer_changed`, with the right one the request is `PresoInCarico` at the offer's time and total, the supplier gets its mail and push, a second
+      `offer/accept` is 422 `supplier_booking_no_offer`; `offer/decline` leaves `negotiation: "OfferDeclined"` and the request open ten days later.
+
 ## 34. The quote with the customer's approval — SP-04b
 
 Redesign wave task SP-04b (branch `feature/rd-supplier-quote`): **no flag** (the brief's `SupplierQuotes` was not created: the functions of the wave are always on), migration

@@ -41,6 +41,19 @@ public class SupplierRequestThreadDto
 
     /// <summary>In the order they were written; at most 200.</summary>
     public List<SupplierRequestMessageDto> Messages { get; set; } = [];
+
+    /// <summary>
+    /// SP-10b-b: where the negotiation is — <c>AwaitingSupplier</c>, <c>InConversation</c>, <c>OfferSent</c> (an offer waits for the customer),
+    /// <c>OfferDeclined</c> (the customer turned the last one down), <c>Agreed</c>, <c>Declined</c>, <c>Expired</c> (the customer did not answer the
+    /// offer in time) or <c>Closed</c>. An open set: treat an unknown state as <c>InConversation</c>.
+    /// </summary>
+    public string Negotiation { get; set; } = string.Empty;
+
+    /// <summary>SP-10b-b: the offer that waits for the customer's answer; <c>null</c> when there is none.</summary>
+    public ServiceRequestOfferDto? Offer { get; set; }
+
+    /// <summary>SP-10b-b: the request is new and the supplier is active: <c>POST api/supplier/requests/{id}/offer</c> is possible (a new offer replaces the one that waits).</summary>
+    public bool CanSendOffer { get; set; }
 }
 
 /// <summary>Body of <c>POST api/supplier/requests/{id}/messages</c>.</summary>
@@ -62,6 +75,9 @@ public static class SupplierRequestThreadMapper
             CanWrite = thread.CanWrite,
             RespondBy = thread.RespondBy is { } respondBy ? AsUtc(respondBy) : null,
             Messages = thread.Messages.Select(ToDto).ToList(),
+            Negotiation = thread.Negotiation ?? ServiceRequestNegotiation.InConversation,
+            Offer = thread.Offer is { } offer ? ServiceRequestOfferMapper.ToDto(offer) : null,
+            CanSendOffer = thread.CanSendOffer,
         };
 
     public static SupplierRequestMessageDto ToDto(ServiceRequestMessageView message) =>

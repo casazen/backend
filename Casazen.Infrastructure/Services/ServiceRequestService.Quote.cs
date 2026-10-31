@@ -25,6 +25,10 @@ public partial class ServiceRequestService
         ArgumentNullException.ThrowIfNull(command);
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
 
+        // SP-10b-b: a request on measure is answered with an offer (IServiceRequestOfferActions), which carries the time and the quantities it
+        // needs; the quote of SP-04b leans on the time of a request, and a request on measure has none.
+        EnsureNotOnMeasure(request);
+
         // The quote answers a request nobody answered yet: not one the supplier took, refused, or that was cancelled.
         if (request.Status != ServiceRequestStatus.Richiesto)
         {
@@ -46,18 +50,38 @@ public partial class ServiceRequestService
 
         var (lines, total) = ServiceRequestQuoteRules.Normalize(command.Lines);
         var note = ServiceRequestQuoteRules.NormalizeNote(command.Note);
+        return await PublishQuoteAsync(
+            request, supplierOrgId, userId, lines, total, note, command.ScheduledStartUtc, command.ScheduledEndUtc, cancellationToken);
+    }
+
+    /// <summary>
+    /// Puts a checked quote on a new request, with the supplier's calendar lock held while the time of the quote (if it has one) is judged, and
+    /// tells the customer: the part that the quote of SP-04b and the offer of SP-10b-b share (decision SP-D30). The caller has loaded the request
+    /// for an active supplier, refused what a quote cannot be sent on, and normalized the lines and the note.
+    /// </summary>
+    private async Task<ServiceRequest> PublishQuoteAsync(
+        ServiceRequest request,
+        Guid supplierOrgId,
+        string userId,
+        IReadOnlyList<ServiceRequestQuoteLine> lines,
+        int total,
+        string? note,
+        DateTime? scheduledStartUtc,
+        DateTime? scheduledEndUtc,
+        CancellationToken cancellationToken)
+    {
         var dueBeforeAnswer = await ReplyDeadlineAsync(request, cancellationToken);
 
-        // The quote leans on the time the request has (every request has one). Another time is optional and is judged like the time of a
-        // proposal: with the planner, under the lock, and without holding the slot.
+        // The quote leans on the time the request has (every request has one, but a request on measure: its offer always brings its own).
+        // Another time is optional and is judged like the time of a proposal: with the planner, under the lock, and without holding the slot.
         RequestSchedule? other = null;
-        if (command.ScheduledStartUtc is { } requestedStart)
+        if (scheduledStartUtc is { } requestedStart)
         {
             var start = UtcDateTime.Normalize(requestedStart);
-            var end = command.ScheduledEndUtc is { } requestedEnd ? UtcDateTime.Normalize(requestedEnd) : (DateTime?)null;
+            var end = scheduledEndUtc is { } requestedEnd ? UtcDateTime.Normalize(requestedEnd) : (DateTime?)null;
             other = await ResolveScheduleAsync(request, supplierOrgId, start, end, cancellationToken);
         }
-        else if (command.ScheduledEndUtc is not null)
+        else if (scheduledEndUtc is not null)
         {
             // An end without a start says nothing.
             throw TimeInvalid();
@@ -281,7 +305,13 @@ public partial class ServiceRequestService
     /// </summary>
     private async Task RestartSupplierDeadlineAsync(ServiceRequest request, DateTime now, CancellationToken cancellationToken)
     {
-        if (request.RentalContext == ServiceRequestRentalContext.Showcase)
+        if (request.Kind == ServiceRequestKind.Custom)
+        {
+            // SP-10b-b: a request on measure the supplier has answered (it sent the offer) is a conversation, which no clock closes behind the
+            // customer's back (the first reply stopped it): an offer turned down or taken back leaves it going on.
+            request.ResponseDueAt = null;
+        }
+        else if (request.RentalContext == ServiceRequestRentalContext.Showcase)
         {
             var settings = await agenda.GetBookingSettingsAsync(request.SupplierOrgId, cancellationToken);
             request.ResponseDueAt = now.AddMinutes(settings.RespondWithinMinutes);
