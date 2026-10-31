@@ -36,7 +36,8 @@ public class StripeWebhookHandler(
     IConcordatoFacileGiftService? concordatoFacileGiftService = null,
     IOptions<ConcordatoFacileOptions>? concordatoFacileOptions = null,
     ISupplierShowcaseContentService? showcaseContent = null,
-    IShowcaseBookingService? showcaseBookings = null)
+    IShowcaseBookingService? showcaseBookings = null,
+    IServiceRequestOfferCompletion? offerCompletion = null)
 {
     private const string DirectBookingKind = "direct-booking";
 
@@ -278,6 +279,15 @@ public class StripeWebhookHandler(
 
         if (holdCompletion is not null && showcaseBookings is not null)
             await showcaseBookings.CompleteHoldAuthorizationAsync(holdCompletion);
+
+        // The card of an offer a customer accepted on a request on measure was blocked and the event is committed (SP-10b-b): the request is taken
+        // now, under the supplier's calendar lock, the card charged before it changes state. It never throws: what cannot be done is logged and the
+        // customer told; the customer's next acceptance finds the card and takes the request.
+        if (offerCompletion is not null)
+        {
+            foreach (var notice in servicePaymentNotices.Where(n => n.Kind == ServicePaymentNoticeKind.OfferBlocked && n.RequestId is not null))
+                await offerCompletion.CompleteOfferAcceptanceAsync(notice.RequestId!.Value);
+        }
 
         if (readySupplierOrgId is { } supplierOrgId)
             supplierPayments.ScheduleSendPendingRequests(supplierOrgId);

@@ -849,6 +849,30 @@ public sealed class ShowcaseBookingNotifier(
     }
 
     /// <summary>
+    /// The customer accepted an offer paid inside CasaZen and blocked its card, but the request could not be taken (the time is gone, or the card could
+    /// not be charged): the customer is told, in its language, that nothing was charged and where to go on. Never throws.
+    /// </summary>
+    public async Task NotifyOfferNotCompletedAsync(ServiceRequest request, bool timeGone, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var (contact, supplier) = await FindPartiesAsync(request, cancellationToken);
+            if (contact is null || supplier is null)
+                return;
+
+            emailQueue.Enqueue(
+                contact.Email,
+                EmailTemplates.SupplierInquiryOfferNotCompleted(
+                    EmailTemplates.CultureOf(contact.Locale), contact.FullName, supplier.LegalName, timeGone, RequestUrlOf(supplier, request)),
+                EmailTemplates.Names.SupplierInquiryOfferNotCompleted);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Customer e-mail for the offer of the showcase request {Id} that could not be completed could not be queued", request.Id);
+        }
+    }
+
+    /// <summary>
     /// A party wrote in the thread of a request on measure: the other one is told by e-mail. The customer hears of the supplier's reply, in its
     /// language, with the link to the request page; the supplier hears of the customer's message in Italian, with the comune and "Nome C."
     /// only. <b>Never the words</b>. Never throws.

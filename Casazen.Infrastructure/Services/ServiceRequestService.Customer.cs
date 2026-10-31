@@ -308,37 +308,96 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
 
     // ─── The offer on a request on measure (SP-10b-b) ─────────────────────────────────────────────────────────────────
 
-    public async Task<ServiceRequest> AcceptOfferAsCustomerAsync(
+    public async Task<OfferAcceptance> AcceptOfferAsCustomerAsync(
         Guid id,
         Guid supplierOrgId,
         DateTime offerSentAt,
         CancellationToken cancellationToken = default)
     {
-        ServiceRequest request;
-        ServiceRequestQuote offer;
-        await using (var transaction = await LockSupplierCalendarAsync(supplierOrgId, cancellationToken))
+        // Two roads, told apart by the money (SP-10b-b). An offer that is not paid inside CasaZen (the payments are off, the supplier's account is not
+        // ready, the total is below the minimum) is taken now, as a quote is. One that is paid inside CasaZen is taken when the customer's card is
+        // blocked for its total: this call asks for the card (the session the browser needs) and the request waits; the card blocked, the webhook
+        // takes the request (CompleteOfferAcceptanceAsync) — or this call again, which finds the card and takes it.
+        for (var attempt = 0; ; attempt++)
         {
-            // Read after the lock: whoever held it before is seen, so an offer the supplier replaced a moment ago, a request the supplier or
-            // another call closed, and a time another booking took are judged as they are now. Of two acceptances of the same offer the
-            // second finds the request taken (no offer waits) or loses the row version: one transition, never two.
-            request = await GetRequestOnMeasureOrThrow(id, supplierOrgId, cancellationToken);
-            var now = NowToTheMicrosecond();
+            ServiceRequest request;
+            ServiceRequestQuote offer;
+            var taken = false;
+            var cardWasThere = false;
+            try
+            {
+                await using var transaction = await LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
 
-            // Accepting takes the request on the supplier's behalf: a supplier suspended meanwhile cannot take work.
-            offer = await RequireQuoteToAnswerAsync(request, supplierOrgId, offerSentAt, now, cancellationToken, asOffer: true);
+                // Read after the lock: whoever held it before is seen, so an offer the supplier replaced a moment ago, a request the supplier or
+                // another call closed, and a time another booking took are judged as they are now. Of two acceptances of the same offer the
+                // second finds the request taken (no offer waits) or loses the row version: one transition, never two.
+                request = await GetRequestOnMeasureOrThrow(id, supplierOrgId, cancellationToken);
+                var now = NowToTheMicrosecond();
 
-            // The time of the offer is checked again under the lock, with the planner and the jobs the supplier already accepted. A time that
-            // is gone is 409 and nothing is saved: the offer stays, and the customer can turn it down, ask for another one, or cancel. The
-            // price of the request is the total of the offer, whatever the supplier or anybody else does afterwards.
-            await TakeOnQuoteAsync(request, offer, await ResolvePaymentModeAsync(request, cancellationToken), now, cancellationToken);
-            await CommitAsync(transaction, cancellationToken);
+                // Accepting takes the request on the supplier's behalf: a supplier suspended meanwhile cannot take work.
+                offer = await RequireQuoteToAnswerAsync(request, supplierOrgId, offerSentAt, now, cancellationToken, asOffer: true);
+
+                // The card: blocked (or charged) for this very offer, or not there. A block of an offer that was replaced is not this offer's.
+                var held = funds is null ? null : await funds.FindHeldPaymentAsync(request.Id, cancellationToken);
+                cardWasThere = held is { PayerKind: ServicePayerKind.Private, Status: ServicePaymentStatus.Authorized or ServicePaymentStatus.Held }
+                               && ServiceRequestOfferRules.IsPaymentOfOffer(held.CreatedAt, held.AmountCents, offer.SentAt, offer.TotalCents);
+                var paidInside = !cardWasThere
+                                 && funds is not null
+                                 && await funds.CanAuthorizeAsync(supplierOrgId, offer.TotalCents, cancellationToken);
+
+                if (paidInside)
+                {
+                    // The card is to be asked for. The time is judged now, so that nobody is asked to pay for a time that is already gone; nothing is
+                    // changed or held. The request is taken when the card is blocked.
+                    await EnsureQuoteTimeStillFreeAsync(request, offer, cancellationToken);
+                    await CommitAsync(transaction, cancellationToken);
+                }
+                else
+                {
+                    // The time of the offer is checked again under the lock, with the planner and the jobs the supplier already accepted; a card
+                    // that is there is charged after the check and before the request changes state. A time that is gone, or a card that cannot be
+                    // charged, is 409 and nothing is saved: the offer stays, and the customer can turn it down, write to the supplier or cancel.
+                    // The price of the request is the total of the offer, whatever the supplier or anybody else does afterwards.
+                    await TakeOnQuoteAsync(
+                        request,
+                        offer,
+                        cardWasThere ? ServiceRequestPaymentMode.Online : await ResolvePaymentModeAsync(request, cancellationToken),
+                        now,
+                        cancellationToken,
+                        beforeTake: cardWasThere ? () => funds!.CaptureForTakeAsync(request, cancellationToken) : null);
+                    await CommitAsync(transaction, cancellationToken);
+                    taken = true;
+                }
+            }
+            catch (DomainConflictException ex) when (ex.Code is ServiceRequestErrorCodes.SlotUnavailable or ServiceRequestErrorCodes.CommitmentConflict)
+            {
+                // The time of the offer is gone. A card blocked for it is released at once: the customer is not left with a block for a job that
+                // cannot be done then (the offer stays, and so does the 409 the customer reads).
+                await ReleaseOfferPaymentAsync(id, CancellationToken.None);
+                throw;
+            }
+
+            if (taken)
+            {
+                logger.LogInformation("ServiceRequest {Id}: its customer accepted the offer", request.Id);
+
+                // Committed: both parties are told even if the customer has gone.
+                await notifier.NotifyShowcaseQuoteAnsweredAsync(request, accepted: true, offer, CancellationToken.None);
+                return new OfferAcceptance(request, null);
+            }
+
+            // The request waits for the card. Asked outside the calendar lock (a PaymentIntent is created); the offer is the one that stands.
+            var session = await funds!.OpenOfferPaymentAsync(request, ServiceRequestOfferRules.PendingOf(request)!, cancellationToken);
+            if (session is not null)
+            {
+                logger.LogInformation("ServiceRequest {Id}: its customer accepted the offer, the card is to be blocked", request.Id);
+                return new OfferAcceptance(request, session);
+            }
+
+            // The card was blocked for this very offer between the two reads (the webhook was first): once more, now it is there to charge.
+            if (attempt >= 1)
+                throw new DomainConflictException(ServiceRequestErrorCodes.StateChanged, ServiceRequestErrorCodes.StateChangedMessageKey);
         }
-
-        logger.LogInformation("ServiceRequest {Id}: its customer accepted the offer", request.Id);
-
-        // Committed: both parties are told even if the customer has gone.
-        await notifier.NotifyShowcaseQuoteAnsweredAsync(request, accepted: true, offer, CancellationToken.None);
-        return request;
     }
 
     public async Task<ServiceRequest> DeclineOfferAsCustomerAsync(
@@ -360,6 +419,9 @@ public partial class ServiceRequestService : IShowcaseRequestCustomerActions
         await SaveAsync(request, "offer declined by the customer", cancellationToken);
 
         logger.LogInformation("ServiceRequest {Id}: its customer turned the offer down", request.Id);
+
+        // SP-10b-b: a card blocked (or waiting) for the offer it just turned down is released. Never throws: the funds job does it if this cannot.
+        await ReleaseOfferPaymentAsync(request.Id, CancellationToken.None);
 
         // Committed: the supplier is told even if the customer has gone.
         await notifier.NotifyShowcaseQuoteAnsweredAsync(request, accepted: false, offer, CancellationToken.None);

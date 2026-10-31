@@ -122,6 +122,10 @@ public partial class ServiceRequestService
 
         logger.LogInformation("ServiceRequest {Id}: the supplier sent a quote", request.Id);
 
+        // SP-10b-b: an offer replaces the one before, and a card blocked for that one is not for this one: it is released, never charged.
+        if (request.Kind == ServiceRequestKind.Custom)
+            await ReleaseOfferPaymentAsync(request.Id, CancellationToken.None);
+
         // A quote is an answer too (the request then waits for the customer, not for the supplier).
         await RecordReplyAsync(request, dueBeforeAnswer, asBackup: false, cancellationToken);
         await notifier.NotifyQuoteSentAsync(request, cancellationToken);
@@ -149,6 +153,11 @@ public partial class ServiceRequestService
             await ReopenGroupWindowAsync(groupId, cancellationToken);
 
         logger.LogInformation("ServiceRequest {Id}: the supplier took its quote back", request.Id);
+
+        // SP-10b-b: a card blocked (or waiting) for the offer that goes is released.
+        if (request.Kind == ServiceRequestKind.Custom)
+            await ReleaseOfferPaymentAsync(request.Id, CancellationToken.None);
+
         return request;
     }
 
@@ -230,29 +239,16 @@ public partial class ServiceRequestService
         ServiceRequestQuote quote,
         ServiceRequestPaymentMode paymentMode,
         DateTime now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<Task>? beforeTake = null)
     {
         var offeredTime = quote is { ScheduledStartUtc: not null, ScheduledEndUtc: not null };
-        if (offeredTime)
-        {
-            // Another time than the request's own: it was an offer, not a reservation, so the planner judges it again now.
-            var service = request.ServiceListingId is { } listingId
-                ? await catalog.FindForRequestAsync(request.SupplierOrgId, listingId, cancellationToken)
-                : null;
-            var minutes = (int)Math.Round((quote.ScheduledEndUtc!.Value - quote.ScheduledStartUtc!.Value).TotalMinutes);
-            var schedule = new RequestSchedule(
-                quote.ScheduledStartUtc.Value,
-                quote.ScheduledEndUtc.Value,
-                new SupplierSlotQuery(minutes, service?.MinNoticeHours, service?.WeekdaysMask));
-            await EnsureSlotFreeAsync(request.SupplierOrgId, schedule, exceptRequestId: request.Id, cancellationToken);
-        }
+        await EnsureQuoteTimeStillFreeAsync(request, quote, cancellationToken);
 
-        await EnsureNoOverlappingCommitmentAsync(
-            request.SupplierOrgId,
-            request.Id,
-            quote.ScheduledStartUtc ?? request.ScheduledStartUtc,
-            quote.ScheduledEndUtc ?? request.ScheduledEndUtc,
-            cancellationToken);
+        // SP-10b-b: an offer paid inside CasaZen charges the customer's card here — after the time was judged and before the request changes
+        // state, like the supplier's take of a booking whose card is blocked: a card that cannot be charged leaves the request as it was.
+        if (beforeTake is not null)
+            await beforeTake();
 
         var takenBy = request.QuoteSentByUserId;
         await TransitionAsync(
@@ -278,6 +274,36 @@ public partial class ServiceRequestService
                 r.ResponseDueAt = null;
                 ClearProposal(r);
             },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The time a quote leans on is still the supplier's to give, with its calendar lock held by the caller: the time the quote offers (or, with none
+    /// of its own, the one the request has) is judged again by the planner and must not overlap a job the supplier already accepted. 409
+    /// <see cref="ServiceRequestErrorCodes.SlotUnavailable"/> / <see cref="ServiceRequestErrorCodes.CommitmentConflict"/> otherwise, and nothing
+    /// is changed. Used by the take, and by the acceptance of an offer that asks for a card first (SP-10b-b), which judges the time before it asks.
+    /// </summary>
+    private async Task EnsureQuoteTimeStillFreeAsync(ServiceRequest request, ServiceRequestQuote quote, CancellationToken cancellationToken)
+    {
+        if (quote is { ScheduledStartUtc: not null, ScheduledEndUtc: not null })
+        {
+            // Another time than the request's own: it was an offer, not a reservation, so the planner judges it again now.
+            var service = request.ServiceListingId is { } listingId
+                ? await catalog.FindForRequestAsync(request.SupplierOrgId, listingId, cancellationToken)
+                : null;
+            var minutes = (int)Math.Round((quote.ScheduledEndUtc!.Value - quote.ScheduledStartUtc!.Value).TotalMinutes);
+            var schedule = new RequestSchedule(
+                quote.ScheduledStartUtc.Value,
+                quote.ScheduledEndUtc.Value,
+                new SupplierSlotQuery(minutes, service?.MinNoticeHours, service?.WeekdaysMask));
+            await EnsureSlotFreeAsync(request.SupplierOrgId, schedule, exceptRequestId: request.Id, cancellationToken);
+        }
+
+        await EnsureNoOverlappingCommitmentAsync(
+            request.SupplierOrgId,
+            request.Id,
+            quote.ScheduledStartUtc ?? request.ScheduledStartUtc,
+            quote.ScheduledEndUtc ?? request.ScheduledEndUtc,
             cancellationToken);
     }
 

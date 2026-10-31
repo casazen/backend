@@ -750,7 +750,17 @@ public partial class ServiceRequestService(
     /// the money on its next run if this cannot.
     /// </summary>
     private Task SettleClosedMoneyAsync(ServiceRequest request, CancellationToken cancellationToken) =>
-        funds is not null && IsPaidInsideCasaZen(request) ? funds.SettleClosedRequestAsync(request.Id, cancellationToken) : Task.CompletedTask;
+        funds is not null && (IsPaidInsideCasaZen(request) || request.Kind == ServiceRequestKind.Custom)
+            ? funds.SettleClosedRequestAsync(request.Id, cancellationToken)
+            : Task.CompletedTask;
+
+    /// <summary>
+    /// The offer of a request on measure ended without being taken (the customer turned it down, the supplier took it back or replaced it): the block
+    /// on the customer's card, or the PaymentIntent still waiting for a card, is released (SP-10b-b). Never throws — the funds job settles it on its
+    /// next run if this cannot — and does nothing for a request that is not on measure or has no such payment.
+    /// </summary>
+    private Task ReleaseOfferPaymentAsync(Guid requestId, CancellationToken cancellationToken) =>
+        funds is null ? Task.CompletedTask : funds.CancelOfferPaymentAsync(requestId, cancellationToken);
 
     public async Task<ServiceRequest> MarkPaidAsync(
         Guid id,

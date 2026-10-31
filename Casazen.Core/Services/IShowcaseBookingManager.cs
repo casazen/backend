@@ -140,6 +140,9 @@ public interface IShowcaseBookingManager
         DateTime offerSentAt,
         CancellationToken cancellationToken = default);
 
+    // (An offer that is paid inside CasaZen (SP-10b-b, second part) is not taken by this call but by the card: the answer then has
+    // negotiation AwaitingPayment and paymentSession, and the request is taken when the card is blocked — by the webhook, or by this call again.)
+
     /// <summary>
     /// SP-10b-b: the customer turns the offer down: it goes, the request stays <c>Richiesto</c> and the conversation goes on (no clock runs on
     /// the supplier); the supplier is told. Errors as <see cref="AcceptOfferAsync"/>, but for the time.
@@ -207,6 +210,11 @@ public interface IShowcaseBookingManager
     Task<ShowcaseBookingView> PostMessageAsync(ShowcaseBookingCredentials credentials, string? body, CancellationToken cancellationToken = default);
 }
 
+/// <summary>The outcome of the customer's acceptance of an offer (SP-10b-b): the request, and the session of the card when it still has to be blocked.</summary>
+/// <param name="Request">The request as it is now: taken, or still new while it waits for the card.</param>
+/// <param name="PaymentSession">What the browser needs to block the card; <c>null</c> when the request was taken.</param>
+public sealed record OfferAcceptance(ServiceRequest Request, OfferPaymentSession? PaymentSession);
+
 /// <summary>
 /// What the customer of a request from a supplier's public showcase does to the request (SP-11), implemented with the other
 /// transitions of a request by <c>ServiceRequestService</c>: the same state machine, the same <c>xmin</c> check, the same calendar
@@ -243,8 +251,11 @@ public interface IShowcaseRequestCustomerActions
     /// <summary>The customer turns the quote down (see <see cref="IShowcaseBookingManager.RejectQuoteAsync"/>).</summary>
     Task<ServiceRequest> RejectQuoteAsCustomerAsync(Guid id, Guid supplierOrgId, DateTime quoteSentAt, CancellationToken cancellationToken = default);
 
-    /// <summary>The customer accepts the offer of its request on measure (see <see cref="IShowcaseBookingManager.AcceptOfferAsync"/>).</summary>
-    Task<ServiceRequest> AcceptOfferAsCustomerAsync(Guid id, Guid supplierOrgId, DateTime offerSentAt, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// The customer accepts the offer of its request on measure (see <see cref="IShowcaseBookingManager.AcceptOfferAsync"/>): the request is taken, or,
+    /// when the offer is paid inside CasaZen and the card is not blocked yet, the session that blocks it is returned and the request waits for the card.
+    /// </summary>
+    Task<OfferAcceptance> AcceptOfferAsCustomerAsync(Guid id, Guid supplierOrgId, DateTime offerSentAt, CancellationToken cancellationToken = default);
 
     /// <summary>The customer turns the offer of its request on measure down (see <see cref="IShowcaseBookingManager.DeclineOfferAsync"/>).</summary>
     Task<ServiceRequest> DeclineOfferAsCustomerAsync(Guid id, Guid supplierOrgId, DateTime offerSentAt, CancellationToken cancellationToken = default);

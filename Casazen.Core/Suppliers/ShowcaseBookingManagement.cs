@@ -38,6 +38,8 @@ public sealed record ShowcaseBookingAccessKey(string Slug, string Code, string E
 /// <param name="Quote">The quote the supplier sent and the customer has not answered (SP-04b); <c>null</c> when there is none. Never set for a request on measure, whose quote is its <paramref name="Offer"/>.</param>
 /// <param name="Payment">The money of a booking paid inside CasaZen (SP-15c-a); <c>null</c> when the booking is not.</param>
 /// <param name="Offer">The offer the supplier sent for a request on measure and the customer has not answered (SP-10b-b); <c>null</c> when there is none, and for any other booking.</param>
+/// <param name="OfferPaymentRequired">SP-10b-b, with an <paramref name="Offer"/>: accepting it is paid inside CasaZen (the card is blocked, then charged when the request is taken); <c>null</c> without an offer.</param>
+/// <param name="PaymentSession">SP-10b-b: what the browser needs to block the card, only in the answer of the acceptance that asks for a card; <c>null</c> in every other answer.</param>
 public sealed record ShowcaseBookingView(
     string PublicCode,
     ServiceRequestStatus Status,
@@ -58,7 +60,9 @@ public sealed record ShowcaseBookingView(
     string? Negotiation = null,
     ShowcaseBookingQuote? Quote = null,
     ShowcaseBookingPaymentView? Payment = null,
-    ServiceRequestOffer? Offer = null);
+    ServiceRequestOffer? Offer = null,
+    bool? OfferPaymentRequired = null,
+    OfferPaymentSession? PaymentSession = null);
 
 /// <summary>
 /// The money of a booking paid inside CasaZen as its customer reads it (SP-15c-a): what the card is blocked or charged for, where the money
@@ -396,6 +400,8 @@ public static class ShowcaseBookingManagementRules
     /// </summary>
     public static string PaymentStatusOf(ServicePaymentStatus status) => status switch
     {
+        // SP-10b-b: the card of an accepted offer has not been blocked yet.
+        ServicePaymentStatus.Requested or ServicePaymentStatus.Failed => "awaiting_card",
         ServicePaymentStatus.Authorized => "authorized",
         ServicePaymentStatus.Held or ServicePaymentStatus.TransferFailed or ServicePaymentStatus.Disputed => "held",
         ServicePaymentStatus.Released => "released",

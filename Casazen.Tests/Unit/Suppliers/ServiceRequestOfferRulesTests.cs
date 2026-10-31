@@ -192,6 +192,47 @@ public class ServiceRequestOfferRulesTests
         Assert.Equal(expected, ServiceRequestNegotiation.Of(status, supplierWrote, offerPending, lastOfferDeclined, reason));
     }
 
+    [Fact]
+    public void Negotiation_AnAcceptedOfferWhoseCardIsNotThrough_IsAwaitingPayment_OnlyWhileTheOfferStands()
+    {
+        Assert.Equal(
+            ServiceRequestNegotiation.AwaitingPayment,
+            ServiceRequestNegotiation.Of(ServiceRequestStatus.Richiesto, true, offerPending: true, awaitingPayment: true));
+
+        // Without a standing offer, or once the request moved on, a payment says nothing about the negotiation.
+        Assert.Equal(
+            ServiceRequestNegotiation.InConversation,
+            ServiceRequestNegotiation.Of(ServiceRequestStatus.Richiesto, true, offerPending: false, awaitingPayment: true));
+        Assert.Equal(
+            ServiceRequestNegotiation.Agreed,
+            ServiceRequestNegotiation.Of(ServiceRequestStatus.PresoInCarico, true, offerPending: false, awaitingPayment: true));
+    }
+
+    // ─── The card of an offer ────────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(12000, 0, true)] // made for the total, after the offer was sent
+    [InlineData(12000, 30, true)]
+    [InlineData(12000, -1, false)] // made before the offer was sent: the card of an offer that was replaced
+    [InlineData(11999, 0, false)] // another total
+    [InlineData(12001, 5, false)]
+    public void IsPaymentOfOffer_OnlyForTheTotalOfTheOffer_AndCreatedAfterTheSupplierSentIt(int paymentCents, int createdMinutesAfterTheOffer, bool expected)
+    {
+        Assert.Equal(
+            expected,
+            ServiceRequestOfferRules.IsPaymentOfOffer(SentAt.AddMinutes(createdMinutesAfterTheOffer), paymentCents, SentAt, 12000));
+    }
+
+    [Theory]
+    [InlineData(ServicePaymentStatus.Requested, "awaiting_card")]
+    [InlineData(ServicePaymentStatus.Failed, "awaiting_card")]
+    [InlineData(ServicePaymentStatus.Authorized, "authorized")]
+    [InlineData(ServicePaymentStatus.Held, "held")]
+    public void PaymentStatusOf_TheCardOfAnAcceptedOfferIsAwaitedUntilItIsBlocked(ServicePaymentStatus status, string expected)
+    {
+        Assert.Equal(expected, ShowcaseBookingManagementRules.PaymentStatusOf(status));
+    }
+
     // ─── Codes and texts ─────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

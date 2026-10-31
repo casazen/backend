@@ -540,7 +540,10 @@ public sealed partial class SupplierPaymentService
             var now = Now();
             switch (payment.Status)
             {
-                case ServicePaymentStatus.Authorized:
+                // SP-10b-b: the card of an offer that never came (a PaymentIntent still waiting for a card) is dropped like a block. Only the private
+                // payer's: a host's payment waiting for its link belongs to a job that was completed, which no closed request has.
+                case ServicePaymentStatus.Authorized or ServicePaymentStatus.Requested or ServicePaymentStatus.Failed
+                    when payment.Status == ServicePaymentStatus.Authorized || payment.PayerKind == ServicePayerKind.Private:
                     var outcome = await TryCancelAuthorizationAsync(payment, now, cancellationToken);
                     await SaveAsync(cancellationToken);
                     await CommitAsync(transaction, cancellationToken);

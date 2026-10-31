@@ -2031,6 +2031,21 @@
   <data name="SupplierInquiryOfferExpired_Hint" xml:space="preserve">
     <value>Non hai pagato nulla. Puoi fare una nuova richiesta dalla pagina del fornitore.</value>
   </data>
+  <data name="SupplierInquiryOfferNotCompleted_Subject" xml:space="preserve">
+    <value>Offerta di {0} non completata: non hai pagato nulla</value>
+  </data>
+  <data name="SupplierInquiryOfferNotCompleted_Body" xml:space="preserve">
+    <value>Non siamo riusciti a completare l'accettazione dell'offerta di &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="SupplierInquiryOfferNotCompleted_TimeGone" xml:space="preserve">
+    <value>L'orario dell'offerta non è più disponibile.</value>
+  </data>
+  <data name="SupplierInquiryOfferNotCompleted_Payment" xml:space="preserve">
+    <value>Il pagamento non è andato a buon fine.</value>
+  </data>
+  <data name="SupplierInquiryOfferNotCompleted_Hint" xml:space="preserve">
+    <value>Non ti abbiamo addebitato nulla e il blocco sulla carta è stato rimosso. La richiesta resta aperta: puoi scrivere al fornitore o rispondere di nuovo all'offerta dalla pagina della richiesta.</value>
+  </data>
   <data name="SupplierInquiryClosed_Cta" xml:space="preserve">
     <value>Vai alla pagina del fornitore</value>
   </data>

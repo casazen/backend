@@ -64,6 +64,12 @@ public static class ServiceRequestNegotiation
     /// <summary>New, and the supplier sent an offer that waits for the customer's answer (SP-10b-b).</summary>
     public const string OfferSent = "OfferSent";
 
+    /// <summary>
+    /// The customer accepted an offer that is paid inside CasaZen and its card is to be blocked (or is, and the acceptance is being completed): the
+    /// request is taken when the card is blocked (SP-10b-b). The offer still stands, and the customer can still turn it down.
+    /// </summary>
+    public const string AwaitingPayment = "AwaitingPayment";
+
     /// <summary>New, and the customer turned the last offer down: the conversation goes on and the supplier can send another one (SP-10b-b).</summary>
     public const string OfferDeclined = "OfferDeclined";
 
@@ -84,13 +90,16 @@ public static class ServiceRequestNegotiation
     /// <param name="offerPending">An offer waits for the customer's answer.</param>
     /// <param name="lastOfferDeclined">The last thing that happened to an offer is that the customer turned it down.</param>
     /// <param name="cancellationReason">The reason of a cancelled request, to tell an offer that lapsed from the rest.</param>
+    /// <param name="awaitingPayment">The customer accepted the offer and its card has not completed the payment yet.</param>
     public static string Of(
         ServiceRequestStatus status,
         bool supplierWrote,
         bool offerPending = false,
         bool lastOfferDeclined = false,
-        string? cancellationReason = null) => status switch
+        string? cancellationReason = null,
+        bool awaitingPayment = false) => status switch
     {
+        ServiceRequestStatus.Richiesto when offerPending && awaitingPayment => AwaitingPayment,
         ServiceRequestStatus.Richiesto when offerPending => OfferSent,
         ServiceRequestStatus.Richiesto when lastOfferDeclined => OfferDeclined,
         ServiceRequestStatus.Richiesto => supplierWrote ? InConversation : AwaitingSupplier,

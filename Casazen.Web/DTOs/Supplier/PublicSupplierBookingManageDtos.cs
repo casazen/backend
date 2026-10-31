@@ -186,9 +186,33 @@ public class PublicSupplierBookingViewResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ServiceRequestOfferDto? Offer { get; set; }
 
+    /// <summary>
+    /// SP-10b-b, only in the answer of an <c>offer/accept</c> that asks for a card (<c>offer.paymentRequired</c> and the card not blocked yet): what the
+    /// browser needs to block it with the Payment Element — <c>clientSecret</c> and <c>publishableKey</c>, for <c>amountCents</c> (the total of the offer).
+    /// The request is not taken yet: it is when the card is blocked (the server takes it, or <c>offer/accept</c> again). Asked again for the same offer
+    /// the same session comes back. <b>A credential: never in any other answer</b>, and the answer is never cached.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicSupplierBookingPaymentSessionDto? PaymentSession { get; set; }
+
     /// <summary>SP-15c-a: the money of a booking paid inside CasaZen; left out when the booking is not.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public PublicSupplierBookingPaymentDto? Payment { get; set; }
+}
+
+/// <summary>What the customer's browser needs to block the card for the offer it accepted (SP-10b-b).</summary>
+public class PublicSupplierBookingPaymentSessionDto
+{
+    /// <summary>The secret of the Stripe PaymentIntent that blocks the card (Stripe.js <c>confirmPayment</c>): a credential, sent once, never stored or logged.</summary>
+    public string ClientSecret { get; set; } = string.Empty;
+
+    /// <summary>The platform's publishable key (no connected account: the PaymentIntent is on CasaZen's account).</summary>
+    public string PublishableKey { get; set; } = string.Empty;
+
+    /// <summary>The amount that is blocked, in cents: the total of the offer.</summary>
+    public int AmountCents { get; set; }
+
+    public string Currency { get; set; } = "EUR";
 }
 
 /// <summary>
@@ -198,7 +222,8 @@ public class PublicSupplierBookingViewResponse
 public class PublicSupplierBookingPaymentDto
 {
     /// <summary>
-    /// <c>authorized</c> (the card is blocked, nothing charged), <c>held</c> (charged, CasaZen holds it until the work is confirmed),
+    /// <c>awaiting_card</c> (SP-10b-b: the offer was accepted and its card is not blocked yet), <c>authorized</c> (the card is blocked, nothing
+    /// charged), <c>held</c> (charged, CasaZen holds it until the work is confirmed),
     /// <c>released</c> (the supplier was paid), <c>refunded</c>, <c>canceled</c> (the block was released, nothing charged) or <c>review</c>.
     /// </summary>
     public string Status { get; set; } = string.Empty;
@@ -578,7 +603,16 @@ public static class PublicSupplierBookingViewMapper
                 }
                 : null,
             Negotiation = view.Negotiation,
-            Offer = view.Offer is { } offer ? ServiceRequestOfferMapper.ToDto(offer) : null,
+            Offer = view.Offer is { } offer ? ServiceRequestOfferMapper.ToDto(offer, view.OfferPaymentRequired) : null,
+            PaymentSession = view.PaymentSession is { } session
+                ? new PublicSupplierBookingPaymentSessionDto
+                {
+                    ClientSecret = session.ClientSecret,
+                    PublishableKey = session.PublishableKey,
+                    AmountCents = session.AmountCents,
+                    Currency = session.Currency,
+                }
+                : null,
             Payment = view.Payment is { } payment
                 ? new PublicSupplierBookingPaymentDto
                 {
