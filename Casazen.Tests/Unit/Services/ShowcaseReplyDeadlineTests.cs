@@ -88,6 +88,8 @@ public class ShowcaseReplyDeadlineTests
         Assert.Equal(PushTypes.ServiceRequestReplyReminder, halfPush.Payload.Type);
         Assert.Equal(PushDeliveryKeys.ServiceRequestReplyReminder(request.Id, "half"), halfPush.DeliveryKey);
         Assert.Equal(PushAudience.SupplierOrg(s.SupplierOrgId), halfPush.Audience);
+        // Like every push to a supplier org about a request: the tap opens the request in the supplier area of the app.
+        Assert.Equal(PushRoutes.SupplierRequest(request.Id), halfPush.Payload.Route);
         var afterHalf = await s.ReadAsync(request.Id);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, afterHalf.ReplyReminderHalfSentAt);
         Assert.Null(afterHalf.ReplyReminderLastSentAt);
