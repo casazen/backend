@@ -886,31 +886,34 @@ solo il mittente.
 #### CHK-11 — Identificazione biometrica dell'ospite e codice della serratura · P0 ⚖
 
 1. **Decisione del PO (31/10):** l'identificazione di persona non è praticabile; si usa la verifica
-   biometrica dal vivo che CasaZen sta sviluppando (Q1-10…Q1-13). Ogni ospite adulto fa un selfie
-   dalla fotocamera, chiesto nel percorso di check-in aperto dalla email (link firmato) oppure dal QR
-   all'ingresso dell'immobile; CasaZen lo confronta con la foto del documento caricata nel check-in e
-   risponde **subito**.
+   biometrica dal vivo che CasaZen sta sviluppando (Q1-10…Q1-13). **Il selfie lo fa solo l'ospite
+   che lascia il documento** (ospite singolo, capofamiglia o capogruppo, come per Alloggiati), non
+   ogni ospite adulto: dalla fotocamera, nel percorso di check-in aperto dalla email (link firmato)
+   oppure dal QR all'ingresso dell'immobile. CasaZen lo confronta con la foto del suo documento
+   caricata nel check-in e risponde **subito**.
 2. **Il volto corrisponde:** la verifica è registrata e il codice della serratura dell'immobile
    (impostato dall'host, Q1-13; nessuna integrazione con le serrature, D9 della v10) compare nella
    schermata finale e parte per messaggio, subito.
-3. **Non corrisponde, consenso biometrico rifiutato, minore o errore:** nessun codice. L'operatore
+3. **Non corrisponde, consenso biometrico rifiutato o errore:** nessun codice. L'operatore
    riceve subito un avviso (push, email, cruscotto) e verifica in videochiamata (Q1-12); il codice
    parte solo dopo la sua decisione. La videochiamata è il ripiego, non il percorso normale.
-4. Per ogni ospite si registrano metodo (biometrico o operatore), esito, istante, tentativi, modello
+4. Per l'ospite verificato si registrano metodo (biometrico o operatore), esito, istante, tentativi, modello
    e versione, soglie; mai immagini, selfie o vettori conservati (cancellazione immediata, Q1-11).
 5. Consenso biometrico esplicito, separato e rifiutabile (chi rifiuta passa all'operatore); DPIA e
    verifica legale prima dell'attivazione (⚖). Le fonti del benchmark riportano che una verifica a
    distanza dal vivo può soddisfare l'obbligo di identificazione indicato dal Consiglio di Stato il
-   21/11/2025 (Appendice A): da confermare con il legale.
+   21/11/2025 (Appendice A), e che basti verificare l'ospite che lascia il documento: da confermare
+   con il legale.
 6. **Stato attuale:** i componenti esistono ma sono segnaposto (lettura del documento vuota,
    vivacità sempre vera, somiglianza fissa: §4.5) e gli endpoint pubblici vanno spenti finché non
    sono reali (DEB-01); il completamento è DEB-09.
 7. Nel cruscotto (CHK-12) l'identificazione è un adempimento con il suo semaforo: verde a verifica
-   superata per tutti gli ospiti adulti, giallo in attesa dei selfie prima dell'arrivo, rosso con
+   superata dell'ospite che ha lasciato il documento, giallo in attesa del suo selfie prima
+   dell'arrivo, rosso con
    l'arrivo vicino senza verifica o quando serve l'operatore.
 
 Prova: il codice della serratura non parte mai senza una verifica superata (biometrica o
-dell'operatore) di tutti gli ospiti adulti; nessuna immagine conservata.
+dell'operatore) dell'ospite che ha lasciato il documento; nessuna immagine conservata.
 
 #### CHK-12 — Quadro della conformità: «sono in regola?» · P0
 
@@ -938,7 +941,7 @@ Alloggiati e gli stati onesti (`Inviato` solo con ricevuta). CHK-12 aggiunge:
      casi nuovi dei punti 2 e 3.
 2. **Voci e azioni nuove** del cruscotto, come valori nuovi in sola aggiunta di
    `ComplianceCockpitAction` e con lo stesso schema azione + id: completare la verifica d'identità
-   (selfie mancanti o decisione dell'operatore, CHK-11),
+   (selfie del capogruppo mancante o decisione dell'operatore, CHK-11),
    caricare la ricevuta Alloggiati, attivare o ricollegare l'invio su Octorate, inviare a mano un
    soggiorno oltre 30 notti o un soggiorno breve che il giro giornaliero non copre, caricare la
    prova ISTAT del periodo, inserire la tariffa della tassa del comune, dichiarare e versare la
@@ -986,7 +989,7 @@ delle email con il fornitore in uso è un tema ADR.
 | Cambio o cancellazione | `RESERVATION_CHANGE` e `RESERVATION_CANCELLED` aggiornano o chiudono la pratica e gli ospiti già mandati a Octorate | CasaZen | Sì |
 | Tre giorni prima | Link del check-in all'ospite e promemoria per i dati mancanti | CasaZen | Sì |
 | Prima dell'arrivo | L'ospite compila i dati (Alloggiati, statistici, esenzioni della tassa); l'host completa o corregge | Ospite e host | Guidato |
-| Prima dell'arrivo o alla porta | Selfie dal vivo confrontato con il documento (dal link del check-in o dal QR all'ingresso), esito immediato; se corrisponde parte subito il codice della serratura, altrimenti l'operatore verifica in videochiamata (CHK-11); all'arrivo stato `CHECKIN_END` verso Octorate | Ospite e CasaZen; operatore solo in eccezione | Sì |
+| Prima dell'arrivo o alla porta | Selfie dal vivo dell'ospite che lascia il documento (capogruppo), confrontato con il documento (dal link del check-in o dal QR all'ingresso), esito immediato; se corrisponde parte subito il codice della serratura, altrimenti l'operatore verifica in videochiamata (CHK-11); all'arrivo stato `CHECKIN_END` verso Octorate | Ospite e CasaZen; operatore solo in eccezione | Sì |
 | Dati completi | Gli ospiti vanno a Octorate con `draft` falso (CHK-02) | CasaZen | Sì |
 | Invio alla Polizia | Giro automatico giornaliero di Octorate, se il collegamento è «Attivata» nel suo pannello; oltre 30 notti a mano | Octorate | Sì, una volta al giorno (orario: D31) |
 | Giorno dopo | Ricevuta della Polizia scaricata e confrontata con gli ospiti attesi (CHK-04); senza credenziali, caricamento guidato | CasaZen o host | Sì con le credenziali |
@@ -2098,7 +2101,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | PO-15 | Foto degli annunci raggiungibili da Octorate tramite URL pubblico | Sì, solo per le foto degli annunci (sono già pubbliche sulle OTA), con indirizzi non indovinabili; i documenti degli ospiti restano privati | LST-06 | No |
 | PO-16 | Chi comanda prezzi e disponibilità? | CasaZen è l'unico scrittore per gli immobili collegati; le regole automatiche di Octorate (chiusure automatiche, prezzi derivati, revenue) restano spente o lette e mostrate | LST-09, LST-10 | No |
 | PO-17 | Dati degli ospiti presi da Octorate per il CRM | Solo dati della prenotazione e del soggiorno; i contatti letti con `contactInfo` solo per il servizio (messaggi, check-in, fattura), mai per il marketing | CRM-07 | No |
-| PO-18 | Come si identifica l'ospite? | **Deciso dal PO il 31/10:** verifica biometrica dal vivo (selfie dalla fotocamera confrontato con il documento, dal link del check-in o dal QR all'ingresso), esito immediato e codice della serratura subito dopo; l'identificazione di persona non è praticabile; ripiego: verifica dell'operatore in videochiamata. Validità legale della verifica a distanza dal vivo, consenso biometrico e DPIA da confermare con il legale ⚖ | CHK-11, DEB-09 | Solo l'attivazione in produzione |
+| PO-18 | Come si identifica l'ospite? | **Deciso dal PO il 31/10:** verifica biometrica dal vivo del solo ospite che lascia il documento (capogruppo o capofamiglia: selfie dalla fotocamera confrontato con il suo documento, dal link del check-in o dal QR all'ingresso), esito immediato e codice della serratura subito dopo; l'identificazione di persona non è praticabile; ripiego: verifica dell'operatore in videochiamata. Validità legale della verifica a distanza dal vivo, consenso biometrico e DPIA da confermare con il legale ⚖ | CHK-11, DEB-09 | Solo l'attivazione in produzione |
 | PO-19 | Quando CasaZen crea una struttura nuova su Octorate, il proprietario riceve da Octorate le credenziali del suo account (`welcome_user`)? | **Deciso dal PO il 31/10:** no. CasaZen crea la struttura con `welcome_user` falso, l'esperienza resta in CasaZen e il token arriva con la creazione; le credenziali si attivano solo su richiesta del proprietario o alla sua uscita da CasaZen, con la procedura da concordare con Octorate (D11, D27) | §9.1, LST-02, LST-03 | No |
 | PO-20 | Nome pubblico, descrizione e icona dell'app CasaZen su Octorate (oggi «Luca La Malfa», visibile nella pagina di consenso) e visibilità nell'elenco delle API di Octorate (`secretVisibility`, oggi vero) | Nome «CasaZen» con icona e descrizione IT/EN impostati subito in test (`postConfiguration`); app non visibile nell'elenco (`secretVisibility` falso) fino alla certificazione, poi decisione commerciale | §9.1, UX-12 | No |
 
@@ -2160,7 +2163,8 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   (S19) riassunte in §10.5; nuove domande D28–D30. Flusso completo degli adempimenti con i limiti
   dell'automazione, quadro della conformità con semaforo (CHK-12), esiti dalle email di Octorate
   (CHK-13), domande D31–D32. Decisione del PO sull'identificazione (PO-18): verifica biometrica dal
-  vivo con esito immediato e codice della serratura, niente identificazione di persona, operatore
+  vivo del solo ospite che lascia il documento, con esito immediato e codice della serratura,
+  niente identificazione di persona, operatore
   in videochiamata come ripiego (CHK-11, DEB-09 in P0); CHK-12 riscritto come estensione del
   cruscotto di conformità esistente.
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
