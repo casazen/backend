@@ -585,7 +585,8 @@ Prova: una modifica fatta in Octorate non viene sovrascritta senza una scelta de
 
 #### LST-02 — Wizard «Collega i tuoi canali» · P0
 
-Passi: perché collegare (una schermata) → consenso sul channel manager per ogni immobile (§9.1,
+Passi: perché collegare (una schermata) → consenso sul channel manager, uno per account Octorate
+(per un'agenzia uno solo per tutta la rete: §9.1,
 stessa scheda e ritorno allo stesso passo) → canali trovati con il loro stato → abbinamento degli
 annunci dei canali agli immobili di CasaZen (proposto automaticamente per indirizzo, nome e
 capienza; l'utente conferma) → importa → riepilogo.
@@ -1672,7 +1673,8 @@ implementare tali moduli» in OCT-07) non valgono più: le sostituiscono §6.2, 
 
 Riferimenti nella v2.0: OCT-04, OCT-05 e OCT-06 → `LST`; OCT-07, OCT-08 e OCT-09 → `BKG`;
 OCT-10 e OCT-11 → `MSG`; OCT-12 → MSG-09; OCT-14 → MKT-04 e UX-09; OCT-15 → G1 con l'Agenzia
-DEMO (Q1-27).
+DEMO (Q1-27). Dove la tabella dice «per proprietà» per token, rinnovo e lock, vale il modello di
+§9.1: un token per account o rete Octorate collegata, chiamate e salute per struttura.
 
 ### 8.2 Autorità dei dati
 
@@ -1774,9 +1776,18 @@ nel repository:
    rari (problema di sicurezza, scollegamento voluto dal cliente) il refresh token viene annullato:
    CasaZen mostra «Ricollega il canale» in «Da fare» invece di fallire in silenzio. In caso di
    compromissione Octorate può revocare subito tutti i token, su richiesta.
-5. L'autorizzazione è per proprietà: **N appartamenti indipendenti = N consensi e N coppie di
-   token**. Storage, lock, revoca, audit e salute sono per tenant + ambiente +
-   `OctorateAccommodationId`, non globali per agenzia.
+5. **Un consenso copre tutte le strutture che l'utente Octorate vede.** La specifica lo dice per il
+   token OAuth («un token = una struttura oppure le strutture della rete visibili all'utente») e la
+   guida per la pagina di consenso (il proprietario autorizza «tutte le strutture che può vedere»,
+   S19). Quindi:
+   - **agenzia** (per esempio Quokka con circa 250 appartamenti in una rete Octorate): **un solo
+     consenso** dell'utente amministratore della rete, un refresh token per tutta la rete;
+   - **host indipendenti** con account Octorate diversi: un consenso per account, che copre tutti
+     gli appartamenti di quell'host («N token per N proprietà» di S10 vale tra account diversi).
+   Le chiamate restano per struttura (id dell'alloggio; sul conto radice funzionano solo poche
+   letture, S19) e la quota è per struttura. I token si salvano per tenant + ambiente + account
+   Octorate collegato, con l'elenco delle strutture coperte; rinnovo e lock per token; salute,
+   revoca e audit per struttura. Da confermare per iscritto (D33).
 
 Endpoint da configurazione, mai sparsi nel codice: documentazione
 `https://api.octorate.com/connect`; frontend e login `https://admin.octorate.com/octobook`;
@@ -1794,10 +1805,14 @@ S9: operazioni `postConfiguration`, `token` e `refresh` nella documentazione
 sua struttura su Octorate (S9: «il cliente accede con le credenziali create all'interno della
 propria struttura»). Quindi:
 
-- **struttura già su Octorate** → consenso OAuth nel wizard «Collega i tuoi canali» (LST-02);
+- **strutture già su Octorate** → un consenso OAuth nel wizard «Collega i tuoi canali» (LST-02),
+  che copre tutte le strutture visibili a chi autorizza (per un'agenzia, tutta la rete);
 - **struttura nuova, creata da CasaZen** con `POST /rest/v2/accommodation` (`ApiOperations`,
-  LST-03) → la risposta contiene già il refresh token della proprietà, quindi non serve un
-  consenso separato. CasaZen crea la struttura con `welcome_user` **falso** (il default di
+  LST-03) → la risposta contiene già il refresh token, quindi non serve un consenso. Con
+  `network_name` la struttura entra in un gruppo e la risposta restituisce **lo stesso refresh
+  token** con l'elenco delle strutture coperte (`refresh_properties`): è il modello per un'agenzia
+  che porta i suoi appartamenti su Octorate. Per creare una rete Octorate stessa consiglia
+  `welcome_user` falso. CasaZen crea la struttura con `welcome_user` **falso** (il default di
   Octorate è vero): il proprietario non riceve email da Octorate e resta in CasaZen. Le
   credenziali si attivano solo su sua richiesta o quando lascia CasaZen (PO-19, deciso dal PO il
   31/10; procedura da concordare con Octorate, D11 e D27).
@@ -1892,7 +1907,7 @@ solo nella collection, da confermare prima dell'uso.
 |---|---|---|
 | Autenticazione | POST `/rest/v1/identity/token`, `/rest/v1/identity/refresh`, `/rest/v1/identity/migrate` | `apilogin` (client credentials) solo in Postman |
 | Configurazione | GET, PATCH `/rest/v1/api/configuration` (`ApiOperations`) | `environment`, `quotaLimit`, `quotaStatus`, `permissions`, `redirectUri`, `reseller`, `maintenance`; `category` sola lettura (D22); `applicationName`, `description`, `icon`, `secretVisibility` = come CasaZen appare nell'elenco delle API di Octorate |
-| Proprietà | POST `/rest/v2/accommodation` (`ApiOperations`); GET `/rest/v1/accommodation` e `/rest/v1/accommodation/{acc}`; PATCH `/rest/v2/accommodation/{acc}`; DELETE `/rest/v1/accommodation/{acc}/account` | `welcome_user` vero di default manda le credenziali all'email indicata; `network_name` (v1.3 §2: non usato per appartamenti indipendenti); il DELETE disattiva senza cancellare |
+| Proprietà | POST `/rest/v2/accommodation` (`ApiOperations`); GET `/rest/v1/accommodation` e `/rest/v1/accommodation/{acc}`; PATCH `/rest/v2/accommodation/{acc}`; DELETE `/rest/v1/accommodation/{acc}/account` | `welcome_user` vero di default manda le credenziali all'email indicata; `network_name` aggiunge la struttura a un gruppo con lo stesso refresh token (`refresh_properties`): modello per le agenzie (§9.1); `welcome_alternative_email` manda le credenziali solo all'indirizzo indicato; il DELETE disattiva senza cancellare |
 | Unità e tariffe | POST `/rest/v1/roomrates/{acc}` e `/rest/v3/roomrates/{acc}`; GET `/rest/v1/roomrates/{acc}/{roomid}`, `/rest/v2/roomrates/{acc}`, `/rest/v3/roomrates/{acc}`; PATCH `/rest/v1/roomrates/{acc}/{id}` e `/rest/v3/roomrates/{acc}/{id}`; GET, POST `/rest/v1/rateplans/{acc}`; PUT, DELETE `/rest/v1/rateplans/{acc}/{id}`; POST `/rest/v2/roomrates/{acc}/runRules` | tre versioni coesistono: sceglierne una con Octorate (ADR); `legalId`, `legalIdIssuer`, `quantity`, `ratePlans`; 304 se nulla cambia |
 | Connessioni e mapping | POST `/rest/v1/connection/{acc}`; GET `/rest/v1/connection`; PATCH, DELETE `/rest/v1/connection/{acc}/{connection}`; POST `/rest/v1/connection/{action}/{acc}/{connection}`; GET, POST `.../connection/external/...` e `.../connection/mapping/...`; DELETE `.../mapping/{acc}/{connection}/{mappingId}` | azioni `IMPORT_ROOMS`, `IMPORT_RESERVATIONS`, `IMPORT_CALENDAR`, `MARK_CONNECTED`, `COMMIT_MAPPING_AS_COMPLETED`, `IMPORT_ROOMS_PMS`, `IMPORT_RESA_DECREMENT_AVAIL`, `EMAIL_HELP_CUSTOMER`; 550 se il partner fallisce |
 | ARI | GET `/rest/v1/calendar/{acc}`; POST `/rest/v1/calendar/bulk`; GET `/rest/v1/calendar/{acc}/{productId}/availabilityCheck`; POST `/rest/v1/content/products/{acc}/{productId}/{portalname}/calendar` | `GET /calendar/process/{id}` e `/calendar/failures` solo in Postman |
@@ -1937,7 +1952,7 @@ dimostra che il partner CasaZen possa usarlo: lo dimostrano i permessi della con
 Le risposte D1–D14 della v1.3 (§5.1: annuncio da zero, campi di contenuto e CIN, messaggi,
 risposte automatiche, recensioni, annunci esistenti, ARI e quota, prenotazioni, Stripe e
 dirette, altri canali, titolarità e uscita, sandbox, convenzioni, costo e licenza) restano valide
-e sono riportate integralmente qui sotto; le nuove domande D15–D32 sono in §14.2.
+e sono riportate integralmente qui sotto; le nuove domande D15–D33 sono in §14.2.
 
 | ID | Domanda | Specifica | Resta da chiedere |
 |---|---|---|---|
@@ -2177,6 +2192,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | D30 | Configurazione del partner CasaZen: togliere il permesso `cardDetail` (non serve); confermare l'indirizzo base `https://api.octorate.com/connect` (quello dell'email risponde 404 sui percorsi `/v1`); significato di `quotaStatus` (2 dopo due chiamate); `category` assegnata (D22) | §9.1, OCT-13 |
 | D31 | Alloggiati tramite Octorate: a che ora parte l'invio automatico giornaliero? Come gestite i soggiorni fino a 24 ore (invio entro 6 ore) e quelli oltre 30 notti? Avvisate l'host di un invio fallito, e come? `lastCron` e `valid` di `policeAccount` sono leggibili via API? | CHK-04, CHK-12 |
 | D32 | ISTAT tramite Octorate: per ogni regione periodicità e scadenze dell'invio; l'esito arriva per email: a quale indirizzo, si può aggiungerne uno di CasaZen, in quale formato? | CHK-05, CHK-13 |
+| D33 | Un'agenzia con circa 250 appartamenti in una rete Octorate: un solo consenso dell'utente amministratore dà un token valido per tutte le strutture della rete? Le strutture aggiunte dopo entrano nello stesso token? Si può revocare l'accesso a una singola struttura? La quota è per struttura o per token? | §9.1, LST-02 |
 
 ## 15. Revisioni
 
@@ -2184,7 +2200,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   processi con CasaZen unico punto di accesso. Aggiunti: base del codice al 30/10 (§4), regole UX
   vincolanti con l'aggiunta del 31/10 (wizard su livello separato, mai fuori dal processo, «Da
   fare», push e popup) (§5), requisiti per processo (§6), mappa delle automazioni AI (§7),
-  autorità dei dati estesa (§8.2), decisioni PO-01…21 e domande D15–D32 (§14), benchmark UX
+  autorità dei dati estesa (§8.2), decisioni PO-01…21 e domande D15–D33 (§14), benchmark UX
   (Appendice A). Verifica della specifica del 31/10 (S13): check-in e Polizia, ospiti, tassa di
   soggiorno, fatture con stato SDI, pagamenti, prodotti extra, politiche, licenze, portali e
   strumenti esterni; tre punti in contrasto con il resoconto S7 (esito per ospite dell'invio alla
@@ -2217,7 +2233,9 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   niente identificazione di persona, operatore
   in videochiamata come ripiego (CHK-11, DEB-09 in P0); CHK-12 riscritto come estensione del
   cruscotto di conformità esistente. Agente AI di verifica dell'identità sopra la pipeline di
-  ADR-013 (CHK-14, AI-13, PO-21).
+  ADR-013 (CHK-14, AI-13, PO-21). Modello di autorizzazione corretto: un consenso copre tutte le
+  strutture visibili all'utente Octorate (per un'agenzia tutta la rete, un solo token), non un
+  consenso per appartamento; domanda D33.
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
   authorization code flow, whitelist delle callback, access token di 24 ore, refresh token senza
   scadenza, N proprietà = N consensi e token; account test attivo, credenziali non marcate valide;
