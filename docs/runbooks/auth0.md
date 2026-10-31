@@ -288,7 +288,11 @@ production tenant (profile `production`) and, if developers log in from local bu
 
 ### 7.1 Create the application
 
-Applications → Applications → **Create Application** → type **Native** → name `CasaZen Host (mobile)`.
+Applications → Applications → **Create Application** → type **Native** → name `CasaZen (mobile)`.
+
+The app is one «CasaZen» app for guests, hosts and suppliers, with id `it.casazen.app` (it was `it.casazen.host` until
+2026-10-31). A Native application created earlier as `CasaZen Host (mobile)` keeps working after the callback URLs
+below are changed to the new id; renaming it in the dashboard is optional (the Logs filters below use the name).
 
 ### 7.2 Settings tab
 
@@ -302,14 +306,14 @@ The app builds its redirect URI from the app scheme and the bundle id / package 
 (`src/auth/auth-config.ts`), with the Auth0 domain of the build (`EXPO_PUBLIC_AUTH0_DOMAIN`, in lower case):
 
 ```text
-casazen://<EXPO_PUBLIC_AUTH0_DOMAIN>/ios/it.casazen.host/callback
-casazen://<EXPO_PUBLIC_AUTH0_DOMAIN>/android/it.casazen.host/callback
+casazen://<EXPO_PUBLIC_AUTH0_DOMAIN>/ios/it.casazen.app/callback
+casazen://<EXPO_PUBLIC_AUTH0_DOMAIN>/android/it.casazen.app/callback
 ```
 
 Test tenant example (`EXPO_PUBLIC_AUTH0_DOMAIN=<test tenant>.eu.auth0.com`, the name chosen in section 1):
 
 ```text
-casazen://<test tenant>.eu.auth0.com/ios/it.casazen.host/callback, casazen://<test tenant>.eu.auth0.com/android/it.casazen.host/callback
+casazen://<test tenant>.eu.auth0.com/ios/it.casazen.app/callback, casazen://<test tenant>.eu.auth0.com/android/it.casazen.app/callback
 ```
 
 Rules:
@@ -379,7 +383,7 @@ What the app does with the Auth0 answer of a refresh:
   the same `https://casazen.app/roles` and profile claims as the web ones. No change needed.
 - The app asks for `audience=<EXPO_PUBLIC_AUTH0_AUDIENCE>` (API of section 2). If the tenant restricts
   user access to the API per application (APIs → the API → **Application Access**, where available), give
-  `CasaZen Host (mobile)` the same user access as the SPA application.
+  `CasaZen (mobile)` the same user access as the SPA application.
 
 ### 7.6 EAS variables
 
@@ -404,7 +408,7 @@ These steps need a real device or emulator; they were not run when the code was 
    consents sees "Completa l'attivazione sul sito" instead (PL-02, [`onboarding-consents.md`](onboarding-consents.md)).
 3. On a fresh install (or after **Profilo → Esci**), tap **Continua con Auth0** and close the browser without
    logging in: the app stays on the login screen, no error.
-4. Auth0 → Monitoring → Logs, filtered on `CasaZen Host (mobile)`: `Success Login`, then
+4. Auth0 → Monitoring → Logs, filtered on `CasaZen (mobile)`: `Success Login`, then
    `Success Exchange` (*Authorization Code for Access Token*). Decode the access token (jwt.io, test tenant
    only): `aud` contains the API identifier, `azp` is the Native client id, `scope` contains `offline_access`.
 5. Repeat on iOS and Android: each platform uses its own callback URL.
@@ -476,7 +480,7 @@ the next user, or until the same user logs in again (update of the same row).
 
 Check on a device (test tenant, test users only):
 
-1. Log in, open a booking, then in Auth0 → Monitoring → Logs, filtered on `CasaZen Host (mobile)`, wait for the
+1. Log in, open a booking, then in Auth0 → Monitoring → Logs, filtered on `CasaZen (mobile)`, wait for the
    access token to expire (or lower Maximum Access Token Lifetime of the test API to a few minutes, and set it back
    afterwards): the next action works without a login, and the logs show *Success Exchange* (Refresh Token for
    Access Token, `sertft`).

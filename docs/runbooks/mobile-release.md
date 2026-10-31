@@ -52,7 +52,7 @@ EAS has three environments: `development`, `preview`, `production` (expo.dev →
 | `EXPO_PUBLIC_API_URL` | Railway `test` public URL, `https://<railway-test-host>` (same as GitHub variable `RAILWAY_TEST_URL`) | Railway `production` public URL (`RAILWAY_PROD_URL`) | Usually unset: developers use `.env` (`http://<LAN IP>:5000`) |
 | `EXPO_PUBLIC_WEB_URL` | Vercel staging deployment of `develop`, `https://<staging-host>` | `https://casazen-app.vercel.app` | unset |
 | `EXPO_PUBLIC_AUTH0_DOMAIN` | test tenant, e.g. `casazen-test.eu.auth0.com` (host name only, no `https://`) | production tenant, e.g. `casazen.eu.auth0.com` | unset |
-| `EXPO_PUBLIC_AUTH0_CLIENT_ID` | client id of the **Native** app `CasaZen Host (mobile)` in the test tenant ([auth0.md](auth0.md) section 7), never the SPA client id | client id of the **Native** app in the production tenant | unset: developers set it in `.env` (Native app of the dev/test tenant). It has **no** local default |
+| `EXPO_PUBLIC_AUTH0_CLIENT_ID` | client id of the **Native** app `CasaZen (mobile)` in the test tenant ([auth0.md](auth0.md) section 7), never the SPA client id | client id of the **Native** app in the production tenant | unset: developers set it in `.env` (Native app of the dev/test tenant). It has **no** local default |
 | `EXPO_PUBLIC_AUTH0_AUDIENCE` | API identifier of the test tenant (auth0.md section 2, e.g. `https://casazen-api`) | API identifier of the production tenant | unset |
 | `EXPO_PUBLIC_E2E_DEMO` | **do not set** | **do not set** | optional, `1` only for the Maestro demo button in Metro bundles |
 
@@ -203,7 +203,7 @@ An unknown route falls back to `bookingId` when the push has one, otherwise the 
 
 Expo delivers Android pushes through **FCM HTTP v1**; the legacy FCM server key is no longer accepted by Google.
 
-1. [Firebase console](https://console.firebase.google.com) → create (or open) the project `casazen` → **Add app → Android**, package **`it.casazen.host`** (`android.package` in `app.json`). Download `google-services.json`. It holds the Firebase app identifiers and an API key restricted to this app: not a server secret, but it stays **out of git** (`.gitignore`).
+1. [Firebase console](https://console.firebase.google.com) → create (or open) the project `casazen` → **Add app → Android**, package **`it.casazen.app`** (`android.package` in `app.json`; if an Android app `it.casazen.host` was registered earlier, add a new one: the package of a Firebase app cannot be changed). Download `google-services.json`. It holds the Firebase app identifiers and an API key restricted to this app: not a server secret, but it stays **out of git** (`.gitignore`).
 2. Upload it as an EAS **file** variable, in every environment you build Android in:
    ```bash
    export EAS_PROJECT_ID=<uuid>

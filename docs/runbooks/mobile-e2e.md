@@ -39,7 +39,7 @@ the backend as the host (or acts as the supplier) through the mock IdP: the scre
 | `m6-mark-paid` | `sr-mark-paid-{id}` on the seeded `Completato` request, confirm dialog, `sr-status-{id}` = "Pagato", button gone | API: `Pagato` |
 | `m7-checkout` (MO-09) | `checkout-close-stay` disabled until `checkout-confirm-departure`, early-departure dialog, "Soggiorno chiuso", `checkout-title` = "Check-out completato", `booking-status-badge` = "Check-out effettuato" | API: `CheckedOut` |
 | `m8-share-link` (MO-11) | published property: `property-share-{id}` enabled, no `property-share-unavailable-{id}`; unpublished property: disabled with the explanation; tap opens the share sheet showing `…/property/{slug}` | |
-| end | | API: no 5xx answered by the backend; `adb logcat`: no `FATAL EXCEPTION`, no `ANR in it.casazen.host` |
+| end | | API: no 5xx answered by the backend; `adb logcat`: no `FATAL EXCEPTION`, no `ANR in it.casazen.app` |
 
 No flow taps "Wait" on an ANR dialog and none uses `optional`: an ANR or a missing button fails the run. The confirm button of
 a native alert is `android:id/button1` (React Native maps the last button of `Alert.alert` to the positive one).
@@ -58,7 +58,7 @@ three) and request logging (`Microsoft.AspNetCore.Hosting.Diagnostics` at Inform
 
 **Real login.** The E2E APK is a normal release build of the app (no `__DEV__`, no demo mode, no token injection): "Continua con
 Auth0" opens the system browser on `https://localhost:9443/authorize` (the mock IdP), the flow types the test user's
-credentials into that page, and the IdP redirects to `casazen://localhost:9443/android/it.casazen.host/callback`, which the app
+credentials into that page, and the IdP redirects to `casazen://localhost:9443/android/it.casazen.app/callback`, which the app
 exchanges for tokens with PKCE. The emulator reaches the stack on the runner with `adb reverse` (API and IdP ports), so the IdP
 is `localhost:9443` for the app, the browser and the backend (same issuer). The IdP's throw-away certificate is installed in the
 emulator's **user** CA store (`e2e/tools/android-trust-cert.sh`, needs a `google_apis` image where `adb root` works), and the E2E
