@@ -8583,6 +8583,59 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("SupplierShowcaseContents");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierShowcaseMedia", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Bytes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("Height")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<int?>("Width")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_SupplierShowcaseMedia_StorageKey");
+
+                    b.HasIndex("OrgId", "CreatedAt")
+                        .HasDatabaseName("IX_SupplierShowcaseMedia_OrgId_CreatedAt");
+
+                    b.ToTable("SupplierShowcaseMedia", t =>
+                        {
+                            t.HasCheckConstraint("CK_SupplierShowcaseMedia_Bytes", "\"Bytes\" > 0");
+
+                            t.HasCheckConstraint("CK_SupplierShowcaseMedia_Kind", "\"Kind\" IN ('logo', 'cover', 'work', 'before')");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.SupplierTimeOff", b =>
                 {
                     b.Property<Guid>("Id")
@@ -11117,6 +11170,17 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
                         .WithOne()
                         .HasForeignKey("Casazen.Core.Entities.SupplierShowcaseContent", "OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SupplierProfile");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.SupplierShowcaseMedia", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.SupplierProfile", "SupplierProfile")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

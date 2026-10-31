@@ -3655,7 +3655,7 @@ with an address); once the supplier has a content row it is true only for a show
 
 - **SP-13a-FU1** — a service the supplier does not show (it is not in the published `serviceOrder`) is still bookable by its slug (`POST …/bookings` reads the catalog): hiding is a choice about the page. Making the booking follow the order is a decision of the product owner.
 - **SP-13a-FU2** — `services` of the page need `SupplierShowcaseBooking` on, as before: a published showcase with the flag off shows its content and no service. Showing the read-only price list without the flag is a decision of the product owner.
-- The images of the content are references only: the upload with its checks on the content is SP-13b (the editor can already point to the supplier's own photos of its profile and services).
+- The images of the content are references: the upload with its checks on the content is SP-13b (section 33b); the editor can also point to the supplier's own photos of its profile and services.
 - The long text fields are plain text in one language (Italian): no translation (the design has one).
 
 ### 33.13 After a deploy
@@ -3672,6 +3672,75 @@ with an address); once the supplier has a content row it is true only for a show
 - [ ] Part 3: `GET api/public/suppliers/{slug}` of a supplier that **published nothing** is unchanged (no `content`, `paused`, `bookingsOpen`, `trust`...); after a publication it carries `content` (the published text, never the draft), `paused: false`,
       `bookingsOpen` and `trust.verified`; with `SupplierShowcaseBooking` on and the bookings open, `services[].nextSlotUtc`. `POST …/pause` makes `GET …/slots?service=…` and `POST …/quote` answer 422 `supplier_booking_offline`.
 - [ ] `GET api/supplier/showcase/status` and `…/stats` answer for the caller's supplier only; `GET api/supplier/checklist` has `showcasePublished: true` for a supplier that never used the editor and for one that published, `false` while paused.
+
+## 33b. The images of the showcase: logo, cover and photos of the jobs — SP-13b
+
+Redesign wave task SP-13b (branch `feature/rd-supplier-showcase-media`; the upload zone of the editor is its twin frontend PR), **no new feature flag** (like the content, section 33: a file changes nothing a customer sees until the
+supplier puts it in the content and publishes), migration `AddSupplierShowcaseMedia` (additive: one new table), one new recurring job. The editor uploads an image here and puts the address it gets back into the content (`logo.url`,
+`cover.url`, `gallery[].photoUrl` or `beforeUrl`).
+
+### 33b.1 The endpoints
+
+| Endpoint | What |
+|---|---|
+| `POST api/supplier/showcase/media` | multipart: `kind` (`logo`, `cover`, `work` = the photo of a job, `before` = its "before" photo) and `file`. Answers `{ id, kind, url, contentType, bytes, width, height, createdAt }`; `url` goes into the content as it is |
+| `DELETE api/supplier/showcase/media/{id}` | 204. 404 `showcase_media_not_found` for an id that is not the caller's own (another supplier's file does not exist here); 409 `showcase_media_in_use` while the draft, the published version or the one before it still points to it |
+
+Both are for the caller's own linked supplier org (never a value of the request), policy `RequireSupplier`, and rate limited **per signed-in person** (`SupplierShowcaseMedia`, 40 per 10 minutes, `RateLimiting__SupplierShowcaseMedia__*`).
+
+| Status | `code` | When |
+|---|---|---|
+| 413 | `showcase_media_too_large` | a logo over **200 KB** or a photo over **10 MB** (`maxBytes` in the answer); a request over 11 MB is refused by the framework with the same 413 |
+| 415 | `showcase_media_unsupported_type` | the **content** is not a PNG, a JPEG or a WebP: an SVG, a PDF, a HEIC, a text named `.jpg`. The name and the declared `Content-Type` are never looked at |
+| 422 | `showcase_media_none` / `_kind_invalid` | no file / a missing or unknown `kind` |
+| 422 | `showcase_media_invalid_image` | the file starts like an accepted image but is not a whole, still one: damaged, cut short, or an animation (an animated WebP) |
+| 422 | `showcase_media_dimensions` | more than 12,000 pixels on a side or 60 million in all (`maxSide`): a small file can hold a picture a browser cannot draw |
+| 422 | `showcase_media_limit_reached` | the supplier already stores 60 files (`limit`), the unused ones included |
+
+### 33b.2 What is checked and what is done to the file
+
+In this order, and **nothing is stored for a request that fails any step**: the kind, the size by kind, the type read from the first bytes, the rewriting, the size in pixels, the limit of files.
+
+**The file is written again without its metadata** (`ShowcaseImageSanitizer`, plain managed code, the pixels are not decoded): the EXIF block with the **GPS position**, the camera and the time, XMP, IPTC and Photoshop blocks, comments, text chunks, the thumbnails (the one inside the EXIF block
+and the one of the JFIF header), the "extra pictures" of some phones and **every byte after the end of the image** (a file can be a valid picture followed by a page or a script) do not get through. What stays is what a browser needs: the tables and the frame, the color profile (ICC), the chunks that
+say how colors are read (PNG: gamma, sRGB, transparency, palette), the alpha flag of a WebP. **The orientation of a JPEG** is the one piece of metadata kept, as an EXIF block of one tag, so a photo taken on its side is drawn upright. A file whose structure is not that of a whole image is a 422;
+a JPEG cut off before its end marker is closed and accepted. An animated PNG becomes its still image; an animated WebP is refused.
+
+Then the object is stored in the **public** bucket as `suppliers/{orgId}/showcase/{kind}-{random}.{ext}` (the extension follows the type found, a random name nobody can guess), and a row of `SupplierShowcaseMedia` is added under the supplier's content lock (the one of 33.1), with the limit checked again.
+A failed or refused upload removes its object again.
+
+### 33b.3 What the server does not do: recompress and resize
+
+The brief asks for photos "recompressed and resized". **No imaging library is part of the application** (the same choice as the PDF library, whose licence and absence of native code are written in `lease-contract-templates.md`): ImageSharp has a licence with a revenue threshold and SkiaSharp
+brings native binaries. So the server does not decode and encode the pixels; it keeps what it received, minus the metadata, up to 10 MB. **The editor makes a photo smaller before it sends it** (2,400 pixels on the longest side, orientation applied, as it already does for the pages of a document). Follow-up SP-13b-FU1.
+
+### 33b.4 The content points only to images that were uploaded
+
+`SupplierShowcaseContentService` accepts an address in the folder `suppliers/{orgId}/showcase/` only when the supplier has a row for that file (it reads the keys of its own rows when a save mentions the folder). A name somebody made up, another supplier's file, or a file the cleanup removed since is a
+422 `showcase_content_invalid` on that field, never a broken picture on a public page. The photos of the profile and of the services (`suppliers/{orgId}/photos/`) are accepted as before.
+
+### 33b.5 The nightly cleanup
+
+Job `supplier-showcase-media-cleanup` (`SupplierShowcaseMediaCleanupJob`, 04:20 UTC, `[DisableConcurrentExecution]`, a PostgreSQL session lock per run, **always registered**): for each supplier that has a file older than **24 hours**, under the supplier's content lock, it removes the files that **nothing points to**: not the draft, not the
+published version, **not the version published before it** (the undo of 5 minutes). The question "is this file in use" is a search of the key in the text of the three documents, so a member that a later format adds to the content is covered too. A file that is used is kept whatever its age; one that is not is kept for 24 hours
+(the time to save it into the draft, to undo a removal, to come back from a night's break). Order: the object first, then the row; a storage that fails leaves the row and the next run tries again. At most 500 files a run. Idempotent: a second run finds nothing. It logs only a count.
+
+### 33b.6 Known limits and follow-ups
+
+- **SP-13b-FU1** — recompression and resizing on the server (an imaging library): a decision of the product owner on the licence or the native files. Until then the editor makes the photos smaller, and a client that sends a 10 MB photo gets a 10 MB photo on its public page.
+- **SP-13b-FU2** — the photos of the **profile and of the services** (`UploadSupplierPhotoAsync`) are still stored as they arrive, with their EXIF. The same rewriting would apply.
+- **SP-13b-FU3** — the repair of duplicate supplier profiles (`fix-orphaned`) moves the content but not the rows of `SupplierShowcaseMedia`: they go with the duplicate profile (cascade) and the files stay in the bucket, no longer tracked.
+- **SP-13b-FU4** — the orientation is kept for a JPEG only; a PNG or a WebP with an EXIF orientation is stored without it (a camera does not write those). HEIC and AVIF are not accepted: the editor converts a photo to JPEG in the browser when it can.
+- **SP-13b-FU5** — no `GET api/supplier/showcase/media`: the editor knows the files it uploaded in the session; a list would let the picker offer earlier uploads.
+
+### 33b.7 After a deploy
+
+- [ ] Migration `AddSupplierShowcaseMedia` applied (table `SupplierShowcaseMedia`, foreign key to `SupplierProfiles` in cascade, unique index on `StorageKey`).
+- [ ] Hangfire shows `supplier-showcase-media-cleanup` (daily, 04:20 UTC); 38 recurring jobs with every flag on (hangfire.md).
+- [ ] As a supplier (test environment): `POST api/supplier/showcase/media` with `kind=cover` and a JPEG taken with a phone is 200 with a `url` under `suppliers/{orgId}/showcase/`; the file at that address has **no EXIF GPS** (`exiftool` shows no position) and is drawn upright; the same upload as an SVG named `.png` is 415;
+      a logo of 250 KB is 413; an unknown `kind` is 422.
+- [ ] `PATCH api/supplier/showcase/content` with `{ "version": n, "cover": { "url": "<that url>" } }` is 200; with a made-up name in the same folder it is 422 `showcase_content_invalid` with `cover.url`.
+- [ ] `DELETE api/supplier/showcase/media/{id}` of that file is 409 while the draft points to it, 204 once the cover was changed; another supplier's id is 404.
 
 ## 34. The host's interventions: list, counters, the action to do, the house alone — SR-08a
 

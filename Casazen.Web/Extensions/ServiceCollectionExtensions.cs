@@ -592,6 +592,9 @@ public static class ServiceCollectionExtensions
         // The content of the supplier's showcase (SP-13a): the draft, the published version, and the changes between them. Rows keyed
         // by the supplier org, not tenant-filtered; every change under the SupplierShowcaseContent lock.
         services.AddScoped<ISupplierShowcaseContentService, SupplierShowcaseContentService>();
+        // The images of the supplier's showcase (SP-13b): the logo, the cover and the photos of the jobs it uploads from the editor, and the daily
+        // cleanup of the ones nothing points to. Rows keyed by the supplier org, not tenant-filtered; every change under the content lock.
+        services.AddScoped<ISupplierShowcaseMediaService, SupplierShowcaseMediaService>();
         // The anonymous read side of the supplier showcase (SP-09): services, free slots and price estimate, behind the flag
         // SupplierShowcaseBooking. The slot plans are kept 30 seconds per replica (a singleton: not tied to a request).
         services.AddSingleton<PublicSupplierSlotCache>();

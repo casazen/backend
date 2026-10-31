@@ -17,6 +17,7 @@ Object keys:
 |---|---|
 | public | `properties/{propertyId}/photos/{random}.{ext}` |
 | public | `suppliers/{supplierOrgId}/photos/{random}.{ext}` |
+| public | `suppliers/{supplierOrgId}/showcase/{kind}-{random}.{ext}` — the logo, the cover and the photos of the jobs of the supplier's showcase (SP-13b): type read from the bytes, rewritten without EXIF/GPS and any other metadata, removed by the nightly cleanup when nothing points to them ([suppliers.md](suppliers.md) § 33b) |
 | public | `orgs/{orgId}/branding/{kind}/{random}.{ext}` — `kind` = `logo` or `hero` of the public booking site (BK-12): type and pixel size checked from the bytes, the previous image is deleted on replace/remove |
 | private | `properties/{propertyId}/documents/{random}.{ext}` |
 | private | `guest-documents/{orgId}/{guestId}/{random}.{ext}` |

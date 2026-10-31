@@ -3845,4 +3845,46 @@
   <data name="ServiceDisputeOpenBlocksCompletion" xml:space="preserve">
     <value>C'è una segnalazione aperta su questo lavoro: rispondi alla segnalazione. Se viene decisa a tuo favore, il lavoro risulta completato.</value>
   </data>
+  <data name="PayloadTooLarge" xml:space="preserve">
+    <value>File troppo grande</value>
+  </data>
+  <data name="PayloadTooLargeDetail" xml:space="preserve">
+    <value>Il file supera la dimensione massima consentita. Scegli un file più leggero e riprova.</value>
+  </data>
+  <data name="UnsupportedMediaType" xml:space="preserve">
+    <value>Tipo di file non supportato</value>
+  </data>
+  <data name="UnsupportedMediaTypeDetail" xml:space="preserve">
+    <value>Il tipo di file non è supportato.</value>
+  </data>
+  <data name="ShowcaseMediaNone" xml:space="preserve">
+    <value>Scegli l'immagine da caricare.</value>
+  </data>
+  <data name="ShowcaseMediaKindInvalid" xml:space="preserve">
+    <value>Indica a cosa serve l'immagine: logo, copertina, foto di un lavoro o foto «prima».</value>
+  </data>
+  <data name="ShowcaseMediaLogoTooLarge" xml:space="preserve">
+    <value>Il logo supera i 200 KB: scegli un file più leggero (un PNG o un WebP semplice, per esempio).</value>
+  </data>
+  <data name="ShowcaseMediaPhotoTooLarge" xml:space="preserve">
+    <value>La foto supera i 10 MB: riducila o scegline un'altra.</value>
+  </data>
+  <data name="ShowcaseMediaUnsupportedType" xml:space="preserve">
+    <value>Puoi caricare solo immagini PNG, JPG o WebP. Gli altri formati (SVG, PDF, HEIC...) non sono accettati, anche se il nome del file dice il contrario.</value>
+  </data>
+  <data name="ShowcaseMediaInvalidImage" xml:space="preserve">
+    <value>Il file non si può usare come immagine: è danneggiato, incompleto o animato. Esportalo di nuovo come PNG, JPG o WebP.</value>
+  </data>
+  <data name="ShowcaseMediaDimensions" xml:space="preserve">
+    <value>L'immagine ha troppi pixel: il lato più lungo può arrivare a {0} pixel.</value>
+  </data>
+  <data name="ShowcaseMediaLimitReached" xml:space="preserve">
+    <value>Hai già {0} file nella vetrina, compresi quelli che non usi più: questi vengono tolti da soli entro due giorni. Riprova più tardi.</value>
+  </data>
+  <data name="ShowcaseMediaNotFound" xml:space="preserve">
+    <value>Questo file non è tra le immagini della tua vetrina.</value>
+  </data>
+  <data name="ShowcaseMediaInUse" xml:space="preserve">
+    <value>Questa immagine è ancora usata nella vetrina (nella bozza, nella versione pubblicata o in quella precedente): toglila prima dai contenuti.</value>
+  </data>
 </root>
