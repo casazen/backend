@@ -297,6 +297,7 @@ public class PropertyService(
                 Description = p.Description,
                 City = p.City,
                 PostalCode = p.PostalCode,
+                ComuneIstatCode = p.ComuneIstatCode,
                 Latitude = p.Latitude,
                 Longitude = p.Longitude,
                 Bedrooms = p.Bedrooms,
@@ -332,6 +333,7 @@ public class PropertyService(
                 Description = p.Description,
                 City = p.City,
                 PostalCode = p.PostalCode,
+                ComuneIstatCode = p.ComuneIstatCode,
                 Latitude = p.Latitude,
                 Longitude = p.Longitude,
                 Bedrooms = p.Bedrooms,
@@ -632,9 +634,9 @@ public class PropertyService(
         Description = row.Description,
         City = row.City,
         PostalCode = row.PostalCode,
-        // DB-03: the position leaves CasaZen rounded to about 1 km, never as the host typed it.
-        Latitude = PropertyAddress.ToPublicCoordinate(row.Latitude),
-        Longitude = PropertyAddress.ToPublicCoordinate(row.Longitude),
+        // DB-03: the position leaves CasaZen rounded to about 1 km, never as the host typed it; a host who gave none is placed at the centre of the comune.
+        Latitude = PublicPropertyPosition.Of(row.Latitude, row.Longitude, row.ComuneIstatCode).Latitude,
+        Longitude = PublicPropertyPosition.Of(row.Latitude, row.Longitude, row.ComuneIstatCode).Longitude,
         Bedrooms = row.Bedrooms,
         Bathrooms = row.Bathrooms,
         MaxGuests = row.MaxGuests,
@@ -657,9 +659,9 @@ public class PropertyService(
         Description = row.Description,
         City = row.City,
         PostalCode = row.PostalCode,
-        // DB-03: the position leaves CasaZen rounded to about 1 km, never as the host typed it.
-        Latitude = PropertyAddress.ToPublicCoordinate(row.Latitude),
-        Longitude = PropertyAddress.ToPublicCoordinate(row.Longitude),
+        // DB-03: the position leaves CasaZen rounded to about 1 km, never as the host typed it; a host who gave none is placed at the centre of the comune.
+        Latitude = PublicPropertyPosition.Of(row.Latitude, row.Longitude, row.ComuneIstatCode).Latitude,
+        Longitude = PublicPropertyPosition.Of(row.Latitude, row.Longitude, row.ComuneIstatCode).Longitude,
         Bedrooms = row.Bedrooms,
         Bathrooms = row.Bathrooms,
         MaxGuests = row.MaxGuests,
@@ -705,6 +707,7 @@ public class PropertyService(
         Description = p.Description,
         City = p.City,
         PostalCode = p.PostalCode,
+        ComuneIstatCode = p.ComuneIstatCode,
         Latitude = p.Latitude,
         Longitude = p.Longitude,
         Bedrooms = p.Bedrooms,
@@ -763,6 +766,9 @@ public class PropertyService(
         public string Description { get; init; } = string.Empty;
         public string City { get; init; } = string.Empty;
         public string PostalCode { get; init; } = string.Empty;
+
+        // The comune the host chose from the official list: where the position of a property whose host gave none is taken from (PublicPropertyPosition).
+        public string? ComuneIstatCode { get; init; }
         public decimal Latitude { get; init; }
         public decimal Longitude { get; init; }
         public int Bedrooms { get; init; }

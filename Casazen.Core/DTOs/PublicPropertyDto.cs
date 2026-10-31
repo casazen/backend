@@ -17,7 +17,14 @@ public class PublicPropertyDto
     public string Description { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
     public string PostalCode { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The position for a map, rounded to about a kilometre (<see cref="Entities.PropertyAddress.ToPublicCoordinate"/>); for a property
+    /// whose host gave none, the centre of its comune. <c>0, 0</c> only when there is neither: the map then places it by its comune.
+    /// </summary>
     public decimal Latitude { get; set; }
+
+    /// <summary>See <see cref="Latitude"/>.</summary>
     public decimal Longitude { get; set; }
     public int Bedrooms { get; set; }
     public int Bathrooms { get; set; }

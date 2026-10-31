@@ -106,7 +106,22 @@ missing field; 403 for a non-admin. The same pattern as the Alloggiati tables (`
 
 Replace `Casazen.Infrastructure/Data/Seeds/comuni-istat.csv` with the new official file (same layout), update `comuni-istat.source.json`
 (`sourceVersion`, `referenceDate`, `originalFileSha256`) and the table of the folder `README.md`, commit them together. The next deploy
-imports it because its reference date is newer. Without a new reference date nothing is imported (use the admin upload).
+imports it because its reference date is newer. Without a new reference date nothing is imported (use the admin upload). A new list may
+have comuni that have no centre yet (below): a test fails when more than 1 % of the list has none, and then the centres are built again.
+
+### The centre of the comuni (where the public maps put a property that has no position)
+
+The property wizard asks for no coordinates, so a property created with it is stored with latitude and longitude `0, 0` ("not set", see
+`PropertyAddress`). The public projections that feed a map (the stays of a booking site, the search, the page of the property) give such a
+property the **centre of its comune**, found by `Property.ComuneIstatCode` in `comuni-centroidi.csv` (`ComuneCentroids`,
+`PublicPropertyPosition`), rounded to about a kilometre like every public position. The stored property is not changed, so the position a
+host gives later is the one used; the JSON-LD of the crawler pages still carries no position for a property that has none. A property with no
+comune chosen from the list stays at `0, 0` and the booking site places it by the name of its comune on the map, or not at all.
+
+Source (Wikidata, CC0), the SPARQL query, the codes of Sardinia (old and new both present) and how to build the file again: the section
+`comuni-centroidi.csv` of `Casazen.Infrastructure/Data/Seeds/README.md`. It is reference data of the build: nothing is fetched at run time and
+no provider receives an address. Street level precision (a geocoder at the moment the address is saved) is a separate decision: it
+would send the address of the property to a provider, who then belongs in the list of the sub-processors.
 
 ## Check after an import
 
