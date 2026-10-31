@@ -1589,9 +1589,10 @@ propria struttura»). Quindi:
 - **struttura già su Octorate** → consenso OAuth nel wizard «Collega i tuoi canali» (LST-02);
 - **struttura nuova, creata da CasaZen** con `POST /rest/v2/accommodation` (`ApiOperations`,
   LST-03) → la risposta contiene già il refresh token della proprietà, quindi non serve un
-  consenso separato; con `welcome_user` vero (default di Octorate) il proprietario riceve da
-  Octorate un'email con le credenziali. Se mandarla o no è la decisione PO-19, legata
-  all'uscita da CasaZen (D11).
+  consenso separato. CasaZen crea la struttura con `welcome_user` **falso** (il default di
+  Octorate è vero): il proprietario non riceve email da Octorate e resta in CasaZen. Le
+  credenziali si attivano solo su sua richiesta o quando lascia CasaZen (PO-19, deciso dal PO il
+  31/10; procedura da concordare con Octorate, D11 e D27).
 
 Il wizard chiede all'inizio «Le tue strutture sono già su Octorate?» (uno dei punti in cui il nome
 si mostra, PO-01) e sceglie da solo l'ingresso giusto: l'utente non deve sapere cosa sia un
@@ -1683,7 +1684,7 @@ dimostra che il partner CasaZen possa usarlo: lo dimostrano i permessi della con
 Le risposte D1–D14 della v1.3 (§5.1: annuncio da zero, campi di contenuto e CIN, messaggi,
 risposte automatiche, recensioni, annunci esistenti, ARI e quota, prenotazioni, Stripe e
 dirette, altri canali, titolarità e uscita, sandbox, convenzioni, costo e licenza) restano valide
-e sono riportate integralmente qui sotto; le nuove domande D15–D26 sono in §14.2.
+e sono riportate integralmente qui sotto; le nuove domande D15–D27 sono in §14.2.
 
 | ID | Domanda | Specifica | Resta da chiedere |
 |---|---|---|---|
@@ -1845,7 +1846,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | PO-16 | Chi comanda prezzi e disponibilità? | CasaZen è l'unico scrittore per gli immobili collegati; le regole automatiche di Octorate (chiusure automatiche, prezzi derivati, revenue) restano spente o lette e mostrate | LST-09, LST-10 | No |
 | PO-17 | Dati degli ospiti presi da Octorate per il CRM | Solo dati della prenotazione e del soggiorno; i contatti letti con `contactInfo` solo per il servizio (messaggi, check-in, fattura), mai per il marketing | CRM-07 | No |
 | PO-18 | Come si identifica l'ospite dopo la decisione del Consiglio di Stato del novembre 2025 (da verificare con il legale)? | L'host o lo staff registra in CasaZen l'identificazione di persona o in videochiamata per ogni ospite adulto; la verifica biometrica dal vivo si aggiunge quando Q1-11 sarà reale; il codice d'accesso parte solo dopo; il self check-in senza passo dal vivo è segnalato come non conforme ⚖ | CHK-11, DEB-09 | Solo i testi verso gli utenti |
-| PO-19 | Quando CasaZen crea una struttura nuova su Octorate, il proprietario riceve da Octorate le credenziali del suo account (`welcome_user`)? | No per default: l'esperienza resta in CasaZen e il token arriva con la creazione; le credenziali si attivano su richiesta o all'uscita da CasaZen, con una procedura da concordare con Octorate (D11) | §9.1, LST-02, LST-03 | No |
+| PO-19 | Quando CasaZen crea una struttura nuova su Octorate, il proprietario riceve da Octorate le credenziali del suo account (`welcome_user`)? | **Deciso dal PO il 31/10:** no. CasaZen crea la struttura con `welcome_user` falso, l'esperienza resta in CasaZen e il token arriva con la creazione; le credenziali si attivano solo su richiesta del proprietario o alla sua uscita da CasaZen, con la procedura da concordare con Octorate (D11, D27) | §9.1, LST-02, LST-03 | No |
 
 ### 14.2 Domande a Octorate (si aggiungono a D1–D14)
 
@@ -1863,6 +1864,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | D24 | Il permesso `contactInfo`/`sensitiveData` per CasaZen: condizioni, vincoli d'uso, procedura per gli IP statici | CRM-07, MSG |
 | D25 | Oltre alla mail del mattino, quali notifiche Octorate riceve l'host e come si spengono per gli immobili gestiti da CasaZen? | UX-08, MSG-05 |
 | D26 | Lo stato `CHECKIN_END`, `CHECKOUT_END`, `NO_SHOW` ha effetti verso le OTA o verso gli invii? | CHK-06 |
+| D27 | Una struttura creata via API con `welcome_user` falso: come si consegnano in seguito le credenziali al proprietario (su sua richiesta o quando lascia CasaZen)? Esiste un'operazione o una procedura, e il proprietario conserva struttura, collegamenti alle OTA e storico? | PO-19, D11 |
 
 ## 15. Revisioni
 
@@ -1870,7 +1872,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   processi con CasaZen unico punto di accesso. Aggiunti: base del codice al 30/10 (§4), regole UX
   vincolanti con l'aggiunta del 31/10 (wizard su livello separato, mai fuori dal processo, «Da
   fare», push e popup) (§5), requisiti per processo (§6), mappa delle automazioni AI (§7),
-  autorità dei dati estesa (§8.2), decisioni PO-01…19 e domande D15–D26 (§14), benchmark UX
+  autorità dei dati estesa (§8.2), decisioni PO-01…19 e domande D15–D27 (§14), benchmark UX
   (Appendice A). Verifica della specifica del 31/10 (S13): check-in e Polizia, ospiti, tassa di
   soggiorno, fatture con stato SDI, pagamenti, prodotti extra, politiche, licenze, portali e
   strumenti esterni; tre punti in contrasto con il resoconto S7 (esito per ospite dell'invio alla
@@ -1883,8 +1885,9 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   il livello guidato (UX-01), «fallo per me» (UX-15), lezioni e livelli di fiducia dell'AI
   (MSG-06, MSG-07), messaggi programmati visibili (MSG-11). Testo integrale di S9 confermato dal
   PO il 31/10: modello del link, scadenza letta dal token, riferimenti, due ingressi (consenso per
-  le strutture già su Octorate, token alla creazione per quelle nuove) e PO-19; fonti S1–S11
-  riportate per intero in §3.
+  le strutture già su Octorate, token alla creazione per quelle nuove) e PO-19, decisa dal PO lo
+  stesso giorno (struttura creata con `welcome_user` falso, credenziali solo su richiesta o
+  all'uscita; domanda D27); fonti S1–S11 riportate per intero in §3.
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
   authorization code flow, whitelist delle callback, access token di 24 ore, refresh token senza
   scadenza, N proprietà = N consensi e token; account test attivo, credenziali non marcate valide;
