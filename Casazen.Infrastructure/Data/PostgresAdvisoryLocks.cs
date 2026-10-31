@@ -169,6 +169,13 @@ internal static class PostgresAdvisoryLocks
         SupplierShowcaseContent = 1_303,
 
         /// <summary>
+        /// One run of the daily cleanup of the images of the showcases (single key, session lock held for the whole run): two runs never remove
+        /// the same files at once, even outside Hangfire's own lock (SP-13b). Each supplier is then judged under its own
+        /// <see cref="SupplierShowcaseContent"/> lock, so a save never lands between the check that a file is not used and its removal.
+        /// </summary>
+        SupplierShowcaseMediaCleanupRun = 1_304,
+
+        /// <summary>
         /// One run of the automatic cancellation of the service requests nobody answered (single key, session lock held for the
         /// whole run): two runs never cancel and notify the same requests at once, even outside Hangfire's own lock (SP-04, D8).
         /// </summary>

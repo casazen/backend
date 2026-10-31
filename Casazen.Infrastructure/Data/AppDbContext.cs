@@ -167,6 +167,13 @@ public class AppDbContext(
     /// <c>SupplierShowcaseContentService</c> (and the supplier repair) reads and writes it, always with an explicit <c>OrgId</c> predicate.
     /// </summary>
     public DbSet<SupplierShowcaseContent> SupplierShowcaseContents { get; set; } = null!;
+
+    /// <summary>
+    /// The inventory of the images a supplier uploaded for its showcase (SP-13b). Keyed by the supplier org like the content and not tenant-filtered
+    /// for the same reason; only <c>SupplierShowcaseMediaService</c> (and the content service, which reads the keys of the supplier's own rows)
+    /// uses it, always with an explicit <c>OrgId</c> predicate, or as a system job over the rows that have to go (the cleanup).
+    /// </summary>
+    public DbSet<SupplierShowcaseMedia> SupplierShowcaseMedia { get; set; } = null!;
     public DbSet<SupplierInviteRecord> SupplierInviteRecords { get; set; } = null!;
     public DbSet<SupplierAdminAuditEntry> SupplierAdminAuditEntries { get; set; } = null!;
     public DbSet<HostInviteRecord> HostInviteRecords { get; set; } = null!;
@@ -1103,6 +1110,7 @@ public class AppDbContext(
         // SP-13a: the content of the supplier's showcase (draft, published, previous). A child of the supplier profile in cascade, like
         // the settings; xmin is the concurrency token.
         modelBuilder.ApplyConfiguration(new SupplierShowcaseContentConfiguration());
+        modelBuilder.ApplyConfiguration(new SupplierShowcaseMediaConfiguration());
 
         modelBuilder.Entity<SupplierInviteRecord>()
             .HasIndex(i => i.Email);

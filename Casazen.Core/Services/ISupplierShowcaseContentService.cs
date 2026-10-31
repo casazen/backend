@@ -133,4 +133,11 @@ public interface ISupplierShowcaseContentService
 
     /// <summary>The state of the publication from the row alone (the checklist of the console). Read-only.</summary>
     Task<ShowcasePublication> GetPublicationAsync(Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Of the storage keys in <paramref name="keys"/>, the ones the content points to: the draft, the published version or the version published
+    /// before it (SP-13b: the images of the showcase that must not be removed). The search is on the text of the three documents, so a member that a
+    /// later format adds to the content and that points to an image is covered too. Read-only, one statement scoped by the supplier org.
+    /// </summary>
+    Task<IReadOnlySet<string>> FindKeysInUseAsync(Guid supplierOrgId, IReadOnlyCollection<string> keys, CancellationToken cancellationToken = default);
 }
