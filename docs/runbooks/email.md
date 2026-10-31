@@ -227,6 +227,25 @@ request on the supplier's behalf. The customer gets nothing for moving the booki
 - **Pushes**: the supplier's devices, deduplicated by `PushDeliveryKeys` (`service-request:{id}:rescheduled:{time}` is new; the others reuse the key of
   the status or of the answer). The mobile app does not know the type `service-request-rescheduled` yet (mobile follow-up): until it does, it is for the app to handle an unknown type.
 
+## Marketing campaigns: the unsubscribe link (DEB-01)
+
+The e-mails of a campaign (NF-24, `CampaignService.SendCampaignAsync`, Hangfire job `CampaignSendJob`) used to carry an unsigned link with the
+guest's address in the query, on a hard-coded host (`https://app.casazen.com/unsubscribe?org=…&email=…`). Since DEB-01 (2026-10-31):
+
+- **The link is signed** (`MarketingUnsubscribeLinks`, ADR-007-R18): HMAC-SHA256 with `SIGNED_LINK_SECRET` of `emailHash + "." + expiresAt`, valid 30 days.
+  `emailHash` is the SHA-256 index of the normalized address, the one of the suppression list: **no address in any URL**. The same class checks the link in
+  `POST api/public/marketing/unsubscribe` (constant-time comparison), so building and checking cannot drift.
+- **In the body**: `App__PublicSiteBaseUrl/unsubscribe#orgId=…&emailHash=…&expiresAt=…&signature=…`, the values in the fragment (never sent to a server, so in no
+  access log). **The page `/unsubscribe` of the web app is a frontend follow-up**: it reads the fragment and posts it unchanged as the query of
+  `POST /api/public/marketing/unsubscribe`.
+- **In the headers** (`IEmailService.SendEmailWithHeadersAsync`, Resend `headers`): `List-Unsubscribe: <App__ApiBaseUrl/api/public/marketing/unsubscribe?…>` and
+  `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 2369, RFC 8058): Gmail, Yahoo and the others show their own «Unsubscribe» and post to the API
+  themselves. Left out when `App__ApiBaseUrl` is not an https URL; the link in the body is still there.
+- **Variables**: `SIGNED_LINK_SECRET` (a long random secret, shared by the signed links of ADR-007-R20; the unsubscribe endpoint already needed it) and
+  `App__PublicSiteBaseUrl` on every environment that sends campaigns. Without them **no campaign e-mail leaves**: the job fails with
+  `EmailConfigurationException` and Hangfire retries it. Rotating the secret invalidates the links already sent.
+- **Logs**: `CampaignService` and `PublicMarketingController` never log an address (the unsubscribe logs carry the org and the hash only).
+
 ## Adding a new email
 
 1. Add the texts to `EmailTexts.resx` **and** `EmailTexts.en.resx` (`EmailTemplatesTests` fails if a key is missing or untranslated). Texts may contain markup; dynamic values only through `{0}`, `{1}` placeholders.

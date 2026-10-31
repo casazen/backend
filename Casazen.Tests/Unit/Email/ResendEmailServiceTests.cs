@@ -76,6 +76,45 @@ public class ResendEmailServiceTests
         Assert.DoesNotContain("resend.dev", request.Body, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>DEB-01: the one-click unsubscribe headers of a campaign reach the provider as headers of the e-mail.</summary>
+    [Fact]
+    public async Task SendEmailWithHeadersAsync_ThroughHttpApi_PostsTheListUnsubscribeHeaders()
+    {
+        var handler = new CapturingHandler();
+        var services = new ServiceCollection();
+        services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
+        services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        services.AddSingleton(Mock.Of<IBackgroundJobClient>());
+        services.AddCasazenEmail(
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Email:ApiKey"] = "re_test_key",
+                ["Email:FromAddress"] = "noreply@casazen.app",
+                ["App:PublicSiteBaseUrl"] = "https://app.example.org",
+            }).Build(),
+            Mock.Of<IHostEnvironment>(e => e.EnvironmentName == Environments.Production));
+        services.ConfigureHttpClientDefaults(builder => builder.ConfigurePrimaryHttpMessageHandler(() => handler));
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        const string oneClick = "<https://api.example.org/api/public/marketing/unsubscribe?orgId=1&emailHash=2&expiresAt=3&signature=4>";
+
+        var result = await scope.ServiceProvider.GetRequiredService<IEmailService>().SendEmailWithHeadersAsync(
+            "guest@example.com",
+            "Offerta",
+            "<p>Ciao</p>",
+            new Dictionary<string, string>
+            {
+                ["List-Unsubscribe"] = oneClick,
+                ["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click",
+            });
+
+        Assert.True(result.Success, result.ErrorDetail);
+        using var body = JsonDocument.Parse(Assert.Single(handler.Requests).Body);
+        var headers = body.RootElement.GetProperty("headers");
+        Assert.Equal(oneClick, headers.GetProperty("List-Unsubscribe").GetString());
+        Assert.Equal("List-Unsubscribe=One-Click", headers.GetProperty("List-Unsubscribe-Post").GetString());
+    }
+
     [Fact]
     public async Task SendEmailAsync_NotConfigured_SkipsWithoutCallingProvider()
     {

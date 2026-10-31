@@ -1379,3 +1379,39 @@ Both follow the rule of the operator data: a member **left out of the body keeps
 and puts the language back to Italian. They are validated before anything is loaded or written. When the legal name, the registered office, the phone or the language **really change**,
 the activity log gets one line, `OrgSettingsChanged` (section 30: the fact only, never the values). Migration `AddOrgContactPhoneAndDefaultLanguage`, additive: the existing orgs get
 `DefaultLanguage = 'it'`, no phone. Rollback: `Down` drops the two columns; the log lines already written stay (the enum value 24 is never reused).
+
+# Part 7 - DEB-01: the permissions of the agency tier
+
+## 57. Who holds which agency permission (DEB-01, 2026-10-31)
+
+The `agency.*` policies (ADR-010, ADR-012: owners, statements, invoices, withholding, wire transfers, activities, trusted suppliers) used to check the plan
+of the org only (`AgencyTierRequirement`): any member of an org on the agency plan, collaborators and accountants included, read the full IBAN of the
+owners (`GET /api/owners/{id}/iban`) and created wire batches. Each policy now also requires its **agency permission** held by the caller's org role
+(`AgencyPermissionRequirement`, `AgencyPermissionAuthorizationHandler`); the plan and the downgrade rule (reads only, 403 `tier_insufficient` on writes) are
+unchanged. The matrix is `OrgRoleCatalog.AgencyPermissionsOf` (the keys: `AgencyPermissions`):
+
+| Permission | Endpoints | Owner | Admin | PropertyManager | Collaborator | Accountant |
+|---|---|---|---|---|---|---|
+| `agency.owner.view` | `GET api/owners` (IBAN masked) | Yes | Yes | Yes | No | No |
+| `agency.owner.financial.read` | `GET api/owners/{id}/iban` (audit-logged) | Yes | Yes | No | No | No |
+| `agency.owner.manage` | `POST api/owners/{id}/invite` | Yes | Yes | No | No | No |
+| `agency.statement.view` | `GET api/statements`, `…/pdf`, `…/csv` | Yes | Yes | No | No | No |
+| `agency.statement.manage` | `POST api/statements/generate`, `…/approve`, `…/publish` | Yes | Yes | No | No | No |
+| `agency.invoice.manage` | `api/agency-invoices` | Yes | Yes | No | No | No |
+| `agency.withholding.manage` | `api/withholding` | Yes | Yes | No | No | No |
+| `agency.wire.manage` | `api/wire-transfers` | Yes | Yes | No | No | No |
+| `agency.activity.manage` | `api/internal-activities` | Yes | Yes | No | No | No |
+| `agency.supplier.manage` | `api/trusted-suppliers` | Yes | Yes | No | No | No |
+
+- **Statements and withholding** were behind `agency.owner.view`, which the property manager holds: they now have their own policies
+  (`AgencyStatementView` on the controller, `AgencyStatementManage` on the three writes; `AgencyWithholdingManage`).
+- **Where the role comes from.** The caller's `OrgMember` row (AM-01), active and of the org of the request, whatever the token says. A user in no org team (an
+  owner from before the backfill) counts as the owner of its own org when its token or its rental membership is the owner's (`PropertyOwner`, `LongTermLandlord`,
+  `OrgOwnerRoles`); `Staff` and `Guest`, a deactivated member and an inactive account hold nothing. The policies wait for the host onboarding like the host contexts
+  (403 `onboarding_required`).
+- **Not seeded permissions.** They are not rows of `RolePermissions`: no migration, and they stay out of the matrix of the roles (`GET /api/orgs/me/roles`, section 47)
+  and of `GET /api/me/contexts`. Showing them there means seeding them in the account roles, a capability of `OrgCapabilityCatalog` and its labels in the web app.
+- **Decisions open for the product owner.** The accountant of an agency gets nothing (it may need `agency.statement.view` and the withholding); the property
+  manager gets the owner list only. Changing either is one line of `AgencyPermissionsOf` and of this table.
+- Tests: `AgencyPermissionAuthorizationHandlerTests` (the matrix, the member of another org, the deactivated member, the owner from before the backfill) and
+  `AgencyPermissionsHttpIntegrationTests` (a collaborator gets 403 on the full IBAN and on the wire batches, the owner 200).

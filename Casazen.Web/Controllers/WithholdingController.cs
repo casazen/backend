@@ -13,10 +13,11 @@ namespace Casazen.Web.Controllers;
 /// generates F24 forms, and tracks payment reconciliation.
 /// Agency acting as sostituto d'imposta withholds 21% tax on short-term rental payments.
 /// Regulatory references: D.L. 50/2017 art. 4 (current), D.Lgs. 117/2026 artt. 207-208 (expected 1/1/2027).
+/// Every action needs <c>agency.withholding.manage</c> (DEB-01: it was the owner view, which the property manager holds).
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = CasazenPolicies.AgencyOwnerView)]
+[Authorize(Policy = CasazenPolicies.AgencyWithholdingManage)]
 public class WithholdingController(
     AppDbContext db,
     IWithholdingService withholdingService,
