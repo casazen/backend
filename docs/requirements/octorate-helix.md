@@ -894,6 +894,65 @@ solo il mittente.
 
 Prova: nessun rilascio del codice senza identificazione registrata per ogni ospite adulto.
 
+#### CHK-12 — Quadro della conformità: «sono in regola?» · P0
+
+1. Una pagina «Conformità», più un riquadro nella Home e nelle schede di immobile e prenotazione,
+   risponde a una sola domanda: **sono in regola o devo fare qualcosa?** Per ogni immobile, soggiorno
+   e adempimento (Alloggiati, ISTAT, tassa di soggiorno, CIN) un semaforo:
+   - **verde «In regola»**: Alloggiati con la ricevuta acquisita che comprende gli ospiti del
+     soggiorno; ISTAT con la prova del periodo; tassa calcolata, dichiarata e versata per il periodo
+     chiuso, con le ricevute; CIN valido;
+   - **giallo «In corso»**: tutto pronto e affidato a chi invia (Octorate o CasaZen), entro la
+     scadenza, in attesa della ricevuta o della prova;
+   - **rosso «Devi fare qualcosa»**: dati mancanti, collegamento all'ente non attivo, scadenza vicina
+     o superata, ricevuta mancante il giorno dopo, soggiorno breve che il giro giornaliero non coprirà
+     in tempo, soggiorno oltre 30 notti, tariffa della tassa mancante, prova ISTAT mancante a fine
+     periodo.
+2. Ogni rosso dice cosa fare in una frase e ha «Fai ora» (wizard al passo giusto); push e popup
+   secondo UX-08.
+3. Il verde si dà **solo con una prova** archiviata (ricevuta, prova caricata, ricevuta di
+   versamento), mai sulla sola notizia che l'invio è partito: «Affidato a Octorate» è giallo.
+4. Riepilogo mensile nella pagina e per email: «Ottobre: 42 soggiorni, tutto in regola» oppure
+   l'elenco di ciò che manca.
+5. Salute dei collegamenti per immobile: collegamento Alloggiati e ISTAT su Octorate attivo o no
+   (`policeAccount.valid`, se leggibile: D17), ultimo giro automatico di Octorate (`lastCron`, se
+   leggibile), credenziali della Polizia presenti in CasaZen per scaricare le ricevute.
+6. Le ricevute si consultano in un solo posto (CHK-08, REP-04): per soggiorno, per giorno e per
+   periodo, scaricabili, conservate 5 anni.
+
+Prova: nessun verde senza una prova archiviata.
+
+#### CHK-13 — Esiti dalle email di Octorate · P2, da verificare
+
+Octorate manda all'host per email l'esito ISTAT (Appendice A) e forse avvisi sugli invii alla
+Polizia (D25, D32). Se Octorate permette di indicare un indirizzo di notifica, CasaZen dà a ogni
+organizzazione un indirizzo dedicato in entrata: le email si leggono, si abbinano a immobile e
+periodo e diventano la prova di CHK-05 (da giallo a verde) senza caricamenti a mano. La ricezione
+delle email con il fornitore in uso è un tema ADR.
+
+#### Flusso completo di un soggiorno e dove si ferma l'automazione
+
+| Momento | Cosa succede | Chi lo fa | Automatico |
+|---|---|---|---|
+| Arriva la prenotazione | Il webhook `RESERVATION_CREATED` (o la riconciliazione) apre in CasaZen la pratica del soggiorno con le scadenze calcolate dall'arrivo | CasaZen | Sì |
+| Cambio o cancellazione | `RESERVATION_CHANGE` e `RESERVATION_CANCELLED` aggiornano o chiudono la pratica e gli ospiti già mandati a Octorate | CasaZen | Sì |
+| Tre giorni prima | Link del check-in all'ospite e promemoria per i dati mancanti | CasaZen | Sì |
+| Prima dell'arrivo | L'ospite compila i dati (Alloggiati, statistici, esenzioni della tassa); l'host completa o corregge | Ospite e host | Guidato |
+| Arrivo | Identificazione dal vivo registrata (CHK-11), stato `CHECKIN_END` verso Octorate | Host | No: è un obbligo di persona |
+| Dati completi | Gli ospiti vanno a Octorate con `draft` falso (CHK-02) | CasaZen | Sì |
+| Invio alla Polizia | Giro automatico giornaliero di Octorate, se il collegamento è «Attivata» nel suo pannello; oltre 30 notti a mano | Octorate | Sì, una volta al giorno (orario: D31) |
+| Giorno dopo | Ricevuta della Polizia scaricata e confrontata con gli ospiti attesi (CHK-04); senza credenziali, caricamento guidato | CasaZen o host | Sì con le credenziali |
+| Periodo ISTAT | Invio dei dati della regione da parte di Octorate; esito per email all'host; prova in CasaZen (CHK-05, CHK-13) | Octorate, host | In parte |
+| Tassa di soggiorno | Calcolo a ogni prenotazione, riepilogo per comune e periodo, scadenze, dati pronti per il portale del comune, ricevuta caricata (CHK-07) | CasaZen e host | In parte |
+
+**Cosa non si può automatizzare con Octorate.** I webhook di Octorate riguardano prenotazioni,
+messaggi e contenuti: **non esistono eventi né API per invii, esiti o ricevute degli enti** (S13,
+S18). L'automazione quindi copre l'inizio della pratica e l'invio dei dati, non la prova: la prova
+arriva dalla ricevuta della Polizia (via web service con le credenziali dell'host), dai caricamenti
+guidati o, se verificato, dalle email di Octorate (CHK-13). Restano punti di attenzione: il giro
+giornaliero può non bastare per i soggiorni fino a 24 ore (invio entro 6 ore), i soggiorni oltre 30
+notti vanno inviati a mano, i collegamenti agli enti si attivano solo nel pannello Octorate.
+
 ### 6.3 Marketplace e integrazioni (MKT)
 
 **Octorate.** Via API si leggono i portali con categoria `OTA` o `EXTERNAL_TOOL`, requisiti di
@@ -1778,7 +1837,7 @@ dimostra che il partner CasaZen possa usarlo: lo dimostrano i permessi della con
 Le risposte D1–D14 della v1.3 (§5.1: annuncio da zero, campi di contenuto e CIN, messaggi,
 risposte automatiche, recensioni, annunci esistenti, ARI e quota, prenotazioni, Stripe e
 dirette, altri canali, titolarità e uscita, sandbox, convenzioni, costo e licenza) restano valide
-e sono riportate integralmente qui sotto; le nuove domande D15–D30 sono in §14.2.
+e sono riportate integralmente qui sotto; le nuove domande D15–D32 sono in §14.2.
 
 | ID | Domanda | Specifica | Resta da chiedere |
 |---|---|---|---|
@@ -1925,7 +1984,7 @@ completo, dal dato alla schermata, dimostrabile con l'adattatore Mock.
 | H1 — Fondazioni del connettore | H0 | DEB-02 (bus di eventi con outbox) e OCT-01…03, 08, 09, 13, 14: adattatore Mock e client, OAuth per proprietà, webhook in entrata e riconciliazione sul bus, resilienza, interruttori, stato delle connessioni | Isolamento per tenant e proprietà; nessuna chiamata live dal Mock; duplicati e fuori ordine senza effetti doppi |
 | H2 — Annunci e ARI | H1, U0 | LST-01…12 | Import, creazione, modifica e pubblicazione per canale in Mock, con errori parziali per canale |
 | H3 — Prenotazioni e calendario | H1 | BKG-01…09 | Creazione, modifica e cancellazione in Mock; webhook duplicati, persi e fuori ordine; nessun doppio scrittore con iCal |
-| H4 — Check-in e adempimenti | H3, U0 | CHK-01…11, DEB-08, DEB-09 | Dati dell'ospite fino a Octorate in Mock; mittente unico; ricevuta dal server finto Alloggiati; tassa al centesimo; nessun codice d'accesso senza identificazione registrata |
+| H4 — Check-in e adempimenti | H3, U0 | CHK-01…13, DEB-08, DEB-09 | Dati dell'ospite fino a Octorate in Mock; mittente unico; ricevuta dal server finto Alloggiati; tassa al centesimo; nessun codice d'accesso senza identificazione registrata |
 | H5 — Messaggi e AI | H3, U0 | MSG-01…11, AI-06, DEB-03, DEB-06 | Hub con thread OTA simulati e diretti; soglia di confidenza, categorie sensibili, approvazione da push |
 | H6 — Documenti, clienti e report | H3 (H4 per la tassa) | FIS-01…07, CRM-01…08, REP-01…08, DEB-04, DEB-05, DEB-10 | Emittente unico; documenti Octorate simulati letti; pubblico raggiungibile per base giuridica; report coerenti con le prenotazioni |
 | H7 — Marketplace | H1, U0 | MKT-01…07 | Catalogo dalle tre fonti; attivazione e disattivazione di un portale simulato; stato |
@@ -2015,6 +2074,8 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
 | D28 | Vrbo: la vostra guida indica la configurazione «multiaccount» in rete. Per appartamenti indipendenti di proprietari diversi (un consenso e un token per struttura) come si gestiscono contenuti e collegamento? | LST-01, §10.5 |
 | D29 | Per creare un annuncio nuovo via API su Booking.com, Airbnb, Vrbo, HomeToGo e Holidu cosa deve già avere l'host sul canale (account, contratto, struttura) e quali approvazioni restano sul canale? Esistono guide aggiornate per i contenuti di Booking.com e Vrbo (in arrivo dal 2019)? | LST-03, LST-12 |
 | D30 | Configurazione del partner CasaZen: togliere il permesso `cardDetail` (non serve); confermare l'indirizzo base `https://api.octorate.com/connect` (quello dell'email risponde 404 sui percorsi `/v1`); significato di `quotaStatus` (2 dopo due chiamate); `category` assegnata (D22) | §9.1, OCT-13 |
+| D31 | Alloggiati tramite Octorate: a che ora parte l'invio automatico giornaliero? Come gestite i soggiorni fino a 24 ore (invio entro 6 ore) e quelli oltre 30 notti? Avvisate l'host di un invio fallito, e come? `lastCron` e `valid` di `policeAccount` sono leggibili via API? | CHK-04, CHK-12 |
+| D32 | ISTAT tramite Octorate: per ogni regione periodicità e scadenze dell'invio; l'esito arriva per email: a quale indirizzo, si può aggiungerne uno di CasaZen, in quale formato? | CHK-05, CHK-13 |
 
 ## 15. Revisioni
 
@@ -2022,7 +2083,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   processi con CasaZen unico punto di accesso. Aggiunti: base del codice al 30/10 (§4), regole UX
   vincolanti con l'aggiunta del 31/10 (wizard su livello separato, mai fuori dal processo, «Da
   fare», push e popup) (§5), requisiti per processo (§6), mappa delle automazioni AI (§7),
-  autorità dei dati estesa (§8.2), decisioni PO-01…20 e domande D15–D30 (§14), benchmark UX
+  autorità dei dati estesa (§8.2), decisioni PO-01…20 e domande D15–D32 (§14), benchmark UX
   (Appendice A). Verifica della specifica del 31/10 (S13): check-in e Polizia, ospiti, tassa di
   soggiorno, fatture con stato SDI, pagamenti, prodotti extra, politiche, licenze, portali e
   strumenti esterni; tre punti in contrasto con il resoconto S7 (esito per ospite dell'invio alla
@@ -2048,7 +2109,9 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   31/10 (S20): variabili Railway test corrette e credenziali valide, produzione configurata e
   verificata lo stesso giorno su richiesta del PO, indirizzo base corretto in entrambi gli ambienti, nome pubblico dell'app da
   cambiare (PO-20), indirizzo base da correggere, azioni operative in §9.1; guide di Octorate
-  (S19) riassunte in §10.5; nuove domande D28–D30.
+  (S19) riassunte in §10.5; nuove domande D28–D30. Flusso completo degli adempimenti con i limiti
+  dell'automazione, quadro della conformità con semaforo (CHK-12), esiti dalle email di Octorate
+  (CHK-13), domande D31–D32.
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
   authorization code flow, whitelist delle callback, access token di 24 ore, refresh token senza
   scadenza, N proprietà = N consensi e token; account test attivo, credenziali non marcate valide;
