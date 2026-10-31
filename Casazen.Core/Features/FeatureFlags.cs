@@ -121,6 +121,17 @@ public static class FeatureFlags
     /// </summary>
     public const string ConcordatoFacile = "ConcordatoFacile";
 
+    /// <summary>
+    /// DEB-01 (2026-10-31): the reading of the identity document (MRZ, OCR, NF-10) and the selfie check (liveness, face match, NF-11,
+    /// ADR-013) of the guest's check-in page, <c>POST api/public/checkin/{token}/document</c> and <c>POST …/selfie</c>. <b>Off by
+    /// default</b>: the services behind them are placeholders (MRZ and OCR never read anything, the liveness is always true, the face
+    /// similarity is a fixed 0.75), so a public endpoint would hand out made-up results. Off, both answer 404 before anything of the
+    /// request is read, so no image reaches the application. The guest's data is entered by hand (<c>POST api/public/checkin/{token}</c>,
+    /// not behind this flag). Turn it on only once real models replace the placeholders and the assessment of the biometric data
+    /// (art. 9 GDPR) is done.
+    /// </summary>
+    public const string CheckInIdentityVerification = "CheckInIdentityVerification";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -135,5 +146,6 @@ public static class FeatureFlags
         AgencyTier,
         ConcordatoFacile,
         SupplierRequestBackups,
+        CheckInIdentityVerification,
     ];
 }
