@@ -1669,15 +1669,16 @@ annunci dai canali (D6).
   scrittura, `license` nessuno; `category` non restituita (D22).
 - **Indirizzo base delle chiamate:** funziona `https://api.octorate.com/connect` con i percorsi
   `/rest/v1/...` (server della specifica). Il «base path» dell'email S10,
-  `https://api.octorate.com/octobook/rest`, risponde 404 sui percorsi `/v1/...`: il valore di
-  `Octorate__ApiBaseUrl` va portato a `https://api.octorate.com/connect` (D30).
+  `https://api.octorate.com/octobook/rest`, risponde 404 sui percorsi `/v1/...`: dal 31/10
+  `Octorate__ApiBaseUrl` vale `https://api.octorate.com/connect` in test e in produzione (conferma
+  scritta in D30).
 
 **Azioni operative prima dello sviluppo** (nessuna è automatica):
 
 1. Nome pubblico, descrizione e icona dell'app su Octorate: «CasaZen» invece del nome personale,
    con `postConfiguration` finché si è in test (PO-20).
-2. `Octorate__ApiBaseUrl` su Railway test = `https://api.octorate.com/connect` (in test c'è ancora il
-   valore dell'email; in produzione è già corretto).
+2. `Octorate__ApiBaseUrl` = `https://api.octorate.com/connect` in test e in produzione: fatto e
+   verificato il 31/10.
 3. Redirect URI della callback CasaZen di test in whitelist quando l'endpoint esiste
    (`postConfiguration`); in produzione via `openapi@octorate.com`.
 4. Chiedere a Octorate di togliere il permesso `cardDetail` (CasaZen non tratta carte: minimo
@@ -2045,7 +2046,7 @@ Helix procede con il default; una decisione diversa del PO cambia solo i requisi
   degli altri portali via email, WhatsApp o chat di Octorate (MSG-03); dati sensibili solo con IP
   statici anche in sandbox. D16 e D19 chiuse; D17, D18, D20 e D24 in parte. Verifica tecnica del
   31/10 (S20): variabili Railway test corrette e credenziali valide, produzione configurata e
-  verificata lo stesso giorno su richiesta del PO, nome pubblico dell'app da
+  verificata lo stesso giorno su richiesta del PO, indirizzo base corretto in entrambi gli ambienti, nome pubblico dell'app da
   cambiare (PO-20), indirizzo base da correggere, azioni operative in §9.1; guide di Octorate
   (S19) riassunte in §10.5; nuove domande D28–D30.
 - **1.3 · 30 ottobre 2026:** integrate le email S9–S11 senza riportare segreti: host e base API,
