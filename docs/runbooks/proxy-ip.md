@@ -85,7 +85,7 @@ when the CDN path is active). None of this was verified by us, so measure it:
 
 ## 4. Rate limiting policies
 
-Limits are **per client IP** (and per token where noted; `OrgAccessRequest`, `GlobalSearch` and `HostSupplierSlots`, the policies of signed-in endpoints, per person), per fixed window. The defaults of the policies that
+Limits are **per client IP** (and per token where noted; `OrgAccessRequest`, `GlobalSearch`, `HostSupplierSlots` and the three `GuestAccount*` ones, the policies of signed-in endpoints, per person), per fixed window. The defaults of the policies that
 existed before FD-10 are the old *global* limits, now applied per IP.
 
 | Policy | Endpoints | Default | Limit key (legacy key still honoured) |
@@ -118,8 +118,11 @@ existed before FD-10 are the old *global* limits, now applied per IP.
 | `TenantPrivacy` | `GET api/long-rent/tenants/{id}/export` (the copy of a tenant's personal data) and `POST api/long-rent/tenants/{id}/erasure-request` (LR-09). **Per signed-in person**: one file holds every personal datum of somebody and the erasure cannot be taken back | 10 / 10 min | `RateLimiting__TenantPrivacy__PermitLimit` |
 | `SupplierShowcaseSave` | `PATCH api/supplier/showcase/content` (the autosave of the showcase editor, SP-13a). **Per signed-in person**: the editor saves at every pause in typing and the people of one office share an address | 120 / min | `RateLimiting__SupplierShowcaseSave__PermitLimit` |
 | `SupplierShowcaseMedia` | `POST` and `DELETE api/supplier/showcase/media` (the images of the showcase, SP-13b): each upload reads a file of up to 10 MB, checks it, rewrites it and stores it. **Per signed-in person** | 40 / 10 min | `RateLimiting__SupplierShowcaseMedia__PermitLimit` |
+| `GuestAccountRead` | `GET api/guest/bookings` and `GET api/guest/bookings/{id}` (the bookings of the guest who has an account, the mobile app: opened at every screen and pull to refresh). **Per signed-in person** (a hash of the subject), since the people of one network share an address | 60 / min | `RateLimiting__GuestAccountRead__PermitLimit` |
+| `GuestAccountSession` | `POST api/guest/bookings/{id}/session` (opens the guest-area session of a booking of the account: a `gs1.` token of 2 hours by default). **Per signed-in person** | 20 / 10 min | `RateLimiting__GuestAccountSession__PermitLimit` |
+| `GuestAccountDelete` | `DELETE api/guest/account` (the guest deletes their own account, irreversible; a few tries leave room for the retry after a 502 of Auth0). **Per signed-in person** | 5 / 10 min | `RateLimiting__GuestAccountDelete__PermitLimit` |
 
-The window of every policy is `RateLimiting__{Policy}__WindowSeconds` (60, or 600 for `PublicRegistration`, `OrgAccessRequest`, `PublicReviewSubmit`, `GuestMessageSend`, `GuestBookingCancel`, `HostMessageSend`, `PublicContact`, `TenantPrivacy`, `SupplierShowcaseMedia` and `PublicSupplierBookingCreate`, 3600 for `GuestMessagePerSession`, 3600 for `SupplierBookingCreatePerEmail`, 900 for `SupplierBookingManagePerEmail` and `GuestBookingCancelPerBooking`, 86400 for `HostContactPerEmail`).
+The window of every policy is `RateLimiting__{Policy}__WindowSeconds` (60, or 600 for `PublicRegistration`, `OrgAccessRequest`, `PublicReviewSubmit`, `GuestMessageSend`, `GuestBookingCancel`, `HostMessageSend`, `PublicContact`, `TenantPrivacy`, `SupplierShowcaseMedia`, `GuestAccountSession`, `GuestAccountDelete` and `PublicSupplierBookingCreate`, 3600 for `GuestMessagePerSession`, 3600 for `SupplierBookingCreatePerEmail`, 900 for `SupplierBookingManagePerEmail` and `GuestBookingCancelPerBooking`, 86400 for `HostContactPerEmail`).
 
 Notes:
 

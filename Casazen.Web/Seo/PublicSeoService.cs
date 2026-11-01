@@ -411,13 +411,13 @@ public sealed class PublicSeoService(
     public async Task<SeoPageResult> RenderGuideAsync(string regionSlug, string comuneSlug, CancellationToken cancellationToken = default)
     {
         var page = await seoContentService.GetComplianceGuideAsync(regionSlug, comuneSlug, cancellationToken);
-        return page is null ? NotFound() : Ok(BuildEditorialDocument(page));
+        return page is null ? NotFound() : Ok(await BuildEditorialDocumentAsync(page, cancellationToken));
     }
 
     public async Task<SeoPageResult> RenderTouristTaxAsync(string comuneSlug, CancellationToken cancellationToken = default)
     {
         var page = await seoContentService.GetTouristTaxPageAsync(comuneSlug, cancellationToken);
-        return page is null ? NotFound() : Ok(BuildEditorialDocument(page));
+        return page is null ? NotFound() : Ok(await BuildEditorialDocumentAsync(page, cancellationToken));
     }
 
     public async Task<SeoPageResult> RenderHubAsync(CancellationToken cancellationToken = default)
@@ -425,19 +425,27 @@ public sealed class PublicSeoService(
         var hub = await seoContentService.GetPublishedPagesAsync(cancellationToken);
         var language = Language();
         var title = T("SeoHubTitle");
-        var description = T("SeoHubDescription");
         var entries = hub.Pages
             .Select(p => (Page: p, Url: links.TryPublicPage(p.Path) ?? p.Path))
             .ToList();
+        var guides = entries.Where(e => e.Page.PageType != SeoPageType.TouristTaxCalc).ToList();
+        var calculators = entries.Where(e => e.Page.PageType == SeoPageType.TouristTaxCalc).ToList();
+        var description = entries.Count == 0 ? T("SeoHubDescription") : HubDescription(hub.Pages);
+        var homeUrl = HomeUrl();
 
         var body = new StringBuilder();
+        body.Append(SeoPageChrome.Header(PlatformName, homeUrl, T("SeoNavMainLabel"), SiteLinks()));
+        body.Append(SeoPageChrome.Breadcrumb(T("SeoNavBreadcrumbLabel"), [(PlatformName, homeUrl), (T("SeoHubHeading"), null)]));
         body.Append("<main>\n<h1>").Append(SeoHtml.Encode(T("SeoHubHeading"))).Append("</h1>\n");
         if (entries.Count == 0)
             body.Append("<p>").Append(SeoHtml.Encode(T("SeoHubEmpty"))).Append("</p>\n");
+        else
+            body.Append("<p>").Append(SeoHtml.Encode(T("SeoHubIntro", guides.Count, calculators.Count))).Append("</p>\n");
 
-        AppendHubSection(body, T("SeoHubGuides"), entries.Where(e => e.Page.PageType != SeoPageType.TouristTaxCalc));
-        AppendHubSection(body, T("SeoHubCalculators"), entries.Where(e => e.Page.PageType == SeoPageType.TouristTaxCalc));
+        AppendHubSection(body, T("SeoHubGuides"), guides);
+        AppendHubSection(body, T("SeoHubCalculators"), calculators);
         body.Append("</main>\n");
+        body.Append(SeoPageChrome.Footer(T("SeoFooterTagline"), T("SeoNavFooterLabel"), SiteLinks()));
 
         return Ok(new SeoDocument
         {
@@ -448,9 +456,31 @@ public sealed class PublicSeoService(
             // A hub with nothing to list is as thin as a booking site without properties.
             Indexable = entries.Count > 0,
             SiteName = PlatformName,
-            JsonLd = [SeoJsonLd.CollectionPage(T("SeoHubHeading"), description, hub.CanonicalUrl, language, entries.Select(e => (e.Page.Title, (string?)e.Url)))],
+            ImageUrl = BrandImageUrl(),
+            TwitterCard = "summary",
+            JsonLd =
+            [
+                SeoJsonLd.CollectionPage(T("SeoHubHeading"), description, hub.CanonicalUrl, language, entries.Select(e => (e.Page.Title, (string?)e.Url))),
+                SeoJsonLd.WebSite(PlatformName, links.TryPublicPage(SeoPagePaths.SiteHome), language),
+                SeoJsonLd.Organization(PlatformName, links.TryPublicPage(SeoPagePaths.SiteHome), BrandImageUrl(), null),
+            ],
             BodyHtml = body.ToString(),
         });
+    }
+
+    /// <summary>
+    /// The description of the hub from what it really lists: four of its comuni by name, those with both a guide and a tourist tax
+    /// page first (the pages with the most to say), then by name.
+    /// </summary>
+    private string HubDescription(IReadOnlyList<SeoPublishedPageDto> pages)
+    {
+        var names = pages
+            .GroupBy(p => p.ComuneSlug)
+            .OrderBy(g => g.Select(p => p.PageType).Distinct().Count() > 1 ? 0 : 1)
+            .ThenBy(g => g.First().ComuneName, ItalianCollator)
+            .Select(g => g.First().ComuneName)
+            .Take(4);
+        return SeoHtml.Truncate(T("SeoHubMetaDescription", string.Join(", ", names)));
     }
 
     public async Task<string?> BuildOrgSitemapAsync(string orgSlug, CancellationToken cancellationToken = default)
@@ -534,15 +564,41 @@ public sealed class PublicSeoService(
 
     // ─── Editorial pages (/p/*) ──────────────────────────────────────────────────────────────────────
 
-    private SeoDocument BuildEditorialDocument(SeoPagePublicDto page)
+    /// <summary>Longest title the page gets from its data; a comune with a long name keeps the title the page was approved with.</summary>
+    private const int MaxMetaTitleLength = 70;
+
+    /// <summary>Pages of the same kind and region listed under «Vedi anche».</summary>
+    private const int MaxNeighbours = 6;
+
+    private static readonly StringComparer ItalianCollator = StringComparer.Create(CultureInfo.GetCultureInfo("it-IT"), ignoreCase: true);
+
+    /// <summary>A question of the page and its answer, both built from data the page really has (never from the AI).</summary>
+    private sealed record FaqItem(string Question, string Answer, string? SourceUrl = null, string? SourceLabel = null);
+
+    private async Task<SeoDocument> BuildEditorialDocumentAsync(SeoPagePublicDto page, CancellationToken cancellationToken)
     {
         var language = Language();
+        var culture = CultureInfo.CurrentUICulture;
+        var published = (await seoContentService.GetPublishedPagesAsync(cancellationToken)).Pages;
+        var facts = SeoTouristTaxFacts.From(page.TouristTaxRates);
+        var homeUrl = HomeUrl();
+        var regionName = RegionName(page.RegionSlug) ?? page.RegionCode;
+        var (title, description) = EditorialMeta(page, facts, culture);
+        // The questions are the tourist tax ones, so they live on the page of the tax; the guide only shows the summary.
+        var faq = page.PageType == SeoPageType.TouristTaxCalc && facts is not null ? BuildFaq(page, facts, culture) : [];
 
         var body = new StringBuilder();
-        body.Append("<main>\n<article>\n<header>\n<p>").Append(SeoHtml.Encode($"{page.ComuneName} · {page.RegionCode}"))
+        body.Append(SeoPageChrome.Header(PlatformName, homeUrl, T("SeoNavMainLabel"), SiteLinks()));
+        body.Append(SeoPageChrome.Breadcrumb(
+            T("SeoNavBreadcrumbLabel"),
+            [(PlatformName, homeUrl), (T("SeoHubHeading"), links.TryPublicPage(SeoPagePaths.Hub) ?? SeoPagePaths.Hub), (page.Title, null)]));
+        body.Append("<main>\n<article>\n<header>\n<p>").Append(SeoHtml.Encode($"{page.ComuneName} · {regionName}"))
             .Append("</p>\n<h1>").Append(SeoHtml.Encode(page.Title)).Append("</h1>\n</header>\n");
+        if (facts is not null)
+            AppendFactsBlock(body, page, facts, culture);
         // Sanitized when it was approved and again on read (FD-15); once more here, as this is the last step before HTML.
         body.Append(SeoHtmlSanitizer.Sanitize(page.BodyHtml)).Append('\n');
+        AppendFaqBlock(body, faq);
         // SEO-INVITE: no link to the signup while CasaZen is on private invitation (flag SeoSignupCta off).
         if (page.Cta is not null && featureFlags.IsEnabled(FeatureFlags.SeoSignupCta))
         {
@@ -550,7 +606,6 @@ public sealed class PublicSeoService(
                 .Append(SeoHtml.Encode(T("SeoGuideCta"))).Append("</a></p>\n");
         }
 
-        var culture = CultureInfo.CurrentUICulture;
         var lastUpdated = page.LastRefreshedAt.HasValue
             ? T("SeoDisclaimerLastUpdated", page.LastRefreshedAt.Value.ToString("d MMMM yyyy", culture))
             : T("SeoDisclaimerLastUpdatedUnknown");
@@ -559,37 +614,229 @@ public sealed class PublicSeoService(
         // EU AI Act transparency (A8-27): only for text that the AI generated, never a constant.
         if (page.AiGenerated)
             body.Append("<p>").Append(SeoHtml.Encode(T("SeoDisclaimerAiGenerated"))).Append("</p>\n");
-        body.Append("</footer>\n</article>\n</main>\n");
+        body.Append("</footer>\n</article>\n");
+        body.Append(SeoPageChrome.SeeAlso(T("SeoSeeAlsoHeading"), SeeAlsoGroups(page, published, regionName)));
+        body.Append("</main>\n");
+        body.Append(SeoPageChrome.Footer(T("SeoFooterTagline"), T("SeoNavFooterLabel"), SiteLinks()));
 
         // Indexable under the same rule as the sitemap: it has text and, for a calculator, a tourist tax rate in force
         // (the page itself is only served with an approved revision, SE-01).
         var indexable = !string.IsNullOrWhiteSpace(page.BodyHtml)
             && (page.PageType != SeoPageType.TouristTaxCalc || page.TouristTaxRates.Count > 0);
 
-        var breadcrumb = SeoJsonLd.BreadcrumbList(
-        [
-            (T("SeoHubHeading"), links.TryPublicPage(SeoPagePaths.Hub)),
-            (page.Title, page.CanonicalUrl),
-        ]);
+        var homeAbsolute = links.TryPublicPage(SeoPagePaths.SiteHome);
+        var jsonLd = new List<JsonObject>
+        {
+            SeoJsonLd.Article(page.Title, description, page.CanonicalUrl, page.LastRefreshedAt, language, PlatformName),
+            SeoJsonLd.BreadcrumbList(
+            [
+                (PlatformName, homeAbsolute),
+                (T("SeoHubHeading"), links.TryPublicPage(SeoPagePaths.Hub)),
+                (page.Title, page.CanonicalUrl),
+            ]),
+            SeoJsonLd.WebSite(PlatformName, homeAbsolute, language),
+            SeoJsonLd.Organization(PlatformName, homeAbsolute, BrandImageUrl(), null),
+        };
+        // The markup says what the visible questions say: both come from the same list.
+        if (faq.Count > 0)
+            jsonLd.Add(SeoJsonLd.FaqPage(faq.Select(item => (item.Question, item.Answer))));
 
         return new SeoDocument
         {
             Language = language,
-            Title = page.Title,
-            Description = page.MetaDescription,
+            Title = title,
+            Description = description,
             CanonicalUrl = page.CanonicalUrl,
             Indexable = indexable,
             SiteName = PlatformName,
             OgType = "article",
-            JsonLd =
-            [
-                SeoJsonLd.Article(page.Title, page.MetaDescription, page.CanonicalUrl, page.LastRefreshedAt, language, PlatformName),
-                breadcrumb,
-            ],
+            ImageUrl = BrandImageUrl(),
+            TwitterCard = "summary",
+            JsonLd = jsonLd,
             BodyHtml = body.ToString(),
         };
     }
 
+    /// <summary>
+    /// The title and the description a search result shows. The title carries the comune, what the page is and the year it was last
+    /// verified; the description says the real figure when the page has one. Without those data (no refresh date, several or no
+    /// rate, a title that would be too long) the page keeps what it was approved with.
+    /// </summary>
+    private (string Title, string? Description) EditorialMeta(SeoPagePublicDto page, SeoTouristTaxFacts? facts, CultureInfo culture)
+    {
+        var title = page.Title;
+        var description = page.MetaDescription;
+        var isTax = page.PageType == SeoPageType.TouristTaxCalc;
+
+        if (page.LastRefreshedAt is { } refreshedAt)
+        {
+            var candidate = T(isTax ? "SeoTaxMetaTitle" : "SeoGuideMetaTitle", page.ComuneName, refreshedAt.Year);
+            if (candidate.Length <= MaxMetaTitleLength)
+                title = candidate;
+        }
+
+        if (facts is not null)
+        {
+            var summary = RateSummary(facts, culture);
+            var candidate = isTax
+                ? T("SeoTaxMetaDescription", page.ComuneName, summary)
+                : page.LastRefreshedAt is { } refreshed
+                    ? T("SeoGuideMetaDescription", page.ComuneName, summary, refreshed.ToString("MMMM yyyy", culture))
+                    : null;
+            if (!string.IsNullOrWhiteSpace(candidate))
+                description = SeoHtml.Truncate(candidate);
+        }
+
+        return (title, description);
+    }
+
+    // ── What the page can say from its data: the facts of the tax, the questions, the related pages ──
+
+    private static string Euro(decimal amount, CultureInfo culture) => amount.ToString("0.00", culture) + " €";
+
+    /// <summary>The rate in a sentence: «3,00 € a persona per notte».</summary>
+    private string RateSentence(SeoTouristTaxFacts facts, CultureInfo culture) =>
+        T("SeoFactRateFixed", Euro(facts.RatePerPersonPerNight, culture));
+
+    /// <summary>The rate with the nights it applies to, when the comune caps them.</summary>
+    private string RateSummary(SeoTouristTaxFacts facts, CultureInfo culture) =>
+        facts.MaxNights is { } nights
+            ? $"{RateSentence(facts, culture)}, {T("SeoFactNightsValue", nights)}"
+            : RateSentence(facts, culture);
+
+    private void AppendFactsBlock(StringBuilder body, SeoPagePublicDto page, SeoTouristTaxFacts facts, CultureInfo culture)
+    {
+        body.Append("<section>\n<h2>").Append(SeoHtml.Encode(T("SeoFactsHeading", page.ComuneName))).Append("</h2>\n<ul>\n");
+        AppendFact(body, T("SeoFactRateLabel"), RateSentence(facts, culture));
+        if (facts.MaxNights is { } nights)
+            AppendFact(body, T("SeoFactNightsLabel"), T("SeoFactNightsValue", nights));
+        if (facts.ExemptUnderAge > 0)
+            AppendFact(body, T("SeoFactExemptLabel"), T("SeoFactExemptValue", facts.ExemptUnderAge));
+        AppendFact(body, T("SeoFactSinceLabel"), facts.EffectiveFrom.ToString("d MMMM yyyy", culture));
+        if (facts.SourceUrl is { } source)
+        {
+            body.Append("<li>").Append(SeoHtml.Encode(T("SeoFactSourceLabel"))).Append(": <a href=\"").Append(SeoHtml.Encode(source))
+                .Append("\" rel=\"noopener noreferrer\">").Append(SeoHtml.Encode(T("SeoFactSourceLink", page.ComuneName)))
+                .Append("</a></li>\n");
+        }
+
+        body.Append("</ul>\n</section>\n");
+    }
+
+    private IReadOnlyList<FaqItem> BuildFaq(SeoPagePublicDto page, SeoTouristTaxFacts facts, CultureInfo culture)
+    {
+        var comune = page.ComuneName;
+        var items = new List<FaqItem>
+        {
+            new(T("SeoFaqRateQuestion", comune), T("SeoFaqRateAnswer", comune, RateSummary(facts, culture))),
+        };
+        if (facts.MaxNights is { } nights)
+            items.Add(new FaqItem(T("SeoFaqNightsQuestion", comune), T("SeoFaqNightsAnswer", nights)));
+        if (facts.ExemptUnderAge > 0)
+            items.Add(new FaqItem(T("SeoFaqExemptQuestion", comune), T("SeoFaqExemptAnswer", facts.ExemptUnderAge)));
+        if (facts.SourceUrl is { } source)
+            items.Add(new FaqItem(T("SeoFaqSourceQuestion", comune), T("SeoFaqSourceAnswer", comune), source, T("SeoFactSourceLink", comune)));
+        return items;
+    }
+
+    private void AppendFaqBlock(StringBuilder body, IReadOnlyList<FaqItem> faq)
+    {
+        if (faq.Count == 0)
+            return;
+
+        body.Append("<section>\n<h2>").Append(SeoHtml.Encode(T("SeoFaqHeading"))).Append("</h2>\n");
+        foreach (var item in faq)
+        {
+            body.Append("<h3>").Append(SeoHtml.Encode(item.Question)).Append("</h3>\n<p>").Append(SeoHtml.Encode(item.Answer));
+            if (item.SourceUrl is not null)
+            {
+                body.Append(" <a href=\"").Append(SeoHtml.Encode(item.SourceUrl)).Append("\" rel=\"noopener noreferrer\">")
+                    .Append(SeoHtml.Encode(item.SourceLabel)).Append("</a>");
+            }
+
+            body.Append("</p>\n");
+        }
+
+        body.Append("</section>\n");
+    }
+
+    /// <summary>
+    /// «Vedi anche»: the other page of the same comune (the guide from the tax page and back) and the hub, then the pages of the
+    /// same kind in the same region. A page used to have no link to any of them.
+    /// </summary>
+    private IReadOnlyList<SeoLinkGroup> SeeAlsoGroups(SeoPagePublicDto page, IReadOnlyList<SeoPublishedPageDto> published, string regionName)
+    {
+        var isGuide = page.PageType != SeoPageType.TouristTaxCalc;
+        var sibling = published.FirstOrDefault(p => p.ComuneSlug == page.ComuneSlug && (p.PageType == SeoPageType.TouristTaxCalc) == isGuide);
+
+        var own = new List<SeoLink>();
+        if (sibling is not null)
+            own.Add(new SeoLink(sibling.Title, PageUrl(sibling)));
+        own.Add(new SeoLink(T("SeoSeeAlsoHub"), links.TryPublicPage(SeoPagePaths.Hub) ?? SeoPagePaths.Hub));
+
+        var others = Neighbours(published, page).Select(p => new SeoLink(p.Title, PageUrl(p))).ToList();
+        return
+        [
+            new SeoLinkGroup(null, own),
+            new SeoLinkGroup(T(isGuide ? "SeoSeeAlsoOtherGuides" : "SeoSeeAlsoOtherCalculators", regionName), others),
+        ];
+    }
+
+    private string PageUrl(SeoPublishedPageDto page) => links.TryPublicPage(page.Path) ?? page.Path;
+
+    /// <summary>
+    /// The pages of the same kind in the same region, starting from the one after this comune in alphabetical order and wrapping
+    /// round: every page links to different neighbours, and every page is linked from several others.
+    /// </summary>
+    private static List<SeoPublishedPageDto> Neighbours(IReadOnlyList<SeoPublishedPageDto> published, SeoPagePublicDto page)
+    {
+        var sameKind = published
+            .Where(p => p.PageType == page.PageType && p.RegionSlug == page.RegionSlug)
+            .OrderBy(p => p.ComuneName, ItalianCollator)
+            .ToList();
+        var index = sameKind.FindIndex(p => p.ComuneSlug == page.ComuneSlug);
+        if (index < 0)
+            return sameKind.Take(MaxNeighbours).ToList();
+
+        return Enumerable.Range(1, sameKind.Count - 1)
+            .Select(offset => sameKind[(index + offset) % sameKind.Count])
+            .Take(MaxNeighbours)
+            .ToList();
+    }
+
+    /// <summary>The name of a region for the page («Lombardia»); the official list writes bilingual regions with both names, the first is used.</summary>
+    private static string? RegionName(string? slug)
+    {
+        var name = ItalianRegions.FindBySlug(slug)?.Name;
+        if (string.IsNullOrWhiteSpace(name))
+            return null;
+
+        var slash = name.IndexOf('/', StringComparison.Ordinal);
+        return slash > 0 ? name[..slash].Trim() : name.Trim();
+    }
+
+    // ── The chrome shared by the editorial pages ──
+
+    private string HomeUrl() => links.TryPublicPage(SeoPagePaths.SiteHome) ?? SeoPagePaths.SiteHome;
+
+    /// <summary>The brand image as an absolute URL; <c>null</c> when the public URL is not configured (an image needs one).</summary>
+    private string? BrandImageUrl() => links.TryPublicPage(SeoPagePaths.BrandImage);
+
+    /// <summary>The pages of the public site, as the header of the site shows them (the guides included).</summary>
+    private IReadOnlyList<SeoLink> SiteLinks()
+    {
+        string Url(string path) => links.TryPublicPage(path) ?? path;
+        return
+        [
+            new SeoLink(T("SeoNavFeatures"), Url(SeoPagePaths.SiteFeatures)),
+            new SeoLink(T("SeoNavSuppliers"), Url(SeoPagePaths.SiteSuppliers)),
+            new SeoLink(T("SeoNavAbout"), Url(SeoPagePaths.SiteAbout)),
+            new SeoLink(T("SeoNavGuides"), Url(SeoPagePaths.Hub)),
+            new SeoLink(T("SeoNavSearch"), Url(SeoPagePaths.SiteSearch)),
+        ];
+    }
+
+    /// <summary>The hub's lists, one block per region (a long flat list says nothing about where the pages are).</summary>
     private static void AppendHubSection(
         StringBuilder body,
         string heading,
@@ -599,14 +846,20 @@ public sealed class PublicSeoService(
         if (list.Count == 0)
             return;
 
-        body.Append("<section>\n<h2>").Append(SeoHtml.Encode(heading)).Append("</h2>\n<ul>\n");
-        foreach (var (page, url) in list)
+        body.Append("<section>\n<h2>").Append(SeoHtml.Encode(heading)).Append("</h2>\n");
+        foreach (var region in list.GroupBy(e => e.Page.RegionSlug).OrderBy(g => RegionName(g.Key) ?? g.Key, ItalianCollator))
         {
-            body.Append("<li><a href=\"").Append(SeoHtml.Encode(url)).Append("\">").Append(SeoHtml.Encode(page.Title))
-                .Append("</a></li>\n");
+            body.Append("<h3>").Append(SeoHtml.Encode(RegionName(region.Key) ?? region.Key)).Append("</h3>\n<ul>\n");
+            foreach (var (page, url) in region.OrderBy(e => e.Page.ComuneName, ItalianCollator))
+            {
+                body.Append("<li><a href=\"").Append(SeoHtml.Encode(url)).Append("\">").Append(SeoHtml.Encode(page.Title))
+                    .Append("</a></li>\n");
+            }
+
+            body.Append("</ul>\n");
         }
 
-        body.Append("</ul>\n</section>\n");
+        body.Append("</section>\n");
     }
 
     // ─── Booking sites ───────────────────────────────────────────────────────────────────────────────

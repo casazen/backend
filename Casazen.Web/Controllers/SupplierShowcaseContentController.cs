@@ -33,6 +33,7 @@ public class SupplierShowcaseContentController(
     ISupplierService supplierService,
     ISupplierOrgContextResolver supplierOrgContextResolver,
     ISupplierKpiService kpis,
+    IShowcaseTextSuggestionService textSuggestions,
     PublicSiteLinks publicSiteLinks) : ControllerBase
 {
     /// <summary>The period of the two numbers of the showcase: the requests of the last 30 days (decision VT-D15).</summary>
@@ -181,6 +182,52 @@ public class SupplierShowcaseContentController(
 
         var stats = await kpis.GetShowcaseRequestStatsAsync(orgId.Value, StatsDays, cancellationToken);
         return Ok(new ShowcaseStatsDto { Days = stats.Days, Requests = stats.Requests, Pending = stats.Pending });
+    }
+
+    /// <summary>
+    /// Whether the AI help of the texts can answer now (a provider is configured): when it cannot, the editor shows none of it and keeps the static
+    /// starter. Reads no data of the supplier and calls no provider.
+    /// </summary>
+    [HttpGet("texts/suggestion/status")]
+    [ProducesResponseType(typeof(ShowcaseTextSuggestionStatusDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ShowcaseTextSuggestionStatusDto>> GetTextSuggestionStatus(CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        return Ok(new ShowcaseTextSuggestionStatusDto { Available = await textSuggestions.IsAvailableAsync(cancellationToken) });
+    }
+
+    /// <summary>
+    /// Drafts for the sentence in large type, the introduction, "chi siamo" and the tips "prima che arriviamo", written by an AI provider from what is
+    /// true of the supplier (its categories, its zones, the names of its services and what it typed in <c>answers</c>) and checked so that no
+    /// guarantee, certification, insurance, number of years, time, price, rating or unmeasured adjective appears unless the supplier wrote it. The
+    /// guarantee, the people, the strengths, the certifications and the questions are never drafted. The answer changes nothing: the editor shows it and
+    /// the supplier applies it to the draft; nothing is public before the publication. Rate limited per user and org like every AI endpoint
+    /// (429 <c>rate_limited</c>); the monthly platform budget is 422 <c>ai_budget_exhausted</c>; 422 <c>showcase_ai_unavailable</c> when no provider
+    /// answers, <c>showcase_suggestion_not_enough_data</c> when the supplier has no category, zone, service or answer yet, and
+    /// <c>showcase_suggestion_unusable</c> when every member was dropped by the checks.
+    /// </summary>
+    [HttpPost("texts/suggestion")]
+    [AiRateLimit]
+    [RequestSizeLimit(16 * 1024)]
+    [ProducesResponseType(typeof(ShowcaseTextSuggestionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
+    public async Task<ActionResult<ShowcaseTextSuggestionResponse>> SuggestTexts(
+        [FromBody] SuggestShowcaseTextsRequest request,
+        CancellationToken cancellationToken)
+    {
+        var orgId = await supplierOrgContextResolver.GetLinkedSupplierOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "SupplierProfileNotFound");
+
+        var suggestion = await textSuggestions.SuggestAsync(orgId.Value, request.ToCommand(), cancellationToken);
+        return Ok(ShowcaseTextSuggestionMapper.ToResponse(suggestion));
     }
 
     /// <summary>

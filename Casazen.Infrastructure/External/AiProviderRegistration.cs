@@ -28,6 +28,8 @@ public static class AiProviderRegistration
         services.AddScoped<IAiProvider, SwitchingAiProvider>();
 
         services.AddHttpClient("DeepSeek", client => client.Timeout = TimeSpan.FromSeconds(30));
+        // Calls with photos and a long answer (the text of a listing): a vision model takes longer.
+        services.AddHttpClient(DeepSeekAiProvider.LongCallHttpClientName, client => client.Timeout = TimeSpan.FromSeconds(90));
         services.AddScoped<IWebSearchClient, DeepSeekWebSearchClient>();
         services.AddScoped<IAiSupplierDiscoveryService, AiSupplierDiscoveryService>();
 

@@ -111,6 +111,8 @@ builder.Services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
 builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
 builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
+// «Calcola con l'AI» of the step «Prezzi» of the property wizard: the AI proposes the nightly rate (WIZ-AI-PRICE)
+builder.Services.AddScoped<IListingPriceSuggestionService, ListingPriceSuggestionService>();
 builder.Services.AddCasazenAiProvider(builder.Configuration);
 // Agency tier B2B services
 builder.Services.AddScoped<ITrustedSupplierService, TrustedSupplierService>();

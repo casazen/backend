@@ -415,7 +415,7 @@ public class DemoEnvironmentService(
             NumberOfAdults = 2,
             Status = template.Status,
             Source = template.Source,
-            PaymentOption = PaymentOption.Immediate,
+            PaymentOption = template.PaymentOption,
             BasePrice = total,
             CleaningFee = Math.Min(property.CleaningFee, total),
             TotalPrice = total,
@@ -426,6 +426,9 @@ public class DemoEnvironmentService(
             UpdatedAt = madeAt,
             ConfirmedAt = template.Status == BookingStatus.Pending ? null : madeAt,
             CancelledAt = template.Status == BookingStatus.Cancelled ? madeAt : null,
+            CancellationReason = template.Status == BookingStatus.Cancelled ? template.CancellationReason : null,
+            // "Pay at the property" is a request the guest confirms by email and the host accepts (BK-06): a demo stay of that kind was both.
+            GuestEmailVerifiedAt = template.PaymentOption == PaymentOption.OnSite && template.Status != BookingStatus.Pending ? madeAt : null,
             CheckedOutAt = template.Status == BookingStatus.CheckedOut
                 ? DateTime.SpecifyKind(checkIn.AddDays(template.Nights).AddHours(9), DateTimeKind.Utc)
                 : null,

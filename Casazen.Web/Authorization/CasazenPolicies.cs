@@ -50,6 +50,15 @@ public static class CasazenPolicies
     /// </summary>
     public const string GuestSession = "GuestSession";
 
+    /// <summary>
+    /// The person with a CasaZen account who books as a guest (the mobile app's guest area, <c>api/guest/*</c>): any signed-in account
+    /// with a subject, whatever its role, and with <b>no host org and no supplier link needed</b>, because a guest has neither. It opens
+    /// only the actions that read the caller's own bookings (the direct bookings whose guest has the account's verified email address, which
+    /// the action checks and answers 403 <c>guest_email_not_verified</c> for) and the deletion of the account. Not a guest-session
+    /// token (<see cref="GuestSession"/>, a code and an email with no account): that one is another scheme and opens none of these.
+    /// </summary>
+    public const string GuestAccount = "GuestAccount";
+
     private const string ShortRent = "RequireContext:short-rent:";
     private const string LongRent = "RequireContext:long-rent:";
 
