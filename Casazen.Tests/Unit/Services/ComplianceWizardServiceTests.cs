@@ -88,6 +88,7 @@ public class ComplianceWizardServiceTests
             Mock.Of<IEmailQueue>(),
             EmailTestHelpers.Links(),
             Options.Create(new ComplianceOptions()),
+            new ActivityLog(db),
             NullLogger<PropertyComplianceStatusService>.Instance,
             timeProvider);
 
@@ -333,19 +334,70 @@ public class ComplianceWizardServiceTests
     }
 
     [Fact]
-    public async Task Activation_NoSafetyChecklist_SafetyStepBlocksWithStableCodes()
+    public async Task Activation_NoSafetyChecklist_SafetyStepIsAReminderWithStableCodes()
     {
-        await using var db = CreateDb(nameof(Activation_NoSafetyChecklist_SafetyStepBlocksWithStableCodes));
+        await using var db = CreateDb(nameof(Activation_NoSafetyChecklist_SafetyStepIsAReminderWithStableCodes));
         var property = await SeedPropertyAsync(db);
 
         var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
 
+        // PO decision 2026-11-01 (option A): the safety checklist and the documents are reminders, only the base data and the CIN block.
         var safety = steps.Single(s => s.Id == "safety");
-        Assert.Equal("pending", safety.Status);
-        Assert.True(safety.Blocker);
+        Assert.Equal("warning", safety.Status);
+        Assert.False(safety.Blocker);
         Assert.Equal("ActivationSafetyIncomplete", safety.MessageKey);
         Assert.Contains(safety.Blockers, b => b.Code == "safety_extinguishers_missing");
         Assert.DoesNotContain(safety.Blockers, b => b.Code.Contains("smoke", StringComparison.Ordinal));
+        var documents = steps.Single(s => s.Id == "documents");
+        Assert.Equal(("warning", false), (documents.Status, documents.Blocker));
+        Assert.True(steps.Single(s => s.Id == "cin").Blocker);
+        Assert.True(steps.Single(s => s.Id == "base-data").Blocker);
+    }
+
+    [Fact]
+    public async Task CompleteActivation_RemindersOpenNotAcknowledged_Is409AndNothingChanges()
+    {
+        await using var db = CreateDb(nameof(CompleteActivation_RemindersOpenNotAcknowledged_Is409AndNothingChanges));
+        var property = await SeedPropertyAsync(db);
+
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() =>
+            CreateService(db).CompleteActivationAsync(property.Id, property.OwnerId, tosAccepted: true));
+
+        Assert.Equal("activation_reminders_ack_required", error.Code);
+        var reloaded = await db.Properties.FindAsync(property.Id);
+        Assert.Equal(PropertyComplianceStatus.Pending, reloaded!.ComplianceStatus);
+        Assert.Empty(db.OrgActivityEntries);
+    }
+
+    [Fact]
+    public async Task CompleteActivation_RemindersOpenAcknowledged_ActivatesAndRecordsWhoAndWhich()
+    {
+        await using var db = CreateDb(nameof(CompleteActivation_RemindersOpenAcknowledged_ActivatesAndRecordsWhoAndWhich));
+        var property = await SeedPropertyAsync(db);
+
+        var (updated, blockers) = await CreateService(db).CompleteActivationAsync(
+            property.Id, property.OwnerId, tosAccepted: true, remindersAcknowledged: true);
+
+        Assert.Empty(blockers);
+        Assert.Equal(PropertyComplianceStatus.Active, updated.ComplianceStatus);
+        var line = Assert.Single(db.OrgActivityEntries);
+        Assert.Equal(
+            (OrgActivityType.PropertyActivatedWithReminders, OrgActivitySubjectType.Property, property.Id.ToString(), property.OwnerId),
+            (line.Type, line.SubjectType, line.SubjectId, line.ActorUserId));
+        Assert.Equal(property.OrgId, line.OrgId);
+        Assert.Contains("\"reminders\":\"documents.safety\"", line.DetailsJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CompleteActivation_NothingOpen_NeedsNoAcknowledgementAndRecordsNothing()
+    {
+        await using var db = CreateDb(nameof(CompleteActivation_NothingOpen_NeedsNoAcknowledgementAndRecordsNothing));
+        var property = await SeedFullyCompliantPropertyAsync(db);
+
+        var (updated, _) = await CreateService(db).CompleteActivationAsync(property.Id, property.OwnerId, tosAccepted: true);
+
+        Assert.Equal(PropertyComplianceStatus.Active, updated.ComplianceStatus);
+        Assert.Empty(db.OrgActivityEntries);
     }
 
     [Fact]
@@ -364,23 +416,26 @@ public class ComplianceWizardServiceTests
     }
 
     [Fact]
-    public async Task CompleteActivation_GasHomeWithoutDetectors_StaysPendingWithDetectorBlockers()
+    public async Task CompleteActivation_GasHomeWithoutDetectors_ActivatesOnceAcknowledgedAndTheWizardStillListsThem()
     {
-        await using var db = CreateDb(nameof(CompleteActivation_GasHomeWithoutDetectors_StaysPendingWithDetectorBlockers));
+        await using var db = CreateDb(nameof(CompleteActivation_GasHomeWithoutDetectors_ActivatesOnceAcknowledgedAndTheWizardStillListsThem));
         var property = await SeedFullyCompliantPropertyAsync(db);
         var checklist = await db.PropertySafetyChecklists.SingleAsync(c => c.PropertyId == property.Id);
         checklist.HasGasSupply = true;
         checklist.CombustionAppliances = [CombustionAppliance.GasHob];
         await db.SaveChangesAsync();
 
-        var (updated, blockers) = await CreateService(db).CompleteActivationAsync(property.Id, property.OwnerId, tosAccepted: true);
+        var (updated, blockers) = await CreateService(db).CompleteActivationAsync(
+            property.Id, property.OwnerId, tosAccepted: true, remindersAcknowledged: true);
 
-        var safety = Assert.Single(blockers);
-        Assert.Equal("safety", safety.Id);
+        Assert.Empty(blockers);
+        Assert.Equal(PropertyComplianceStatus.Active, updated.ComplianceStatus);
+        Assert.Contains("\"reminders\":\"safety\"", Assert.Single(db.OrgActivityEntries).DetailsJson, StringComparison.Ordinal);
+
+        var (_, steps) = await CreateService(db).GetActivationWizardAsync(property.Id);
         Assert.Equal(
             ["safety_gas_detector_missing", "safety_co_detector_missing"],
-            safety.Blockers.Select(b => b.Code));
-        Assert.Equal(PropertyComplianceStatus.Pending, updated.ComplianceStatus);
+            steps.Single(s => s.Id == "safety").Blockers.Select(b => b.Code));
     }
 
     [Fact]

@@ -1711,6 +1711,9 @@
   <data name="ActivationTosRequired" xml:space="preserve">
     <value>You must accept the terms of service.</value>
   </data>
+  <data name="ActivationRemindersAckRequired" xml:space="preserve">
+    <value>To activate, confirm that you know the safety sheet and the documents still to complete are your obligation.</value>
+  </data>
   <data name="ActivationBaseDataIncomplete" xml:space="preserve">
     <value>Complete the basic details of the property: name, address, city, guests and rate.</value>
   </data>

@@ -1711,6 +1711,9 @@
   <data name="ActivationTosRequired" xml:space="preserve">
     <value>Devi accettare i termini di servizio.</value>
   </data>
+  <data name="ActivationRemindersAckRequired" xml:space="preserve">
+    <value>Per attivare conferma di sapere che la scheda di sicurezza e i documenti da completare sono un tuo obbligo.</value>
+  </data>
   <data name="ActivationBaseDataIncomplete" xml:space="preserve">
     <value>Completa i dati base dell'immobile: nome, indirizzo, città, ospiti e tariffa.</value>
   </data>

@@ -105,6 +105,12 @@ public class PropertyActivationWizardDto
 public class CompletePropertyActivationRequest
 {
     public bool? TosAccepted { get; set; }
+
+    /// <summary>
+    /// The host knows that the reminders still open (the required documents, the safety checklist) are their own obligations and
+    /// will complete them: needed only when some are open (409 <c>activation_reminders_ack_required</c> otherwise).
+    /// </summary>
+    public bool? RemindersAcknowledged { get; set; }
 }
 
 public class CompletePropertyActivationResponse
