@@ -371,7 +371,8 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
                 booking.CheckoutTokenHash = "marker-checkout-token-hash";
                 booking.GuestCancelTokenHash = "marker-cancel-token-hash";
                 booking.GuestEmailVerificationTokenHash = "marker-verification-hash";
-                booking.ExpectedArrivalTime = "marker-arrival";
+                // The column holds "HH:mm" or "late" (5 characters at most): no room for a marker, so the property name is asserted below.
+                booking.ExpectedArrivalTime = "late";
             },
             guestShape: guest =>
             {
@@ -424,6 +425,8 @@ public class GuestAccountIntegrationTests(GuestAccountIntegrationTests.GuestAcco
         {
             // Every marker planted above, the payment intent included, and the other guest's.
             Assert.DoesNotContain("marker", body, StringComparison.OrdinalIgnoreCase);
+            // The declared arrival time is not in any of these bodies either (its value is too short for a marker).
+            Assert.DoesNotContain("expectedArrivalTime", body, StringComparison.OrdinalIgnoreCase);
             // Nor the identifiers that are not the account's to hold: the guest record, the org, and the account's own address.
             Assert.DoesNotContain(privateStay.GuestId.ToString(), body, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain(site.OrgId.ToString(), body, StringComparison.OrdinalIgnoreCase);
