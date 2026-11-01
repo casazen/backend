@@ -694,17 +694,9 @@ public sealed class PublicSeoService(
 
     private static string Euro(decimal amount, CultureInfo culture) => amount.ToString("0.00", culture) + " €";
 
-    /// <summary>The rate in a sentence: «3,00 € a persona per notte», or the percentage of the night with its ceiling.</summary>
-    private string RateSentence(SeoTouristTaxFacts facts, CultureInfo culture)
-    {
-        if (facts.Method == TouristTaxCalculationMethod.PercentOfNightlyPrice)
-        {
-            var percent = T("SeoFactRatePercent", facts.Rate.ToString("0.##", culture));
-            return facts.CapPerPersonPerNight is { } cap ? percent + T("SeoFactRateCap", Euro(cap, culture)) : percent;
-        }
-
-        return T("SeoFactRateFixed", Euro(facts.Rate, culture));
-    }
+    /// <summary>The rate in a sentence: «3,00 € a persona per notte».</summary>
+    private string RateSentence(SeoTouristTaxFacts facts, CultureInfo culture) =>
+        T("SeoFactRateFixed", Euro(facts.RatePerPersonPerNight, culture));
 
     /// <summary>The rate with the nights it applies to, when the comune caps them.</summary>
     private string RateSummary(SeoTouristTaxFacts facts, CultureInfo culture) =>

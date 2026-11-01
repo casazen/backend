@@ -6,21 +6,19 @@ namespace Casazen.Web.Seo;
 /// <summary>
 /// What a public page can say about the tourist tax of a comune from the rate in force, without the text of the AI: the figure,
 /// the nights it applies to, who is exempt, since when and the official source. Only real data goes in, and only for the simple
-/// case: ONE rate with no accommodation category and no season, and no reduced amount. A comune with several rates (Roma by
-/// category, Venezia by group and season) or with a reduced rate gets no summary: a one-line figure there would be a choice among
-/// them, and the page keeps what its approved text says.
+/// case: ONE rate with no accommodation category and no season, no reduced amount, and a fixed amount per person per night. A comune
+/// with several rates (Roma by category, Venezia by group and season) or with a reduced rate gets no summary: a one-line figure
+/// there would be a choice among them. A percentage of the price gets none either (Bologna): it comes with conditions a line cannot
+/// carry (the base it is taken on, who it applies to, how it is shared among the guests). In all those cases the page keeps what its
+/// approved text says.
 /// </summary>
-/// <param name="Method">Fixed amount per person per night, or a percentage of the price of the night.</param>
-/// <param name="Rate">The amount per person per night, or the percentage (e.g. <c>10.5</c> for 10,5%).</param>
-/// <param name="CapPerPersonPerNight">Ceiling per person per night of a percentage rate, when it has one.</param>
+/// <param name="RatePerPersonPerNight">The amount per person per night.</param>
 /// <param name="MaxNights">Most nights the tax is due for, when the comune caps them.</param>
 /// <param name="ExemptUnderAge">Guests younger than this are exempt; 0 when the rate has no age exemption.</param>
 /// <param name="EffectiveFrom">First day the rate applies.</param>
 /// <param name="SourceUrl">Official document with the rates (absolute https URL), when the comune has one on file.</param>
 public sealed record SeoTouristTaxFacts(
-    TouristTaxCalculationMethod Method,
-    decimal Rate,
-    decimal? CapPerPersonPerNight,
+    decimal RatePerPersonPerNight,
     int? MaxNights,
     int ExemptUnderAge,
     DateTime EffectiveFrom,
@@ -40,18 +38,11 @@ public sealed record SeoTouristTaxFacts(
         if (hasCategoryOrSeason || hasReducedRate || rate.EffectiveTo is not null)
             return null;
 
-        var amount = rate.CalculationMethod == TouristTaxCalculationMethod.PercentOfNightlyPrice
-            ? rate.PercentOfNightlyPrice
-            : rate.RatePerPersonPerNight;
-        if (amount is not > 0m)
+        if (rate.CalculationMethod != TouristTaxCalculationMethod.PerPersonPerNight || rate.RatePerPersonPerNight <= 0m)
             return null;
 
         return new SeoTouristTaxFacts(
-            rate.CalculationMethod,
-            amount.Value,
-            rate.CalculationMethod == TouristTaxCalculationMethod.PercentOfNightlyPrice && rate.CapPerPersonPerNight is > 0m
-                ? rate.CapPerPersonPerNight
-                : null,
+            rate.RatePerPersonPerNight,
             // A cap of one night or an exemption under one year is no usual rule and would read «1 notti» / «1 anni»: the summary
             // leaves it to the approved text of the page.
             rate.MaxNights is > 1 ? rate.MaxNights : null,

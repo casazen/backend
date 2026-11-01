@@ -478,9 +478,11 @@ one) now finds, in the same HTML:
   neighbours);
 - **«Imposta di soggiorno a {comune} in breve»** (rate, nights, exemption, in force since, official source) and, on the tax page,
   **«Domande frequenti»** with the `FAQPage` markup. Both come only from the **rate in force** (`SeoTouristTaxFacts`): a single rate
-  with no category, no season and no reduced amount. A comune with several rates (Roma by category, Venezia by group and season)
-  shows neither: a one-line figure would be a choice among them, and the approved text says the rest. The text of the AI is never
-  used for these blocks, so nothing needs a new approval.
+  with no category, no season and no reduced amount, and a fixed amount per person per night. A comune with several rates (Roma by
+  category, Venezia by group and season) shows neither: a one-line figure would be a choice among them. A percentage of the price
+  (Bologna) shows neither either: it comes with conditions a line cannot carry (the base, who it applies to, how it is shared among
+  the guests). In those cases the approved text says it all. The text of the AI is never used for these blocks, so nothing needs a
+  new approval.
 - the **title** (`{comune} {year}: …`, the year of the last refresh) and, when the summary exists, the **description** with the real
   figure. Without a refresh date, with a title longer than 70 characters or with no summary, the page keeps the title and the
   description it was approved with.

@@ -2356,12 +2356,6 @@
   <data name="SeoFactRateFixed" xml:space="preserve">
     <value>{0} a persona per notte</value>
   </data>
-  <data name="SeoFactRatePercent" xml:space="preserve">
-    <value>{0}% del prezzo della notte, per persona</value>
-  </data>
-  <data name="SeoFactRateCap" xml:space="preserve">
-    <value>, fino a {0} a persona per notte</value>
-  </data>
   <data name="SeoFactNightsLabel" xml:space="preserve">
     <value>Notti</value>
   </data>

@@ -30,8 +30,7 @@ public class SeoTouristTaxFactsTests
         var facts = SeoTouristTaxFacts.From([Rate()]);
 
         Assert.NotNull(facts);
-        Assert.Equal(TouristTaxCalculationMethod.PerPersonPerNight, facts.Method);
-        Assert.Equal(3.00m, facts.Rate);
+        Assert.Equal(3.00m, facts.RatePerPersonPerNight);
         Assert.Equal(4, facts.MaxNights);
         Assert.Equal(14, facts.ExemptUnderAge);
         Assert.Equal(new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc), facts.EffectiveFrom);
@@ -39,17 +38,13 @@ public class SeoTouristTaxFactsTests
     }
 
     [Fact]
-    public void From_PercentageRateWithACap_KeepsThePercentAndTheCap()
+    public void From_PercentageRate_IsNullBecauseItComesWithConditionsALineCannotCarry()
     {
-        var facts = SeoTouristTaxFacts.From(
+        // Bologna: 10,5% of the price net of VAT and services, capped per person, for the rentals made through portals.
+        Assert.Null(SeoTouristTaxFacts.From(
         [
-            Rate(TouristTaxCalculationMethod.PercentOfNightlyPrice, perNight: 0m, percent: 10.5m, cap: 7.00m, maxNights: null, minimumAge: 0),
-        ]);
-
-        Assert.NotNull(facts);
-        Assert.Equal(TouristTaxCalculationMethod.PercentOfNightlyPrice, facts.Method);
-        Assert.Equal(10.5m, facts.Rate);
-        Assert.Equal(7.00m, facts.CapPerPersonPerNight);
+            Rate(TouristTaxCalculationMethod.PercentOfNightlyPrice, perNight: 0m, percent: 10.5m, cap: 7.00m, maxNights: null, minimumAge: 14),
+        ]));
     }
 
     [Fact]
