@@ -75,6 +75,19 @@ public class LongRentFiscalRulesTests
         Assert.Equal(2, totals.NotEstimatedLeases);
     }
 
+    [Fact]
+    public void Ran_ALeaseEndedOnTheDayItStartsOrBefore_NeverRan_WhileOneThatLastsPastItsFirstDayDid()
+    {
+        // Signed for three years from 1 November 2026 and ended early on 1 November 2026: it is in no report, not even for the month
+        // the whole-month rule would have counted.
+        Assert.False(LongRentFiscalRules.Ran(new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 1)));
+        Assert.False(LongRentFiscalRules.Ran(new DateOnly(2026, 11, 1), new DateOnly(2026, 10, 31)));
+
+        // The day after its first day it ran; so did one that goes on to the end of its term.
+        Assert.True(LongRentFiscalRules.Ran(new DateOnly(2026, 11, 1), new DateOnly(2026, 11, 2)));
+        Assert.True(LongRentFiscalRules.Ran(new DateOnly(2026, 11, 1), new DateOnly(2029, 10, 31)));
+    }
+
     // 800 € a month; the legacy regime follows the rule the lease uses (a concordato is always CanoneConcordato).
     private static LongRentFiscalLease Lease(LeaseContractType type, LeaseTaxRegime? taxRegime, DateOnly start, DateOnly currentEnd) =>
         new(
