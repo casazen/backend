@@ -569,6 +569,66 @@ public class ComplianceWizardServiceTests
     }
 
     /// <summary>
+    /// The page of the adempimenti dates every row it lists (the Home's "Da fare" dates only the first ones): the legal term of the
+    /// Alloggiati communication, which runs from the arrival (24 hours), the day the guest arrives for the data to complete, the
+    /// day the guest leaves for the departure to close. A property to activate and a turnover have no date. Rome is UTC+2 on 24/09.
+    /// </summary>
+    [Fact]
+    public async Task Summary_ItemsOfAStay_CarryTheDeadlineTheStayFixes()
+    {
+        await using var db = CreateDb(nameof(Summary_ItemsOfAStay_CarryTheDeadlineTheStayFixes));
+        var org = new OrgEntity { Name = "Cockpit Org", Slug = $"org-{Guid.NewGuid():N}" };
+        db.Orgs.Add(org);
+        var pending = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Pending);
+        var active = await SeedPropertyAsync(db, org.Id, complianceStatus: PropertyComplianceStatus.Active);
+        var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+        // Arrived 22/09 (midnight in Rome is 21/09 22:00 UTC), leaves today; the arrival was registered at 10:00 UTC of 22/09.
+        var departing = AddStay(active, "Partenza", todayInRome, BookingStatus.CheckedIn);
+        departing.ArrivedAt = new DateTime(2026, 9, 22, 10, 0, 0, DateTimeKind.Utc);
+        var rejected = AddStay(active, "Rifiutata", todayInRome.AddDays(1), BookingStatus.CheckedIn);
+        db.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+        {
+            BookingId = rejected.Id,
+            GuestId = rejected.GuestId,
+            OrgId = org.Id,
+            Status = AlloggiatiWebStatus.Rifiutato,
+        });
+        var turnover = AddStay(pending, "Turnover", todayInRome.AddDays(-1), BookingStatus.CheckedOut);
+        db.StayCheckouts.Add(new StayCheckout { BookingId = turnover.Id, OrgId = org.Id, CompletedAt = todayInRome.AddDays(-1).AddHours(9) });
+        db.AlloggiatiWebReports.Add(new AlloggiatiWebReport
+        {
+            BookingId = turnover.Id,
+            GuestId = turnover.GuestId,
+            OrgId = org.Id,
+            Status = AlloggiatiWebStatus.InviatoManualmente,
+        });
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(org.Id));
+
+        // 24 hours from the arrival that was registered.
+        Assert.Equal(new DateTime(2026, 9, 23, 10, 0, 0, DateTimeKind.Utc), Assert.Single(summary.AlloggiatiManualRequired.Items).DueAt);
+        // 24 hours from the start of the arrival day (23/09 in Rome) when no arrival was registered.
+        Assert.Equal(new DateTime(2026, 9, 23, 22, 0, 0, DateTimeKind.Utc), Assert.Single(summary.AlloggiatiFailures.Items).DueAt);
+        // The guest data are due when the guest arrives: the start of the day of the check-in.
+        Assert.Equal(new DateTime(2026, 9, 21, 22, 0, 0, DateTimeKind.Utc), summary.GuestCheckInsIncomplete.Items.Single(i => i.Id == departing.Id).DueAt);
+        // The departure is due on the day the guest leaves.
+        Assert.Equal(new DateTime(2026, 9, 23, 22, 0, 0, DateTimeKind.Utc), Assert.Single(summary.CheckoutsDue.Items).DueAt);
+        // No date fixes the activation of a property, nor the readiness after a departure.
+        Assert.All(summary.PropertiesPending.Items, i => Assert.Null(i.DueAt));
+        Assert.Null(Assert.Single(summary.TurnoversPending.Items).DueAt);
+
+        Booking AddStay(Property property, string name, DateTime checkout, BookingStatus status)
+        {
+            var guest = new Guest { FirstName = name, LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = org.Id };
+            db.Guests.Add(guest);
+            var booking = BuildBooking(property, guest, checkout, status);
+            db.Bookings.Add(booking);
+            return booking;
+        }
+    }
+
+    /// <summary>
     /// AM-03: the cockpit of a collaborator "Solo alcuni" holds the items of the properties it was given and no others, in every
     /// section (properties to activate, check-ins, departures, Alloggiati, turnovers). The owner org-wide scope holds both.
     /// </summary>
