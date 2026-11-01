@@ -54,10 +54,16 @@ public static class OrgActivityDetailKeys
     /// <summary>The areas the member works in after the change, written like <see cref="FromAreas"/> (AM-02c).</summary>
     public const string ToAreas = "toAreas";
 
+    /// <summary>
+    /// The compliance reminders a host acknowledged when activating a property: the ids of the steps still open, joined by a dot
+    /// (<c>documents</c>, <c>safety</c> or <c>documents.safety</c>).
+    /// </summary>
+    public const string Reminders = "reminders";
+
     public static IReadOnlyList<string> All { get; } =
     [
         Role, FromRole, ToRole, Scope, Granted, Revoked, Released, FromTier, ToTier, Source, RequestedArea, FromMode, ToMode, EffectiveOn,
-        FromAreas, ToAreas,
+        FromAreas, ToAreas, Reminders,
     ];
 }
 
@@ -150,6 +156,10 @@ public static partial class OrgActivityCatalog
             [OrgActivityDetailKeys.FromMode, OrgActivityDetailKeys.ToMode]),
         new(OrgActivityType.PropertyModeChanged, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
             [OrgActivityDetailKeys.FromMode, OrgActivityDetailKeys.ToMode, OrgActivityDetailKeys.Released]),
+
+        // The activation with the compliance reminders still open, acknowledged by the host (PropertyComplianceStatusService).
+        new(OrgActivityType.PropertyActivatedWithReminders, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
+            [OrgActivityDetailKeys.Reminders]),
 
         // Reserved: the trusted suppliers of the host.
         new(OrgActivityType.TrustedSupplierAdded, OrgActivityArea.Supplier, OrgActivitySubjectType.Supplier, [], Reserved: true),

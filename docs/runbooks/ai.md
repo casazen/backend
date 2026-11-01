@@ -7,12 +7,28 @@ Task FD-21 (defects A8-01, A8-07, A8-14, A8-15, A4-26, A8-26, A8-16 AI part; dec
 
 | Caller | Data in the prompt | Guard |
 |---|---|---|
+| Texts of the supplier showcase `POST /api/supplier/showcase/texts/suggestion` (sentence, introduction, «chi siamo», tips; editor step «Testi») | Category names, comune names, the names the supplier gave its services, the texts already in its draft and what it typed for the AI, all scrubbed of e-mails, phones and fiscal codes (versioned prompt `ShowcaseTextPrompt`) | No flag: shown only while a provider is configured (`GET …/texts/suggestion/status`). `[AiRateLimit]`, platform budget, answers kept per supplier in the cache. The output is checked (`ShowcaseTextRules`: no guarantee, certification, insurance, years, time, price, rating or unmeasured adjective the supplier did not write) and is a **draft** the supplier chooses and publishes; the guarantee, certifications, people, strengths and questions are never drafted. [`suppliers.md`](suppliers.md) section 33.14. |
 | SEO page generation (`SeoPageGenerationJob`, `SeoContentRefreshJob`, admin "Genera" `POST /api/admin/seo/generate`, bootstrap) | Public regulatory data only: comune name and ISTAT code, page type, the verified CIN / Alloggiati facts with their official URLs, the tourist tax rates in force with their source URL (versioned prompt `SeoContentPrompt`) | Platform budget; the batch stops at the first page the budget cannot cover. `POST generate` is rate limited per user. The output is checked and stored as a **draft**: it is published only after a person approves it ([`seo-domain.md`](seo-domain.md) section 7, SE-01). |
+| «Calcola con l'AI» of the step «Prezzi» of the property wizard: `POST /api/properties/{id}/price-suggestion` (`GET` on the same address says whether an AI is in effect), WIZ-AI-PRICE | The facts of the saved property (type, guests, bedrooms, beds, bathrooms, area, amenities, setting), the comune, province and region of the official list, and the nightly rates of the other homes of the comune that the public site shows, **summed up** (count, quartiles, median, ends: only with at least 3 homes, never one listing or one owner). Never the name, the address, the description or the house rules (versioned prompt `ListingPriceSuggestionPrompt`) | Per-user and per-org rate limit (`[AiRateLimit]`, shared with the other AI endpoints), platform budget. The answer is checked before the host sees it: a believable price, a range that contains it, the cleaning fee, surcharge and minimum stay within limits, and, with the figures of homes of a similar size, not far outside them. Nothing is written to the property. Without an AI it is still `200`, with `aiUsed` false and the `reason` (`ai_not_configured`, `ai_budget_exhausted`, `ai_unavailable`, `ai_invalid_answer`), and the price of the figures alone when there are enough homes. |
 | AI supplier match `POST /api/service-requests/match-supplier` (reason sentence, web search, LLM extraction) | Category code, urgency, open requests count; for the web search the property's city and a fixed category term | **Behind `Features:AiSupplierDiscovery`, off (D11).** When on: category allowlist, per-user and per-org rate limit, platform budget. |
+| Listing text of the wizard «Aggiungi immobile» (`POST /api/properties/{id}/listing-text/suggestion`, button «Suggerisci con l'AI», `PropertyListingTextService`, versioned prompt `ListingTextPrompt`) | The kind of place, guests, rooms, beds, bathrooms, area, amenities and house rules of the property (never its name, address, unit or anything about the host); the comune, its province and region; the public data of up to 5 listings published on CasaZen in the same comune (headline, kind, spaces, amenities); up to 6 photos of the gallery, reduced by the browser to 1,024 px. The photos go only to providers that read images (OpenAI, Anthropic, compatible services); DeepSeek gets the text alone, and a compatible service that refuses the images gets the call again without them. | `[AiRateLimit]` per user and per org, platform budget (each image reserved as 1,400 tokens), cache per org (`listing-text:<hash of prompt and photos>`; «Rigenera» skips it). The answer is a **suggestion** the host reads and edits before saving it with the step: nothing is published by the AI. Without an active provider, with the budget used up or when the provider fails, the answer is `aiUsed: false` with the `reason` and the wizard composes the text from the data as before. |
 
 Never put in a prompt sent to an external provider: the host's free-text notes, guest data (names, phone numbers,
 documents, dates of stay), supplier or host names, e-mails, addresses of a person. `ISupplierMatchService.MatchAsync`
-does not even take the notes, and `match-supplier` ignores a `notes` field in the body.
+does not even take the notes, and `match-supplier` ignores a `notes` field in the body. The photos of a listing are
+sent only by the listing text above: they are the pictures the host publishes on the site, reduced, and the prompt asks
+the model not to describe people, documents or number plates.
+
+**Cost of a listing text.** With 6 photos a suggestion uses about 8,000-10,000 tokens (the photos are most of it):
+with the default cap of 500,000 tokens a month that is about 50 suggestions for the whole platform. Raise
+`MonthlyTokenCap` (section "Platform AI budget") before the wizard is used by many hosts.
+
+**Reusing it.** A feature that asks the AI about photos, or for a text a person reviews, uses the same pieces:
+`IAiProvider.GenerateAsync(AiRequest…)` (system prompt, temperature, completion limit and images, with the budget, the
+PII scrubbing of the texts and the retry without images included), `AiPhotos.Decode(photos, maxPhotos)` with
+`AiPhotoLimits` for the photos the browser sends (the web app reduces them with `reduce-photo.ts`),
+`AiSuggestionFallbackReasons` for the `aiUsed: false` answers, `[AiRateLimit]` on the endpoint, and a cache key made of
+the prompt version, the texts and the hashes of the photos in the org's scope. Add its row to the table above.
 
 ## Configuration (Railway `Ai__*`)
 
@@ -44,6 +60,8 @@ only, nothing is written to the database. There is **no cache inside the provide
 - **Keys.** The SEO content is platform-level: key `comune:page type:data version:prompt version`, no org. The supplier
   match reason (`supplier-match:category:urgency:load`) and the supplier discovery results
   (`supplier-discovery:city:category`) are cached **per org**: another org never reads them and fills its own entries.
+  So is the nightly price of the wizard (`price-suggestion:price-v1:<hash>`: the hash covers the whole prompt, the language
+  included), and only an answer that passed the checks is kept.
 - **What is cached.** Only an answer of a configured provider with some text. The stub placeholder, an empty answer, a
   failure and the budget refusal are never cached.
 - **"Regenerate" regenerates.** `forceRegenerate` (admin "Genera", `SeoContentRefreshJob`) does not read the cache: it
@@ -62,8 +80,10 @@ the API, never by a constant:
 | Admin SEO review dialog | The revision is `Generated` | Next to the text, worded as a draft (pending) or as the approved page (published). Nothing for a "not generated" state. |
 | `POST /api/service-requests/match-supplier` (flag `AiSupplierDiscovery`, off) | `reasonGeneratedByAi` on the candidate; `source = ai_web_search` on an external suggestion | The API says it; **no screen of the web app or of the app uses this endpoint today**, so no notice is mounted. Whoever builds that screen shows `AiContentNotice kind="supplierReason"` when the flag is true. With the flag off the endpoint answers 404 and the reason is static. |
 
-The property page of the public booking site no longer mounts the component with a constant `false`: no property
-description is AI-generated.
+The property page of the public booking site no longer mounts the component with a constant `false`. A property
+description may start as a suggestion of the AI («Suggerisci con l'AI» in the wizard, which says so to the host: «Testo
+scritto dall'AI in base a …, rileggilo»), but it is the host's text: they review it, change it and save it, so the
+page shows no notice.
 
 ## Platform AI budget (A8-01, A8-07)
 
@@ -88,7 +108,7 @@ UPDATE "PlatformAiBudgets" SET "MonthlyTokenCap" = 1000000, "UpdatedAt" = now();
 
 ## Rate limits of the AI endpoints (A8-01)
 
-`[AiRateLimit]` on `match-supplier` and `POST /api/admin/seo/generate`: a fixed window per user **and** one per
+`[AiRateLimit]` on `match-supplier`, `POST /api/admin/seo/generate` and `POST /api/supplier/showcase/texts/suggestion`: a fixed window per user **and** one per
 organization; over either one the API answers 429 `rate_limited` with `Retry-After`, and the provider is not reached.
 Counters are in memory, per replica.
 

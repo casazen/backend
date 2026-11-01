@@ -214,15 +214,21 @@ public interface IComplianceWizardService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Activates the property when no blocking step is left, otherwise leaves it pending. The safety checklist is saved
-    /// on its own (<see cref="IPropertySafetyChecklistService"/>), never here. Returns the blocking steps still
-    /// incomplete, each with its <see cref="ComplianceActivationStep.Blockers"/>.
+    /// Activates the property when no blocking step is left (the base data and the CIN), otherwise leaves it pending. The
+    /// reminders still open (the documents, the safety checklist) need <paramref name="remindersAcknowledged"/>, which is
+    /// recorded in the activity log of the org. The safety checklist is saved on its own
+    /// (<see cref="IPropertySafetyChecklistService"/>), never here. Returns the blocking steps still incomplete, each with its
+    /// <see cref="ComplianceActivationStep.Blockers"/>.
     /// </summary>
-    /// <exception cref="Exceptions.DomainConflictException"><c>activation_tos_required</c> without the terms accepted.</exception>
+    /// <exception cref="Exceptions.DomainConflictException">
+    /// <c>activation_tos_required</c> without the terms accepted; <c>activation_reminders_ack_required</c> with reminders open
+    /// and not acknowledged.
+    /// </exception>
     Task<(Property Property, IReadOnlyList<ComplianceActivationStep> IncompleteBlockers)> CompleteActivationAsync(
         Guid propertyId,
         string userId,
         bool? tosAccepted,
+        bool? remindersAcknowledged = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>

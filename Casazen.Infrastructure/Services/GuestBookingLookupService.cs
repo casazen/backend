@@ -46,9 +46,7 @@ public sealed class GuestBookingLookupService(
         var cutoff = CheckoutHolds.CutoffAt(_clock.GetUtcNow().UtcDateTime, ttlMinutes);
         var outcomeState = CheckoutOutcomes.StateOf(booking, cutoff);
         var checkIn = await CheckInAccessAsync(booking, cancellationToken);
-        var collected = booking.Payments
-            .Where(p => p.Status is PaymentStatus.Completed or PaymentStatus.PartiallyRefunded or PaymentStatus.Refunded)
-            .ToList();
+        var (paidAmount, refundedAmount) = GuestBookings.AmountsOf(booking);
 
         return new GuestBookingView(
             BookingCodes.Format(booking.BookingCode),
@@ -66,8 +64,8 @@ public sealed class GuestBookingLookupService(
             booking.CleaningFee,
             booking.TouristTax,
             booking.TotalPrice,
-            collected.Sum(p => p.Amount),
-            collected.Sum(p => p.RefundedAmount),
+            paidAmount,
+            refundedAmount,
             StayCurrency.ForProperty(booking.Property),
             CheckoutOutcomes.ExpiresAt(booking, outcomeState, ttlMinutes),
             booking.PaymentOption == PaymentOption.OnCancellationDeadline && booking.FreeRefundDeadline is { } deadline
@@ -180,6 +178,11 @@ public sealed class GuestBookingLookupService(
     /// (<c>GuestCheckInSendJob</c>): confirmed or checked-in stays not over, from <c>CheckIn:SendWindowDays</c> days
     /// before the arrival, none once the data were sent or the Alloggiati Web communication is done.
     /// </summary>
+    /// <remarks>
+    /// Both reads are by the id of a booking the caller already proved to be the guest's, so they do not depend on the tenant of the
+    /// request: an anonymous request has none, a guest session has the org of the booking, and the signed-in guest of the mobile app
+    /// (<see cref="GuestAccountBookingService"/>) has its own host org or none, and must read the same rows.
+    /// </remarks>
     private async Task<GuestCheckInAccess> CheckInAccessAsync(Booking booking, CancellationToken cancellationToken)
     {
         var today = _clock.TodayInRomeAsDateOnly();
@@ -189,11 +192,13 @@ public sealed class GuestBookingLookupService(
             return new GuestCheckInAccess(GuestCheckInAccessStatus.NotApplicable, null, null);
 
         var sessions = await db.GuestCheckInSessions
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
             .Where(s => s.BookingId == booking.Id)
             .Select(s => new { s.Status, s.SentAt, s.ExpiresAt })
             .ToListAsync(cancellationToken);
         var communicationSent = await db.AlloggiatiWebReports
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AnyAsync(
                 r => r.BookingId == booking.Id &&
                      (r.Status == AlloggiatiWebStatus.Inviato || r.Status == AlloggiatiWebStatus.InviatoManualmente),

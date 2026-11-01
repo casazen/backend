@@ -2,6 +2,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
+using Casazen.Core.OrgTeam;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -35,10 +36,18 @@ public class PropertyComplianceStatusService(
     IEmailQueue emailQueue,
     PublicSiteLinks links,
     IOptions<ComplianceOptions> complianceOptions,
+    IActivityLog activityLog,
     ILogger<PropertyComplianceStatusService> logger,
     TimeProvider? timeProvider = null) : IPropertyComplianceStatusService
 {
     private const string RunLockKey = "property-compliance-check";
+
+    /// <summary>
+    /// The ids of the compliance steps that are reminders and still open (the documents, the safety checklist): what a host
+    /// acknowledges when activating. Empty when every reminder is complete.
+    /// </summary>
+    public static IReadOnlyList<string> OpenReminders(IEnumerable<ComplianceActivationStep> steps) =>
+        steps.Where(s => !s.Blocker && s.Status != "complete").Select(s => s.Id).ToList();
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -113,8 +122,12 @@ public class PropertyComplianceStatusService(
         return stepsOf;
     }
 
-    // The rules of the four blocking steps, on facts already read: one definition for the wizard, the activation, the
-    // re-evaluation, the nightly check and the host's list (SR-07a) — which read the facts of one property or of many.
+    // The rules of the four compliance steps, on facts already read: one definition for the wizard, the activation, the
+    // re-evaluation, the nightly check and the host's list (SR-07a) — which read the facts of one property or of many. The base
+    // data and the CIN block; the documents and the safety checklist are reminders since the PO decision of 2026-11-01 (option A):
+    // Airbnb and Booking.com block only on the CIN, which the listing must show (art. 13-ter c. 6), while the safety devices are
+    // the host's obligation declared in BDSR (c. 3, c. 7) and no rule asks a platform for the documents. A reminder never suspends
+    // an active property; its points stay in its `Blockers`, so the wizard and the host's list can say what is open.
     private IReadOnlyList<ComplianceActivationStep> BuildBlockingSteps(
         Property property,
         bool comuneListImported,
@@ -188,8 +201,8 @@ public class PropertyComplianceStatusService(
             new ComplianceActivationStep(
                 "documents",
                 "Documenti richiesti",
-                docsComplete ? "complete" : "pending",
-                true)
+                docsComplete ? "complete" : "warning",
+                false)
             {
                 LabelKey = "ActivationStepDocuments",
                 MessageKey = docsComplete ? null : "ActivationDocumentsMissing",
@@ -201,8 +214,8 @@ public class PropertyComplianceStatusService(
             new ComplianceActivationStep(
                 "safety",
                 "Checklist sicurezza",
-                safetyComplete ? "complete" : "pending",
-                true)
+                safetyComplete ? "complete" : "warning",
+                false)
             {
                 LabelKey = "ActivationStepSafety",
                 MessageKey = safetyComplete ? null : "ActivationSafetyIncomplete",
@@ -213,10 +226,16 @@ public class PropertyComplianceStatusService(
     }
 
     public Task<PropertyComplianceCheck> ReevaluateAsync(Guid propertyId, CancellationToken cancellationToken = default) =>
-        EvaluateAsync(propertyId, activate: false, cancellationToken);
+        EvaluateAsync(propertyId, activate: false, host: null, cancellationToken);
 
     public Task<PropertyComplianceCheck> ActivateAsync(Guid propertyId, CancellationToken cancellationToken = default) =>
-        EvaluateAsync(propertyId, activate: true, cancellationToken);
+        EvaluateAsync(propertyId, activate: true, host: null, cancellationToken);
+
+    public Task<PropertyComplianceCheck> ActivateAsync(Guid propertyId, HostActivation host, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        return EvaluateAsync(propertyId, activate: true, host, cancellationToken);
+    }
 
     public async Task<PropertyComplianceRecalculation?> RecalculateAllAsync(
         bool dryRun,
@@ -315,13 +334,14 @@ public class PropertyComplianceStatusService(
 
     private async Task<Outcome> ApplyAsync(Guid propertyId, CancellationToken cancellationToken)
     {
-        var check = await EvaluateAsync(propertyId, activate: false, cancellationToken);
+        var check = await EvaluateAsync(propertyId, activate: false, host: null, cancellationToken);
         return new Outcome(check.Suspended, check.Reactivated, check.HostNotified, BlockerCodes(check.IncompleteSteps));
     }
 
     private async Task<PropertyComplianceCheck> EvaluateAsync(
         Guid propertyId,
         bool activate,
+        HostActivation? host,
         CancellationToken cancellationToken)
     {
         Property property;
@@ -347,15 +367,37 @@ public class PropertyComplianceStatusService(
             if (!activate && previous == PropertyComplianceStatus.Pending)
                 return new PropertyComplianceCheck(propertyId, previous, previous, [], false);
 
-            incomplete = Incomplete(await GetBlockingStepsAsync(property, cancellationToken));
+            var steps = await GetBlockingStepsAsync(property, cancellationToken);
+            incomplete = Incomplete(steps);
+            var reminders = OpenReminders(steps);
             var now = _clock.GetUtcNow().UtcDateTime;
             var firstCheck = property.ComplianceCheckedAt is null;
+
+            // A host activates with reminders open only once they said they know them (nothing written otherwise: the 409 rolls
+            // the transaction back). With a blocker left the reminders do not matter: the activation is refused anyway.
+            if (host is not null && incomplete.Count == 0 && reminders.Count > 0 && !host.RemindersAcknowledged)
+            {
+                throw new DomainConflictException(
+                    IPropertyComplianceStatusService.RemindersAcknowledgementRequiredCode, "ActivationRemindersAckRequired");
+            }
 
             if (incomplete.Count == 0)
             {
                 // The activation, or the reactivation of a suspended property whose requirements are complete again.
                 if (activate || previous == PropertyComplianceStatus.Suspended)
                 {
+                    // The host's acknowledgement goes to the activity log of the org, in this same transaction: who, when, and
+                    // which reminders were open. Only when the property becomes active by the host's hand.
+                    if (host is not null && reminders.Count > 0 && previous != PropertyComplianceStatus.Active)
+                    {
+                        activityLog.Record(OrgActivity.Of(
+                            property.OrgId,
+                            OrgActivityType.PropertyActivatedWithReminders,
+                            host.UserId,
+                            property.Id.ToString(),
+                            (OrgActivityDetailKeys.Reminders, string.Join('.', reminders))));
+                    }
+
                     property.ComplianceStatus = PropertyComplianceStatus.Active;
                     property.ComplianceCompletedAt = now;
                     property.ComplianceSuspendedAt = null;

@@ -58,7 +58,12 @@ public sealed class GuestSessionService(
         CancellationToken cancellationToken = default) =>
         lookup.LoadAsync(ticket, bookingCode, cancellationToken);
 
-    /// <summary>The configured length of a session in minutes, kept between <see cref="MinSessionMinutes"/> and <see cref="MaxSessionMinutes"/>.</summary>
-    private int SessionMinutes() =>
+    /// <summary>
+    /// The configured length of a session in minutes, kept between <see cref="MinSessionMinutes"/> and <see cref="MaxSessionMinutes"/>.
+    /// The sessions opened for the guest of the mobile app with an account (<see cref="GuestAccountBookingService"/>) last as long.
+    /// </summary>
+    public static int SessionMinutesOf(IConfiguration configuration) =>
         Math.Clamp(configuration.GetValue(SessionMinutesKey, DefaultSessionMinutes), MinSessionMinutes, MaxSessionMinutes);
+
+    private int SessionMinutes() => SessionMinutesOf(configuration);
 }
