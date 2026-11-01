@@ -21,6 +21,9 @@ namespace Casazen.Tests.Integration;
 public class PublicSeoEditorialPagesIntegrationTests : IClassFixture<CasazenWebApplicationFactory>
 {
     private const string TariffUrl = "https://comune.example.test/tariffe.pdf";
+    private const string ComoIstat = "013075";
+    private const string MenaggioIstat = "013145";
+    private const string TaxPageSlug = "tassa-soggiorno/como";
     private static readonly DateTime Refreshed = new(2026, 10, 16, 9, 0, 0, DateTimeKind.Utc);
 
     private readonly CasazenWebApplicationFactory _factory;
@@ -222,28 +225,48 @@ public class PublicSeoEditorialPagesIntegrationTests : IClassFixture<CasazenWebA
         return html[from..(to < 0 ? html.Length : to)];
     }
 
-    /// <summary>The pages and the rates of the tests; each is seeded once, the database is shared by the tests of the class.</summary>
+    /// <summary>
+    /// The pages and the rates of the tests. Every test calls it: the first one seeds, the others find it done (the database is
+    /// shared by the tests of the class).
+    /// </summary>
     private async Task SeedAsync()
     {
-        await SeedRateAsync("Como", "013075", 3.00m, maxNights: 4, minimumAge: 14, category: null, sourceUrl: TariffUrl);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            // The tax page is the last thing seeded: when it is there, an earlier test of the class did it all.
+            if (await db.SeoContentPages.AnyAsync(p => p.Slug == TaxPageSlug))
+                return;
+
+            // On PostgreSQL the migrations have already loaded the official rates of these comuni (Como with the PDF of the comune as
+            // its source): the tests need figures and sources of their own, so those rows give way. The database is the class's own;
+            // with the InMemory fallback there is nothing to remove.
+            db.TouristTaxRates.RemoveRange(await db.TouristTaxRates
+                .Where(t => t.City == "Como" || t.IstatCode == ComoIstat || t.City == "Menaggio" || t.IstatCode == MenaggioIstat)
+                .ToListAsync());
+            await db.SaveChangesAsync();
+        }
+
+        await SeedRateAsync("Como", ComoIstat, 3.00m, maxNights: 4, minimumAge: 14, category: null, sourceUrl: TariffUrl);
         // Menaggio has two rates by category: the pages of a comune like this show no one-line summary.
-        await SeedRateAsync("Menaggio", "013145", 2.00m, maxNights: 5, minimumAge: 12, category: "Case e appartamenti", sourceUrl: null);
-        await SeedRateAsync("Menaggio", "013145", 3.00m, maxNights: 5, minimumAge: 12, category: "Alberghi", sourceUrl: null);
+        await SeedRateAsync("Menaggio", MenaggioIstat, 2.00m, maxNights: 5, minimumAge: 12, category: "Case e appartamenti", sourceUrl: null);
+        await SeedRateAsync("Menaggio", MenaggioIstat, 3.00m, maxNights: 5, minimumAge: 12, category: "Alberghi", sourceUrl: null);
 
         await SeedPageAsync(
-            "013075", "affitti-brevi/lombardia/como", "LOM", SeoPageType.ComplianceGuide,
+            ComoIstat, "affitti-brevi/lombardia/como", "LOM", SeoPageType.ComplianceGuide,
             "Affitti brevi a Como: CIN e tassa di soggiorno", "Guida a Como.", "<h2>CIN</h2><p>Il CIN è obbligatorio.</p>");
         await SeedPageAsync(
             "013250", "affitti-brevi/lombardia/bellagio", "LOM", SeoPageType.ComplianceGuide,
             "Affitti brevi a Bellagio: CIN e tassa di soggiorno", "Guida a Bellagio.", "<h2>CIN</h2><p>Il CIN è obbligatorio.</p>");
         await SeedPageAsync(
-            "013145", "affitti-brevi/lombardia/menaggio", "LOM", SeoPageType.ComplianceGuide,
+            MenaggioIstat, "affitti-brevi/lombardia/menaggio", "LOM", SeoPageType.ComplianceGuide,
             "Affitti brevi a Menaggio: CIN e tassa di soggiorno", "Guida approvata di Menaggio.", "<h2>CIN</h2><p>Il CIN è obbligatorio.</p>");
         await SeedPageAsync(
             "037006", "affitti-brevi/emilia-romagna/bologna", "EMR", SeoPageType.ComplianceGuide,
             "Affitti brevi a Bologna: CIN e tassa di soggiorno", "Guida a Bologna.", "<h2>CIN</h2><p>Il CIN è obbligatorio.</p>");
         await SeedPageAsync(
-            "013075", "tassa-soggiorno/como", "LOM", SeoPageType.TouristTaxCalc,
+            ComoIstat, TaxPageSlug, "LOM", SeoPageType.TouristTaxCalc,
             "Tassa di soggiorno a Como", "Calcolo a Como.",
             "<h2>Imposta di soggiorno a Como</h2><p>Testo.</p><h2>Fonti ufficiali</h2><ul><li>Fonte del comune</li><li></li></ul>");
     }
@@ -289,9 +312,6 @@ public class PublicSeoEditorialPagesIntegrationTests : IClassFixture<CasazenWebA
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        if (await db.TouristTaxRates.AnyAsync(t => t.City == city && t.AccommodationCategory == category))
-            return;
-
         db.TouristTaxRates.Add(new TouristTaxRate
         {
             City = city,
