@@ -2713,6 +2713,15 @@
   <data name="ShowcaseUndoUnavailable" xml:space="preserve">
     <value>The last publication can no longer be undone: too much time has passed or you changed something else meanwhile.</value>
   </data>
+  <data name="ShowcaseAiUnavailable" xml:space="preserve">
+    <value>The AI suggestion is not available right now: use the starting text or write it yourself, and try again later.</value>
+  </data>
+  <data name="ShowcaseSuggestionNotEnoughData" xml:space="preserve">
+    <value>To write a text that is true we need at least a category, a zone or a service: add them to your profile, or write two lines about yourself, and try again.</value>
+  </data>
+  <data name="ShowcaseSuggestionUnusable" xml:space="preserve">
+    <value>I could not write a suitable text: try again, add two lines about yourself or write it yourself.</value>
+  </data>
   <data name="SupplierHoursInvalid" xml:space="preserve">
     <value>The working hours are not valid (fields: {0}). Check the bands: a day has at most 3, they cannot overlap, and each one must end after it starts (in minutes after midnight, from 0 to 1440).</value>
   </data>

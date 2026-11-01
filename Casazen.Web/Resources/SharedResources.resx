@@ -2713,6 +2713,15 @@
   <data name="ShowcaseUndoUnavailable" xml:space="preserve">
     <value>Non si può più annullare l'ultima pubblicazione: è passato troppo tempo o nel frattempo hai cambiato altro.</value>
   </data>
+  <data name="ShowcaseAiUnavailable" xml:space="preserve">
+    <value>Il suggerimento con l'AI non è disponibile in questo momento: usa il testo di partenza o scrivi tu, e riprova più tardi.</value>
+  </data>
+  <data name="ShowcaseSuggestionNotEnoughData" xml:space="preserve">
+    <value>Per scrivere un testo che sia vero servono almeno una categoria, una zona o un servizio: completali nel profilo, oppure scrivi due righe su di te, e riprova.</value>
+  </data>
+  <data name="ShowcaseSuggestionUnusable" xml:space="preserve">
+    <value>Non sono riuscito a scrivere un testo adatto: riprova, aggiungi due righe su di te o scrivilo tu.</value>
+  </data>
   <data name="SupplierHoursInvalid" xml:space="preserve">
     <value>Gli orari non sono validi (campi: {0}). Controlla le fasce: ogni giorno ne ha al massimo 3, non possono sovrapporsi e ognuna deve finire dopo il suo inizio (in minuti dalla mezzanotte, da 0 a 1440).</value>
   </data>

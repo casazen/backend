@@ -598,6 +598,9 @@ public static class ServiceCollectionExtensions
         // The content of the supplier's showcase (SP-13a): the draft, the published version, and the changes between them. Rows keyed
         // by the supplier org, not tenant-filtered; every change under the SupplierShowcaseContent lock.
         services.AddScoped<ISupplierShowcaseContentService, SupplierShowcaseContentService>();
+        // The AI help of the showcase editor: drafts of the sentence, the introduction, "chi siamo" and the tips, written from what is true of the
+        // supplier and checked against the rules of the static starter. Reads the supplier's own data, calls the AI provider, writes nothing.
+        services.AddScoped<IShowcaseTextSuggestionService, ShowcaseTextSuggestionService>();
         // The images of the supplier's showcase (SP-13b): the logo, the cover and the photos of the jobs it uploads from the editor, and the daily
         // cleanup of the ones nothing points to. Rows keyed by the supplier org, not tenant-filtered; every change under the content lock.
         services.AddScoped<ISupplierShowcaseMediaService, SupplierShowcaseMediaService>();

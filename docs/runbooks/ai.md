@@ -9,6 +9,7 @@ Task FD-21 (defects A8-01, A8-07, A8-14, A8-15, A4-26, A8-26, A8-16 AI part; dec
 |---|---|---|
 | SEO page generation (`SeoPageGenerationJob`, `SeoContentRefreshJob`, admin "Genera" `POST /api/admin/seo/generate`, bootstrap) | Public regulatory data only: comune name and ISTAT code, page type, the verified CIN / Alloggiati facts with their official URLs, the tourist tax rates in force with their source URL (versioned prompt `SeoContentPrompt`) | Platform budget; the batch stops at the first page the budget cannot cover. `POST generate` is rate limited per user. The output is checked and stored as a **draft**: it is published only after a person approves it ([`seo-domain.md`](seo-domain.md) section 7, SE-01). |
 | AI supplier match `POST /api/service-requests/match-supplier` (reason sentence, web search, LLM extraction) | Category code, urgency, open requests count; for the web search the property's city and a fixed category term | **Behind `Features:AiSupplierDiscovery`, off (D11).** When on: category allowlist, per-user and per-org rate limit, platform budget. |
+| Texts of the supplier showcase `POST /api/supplier/showcase/texts/suggestion` (sentence, introduction, «chi siamo», tips; editor step «Testi») | Category names, comune names, the names the supplier gave its services, the texts already in its draft and what it typed for the AI, all scrubbed of e-mails, phones and fiscal codes (versioned prompt `ShowcaseTextPrompt`) | No flag: shown only while a provider is configured (`GET …/texts/suggestion/status`). `[AiRateLimit]`, platform budget, answers kept per supplier in the cache. The output is checked (`ShowcaseTextRules`: no guarantee, certification, insurance, years, time, price, rating or unmeasured adjective the supplier did not write) and is a **draft** the supplier chooses and publishes; the guarantee, certifications, people, strengths and questions are never drafted. [`suppliers.md`](suppliers.md) section 33.14. |
 
 Never put in a prompt sent to an external provider: the host's free-text notes, guest data (names, phone numbers,
 documents, dates of stay), supplier or host names, e-mails, addresses of a person. `ISupplierMatchService.MatchAsync`
@@ -88,7 +89,7 @@ UPDATE "PlatformAiBudgets" SET "MonthlyTokenCap" = 1000000, "UpdatedAt" = now();
 
 ## Rate limits of the AI endpoints (A8-01)
 
-`[AiRateLimit]` on `match-supplier` and `POST /api/admin/seo/generate`: a fixed window per user **and** one per
+`[AiRateLimit]` on `match-supplier`, `POST /api/admin/seo/generate` and `POST /api/supplier/showcase/texts/suggestion`: a fixed window per user **and** one per
 organization; over either one the API answers 429 `rate_limited` with `Retry-After`, and the provider is not reached.
 Counters are in memory, per replica.
 
