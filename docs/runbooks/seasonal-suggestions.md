@@ -8,6 +8,10 @@ Real dynamic pricing comes after the MVP.
 Nothing has to be configured on Railway, Vercel or Supabase: no API key, no external service. The migration
 `SeasonalPriceSuggestions` runs with the others on deploy.
 
+Not to be mixed up with «Calcola con l'AI» of the step «Prezzi» of the property wizard (WIZ-AI-PRICE), which does use an AI
+provider to propose the base nightly rate itself: that one is in [`ai.md`](ai.md). These suggestions start from a rate that
+already exists and apply the host's rules to it.
+
 ## Where the code is
 
 | What | Code |
