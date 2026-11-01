@@ -32,9 +32,10 @@ public class SafetyChecklistPostgresIntegrationTests : IClassFixture<CasazenWebA
         var (hostId, propertyId) = await SeedPropertyReadyExceptSafetyAsync();
         using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
 
+        // PO decision 2026-11-01 (option A): the safety checklist is a reminder, so without it the activation asks the acknowledgement.
         var before = await CompleteAsync(client, propertyId);
         Assert.Equal(HttpStatusCode.Conflict, before.StatusCode);
-        Assert.Contains("safety_extinguishers_missing", BlockerCodes(await ReadJsonAsync(before)));
+        Assert.Equal("activation_reminders_ack_required", (await ReadJsonAsync(before)).GetProperty("code").GetString());
 
         var saved = await SaveAsync(client, propertyId, Checklist(
             entrepreneurial: false,
@@ -183,9 +184,6 @@ public class SafetyChecklistPostgresIntegrationTests : IClassFixture<CasazenWebA
 
     private static JsonElement Item(JsonElement checklist, string code) =>
         checklist.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("code").GetString() == code);
-
-    private static List<string?> BlockerCodes(JsonElement problem) =>
-        problem.GetProperty("blockers").EnumerateArray().Select(b => b.GetProperty("code").GetString()).ToList();
 
     private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();
