@@ -155,6 +155,13 @@ public static class RateLimitPolicies
     public const string TenantPrivacy = "TenantPrivacy";
 
     /// <summary>
+    /// The import of a bank statement on the rents (<c>POST api/long-rent/rents/bank-import/preview</c> and <c>…/confirm</c>): partitioned by
+    /// <b>person</b>, since each call reads a file of up to 8 MB and the confirmation declares payments. A landlord imports a statement a
+    /// month and tries a few files in a sitting: thirty calls in ten minutes leave room for that and no more than a script could waste.
+    /// </summary>
+    public const string RentBankImport = "RentBankImport";
+
+    /// <summary>
     /// The autosave of the showcase editor (<c>PATCH api/supplier/showcase/content</c>, SP-13a). A policy of a signed-in endpoint, like
     /// <see cref="GlobalSearch"/>: it is partitioned by <b>person</b>, not by IP, because the editor saves at every pause in typing and the
     /// people of one office share an address. The body is small and bounded; the limit keeps a script from rewriting a draft in a loop.

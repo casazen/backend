@@ -509,6 +509,8 @@ public static class ServiceCollectionExtensions
                 : provider.GetRequiredService<ConcordatoFacileApiClient>());
         // Rent register, agenda and overview of the long-term area (LR-01): read side, scope per property in SQL.
         services.AddScoped<IRentRegisterService, RentRegisterService>();
+        // Import of a bank statement on the rents: credits matched to the installments to collect, confirmed through the offline payment.
+        services.AddScoped<IRentBankImportService, RentBankImportService>();
         services.AddScoped<ILongRentAgendaService, LongRentAgendaService>();
         // Fiscal report per lease for the accountant (LR-11b): the rules of the tax advisory (LT-08) on the leases of the scope.
         services.AddScoped<ILongRentFiscalReportService, LongRentFiscalReportService>();

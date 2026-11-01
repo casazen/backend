@@ -201,6 +201,17 @@ public sealed class LeasePartyPrivacyService(
                 signer.ExternalSignerId = null;
                 signer.UpdatedAt = now;
             }
+
+            // What the import of a bank statement remembers of who paid (hashes of the payer's name and IBAN) is about the tenants: it goes with them.
+            // The rows stay, they only say that a credit paid an installment.
+            var payments = await db.RentBankMovements
+                .Where(m => m.LeaseContractId == lease.Id && (m.PayerIbanHash != null || m.PayerNameHash != null))
+                .ToListAsync(cancellationToken);
+            foreach (var payment in payments)
+            {
+                payment.PayerIbanHash = null;
+                payment.PayerNameHash = null;
+            }
         }
 
         var kept = pending.Count - anonymizedIds.Count;
