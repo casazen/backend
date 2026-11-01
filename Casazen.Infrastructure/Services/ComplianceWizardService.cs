@@ -98,7 +98,11 @@ public class ComplianceWizardService(
                 incompleteCheckIns.Add(ComplianceSummaryItem.ForBooking(
                     ComplianceCockpitAction.CompleteGuestCheckIn,
                     booking.Id,
-                    $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim()));
+                    $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim()) with
+                {
+                    DueAt = ComplianceDeadlines.Of(
+                        ComplianceCockpitAction.CompleteGuestCheckIn, booking.CheckInDate, booking.CheckOutDate, booking.ArrivedAt),
+                });
             }
         }
 
@@ -110,9 +114,12 @@ public class ComplianceWizardService(
                 .InScope(scope)
                 .Where(StayLifecycleRules.CheckOutDue(today))
                 .OrderBy(b => b.CheckOutDate)
-                .Select(b => new { b.Id, GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim() })
+                .Select(b => new { b.Id, b.CheckInDate, b.CheckOutDate, b.ArrivedAt, GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim() })
                 .ToListAsync(cancellationToken))
-            .Select(b => ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.CheckOut, b.Id, b.GuestName))
+            .Select(b => ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.CheckOut, b.Id, b.GuestName) with
+            {
+                DueAt = ComplianceDeadlines.Of(ComplianceCockpitAction.CheckOut, b.CheckInDate, b.CheckOutDate, b.ArrivedAt),
+            })
             .ToList();
 
         var (alloggiatiFailures, alloggiatiManualRequired) = await GetAlloggiatiSectionsAsync(scope, today, cancellationToken);
@@ -198,6 +205,8 @@ public class ComplianceWizardService(
                 b.Id,
                 b.GuestId,
                 b.CheckInDate,
+                b.CheckOutDate,
+                b.ArrivedAt,
                 GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim(),
             })
             .ToListAsync(cancellationToken);
@@ -221,12 +230,20 @@ public class ComplianceWizardService(
             if (AlloggiatiStatusRules.IsFailure(status))
             {
                 failures.Add((stay.CheckInDate, ComplianceSummaryItem.ForBooking(
-                    ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.Id, stay.GuestName)));
+                    ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.Id, stay.GuestName) with
+                {
+                    DueAt = ComplianceDeadlines.Of(
+                        ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.CheckInDate, stay.CheckOutDate, stay.ArrivedAt),
+                }));
             }
             else if (status == AlloggiatiWebStatus.DaInviareManualmente)
             {
                 manual.Add((stay.CheckInDate, ComplianceSummaryItem.ForBooking(
-                    ComplianceCockpitAction.SendAlloggiati, stay.Id, stay.GuestName)));
+                    ComplianceCockpitAction.SendAlloggiati, stay.Id, stay.GuestName) with
+                {
+                    DueAt = ComplianceDeadlines.Of(
+                        ComplianceCockpitAction.SendAlloggiati, stay.CheckInDate, stay.CheckOutDate, stay.ArrivedAt),
+                }));
             }
         }
 
