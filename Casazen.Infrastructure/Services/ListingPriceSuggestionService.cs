@@ -106,7 +106,12 @@ public class ListingPriceSuggestionService(
             var accepted = raw is null ? null : PriceSuggestionRules.Accept(raw, market);
             if (accepted is null)
             {
-                logger.LogWarning("The AI answer to the price of a property is not a believable price (parsed: {Parsed})", raw is not null);
+                // The prompt carries no personal data, so neither can the answer: the start of it says what the model sent back (a reasoning
+                // that took the whole room, a text instead of an object...) and is all that tells a wrong model from a wrong prompt.
+                logger.LogWarning(
+                    "The AI answer to the price of a property is not a believable price (parsed: {Parsed}, answer: {Snippet})",
+                    raw is not null,
+                    Snippet(ai.Content));
                 return (null, PriceSuggestionFallbackReasons.AiInvalidAnswer);
             }
 
@@ -169,6 +174,13 @@ public class ListingPriceSuggestionService(
         Math.Abs(row.Bedrooms - property.Bedrooms) <= PriceSuggestionLimits.SimilarBedroomsDelta
         && (property.MaxGuests <= 0 || row.MaxGuests <= 0
             || Math.Abs(row.MaxGuests - property.MaxGuests) <= PriceSuggestionLimits.SimilarGuestsDelta);
+
+    /// <summary>The first 300 characters of an answer, on one line, for the log.</summary>
+    private static string Snippet(string? content)
+    {
+        var line = string.Join(' ', (content ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return line.Length <= 300 ? line : line[..300] + "…";
+    }
 
     /// <summary>The prompt holds every input (and the language), so its hash is the key of the answer: the same data, the same answer.</summary>
     private static string CacheKey(string prompt)
