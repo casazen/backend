@@ -427,6 +427,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyPhotoAltService, PropertyPhotoAltService>();
         services.AddScoped<IPropertyFloorPlanService, PropertyFloorPlanService>();
         services.AddScoped<IPropertyPoiService, PropertyPoiService>();
+        // «Suggerisci un testo» of the wizard: the AI writes the listing from the photos, the comune and the data (api/properties/{id}/listing-text).
+        services.AddScoped<IPropertyListingTextService, PropertyListingTextService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
         services.AddScoped<IApeComplianceService, ApeComplianceService>();
         // The code of an APE the file does not show legibly, from the public CENED register of Lombardy (open data, no key).

@@ -9,10 +9,17 @@ Task FD-21 (defects A8-01, A8-07, A8-14, A8-15, A4-26, A8-26, A8-16 AI part; dec
 |---|---|---|
 | SEO page generation (`SeoPageGenerationJob`, `SeoContentRefreshJob`, admin "Genera" `POST /api/admin/seo/generate`, bootstrap) | Public regulatory data only: comune name and ISTAT code, page type, the verified CIN / Alloggiati facts with their official URLs, the tourist tax rates in force with their source URL (versioned prompt `SeoContentPrompt`) | Platform budget; the batch stops at the first page the budget cannot cover. `POST generate` is rate limited per user. The output is checked and stored as a **draft**: it is published only after a person approves it ([`seo-domain.md`](seo-domain.md) section 7, SE-01). |
 | AI supplier match `POST /api/service-requests/match-supplier` (reason sentence, web search, LLM extraction) | Category code, urgency, open requests count; for the web search the property's city and a fixed category term | **Behind `Features:AiSupplierDiscovery`, off (D11).** When on: category allowlist, per-user and per-org rate limit, platform budget. |
+| Listing text of the wizard «Aggiungi immobile» (`POST /api/properties/{id}/listing-text/suggestion`, button «Suggerisci con l'AI», `PropertyListingTextService`, versioned prompt `ListingTextPrompt`) | The kind of place, guests, rooms, beds, bathrooms, area, amenities and house rules of the property (never its name, address, unit or anything about the host); the comune, its province and region; the public data of up to 5 listings published on CasaZen in the same comune (headline, kind, spaces, amenities); up to 6 photos of the gallery, reduced by the browser to 1,024 px. The photos go only to providers that read images (OpenAI, Anthropic, compatible services); DeepSeek gets the text alone, and a compatible service that refuses the images gets the call again without them. | `[AiRateLimit]` per user and per org, platform budget (each image reserved as 1,400 tokens), cache per org (`listing-text:<hash of prompt and photos>`; «Rigenera» skips it). The answer is a **suggestion** the host reads and edits before saving it with the step: nothing is published by the AI. Without an active provider, with the budget used up or when the provider fails, the answer is `aiUsed: false` with the `reason` and the wizard composes the text from the data as before. |
 
 Never put in a prompt sent to an external provider: the host's free-text notes, guest data (names, phone numbers,
 documents, dates of stay), supplier or host names, e-mails, addresses of a person. `ISupplierMatchService.MatchAsync`
-does not even take the notes, and `match-supplier` ignores a `notes` field in the body.
+does not even take the notes, and `match-supplier` ignores a `notes` field in the body. The photos of a listing are
+sent only by the listing text above: they are the pictures the host publishes on the site, reduced, and the prompt asks
+the model not to describe people, documents or number plates.
+
+**Cost of a listing text.** With 6 photos a suggestion uses about 8,000-10,000 tokens (the photos are most of it):
+with the default cap of 500,000 tokens a month that is about 50 suggestions for the whole platform. Raise
+`MonthlyTokenCap` (section "Platform AI budget") before the wizard is used by many hosts.
 
 ## Configuration (Railway `Ai__*`)
 
@@ -62,8 +69,10 @@ the API, never by a constant:
 | Admin SEO review dialog | The revision is `Generated` | Next to the text, worded as a draft (pending) or as the approved page (published). Nothing for a "not generated" state. |
 | `POST /api/service-requests/match-supplier` (flag `AiSupplierDiscovery`, off) | `reasonGeneratedByAi` on the candidate; `source = ai_web_search` on an external suggestion | The API says it; **no screen of the web app or of the app uses this endpoint today**, so no notice is mounted. Whoever builds that screen shows `AiContentNotice kind="supplierReason"` when the flag is true. With the flag off the endpoint answers 404 and the reason is static. |
 
-The property page of the public booking site no longer mounts the component with a constant `false`: no property
-description is AI-generated.
+The property page of the public booking site no longer mounts the component with a constant `false`. A property
+description may start as a suggestion of the AI («Suggerisci con l'AI» in the wizard, which says so to the host: «Testo
+scritto dall'AI in base a …, rileggilo»), but it is the host's text: they review it, change it and save it, so the
+page shows no notice.
 
 ## Platform AI budget (A8-01, A8-07)
 
