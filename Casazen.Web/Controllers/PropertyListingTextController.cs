@@ -27,6 +27,10 @@ public class PropertyListingTextController(
     IAuthorizationService hostAuthorization,
     ILogger<PropertyListingTextController> logger) : ControllerBase
 {
+    /// <summary>Six reduced photos in base64 and the JSON around them (<see cref="AiPhotoLimits.RequestOverheadBytes"/>).</summary>
+    private const long MaxRequestBytes =
+        ListingTextLimits.MaxPhotos * (long)AiPhotoLimits.MaxPhotoBytes * 4 / 3 + AiPhotoLimits.RequestOverheadBytes;
+
     /// <summary>
     /// A headline (at most 60 characters) and a description (at most 2,000, in paragraphs) for the listing, with what they were written from
     /// (<c>basedOn</c>: the photos the AI read, the comune, the listings of the same comune compared, the amenities). The body carries up to
@@ -38,11 +42,11 @@ public class PropertyListingTextController(
     /// <response code="400"><c>validation_error</c>: the body is not a list of photos.</response>
     /// <response code="403">The caller may not change this property.</response>
     /// <response code="404">No property with this id in the caller's org.</response>
-    /// <response code="422"><c>listing_text_photos_invalid</c>: more than six photos, or one that is not a reduced JPEG, PNG or WebP image.</response>
+    /// <response code="422"><c>ai_photos_invalid</c>: more than six photos, or one that is not a reduced JPEG, PNG or WebP image.</response>
     /// <response code="429"><c>rate_limited</c>: too many AI requests of the user or of the org in the last hour.</response>
     [HttpPost("suggestion")]
     [AiRateLimit]
-    [RequestSizeLimit(ListingTextLimits.MaxRequestBytes)]
+    [RequestSizeLimit(MaxRequestBytes)]
     [ProducesResponseType(typeof(ListingTextSuggestion), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -58,7 +62,7 @@ public class PropertyListingTextController(
         if (denied is not null)
             return denied;
 
-        var photos = ListingTextPhotos.Decode(request.Photos);
+        var photos = AiPhotos.Decode(request.Photos, ListingTextLimits.MaxPhotos);
         var suggestion = await listingText.SuggestAsync(property!, photos, request.Regenerate, cancellationToken);
         return Ok(suggestion);
     }
@@ -91,7 +95,7 @@ public sealed class ListingTextSuggestionRequest
     /// Up to six photos of the gallery, cover first, reduced by the web app to about 1,024 pixels: base64 of a JPEG, PNG or WebP image (a
     /// <c>data:</c> prefix is accepted). Empty: the AI writes from the data alone.
     /// </summary>
-    [MaxLength(ListingTextLimits.MaxPhotos, ErrorMessage = "ListingTextPhotosInvalid")]
+    [MaxLength(ListingTextLimits.MaxPhotos, ErrorMessage = "AiPhotosInvalid")]
     public List<string> Photos { get; set; } = [];
 
     /// <summary>True for «Rigenera»: a new text even when one was written for the same data and photos a moment ago.</summary>

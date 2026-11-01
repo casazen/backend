@@ -5,8 +5,10 @@ using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
 
-public class ListingTextPhotosTests
+public class AiPhotosTests
 {
+    private const int MaxPhotos = 6;
+
     private static readonly byte[] Jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01];
 
     [Fact]
@@ -14,7 +16,7 @@ public class ListingTextPhotosTests
     {
         var base64 = Convert.ToBase64String(Jpeg);
 
-        var images = ListingTextPhotos.Decode([$"data:image/png;base64,{base64}", base64]);
+        var images = AiPhotos.Decode([$"data:image/png;base64,{base64}", base64], MaxPhotos);
 
         Assert.Equal(2, images.Count);
         Assert.All(images, image => Assert.Equal("image/jpeg", image.MediaType));
@@ -24,17 +26,16 @@ public class ListingTextPhotosTests
     [Fact]
     public void Decode_NoPhoto_IsEmpty()
     {
-        Assert.Empty(ListingTextPhotos.Decode([]));
+        Assert.Empty(AiPhotos.Decode([], MaxPhotos));
     }
 
     [Fact]
-    public void Decode_TooManyPhotos_IsRefused()
+    public void Decode_MorePhotosThanTheEndpointTakes_IsRefused()
     {
         var photo = Convert.ToBase64String(Jpeg);
-        var photos = Enumerable.Repeat(photo, ListingTextLimits.MaxPhotos + 1).ToList();
 
-        var error = Assert.Throws<DomainRuleException>(() => ListingTextPhotos.Decode(photos));
-        Assert.Equal(ListingTextLimits.PhotosInvalidCode, error.Code);
+        var error = Assert.Throws<DomainRuleException>(() => AiPhotos.Decode([photo, photo, photo], maxPhotos: 2));
+        Assert.Equal(AiPhotoLimits.InvalidCode, error.Code);
     }
 
     [Theory]
@@ -43,17 +44,17 @@ public class ListingTextPhotosTests
     [InlineData("SGVsbG8sIHdvcmxkIQ==")]
     public void Decode_NotAnImage_IsRefused(string photo)
     {
-        var error = Assert.Throws<DomainRuleException>(() => ListingTextPhotos.Decode([photo]));
-        Assert.Equal(ListingTextLimits.PhotosInvalidCode, error.Code);
+        var error = Assert.Throws<DomainRuleException>(() => AiPhotos.Decode([photo], MaxPhotos));
+        Assert.Equal(AiPhotoLimits.InvalidCode, error.Code);
     }
 
     [Fact]
     public void Decode_LargerThanTheLimit_IsRefused()
     {
-        var large = new byte[ListingTextLimits.MaxPhotoBytes + 1];
+        var large = new byte[AiPhotoLimits.MaxPhotoBytes + 1];
         Jpeg.CopyTo(large, 0);
 
-        var error = Assert.Throws<DomainRuleException>(() => ListingTextPhotos.Decode([Convert.ToBase64String(large)]));
-        Assert.Equal(ListingTextLimits.PhotosInvalidCode, error.Code);
+        var error = Assert.Throws<DomainRuleException>(() => AiPhotos.Decode([Convert.ToBase64String(large)], MaxPhotos));
+        Assert.Equal(AiPhotoLimits.InvalidCode, error.Code);
     }
 }

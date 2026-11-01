@@ -2227,8 +2227,8 @@
   <data name="PropertyPhotoUrlRequired" xml:space="preserve">
     <value>Specify the photo.</value>
   </data>
-  <data name="ListingTextPhotosInvalid" xml:space="preserve">
-    <value>The photos sent for the text suggestion are not valid (too many, too large or not JPEG, PNG or WebP). Reload the page and try again.</value>
+  <data name="AiPhotosInvalid" xml:space="preserve">
+    <value>The photos sent to the AI are not valid (too many, too large or not JPEG, PNG or WebP). Reload the page and try again.</value>
   </data>
   <data name="PropertyPhotoUrlTooLong" xml:space="preserve">
     <value>The photo address is too long.</value>

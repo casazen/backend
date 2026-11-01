@@ -3,50 +3,19 @@ using Casazen.Core.Entities;
 namespace Casazen.Core.Services;
 
 /// <summary>
-/// Limits and codes of «Suggerisci un testo» of the wizard «Aggiungi immobile» (the headline and the description of a listing written by the
-/// AI from the photos, the comune and the data of the property).
+/// Limits of «Suggerisci un testo» of the wizard «Aggiungi immobile» (the headline and the description of a listing written by the AI from the
+/// photos, the comune and the data of the property). The photos follow <see cref="AiPhotoLimits"/>.
 /// </summary>
 public static class ListingTextLimits
 {
     /// <summary>Photos the AI looks at: the cover and the next ones of the gallery, in its order.</summary>
     public const int MaxPhotos = 6;
 
-    /// <summary>
-    /// Largest photo accepted, in bytes. The web app sends the photos reduced to about 1,024 pixels (150 to 300 KB): a vision model reads no
-    /// more than that, and the request stays light.
-    /// </summary>
-    public const int MaxPhotoBytes = 1_500_000;
-
-    /// <summary>Upper bound of one request: the photos in base64 (4/3 of their size) and the JSON around them.</summary>
-    public const long MaxRequestBytes = (long)MaxPhotos * MaxPhotoBytes * 4 / 3 + 64 * 1024;
-
     /// <summary>The headline: the limit of the field of the listing.</summary>
     public const int TitleMaxLength = PropertyHouseRules.ListingTitleMaxLength;
 
     /// <summary>The description: the limit of the field of the property.</summary>
     public const int DescriptionMaxLength = 2000;
-
-    /// <summary>
-    /// 422: more than <see cref="MaxPhotos"/> photos, a photo that is not a JPEG, PNG or WebP image (its content is checked, not only the
-    /// declared type), an empty one or one larger than <see cref="MaxPhotoBytes"/>.
-    /// </summary>
-    public const string PhotosInvalidCode = "listing_text_photos_invalid";
-}
-
-/// <summary>Why the suggestion is not the AI's: the client then composes the text from the data the host entered, as before.</summary>
-public static class ListingTextFallbackReasons
-{
-    /// <summary>No external AI provider is active (<c>Ai:Provider</c> is the stub, or there is no key).</summary>
-    public const string AiNotConfigured = "ai_not_configured";
-
-    /// <summary>The platform's monthly AI budget cannot cover the call.</summary>
-    public const string AiBudgetExhausted = "ai_budget_exhausted";
-
-    /// <summary>The provider did not answer (error, timeout).</summary>
-    public const string AiUnavailable = "ai_unavailable";
-
-    /// <summary>The provider answered with something that is not a headline and a description.</summary>
-    public const string AiInvalidAnswer = "ai_invalid_answer";
 }
 
 /// <summary>What a suggestion was written from, for the line the host reads under it («Basato su: 6 foto, Como, 3 annunci simili»).</summary>
@@ -60,7 +29,7 @@ public sealed record ListingTextBasis(int Photos, string? Comune, string? Provin
 
 /// <summary>A headline and a description for the listing, or why there is none.</summary>
 /// <param name="AiUsed">True when the AI wrote <paramref name="Title"/> and <paramref name="Description"/>.</param>
-/// <param name="Reason">One of <see cref="ListingTextFallbackReasons"/> when <paramref name="AiUsed"/> is false.</param>
+/// <param name="Reason">One of <see cref="AiSuggestionFallbackReasons"/> when <paramref name="AiUsed"/> is false.</param>
 /// <param name="Title">At most <see cref="ListingTextLimits.TitleMaxLength"/> characters; <c>null</c> without the AI.</param>
 /// <param name="Description">At most <see cref="ListingTextLimits.DescriptionMaxLength"/> characters, paragraphs separated by a blank line.</param>
 /// <param name="BasedOn">What the text was (or would have been) written from.</param>

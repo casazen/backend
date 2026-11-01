@@ -108,7 +108,7 @@ public class PropertyListingTextServiceTests
         await service.SuggestAsync(property, [Photo], regenerate: false);
 
         Assert.False(first.AiUsed);
-        Assert.Equal(ListingTextFallbackReasons.AiNotConfigured, first.Reason);
+        Assert.Equal(AiSuggestionFallbackReasons.AiNotConfigured, first.Reason);
         Assert.Null(first.Title);
         Assert.Equal(0, first.BasedOn.Photos);
         _provider.Verify(
@@ -128,7 +128,7 @@ public class PropertyListingTextServiceTests
         var suggestion = await Service(db).SuggestAsync(property, [], regenerate: false);
 
         Assert.False(suggestion.AiUsed);
-        Assert.Equal(ListingTextFallbackReasons.AiBudgetExhausted, suggestion.Reason);
+        Assert.Equal(AiSuggestionFallbackReasons.AiBudgetExhausted, suggestion.Reason);
     }
 
     [Fact]
@@ -142,7 +142,7 @@ public class PropertyListingTextServiceTests
 
         var suggestion = await Service(db).SuggestAsync(property, [], regenerate: false);
 
-        Assert.Equal(ListingTextFallbackReasons.AiUnavailable, suggestion.Reason);
+        Assert.Equal(AiSuggestionFallbackReasons.AiUnavailable, suggestion.Reason);
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public class PropertyListingTextServiceTests
 
         var suggestion = await Service(db).SuggestAsync(property, [], regenerate: false);
 
-        Assert.Equal(ListingTextFallbackReasons.AiInvalidAnswer, suggestion.Reason);
+        Assert.Equal(AiSuggestionFallbackReasons.AiInvalidAnswer, suggestion.Reason);
     }
 
     private PropertyListingTextService Service(AppDbContext db)

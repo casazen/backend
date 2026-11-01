@@ -79,28 +79,28 @@ public sealed class PropertyListingTextService(
         catch (AiBudgetExceededException)
         {
             logger.LogWarning("Listing text of property {PropertyId}: the platform AI budget is used up", property.Id);
-            return Fallback(ListingTextFallbackReasons.AiBudgetExhausted, facts);
+            return Fallback(AiSuggestionFallbackReasons.AiBudgetExhausted, facts);
         }
         catch (HttpRequestException ex)
         {
             logger.LogWarning(ex, "Listing text of property {PropertyId}: the AI provider failed ({Status})", property.Id, (int?)ex.StatusCode);
-            return Fallback(ListingTextFallbackReasons.AiUnavailable, facts);
+            return Fallback(AiSuggestionFallbackReasons.AiUnavailable, facts);
         }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             logger.LogWarning(ex, "Listing text of property {PropertyId}: the AI provider did not answer in time", property.Id);
-            return Fallback(ListingTextFallbackReasons.AiUnavailable, facts);
+            return Fallback(AiSuggestionFallbackReasons.AiUnavailable, facts);
         }
 
         if (!result.ProviderConfigured)
-            return Fallback(ListingTextFallbackReasons.AiNotConfigured, facts);
+            return Fallback(AiSuggestionFallbackReasons.AiNotConfigured, facts);
 
         if (!ListingTextPrompt.TryParseAnswer(result.Content, out var title, out var description))
         {
             logger.LogWarning(
                 "Listing text of property {PropertyId}: the AI answer is not a headline and a description ({Length} characters)",
                 property.Id, result.Content?.Length ?? 0);
-            return Fallback(ListingTextFallbackReasons.AiInvalidAnswer, facts);
+            return Fallback(AiSuggestionFallbackReasons.AiInvalidAnswer, facts);
         }
 
         var suggestion = new ListingTextSuggestion(true, null, title, description, Basis(facts, result.ImagesRead));

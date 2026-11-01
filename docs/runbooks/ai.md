@@ -21,6 +21,13 @@ the model not to describe people, documents or number plates.
 with the default cap of 500,000 tokens a month that is about 50 suggestions for the whole platform. Raise
 `MonthlyTokenCap` (section "Platform AI budget") before the wizard is used by many hosts.
 
+**Reusing it.** A feature that asks the AI about photos, or for a text a person reviews, uses the same pieces:
+`IAiProvider.GenerateAsync(AiRequest…)` (system prompt, temperature, completion limit and images, with the budget, the
+PII scrubbing of the texts and the retry without images included), `AiPhotos.Decode(photos, maxPhotos)` with
+`AiPhotoLimits` for the photos the browser sends (the web app reduces them with `reduce-photo.ts`),
+`AiSuggestionFallbackReasons` for the `aiUsed: false` answers, `[AiRateLimit]` on the endpoint, and a cache key made of
+the prompt version, the texts and the hashes of the photos in the org's scope. Add its row to the table above.
+
 ## Configuration (Railway `Ai__*`)
 
 | Variable | Default | Meaning |
