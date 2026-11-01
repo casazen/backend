@@ -65,3 +65,45 @@ public class ConcordatoFacileFeatureFlagTests(CasazenWebApplicationFactory facto
         Assert.Empty(missing);
     }
 }
+
+/// <summary>
+/// The default integration host with <c>Features:ConcordatoFacile=true</c>: a signed-in user reaches the service through the endpoints. The
+/// controller takes the link service in its constructor and that one refuses to be built without the link secret (every real environment
+/// has it), so the host gets one, as <see cref="CfSimulatorFactory"/> does.
+/// </summary>
+public sealed class ConcordatoFacileEnabledFactory : CasazenWebApplicationFactory
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Features:ConcordatoFacile"] = "true",
+                ["ConcordatoFacile:LinkSecret"] = "cf-checkout-body-test-link-secret-0123456789abcdef",
+            }));
+    }
+}
+
+/// <summary>
+/// The checkout takes its input from the route and the token, so the frontend may post it with no body and no Content-Type. The action
+/// bound an empty <c>[FromBody]</c> class and the pipeline answered 415 before the action ran (the first payment on the test environment
+/// failed this way). The other tests of the module send <c>{}</c> with a JSON Content-Type, which is why none of them saw it.
+/// </summary>
+public class ConcordatoFacileCheckoutRequestTests(ConcordatoFacileEnabledFactory factory) : IClassFixture<ConcordatoFacileEnabledFactory>
+{
+    [Fact]
+    public async Task Checkout_PostWithoutBodyAndContentType_ReachesTheService_AndNeverAnswers415()
+    {
+        var userId = $"auth0|cf-checkout-{Guid.NewGuid():N}";
+        await factory.SeedOrgForOwnerAsync(userId);
+        using var client = factory.CreateAuthenticatedClient(userId, "LongTermLandlord");
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/leases/{Guid.NewGuid()}/concordatofacile/checkout");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Null(request.Content);
+        Assert.NotEqual(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+        await LeaseDraftHttp.ExpectProblemAsync(response, HttpStatusCode.NotFound, "lease_not_found");
+    }
+}
