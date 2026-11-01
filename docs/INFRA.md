@@ -365,7 +365,7 @@ Railway → Project → **Environments** → Create:
 
 **Wait for CI** may stay on: it waits for `CI/CD Pipeline` (`Build & Test` only). `verify-test` / `verify-prod` live in `verify-railway-deploy.yml` and start after that suite is green, so they no longer deadlock the native deploy. Watch paths are dashboard-only (no `railway.toml` in this repo). Pull requests stay gated by `Build & Test`.
 
-**Healthcheck path (recommended):** Railway → service → Settings → Deploy → Healthcheck Path = `/api/health/ready`: a new deployment receives traffic only when its database and Hangfire are ready. Details: [`runbooks/health-checks.md`](runbooks/health-checks.md).
+**Deploy healthcheck (required, both environments):** Railway → service → Settings → Deploy → Healthcheck Path = `/api/health/live`, Healthcheck Timeout = `300`: a new deployment receives traffic only once it answers, so one that fails at startup never replaces the running one (production was down about five minutes on 2026-11-01 without it). Dashboard only: Railway stops reading `railway.json` / `railway.toml` on 2026-12-01. Details: [`runbooks/health-checks.md`](runbooks/health-checks.md#railway-deploy-healthcheck).
 
 ### Environment variables per Railway environment
 
@@ -457,7 +457,7 @@ The complete list of the three repositories (backend, frontend, mobile), checked
 blockers, the effect of each missing variable and the example files, is [`runbooks/deploy-checklist.md`](runbooks/deploy-checklist.md).
 The table below is the short backend version.
 
-The production environment runs with `ASPNETCORE_ENVIRONMENT=Production`, the test environment with `ASPNETCORE_ENVIRONMENT=Staging` (see `secrets/railway.test.variables.example.json`; switch described in [`runbooks/stripe.md`](runbooks/stripe.md#switching-the-railway-test-environment-to-staging-one-time-product-owner)). Every check below runs outside Development and Testing, so everything applies to **test and production**, except the rows that name Production. "Startup fails" = the new container stops with the list of problems and Railway keeps the previous deployment; "ready …" = what `GET /api/health/ready` reports ([`runbooks/health-checks.md`](runbooks/health-checks.md)).
+The production environment runs with `ASPNETCORE_ENVIRONMENT=Production`, the test environment with `ASPNETCORE_ENVIRONMENT=Staging` (see `secrets/railway.test.variables.example.json`; switch described in [`runbooks/stripe.md`](runbooks/stripe.md#switching-the-railway-test-environment-to-staging-one-time-product-owner)). Every check below runs outside Development and Testing, so everything applies to **test and production**, except the rows that name Production. "Startup fails" = the new container stops with the list of problems and Railway keeps the previous deployment (thanks to the deploy healthcheck of the Railway setup above); "ready …" = what `GET /api/health/ready` reports ([`runbooks/health-checks.md`](runbooks/health-checks.md)).
 
 | Variable | Required | If missing | Runbook |
 |---|---|---|---|

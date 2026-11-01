@@ -10,7 +10,7 @@ All anonymous, no rate limit, `Cache-Control: no-store`.
 
 | Endpoint | Checks | HTTP |
 |---|---|---|
-| `GET /api/health/live` | none: the process answers | always 200 |
+| `GET /api/health/live` | none: the process answers (the [Railway deploy healthcheck](#railway-deploy-healthcheck)) | always 200 |
 | `GET /api/health/ready` | `database`, `hangfire`, `email`, `storage`, `stripe`, `einvoicing`, `auth0`, `vercel`, `api-url`, `legal`, `comuni` | 200 when `healthy` or `degraded`, **503** when `unhealthy` |
 | `GET /api/health` | same as ready | same as ready |
 
@@ -60,8 +60,10 @@ check presence and format only. Placeholders committed in `appsettings.json`, `s
 ## Startup validation
 
 Outside `Development` and `Testing` (so on both Railway environments: `Production` on production, `Staging` on test, PL-11)
-the app **does not start** without the settings it cannot work without. Railway then keeps the previous deployment
-running and the deploy log shows the list of problems.
+the app **does not start** without the settings it cannot work without, and the deploy log shows the list of problems.
+Railway keeps the previous deployment running **only because of the deploy healthcheck** ([next section](#railway-deploy-healthcheck)):
+without it the new deployment replaces the running one as soon as its container is up, and the API is down until a fixed
+deployment.
 
 | Setting | Validated by | Error in the deploy log |
 |---|---|---|
@@ -73,6 +75,51 @@ running and the deploy log shows the list of problems.
 
 Stripe and the Auth0 Management client are **not** validated at startup: they are optional and reported as `degraded`.
 The full list of variables is in [`deploy-checklist.md`](deploy-checklist.md) (and the short version in [`docs/INFRA.md`](../INFRA.md#variables-required-in-production)).
+
+## Railway deploy healthcheck
+
+Railway makes a new deployment active only after its healthcheck path answers 2xx; when no answer comes within the
+timeout, the deployment is marked **Failed** and the previous one keeps serving. **Without a healthcheck path Railway makes
+the new deployment active once its container is running and removes the previous one.** That is what happened on
+2026-11-01: a production variable change started a container that stopped 6 s later (`OptionsValidationException`, then
+ten restarts), the previous deployment was removed in the same second, and the API answered 502 for about five minutes.
+
+Set it on **both** environments, test first: Railway → project `casazen-api` → service `backend` → environment →
+**Settings → Deploy**:
+
+| Setting | Value |
+|---|---|
+| Healthcheck Path | `/api/health/live` |
+| Healthcheck Timeout | `300` (seconds) |
+
+It applies from the next deployment of that environment, the redeploy started by a variable change included.
+
+- **`live`, not `ready`.** The gate answers "did this build start". Kestrel listens only after `db.Database.Migrate()`,
+  the `ValidateOnStart` validators and the encryption of legacy columns (`Program.cs`), so the first 200 of `live` already
+  means: configuration valid, migrations applied, requests served. What `ready` adds are dependency checks whose 503 a
+  new build cannot fix and the running deployment shares (database or Hangfire storage unreachable): a Supabase hiccup
+  during a deploy would fail a good build. `verify-deploy.sh` keeps checking `ready` after the switch ([CI](#ci-verify-test--verify-prod)).
+- **300 s.** Container start → `CasaZen Backend Started Successfully!` on 12 starts read from the Railway logs
+  (2026-10-25 → 2026-11-01): 3-8 s, once 16 s; the ones that applied one or two migrations 5-7.5 s. A full release of
+  `develop` to `main` would apply the 24 migrations `main` does not have yet in one start (v2.1.0 applied 10). 300 s, the
+  Railway default, is more than ten times that. A longer window only delays the Failed mark of a broken deployment (the
+  previous one keeps serving); a window shorter than the migrations would stop the new container halfway through them.
+- **Port and host.** Railway probes the port in `PORT`, with the host `healthcheck.railway.app`. Both environments set
+  `PORT=8080` and `ASPNETCORE_URLS=http://+:8080`: keep them on the same port. The app has no host filtering
+  (`AllowedHosts`) and no HTTPS redirection; whoever adds either must let that host through.
+- **Dashboard, not `railway.json`.** Railway's Config as Code (`railway.json` / `railway.toml`) is deprecated: the files
+  stop being read on 2026-12-01, and a file would reach production only with the next release to `main`. Its successor,
+  Infrastructure as Code (`.railway/railway.ts`, here `service("backend", { healthcheck: "/api/health/live",
+  healthcheckTimeout: 300 })`), is not read at deploy: the Railway CLI applies it (`railway config plan` / `apply`).
+  Until the project adopts it, these settings live only in the dashboard, like the watch paths.
+- **Builder.** The service settings say Railpack, but Railway always builds the `Dockerfile` it finds at the root: the
+  build log starts with `load build definition from Dockerfile`. Nothing to change; a config file that set a builder
+  would override this.
+
+**Check after setting it:** in the next deployment's logs (end of the build log) Railway prints `Starting Healthcheck`,
+`Path: /api/health/live` and `Healthcheck succeeded!`, and only then marks the deployment Active. A deployment that stops
+at startup now ends **Failed** (`Healthcheck failed!`) with the error in its deploy log, while `GET /api/health/live`
+keeps answering with the `commit` of the previous deployment.
 
 ## Commit of the running build
 
@@ -112,15 +159,15 @@ Product owner setup (once):
    suite (`Build & Test` only). Deploy verification is `verify-railway-deploy.yml` and starts after that suite is
    green, so the two no longer wait for each other. Watch paths are set only in the Railway dashboard (there is no
    `railway.toml` in this repo). Pull requests stay gated by `Build & Test`.
-3. Optional: Railway → service → Settings → Deploy → **Healthcheck Path** = `/api/health/ready`. Railway then switches
-   traffic to a new deployment only after it answers 200, so a deployment with the database unreachable or migrations
-   missing never replaces the running one. Use `/api/health/live` instead if a degraded-but-running container must
-   always replace the old one (with `ready`, only `unhealthy` blocks the switch; `degraded` answers 200).
+3. Required: Railway → service → each environment → Settings → Deploy → **Healthcheck Path** = `/api/health/live`,
+   **Healthcheck Timeout** = `300` ([Railway deploy healthcheck](#railway-deploy-healthcheck)). Without it a deployment
+   that fails at startup replaces the running one.
 
 ## Troubleshooting
 
 | Symptom | Meaning / action |
 |---|---|
+| Railway: deployment **Failed**, the build log ends with `Healthcheck failed!` | The new container never answered `/api/health/live` within the timeout: it stopped at startup (its deploy log shows the validation error or the exception, [Startup validation](#startup-validation)) or was still applying migrations. The previous deployment keeps serving. Fix the variable or the code and redeploy; for a release with unusually long migrations raise the Healthcheck Timeout first. |
 | CI: `API URL not configured` | Set the GitHub variable (setup step 1). |
 | CI: `does not expose the commit of the running build` | The deployment still runs a build older than FD-12 (first deploy: wait, then re-run the job), or it was not triggered from GitHub (no `RAILWAY_GIT_COMMIT_SHA`). |
 | CI: `Railway still serves commit X instead of Y` | The new deployment failed (Railway → Deployments → build/deploy logs: startup validation errors are listed there), was skipped (watch paths in the Railway dashboard, or Wait for CI still waiting on a red suite other than `Build & Test`), or the build took longer than 20 minutes. |
