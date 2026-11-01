@@ -351,6 +351,7 @@ public class CinDeadlineAlertsPostgresTests : IClassFixture<CasazenWebApplicatio
                 Emails,
                 links,
                 Options.Create(new ComplianceOptions()),
+                new ActivityLog(db),
                 NullLogger<PropertyComplianceStatusService>.Instance,
                 Clock);
             var service = new CinDeadlineAlertService(

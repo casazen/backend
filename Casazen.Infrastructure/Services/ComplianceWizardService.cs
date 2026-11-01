@@ -39,6 +39,7 @@ public class ComplianceWizardService(
         Guid propertyId,
         string userId,
         bool? tosAccepted,
+        bool? remindersAcknowledged = null,
         CancellationToken cancellationToken = default)
     {
         var property = await LoadPropertyAsync(propertyId, cancellationToken)
@@ -52,8 +53,10 @@ public class ComplianceWizardService(
             throw new DomainConflictException("activation_tos_required", "ActivationTosRequired");
 
         // Same evaluation and transitions as the re-evaluation after a change (CO-06): Active without blockers; with
-        // blockers a pending or suspended property stays as it is and an active one is suspended.
-        var check = await complianceStatus.ActivateAsync(propertyId, cancellationToken);
+        // blockers a pending or suspended property stays as it is and an active one is suspended. The reminders still open (the
+        // documents, the safety checklist) need the host's acknowledgement (409 activation_reminders_ack_required otherwise).
+        var check = await complianceStatus.ActivateAsync(
+            propertyId, new HostActivation(userId, remindersAcknowledged == true), cancellationToken);
         if (check.Status == PropertyComplianceStatus.Active)
             logger.LogInformation("Property {PropertyId} compliance activated", propertyId);
 

@@ -16,12 +16,19 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-10-30.2";
+    public const string Version = "2026-10-31.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
 
     public const string DraftKey = "monolocale-bozza";
+
+    /// <summary>
+    /// The email of the demo guest of the mobile app: the account the store reviewers sign in with. The bookings of
+    /// <see cref="Scenario.GuestAppAccount"/> carry this address, so «Le mie prenotazioni» of the app shows them. The account itself
+    /// is created by hand in Auth0, with this email and the email marked as verified (docs/runbooks/auth0.md § 12): CasaZen never creates one.
+    /// </summary>
+    public const string GuestAppEmail = "ospite.app.demo@example.com";
 
     public static class Scenario
     {
@@ -60,6 +67,7 @@ public static class DemoShowcaseCatalog
         public const string RoutineTestMode = "routine-test-mode";
         public const string PropertyWizardFields = "property-wizard-fields";
         public const string PropertySiteProfile = "property-site-profile";
+        public const string GuestAppAccount = "guest-app-account";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -100,6 +108,7 @@ public static class DemoShowcaseCatalog
         Scenario.RoutineTestMode,
         Scenario.PropertyWizardFields,
         Scenario.PropertySiteProfile,
+        Scenario.GuestAppAccount,
     ];
 
     /// <summary>
@@ -234,6 +243,43 @@ public static class DemoShowcaseCatalog
                     BookingSource.Manual,
                     AgreedTotal: 500m,
                     PriceNote: "Concordato al telefono (dimostrazione)"),
+                // The demo guest of the mobile app (the account of the store reviewers, GuestAppEmail): three stays of the public checkout
+                // (Source = Direct) so «Le mie prenotazioni» of the app has an upcoming one, a past one and a cancelled one to show. Paid
+                // at the property (no online payment): nothing here reaches Stripe, and cancelling from the app refunds nothing.
+                new(
+                    "app-in-arrivo",
+                    "Anna",
+                    "Demo",
+                    GuestAppEmail,
+                    21,
+                    3,
+                    BookingStatus.Confirmed,
+                    Scenario.GuestAppAccount,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite),
+                new(
+                    "app-passata",
+                    "Anna",
+                    "Demo",
+                    GuestAppEmail,
+                    -45,
+                    4,
+                    BookingStatus.CheckedOut,
+                    Scenario.GuestAppAccount,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite),
+                new(
+                    "app-annullata",
+                    "Anna",
+                    "Demo",
+                    GuestAppEmail,
+                    60,
+                    2,
+                    BookingStatus.Cancelled,
+                    Scenario.GuestAppAccount,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    CancellationReason: BookingCancellationReason.GuestRequested),
             ]),
         new(
             Key: "appartamento-brera",
@@ -512,7 +558,9 @@ public sealed record DemoBookingTemplate(
     string Scenario,
     BookingSource Source = BookingSource.Local,
     decimal? AgreedTotal = null,
-    string? PriceNote = null);
+    string? PriceNote = null,
+    PaymentOption PaymentOption = PaymentOption.Immediate,
+    BookingCancellationReason? CancellationReason = null);
 
 public sealed record DemoPropertyTemplate(
     string Key,

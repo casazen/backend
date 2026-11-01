@@ -39,4 +39,13 @@ public class UserDetailDto : UserSummaryDto
     /// <see cref="OnboardingRequired"/>: it never gates an endpoint.
     /// </summary>
     public bool? HasProperties { get; set; }
+
+    /// <summary>
+    /// Own profile only (<c>GET/PUT /api/users/me</c>), <c>null</c> elsewhere: Auth0 says the account's email address was
+    /// verified (the Action claim <c>https://casazen.app/email_verified</c>, else the Management API, see
+    /// <c>AccountEmailResolver</c>). The guest area of the app (<c>api/guest/*</c>) shows the bookings of the address only
+    /// when this is true; it is read from the access token, so after the person verifies the address the app needs a new
+    /// token (refresh) before the value changes.
+    /// </summary>
+    public bool? EmailVerified { get; set; }
 }

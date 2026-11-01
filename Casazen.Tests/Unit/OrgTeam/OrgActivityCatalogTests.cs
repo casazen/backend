@@ -38,6 +38,7 @@ public class OrgActivityCatalogTests
     [InlineData(OrgActivityType.PropertyModeChangeScheduled, 40)]
     [InlineData(OrgActivityType.PropertyModeChangeCancelled, 41)]
     [InlineData(OrgActivityType.PropertyModeChanged, 42)]
+    [InlineData(OrgActivityType.PropertyActivatedWithReminders, 43)]
     [InlineData(OrgActivityType.TrustedSupplierAdded, 60)]
     [InlineData(OrgActivityType.TrustedSupplierRemoved, 61)]
     [InlineData(OrgActivityType.AdminGrantedConcordatoFacileGift, 70)]
@@ -50,7 +51,7 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Type_EveryEventOfTheEnum_IsPinnedAbove()
     {
-        Assert.Equal(21, Enum.GetValues<OrgActivityType>().Length);
+        Assert.Equal(22, Enum.GetValues<OrgActivityType>().Length);
     }
 
     [Fact]

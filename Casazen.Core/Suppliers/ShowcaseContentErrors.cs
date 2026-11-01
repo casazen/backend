@@ -34,6 +34,21 @@ public static class ShowcaseContentErrors
     /// <summary>409: the last publication can no longer be undone (the time has passed, or something else was changed since).</summary>
     public const string UndoUnavailable = "showcase_undo_unavailable";
 
+    /// <summary>422: the AI help cannot answer now (no provider is configured, or the provider failed): the editor keeps the static starter.</summary>
+    public const string AiUnavailable = "showcase_ai_unavailable";
+
+    /// <summary>
+    /// 422: there is nothing true to write from yet (no category, no zone, no service and no answer of the supplier): the editor asks for one
+    /// of them before it asks the AI again.
+    /// </summary>
+    public const string SuggestionNotEnoughData = "showcase_suggestion_not_enough_data";
+
+    /// <summary>
+    /// 422: the AI wrote something, but every member was dropped by the checks (over its limit, or a claim the supplier did not make): the
+    /// supplier asks again or writes the text.
+    /// </summary>
+    public const string SuggestionUnusable = "showcase_suggestion_unusable";
+
     /// <summary>The <c>SharedResources</c> keys the content uses (Italian and English).</summary>
     public static IReadOnlyList<string> MessageKeys { get; } =
     [
@@ -43,6 +58,9 @@ public static class ShowcaseContentErrors
         "ShowcaseSupplierNotActive",
         "ShowcaseNotPublished",
         "ShowcaseUndoUnavailable",
+        "ShowcaseAiUnavailable",
+        "ShowcaseSuggestionNotEnoughData",
+        "ShowcaseSuggestionUnusable",
     ];
 
     /// <summary>The 422 of one or more invalid values; <paramref name="suggestedColor"/> when the color is unreadable with white text.</summary>
@@ -73,4 +91,13 @@ public static class ShowcaseContentErrors
 
     /// <summary>The 409 of an undo that is no longer possible.</summary>
     public static DomainConflictException NothingToUndo() => new DomainConflictException(UndoUnavailable, "ShowcaseUndoUnavailable");
+
+    /// <summary>The 422 of an AI help that cannot answer now.</summary>
+    public static DomainRuleException AiNotAvailable() => new DomainRuleException(AiUnavailable, "ShowcaseAiUnavailable");
+
+    /// <summary>The 422 of a suggestion asked for a supplier that has nothing true to write from.</summary>
+    public static DomainRuleException NotEnoughData() => new DomainRuleException(SuggestionNotEnoughData, "ShowcaseSuggestionNotEnoughData");
+
+    /// <summary>The 422 of a suggestion whose every member was dropped by the checks.</summary>
+    public static DomainRuleException UnusableSuggestion() => new DomainRuleException(SuggestionUnusable, "ShowcaseSuggestionUnusable");
 }

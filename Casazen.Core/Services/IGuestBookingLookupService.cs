@@ -130,6 +130,20 @@ public static class GuestBookingLookupErrorCodes
 /// <summary>The state of a booking for its guest, from the same rules as the checkout outcome page.</summary>
 public static class GuestBookings
 {
+    /// <summary>
+    /// What Stripe collected for <paramref name="booking"/> and what was refunded so far, in the currency of its property: the settled
+    /// payments only (completed, partially refunded, refunded), as "Le mie prenotazioni" and the guest's account list show them.
+    /// Needs its payments.
+    /// </summary>
+    public static (decimal Paid, decimal Refunded) AmountsOf(Booking booking)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        var collected = booking.Payments
+            .Where(p => p.Status is PaymentStatus.Completed or PaymentStatus.PartiallyRefunded or PaymentStatus.Refunded)
+            .ToList();
+        return (collected.Sum(p => p.Amount), collected.Sum(p => p.RefundedAmount));
+    }
+
     /// <summary>Where <paramref name="booking"/> stands at <paramref name="cutoff"/>. Needs its payments.</summary>
     public static GuestBookingStatus StatusOf(Booking booking, HoldExpiryCutoff cutoff)
     {

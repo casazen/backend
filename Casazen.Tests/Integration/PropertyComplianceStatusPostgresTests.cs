@@ -87,8 +87,9 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
     }
 
     [PostgresFact]
-    public async Task SaveSafetyChecklist_WithoutConfirmationOnActiveProperty_SuspendedWithEmail()
+    public async Task SaveSafetyChecklist_WithoutConfirmationOnActiveProperty_StaysActiveWithoutEmail()
     {
+        // PO decision 2026-11-01 (option A): the safety checklist is a reminder, it never suspends an active property.
         var seeded = await SeedActiveCompliantPropertyAsync("checklist");
         using var client = _factory.CreateAuthenticatedClient(seeded.HostId, "PropertyOwner");
 
@@ -114,18 +115,15 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var property = await LoadPropertyAsync(seeded.PropertyId);
-        Assert.Equal(PropertyComplianceStatus.Suspended, property.ComplianceStatus);
-        Assert.Equal(
-            ["safety_gas_detector_missing", "safety_co_detector_missing", "safety_confirmation_missing"],
-            property.ComplianceSuspensionReasons);
-        var email = Assert.Single(EmailsTo(seeded.HostEmail));
-        Assert.Contains("checklist di sicurezza (D.L. 145/2023) incompleta o non confermata", email.Content.HtmlBody);
-        Assert.DoesNotContain("(CIN) mancante", email.Content.HtmlBody);
+        Assert.Equal(PropertyComplianceStatus.Active, property.ComplianceStatus);
+        Assert.Null(property.ComplianceSuspensionReasons);
+        Assert.Empty(EmailsTo(seeded.HostEmail));
     }
 
     [PostgresFact]
-    public async Task DeleteDocument_RequiredDocumentOfActiveProperty_Suspended()
+    public async Task DeleteDocument_RequiredDocumentOfActiveProperty_StaysActiveWithoutEmail()
     {
+        // PO decision 2026-11-01 (option A): the required documents are a reminder, they never suspend an active property.
         var seeded = await SeedActiveCompliantPropertyAsync("document");
         using var client = _factory.CreateAuthenticatedClient(seeded.HostId, "PropertyOwner");
 
@@ -133,9 +131,9 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         var property = await LoadPropertyAsync(seeded.PropertyId);
-        Assert.Equal(PropertyComplianceStatus.Suspended, property.ComplianceStatus);
-        Assert.Equal(["activation_documents_missing"], property.ComplianceSuspensionReasons);
-        Assert.Contains("documenti obbligatori mancanti", Assert.Single(EmailsTo(seeded.HostEmail)).Content.HtmlBody);
+        Assert.Equal(PropertyComplianceStatus.Active, property.ComplianceStatus);
+        Assert.Null(property.ComplianceSuspensionReasons);
+        Assert.Empty(EmailsTo(seeded.HostEmail));
     }
 
     [PostgresFact]
@@ -175,11 +173,13 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
         var stillCompliant = await SeedActiveCompliantPropertyAsync("job-ok");
         using var client = _factory.CreateAuthenticatedClient(bySuspendedRequest.HostId, "PropertyOwner");
         await client.PutAsJsonAsync($"/api/properties/{bySuspendedRequest.PropertyId}/cin", new { cinCode = (string?)null });
-        // A requirement lost without any request (e.g. a row changed by hand): only the nightly check sees it.
-        await WithDbAsync(db => db.PropertySafetyChecklists
+        // A requirement lost without any request (e.g. a row changed by hand): only the nightly check sees it. The CIN, since the
+        // safety checklist and the documents no longer suspend (PO decision 2026-11-01, option A).
+        var lostCin = (await LoadPropertyAsync(lostOutsideTheApi.PropertyId)).CinCode;
+        await WithDbAsync(db => db.Properties
             .IgnoreQueryFilters() // test scope without an org
-            .Where(c => c.PropertyId == lostOutsideTheApi.PropertyId)
-            .ExecuteUpdateAsync(set => set.SetProperty(c => c.ConfirmedAt, (DateTime?)null)));
+            .Where(p => p.Id == lostOutsideTheApi.PropertyId)
+            .ExecuteUpdateAsync(set => set.SetProperty(p => p.CinCode, (string?)null)));
 
         await RunNightlyJobAsync();
         await RunNightlyJobAsync();
@@ -189,14 +189,14 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
         Assert.Empty(EmailsTo(stillCompliant.HostEmail));
         Assert.Equal(PropertyComplianceStatus.Suspended, (await LoadPropertyAsync(bySuspendedRequest.PropertyId)).ComplianceStatus);
         Assert.Equal(PropertyComplianceStatus.Suspended, (await LoadPropertyAsync(lostOutsideTheApi.PropertyId)).ComplianceStatus);
-        Assert.Equal(["safety_confirmation_missing"], (await LoadPropertyAsync(lostOutsideTheApi.PropertyId)).ComplianceSuspensionReasons);
+        Assert.Equal(["activation_cin_missing"], (await LoadPropertyAsync(lostOutsideTheApi.PropertyId)).ComplianceSuspensionReasons);
         Assert.Equal(PropertyComplianceStatus.Active, (await LoadPropertyAsync(stillCompliant.PropertyId)).ComplianceStatus);
 
         // The requirement back without any request: the next night reactivates it, silently and once.
-        await WithDbAsync(db => db.PropertySafetyChecklists
+        await WithDbAsync(db => db.Properties
             .IgnoreQueryFilters() // test scope without an org
-            .Where(c => c.PropertyId == lostOutsideTheApi.PropertyId)
-            .ExecuteUpdateAsync(set => set.SetProperty(c => c.ConfirmedAt, (DateTime?)SafetyChecklistTestData.ConfirmedAt)));
+            .Where(p => p.Id == lostOutsideTheApi.PropertyId)
+            .ExecuteUpdateAsync(set => set.SetProperty(p => p.CinCode, lostCin)));
         await RunNightlyJobAsync();
         await RunNightlyJobAsync();
 
@@ -229,11 +229,17 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
     }
 
     [PostgresFact]
-    public async Task HistoricRecalculation_ActiveWithoutDocumentsOrChecklist_SuspendedWithoutEmailByDefault()
+    public async Task HistoricRecalculation_WithoutCinSuspendedWithoutEmailByDefault_WithoutDocumentsOrChecklistStaysActive()
     {
         // As the backfill of AddPropertyComplianceStatus left them (A5-36): active with any CIN, no document, no
-        // checklist; AddPropertyComplianceSuspension adds ComplianceCheckedAt null to every existing row.
-        var historic = await SeedHistoricActivePropertyAsync("historic-bare", complete: false);
+        // checklist; AddPropertyComplianceSuspension adds ComplianceCheckedAt null to every existing row. Since the PO decision of
+        // 2026-11-01 (option A) the documents and the checklist are reminders: only the CIN (and the base data) suspend.
+        var historicBare = await SeedHistoricActivePropertyAsync("historic-bare", complete: false);
+        var historic = await SeedHistoricActivePropertyAsync("historic-no-cin", complete: true);
+        await WithDbAsync(db => db.Properties
+            .IgnoreQueryFilters()
+            .Where(p => p.Id == historic.PropertyId)
+            .ExecuteUpdateAsync(set => set.SetProperty(p => p.CinCode, (string?)null)));
         var historicComplete = await SeedHistoricActivePropertyAsync("historic-complete", complete: true);
         Assert.Contains(
             await WithDbAsync(db => Task.FromResult(db.Database.GetAppliedMigrations().ToList())),
@@ -249,14 +255,17 @@ public class PropertyComplianceStatusPostgresTests : IClassFixture<PropertyCompl
         Assert.Equal(0, report.Failed);
         var suspended = await LoadPropertyAsync(historic.PropertyId);
         Assert.Equal(PropertyComplianceStatus.Suspended, suspended.ComplianceStatus);
-        Assert.Contains("activation_documents_missing", suspended.ComplianceSuspensionReasons!);
-        Assert.Contains("safety_confirmation_missing", suspended.ComplianceSuspensionReasons!);
+        Assert.Equal(["activation_cin_missing"], suspended.ComplianceSuspensionReasons);
         Assert.NotNull(suspended.ComplianceCheckedAt);
+        var bare = await LoadPropertyAsync(historicBare.PropertyId);
+        Assert.Equal(PropertyComplianceStatus.Active, bare.ComplianceStatus);
+        Assert.NotNull(bare.ComplianceCheckedAt);
         var kept = await LoadPropertyAsync(historicComplete.PropertyId);
         Assert.Equal(PropertyComplianceStatus.Active, kept.ComplianceStatus);
         Assert.NotNull(kept.ComplianceCheckedAt);
         // First check of a historic property: Compliance:StatusCheck:NotifyOnFirstCheck is off by default.
         Assert.Empty(EmailsTo(historic.HostEmail));
+        Assert.Empty(EmailsTo(historicBare.HostEmail));
 
         // Once checked, a later suspension always emails the host.
         await WithDbAsync(db => db.Properties

@@ -1590,9 +1590,12 @@ public class PropertiesController(
     internal const string ActivationBlockedCode = "property_activation_blocked";
 
     /// <summary>
-    /// Activates the property when every blocking step is complete. 409 <c>property_activation_blocked</c> otherwise, with
-    /// <c>incompleteBlockers</c> (step ids) and <c>blockers</c> (<c>{ step, code, message }</c>, stable codes such as
-    /// <c>safety_gas_detector_missing</c>); 409 <c>activation_tos_required</c> without the terms accepted. The safety
+    /// Activates the property when every blocking step is complete (the base data and the CIN). 409
+    /// <c>property_activation_blocked</c> otherwise, with <c>incompleteBlockers</c> (step ids) and <c>blockers</c>
+    /// (<c>{ step, code, message }</c>, stable codes such as <c>activation_cin_missing</c>); 409 <c>activation_tos_required</c>
+    /// without the terms accepted; 409 <c>activation_reminders_ack_required</c> when the documents or the safety checklist are
+    /// still open and <c>remindersAcknowledged</c> is not true (PO decision 2026-11-01: they are reminders, acknowledged once and
+    /// recorded in the activity log of the org). The safety
     /// checklist is saved with <see cref="SaveSafetyChecklist"/> (CO-07). Same evaluation as the re-evaluation after a
     /// change (CO-06): with blockers left an active property is suspended and a pending or suspended one keeps its status
     /// (<c>complianceStatus</c> of the 409). A property in long-term mode (PM-01) is never published: 422
@@ -1621,7 +1624,7 @@ public class PropertiesController(
         try
         {
             var (updated, blockingSteps) = await complianceWizardService.CompleteActivationAsync(
-                id, userId, request.TosAccepted, cancellationToken);
+                id, userId, request.TosAccepted, request.RemindersAcknowledged, cancellationToken);
 
             if (blockingSteps.Count > 0)
             {

@@ -23,6 +23,7 @@ The general developer guide (SPA app, API, local setup) stays in [`docs/AUTH0_SE
 | Deactivated users (PL-03) | Every authenticated request of a user with `Users.IsActive = false` gets **403 `account_inactive`**, before any policy, whatever the roles in the token. The flag is read with the tenant (one query per request, no cache) | `InactiveAccountMiddleware`, `TenantContext` |
 | Deactivation / reactivation | `DELETE /api/users/{id}`: DB first, then Auth0 `blocked=true` and removal of the user's CasaZen roles (remembered in `Users.SuspendedAuth0Roles`). `POST /api/users/{id}/reactivate`: roles given back, then `blocked=false`. Outcome in `auth0Synced` / `auth0SyncError` / `message`; section 10 | `UserService.DeactivateUserAsync` / `ReactivateUserAsync` |
 | Permanent removal | `DELETE /api/users/{id}/account`: Auth0 user deleted first (`delete:users`), then the CasaZen row. The organization and its properties stay. 502 when Auth0 refuses, so a retry is safe (a missing Auth0 user counts as deleted). 422 `cannot_delete_self` / `cannot_delete_last_admin` | `UserService.DeleteRegisteredUserAsync` |
+| Guest account of the mobile app | A person who books as a guest has an account like any other (section 12): `GET /api/users/me` returns `emailVerified`; `GET /api/guest/bookings` and the other booking actions of `api/guest/*` answer 403 `guest_email_not_verified` until the claim says the email is verified; `DELETE /api/guest/account` removes the person's own account, Auth0 first (same `delete:users`, same 502 and retry), refused with 409 `guest_account_is_professional` for an account that also has a host org, a supplier link or an administrator's role | `GuestAccountController`, `UserService.DeleteOwnGuestAccountAsync` |
 
 Error codes returned to clients: `auth0_management_not_configured`, `auth0_management_token_failed`,
 `auth0_role_not_found`, `auth0_rate_limited`, `auth0_management_error`. Deactivation (PL-03): `account_inactive` (403),
@@ -193,9 +194,9 @@ Applications → Applications → **Create Application** → *Machine to Machine
 
    | Scope | Used for |
    |---|---|
-   | `read:users` | profile backfill (email/name) in admin listings; account email and `email_verified` for supplier invites and claims when the access token lacks the Action claims (SU-02); roles of a user before its deactivation (PL-03) |
+   | `read:users` | profile backfill (email/name) in admin listings; account email and `email_verified` for supplier invites and claims, for the `emailVerified` of `GET /api/users/me` and for the guest area of the mobile app (`api/guest/*`) when the access token lacks the Action claims (SU-02); roles of a user before its deactivation (PL-03) |
    | `update:users` | **blocking and unblocking** a deactivated / reactivated user (`PATCH /users/{id}` with `blocked`, PL-03) |
-   | `delete:users` | **permanent removal** of a registered account from the admin console (`DELETE /api/users/{id}/account` → `DELETE /api/v2/users/{id}`). Without it the CasaZen row stays and the call answers 502 |
+   | `delete:users` | **permanent removal** of a registered account from the admin console (`DELETE /api/users/{id}/account` → `DELETE /api/v2/users/{id}`) and **from the mobile app by the guest** who deletes their own account (`DELETE /api/guest/account`, section 12). Without it the CasaZen row stays and the call answers 502 |
    | `read:roles` | resolving role ids (cached); roles of a user before its deactivation |
    | `create:role_members` | adding a role to a user (`POST /users/{id}/roles`); giving the roles back at the reactivation |
    | `delete:role_members` | removing a named role from a user (`DELETE /users/{id}/roles`); removing the roles at the deactivation |
@@ -271,7 +272,9 @@ The backend reads `https://casazen.app/email` and `/email_verified` for supplier
 registration cannot link the profile unless the Management API (§4, `read:users`) is configured. AM-02 uses the same two claims to bind an org invitation to the account: the account that accepts must have
 the invited email, verified (`docs/runbooks/org-team.md` section 12). Reading `/name`
 belongs to task PL-04. The claims are copied at login: after verifying the email the client needs a new token
-(`getAccessTokenSilently({ cacheMode: 'off' })`, which the web claim page does on *Riprova*).
+(`getAccessTokenSilently({ cacheMode: 'off' })`, which the web claim page does on *Riprova*). The guest area of the mobile app (section 12)
+reads the two claims too: the bookings of `api/guest/bookings` are the ones whose guest has the account's **verified** email, and the
+`emailVerified` of `GET /api/users/me` is the same claim.
 
 Roles are copied into tokens at login: after a role change the client must get a new token
 (web: `getAccessTokenSilently({ cacheMode: 'off' })`; mobile: refresh-token grant). Backend authorization
@@ -643,6 +646,53 @@ Check, in a private window, with a new email:
 
 If step 2 still shows the English error, Redirect To and Allowed Callback URLs do not match character
 for character (scheme, host, path, trailing slash).
+
+## 12. Guest accounts of the mobile app
+
+The app stores ask two things of an app that lets people register: the account can be **deleted in the app**, and the guest sees what they booked.
+The mobile app lets a guest search for free, **register to book** and see «Le mie prenotazioni»; the host and supplier areas stay behind their own
+login. Server side: [direct-booking.md](direct-booking.md) § 8.6 (the three booking endpoints and the session), [gdpr.md](gdpr.md) § 11 (the
+deletion). What the product owner sets in **each** tenant (test and production):
+
+### 12.1 Sign-up of a guest
+
+- The guest registers with the **same Native application and the same connections** as everyone (§ 7.5): the database connection (email and password)
+  and the social ones the app offers. On the database connection **sign-ups must be enabled** (Authentication → Database → the connection →
+  *Disable Sign Ups* **off**) and *Requires Username* off. The signup screen is the Universal Login one (Identifier First, § 11.1): the app has no form of its own.
+- The first `GET /api/users/me` creates the CasaZen user for the account: `Role = None`, no org, no supplier link, no Auth0 role. That is a guest.
+  The same account can become a host or a supplier later (the onboarding, an invitation): its guest bookings stay in the app.
+- A social login brings the provider's own `email_verified` (Google and Apple report the address as verified). An Apple *Hide My Email* relay is an
+  address of Apple's, not the one typed at the checkout: the bookings made with the real address do not appear for that account.
+
+### 12.2 Email verification and the claim
+
+- The backend lists the bookings of an account **only when Auth0 says its email is verified** (403 `guest_email_not_verified` before): the address
+  is the only link between a booking, made on a public site with no account, and the account. The Action of § 6 writes the claim
+  `https://casazen.app/email_verified` on the access token (and `/email`); without the Action the backend asks the Management API (`read:users`, § 4)
+  at every request, which works but costs a call.
+- Keep the **verification email** on (Branding → Email Templates → Verification Email (Link), Redirect To `https://<app>/email-verified`, § 11.2).
+  Auth0 does not stop an unverified account from signing in: CasaZen does, at the API. The app shows «Conferma il tuo indirizzo email»; the claim is
+  **copied into the token at login and at every refresh**, so after the person verifies the app asks for a new token (refresh-token grant, which
+  runs the Action again, § 7.4) and tries again. `emailVerified` of `GET /api/users/me` changes with it.
+
+### 12.3 Deleting the account
+
+`DELETE /api/guest/account` deletes the Auth0 user first (`DELETE /api/v2/users/{id}`): the M2M application needs **`delete:users`** (§ 4); without it
+the answer is 502 `auth0_management_error` / `auth0_management_not_configured` and nothing is removed. A missing user counts as deleted, so a retry is
+safe. Check in the test tenant with a throw-away guest: 204, the user is gone from Auth0 → Users and the next login of the same email starts a new account.
+
+### 12.4 The demo guest for the store review
+
+1. In the test environment, **Amministrazione → Altro → Ambiente demo → Reimposta la vetrina** ([demo-environment.md](demo-environment.md)): the villa
+   gets three stays of the public checkout for the email `ospite.app.demo@example.com` (`DemoShowcaseCatalog.GuestAppEmail`): upcoming, past,
+   cancelled, all paid at the property (nothing reaches Stripe).
+2. Auth0 → User Management → Users → **Create user**: that email, a password only the product owner knows, the database connection. Then mark the email
+   as **verified** (the address is not a real mailbox, nobody can click a link): in the user's details, or with the Management API
+   `PATCH /api/v2/users/{id}` and `{ "email_verified": true }`. **CasaZen never creates an Auth0 account**: this one is yours to create.
+3. The credentials go only in the review notes of the stores (App Store Connect → App Review Information; Google Play → App access), never in the repository.
+4. The demo environment is **off in Production** by design (`available: false`): the demo bookings exist on the test API only. A store build that
+   talks to Production shows this account an empty list of bookings (valid, but there is nothing to see); to show bookings there, a real booking is
+   made on a published house with that email and the host accepts it, or the review build points at the test environment. Decision of the product owner.
 
 ## Multi-instance note
 
