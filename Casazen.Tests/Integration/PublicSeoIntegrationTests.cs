@@ -733,7 +733,9 @@ public class PublicSeoIntegrationTests : IClassFixture<CasazenWebApplicationFact
         var article = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "Article");
         Assert.Equal("CasaZen", article.GetProperty("publisher").GetProperty("name").GetString());
         var breadcrumb = JsonLdBlocks(html).Single(b => b.GetProperty("@type").GetString() == "BreadcrumbList");
-        Assert.Equal($"{PublicSite}/p/affitti-brevi", breadcrumb.GetProperty("itemListElement")[0].GetProperty("item").GetString());
+        // The trail starts at the site, then the hub, then the page: the same steps as the visible breadcrumb.
+        Assert.Equal($"{PublicSite}/", breadcrumb.GetProperty("itemListElement")[0].GetProperty("item").GetString());
+        Assert.Equal($"{PublicSite}/p/affitti-brevi", breadcrumb.GetProperty("itemListElement")[1].GetProperty("item").GetString());
     }
 
     [Fact]

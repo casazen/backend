@@ -36,6 +36,7 @@ public class ComplianceMissingServiceTests
             Mock.Of<IEmailQueue>(),
             EmailTestHelpers.Links(),
             Options.Create(new ComplianceOptions()),
+            new ActivityLog(db),
             NullLogger<PropertyComplianceStatusService>.Instance,
             Clock),
         new StayGuestService(db, new AlloggiatiCodeTableService(db, NullLogger<AlloggiatiCodeTableService>.Instance)));
@@ -100,8 +101,8 @@ public class ComplianceMissingServiceTests
 
         var missing = Assert.Single(described.PropertiesPending.Items).Missing;
         Assert.Contains(new ComplianceMissing("activation_cin_missing", "cin"), missing);
-        Assert.Contains(new ComplianceMissing("activation_documents_missing", "documents"), missing);
-        Assert.Contains(missing, m => m.Field == "safety");
+        // The documents and the safety checklist are reminders (PO decision 2026-11-01): they do not keep the property from the activation.
+        Assert.DoesNotContain(missing, m => m.Field is "documents" or "safety");
         // The base data are complete: nothing about that step.
         Assert.DoesNotContain(missing, m => m.Field == "base-data");
         Assert.All(missing, m => Assert.False(string.IsNullOrWhiteSpace(m.Code)));

@@ -78,6 +78,15 @@ public sealed class PaymentListItemDto
 
     public DateTime UpdatedAt { get; init; }
 
+    /// <summary>
+    /// The day the stay of the booking starts, <c>yyyy-MM-dd</c> (a calendar day, no time zone); <c>null</c> when the API did not read it.
+    /// The web app tells the payments of a coming or current stay from the ones of a past stay by it and by <see cref="BookingCheckOut"/>.
+    /// </summary>
+    public DateOnly? BookingCheckIn { get; init; }
+
+    /// <summary>The day the stay of the booking ends, <c>yyyy-MM-dd</c>; <c>null</c> when the API did not read it.</summary>
+    public DateOnly? BookingCheckOut { get; init; }
+
     public static PaymentListItemDto From(PaymentListItem item) => new()
     {
         Id = item.Id,
@@ -105,5 +114,7 @@ public sealed class PaymentListItemDto
         NetAmountAfterWithholdingCents = PaymentCashRules.ToCents(item.NetAmountAfterWithholding),
         CreatedAt = item.CreatedAt,
         UpdatedAt = item.UpdatedAt,
+        BookingCheckIn = item.BookingCheckIn is { } checkIn ? DateOnly.FromDateTime(checkIn) : null,
+        BookingCheckOut = item.BookingCheckOut is { } checkOut ? DateOnly.FromDateTime(checkOut) : null,
     };
 }
