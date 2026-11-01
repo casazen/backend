@@ -88,6 +88,8 @@ public class ShowcaseReplyDeadlineTests
         Assert.Equal(PushTypes.ServiceRequestReplyReminder, halfPush.Payload.Type);
         Assert.Equal(PushDeliveryKeys.ServiceRequestReplyReminder(request.Id, "half"), halfPush.DeliveryKey);
         Assert.Equal(PushAudience.SupplierOrg(s.SupplierOrgId), halfPush.Audience);
+        // Like every push to a supplier org about a request: the tap opens the request in the supplier area of the app.
+        Assert.Equal(PushRoutes.SupplierRequest(request.Id), halfPush.Payload.Route);
         var afterHalf = await s.ReadAsync(request.Id);
         Assert.Equal(s.Clock.GetUtcNow().UtcDateTime, afterHalf.ReplyReminderHalfSentAt);
         Assert.Null(afterHalf.ReplyReminderLastSentAt);
@@ -498,12 +500,14 @@ public class ShowcaseReplyDeadlineTests
         var request = await s.InquiredAsync(supplier);
         s.Clock.Advance(Hour + TimeSpan.FromMinutes(1));
         await Job(s).RunAsync();
+        // The job itself looked for the alternatives once, to tell the customer when it closed the request: only what the call adds counts.
+        var queriesOfTheJob = alternatives.Queries.Count;
 
         var credentials = new ShowcaseBookingCredentials(slug, code ?? ShowcaseManageScenario.CredentialsOf(request.PublicCode!).Code, email);
 
         var error = await Assert.ThrowsAsync<NotFoundException>(() => s.Kit.Manager.ListAlternativesAsync(credentials));
         Assert.Equal(ShowcaseBookingManagementErrors.NotFound, error.Code);
-        Assert.Empty(alternatives.Queries);
+        Assert.Equal(queriesOfTheJob, alternatives.Queries.Count);
     }
 
     // ─── The mail ───

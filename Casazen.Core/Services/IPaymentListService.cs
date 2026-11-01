@@ -69,6 +69,8 @@ public sealed record PaymentListCriteria(
 /// <param name="BookingCode">The stored form of the booking code (<see cref="BookingCodes.Format"/> shows it as <c>XXXXX-XXXXX</c>).</param>
 /// <param name="GuestName">First and last name of the guest of the booking.</param>
 /// <param name="Currency">ISO 4217 code of the property (<see cref="StayCurrency"/>): a payment has no currency column, it is charged and refunded in this one.</param>
+/// <param name="BookingCheckIn">The day the stay of the booking starts (a calendar day stored at midnight): with the check-out it tells a payment of a coming or current stay from one of a past stay; null when not read.</param>
+/// <param name="BookingCheckOut">The day the stay of the booking ends, as <paramref name="BookingCheckIn"/>.</param>
 public sealed record PaymentListItem(
     Guid Id,
     Guid BookingId,
@@ -90,4 +92,6 @@ public sealed record PaymentListItem(
     WithholdingSource WithholdingSource,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    string Currency = StayCurrency.Default);
+    string Currency = StayCurrency.Default,
+    DateTime? BookingCheckIn = null,
+    DateTime? BookingCheckOut = null);

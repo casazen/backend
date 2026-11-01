@@ -4,9 +4,12 @@ using Casazen.Core.Entities.Enums;
 namespace Casazen.Core.Services;
 
 /// <summary>
-/// Compliance status of a short-stay property (CO-06, A5-20, A5-36): the single evaluation of the activation blockers
-/// (base data, CIN, required documents, D.L. 145/2023 safety checklist) used by the activation wizard, the activation,
-/// the re-evaluation after every change and the nightly check. Transitions:
+/// Compliance status of a short-stay property (CO-06, A5-20, A5-36): the single evaluation of the activation steps (base data,
+/// CIN, required documents, D.L. 145/2023 safety checklist) used by the activation wizard, the activation, the re-evaluation after
+/// every change and the nightly check. Only the base data and the CIN block (PO decision 2026-11-01, option A, as Airbnb and
+/// Booking.com do: the CIN is the one thing the listing itself must show, art. 13-ter c. 6); the documents and the safety checklist
+/// are the host's own obligations and are reminders, which the host acknowledges once when activating with some still open
+/// (<see cref="HostActivation"/>). Transitions:
 /// <list type="bullet">
 /// <item><see cref="PropertyComplianceStatus.Pending"/> → <see cref="PropertyComplianceStatus.Active"/>: only by the
 /// host's activation (<see cref="ActivateAsync"/>, terms accepted), when no blocker is left.</item>
@@ -23,9 +26,11 @@ namespace Casazen.Core.Services;
 public interface IPropertyComplianceStatusService
 {
     /// <summary>
-    /// The four blocking steps of the activation, in wizard order (<c>base-data</c>, <c>cin</c>, <c>documents</c>,
-    /// <c>safety</c>), each <c>complete</c> or <c>pending</c> with its <see cref="ComplianceActivationStep.Blockers"/>.
-    /// Read only. The documents and the checklist are read from the database, not from the navigation properties.
+    /// The four compliance steps of the activation, in wizard order (<c>base-data</c>, <c>cin</c>, <c>documents</c>,
+    /// <c>safety</c>), each with its <see cref="ComplianceActivationStep.Blockers"/>: the first two block (<c>complete</c> or
+    /// <c>pending</c>), the last two are reminders (<see cref="ComplianceActivationStep.Blocker"/> false, <c>complete</c> or
+    /// <c>warning</c>, their blockers being the points still open). Read only. The documents and the checklist are read from the
+    /// database, not from the navigation properties.
     /// </summary>
     Task<IReadOnlyList<ComplianceActivationStep>> GetBlockingStepsAsync(
         Property property,
@@ -52,14 +57,33 @@ public interface IPropertyComplianceStatusService
     Task<PropertyComplianceCheck> ReevaluateAsync(Guid propertyId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// The host's activation (wizard, after the terms are accepted): <see cref="PropertyComplianceStatus.Active"/> when no
-    /// blocker is left, from pending or suspended; otherwise the same as <see cref="ReevaluateAsync"/>.
+    /// An activation by CasaZen itself (the demo environment): <see cref="PropertyComplianceStatus.Active"/> when no blocker is
+    /// left, from pending or suspended; otherwise the same as <see cref="ReevaluateAsync"/>. No reminder is asked about and no
+    /// activity is recorded: a host activates with <see cref="ActivateAsync(Guid, HostActivation, CancellationToken)"/>.
     /// </summary>
     /// <exception cref="Exceptions.NotFoundException">The property does not exist (or belongs to another org).</exception>
     /// <exception cref="Exceptions.DomainRuleException">
     /// <see cref="PropertyRentalModeErrorCodes.NotBookableInLongMode"/> (422): the property is in long-term mode (PM-01).
     /// </exception>
     Task<PropertyComplianceCheck> ActivateAsync(Guid propertyId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The host's activation (wizard, after the terms are accepted): as <see cref="ActivateAsync(Guid, CancellationToken)"/>, and
+    /// when no blocker is left but some reminders are open (the documents, the safety checklist) the host must have acknowledged
+    /// them (<see cref="HostActivation.RemindersAcknowledged"/>): the activation then records
+    /// <see cref="OrgActivityType.PropertyActivatedWithReminders"/> in the activity log of the org, with the reminders open.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException">The property does not exist (or belongs to another org).</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="PropertyRentalModeErrorCodes.NotBookableInLongMode"/> (422): the property is in long-term mode (PM-01).
+    /// </exception>
+    /// <exception cref="Exceptions.DomainConflictException">
+    /// <see cref="RemindersAcknowledgementRequiredCode"/> (409): reminders open and not acknowledged; nothing changes.
+    /// </exception>
+    Task<PropertyComplianceCheck> ActivateAsync(Guid propertyId, HostActivation host, CancellationToken cancellationToken = default);
+
+    /// <summary>Code of the 409 of a host activation with compliance reminders open and not acknowledged.</summary>
+    const string RemindersAcknowledgementRequiredCode = "activation_reminders_ack_required";
 
     /// <summary>
     /// Re-evaluates every short-rent (PM-01) <see cref="PropertyComplianceStatus.Active"/> or
@@ -69,6 +93,14 @@ public interface IPropertyComplianceStatusService
     /// </summary>
     Task<PropertyComplianceRecalculation?> RecalculateAllAsync(bool dryRun, CancellationToken cancellationToken = default);
 }
+
+/// <summary>A host activating a property (<see cref="IPropertyComplianceStatusService.ActivateAsync(Guid, HostActivation, CancellationToken)"/>).</summary>
+/// <param name="UserId">Who activates (<c>User.Id</c>): the actor of the activity line.</param>
+/// <param name="RemindersAcknowledged">
+/// The host declared to know that the reminders still open (documents, safety checklist) are their own obligations and to complete
+/// them later. Needed only when some are open.
+/// </param>
+public sealed record HostActivation(string UserId, bool RemindersAcknowledged);
 
 /// <summary>Outcome of one evaluation of a property.</summary>
 /// <param name="PropertyId">The property.</param>

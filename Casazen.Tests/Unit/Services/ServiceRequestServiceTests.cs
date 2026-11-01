@@ -503,9 +503,9 @@ public class ServiceRequestServiceTests
         Assert.Equal(PushTypes.ServiceRequestPaid, toSupplier.Payload.Type);
         Assert.Equal("Richiesta segnata come pagata", toSupplier.Payload.Title);
         Assert.Equal("Pulizie presso Test Property: l'host ha segnato il servizio come pagato.", toSupplier.Payload.Body);
-        // The stay is the host's: the supplier's push carries no booking and opens a screen the app has.
+        // The stay is the host's: the supplier's push carries no booking and opens the request in the supplier area of the app.
         Assert.Null(toSupplier.Payload.BookingId);
-        Assert.Equal(PushRoutes.Properties, toSupplier.Payload.Route);
+        Assert.Equal(PushRoutes.SupplierRequest(created.Id), toSupplier.Payload.Route);
         Assert.Equal(created.Id, toSupplier.Payload.ServiceRequestId);
     }
 
@@ -1026,9 +1026,9 @@ public class ServiceRequestServiceTests
         Assert.Equal(PushTypes.ServiceRequestCreated, toSupplier.Payload.Type);
         Assert.Equal("Nuova richiesta di servizio", toSupplier.Payload.Title);
         Assert.Equal("Pulizie a H501: accetta o rifiuta la richiesta dalla tua area fornitore.", toSupplier.Payload.Body);
-        // The stay is the host's: the supplier's push carries no booking and opens a screen the app has.
+        // The stay is the host's: the supplier's push carries no booking and opens the request in the supplier area of the app.
         Assert.Null(toSupplier.Payload.BookingId);
-        Assert.Equal(PushRoutes.Properties, toSupplier.Payload.Route);
+        Assert.Equal(PushRoutes.SupplierRequest(created.Id), toSupplier.Payload.Route);
         Assert.Equal(created.Id, toSupplier.Payload.ServiceRequestId);
     }
 

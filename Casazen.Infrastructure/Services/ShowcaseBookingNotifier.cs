@@ -817,7 +817,7 @@ public sealed class ShowcaseBookingNotifier(
                 PushDeliveryKeys.ServiceRequestReplyReminder(request.Id, lastCall ? "last" : "half"),
                 PushAudience.SupplierOrg(request.SupplierOrgId),
                 new PushNotificationPayload(
-                    push.Title, push.Body, PushTypes.ServiceRequestReplyReminder, BookingId: null, PushRoutes.Properties, request.Id));
+                    push.Title, push.Body, PushTypes.ServiceRequestReplyReminder, BookingId: null, PushRoutes.SupplierRequest(request.Id), request.Id));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

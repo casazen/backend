@@ -638,15 +638,18 @@ with the period before, nothing about a guest.
 `Payment` entity (which came with its whole booking, the Stripe account of the host and the org): `{ id, bookingId,
 bookingCode, propertyId, propertyName, guestName, amount, amountCents, refundedAmount, refundedAmountCents, currency,
 status, method, transactionId, description, stripePaymentIntentId, processedAt, otaWithholdingTax, otaWithholdingTaxCents,
-withholdingTaxApplied, withholdingSource, netAmountAfterWithholding, netAmountAfterWithholdingCents, createdAt, updatedAt }`.
+withholdingTaxApplied, withholdingSource, netAmountAfterWithholding, netAmountAfterWithholdingCents, createdAt, updatedAt,
+bookingCheckIn, bookingCheckOut }`.
 The fields the web app read before keep their names, types and euros (`amount`, `refundedAmount`, `status` and `method` by
 name, ...): the `*Cents` fields (exact integers) and the names of the guest and of the property are the additions of the new
 screens. Newest first (by creation, the id as the tie-break). `bookingId` and `propertyId` narrow it (404 when the booking or
 the property is not one the caller may read payments of, like a missing one); `from` and `to` (`yyyy-MM-dd`, Europe/Rome days,
 both included, 400 `payment_list_invalid_range` when `from` is after `to`) keep the payments settled in the period: the day of
 `ProcessedAt`, else of `CreatedAt`. The list is limited to the caller's `HostScope` in SQL whatever the criteria say, and the
-payments of a property deleted since are still listed (the fiscal reports' rule). `GET /api/payments/{id}` still answers the
-entity.
+payments of a property deleted since are still listed (the fiscal reports' rule). `bookingCheckIn` and `bookingCheckOut`
+(`yyyy-MM-dd`, calendar days, null when not read) are the stay of the booking: a payment has no due date, so they are what tells
+the payments of a coming or current stay from the ones of a past stay (the «In arrivo» view of the web app).
+`GET /api/payments/{id}` still answers the entity.
 
 **Pages of payments (SR-03b).** Without `page` and `pageSize` the answer is the array above, all the payments, as it always was.
 With either of them it is one page of the same list in the same order, `{ items, totalCount, page, pageSize }` like the bookings:
@@ -673,6 +676,13 @@ collaborator, who has no `payment.read`, is still refused.
 | `DELETE` | `/api/pricing-adapter/config/{propertyId}` | Disable and delete the suggestions |
 | `GET` | `/api/pricing-adapter/suggestions/{propertyId}` | Suggestions by date (real nightly rate x rule), read-only |
 | `POST` | `/api/pricing-adapter/recalculate/{propertyId}` | Recompute now (same logic as the nightly job) |
+
+#### AI nightly price of the property wizard («Calcola con l'AI», WIZ-AI-PRICE; `docs/runbooks/ai.md`)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/properties/{propertyId}/price-suggestion` | `property.read` (short-rent) | `{ available }`: whether an AI provider is in effect (not the stub, with a key); the step of the wizard offers the question only then. No call to a provider |
+| `POST` | `/api/properties/{propertyId}/price-suggestion` | `property.write` (short-rent), AI rate limit | Body `{ positioning: Lower \| Market \| Higher }` (optional). The AI proposes the nightly rate, a range, the cleaning fee, the weekend surcharge and the minimum stay from the saved data of the property, its comune and the summed-up rates of the other published homes of the comune (at least 3). `200` also when the AI cannot be used: `aiUsed` false, a `reason` (`ai_not_configured`, `ai_budget_exhausted`, `ai_unavailable`, `ai_invalid_answer`) and, with enough similar homes, the price of the figures alone. Nothing is written to the property |
 
 #### OTA Channel Management
 

@@ -411,7 +411,9 @@ public class ServiceRequestOfferTests
         var thread = await s.Service.GetThreadAsSupplierAsync(request.Id, s.SupplierOrgId);
         Assert.Equal((ServiceRequestNegotiation.OfferDeclined, true), (thread.Negotiation, thread.CanSendOffer));
         Assert.Null(thread.Offer);
-        await SendAsync(s, request.Id, TheOffer(start: ServiceRequestScenario.FridayAt14, end: ServiceRequestScenario.FridayAt14.AddHours(2)));
+        // The clock is ten days on: the other offer proposes the Friday two weeks after (still in summer time, still a free afternoon slot).
+        var laterFridayAt14 = ServiceRequestScenario.FridayAt14.AddDays(14);
+        await SendAsync(s, request.Id, TheOffer(start: laterFridayAt14, end: laterFridayAt14.AddHours(2)));
         Assert.Equal(ServiceRequestNegotiation.OfferSent, (await s.Service.GetThreadAsSupplierAsync(request.Id, s.SupplierOrgId)).Negotiation);
     }
 
