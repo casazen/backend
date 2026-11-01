@@ -111,7 +111,8 @@ public class PropertyOverviewServiceTests
         Assert.Equal(
             new[] { "cin", "documents", "safety", "photos", "calendar" },
             p.Missing!.Select(m => m.Code).ToArray());
-        Assert.Equal(new[] { true, true, true, false, false }, p.Missing!.Select(m => m.Blocking).ToArray());
+        // Only the CIN blocks; the documents and the safety checklist are reminders (PO decision 2026-11-01).
+        Assert.Equal(new[] { true, false, false, false, false }, p.Missing!.Select(m => m.Blocking).ToArray());
 
         var s = byId[suspended.Id];
         Assert.Equal(PropertyLifecycleStatus.Suspended, s.LifecycleStatus);
@@ -159,6 +160,7 @@ public class PropertyOverviewServiceTests
             new RecordingEmailQueue(),
             EmailTestHelpers.Links(),
             Options.Create(new ComplianceOptions()),
+            new ActivityLog(db),
             NullLogger<PropertyComplianceStatusService>.Instance,
             new FixedTimeProvider(new DateTimeOffset(Now)));
 

@@ -54,7 +54,7 @@ public static class SeoHtmlRenderer
         if (document.ImageUrl is not null)
             AppendMeta(html, "property", "og:image", document.ImageUrl);
 
-        AppendMeta(html, "name", "twitter:card", document.ImageUrl is null ? "summary" : "summary_large_image");
+        AppendMeta(html, "name", "twitter:card", document.TwitterCard ?? (document.ImageUrl is null ? "summary" : "summary_large_image"));
         AppendMeta(html, "name", "twitter:title", document.Title);
         if (description is not null)
             AppendMeta(html, "name", "twitter:description", description);
