@@ -2308,6 +2308,126 @@
   <data name="SeoGuideCta" xml:space="preserve">
     <value>Pubblica la tua casa</value>
   </data>
+  <data name="SeoNavFeatures" xml:space="preserve">
+    <value>Funzionalità</value>
+  </data>
+  <data name="SeoNavSuppliers" xml:space="preserve">
+    <value>Per i fornitori</value>
+  </data>
+  <data name="SeoNavAbout" xml:space="preserve">
+    <value>Chi siamo</value>
+  </data>
+  <data name="SeoNavGuides" xml:space="preserve">
+    <value>Guide</value>
+  </data>
+  <data name="SeoNavSearch" xml:space="preserve">
+    <value>Cerca casa</value>
+  </data>
+  <data name="SeoNavMainLabel" xml:space="preserve">
+    <value>Navigazione principale</value>
+  </data>
+  <data name="SeoNavBreadcrumbLabel" xml:space="preserve">
+    <value>Percorso</value>
+  </data>
+  <data name="SeoNavFooterLabel" xml:space="preserve">
+    <value>Link del sito</value>
+  </data>
+  <data name="SeoFooterTagline" xml:space="preserve">
+    <value>CasaZen: gestionale per affitti brevi e lunghi in regola.</value>
+  </data>
+  <data name="SeoGuideMetaTitle" xml:space="preserve">
+    <value>Affitti brevi a {0}: guida a CIN e tassa di soggiorno {1}</value>
+  </data>
+  <data name="SeoTaxMetaTitle" xml:space="preserve">
+    <value>Tassa di soggiorno a {0} {1}: tariffe, esenzioni e calcolo</value>
+  </data>
+  <data name="SeoGuideMetaDescription" xml:space="preserve">
+    <value>Guida per host a {0}: CIN, Alloggiati Web e imposta di soggiorno ({1}). Aggiornata a {2}.</value>
+  </data>
+  <data name="SeoTaxMetaDescription" xml:space="preserve">
+    <value>Tassa di soggiorno a {0}: {1}. Esenzioni, domande frequenti e fonte ufficiale del comune.</value>
+  </data>
+  <data name="SeoFactsHeading" xml:space="preserve">
+    <value>Imposta di soggiorno a {0} in breve</value>
+  </data>
+  <data name="SeoFactRateLabel" xml:space="preserve">
+    <value>Tariffa</value>
+  </data>
+  <data name="SeoFactRateFixed" xml:space="preserve">
+    <value>{0} a persona per notte</value>
+  </data>
+  <data name="SeoFactRatePercent" xml:space="preserve">
+    <value>{0}% del prezzo della notte, per persona</value>
+  </data>
+  <data name="SeoFactRateCap" xml:space="preserve">
+    <value>, fino a {0} a persona per notte</value>
+  </data>
+  <data name="SeoFactNightsLabel" xml:space="preserve">
+    <value>Notti</value>
+  </data>
+  <data name="SeoFactNightsValue" xml:space="preserve">
+    <value>fino a un massimo di {0} notti</value>
+  </data>
+  <data name="SeoFactExemptLabel" xml:space="preserve">
+    <value>Esenzioni</value>
+  </data>
+  <data name="SeoFactExemptValue" xml:space="preserve">
+    <value>ospiti di età inferiore a {0} anni</value>
+  </data>
+  <data name="SeoFactSinceLabel" xml:space="preserve">
+    <value>In vigore dal</value>
+  </data>
+  <data name="SeoFactSourceLabel" xml:space="preserve">
+    <value>Fonte ufficiale</value>
+  </data>
+  <data name="SeoFactSourceLink" xml:space="preserve">
+    <value>Tariffe pubblicate dal comune di {0}</value>
+  </data>
+  <data name="SeoFaqHeading" xml:space="preserve">
+    <value>Domande frequenti</value>
+  </data>
+  <data name="SeoFaqRateQuestion" xml:space="preserve">
+    <value>Quanto costa l'imposta di soggiorno a {0}?</value>
+  </data>
+  <data name="SeoFaqRateAnswer" xml:space="preserve">
+    <value>A {0} l'imposta di soggiorno è di {1}.</value>
+  </data>
+  <data name="SeoFaqNightsQuestion" xml:space="preserve">
+    <value>Per quante notti si paga l'imposta di soggiorno a {0}?</value>
+  </data>
+  <data name="SeoFaqNightsAnswer" xml:space="preserve">
+    <value>L'imposta si applica fino a un massimo di {0} notti.</value>
+  </data>
+  <data name="SeoFaqExemptQuestion" xml:space="preserve">
+    <value>Chi è esente dall'imposta di soggiorno a {0}?</value>
+  </data>
+  <data name="SeoFaqExemptAnswer" xml:space="preserve">
+    <value>Sono esenti gli ospiti di età inferiore a {0} anni. Per altre esenzioni o riduzioni fai riferimento alle fonti ufficiali del comune.</value>
+  </data>
+  <data name="SeoFaqSourceQuestion" xml:space="preserve">
+    <value>Dove trovo le tariffe ufficiali di {0}?</value>
+  </data>
+  <data name="SeoFaqSourceAnswer" xml:space="preserve">
+    <value>Le tariffe sono pubblicate dal comune di {0}: consulta il documento ufficiale.</value>
+  </data>
+  <data name="SeoSeeAlsoHeading" xml:space="preserve">
+    <value>Vedi anche</value>
+  </data>
+  <data name="SeoSeeAlsoHub" xml:space="preserve">
+    <value>Tutte le guide per comune</value>
+  </data>
+  <data name="SeoSeeAlsoOtherGuides" xml:space="preserve">
+    <value>Altre guide in {0}</value>
+  </data>
+  <data name="SeoSeeAlsoOtherCalculators" xml:space="preserve">
+    <value>Altre pagine sulla tassa di soggiorno in {0}</value>
+  </data>
+  <data name="SeoHubIntro" xml:space="preserve">
+    <value>Guide per chi affitta casa ai turisti: per ogni comune le regole su CIN, Alloggiati Web e imposta di soggiorno, con le tariffe e le fonti ufficiali. Guide pubblicate: {0}. Pagine sulla tassa di soggiorno: {1}.</value>
+  </data>
+  <data name="SeoHubMetaDescription" xml:space="preserve">
+    <value>Guide per host di affitti brevi, comune per comune: CIN, Alloggiati Web e imposta di soggiorno, con tariffe e fonti ufficiali. Ad esempio: {0}.</value>
+  </data>
   <data name="SeoAmenity_WiFi" xml:space="preserve">
     <value>Wi-Fi</value>
   </data>

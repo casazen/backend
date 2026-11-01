@@ -33,6 +33,12 @@ public sealed class SeoDocument
     /// <summary>Absolute https URL of the preview image (<c>og:image</c>), <c>null</c> when the page has none.</summary>
     public string? ImageUrl { get; init; }
 
+    /// <summary>
+    /// <c>twitter:card</c> when the default does not fit the image: with an image the default is <c>summary_large_image</c>, which
+    /// crops a square mark; the brand image of the guides asks for <c>summary</c>.
+    /// </summary>
+    public string? TwitterCard { get; init; }
+
     /// <summary>Structured data blocks, each a complete schema.org object with its own <c>@context</c>.</summary>
     public IReadOnlyList<JsonObject> JsonLd { get; init; } = [];
 

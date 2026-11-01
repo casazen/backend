@@ -161,6 +161,37 @@ Deployment Protection is on, open the URL in a logged-in browser instead.
 4. Never add the preview or test deployments: they are `Disallow: /`.
 5. If the old `…/sitemap-compliance.xml` of the API host was ever submitted, remove it (Sitemaps → ⋮ → Remove).
 
+### Getting the guides indexed (what only the owner can do)
+
+Nothing in the code can tell Google a page exists faster than Search Console does; a new domain with no links is found slowly.
+Do this once, in this order, from the Google account that owns the property:
+
+1. **Domain property** (step 1 above) on `casazen.space` (the apex, not only `www`): the DNS TXT record is added at the DNS
+   provider. Keep the `www` redirect of the apex (`308` to `https://www.casazen.space/`).
+2. **Sitemaps** → `https://www.casazen.space/sitemap.xml` (step 2). The sitemap lists the hub, every guide and every tourist tax
+   page; `sitemap-book.xml` is an empty index until a host publishes a property, and an empty index is normal.
+3. **URL inspection → Request indexing** for the three pages that matter most, after a successful **Test live URL**:
+   the hub `https://www.casazen.space/p/affitti-brevi`, the Como guide `/p/affitti-brevi/lombardia/como` and the Como tourist
+   tax page `/p/tassa-soggiorno/como`. The live test must show the crawler page (title, text, links), not an empty shell.
+4. **Pages** report (Indexing → Pages), after one or two weeks: read the reason the pages give.
+   - *Discovered – currently not indexed*: Google knows the URL and has not crawled it yet (a new site with no links waits).
+   - *Crawled – currently not indexed*: Google read the page and judged it not worth keeping. The cause is usually thin or
+     near-identical text across many pages: add what is specific to the comune (real rates, exemptions, the comune's own procedure,
+     official links), not more pages. Do not request indexing again and again.
+   - *Duplicate / alternate page with proper canonical*: the canonical is respected; nothing to do.
+5. **Bing Webmaster Tools** → *Import from Google Search Console* (one click once step 1 is done): it feeds Bing and the
+   assistants that use its index.
+6. **Links**: a page with no link from another site stays at the bottom for any query worth ranking for. Ask for a link from the
+   comune's tourism office or association pages, local hosts' associations, the chamber of commerce, partner sites and the
+   product's own social profiles; one good link from a related site is worth more than many weak ones.
+
+**Realistic targets.** A guide for hosts about CIN, Alloggiati Web and the tourist tax answers the questions of a host, not
+the ones of a guest looking for a place to sleep. `affitti brevi Como` (guest intent, dominated by the booking portals, the comune
+and large agencies) is not a query these pages can win in the first months, whatever the technical work. The queries they can win,
+in weeks to a few months once indexed, are the long tail of the host: `CIN affitti brevi Como`, `imposta di soggiorno Como 2026`,
+`tassa di soggiorno Como tariffe`, `Ross1000 Como`, `Alloggiati Web Como`, `CIR Lombardia`. Measure with the *Performance* report
+(queries and pages), not with a manual search: results are personalized by location and history.
+
 ## 5. Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -431,7 +462,31 @@ that is served (section 9). Query strings (`?checkin=…`) are never in it.
   dates). An invalid or missing CIN is neither shown nor published (compliance rule); unset coordinates (0,0) are not
   published; street addresses are never published (only city and postal code, as on the page).
 - Guides and calculators: `Article` (headline, description, `dateModified` = approval date, publisher CasaZen) +
-  `BreadcrumbList`; hub: `CollectionPage`.
+  `BreadcrumbList` (CasaZen › Guide per gli affitti brevi › the page) + `WebSite` + `Organization` (CasaZen, with the brand image
+  as `logo`) and, on a tourist tax page that has the summary, `FAQPage`; hub: `CollectionPage` + `WebSite` + `Organization`.
+  `og:image` is the brand image (`/brand/icona-app-1024.png`, small `summary` card).
+
+### Structure of the editorial pages (guides, tourist tax pages, hub)
+
+These pages used to be a lone article: no link to the site, to the hub or to each other. A crawler (and a person who lands on
+one) now finds, in the same HTML:
+
+- the **header** (CasaZen, Funzionalità, Per i fornitori, Chi siamo, Guide, Cerca casa) and the **footer** with the same links;
+- the **breadcrumb** as links (CasaZen › Guide per gli affitti brevi › page), the same steps as the JSON-LD;
+- **«Vedi anche»**: the other page of the same comune (the guide from the tax page and back), the hub, and the pages of the same
+  kind in the same region (six, starting from the next comune in alphabetical order, so every page links to different
+  neighbours);
+- **«Imposta di soggiorno a {comune} in breve»** (rate, nights, exemption, in force since, official source) and, on the tax page,
+  **«Domande frequenti»** with the `FAQPage` markup. Both come only from the **rate in force** (`SeoTouristTaxFacts`): a single rate
+  with no category, no season and no reduced amount. A comune with several rates (Roma by category, Venezia by group and season)
+  shows neither: a one-line figure would be a choice among them, and the approved text says the rest. The text of the AI is never
+  used for these blocks, so nothing needs a new approval.
+- the **title** (`{comune} {year}: …`, the year of the last refresh) and, when the summary exists, the **description** with the real
+  figure. Without a refresh date, with a title longer than 70 characters or with no summary, the page keeps the title and the
+  description it was approved with.
+
+The hub groups its lists by region and says how many guides and tax pages it lists. The sanitizer drops elements it leaves with
+no text (a list item whose link lost its address): a published guide showed an empty bullet at the end of its sources.
 
 ### Checks after a deploy
 

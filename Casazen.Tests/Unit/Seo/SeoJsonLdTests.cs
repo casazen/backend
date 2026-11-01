@@ -224,4 +224,40 @@ public class SeoJsonLdTests
     {
         Assert.False(SeoJsonLd.Article("T", null, null, null, "it", "CasaZen").ContainsKey("dateModified"));
     }
+
+    [Fact]
+    public void WebSite_HasNameUrlAndLanguageOfThePlatform()
+    {
+        var node = SeoJsonLd.WebSite("CasaZen", "https://public.example.test/", "it");
+
+        Assert.Equal("https://schema.org", node["@context"]!.GetValue<string>());
+        Assert.Equal("WebSite", node["@type"]!.GetValue<string>());
+        Assert.Equal("CasaZen", node["name"]!.GetValue<string>());
+        Assert.Equal("https://public.example.test/", node["url"]!.GetValue<string>());
+        Assert.Equal("it", node["inLanguage"]!.GetValue<string>());
+        Assert.False(SeoJsonLd.WebSite("CasaZen", null, "it").ContainsKey("url"));
+    }
+
+    [Fact]
+    public void FaqPage_WritesEachQuestionWithItsAnswerAndLeavesOutTheIncomplete()
+    {
+        var node = SeoJsonLd.FaqPage(
+        [
+            ("Quanto costa?", "3,00 € a persona per notte."),
+            ("", "Senza domanda."),
+            ("Senza risposta?", "  "),
+            ("Chi è esente?", "Gli ospiti sotto i 14 anni."),
+        ]);
+
+        Assert.Equal("FAQPage", node["@type"]!.GetValue<string>());
+        var questions = node["mainEntity"]!.AsArray();
+        Assert.Equal(2, questions.Count);
+        Assert.Equal("Question", questions[0]!["@type"]!.GetValue<string>());
+        Assert.Equal("Quanto costa?", questions[0]!["name"]!.GetValue<string>());
+        Assert.Equal("Answer", questions[0]!["acceptedAnswer"]!["@type"]!.GetValue<string>());
+        Assert.Equal("3,00 € a persona per notte.", questions[0]!["acceptedAnswer"]!["text"]!.GetValue<string>());
+        Assert.Equal("Chi è esente?", questions[1]!["name"]!.GetValue<string>());
+        // Nested objects carry no @context of their own.
+        Assert.False(questions[0]!.AsObject().ContainsKey("@context"));
+    }
 }
