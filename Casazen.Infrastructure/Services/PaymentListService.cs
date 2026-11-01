@@ -113,5 +113,7 @@ public sealed class PaymentListService(AppDbContext db) : IPaymentListService
         p.WithholdingSource,
         p.CreatedAt,
         p.UpdatedAt,
-        p.Booking.Property.Currency);
+        p.Booking.Property.Currency,
+        p.Booking.CheckInDate,
+        p.Booking.CheckOutDate);
 }
