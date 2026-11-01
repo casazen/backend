@@ -64,4 +64,51 @@ public class HouseCurrencyReadModelsTests
         Assert.Equal(25_000, dto.AmountCents);
         Assert.Equal(5_000, dto.RefundedAmountCents);
     }
+
+    private static PaymentListItem PendingOnArrival(DateTime? checkIn, DateTime? checkOut) => new(
+        Guid.NewGuid(),
+        Guid.NewGuid(),
+        "ABCDEFGHJK",
+        Guid.NewGuid(),
+        "Casa Lago",
+        "Anna Verdi",
+        250m,
+        0m,
+        PaymentStatus.Pending,
+        PaymentMethod.CashOnArrival,
+        string.Empty,
+        "In struttura",
+        null,
+        null,
+        0m,
+        false,
+        250m,
+        WithholdingSource.None,
+        DateTime.UtcNow,
+        DateTime.UtcNow,
+        "EUR",
+        checkIn,
+        checkOut);
+
+    [Fact]
+    public void PaymentListItemDto_SaysTheStayOfTheBookingAsCalendarDays()
+    {
+        // Stay days are calendar days stored at midnight: they travel as `yyyy-MM-dd`, with no time and no time zone.
+        var dto = PaymentListItemDto.From(PendingOnArrival(new DateTime(2026, 11, 3), new DateTime(2026, 11, 6)));
+
+        Assert.Equal(new DateOnly(2026, 11, 3), dto.BookingCheckIn);
+        Assert.Equal(new DateOnly(2026, 11, 6), dto.BookingCheckOut);
+        var json = System.Text.Json.JsonSerializer.Serialize(dto, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        Assert.Contains("\"bookingCheckIn\":\"2026-11-03\"", json);
+        Assert.Contains("\"bookingCheckOut\":\"2026-11-06\"", json);
+    }
+
+    [Fact]
+    public void PaymentListItemDto_AnItemReadWithoutTheStay_SaysNoDays()
+    {
+        var dto = PaymentListItemDto.From(PendingOnArrival(null, null));
+
+        Assert.Null(dto.BookingCheckIn);
+        Assert.Null(dto.BookingCheckOut);
+    }
 }
