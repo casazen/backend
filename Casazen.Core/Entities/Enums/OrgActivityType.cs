@@ -89,6 +89,14 @@ public enum OrgActivityType
     /// </summary>
     PropertyModeChanged = 42,
 
+    /// <summary>
+    /// A host activated a property while some of its compliance reminders were still open (the required documents, the safety
+    /// sheet) and declared, with the activation, to know that they are the host's own obligations and to complete them later
+    /// (PO decision 2026-11-01, option A: only the base data and the CIN block the activation). Written by
+    /// <c>PropertyComplianceStatusService</c>. Subject: the property. Details: the reminders open at that moment.
+    /// </summary>
+    PropertyActivatedWithReminders = 43,
+
     // ─── Trusted suppliers (reserved: the host's trusted suppliers) ──────────────────────────────────────
 
     /// <summary><i>Reserved.</i> A supplier was added to the trusted ones of the org. Subject: the supplier.</summary>

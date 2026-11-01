@@ -209,7 +209,8 @@ public class SupplierInboxIntegrationTests(CasazenWebApplicationFactory factory)
         var inThreeDays = await InsertRequestAsync(world, world.PropertyId, world.HostOrgId, scheduledDay: today.AddDays(3));
         var inEightDays = await InsertRequestAsync(world, world.PropertyId, world.HostOrgId, scheduledDay: today.AddDays(8));
         var yesterday = await InsertRequestAsync(world, world.PropertyId, world.HostOrgId, scheduledDay: today.AddDays(-1));
-        var firstOfMonth = await InsertRequestAsync(world, world.PropertyId, world.HostOrgId, scheduledDay: monthStart);
+        // On the 1st of the month "today" is the start of the month: reuse that request, a second one would break the "oggi" assertion.
+        var firstOfMonth = monthStart == today ? forToday : await InsertRequestAsync(world, world.PropertyId, world.HostOrgId, scheduledDay: monthStart);
         var nextMonth = await InsertRequestAsync(world, world.PropertyId, world.HostOrgId, scheduledDay: nextMonthStart);
         using var supplier = factory.Supplier(world);
 
