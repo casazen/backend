@@ -4,8 +4,8 @@ Versione 2.1 · 2 novembre 2026 · Stato: **requisiti pronti per Helix** (nuovo 
 del 31/10, decisioni del PO prese lo stesso giorno: §14.1). Credenziali del partner verificate il
 31/10 dagli ambienti test e produzione di CasaZen (S20); l'account Octorate è ancora in sandbox.
 Il 2/11 Octorate ha scelto di non rispondere alle domande tecniche e rimanda a una sessione di
-onboarding a pagamento, che il PO non usa per ora: il documento resta valido e si procede come in
-§14.3 (nessuna domanda blocca lo sviluppo con l'adattatore Mock).
+onboarding a pagamento, che il PO non usa per ora: il documento resta valido, le decisioni del PO non
+cambiano e si procede come in §14.3 (nessuna domanda blocca lo sviluppo con l'adattatore Mock).
 
 La v2.0 allarga il perimetro dal solo channel management (v1.3) agli otto processi che il PO
 vuole gestire interamente da CasaZen, con Octorate dietro le quinte; aggiunge regole UX
@@ -144,7 +144,7 @@ S1–S11 sono le fonti della v1.3, aggiornate dove indicato; S12–S22 sono nuov
 | S19 | Guide pubbliche di Octorate lette il 31/10/2026: `api.octorate.com/connect` (indice), `start.html` (30/10/2019), `showcases/authentication.html` (17/06/2019), `showcases/new_property.html` (05/11/2019), `showcases/airbnb.html` (30/10/2019), `showcases/new_rate.html` (19/03/2020), `showcases/new_network.html` (05/11/2019), `showcase.html`, `faqs.html` (29/10/2019) | Dettagli di autenticazione, creazione di strutture, tariffe derivate, reti, contenuti Airbnb, quota, certificazione e contatti (§10.5). Sono del 2019–2020: dove contraddicono la specifica S13 vale S13 |
 | S20 | Verifica tecnica in sola lettura del 31/10/2026: variabili Octorate su Railway (nomi e confronto dei valori senza stamparli), accesso con le credenziali applicative e lettura di `GET /rest/v1/api/configuration` | Credenziali valide; configurazione reale del partner CasaZen (§9.1) |
 | S21 | Risposta di Octorate (Hospitality Engineering) riferita dal PO il 02/11/2026 alla mail del 31/10: non risponde alle domande tecniche e rimanda a una sessione di onboarding a pagamento con un tecnico specializzato; il PO non la usa per ora. Il prezzo non è stato comunicato | Le domande D15–D35 restano senza risposta: §14.3 |
-| S22 | Verifica tecnica in sola lettura del 02/11/2026 (stesso metodo di S20: credenziali applicative sul sandbox, nessuna scrittura, nessun dato personale stampato) e pagine pubbliche lette lo stesso giorno: prezzi, PMS e motore di prenotazione di `octorate.com`, un confronto prezzi di un concorrente (CheckIn Facile), documentazione di Railway sugli IP in uscita statici | Catalogo reale dei portali, quota, strutture visibili al partner; probabile dipendenza di Alloggiati, ISTAT e fatture dal modulo PMS a pagamento; IP statici in uscita (§14.3) |
+| S22 | Verifica tecnica in sola lettura del 02/11/2026 (stesso metodo di S20: credenziali applicative sul sandbox, nessuna scrittura, nessun dato personale stampato) e pagine pubbliche lette lo stesso giorno: prezzi, PMS e motore di prenotazione di `octorate.com`, un confronto prezzi di un concorrente (CheckIn Facile), documentazione di Railway sugli IP in uscita statici | Catalogo reale dei portali, quota, strutture visibili al partner; moduli e prezzi pubblici di Octorate come peso per D17 e D34; IP statici in uscita (§14.3) |
 
 Precedenze: S18 (testo originale di Octorate) prevale su S7 (il riassunto del PO). Un'operazione
 presente nella specifica S13 ma dichiarata non disponibile da S18 **non si usa** finché Octorate
@@ -513,14 +513,12 @@ base dei promemoria e di diverse automazioni di §7.
 Vedi MSG-05 (`NotificationRouter` oggi registrato e non usato, email solo all'indirizzo
 dell'organizzazione, nessuna preferenza per utente).
 
-#### DEB-08 — Client Alloggiati collegato · P0
+#### DEB-08 — Client Alloggiati collegato · P1
 
 Completamento secondo `docs/requirements/AW-01-alloggiati-web-completamento-helix.md`: client e job
 registrati, righe costruite dagli ospiti del soggiorno, `Tabella`, profilo «Gestione
 Appartamenti», ricevuta archiviata, pagina dei rapporti con endpoint esistenti. Serve agli immobili
-non collegati (CHK-03) e allo scaricamento delle ricevute (CHK-04). Dal 2/11 è anche il mittente di
-base di tutti gli immobili: è il solo percorso che funziona senza che Octorate abbia risposto sulla
-licenza, sugli IP statici e sul collegamento (§14.3), perciò va in P0 e nella prima onda di H4.
+non collegati (CHK-03) e allo scaricamento delle ricevute (CHK-04).
 
 #### DEB-09 — Verifica biometrica, operatore e codice della serratura · P0
 
@@ -816,12 +814,10 @@ Prova: nessun ospite con `draft` falso verso Octorate se il mittente dell'immobi
 #### CHK-03 — Mittente unico per immobile · P0
 
 1. Ogni immobile italiano ha un'impostazione «Chi invia i dati alla Polizia»: il channel manager
-   (prima scelta per gli immobili collegati, PO-02, ma solo se sono veri tutti e tre: la licenza di
-   Octorate comprende la funzione, gli IP statici sono registrati dove servono, il collegamento
-   mostra «Attivata»; finché non sono confermati vale CasaZen, §14.3), CasaZen (per gli immobili non
-   collegati e per quelli collegati senza le tre condizioni: richiede il client del web service
-   completato secondo AW-01, DEB-08), oppure manuale (file da caricare, già esistente e reale).
-   Mai due mittenti automatici: il cambio di mittente richiede la conferma che l'altro è spento.
+   (default per gli immobili collegati, PO-02), CasaZen (per gli immobili non collegati: richiede
+   il client del web service completato secondo AW-01, DEB-08), oppure manuale (file da caricare,
+   già esistente e reale). Mai due mittenti automatici: il
+   cambio di mittente richiede la conferma che l'altro è spento.
 2. Wizard «Attiva l'invio automatico alla Polizia»: spiega la delega dell'incaricato alla
    trasmissione, raccoglie o verifica le credenziali dove servono (modulo esistente in sola
    scrittura) e porta l'utente al **pannello Octorate**, l'unico posto in cui si collega il portale
@@ -1459,9 +1455,7 @@ IVA, codice destinatario).
      CasaZen e del sito dell'agenzia collegato al motore di prenotazione (FIS-03); per le
      prenotazioni delle OTA CasaZen non emette documenti;
    - se Octorate consente solo l'emissione a mano dal suo pannello, la scelta torna al PO con la
-     risposta D34;
-   - finché D34 non ha una risposta scritta e la licenza necessaria non è confermata (il PMS Cloud
-     di Octorate non è nel livello Basic, S22), per le dirette vale il ramo CasaZen (§14.3).
+     risposta D34.
 2. Wizard «Come emetti i documenti?» per l'organizzazione: chi emette secondo il punto 1 (oppure
    nessuno, perché se ne occupa il commercialista) e quale documento per il proprio regime (privato
    senza partita IVA, partita IVA ordinaria o forfettaria, agenzia con doppia intestazione
@@ -2261,12 +2255,11 @@ completo, dal dato alla schermata, dimostrabile con l'adattatore Mock.
 | H7 — Marketplace | H1, U0 | MKT-01…07 | Catalogo dalle tre fonti; attivazione e disattivazione di un portale simulato; stato |
 | O1 — Onboarding | H1–H7, U0 | ONB-01…05: il percorso che accende tutti i flussi, anche in blocco per le agenzie | Agenzia DEMO configurata da zero in Mock, 10 immobili in blocco, ripresa a metà percorso, nessun flusso attivo senza prerequisiti |
 | H8 — Sandbox | H1 per la prima parte, H2–H7 per il resto; credenziali valide | Prove del contratto API con l'account test (ex H5 della v1.3): OAuth e rinnovo, letture prima delle scritture, errori 400/401/403/404/422, 403 di quota, 550, timeout, webhook. **Prima parte senza risposte di Octorate** (§14.3): reti e strutture di prova create con le sole credenziali del partner, prenotazioni e pagamenti di prova, configurazione dell'app, catalogo dei portali; i dati sensibili degli ospiti solo dopo la registrazione degli IP statici (D24) | Rapporto per capacità; le celle con effetti sulle OTA restano «da provare in produzione» |
-| H8b — Banco di prova in produzione | H8, certificazione dell'account, licenza di produzione (D35), accordo sul trattamento dei dati firmato | Un annuncio reale non di Quokka collegato alle OTA (PO-22): pubblicazione dei contenuti, prezzi e disponibilità, una prenotazione da un canale (anche fatta dal team) con modifica e cancellazione, messaggi, check-in con invio, documento fiscale; alla fine disattivazione pulita | Ogni capacità «da provare in produzione» ha una prova registrata o un blocco dichiarato |
+| H8b — Banco di prova in produzione | H8, licenza di produzione (D35) | Un annuncio reale non di Quokka collegato alle OTA (PO-22): pubblicazione dei contenuti, prezzi e disponibilità, una prenotazione da un canale (anche fatta dal team) con modifica e cancellazione, messaggi, check-in con invio, documento fiscale; alla fine disattivazione pulita | Ogni capacità «da provare in produzione» ha una prova registrata o un blocco dichiarato |
 | H9 — Preparazione del pilota | H8b, approvazioni | Import in sola lettura, confronto dei mapping, convivenza con il sistema attuale, rollback, soglie (ex H6) | G3 |
 | H10 — Osservazione del pilota | H9, autorizzazione | 5–10 proprietà per 30 giorni (proposta S3/S4), controlli e rapporti (ex H7) | G4 |
 
-**Si può iniziare subito, senza Octorate:** S0 (prima di tutto), U0 per intero; DEB-02, DEB-05 e DEB-08 (il client Alloggiati di CasaZen, mittente
-di base: §14.3);
+**Si può iniziare subito, senza Octorate:** S0 (prima di tutto), U0 per intero; DEB-02 e DEB-05;
 CHK-07 (calcolo della tassa, già in CasaZen); FIS-02 e FIS-05 (FIS-03, l'emissione di CasaZen,
 aspetta la risposta D34: PO-05); REP sui dati
 già presenti; CRM-02/03/06/08 (base giuridica dei contatti e correzioni delle campagne); MSG-05
@@ -2287,7 +2280,7 @@ del simulatore e prove contrattuali ufficiali.
   messaggi e recensioni sulle OTA risultano «da provare in produzione» e si provano sul banco di
   prova (H8b, PO-22).
 - **G3 — Pronti al pilota.** Autorizzazione commerciale e operativa, proprietà e durata concordate,
-  certificazione breve dell'account da parte di Octorate (S19), accordo sul trattamento dei dati con Octorate firmato (prima di qualunque dato reale di ospiti), IP statici registrati, banco di prova superato (H8b, PO-22), mapping verificati, permessi API necessari (compresi `checkIn`, `invoices`, `contactInfo` se
+  certificazione breve dell'account da parte di Octorate (S19), banco di prova superato (H8b, PO-22), mapping verificati, permessi API necessari (compresi `checkIn`, `invoices`, `contactInfo` se
   usati), mittente degli adempimenti deciso per ogni immobile, rollback e responsabilità definiti;
   prova d'uso del PO con almeno cinque persone non esperte su: collegamento dei canali, modifica
   di un annuncio, check-in con invio, risposta a un messaggio, documento fiscale.
@@ -2397,29 +2390,24 @@ mail del 31/10 e rimanda a una sessione di onboarding a pagamento con un tecnico
    (check-in, `contactInfo`) restano esclusi finché gli IP statici non sono registrati (D24).
 3. **I passaggi normali di un partner si chiedono a parte.** Certificazione dell'account, IP statici,
    callback di produzione, permessi e categoria vanno a `openapi@octorate.com` (S9, S19); moduli,
-   listino, accordo sul trattamento dei dati e struttura di prova alla parte commerciale. Sono passaggi
-   del programma partner, non la consulenza a pagamento.
+   listino e struttura di prova alla parte commerciale. Sono passaggi del programma partner, non la
+   consulenza a pagamento.
 4. **La sessione a pagamento non si compra ora.** Se servirà, una volta sola, dopo la prima parte di
    H8 e prima di H8b, con la sola lista della fascia C. Prima di comprarla: prezzo, durata, se
    include la certificazione, risposte per iscritto. Se Octorate rimandasse alla sessione anche i
    passaggi della regola 3, la decisione torna al PO.
 5. **Dove un ADR chiede di decidere «con Octorate»** (versione delle API `roomrates`) l'ADR sceglie la
    più recente (v3), la verifica in sandbox e registra l'ipotesi.
-6. **Mittente di base degli adempimenti e dei documenti: CasaZen.** L'invio ad Alloggiati con Octorate
-   (PO-02) e i documenti fiscali emessi da Octorate (PO-05) restano la prima scelta del PO, ma si
-   attivano per immobile (o per organizzazione) solo con la licenza di Octorate che comprende la
-   funzione (D17, D34), gli IP statici registrati (D24) e il collegamento verificato (CHK-03). Finché
-   non c'è una risposta scritta vale CasaZen: client Alloggiati (DEB-08, ora P0), file ISTAT
-   (CHK-05), documenti per le sole prenotazioni dirette (FIS-02, FIS-03). Il motivo: il listino
-   pubblico di Octorate mette il PMS Cloud in Pro e Ultimate («su richiesta») e non in Basic, e la
-   pagina del PMS elenca tra le sue funzioni l'invio delle schedine Alloggiati, i flussi ISTAT, le
-   fatture compatibili con SDI e il self check-in (S22); un concorrente lo conferma, da verificare
-   con un preventivo.
+6. **Le decisioni del PO non cambiano.** Valgono le scelte del 31/10: l'invio degli adempimenti lo fa
+   Octorate (PO-02, PO-03) e i documenti fiscali li emette Octorate se può (PO-05). Nessuna condizione
+   aggiunta, nessuna priorità cambiata. Le risposte che mancano su moduli e costi (D17, D34) restano
+   domande aperte per la parte commerciale. Il trattamento dei dati (domanda 36 della mail del 31/10)
+   il PO lo affronta più avanti: non è un gate di questa versione.
 
 | Fascia | Domande | Cosa bloccano | Da soli | Se manca |
 |---|---|---|---|---|
 | A. Si verificano da soli in sandbox | D33 (un consenso per la rete); D30 (indirizzo base, significato della quota); D12 (prenotazioni e chat di prova); D27 (credenziali dei proprietari: prova del `welcome_user` falso); D9 (canale delle dirette); D17 e D18 (forma di `policeAccount`, `policeSentStatus`); D7 (quota); D23 (chiusa da S22) | Niente | Sì, prima parte di H8 | Un token per struttura nello stesso archivio (§9.1); strutture create solo per chi accetta subito le credenziali |
-| B. Passaggi di un partner, commerciali e legali | Certificazione e passaggio a produzione; D24 (IP statici); callback di produzione; D30 (permesso `cardDetail`) e D22 (categoria); D14 e D21 (listino e moduli); D17 e D34 (moduli per Alloggiati, ISTAT, fatture, motore di prenotazione); D35 (struttura di prova); D11 (titolarità contrattuale e uscita); accordo sul trattamento dei dati | H8b, H9 e qualunque dato reale di ospiti | No | Nessun dato reale e nessuna struttura reale finché mancano. Adempimenti e documenti: CasaZen (regola 6) |
+| B. Passaggi di un partner e questioni commerciali | Certificazione e passaggio a produzione; D24 (IP statici); callback di produzione; D30 (permesso `cardDetail`) e D22 (categoria); D14 e D21 (listino e moduli); D17 e D34 (moduli per Alloggiati, ISTAT, fatture, motore di prenotazione); D35 (struttura di prova); D11 (titolarità contrattuale e uscita) | H8b, H9 e i dati sensibili degli ospiti (IP statici) | No | Nessuna struttura reale e nessun dato sensibile finché mancano |
 | C. Solo Octorate, o la prova su una struttura reale | D1 e D29 (prerequisiti per creare su ogni OTA); D2 (CIN per portale); D3, D4 e D25 (messaggi, risposte automatiche, notifiche); D6 (migrazione di annunci esistenti); D8 (eventi per OTA); D26 (effetti degli stati del soggiorno); D28 (Vrbo in rete); D15, D31 e D32 (invio Alloggiati e ISTAT: orari, regioni, esiti); D20 (tassa nei documenti di Octorate); D5, D10 e D13 (recensioni, altri canali, unità di `totalPrice`); ricevute: come le gestiscono gli altri partner; contenuti di Expedia | Niente: cambiano un'attivazione, non il disegno | No: si provano su H8b | Passo guidato sul canale (LST-12, LST-13); risposte AI solo in bozza (PO-08); CIN inserito a mano nel canale con guida; ricevuta dalla Polizia o caricata (CHK-04); ISTAT con file di CasaZen (CHK-05) |
 
 **Fatti nuovi del 2/11 (S22, sola lettura).**
@@ -2439,8 +2427,9 @@ mail del 31/10 e rimanda a una sessione di onboarding a pagamento con un tecnico
   per Booking.com, Expedia e Holidu.
 - **Quota**: `quotaLimit` 164; `quotaStatus` vale 2, 4 e 7 all'inizio di tre prove da cinque chiamate
   e non cambia tra le chiamate di una stessa prova (verificato in due): non è un contatore semplice
-  (la specifica dice «chiamate rimaste»). `category` è assente; i valori possibili sono `CHECKIN_PROVIDER`, `BOOKING_ENGINE`,
-  `CHANNEL_MANAGER`, `OTA`, `RMS` e `MODEL_CONTEXT_PROTOCOL`, e fissano il tetto di lettura (D22).
+  (la specifica dice «chiamate rimaste»). `category` è assente; i valori possibili sono
+  `CHECKIN_PROVIDER`, `BOOKING_ENGINE`, `CHANNEL_MANAGER`, `OTA`, `RMS` e `MODEL_CONTEXT_PROTOCOL`, e
+  fissano il tetto di lettura (D22).
 - **Strutture visibili al partner: 0.** La struttura del network di test (utente «CasaZen calendar
   master») non è collegata all'accesso del partner finché il proprietario non autorizza: per le
   prove si creano strutture via API.
@@ -2448,30 +2437,32 @@ mail del 31/10 e rimanda a una sessione di onboarding a pagamento con un tecnico
   non garantiti dedicati, cambiano con la regione, richiedono un redeploy e cambiano l'indirizzo di
   tutte le chiamate in uscita del servizio). Oggi sono spenti in test e in produzione. Per D24 si
   abilitano prima in test e si comunicano a `openapi@octorate.com`.
-- **Prezzi pubblici** (S22): Basic da 8 € per camera al mese con channel manager e motore di
-  prenotazione (14 giorni di prova senza carta); Pro e Ultimate su richiesta. Sono i prezzi ai
-  clienti finali: non sostituiscono il listino da partner (D14).
+- **Moduli e prezzi pubblici di Octorate**: Basic da 8 € per camera al mese con channel manager e
+  motore di prenotazione (14 giorni di prova senza carta); Pro e Ultimate su richiesta. Il PMS Cloud è
+  in Pro e Ultimate, e la sua pagina elenca tra le funzioni l'invio delle schedine Alloggiati, i flussi
+  ISTAT, le fatture compatibili con SDI e il self check-in; un concorrente conferma che il Basic non lo
+  comprende. Sono prezzi ai clienti finali: non sostituiscono il listino da partner (D14) e danno
+  peso alle domande D17 e D34 (quale modulo serve per ogni funzione, e a che costo). Nessuna decisione
+  cambia.
 
 **Passi.** (1) Helix parte da H0 su questa versione. (2) Prima parte di H8 in sandbox, con strutture
 finte poi disattivate. (3) Abilitare gli IP statici in test e scrivere a `openapi@octorate.com`
 (certificazione, IP, `cardDetail`, categoria e quota). (4) Scrivere alla parte commerciale (moduli e
-listino, accordo sul trattamento dei dati, struttura di prova, titolarità e uscita). (5) Decidere la
-sessione a pagamento solo dopo il punto 2.
+listino, struttura di prova, titolarità e uscita). (5) Decidere la sessione a pagamento solo dopo il
+punto 2.
 
 ## 15. Revisioni
 
 - **2.1 · 2 novembre 2026:** Octorate non risponde alle domande tecniche della mail del 31/10 e
   rimanda a una sessione di onboarding a pagamento (S21); il PO non la usa per ora. Nuovo §14.3:
   nessuna domanda blocca lo sviluppo con l'adattatore Mock; le domande sono divise in tre fasce
-  (da verificare da soli in sandbox, passaggi di un partner e questioni commerciali o legali, solo
-  Octorate o struttura reale) con il ripiego di ciascuna. Verifica in sola lettura del 2/11 (S22):
-  catalogo di 229 portali (Expedia con funzioni di contenuto, 13 strumenti esterni tra cui Nuki e
-  Salto, canali 233 e 270 per le dirette), quota, nessuna struttura visibile al partner, IP statici
-  in uscita di Railway, probabile dipendenza di Alloggiati, ISTAT e fatture dal PMS Cloud a
-  pagamento (D17, D34). Cambi: DEB-08 (client Alloggiati) da P1 a P0 e mittente di base degli
-  adempimenti (CHK-03); Octorate come mittente o emittente solo con licenza, IP statici e
-  collegamento verificati (PO-02, PO-05); H8 con una prima parte senza risposte di Octorate;
-  accordo sul trattamento dei dati e certificazione tra le condizioni di H8b e G3.
+  (da verificare da soli in sandbox, passaggi di un partner e questioni commerciali, solo Octorate
+  o struttura reale) con il ripiego di ciascuna. Verifica in sola lettura del 2/11 (S22): catalogo
+  di 229 portali (Expedia con funzioni di contenuto, 13 strumenti esterni tra cui Nuki e Salto,
+  canali 233 e 270 per le dirette), quota, nessuna struttura visibile al partner, IP statici in
+  uscita di Railway, moduli e prezzi pubblici di Octorate. H8 con una prima parte senza risposte di
+  Octorate. Nessuna decisione del PO cambia (PO-02, PO-03 e PO-05 restano come decisi il 31/10); il
+  trattamento dei dati si affronta più avanti.
 - **2.0 · 31 ottobre 2026:** nuovo mandato del PO (S12): da solo channel management a otto
   processi con CasaZen unico punto di accesso. Aggiunti: base del codice al 30/10 (§4), regole UX
   vincolanti con l'aggiunta del 31/10 (wizard su livello separato, mai fuori dal processo, «Da
