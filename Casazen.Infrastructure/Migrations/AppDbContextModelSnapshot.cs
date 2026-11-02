@@ -5390,6 +5390,65 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("RegulatoryDataAuditEntries");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.RentBankMovement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConfirmedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("LeaseContractId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PayerIbanHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("PayerNameHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("RentLedgerEntryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("ValueDate")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LeaseContractId");
+
+                    b.HasIndex("RentLedgerEntryId");
+
+                    b.HasIndex("OrgId", "Fingerprint")
+                        .IsUnique();
+
+                    b.HasIndex("OrgId", "PayerIbanHash");
+
+                    b.HasIndex("OrgId", "PayerNameHash");
+
+                    b.ToTable("RentBankMovements");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.RentLedgerEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -10648,6 +10707,33 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Checklist");
 
                     b.Navigation("EvidenceDocument");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.RentBankMovement", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.LeaseContract", "LeaseContract")
+                        .WithMany()
+                        .HasForeignKey("LeaseContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", "Org")
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.RentLedgerEntry", "RentLedgerEntry")
+                        .WithMany()
+                        .HasForeignKey("RentLedgerEntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("LeaseContract");
+
+                    b.Navigation("Org");
+
+                    b.Navigation("RentLedgerEntry");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.RentLedgerEntry", b =>

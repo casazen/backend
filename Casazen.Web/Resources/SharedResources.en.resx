@@ -4073,4 +4073,31 @@
   <data name="ShowcaseMediaInUse" xml:space="preserve">
     <value>This image is still used in the showcase (in the draft, in the published version or in the previous one): take it out of the content first.</value>
   </data>
+  <data name="BankStatementFileMissing" xml:space="preserve">
+    <value>Choose the bank statement file to import.</value>
+  </data>
+  <data name="BankStatementTooLarge" xml:space="preserve">
+    <value>The file is too large: {0} MB at most. Export a shorter period from your bank.</value>
+  </data>
+  <data name="BankStatementFormatUnsupported" xml:space="preserve">
+    <value>This file cannot be read. Export the movements from your bank as CSV, Excel (.xlsx), CAMT.053 (XML) or MT940.</value>
+  </data>
+  <data name="BankStatementUnreadable" xml:space="preserve">
+    <value>I cannot read the file: it looks damaged or is not a bank statement. Try exporting it from your bank again.</value>
+  </data>
+  <data name="BankStatementEmpty" xml:space="preserve">
+    <value>I found no movement in the file. Check that you exported the right period.</value>
+  </data>
+  <data name="BankStatementTooManyRows" xml:space="preserve">
+    <value>The file has too many movements (at most {0} credits): export a shorter period from your bank.</value>
+  </data>
+  <data name="BankStatementColumnsUnrecognized" xml:space="preserve">
+    <value>I do not recognise the columns of the file: say which one holds the date, the description and the amount.</value>
+  </data>
+  <data name="BankStatementMappingInvalid" xml:space="preserve">
+    <value>The columns chosen do not fit this file: pick the date, the description and the amount among the columns of the file.</value>
+  </data>
+  <data name="BankImportSelectionsInvalid" xml:space="preserve">
+    <value>Choose from 1 to 500 payments to confirm.</value>
+  </data>
 </root>

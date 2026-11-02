@@ -4073,4 +4073,31 @@
   <data name="ShowcaseMediaInUse" xml:space="preserve">
     <value>Questa immagine è ancora usata nella vetrina (nella bozza, nella versione pubblicata o in quella precedente): toglila prima dai contenuti.</value>
   </data>
+  <data name="BankStatementFileMissing" xml:space="preserve">
+    <value>Scegli il file dell'estratto conto da importare.</value>
+  </data>
+  <data name="BankStatementTooLarge" xml:space="preserve">
+    <value>Il file è troppo grande: al massimo {0} MB. Esporta dalla banca un periodo più breve.</value>
+  </data>
+  <data name="BankStatementFormatUnsupported" xml:space="preserve">
+    <value>Questo file non si può leggere. Esporta i movimenti dalla tua banca in CSV, Excel (.xlsx), CAMT.053 (XML) oppure MT940.</value>
+  </data>
+  <data name="BankStatementUnreadable" xml:space="preserve">
+    <value>Non riesco a leggere il file: sembra danneggiato o non è un estratto conto. Prova a esportarlo di nuovo dalla banca.</value>
+  </data>
+  <data name="BankStatementEmpty" xml:space="preserve">
+    <value>Nel file non ho trovato nessun movimento. Controlla di aver esportato il periodo giusto.</value>
+  </data>
+  <data name="BankStatementTooManyRows" xml:space="preserve">
+    <value>Il file ha troppi movimenti (al massimo {0} accrediti): esporta dalla banca un periodo più breve.</value>
+  </data>
+  <data name="BankStatementColumnsUnrecognized" xml:space="preserve">
+    <value>Non riconosco le colonne del file: indica tu quale contiene la data, la descrizione e l'importo.</value>
+  </data>
+  <data name="BankStatementMappingInvalid" xml:space="preserve">
+    <value>Le colonne indicate non vanno bene per questo file: scegli data, descrizione e importo tra quelle del file.</value>
+  </data>
+  <data name="BankImportSelectionsInvalid" xml:space="preserve">
+    <value>Scegli da 1 a 500 incassi da confermare.</value>
+  </data>
 </root>

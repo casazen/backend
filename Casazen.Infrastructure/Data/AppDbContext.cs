@@ -263,6 +263,7 @@ public class AppDbContext(
     public DbSet<LeaseSigner> LeaseSigners { get; set; } = null!;
     public DbSet<RentSchedule> RentSchedules { get; set; } = null!;
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
+    public DbSet<RentBankMovement> RentBankMovements { get; set; } = null!;
 
     // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
     public DbSet<ConcordatoFacilePurchase> ConcordatoFacilePurchases { get; set; } = null!;
@@ -813,6 +814,39 @@ public class AppDbContext(
         // The rent register of the long-term area (LR-01): the installments of an org by month of due date, in due date order.
         modelBuilder.Entity<RentLedgerEntry>()
             .HasIndex(e => new { e.OrgId, e.DueDate });
+
+        // The credits of a bank statement confirmed as rent payments (import of the statement of the Canoni page): the fingerprint is
+        // unique per org, so the same movement is imported once; the payer hashes are looked up per org to recognize who paid before.
+        modelBuilder.Entity<RentBankMovement>()
+            .HasOne(m => m.LeaseContract)
+            .WithMany()
+            .HasForeignKey(m => m.LeaseContractId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RentBankMovement>()
+            .HasOne(m => m.RentLedgerEntry)
+            .WithMany()
+            .HasForeignKey(m => m.RentLedgerEntryId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RentBankMovement>()
+            .HasOne(m => m.Org)
+            .WithMany()
+            .HasForeignKey(m => m.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<RentBankMovement>()
+            .Property(m => m.Amount)
+            .HasPrecision(18, 2);
+
+        modelBuilder.Entity<RentBankMovement>()
+            .HasIndex(m => new { m.OrgId, m.Fingerprint })
+            .IsUnique();
+
+        modelBuilder.Entity<RentBankMovement>().HasIndex(m => new { m.OrgId, m.PayerIbanHash });
+        modelBuilder.Entity<RentBankMovement>().HasIndex(m => new { m.OrgId, m.PayerNameHash });
+        modelBuilder.Entity<RentBankMovement>().HasIndex(m => m.LeaseContractId);
+        modelBuilder.Entity<RentBankMovement>().HasIndex(m => m.RentLedgerEntryId);
 
         // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
         modelBuilder.ApplyConfiguration(new ConcordatoFacilePurchaseConfiguration());
