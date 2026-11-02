@@ -504,6 +504,10 @@ public static class ServiceCollectionExtensions
         // The practices of a lease and the lookup of a practice, read from the ConcordatoFacile status API and kept in memory (ADR-008). The
         // controller of the module takes it in its constructor: without this registration every one of its actions fails (CF-FIX2).
         services.AddScoped<IConcordatoFacileStatusCacheService, ConcordatoFacileStatusCacheService>();
+        // The lease of the guided service follows its practice: the documents read into the draft, the contract imported as signed once the
+        // practice says it is, the registration declared from the receipt (CF-DONE; `POST …/concordatofacile/sync`).
+        services.AddSingleton<ILeaseDocumentReadQueue, HangfireLeaseDocumentReadQueue>();
+        services.AddScoped<IConcordatoFacileCompletionService, ConcordatoFacileCompletionService>();
         // The simulated module and status API of the test environment (CF-SIM, docs/runbooks/concordatofacile-simulator.md). The status
         // cache reads the practices from IConcordatoFacileApiClient: the HTTP client of the real status API, except with
         // ConcordatoFacile:FormMode=Simulated, which the startup refuses in Production. Chosen when the client is asked for, not when the

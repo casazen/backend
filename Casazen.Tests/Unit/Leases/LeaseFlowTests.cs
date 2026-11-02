@@ -62,4 +62,30 @@ public class LeaseFlowTests
 
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
+
+    /// <summary>
+    /// CF-DONE: the contract of a draft made by the guided service is written by the service, so the general path never asks the landlord to
+    /// complete it: the step is the neutral one, whose practice is followed on the sheet of the lease. The same draft without the mark is a
+    /// draft like any other.
+    /// </summary>
+    [Fact]
+    public void Derive_ADraftOfTheGuidedService_IsNeverAskedForData()
+    {
+        var draft = new LeaseFlowInput
+        {
+            Today = Today,
+            Status = LeaseStatus.Draft,
+            Origin = LeaseOrigin.Imported,
+            ContractType = LeaseContractType.Concordato,
+            CurrentTermEndDate = new DateOnly(3000, 1, 1),
+        };
+
+        var service = LeaseFlow.Derive(draft with { AwaitsPartnerContract = true });
+        var other = LeaseFlow.Derive(draft);
+
+        Assert.Equal(LeaseStage.Draft, service.Stage);
+        Assert.Equal(LeaseNextStepCode.AwaitPartnerContract, service.NextStep.Code);
+        Assert.Equal(LeaseNextStepActor.System, service.NextStep.Actor);
+        Assert.Equal(LeaseNextStepCode.CompleteStep, other.NextStep.Code);
+    }
 }

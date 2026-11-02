@@ -57,7 +57,10 @@ public enum LeaseNextStepCode
     /// <summary>Imported draft with all its data: upload the signed contract and the day it was signed (<c>POST api/leases/{id}/import</c>).</summary>
     ImportSignedContract,
 
-    /// <summary>Draft prepared by a partner (ConcordatoFacile): nothing for the landlord to do in the general path. See <see cref="LeaseFlowInput.AwaitsPartnerContract"/>.</summary>
+    /// <summary>
+    /// Draft prepared by a partner (ConcordatoFacile): no data to type, nothing for the landlord in the general path; the practice is followed
+    /// on the sheet of the lease. See <see cref="LeaseFlowInput.AwaitsPartnerContract"/>.
+    /// </summary>
     AwaitPartnerContract,
 
     /// <summary>In review, not confirmed yet: read the preview and confirm.</summary>
@@ -196,9 +199,9 @@ public sealed record LeaseFlowInput
     public LeaseDraftFlow? Draft { get; init; }
 
     /// <summary>
-    /// The draft is one whose contract a partner prepares (ConcordatoFacile): the general path has nothing for the landlord to do and shows a
-    /// neutral step; the state of the partner's practice is another piece of information, kept apart. <b>Nothing sets it yet</b>: the
-    /// integration with the partner does, where it builds this input (the partner and its practice are not recorded on the lease).
+    /// The draft is one whose contract a partner prepares (ConcordatoFacile, <c>IsConcordatoFacileSource</c>, CF-DONE): its steps are never
+    /// the data steps of the wizard, the step is <see cref="LeaseNextStepCode.AwaitPartnerContract"/>. The state of the partner's practice is
+    /// read on the sheet of the lease, from the partner.
     /// </summary>
     public bool AwaitsPartnerContract { get; init; }
 
@@ -407,6 +410,8 @@ public static class LeaseFlow
 
     private static LeaseNextStep DraftStep(LeaseFlowInput i)
     {
+        // A draft of the guided service is never "complete the draft": the service writes the contract and the practice is followed on the
+        // sheet of the lease (CF-DONE), so the general path has nothing to ask of the landlord.
         if (i.AwaitsPartnerContract)
             return new LeaseNextStep(LeaseNextStepCode.AwaitPartnerContract, LeaseNextStepActor.System, Priority.AllGood);
 

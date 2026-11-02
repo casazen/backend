@@ -103,6 +103,10 @@ public sealed class ConcordatoFacileLinkService(
         var url = BuildSignedUrl(
             FormBaseUrl(options.Value), leaseId, expiresAt, signature, comune.Name, comune.ProvinceCode, TestModuleBypassSecret(options.Value));
 
+        // CF-DONE: from the first opening of the form the draft is the service's (imported, marked), whatever path made it: the documents
+        // the service delivers are then read into it and it follows the practice up to the registration.
+        lease.MarkAsServiceDraft();
+
         // ADR-007-R8: Record LeaseEvent (NO URL or signature in payload)
         db.LeaseEvents.Add(new LeaseEvent
         {

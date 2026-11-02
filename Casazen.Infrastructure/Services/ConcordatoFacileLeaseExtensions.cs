@@ -1,3 +1,5 @@
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -22,5 +24,27 @@ internal static class ConcordatoFacileLeaseExtensions
         {
             throw new NotFoundException($"Lease {leaseId} not found.") { Code = "lease_not_found", MessageKey = "LeaseNotFound" };
         }
+    }
+
+    /// <summary>
+    /// CF-DONE: the canone concordato draft whose guided form is opened is the service's draft from then on: an imported draft (the contract
+    /// comes back signed, to be read into the draft and imported) marked <c>IsConcordatoFacileSource</c>, as «Parto da zero» makes it since
+    /// CF-IMPORT. A draft made before that (origin Created, no mark) would otherwise never read the documents the service delivers into its
+    /// data and could never be imported. Returns whether the lease changed; anything but a concordato draft is left as it is.
+    /// </summary>
+    public static bool MarkAsServiceDraft(this LeaseContract lease)
+    {
+        if (lease.Status != LeaseStatus.Draft || lease.ContractType != LeaseContractType.Concordato)
+            return false;
+        if (lease.IsConcordatoFacileSource && lease.Origin == LeaseOrigin.Imported)
+            return false;
+
+        // A draft already reviewed or handed out for the signature in CasaZen is a contract of CasaZen: it stays what it is.
+        if (lease.ReviewConfirmedAt is not null || lease.SentForSignatureAt is not null)
+            return false;
+
+        lease.IsConcordatoFacileSource = true;
+        lease.Origin = LeaseOrigin.Imported;
+        return true;
     }
 }

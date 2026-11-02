@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -139,6 +140,108 @@ public class ConcordatoFacileControllerTests
         // Should return 404 to not reveal existence of the practice/lease to other org
         var objectResult = Assert.IsType<ObjectResult>(result.Result);
         Assert.Equal(StatusCodes.Status404NotFound, objectResult.StatusCode);
+    }
+
+    // ---- CF-DONE: the lease follows its practice -------------------------------------------------------------------
+
+    /// <summary>The sync of a lease that is not the org's (or does not exist) is the same 404, and nothing is done.</summary>
+    [Fact]
+    public async Task Sync_ALeaseOfAnotherOrgOrNone_Returns404_AndDoesNothing()
+    {
+        var controller = CreateController();
+        SetUser(controller, TestUserId);
+        _mockOrgContextResolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(TestOrgId);
+        var completion = new Mock<IConcordatoFacileCompletionService>();
+
+        var result = await controller.Sync(TestLeaseId, completion.Object, new Mock<IHostResourceLookup>().Object, CancellationToken.None);
+
+        var problem = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status404NotFound, problem.StatusCode);
+        completion.VerifyNoOtherCalls();
+    }
+
+    /// <summary>It records a signature and a registration: whoever may not do the two by hand may not make the app do them.</summary>
+    [Theory]
+    [InlineData("lease.sign")]
+    [InlineData("lease.register")]
+    public async Task Sync_WithoutTheRightToSignAndToRegister_Returns403_AndDoesNothing(string deniedPermission)
+    {
+        var (db, property) = await SeedLeaseAsync();
+        var controller = CreateController(db);
+        SetUser(controller, TestUserId);
+        _mockOrgContextResolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(TestOrgId);
+        AllowEveryOperationExcept(deniedPermission);
+        var completion = new Mock<IConcordatoFacileCompletionService>();
+
+        var result = await controller.Sync(TestLeaseId, completion.Object, LookupOf(property).Object, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result.Result);
+        completion.VerifyNoOtherCalls();
+    }
+
+    /// <summary>With both rights the service runs for the lease of the caller's org and its outcome is the answer, never cached.</summary>
+    [Fact]
+    public async Task Sync_WithBothRights_RunsTheService_AndSaysWhereTheLeaseStands()
+    {
+        var (db, property) = await SeedLeaseAsync();
+        var controller = CreateController(db);
+        SetUser(controller, TestUserId);
+        _mockOrgContextResolver.Setup(r => r.GetOrProvisionOrgIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync(TestOrgId);
+        AllowEveryOperationExcept(deniedPermission: null);
+        var completion = new Mock<IConcordatoFacileCompletionService>();
+        completion
+            .Setup(c => c.SyncAsync(TestLeaseId, TestOrgId, TestUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CfCompletionResult(CfCompletionStates.WaitingForReceipt, LeaseStatus.Signed));
+
+        var result = await controller.Sync(TestLeaseId, completion.Object, LookupOf(property).Object, CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var body = Assert.IsType<SyncResponse>(ok.Value);
+        Assert.Equal("WaitingForReceipt", body.State);
+        Assert.Equal("Signed", body.LeaseStatus);
+        Assert.Equal("private, no-store", controller.Response.Headers.CacheControl.ToString());
+    }
+
+    private static async Task<(AppDbContext Db, Property Property)> SeedLeaseAsync()
+    {
+        var db = CreateInMemoryDbContext();
+        var property = new Property { Id = Guid.NewGuid(), OrgId = TestOrgId, OwnerId = TestUserId, Name = "Casa", City = "Seveso" };
+        db.Properties.Add(property);
+        db.LeaseContracts.Add(new LeaseContract
+        {
+            Id = TestLeaseId,
+            OrgId = TestOrgId,
+            PropertyId = property.Id,
+            Status = LeaseStatus.Draft,
+            ContractType = LeaseContractType.Concordato,
+        });
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        return (db, property);
+    }
+
+    private static Mock<IHostResourceLookup> LookupOf(Property property)
+    {
+        var lookup = new Mock<IHostResourceLookup>();
+        lookup.Setup(l => l.ForPropertyAsync(property.Id, It.IsAny<CancellationToken>())).ReturnsAsync(HostResource.ForProperty(property));
+        return lookup;
+    }
+
+    /// <summary>The resource-based checks all pass except the one of <paramref name="deniedPermission"/> (none denied: <c>null</c>).</summary>
+    private void AllowEveryOperationExcept(string? deniedPermission)
+    {
+        _mockAuthorizationService
+            .Setup(a => a.AuthorizeAsync(It.IsAny<ClaimsPrincipal>(), It.IsAny<object?>(), It.IsAny<IEnumerable<IAuthorizationRequirement>>()))
+            .ReturnsAsync(AuthorizationResult.Success());
+        if (deniedPermission is null)
+            return;
+
+        _mockAuthorizationService
+            .Setup(a => a.AuthorizeAsync(
+                It.IsAny<ClaimsPrincipal>(),
+                It.IsAny<object?>(),
+                It.Is<IEnumerable<IAuthorizationRequirement>>(r => r.OfType<HostOperationRequirement>().Any(o => o.PermissionKey == deniedPermission))))
+            .ReturnsAsync(AuthorizationResult.Failed());
     }
 
     private ConcordatoFacileController CreateController(AppDbContext? db = null)

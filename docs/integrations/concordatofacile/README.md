@@ -146,6 +146,30 @@ Il modulo di CF accetta soltanto contratti a canone concordato: libero e transit
 
 Il transitorio «in CasaZen» è in `develop` dal 25 ottobre (task TR: backend #609, frontend #349): `availableTypes` lo include, il wizard chiede l'esigenza transitoria e il termine (da 1 a 18 mesi) e il modello è l'Allegato B del D.M. 16/01/2017. Il modello è una **bozza non approvata**: «Scarica da firmare» risponde 422 `contract_template_not_approved` e l'anteprima è marcata BOZZA finché il PO non lo approva con `LeaseTemplates__Variants__Transitorio__*`. Debiti TR-FU1..4 al §13.
 
+### 3.10 Il contratto segue la pratica (CF-DONE, 2 novembre)
+
+La scheda del contratto fatto con il servizio non chiede mai di compilare dati: mostra lo stato della pratica (§3.6) e, a pratica conclusa e documenti caricati, il contratto diventa **Firmato** e poi **Registrato**, con i dati letti dai documenti. Tre punti.
+
+**Quale bozza è «del servizio».** La bozza «da zero» (importata, `isConcordatoFacileSource`, §3.3). Una bozza di concordato fatta prima, dal flusso generico (origine `Created`, senza il segno), lo diventa quando il modulo viene aperto (`POST …/link` la marca) o alla prima sincronizzazione se c'è l'evento `ConcordatoFacileLinkGenerated`; la migrazione `BackfillConcordatoFacileSourceDrafts` fa lo stesso per quelle già esistenti. Una bozza già rivista o consegnata per la firma in CasaZen non si tocca. Per l'elenco e la panoramica il passo della bozza del servizio è sempre `AwaitPartnerContract` (attore `System`), mai `CompleteStep`.
+
+**La sincronizzazione.** `POST /api/leases/{leaseId}/concordatofacile/sync` (serve `lease.sign` **e** `lease.register` sulla casa del contratto, perché registra una firma e una registrazione: 403 altrimenti; 404 `lease_not_found` per un contratto altrui) fa ciò che si può fare ora e risponde `{ state, leaseStatus }`; è idempotente e non fallisce per colpa dei documenti o della pratica. L'app la chiama all'apertura della scheda e della pagina di caricamento e ogni 3 secondi mentre `state` è `ReadingContract` o `ReadingReceipt`.
+
+| `state` | Che cosa aspetta il contratto |
+|---|---|
+| `NotApplicable` | Non è un contratto del servizio: non si fa nulla |
+| `WaitingForContract` | Nessun documento `Contract`: la persona carica il file ricevuto (contratto e attestazione sono **un solo file**: l'attestazione non si richiede di nuovo) |
+| `ReadingContract` | Il documento si sta leggendo nella bozza. Un documento letto «alla vecchia maniera» (risultato prima della versione 3) o rimasto in lettura da oltre 15 minuti si rimette in coda **una volta** |
+| `WaitingForSignature` | La pratica non dice ancora «firmato» (serve `SignedReceived`, `SentToAssociation`, `Attested` o `Registered`; una pratica chiusa senza attestazione non conta) |
+| `ContractNeedsData` | L'importazione non si può fare da sola (dati o giorno della firma che la lettura non ha trovato, revisione che blocca, un periodo già preso da un altro contratto della casa, stato della pratica non leggibile): la persona completa e importa, e le si chiede **solo ciò che manca** |
+| `WaitingForReceipt` | Contratto firmato: manca la ricevuta di registrazione (documento `Registration`) |
+| `ReadingReceipt` | La ricevuta si sta leggendo |
+| `ReceiptNotUsable` | La ricevuta non basta a dichiarare la registrazione (scansione, richiesta scartata dall'Agenzia, nessun codice o giorno): la persona dichiara a mano |
+| `Completed` | Registrato: la procedura è finita e il blocco sparisce dalla scheda |
+
+**La cittadinanza del locatore.** Il contratto del servizio dichiara quella del conduttore ma non quella del locatore, e la revisione di una bozza importata si blocca senza. Per la bozza del servizio un locatore **persona fisica nata in Italia** (luogo di nascita del codice fiscale che non comincia per `Z`) è preso come italiano (`IT`) e il campo risulta *derivato* («controlla»); quella del conduttore non si indovina mai (decide la comunicazione alla Questura), né quella di un locatore nato all'estero o di una società: restano da chiedere. Un valore già scritto non si sovrascrive.
+
+**Che cosa scrive.** Importa il documento `Contract` come copia firmata (`ImportSignedContractFromDocumentAsync`) con il giorno della firma letto dal contratto o, in mancanza, dalla ricevuta; poi dichiara la registrazione con la ricevuta (`DeclareManualRegistrationFromDocumentAsync`: codice di identificazione, oppure numero e serie, e giorno della registrazione). Per il resto valgono le regole delle dichiarazioni a mano (stesso controllo della revisione, stesso blocco dei periodi sovrapposti, stesso evento nella cronologia). Nel contratto firmato e nel documento restano solo ciò che ci è sempre stato: nessun valore personale nel `ExtractionResult`.
+
 ## 4. Il pagamento in dettaglio (Stripe)
 
 Checkout Session di Stripe in modalità `payment` (non abbonamento), sul **conto della piattaforma** (non Stripe Connect, non i pagamenti degli affitti), con una riga: il Price una tantum configurato (`ConcordatoFacile__StripePriceId`), quantità 1. Il totale atteso è **11900 centesimi, `eur`, IVA già inclusa**: il server non aggiunge IVA e l'esenzione che l'associazione dichiara per le proprie ricevute non si applica alla vendita CasaZen. `SuccessUrl` e `CancelUrl` sono `{ConcordatoFacile__BaseUrl}/app/long-rent/leases/{leaseId}/guided-contract?checkout=success` e `…?checkout=cancelled` (dal 25 ottobre, CF-END; il frontend tiene il vecchio `…/concordatofacile` come rinvio). La sessione ha una scadenza esplicita di 2 ore.
@@ -433,7 +457,7 @@ Restano (CF-FIX2-FU1, CF-DOC-FU11 e CF-DOC-FU9 sono stati chiusi il 25 ottobre d
 | `docs/runbooks/canone-concordato.md` | **corretto** | Regole del canone (non il processo CF); aggiornata la riga del transitorio e aggiunto il rimando |
 | `docs/runbooks/lease-document-extraction.md` | **corretto** | Riferimento tecnico della lettura dei documenti (NL-DOCS); a questo documento rimanda il §3.8 |
 | `docs/runbooks/lease-documents.md` | **corretto** | Aggiornata una frase che dava per futuro ciò che ora esiste |
-| `docs/runbooks/documenti-multipagina.md`, `long-rent-lease-import.md`, `long-rent-lease-draft.md`, `lease-contract-templates.md`, `long-rent-aggregates.md`, `org-team.md` | **corretti** | Non descrivono il processo CF, o lo fanno in modo vero (per esempio `AwaitsPartnerContract` oggi non è impostato da nessuno) |
+| `docs/runbooks/documenti-multipagina.md`, `long-rent-lease-import.md`, `long-rent-lease-draft.md`, `lease-contract-templates.md`, `long-rent-aggregates.md`, `org-team.md` | **corretti** | Non descrivono il processo CF, o lo fanno in modo vero (per esempio `AwaitsPartnerContract`, impostato per le bozze del servizio: §3.10) |
 | `.claude/context/regulations/canone_concordato.md`, `docs/index.md` | **corretti** | Regole del canone concordato e indice della documentazione: aggiornato il rimando ai documenti di riferimento |
 | `Sessions/canone-concordato-calculator/*`, `Sessions/research-canone-concordato-mb.md`, `Sessions/contratto-locazione-canone-concordato-bozza.html`, `docs/legal-drafts/leases/*` | **corretti** (storico) | Ricerca, calcolo e bozze sul canone concordato, non il processo CF |
 | `secrets/railway.test.variables.example.json`, `secrets/railway.prod.variables.example.json` | **corretti** | Variabili `ConcordatoFacile__*` e `Features__ConcordatoFacile` per ambiente |
