@@ -28,9 +28,11 @@ public interface IGuestBookingLookupService
 public sealed record GuestBookingCredentials(string OrgSlug, string BookingCode, string Email);
 
 /// <summary>
-/// One booking as its guest sees it in "Le mie prenotazioni": state, stay, amounts in euro as recorded on the booking,
-/// the host's public contact and the online check-in. No personal data of anyone (the guest typed their own email).
+/// One booking as its guest sees it in "Le mie prenotazioni": state, stay, amounts as recorded on the booking, in the currency of its
+/// property (<paramref name="Currency"/>), the host's public contact and the online check-in. No personal data of anyone (the guest typed
+/// their own email).
 /// </summary>
+/// <param name="Currency">ISO 4217 code of the property (<see cref="StayCurrency"/>, EUR or CHF).</param>
 /// <param name="BookingCode">Formatted, <c>XXXXX-XXXXX</c>.</param>
 /// <param name="Lodging">Nightly part: <c>BasePrice - CleaningFee</c>.</param>
 /// <param name="TotalPrice">Lodging, cleaning and tourist tax.</param>
@@ -128,6 +130,20 @@ public static class GuestBookingLookupErrorCodes
 /// <summary>The state of a booking for its guest, from the same rules as the checkout outcome page.</summary>
 public static class GuestBookings
 {
+    /// <summary>
+    /// What Stripe collected for <paramref name="booking"/> and what was refunded so far, in the currency of its property: the settled
+    /// payments only (completed, partially refunded, refunded), as "Le mie prenotazioni" and the guest's account list show them.
+    /// Needs its payments.
+    /// </summary>
+    public static (decimal Paid, decimal Refunded) AmountsOf(Booking booking)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        var collected = booking.Payments
+            .Where(p => p.Status is PaymentStatus.Completed or PaymentStatus.PartiallyRefunded or PaymentStatus.Refunded)
+            .ToList();
+        return (collected.Sum(p => p.Amount), collected.Sum(p => p.RefundedAmount));
+    }
+
     /// <summary>Where <paramref name="booking"/> stands at <paramref name="cutoff"/>. Needs its payments.</summary>
     public static GuestBookingStatus StatusOf(Booking booking, HoldExpiryCutoff cutoff)
     {

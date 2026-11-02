@@ -81,11 +81,16 @@ public interface ISupplierPaymentRefundService
     /// <c>service_payment_refund_offline</c> (recorded as received outside CasaZen), <c>service_payment_nothing_to_refund</c>,
     /// <c>service_payment_refund_amount_invalid</c> and <c>service_payment_refund_amount_exceeds</c>. A refund Stripe refuses (4xx)
     /// is returned <c>Failed</c> with its code, one whose outcome is unknown is returned <c>Pending</c>.
+    /// <para>SP-15c-b, the money CasaZen holds, rule R4: with <paramref name="keepCommission"/> the amount is what the supplier would have been
+    /// paid (the price minus the commission, minus what was refunded), and it may not be more: the payer gets that back, CasaZen keeps its
+    /// commission and the supplier gets nothing (the supplier was at fault). Without it (R5, cancelling is always free) everything still
+    /// refundable goes back, the commission included. Not for a direct charge: 422 <c>service_payment_refund_amount_invalid</c>.</para>
     /// </summary>
     Task<ServiceRequestPaymentRefund> RefundAsync(
         Guid paymentId,
         int? amountCents,
         string? reason,
         string actorUserId,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool keepCommission = false);
 }

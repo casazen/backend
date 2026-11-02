@@ -16,7 +16,25 @@ public sealed class ResendEmailService(
     IOptions<EmailOptions> options,
     ILogger<ResendEmailService> logger) : IEmailService
 {
-    public async Task<EmailSendResult> SendEmailAsync(string to, string subject, string htmlContent)
+    public Task<EmailSendResult> SendEmailAsync(string to, string subject, string htmlContent) =>
+        SendAsync(to, subject, htmlContent, replyTo: null);
+
+    public Task<EmailSendResult> SendEmailAsync(string to, string subject, string htmlContent, string replyTo) =>
+        SendAsync(to, subject, htmlContent, replyTo);
+
+    public Task<EmailSendResult> SendEmailWithHeadersAsync(
+        string to,
+        string subject,
+        string htmlContent,
+        IReadOnlyDictionary<string, string> headers) =>
+        SendAsync(to, subject, htmlContent, replyTo: null, headers);
+
+    private async Task<EmailSendResult> SendAsync(
+        string to,
+        string subject,
+        string htmlContent,
+        string? replyTo,
+        IReadOnlyDictionary<string, string>? headers = null)
     {
         var settings = options.Value;
         if (!settings.IsConfigured)
@@ -29,7 +47,7 @@ public sealed class ResendEmailService(
 
         try
         {
-            var response = await resend.EmailSendAsync(BuildMessage(settings, to, subject, htmlContent));
+            var response = await resend.EmailSendAsync(BuildMessage(settings, to, subject, htmlContent, replyTo, headers));
             if (response.Success)
             {
                 logger.LogInformation("Email sent via Resend (id={EmailId})", response.Content);
@@ -49,18 +67,39 @@ public sealed class ResendEmailService(
         }
     }
 
-    /// <summary>The message handed to Resend: the configured sender, unchanged.</summary>
-    public static EmailMessage BuildMessage(EmailOptions settings, string to, string subject, string htmlContent) => new()
+    /// <summary>
+    /// The message handed to Resend: the configured sender, unchanged. <paramref name="replyTo"/>, when given, is only the address an
+    /// answer goes to (the host's answer to a visitor of the booking site); it never replaces the sender. <paramref name="headers"/>, when
+    /// given, are added as they are (the <c>List-Unsubscribe</c> pair of a campaign).
+    /// </summary>
+    public static EmailMessage BuildMessage(
+        EmailOptions settings,
+        string to,
+        string subject,
+        string htmlContent,
+        string? replyTo = null,
+        IReadOnlyDictionary<string, string>? headers = null)
     {
-        From = new EmailAddress
+        var message = new EmailMessage
         {
-            Email = settings.FromAddress!.Trim(),
-            DisplayName = string.IsNullOrWhiteSpace(settings.FromName) ? null : settings.FromName.Trim(),
-        },
-        To = to,
-        Subject = subject,
-        HtmlBody = htmlContent,
-    };
+            From = new EmailAddress
+            {
+                Email = settings.FromAddress!.Trim(),
+                DisplayName = string.IsNullOrWhiteSpace(settings.FromName) ? null : settings.FromName.Trim(),
+            },
+            To = to,
+            Subject = subject,
+            HtmlBody = htmlContent,
+        };
+
+        if (!string.IsNullOrWhiteSpace(replyTo))
+            message.ReplyTo = replyTo.Trim();
+
+        if (headers is { Count: > 0 })
+            message.Headers = new Dictionary<string, string>(headers, StringComparer.OrdinalIgnoreCase);
+
+        return message;
+    }
 
     private EmailSendResult Failure(ResendException? ex)
     {

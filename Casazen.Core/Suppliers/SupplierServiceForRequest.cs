@@ -34,8 +34,14 @@ public sealed record SupplierServiceForRequest(
     /// The price a request for this service can carry from the start: the "from" price of a service priced per job. A service on
     /// quote, or priced per hour, set or square meter, has no price until the supplier gives one (the quantity is unknown).
     /// </summary>
-    public int? EstimatedAmountCents =>
-        !RequiresQuote && PriceUnit == SupplierServicePriceUnit.PerJob && PriceFromCents is > 0 ? PriceFromCents : null;
+    public int? EstimatedAmountCents => EstimateOf(RequiresQuote, PriceUnit, PriceFromCents);
+
+    /// <summary>
+    /// The estimate rule for any view of a catalog service (the host's list of a supplier's services reads it too, SR-08a): the "from" price
+    /// of a service priced per job and not on quote; none otherwise.
+    /// </summary>
+    public static int? EstimateOf(bool requiresQuote, SupplierServicePriceUnit priceUnit, int? priceFromCents) =>
+        !requiresQuote && priceUnit == SupplierServicePriceUnit.PerJob && priceFromCents is > 0 ? priceFromCents : null;
 
     /// <summary>
     /// The slot query of the planner for this service (<c>null</c> when it has no duration, so no slot can be computed). With

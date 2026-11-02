@@ -118,6 +118,19 @@ public sealed partial class HostDashboardService(
         return new HostDashboardTodayStays(today, arrivals, departures, upcoming);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, HostDashboardOccupancy>> GetLast30DaysOccupancyAsync(
+        IReadOnlyCollection<Guid> propertyIds,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(propertyIds);
+
+        // The period and the nights of the Home's «ultimi 30 giorni» (HostDashboardPeriod.ForLast30Days, GetNightsByPropertyAsync):
+        // the list of the properties shows the very number the Home would give for each of them.
+        var now = _clock.GetUtcNow();
+        var period = HostDashboardPeriod.ForLast30Days(RomeCalendar.TodayAt(now));
+        return await GetNightsByPropertyAsync(propertyIds, period, now.UtcDateTime, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<HostDashboardIcalFeed>> GetIcalFeedsAsync(
         HostScope scope,
         CancellationToken cancellationToken = default)

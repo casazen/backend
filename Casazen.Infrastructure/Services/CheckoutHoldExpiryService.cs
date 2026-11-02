@@ -20,6 +20,8 @@ namespace Casazen.Infrastructure.Services;
 /// second cancellation of the same attempt. Without PostgreSQL (EF InMemory in unit tests) nothing is locked.
 /// "Pay at the property" requests past their deadline (BK-06) go through the same routine (they have no intent to cancel)
 /// and are cancelled with their own reason; the guest of a request the host did not answer gets an email.
+/// <see cref="CloseOpenPaymentsOfCancelledBookingsAsync"/> reuses the same lock and the same release of the intents for the payment
+/// rows a booking cancelled elsewhere left open, and never changes the booking.
 /// </remarks>
 public sealed class CheckoutHoldExpiryService(
     AppDbContext db,
@@ -58,6 +60,14 @@ public sealed class CheckoutHoldExpiryService(
         Failed,
     }
 
+    private enum ClosePaymentsOutcome
+    {
+        Closed,
+        InFlight,
+        Skipped,
+        Failed,
+    }
+
     public Task<CheckoutHoldExpiryRun> ExpireDueHoldsAsync(CancellationToken cancellationToken = default) =>
         ExpireAsync(scope: null, cancellationToken);
 
@@ -74,6 +84,43 @@ public sealed class CheckoutHoldExpiryService(
                                       b.CheckInDate.Date < checkOutDate &&
                                       b.CheckOutDate.Date > checkInDate),
             cancellationToken);
+    }
+
+    public async Task<CancelledBookingPaymentsRun> CloseOpenPaymentsOfCancelledBookingsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var bookingIds = await db.Bookings
+            .Where(b => b.Status == BookingStatus.Cancelled &&
+                        b.Payments.Any(p => p.Status == PaymentStatus.Pending || p.Status == PaymentStatus.Failed))
+            .OrderBy(b => b.CreatedAt)
+            .Select(b => b.Id)
+            .Take(ICheckoutHoldExpiryService.CancelledBookingsBatchSize)
+            .ToListAsync(cancellationToken);
+        if (bookingIds.Count == 0)
+            return CancelledBookingPaymentsRun.Empty;
+
+        int closed = 0, inFlight = 0, skipped = 0, failed = 0;
+        foreach (var bookingId in bookingIds)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            switch (await CloseOpenPaymentsLockedAsync(bookingId, cancellationToken))
+            {
+                case ClosePaymentsOutcome.Closed:
+                    closed++;
+                    break;
+                case ClosePaymentsOutcome.InFlight:
+                    inFlight++;
+                    break;
+                case ClosePaymentsOutcome.Skipped:
+                    skipped++;
+                    break;
+                default:
+                    failed++;
+                    break;
+            }
+        }
+
+        return new CancelledBookingPaymentsRun(closed, inFlight, skipped, failed);
     }
 
     private async Task<CheckoutHoldExpiryRun> ExpireAsync(
@@ -195,6 +242,81 @@ public sealed class CheckoutHoldExpiryService(
             logger.LogError(ex, "Checkout hold {BookingId} could not be expired; the next run retries it", bookingId);
             ForgetChanges(booking);
             return (HoldOutcome.Failed, false);
+        }
+    }
+
+    /// <summary>
+    /// The open payments of one cancelled booking, under its row lock. The booking is read again there (it may have changed
+    /// since the list was read) and stays exactly as it is: only its payment rows, and the intents behind them, are handled.
+    /// </summary>
+    private async Task<ClosePaymentsOutcome> CloseOpenPaymentsLockedAsync(Guid bookingId, CancellationToken cancellationToken)
+    {
+        await using var transaction = await BeginTransactionAsync(cancellationToken);
+        Booking? booking = null;
+        try
+        {
+            if (!await TryLockBookingAsync(bookingId, cancellationToken))
+            {
+                logger.LogInformation("Cancelled booking {BookingId} is being closed by another run: skipped", bookingId);
+                return ClosePaymentsOutcome.Skipped;
+            }
+
+            booking = await db.Bookings
+                .Where(b => b.Id == bookingId && b.Status == BookingStatus.Cancelled)
+                .Include(b => b.Payments)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (booking is null || !booking.Payments.Any(p => p.Status is PaymentStatus.Pending or PaymentStatus.Failed))
+                return ClosePaymentsOutcome.Skipped;
+
+            // Fallback for payment rows recorded before BK-02 stored the account of their intent.
+            var orgAccountId = await db.Orgs
+                .Where(o => o.Id == booking.OrgId)
+                .Select(o => o.StripeConnectedAccountId)
+                .SingleOrDefaultAsync(cancellationToken);
+
+            var (release, inFlightPaymentIntentIds) = await ReleaseIntentsAsync(booking, orgAccountId, cancellationToken);
+            switch (release)
+            {
+                case IntentRelease.Released:
+                    CancelUncollectedPayments(booking, UtcNow());
+                    await db.SaveChangesAsync(cancellationToken);
+                    if (transaction is not null)
+                        await transaction.CommitAsync(cancellationToken);
+                    logger.LogInformation(
+                        "Cancelled booking {BookingId}: its open payments are closed, intents released on Stripe", booking.Id);
+                    return ClosePaymentsOutcome.Closed;
+
+                case IntentRelease.InFlight:
+                    MarkPaymentsInFlight(booking, inFlightPaymentIntentIds);
+                    await db.SaveChangesAsync(cancellationToken);
+                    if (transaction is not null)
+                        await transaction.CommitAsync(cancellationToken);
+                    if (inFlightPaymentIntentIds.Count > 0)
+                    {
+                        // Recorded as Processing: logged once, the next run no longer finds the payment open.
+                        logger.LogWarning(
+                            "Cancelled booking {BookingId} keeps an open payment: Stripe says the guest has paid or is paying ({PaymentIntentIds}); a person has to settle it",
+                            booking.Id,
+                            string.Join(',', inFlightPaymentIntentIds));
+                    }
+                    else
+                    {
+                        // A saved card (SetupIntent) already saved or being verified: nothing to record, read again by the next run.
+                        logger.LogInformation(
+                            "Cancelled booking {BookingId}: its saved card is already saved or being verified on Stripe; the payment row is left open", booking.Id);
+                    }
+
+                    return ClosePaymentsOutcome.InFlight;
+
+                default:
+                    return ClosePaymentsOutcome.Failed;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Cancelled booking {BookingId}: its open payments could not be closed; the next run retries it", bookingId);
+            ForgetChanges(booking);
+            return ClosePaymentsOutcome.Failed;
         }
     }
 
@@ -410,7 +532,15 @@ public sealed class CheckoutHoldExpiryService(
         booking.CancellationReason = reason;
         booking.UpdatedAt = now;
 
-        // Never collected: same state as a host cancellation (BK-02) and the payment_intent.canceled webhook.
+        CancelUncollectedPayments(booking, now);
+    }
+
+    /// <summary>
+    /// Never collected: same state as a host cancellation (BK-02) and the payment_intent.canceled webhook. One definition, for the
+    /// expiry of a hold and for the payments a cancelled booking left open.
+    /// </summary>
+    private static void CancelUncollectedPayments(Booking booking, DateTime now)
+    {
         foreach (var payment in booking.Payments.Where(p => p.Status is PaymentStatus.Pending or PaymentStatus.Failed))
         {
             payment.Status = PaymentStatus.Canceled;

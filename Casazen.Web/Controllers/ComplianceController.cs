@@ -58,6 +58,7 @@ public class ComplianceController(
             PropertyId = i.PropertyId,
             BookingId = i.BookingId,
             Missing = i.Missing.Select(ComplianceMissingDto.From).ToList(),
+            DueAt = i.DueAt,
         }),
     };
 }

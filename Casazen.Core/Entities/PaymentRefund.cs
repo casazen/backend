@@ -25,7 +25,10 @@ public class PaymentRefund : ITenantOwned
     /// <summary>Tenant key: the org of the payment, never client-supplied.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>Refunded amount in the payment currency (EUR).</summary>
+    /// <summary>
+    /// Refunded amount in the currency of the payment, which is the one of its property (EUR or CHF, <c>StayCurrency</c>): Stripe
+    /// refunds in the currency of the charge, and a payment has no currency column of its own.
+    /// </summary>
     [Precision(18, 2)]
     public decimal Amount { get; set; }
 

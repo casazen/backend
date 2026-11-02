@@ -49,6 +49,11 @@ public sealed partial class SupplierPaymentService
                 ?? await NewPaymentAsync(request, amount, ServiceRequestJson.ReadPriceLines(request.PriceLinesJson), now, cancellationToken);
             var isNew = db.Entry(payment).State == EntityState.Detached;
 
+            // The money CasaZen holds (SP-15c-a) is neither asked for nor reminded once the payer has paid it: it is charged and held, or a
+            // block the payer made. A host's payment that is still to be made (SP-15c-b) is asked for and reminded like any other.
+            if (payment.FundsModel == ServiceFundsModel.PlatformHeld && !IsOpen(payment.Status))
+                throw payment.Status == ServicePaymentStatus.Released ? AlreadyPaid() : HeldByCasaZen();
+
             switch (payment.Status)
             {
                 case ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded:
@@ -151,6 +156,11 @@ public sealed partial class SupplierPaymentService
             var live = await LivePaymentOf(request.Id).ToListAsync(cancellationToken);
             foreach (var open in live)
             {
+                // The money CasaZen holds (SP-15c-a) reaches the supplier by the release; once the payer has paid it cannot be declared received
+                // from elsewhere. A host's payment that is still to be made (SP-15c-b) can, as a traced exception, like any other.
+                if (open.FundsModel == ServiceFundsModel.PlatformHeld && !IsOpen(open.Status))
+                    throw open.Status == ServicePaymentStatus.Released ? AlreadyPaid() : HeldByCasaZen();
+
                 switch (open.Status)
                 {
                     case ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded:
@@ -162,7 +172,26 @@ public sealed partial class SupplierPaymentService
                 // Requested or Failed: the payer must not be able to pay it online after the supplier declared it paid, so its
                 // PaymentIntent is canceled first. One that was paid or is in progress on Stripe meanwhile wins: it is recorded
                 // as processing and the declaration is refused, so the same money is never counted twice.
-                if (open.StripePaymentIntentId is { } intentId && open.ConnectedAccountId is { } account)
+                if (open.FundsModel == ServiceFundsModel.PlatformHeld && open.StripePaymentIntentId is { } heldIntentId)
+                {
+                    // On the platform (SP-15c-b), not on the supplier's account.
+                    var heldCurrent = await ReadPlatformIntentAsync(heldIntentId, cancellationToken);
+                    if (heldCurrent is not null && ServiceCharges.IsPayable(heldCurrent.Status))
+                    {
+                        heldCurrent = await Platform.CancelAsync(
+                            heldIntentId, ServiceCharges.CancellationIdempotencyKey(open.Id, heldIntentId), cancellationToken);
+                    }
+
+                    if (heldCurrent is not null && heldCurrent.Status != "canceled")
+                    {
+                        open.Status = ServicePaymentStatus.Processing;
+                        open.UpdatedAt = now;
+                        await SaveAsync(cancellationToken);
+                        await CommitAsync(transaction, cancellationToken);
+                        throw InFlight();
+                    }
+                }
+                else if (open.StripePaymentIntentId is { } intentId && open.ConnectedAccountId is { } account)
                 {
                     var current = await ReadIntentAsync(intentId, account, cancellationToken);
                     if (current is not null && ServiceCharges.IsPayable(current.Status))

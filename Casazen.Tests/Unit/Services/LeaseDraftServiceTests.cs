@@ -677,13 +677,13 @@ public class LeaseDraftServiceTests
         Assert.Equal(review.Checks.Select(c => (int)c.Severity).Order(), review.Checks.Select(c => (int)c.Severity));
     }
 
-    [Fact]
-    public async Task GetReview_WarnsAboutAnotherContractOfTheProperty_InTheSameDates_NotAboutADraftNobodyHandedOut()
+    private static DateTime Day(int year, int month, int day) => new(year, month, day, 0, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>A lease of the harness's org on <paramref name="propertyId"/> with the days given; <paramref name="endedOn"/> is the day it was ended early.</summary>
+    private static LeaseContract OtherLease(
+        LeaseDraftHarness h, Guid propertyId, LeaseStatus status, DateTime start, DateTime end, DateTime? endedOn = null)
     {
-        using var h = await NewAsync();
-        var (created, _) = await h.CompleteAsync();
-        var otherProperty = await h.SeedPropertyAsync();
-        LeaseContract Other(Guid propertyId, LeaseStatus status, DateTime start, DateTime end) => new()
+        var lease = new LeaseContract
         {
             PropertyId = propertyId,
             OrgId = h.OrgId,
@@ -692,33 +692,122 @@ public class LeaseDraftServiceTests
             EndDate = end,
             MonthlyRent = 800m,
         };
+        if (endedOn is { } last)
+        {
+            lease.TerminatedOn = last;
+            lease.CurrentTermEndDate = last;
+        }
 
+        return lease;
+    }
+
+    private static async Task<LeaseReviewCheck?> OverlapCheckAsync(LeaseDraftHarness h, Guid leaseId) =>
+        (await h.Service.GetReviewAsync(leaseId)).Checks.SingleOrDefault(c => c.Code == LeaseNeedCodes.LeaseOverlap);
+
+    [Fact]
+    public async Task GetReview_AnotherLeaseOfTheProperty_OnSomeOfTheSameDays_IsABlock_AndNothingElseIs()
+    {
+        using var h = await NewAsync();
+        var (created, _) = await h.CompleteAsync(); // 2026-11-01 to 2030-10-31
+        var otherProperty = await h.SeedPropertyAsync();
         await using (var db = h.SecondContext())
         {
-            DateTime Day(int year, int month, int day) => new(year, month, day, 0, 0, 0, DateTimeKind.Utc);
-
-            // Overlaps, signed: a warning.
-            db.LeaseContracts.Add(Other(h.PropertyId, LeaseStatus.Signed, Day(2026, 6, 1), Day(2030, 5, 31)));
-
-            // Overlaps, a draft nobody handed out for signature: not a contract that stands.
-            db.LeaseContracts.Add(Other(h.PropertyId, LeaseStatus.Draft, Day(2026, 11, 1), Day(2030, 10, 31)));
-
-            // Rejected: it will never take effect.
-            db.LeaseContracts.Add(Other(h.PropertyId, LeaseStatus.Rejected, Day(2026, 11, 1), Day(2030, 10, 31)));
-
-            // Ended before this one starts.
-            db.LeaseContracts.Add(Other(h.PropertyId, LeaseStatus.Registered, Day(2022, 1, 1), Day(2026, 10, 31)));
-
-            // Another property.
-            db.LeaseContracts.Add(Other(otherProperty.Id, LeaseStatus.Registered, Day(2026, 6, 1), Day(2030, 5, 31)));
+            db.LeaseContracts.AddRange(
+                // Rejected: it will never take effect.
+                OtherLease(h, h.PropertyId, LeaseStatus.Rejected, Day(2026, 11, 1), Day(2030, 10, 31)),
+                // Ended the day before this one starts, and starts the day after it ends: the days follow each other.
+                OtherLease(h, h.PropertyId, LeaseStatus.Registered, Day(2022, 1, 1), Day(2026, 10, 31)),
+                OtherLease(h, h.PropertyId, LeaseStatus.Registered, Day(2030, 11, 1), Day(2034, 10, 31)),
+                // Another property.
+                OtherLease(h, otherProperty.Id, LeaseStatus.Registered, Day(2026, 6, 1), Day(2030, 5, 31)),
+                // A draft that does not have its two dates yet covers no days.
+                OtherLease(h, h.PropertyId, LeaseStatus.Draft, Day(2026, 11, 1), LeaseDraftDefaults.PlaceholderDate),
+                // Its contract goes on to 2032, but it was ended on 31 October 2026: the days after that are free.
+                OtherLease(h, h.PropertyId, LeaseStatus.Registered, Day(2024, 1, 1), Day(2032, 12, 31), endedOn: Day(2026, 10, 31)));
             await db.SaveChangesAsync();
         }
 
-        var review = await h.Service.GetReviewAsync(created.Id);
+        Assert.Null(await OverlapCheckAsync(h, created.Id));
 
-        var overlap = Assert.Single(review.Checks, c => c.Code == LeaseNeedCodes.LeaseOverlap);
-        Assert.Equal(1, overlap.Params!["count"]); // only the signed one: the registered one ends the day before this one starts
-        Assert.Equal(LeaseReviewSeverity.Warn, overlap.Severity);
+        Guid inTheWay;
+        await using (var db = h.SecondContext())
+        {
+            var signed = OtherLease(h, h.PropertyId, LeaseStatus.Signed, Day(2026, 6, 1), Day(2030, 5, 31));
+            db.LeaseContracts.Add(signed);
+            await db.SaveChangesAsync();
+            inTheWay = signed.Id;
+        }
+
+        var block = Assert.IsType<LeaseReviewCheck>(await OverlapCheckAsync(h, created.Id));
+        Assert.Equal(LeaseReviewSeverity.Block, block.Severity);
+        Assert.Equal(inTheWay, block.Params!["conflictingLeaseId"]);
+        Assert.Equal("2026-06-01", block.Params["conflictingFrom"]);
+        Assert.Equal("2030-05-31", block.Params["conflictingTo"]);
+    }
+
+    [Fact]
+    public async Task AnotherDraftOfTheProperty_ThatHasBothItsDates_CountsAsALease()
+    {
+        using var h = await NewAsync();
+        var (created, _) = await h.CompleteAsync();
+        var (other, _) = await h.CompleteAsync(); // the same days, on the same property: a second contract in the making
+
+        var view = await h.Service.GetAsync(created.Id);
+
+        Assert.Equal(other.Id, view.Flow.PeriodConflict!.ConflictingLeaseId);
+        Assert.Equal(new DateOnly(2026, 11, 1), view.Flow.PeriodConflict.ConflictingFrom);
+        Assert.Equal(new DateOnly(2030, 10, 31), view.Flow.PeriodConflict.ConflictingTo);
+        Assert.Null((await h.Service.GetAsync(created.Id)).Flow.Steps.SelectMany(s => s.Needs).FirstOrDefault(n => n.Code == LeaseNeedCodes.LeaseOverlap));
+    }
+
+    [Fact]
+    public async Task ConfirmReview_AndMarkSent_AreRefusedWith409_WhenAnotherLeaseHasSomeOfTheSameDays_AndGoThroughWhenItEndsTheDayBefore()
+    {
+        using var h = await NewAsync();
+        var (created, version) = await h.CompleteAsync(); // 2026-11-01 to 2030-10-31
+        Guid other;
+        await using (var db = h.SecondContext())
+        {
+            // Its last day is the first day of this one: one day in common is enough.
+            var lease = OtherLease(h, h.PropertyId, LeaseStatus.Registered, Day(2023, 3, 1), Day(2026, 11, 1));
+            db.LeaseContracts.Add(lease);
+            await db.SaveChangesAsync();
+            other = lease.Id;
+        }
+
+        var refused = await Assert.ThrowsAsync<DomainConflictException>(() => h.Service.ConfirmReviewAsync(created.Id, version));
+
+        Assert.Equal("lease_period_overlaps", refused.Code);
+        Assert.Equal("LeasePeriodOverlaps", refused.MessageKey);
+        Assert.Equal(other, refused.Extensions["conflictingLeaseId"]);
+        Assert.Equal(new DateOnly(2023, 3, 1), refused.Extensions["conflictingFrom"]);
+        Assert.Equal(new DateOnly(2026, 11, 1), refused.Extensions["conflictingTo"]);
+        var untouched = await h.LoadAsync(created.Id);
+        Assert.Null(untouched.ReviewConfirmedAt);
+        Assert.Equal(version, untouched.DraftVersion);
+
+        // It ends the day before: the days follow each other and the review is confirmed.
+        await using (var db = h.SecondContext())
+        {
+            var lease = await db.LeaseContracts.SingleAsync(l => l.Id == other);
+            lease.TerminatedOn = Day(2026, 10, 31);
+            lease.CurrentTermEndDate = Day(2026, 10, 31);
+            await db.SaveChangesAsync();
+        }
+
+        var confirmed = await h.Service.ConfirmReviewAsync(created.Id, version);
+        Assert.NotNull(confirmed.ReviewConfirmedAt);
+
+        // A lease that takes the days after the confirmation stops the download for signature, and nothing is written.
+        await using (var db = h.SecondContext())
+        {
+            db.LeaseContracts.Add(OtherLease(h, h.PropertyId, LeaseStatus.Signed, Day(2028, 1, 1), Day(2031, 12, 31)));
+            await db.SaveChangesAsync();
+        }
+
+        var sent = await Assert.ThrowsAsync<DomainConflictException>(() => h.Service.MarkSentAsync(created.Id, null));
+        Assert.Equal("lease_period_overlaps", sent.Code);
+        Assert.Null((await h.LoadAsync(created.Id)).SentForSignatureAt);
     }
 
     [Fact]

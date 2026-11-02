@@ -137,8 +137,10 @@ public static partial class EmailTemplates
         string propertyName,
         int refundedCents)
     {
+        // A customer of a supplier's showcase has no property (SP-15c-a): the sentence does not name one.
+        var bodyKey = string.IsNullOrWhiteSpace(propertyName) ? "ServicePaymentRefundedCustomer_Body" : "ServicePaymentRefundedPayer_Body";
         return new EmailHtmlBuilder(culture)
-            .Paragraph("ServicePaymentRefundedPayer_Body", supplierName, serviceName, propertyName, FormatEuro(refundedCents, culture))
+            .Paragraph(bodyKey, supplierName, serviceName, propertyName, FormatEuro(refundedCents, culture))
             .Muted("ServicePaymentRefundedPayer_Hint")
             .Build("ServicePaymentRefundedPayer_Subject", serviceName);
     }

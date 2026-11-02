@@ -454,6 +454,170 @@ public class GuestCheckInServiceTests
         Assert.DoesNotContain(await seed.Db.GuestConsentRecords.ToListAsync(), r => r.Purpose == GuestConsentPurpose.Marketing);
     }
 
+    /// <summary>
+    /// Privacy proof (NF-05, Q1-05): the per-channel consent is recorded only for the channels the guest ticked, never implied
+    /// by the other channel or by the legacy box, with the time, the text version and the IP as proof; it is not confirmed (no
+    /// marketing send before the double opt-in) and it does not set the guest flag the campaigns read.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Submit_PerChannelConsent_RecordsOnlyTheChannelsTheGuestTickedAndNothingIsConfirmed(bool email, bool whatsApp)
+    {
+        await using var seed = await SeedAsync();
+        var now = new DateTimeOffset(2026, 10, 1, 9, 30, 0, TimeSpan.Zero);
+        var svc = NewServiceWithVersions(seed.Db, now);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.MarketingConsentEmail = email;
+        request.MarketingConsentWhatsApp = whatsApp;
+        request.MarketingEmail = "  Marketing.Luigi@Example.IT ";
+        request.ConsentIpAddress = "203.0.113.7";
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.True(result.Success);
+        var record = await seed.Db.MarketingConsentRecords.AsNoTracking().SingleAsync();
+        Assert.Equal((email, whatsApp, false), (record.ConsentEmail, record.ConsentWhatsApp, record.EmailConfirmed));
+        Assert.Equal(
+            ("marketing.luigi@example.it", "marketing-v2", now.UtcDateTime, "203.0.113.7"),
+            (record.MarketingEmail, record.ConsentTextVersion, record.ConsentTimestamp, record.IpAddress));
+        Assert.Equal((seed.OrgId, seed.BookingId, seed.GuestId), (record.OrgId, record.BookingId, record.GuestId));
+        var guest = await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId);
+        Assert.False(guest.MarketingConsent);
+        Assert.DoesNotContain(await seed.Db.GuestConsentRecords.ToListAsync(), r => r.Purpose == GuestConsentPurpose.Marketing);
+    }
+
+    [Fact]
+    public async Task Submit_LegacyBoxOnly_KeepsTheGuestConsentAndRecordsNoChannel()
+    {
+        await using var seed = await SeedAsync();
+        var svc = NewServiceWithVersions(seed.Db, new DateTimeOffset(2026, 10, 1, 9, 30, 0, TimeSpan.Zero));
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.MarketingConsent = true;
+        request.MarketingEmail = "luigi@example.it";
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.True(result.Success);
+        Assert.Empty(await seed.Db.MarketingConsentRecords.ToListAsync());
+        Assert.True((await seed.Db.Guests.AsNoTracking().SingleAsync(g => g.Id == seed.GuestId)).MarketingConsent);
+        Assert.Contains(await seed.Db.GuestConsentRecords.ToListAsync(), r => r.Purpose == GuestConsentPurpose.Marketing);
+    }
+
+    [Fact]
+    public async Task Submit_NoChannelTicked_IgnoresTheMarketingEmailAndCompletesTheCheckIn()
+    {
+        await using var seed = await SeedAsync();
+        var svc = NewServiceWithVersions(seed.Db, DateTimeOffset.UtcNow);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.MarketingEmail = "typed-then-unticked";
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.True(result.Success);
+        Assert.Empty(await seed.Db.MarketingConsentRecords.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(null, CheckInValidationKeys.MarketingEmailRequired)]
+    [InlineData("   ", CheckInValidationKeys.MarketingEmailRequired)]
+    [InlineData("not-an-email", CheckInValidationKeys.MarketingEmailInvalid)]
+    public async Task Submit_ChannelTickedWithoutAUsableMarketingEmail_ReturnsTheEmailErrorAndSavesNothing(string? email, string key)
+    {
+        await using var seed = await SeedAsync();
+        var svc = NewServiceWithVersions(seed.Db, DateTimeOffset.UtcNow);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.MarketingConsentWhatsApp = true;
+        request.MarketingEmail = email;
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.False(result.Success);
+        AssertSingleError(result, null, nameof(GuestCheckInSubmitRequest.MarketingEmail), key);
+        Assert.Empty(await seed.Db.MarketingConsentRecords.ToListAsync());
+        Assert.Equal(GuestCheckInSessionStatus.InCompilazione, (await seed.Db.GuestCheckInSessions.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task Submit_ChannelsTickedWithoutAVersionedText_ReturnsUnavailableOnEachTickedFieldAndSavesNothing()
+    {
+        await using var seed = await SeedAsync();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest();
+        request.MarketingConsentEmail = true;
+        request.MarketingConsentWhatsApp = true;
+        request.MarketingEmail = "luigi@example.it";
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.False(result.Success);
+        Assert.Equal(
+            [
+                (nameof(GuestCheckInSubmitRequest.MarketingConsentEmail), CheckInValidationKeys.MarketingConsentUnavailable),
+                (nameof(GuestCheckInSubmitRequest.MarketingConsentWhatsApp), CheckInValidationKeys.MarketingConsentUnavailable),
+            ],
+            result.ValidationErrors.Select(e => (e.Field, e.MessageKey)));
+        Assert.Empty(await seed.Db.MarketingConsentRecords.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Submit_ChannelTickedByAMinorBooker_ReturnsTheMinorErrorOnTheChannelAndSavesNothing()
+    {
+        await using var seed = await SeedAsync();
+        var svc = NewServiceWithVersions(seed.Db, new DateTimeOffset(2026, 10, 1, 9, 30, 0, TimeSpan.Zero));
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+        var request = BuildValidSubmitRequest(dateOfBirth: new DateTime(2008, 10, 2, 0, 0, 0, DateTimeKind.Utc));
+        request.MarketingConsentEmail = true;
+        request.MarketingEmail = "luigi@example.it";
+
+        var result = await svc.SubmitAsync(token, request);
+
+        Assert.False(result.Success);
+        AssertSingleError(result, null, nameof(GuestCheckInSubmitRequest.MarketingConsentEmail), CheckInValidationKeys.MarketingConsentMinor);
+        Assert.Empty(await seed.Db.MarketingConsentRecords.ToListAsync());
+
+        // On the day of the 18th birthday the booker is of age and consents.
+        var adult = BuildValidSubmitRequest(dateOfBirth: new DateTime(2008, 10, 1, 0, 0, 0, DateTimeKind.Utc));
+        adult.MarketingConsentEmail = true;
+        adult.MarketingEmail = "luigi@example.it";
+        Assert.True((await svc.SubmitAsync(token, adult)).Success);
+        Assert.Single(await seed.Db.MarketingConsentRecords.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("mario.rossi@example.it", "mario.rossi@example.it")]
+    [InlineData("  Mario.Rossi@Example.IT ", "mario.rossi@example.it")]
+    [InlineData("mario+offerte@example.co.uk", "mario+offerte@example.co.uk")]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    [InlineData("mario", null)]
+    [InlineData("mario@", null)]
+    [InlineData("@example.it", null)]
+    [InlineData("mario@example", null)]
+    [InlineData("Mario Rossi <mario@example.it>", null)]
+    [InlineData("mario rossi@example.it", null)]
+    [InlineData("mario@example.it, anna@example.it", null)]
+    public void NormalizeMarketingEmail_Value_IsTrimmedLowercaseOrNullWhenNotAPlainAddress(string? value, string? expected)
+    {
+        Assert.Equal(expected, GuestCheckInService.NormalizeMarketingEmail(value));
+    }
+
+    [Fact]
+    public void NormalizeMarketingEmail_LongerThanTheColumn_IsNull()
+    {
+        var atTheLimit = new string('a', 255 - "@example.it".Length) + "@example.it";
+
+        Assert.Equal(atTheLimit, GuestCheckInService.NormalizeMarketingEmail(atTheLimit));
+        Assert.Null(GuestCheckInService.NormalizeMarketingEmail("a" + atTheLimit));
+    }
+
     [Fact]
     public async Task GetPublicView_VersionsConfigured_ExposesThemToThePortal()
     {
@@ -692,7 +856,8 @@ public class GuestCheckInServiceTests
         string type = "SingleGuest",
         string documentType = "Passport",
         string documentNumber = "YA1234567",
-        Gender? gender = Gender.Male) => new()
+        Gender? gender = Gender.Male,
+        DateTime? dateOfBirth = null) => new()
         {
             Guests =
         [
@@ -701,7 +866,7 @@ public class GuestCheckInServiceTests
                 Type = type,
                 FirstName = "Luigi",
                 LastName = "Verdi",
-                DateOfBirth = new DateTime(1990, 5, 15, 0, 0, 0, DateTimeKind.Utc),
+                DateOfBirth = dateOfBirth ?? new DateTime(1990, 5, 15, 0, 0, 0, DateTimeKind.Utc),
                 Gender = gender,
                 BornInItaly = true,
                 BirthComuneName = "Roma",

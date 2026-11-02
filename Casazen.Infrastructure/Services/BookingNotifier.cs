@@ -115,7 +115,49 @@ public sealed class BookingNotifier(
                 data.Summary.CheckOutDate,
                 refundedAmount,
                 refundStartedAmount,
-                data.HostContact));
+                data.HostContact,
+                currency: data.Summary.Currency));
+    }
+
+    /// <summary>
+    /// The guest cancelled the booking themselves, from the guest area or with the host's link (DB-08a): an email to the guest that
+    /// says so, with the refund Stripe already confirmed (<paramref name="refundedAmount"/>, whose own confirmation email the caller has
+    /// claimed), the refund still in progress (<paramref name="refundStartedAmount"/>, confirmed by a later email) and what the policy
+    /// keeps (<paramref name="retainedAmount"/>); and one to the host, who did not do it, with the same figures and the link to the
+    /// booking. Nothing of the guest's session or link is in them.
+    /// </summary>
+    public async Task BookingCancelledByGuestAsync(
+        Guid bookingId,
+        decimal refundedAmount,
+        decimal refundStartedAmount,
+        decimal retainedAmount,
+        CancellationToken cancellationToken = default)
+    {
+        var data = await TryLoadAsync(bookingId, "Guest cancellation", cancellationToken);
+        if (data is null)
+            return;
+
+        Queue(bookingId, EmailTemplates.Names.GuestBookingCancelled, data.GuestEmail, () =>
+            EmailTemplates.GuestBookingCancelled(
+                EmailTemplates.DefaultCulture,
+                data.GuestFirstName,
+                data.Summary.PropertyName,
+                data.Summary.CheckInDate,
+                data.Summary.CheckOutDate,
+                refundedAmount,
+                refundStartedAmount,
+                data.HostContact,
+                BookingCancellationEmailCause.Guest,
+                retainedAmount,
+                data.Summary.Currency));
+        QueueToHost(data, EmailTemplates.Names.HostBookingCancelledByGuest, () =>
+            EmailTemplates.HostBookingCancelledByGuest(
+                EmailTemplates.DefaultCulture,
+                $"{data.GuestFirstName} {data.GuestLastName}".Trim(),
+                data.Summary,
+                refundedAmount + refundStartedAmount,
+                retainedAmount,
+                links.HostBooking(data.BookingId)));
     }
 
     /// <summary>
@@ -177,7 +219,8 @@ public sealed class BookingNotifier(
                 refundedEur: 0m,
                 refundStartedEur: 0m,
                 data.HostContact,
-                BookingCancellationEmailCause.DeferredPaymentNotCompleted));
+                BookingCancellationEmailCause.DeferredPaymentNotCompleted,
+                currency: data.Summary.Currency));
         QueueToHost(data, EmailTemplates.Names.HostDeferredChargeCancelled, () =>
             EmailTemplates.HostDeferredChargeCancelled(
                 EmailTemplates.DefaultCulture,
@@ -299,6 +342,7 @@ public sealed class BookingNotifier(
                 GuestLastName = b.Guest.LastName,
                 GuestEmail = b.Guest.Email,
                 PropertyName = b.Property.Name,
+                PropertyCurrency = b.Property.Currency,
                 OrgSlug = b.Org.Slug,
                 OrgDisplayName = b.Org.DisplayName,
                 OrgContactEmail = b.Org.ContactEmail,
@@ -329,7 +373,9 @@ public sealed class BookingNotifier(
             row.BasePrice - row.CleaningFee,
             row.CleaningFee,
             row.TouristTax,
-            row.TotalPrice);
+            row.TotalPrice,
+            // The amounts of the emails are in the currency of the property (CHF-MONEY).
+            StayCurrency.Normalize(row.PropertyCurrency));
 
         // AM-03: the org's contact address, as ever, plus the member in charge of the property and the org's administrators.
         var tellEmails = await HostNotificationAudience

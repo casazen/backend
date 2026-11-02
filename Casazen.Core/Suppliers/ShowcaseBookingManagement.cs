@@ -29,6 +29,22 @@ public sealed record ShowcaseBookingAccessKey(string Slug, string Code, string E
 /// <param name="PublicCode">The code of the booking, stored form (<see cref="BookingCodes"/>): the page shows it as <c>XXXXX-XXXXX</c>.</param>
 /// <param name="RespondBy">When the supplier has to answer by, while the request is new and has no proposal; <c>null</c> otherwise.</param>
 /// <param name="RejectionReason">The reason the supplier gave when it refused the request (the customer was e-mailed it).</param>
+/// <param name="Kind">
+/// <see cref="ServiceRequestKind.Custom"/> for a request on measure (SP-10b), which has no time and no price (<c>StartUtc</c> and <c>EndUtc</c> are its
+/// creation, to be ignored) and a conversation; <see cref="ServiceRequestKind.Standard"/> for every other booking, whose view is what it always was.
+/// </param>
+/// <param name="Thread">The conversation of a request on measure, with the supplier's messages marked as read; <c>null</c> for any other booking.</param>
+/// <param name="Negotiation">Where the negotiation is (<see cref="ServiceRequestNegotiation"/>); <c>null</c> for any other booking.</param>
+/// <param name="Quote">The quote the supplier sent and the customer has not answered (SP-04b); <c>null</c> when there is none. Never set for a request on measure, whose quote is its <paramref name="Offer"/>.</param>
+/// <param name="Payment">The money of a booking paid inside CasaZen (SP-15c-a); <c>null</c> when the booking is not.</param>
+/// <param name="Offer">The offer the supplier sent for a request on measure and the customer has not answered (SP-10b-b); <c>null</c> when there is none, and for any other booking.</param>
+/// <param name="OfferPaymentRequired">SP-10b-b, with an <paramref name="Offer"/>: accepting it is paid inside CasaZen (the card is blocked, then charged when the request is taken); <c>null</c> without an offer.</param>
+/// <param name="PaymentSession">SP-10b-b: what the browser needs to block the card, only in the answer of the acceptance that asks for a card; <c>null</c> in every other answer.</param>
+/// <param name="Alternatives">
+/// SP-10c: the other suppliers offered to the customer of a request that <b>CasaZen closed because the supplier did not answer in time</b>
+/// (<see cref="ShowcaseAlternativeRules.Offers"/>), at most three, best first; an empty list when there is none to offer; <c>null</c> for every other
+/// booking, whose answer is what it always was.
+/// </param>
 public sealed record ShowcaseBookingView(
     string PublicCode,
     ServiceRequestStatus Status,
@@ -43,7 +59,82 @@ public sealed record ShowcaseBookingView(
     ShowcaseBookingCancellation? Cancellation,
     string? RejectionReason,
     ShowcaseBookingCancellationTerms CancellationTerms,
-    ShowcaseBookingActions Actions);
+    ShowcaseBookingActions Actions,
+    ServiceRequestKind Kind = ServiceRequestKind.Standard,
+    ServiceRequestThread? Thread = null,
+    string? Negotiation = null,
+    ShowcaseBookingQuote? Quote = null,
+    ShowcaseBookingPaymentView? Payment = null,
+    ServiceRequestOffer? Offer = null,
+    bool? OfferPaymentRequired = null,
+    OfferPaymentSession? PaymentSession = null,
+    IReadOnlyList<ShowcaseAlternative>? Alternatives = null);
+
+/// <summary>
+/// The money of a booking paid inside CasaZen as its customer reads it (SP-15c-a): what the card is blocked or charged for, where the money
+/// is, and, while CasaZen holds it, the moment it goes to the supplier unless the customer says "all fine" first. Amounts only: nothing of
+/// Stripe, no id, no card.
+/// </summary>
+/// <param name="Status">
+/// <see cref="ShowcaseBookingManagementRules.PaymentStatusOf"/>: <c>authorized</c> (the card is blocked, nothing is charged), <c>held</c>
+/// (charged, CasaZen holds it), <c>released</c> (the supplier was paid), <c>refunded</c>, <c>canceled</c> (the block was released: nothing
+/// was charged) or <c>review</c> (CasaZen is looking at it).
+/// </param>
+/// <param name="AmountCents">The total that was blocked and, once the supplier accepted, charged.</param>
+/// <param name="Currency">Uppercase ISO currency.</param>
+/// <param name="RefundedCents">What was given back to the customer.</param>
+/// <param name="ReleaseAtUtc">While the money is held and the work is done: when it goes to the supplier if the customer says nothing; otherwise <c>null</c>.</param>
+/// <param name="Dispute">SP-15c-c: the customer's complaint about the job, while it is open and after it was decided; <c>null</c> when there is none.</param>
+public sealed record ShowcaseBookingPaymentView(
+    string Status,
+    int AmountCents,
+    string Currency,
+    int RefundedCents,
+    DateTime? ReleaseAtUtc,
+    ShowcaseBookingDisputeView? Dispute = null);
+
+/// <summary>
+/// The customer's complaint about the job, as the customer reads it (SP-15c-c): its own words, the state and the decision. The supplier's reply and
+/// the note of the admin who decided are not in it; the customer is told that the supplier replied, not what it wrote.
+/// </summary>
+/// <param name="Status"><c>AwaitingSupplier</c>, <c>AwaitingDecision</c>, <c>ResolvedForSupplier</c>, <c>ResolvedForCustomer</c> or <c>Withdrawn</c>.</param>
+/// <param name="Reason"><c>not_done</c>, <c>incomplete</c>, <c>poor_quality</c>, <c>not_as_described</c> or <c>other</c>.</param>
+/// <param name="NoShow">The supplier never marked the work completed and the time agreed for it ended.</param>
+/// <param name="OpenedByCasaZen">CasaZen itself opened it (the no-show), not the customer.</param>
+/// <param name="Text">What the customer wrote.</param>
+/// <param name="OpenedAt">When it was opened.</param>
+/// <param name="SupplierReplyDueAt">When the supplier's time to reply ends.</param>
+/// <param name="SupplierReplied">The supplier replied.</param>
+/// <param name="ResolvedAt">When it was decided or taken back.</param>
+/// <param name="RefundCents">What goes back to the customer, when it was decided for the customer.</param>
+/// <param name="Settled">The refund that was decided has been made.</param>
+public sealed record ShowcaseBookingDisputeView(
+    string Status,
+    string Reason,
+    bool NoShow,
+    bool OpenedByCasaZen,
+    string? Text,
+    DateTime OpenedAt,
+    DateTime SupplierReplyDueAt,
+    bool SupplierReplied,
+    DateTime? ResolvedAt,
+    int? RefundCents,
+    bool Settled);
+
+/// <summary>
+/// The quote the supplier sent for the booking and the customer has not answered (SP-04b): the lines and the total, the note, the other
+/// time when the supplier offered one (the booking keeps its own until the customer accepts), and the deadline of the answer.
+/// </summary>
+/// <param name="SentAt">When it was sent: the version of the quote, which the answer repeats.</param>
+/// <param name="AnswerBy">The instant the customer has to answer by; after it the request is cancelled.</param>
+public sealed record ShowcaseBookingQuote(
+    DateTime SentAt,
+    IReadOnlyList<ServiceRequestQuoteLine> Lines,
+    int TotalCents,
+    string? Note,
+    DateTime? StartUtc,
+    DateTime? EndUtc,
+    DateTime? AnswerBy);
 
 /// <param name="Name">The name of the service when the request was made.</param>
 /// <param name="Slug">
@@ -107,7 +198,19 @@ public sealed record ShowcaseBookingCancellation(DateTime At, ServiceRequestActo
 public sealed record ShowcaseBookingCancellationTerms(DateTime FreeUntilUtc, bool IsFree);
 
 /// <summary>What the customer may do now with the booking (<see cref="ShowcaseBookingManagementRules"/>).</summary>
-public sealed record ShowcaseBookingActions(bool CanCancel, bool CanReschedule, bool CanRespondToProposal);
+/// <param name="CanConfirmOk">SP-15c-a: the work is done and CasaZen holds the money: the customer may say "all fine" and the supplier is paid at once.</param>
+/// <param name="CanReportProblem">SP-15c-c: the customer may report a problem — the work is done and the time to speak up has not ended, or the supplier never marked it completed and the time agreed for it has ended.</param>
+/// <param name="CanWithdrawProblem">SP-15c-c: a complaint of the customer is open and the customer may take it back.</param>
+/// <param name="CanRespondToOffer">SP-10b-b: an offer waits on a request on measure, its time to answer has not passed and the supplier is active: the customer may accept it or turn it down.</param>
+public sealed record ShowcaseBookingActions(
+    bool CanCancel,
+    bool CanReschedule,
+    bool CanRespondToProposal,
+    bool CanRespondToQuote = false,
+    bool CanConfirmOk = false,
+    bool CanReportProblem = false,
+    bool CanWithdrawProblem = false,
+    bool CanRespondToOffer = false);
 
 /// <summary>
 /// Codes (ProblemDetails <c>code</c>) and message keys (<c>SharedResources.resx</c>, Italian and English) of what the customer's
@@ -240,10 +343,44 @@ public static class ShowcaseBookingManagementRules
 
     /// <summary>
     /// True when the customer may move the time: only a new request that has a time, of a supplier that is active, for a service that
-    /// is still published (the page needs its free slots, and the planner needs its duration and rules).
+    /// is still published (the page needs its free slots, and the planner needs its duration and rules), and that has no quote waiting
+    /// (SP-04b: the quote is about the time the request has; the customer answers it first, and can ask for another time after turning it down).
     /// </summary>
-    public static bool CanReschedule(ServiceRequestStatus status, bool hasTime, bool supplierActive, bool serviceBookable) =>
-        status == ServiceRequestStatus.Richiesto && hasTime && supplierActive && serviceBookable;
+    public static bool CanReschedule(
+        ServiceRequestStatus status,
+        bool hasTime,
+        bool supplierActive,
+        bool serviceBookable,
+        bool quotePending = false) =>
+        status == ServiceRequestStatus.Richiesto && hasTime && supplierActive && serviceBookable && !quotePending;
+
+    /// <summary>
+    /// True when the customer may accept or turn down the quote (SP-04b): the request is new, a quote is waiting, the deadline to answer it
+    /// (<paramref name="answerByUtc"/>) has not passed and the supplier is active (accepting takes the request on its behalf).
+    /// </summary>
+    public static bool CanRespondToQuote(
+        ServiceRequestStatus status,
+        bool quotePending,
+        DateTime? answerByUtc,
+        DateTime nowUtc,
+        bool supplierActive) =>
+        status == ServiceRequestStatus.Richiesto
+        && quotePending
+        && supplierActive
+        && answerByUtc is { } answerBy
+        && nowUtc < answerBy;
+
+    /// <summary>
+    /// True when the customer may accept or turn down the offer of a request on measure (SP-10b-b): the same rule as the quote of SP-04b, which
+    /// the offer is (the request is new, the offer waits, the deadline to answer has not passed and the supplier is active).
+    /// </summary>
+    public static bool CanRespondToOffer(
+        ServiceRequestStatus status,
+        bool offerPending,
+        DateTime? validUntilUtc,
+        DateTime nowUtc,
+        bool supplierActive) =>
+        CanRespondToQuote(status, offerPending, validUntilUtc, nowUtc, supplierActive);
 
     /// <summary>
     /// True when the customer may accept or turn down the proposed time: the request is new, a proposal is waiting, the deadline to
@@ -260,6 +397,34 @@ public static class ShowcaseBookingManagementRules
         && supplierActive
         && answerByUtc is { } answerBy
         && nowUtc < answerBy;
+
+    /// <summary>
+    /// What the customer reads of the state of a payment held by CasaZen (SP-15c-a): <c>authorized</c>, <c>held</c> (charged and kept by
+    /// CasaZen, also while a transfer to the supplier is being retried or a card dispute is open: none of that is the customer's concern),
+    /// <c>released</c>, <c>refunded</c> (all given back, or all but the commission), <c>canceled</c> (the block was released, nothing was
+    /// charged) or <c>review</c> (CasaZen is looking at the payment).
+    /// </summary>
+    public static string PaymentStatusOf(ServicePaymentStatus status) => status switch
+    {
+        // SP-10b-b: the card of an accepted offer has not been blocked yet.
+        ServicePaymentStatus.Requested or ServicePaymentStatus.Failed => "awaiting_card",
+        ServicePaymentStatus.Authorized => "authorized",
+        ServicePaymentStatus.Held or ServicePaymentStatus.TransferFailed or ServicePaymentStatus.Disputed => "held",
+        ServicePaymentStatus.Released => "released",
+        ServicePaymentStatus.Refunded or ServicePaymentStatus.PartiallyRefunded => "refunded",
+        ServicePaymentStatus.Canceled => "canceled",
+        _ => "review",
+    };
+
+    /// <summary>
+    /// True when the customer may say "all fine" (SP-15c-a): the work is completed and the money is held by CasaZen with something still owed
+    /// to the supplier. The same facts <see cref="HeldPaymentRules.Release"/> needs before the payer's word releases the money, so the page and
+    /// the API cannot disagree; the money of a payment that a card dispute or a review stopped is not released this way.
+    /// </summary>
+    public static bool CanConfirmOk(ServiceRequestStatus requestStatus, ServicePaymentStatus paymentStatus, int netCents, int refundedCents) =>
+        requestStatus == ServiceRequestStatus.Completato
+        && paymentStatus is ServicePaymentStatus.Held or ServicePaymentStatus.TransferFailed
+        && HeldPaymentRules.ReleasableCents(netCents, refundedCents, 0) > 0;
 
     /// <summary>
     /// The reason a customer gave when it cancelled: trimmed, with the lines it wrote, or <c>null</c> when there is none. A reason

@@ -27,19 +27,22 @@ public sealed class PaymentListItemDto
     /// <summary>First and last name of the guest of the booking.</summary>
     public string GuestName { get; init; } = string.Empty;
 
-    /// <summary>Gross amount, in euros.</summary>
+    /// <summary>Gross amount, in <see cref="Currency"/>.</summary>
     public decimal Amount { get; init; }
 
-    /// <summary><see cref="Amount"/> in cents of euro.</summary>
+    /// <summary><see cref="Amount"/> in cents of <see cref="Currency"/>.</summary>
     public long AmountCents { get; init; }
 
-    /// <summary>What was refunded so far, in euros.</summary>
+    /// <summary>What was refunded so far, in <see cref="Currency"/>.</summary>
     public decimal RefundedAmount { get; init; }
 
     public long RefundedAmountCents { get; init; }
 
-    /// <summary>Always EUR: payments have no currency of their own.</summary>
-    public string Currency { get; init; } = "EUR";
+    /// <summary>
+    /// ISO 4217 code of the property of the booking (EUR or CHF, <see cref="StayCurrency"/>): a payment has no currency column of its own,
+    /// it is charged and refunded in the one of its property.
+    /// </summary>
+    public string Currency { get; init; } = StayCurrency.Default;
 
     /// <summary><c>Pending</c>, <c>Processing</c>, <c>Completed</c>, <c>Failed</c>, <c>Refunded</c>, <c>PartiallyRefunded</c> or <c>Canceled</c>.</summary>
     public PaymentStatus Status { get; init; }
@@ -75,6 +78,15 @@ public sealed class PaymentListItemDto
 
     public DateTime UpdatedAt { get; init; }
 
+    /// <summary>
+    /// The day the stay of the booking starts, <c>yyyy-MM-dd</c> (a calendar day, no time zone); <c>null</c> when the API did not read it.
+    /// The web app tells the payments of a coming or current stay from the ones of a past stay by it and by <see cref="BookingCheckOut"/>.
+    /// </summary>
+    public DateOnly? BookingCheckIn { get; init; }
+
+    /// <summary>The day the stay of the booking ends, <c>yyyy-MM-dd</c>; <c>null</c> when the API did not read it.</summary>
+    public DateOnly? BookingCheckOut { get; init; }
+
     public static PaymentListItemDto From(PaymentListItem item) => new()
     {
         Id = item.Id,
@@ -87,6 +99,7 @@ public sealed class PaymentListItemDto
         AmountCents = PaymentCashRules.ToCents(item.Amount),
         RefundedAmount = item.RefundedAmount,
         RefundedAmountCents = PaymentCashRules.ToCents(item.RefundedAmount),
+        Currency = StayCurrency.Normalize(item.Currency),
         Status = item.Status,
         Method = item.Method,
         TransactionId = item.TransactionId,
@@ -101,5 +114,7 @@ public sealed class PaymentListItemDto
         NetAmountAfterWithholdingCents = PaymentCashRules.ToCents(item.NetAmountAfterWithholding),
         CreatedAt = item.CreatedAt,
         UpdatedAt = item.UpdatedAt,
+        BookingCheckIn = item.BookingCheckIn is { } checkIn ? DateOnly.FromDateTime(checkIn) : null,
+        BookingCheckOut = item.BookingCheckOut is { } checkOut ? DateOnly.FromDateTime(checkOut) : null,
     };
 }

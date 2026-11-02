@@ -41,17 +41,23 @@ internal sealed class ServiceRequestTestKit : IDisposable
         SupplierPaymentsOptions? paymentOptions = null,
         FakeSupplierPaymentGateway? gateway = null,
         TestFeatureFlags? flags = null,
-        Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null)
+        Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null,
+        FakePlatformPaymentGateway? platformGateway = null,
+        IShowcaseAlternativesService? alternatives = null)
     {
         Db = db;
         Clock = clock ?? TimeProvider.System;
         Options = options ?? new ServiceRequestOptions();
         ShowcaseOptions = showcaseOptions ?? new ShowcaseBookingOptions { PrivacyNoticeVersion = PrivacyNoticeVersion };
-        PaymentOptions = paymentOptions ?? new SupplierPaymentsOptions { CommissionPercent = 10m };
+        // The tests of SP-15a/15b exercise the direct charge on the supplier's account, so the kit pins that model; the money CasaZen holds for
+        // a host (SP-15c-b) is tried by the tests that ask for it (HeldForHosts = true).
+        PaymentOptions = paymentOptions ?? new SupplierPaymentsOptions { CommissionPercent = 10m, HeldForHosts = false };
         Gateway = gateway ?? new FakeSupplierPaymentGateway();
+        PlatformGateway = platformGateway ?? new FakePlatformPaymentGateway();
         Flags = flags ?? new TestFeatureFlags();
         Emails = emails ?? new RecordingEmailQueue();
         Push = push ?? Mock.Of<IPushNotificationService>();
+        Alternatives = alternatives;
 
         var storageOptions = Microsoft.Extensions.Options.Options.Create(new StorageOptions
         {
@@ -84,7 +90,8 @@ internal sealed class ServiceRequestTestKit : IDisposable
             links,
             Push,
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
-            NullLogger<ShowcaseBookingNotifier>.Instance);
+            NullLogger<ShowcaseBookingNotifier>.Instance,
+            alternatives);
         Notifier = new ServiceRequestNotifier(
             db,
             Emails,
@@ -93,18 +100,31 @@ internal sealed class ServiceRequestTestKit : IDisposable
             ShowcaseNotifier,
             Microsoft.Extensions.Options.Options.Create(Options),
             NullLogger<ServiceRequestNotifier>.Instance);
+        // SP-REL: the reliability events of the suppliers are written by the real service over the same database, with the default weights.
+        Reliability = new SupplierReliabilityService(
+            db, Agenda, Microsoft.Extensions.Options.Options.Create(RankingOptions), NullLogger<SupplierReliabilityService>.Instance, Clock);
         Payments = new SupplierPaymentService(
             db,
             Gateway,
             Emails,
+            Push,
             links,
             Flags,
             Microsoft.Extensions.Options.Options.Create(PaymentOptions),
             new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Stripe:PublishableKey"] = PublishableKey }).Build(),
             JobScheduler,
             paymentLogger ?? NullLogger<SupplierPaymentService>.Instance,
-            Clock);
+            Clock,
+            PlatformGateway,
+            Customers,
+            Penalties,
+            Reliability);
         Matcher = ComuneTestServices.Matcher(db);
+
+        // SP-BKP: the choice of the backup suppliers over a plain ranking (the real one needs the whole supplier service); it is only
+        // reached with the feature flag SupplierRequestBackups on, which the kit leaves off until a test switches it on.
+        BackupSelector = new ServiceRequestBackupSelector(
+            new FakeSupplierRanking(db), Agenda, LegalTestServices.Legal(), db, NullLogger<ServiceRequestBackupSelector>.Instance);
         Service = new ServiceRequestService(
             db,
             new ServiceRequestRepository(db),
@@ -119,7 +139,11 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
             Payments,
             NullLogger<ServiceRequestService>.Instance,
-            Clock);
+            Clock,
+            Payments,
+            Flags,
+            BackupSelector,
+            Reliability);
         Booking = new ShowcaseBookingService(
             db,
             Catalog,
@@ -130,6 +154,17 @@ internal sealed class ServiceRequestTestKit : IDisposable
             ShowcaseNotifier,
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
             NullLogger<ShowcaseBookingService>.Instance,
+            Clock,
+            Payments);
+        Inquiry = new ShowcaseInquiryService(
+            db,
+            Catalog,
+            Matcher,
+            ComuneTestServices.Directory(db),
+            CustomerIndex,
+            ShowcaseNotifier,
+            Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
+            NullLogger<ShowcaseInquiryService>.Instance,
             Clock);
         Manager = new ShowcaseBookingManager(
             db,
@@ -137,7 +172,12 @@ internal sealed class ServiceRequestTestKit : IDisposable
             Catalog,
             Service,
             Microsoft.Extensions.Options.Options.Create(ShowcaseOptions),
-            Clock);
+            Clock,
+            Payments,
+            Payments,
+            alternatives);
+        // SP-10c: the second pass of the expiry job, over the same notifier.
+        Reminders = new ShowcaseReplyReminderService(db, ShowcaseNotifier, NullLogger<ShowcaseReplyReminderService>.Instance, Clock);
     }
 
     /// <summary>The publishable key the payment sessions of the kit carry.</summary>
@@ -153,7 +193,19 @@ internal sealed class ServiceRequestTestKit : IDisposable
 
     public SupplierPaymentsOptions PaymentOptions { get; }
 
+    /// <summary>The weights of the ranking the kit's reliability service uses: the defaults.</summary>
+    public SupplierRankingOptions RankingOptions { get; } = new();
+
+    /// <summary>The reliability events of the suppliers (SP-REL), written by the flows of the kit.</summary>
+    public SupplierReliabilityService Reliability { get; }
+
     public FakeSupplierPaymentGateway Gateway { get; }
+
+    /// <summary>The gateway of the money CasaZen holds (SP-15c-a): never reaches Stripe.</summary>
+    public FakePlatformPaymentGateway PlatformGateway { get; }
+
+    /// <summary>Records the penalties the disputes decided for the customer give a supplier (SP-15c-c); nothing reaches a ranking.</summary>
+    public RecordingSupplierDisputePenalties Penalties { get; } = new();
 
     /// <summary>Records the supplier orgs whose pending payment requests were queued (SP-15b); nothing reaches Hangfire.</summary>
     public RecordingSupplierPaymentJobScheduler JobScheduler { get; } = new();
@@ -196,10 +248,22 @@ internal sealed class ServiceRequestTestKit : IDisposable
 
     public ServiceRequestService Service { get; }
 
+    /// <summary>The choice of the backup suppliers of a request (SP-BKP), over <see cref="FakeSupplierRanking"/>.</summary>
+    public ServiceRequestBackupSelector BackupSelector { get; }
+
     public ShowcaseBookingService Booking { get; }
+
+    /// <summary>The request on measure from the same showcase (SP-10b): no slot, the words of the customer.</summary>
+    public ShowcaseInquiryService Inquiry { get; }
 
     /// <summary>The customer's own area of a booking (SP-11), on the real service request actions.</summary>
     public ShowcaseBookingManager Manager { get; }
+
+    /// <summary>The other suppliers offered to the customer of a request nobody answered (SP-10c): none unless a test gives the kit one.</summary>
+    public IShowcaseAlternativesService? Alternatives { get; }
+
+    /// <summary>The reminders to the supplier of a request on measure nobody answered yet (SP-10c): the second pass of the expiry job.</summary>
+    public ShowcaseReplyReminderService Reminders { get; }
 
     public void Dispose()
     {

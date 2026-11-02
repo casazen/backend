@@ -84,6 +84,17 @@ public static class FeatureFlags
     public const string SupplierRequestAutoCancel = "SupplierRequestAutoCancel";
 
     /// <summary>
+    /// SP-BKP (product owner, 2026-10-29/30): backup suppliers for a host's request. With the flag on, a request a host sends to a
+    /// supplier (the primary) is sent at the same moment to up to three backups, declared as such: the primary has one hour
+    /// (<c>Suppliers:ServiceRequests:PrimaryResponseMinutes</c>) to take the job, and the first backup that accepts has it if the
+    /// primary does not. <b>Off by default</b>: it changes what the suppliers receive and what the host sees. The flag only gates the
+    /// <b>creation</b> of a group: a group that exists is followed to the end whatever the flag says (the recurring job
+    /// <c>service-request-groups</c> is always registered, and the suppliers' answers are not gated), so turning the flag off never
+    /// leaves a request hanging. A host can still turn the rule off for its org (<c>Org.SupplierBackupsEnabled</c>) or for one request.
+    /// </summary>
+    public const string SupplierRequestBackups = "SupplierRequestBackups";
+
+    /// <summary>
     /// SEO-INVITE (product owner, 2026-10-13): CasaZen is on private invitation, prices and the onboarding of new customers are
     /// not defined yet. Off (the default): the public SEO pages carry no call to action to sign up ("Pubblica la tua casa"):
     /// <c>cta</c> is <c>null</c> in <c>GET api/public/content/…</c> and the crawler page has no link to <c>/signup</c>. The
@@ -110,6 +121,17 @@ public static class FeatureFlags
     /// </summary>
     public const string ConcordatoFacile = "ConcordatoFacile";
 
+    /// <summary>
+    /// DEB-01 (2026-10-31): the reading of the identity document (MRZ, OCR, NF-10) and the selfie check (liveness, face match, NF-11,
+    /// ADR-013) of the guest's check-in page, <c>POST api/public/checkin/{token}/document</c> and <c>POST …/selfie</c>. <b>Off by
+    /// default</b>: the services behind them are placeholders (MRZ and OCR never read anything, the liveness is always true, the face
+    /// similarity is a fixed 0.75), so a public endpoint would hand out made-up results. Off, both answer 404 before anything of the
+    /// request is read, so no image reaches the application. The guest's data is entered by hand (<c>POST api/public/checkin/{token}</c>,
+    /// not behind this flag). Turn it on only once real models replace the placeholders and the assessment of the biometric data
+    /// (art. 9 GDPR) is done.
+    /// </summary>
+    public const string CheckInIdentityVerification = "CheckInIdentityVerification";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -123,5 +145,7 @@ public static class FeatureFlags
         SeoSignupCta,
         AgencyTier,
         ConcordatoFacile,
+        SupplierRequestBackups,
+        CheckInIdentityVerification,
     ];
 }

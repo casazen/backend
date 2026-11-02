@@ -4,6 +4,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
@@ -21,8 +22,8 @@ using PaymentMethod = Casazen.Core.Entities.PaymentMethod;
 namespace Casazen.Tests.Integration;
 
 /// <summary>
-/// DB-08h (BK-02, BK-07) on real PostgreSQL, with Stripe simulated by a gateway double: a guest cancels a paid booking with
-/// the signed link, the refund is the policy's percent of the base price (the tourist tax stays out), the amounts, the
+/// DB-08h (BK-02, BK-07), DB-08a on real PostgreSQL, with Stripe simulated by a gateway double: a guest cancels a paid booking with
+/// the signed link, the refund is the policy's percent of the base price plus the whole tourist tax, the amounts, the
 /// <c>PaymentRefund</c> and the states are what Stripe was told, an error rolls back and leaves the link usable, and two
 /// clicks at once refund once (advisory locks).
 /// </summary>
@@ -61,7 +62,7 @@ public class GuestBookingCancellationPostgresTests : IAsyncLifetime
     }
 
     [PostgresFact]
-    public async Task CancelByGuestLinkAsync_PaidBookingWithTouristTax_RefundsHalfOfTheBasePriceThroughStripe()
+    public async Task CancelByGuestLinkAsync_PaidBookingWithTouristTax_RefundsHalfOfTheBasePriceAndTheTaxThroughStripe()
     {
         var seed = await SeedAsync(PaymentStatus.Completed, BookingStatus.Confirmed);
 
@@ -71,13 +72,13 @@ public class GuestBookingCancellationPostgresTests : IAsyncLifetime
             result = await GuestService(request).CancelByGuestLinkAsync(seed.BookingId, seed.Token);
         }
 
-        // Paid 420 = 400 base + 20 tax: the policy gives back 50% of the 400.
-        Assert.Equal(200m, result.RefundAmount);
+        // Paid 420 = 400 base + 20 tax: the policy gives back 50% of the 400, and the 20 of tax goes back in full.
+        Assert.Equal(220m, result.RefundAmount);
         Assert.Equal(BookingStatus.Cancelled, result.Booking.Status);
         var sent = Assert.Single(_refundRequests);
         Assert.Equal(Account, sent.ConnectedAccountId);
         Assert.Equal(seed.PaymentIntentId, sent.PaymentIntentId);
-        Assert.Equal(20_000, sent.AmountCents);
+        Assert.Equal(22_000, sent.AmountCents);
 
         await using var db = NewContext();
         var booking = await db.Bookings.SingleAsync(b => b.Id == seed.BookingId);
@@ -85,14 +86,14 @@ public class GuestBookingCancellationPostgresTests : IAsyncLifetime
         Assert.Equal(GuestCancellationTokens.HashToken(seed.Token), booking.GuestCancelTokenHash);
         Assert.Equal(Now.UtcDateTime, booking.GuestCancelTokenExpiresAt); // spent by the cancellation, in its transaction
         var refund = await db.PaymentRefunds.SingleAsync();
-        Assert.Equal(200m, refund.Amount);
+        Assert.Equal(220m, refund.Amount);
         Assert.Equal(PaymentRefundOrigin.BookingCancellation, refund.Origin);
         Assert.Equal(PaymentRefundStatus.Succeeded, refund.Status);
         Assert.NotNull(refund.StripeRefundId);
         Assert.Equal(seed.PaymentId, refund.PaymentId);
         var payment = await db.Payments.SingleAsync(p => p.Id == seed.PaymentId);
         Assert.Equal(PaymentStatus.PartiallyRefunded, payment.Status);
-        Assert.Equal(200m, payment.RefundedAmount);
+        Assert.Equal(220m, payment.RefundedAmount);
     }
 
     [PostgresFact]
@@ -107,21 +108,24 @@ public class GuestBookingCancellationPostgresTests : IAsyncLifetime
             GuestService(second).CancelByGuestLinkAsync(seed.BookingId, seed.Token));
 
         // Whichever gets the lock first cancels; the other waits, finds the booking cancelled and answers with that
-        // outcome (or, if it starts later, meets the cancelled booking at once): two 200s, one refund, one email.
+        // outcome (or, if it starts later, meets the cancelled booking at once): two 200s, one refund, one email to the guest and
+        // one to the host (the winner's).
         Assert.All(answers, a =>
         {
             Assert.Equal(BookingStatus.Cancelled, a.Booking.Status);
-            Assert.Equal(200m, a.RefundAmount);
+            Assert.Equal(220m, a.RefundAmount);
         });
         Assert.Single(_refundRequests);
-        Assert.Single(_emails.Queued);
+        Assert.Single(_emails.Queued, e => e.Template == EmailTemplates.Names.GuestBookingCancelled);
+        Assert.Single(_emails.Queued, e => e.Template == EmailTemplates.Names.HostBookingCancelledByGuest);
+        Assert.Equal(2, _emails.Queued.Count);
 
         await using var db = NewContext();
         Assert.Equal(BookingStatus.Cancelled, (await db.Bookings.SingleAsync(b => b.Id == seed.BookingId)).Status);
         var refund = await db.PaymentRefunds.SingleAsync();
-        Assert.Equal(200m, refund.Amount);
+        Assert.Equal(220m, refund.Amount);
         var payment = await db.Payments.SingleAsync(p => p.Id == seed.PaymentId);
-        Assert.Equal(200m, payment.RefundedAmount);
+        Assert.Equal(220m, payment.RefundedAmount);
     }
 
     [PostgresFact]

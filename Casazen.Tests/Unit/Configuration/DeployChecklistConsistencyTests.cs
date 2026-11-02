@@ -53,6 +53,7 @@ public class DeployChecklistConsistencyTests
         ["SafeExternalHttp"] = typeof(Casazen.Infrastructure.Http.SafeExternalHttpOptions),
         ["Rli"] = typeof(RliOptions),
         ["LeaseTemplates"] = typeof(LeaseTemplateOptions),
+        ["LeaseLetters"] = typeof(LeaseLetterOptions),
         ["ShortStayFiscal"] = typeof(ShortStayFiscalOptions),
         ["CedolareAdvisory"] = typeof(CedolareAdvisoryOptions),
         ["Cors"] = typeof(CorsOriginOptions),

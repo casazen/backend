@@ -13,3 +13,12 @@ public class OnboardingLinkResponseDto
 {
     public string Url { get; set; } = string.Empty;
 }
+
+/// <summary>
+/// Single-use login link to the Express Dashboard of the org's own Stripe account (AM-08b-d). The URL is a credential: it is shown to
+/// the one who asked, opened at once and never kept.
+/// </summary>
+public class DashboardLinkResponseDto
+{
+    public string Url { get; set; } = string.Empty;
+}

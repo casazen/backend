@@ -51,6 +51,7 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(OtaController), CasazenPolicies.OtaRead)]
     [InlineData(typeof(OtaIntegrationsController), CasazenPolicies.OtaRead)]
     [InlineData(typeof(PricingAdapterController), CasazenPolicies.PropertyRead)]
+    [InlineData(typeof(PropertyPriceSuggestionController), CasazenPolicies.PropertyRead)]
     [InlineData(typeof(AlloggiatiController), CasazenPolicies.BookingRead)]
     [InlineData(typeof(ComplianceController), CasazenPolicies.BookingRead)]
     [InlineData(typeof(FiscalController), CasazenPolicies.PropertyRead)]
@@ -63,6 +64,8 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(LongRentServiceRequestsController), CasazenPolicies.LongRentPropertyRead)]
     [InlineData(typeof(LongRentRentsController), CasazenPolicies.LeaseRead)]
     [InlineData(typeof(LongRentAgendaController), CasazenPolicies.LeaseRead)]
+    [InlineData(typeof(LongRentTenantsController), CasazenPolicies.LeaseRead)]
+    [InlineData(typeof(LongRentPropertiesController), CasazenPolicies.LongRentPropertyRead)]
     // LR-12: the guided draft carries the parties in clear, so even its reads need the permission to create a lease.
     [InlineData(typeof(LeaseDraftsController), CasazenPolicies.LeaseCreate)]
     public void HostController_ClassPolicyIsAContextReadPermission(Type controllerType, string expectedPolicy)
@@ -98,6 +101,7 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(PricingAdapterController), nameof(PricingAdapterController.SaveConfig), "RequireContext:short-rent:property.write")]
     [InlineData(typeof(PricingAdapterController), nameof(PricingAdapterController.DisableConfig), "RequireContext:short-rent:property.write")]
     [InlineData(typeof(PricingAdapterController), nameof(PricingAdapterController.Recalculate), "RequireContext:short-rent:property.write")]
+    [InlineData(typeof(PropertyPriceSuggestionController), nameof(PropertyPriceSuggestionController.Suggest), "RequireContext:short-rent:property.write")]
     [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.Create), "RequireContext:short-rent:servicerequest.write")]
     [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.MatchSupplier), "RequireContext:short-rent:servicerequest.write")]
     [InlineData(typeof(ServiceRequestsController), nameof(ServiceRequestsController.MarkPaid), "RequireContext:short-rent:servicerequest.write")]
@@ -111,6 +115,9 @@ public class AuthorizationAttributeTests
     [InlineData(typeof(LongRentRentsController), nameof(LongRentRentsController.SendReminders), "RequireContext:long-rent:lease.create")]
     [InlineData(typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetRules), "RequireContext:long-rent:lease.read")]
     [InlineData(typeof(LongRentLeaseSetupController), nameof(LongRentLeaseSetupController.GetLandlordDefaults), "RequireContext:long-rent:lease.create")]
+    // LR-09: the copy of a tenant's data (in clear) and the erasure request need lease.create on top of the class's lease.read.
+    [InlineData(typeof(LongRentTenantsController), nameof(LongRentTenantsController.Export), "RequireContext:long-rent:lease.create")]
+    [InlineData(typeof(LongRentTenantsController), nameof(LongRentTenantsController.RequestErasure), "RequireContext:long-rent:lease.create")]
     [InlineData(typeof(OtaIntegrationsController), nameof(OtaIntegrationsController.Create), "RequireContext:short-rent:ota.write")]
     [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Preview), "RequireContext:short-rent|long-rent:property.write")]
     [InlineData(typeof(PropertyModeController), nameof(PropertyModeController.Schedule), "RequireContext:short-rent|long-rent:property.write")]

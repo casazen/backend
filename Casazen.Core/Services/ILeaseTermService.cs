@@ -1,5 +1,6 @@
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Leases;
 
 namespace Casazen.Core.Services;
 
@@ -46,14 +47,40 @@ public interface ILeaseTermService
     Task RemoveNoticeAsync(Guid leaseId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Ends the lease on <paramref name="on"/>, its last day (from the start of the lease up to the end of the current period, a day in
-    /// the past included): the end of the period becomes that day, the renewal stops for good, and the installments of the rent plan
+    /// Ends the lease on <paramref name="on"/>, its last day: after the start of the lease and no later than the end of the current period (a
+    /// day in the past included), and only once the lease has begun (LR-TERM): the end of the period becomes that day, the renewal stops for
+    /// good, and the installments of the rent plan
     /// that <b>start after</b> that day and are not paid are cancelled (a payment already made or in flight is never touched; the one
     /// installment that straddles the day stays as it is). Irreversible. Event <c>Terminated</c>.
     /// </summary>
     /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>, <c>lease_busy</c>.</exception>
-    /// <exception cref="DomainRuleException">422 <c>lease_termination_date_invalid</c>.</exception>
+    /// <exception cref="DomainRuleException">422 <c>lease_termination_date_invalid</c>, with <c>min</c> and <c>max</c> in its extensions.</exception>
     Task TerminateAsync(Guid leaseId, DateOnly on, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records the withdrawal (recesso) the tenant sent, received on <paramref name="receivedOn"/> (a day from the start of the lease up to
+    /// today), and ends the lease on the day the notice runs out (LR-OPS-1): <paramref name="receivedOn"/> plus the months of notice, which are
+    /// the ones of the rules (<c>LongRentRules</c>) for serious reasons and <paramref name="noticeMonths"/> (the rules' when omitted) when the
+    /// contract gave the faculty. The ending is the early termination of <see cref="TerminateAsync"/>, with the same rules and the same effects
+    /// (<c>start &lt; last day ≤ end of the period</c>, the rent plan cancelled after it), in the same transaction; irreversible. Events
+    /// <c>WithdrawalRecorded</c> and <c>Terminated</c>.
+    /// </summary>
+    /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>, <c>lease_busy</c>.</exception>
+    /// <exception cref="DomainRuleException">422 <c>lease_withdrawal_date_invalid</c>, <c>lease_withdrawal_notice_invalid</c>, and <c>lease_termination_date_invalid</c> (with <c>min</c> and <c>max</c>) when the day the notice runs out is not inside the period.</exception>
+    Task RecordWithdrawalAsync(
+        Guid leaseId, DateOnly receivedOn, TenantWithdrawalReason reason, int? noticeMonths, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records the renewal of a lease before the end of its period (LR-OPS-1): the standard one (the months of the type) or, with
+    /// <paramref name="agreedEnd"/>, an extension to a day the parties agreed on. The new period is checked against the other leases of the property
+    /// (<c>lease_period_overlaps</c>, under the lock of the property), the end of the period moves forward, an active rent plan is extended to the new
+    /// end and an event <c>RenewalRecorded</c> is written, all in one transaction. Only for a lease that renews by itself (libero, concordato), while
+    /// its period is not over, the last stretch before its end has begun (from the last day to give notice) and no notice is recorded.
+    /// Nothing is written to the tenant.
+    /// </summary>
+    /// <exception cref="DomainConflictException">409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>, <c>lease_renewal_blocked_by_notice</c>, <c>lease_renewal_period_over</c>, <c>lease_period_overlaps</c>, <c>lease_busy</c>.</exception>
+    /// <exception cref="DomainRuleException">422 <c>lease_type_has_no_renewal</c>, <c>lease_renewal_not_yet</c>, <c>lease_renewal_end_invalid</c>.</exception>
+    Task RecordRenewalAsync(Guid leaseId, DateOnly? agreedEnd, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The hourly job: every lease that renews by itself and whose period is over is brought forward one period at a time (at most

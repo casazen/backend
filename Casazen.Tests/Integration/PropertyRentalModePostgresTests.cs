@@ -250,6 +250,7 @@ public class PropertyRentalModePostgresTests : IClassFixture<CasazenWebApplicati
                 _emails,
                 links,
                 Options.Create(new ComplianceOptions { StatusCheck = { NotifyOnFirstCheck = true } }),
+                new ActivityLog(db),
                 NullLogger<PropertyComplianceStatusService>.Instance,
                 clock);
     }

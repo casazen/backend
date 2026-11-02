@@ -412,6 +412,8 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
                 EndUtc = Today.AddDays(700),
                 ManualReason = CalendarBlockReason.ModeChange,
             });
+            // A requirement lost while long-term: the CIN (the documents and the checklist are reminders since 2026-11-01).
+            (await db.Properties.SingleAsync(p => p.Id == property.Id)).CinCode = null;
             await db.SaveChangesAsync();
         });
         await InsertChangeAsync(property, PropertyModeChangeStatus.Scheduled, Today, RentalMode.Short);
@@ -426,7 +428,7 @@ public class PropertyModeChangePostgresTests : IClassFixture<PropertyModeChangeP
             Assert.Equal(RentalMode.Short, stored.RentalMode);
             Assert.False(await db.CalendarBlocks.IgnoreQueryFilters()
                 .AnyAsync(b => b.PropertyId == property.Id && b.ManualReason == CalendarBlockReason.ModeChange));
-            // The seeded property has no CIN certificate nor checklist: the evaluation after the return suspends it.
+            // The property lost its CIN while long-term: the evaluation after the return suspends it.
             Assert.Equal(PropertyComplianceStatus.Suspended, stored.ComplianceStatus);
         });
     }

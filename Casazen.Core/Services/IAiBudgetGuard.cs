@@ -44,9 +44,22 @@ public static class AiTokenEstimator
     public static long Estimate(string? text) =>
         string.IsNullOrEmpty(text) ? 0 : (text.Length + CharactersPerToken - 1) / CharactersPerToken;
 
+    /// <summary>
+    /// Tokens counted for one image of an <see cref="AiRequest"/>: a 1024-pixel photo costs about 1,050 tokens on Claude
+    /// (width × height / 750) and up to 1,105 on OpenAI; this rounds up so that the reservation errs on the side of the cap.
+    /// </summary>
+    public const int TokensPerImage = 1_400;
+
     /// <summary>Worst case of a call: the prompt plus the completion limit sent to the provider.</summary>
     public static long EstimateCall(string prompt, int maxCompletionTokens) =>
         Estimate(prompt) + Math.Max(0, maxCompletionTokens);
+
+    /// <summary>Worst case of a call with instructions and images: the texts, the images and the completion limit.</summary>
+    public static long EstimateCall(AiRequest request, int maxCompletionTokens)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return EstimateCall(request.ToTextPrompt(), maxCompletionTokens) + (long)request.Images.Count * TokensPerImage;
+    }
 
     /// <summary>
     /// Tokens of a completed call: the provider's figures when it reports them, otherwise the estimate of the prompt

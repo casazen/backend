@@ -87,7 +87,39 @@ public static class SeoHtmlSanitizer
                 link.SetAttribute("rel", LinkRel);
         };
 
+        sanitizer.PostProcessDom += (_, e) => RemoveEmptyElements(e.Document);
+
         return sanitizer;
+    }
+
+    /// <summary>Elements that carry text: when sanitizing leaves one with none, nothing of it is worth showing.</summary>
+    private const string TextElements = "li, p, h2, h3, h4, a, strong, em, ul, ol";
+
+    /// <summary>
+    /// Drops what the sanitizer left empty: an item whose link lost its address or its text, a paragraph made of a removed
+    /// tag. Without it a list of sources ends with a bullet and nothing after it (seen on a published guide). Repeated until
+    /// nothing is left to drop, because removing the last item empties its list. Table cells are not touched: an empty cell
+    /// is still a cell.
+    /// </summary>
+    private static void RemoveEmptyElements(IDocument document)
+    {
+        if (document.Body is null)
+            return;
+
+        bool removed;
+        do
+        {
+            removed = false;
+            foreach (var element in document.Body.QuerySelectorAll(TextElements).ToList())
+            {
+                if (!string.IsNullOrWhiteSpace(element.TextContent))
+                    continue;
+
+                element.Remove();
+                removed = true;
+            }
+        }
+        while (removed);
     }
 
     private static bool IsAllowedAbsoluteUrl(string url) =>

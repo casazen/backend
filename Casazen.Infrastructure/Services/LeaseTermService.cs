@@ -130,25 +130,141 @@ public sealed class LeaseTermService(
         logger.LogInformation("Lease notice of non-renewal taken back. LeaseId={LeaseId}", lease.Id);
     }
 
-    public async Task TerminateAsync(Guid leaseId, DateOnly on, CancellationToken cancellationToken = default)
+    public Task TerminateAsync(Guid leaseId, DateOnly on, CancellationToken cancellationToken = default) =>
+        EndEarlyAsync(leaseId, _ => on, withdrawal: null, cancellationToken);
+
+    public async Task RecordWithdrawalAsync(
+        Guid leaseId, DateOnly receivedOn, TenantWithdrawalReason reason, int? noticeMonths, CancellationToken cancellationToken = default)
+    {
+        if (!Enum.IsDefined(reason))
+            throw new ArgumentOutOfRangeException(nameof(reason), reason, "Unknown reason");
+
+        // Serious reasons: the notice of the rules, whatever was typed. The contractual faculty: the notice the contract gives.
+        var months = LeaseOperationRules.WithdrawalNoticeMonths(reason, noticeMonths);
+        if (months is < 1 or > LeaseOperationRules.MaxContractualNoticeMonths)
+        {
+            throw new DomainRuleException(
+                LeaseLifecycleCodes.WithdrawalNoticeInvalid, "LeaseWithdrawalNoticeInvalid", LeaseOperationRules.MaxContractualNoticeMonths);
+        }
+
+        var effectiveOn = LeaseOperationRules.WithdrawalEffectiveOn(receivedOn, months);
+        await EndEarlyAsync(
+            leaseId,
+            lease =>
+            {
+                // The letter of the tenant was received on a day that has come, and not before the lease began.
+                if (receivedOn > _clock.TodayInRomeAsDateOnly() || receivedOn < RomeCalendar.DateInRome(lease.StartDate))
+                    throw new DomainRuleException(LeaseLifecycleCodes.WithdrawalDateInvalid, "LeaseWithdrawalDateInvalid");
+
+                return effectiveOn;
+            },
+            new TenantWithdrawal(reason, receivedOn, effectiveOn, months),
+            cancellationToken);
+    }
+
+    public async Task RecordRenewalAsync(Guid leaseId, DateOnly? agreedEnd, CancellationToken cancellationToken = default)
+    {
+        int installments;
+        DateOnly to;
+        await using (var transaction = await BeginLockedAsync(leaseId, lockRent: true, cancellationToken))
+        {
+            var lease = await LoadForUpdateAsync(leaseId, ignoreTenant: false, cancellationToken);
+            EnsureInForce(lease);
+            if (!LeaseRenewal.Renews(lease.ContractType))
+                throw new DomainRuleException(LeaseLifecycleCodes.TypeHasNoRenewal, "LeaseTypeHasNoRenewal");
+            EnsureNotTerminated(lease);
+            if (lease.NoticeOn is not null)
+                throw new DomainConflictException(LeaseLifecycleCodes.RenewalBlockedByNotice, "LeaseRenewalBlockedByNotice");
+
+            // Once the period is over the lease renews by itself and the hourly job writes it: a second path would add a period twice.
+            var periodEnd = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
+            var today = _clock.TodayInRomeAsDateOnly();
+            if (periodEnd < today)
+                throw new DomainConflictException(LeaseLifecycleCodes.RenewalPeriodOver, "LeaseRenewalPeriodOver");
+
+            // Only in the last stretch before the end, when the parties decide: recording one moves the end forward, so it cannot be done twice in a row.
+            var opensOn = LongRentDeadlineRules.NoticeDate(lease.ContractType, periodEnd) ?? periodEnd;
+            if (today < opensOn)
+                throw new DomainRuleException(LeaseLifecycleCodes.RenewalNotYet, "LeaseRenewalNotYet", opensOn);
+
+            var from = periodEnd.AddDays(1);
+            if (agreedEnd is { } agreed)
+            {
+                var furthest = periodEnd.AddYears(LeaseOperationRules.MaxAgreedExtensionYears);
+                if (agreed < from || agreed > furthest)
+                    throw new DomainRuleException(LeaseLifecycleCodes.RenewalEndInvalid, "LeaseRenewalEndInvalid", from, furthest);
+                to = agreed;
+            }
+            else
+            {
+                to = RomeCalendar.DateInRome(LeaseRenewal.NextEnd(lease.CurrentTermEndDate, lease.ContractType)!.Value);
+            }
+
+            // A new period may not cover the days of another lease of the property (LR-OVERLAP): checked under the lock of the property,
+            // inside this transaction, after the row of the lease.
+            await LeasePeriodGuard.EnsureFreeAsync(db, lease.PropertyId, lease.Id, ToStoredDate(from), ToStoredDate(to), cancellationToken);
+
+            var now = UtcNow;
+            lease.CurrentTermEndDate = ToStoredDate(to);
+            lease.UpdatedAt = now;
+            db.LeaseEvents.Add(new LeaseEvent
+            {
+                LeaseContractId = lease.Id,
+                EventType = LeaseEventType.RenewalRecorded,
+                OccurredAt = now,
+                Payload = $"{(agreedEnd is null ? "Standard" : "Agreed")}:{Format(from)}:{Format(to)}",
+            });
+            await db.SaveChangesAsync(cancellationToken);
+
+            // The plan of the rent follows, in the same transaction, once the new end is saved (the tacit renewal does the same).
+            installments = await rentBilling.ExtendScheduleToCurrentTermAsync(leaseId, cancellationToken);
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+        }
+
+        logger.LogInformation(
+            "Lease renewal recorded. LeaseId={LeaseId} Agreed={Agreed} CurrentTermEndDate={End} InstallmentsAdded={Installments}",
+            leaseId, agreedEnd is not null, Format(to), installments);
+    }
+
+    /// <summary>The withdrawal of the tenant an early termination carries: what the history writes next to the <c>Terminated</c> event.</summary>
+    private sealed record TenantWithdrawal(TenantWithdrawalReason Reason, DateOnly ReceivedOn, DateOnly EffectiveOn, int NoticeMonths);
+
+    /// <summary>
+    /// The early termination (LR-TERM), whoever asks for it: <paramref name="lastDay"/> gives the last day of the lease once the row is
+    /// locked and read (it may refuse), the day is checked against the rules of the termination, and the lease and its rent plan change in one
+    /// transaction. A withdrawal of the tenant writes its own event beside <c>Terminated</c>.
+    /// </summary>
+    private async Task EndEarlyAsync(
+        Guid leaseId, Func<LeaseContract, DateOnly> lastDay, TenantWithdrawal? withdrawal, CancellationToken cancellationToken)
     {
         IReadOnlyList<RentPaymentNotice> notices;
         int cancelled;
+        DateOnly on;
         await using (var transaction = await BeginLockedAsync(leaseId, lockRent: true, cancellationToken))
         {
             var lease = await LoadForUpdateAsync(leaseId, ignoreTenant: false, cancellationToken);
             EnsureInForce(lease);
             EnsureNotTerminated(lease);
 
-            // The last day of the lease is a day of the lease: from its start up to the end of the period it is in now. A day in the past
-            // is allowed, for a lease the landlord knows ended earlier.
-            if (on < RomeCalendar.DateInRome(lease.StartDate) || on > RomeCalendar.DateInRome(lease.CurrentTermEndDate))
-                throw new DomainRuleException(LeaseLifecycleCodes.TerminationDateInvalid, "LeaseTerminationDateInvalid");
+            on = lastDay(lease);
+            EnsureTerminationDate(lease, on);
 
             var now = UtcNow;
             lease.TerminatedOn = ToStoredDate(on);
             lease.CurrentTermEndDate = lease.TerminatedOn.Value;
             lease.UpdatedAt = now;
+            if (withdrawal is not null)
+            {
+                db.LeaseEvents.Add(new LeaseEvent
+                {
+                    LeaseContractId = lease.Id,
+                    EventType = LeaseEventType.WithdrawalRecorded,
+                    OccurredAt = now,
+                    Payload = $"{withdrawal.Reason}:{Format(withdrawal.ReceivedOn)}:{Format(withdrawal.EffectiveOn)}:{withdrawal.NoticeMonths.ToString(CultureInfo.InvariantCulture)}",
+                });
+            }
+
             db.LeaseEvents.Add(new LeaseEvent
             {
                 LeaseContractId = lease.Id,
@@ -171,6 +287,8 @@ public sealed class LeaseTermService(
             await rentBilling.CompleteAsync(notice, cancellationToken);
 
         logger.LogInformation("Lease ended early. LeaseId={LeaseId} LastDay={LastDay} InstallmentsCancelled={Cancelled}", leaseId, Format(on), cancelled);
+        if (withdrawal is not null)
+            logger.LogInformation("Lease withdrawal of the tenant recorded. LeaseId={LeaseId} Reason={Reason}", leaseId, withdrawal.Reason);
     }
 
     // ---- the tacit renewal (the job) -----------------------------------------------------------------------------
@@ -402,6 +520,37 @@ public sealed class LeaseTermService(
     {
         if (lease.TerminatedOn is not null)
             throw new DomainConflictException(LeaseLifecycleCodes.AlreadyTerminated, "LeaseAlreadyTerminated");
+    }
+
+    /// <summary>
+    /// LR-TERM: an early termination ends a lease that is running, on a day after it began and no later than the end of the period it is in:
+    /// <c>start &lt; last day ≤ end of the period</c>, and the lease has begun (<c>start ≤ today</c>). A past day is allowed, for a lease the
+    /// landlord knows ended earlier. Anything else is 422 <c>lease_termination_date_invalid</c> with the first and the last day that would
+    /// do (<c>min</c>, <c>max</c>, <c>yyyy-MM-dd</c>), so the interface never offers a date the server refuses; for a lease that has not begun
+    /// the text says what ends it instead (a consensual resolution, to be communicated to the Agenzia delle Entrate). A day equal to the start
+    /// is not an ending: it left a lease whose start, end and "terminated on" were the same day.
+    /// </summary>
+    private void EnsureTerminationDate(LeaseContract lease, DateOnly on)
+    {
+        var start = RomeCalendar.DateInRome(lease.StartDate);
+        var end = RomeCalendar.DateInRome(lease.CurrentTermEndDate);
+        var members = new Dictionary<string, object?> { ["min"] = start.AddDays(1), ["max"] = end };
+
+        if (start > _clock.TodayInRomeAsDateOnly())
+        {
+            throw new DomainRuleException(LeaseLifecycleCodes.TerminationDateInvalid, "LeaseTerminationNotStarted", LongRentRules.Current.RegistrationDays)
+            {
+                Extensions = members,
+            };
+        }
+
+        if (on <= start || on > end)
+        {
+            throw new DomainRuleException(LeaseLifecycleCodes.TerminationDateInvalid, "LeaseTerminationDateInvalid", start.AddDays(1), end)
+            {
+                Extensions = members,
+            };
+        }
     }
 
     private static DateTime ToStoredDate(DateOnly date) => date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);

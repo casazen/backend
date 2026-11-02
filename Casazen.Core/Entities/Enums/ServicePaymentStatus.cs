@@ -37,4 +37,34 @@ public enum ServicePaymentStatus
     /// shown as paid, an admin decides (SP-15b).
     /// </summary>
     NeedsReview = 7,
+
+    // ─── The payment held by CasaZen (SP-15c-a, decision VT-D1). Only a payment of ServiceFundsModel.PlatformHeld reaches these ──
+
+    /// <summary>
+    /// The payer's card is blocked for the amount (a PaymentIntent on the platform account, <c>requires_capture</c>): nothing is charged
+    /// yet. It is charged when the supplier accepts the request, and the block is released if it refuses, does not answer, or the
+    /// customer cancels first. Lapses after <c>SupplierPayments:AuthorizationValidityHours</c>.
+    /// </summary>
+    Authorized = 8,
+
+    /// <summary>
+    /// Charged and held on CasaZen's balance: the money belongs to nobody until it is released to the supplier (the payer says
+    /// "all fine", or <c>SupplierPayments:ReleaseAfterMinutes</c> after the work is done) or given back to the payer.
+    /// </summary>
+    Held = 9,
+
+    /// <summary>
+    /// Transferred to the supplier's Stripe account (<c>StripeTransferId</c>); the request is <c>Pagato</c>. The end of the cycle: a
+    /// refund can no longer be made from here, and a card dispute afterwards is CasaZen's (VT-D22).
+    /// </summary>
+    Released = 10,
+
+    /// <summary>The payer complained inside the window (SP-15c-c): the release is stopped until an admin decides.</summary>
+    Disputed = 11,
+
+    /// <summary>
+    /// The transfer to the supplier was refused by Stripe: the money is still held, the release job tries again with a growing delay
+    /// (Stripe does not retry a failed transfer by itself). Visible to the admin, never two transfers for one payment.
+    /// </summary>
+    TransferFailed = 12,
 }

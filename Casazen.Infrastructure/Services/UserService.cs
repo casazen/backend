@@ -182,6 +182,63 @@ public class UserService(
         return sync;
     }
 
+    /// <inheritdoc />
+    public async Task<Auth0SyncResult> DeleteOwnGuestAccountAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        var user = await repository.GetByIdAsync(userId)
+            ?? throw new NotFoundException($"User {userId} not found");
+
+        // Someone depends on the data of an account that works as a host, a supplier or an administrator: the app does not remove it
+        // (support does, with the admin path), and nothing is asked of Auth0.
+        if (IsProfessional(user))
+        {
+            logger.LogWarning(
+                "Self-service deletion refused, the account is not only a guest's: userId={UserId} role={Role} hostOrg={HasOrg} supplierLink={HasSupplier}",
+                userId, user.Role, user.OrgId.HasValue, user.SupplierOrgId.HasValue);
+            throw new DomainConflictException(GuestAccountErrorCodes.IsProfessional, "GuestAccountIsProfessional");
+        }
+
+        // Auth0 first, as in the admin path: a local delete that Auth0 did not follow would be undone by the next login, which creates
+        // the account again from the token.
+        var sync = await auth0Management.DeleteUserAsync(userId, cancellationToken);
+        if (!sync.Succeeded)
+        {
+            logger.LogWarning(
+                "Self-service deletion not done, Auth0 delete failed ({ErrorCode}): userId={UserId}",
+                sync.ErrorCode, userId);
+            return sync;
+        }
+
+        try
+        {
+            await repository.DeleteAsync(userId, cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            logger.LogWarning(ex, "Self-service deletion blocked by related rows, Auth0 user already deleted: userId={UserId}", userId);
+            throw new DomainConflictException(UserActivationErrors.DeleteBlocked, "GuestAccountDeleteBlocked");
+        }
+
+        authorizationCache.Invalidate(userId);
+
+        // The audit line of the erasure (GDPR art. 17): ids and time only. Bookings and guest records of the hosts are not touched, and
+        // there is no table that ties them to the account (they carry the email typed at the checkout), docs/runbooks/gdpr.md section 11.
+        logger.LogInformation(
+            "GDPR erasure of the account by its owner: userId={UserId} at={AtUtc:o} auth0Deleted=true bookingsAndGuestRecordsKept=true",
+            userId, DateTime.UtcNow);
+        return sync;
+    }
+
+    /// <summary>
+    /// True when the account is more than a guest's: it has a host org (the owner's and the team member's alike, or the org of a
+    /// supplier-only account), a supplier link, or a role other than none and guest (a host's, a supplier's, a collaborator's or the
+    /// administrators'). Such an account is removed by support.
+    /// </summary>
+    private static bool IsProfessional(User user) =>
+        user.OrgId.HasValue || user.SupplierOrgId.HasValue || user.Role is not (UserRole.None or UserRole.Guest);
+
     private static IReadOnlyList<UserRole> ParseRoles(IEnumerable<string>? names) =>
         (names ?? [])
             .Select(n => Enum.TryParse<UserRole>(n, ignoreCase: true, out var role) ? role : (UserRole?)null)

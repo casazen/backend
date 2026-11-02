@@ -4,10 +4,14 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using System.Text.Json;
 using Xunit;
@@ -17,9 +21,144 @@ namespace Casazen.Tests.Unit.Services;
 /// <summary>
 /// NF-24: Campaign service proof tests for consent and suppression filtering.
 /// These tests prove that privacy rules (consent required, suppression list checked) are enforced.
+/// DEB-01: the unsubscribe link of a campaign is signed and carries no address.
 /// </summary>
 public class CampaignServiceTests
 {
+    private const string LinkSecret = "test-signed-link-secret-0123456789abcdef";
+    private const string WebApp = "https://app.casazen.test";
+    private const string Api = "https://api.casazen.test";
+
+    /// <summary>The signed unsubscribe links as a configured environment builds them; no secret: not configured.</summary>
+    private static MarketingUnsubscribeLinks Links(string? secret = LinkSecret) =>
+        new(
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [MarketingUnsubscribeLinks.SecretVariable] = secret,
+                ["App:ApiBaseUrl"] = Api,
+            }).Build(),
+            new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = WebApp })),
+            TimeProvider.System);
+
+    /// <summary>
+    /// Proof test for DEB-01: the unsubscribe link of a campaign e-mail is the signed link of ADR-007-R18 on the web app (no address in
+    /// it, the old one was unsigned and carried the address in the query), and the e-mail carries the one-click headers of RFC 8058.
+    /// </summary>
+    [Fact]
+    public async Task Campaign_UnsubscribeLink_IsSignedWithoutTheAddress_AndTheHeadersOfferTheOneClick()
+    {
+        var (options, orgId, campaignId) = await SeedApprovedCampaignAsync("Guest.Person+promo@Example.com");
+        var sent = new List<(string To, string Html, IReadOnlyDictionary<string, string> Headers)>();
+        var email = new Mock<IEmailService>();
+        email.Setup(e => e.SendEmailWithHeadersAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, string>>()))
+            .Callback<string, string, string, IReadOnlyDictionary<string, string>>((to, _, html, headers) => sent.Add((to, html, headers)))
+            .ReturnsAsync(EmailSendResult.Sent());
+        var links = Links();
+
+        await using (var context = new AppDbContext(options))
+            await NewService(context, email.Object, links).SendCampaignAsync(campaignId);
+
+        var (to, html, headers) = Assert.Single(sent);
+        Assert.Equal("Guest.Person+promo@Example.com", to);
+        Assert.DoesNotContain("example.com", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("%40", html);
+
+        var emailHash = SuppressionService.ComputeEmailHash(to);
+        var page = $"{WebApp}/unsubscribe#orgId={orgId:D}&amp;emailHash={emailHash}&amp;expiresAt=";
+        Assert.Contains($"href=\"{page}", html);
+
+        var oneClick = headers["List-Unsubscribe"];
+        Assert.StartsWith($"<{Api}/api/public/marketing/unsubscribe?orgId={orgId:D}&emailHash={emailHash}&expiresAt=", oneClick);
+        Assert.DoesNotContain("example.com", oneClick, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("List-Unsubscribe=One-Click", headers["List-Unsubscribe-Post"]);
+
+        // The values of the header are the ones the unsubscribe endpoint checks: valid as built, refused once tampered with.
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(oneClick.Trim('<', '>')).Query);
+        var (expiresAt, signature) = (query["expiresAt"].ToString(), query["signature"].ToString());
+        Assert.Equal(emailHash, query["emailHash"].ToString());
+        Assert.Equal(MarketingUnsubscribeCheck.Valid, links.Verify(emailHash, expiresAt, signature));
+        Assert.Equal(
+            MarketingUnsubscribeCheck.InvalidSignature,
+            links.Verify(SuppressionService.ComputeEmailHash("someone.else@example.com"), expiresAt, signature));
+
+        await using var verify = new AppDbContext(options);
+        var campaign = await verify.Campaigns.SingleAsync(c => c.Id == campaignId);
+        Assert.Equal((CampaignStatus.Sent, 1, 0), (campaign.Status, campaign.SentCount, campaign.ErrorCount));
+    }
+
+    /// <summary>DEB-01: without the secret of the signed links a campaign sends nothing (no e-mail without its unsubscribe link).</summary>
+    [Fact]
+    public async Task Campaign_WithoutTheLinkSecret_SendsNothing()
+    {
+        var (options, _, campaignId) = await SeedApprovedCampaignAsync("guest@example.com");
+        var email = new Mock<IEmailService>(MockBehavior.Strict);
+
+        await using (var context = new AppDbContext(options))
+        {
+            await Assert.ThrowsAsync<EmailConfigurationException>(
+                () => NewService(context, email.Object, Links(secret: null)).SendCampaignAsync(campaignId));
+        }
+
+        await using var verify = new AppDbContext(options);
+        Assert.Equal(CampaignStatus.Approved, (await verify.Campaigns.SingleAsync(c => c.Id == campaignId)).Status);
+    }
+
+    private static CampaignService NewService(AppDbContext context, IEmailService email, MarketingUnsubscribeLinks links) =>
+        new(
+            context,
+            new ConditionEvaluator(Mock.Of<ILogger<ConditionEvaluator>>()),
+            new SuppressionService(context, Mock.Of<ILogger<SuppressionService>>()),
+            email,
+            links,
+            Mock.Of<IBackgroundJobClient>(),
+            TimeProvider.System,
+            Mock.Of<ILogger<CampaignService>>());
+
+    /// <summary>One guest with marketing consent, a segment that takes everybody and an approved campaign to it.</summary>
+    private static async Task<(DbContextOptions<AppDbContext> Options, Guid OrgId, Guid CampaignId)> SeedApprovedCampaignAsync(string guestEmail)
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
+        var orgId = Guid.NewGuid();
+        var segmentId = Guid.NewGuid();
+        var campaignId = Guid.NewGuid();
+
+        await using var context = new AppDbContext(options);
+        context.Guests.Add(new Guest
+        {
+            Id = Guid.NewGuid(),
+            OrgId = orgId,
+            Email = guestEmail,
+            FirstName = "Ospite",
+            LastName = "Promo",
+            MarketingConsent = true,
+            MarketingConsentDate = DateTime.UtcNow.AddDays(-30),
+            IsDeleted = false,
+        });
+        context.GuestSegments.Add(new GuestSegment
+        {
+            Id = segmentId,
+            OrgId = orgId,
+            Name = "All guests",
+            ConditionJson = JsonSerializer.Serialize(new Condition { Version = "1.0", Groups = new List<ConditionGroup>() }),
+        });
+        context.Campaigns.Add(new Campaign
+        {
+            Id = campaignId,
+            OrgId = orgId,
+            SegmentId = segmentId,
+            Subject = "Offerta",
+            Body = "<p>Torna a trovarci</p>",
+            Status = CampaignStatus.Approved,
+            CreatedAt = DateTime.UtcNow,
+        });
+        await context.SaveChangesAsync();
+
+        return (options, orgId, campaignId);
+    }
+
     /// <summary>
     /// Proof test for AC-NF24-2: proves that guests without marketing consent are excluded from campaign sends.
     /// Without this check, the org would send unwanted marketing emails to guests who never opted in (GDPR Article 6).
@@ -92,6 +231,7 @@ public class CampaignServiceTests
                 conditionEvaluator,
                 suppressionService,
                 Mock.Of<Casazen.Infrastructure.External.IEmailService>(),
+                Links(),
                 backgroundJobClient,
                 timeProvider,
                 logger);
@@ -185,6 +325,7 @@ public class CampaignServiceTests
                 conditionEvaluator,
                 suppressionService,
                 Mock.Of<Casazen.Infrastructure.External.IEmailService>(),
+                Links(),
                 backgroundJobClient,
                 timeProvider,
                 logger);
@@ -240,6 +381,7 @@ public class CampaignServiceTests
                 conditionEvaluator,
                 suppressionService,
                 Mock.Of<Casazen.Infrastructure.External.IEmailService>(),
+                Links(),
                 backgroundJobClient,
                 timeProvider,
                 logger);

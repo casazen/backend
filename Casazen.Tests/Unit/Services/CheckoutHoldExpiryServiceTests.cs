@@ -297,6 +297,114 @@ public class CheckoutHoldExpiryServiceTests
         Assert.Equal(BookingStatus.Pending, (await ReloadAsync(adjacent.Id)).Status);
     }
 
+    [Fact]
+    public async Task CloseOpenPaymentsOfCancelledBookingsAsync_CardPaymentLeftOpenByAnOlderCleanup_ReleasesIntentAndClosesPaymentOnly()
+    {
+        // Until BK-21 the cleanup before a new booking set only Booking.Status = Cancelled: no time, no reason, and the payment
+        // row stayed Pending ("Da incassare") for ever.
+        var legacy = await SeedHoldAsync(minutesAgo: 100 * 24 * 60, paymentIntentId: "pi_legacy",
+            configure: b => b.Status = BookingStatus.Cancelled);
+
+        var run = await Service().CloseOpenPaymentsOfCancelledBookingsAsync();
+
+        Assert.Equal(new CancelledBookingPaymentsRun(1, 0, 0, 0), run);
+        _stripe.Verify(s => s.CancelPaymentIntentAsync(
+            "pi_legacy", Account, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        var stored = await ReloadAsync(legacy.Id);
+        Assert.Equal(PaymentStatus.Canceled, Assert.Single(stored.Payments).Status);
+        Assert.Equal(BookingStatus.Cancelled, stored.Status);
+        Assert.Null(stored.CancelledAt);
+        Assert.Null(stored.CancellationReason);
+        Assert.Equal(legacy.UpdatedAt, stored.UpdatedAt);
+
+        // Closed for good: the next run finds nothing and does not ask Stripe again.
+        Assert.Equal(CancelledBookingPaymentsRun.Empty, await Service().CloseOpenPaymentsOfCancelledBookingsAsync());
+        _stripe.Verify(s => s.GetPaymentIntentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task CloseOpenPaymentsOfCancelledBookingsAsync_PayAtThePropertyRowOfCancelledBooking_IsClosedWithoutStripe()
+    {
+        var booking = await SeedHoldAsync(minutesAgo: 600, configure: b =>
+        {
+            b.Status = BookingStatus.Cancelled;
+            b.PaymentOption = PaymentOption.OnSite;
+        });
+        await AddCashPaymentAsync(booking);
+
+        var run = await Service().CloseOpenPaymentsOfCancelledBookingsAsync();
+
+        Assert.Equal(1, run.Closed);
+        _stripe.VerifyNoOtherCalls();
+        Assert.Equal(PaymentStatus.Canceled, Assert.Single((await ReloadAsync(booking.Id)).Payments).Status);
+    }
+
+    [Theory]
+    [InlineData("succeeded")]
+    [InlineData("processing")]
+    [InlineData("requires_capture")]
+    public async Task CloseOpenPaymentsOfCancelledBookingsAsync_GuestAlreadyPaid_RecordsItAndNeverCancelsPaidMoney(string stripeStatus)
+    {
+        var booking = await SeedHoldAsync(minutesAgo: 600, paymentIntentId: "pi_paid_late",
+            configure: b => b.Status = BookingStatus.Cancelled);
+        _stripe
+            .Setup(s => s.GetPaymentIntentAsync("pi_paid_late", Account, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PaymentIntent { Id = "pi_paid_late", Status = stripeStatus });
+
+        var run = await Service().CloseOpenPaymentsOfCancelledBookingsAsync();
+
+        Assert.Equal(1, run.InFlight);
+        _stripe.Verify(s => s.CancelPaymentIntentAsync(
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        var stored = await ReloadAsync(booking.Id);
+        Assert.Equal(BookingStatus.Cancelled, stored.Status);
+        Assert.Equal(PaymentStatus.Processing, Assert.Single(stored.Payments).Status);
+    }
+
+    [Fact]
+    public async Task CloseOpenPaymentsOfCancelledBookingsAsync_StripeUnavailable_LeavesPaymentOpenForNextRun()
+    {
+        var booking = await SeedHoldAsync(minutesAgo: 600, paymentIntentId: "pi_down_cancelled",
+            configure: b => b.Status = BookingStatus.Cancelled);
+        _stripe
+            .Setup(s => s.GetPaymentIntentAsync("pi_down_cancelled", Account, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new StripeException("Connection reset"));
+
+        var run = await Service().CloseOpenPaymentsOfCancelledBookingsAsync();
+
+        Assert.Equal(1, run.Failed);
+        Assert.Equal(PaymentStatus.Pending, Assert.Single((await ReloadAsync(booking.Id)).Payments).Status);
+    }
+
+    [Fact]
+    public async Task CloseOpenPaymentsOfCancelledBookingsAsync_LiveBookingsAndSettledPayments_AreNeverTouched()
+    {
+        // A confirmed "pay at the property" booking still has cash to collect, and a cancelled booking keeps the payment it
+        // collected (its refund is another flow): neither is this run's business.
+        var confirmed = await SeedHoldAsync(minutesAgo: 600, configure: b =>
+        {
+            b.Status = BookingStatus.Confirmed;
+            b.PaymentOption = PaymentOption.OnSite;
+        });
+        await AddCashPaymentAsync(confirmed);
+        var checkedIn = await SeedHoldAsync(minutesAgo: 600, configure: b =>
+        {
+            b.Status = BookingStatus.CheckedIn;
+            b.PaymentOption = PaymentOption.OnSite;
+        });
+        await AddCashPaymentAsync(checkedIn);
+        var cancelledPaid = await SeedHoldAsync(minutesAgo: 600, paymentIntentId: "pi_cancelled_paid",
+            configure: b => b.Status = BookingStatus.Cancelled, paymentStatus: PaymentStatus.Completed);
+
+        var run = await Service().CloseOpenPaymentsOfCancelledBookingsAsync();
+
+        Assert.Equal(CancelledBookingPaymentsRun.Empty, run);
+        _stripe.VerifyNoOtherCalls();
+        Assert.Equal(PaymentStatus.Pending, Assert.Single((await ReloadAsync(confirmed.Id)).Payments).Status);
+        Assert.Equal(PaymentStatus.Pending, Assert.Single((await ReloadAsync(checkedIn.Id)).Payments).Status);
+        Assert.Equal(PaymentStatus.Completed, Assert.Single((await ReloadAsync(cancelledPaid.Id)).Payments).Status);
+    }
+
     private CheckoutHoldExpiryService Service() => new(
         _db,
         _stripe.Object,
@@ -313,7 +421,8 @@ public class CheckoutHoldExpiryServiceTests
         DateTime? checkIn = null,
         DateTime? checkOut = null,
         Action<Booking>? configure = null,
-        string? paymentAccountId = null)
+        string? paymentAccountId = null,
+        PaymentStatus paymentStatus = PaymentStatus.Pending)
     {
         var createdAt = DateTime.UtcNow.AddMinutes(-minutesAgo);
         var start = checkIn ?? new DateTime(2026, 11, 1).AddDays(_db.Bookings.Count() * 10);
@@ -340,7 +449,7 @@ public class CheckoutHoldExpiryServiceTests
                 BookingId = booking.Id,
                 OrgId = booking.OrgId,
                 Amount = booking.TotalPrice,
-                Status = PaymentStatus.Pending,
+                Status = paymentStatus,
                 StripePaymentIntentId = paymentIntentId,
                 StripeAccountId = paymentAccountId,
                 TransactionId = paymentIntentId,
@@ -352,6 +461,23 @@ public class CheckoutHoldExpiryServiceTests
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
         return booking;
+    }
+
+    /// <summary>The cash payment row of a "pay at the property" booking seeded without one.</summary>
+    private async Task AddCashPaymentAsync(Booking booking)
+    {
+        _db.Payments.Add(new Payment
+        {
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            Amount = booking.TotalPrice,
+            Status = PaymentStatus.Pending,
+            Method = Core.Entities.PaymentMethod.CashOnArrival,
+            CreatedAt = booking.CreatedAt,
+            UpdatedAt = booking.CreatedAt,
+        });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
     }
 
     /// <summary>A "pay at the property" request with its guest, property and cash payment row (read by the notifier).</summary>

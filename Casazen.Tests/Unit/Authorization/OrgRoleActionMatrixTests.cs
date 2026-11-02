@@ -101,6 +101,7 @@ public class OrgRoleActionMatrixTests
         { typeof(BookingCancellationController), nameof(BookingCancellationController.Cancel), Operators },
         { typeof(FiscalController), nameof(FiscalController.AssignRegime), Operators },
         { typeof(PricingAdapterController), nameof(PricingAdapterController.SaveConfig), Operators },
+        { typeof(PropertyPriceSuggestionController), nameof(PropertyPriceSuggestionController.Suggest), Operators },
         { typeof(OtaController), nameof(OtaController.GetIntegrations), Operators },
         { typeof(OtaController), nameof(OtaController.SyncAll), Operators },
         { typeof(OtaIntegrationsController), nameof(OtaIntegrationsController.Create), Operators },
@@ -128,6 +129,12 @@ public class OrgRoleActionMatrixTests
         { typeof(LeasesController), nameof(LeasesController.GetAll), WithMoney },
         { typeof(LeasesController), nameof(LeasesController.Create), Operators },
         { typeof(LeasesController), nameof(LeasesController.TriggerRegistration), Operators },
+
+        // LR-09: the tenants are read like the leases; their personal data in clear (the copy) and their erasure are for who may create a lease.
+        { typeof(LongRentTenantsController), nameof(LongRentTenantsController.GetAll), WithMoney },
+        { typeof(LongRentTenantsController), nameof(LongRentTenantsController.GetById), WithMoney },
+        { typeof(LongRentTenantsController), nameof(LongRentTenantsController.Export), Operators },
+        { typeof(LongRentTenantsController), nameof(LongRentTenantsController.RequestErasure), Operators },
 
         // LR-12: the guided draft of a lease is written, and read (it carries the parties in clear), by who may create a lease; the
         // rules of the area, which are figures and nothing personal, by who may read the leases.

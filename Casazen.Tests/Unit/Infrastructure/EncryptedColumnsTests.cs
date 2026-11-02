@@ -30,6 +30,8 @@ public class EncryptedColumnsTests
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
                 "Party.Residence:Casazen.LeaseParty",
                 "PlatformAiSettings.ApiKey:Casazen.PlatformAiSettings",
+                // NF-13: encrypted property access codes (gate, lockbox, smart lock PIN).
+                "PropertyAccessCode.EncryptedCode:Casazen.PropertyAccessCode",
                 "PropertyICalFeed.ImportUrl:Casazen.PropertyICalFeed.ImportUrl",
                 // ADR-012: property owner financial data (IBAN and fiscal code).
                 "PropertyOwner.FiscalCode:Casazen.PropertyOwner.Financial",
@@ -42,10 +44,18 @@ public class EncryptedColumnsTests
                 "ServiceCustomer.Email:Casazen.ServiceCustomer",
                 "ServiceCustomer.FullName:Casazen.ServiceCustomer",
                 "ServiceCustomer.Phone:Casazen.ServiceCustomer",
+                // SP-15c-c: the words of a complaint about a job paid through CasaZen (the payer's, the supplier's, the admin's note).
+                "ServicePaymentDispute.AdminNote:Casazen.ServicePaymentDispute",
+                "ServicePaymentDispute.CustomerText:Casazen.ServicePaymentDispute",
+                "ServicePaymentDispute.SupplierReply:Casazen.ServicePaymentDispute",
                 "ServiceRequest.LocationAccessNotes:Casazen.ServiceRequest.Location",
                 "ServiceRequest.LocationAddress:Casazen.ServiceRequest.Location",
                 "ServiceRequest.LocationFloor:Casazen.ServiceRequest.Location",
+                // SP-10b: the words of the thread of a request on measure.
+                "ServiceRequestMessage.Body:Casazen.ServiceRequestMessage",
                 "ShowcaseBookingHold.Payload:Casazen.ServiceCustomer",
+                // SP-10b: the request on measure that waits for the e-mail check (the same data as the hold, plus the words).
+                "ShowcaseInquiry.Payload:Casazen.ServiceCustomer",
                 "StayGuest.DocumentIssuePlaceName:Casazen.Guest.Document",
                 "StayGuest.DocumentNumber:Casazen.Guest.Document",
             },

@@ -2,6 +2,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Repositories;
@@ -52,9 +53,16 @@ public partial class ServiceRequestService(
     IOptions<ShowcaseBookingOptions> showcaseOptions,
     ISupplierPaymentService payments,
     ILogger<ServiceRequestService> logger,
-    TimeProvider? timeProvider = null) : IServiceRequestService
+    TimeProvider? timeProvider = null,
+    ISupplierFundsService? funds = null,
+    IFeatureFlags? featureFlags = null,
+    ServiceRequestBackupSelector? backupSelector = null,
+    ISupplierReliabilityService? reliability = null) : IServiceRequestService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    /// <summary>The wall clock time (Europe/Rome) a request gets when the host names none (SP-04, SR-08a).</summary>
+    private static readonly TimeOnly DefaultStartTime = new(10, 0);
 
     /// <summary>The time asked for a request, with the slot query that checks it.</summary>
     private sealed record RequestSchedule(DateTime Start, DateTime End, SupplierSlotQuery Query);
@@ -93,6 +101,7 @@ public partial class ServiceRequestService(
         }
 
         await EnsureBookingRuleAsync(command, cancellationToken);
+        await EnsureLeaseRuleAsync(command, cancellationToken);
 
         if (command.ChargeToGuest)
         {
@@ -127,6 +136,9 @@ public partial class ServiceRequestService(
         command = await EnsureTimedCreateCommandAsync(command, service, cancellationToken);
         var schedule = ResolveCreateSchedule(command, service);
 
+        // SP-BKP: the backups the same request is sent to, declared as such. Chosen before the lock (a few reads), added to the same save below.
+        var backupSuppliers = await SelectBackupsAsync(command, property, category, schedule, cancellationToken);
+
         var now = Now();
         var request = new ServiceRequest
         {
@@ -134,6 +146,7 @@ public partial class ServiceRequestService(
             BookingId = command.BookingId,
             RentalContext = command.RentalContext,
             PropertyId = command.PropertyId,
+            LeaseContractId = command.LeaseContractId,
             SupplierOrgId = command.SupplierOrgId,
             Category = category,
             Urgency = command.Urgency,
@@ -156,6 +169,7 @@ public partial class ServiceRequestService(
         var comune = property.City;
         var supplierEmail = notifier.RenderCreatedEmail(request, supplier.LegalName, comune);
 
+        IReadOnlyList<(ServiceRequest Request, SupplierProfile Supplier)> backups = [];
         IDbContextTransaction? transaction = await LockSupplierCalendarAsync(command.SupplierOrgId, cancellationToken);
         await using (transaction)
         {
@@ -170,12 +184,20 @@ public partial class ServiceRequestService(
             // SP-04d: with the slot checked, the request of a regular host is saved already taken, in this same transaction.
             await AcceptAutomaticallyIfRegularAsync(request, command, supplier, service, cancellationToken);
 
+            // SP-BKP: a request that waits for its supplier's answer is tied to its backups in the same save; one that was accepted by the
+            // supplier's own rule has nothing to wait for, so it has no backups. The primary's window is the hour of the rule, not the 120 minutes.
+            if (!request.AutoAccepted && backupSuppliers.Count > 0)
+                backups = AttachBackupGroup(request, backupSuppliers, slotPlanned: command.DurationMinutes is null, now);
+
             await repository.AddAsync(request, cancellationToken);
             await CommitAsync(transaction, cancellationToken);
         }
 
         if (!request.AutoAccepted)
-            notifier.QueueCreated(request, supplier.Email, supplierEmail, comune);
+            await notifier.QueueCreatedAsync(request, supplier.Email, supplierEmail, comune, cancellationToken);
+
+        if (backups.Count > 0)
+            await notifier.NotifyBackupsInvitedAsync(backups, comune, request.ResponseDueAt!.Value, cancellationToken);
 
         logger.LogInformation(
             "ServiceRequest {Id} ({RentalContext}) created by {UserId} for property {PropertyId} booking {BookingId} supplier {SupplierOrgId}",
@@ -251,9 +273,9 @@ public partial class ServiceRequestService(
     }
 
     /// <summary>
-    /// D2 (SU-07): a short-rent request is for one stay, a booking of the request's property in the host's org; a
-    /// long-rent request is for the property and takes no booking. 422 with the codes of
-    /// <see cref="ServiceRequestErrorCodes"/>; a booking of another property or org answers like a missing one.
+    /// D2 (SU-07): a short-rent request may be for one stay, a booking of the request's property in the host's org (SR-D3, SR-08a:
+    /// the stay is optional, a request can be for the house alone); a long-rent request is for the property and takes no booking. 422
+    /// with the codes of <see cref="ServiceRequestErrorCodes"/>; a booking of another property or org answers like a missing one.
     /// </summary>
     private async Task EnsureBookingRuleAsync(CreateServiceRequestCommand command, CancellationToken cancellationToken)
     {
@@ -268,11 +290,9 @@ public partial class ServiceRequestService(
             return;
         }
 
+        // No stay named: the request is for the property alone (the database check only asks for a property and the host's source).
         if (command.BookingId is not { } bookingId)
-        {
-            throw new DomainRuleException(
-                ServiceRequestErrorCodes.BookingRequired, ServiceRequestErrorCodes.BookingRequiredMessageKey);
-        }
+            return;
 
         // IgnoreQueryFilters: scoped by the explicit OrgId predicate (same reason as the property lookup above).
         var belongsToProperty = await db.Bookings
@@ -285,6 +305,48 @@ public partial class ServiceRequestService(
         {
             throw new DomainRuleException(
                 ServiceRequestErrorCodes.BookingMismatch, ServiceRequestErrorCodes.BookingMismatchMessageKey);
+        }
+    }
+
+    /// <summary>
+    /// LR-03c: a long-rent request can be made for one lease of its property (the sheet of a contract). The lease must be the host's own and
+    /// on the request's property: another org's answers like a missing one (404 <see cref="ServiceRequestErrorCodes.LeaseNotFound"/>), one
+    /// of another property is 422 <see cref="ServiceRequestErrorCodes.LeaseMismatch"/>, and a request that is not a long-rent one takes
+    /// none (422 <see cref="ServiceRequestErrorCodes.LeaseNotAllowed"/>). A link and nothing more: nothing of the lease, of its tenant or of
+    /// its people is read, copied or sent on to the supplier (decision LR-D22).
+    /// </summary>
+    private async Task EnsureLeaseRuleAsync(CreateServiceRequestCommand command, CancellationToken cancellationToken)
+    {
+        if (command.LeaseContractId is not { } leaseId)
+            return;
+
+        if (command.RentalContext != ServiceRequestRentalContext.LongRent)
+        {
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.LeaseNotAllowed, ServiceRequestErrorCodes.LeaseNotAllowedMessageKey);
+        }
+
+        // IgnoreQueryFilters (tenant only): scoped by the explicit OrgId predicate (same reason as the property lookup in CreateAsync).
+        var leaseProperty = await db.LeaseContracts
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(l => l.Id == leaseId && l.OrgId == command.OrgId)
+            .Select(l => (Guid?)l.PropertyId)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (leaseProperty is null)
+        {
+            throw new NotFoundException($"Lease {leaseId} not found for the service request")
+            {
+                Code = ServiceRequestErrorCodes.LeaseNotFound,
+                MessageKey = ServiceRequestErrorCodes.LeaseNotFoundMessageKey,
+            };
+        }
+
+        if (leaseProperty != command.PropertyId)
+        {
+            throw new DomainRuleException(
+                ServiceRequestErrorCodes.LeaseMismatch, ServiceRequestErrorCodes.LeaseMismatchMessageKey);
         }
     }
 
@@ -325,7 +387,9 @@ public partial class ServiceRequestService(
 
     /// <summary>
     /// Every request stores an interval. When the host omitted the start, use Europe/Rome 10:00 on the stay check-out
-    /// day (or on today for long-rent) and a duration from the host, the catalog, or 120 minutes — never a day-only row.
+    /// day (or on today when there is no stay: long-rent, or a short-rent request for the house alone, SR-08a) and a duration from
+    /// the host, the catalog, or 120 minutes — never a day-only row. Without a stay the default never falls in the past: once
+    /// today's 10:00 has gone by it is 10:00 of the next day.
     /// </summary>
     private async Task<CreateServiceRequestCommand> EnsureTimedCreateCommandAsync(
         CreateServiceRequestCommand command,
@@ -336,20 +400,26 @@ public partial class ServiceRequestService(
             return command;
 
         DateOnly day;
+        var now = Now();
         if (command.BookingId is Guid bookingId)
         {
             var checkout = await db.Bookings.AsNoTracking()
                 .Where(b => b.Id == bookingId)
                 .Select(b => (DateTime?)b.CheckOutDate)
                 .FirstOrDefaultAsync(cancellationToken);
-            day = checkout is { } when ? RomeCalendar.DateInRome(when) : RomeCalendar.DateInRome(Now());
+            day = checkout is { } when ? RomeCalendar.DateInRome(when) : RomeCalendar.DateInRome(now);
         }
         else
         {
-            day = RomeCalendar.DateInRome(Now());
+            day = RomeCalendar.DateInRome(now);
         }
 
-        var start = RomeCalendar.ToUtc(day, new TimeOnly(10, 0));
+        var start = RomeCalendar.ToUtc(day, DefaultStartTime);
+
+        // A short-rent request for the house alone (SR-08a): "today at 10:00" that has gone by is the next day's.
+        if (command.RentalContext == ServiceRequestRentalContext.ShortRent && command.BookingId is null && start <= now)
+            start = RomeCalendar.ToUtc(day.AddDays(1), DefaultStartTime);
+
         // Explicit duration so the planner is not asked for a published slot the host never chose.
         var minutes = command.DurationMinutes
             ?? (service?.DurationMinutes is > 0 and var fromService ? fromService : 120);
@@ -392,10 +462,26 @@ public partial class ServiceRequestService(
         CancellationToken cancellationToken = default)
     {
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
+        EnsureNotOnMeasure(request);
+
+        // A backup closed by the race (another backup accepted first) is told so plainly: 409, and it loses nothing.
+        ThrowIfRaceClosed(request);
         EnsureCan(request, ServiceRequestStatus.PresoInCarico, ServiceRequestErrorCodes.CannotTakeMessageKey);
 
+        // The deadline the request had when the supplier answered: the take clears it, the ranking (SP-REL) needs it. The group role
+        // changes with the take (the backup that gets the job is promoted), so it is read now.
+        var dueBeforeAnswer = await ReplyDeadlineAsync(request, cancellationToken);
+        var answeredAsBackup = request.GroupRole == ServiceRequestGroupRole.Backup;
+
         if (command?.QuotedAmountCents is { } quote)
+        {
             ServiceRequestPricing.EnsureValidAmount(quote);
+
+            // SP-15c-a: the price of a request whose card is blocked is what the customer blocked; the supplier cannot commit another one
+            // (a different price needs a new offer from the supplier, accepted by the customer).
+            if (IsPaidInsideCasaZen(request) && quote != request.EstimatedAmountCents)
+                throw new DomainRuleException(ServicePaymentErrors.AmountLocked, ServicePaymentErrors.AmountLockedMessageKey);
+        }
 
         var schedule = await ResolveTakeScheduleAsync(request, supplierOrgId, command, cancellationToken);
 
@@ -403,12 +489,32 @@ public partial class ServiceRequestService(
         // can take charges and payouts: no payment before the KYC).
         var paymentMode = await ResolvePaymentModeAsync(request, cancellationToken);
 
-        // Always under the calendar lock: two takes of the same day must not both pass the overlap check.
-        IDbContextTransaction? transaction = await LockSupplierCalendarAsync(supplierOrgId, cancellationToken);
+        // Always under the calendar lock: two takes of the same day must not both pass the overlap check. A request of a group of backup
+        // suppliers (SP-BKP) first takes the lock of its group, always in this order.
+        IDbContextTransaction? transaction = await LockSupplierCalendarAsync(supplierOrgId, request.GroupId, cancellationToken);
+        GroupClosure? closure = null;
         await using (transaction)
         {
+            // The group is read again under its lock and the take is judged by its rules: the primary has its window, a backup waits for it or
+            // takes the job in its turn. From here on the request is the one committed now (the tracker was cleared to read it).
+            GroupTake? groupTake = null;
+            if (request.GroupId is { } groupId)
+            {
+                groupTake = await RequireGroupTakeAsync(id, groupId, cancellationToken);
+                request = groupTake.Request;
+            }
+
             if (schedule is not null)
+            {
                 await EnsureSlotFreeAsync(supplierOrgId, schedule, exceptRequestId: request.Id, cancellationToken);
+            }
+            else if (groupTake is { Request.GroupRole: ServiceRequestGroupRole.Backup, State.Group.SlotPlanned: true })
+            {
+                // A backup did not hold the slot: the time the host picked among the primary's slots must be one of its own now that it gets the job.
+                var backupSchedule = await ResolveScheduleAsync(
+                    request, supplierOrgId, request.ScheduledStartUtc!.Value, request.ScheduledEndUtc, cancellationToken);
+                await EnsureSlotFreeAsync(supplierOrgId, backupSchedule, exceptRequestId: request.Id, cancellationToken);
+            }
 
             await EnsureNoOverlappingCommitmentAsync(
                 supplierOrgId,
@@ -416,6 +522,14 @@ public partial class ServiceRequestService(
                 schedule?.Start ?? request.ScheduledStartUtc,
                 schedule?.End ?? request.ScheduledEndUtc,
                 cancellationToken);
+
+            // SP-15c-a: accepting charges the customer's card, before the request changes state: if the card cannot be charged (the block
+            // lapsed, the bank refuses) the take does not happen and the supplier is told why (409).
+            await CaptureHeldMoneyAsync(request, cancellationToken);
+
+            // The others of the group are closed in the same save as the take: either the job is this supplier's and the rest is over, or nothing.
+            if (groupTake is not null)
+                closure = CloseGroupAfterTake(groupTake, Now());
 
             await TransitionAsync(
                 request,
@@ -443,7 +557,17 @@ public partial class ServiceRequestService(
             await CommitAsync(transaction, cancellationToken);
         }
 
-        await notifier.NotifyHostAsync(request, cancellationToken);
+        await RecordReplyAsync(request, dueBeforeAnswer, answeredAsBackup, cancellationToken);
+
+        // The host learns who has the job; when a backup took it in place of the primary, it is told so.
+        if (closure is { WinnerIsBackup: true })
+            await notifier.NotifyHostBackupTookOverAsync(request, cancellationToken);
+        else
+            await notifier.NotifyHostAsync(request, cancellationToken);
+
+        if (closure is not null)
+            await NotifyClosureAsync(closure, cancellationToken);
+
         return request;
     }
 
@@ -556,11 +680,17 @@ public partial class ServiceRequestService(
 
         // The final price: the declared total, or the agreed price plus the extras (decision D7 compares it with the quote).
         var reference = ServiceRequestPricing.ReferenceAmount(request.QuotedAmountCents, request.EstimatedAmountCents);
+
+        // The lines of the quote the customer accepted (SP-04b) stay as it approved them while they still are the price of the work itself.
+        var agreedLines = request.QuotedAmountCents is null
+            ? null
+            : ServiceRequestJson.ReadPriceLines(request.PriceLinesJson).Where(line => line.Kind == ServiceRequestPriceLineKinds.Quote).ToList();
         var price = ServiceRequestPricing.ComposeFinalPrice(
             reference,
             command?.FinalAmountCents,
             command?.Extras,
-            request.ServiceNameSnapshot ?? request.Category);
+            request.ServiceNameSnapshot ?? request.Category,
+            agreedLines);
         var needsConfirmation = ServiceRequestPricing.ExceedsQuote(
             reference, price.FinalAmountCents, options.Value.FinalAmountTolerancePercent);
         var notes = string.IsNullOrWhiteSpace(command?.Notes) ? null : command.Notes.Trim();
@@ -595,6 +725,7 @@ public partial class ServiceRequestService(
 
         // The link goes out after the save, and only the winner of the transition sends it.
         await payments.AnnounceAsync(plan, request, cancellationToken);
+        await RecordCompletedAsync(request, cancellationToken);
         await notifier.NotifyHostAsync(request, cancellationToken);
         return request;
     }
@@ -608,6 +739,8 @@ public partial class ServiceRequestService(
         // The API requires a reason of at most 500 characters (400 validation_error, A4-18): a blank one is a bug here.
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         var request = await GetRequestForActiveSupplierOrThrow(id, supplierOrgId, cancellationToken);
+        var wasWaitingBackup = request.GroupRole == ServiceRequestGroupRole.Backup;
+        var dueBeforeAnswer = await ReplyDeadlineAsync(request, cancellationToken);
 
         await TransitionAsync(
             request,
@@ -621,10 +754,57 @@ public partial class ServiceRequestService(
             },
             cancellationToken);
 
-        // A6-08: the host learns of the rejection by email and push, like of the other supplier decisions.
-        await notifier.NotifyHostAsync(request, cancellationToken);
+        // Saying no in time is an answer in time (SP-REL): the host can ask somebody else at once. A backup's counts as a backup's.
+        await RecordReplyAsync(request, dueBeforeAnswer, wasWaitingBackup, cancellationToken);
+
+        // A6-08: the host learns of the rejection by email and push, like of the other supplier decisions. Not of a backup's: the host did not
+        // choose it, and the group goes on without it.
+        if (!wasWaitingBackup)
+            await notifier.NotifyHostAsync(request, cancellationToken);
+
+        // SP-15c-a: the block on the customer's card goes with the refusal.
+        await SettleClosedMoneyAsync(request, cancellationToken);
+
+        // SP-BKP: a refusal changes the group (the primary is out, or a backup is): it is looked at right away.
+        await ResolveGroupAfterChangeAsync(request.GroupId, cancellationToken);
         return request;
     }
+
+    // ─── The money CasaZen holds for a request (SP-15c-a) ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The request is paid inside CasaZen: it was born with the card of its customer blocked (a request from a supplier's public showcase;
+    /// the hosts' requests join in SP-15c-b). The price is then what the customer blocked, and the supplier's acceptance charges the card.
+    /// </summary>
+    private static bool IsPaidInsideCasaZen(ServiceRequest request) =>
+        request is { RentalContext: ServiceRequestRentalContext.Showcase, PaymentMode: ServiceRequestPaymentMode.Online };
+
+    /// <summary>
+    /// Charges the customer's card because the supplier is accepting the request, <b>before</b> it changes state; the caller holds the supplier's
+    /// calendar lock, so a request is never accepted with no money behind it. 409 <c>payment_authorization_expired</c> (the block lapsed: it is
+    /// released) or <c>payment_capture_failed</c> (the card could not be charged now): the take does not happen. A request that is not paid
+    /// inside CasaZen is not touched.
+    /// </summary>
+    private Task CaptureHeldMoneyAsync(ServiceRequest request, CancellationToken cancellationToken) =>
+        funds is not null && IsPaidInsideCasaZen(request) ? funds.CaptureForTakeAsync(request, cancellationToken) : Task.CompletedTask;
+
+    /// <summary>
+    /// The request closed (refused, cancelled): the block on the customer's card is released, or the money charged is given back in full (the
+    /// commission included, decision D6). Called after the closing is saved and never throws — the request stays closed, and the funds job settles
+    /// the money on its next run if this cannot.
+    /// </summary>
+    private Task SettleClosedMoneyAsync(ServiceRequest request, CancellationToken cancellationToken) =>
+        funds is not null && (IsPaidInsideCasaZen(request) || request.Kind == ServiceRequestKind.Custom)
+            ? funds.SettleClosedRequestAsync(request.Id, cancellationToken)
+            : Task.CompletedTask;
+
+    /// <summary>
+    /// The offer of a request on measure ended without being taken (the customer turned it down, the supplier took it back or replaced it): the block
+    /// on the customer's card, or the PaymentIntent still waiting for a card, is released (SP-10b-b). Never throws — the funds job settles it on its
+    /// next run if this cannot — and does nothing for a request that is not on measure or has no such payment.
+    /// </summary>
+    private Task ReleaseOfferPaymentAsync(Guid requestId, CancellationToken cancellationToken) =>
+        funds is null ? Task.CompletedTask : funds.CancelOfferPaymentAsync(requestId, cancellationToken);
 
     public async Task<ServiceRequest> MarkPaidAsync(
         Guid id,
@@ -633,9 +813,14 @@ public partial class ServiceRequestService(
     {
         var request = await repository.GetByIdAsync(id, cancellationToken);
 
-        // Another org's request, and one from a supplier's showcase, are answered exactly like a missing one.
-        if (request is null || request.OrgId != hostOrgId || request.RentalContext == ServiceRequestRentalContext.Showcase)
+        // Another org's request, one from a supplier's showcase and a backup's that waits are answered exactly like a missing one.
+        if (request is null
+            || request.OrgId != hostOrgId
+            || request.RentalContext == ServiceRequestRentalContext.Showcase
+            || !ServiceRequestGroupRules.IsVisibleToHost(request.GroupRole))
+        {
             throw RequestNotFound(id);
+        }
 
         // SP-15a, decision D5: a request paid inside CasaZen is paid with the link (the commission is part of it). The host cannot
         // mark it paid by hand; the only exception is the supplier's, traced (api/supplier/requests/{id}/payment/offline).
@@ -679,6 +864,10 @@ public partial class ServiceRequestService(
 
         apply(request);
         request.Status = to;
+
+        // SP-04b: a quote is an offer on a request that still waits for its answer. Whatever moves the request on (taken, refused,
+        // cancelled) takes the offer away with it; the database refuses a quote on a request that is not new.
+        ClearQuote(request);
         request.UpdatedAt = Now();
 
         await SaveAsync(request, $"transition {from} -> {to}", cancellationToken);
@@ -804,6 +993,7 @@ public partial class ServiceRequestService(
         int page,
         int pageSize,
         ServiceRequestHostView? view = null,
+        Guid? leaseContractId = null,
         CancellationToken cancellationToken = default)
     {
         // IgnoreQueryFilters: scoped by the explicit host OrgId predicate (see GetByIdForHostAsync).
@@ -831,6 +1021,10 @@ public partial class ServiceRequestService(
 
         if (bookingId is not null)
             query = query.Where(r => r.BookingId == bookingId.Value);
+
+        // The sheet of a contract (LR-03c): narrows the list already limited to the scope, so another org's lease gives an empty one.
+        if (leaseContractId is not null)
+            query = query.Where(r => r.LeaseContractId == leaseContractId.Value);
 
         return MaterializeServiceRequestPageAsync(query, page, pageSize, cancellationToken);
     }
@@ -901,9 +1095,15 @@ public partial class ServiceRequestService(
     {
         var request = await repository.GetByIdAsync(id, cancellationToken);
 
-        // The host never reaches a request of a supplier's public showcase (SP-10), even when the supplier org is also its org.
-        if (request is null || request.OrgId != hostOrgId || request.RentalContext == ServiceRequestRentalContext.Showcase)
+        // The host never reaches a request of a supplier's public showcase (SP-10), even when the supplier org is also its org. Nor a backup
+        // that waits (SP-BKP): it follows the request of the supplier it chose, and the group is reached through it.
+        if (request is null
+            || request.OrgId != hostOrgId
+            || request.RentalContext == ServiceRequestRentalContext.Showcase
+            || !ServiceRequestGroupRules.IsVisibleToHost(request.GroupRole))
+        {
             throw RequestNotFound(id);
+        }
 
         return request;
     }
@@ -963,7 +1163,7 @@ public partial class ServiceRequestService(
     }
     /// <summary>The host's org and, for a restricted scope (AM-03), only the requests on the properties the caller reaches.</summary>
     private static IQueryable<ServiceRequest> ApplyHostScope(IQueryable<ServiceRequest> query, HostScope scope) =>
-        query.Where(r => r.OrgId == scope.OrgId).InScope(scope);
+        query.Where(r => r.OrgId == scope.OrgId).InScope(scope).OnlyVisibleToHost();
 
     private static async Task<(IReadOnlyList<ServiceRequest> Items, int Total)> MaterializeServiceRequestPageAsync(
         IQueryable<ServiceRequest> query,

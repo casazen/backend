@@ -70,6 +70,16 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.PropertyOwners.Select(o => o.Scenario))
             .Concat(DemoShowcaseCatalog.GuestSegments.Select(s => s.Scenario))
             .Concat(DemoShowcaseCatalog.Campaigns.Select(c => c.Scenario))
+            .Concat(DemoShowcaseCatalog.AgencyInvoices.Select(inv => inv.Scenario))
+            .Concat(DemoShowcaseCatalog.StaffMembers.Select(staff => staff.Scenario))
+            .Concat(DemoShowcaseCatalog.Suppliers.Select(sup => sup.Scenario))
+            .Concat(DemoShowcaseCatalog.CheckIns.Select(ci => ci.Scenario))
+            .Concat(DemoShowcaseCatalog.AlloggiatiReports.Select(ar => ar.Scenario))
+            .Concat(DemoShowcaseCatalog.Statements.Select(st => st.Scenario))
+            .Concat(DemoShowcaseCatalog.WithholdingSummaries.Select(wh => wh.Scenario))
+            .Concat(DemoShowcaseCatalog.F24Records.Select(f24 => f24.Scenario))
+            .Concat(DemoShowcaseCatalog.WireBatches.Select(wb => wb.Scenario))
+            .Concat(DemoShowcaseCatalog.Routines.Select(rt => rt.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -90,5 +100,25 @@ public class DemoShowcaseTests
             Enum.GetValues<DemoHostInviteState>().Order(),
             invites.Select(i => i.State).Distinct().Order());
         Assert.Contains(DemoShowcaseCatalog.Scenario.HostInvitePending, DemoShowcaseCatalog.Scenarios);
+    }
+
+    [Fact]
+    public void GuestAppAccount_TheDemoGuestOfTheMobileApp_HasUpcomingPastAndCancelledStaysOfThePublicCheckout()
+    {
+        var stays = DemoShowcaseCatalog.Properties
+            .SelectMany(p => p.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.GuestAppAccount))
+            .ToList();
+
+        Assert.Contains(DemoShowcaseCatalog.Scenario.GuestAppAccount, DemoShowcaseCatalog.Scenarios);
+        // Obviously test data, and the email of the account the store reviewers sign in with (created by hand in Auth0).
+        Assert.EndsWith("@example.com", DemoShowcaseCatalog.GuestAppEmail, StringComparison.Ordinal);
+        Assert.All(stays, s => Assert.Equal(DemoShowcaseCatalog.GuestAppEmail, s.Email));
+        // «Le mie prenotazioni» of the app lists the bookings of the public checkout only, and the demo must not reach Stripe: paid at the property.
+        Assert.All(stays, s => Assert.Equal(BookingSource.Direct, s.Source));
+        Assert.All(stays, s => Assert.Equal(PaymentOption.OnSite, s.PaymentOption));
+        Assert.Equal(stays.Count, stays.Select(s => s.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains(stays, s => s.CheckInOffsetDays > 0 && s.Status == BookingStatus.Confirmed);
+        Assert.Contains(stays, s => s.CheckInOffsetDays < 0 && s.Status == BookingStatus.CheckedOut);
+        Assert.Contains(stays, s => s.Status == BookingStatus.Cancelled && s.CancellationReason == BookingCancellationReason.GuestRequested);
     }
 }

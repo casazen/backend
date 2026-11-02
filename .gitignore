@@ -89,3 +89,6 @@ tmp-tourist-tax/
 /reports/canone-concordato/
 /reports/rli-registration/
 /reports/verification-*/
+
+# Export HTML del business plan (scripts/business-plan/export.sh)
+docs/business-plan/out/

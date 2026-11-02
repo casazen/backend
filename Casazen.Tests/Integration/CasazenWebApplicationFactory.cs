@@ -110,6 +110,8 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["RateLimiting:GuestSessionPerCode:PermitLimit"] = "1000",
                 ["RateLimiting:GuestMessageSend:PermitLimit"] = "1000",
                 ["RateLimiting:GuestMessagePerSession:PermitLimit"] = "1000",
+                ["RateLimiting:GuestBookingCancel:PermitLimit"] = "1000",
+                ["RateLimiting:GuestBookingCancelPerBooking:PermitLimit"] = "1000",
                 ["RateLimiting:HostMessageSend:PermitLimit"] = "1000",
                 ["RateLimiting:PublicIcal:PermitLimit"] = "1000",
                 ["RateLimiting:PublicRegistration:PermitLimit"] = "1000",

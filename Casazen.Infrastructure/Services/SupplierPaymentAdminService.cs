@@ -138,14 +138,29 @@ public sealed class SupplierPaymentAdminService(
         p.ApplicationFeeCents,
         p.NetCents,
         p.RefundedCents,
-        SupplierCommission.FeeRefundedCents(p.ApplicationFeeCents, p.AmountCents, p.RefundedCents),
+
+        // A direct charge gives its commission back in proportion; the money CasaZen holds keeps it unless everything went back.
+        p.FundsModel == ServiceFundsModel.PlatformHeld
+            ? (p.RefundedCents >= p.AmountCents ? p.ApplicationFeeCents : 0)
+            : SupplierCommission.FeeRefundedCents(p.ApplicationFeeCents, p.AmountCents, p.RefundedCents),
         p.RequestedAt,
         p.LateAt,
         p.PaidAt,
         p.FailureCode,
         p.StripePaymentIntentId,
         p.ConnectedAccountId,
-        p.CreatedAt);
+        p.CreatedAt,
+        p.FundsModel,
+        p.CapturedAt,
+        p.ReleaseAt,
+        p.ReleasedAt,
+        p.StripeTransferId,
+        p.TransferAttempts,
+        p.TransferFailureCode,
+        p.TransferNextAttemptAt,
+        p.CardDisputeId,
+        p.CardDisputeStatus,
+        p.CardDisputeAt);
 
     // ─── The commission of a supplier ───────────────────────────────────────────────────────────────────────────────
 
@@ -253,24 +268,67 @@ public sealed class SupplierPaymentAdminService(
         var fromUtc = RomeCalendar.StartOfDayUtc(first);
         var toUtc = RomeCalendar.StartOfDayUtc(first.AddMonths(1));
 
-        // Payments collected through Stripe in the month (an offline payment carries no commission and is not in the file).
+        // Payments collected through Stripe in the month (an offline payment carries no commission and is not in the file). Direct charges
+        // only: the commission CasaZen keeps from the money it holds is exported below, as "retained" (SP-15c-b), when it becomes CasaZen's.
         var paid = await db.ServiceRequestPayments
             .AsNoTracking()
-            .Where(p => p.PaidVia == ServicePaymentChannel.Stripe && p.PaidAt >= fromUtc && p.PaidAt < toUtc && PaidStatuses.Contains(p.Status))
+            .Where(p => p.FundsModel == ServiceFundsModel.DirectCharge
+                        && p.PaidVia == ServicePaymentChannel.Stripe && p.PaidAt >= fromUtc && p.PaidAt < toUtc && PaidStatuses.Contains(p.Status))
             .ToListAsync(cancellationToken);
 
         // Refunds that succeeded in the month, of payments collected through Stripe: the commission that went back.
         var refunds = await db.ServiceRequestPaymentRefunds
             .AsNoTracking()
             .Where(r => r.Status == ServicePaymentRefundStatus.Succeeded && r.CompletedAt >= fromUtc && r.CompletedAt < toUtc
+                        && r.ServiceRequestPayment.FundsModel == ServiceFundsModel.DirectCharge
                         && r.ServiceRequestPayment.PaidVia == ServicePaymentChannel.Stripe)
             .Select(r => new { Refund = r, Payment = r.ServiceRequestPayment })
             .ToListAsync(cancellationToken);
 
-        var payments = paid.Concat(refunds.Select(r => r.Payment)).DistinctBy(p => p.Id).ToList();
+        // SP-15c-b: the commission CasaZen retained from the money it held. It becomes CasaZen's when the supplier is paid (the transfer: the
+        // day of the release), or, when the supplier gets nothing because it was at fault and the payer was given back the rest, the day of
+        // the last refund that succeeded. A payment refunded in full has no commission: CasaZen kept nothing.
+        var released = await db.ServiceRequestPayments
+            .AsNoTracking()
+            .Where(p => p.FundsModel == ServiceFundsModel.PlatformHeld
+                        && p.Status == ServicePaymentStatus.Released && p.ReleasedAt >= fromUtc && p.ReleasedAt < toUtc)
+            .ToListAsync(cancellationToken);
+
+        var keptOnly = await db.ServiceRequestPayments
+            .AsNoTracking()
+            .Where(p => p.FundsModel == ServiceFundsModel.PlatformHeld && p.Status == ServicePaymentStatus.PartiallyRefunded)
+            .ToListAsync(cancellationToken);
+        var keptRefunds = keptOnly.Count == 0
+            ? []
+            : await db.ServiceRequestPaymentRefunds
+                .AsNoTracking()
+                .Where(r => r.Status == ServicePaymentRefundStatus.Succeeded && r.CompletedAt != null
+                            && r.ServiceRequestPayment.FundsModel == ServiceFundsModel.PlatformHeld
+                            && r.ServiceRequestPayment.Status == ServicePaymentStatus.PartiallyRefunded)
+                .Select(r => new { r.ServiceRequestPaymentId, CompletedAt = r.CompletedAt!.Value })
+                .ToListAsync(cancellationToken);
+        var lastRefundOf = keptRefunds
+            .GroupBy(r => r.ServiceRequestPaymentId)
+            .ToDictionary(g => g.Key, g => g.Max(r => r.CompletedAt));
+        var retainedAtRefund = keptOnly
+            .Where(p => lastRefundOf.TryGetValue(p.Id, out var at) && at >= fromUtc && at < toUtc)
+            .ToList();
+
+        var payments = paid
+            .Concat(refunds.Select(r => r.Payment))
+            .Concat(released)
+            .Concat(retainedAtRefund)
+            .DistinctBy(p => p.Id)
+            .ToList();
         var names = await ReadNamesAsync(payments, cancellationToken);
 
-        var rows = new List<CommissionExportRow>(paid.Count + refunds.Count);
+        var rows = new List<CommissionExportRow>(paid.Count + refunds.Count + released.Count + retainedAtRefund.Count);
+        foreach (var p in released)
+            rows.Add(RetainedRow(p, p.ReleasedAt!.Value, names));
+
+        foreach (var p in retainedAtRefund)
+            rows.Add(RetainedRow(p, lastRefundOf[p.Id], names));
+
         foreach (var p in paid)
         {
             rows.Add(new CommissionExportRow(
@@ -314,5 +372,30 @@ public sealed class SupplierPaymentAdminService(
 
         var ordered = rows.OrderBy(r => r.Date).ThenBy(r => r.Type, StringComparer.Ordinal).ThenBy(r => r.PaymentId).ToList();
         return new CommissionExport(year, month, options.Value.CommissionVatPercent, ordered);
+    }
+
+    /// <summary>
+    /// The line of the commission CasaZen retained from the money it held (SP-15c-b): what stayed with CasaZen of the payer's money (the price
+    /// minus what was given back), CasaZen's whole commission, and what the supplier got (the rest: nothing when it was at fault).
+    /// </summary>
+    private static CommissionExportRow RetainedRow(ServiceRequestPayment p, DateTime at, Names names)
+    {
+        long gross = p.AmountCents - p.RefundedCents;
+        long commission = Math.Min(p.ApplicationFeeCents, gross);
+        return new CommissionExportRow(
+            CommissionExportRowType.Retained,
+            RomeCalendar.DateInRome(at),
+            p.Id,
+            p.ServiceRequestId,
+            p.SupplierOrgId,
+            names.Orgs.GetValueOrDefault(p.SupplierOrgId) ?? string.Empty,
+            names.VatNumbers.GetValueOrDefault(p.SupplierOrgId),
+            p.PayerOrgId,
+            p.PayerOrgId is { } payer ? names.Orgs.GetValueOrDefault(payer) : null,
+            p.Currency,
+            gross,
+            p.CommissionPercent,
+            commission,
+            gross - commission);
     }
 }

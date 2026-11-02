@@ -12,7 +12,9 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <para><b>A system job.</b> It reads the showcase requests of every supplier that the reminder concerns (taken, with hours,
 /// not yet reminded): the statement is <see cref="ReminderCandidatesOf"/>, a predicate on the request itself. It writes one
-/// field, <c>ReminderSentAt</c>, and tells the customer through <see cref="ShowcaseBookingNotifier"/>.</para>
+/// field, <c>ReminderSentAt</c>, and tells the customer through <see cref="ShowcaseBookingNotifier"/>. Then, under the same run lock,
+/// it hands the second pass to <see cref="SupplierDayBeforeReminders"/> (SP-16d): the reminder to the <b>supplier</b>, for a request of any
+/// context, marked by <c>SupplierReminderSentAt</c>.</para>
 /// <para><b>At most once.</b> The request is marked, and the mark is saved only if nobody touched the request since it was read
 /// (<c>xmin</c>: a supplier that cancelled it meanwhile wins), before the e-mail is queued: a run that crashes or repeats
 /// between the two sends the reminder once or not at all, never twice.</para>
@@ -21,7 +23,8 @@ public sealed class ServiceRequestReminderService(
     AppDbContext db,
     ShowcaseBookingNotifier notifier,
     ILogger<ServiceRequestReminderService> logger,
-    TimeProvider? timeProvider = null) : IServiceRequestReminderService
+    TimeProvider? timeProvider = null,
+    SupplierDayBeforeReminders? supplierReminders = null) : IServiceRequestReminderService
 {
     internal const string RunLockKey = "service-request-reminders";
 
@@ -71,7 +74,12 @@ public sealed class ServiceRequestReminderService(
 
         if (sent > 0 || failed > 0)
             logger.LogInformation("Service request reminders: {Sent} queued, {Failed} could not be queued", sent, failed);
-        return new ServiceRequestReminderRun(Skipped: false, sent, failed);
+
+        // SP-16d: the supplier's own reminder, for every context. In its own pass: the customer's pass above is untouched by it.
+        var (supplierSent, supplierFailed) = supplierReminders is null
+            ? (0, 0)
+            : await supplierReminders.SendDueAsync(now, cancellationToken);
+        return new ServiceRequestReminderRun(Skipped: false, sent, failed) { SupplierSent = supplierSent, SupplierFailed = supplierFailed };
     }
 
     /// <summary>

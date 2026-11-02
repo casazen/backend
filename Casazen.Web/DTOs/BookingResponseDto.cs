@@ -41,13 +41,20 @@ public class BookingResponseDto
     /// <summary>The host's note on that price (at most 80 characters); <c>null</c> when there is none.</summary>
     public string? PriceOverrideNote { get; set; }
 
-    public string Currency { get; set; } = "EUR";
+    /// <summary>ISO 4217 code of the property (EUR or CHF, <see cref="StayCurrency"/>): every amount of the booking is in it.</summary>
+    public string Currency { get; set; } = StayCurrency.Default;
     public string Status { get; set; } = string.Empty;
 
     /// <summary>Reason the host wrote when cancelling (host only).</summary>
     public string? CancellationNote { get; set; }
     public string Source { get; set; } = string.Empty;
     public string SpecialRequests { get; set; } = string.Empty;
+
+    /// <summary>
+    /// When the guest said they would arrive (DB-03b), from the public checkout: <c>HH:mm</c>, or <c>late</c> for after the check-in window;
+    /// <c>null</c> when they did not say and for the bookings that do not come from the checkout. The note "arrivo previsto alle…".
+    /// </summary>
+    public string? ExpectedArrivalTime { get; set; }
 
     /// <summary>Immediate, OnCancellationDeadline or OnSite.</summary>
     public string PaymentOption { get; set; } = string.Empty;

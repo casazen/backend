@@ -44,8 +44,13 @@ public static class OrgInvitationRules
     public const int MaxEmailLength = 255;
     public const int MaxNameLength = 200;
 
+    /// <summary>
+    /// The language of the emails when nobody chose one, and of an org that never chose its own (<c>Org.DefaultLanguage</c>, AM-08b-b).
+    /// </summary>
+    public const string DefaultLanguage = "it";
+
     /// <summary>Languages of the invitation emails. The first is the default.</summary>
-    public static readonly IReadOnlyList<string> Languages = ["it", "en"];
+    public static readonly IReadOnlyList<string> Languages = [DefaultLanguage, "en"];
 
     /// <summary>The form an email is stored and compared in: trimmed and lowercase.</summary>
     public static string NormalizeEmail(string? email) => (email ?? string.Empty).Trim().ToLowerInvariant();

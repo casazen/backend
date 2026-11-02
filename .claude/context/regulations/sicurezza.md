@@ -363,6 +363,8 @@ Tutte consultate il **2026-09-23** tramite estratti WebSearch (lettura diretta b
 
 > Solo cosa fa il codice. I contenuti normativi sono quelli delle sezioni precedenti, non modificati. I «Dubbi per il legale» restano aperti: il codice applica la proposta prudente di RS-3 e non ne decide nessuno.
 
+> **Decisione PO 2026-11-01 (opzione A), cambia il principio 3 della proposta.** La checklist non blocca più l'attivazione e non sospende un immobile attivo: è un promemoria, come su Airbnb e Booking.com, che bloccano solo sul CIN (l'annuncio deve mostrarlo, art. 13-ter c. 6). Le dotazioni restano un obbligo dell'host, dichiarato in BDSR con il CIN (c. 3, c. 7). Chi attiva con la checklist (o i documenti) ancora da completare dichiara una volta di saperlo (`remindersAcknowledged`), e la dichiarazione va nel registro attività dell'organizzazione (`PropertyActivatedWithReminders`). Le regole della checklist (voci, fatti, non applicabili, conferma) non cambiano: cambia solo il loro peso sull'attivazione (`docs/runbooks/compliance.md` §1).
+
 **Dove**
 - Regole (unica fonte di verità): `Casazen.Core/Regulatory/SafetyChecklistRules.cs`. Dati: `PropertySafetyChecklists` (una per property) e `PropertySafetyChecklistItems` (una riga per voce), entità tenant (`OrgId`).
 - API: `GET` e `PUT /api/properties/{id}/compliance/safety-checklist` (solo affitti brevi, autorizzazione sulla property). Il wizard di attivazione (`ComplianceWizardService`, step `safety`) blocca solo sulle voci obbligatorie. Il 409 di `POST .../compliance/activation/complete` (`property_activation_blocked`) elenca i blocker con codici stabili.

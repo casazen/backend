@@ -198,7 +198,9 @@ public sealed class SupplierPaymentReadModels(
         CancellationToken cancellationToken = default) =>
         await db.ServiceRequestPayments
             .AsNoTracking()
-            .Where(p => p.SupplierOrgId == supplierOrgId && p.Status == ServicePaymentStatus.Paid && p.PaidAt >= sinceUtc)
+            .Where(p => p.SupplierOrgId == supplierOrgId
+                        && (p.Status == ServicePaymentStatus.Paid || p.Status == ServicePaymentStatus.Released)
+                        && p.PaidAt >= sinceUtc)
             .Select(p => new SupplierPaidPayment(p.PaidAt!.Value, p.ApplicationFeeCents, p.NetCents))
             .ToListAsync(cancellationToken);
 
@@ -211,11 +213,17 @@ public sealed class SupplierPaymentReadModels(
         || x.PaymentStatus == ServicePaymentStatus.Requested
         || x.PaymentStatus == ServicePaymentStatus.Processing
         || x.PaymentStatus == ServicePaymentStatus.Failed
-        || x.PaymentStatus == ServicePaymentStatus.NeedsReview;
+        || x.PaymentStatus == ServicePaymentStatus.NeedsReview
+        // The money CasaZen holds (SP-15c-a) is still to be collected by the supplier.
+        || x.PaymentStatus == ServicePaymentStatus.Authorized
+        || x.PaymentStatus == ServicePaymentStatus.Held
+        || x.PaymentStatus == ServicePaymentStatus.Disputed
+        || x.PaymentStatus == ServicePaymentStatus.TransferFailed;
 
     private static readonly Expression<Func<EarningRow, bool>> PaidState = x =>
         (x.PaymentStatus == null && x.RequestStatus == ServiceRequestStatus.Pagato)
         || x.PaymentStatus == ServicePaymentStatus.Paid
+        || x.PaymentStatus == ServicePaymentStatus.Released
         || x.PaymentStatus == ServicePaymentStatus.PartiallyRefunded
         || x.PaymentStatus == ServicePaymentStatus.Refunded;
 
@@ -405,7 +413,7 @@ public sealed class SupplierPaymentReadModels(
         db.ServiceRequestPayments
             .AsNoTracking()
             .Where(p => p.SupplierOrgId == supplierOrgId
-                        && p.Status == ServicePaymentStatus.Paid
+                        && (p.Status == ServicePaymentStatus.Paid || p.Status == ServicePaymentStatus.Released)
                         && p.PaidAt >= fromUtc
                         && p.PaidAt < toUtc)
             .GroupBy(_ => 1)

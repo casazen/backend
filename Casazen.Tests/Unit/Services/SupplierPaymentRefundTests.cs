@@ -144,7 +144,7 @@ public class SupplierPaymentRefundTests
     [Fact]
     public async Task Refund_OfAPaymentWithoutCommission_DoesNotAskStripeToRefundAFee()
     {
-        using var scenario = await ServiceRequestScenario.CreateAsync(paymentOptions: new Core.Options.SupplierPaymentsOptions { CommissionPercent = 0m });
+        using var scenario = await ServiceRequestScenario.CreateAsync(paymentOptions: new Core.Options.SupplierPaymentsOptions { CommissionPercent = 0m, HeldForHosts = false });
         var (s, opened) = await PaidAsync(scenario: scenario);
 
         var refund = await s.Payments.RefundAsync(opened.PaymentId, 1_000, null, Admin);

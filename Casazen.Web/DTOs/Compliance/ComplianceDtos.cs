@@ -105,6 +105,12 @@ public class PropertyActivationWizardDto
 public class CompletePropertyActivationRequest
 {
     public bool? TosAccepted { get; set; }
+
+    /// <summary>
+    /// The host knows that the reminders still open (the required documents, the safety checklist) are their own obligations and
+    /// will complete them: needed only when some are open (409 <c>activation_reminders_ack_required</c> otherwise).
+    /// </summary>
+    public bool? RemindersAcknowledged { get; set; }
 }
 
 public class CompletePropertyActivationResponse
@@ -138,6 +144,13 @@ public class ComplianceSummaryItemDto
     /// Alloggiati record the guests of a stay lack, the single thing left for the other actions. Never empty.
     /// </summary>
     public IEnumerable<ComplianceMissingDto> Missing { get; set; } = [];
+
+    /// <summary>
+    /// When the item has to be done by (UTC), if the stay fixes it: the legal term of the Alloggiati communication (which runs
+    /// from the arrival), the day the guest arrives (their data are needed by then), the day the guest leaves. <c>null</c> for a
+    /// property to activate and for a turnover.
+    /// </summary>
+    public DateTime? DueAt { get; set; }
 }
 
 /// <summary>One thing an item of the cockpit still lacks (SR-03): a stable code, the field it is about, how many guests lack it.</summary>

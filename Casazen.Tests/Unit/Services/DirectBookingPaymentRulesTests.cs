@@ -6,7 +6,7 @@ namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
 /// BK-07 (A3-16): "Paga alla scadenza" offered only when its charge day is ahead, the deadline from the property's
-/// cancellation policy when it has one, and no free cancellation promised while the guest cannot cancel.
+/// cancellation policy when it has one, and a free cancellation promised only when the policy really refunds in full (DB-08a).
 /// </summary>
 public class DirectBookingPaymentRulesTests
 {
@@ -100,12 +100,18 @@ public class DirectBookingPaymentRulesTests
     }
 
     [Fact]
-    public void OptionsFor_AnyStay_PromisesNoFreeCancellationWhileTheGuestCannotCancel()
+    public void OptionsFor_FreeCancellationIsPromisedOnlyWhenTheStaysPolicyRefundsInFullUntilADayAhead()
     {
-        var options = DirectBookingPaymentRules.OptionsFor(Today.AddDays(60), Today);
+        // DB-08a: the guest cancels by themselves, so the checkout may say "gratuita fino al …", but only when it is true.
+        var policy = new CancellationPolicy { Name = "Moderata", FullRefundHours = 5 * 24 };
+        var neverFull = new CancellationPolicy { Name = "Non rimborsabile", FullRefundHours = CancellationRefundPolicy.NeverFullRefundHours };
+        var deadline = Today.AddDays(60);
 
-        Assert.False(DirectBookingPaymentRules.GuestSelfCancellationAvailable);
-        Assert.Null(options.FreeCancellationUntil);
+        Assert.Equal(deadline, DirectBookingPaymentRules.OptionsFor(deadline, Today, policy).FreeCancellationUntil);
+        Assert.Equal(Today, DirectBookingPaymentRules.OptionsFor(Today, Today, policy).FreeCancellationUntil); // today is still free
+        Assert.Null(DirectBookingPaymentRules.OptionsFor(Today.AddDays(-1), Today, policy).FreeCancellationUntil); // the day is past
+        Assert.Null(DirectBookingPaymentRules.OptionsFor(deadline, Today).FreeCancellationUntil); // no policy
+        Assert.Null(DirectBookingPaymentRules.OptionsFor(deadline, Today, neverFull).FreeCancellationUntil); // never refunded in full
     }
 
     private static DateTime Utc(int year, int month, int day) => new(year, month, day, 0, 0, 0, DateTimeKind.Utc);

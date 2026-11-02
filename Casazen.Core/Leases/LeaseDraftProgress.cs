@@ -49,6 +49,14 @@ public sealed record LeaseDraftFlow(IReadOnlyList<LeaseFlowStep> Steps)
     [System.Text.Json.Serialization.JsonIgnore]
     public bool DataComplete { get; init; }
 
+    /// <summary>
+    /// The other lease of the property that covers some of the days of this one, once the property and both dates are there (LR-OVERLAP,
+    /// <see cref="LeasePeriodRules"/>); <c>null</c> otherwise. Not a need of a step: it blocks nothing here, it is the soft warning of the
+    /// wizard. The hard answer is the 409 <c>lease_period_overlaps</c> of the steps that make the lease a contract. Set by the service, which
+    /// asks the database; the pure computation of the steps never does.
+    /// </summary>
+    public LeasePeriodConflict? PeriodConflict { get; init; }
+
     public LeaseFlowStep this[int step] => Steps[step - 1];
 }
 

@@ -745,6 +745,9 @@ public class PublicSupplierShowcaseServiceTests
         public Task<SupplierSettingsView> ReplaceSettingsAsync(Guid supplierOrgId, SupplierSettingsInput input, CancellationToken cancellationToken = default) =>
             inner.ReplaceSettingsAsync(supplierOrgId, input, cancellationToken);
 
+        public Task SetOnlineBookingEnabledAsync(Guid supplierOrgId, bool enabled, CancellationToken cancellationToken = default) =>
+            inner.SetOnlineBookingEnabledAsync(supplierOrgId, enabled, cancellationToken);
+
         public Task<SupplierUrgentSettings> GetUrgentAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
             inner.GetUrgentAsync(supplierOrgId, cancellationToken);
 

@@ -87,6 +87,10 @@ public class AdminSupplierPaymentsController(
     /// code (Stripe refused it and nothing was refunded). 404 <c>service_payment_not_found</c>; 422
     /// <c>service_payment_not_refundable</c>, <c>service_payment_refund_offline</c>, <c>service_payment_nothing_to_refund</c>,
     /// <c>service_payment_refund_amount_invalid</c>, <c>service_payment_refund_amount_exceeds</c>.
+    /// <para>The money CasaZen holds (SP-15c) is refunded from the platform's balance, before it is released to the supplier and never after it
+    /// (422 <c>service_payment_not_refundable</c>): by default everything still refundable goes back, the commission included (rule R5);
+    /// with <c>keepCommission</c> only what the supplier would have been paid does, CasaZen keeps its commission and the supplier gets nothing
+    /// (rule R4, the supplier was at fault).</para>
     /// </summary>
     [HttpPost("service-payments/{paymentId:guid}/refund")]
     [ProducesResponseType(typeof(AdminServicePaymentRefundDto), StatusCodes.Status200OK)]
@@ -102,7 +106,8 @@ public class AdminSupplierPaymentsController(
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
-        var refund = await refunds.RefundAsync(paymentId, request.AmountCents, request.Reason, ActorUserId(), cancellationToken);
+        var refund = await refunds.RefundAsync(
+            paymentId, request.AmountCents, request.Reason, ActorUserId(), cancellationToken, keepCommission: request.KeepCommission);
         SetNoStore();
         return Ok(AdminServicePaymentRefundDto.From(refund));
     }

@@ -108,6 +108,13 @@ public class SupplierServiceRequestDto
     /// <summary>The time the supplier proposed, waiting for the host's answer; <c>null</c> when there is none.</summary>
     public ServiceRequestProposalDto? Proposal { get; set; }
 
+    /// <summary>
+    /// The quote the supplier sent and the customer has not answered (SP-04b), with the phase <c>quote_pending</c>; <c>null</c> when there is
+    /// none. The supplier changes it by sending another (<c>POST api/service-requests/{id}/quote</c>) or takes it back
+    /// (<c>…/quote/withdraw</c>); <c>quote.answerBy</c> is the customer's deadline for a showcase request, <c>null</c> for a host.
+    /// </summary>
+    public ServiceRequestQuoteDto? Quote { get; set; }
+
     /// <summary>When the request was cancelled.</summary>
     public DateTime? CancelledAt { get; set; }
 
@@ -144,6 +151,13 @@ public class SupplierServiceRequestDto
     /// </summary>
     public bool AutoAccepted { get; set; }
 
+    /// <summary>
+    /// <c>Standard</c> (a host's request, or a booking at a free slot) or <c>Custom</c> (a request on measure from the showcase, SP-10b): the latter has no
+    /// time and no price, is carried on in a thread of messages (<c>GET api/supplier/requests/{id}/thread</c>) and is not taken (422
+    /// <c>supplier_inquiry_needs_offer</c>) but refused or answered.
+    /// </summary>
+    public string Kind { get; set; } = nameof(Casazen.Core.Entities.Enums.ServiceRequestKind.Standard);
+
     // ─── Phase and payment summary (SP-04e) ───
 
     /// <summary>
@@ -160,6 +174,30 @@ public class SupplierServiceRequestDto
     /// <c>Completato</c>. The same object in the inbox, in <c>today</c> and in the detail.
     /// </summary>
     public SupplierRequestPaymentDto? Payment { get; set; }
+
+    /// <summary>
+    /// SP-BKP: where the request stands in its group of backup suppliers, <b>null</b> for a request sent to this supplier alone. A request the
+    /// supplier receives <b>as a backup</b> is declared as such here (<c>role: backup</c>): the job is its only if the primary supplier does
+    /// not take it by <c>primaryDueAt</c>; until then it can accept as a backup (<c>POST api/service-requests/{id}/accept-as-backup</c>) or
+    /// refuse. Like any request before the take it shows the comune, the time and the price, never the property or the host's notes.
+    /// </summary>
+    public SupplierBackupDto? Backup { get; set; }
+}
+
+/// <summary>
+/// The backup side of a request for its supplier (SP-BKP). <c>role</c>: <c>primary</c> (the host chose this supplier, which has until
+/// <c>primaryDueAt</c> for the priority) or <c>backup</c>. <c>state</c> (an open set; show a generic wording for a value you do not know):
+/// for a backup <c>waiting</c> (the primary has its window), <c>accepted</c> (it said it would take the job), <c>active</c> (the second window:
+/// it can take the job now, until <c>backupDueAt</c>, and the first to do so has it), <c>won</c> (it took the job in place of the primary) or
+/// <c>closed</c>; for the primary <c>priority</c> (within its window), <c>late</c> (the window passed: still in the race without the priority).
+/// </summary>
+public class SupplierBackupDto
+{
+    public string Role { get; set; } = string.Empty;
+    public string State { get; set; } = string.Empty;
+    public DateTime PrimaryDueAt { get; set; }
+    public DateTime? BackupDueAt { get; set; }
+    public DateTime? AcceptedAt { get; set; }
 }
 
 /// <summary><c>GET /api/supplier/inbox/{id}</c>: the request and its history (SU-08).</summary>
@@ -218,9 +256,18 @@ public class ServiceRequestHistoryEntryDto
 
     /// <summary>
     /// The rejection or cancellation reason, on the <c>Rifiutato</c> and <c>Annullato</c> steps: the text a person wrote, or the code
-    /// <c>NoResponse</c>, <c>ProposalNotAnswered</c> or <c>CancelledByCustomer</c> (<see cref="Casazen.Core.Suppliers.ServiceRequestCancellationReasons"/>).
+    /// <c>NoResponse</c>, <c>ProposalNotAnswered</c>, <c>QuoteNotAnswered</c> or <c>CancelledByCustomer</c>
+    /// (<see cref="Casazen.Core.Suppliers.ServiceRequestCancellationReasons"/>).
     /// </summary>
     public string? Reason { get; set; }
+
+    /// <summary>
+    /// What the step says beyond its status (SP-04b), or <c>null</c> for a plain step of the state machine: <c>quote_sent</c>,
+    /// <c>quote_rejected</c> and <c>quote_withdrawn</c> (steps of the status <c>Richiesto</c>, in the supplier's console only),
+    /// <c>quote_accepted</c> (the <c>PresoInCarico</c> step that took the request on a quote) and <c>quote_expired</c> (the
+    /// <c>Annullato</c> step of a quote nobody answered). <b>An open set</b>: a step with an event you do not know is shown by its status.
+    /// </summary>
+    public string? Event { get; set; }
 
     internal static ServiceRequestHistoryEntryDto From(ServiceRequestHistoryEntry entry) => new()
     {
@@ -229,6 +276,7 @@ public class ServiceRequestHistoryEntryDto
         Actor = entry.Actor.ToString(),
         ActorName = entry.ActorName,
         Reason = entry.Reason,
+        Event = entry.Event,
     };
 }
 
@@ -506,6 +554,7 @@ public static class SupplierServiceRequestMapper
                 ProposedAt = view.Proposal.ProposedAt,
                 Message = view.Proposal.Message,
             };
+        dto.Quote = ServiceRequestDtoParts.ToQuoteDto(view.Quote);
         dto.CancelledAt = view.Cancellation?.At;
         dto.CancelledBy = view.Cancellation?.By.ToString();
         dto.CancellationReason = view.Cancellation?.Reason;
@@ -514,8 +563,19 @@ public static class SupplierServiceRequestMapper
         dto.WorkPhotos = ServiceRequestDtoParts.ToPhotoDtos(view.Id, view.WorkPhotos, ServiceRequestDtoParts.ShortRentBasePath);
         dto.PaymentMode = view.PaymentMode.ToString();
         dto.AutoAccepted = view.AutoAccepted;
+        dto.Kind = view.Kind.ToString();
         dto.Phase = view.Phase;
         dto.Payment = view.Payment is null ? null : SupplierRequestPaymentDto.From(view.Payment);
+        dto.Backup = view.Backup is null
+            ? null
+            : new SupplierBackupDto
+            {
+                Role = view.Backup.Role,
+                State = view.Backup.State,
+                PrimaryDueAt = view.Backup.PrimaryDueAt,
+                BackupDueAt = view.Backup.BackupDueAt,
+                AcceptedAt = view.Backup.AcceptedAt,
+            };
         return dto;
     }
 }

@@ -22,7 +22,7 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
 {
     private static readonly string[] Paths =
     [
-        "lookup", "cancel", "reschedule", "proposal/accept", "proposal/reject",
+        "lookup", "cancel", "reschedule", "proposal/accept", "proposal/reject", "alternatives",
     ];
 
     // ─── The whole journey ───────────────────────────────────────────────────────────────────────────────────────────
@@ -247,6 +247,27 @@ public class PublicSupplierBookingManagementIntegrationTests(PublicBookingFactor
         Assert.Equal(HttpStatusCode.NotFound, crossed.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, crossedCancel.StatusCode);
         Assert.Equal("Richiesto", (await (await Http.PostAsync(client, "lookup", anna.Access())).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task Alternatives_ForARequestThatIsOpen_AreAnEmptyList_NotASupplierDirectory_AndTheAnswerIsPrivate()
+    {
+        var supplier = await PublicBookingTestData.SeedAsync(factory);
+        using var client = factory.CreateClient();
+        var booked = await BookAsync(client, supplier, PublicBookingTestData.TuesdayAt9);
+
+        // SP-10c: the other suppliers are the way out of a request nobody answered in time; for a request in any other state there are none.
+        var response = await Http.PostAsync(client, "alternatives", booked.Access());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Http.AssertPrivateAnswer(response);
+        var answer = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(0, answer.GetProperty("alternatives").GetArrayLength());
+        Assert.DoesNotContain(booked.Email, answer.ToString(), StringComparison.OrdinalIgnoreCase);
+
+        // The booking itself has no `alternatives` member at all while it is open: its answer is what it always was.
+        var lookup = await (await Http.PostAsync(client, "lookup", booked.Access())).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(lookup.TryGetProperty("alternatives", out _));
     }
 
     [Fact]

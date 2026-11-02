@@ -13,6 +13,23 @@ public static class SeoPagePaths
     /// <summary>Hub listing every published page (frontend route <c>/p/affitti-brevi</c>).</summary>
     public const string Hub = "/p/affitti-brevi";
 
+    /// <summary>
+    /// The pages of the public site of CasaZen (frontend <c>src/site/site-pages.ts</c>) and the public search of homes: the header
+    /// and the footer of the guides link to them, so that a guide is not a page with no way out.
+    /// </summary>
+    public const string SiteHome = "/";
+
+    public const string SiteFeatures = "/funzionalita";
+    public const string SiteSuppliers = "/per-i-fornitori";
+    public const string SiteAbout = "/chi-siamo";
+    public const string SiteSearch = "/search";
+
+    /// <summary>
+    /// The mark of the brand as an image (frontend <c>public/brand</c>): the preview of a guide in a link (<c>og:image</c>) and the
+    /// <c>logo</c> of the organization in the structured data.
+    /// </summary>
+    public const string BrandImage = "/brand/icona-app-1024.png";
+
     /// <summary>Signup page of the web app (frontend route <c>/signup</c>, SE-03).</summary>
     public const string Signup = "/signup";
 

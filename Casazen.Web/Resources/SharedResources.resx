@@ -147,6 +147,9 @@
   <data name="StripeConnectAccountUnavailable" xml:space="preserve">
     <value>L'account Stripe collegato non è più disponibile: riprova per collegarne uno nuovo.</value>
   </data>
+  <data name="StripeConnectDashboardNotReady" xml:space="preserve">
+    <value>Il tuo account Stripe non è ancora pronto: collega Stripe o completa la verifica, poi potrai aprirlo da qui.</value>
+  </data>
   <data name="ConfigurationError" xml:space="preserve">
     <value>Errore di configurazione del server. Contatta l'assistenza.</value>
   </data>
@@ -302,6 +305,39 @@
   </data>
   <data name="PropertyNotInTicino" xml:space="preserve">
     <value>La struttura non si trova nel Canton Ticino</value>
+  </data>
+  <data name="SwissReportDateRequired" xml:space="preserve">
+    <value>Indica la data del rapporto.</value>
+  </data>
+  <data name="SwissPeriodFromRequired" xml:space="preserve">
+    <value>Indica la data di inizio del periodo.</value>
+  </data>
+  <data name="SwissPeriodToRequired" xml:space="preserve">
+    <value>Indica la data di fine del periodo.</value>
+  </data>
+  <data name="SwissPeriodInvalid" xml:space="preserve">
+    <value>La data di fine del periodo non può precedere la data di inizio.</value>
+  </data>
+  <data name="SwissPeriodTooLong" xml:space="preserve">
+    <value>Il periodo non può superare {0} giorni.</value>
+  </data>
+  <data name="SwissReceiptTypeRequired" xml:space="preserve">
+    <value>Indica il tipo di ricevuta: Police oppure OTR.</value>
+  </data>
+  <data name="SwissReceiptTypeInvalid" xml:space="preserve">
+    <value>Tipo di ricevuta non valido: usa «Police» (notifica alla polizia) oppure «OTR» (rapporto dei pernottamenti).</value>
+  </data>
+  <data name="SwissReceiptReferenceRequired" xml:space="preserve">
+    <value>Indica il riferimento dell'invio, per esempio il numero di conferma del portale.</value>
+  </data>
+  <data name="SwissReceiptReferenceTooLong" xml:space="preserve">
+    <value>Il riferimento non può superare 200 caratteri.</value>
+  </data>
+  <data name="SwissReceiptFileRequired" xml:space="preserve">
+    <value>Allega il file della ricevuta.</value>
+  </data>
+  <data name="SwissReceiptFileInvalid" xml:space="preserve">
+    <value>Il file della ricevuta è vuoto oppure supera {0} MB.</value>
   </data>
   <data name="BookingNotFound" xml:space="preserve">
     <value>Prenotazione non trovata</value>
@@ -505,10 +541,85 @@
     <value>Il periodo del contratto è finito: la disdetta registrata non si può più togliere.</value>
   </data>
   <data name="LeaseTerminationDateInvalid" xml:space="preserve">
-    <value>L'ultimo giorno del contratto deve essere compreso tra l'inizio del contratto e la fine del periodo in corso.</value>
+    <value>L'ultimo giorno del contratto deve essere dopo l'inizio del contratto e non oltre la fine del periodo in corso: dal {0:d MMM yyyy} al {1:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseTerminationNotStarted" xml:space="preserve">
+    <value>Il contratto non è ancora iniziato, quindi non si può terminare in anticipo. Per annullarlo serve la risoluzione consensuale, da comunicare all'Agenzia delle Entrate entro {0} giorni.</value>
   </data>
   <data name="LeaseBusy" xml:space="preserve">
     <value>Il contratto è in uso da un'altra operazione in questo momento. Riprova tra un istante: questa modifica non è stata applicata.</value>
+  </data>
+  <data name="LeaseWithdrawalDateInvalid" xml:space="preserve">
+    <value>Il giorno in cui è arrivato il recesso non può essere prima dell'inizio del contratto né nel futuro.</value>
+  </data>
+  <data name="LeaseWithdrawalNoticeInvalid" xml:space="preserve">
+    <value>Il preavviso del recesso deve essere un numero intero di mesi da 1 a {0}.</value>
+  </data>
+  <data name="LeaseLetterDateInvalid" xml:space="preserve">
+    <value>Il giorno in cui hai spedito la lettera non può essere prima dell'inizio del contratto né nel futuro.</value>
+  </data>
+  <data name="LeaseDisdettaReasonRequired" xml:space="preserve">
+    <value>Alla prima scadenza la disdetta deve indicare uno dei motivi previsti dalla legge: scegline uno.</value>
+  </data>
+  <data name="LeaseLetterUnavailable" xml:space="preserve">
+    <value>Il testo di questa lettera non è disponibile in questo momento. Riprova più tardi o scrivi all'assistenza.</value>
+  </data>
+  <data name="LeaseRenewalEndInvalid" xml:space="preserve">
+    <value>Il periodo concordato deve finire dopo la fine del periodo in corso: scegli un giorno dal {0:d MMM yyyy} al {1:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalBlockedByNotice" xml:space="preserve">
+    <value>Hai registrato una disdetta, quindi il contratto non si rinnova. Se le parti hanno deciso di rinnovarlo, togli prima la disdetta.</value>
+  </data>
+  <data name="LeaseDepositNone" xml:space="preserve">
+    <value>Il contratto non ha un deposito cauzionale: non c'è nulla da restituire.</value>
+  </data>
+  <data name="LeaseDepositDatesInvalid" xml:space="preserve">
+    <value>Il deposito deve essere stato versato almeno un giorno prima di essere restituito, e il giorno della restituzione non può essere troppo lontano dalla fine del contratto.</value>
+  </data>
+  <data name="LeaseDepositRateInvalid" xml:space="preserve">
+    <value>Il tasso di interesse legale di ogni anno è una percentuale tra 0 e {0} con al massimo due decimali, scritta una sola volta per anno.</value>
+  </data>
+  <data name="LeaseDepositRateMissing" xml:space="preserve">
+    <value>Manca il tasso di interesse legale degli anni: {0}.</value>
+  </data>
+  <data name="LeaseDepositInterestPaidInvalid" xml:space="preserve">
+    <value>Gli interessi già corrisposti sono una somma in euro con al massimo due decimali e non superano gli interessi maturati.</value>
+  </data>
+  <data name="LeaseDepositDeductionInvalid" xml:space="preserve">
+    <value>Ogni trattenuta ha un motivo (al massimo {0} caratteri) e una somma maggiore di zero con al massimo due decimali; al massimo {1} trattenute.</value>
+  </data>
+  <data name="LeaseDepositDeductionsExceed" xml:space="preserve">
+    <value>Le trattenute superano il deposito e gli interessi dovuti: il saldo non è una restituzione.</value>
+  </data>
+  <data name="LeaseDepositReturnDateInvalid" xml:space="preserve">
+    <value>Il giorno della restituzione deve essere tra l'inizio del contratto e oggi: quello che registri è già avvenuto.</value>
+  </data>
+  <data name="LeaseIstatWaived" xml:space="preserve">
+    <value>Con la cedolare secca l'aggiornamento del canone è sospeso per tutta la durata dell'opzione: non c'è nulla da calcolare.</value>
+  </data>
+  <data name="LeaseIstatNoIncrease" xml:space="preserve">
+    <value>Con una variazione nulla o negativa il canone non aumenta: non c'è nessun aggiornamento da chiedere.</value>
+  </data>
+  <data name="LeaseIstatPercentInvalid" xml:space="preserve">
+    <value>La variazione dell'indice e la quota devono essere percentuali maggiori di zero con al massimo due decimali, e la quota non può superare il {0} per cento.</value>
+  </data>
+  <data name="LeaseIstatNoRent" xml:space="preserve">
+    <value>Il contratto non ha un canone: non c'è nulla da aggiornare.</value>
+  </data>
+  <data name="LeaseLetterEffectDateInvalid" xml:space="preserve">
+    <value>Il giorno da cui vale la lettera deve essere tra il {0:d MMM yyyy} e il {1:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalNotYet" xml:space="preserve">
+    <value>Il rinnovo si registra nell'ultimo tratto prima della scadenza, dal {0:d MMM yyyy}.</value>
+  </data>
+  <data name="LeaseRenewalPeriodOver" xml:space="preserve">
+    <value>Il periodo del contratto è già finito: il contratto si rinnova da solo e il rinnovo lo registra CasaZen.</value>
+  </data>
+  <data name="LeaseLetterNotApplicable" xml:space="preserve">
+    <value>Questa lettera non riguarda questo contratto.</value>
+  </data>
+  <data name="LeasePeriodOverlaps" xml:space="preserve">
+    <value>Per questo immobile c'è già un contratto dal {0:d MMM yyyy} al {1:d MMM yyyy}. Due contratti non possono coprire gli stessi giorni: apri quello esistente o cambia le date.</value>
   </data>
   <data name="RliChecklist_contract_signed" xml:space="preserve">
     <value>Contratto firmato da tutte le parti</value>
@@ -690,6 +801,12 @@
   <data name="OrgOperatorRegisteredOfficeTooLongInput" xml:space="preserve">
     <value>La sede legale è troppo lunga.</value>
   </data>
+  <data name="OrgContactPhoneInvalid" xml:space="preserve">
+    <value>Il numero di telefono non è valido: usa solo cifre, con un + iniziale facoltativo (da 6 a 15 cifre).</value>
+  </data>
+  <data name="OrgDefaultLanguageInvalid" xml:space="preserve">
+    <value>Lingua non supportata: scegli italiano (it) o inglese (en).</value>
+  </data>
   <data name="OrgSlugInvalid" xml:space="preserve">
     <value>Questo indirizzo web (slug) non è valido: usa da {0} a {1} caratteri tra lettere, numeri e trattini.</value>
   </data>
@@ -704,6 +821,9 @@
   </data>
   <data name="OrgBrandingThemeInvalid" xml:space="preserve">
     <value>Questo tema non è disponibile per il sito pubblico.</value>
+  </data>
+  <data name="OrgBrandingFontInvalid" xml:space="preserve">
+    <value>Questa coppia di caratteri non è disponibile per il sito pubblico.</value>
   </data>
   <data name="OrgBrandingTaglineTooLong" xml:space="preserve">
     <value>Lo slogan non può superare i {0} caratteri.</value>
@@ -785,6 +905,15 @@
   </data>
   <data name="CheckInMarketingConsentUnavailable" xml:space="preserve">
     <value>Il consenso alle comunicazioni promozionali non è disponibile per questo check-in.</value>
+  </data>
+  <data name="CheckInMarketingConsentMinor" xml:space="preserve">
+    <value>Il consenso alle comunicazioni promozionali può essere dato solo da un ospite maggiorenne.</value>
+  </data>
+  <data name="CheckInMarketingEmailRequired" xml:space="preserve">
+    <value>Indica l'indirizzo email a cui vuoi ricevere le comunicazioni promozionali.</value>
+  </data>
+  <data name="CheckInMarketingEmailInvalid" xml:space="preserve">
+    <value>Indirizzo email non valido.</value>
   </data>
   <data name="GdprMarketingConsentHostGrantForbidden" xml:space="preserve">
     <value>Il consenso marketing può darlo solo l'ospite, dal portale del check-in. L'host può solo revocarlo su richiesta documentata dell'ospite.</value>
@@ -1171,6 +1300,9 @@
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Il consenso a ricevere offerte non è disponibile in questo momento: riprova senza selezionarlo.</value>
   </data>
+  <data name="DirectBookingArrivalTimeInvalid" xml:space="preserve">
+    <value>L'orario di arrivo previsto non è valido: scegli un orario (per esempio 15:30) oppure "dopo l'orario di check-in".</value>
+  </data>
   <data name="DirectBookingCurrencyNotSupported" xml:space="preserve">
     <value>Prenotazioni dirette non supportate per questa valuta</value>
   </data>
@@ -1381,6 +1513,24 @@
   <data name="GuestCheckInLinkUnavailable" xml:space="preserve">
     <value>Il link per il check-in online non può essere inviato ora: la prenotazione non è confermata, il check-in è già completato oppure non è ancora il momento.</value>
   </data>
+  <data name="GuestEmailNotVerified" xml:space="preserve">
+    <value>Conferma il tuo indirizzo email per vedere le tue prenotazioni: apri il link del messaggio di verifica che hai ricevuto alla registrazione, poi accedi di nuovo.</value>
+  </data>
+  <data name="GuestAccountBookingNotFound" xml:space="preserve">
+    <value>Questa prenotazione non risulta tra le tue.</value>
+  </data>
+  <data name="GuestAccountScopeUnknown" xml:space="preserve">
+    <value>Il filtro delle prenotazioni non è valido: usa «upcoming» (in arrivo) o «past» (passate).</value>
+  </data>
+  <data name="GuestAccountIsProfessional" xml:space="preserve">
+    <value>Questo account gestisce anche strutture o servizi su CasaZen e non si può eliminare dall'app: scrivi all'assistenza di CasaZen.</value>
+  </data>
+  <data name="GuestAccountDeleteFailed" xml:space="preserve">
+    <value>Non siamo riusciti a eliminare l'account e non è stato rimosso nulla: riprova tra poco.</value>
+  </data>
+  <data name="GuestAccountDeleteBlocked" xml:space="preserve">
+    <value>L'account non si può eliminare in automatico perché ha ancora dati collegati: scrivi all'assistenza di CasaZen.</value>
+  </data>
   <data name="GuestBookingOrgRequired" xml:space="preserve">
     <value>Il sito di prenotazione non è indicato: apri di nuovo «Le mie prenotazioni» dal sito della struttura.</value>
   </data>
@@ -1389,6 +1539,18 @@
   </data>
   <data name="GuestBookingCodeInvalid" xml:space="preserve">
     <value>Il codice prenotazione non è valido: controlla l'email di conferma.</value>
+  </data>
+  <data name="HostContactEmailInvalid" xml:space="preserve">
+    <value>Inserisci un indirizzo email valido: l'host risponderà a quello.</value>
+  </data>
+  <data name="HostContactMessageInvalid" xml:space="preserve">
+    <value>Scrivi un messaggio di almeno 5 e al massimo 2000 caratteri.</value>
+  </data>
+  <data name="HostContactNameTooLong" xml:space="preserve">
+    <value>Il nome può avere al massimo 100 caratteri.</value>
+  </data>
+  <data name="HostContactConsentRequired" xml:space="preserve">
+    <value>Per scrivere all'host devi accettare che il messaggio e il tuo indirizzo email gli vengano inviati.</value>
   </data>
   <data name="GuestBookingEmailRequired" xml:space="preserve">
     <value>Inserisci l'indirizzo email con cui hai prenotato.</value>
@@ -1401,6 +1563,12 @@
   </data>
   <data name="PublicAvailabilityInvalidRange" xml:space="preserve">
     <value>L'intervallo di date non è valido: la data di fine deve essere successiva a quella di inizio e l'intervallo non può superare {0} giorni.</value>
+  </data>
+  <data name="PublicCalendarInvalidRange" xml:space="preserve">
+    <value>L'intervallo di date non è valido: la data di fine deve essere successiva a quella di inizio e l'intervallo non può superare {0} mesi.</value>
+  </data>
+  <data name="PublicStaysDatesInvalid" xml:space="preserve">
+    <value>Le date del soggiorno non sono valide: servono l'arrivo e la partenza, la partenza deve essere dopo l'arrivo e il soggiorno non può superare {0} notti.</value>
   </data>
   <data name="LeaseEndBeforeStart" xml:space="preserve">
     <value>La data di fine del contratto deve essere successiva alla data di inizio.</value>
@@ -1522,6 +1690,24 @@
   <data name="PropertyHouseRulesTooLong" xml:space="preserve">
     <value>Le regole della casa possono avere al massimo {1} caratteri.</value>
   </data>
+  <data name="PropertyBedsRange" xml:space="preserve">
+    <value>I letti devono essere un numero intero tra {1} e {2}.</value>
+  </data>
+  <data name="PropertyAreaSqmRange" xml:space="preserve">
+    <value>La superficie deve essere tra {1} e {2} metri quadri.</value>
+  </data>
+  <data name="PropertyListingTitleTooLong" xml:space="preserve">
+    <value>Il titolo dell'annuncio può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="PropertyExtraGuestFeeRange" xml:space="preserve">
+    <value>Il supplemento per ogni ospite in più deve essere tra {1} e {2} euro a notte.</value>
+  </data>
+  <data name="PropertyQuietHoursIncomplete" xml:space="preserve">
+    <value>Gli orari di silenzio vanno indicati insieme: scrivi sia l'inizio sia la fine, oppure nessuno dei due.</value>
+  </data>
+  <data name="PropertyListViewInvalid" xml:space="preserve">
+    <value>Vista non valida: usa «overview» oppure lascia vuoto.</value>
+  </data>
   <data name="PropertyTimezoneInvalid" xml:space="preserve">
     <value>Fuso orario non valido: usa un identificativo IANA, ad esempio Europe/Rome.</value>
   </data>
@@ -1542,6 +1728,9 @@
   </data>
   <data name="ActivationTosRequired" xml:space="preserve">
     <value>Devi accettare i termini di servizio.</value>
+  </data>
+  <data name="ActivationRemindersAckRequired" xml:space="preserve">
+    <value>Per attivare conferma di sapere che la scheda di sicurezza e i documenti da completare sono un tuo obbligo.</value>
   </data>
   <data name="ActivationBaseDataIncomplete" xml:space="preserve">
     <value>Completa i dati base dell'immobile: nome, indirizzo, città, ospiti e tariffa.</value>
@@ -1633,14 +1822,38 @@
   <data name="PricingSuggestionsNotEnabled" xml:space="preserve">
     <value>I suggerimenti stagionali non sono attivi per questa struttura: attivali prima di ricalcolarli.</value>
   </data>
-  <data name="ServiceRequestBookingRequired" xml:space="preserve">
-    <value>Negli affitti brevi la richiesta al fornitore è legata a un soggiorno: scegli la prenotazione.</value>
-  </data>
   <data name="ServiceRequestBookingMismatch" xml:space="preserve">
     <value>La prenotazione indicata non è un soggiorno di questo immobile.</value>
   </data>
+  <data name="ServiceRequestListInvalidView" xml:space="preserve">
+    <value>Vista non valida: usa uno dei nomi all, pending, active, topay, done o needsaction.</value>
+  </data>
+  <data name="ServiceRequestListInvalidSort" xml:space="preserve">
+    <value>Ordinamento non valido: usa scheduled, created o status, seguiti da :asc o :desc.</value>
+  </data>
+  <data name="ServiceRequestListInvalidRange" xml:space="preserve">
+    <value>Intervallo di date non valido: la data di inizio è dopo quella di fine.</value>
+  </data>
+  <data name="ServiceRequestListInvalidText" xml:space="preserve">
+    <value>Testo di ricerca non valido: servono da 2 a 60 caratteri, senza caratteri di controllo.</value>
+  </data>
+  <data name="ServiceRequestListInvalidCategory" xml:space="preserve">
+    <value>Categoria non valida: usa uno dei codici di GET /api/service-categories.</value>
+  </data>
   <data name="ServiceRequestBookingNotAllowed" xml:space="preserve">
     <value>Negli affitti lunghi la richiesta al fornitore è legata all'immobile, non a una prenotazione.</value>
+  </data>
+  <data name="ServiceRequestLeaseNotFound" xml:space="preserve">
+    <value>Il contratto non è stato trovato.</value>
+  </data>
+  <data name="ServiceRequestLeaseMismatch" xml:space="preserve">
+    <value>Il contratto non riguarda questo immobile.</value>
+  </data>
+  <data name="ServiceRequestLeaseNotAllowed" xml:space="preserve">
+    <value>Un contratto si può indicare solo nelle richieste degli affitti lunghi.</value>
+  </data>
+  <data name="ServiceRequestLeaseInvalid" xml:space="preserve">
+    <value>Il contratto indicato non è valido.</value>
   </data>
   <data name="QuesturaCredentialsUsernameRequired" xml:space="preserve">
     <value>Inserisci il nome utente di Alloggiati Web.</value>
@@ -1674,6 +1887,15 @@
   </data>
   <data name="ServiceRequestNotesTooLong" xml:space="preserve">
     <value>Le note possono avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestAssistTextRequired" xml:space="preserve">
+    <value>Descrivi in poche parole di cosa hai bisogno.</value>
+  </data>
+  <data name="ServiceRequestAssistTextTooShort" xml:space="preserve">
+    <value>Scrivi qualche parola in più: servono almeno {0} caratteri.</value>
+  </data>
+  <data name="ServiceRequestAssistTextTooLong" xml:space="preserve">
+    <value>La descrizione può avere al massimo {1} caratteri.</value>
   </data>
   <data name="ServiceRequestRejectReasonRequired" xml:space="preserve">
     <value>Indica il motivo del rifiuto.</value>
@@ -2035,6 +2257,9 @@
   <data name="PropertyPhotoUrlRequired" xml:space="preserve">
     <value>Indica la foto.</value>
   </data>
+  <data name="AiPhotosInvalid" xml:space="preserve">
+    <value>Le foto inviate all'AI non sono valide (troppe, troppo grandi o non in formato JPEG, PNG o WebP). Ricarica la pagina e riprova.</value>
+  </data>
   <data name="PropertyPhotoUrlTooLong" xml:space="preserve">
     <value>L'indirizzo della foto è troppo lungo.</value>
   </data>
@@ -2115,6 +2340,120 @@
   </data>
   <data name="SeoGuideCta" xml:space="preserve">
     <value>Pubblica la tua casa</value>
+  </data>
+  <data name="SeoNavFeatures" xml:space="preserve">
+    <value>Funzionalità</value>
+  </data>
+  <data name="SeoNavSuppliers" xml:space="preserve">
+    <value>Per i fornitori</value>
+  </data>
+  <data name="SeoNavAbout" xml:space="preserve">
+    <value>Chi siamo</value>
+  </data>
+  <data name="SeoNavGuides" xml:space="preserve">
+    <value>Guide</value>
+  </data>
+  <data name="SeoNavSearch" xml:space="preserve">
+    <value>Cerca casa</value>
+  </data>
+  <data name="SeoNavMainLabel" xml:space="preserve">
+    <value>Navigazione principale</value>
+  </data>
+  <data name="SeoNavBreadcrumbLabel" xml:space="preserve">
+    <value>Percorso</value>
+  </data>
+  <data name="SeoNavFooterLabel" xml:space="preserve">
+    <value>Link del sito</value>
+  </data>
+  <data name="SeoFooterTagline" xml:space="preserve">
+    <value>CasaZen: gestionale per affitti brevi e lunghi in regola.</value>
+  </data>
+  <data name="SeoGuideMetaTitle" xml:space="preserve">
+    <value>Affitti brevi a {0}: guida a CIN e tassa di soggiorno {1}</value>
+  </data>
+  <data name="SeoTaxMetaTitle" xml:space="preserve">
+    <value>Tassa di soggiorno a {0} {1}: tariffe, esenzioni e calcolo</value>
+  </data>
+  <data name="SeoGuideMetaDescription" xml:space="preserve">
+    <value>Guida per host a {0}: CIN, Alloggiati Web e imposta di soggiorno ({1}). Aggiornata a {2}.</value>
+  </data>
+  <data name="SeoTaxMetaDescription" xml:space="preserve">
+    <value>Tassa di soggiorno a {0}: {1}. Esenzioni, domande frequenti e fonte ufficiale del comune.</value>
+  </data>
+  <data name="SeoFactsHeading" xml:space="preserve">
+    <value>Imposta di soggiorno a {0} in breve</value>
+  </data>
+  <data name="SeoFactRateLabel" xml:space="preserve">
+    <value>Tariffa</value>
+  </data>
+  <data name="SeoFactRateFixed" xml:space="preserve">
+    <value>{0} a persona per notte</value>
+  </data>
+  <data name="SeoFactNightsLabel" xml:space="preserve">
+    <value>Notti</value>
+  </data>
+  <data name="SeoFactNightsValue" xml:space="preserve">
+    <value>fino a un massimo di {0} notti</value>
+  </data>
+  <data name="SeoFactExemptLabel" xml:space="preserve">
+    <value>Esenzioni</value>
+  </data>
+  <data name="SeoFactExemptValue" xml:space="preserve">
+    <value>ospiti di età inferiore a {0} anni</value>
+  </data>
+  <data name="SeoFactSinceLabel" xml:space="preserve">
+    <value>In vigore dal</value>
+  </data>
+  <data name="SeoFactSourceLabel" xml:space="preserve">
+    <value>Fonte ufficiale</value>
+  </data>
+  <data name="SeoFactSourceLink" xml:space="preserve">
+    <value>Tariffe pubblicate dal comune di {0}</value>
+  </data>
+  <data name="SeoFaqHeading" xml:space="preserve">
+    <value>Domande frequenti</value>
+  </data>
+  <data name="SeoFaqRateQuestion" xml:space="preserve">
+    <value>Quanto costa l'imposta di soggiorno a {0}?</value>
+  </data>
+  <data name="SeoFaqRateAnswer" xml:space="preserve">
+    <value>A {0} l'imposta di soggiorno è di {1}.</value>
+  </data>
+  <data name="SeoFaqNightsQuestion" xml:space="preserve">
+    <value>Per quante notti si paga l'imposta di soggiorno a {0}?</value>
+  </data>
+  <data name="SeoFaqNightsAnswer" xml:space="preserve">
+    <value>L'imposta si applica fino a un massimo di {0} notti.</value>
+  </data>
+  <data name="SeoFaqExemptQuestion" xml:space="preserve">
+    <value>Chi è esente dall'imposta di soggiorno a {0}?</value>
+  </data>
+  <data name="SeoFaqExemptAnswer" xml:space="preserve">
+    <value>Sono esenti gli ospiti di età inferiore a {0} anni. Per altre esenzioni o riduzioni fai riferimento alle fonti ufficiali del comune.</value>
+  </data>
+  <data name="SeoFaqSourceQuestion" xml:space="preserve">
+    <value>Dove trovo le tariffe ufficiali di {0}?</value>
+  </data>
+  <data name="SeoFaqSourceAnswer" xml:space="preserve">
+    <value>Le tariffe sono pubblicate dal comune di {0}: consulta il documento ufficiale.</value>
+  </data>
+  <data name="SeoSeeAlsoHeading" xml:space="preserve">
+    <value>Vedi anche</value>
+  </data>
+  <data name="SeoSeeAlsoHub" xml:space="preserve">
+    <value>Tutte le guide per comune</value>
+  </data>
+  <data name="SeoSeeAlsoOtherGuides" xml:space="preserve">
+    <value>Altre guide in {0}</value>
+  </data>
+  <data name="SeoSeeAlsoOtherCalculators" xml:space="preserve">
+    <value>Altre pagine sulla tassa di soggiorno in {0}</value>
+  </data>
+  <data name="SeoHubIntro" xml:space="preserve">
+    <value>Guide per chi affitta casa ai turisti: per ogni comune le regole su CIN, Alloggiati Web e imposta di soggiorno, con le tariffe e le fonti ufficiali. Guide pubblicate: {0}. Pagine sulla tassa di soggiorno: {1}.</value>
+  </data>
+  <data name="SeoHubMetaDescription" xml:space="preserve">
+    <value>Guide per host di affitti brevi, comune per comune: CIN, Alloggiati Web e imposta di soggiorno, con tariffe e fonti ufficiali. Ad esempio: {0}.</value>
   </data>
   <data name="SeoAmenity_WiFi" xml:space="preserve">
     <value>Wi-Fi</value>
@@ -2413,6 +2752,15 @@
   <data name="LeaseListViewUnknown" xml:space="preserve">
     <value>La vista dei contratti non è valida: usa All, Active, InPreparation, Expiring oppure Ended.</value>
   </data>
+  <data name="TenantNotFound" xml:space="preserve">
+    <value>Inquilino non trovato.</value>
+  </data>
+  <data name="TenantListViewUnknown" xml:space="preserve">
+    <value>La vista degli inquilini non è valida: usa All, Current oppure Former.</value>
+  </data>
+  <data name="LongRentPropertyViewUnknown" xml:space="preserve">
+    <value>La vista degli immobili non è valida: usa All, Rented oppure Free.</value>
+  </data>
   <data name="LongRentDeadlinesRangeInvalid" xml:space="preserve">
     <value>Indica un periodo valido: date nel formato aaaa-mm-gg, con la fine non prima dell'inizio e al massimo 366 giorni.</value>
   </data>
@@ -2493,6 +2841,33 @@
   </data>
   <data name="SupplierServiceCopySuffix" xml:space="preserve">
     <value> (copia)</value>
+  </data>
+  <data name="ShowcaseContentInvalid" xml:space="preserve">
+    <value>Alcuni contenuti della vetrina non sono validi (campi: {0}). Controlla i testi, il colore e le immagini e riprova.</value>
+  </data>
+  <data name="ShowcaseVersionConflict" xml:space="preserve">
+    <value>La vetrina è stata modificata da un'altra scheda o da un altro utente: ricarica la pagina e applica di nuovo la modifica.</value>
+  </data>
+  <data name="ShowcaseNotPublishable" xml:space="preserve">
+    <value>La vetrina non si può ancora pubblicare: mancano ancora delle cose obbligatorie (voci: {0}). Controlla l'elenco «Cosa manca» e riprova.</value>
+  </data>
+  <data name="ShowcaseSupplierNotActive" xml:space="preserve">
+    <value>Puoi pubblicare o riattivare la vetrina solo con un profilo fornitore attivo: completa prima l'attivazione.</value>
+  </data>
+  <data name="ShowcaseNotPublished" xml:space="preserve">
+    <value>La vetrina non è ancora stata pubblicata: non c'è nulla da mettere in pausa o da riattivare.</value>
+  </data>
+  <data name="ShowcaseUndoUnavailable" xml:space="preserve">
+    <value>Non si può più annullare l'ultima pubblicazione: è passato troppo tempo o nel frattempo hai cambiato altro.</value>
+  </data>
+  <data name="ShowcaseAiUnavailable" xml:space="preserve">
+    <value>Il suggerimento con l'AI non è disponibile in questo momento: usa il testo di partenza o scrivi tu, e riprova più tardi.</value>
+  </data>
+  <data name="ShowcaseSuggestionNotEnoughData" xml:space="preserve">
+    <value>Per scrivere un testo che sia vero servono almeno una categoria, una zona o un servizio: completali nel profilo, oppure scrivi due righe su di te, e riprova.</value>
+  </data>
+  <data name="ShowcaseSuggestionUnusable" xml:space="preserve">
+    <value>Non sono riuscito a scrivere un testo adatto: riprova, aggiungi due righe su di te o scrivilo tu.</value>
   </data>
   <data name="SupplierHoursInvalid" xml:space="preserve">
     <value>Gli orari non sono validi (campi: {0}). Controlla le fasce: ogni giorno ne ha al massimo 3, non possono sovrapporsi e ognuna deve finire dopo il suo inizio (in minuti dalla mezzanotte, da 0 a 1440).</value>
@@ -3004,6 +3379,21 @@
   <data name="ServicePaymentStateChanged" xml:space="preserve">
     <value>Il pagamento è stato appena modificato da un'altra operazione: ricarica la pagina e verifica lo stato attuale.</value>
   </data>
+  <data name="ServicePaymentCaptureFailed" xml:space="preserve">
+    <value>Non è stato possibile addebitare la carta del cliente: la richiesta non è stata accettata e nulla è cambiato.</value>
+  </data>
+  <data name="ServicePaymentAuthorizationExpired" xml:space="preserve">
+    <value>L'importo bloccato sulla carta del cliente non è più disponibile: la richiesta non può essere accettata e viene chiusa. Il cliente può prenotare di nuovo.</value>
+  </data>
+  <data name="ServicePaymentAmountLocked" xml:space="preserve">
+    <value>Il cliente ha già bloccato questo importo sulla carta: non puoi indicare un totale diverso né aggiungere voci. Per cambiare il prezzo serve una nuova offerta.</value>
+  </data>
+  <data name="ServicePaymentNotConfirmable" xml:space="preserve">
+    <value>Non c'è nulla da confermare: il lavoro non è concluso oppure il pagamento è già chiuso.</value>
+  </data>
+  <data name="ServicePaymentHeld" xml:space="preserve">
+    <value>Il pagamento è custodito da CasaZen: non puoi richiederlo né registrarlo come ricevuto. Ti arriva dopo la conferma del cliente.</value>
+  </data>
   <data name="ServiceRequestNoConfirmationNeeded" xml:space="preserve">
     <value>Non c'è nessun importo da confermare per questa richiesta.</value>
   </data>
@@ -3302,6 +3692,57 @@
   <data name="UserIdMissing" xml:space="preserve">
     <value>Identificativo utente mancante</value>
   </data>
+  <data name="OwnerDoesNotOwnProperty" xml:space="preserve">
+    <value>Il proprietario non possiede questa proprietà</value>
+  </data>
+  <data name="StatementAlreadyExists" xml:space="preserve">
+    <value>Esiste già un rendiconto per questo proprietario, proprietà e periodo</value>
+  </data>
+  <data name="F24AlreadyExists" xml:space="preserve">
+    <value>L'F24 per questo periodo esiste già</value>
+  </data>
+  <data name="F24NotFound" xml:space="preserve">
+    <value>F24 non trovato per il periodo richiesto</value>
+  </data>
+  <data name="MixedCommissionCoOwnershipNotSupported" xml:space="preserve">
+    <value>Rendiconti multi-proprietario con commissioni diverse non sono supportati</value>
+  </data>
+  <data name="StatementNotApproved" xml:space="preserve">
+    <value>Il rendiconto non è nello stato Approvato</value>
+  </data>
+  <data name="StatementNotDraft" xml:space="preserve">
+    <value>Il rendiconto non è nello stato Bozza</value>
+  </data>
+  <data name="StatementCsvExportNotImplemented" xml:space="preserve">
+    <value>Esportazione CSV dei rendiconti non ancora disponibile</value>
+  </data>
+  <data name="StatementPdfExportNotImplemented" xml:space="preserve">
+    <value>Esportazione PDF dei rendiconti non ancora disponibile</value>
+  </data>
+  <data name="StatementNotFound" xml:space="preserve">
+    <value>Rendiconto non trovato o non appartiene alla tua organizzazione</value>
+  </data>
+  <data name="InvoiceAlreadyExists" xml:space="preserve">
+    <value>Esiste già una fattura per questo proprietario e periodo</value>
+  </data>
+  <data name="InvoiceMultipleSuppliers" xml:space="preserve">
+    <value>Il rendiconto contiene righe per più proprietari: una fattura può avere un solo destinatario</value>
+  </data>
+  <data name="StructuredAddressRequired" xml:space="preserve">
+    <value>L'organizzazione deve avere l'indirizzo strutturato completo per emettere fatture elettroniche</value>
+  </data>
+  <data name="InvoiceNotFound" xml:space="preserve">
+    <value>Fattura non trovata o non appartiene alla tua organizzazione</value>
+  </data>
+  <data name="InvoiceNotFinalized" xml:space="preserve">
+    <value>La fattura è ancora in bozza: completala prima di scaricare XML o PDF</value>
+  </data>
+  <data name="OrgMissingTaxCodes" xml:space="preserve">
+    <value>L'organizzazione deve avere almeno un codice fiscale o partita IVA per emettere fatture elettroniche</value>
+  </data>
+  <data name="OrgMissingRegisteredOffice" xml:space="preserve">
+    <value>L'organizzazione deve avere la sede legale configurata per emettere fatture elettroniche</value>
+  </data>
   <data name="Only approved campaigns can be scheduled" xml:space="preserve">
     <value>Solo le campagne approvate possono essere pianificate</value>
   </data>
@@ -3313,5 +3754,359 @@
   </data>
   <data name="Segment condition JSON is invalid" xml:space="preserve">
     <value>La condizione JSON del segmento non è valida</value>
+  </data>
+  <data name="VerificationNoSessionOrEmail" xml:space="preserve">
+    <value>La prenotazione non ha una sessione di check-in attiva oppure l'ospite non ha un indirizzo e-mail</value>
+  </data>
+  <data name="VerificationNoteRequired" xml:space="preserve">
+    <value>La nota è obbligatoria quando si rifiuta la verifica</value>
+  </data>
+  <data name="VerificationNoPending" xml:space="preserve">
+    <value>La prenotazione non ha verifiche in attesa</value>
+  </data>
+  <data name="VerificationInvalidRequest" xml:space="preserve">
+    <value>Richiesta di verifica non valida</value>
+  </data>
+  <data name="VerificationReasonRequired" xml:space="preserve">
+    <value>Il motivo del rifiuto è obbligatorio</value>
+  </data>
+  <data name="BatchAlreadyDownloadedOrPaid" xml:space="preserve">
+    <value>Il batch è già stato scaricato o pagato</value>
+  </data>
+  <data name="BatchAlreadyPaid" xml:space="preserve">
+    <value>Il batch è già stato contrassegnato come pagato</value>
+  </data>
+  <data name="BatchNotDownloaded" xml:space="preserve">
+    <value>Il batch non è ancora stato scaricato</value>
+  </data>
+  <data name="InvalidDebitAccountIban" xml:space="preserve">
+    <value>L'IBAN del conto di addebito non è valido</value>
+  </data>
+  <data name="InvalidXmlFormat" xml:space="preserve">
+    <value>Il formato XML del file di bonifico non è valido</value>
+  </data>
+  <data name="InvalidXmlStructure" xml:space="preserve">
+    <value>La struttura del file XML non è conforme allo standard ISO 20022</value>
+  </data>
+  <data name="MixedCurrenciesNotAllowed" xml:space="preserve">
+    <value>Non è possibile includere rendiconti in valute diverse nello stesso batch</value>
+  </data>
+  <data name="NoStatementsProvided" xml:space="preserve">
+    <value>Nessun rendiconto fornito per creare il batch</value>
+  </data>
+  <data name="OwnerInvalidIban" xml:space="preserve">
+    <value>Un proprietario ha un IBAN non valido</value>
+  </data>
+  <data name="OwnerMissingIban" xml:space="preserve">
+    <value>Un proprietario non ha un IBAN configurato</value>
+  </data>
+  <data name="StatementsNotFoundOrNotOwned" xml:space="preserve">
+    <value>Uno o più rendiconti non sono stati trovati o non appartengono alla tua organizzazione</value>
+  </data>
+  <data name="StatementsNotPublished" xml:space="preserve">
+    <value>Tutti i rendiconti devono essere pubblicati prima di creare un batch di bonifici</value>
+  </data>
+  <data name="StatementsAlreadyInBatch" xml:space="preserve">
+    <value>Uno o più rendiconti sono già inclusi in un batch di bonifici</value>
+  </data>
+  <data name="BatchXmlNotFound" xml:space="preserve">
+    <value>Il file XML del batch non è stato trovato</value>
+  </data>
+  <data name="Errors.AccessCodeUnavailable" xml:space="preserve">
+    <value>Codice di accesso non disponibile o verifica non superata</value>
+  </data>
+  <data name="GuestRefundChanged" xml:space="preserve">
+    <value>L'importo del rimborso è cambiato mentre decidevi: controlla il nuovo importo e conferma di nuovo. Non è stato annullato nulla.</value>
+  </data>
+  <data name="GuestCancelStayStarted" xml:space="preserve">
+    <value>Il soggiorno è già iniziato: per annullarlo scrivi all'host.</value>
+  </data>
+  <data name="GuestCancelConfirmRequired" xml:space="preserve">
+    <value>Conferma di voler annullare la prenotazione per procedere.</value>
+  </data>
+  <data name="ServiceRequestBookingRequired" xml:space="preserve">
+    <value>Negli affitti brevi la richiesta al fornitore è legata a un soggiorno: scegli la prenotazione.</value>
+  </data>
+  <data name="ServiceRequestBackupWaitsForPrimary" xml:space="preserve">
+    <value>Sei un fornitore di riserva: il lavoro è tuo solo se il fornitore principale non lo accetta nel suo tempo. Per ora puoi accettare come riserva.</value>
+  </data>
+  <data name="ServiceRequestPrimaryWindowPassed" xml:space="preserve">
+    <value>Il tempo per accettare è scaduto: il lavoro è passato a un fornitore di riserva che aveva già accettato.</value>
+  </data>
+  <data name="ServiceRequestBackupNotYourTurn" xml:space="preserve">
+    <value>Un'altra riserva ha accettato prima di te e ha la precedenza: se non può farlo, tocca a te.</value>
+  </data>
+  <data name="ServiceRequestNotAWaitingBackup" xml:space="preserve">
+    <value>Questa richiesta non è una richiesta di riserva in attesa del fornitore principale.</value>
+  </data>
+  <data name="ServiceRequestBackupCannotPropose" xml:space="preserve">
+    <value>Una riserva non può proporre un altro orario all'host: puoi accettare l'orario richiesto oppure rifiutare.</value>
+  </data>
+  <data name="ServiceRequestBackupCannotQuote" xml:space="preserve">
+    <value>Una riserva non può inviare un preventivo all'host: puoi accettare la richiesta così com'è oppure rifiutare.</value>
+  </data>
+  <data name="ServiceRequestBackupAlreadyActive" xml:space="preserve">
+    <value>Il fornitore principale non ha preso in carico la richiesta: puoi accettarla direttamente, il primo che accetta ha il lavoro.</value>
+  </data>
+  <data name="ServiceRequestBackupRaceClosed" xml:space="preserve">
+    <value>Un altro fornitore di riserva ha già accettato questo lavoro: la gara è chiusa e la tua richiesta di riserva non è più disponibile. Non c'è nessuna penalità per te.</value>
+  </data>
+  <data name="ServiceRequestCannotQuote" xml:space="preserve">
+    <value>Puoi rispondere con un preventivo solo a una richiesta ancora in attesa della tua risposta.</value>
+  </data>
+  <data name="ServiceRequestQuoteInvalid" xml:space="preserve">
+    <value>Preventivo non valido: servono da 1 a {0} voci, ciascuna con una descrizione di al massimo {1} caratteri e un importo maggiore di zero; il totale può arrivare al massimo a {2} euro.</value>
+  </data>
+  <data name="ServiceRequestNoQuote" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessun preventivo a cui rispondere: il fornitore potrebbe averlo ritirato, o la richiesta è già cambiata.</value>
+  </data>
+  <data name="ServiceRequestQuoteChanged" xml:space="preserve">
+    <value>Il fornitore ha modificato il preventivo mentre lo leggevi. Rileggilo prima di rispondere: non abbiamo cambiato nulla.</value>
+  </data>
+  <data name="SupplierBookingNoQuote" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessun preventivo da accettare o rifiutare.</value>
+  </data>
+  <data name="SupplierBookingQuoteExpired" xml:space="preserve">
+    <value>Il tempo per rispondere al preventivo è scaduto: la richiesta si annulla da sola. Potrai prenotare di nuovo dal sito del fornitore.</value>
+  </data>
+  <data name="ServiceRequestQuoteLinesRequired" xml:space="preserve">
+    <value>Il preventivo ha bisogno di almeno una voce.</value>
+  </data>
+  <data name="ServiceRequestQuoteTooManyLines" xml:space="preserve">
+    <value>Il preventivo può avere al massimo {1} voci.</value>
+  </data>
+  <data name="ServiceRequestQuoteLineLabelRequired" xml:space="preserve">
+    <value>Ogni voce del preventivo ha bisogno di una descrizione.</value>
+  </data>
+  <data name="ServiceRequestQuoteLineLabelTooLong" xml:space="preserve">
+    <value>La descrizione di una voce può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestQuoteNoteTooLong" xml:space="preserve">
+    <value>La nota può avere al massimo {1} caratteri.</value>
+  </data>
+  <data name="ServiceRequestQuoteSentAtRequired" xml:space="preserve">
+    <value>Indica quale preventivo stai accettando o rifiutando.</value>
+  </data>
+  <data name="PropertySiteProfilePayloadTooLong" xml:space="preserve">
+    <value>Il testo inviato è troppo lungo.</value>
+  </data>
+  <data name="PropertySiteProfileTextTooLong" xml:space="preserve">
+    <value>Il testo è troppo lungo: al massimo {0} caratteri.</value>
+  </data>
+  <data name="PropertySiteProfileItalianRequired" xml:space="preserve">
+    <value>Scrivi il testo anche in italiano: è la lingua che il sito usa quando manca la traduzione.</value>
+  </data>
+  <data name="PropertySiteProfileTooManyHighlights" xml:space="preserve">
+    <value>Puoi indicare al massimo {0} punti forti.</value>
+  </data>
+  <data name="PropertySiteProfileHighlightIconUnknown" xml:space="preserve">
+    <value>Scegli l'icona del punto forte tra quelle proposte.</value>
+  </data>
+  <data name="PropertySiteProfileTooManySafetyNotes" xml:space="preserve">
+    <value>Puoi indicare al massimo {0} note di sicurezza.</value>
+  </data>
+  <data name="PropertySiteProfileTagUnknown" xml:space="preserve">
+    <value>Questa etichetta non esiste: scegline una tra quelle proposte.</value>
+  </data>
+  <data name="PropertySiteProfileFloorLevelInvalid" xml:space="preserve">
+    <value>Il piano deve essere compreso tra {0} e {1} (0 è il piano terra).</value>
+  </data>
+  <data name="PropertySiteProfileRenovatedYearInvalid" xml:space="preserve">
+    <value>L'anno di ristrutturazione deve essere compreso tra {0} e {1}.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyClassInvalid" xml:space="preserve">
+    <value>La classe energetica deve essere una tra A4, A3, A2, A1, A, B, C, D, E, F, G.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyIndexInvalid" xml:space="preserve">
+    <value>L'indice di prestazione energetica deve essere compreso tra 0 e {0} kWh/m² all'anno.</value>
+  </data>
+  <data name="PropertySiteProfileEnergyIndexWithoutClass" xml:space="preserve">
+    <value>Indica la classe energetica insieme all'indice di prestazione.</value>
+  </data>
+  <data name="PropertySiteProfileCheckInWindowInvalid" xml:space="preserve">
+    <value>L'ultimo orario di arrivo deve essere successivo al primo.</value>
+  </data>
+  <data name="PropertySiteProfileVideoUrlInvalid" xml:space="preserve">
+    <value>Il video deve essere un indirizzo YouTube o Vimeo (https).</value>
+  </data>
+  <data name="PropertySiteProfileTourUrlInvalid" xml:space="preserve">
+    <value>Il tour virtuale deve essere un indirizzo Matterport (https).</value>
+  </data>
+  <data name="PropertyFloorPlanNone" xml:space="preserve">
+    <value>Carica l'immagine della planimetria.</value>
+  </data>
+  <data name="PropertyFloorPlanInvalidType" xml:space="preserve">
+    <value>La planimetria deve essere un'immagine PNG o JPEG.</value>
+  </data>
+  <data name="PropertyFloorPlanInvalidSize" xml:space="preserve">
+    <value>L'immagine è vuota o supera {0} MB.</value>
+  </data>
+  <data name="PropertyFloorPlanLimitReached" xml:space="preserve">
+    <value>Puoi caricare al massimo {0} livelli di planimetria.</value>
+  </data>
+  <data name="PropertyFloorPlanNotFound" xml:space="preserve">
+    <value>Questo livello della planimetria non esiste.</value>
+  </data>
+  <data name="PropertyFloorPlanAreaInvalid" xml:space="preserve">
+    <value>La superficie del livello deve essere compresa tra {0} e {1} m².</value>
+  </data>
+  <data name="PropertyPoiLimitReached" xml:space="preserve">
+    <value>Puoi indicare al massimo {0} punti di interesse.</value>
+  </data>
+  <data name="PropertyPoiMinutesInvalid" xml:space="preserve">
+    <value>I minuti devono essere compresi tra {0} e {1}.</value>
+  </data>
+  <data name="ServiceRequestThreadClosed" xml:space="preserve">
+    <value>Questa richiesta è chiusa: non si possono più aggiungere messaggi.</value>
+  </data>
+  <data name="ServiceRequestThreadFull" xml:space="preserve">
+    <value>La conversazione ha raggiunto il numero massimo di messaggi. Per proseguire serve una proposta.</value>
+  </data>
+  <data name="ServiceRequestMessageInvalid" xml:space="preserve">
+    <value>Il messaggio è vuoto, troppo lungo o contiene caratteri non ammessi. Scrivi fino a 1000 caratteri di testo semplice.</value>
+  </data>
+  <data name="ServiceRequestInquiryNeedsOffer" xml:space="preserve">
+    <value>Una richiesta su misura non si accetta direttamente e non si propone per essa un altro orario: lavoro, prezzo e orario si concordano con il cliente nella conversazione, con una proposta.</value>
+  </data>
+  <data name="ServiceRequestOfferInvalid" xml:space="preserve">
+    <value>Offerta non valida: servono da 1 a {0} voci, ciascuna con una descrizione di al massimo {1} caratteri, una quantità da 1 a {2} e un prezzo unitario maggiore di zero; il totale può arrivare al massimo a {3} euro.</value>
+  </data>
+  <data name="ServiceRequestCannotOffer" xml:space="preserve">
+    <value>Puoi mandare un'offerta solo per una richiesta su misura ancora in attesa della tua risposta.</value>
+  </data>
+  <data name="ServiceRequestNoOffer" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessuna offerta da ritirare: potrebbe essere già stata accettata, rifiutata o ritirata.</value>
+  </data>
+  <data name="SupplierBookingNoOffer" xml:space="preserve">
+    <value>Per questa richiesta non c'è nessuna offerta da accettare o rifiutare.</value>
+  </data>
+  <data name="SupplierBookingOfferExpired" xml:space="preserve">
+    <value>Il tempo per rispondere all'offerta è scaduto: la richiesta si chiude da sola. Potrai fare una nuova richiesta dalla pagina del fornitore.</value>
+  </data>
+  <data name="ServiceRequestOfferChanged" xml:space="preserve">
+    <value>Il fornitore ha modificato o ritirato l'offerta mentre la leggevi. Rileggila prima di rispondere: non abbiamo cambiato nulla.</value>
+  </data>
+  <data name="ServiceRequestOfferQuantityOutOfRange" xml:space="preserve">
+    <value>La quantità deve essere compresa tra {1} e {2}.</value>
+  </data>
+  <data name="ServiceRequestOfferStartRequired" xml:space="preserve">
+    <value>Indica quando potresti fare il lavoro.</value>
+  </data>
+  <data name="ServiceRequestOfferSentAtRequired" xml:space="preserve">
+    <value>Indica quale offerta stai accettando o rifiutando.</value>
+  </data>
+  <data name="ServiceDisputeNotFound" xml:space="preserve">
+    <value>Non c'è nessuna segnalazione per questa richiesta.</value>
+  </data>
+  <data name="ServiceDisputeNotReportable" xml:space="preserve">
+    <value>Da qui non si può segnalare un problema: per questo lavoro CasaZen non custodisce un pagamento che si possa fermare.</value>
+  </data>
+  <data name="ServiceDisputeTooEarly" xml:space="preserve">
+    <value>Puoi segnalare che il lavoro non è stato svolto dopo la fine dell'orario previsto, non prima.</value>
+  </data>
+  <data name="ServiceDisputeWindowClosed" xml:space="preserve">
+    <value>Il tempo per segnalare un problema è terminato: il pagamento è stato versato al fornitore, sta per esserlo oppure hai già confermato che è tutto a posto.</value>
+  </data>
+  <data name="ServiceDisputeInvalid" xml:space="preserve">
+    <value>Alcuni dati della segnalazione non sono validi (campi: {0}). Controllali e riprova.</value>
+  </data>
+  <data name="ServiceDisputeNotOpen" xml:space="preserve">
+    <value>La segnalazione non è più aperta: è stata decisa o ritirata.</value>
+  </data>
+  <data name="ServiceDisputeAlreadyReplied" xml:space="preserve">
+    <value>Hai già risposto a questa segnalazione.</value>
+  </data>
+  <data name="ServiceDisputeAwaitingSupplier" xml:space="preserve">
+    <value>Il fornitore ha ancora tempo per rispondere: la segnalazione si decide dopo la sua risposta o alla scadenza del suo tempo.</value>
+  </data>
+  <data name="ServiceDisputeStateChanged" xml:space="preserve">
+    <value>La segnalazione è cambiata nel frattempo: ricarica la pagina e verifica.</value>
+  </data>
+  <data name="ServiceDisputePaymentChanged" xml:space="preserve">
+    <value>Il pagamento non è in uno stato su cui si possa decidere (è in verifica o il denaro si è mosso in altro modo): controlla prima il pagamento.</value>
+  </data>
+  <data name="ServiceDisputeRefundInvalid" xml:space="preserve">
+    <value>L'importo da restituire deve essere un numero positivo di centesimi.</value>
+  </data>
+  <data name="ServiceDisputeRefundExceeds" xml:space="preserve">
+    <value>L'importo supera la parte del fornitore ancora disponibile ({0:N2} €): la commissione di CasaZen non si restituisce.</value>
+  </data>
+  <data name="ServiceDisputeOutcomeInvalid" xml:space="preserve">
+    <value>L'esito deve essere for_supplier (a favore del fornitore) oppure for_customer (a favore di chi ha pagato).</value>
+  </data>
+  <data name="ServiceDisputeFormInvalid" xml:space="preserve">
+    <value>Indica il motivo della segnalazione e, se vuoi, descrivi il problema in al massimo 1000 caratteri.</value>
+  </data>
+  <data name="ServiceDisputeOpenBlocksCompletion" xml:space="preserve">
+    <value>C'è una segnalazione aperta su questo lavoro: rispondi alla segnalazione. Se viene decisa a tuo favore, il lavoro risulta completato.</value>
+  </data>
+  <data name="PayloadTooLarge" xml:space="preserve">
+    <value>File troppo grande</value>
+  </data>
+  <data name="PayloadTooLargeDetail" xml:space="preserve">
+    <value>Il file supera la dimensione massima consentita. Scegli un file più leggero e riprova.</value>
+  </data>
+  <data name="UnsupportedMediaType" xml:space="preserve">
+    <value>Tipo di file non supportato</value>
+  </data>
+  <data name="UnsupportedMediaTypeDetail" xml:space="preserve">
+    <value>Il tipo di file non è supportato.</value>
+  </data>
+  <data name="ShowcaseMediaNone" xml:space="preserve">
+    <value>Scegli l'immagine da caricare.</value>
+  </data>
+  <data name="ShowcaseMediaKindInvalid" xml:space="preserve">
+    <value>Indica a cosa serve l'immagine: logo, copertina, foto di un lavoro o foto «prima».</value>
+  </data>
+  <data name="ShowcaseMediaLogoTooLarge" xml:space="preserve">
+    <value>Il logo supera i 200 KB: scegli un file più leggero (un PNG o un WebP semplice, per esempio).</value>
+  </data>
+  <data name="ShowcaseMediaPhotoTooLarge" xml:space="preserve">
+    <value>La foto supera i 10 MB: riducila o scegline un'altra.</value>
+  </data>
+  <data name="ShowcaseMediaUnsupportedType" xml:space="preserve">
+    <value>Puoi caricare solo immagini PNG, JPG o WebP. Gli altri formati (SVG, PDF, HEIC...) non sono accettati, anche se il nome del file dice il contrario.</value>
+  </data>
+  <data name="ShowcaseMediaInvalidImage" xml:space="preserve">
+    <value>Il file non si può usare come immagine: è danneggiato, incompleto o animato. Esportalo di nuovo come PNG, JPG o WebP.</value>
+  </data>
+  <data name="ShowcaseMediaDimensions" xml:space="preserve">
+    <value>L'immagine ha troppi pixel: il lato più lungo può arrivare a {0} pixel.</value>
+  </data>
+  <data name="ShowcaseMediaLimitReached" xml:space="preserve">
+    <value>Hai già {0} file nella vetrina, compresi quelli che non usi più: questi vengono tolti da soli entro due giorni. Riprova più tardi.</value>
+  </data>
+  <data name="ShowcaseMediaNotFound" xml:space="preserve">
+    <value>Questo file non è tra le immagini della tua vetrina.</value>
+  </data>
+  <data name="ShowcaseMediaInUse" xml:space="preserve">
+    <value>Questa immagine è ancora usata nella vetrina (nella bozza, nella versione pubblicata o in quella precedente): toglila prima dai contenuti.</value>
+  </data>
+  <data name="BankStatementFileMissing" xml:space="preserve">
+    <value>Scegli il file dell'estratto conto da importare.</value>
+  </data>
+  <data name="BankStatementTooLarge" xml:space="preserve">
+    <value>Il file è troppo grande: al massimo {0} MB. Esporta dalla banca un periodo più breve.</value>
+  </data>
+  <data name="BankStatementFormatUnsupported" xml:space="preserve">
+    <value>Questo file non si può leggere. Esporta i movimenti dalla tua banca in CSV, Excel (.xlsx), CAMT.053 (XML) oppure MT940.</value>
+  </data>
+  <data name="BankStatementUnreadable" xml:space="preserve">
+    <value>Non riesco a leggere il file: sembra danneggiato o non è un estratto conto. Prova a esportarlo di nuovo dalla banca.</value>
+  </data>
+  <data name="BankStatementEmpty" xml:space="preserve">
+    <value>Nel file non ho trovato nessun movimento. Controlla di aver esportato il periodo giusto.</value>
+  </data>
+  <data name="BankStatementTooManyRows" xml:space="preserve">
+    <value>Il file ha troppi movimenti (al massimo {0} accrediti): esporta dalla banca un periodo più breve.</value>
+  </data>
+  <data name="BankStatementColumnsUnrecognized" xml:space="preserve">
+    <value>Non riconosco le colonne del file: indica tu quale contiene la data, la descrizione e l'importo.</value>
+  </data>
+  <data name="BankStatementMappingInvalid" xml:space="preserve">
+    <value>Le colonne indicate non vanno bene per questo file: scegli data, descrizione e importo tra quelle del file.</value>
+  </data>
+  <data name="BankImportSelectionsInvalid" xml:space="preserve">
+    <value>Scegli da 1 a 500 incassi da confermare.</value>
   </data>
 </root>

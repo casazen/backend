@@ -798,9 +798,11 @@ a test; the perimeter grows row by row to about twenty-five events (decision AM-
 | `OrgNameChanged` | 21 | `account` | the org | none | `OrgService.UpdateSettingsAsync`; **the name itself is never recorded** |
 | `OrgSlugChanged` | 22 | `account` | the org | none | same; **the slug itself is never recorded** |
 | `TierAssigned` | 23 | `account` | the org | `toTier` | *reserved*: agency B2B (ADR-010) |
+| `OrgSettingsChanged` | 24 | `account` | the org | none | AM-08b-b: `OrgService.UpdateSettingsAsync`, in the save of the change, when the legal name, the registered office, the phone or the language of the account **really change** (a field that is not sent, or sent with the value it has, writes nothing); **neither what changed nor the values are recorded** (the phone and the registered office are personal data). The contact email and its publication stay out, as they always were |
 | `PropertyModeChangeScheduled` | 40 | the property's | the property | `fromMode`, `toMode`, `effectiveOn` | AM-02c: `PropertyModeService.ScheduleAsync`, in the save that writes the change (and closes the calendar); the actor is who programmed it; the area is the mode the property is in, the one it leaves |
 | `PropertyModeChangeCancelled` | 41 | the property's | the property | `fromMode`, `toMode` | AM-02c: `CancelAsync`, same transaction; the actor is who cancelled; the area is the mode the property is still in |
 | `PropertyModeChanged` | 42 | the property's | the property | `fromMode`, `toMode`, `released` | AM-02c: the daily job (`ApplyDueAsync`), in the save that changes the mode: **no actor**; the area is the mode the property has entered; `released` (`1`) only when the person in charge no longer reaches the property in its new mode (section 48). A change that fails writes nothing |
+| `PropertyActivatedWithReminders` | 43 | `short-rent` | the property | `reminders` | PO decision 2026-11-01 (option A): the host's activation (`PropertyComplianceStatusService`, the save that makes the property active) with the documents or the safety checklist still open, which the host acknowledged (`remindersAcknowledged`); `reminders` = the open steps joined by a dot (`documents`, `safety`, `documents.safety`). See [compliance.md](compliance.md) §1 |
 | `TrustedSupplierAdded` | 60 | `supplier` | the supplier | none | *reserved*: the trusted suppliers of the host (wave spec P10) |
 | `TrustedSupplierRemoved` | 61 | `supplier` | the supplier | none | *reserved*: same |
 | `AdminGrantedConcordatoFacileGift` | 70 | `account` | the org | none | `ConcordatoFacileAdminService.GrantGiftAsync`, in the save that creates the gift; the actor is the admin who granted it |
@@ -1363,3 +1365,54 @@ configuration; AM-D16 «Solo alcuni» stays the collaborator's only; AM-D18 the 
   property (`HostResource` already carries it through the property row) to `Reaches` and invalidating the grantees at the flip would close it; the lists, the audience and
   the release of the responsibility are already exact.
 - **Migration order.** LR-12 generates a migration in parallel: whoever merges second regenerates theirs (and puts back the line of `Down`, section 53).
+
+## 56. The settings of the account (AM-08b-b)
+
+`GET/PUT /api/orgs/me/settings` (policy `OrgBillingAdmin`: the owner and the administrators) carries, besides the name, the address of the booking site, the contact email
+and the operator data of the site footer (`legalName`, `registeredOffice`, DB-03b-a), two fields of the account that are **not** about the public site:
+
+| Field | Column (`Orgs`) | Rule |
+|---|---|---|
+| `contactPhone` | `ContactPhone` (20, null) | `+` or digits only, 6 to 15 digits, separators accepted and dropped (`OrgSettingsRules.NormalizeContactPhone`, the rule of the public phone of the site); 422 `org_contact_phone_invalid`. **Never published**: no public DTO has it, only the administrators read it back |
+| `defaultLanguage` | `DefaultLanguage` (2, `it`) | `it` or `en` (any case), blank = `it`; 422 `org_default_language_invalid`. The language of the emails the org sends to its team when nobody chooses another: the default of `OrgInvitation.Language` when `POST /api/orgs/me/invitations` has no `language`. The language of the guests is theirs to choose, not the org's |
+
+Both follow the rule of the operator data: a member **left out of the body keeps its stored value** (a client that does not know it never erases it); `null` or a blank clears the phone
+and puts the language back to Italian. They are validated before anything is loaded or written. When the legal name, the registered office, the phone or the language **really change**,
+the activity log gets one line, `OrgSettingsChanged` (section 30: the fact only, never the values). Migration `AddOrgContactPhoneAndDefaultLanguage`, additive: the existing orgs get
+`DefaultLanguage = 'it'`, no phone. Rollback: `Down` drops the two columns; the log lines already written stay (the enum value 24 is never reused).
+
+# Part 7 - DEB-01: the permissions of the agency tier
+
+## 57. Who holds which agency permission (DEB-01, 2026-10-31)
+
+The `agency.*` policies (ADR-010, ADR-012: owners, statements, invoices, withholding, wire transfers, activities, trusted suppliers) used to check the plan
+of the org only (`AgencyTierRequirement`): any member of an org on the agency plan, collaborators and accountants included, read the full IBAN of the
+owners (`GET /api/owners/{id}/iban`) and created wire batches. Each policy now also requires its **agency permission** held by the caller's org role
+(`AgencyPermissionRequirement`, `AgencyPermissionAuthorizationHandler`); the plan and the downgrade rule (reads only, 403 `tier_insufficient` on writes) are
+unchanged. The matrix is `OrgRoleCatalog.AgencyPermissionsOf` (the keys: `AgencyPermissions`):
+
+| Permission | Endpoints | Owner | Admin | PropertyManager | Collaborator | Accountant |
+|---|---|---|---|---|---|---|
+| `agency.owner.view` | `GET api/owners` (IBAN masked) | Yes | Yes | Yes | No | No |
+| `agency.owner.financial.read` | `GET api/owners/{id}/iban` (audit-logged) | Yes | Yes | No | No | No |
+| `agency.owner.manage` | `POST api/owners/{id}/invite` | Yes | Yes | No | No | No |
+| `agency.statement.view` | `GET api/statements`, `…/pdf`, `…/csv` | Yes | Yes | No | No | No |
+| `agency.statement.manage` | `POST api/statements/generate`, `…/approve`, `…/publish` | Yes | Yes | No | No | No |
+| `agency.invoice.manage` | `api/agency-invoices` | Yes | Yes | No | No | No |
+| `agency.withholding.manage` | `api/withholding` | Yes | Yes | No | No | No |
+| `agency.wire.manage` | `api/wire-transfers` | Yes | Yes | No | No | No |
+| `agency.activity.manage` | `api/internal-activities` | Yes | Yes | No | No | No |
+| `agency.supplier.manage` | `api/trusted-suppliers` | Yes | Yes | No | No | No |
+
+- **Statements and withholding** were behind `agency.owner.view`, which the property manager holds: they now have their own policies
+  (`AgencyStatementView` on the controller, `AgencyStatementManage` on the three writes; `AgencyWithholdingManage`).
+- **Where the role comes from.** The caller's `OrgMember` row (AM-01), active and of the org of the request, whatever the token says. A user in no org team (an
+  owner from before the backfill) counts as the owner of its own org when its token or its rental membership is the owner's (`PropertyOwner`, `LongTermLandlord`,
+  `OrgOwnerRoles`); `Staff` and `Guest`, a deactivated member and an inactive account hold nothing. The policies wait for the host onboarding like the host contexts
+  (403 `onboarding_required`).
+- **Not seeded permissions.** They are not rows of `RolePermissions`: no migration, and they stay out of the matrix of the roles (`GET /api/orgs/me/roles`, section 47)
+  and of `GET /api/me/contexts`. Showing them there means seeding them in the account roles, a capability of `OrgCapabilityCatalog` and its labels in the web app.
+- **Decisions open for the product owner.** The accountant of an agency gets nothing (it may need `agency.statement.view` and the withholding); the property
+  manager gets the owner list only. Changing either is one line of `AgencyPermissionsOf` and of this table.
+- Tests: `AgencyPermissionAuthorizationHandlerTests` (the matrix, the member of another org, the deactivated member, the owner from before the backfill) and
+  `AgencyPermissionsHttpIntegrationTests` (a collaborator gets 403 on the full IBAN and on the wire batches, the owner 200).

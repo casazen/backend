@@ -61,6 +61,13 @@ public class AiOptions
     public bool UsesAnthropicMessages() =>
         string.Equals(Provider, AnthropicProvider, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// True when images may be sent to the provider in effect: every provider but DeepSeek, whose chat API reads text only. A
+    /// compatible service whose model cannot read them answers with an error and the call is repeated with the text alone.
+    /// </summary>
+    public bool AcceptsImages() =>
+        !IsStub() && !string.Equals(Provider, DeepSeekProvider, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Base URL of the chat call for the provider in effect. Empty when a compatible provider has none.</summary>
     public string ChatBaseUrl() =>
         UsesAnthropicMessages() ? AnthropicBaseUrl?.Trim() ?? string.Empty : OpenAiBaseUrl?.Trim() ?? string.Empty;

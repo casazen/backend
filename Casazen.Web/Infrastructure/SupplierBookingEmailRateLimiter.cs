@@ -63,7 +63,8 @@ public sealed class SupplierBookingEmailRateLimiter : IDisposable
 
 /// <summary>
 /// Puts the booking action under <see cref="SupplierBookingEmailRateLimiter"/>, for the e-mail of its
-/// <see cref="CreatePublicSupplierBookingRequest"/> and the supplier of the route: over the limit it answers 429
+/// <see cref="CreatePublicSupplierBookingRequest"/> (or, SP-10b, of the <see cref="CreatePublicSupplierInquiryRequest"/> of a request on
+/// measure: the same address has one budget for both) and the supplier of the route: over the limit it answers 429
 /// <c>rate_limited</c> with <c>Retry-After</c> (the contract of the per-IP policies) and the booking is not made. Runs after the
 /// model validation.
 /// </summary>
@@ -76,12 +77,12 @@ public sealed class SupplierBookingEmailRateLimitFilter(
 {
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        var request = context.ActionArguments.Values.OfType<CreatePublicSupplierBookingRequest>().FirstOrDefault();
+        var email = context.ActionArguments.Values.OfType<CreatePublicSupplierBookingRequest>().FirstOrDefault()?.Email
+                    ?? context.ActionArguments.Values.OfType<CreatePublicSupplierInquiryRequest>().FirstOrDefault()?.Email;
         var slug = context.RouteData.Values["slug"]?.ToString();
-        if (request is null
-            || string.IsNullOrWhiteSpace(request.Email)
+        if (string.IsNullOrWhiteSpace(email)
             || string.IsNullOrWhiteSpace(slug)
-            || limiter.TryAcquire(slug, request.Email, out var retryAfter))
+            || limiter.TryAcquire(slug, email, out var retryAfter))
         {
             await next();
             return;

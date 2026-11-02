@@ -92,7 +92,137 @@ public interface IShowcaseBookingManager
     /// </exception>
     /// <exception cref="Exceptions.DomainConflictException"><c>service_request_state_changed</c>.</exception>
     Task<ShowcaseBookingView> RejectProposalAsync(ShowcaseBookingCredentials credentials, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Accepts the quote the supplier sent (SP-04b): the request is taken on the supplier's behalf (<c>Richiesto</c> → <c>PresoInCarico</c>) at
+    /// the time of the quote, with its total as the price agreed; the time is checked again under the calendar lock; the supplier and the
+    /// customer are told. <paramref name="quoteSentAt"/> is the version of the quote the customer read (<c>quote.sentAt</c>).
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="ShowcaseBookingQuoteErrors.NoQuote"/>, <see cref="ShowcaseBookingQuoteErrors.QuoteExpired"/>,
+    /// <see cref="ShowcaseBookingErrors.SupplierUnavailable"/>.
+    /// </exception>
+    /// <exception cref="Exceptions.DomainConflictException">
+    /// <c>service_request_quote_changed</c>: the supplier replaced or withdrew the quote; <c>supplier_slot_unavailable</c>: the time is gone
+    /// (the quote stays: the customer can turn it down, or cancel); <c>service_request_state_changed</c>.
+    /// </exception>
+    Task<ShowcaseBookingView> AcceptQuoteAsync(
+        ShowcaseBookingCredentials credentials,
+        DateTime quoteSentAt,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Turns the quote down (SP-04b): it goes, the request stays <c>Richiesto</c> at its time, the supplier has its whole time to answer
+    /// again and is told. Errors as <see cref="AcceptQuoteAsync"/>, but for the time.
+    /// </summary>
+    Task<ShowcaseBookingView> RejectQuoteAsync(
+        ShowcaseBookingCredentials credentials,
+        DateTime quoteSentAt,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// SP-10b-b: the customer accepts the offer the supplier sent for its request on measure: the request is taken on the supplier's behalf
+    /// (<c>Richiesto</c> → <c>PresoInCarico</c>) at the time and the total of the offer, the time is checked again under the calendar lock, and both
+    /// parties are told. <paramref name="offerSentAt"/> is the version of the offer the customer read (<c>offer.sentAt</c>). The booking of the
+    /// credentials has to be a request on measure; any other is <see cref="ShowcaseBookingManagementErrors.NotFound"/>.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="ServiceRequestOfferErrors.NoOffer"/>, <see cref="ServiceRequestOfferErrors.OfferExpired"/>, <see cref="ShowcaseBookingErrors.SupplierUnavailable"/>.
+    /// </exception>
+    /// <exception cref="Exceptions.DomainConflictException">
+    /// <see cref="ServiceRequestOfferErrors.OfferChanged"/>: the supplier replaced or withdrew the offer; <c>supplier_slot_unavailable</c> /
+    /// <c>supplier_commitment_conflict</c>: the time is gone (the offer stays: the customer can turn it down, or cancel); <c>service_request_state_changed</c>.
+    /// </exception>
+    Task<ShowcaseBookingView> AcceptOfferAsync(
+        ShowcaseBookingCredentials credentials,
+        DateTime offerSentAt,
+        CancellationToken cancellationToken = default);
+
+    // (An offer that is paid inside CasaZen (SP-10b-b, second part) is not taken by this call but by the card: the answer then has
+    // negotiation AwaitingPayment and paymentSession, and the request is taken when the card is blocked — by the webhook, or by this call again.)
+
+    /// <summary>
+    /// SP-10b-b: the customer turns the offer down: it goes, the request stays <c>Richiesto</c> and the conversation goes on (no clock runs on
+    /// the supplier); the supplier is told. Errors as <see cref="AcceptOfferAsync"/>, but for the time.
+    /// </summary>
+    Task<ShowcaseBookingView> DeclineOfferAsync(
+        ShowcaseBookingCredentials credentials,
+        DateTime offerSentAt,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// SP-15c-a: the customer says "all fine" about a booking paid inside CasaZen whose work is done: the money CasaZen holds is released to
+    /// the supplier at once, without waiting for the hour after the work (decision VT-D1). The customer's word stands even if the transfer
+    /// cannot be made right now (the supplier's account is not ready, Stripe refuses): the job makes it. Asking again once the supplier was
+    /// paid answers the booking as it is and does nothing.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="ServicePaymentErrors.NotConfirmable"/>: the booking is not paid inside CasaZen, the work is not done, or the money is not
+    /// in a state to release (closed, refunded, stopped by a dispute).
+    /// </exception>
+    Task<ShowcaseBookingView> ConfirmOkAsync(ShowcaseBookingCredentials credentials, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// SP-15c-c, "Segnala un problema": the customer reports a problem with a job paid inside CasaZen — the money CasaZen holds stops until a person
+    /// decides (decisions VT-D1 and VT-D16). Possible from the moment the work is completed until the money is due to the supplier (the hour after
+    /// the work), never after the customer said "all fine" or the supplier was paid; for a job nobody marked completed, from the end of the time agreed
+    /// for it. A complaint already open answers the same booking and writes nothing. Text only: no photos.
+    /// </summary>
+    /// <param name="credentials">Who the customer says it is.</param>
+    /// <param name="reason"><c>not_done</c>, <c>incomplete</c>, <c>poor_quality</c>, <c>not_as_described</c> or <c>other</c>.</param>
+    /// <param name="text">What the customer writes, at most 1000 characters; required for <c>other</c>.</param>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="ServiceDisputeErrors.NotReportable"/> (the booking is not paid inside CasaZen, or not a job that was done),
+    /// <see cref="ServiceDisputeErrors.WindowClosed"/> (the time is over), <see cref="ServiceDisputeErrors.TooEarly"/> (the work is not completed and
+    /// its time has not ended), <see cref="ServiceDisputeErrors.Invalid"/> (<c>fields</c>: <c>reason</c>, <c>text</c>).
+    /// </exception>
+    Task<ShowcaseBookingView> ReportProblemAsync(
+        ShowcaseBookingCredentials credentials,
+        string? reason,
+        string? text,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// SP-15c-c: the customer takes its complaint back — the money is no longer stopped and the supplier is paid. Taking back a complaint that was
+    /// taken back answers the same booking.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>, or <see cref="ServiceDisputeErrors.NotFound"/> (no complaint).</exception>
+    /// <exception cref="Exceptions.DomainConflictException"><see cref="ServiceDisputeErrors.NotOpen"/>: the complaint was decided already.</exception>
+    Task<ShowcaseBookingView> WithdrawProblemAsync(ShowcaseBookingCredentials credentials, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes in the conversation of a request on measure (SP-10b): 1 to 1000 characters of plain text, at most 200 messages a request. The
+    /// supplier is told by e-mail (the comune and "Nome C.", never the words), one e-mail for the messages of ten minutes. The booking of the
+    /// credentials has to be a request on measure; any other is <see cref="ShowcaseBookingManagementErrors.NotFound"/>.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>.</exception>
+    /// <exception cref="Exceptions.DomainRuleException">
+    /// <see cref="ServiceRequestThreadErrors.MessageInvalid"/>, <see cref="ServiceRequestThreadErrors.Full"/>,
+    /// <see cref="ShowcaseBookingErrors.SupplierUnavailable"/>.
+    /// </exception>
+    /// <exception cref="Exceptions.DomainConflictException">
+    /// <see cref="ServiceRequestThreadErrors.Closed"/> (refused, cancelled or done), <c>service_request_state_changed</c>.
+    /// </exception>
+    Task<ShowcaseBookingView> PostMessageAsync(ShowcaseBookingCredentials credentials, string? body, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The other suppliers the customer can turn to when <b>CasaZen closed its request because the supplier did not answer in time</b> (SP-10c): at
+    /// most three, that cover the comune and have the category of the request, whose showcase is published, not paused and takes bookings, best first
+    /// by the one ranking of the platform; never the supplier of the request, never a personal datum. For a booking that is in any other state the
+    /// list is empty: the alternatives are the way out of a silence, they are never a list of suppliers behind every request. Read-only.
+    /// </summary>
+    /// <exception cref="Exceptions.NotFoundException"><see cref="ShowcaseBookingManagementErrors.NotFound"/>: no booking matches (see the remarks).</exception>
+    Task<IReadOnlyList<ShowcaseAlternative>> ListAlternativesAsync(ShowcaseBookingCredentials credentials, CancellationToken cancellationToken = default);
 }
+
+/// <summary>The outcome of the customer's acceptance of an offer (SP-10b-b): the request, and the session of the card when it still has to be blocked.</summary>
+/// <param name="Request">The request as it is now: taken, or still new while it waits for the card.</param>
+/// <param name="PaymentSession">What the browser needs to block the card; <c>null</c> when the request was taken.</param>
+public sealed record OfferAcceptance(ServiceRequest Request, OfferPaymentSession? PaymentSession);
 
 /// <summary>
 /// What the customer of a request from a supplier's public showcase does to the request (SP-11), implemented with the other
@@ -123,4 +253,28 @@ public interface IShowcaseRequestCustomerActions
 
     /// <summary>The customer turns the proposed time down (see <see cref="IShowcaseBookingManager.RejectProposalAsync"/>).</summary>
     Task<ServiceRequest> RejectProposalAsCustomerAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>The customer accepts the quote (see <see cref="IShowcaseBookingManager.AcceptQuoteAsync"/>).</summary>
+    Task<ServiceRequest> AcceptQuoteAsCustomerAsync(Guid id, Guid supplierOrgId, DateTime quoteSentAt, CancellationToken cancellationToken = default);
+
+    /// <summary>The customer turns the quote down (see <see cref="IShowcaseBookingManager.RejectQuoteAsync"/>).</summary>
+    Task<ServiceRequest> RejectQuoteAsCustomerAsync(Guid id, Guid supplierOrgId, DateTime quoteSentAt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The customer accepts the offer of its request on measure (see <see cref="IShowcaseBookingManager.AcceptOfferAsync"/>): the request is taken, or,
+    /// when the offer is paid inside CasaZen and the card is not blocked yet, the session that blocks it is returned and the request waits for the card.
+    /// </summary>
+    Task<OfferAcceptance> AcceptOfferAsCustomerAsync(Guid id, Guid supplierOrgId, DateTime offerSentAt, CancellationToken cancellationToken = default);
+
+    /// <summary>The customer turns the offer of its request on measure down (see <see cref="IShowcaseBookingManager.DeclineOfferAsync"/>).</summary>
+    Task<ServiceRequest> DeclineOfferAsCustomerAsync(Guid id, Guid supplierOrgId, DateTime offerSentAt, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The thread of the customer's request on measure (SP-10b), with the messages of the supplier marked as read by the customer; each
+    /// message is shown as it was before this reading.
+    /// </summary>
+    Task<ServiceRequestThread> ReadThreadAsCustomerAsync(Guid id, Guid supplierOrgId, CancellationToken cancellationToken = default);
+
+    /// <summary>The customer writes in the thread of its request on measure (see <see cref="IShowcaseBookingManager.PostMessageAsync"/>).</summary>
+    Task<ServiceRequestMessageView> PostMessageAsCustomerAsync(Guid id, Guid supplierOrgId, string? body, CancellationToken cancellationToken = default);
 }

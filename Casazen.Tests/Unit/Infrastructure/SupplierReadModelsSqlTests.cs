@@ -77,7 +77,8 @@ public class SupplierReadModelsSqlTests
         var sql = SupplierPaymentReadModels.PaidBetween(db, SupplierOrg, CurrentStart, CurrentEnd).ToQueryString();
 
         Assert.Matches("\"SupplierOrgId\" = @", sql);
-        Assert.Matches($"\"Status\" = {(int)ServicePaymentStatus.Paid}", sql);
+        // Paid, or released (SP-15c-a: the money CasaZen held has reached the supplier): nothing else is income.
+        Assert.Matches($"\"Status\" IN \\({(int)ServicePaymentStatus.Paid}, {(int)ServicePaymentStatus.Released}\\)", sql);
         Assert.Contains("\"PaidAt\" >= @", sql);
         Assert.Contains("\"PaidAt\" < @", sql);
         Assert.Matches("(?i)sum\\(", sql);

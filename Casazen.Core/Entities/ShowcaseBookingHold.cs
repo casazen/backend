@@ -77,6 +77,25 @@ public class ShowcaseBookingHold
     /// <summary>The request born from the hold when the e-mail was checked.</summary>
     public Guid? ServiceRequestId { get; set; }
 
+    // ─── The block of the payer's card (SP-15c-a, decision VT-D10): empty for a booking that is not paid inside CasaZen ─────────
+
+    /// <summary>
+    /// The PaymentIntent on the platform account that blocks the amount on the customer's card (<c>capture_method = manual</c>). A hold
+    /// that has one becomes a request only when <b>both</b> the e-mail is checked (<see cref="EmailVerifiedAt"/>) and the block succeeded
+    /// (<see cref="PaymentAuthorizedAt"/>), in either order. A hold that lapses cancels it, so the customer's money is never kept blocked.
+    /// </summary>
+    [MaxLength(255)]
+    public string? StripePaymentIntentId { get; set; }
+
+    /// <summary>The amount the PaymentIntent blocks, in cents: the total the customer saw. It becomes the amount of the payment.</summary>
+    public int? PaymentAmountCents { get; set; }
+
+    /// <summary>When the customer's e-mail was checked, if the request is still waiting for the block; empty otherwise.</summary>
+    public DateTime? EmailVerifiedAt { get; set; }
+
+    /// <summary>When Stripe told that the block succeeded (<c>payment_intent.amount_capturable_updated</c>), if the e-mail is still to be checked.</summary>
+    public DateTime? PaymentAuthorizedAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     [ForeignKey(nameof(OrgId))]

@@ -107,6 +107,16 @@ public interface IHostDashboardService
     /// <exception cref="Exceptions.NotFoundException">As <see cref="GetRevenueByPropertyAsync"/>.</exception>
     Task<HostBookingsByChannel> GetBookingsByChannelAsync(HostScope scope, HostReportQuery query, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The occupancy of the last 30 days, today included, of each of <paramref name="propertyIds"/> (SR-07a, the host's list of
+    /// properties): the very nights the Home counts for <see cref="HostDashboardPeriodKind.Last30Days"/> (same code), one entry
+    /// for every property given. The ids are the ones the caller's scope already reached: this reads the nights only, it does not
+    /// check the scope again. A fixed number of queries whatever the number of properties.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, HostDashboardOccupancy>> GetLast30DaysOccupancyAsync(
+        IReadOnlyCollection<Guid> propertyIds,
+        CancellationToken cancellationToken = default);
+
     /// <summary>The iCal import feeds of the properties of <paramref name="scope"/>, by property name then creation.</summary>
     Task<IReadOnlyList<HostDashboardIcalFeed>> GetIcalFeedsAsync(HostScope scope, CancellationToken cancellationToken = default);
 

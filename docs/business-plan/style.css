@@ -1,0 +1,20 @@
+/* Stile per l'export HTML del business plan (scripts/business-plan/export.sh). */
+:root { --ink: #1f2933; --muted: #52606d; --line: #d9e2ec; --accent: #0b6e4f; --bg: #ffffff; }
+html { font-size: 16px; }
+body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: var(--ink); background: var(--bg);
+       max-width: 62rem; margin: 2rem auto; padding: 0 1.25rem; line-height: 1.55; }
+h1, h2, h3, h4 { color: var(--ink); line-height: 1.25; }
+h1 { font-size: 2rem; border-bottom: 3px solid var(--accent); padding-bottom: .4rem; }
+h2 { font-size: 1.45rem; margin-top: 2.4rem; border-bottom: 1px solid var(--line); padding-bottom: .25rem; }
+h3 { font-size: 1.15rem; margin-top: 1.8rem; }
+a { color: var(--accent); }
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .92rem; }
+th, td { border: 1px solid var(--line); padding: .45rem .6rem; vertical-align: top; }
+th { background: #f0f4f8; text-align: left; }
+tr:nth-child(even) td { background: #fafbfc; }
+blockquote { border-left: 4px solid var(--accent); margin: 1rem 0; padding: .25rem 1rem; color: var(--muted); background: #f6fbf9; }
+code { background: #f0f4f8; padding: .1rem .3rem; border-radius: 3px; font-size: .9em; }
+pre { background: #f0f4f8; padding: .8rem; overflow-x: auto; border-radius: 4px; }
+#TOC { background: #f6f8fa; border: 1px solid var(--line); padding: .8rem 1.2rem; border-radius: 4px; }
+#TOC ul { list-style: none; padding-left: 1rem; }
+@media print { body { max-width: none; margin: 0; } h2 { page-break-after: avoid; } table { page-break-inside: avoid; } #TOC { display: none; } }

@@ -437,8 +437,9 @@ public class BookingsController(
         // check, which would answer "too many guests (0)" for a property without guest capacity.
         PropertyRentalModeRules.EnsureShortRent(property);
 
-        // ADR-001-R10: direct booking for CHF properties not supported in phase 1 (deferred per D-02).
-        if (property.Currency != "EUR")
+        // A CHF house is booked like any other, in its own currency (CHF-MONEY, which supersedes ADR-001-R10); only a currency the
+        // product does not take (neither EUR nor CHF) is refused.
+        if (!StayCurrency.IsSupported(property.Currency))
         {
             return this.ApiProblem(
                 StatusCodes.Status501NotImplemented,
@@ -500,7 +501,11 @@ public class BookingsController(
         var created = await bookingService.CreateManualBookingAsync(booking, NewGuestSnapshot(property.OrgId, request.Guest));
         var loaded = await bookingService.GetBookingAsync(created.Id);
         var response = loaded is null ? BookingMapper.ToResponse(created) : BookingMapper.ToResponse(loaded);
-        logger.LogInformation("Manual booking created: {BookingId}, tourist tax: {Tax} EUR", created.Id, created.TouristTax);
+        logger.LogInformation(
+            "Manual booking created: {BookingId}, tourist tax: {Tax} {Currency}",
+            created.Id,
+            created.TouristTax,
+            StayCurrency.ForProperty(property));
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, response);
     }
 

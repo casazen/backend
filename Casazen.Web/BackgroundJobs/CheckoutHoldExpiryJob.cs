@@ -9,8 +9,9 @@ namespace Casazen.Web.BackgroundJobs;
 /// (<c>CancellationReason = CheckoutHoldExpired</c>). A hold whose guest has already paid or is paying is left to the
 /// payment webhook. Host bookings are never touched. "Pay at the property" requests (D5, BK-06) past their own deadline
 /// (<c>Booking.RequestExpiresAt</c>: email not confirmed in time, or no answer from the host) are cancelled by the same
-/// routine, and the guest of an unanswered request gets an email. Runbooks: <c>docs/runbooks/hangfire.md</c>,
-/// <c>docs/runbooks/direct-booking.md</c>.
+/// routine, and the guest of an unanswered request gets an email. After the expiry, the payments a booking cancelled elsewhere
+/// left <c>Pending</c> or <c>Failed</c> become <c>Canceled</c> (their intents released the same way; the booking is not touched).
+/// Runbooks: <c>docs/runbooks/hangfire.md</c>, <c>docs/runbooks/direct-booking.md</c>.
 /// </summary>
 public class CheckoutHoldExpiryJob(
     ICheckoutHoldExpiryService expiryService,
@@ -40,24 +41,48 @@ public class CheckoutHoldExpiryJob(
         }
 
         var run = await expiryService.ExpireDueHoldsAsync(cancellationToken);
-        if (run == CheckoutHoldExpiryRun.Empty)
+        if (run != CheckoutHoldExpiryRun.Empty)
+        {
+            if (run.Failed > 0)
+            {
+                logger.LogWarning(
+                    "Checkout hold expiry: {Expired} expired, {LeftToWebhook} left to the payment webhook, {Skipped} skipped, {Failed} failed (retried by the next run)",
+                    run.Expired,
+                    run.LeftToWebhook,
+                    run.Skipped,
+                    run.Failed);
+            }
+            else
+            {
+                logger.LogInformation(
+                    "Checkout hold expiry: {Expired} expired, {LeftToWebhook} left to the payment webhook, {Skipped} skipped",
+                    run.Expired,
+                    run.LeftToWebhook,
+                    run.Skipped);
+            }
+        }
+
+        // Last, the payments a cancelled booking left open (cancelled by an older cleanup, or by any path that did not carry its
+        // payments): a payment of a cancelled booking is never money to collect, so it must not be listed as such for ever.
+        var closed = await expiryService.CloseOpenPaymentsOfCancelledBookingsAsync(cancellationToken);
+        if (closed == CancelledBookingPaymentsRun.Empty)
             return;
 
-        if (run.Failed > 0)
+        if (closed.Failed > 0)
         {
             logger.LogWarning(
-                "Checkout hold expiry: {Expired} expired, {LeftToWebhook} left to the payment webhook, {Skipped} skipped, {Failed} failed (retried by the next run)",
-                run.Expired,
-                run.LeftToWebhook,
-                run.Skipped,
-                run.Failed);
+                "Payments of cancelled bookings: {Closed} closed, {InFlight} paid or in flight on Stripe, {Skipped} skipped, {Failed} failed (retried by the next run)",
+                closed.Closed,
+                closed.InFlight,
+                closed.Skipped,
+                closed.Failed);
             return;
         }
 
         logger.LogInformation(
-            "Checkout hold expiry: {Expired} expired, {LeftToWebhook} left to the payment webhook, {Skipped} skipped",
-            run.Expired,
-            run.LeftToWebhook,
-            run.Skipped);
+            "Payments of cancelled bookings: {Closed} closed, {InFlight} paid or in flight on Stripe, {Skipped} skipped",
+            closed.Closed,
+            closed.InFlight,
+            closed.Skipped);
     }
 }

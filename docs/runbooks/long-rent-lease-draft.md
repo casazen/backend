@@ -162,8 +162,8 @@ order of the steps), with `counts { block, warn, info, ok }`. No personal data i
 
 | Severity | Codes |
 |---|---|
-| `Block` | the needs of steps 1 to 5 (same code, same step, same params): the review and the "what is left" list never disagree. For an imported contract `ape_missing` and `cadastral_missing` are `Warn` |
-| `Warn` | `property_short_mode` (the property is let for short stays, LR-D15: a warning, not a block) · `start_in_past` (`start`; not for an imported contract, which is already in force) · `lease_overlap` (`count`: another contract of the property, not rejected and not a draft nobody handed out for signature, in the dates of the first period; LR-D14: a warning, one can let by rooms) · `rent_outside_indicative_band` (`minMonthly`, `maxMonthly`) · `template_data_missing` (the template is approved but the draft lacks data it uses) |
+| `Block` | the needs of steps 1 to 5 (same code, same step, same params): the review and the "what is left" list never disagree. For an imported contract `ape_missing` and `cadastral_missing` are `Warn`. Also `lease_overlap` (step 4; `conflictingLeaseId`, `conflictingFrom`, `conflictingTo`: another lease of the property covers some of the same days, § 18, LR-OVERLAP; it was a `Warn` with a `count` under decision LR-D14, reversed on 2026-10-25) |
+| `Warn` | `property_short_mode` (the property is let for short stays, LR-D15: a warning, not a block) · `start_in_past` (`start`; not for an imported contract, which is already in force) · `rent_outside_indicative_band` (`minMonthly`, `maxMonthly`) · `template_data_missing` (the template is approved but the draft lacks data it uses) |
 | `Info` | `documents_not_verified` (`count`) · `tenant_extra_eu` (the Questura communication, LT-07) · `template_not_approved` (LR-D28: to know, not a block) · `transitory_rent_band_to_check` (step 3, `inhabitants` 10000: **a transitory contract made in CasaZen only**, TR. In the municipalities with more inhabitants than that the rent has to be inside the bands of the territorial agreement, or the contract falls back to a 4+4 (D.M. 16/01/2017 art. 2 c. 2 and c. 6). CasaZen knows neither the inhabitants nor the agreement and has no calculator for the bands (TR-FU1): it tells the landlord to check it, it never blocks) |
 | `Ok` | `property_ok`, `ape_ok`, `cadastral_ok`, `landlords_ok` (`count`), `tenants_ok` (`count`), `rent_ok` (`amount`), `rent_in_band`, `deposit_ok` (`amount`, `rents`), `start_ok` (`start`, `end`, `months`) |
 
@@ -336,7 +336,7 @@ Deploy **on the test environment first**; the figures of § 9 are to be confirme
 | LR-D10 (a) | `sent` ("Scarica da firmare") needs the **explicit** confirmation of the review: 422 `lease_review_not_confirmed` otherwise |
 | LR-D11 (a) | A company as tenant with the cedolare secca: `cedolare_not_allowed_company`, a block of the review |
 | LR-D12 (a) | `Libero` and `Concordato` can be created; the student lease is kept as typed and reported as not available (`lease_type_not_available`); the transitory contract entered as an imported one (LR-13: done, `long-rent-lease-import.md`) and, since TR, can be made in CasaZen with the official Allegato B (§ 17) |
-| LR-D14 (a) | Overlap with another contract of the property: a warning of the review, not a block |
+| LR-D14 (a) | Overlap with another contract of the property: it was a warning of the review. **Reversed on 2026-10-25 (LR-OVERLAP, § 18): two leases of one property cannot cover the same days.** A block of the review (`lease_overlap`) and a 409 `lease_period_overlaps` where the lease becomes a contract |
 | LR-D15 (a) | A property let for short stays: a warning of the review, not a block |
 | LR-D28 | A template that is not approved: `sent` answers 422 `contract_template_not_approved`, the review says it as to know |
 | LR-D29 (a) | Figures of law only on the server (`GET /api/long-rent/rules`); to be confirmed by a lawyer before the production release |
@@ -423,3 +423,46 @@ transitory contract, as for the other types, and the preview is a BOZZA.
 - **Not done** (TR-FU1…TR-FU4 in the templates runbook): the calculator of the bands, the territorial agreement per comune, the data the model
   leaves out, and showing the need in the lease page. `POST /api/leases` (complete creation, no longer called by the interface) does not take
   the need, so a transitory contract made through it cannot get its final contract.
+
+## 18. Two leases cannot cover the same days (LR-OVERLAP)
+
+Task LR-OVERLAP (2026-10-25, product owner: «sullo stesso appartamento non può essere: se c'è già un contratto in essere nelle stesse date non
+posso crearne 2»). It reverses decision LR-D14 (one may let by rooms), which let a second lease through with a warning. The rule is
+`LeasePeriodRules` (Core), asked of the database by `LeasePeriodGuard` (Infrastructure).
+
+- **The days of a lease** are `[start, last day]`, both included. The last day is `TerminatedOn` when the lease was ended early (LR-14), otherwise
+  `CurrentTermEndDate`, the end of the period it is in now (a tacit renewal moves it forward). A lease ended early frees the days after its last
+  day. Two periods that follow each other (31 October, then 1 November) do not overlap.
+- **Which leases count.** Every lease of the property but the one asked about, except a rejected one (`Rejected`) and a draft that does not have
+  its two dates yet (the starting value `3000-01-01` of a column that was never typed). **A draft that has both dates counts**: it is a contract in
+  the making. Another org's leases are invisible (the tenant filter) and so are the leases of other properties. A lease deleted is gone.
+- **The soft answer, in the wizard.** As soon as the property and the dates are there, every answer that carries the `flow` of the draft
+  (`GET …/draft`, `PATCH …/draft`, the review and the "downloaded for signature" actions) has `flow.periodConflict`
+  `{ conflictingLeaseId, conflictingFrom, conflictingTo }` (`yyyy-MM-dd`, the lease with the earliest start among those in the way), or `null`. It is
+  not a need of a step and blocks nothing; the interface shows it with a link to the other lease. No name of a person is in it.
+- **The hard answer.** Where the lease becomes a contract the check is made again, under the lock of the property, and refused with **409
+  `lease_period_overlaps`** and the problem members `conflictingLeaseId`, `conflictingFrom`, `conflictingTo`, nothing written:
+  `POST …/review/confirm`, `POST …/sent` (when it is the first time), `POST …/import`, `POST …/signed-document` (offline signature) and
+  `POST …/signing` (the e-signature provider, also before the provider is called). The text is in `SharedResources` (`LeasePeriodOverlaps`, the two
+  days formatted as `d MMM yyyy`): «Per questo immobile c'è già un contratto dal 1 nov 2026 al 31 ott 2029. Due contratti non possono coprire gli
+  stessi giorni: apri quello esistente o cambia le date.» The review (`GET …/review`) lists the same fact as a `Block` check `lease_overlap` with the same
+  params, so the main button of the wizard leads to the step of the dates instead of confirming (the 409 is the answer for a race and for the other
+  steps).
+- **Saving the dates or the property of a draft is never refused** (it is the soft answer): the draft stays a draft; if the review was already
+  confirmed the save withdraws it as for any change of a value (§ 5), so a confirmed lease never moves its days by the back door.
+- **Concurrency.** The check and the step that writes run in one transaction, after the row lock of the lease, under the advisory lock
+  `pg_advisory_xact_lock` of `PostgresAdvisoryLocks.Scope.LeasePeriod` (key: the property id, `ToString("N")`). A request that waits for it sees what
+  the request ahead of it committed. The wait is limited to 5 seconds like the row lock (`lock_timeout`): after that 409 `lease_draft_conflict`, nothing
+  written, never a 500. The lock is always taken after the row of the lease, never before it: no cycle with another writer of the lease.
+  `LeasePeriodOverlapIntegrationTests` proves it on PostgreSQL (a request waits while another holds the lock and has not committed its lease).
+- **Not blocked, on purpose.** The tacit renewal job (`lease-term-renewal`) renews by law whatever CasaZen knows: if the renewed period would cover the
+  days of a lease that follows, the landlord has to record the notice or the early termination of the first lease (§ 10 of the aggregates runbook).
+  `POST /api/leases` (complete creation, no longer used by the interface) writes a draft and is not a step that makes a contract. The explicit
+  renewal or extension (`POST /api/leases/{id}/renewal`, LR-OPS-1b, [`lease-operations.md`](lease-operations.md) § 2.3) calls `LeasePeriodGuard.EnsureFreeAsync` with the new
+  period and answers 409 `lease_period_overlaps` like the other steps.
+- **Existing data is not touched.** No migration and no backfill: leases that already overlap stay as they are and only stop a *new* step.
+- **Open points** (proposed ids): LR-OVERLAP-FU1, the tacit renewal job does not look at the following lease (above); LR-OVERLAP-FU2, a draft with
+  both dates counts, so two drafts on the same days block each other until one is deleted or moved, and whether only confirmed drafts should count is a
+  decision of the product owner; LR-OVERLAP-FU3, the explicit renewal or extension action has to call the guard (done in LR-OPS-1b); LR-OVERLAP-FU4, the toast of
+  a refused confirmation shows the server text without the link (the review that is read again right after has it); LR-OVERLAP-FU5, a tool to find the
+  leases that already overlap in an environment (the test environment has two).

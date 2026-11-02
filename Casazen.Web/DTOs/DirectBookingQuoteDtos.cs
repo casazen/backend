@@ -57,7 +57,8 @@ public class DirectBookingQuoteResponse
     /// <summary>Base price + tourist tax when calculated (the tax is charged with the rest of the total).</summary>
     public decimal TotalPrice { get; set; }
 
-    public string Currency { get; set; } = "EUR";
+    /// <summary>ISO 4217 code of the property (EUR or CHF, <see cref="StayCurrency"/>): every amount here is in it, and the checkout charges in it.</summary>
+    public string Currency { get; set; } = StayCurrency.Default;
 
     /// <summary>What the checkout may offer and promise for this stay (A3-16).</summary>
     public DirectBookingPaymentOptionsDto PaymentOptions { get; set; } = new();
@@ -71,6 +72,15 @@ public class DirectBookingQuoteResponse
     /// numbers above (<see cref="TotalPrice"/> and the others) are unchanged.
     /// </summary>
     public IReadOnlyList<QuoteLineDto> Lines { get; set; } = [];
+
+    /// <summary>
+    /// What cancelling costs for this stay (DB-03b), on the cancellation policy of the stay (the catalog policy with the host's changes for a
+    /// stay under 28 nights): <c>fullRefundUntil</c> and <c>partialRefundUntil</c> are the last whole days (Europe/Rome, <c>yyyy-MM-dd</c>,
+    /// included) with the full and the partial refund, <c>partialRefundPercent</c> the share of the partial one. A window the policy does not
+    /// have, or that is already over, is <c>null</c>. <c>selfServiceAvailable</c>: the guest can cancel from the guest area (DB-08a); a
+    /// page shows the dates only when it is <c>true</c>. The same day as <c>paymentOptions.freeCancellationUntil</c> for the full refund.
+    /// </summary>
+    public StayCancellation? Cancellation { get; set; }
 
     public static DirectBookingQuoteResponse From(DirectBookingQuote quote) => new()
     {
@@ -87,11 +97,12 @@ public class DirectBookingQuoteResponse
         Currency = quote.Currency,
         PaymentOptions = DirectBookingPaymentOptionsDto.From(quote.PaymentOptions),
         Lines = StayPricing.Lines(quote).Select(QuoteLineDto.From).ToList(),
+        Cancellation = quote.Cancellation,
     };
 }
 
 /// <summary>
-/// One line of the price breakdown of a quote (DB-03). Amounts are in cents (euro cents, <c>Currency</c> of the quote), whole
+/// One line of the price breakdown of a quote (DB-03). Amounts are in cents (of the <c>Currency</c> of the quote), whole
 /// numbers, so the frontend adds integers and formats once.
 /// </summary>
 public class QuoteLineDto
@@ -127,8 +138,9 @@ public class DirectBookingPaymentOptionsDto
     public DateOnly? DeferredChargeDate { get; set; }
 
     /// <summary>
-    /// Last day the guest can cancel for free by themselves. Always null today: the guest has no self-service
-    /// cancellation (only the host cancels, BK-02), so the checkout must not promise one.
+    /// Last day the guest can cancel for free by themselves from the guest area (DB-08a): the last day of the full refund of the
+    /// stay's cancellation policy. Null when the property has no policy, the policy never refunds in full, or the day is past:
+    /// the checkout then promises no free cancellation.
     /// </summary>
     public DateOnly? FreeCancellationUntil { get; set; }
 

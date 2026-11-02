@@ -63,7 +63,8 @@ public static partial class PropertyAddress
     /// The coordinate as the public may see it: rounded to <see cref="PublicCoordinateScale"/> decimals (about 1 km), half
     /// away from zero. <c>0</c> stays <c>0</c> (the "not set" marker of a latitude and longitude that are both 0). Every
     /// public projection of <see cref="Property.Latitude"/> and <see cref="Property.Longitude"/> goes through here: the
-    /// public property DTOs, the JSON-LD of the crawler pages and any map built from them.
+    /// public property DTOs, the JSON-LD of the crawler pages and any map built from them. The maps do not show a "not set" position
+    /// as such: <c>PublicPropertyPosition</c> (Infrastructure) puts the property at the centre of its comune, with this same rounding.
     /// </summary>
     public static decimal ToPublicCoordinate(decimal coordinate) =>
         Math.Round(coordinate, PublicCoordinateScale, MidpointRounding.AwayFromZero);

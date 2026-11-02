@@ -7,7 +7,9 @@ namespace Casazen.Core.Services;
 /// Builds and validates object keys of <see cref="IFileStorage"/>. One place for the layout:
 /// <list type="bullet">
 /// <item><c>properties/{propertyId}/photos/{file}</c> — public bucket</item>
+/// <item><c>properties/{propertyId}/floorplans/{file}</c> — public bucket (DB-11a)</item>
 /// <item><c>suppliers/{supplierOrgId}/photos/{file}</c> — public bucket</item>
+/// <item><c>suppliers/{supplierOrgId}/showcase/{file}</c> — public bucket (logo, cover and photos of the jobs of the supplier's showcase, SP-13b)</item>
 /// <item><c>properties/{propertyId}/documents/{file}</c> — private bucket</item>
 /// <item><c>guest-documents/{orgId}/{guestId}/{file}</c> — private bucket</item>
 /// <item><c>orgs/{orgId}/branding/{logo|hero}/{file}</c> — public bucket (BK-12)</item>
@@ -24,8 +26,31 @@ public static partial class StorageKeys
     public static string PropertyPhoto(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/photos/{fileName}";
 
+    /// <summary>A floor plan image of a property (public bucket, DB-11a): shown on the property page of the booking site.</summary>
+    public static string PropertyFloorPlan(Guid propertyId, string fileName) =>
+        $"properties/{propertyId}/floorplans/{fileName}";
+
     public static string SupplierPhoto(Guid supplierOrgId, string fileName) =>
         $"suppliers/{supplierOrgId}/photos/{fileName}";
+
+    /// <summary>
+    /// The folder of a supplier in the public bucket (<c>suppliers/{supplierOrgId}/</c>): its profile and service photos and, later, the
+    /// media of its showcase. What the content of a showcase may point to (SP-13a); an object elsewhere is not the supplier's.
+    /// </summary>
+    public static string SupplierFolder(Guid supplierOrgId) =>
+        $"suppliers/{supplierOrgId}/";
+
+    /// <summary>
+    /// The folder of the images of a supplier's showcase (<c>suppliers/{supplierOrgId}/showcase/</c>, SP-13b), inside <see cref="SupplierFolder"/>:
+    /// the logo, the cover and the photos of the jobs the supplier uploaded from the editor. A file here is one the upload stored (the content of
+    /// a showcase may point only to those, never to a name somebody made up).
+    /// </summary>
+    public static string SupplierShowcaseFolder(Guid supplierOrgId) =>
+        $"suppliers/{supplierOrgId}/showcase/";
+
+    /// <summary>An image of a supplier's showcase (public bucket, SP-13b); <paramref name="fileName"/> is random: nobody can guess the address of another one.</summary>
+    public static string SupplierShowcaseImage(Guid supplierOrgId, string fileName) =>
+        $"suppliers/{supplierOrgId}/showcase/{fileName}";
 
     public static string PropertyDocument(Guid propertyId, string fileName) =>
         $"properties/{propertyId}/documents/{fileName}";

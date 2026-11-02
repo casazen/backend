@@ -88,6 +88,10 @@ builder.Services.AddScoped<IGuestService, GuestService>();
 builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddScoped<ITouristTaxService, TouristTaxService>();
+builder.Services.AddScoped<IStatementService, StatementService>();
+builder.Services.AddScoped<IAgencyInvoiceService, AgencyInvoiceService>();
+builder.Services.AddScoped<IWireTransferService, WireTransferService>();
+builder.Services.AddScoped<IWithholdingService, WithholdingService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddCasazenEmail(builder.Configuration, builder.Environment);
 // Push notifications queued on Hangfire, sent to Expo in batches, receipts read later: MO-04.
@@ -107,6 +111,8 @@ builder.Services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
 builder.Services.AddScoped<IGdprService, GdprService>();
 builder.Services.AddScoped<IAlloggiatiWebService, AlloggiatiWebService>();
 builder.Services.AddScoped<IPricingAdapterService, PricingAdapterService>();
+// «Calcola con l'AI» of the step «Prezzi» of the property wizard: the AI proposes the nightly rate (WIZ-AI-PRICE)
+builder.Services.AddScoped<IListingPriceSuggestionService, ListingPriceSuggestionService>();
 builder.Services.AddCasazenAiProvider(builder.Configuration);
 // Agency tier B2B services
 builder.Services.AddScoped<ITrustedSupplierService, TrustedSupplierService>();
@@ -126,6 +132,8 @@ builder.Services.AddCasazenLeaseSigning(builder.Configuration);
 builder.Services.AddCasazenLongRentLeaseDrafts();
 // The end of a lease in force: the tacit renewal job, the notice of non-renewal, the early termination (LR-14)
 builder.Services.AddCasazenLongRentLeaseTerm();
+// What the landlord can do about the end of a lease: the letters CasaZen prepares, drafts until the product owner approves them (LR-OPS-1)
+builder.Services.AddCasazenLongRentLeaseOperations(builder.Configuration);
 
 // OTA partner adapters with resilience patterns: registered only with Features:OtaPartnerApi on (D10, FD-20)
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
@@ -188,6 +196,8 @@ builder.Services.AddScoped<GuestCheckInSendJob>();
 builder.Services.AddScoped<CheckoutHoldExpiryJob>();
 // SP-04: cancels the service requests nobody answered in time (scheduled only with Features:SupplierRequestAutoCancel on).
 builder.Services.AddScoped<ServiceRequestAutoCancelJob>();
+// SP-BKP: follows the windows of the groups of backup suppliers (always scheduled: the flag only gates the creation of groups).
+builder.Services.AddScoped<ServiceRequestGroupJob>();
 // SP-10: upkeep of the bookings from the suppliers' public showcases (holds, unanswered requests) and the reminders of the day
 // before; both are scheduled whatever the feature flags say.
 builder.Services.AddScoped<ServiceRequestExpiryJob>();

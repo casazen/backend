@@ -26,7 +26,8 @@ Staff-only, and only outside Production. In Production `GET /api/admin/demo` rep
 - Casa Trastevere (Roma), published, with the Lazio documents;
 - Bilocale Navigli, long-term, with invented cadastral data;
 - Monolocale in attivazione, left unpublished so the activation wizard is visible;
-- two direct bookings on the villa (one coming, one finished) with guests at `@example.com`.
+- two direct bookings on the villa (one coming, one finished) with guests at `@example.com`;
+- the demo guest of the mobile app (`DemoShowcaseCatalog.GuestAppEmail`, `ospite.app.demo@example.com`, scenario `guest-app-account`): three stays of the public checkout on the villa (`Source = Direct`: one coming and confirmed, one finished, one cancelled by the guest), paid at the property, so nothing reaches Stripe. They are what «Le mie prenotazioni» of the app shows to the store reviewers. The Auth0 account with that email is created **by hand**, with the email marked as verified: [auth0.md](auth0.md) § 12. The showcase exists only outside Production, so these bookings exist on the test API only.
 
 The optional checkbox soft-deletes other unpublished short-stay listings of that organization that have no booking. It does not delete published host listings.
 

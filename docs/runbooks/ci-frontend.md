@@ -59,9 +59,9 @@ Workflow `casazen/mobile/.github/workflows/ci.yml` (task FD-03, audit defects A9
 |---|---|
 | Install | `npm ci` |
 | Typecheck | `npm run typecheck` (`tsc --noEmit`) |
-| Lint | `npm run lint` (`eslint .`, flat config `eslint-config-expo/flat` + `eslint-plugin-react-hooks`, 0 errors) |
+| Lint | `npm run lint` (`eslint .`, flat config `eslint-config-expo/flat`, which brings `eslint-plugin-react-hooks` 7, 0 errors) |
 | Unit tests | `npm test -- --ci` (jest, preset `jest-expo`) |
-| Bundle | `npx expo export --platform android --output-dir dist` (Metro + Hermes bytecode, no native build, no EAS account) |
+| Bundle | `npx expo export --platform android --output-dir dist` and `--platform ios --output-dir dist-ios` (Metro + Hermes bytecode, no native build, no EAS account) |
 
 Make it required on `develop` and `main` as in section 1, with the check name above:
 
@@ -78,7 +78,8 @@ No secrets or variables are needed. The bundle is built without `EXPO_PUBLIC_*`,
 
 Mobile-specific notes (details in `casazen/mobile/README.md`, section CI):
 
-- Keep `"lint": "eslint ."`. `expo lint` on SDK 52 does not see the flat config and would generate a legacy `.eslintrc.js`.
+- Keep `"lint": "eslint ."`: the same command locally and in CI, with the flat config `eslint.config.js`. (Expo SDK 57; on SDK 52 `expo lint` did not see the flat config and would have generated a legacy `.eslintrc.js`, hence the plain `eslint`.)
+- Node.js: the job uses `'22'` (the latest 22.x); Expo SDK 57 / React Native 0.86 need Node 22.13 or newer. The Maestro job uses JDK 17 (Gradle 9, Android Gradle Plugin 8.12) and builds the `android/` project that `expo prebuild` generates inside the job: that folder is not in the repository.
 - `expo-asset` must stay a direct dependency: otherwise npm nests it under `expo/` and `expo export` / `expo start` fail with "The required package `expo-asset` cannot be found".
 
 ## Rules for future changes

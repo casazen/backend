@@ -87,7 +87,10 @@ public sealed record BookingTimelineData
     /// <summary>The term of a request that waits (UTC).</summary>
     public DateTime? ExpiresAt { get; init; }
 
-    /// <summary>Why a booking was cancelled by the system (or the request the host declined); <c>null</c> for a person's cancellation.</summary>
+    /// <summary>
+    /// Why a booking was cancelled by the system (or the request the host declined), or <see cref="BookingCancellationReason.GuestRequested"/>
+    /// when the guest cancelled it themselves; <c>null</c> for the host's cancellation.
+    /// </summary>
     public BookingCancellationReason? Reason { get; init; }
 
     /// <summary>The reason the host wrote when cancelling; host only, never sent to the guest.</summary>

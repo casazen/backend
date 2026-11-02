@@ -71,7 +71,8 @@ public sealed record GuestExportBooking(
     decimal TouristTaxAmount,
     string SpecialRequests,
     DateTime CreatedAt,
-    IReadOnlyList<GuestExportPayment> Payments);
+    IReadOnlyList<GuestExportPayment> Payments,
+    string? ExpectedArrivalTime = null);
 
 public sealed record GuestExportPayment(
     decimal Amount,

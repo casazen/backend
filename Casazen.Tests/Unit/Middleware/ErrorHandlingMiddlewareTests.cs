@@ -127,6 +127,21 @@ public class ErrorHandlingMiddlewareTests
     }
 
     [Fact]
+    public async Task InvokeAsync_DomainPayloadTooLargeException_Returns413_AndUnsupportedMediaType_Returns415_WithTheirOwnCodes()
+    {
+        // SP-13b: the images of the showcase.
+        var large = await InvokeAsync(new DomainPayloadTooLargeException("showcase_media_too_large", "ShowcaseMediaLogoTooLarge"));
+        var wrong = await InvokeAsync(new DomainUnsupportedMediaTypeException("showcase_media_unsupported_type", "ShowcaseMediaUnsupportedType"));
+
+        Assert.Equal(StatusCodes.Status413PayloadTooLarge, large.Status);
+        Assert.Equal("showcase_media_too_large", large.Code);
+        Assert.StartsWith("Il logo supera i 200 KB", large.Detail);
+        Assert.Equal(StatusCodes.Status415UnsupportedMediaType, wrong.Status);
+        Assert.Equal("showcase_media_unsupported_type", wrong.Code);
+        Assert.StartsWith("Puoi caricare solo immagini PNG, JPG o WebP", wrong.Detail);
+    }
+
+    [Fact]
     public async Task InvokeAsync_DomainForbiddenAndGone_EnglishUiCulture_ReturnEnglishDetail()
     {
         var forbidden = await InvokeAsync(new DomainForbiddenException("org_owner_required", "OrgOwnerRequired"), culture: "en");

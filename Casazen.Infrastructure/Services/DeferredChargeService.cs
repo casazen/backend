@@ -88,7 +88,6 @@ public sealed class DeferredChargeService(
     ILogger<DeferredChargeService> logger,
     TimeProvider? timeProvider = null)
 {
-    private const string Currency = "eur";
     private const string PaymentIntentUnexpectedStateCode = "payment_intent_unexpected_state";
 
     /// <summary>PaymentIntent statuses the guest (or a new off-session attempt) can still pay.</summary>
@@ -344,7 +343,7 @@ public sealed class DeferredChargeService(
                 booking.StripeCustomerId!,
                 booking.StripePaymentMethodId!,
                 ToCents(booking.TotalPrice),
-                Currency,
+                await StripeCurrencyOfAsync(booking, cancellationToken),
                 new Dictionary<string, string>
                 {
                     ["bookingId"] = booking.Id.ToString(),
@@ -369,6 +368,21 @@ public sealed class DeferredChargeService(
         // Succeeded or processing (the guest paid from the link, the webhook is late), or canceled on Stripe (outside
         // CasaZen: no new charge).
         return existing;
+    }
+
+    /// <summary>
+    /// The currency of the charge, the way Stripe wants it: the one of the property of the booking (CHF-MONEY), the one the stay was priced
+    /// in. Read as a single column with the query filters off, not with an <c>Include</c>: the booking is already in the system, and a
+    /// property that was soft-deleted since must not make the charge of a stay that is owed disappear from the job.
+    /// </summary>
+    private async Task<string> StripeCurrencyOfAsync(Booking booking, CancellationToken cancellationToken)
+    {
+        var currency = await db.Properties
+            .IgnoreQueryFilters()
+            .Where(p => p.Id == booking.PropertyId)
+            .Select(p => p.Currency)
+            .FirstOrDefaultAsync(cancellationToken);
+        return StayCurrency.ForStripe(currency);
     }
 
     /// <summary>A deferred charge PaymentIntent of this booking on the customer, not canceled: an attempt whose answer was lost.</summary>

@@ -40,17 +40,20 @@ public sealed record PublicServicePayment(
     DateTime? ValidUntil);
 
 /// <summary>
-/// What Stripe.js needs to confirm the payment with the Payment Element on the supplier's connected account (the same shape as
-/// the rent payment session).
+/// What Stripe.js needs to confirm the payment with the Payment Element: on the supplier's connected account for a direct charge (the same
+/// shape as the rent payment session), on the platform's own account for the money CasaZen holds (SP-15c-b).
 /// </summary>
 /// <param name="ClientSecret">A credential: sent once to the payer's browser, never logged and never stored.</param>
 /// <param name="PublishableKey">The platform's publishable key.</param>
-/// <param name="StripeAccountId">The supplier's connected account (<c>acct_…</c>), needed by Stripe.js to load the PaymentIntent.</param>
+/// <param name="StripeAccountId">
+/// The supplier's connected account (<c>acct_…</c>), needed by Stripe.js to load the PaymentIntent of a direct charge; <b>null</b> for the money
+/// CasaZen holds, whose PaymentIntent is on the platform: Stripe.js is then loaded with the publishable key alone.
+/// </param>
 public sealed record ServicePaymentSession(
     Guid PaymentId,
     string ClientSecret,
     string PublishableKey,
-    string StripeAccountId,
+    string? StripeAccountId,
     int AmountCents,
     string Currency);
 

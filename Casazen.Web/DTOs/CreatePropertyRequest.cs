@@ -130,6 +130,56 @@ public class CreatePropertyRequest
     [MaxLength(1000, ErrorMessage = "PropertyHouseRulesTooLong")]
     public string HouseRules { get; set; } = string.Empty;
 
+    // The fields of the wizard «Aggiungi immobile» (SR-07a). All optional: left out they are not set, which is how every
+    // client that does not know them (the forms of today, the long-rent form) keeps behaving.
+
+    /// <summary>The kind of accommodation (<c>Apartment</c>, <c>HouseOrVilla</c>, <c>TrulloOrMasseria</c>, <c>LoftOrPenthouse</c>, <c>RoomOrSuite</c>); left out = not set.</summary>
+    public AccommodationType? AccommodationType { get; set; }
+
+    /// <summary>Number of beds (1–100); left out = not set.</summary>
+    [Range(PropertyHouseRules.MinBeds, PropertyHouseRules.MaxBeds, ErrorMessage = "PropertyBedsRange")]
+    public int? Beds { get; set; }
+
+    /// <summary>Living area in square metres (1–9999); left out = not set.</summary>
+    [Range(PropertyHouseRules.MinAreaSqm, PropertyHouseRules.MaxAreaSqm, ErrorMessage = "PropertyAreaSqmRange")]
+    public int? AreaSqm { get; set; }
+
+    /// <summary>The headline of the listing, at most 60 characters; left out or blank = the listing uses the name.</summary>
+    [MaxLength(PropertyHouseRules.ListingTitleMaxLength, ErrorMessage = "PropertyListingTitleTooLong")]
+    public string? ListingTitle { get; set; }
+
+    /// <summary>
+    /// «Mostra la casa sul sito»: <c>true</c> or left out (the default) = the property is on the booking site as soon as it is
+    /// activated; <c>false</c> = the host keeps it off. It never publishes anything on its own: the activation is still needed.
+    /// </summary>
+    public bool? PublishedOnSite { get; set; }
+
+    /// <summary>The earliest time guests can arrive, <c>HH:mm</c> on the property's clock; left out = not set.</summary>
+    public TimeOnly? CheckInFrom { get; set; }
+
+    /// <summary>The time by which guests must leave, <c>HH:mm</c> on the property's clock; left out = not set.</summary>
+    public TimeOnly? CheckOutBy { get; set; }
+
+    /// <summary>Smoking (<c>No</c>, <c>OutdoorsOnly</c>, <c>Yes</c>); <c>Yes</c> puts the amenity <c>SmokingAllowed</c> in the list and any other answer takes it out; left out = not set.</summary>
+    public SmokingPolicy? SmokingPolicy { get; set; }
+
+    /// <summary>Pets (<c>No</c>, <c>OnRequest</c>, <c>Yes</c>); <c>Yes</c> puts the amenity <c>PetFriendly</c> in the list and any other answer takes it out; left out = not set.</summary>
+    public PetsPolicy? PetsPolicy { get; set; }
+
+    /// <summary>Parties and events (<c>No</c>, <c>OnRequest</c>); left out = not set.</summary>
+    public PartiesPolicy? PartiesPolicy { get; set; }
+
+    /// <summary>Quiet hours start, <c>HH:mm</c>; sent together with <see cref="QuietHoursTo"/> or not at all (422 <c>property_quiet_hours_incomplete</c>).</summary>
+    public TimeOnly? QuietHoursFrom { get; set; }
+
+    /// <summary>Quiet hours end, <c>HH:mm</c>; sent together with <see cref="QuietHoursFrom"/> or not at all.</summary>
+    public TimeOnly? QuietHoursTo { get; set; }
+
+    /// <summary>What the host asks per night for each extra guest, in euros (0–1000); left out = extra guests are not accepted. A house rule: the price of a stay does not add it.</summary>
+    [Range(typeof(decimal), "0", "1000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true,
+        ErrorMessage = "PropertyExtraGuestFeeRange")]
+    public decimal? ExtraGuestFeePerNight { get; set; }
+
     /// <summary>
     /// Italian Codice Identificativo Nazionale (CIN), e.g. <c>IT058091C27G5FFZDZ</c>. Spaces and hyphens are
     /// ignored and the value is stored normalized (see <c>CinFormat</c>).
@@ -198,6 +248,19 @@ public class CreatePropertyRequest
         DamageDeposit = DamageDeposit,
         Amenities = Amenities,
         HouseRules = HouseRules,
+        AccommodationType = AccommodationType,
+        Beds = Beds,
+        AreaSqm = AreaSqm,
+        ListingTitle = ListingTitle,
+        PublishedOnSite = PublishedOnSite ?? true,
+        CheckInFrom = CheckInFrom,
+        CheckOutBy = CheckOutBy,
+        SmokingPolicy = SmokingPolicy,
+        PetsPolicy = PetsPolicy,
+        PartiesPolicy = PartiesPolicy,
+        QuietHoursFrom = QuietHoursFrom,
+        QuietHoursTo = QuietHoursTo,
+        ExtraGuestFeePerNight = ExtraGuestFeePerNight,
         CinCode = CinCode,
         Timezone = Timezone,
         CancellationPolicyId = CancellationPolicyId,

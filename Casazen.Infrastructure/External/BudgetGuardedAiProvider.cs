@@ -59,6 +59,57 @@ public sealed class BudgetGuardedAiProvider(
     }
 
     /// <summary>
+    /// The same guard for a call with instructions and images: the reservation counts every image
+    /// (<see cref="AiTokenEstimator.TokensPerImage"/>), and so does the estimate of a provider that reports no usage — only the
+    /// images the model actually received.
+    /// </summary>
+    public async Task<AiGenerationResult> GenerateAsync(
+        AiRequest request,
+        AiModelTier tier,
+        string cacheKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var text = request.ToTextPrompt();
+        var reservation = await budget.ReserveAsync(
+            AiTokenEstimator.EstimateCall(request, maxCompletionTokens),
+            cancellationToken);
+
+        AiGenerationResult result;
+        try
+        {
+            result = await inner.GenerateAsync(request, tier, cacheKey, cancellationToken);
+        }
+        catch
+        {
+            await SettleSafelyAsync(reservation, AiTokenEstimator.Estimate(text));
+            throw;
+        }
+
+        if (result.FromCache)
+        {
+            await SettleSafelyAsync(reservation, 0);
+            return result;
+        }
+
+        var reported = result.PromptTokens > 0 || result.CompletionTokens > 0;
+        var (promptTokens, completionTokens) = AiTokenEstimator.UsedOrEstimated(
+            result.PromptTokens,
+            result.CompletionTokens,
+            text,
+            result.Content);
+        if (!reported)
+            promptTokens += (long)result.ImagesRead * AiTokenEstimator.TokensPerImage;
+        await SettleSafelyAsync(reservation, promptTokens + completionTokens);
+
+        return result with
+        {
+            PromptTokens = (int)Math.Min(promptTokens, int.MaxValue),
+            CompletionTokens = (int)Math.Min(completionTokens, int.MaxValue),
+        };
+    }
+
+    /// <summary>
     /// Settles even when the caller's request was cancelled: the tokens were spent anyway. A failed settlement leaves
     /// the (higher) reservation in place, which errs on the side of the cap.
     /// </summary>

@@ -116,9 +116,10 @@ public class LeaseDraftsController(
 
     /// <summary>
     /// The review of the draft: <c>checks</c> (<c>code</c>, <c>severity</c> Block · Warn · Info · Ok, <c>step</c>, <c>params</c>),
-    /// worst first. Blocks are what the flow says is missing; warnings are a start date already past, another contract of the
-    /// property in the same dates (one lets by rooms), a property let for short stays; to know: a non-EU tenant (Questura), a
-    /// template not approved yet. No personal data in the parameters.
+    /// worst first. Blocks are what the flow says is missing and another lease of the property that covers some of the same days
+    /// (<c>lease_overlap</c>, params <c>conflictingLeaseId</c>, <c>conflictingFrom</c>, <c>conflictingTo</c>; LR-OVERLAP); warnings are
+    /// a start date already past and a property let for short stays; to know: a non-EU tenant (Questura), a template not approved
+    /// yet. No personal data in the parameters.
     /// </summary>
     [HttpGet("{id:guid}/review")]
     [ProducesResponseType(typeof(LeaseReviewView), StatusCodes.Status200OK)]
@@ -132,7 +133,9 @@ public class LeaseDraftsController(
 
     /// <summary>
     /// Confirms the review: saves the moment and the impression of the values of the first five steps. 422 <c>lease_review_blocked</c>
-    /// while a check blocks. The body may be omitted; with <c>version</c> it is refused (409) if the draft moved on.
+    /// while a check blocks; 409 <c>lease_period_overlaps</c> (with <c>conflictingLeaseId</c>, <c>conflictingFrom</c>, <c>conflictingTo</c>)
+    /// when another lease of the property covers some of the same days (LR-OVERLAP). The body may be omitted; with <c>version</c> it is
+    /// refused (409) if the draft moved on.
     /// </summary>
     [HttpPost("{id:guid}/review/confirm")]
     [ProducesResponseType(typeof(LeaseDraftReviewResult), StatusCodes.Status200OK)]
@@ -159,7 +162,8 @@ public class LeaseDraftsController(
     /// Marks the contract as downloaded for the signature on paper: it needs the confirmed review and passes the same gate as
     /// <c>GET contract.pdf</c>, so the state never says something that download would refuse: 422
     /// <c>contract_template_not_approved</c> while the template is not approved (nothing changes), 422 <c>contract_data_missing</c>,
-    /// 422 <c>lease_review_not_confirmed</c>. It does not change the status of the lease: the signature stays the offline one.
+    /// 422 <c>lease_review_not_confirmed</c>, 409 <c>lease_period_overlaps</c> when another lease of the property has taken some of the
+    /// same days since (LR-OVERLAP). It does not change the status of the lease: the signature stays the offline one.
     /// </summary>
     [HttpPost("{id:guid}/sent")]
     [ProducesResponseType(typeof(LeaseDraftSentResult), StatusCodes.Status200OK)]
@@ -227,7 +231,8 @@ public class LeaseDraftsController(
     /// already registered, is declared afterwards with <c>POST api/leases/{id}/registration/manual</c>. 409 <c>lease_not_draft</c>
     /// (also for a second import), 409 <c>lease_draft_conflict</c> (the lease is busy: nothing was written), 422
     /// <c>lease_import_not_imported_origin</c>, <c>lease_review_blocked</c>, <c>lease_signed_contract_invalid</c>,
-    /// <c>lease_stipula_date_in_future</c>. Multipart fields: <c>stipulaDate</c> and the signed PDF, either <c>signedContract</c> (the
+    /// <c>lease_stipula_date_in_future</c>; 409 <c>lease_period_overlaps</c> when another lease of the property covers some of the same
+    /// days (LR-OVERLAP; <c>conflictingLeaseId</c>, <c>conflictingFrom</c>, <c>conflictingTo</c>). Multipart fields: <c>stipulaDate</c> and the signed PDF, either <c>signedContract</c> (the
     /// file) or <c>contractDocumentId</c> (the contract document already uploaded to this draft, NL-DOCS; 404 <c>document_not_found</c>
     /// for another lease's or another org's), exactly one of the two (400 otherwise). Answers the masked detail of the lease, as
     /// <c>signed-document</c> does.

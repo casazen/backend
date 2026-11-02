@@ -85,7 +85,9 @@ public class PublicSupplierBookingIntegrationTests(PublicBookingFactory factory)
         Assert.Contains(factory.EmailsTo(email), e => e.Template == EmailTemplates.Names.SupplierBookingReceipt);
         var toSupplier = Assert.Single(factory.EmailsTo(supplier.ContactEmail), e => e.Template == EmailTemplates.Names.SupplierBookingNewRequest);
         Assert.DoesNotContain("Rossi", toSupplier.Content.Subject + toSupplier.Content.HtmlBody);
-        Assert.Contains(factory.Pushes.ToArray(), p => p.Audience == PushAudience.SupplierOrg(supplier.OrgId));
+        Assert.Contains(
+            factory.Pushes.ToArray(),
+            p => p.Audience == PushAudience.SupplierOrg(supplier.OrgId) && PushRoutes.IsAppRoute(p.Payload.Route) && p.Payload.Route.StartsWith("/supplier/requests/", StringComparison.Ordinal));
 
         // 5. The supplier sees "Nome C." and the comune; the street waits for the take.
         var inbox = await supplier.InboxAsync(factory);
@@ -857,7 +859,7 @@ internal static class PublicBookingTestData
     /// <summary>The hold and the token of the link in a verification e-mail.</summary>
     public static (Guid HoldId, string Token) LinkOf((string? To, EmailContent Content, string Template) email)
     {
-        var match = Regex.Match(email.Content.HtmlBody, "hold=([0-9a-fA-F-]{36})&amp;token=([A-Za-z0-9_-]+)");
+        var match = Regex.Match(email.Content.HtmlBody, "hold=([0-9a-fA-F-]{36})#token=([A-Za-z0-9_-]+)");
         Assert.True(match.Success, "the verification e-mail has no link with the hold and the token");
         return (Guid.Parse(match.Groups[1].Value), match.Groups[2].Value);
     }

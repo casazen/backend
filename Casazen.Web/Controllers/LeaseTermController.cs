@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Authorization;
 using Casazen.Core.DTOs.Leases;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Leases;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Web.Authorization;
@@ -68,10 +69,11 @@ public class LeaseTermController(
     }
 
     /// <summary>
-    /// Ends the lease on <c>on</c>, its last day (from the start of the lease up to the end of the current period; a day in the past is
-    /// allowed): the end of the period becomes that day, the renewal stops for good and the installments of the rent plan that start after it
-    /// and are not paid are cancelled (a payment made or in flight is never touched). <b>Irreversible</b>: there is no way back, so the
-    /// interface asks to confirm first. 422 <c>lease_termination_date_invalid</c>; 409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>,
+    /// Ends the lease on <c>on</c>, its last day: after the start of the lease and no later than the end of the current period (a day in the
+    /// past is allowed), and only once the lease has begun (LR-TERM): the end of the period becomes that day, the renewal stops for good and
+    /// the installments of the rent plan that start after it and are not paid are cancelled (a payment made or in flight is never touched).
+    /// <b>Irreversible</b>: there is no way back, so the interface asks to confirm first. 422 <c>lease_termination_date_invalid</c> with
+    /// <c>min</c> and <c>max</c> (the first and last day that would do); 409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>,
     /// <c>lease_busy</c>.
     /// </summary>
     [HttpPost("{id:guid}/terminate")]
@@ -82,6 +84,44 @@ public class LeaseTermController(
             return denied;
 
         await terms.TerminateAsync(id, dto.On!.Value, cancellationToken);
+        return await DetailAsync(id);
+    }
+
+    /// <summary>
+    /// Records the withdrawal (recesso) the tenant sent and ends the lease on the day its notice runs out (LR-OPS-1): <c>receivedOn</c> (a day
+    /// from the start of the lease up to today) plus the months of notice of the rules for serious reasons, or <c>noticeMonths</c> (1 to 12) when
+    /// the contract gave the faculty. It is the early termination of <c>terminate</c> with the same rules and the same effects, and <b>irreversible</b>
+    /// like it. 422 <c>lease_withdrawal_date_invalid</c>, <c>lease_withdrawal_notice_invalid</c>, <c>lease_termination_date_invalid</c> (the day the
+    /// notice runs out is not inside the period, with <c>min</c> and <c>max</c>); 409 <c>lease_not_in_force</c>, <c>lease_already_terminated</c>,
+    /// <c>lease_busy</c>. Nothing is written to the tenant.
+    /// </summary>
+    [HttpPost("{id:guid}/withdrawal")]
+    [ProducesResponseType(typeof(LeaseDetailDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RecordWithdrawal(Guid id, [FromBody] RecordTenantWithdrawalDto dto, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        await terms.RecordWithdrawalAsync(id, dto.ReceivedOn!.Value, dto.Reason!.Value, dto.NoticeMonths, cancellationToken);
+        return await DetailAsync(id);
+    }
+
+    /// <summary>
+    /// Records the renewal of the lease before the end of its period (LR-OPS-1): the standard one (the months of the type) or, with `newEnd`, an
+    /// extension to a day the parties agreed on. The new period may not cover the days of another lease of the property (409
+    /// `lease_period_overlaps`), the end of the period moves forward and an active rent plan is extended to it. Only for a lease that renews by
+    /// itself, in the last stretch before its end (from the last day to give notice) and while no notice is recorded. 200 with the detail; 422
+    /// `lease_type_has_no_renewal`, `lease_renewal_not_yet`, `lease_renewal_end_invalid`; 409 `lease_not_in_force`, `lease_already_terminated`, `lease_renewal_blocked_by_notice`,
+    /// `lease_renewal_period_over`, `lease_period_overlaps`, `lease_busy`. Nothing is written to the tenant.
+    /// </summary>
+    [HttpPost("{id:guid}/renewal")]
+    [ProducesResponseType(typeof(LeaseDetailDto), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RecordRenewal(Guid id, [FromBody] RecordLeaseRenewalDto dto, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        await terms.RecordRenewalAsync(id, dto.NewEnd, cancellationToken);
         return await DetailAsync(id);
     }
 
@@ -119,3 +159,15 @@ public sealed record RecordLeaseNoticeDto(
 
 /// <summary>The last day of a lease ended early (<c>yyyy-MM-dd</c>, from the start of the lease up to the end of the period it is in).</summary>
 public sealed record TerminateLeaseDto([param: Required] DateOnly? On);
+
+/// <summary>The renewal of a lease (LR-OPS-1): without a day the standard one of the type, otherwise the last day of the extension the parties agreed on (<c>yyyy-MM-dd</c>).</summary>
+public sealed record RecordLeaseRenewalDto(DateOnly? NewEnd = null);
+
+/// <summary>
+/// A withdrawal of the tenant (LR-OPS-1): the day it was received (<c>yyyy-MM-dd</c>, from the start of the lease up to today), why, and, only
+/// when the contract gave the faculty, the months of notice it states (1 to 12; the rules' months otherwise, and always for serious reasons).
+/// </summary>
+public sealed record RecordTenantWithdrawalDto(
+    [param: Required] DateOnly? ReceivedOn,
+    [param: Required, EnumDataType(typeof(TenantWithdrawalReason))] TenantWithdrawalReason? Reason,
+    int? NoticeMonths = null);

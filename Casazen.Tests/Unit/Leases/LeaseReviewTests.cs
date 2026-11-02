@@ -139,14 +139,21 @@ public class LeaseReviewTests
     }
 
     [Fact]
-    public void AnotherContractOfTheSameProperty_InTheSameDates_IsAWarning_NotABlock()
+    public void AnotherLeaseOfTheSameProperty_OnTheSameDays_IsABlock_WithItsIdAndItsDays_AndNoName()
     {
-        var checks = Review(Input(), new LeaseReviewFacts { OverlappingLeases = 2 });
+        var other = Guid.Parse("11111111-2222-3333-4444-555555555555");
+        var facts = new LeaseReviewFacts { PeriodConflict = new LeasePeriodConflict(other, new DateOnly(2026, 11, 1), new DateOnly(2029, 10, 31)) };
 
-        var warn = Check(checks, LeaseNeedCodes.LeaseOverlap);
-        Assert.Equal(LeaseReviewSeverity.Warn, warn.Severity);
-        Assert.Equal(2, warn.Params!["count"]);
-        Assert.False(LeaseReview.HasBlock(checks));
+        var checks = Review(Input(), facts);
+
+        var block = Check(checks, LeaseNeedCodes.LeaseOverlap);
+        Assert.Equal(LeaseReviewSeverity.Block, block.Severity);
+        Assert.Equal(4, block.Step);
+        Assert.Equal(other, block.Params!["conflictingLeaseId"]);
+        Assert.Equal("2026-11-01", block.Params["conflictingFrom"]);
+        Assert.Equal("2029-10-31", block.Params["conflictingTo"]);
+        Assert.DoesNotContain("count", block.Params.Keys);
+        Assert.True(LeaseReview.HasBlock(checks));
         Assert.DoesNotContain(Review(Input()), c => c.Code == LeaseNeedCodes.LeaseOverlap);
     }
 

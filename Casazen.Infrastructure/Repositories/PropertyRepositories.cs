@@ -59,6 +59,21 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         return query;
     }
 
+    public async Task<PropertySiteMedia> GetSiteMediaAsync(Guid propertyId, CancellationToken cancellationToken = default)
+    {
+        var plans = await context.PropertyFloorPlans.AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(f => f.PropertyId == propertyId)
+            .OrderBy(f => f.Level).ThenBy(f => f.Position).ThenBy(f => f.CreatedAt)
+            .ToListAsync(cancellationToken);
+        var pois = await context.PropertyPois.AsNoTracking()
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(p => p.PropertyId == propertyId)
+            .OrderBy(p => p.Position)
+            .ToListAsync(cancellationToken);
+        return new PropertySiteMedia(plans, pois);
+    }
+
     public async Task<IEnumerable<Property>> GetAllAsync()
     {
         return await context.Properties
@@ -131,6 +146,20 @@ public class PropertyRepository(AppDbContext context) : IPropertyRepository
         // and when the access to the property is taken away (AM-03b). A save of the other fields, from a copy of the row read
         // earlier, must never put back the name of a person who has lost the property in the meantime.
         context.Entry(property).Property(p => p.ResponsibleUserId).IsModified = false;
+        // The site profile is written only by PropertySiteProfileService (DB-11a) and the alternative text and size of the photos by the photo
+        // services, under the property's photo lock: a save of the other fields, from a copy of the row read earlier, must never put back an older
+        // profile or the text of a photo that has just been deleted.
+        context.Entry(property).Property(p => p.FloorLevel).IsModified = false;
+        context.Entry(property).Property(p => p.RenovatedYear).IsModified = false;
+        context.Entry(property).Property(p => p.EnergyClass).IsModified = false;
+        context.Entry(property).Property(p => p.EnergyIndex).IsModified = false;
+        context.Entry(property).Property(p => p.AreaKind).IsModified = false;
+        context.Entry(property).Property(p => p.ChildrenWelcome).IsModified = false;
+        context.Entry(property).Property(p => p.CheckInTo).IsModified = false;
+        context.Entry(property).Property(p => p.VideoUrl).IsModified = false;
+        context.Entry(property).Property(p => p.TourUrl).IsModified = false;
+        context.Entry(property).Property(p => p.SiteProfileJson).IsModified = false;
+        context.Entry(property).Property(p => p.PhotoAltJson).IsModified = false;
         await context.SaveChangesAsync();
         return property;
     }

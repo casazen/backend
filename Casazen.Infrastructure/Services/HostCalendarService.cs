@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -406,6 +407,7 @@ public sealed class HostCalendarService(
 
         return await db.ServiceRequests
             .AsNoTracking()
+            .OnlyVisibleToHost()
             .Where(r => r.OrgId == scope.OrgId && r.RentalContext == ServiceRequestRentalContext.ShortRent && r.PropertyId != null)
             .Where(r => propertyIds.Contains(r.PropertyId!.Value))
             .Where(r => r.Status != ServiceRequestStatus.Rifiutato && r.Status != ServiceRequestStatus.Annullato)

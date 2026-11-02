@@ -93,7 +93,7 @@ internal static class ShowcaseScenario
     public static string VerificationTokenOf(this ServiceRequestScenario s, Guid holdId)
     {
         var email = s.Emails.Snapshot().Last(e => e.Template == Casazen.Infrastructure.Email.Templates.EmailTemplates.Names.SupplierBookingVerification);
-        var match = Regex.Match(email.Content.HtmlBody, $"hold={holdId:D}&amp;token=([A-Za-z0-9_-]+)");
+        var match = Regex.Match(email.Content.HtmlBody, $"hold={holdId:D}#token=([A-Za-z0-9_-]+)");
         Xunit.Assert.True(match.Success, "the verification e-mail has no link with the hold and the token");
         return match.Groups[1].Value;
     }

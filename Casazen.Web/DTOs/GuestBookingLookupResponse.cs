@@ -5,9 +5,10 @@ namespace Casazen.Web.DTOs;
 
 /// <summary>
 /// One booking as its guest sees it in "Le mie prenotazioni" (BK-11): see <see cref="GuestBookingView"/>. No personal
-/// data of the guest; the host's contact is the one of the booking site.
+/// data of the guest; the host's contact is the one of the booking site. Not sealed: the booking of the account of the mobile app
+/// (<see cref="GuestAccountBookingDetailResponse"/>) is this same body plus two fields.
 /// </summary>
-public sealed record GuestBookingLookupResponse(
+public record GuestBookingLookupResponse(
     string BookingCode,
     GuestBookingStatus Status,
     PaymentOption PaymentOption,

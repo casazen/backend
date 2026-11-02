@@ -66,6 +66,22 @@ public sealed class EmailHtmlBuilder(CultureInfo culture)
             : Append($"<ul style=\"padding-left:20px;\">{string.Concat(items)}</ul>");
     }
 
+    /// <summary>
+    /// A bulleted list of links, each with a short detail after it (e.g. the suppliers offered to a customer): the label and the detail are
+    /// HTML-encoded and every link has to be an absolute http(s) URL; skipped when empty.
+    /// </summary>
+    public EmailHtmlBuilder LinkList(IEnumerable<(string Label, string Url, string? Detail)> items)
+    {
+        var rows = items
+            .Select(item => $"<li><a href=\"{EncodeUrl(item.Url)}\">{Encode(item.Label)}</a>"
+                            + (string.IsNullOrWhiteSpace(item.Detail) ? string.Empty : $" — {Encode(item.Detail)}")
+                            + "</li>")
+            .ToList();
+        return rows.Count == 0
+            ? this
+            : Append($"<ul style=\"padding-left:20px;\">{string.Concat(rows)}</ul>");
+    }
+
     public EmailHtmlBuilder Button(string key, string url) =>
         Append(
             $"<p><a href=\"{EncodeUrl(url)}\" style=\"display:inline-block;padding:12px 20px;background:#0d8abc;"

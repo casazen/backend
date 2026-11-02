@@ -114,7 +114,10 @@ public interface IStripeService
 
 /// <summary>Refund of <paramref name="AmountCents"/> of <paramref name="PaymentIntentId"/>.</summary>
 /// <param name="PaymentIntentId">PaymentIntent to refund.</param>
-/// <param name="AmountCents">Amount in cents (EUR).</param>
+/// <param name="AmountCents">
+/// Amount in cents of the currency of the PaymentIntent (the one of the property, EUR or CHF): Stripe refunds in the currency of the
+/// charge and takes no currency here, so the amount is always the one of the payment it refunds.
+/// </param>
 /// <param name="ConnectedAccountId">Account the PaymentIntent was created on (direct charge); null for the platform.</param>
 /// <param name="IdempotencyKey">Stable key of the refund row: a retry returns the same Stripe refund.</param>
 /// <param name="Metadata">Ids that let the webhooks find the refund row (<c>paymentRefundId</c>, <c>paymentId</c>, …).</param>

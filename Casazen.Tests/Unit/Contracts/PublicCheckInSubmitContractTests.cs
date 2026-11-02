@@ -66,6 +66,32 @@ public class PublicCheckInSubmitContractTests
         }
     }
 
+    /// <summary>
+    /// NF-05: the per-channel consent fields are optional and bind from the camelCase names the frontend sends
+    /// (<c>marketingConsentEmail</c>, <c>marketingConsentWhatsApp</c>, <c>marketingEmail</c>); a payload without them, or with
+    /// only the legacy <c>marketingConsent</c>, reads as before.
+    /// </summary>
+    [Fact]
+    public void MarketingConsentFields_Deserialized_BindFromCamelCaseNamesAndDefaultToNotGiven()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+
+        var perChannel = JsonSerializer.Deserialize<PublicCheckInSubmitRequest>(
+            """{"guests":[],"marketingConsentEmail":true,"marketingConsentWhatsApp":false,"marketingEmail":"luigi@example.it"}""", options);
+        var legacy = JsonSerializer.Deserialize<PublicCheckInSubmitRequest>("""{"guests":[],"marketingConsent":true}""", options);
+        var none = JsonSerializer.Deserialize<PublicCheckInSubmitRequest>("""{"guests":[]}""", options);
+
+        Assert.Equal(
+            (false, true, false, "luigi@example.it"),
+            (perChannel!.MarketingConsent, perChannel.MarketingConsentEmail, perChannel.MarketingConsentWhatsApp, perChannel.MarketingEmail));
+        Assert.Equal(
+            (true, false, false, (string?)null),
+            (legacy!.MarketingConsent, legacy.MarketingConsentEmail, legacy.MarketingConsentWhatsApp, legacy.MarketingEmail));
+        Assert.Equal(
+            (false, false, false, (string?)null),
+            (none!.MarketingConsent, none.MarketingConsentEmail, none.MarketingConsentWhatsApp, none.MarketingEmail));
+    }
+
     private static string[] RequiredJsonNames(Type type) =>
         type.GetProperties()
             .Where(property => property.GetCustomAttribute<RequiredAttribute>() is not null)

@@ -5,10 +5,11 @@ namespace Casazen.Core.Services;
 
 /// <summary>
 /// What the agenda is asked for: the days from <see cref="From"/> to <see cref="To"/> (both included, Europe/Rome calendar
-/// days) and, optionally, one type of deadline. A deadline that is already past and still open (a registration, a Questura
-/// communication or a rent installment not done) is listed whenever the window contains today, flagged overdue.
+/// days) and, optionally, one type of deadline and one lease (LR-03c, the sheet of a contract). A deadline that is already past and still open
+/// (a registration, a Questura communication or a rent installment not done) is listed whenever the window contains today, flagged overdue.
+/// <c>LeaseId</c> only narrows what the scope already reaches: a lease outside it, or one that has no deadline, gives an empty list.
 /// </summary>
-public sealed record LongRentDeadlinesQuery(DateOnly From, DateOnly To, LongRentDeadlineType? Type = null);
+public sealed record LongRentDeadlinesQuery(DateOnly From, DateOnly To, LongRentDeadlineType? Type = null, Guid? LeaseId = null);
 
 /// <summary>
 /// One deadline of the agenda. <c>Date</c> is the Rome calendar day; <c>DaysFromToday</c> is negative when it is past

@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -129,7 +130,7 @@ public class PropertyComplianceStatusServiceTests
         await using var db = CreateDb(nameof(ReevaluateAsync_SuspendedPropertyWithOneOfTwoBlockersSolved_StaysSuspendedWithItsReasons));
         var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Active);
         await SetAsync(db, property.Id, p => p.CinCode = null);
-        await SetChecklistAsync(db, property.Id, c => c.ConfirmedAt = null);
+        await SetAsync(db, property.Id, p => p.MaxGuests = 0);
         var service = CreateService(db);
         await service.ReevaluateAsync(property.Id);
 
@@ -139,9 +140,9 @@ public class PropertyComplianceStatusServiceTests
         Assert.Equal(PropertyComplianceStatus.Suspended, check.Status);
         Assert.False(check.Reactivated);
         Assert.False(check.HostNotified);
-        Assert.Equal(["safety"], check.IncompleteSteps.Select(s => s.Id));
+        Assert.Equal(["base-data"], check.IncompleteSteps.Select(s => s.Id));
         Assert.Equal(
-            ["activation_cin_missing", "safety_confirmation_missing"],
+            ["activation_base_data_incomplete", "activation_cin_missing"],
             (await ReloadAsync(db, property.Id)).ComplianceSuspensionReasons);
         Assert.Single(_emails.Snapshot());
     }
@@ -160,18 +161,42 @@ public class PropertyComplianceStatusServiceTests
     }
 
     [Fact]
-    public async Task ActivateAsync_ActivePropertyWithIncompleteChecklist_SuspendsIt()
+    public async Task ReevaluateAsync_ActivePropertyWithOnlyRemindersOpen_StaysActiveWithoutEmail()
     {
-        await using var db = CreateDb(nameof(ActivateAsync_ActivePropertyWithIncompleteChecklist_SuspendsIt));
+        // PO decision 2026-11-01 (option A): the safety checklist and the documents are reminders, they never suspend.
+        await using var db = CreateDb(nameof(ReevaluateAsync_ActivePropertyWithOnlyRemindersOpen_StaysActiveWithoutEmail));
         var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Active);
         await SetChecklistAsync(db, property.Id, c => c.ConfirmedAt = null);
+        db.PropertyDocuments.RemoveRange(db.PropertyDocuments.Where(d => d.PropertyId == property.Id));
+        await db.SaveChangesAsync();
 
-        var check = await CreateService(db).ActivateAsync(property.Id);
+        var check = await CreateService(db).ReevaluateAsync(property.Id);
 
-        Assert.True(check.Suspended);
-        Assert.Equal(["safety"], check.IncompleteSteps.Select(s => s.Id));
-        Assert.Equal(["safety_confirmation_missing"], (await ReloadAsync(db, property.Id)).ComplianceSuspensionReasons);
-        Assert.Contains("checklist di sicurezza (D.L. 145/2023) incompleta o non confermata", Assert.Single(_emails.Snapshot()).Content.HtmlBody);
+        Assert.False(check.Suspended);
+        Assert.Empty(check.IncompleteSteps);
+        Assert.Equal(PropertyComplianceStatus.Active, (await ReloadAsync(db, property.Id)).ComplianceStatus);
+        Assert.Empty(_emails.Snapshot());
+    }
+
+    [Fact]
+    public async Task ActivateAsync_HostWithRemindersOpen_NeedsTheAcknowledgementThenRecordsIt()
+    {
+        await using var db = CreateDb(nameof(ActivateAsync_HostWithRemindersOpen_NeedsTheAcknowledgementThenRecordsIt));
+        var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Suspended);
+        await SetChecklistAsync(db, property.Id, c => c.ConfirmedAt = null);
+        var service = CreateService(db);
+
+        var refused = await Assert.ThrowsAsync<DomainConflictException>(() =>
+            service.ActivateAsync(property.Id, new HostActivation("auth0|owner", RemindersAcknowledged: false)));
+        Assert.Equal(IPropertyComplianceStatusService.RemindersAcknowledgementRequiredCode, refused.Code);
+        Assert.Equal(PropertyComplianceStatus.Suspended, (await ReloadAsync(db, property.Id)).ComplianceStatus);
+
+        var check = await service.ActivateAsync(property.Id, new HostActivation("auth0|owner", RemindersAcknowledged: true));
+
+        Assert.True(check.Reactivated);
+        var line = Assert.Single(db.OrgActivityEntries);
+        Assert.Equal((OrgActivityType.PropertyActivatedWithReminders, "auth0|owner"), (line.Type, line.ActorUserId));
+        Assert.Contains("\"reminders\":\"safety\"", line.DetailsJson, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -181,15 +206,14 @@ public class PropertyComplianceStatusServiceTests
     {
         await using var db = CreateDb($"{nameof(ReevaluateAsync_FirstCheckOfHistoricProperty_EmailFollowsNotifyOnFirstCheck)}-{notifyOnFirstCheck}");
         var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Active, neverChecked: true);
-        db.PropertyDocuments.RemoveRange(db.PropertyDocuments.Where(d => d.PropertyId == property.Id));
-        await db.SaveChangesAsync();
+        await SetAsync(db, property.Id, p => p.CinCode = null);
 
         var check = await CreateService(db, notifyOnFirstCheck).ReevaluateAsync(property.Id);
 
         Assert.True(check.Suspended);
         Assert.Equal(notifyOnFirstCheck, check.HostNotified);
         Assert.Equal(emails, _emails.Snapshot().Count);
-        Assert.Equal(["activation_documents_missing"], (await ReloadAsync(db, property.Id)).ComplianceSuspensionReasons);
+        Assert.Equal(["activation_cin_missing"], (await ReloadAsync(db, property.Id)).ComplianceSuspensionReasons);
     }
 
     [Fact]
@@ -199,8 +223,9 @@ public class PropertyComplianceStatusServiceTests
         var historic = await SeedCompliantAsync(db, PropertyComplianceStatus.Active, neverChecked: true);
         await SetAsync(db, historic.Id, p => p.CinCode = null);
         var checkedBefore = await SeedCompliantAsync(db, PropertyComplianceStatus.Active);
-        await SetChecklistAsync(db, checkedBefore.Id, c => c.ConfirmedAt = null);
-        await SeedCompliantAsync(db, PropertyComplianceStatus.Active);
+        await SetAsync(db, checkedBefore.Id, p => p.MaxGuests = 0);
+        var onlyReminders = await SeedCompliantAsync(db, PropertyComplianceStatus.Active);
+        await SetChecklistAsync(db, onlyReminders.Id, c => c.ConfirmedAt = null);
         var suspendedComplete = await SeedCompliantAsync(db, PropertyComplianceStatus.Suspended);
 
         var report = await CreateService(db).RecalculateAllAsync(dryRun: true);
@@ -211,7 +236,8 @@ public class PropertyComplianceStatusServiceTests
             (4, 2, 1, 1, 0),
             (report.Checked, report.Suspended, report.Reactivated, report.HostsNotified, report.Failed));
         Assert.Equal(1, report.SuspendedByBlocker["activation_cin_missing"]);
-        Assert.Equal(1, report.SuspendedByBlocker["safety_confirmation_missing"]);
+        Assert.Equal(1, report.SuspendedByBlocker["activation_base_data_incomplete"]);
+        Assert.False(report.SuspendedByBlocker.ContainsKey("safety_confirmation_missing"));
         Assert.Empty(_emails.Snapshot());
         db.ChangeTracker.Clear();
         Assert.All(
@@ -247,11 +273,11 @@ public class PropertyComplianceStatusServiceTests
     {
         await using var db = CreateDb(nameof(RecalculateAllAsync_SuspendedPropertyCompleteAgain_ReactivatedOnceWithoutEmail));
         var property = await SeedCompliantAsync(db, PropertyComplianceStatus.Active);
-        await SetChecklistAsync(db, property.Id, c => c.ConfirmedAt = null);
+        await SetAsync(db, property.Id, p => p.MaxGuests = 0);
         var service = CreateService(db);
         await service.RecalculateAllAsync(dryRun: false);
         // Requirement completed again without a request that re-evaluates it (e.g. a row fixed by hand).
-        await SetChecklistAsync(db, property.Id, c => c.ConfirmedAt = Now);
+        await SetAsync(db, property.Id, p => p.MaxGuests = 4);
 
         var first = await service.RecalculateAllAsync(dryRun: false);
         var second = await service.RecalculateAllAsync(dryRun: false);
@@ -276,6 +302,7 @@ public class PropertyComplianceStatusServiceTests
             _emails,
             EmailTestHelpers.Links(),
             Options.Create(new ComplianceOptions { StatusCheck = { NotifyOnFirstCheck = notifyOnFirstCheck } }),
+            new ActivityLog(db),
             NullLogger<PropertyComplianceStatusService>.Instance,
             new FixedTimeProvider(new DateTimeOffset(Now)));
 

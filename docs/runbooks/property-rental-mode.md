@@ -273,6 +273,11 @@ state. Dates are plain days (`2026-12-01`); a full date-time is a `400`. Enums a
 | `POST /api/properties/{id}/mode/change` `{ to, effectiveDate }` | 201 with the change (`Scheduled`). The same checks as the preview, made again under the property lock. The host gets an e-mail. To long-term the calendar closes from the night before the day (section 8.4) |
 | `DELETE /api/properties/{id}/mode/change/{changeId}` | 204: the change is `Cancelled`; to long-term the calendar opens again. `404 property_mode_change_not_found` (also a change of another property), `409 property_mode_change_not_scheduled` when it is already applied, cancelled or failed |
 
+**In the list (AM-13b).** `GET /api/properties?view=overview` (SR-07a) carries, on each row of a property **in either mode**, `scheduledModeChange`: the same
+object as the `scheduledChange` above (`id`, `fromMode`, `toMode`, `effectiveDate`, `status`…) while a change waits for its day, left out otherwise. Only a `Scheduled`
+change (an applied, cancelled or failed one is history, not news); one query for the whole page, over the properties the caller's scope already reached. It lets the
+list of the properties of the account say «passa ad affitto lungo dal 1 dicembre» without asking the state of each property.
+
 Errors are ProblemDetails (FD-05) with a stable `code` and a message in the language of the request (`SharedResources`, IT
 and EN). The messages that name a day carry the first free day. The same codes are the `issues` of the preview and the
 `FailureReason` of a change the job could not apply.

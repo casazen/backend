@@ -15,8 +15,8 @@ namespace Casazen.Tests.Integration;
 
 /// <summary>
 /// SU-07 (decision D2, A4-13, A4-33) over the real pipeline on PostgreSQL. Short-term rental: a supplier request is for
-/// one stay (<c>bookingId</c> required, a booking of the same property and org). Long-term rental: it is for the
-/// property, opened in the long-rent context. Web and app list a stay's requests with <c>?bookingId=</c> and a
+/// the property and, when the host names one, a stay of it (<c>bookingId</c>, optional since SR-08a: a booking of the same
+/// property and org). Long-term rental: it is for the property, opened in the long-rent context. Web and app list a stay's requests with <c>?bookingId=</c> and a
 /// property's with <c>?propertyId=</c>, so a request created on one side shows on the other.
 /// </summary>
 public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenWebApplicationFactory>
@@ -30,7 +30,7 @@ public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenW
     public ServiceRequestStayCorrelationPostgresTests(CasazenWebApplicationFactory factory) => _factory = factory;
 
     [PostgresFact]
-    public async Task Create_ShortRentWithoutBookingId_Returns422BookingRequiredAndCreatesNothing()
+    public async Task Create_ShortRentWithoutBookingId_Returns201ForTheHouseAloneAndSaysTheTimeWasDefaulted()
     {
         var w = await SeedWorldAsync();
         using var host = _factory.CreateAuthenticatedClient(w.OwnerId, Host);
@@ -42,8 +42,13 @@ public class ServiceRequestStayCorrelationPostgresTests : IClassFixture<CasazenW
             category = "cleaning",
         });
 
-        await AssertProblemAsync(response, HttpStatusCode.UnprocessableEntity, ServiceRequestErrorCodes.BookingRequired);
-        Assert.Equal(0, await CountRequestsAsync(w.PropertyA));
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await ReadJsonAsync(response);
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("bookingId").ValueKind);
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("stay").ValueKind);
+        Assert.Equal("ShortRent", body.GetProperty("rentalContext").GetString());
+        Assert.True(body.GetProperty("scheduleDefaulted").GetBoolean());
+        Assert.Equal(1, await CountRequestsAsync(w.PropertyA));
     }
 
     [PostgresFact]

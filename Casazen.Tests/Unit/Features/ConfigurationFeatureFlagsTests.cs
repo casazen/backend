@@ -77,6 +77,10 @@ public class ConfigurationFeatureFlagsTests
                 "AgencyTier",
                 // CF-FIX: the ConcordatoFacile service, on in the test environment and off in production until the trial run is confirmed.
                 "ConcordatoFacile",
+                // SP-BKP: the backup suppliers of a host's request, off until the product owner turns it on in the test environment.
+                "SupplierRequestBackups",
+                // DEB-01: the document reading and the selfie check of the guest check-in, placeholders, off until real models exist.
+                "CheckInIdentityVerification",
             },
             FeatureFlags.All);
     }

@@ -2,6 +2,7 @@
 
 > **Overlay, not a rewrite.** The consensus `business-plan.md` is **preserved unchanged**. This file records the amendments accepted in `devils-advocate-review.md` (challenges #3, #4, #5, #7, #8, #11, #14, #17). Where a section here is marked **SUPERSEDES**, it replaces the same-numbered section of the original; everything else in the original still stands.
 > **Sourcing**: **[FACT]** / **[EST]** as in the original. **[COUNSEL_REQUIRED]** unchanged.
+> **See also** `business-plan-agency-amendment.md` (2026-10-19): Agency (B2B) tier, prices, unit economics and risks.
 
 ---
 

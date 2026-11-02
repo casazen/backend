@@ -17,13 +17,26 @@ public class PublicPropertyDto
     public string Description { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
     public string PostalCode { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The position for a map, rounded to about a kilometre (<see cref="Entities.PropertyAddress.ToPublicCoordinate"/>); for a property
+    /// whose host gave none, the centre of its comune. <c>0, 0</c> only when there is neither: the map then places it by its comune.
+    /// </summary>
     public decimal Latitude { get; set; }
+
+    /// <summary>See <see cref="Latitude"/>.</summary>
     public decimal Longitude { get; set; }
     public int Bedrooms { get; set; }
     public int Bathrooms { get; set; }
     public int MaxGuests { get; set; }
     public decimal NightlyRate { get; set; }
     public decimal CleaningFee { get; set; }
+
+    /// <summary>
+    /// ISO 4217 code of the property (<see cref="Services.StayCurrency"/>, <c>EUR</c> or <c>CHF</c>): <see cref="NightlyRate"/> and
+    /// <see cref="CleaningFee"/> are in it, and so is every quote, charge and refund of a stay (CHF-MONEY).
+    /// </summary>
+    public string Currency { get; set; } = Services.StayCurrency.Default;
     public IReadOnlyList<string> Amenities { get; set; } = [];
     public IReadOnlyList<string> PhotoUrls { get; set; } = [];
     public string? CinCode { get; set; }

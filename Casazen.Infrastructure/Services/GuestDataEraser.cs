@@ -16,7 +16,8 @@ namespace Casazen.Infrastructure.Services;
 /// What stays after a full anonymization, and why (docs/runbooks/gdpr.md): the guest row with placeholders (bookings and
 /// Alloggiati reports keep a foreign key to it); bookings with dates, amounts and payments (fiscal and accounting records,
 /// <c>.claude/context/regulations/gdpr.md</c> § 5); the kind and position of the guests of each stay; the consent events
-/// without IP and note (proof of consent, art. 7.1 GDPR); the Alloggiati communication status and receipt reference.
+/// without IP and note, and the per-channel marketing consents without e-mail and IP (proof of consent, art. 7.1 GDPR); the
+/// Alloggiati communication status and receipt reference.
 /// </remarks>
 public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, ILogger<GuestDataEraser> logger)
 {
@@ -34,7 +35,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
 
     /// <summary>
     /// Full anonymization of <paramref name="guest"/>: every personal field, its document scan, the guests of its stays,
-    /// the IP and note of its consent events, the special requests of its bookings, the name shown on its reviews (DB-12a: the
+    /// the IP and note of its consent events, the marketing e-mail and IP of its per-channel marketing consents (the consent
+    /// ends), the special requests of its bookings, the name shown on its reviews (DB-12a: the
     /// mark and the text stay, anonymous); open check-in links of its bookings expire. <see cref="GuestErasureOutcome.Changed"/> is false when there was nothing left to remove (idempotent).
     /// </summary>
     public async Task<GuestErasureOutcome> AnonymizeAsync(Guest guest, DateTime now, CancellationToken cancellationToken)
@@ -47,13 +49,15 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
 
         var stayGuests = await AnonymizeStayGuestsOfBookerAsync(guest.Id, now, cancellationToken);
         var consentEvidence = await ClearConsentEvidenceAsync(guest.Id, cancellationToken);
+        var marketingConsents = await ClearMarketingConsentRecordsAsync(guest.Id, cancellationToken);
         var specialRequests = await ClearSpecialRequestsAsync(guest.Id, now, cancellationToken);
         var reviews = await AnonymizeReviewsAsync(guest.Id, cancellationToken);
         await ExpireOpenCheckInLinksAsync(guest.Id, now, cancellationToken);
         var threads = await DeleteMessageThreadsAsync(guest.Id, cancellationToken);
 
         var changed = Fingerprint(guest) != before
-            || filesDeleted > 0 || stayGuests > 0 || consentEvidence > 0 || specialRequests > 0 || reviews > 0 || threads > 0
+            || filesDeleted > 0 || stayGuests > 0 || consentEvidence > 0 || marketingConsents > 0 || specialRequests > 0
+            || reviews > 0 || threads > 0
             || guest.DataAnonymizedDate is null;
         guest.AlloggiatiDataErasedAt ??= now;
         guest.DataAnonymizedDate ??= now;
@@ -232,15 +236,43 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         return records.Count;
     }
 
-    /// <summary>Special requests are written by the guest (preferences, possibly health data): not needed for the accounts.</summary>
+    /// <summary>
+    /// The per-channel marketing consents of the check-in (NF-05, <see cref="MarketingConsentRecord"/>): the marketing e-mail
+    /// and the IP go, and the consent ends with them (no channel, e-mail not confirmed, so nothing can be sent). Time, version
+    /// of the text and booking stay as the proof that a consent was given. Returns the rows changed (none when already clear).
+    /// </summary>
+    private async Task<int> ClearMarketingConsentRecordsAsync(Guid guestId, CancellationToken cancellationToken)
+    {
+        var records = await db.MarketingConsentRecords
+            .Where(r => r.GuestId == guestId
+                && (r.MarketingEmail != string.Empty || r.IpAddress != string.Empty
+                    || r.ConsentEmail || r.ConsentWhatsApp || r.EmailConfirmed))
+            .ToListAsync(cancellationToken);
+        foreach (var record in records)
+        {
+            record.MarketingEmail = string.Empty;
+            record.IpAddress = string.Empty;
+            record.ConsentEmail = false;
+            record.ConsentWhatsApp = false;
+            record.EmailConfirmed = false;
+        }
+
+        return records.Count;
+    }
+
+    /// <summary>
+    /// Special requests are written by the guest (preferences, possibly health data): not needed for the accounts. The expected arrival
+    /// time the guest gave at the checkout (DB-03b) goes with them: a preference of that person, not an accounting record.
+    /// </summary>
     private async Task<int> ClearSpecialRequestsAsync(Guid guestId, DateTime now, CancellationToken cancellationToken)
     {
         var bookings = await db.Bookings
-            .Where(b => b.GuestId == guestId && b.SpecialRequests != "")
+            .Where(b => b.GuestId == guestId && (b.SpecialRequests != "" || b.ExpectedArrivalTime != null))
             .ToListAsync(cancellationToken);
         foreach (var booking in bookings)
         {
             booking.SpecialRequests = string.Empty;
+            booking.ExpectedArrivalTime = null;
             booking.UpdatedAt = now;
         }
 

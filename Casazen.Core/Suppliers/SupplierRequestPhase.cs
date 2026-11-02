@@ -15,7 +15,7 @@ namespace Casazen.Core.Suppliers;
 /// forwarded to an external provider, spec #466, would be a new status), it never throws.</para>
 /// <para><b>Correspondence</b> with the status: <c>Richiesto</c> is <see cref="ToAnswer"/> (the supplier still has to answer),
 /// <see cref="ProposalPending"/> (the supplier proposed another time and the customer has not answered) or
-/// <see cref="QuotePending"/> (reserved: SP-04b, never produced before it); <c>PresoInCarico</c> is <see cref="Scheduled"/>,
+/// <see cref="QuotePending"/> (the supplier sent a quote and the customer has not answered it, SP-04b); <c>PresoInCarico</c> is <see cref="Scheduled"/>,
 /// <c>InCorso</c> <see cref="InProgress"/>, <c>Completato</c> <see cref="Completed"/>, <c>Pagato</c> <see cref="Paid"/>,
 /// <c>Rifiutato</c> <see cref="Rejected"/> and <c>Annullato</c> <see cref="Cancelled"/>.</para>
 /// </remarks>
@@ -27,7 +27,7 @@ public static class SupplierRequestPhases
     /// <summary>The supplier proposed another time and waits for the customer.</summary>
     public const string ProposalPending = "proposal_pending";
 
-    /// <summary>The supplier sent a quote and waits for the customer. Reserved for SP-04b: nothing produces it yet.</summary>
+    /// <summary>The supplier sent a quote (SP-04b) and waits for the customer.</summary>
     public const string QuotePending = "quote_pending";
 
     /// <summary>Taken, the work is yet to start.</summary>

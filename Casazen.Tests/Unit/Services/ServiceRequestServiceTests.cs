@@ -25,23 +25,26 @@ public class ServiceRequestServiceTests
 {
     // ─── D2 (SU-07): short-rent requests are for a stay, long-rent requests for the property ───
 
-    [Fact]
-    public async Task CreateAsync_ShortRentWithoutBooking_ThrowsBookingRequiredWithoutCreatingOrEmailing()
+    // SR-D3 (SR-08a): the stay is optional for the host of a short-rent property. A request for the house alone gets the default time
+    // (10:00 in Rome, for 120 minutes) and that default never falls in the past: once today's 10:00 has gone by it is tomorrow's.
+    [Theory]
+    [InlineData("2026-11-03T08:30:00Z", "2026-11-03T09:00:00Z")] // 09:30 in Rome: today's 10:00 is still to come
+    [InlineData("2026-11-03T10:30:00Z", "2026-11-04T09:00:00Z")] // 11:30 in Rome: it has gone by, so tomorrow's
+    public async Task CreateAsync_ShortRentWithoutBooking_IsForTheHouseAloneWithADefaultTimeThatIsNeverInThePast(string now, string expectedStart)
     {
         await using var db = CreateDb();
         var (hostOrgId, propertyId, supplierOrgId, _) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
-        var queue = new RecordingEmailQueue();
-        var service = CreateService(db, queue);
+        using var kit = new ServiceRequestTestKit(db, clock: new FixedTimeProvider(DateTimeOffset.Parse(now, System.Globalization.CultureInfo.InvariantCulture)));
 
-        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
-            service.CreateAsync(new CreateServiceRequestCommand(
-                hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
-                "cleaning", ServiceRequestUrgency.Normal, null, false, ServiceRequestRentalContext.ShortRent)));
+        var created = await kit.Service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "cleaning", ServiceRequestUrgency.Normal, null, false, ServiceRequestRentalContext.ShortRent));
 
-        Assert.Equal(ServiceRequestErrorCodes.BookingRequired, ex.Code);
-        Assert.Equal(ServiceRequestErrorCodes.BookingRequiredMessageKey, ex.MessageKey);
-        Assert.Empty(db.ServiceRequests);
-        Assert.Empty(queue.Queued);
+        Assert.Null(created.BookingId);
+        Assert.Equal(ServiceRequestStatus.Richiesto, created.Status);
+        var start = DateTime.Parse(expectedStart, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal);
+        Assert.Equal(start, created.ScheduledStartUtc);
+        Assert.Equal(start.AddMinutes(120), created.ScheduledEndUtc);
     }
 
     [Fact]
@@ -216,6 +219,62 @@ public class ServiceRequestServiceTests
         Assert.Null(await service.GetByIdForHostAsync(lease.Id, scope, ServiceRequestRentalContext.ShortRent));
         Assert.Null(await service.GetByIdForHostAsync(stay.Id, scope, ServiceRequestRentalContext.LongRent));
         Assert.NotNull(await service.GetByIdForHostAsync(lease.Id, scope, ServiceRequestRentalContext.LongRent));
+    }
+
+    // LR-03c: a long-rent request can be made for one lease of its property, and the list of the sheet of that contract reaches only those.
+    // The link is a tenancy rule (another org's lease is never accepted), so it has its own proof.
+    [Fact]
+    public async Task CreateAsync_LongRentForALease_KeepsTheLinkAndTheListNarrowsToIt()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, _) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var leaseId = await SeedLeaseAsync(db, hostOrgId, propertyId);
+        var service = CreateService(db);
+        var forTheLease = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "plumbing", ServiceRequestUrgency.Normal, null, false, ServiceRequestRentalContext.LongRent, LeaseContractId: leaseId));
+        var forTheHouse = await service.CreateAsync(new CreateServiceRequestCommand(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, null, supplierOrgId,
+            "plumbing", ServiceRequestUrgency.Normal, null, false, ServiceRequestRentalContext.LongRent));
+        var scope = new HostScope(hostOrgId, null);
+
+        var (all, _) = await service.ListForHostAsync(scope, ServiceRequestRentalContext.LongRent, null, propertyId, null, 1, 20);
+        var (ofTheLease, total) = await service.ListForHostAsync(scope, ServiceRequestRentalContext.LongRent, null, null, null, 1, 20, leaseContractId: leaseId);
+        var (ofAnotherOrg, _) = await service.ListForHostAsync(new HostScope(Guid.NewGuid(), null), ServiceRequestRentalContext.LongRent, null, null, null, 1, 20, leaseContractId: leaseId);
+
+        Assert.Equal(leaseId, forTheLease.LeaseContractId);
+        Assert.Null(forTheHouse.LeaseContractId);
+        Assert.Equal(2, all.Count);
+        Assert.Equal(forTheLease.Id, Assert.Single(ofTheLease).Id);
+        Assert.Equal(1, total);
+        Assert.Empty(ofAnotherOrg);
+    }
+
+    [Fact]
+    public async Task CreateAsync_LeaseOfAnotherOrgOrAnotherPropertyOrShortRent_IsRefusedAndNothingIsSaved()
+    {
+        await using var db = CreateDb();
+        var (hostOrgId, propertyId, supplierOrgId, bookingId) = await SeedHostAndSupplierAsync(db, "H501", SupplierStatus.Active);
+        var otherProperty = NewProperty(hostOrgId, "Other Property");
+        db.Properties.Add(otherProperty);
+        await db.SaveChangesAsync();
+        var leaseOfAnotherProperty = await SeedLeaseAsync(db, hostOrgId, otherProperty.Id);
+        var leaseOfAnotherOrg = await SeedLeaseAsync(db, Guid.NewGuid(), propertyId);
+        var service = CreateService(db);
+
+        CreateServiceRequestCommand Command(Guid leaseId, ServiceRequestRentalContext context = ServiceRequestRentalContext.LongRent, Guid? booking = null) => new(
+            hostOrgId, TestAuthHandler.DefaultUserId, propertyId, booking, supplierOrgId,
+            "plumbing", ServiceRequestUrgency.Normal, null, false, context, LeaseContractId: leaseId);
+
+        var anotherOrg = await Assert.ThrowsAsync<NotFoundException>(() => service.CreateAsync(Command(leaseOfAnotherOrg)));
+        var anotherProperty = await Assert.ThrowsAsync<DomainRuleException>(() => service.CreateAsync(Command(leaseOfAnotherProperty)));
+        var shortRent = await Assert.ThrowsAsync<DomainRuleException>(() =>
+            service.CreateAsync(Command(leaseOfAnotherProperty, ServiceRequestRentalContext.ShortRent, bookingId)));
+
+        Assert.Equal(ServiceRequestErrorCodes.LeaseNotFound, anotherOrg.Code);
+        Assert.Equal(ServiceRequestErrorCodes.LeaseMismatch, anotherProperty.Code);
+        Assert.Equal(ServiceRequestErrorCodes.LeaseNotAllowed, shortRent.Code);
+        Assert.Empty(db.ServiceRequests);
     }
 
     [Fact]
@@ -444,9 +503,9 @@ public class ServiceRequestServiceTests
         Assert.Equal(PushTypes.ServiceRequestPaid, toSupplier.Payload.Type);
         Assert.Equal("Richiesta segnata come pagata", toSupplier.Payload.Title);
         Assert.Equal("Pulizie presso Test Property: l'host ha segnato il servizio come pagato.", toSupplier.Payload.Body);
-        // The stay is the host's: the supplier's push carries no booking and opens a screen the app has.
+        // The stay is the host's: the supplier's push carries no booking and opens the request in the supplier area of the app.
         Assert.Null(toSupplier.Payload.BookingId);
-        Assert.Equal(PushRoutes.Properties, toSupplier.Payload.Route);
+        Assert.Equal(PushRoutes.SupplierRequest(created.Id), toSupplier.Payload.Route);
         Assert.Equal(created.Id, toSupplier.Payload.ServiceRequestId);
     }
 
@@ -967,9 +1026,9 @@ public class ServiceRequestServiceTests
         Assert.Equal(PushTypes.ServiceRequestCreated, toSupplier.Payload.Type);
         Assert.Equal("Nuova richiesta di servizio", toSupplier.Payload.Title);
         Assert.Equal("Pulizie a H501: accetta o rifiuta la richiesta dalla tua area fornitore.", toSupplier.Payload.Body);
-        // The stay is the host's: the supplier's push carries no booking and opens a screen the app has.
+        // The stay is the host's: the supplier's push carries no booking and opens the request in the supplier area of the app.
         Assert.Null(toSupplier.Payload.BookingId);
-        Assert.Equal(PushRoutes.Properties, toSupplier.Payload.Route);
+        Assert.Equal(PushRoutes.SupplierRequest(created.Id), toSupplier.Payload.Route);
         Assert.Equal(created.Id, toSupplier.Payload.ServiceRequestId);
     }
 
@@ -1093,6 +1152,24 @@ public class ServiceRequestServiceTests
 
         await db.SaveChangesAsync();
         return (hostOrg.Id, property.Id, supplierOrg.Id, booking.Id);
+    }
+
+    /// <summary>A signed lease of the org on the property (the fields the table needs and nothing of its people).</summary>
+    private static async Task<Guid> SeedLeaseAsync(AppDbContext db, Guid orgId, Guid propertyId)
+    {
+        var lease = new LeaseContract
+        {
+            OrgId = orgId,
+            PropertyId = propertyId,
+            Status = LeaseStatus.Signed,
+            FiscalRegime = FiscalRegime.CanoneConcordato,
+            StartDate = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            EndDate = new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            MonthlyRent = 1000m,
+        };
+        db.LeaseContracts.Add(lease);
+        await db.SaveChangesAsync();
+        return lease.Id;
     }
 
     private static Property NewProperty(Guid orgId, string name, string city = "H501") => new()

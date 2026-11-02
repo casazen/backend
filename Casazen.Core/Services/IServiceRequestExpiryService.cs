@@ -13,6 +13,9 @@ namespace Casazen.Core.Services;
 /// ones: not behind <c>SupplierRequestAutoCancel</c>, and not skipped when the supplier proposed another time (the customer
 /// has the time of <c>Suppliers:Showcase:ProposalResponseMinutes</c> to answer; a customer who lets it pass cancels the request
 /// with the reason <c>ProposalNotAnswered</c>, and the supplier is told it was the customer: SP-11).</item>
+/// <item>The supplier of a request on measure that nobody answered yet is reminded at half of the time it has and ten minutes before the
+/// deadline (<see cref="IShowcaseReplyReminderService"/>, SP-10c), each reminder once. The customer of a request that closed for
+/// want of an answer is told with the other suppliers that could help (<see cref="IShowcaseAlternativesService"/>).</item>
 /// </list>
 /// </summary>
 /// <remarks>
@@ -32,7 +35,8 @@ public interface IServiceRequestExpiryService
 /// <param name="RequestsCancelled">Showcase requests cancelled because nobody answered in time.</param>
 /// <param name="Conflicts">Requests that changed under the run (taken, rejected or cancelled by someone else): left as they are.</param>
 /// <param name="Failed">Requests that could not be cancelled because of an error: retried by the next run.</param>
-public sealed record ServiceRequestExpiryRun(bool Skipped, int HoldsDeleted, int RequestsCancelled, int Conflicts, int Failed)
+/// <param name="RemindersSent">Reminders to answer queued for the suppliers of requests on measure (SP-10c).</param>
+public sealed record ServiceRequestExpiryRun(bool Skipped, int HoldsDeleted, int RequestsCancelled, int Conflicts, int Failed, int RemindersSent = 0)
 {
     /// <summary>Another run is in progress.</summary>
     public static ServiceRequestExpiryRun LockTaken { get; } = new(Skipped: true, 0, 0, 0, 0);

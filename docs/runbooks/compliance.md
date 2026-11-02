@@ -12,14 +12,24 @@ hosts (section 5), to be made before the release reaches production.
 
 One evaluation, used everywhere: `IPropertyComplianceStatusService.GetBlockingStepsAsync`
 (`Casazen.Infrastructure/Services/PropertyComplianceStatusService.cs`). The activation wizard (CO-07) has no copy of
-its own: its four blocking steps and their blocker codes are this evaluation.
+its own: its four compliance steps and their codes are this evaluation.
 
-| Blocking step | Blocker codes | Rule |
-|---|---|---|
-| `base-data` | `activation_base_data_incomplete` | name, address, city, max guests > 0, nightly rate > 0 |
-| `cin` | `activation_cin_missing`, `activation_cin_invalid` | `CinFormat` (CO-01, [cin-format.md](cin-format.md)) |
-| `documents` | `activation_documents_missing` | `Compliance:RequiredDocuments` by the **region** of the property (`Property.RegionCode`, `LOM`, `LAZ`, from the comune the host chose from the ISTAT list, SU-04/A5-19: [comuni-istat.md](comuni-istat.md)); `default` for a property with no comune chosen or a region without an entry |
-| `safety` | `safety_*` | `SafetyChecklistRules` (CO-07): required items, facts and the final confirmation with the current text version |
+**Since the PO decision of 2026-11-01 (option A) only `base-data` and `cin` block.** `documents` and `safety` are
+reminders, as on Airbnb and Booking.com, which block a listing only on the CIN (the one thing the listing must show,
+art. 13-ter c. 6 D.L. 145/2023): the safety devices are the host's obligation, declared in BDSR with the CIN (c. 3, c. 7),
+and no rule asks a platform for the documents. A reminder is a `warning` step (`blocker: false`) that keeps its codes in
+`blockers`: it never refuses the activation, never suspends, and is listed as non-blocking in the host's list. A host who
+activates with reminders open must send `remindersAcknowledged: true` (409 `activation_reminders_ack_required`
+otherwise); the activation then writes `PropertyActivatedWithReminders` in the org's activity log (actor, property, the open
+reminders), kept as long as the activity log is (`OrgTeam:ActivityRetentionMonths`). Properties suspended before the
+decision only for documents or the checklist are reactivated by the next nightly check.
+
+| Step | Blocks | Codes | Rule |
+|---|---|---|---|
+| `base-data` | yes | `activation_base_data_incomplete` | name, address, city, max guests > 0, nightly rate > 0 |
+| `cin` | yes | `activation_cin_missing`, `activation_cin_invalid` | `CinFormat` (CO-01, [cin-format.md](cin-format.md)) |
+| `documents` | reminder | `activation_documents_missing` | `Compliance:RequiredDocuments` by the **region** of the property (`Property.RegionCode`, `LOM`, `LAZ`, from the comune the host chose from the ISTAT list, SU-04/A5-19: [comuni-istat.md](comuni-istat.md)); `default` for a property with no comune chosen or a region without an entry |
+| `safety` | reminder | `safety_*` | `SafetyChecklistRules` (CO-07): required items, facts and the final confirmation with the current text version |
 
 The tourist tax and the iCal feed are warnings: they never block, never suspend.
 

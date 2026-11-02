@@ -137,6 +137,8 @@ public class PaymentListServiceTests
         Assert.Equal(PaymentMethod.CreditCard, first.Method);
         Assert.Equal(At(10, 20), first.ProcessedAt);
         Assert.Null(rows.Single(r => r.Id == world.P3.Id).ProcessedAt);
+        // The stay of the booking, to tell the payments of a coming or current stay from the ones of a past stay.
+        Assert.All(rows, row => Assert.Equal((At(10, 10, 0), At(10, 13, 0)), (row.BookingCheckIn, row.BookingCheckOut)));
     }
 
     [Fact]

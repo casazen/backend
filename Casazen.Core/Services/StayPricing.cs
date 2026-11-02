@@ -100,6 +100,20 @@ public static class StayPricing
     }
 
     /// <summary>
+    /// The price of the one night that starts on <paramref name="night"/>: a stay of one night through <see cref="Lodging"/>, so the
+    /// calendar of the booking site (DB-03b) shows exactly what the quote adds up for that night and has no calculation of its own.
+    /// </summary>
+    public static decimal NightPrice(
+        DateOnly night,
+        decimal nightlyRate,
+        decimal weekendSurchargePercent,
+        IReadOnlyDictionary<DateOnly, decimal>? hostPrices = null) =>
+        Lodging(night, 1, nightlyRate, weekendSurchargePercent, hostPrices).Total;
+
+    /// <summary>An amount in euros as whole cents (half away from zero): the cents of the quote lines and of the calendar.</summary>
+    public static long ToCents(decimal amount) => Cents(amount);
+
+    /// <summary>
     /// The breakdown of a quote, in order: the ordinary nights (at the nightly rate first, then one line for each other price
     /// the host set for dates of the stay, in the order of the nights), the weekend nights, the cleaning fee, the tourist tax
     /// and the total. A line that does not apply is left out (no zero nights, no cleaning fee of 0, no tax that CasaZen could

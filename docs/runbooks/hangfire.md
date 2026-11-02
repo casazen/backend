@@ -50,11 +50,13 @@ and production never block each other.
 | `direct-booking-charge` | 06:00 | `DirectBookingChargeJob.ExecuteAsync` | 300 s |
 | `rent-collection` (LT-06: payment links of the rent installments coming due, payments in flight read again, see [§12](#12-rent-collection-lt-06)) | 07:00 | `RentCollectionJob.ExecuteAsync` (plus a PostgreSQL advisory lock per lease) | 300 s |
 | `checkout-hold-expiry` (BK-21 and BK-06, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
-| `service-request-expiry` (SP-10: deletes the booking holds past their expiry, cancels the showcase requests nobody answered and tells the customer; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | `*/5` | `ServiceRequestExpiryJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 60 s |
-| `service-request-reminders` (SP-10: the reminder to the customer of a showcase request, 18:00 Rome of the day before; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | hourly | `ServiceRequestReminderJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 300 s |
+| `service-request-expiry` (SP-10: deletes the booking holds past their expiry, cancels the showcase requests nobody answered and tells the customer, then reminds the suppliers of the requests on measure that still wait for an answer (SP-10c); **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | `*/5` | `ServiceRequestExpiryJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 60 s |
+| `service-request-reminders` (SP-10: the reminder to the customer of a showcase request, and SP-16d: to the supplier of any taken request, 18:00 Rome of the day before; **always registered**, see [§13](#13-showcase-booking-upkeep-sp-10)) | hourly | `ServiceRequestReminderJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 rows per run) | 300 s |
 | `service-request-auto-cancel` (SP-04, D8: cancels the new service requests nobody answered; only with `Features:SupplierRequestAutoCancel=true`, otherwise removed at startup, see [suppliers.md](suppliers.md) § 21.8) | `*/10` | `ServiceRequestAutoCancelJob.ExecuteAsync` (plus a PostgreSQL session lock per run, at most 500 requests per run) | 60 s |
+| `service-request-groups` (SP-BKP: follows the windows of the groups of backup suppliers: the job goes to the backup that accepted first, the second window opens, the requests nobody took lapse; **always registered**, see [§16](#16-backup-suppliers-sp-bkp)) | `*/5` | `ServiceRequestGroupJob.ExecuteAsync` (plus a PostgreSQL session lock per run and the lock of each group, at most 500 groups per run) | 60 s |
 | `service-payment-sync` (SP-15b: reads again the payments Stripe is processing and the refunds it has not completed; always scheduled, see [§14](#14-service-payments-sp-15b)) | `*/15` | `ServicePaymentSyncJob.ExecuteAsync` (plus the payment lock of each request) | 60 s |
 | `service-payment-reminders` (SP-15b: flags the late payments, sends the pending requests and the reminders at +2 and +7 days with `Features:SupplierOnlinePayments` on; always scheduled, see [§14](#14-service-payments-sp-15b)) | 07:30 | `ServicePaymentRemindersJob.ExecuteAsync` (plus the payment lock of each request) | 300 s |
+| `service-funds` (SP-15c-a: releases to the suppliers the money CasaZen holds, retries the failed transfers, settles the money of closed requests, drops the lapsed card blocks, warns about money held too long and, since SP-15c-c, follows the disputes (the supplier's reply time, the admins' target, a refund that did not go through, the no-show); always scheduled, see [§14.1](#141-the-money-casazen-holds-service-funds-sp-15c-a)) | `*/5` | `ServiceFundsJob.ExecuteAsync` (plus the payment lock of each request) | 60 s |
 | `ical-supplier-sync` (SU-15: active **and pending** suppliers with an iCal URL, see [ical.md](ical.md#supplier-calendars-su-15); SP-05: the events by the hour become windows of hours, see [ical.md](ical.md#events-by-the-hour-sp-05)) | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` (plus a PostgreSQL advisory lock per supplier while its days and windows are written) | 60 s |
 | `property-ical-sync` | `*/15` | `PropertyICalSyncJob.ExecuteAsync` | 60 s |
 | `guest-checkin-send` (CO-09: expires stale links, queues `GuestCheckInLinkEmailJob`, see [alloggiati.md](alloggiati.md#guest-check-in-link-and-host-fallback-co-09)) | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
@@ -64,6 +66,7 @@ and production never block each other.
 | `org-invitation-maintenance` (AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days; see [org-team.md](org-team.md#15-emails-and-the-maintenance-job)) | hourly at :10 | `OrgInvitationMaintenanceJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run and the org's seats lock per invitation) | 300 s |
 | `org-activity-retention` (AM-02b: deletes the lines of the org activity log older than `OrgTeam__ActivityRetentionMonths`, 12 by default, in batches of 500 and at most 100 batches a run; see [org-team.md](org-team.md#34-retention-12-months)) | 03:40 | `OrgActivityRetentionJob.ExecuteAsync` (plus a PostgreSQL session advisory lock per run) | 300 s |
 | `in-app-notification-retention` (UI-12a: deletes the in-app notifications older than 90 days, read or not, in one statement; see [§15](#15-in-app-notifications-ui-12a)) | 03:45 | `InAppNotificationRetentionJob.ExecuteAsync` | 300 s |
+| `supplier-showcase-media-cleanup` (SP-13b: removes the images of the suppliers' showcases that neither the draft, nor the published version, nor the one before it point to, once they are a day old; **always scheduled**, see [suppliers.md](suppliers.md) § 33b) | 04:20 | `SupplierShowcaseMediaCleanupJob.ExecuteAsync` (plus a PostgreSQL session lock per run and the supplier's showcase content lock per supplier) | 300 s |
 
 On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…ReportGuestAsync:<bookingId>`), so two
 submissions of the same booking to Alloggiati Web never run at once. `PushDeliveryJob.SendAsync` (MO-04) locks per
@@ -260,12 +263,13 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
   ORDER BY env, lastheartbeat DESC;
 
-  -- 36 recurring jobs in each schema with every flag on; 31 with the defaults
+  -- 38 recurring jobs in each schema with every flag on; 33 with the defaults
   -- (Features:OtaPartnerApi, Features:RliProvider, Features:ESignProvider and Features:SupplierRequestAutoCancel off:
   -- ota-sync-all, booking-pull-all, lease-registration-status-poll, lease-sign-status-poll and
   -- service-request-auto-cancel are the five that appear only with their flag on; every other job, among them
-  -- service-request-expiry, service-request-reminders, org-invitation-maintenance, org-activity-retention,
-  -- service-payment-sync, service-payment-reminders, in-app-notification-retention (UI-12a),
+  -- service-request-expiry, service-request-reminders, service-request-groups (SP-BKP, whatever
+  -- Features:SupplierRequestBackups says), org-invitation-maintenance, org-activity-retention,
+  -- service-payment-sync, service-payment-reminders, in-app-notification-retention (UI-12a), supplier-showcase-media-cleanup (SP-13b),
   -- property-mode-change (PM-02), lease-draft-retention (LR-12), lease-term-renewal (LR-14) and
   -- lease-notice-reminder (LR-11c-a), is in both counts)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
@@ -337,6 +341,18 @@ checks: `Pending` + source `Direct` and either
   either (legacy host bookings created as `Direct` before PC-01).
 - The host's accept / decline of a request (BK-06) lock the booking row (`FOR UPDATE`): a run finding it locked skips
   it (`SKIP LOCKED`), and a run holding it makes the answer wait and then answer 409.
+- **Payments a cancelled booking left open**, the last step of every run (`CloseOpenPaymentsOfCancelledBookingsAsync`). The
+  cleanup before BK-21 (until the end of September 2026: it ran when the next booking took the same dates) set only
+  `Booking.Status = Cancelled`, and a cancellation that does not carry its payments leaves `Pending` or `Failed` rows on a
+  `Cancelled` booking, listed as "Da incassare" for ever and counted in "In attesa di incasso". For each such booking, oldest
+  first, at most 50 per run, under the same row lock (`FOR UPDATE SKIP LOCKED`): the intents are released exactly as in step 3
+  (an intent not found, or no connected account, counts as released) and the open payment rows become `Canceled`. The booking
+  is **not** touched (not its status, `CancelledAt` or `CancellationReason`). A Stripe error leaves everything as it is for
+  the next run. When Stripe says the guest has paid or is paying (`succeeded`, `processing`, `requires_capture`) nothing is
+  cancelled: the payment row of the PaymentIntent becomes `Processing` and the log says `Cancelled booking … keeps an open
+  payment: Stripe says the guest has paid or is paying`: a person settles it (refund or record), because the reconciliation
+  above reads `Pending` bookings only, so no job will. Log: `Payments of cancelled bookings: … closed, … paid or in flight on
+  Stripe, … skipped`.
 
 Nothing to configure on Railway: the job is registered at startup like the others. To change the TTL set
 `DirectBooking__PendingTtlMinutes` (keep it longer than the time a guest needs for 3-D Secure; why 30 minutes:
@@ -365,12 +381,19 @@ WHERE "CancellationReason" = 1 AND "UpdatedAt" > now() - interval '7 days';
 SELECT b."Id", p."StripePaymentIntentId", p."UpdatedAt"
 FROM casazen_prod."Bookings" b JOIN casazen_prod."Payments" p ON p."BookingId" = b."Id"
 WHERE b."Status" = 0 AND b."Source" = 0 AND p."Status" = 1 AND p."UpdatedAt" < now() - interval '1 hour';
+
+-- Payments still open on a cancelled booking (Pending 0 / Failed 3 should be empty minutes after a deploy;
+-- Processing 1 = Stripe says the guest paid or is paying: settle it by hand)
+SELECT b."BookingCode", b."Status", p."Id", p."Status" AS "PaymentStatus", p."Amount", p."UpdatedAt"
+FROM casazen_prod."Bookings" b JOIN casazen_prod."Payments" p ON p."BookingId" = b."Id"
+WHERE b."Status" = 4 AND p."Status" IN (0, 1, 3);
 ```
 
-The last query should stay empty: a row there means the payment webhook did not arrive (check the Connect endpoint and
+The third query should stay empty: a row there means the payment webhook did not arrive (check the Connect endpoint and
 `Stripe__ConnectWebhookSecret`, then resend the event from the Stripe Dashboard) or a SEPA payment is still
 processing. A SetupIntent still `processing` is not recorded on the booking: the job reads it again at every run until
-the webhook confirms it.
+the webhook confirms it. The fourth query is empty of `Pending` and `Failed` rows once the step above has run; a
+`Processing` row there needs a person (the money may be on the host's Stripe account).
 
 ## 8. RLI deadline reminder (LT-04)
 
@@ -586,14 +609,19 @@ reminded of, also after the flag is turned off (with it off, a run finds nothing
   (`xmin`: a supplier that takes it meanwhile wins and the run counts a conflict). The customer is told (`supplier-booking-expired`),
   the supplier by the existing mail of SP-04. A request whose customer did not answer a time the supplier proposed (the deadline of a
   pending proposal is the customer's) is cancelled with the reason `ProposalNotAnswered`: the customer is told
-  `supplier-booking-proposal-expired` and the supplier `supplier-booking-proposal-lapsed` (SP-11, [suppliers.md § 24](suppliers.md#24-the-customers-own-area-find-cancel-move-and-answer-a-proposed-time--sp-11)). It is the code of `service-request-auto-cancel` with the showcase scope, **without that
-  job's flag**: the host job stays behind `Features:SupplierRequestAutoCancel`, the two never touch each other's requests.
+  `supplier-booking-proposal-expired` and the supplier `supplier-booking-proposal-lapsed` (SP-11, [suppliers.md § 24](suppliers.md#24-the-customers-own-area-find-cancel-move-and-answer-a-proposed-time--sp-11)). The same
+  for a quote the customer did not answer (SP-04b: the deadline of a quote sent on a showcase request is the customer's too): reason `QuoteNotAnswered`, the customer is told `supplier-booking-quote-expired` and the
+  supplier `supplier-booking-quote-lapsed` ([suppliers.md § 34](suppliers.md)). It is the code of `service-request-auto-cancel` with the showcase scope, **without that
+  job's flag**: the host job stays behind `Features:SupplierRequestAutoCancel` (and, like a pending proposal, a pending quote keeps a host's request out of it: a host has no deadline), the two never touch each other's requests. **Second pass (SP-10c, `ShowcaseReplyReminderService`), after the cancellations:** the supplier of a request on measure (`Kind = Custom`) that is still `Richiesto`, has a `ResponseDueAt` ahead and no offer waiting for the customer is reminded by e-mail and push at half of the time it has and 10 minutes before the deadline (`supplier-inquiry-reply-reminder`, push `service-request-reply-reminder`), each **once**: `ReplyReminderHalfSentAt` and `ReplyReminderLastSentAt` are saved before the mail is queued and only if the row is unchanged (`xmin`: a supplier that answers at the same moment wins and is not reminded). At most 500 rows per pass; a failure of the pass is logged and never undoes the cancellations; the run counts `RemindersSent`. Closing a request on measure writes `NoReplyInTime` and the customer's mail lists up to three other suppliers ([suppliers.md § 34.11](suppliers.md)).
 - `service-request-reminders` (hourly, `ServiceRequestReminderJob`, wait 300 s). One run under a session lock looks at the showcase
   requests the supplier took (`PresoInCarico`) whose work starts in the next 48 hours and which have no `ReminderSentAt`, and sends the
   reminder to those for which 18:00 Europe/Rome of the day before has come and the work has not started, **if the supplier took the
   request before that time** (the mail of the take promised the reminder only then). The request is marked **before** the mail is
   queued: a crash or a repeated run sends it once or not at all, never twice. At the change of the clocks the hour follows the wall
-  clock of Rome.
+  clock of Rome. **Second pass (SP-16d, `SupplierDayBeforeReminders`), under the same lock:** the requests taken in **any context** with no
+  `SupplierReminderSentAt` get the reminder to the **supplier** (e-mail and push, once per request) at the same hour, unless it turned
+  «Promemoria del giorno prima» off or is suspended (the request is then marked all the same and not read again); at most 500 rows per pass; the
+  run counts `SupplierSent` and `SupplierFailed` next to the customers' ([suppliers.md § 35](suppliers.md)).
 - Failure: a row that fails is logged by id and retried at the next run (expiry) or not retried (reminder: at most once); a run that
   fails entirely is retried by Hangfire; nothing personal is in the logs.
 
@@ -607,6 +635,11 @@ WHERE "RentalContext" = 2 AND "Status" = 0 AND "ResponseDueAt" < now() - interva
 
 -- Reminders sent in the last day
 SELECT count(*) FROM casazen_prod."ServiceRequests" WHERE "ReminderSentAt" > now() - interval '1 day';
+
+-- Reminders to answer a request on measure, sent in the last day (SP-10c): half of the time / ten minutes before the deadline
+SELECT count(*) FILTER (WHERE "ReplyReminderHalfSentAt" > now() - interval '1 day') AS half,
+       count(*) FILTER (WHERE "ReplyReminderLastSentAt" > now() - interval '1 day') AS last_call
+FROM casazen_prod."ServiceRequests" WHERE "Kind" = 1;
 ```
 
 The nightly `gdpr-data-retention` also applies `Gdpr:Retention:SupplierCustomers` to the customers of the suppliers
@@ -619,7 +652,7 @@ Task SP-15b. Three jobs follow the money of the services paid inside CasaZen ([s
 
 | Job | When | Lock (wait) | What |
 |---|---|---|---|
-| `service-payment-sync` (`ServicePaymentSyncJob`) | `*/15` | `ServicePaymentSyncJob.ExecuteAsync` (60 s) | reads again on Stripe the payments `Processing` and applies them as the webhook would (a PaymentIntent that no longer exists: `NeedsReview`); looks for the refunds that never got Stripe's answer (`Pending`, no Stripe id, older than 2 minutes) and sends them again with the same idempotency key; reads again the refunds Stripe has not completed. At most 100 of each per run |
+| `service-payment-sync` (`ServicePaymentSyncJob`) | `*/15` | `ServicePaymentSyncJob.ExecuteAsync` (60 s) | reads again on Stripe the payments `Processing` and applies them as the webhook would (a PaymentIntent that no longer exists: `NeedsReview`); since SP-15c-b also the payments a **host** is paying to the platform (`Requested`/`Processing`/`Failed` held payments with a PaymentIntent, touched in the last 3 days and not in the last 10 minutes): a charge whose `payment_intent.succeeded` was lost is recorded with the same checks; looks for the refunds that never got Stripe's answer (`Pending`, no Stripe id, older than 2 minutes) and sends them again with the same idempotency key; reads again the refunds Stripe has not completed. At most 100 of each per run |
 | `service-payment-reminders` (`ServicePaymentRemindersJob`) | 07:30 | `ServicePaymentRemindersJob.ExecuteAsync` (300 s, 3 retries) | flags the late payments (`SupplierPayments__LateAfterDays`, 7); with the flag **on** sends the requests that waited and the reminders at +2 and +7 days (`SupplierPayments__ReminderDays__0/1`), at most three emails with a link in all and never two in 24 hours. At most 500 payments per step |
 | `SendPendingPaymentRequestsJob(orgId)` | on demand: queued after the commit of an `account.updated` that makes a supplier able to take charges and payouts | `SendPendingPaymentRequestsJob.ExecuteAsync` (300 s, 3 retries) | sends the first request of the payments of that supplier that were pending (no link yet). With the flag off it sends nothing. A job that fails or is never queued is made up for by the daily job |
 
@@ -633,6 +666,32 @@ SELECT "Status", count(*), min("CreatedAt") FROM casazen_prod."ServiceRequestPay
 ```
 
 If `Processing` payments or `Pending` refunds pile up, check that the Connect webhook endpoint sends the events listed in [stripe.md](stripe.md#stripe-settings-to-check-product-owner) and that `service-payment-sync` runs (Hangfire dashboard). `RecurringJobsConcurrencyTests` and `ServicePaymentJobsRegistrationTests` fail if one of them loses its lock or its schedule.
+
+### 14.1 The money CasaZen holds: `service-funds` (SP-15c-a)
+
+Task SP-15c-a ([stripe.md](stripe.md#the-money-casazen-holds-for-the-services-sp-15c)). One job, `service-funds` (`ServiceFundsJob`, every 5 minutes, **always registered**, `[DisableConcurrentExecution]` 60 s), follows the payments whose `FundsModel` is `PlatformHeld`, whatever the state of `Features__SupplierOnlinePayments`. One run does four things, at most 100 payments each, every payment alone, under the payment lock of its request and read again after it (an error on one is logged and counted, the others go on):
+
+1. **Release**: payments `Held` or `TransferFailed` whose `ReleaseAt` has passed, with no dispute and no refund in progress, and whose next try (`TransferNextAttemptAt`) is due: look for the payment's transfer on Stripe, make it if there is none (`source_transaction` = the charge, key `service-transfer:{payment}:{attempts}`), record `Released` and the request `Pagato`. A refusal from Stripe makes it `TransferFailed` and delays the next try (15, 30, 60 … up to 720 minutes by default); a supplier whose account cannot receive money yet, or an answer that does not come, only delays it. After 5 refusals the admins get one e-mail.
+2. **Closed requests**: payments `Authorized`, `Held` or `TransferFailed` whose request is `Annullato` or `Rifiutato`: the block is cancelled, the charge refunded in full. The request closing already tries it at once; this is the safety net.
+3. **Lapsed blocks**: payments `Authorized` past `AuthorizationExpiresAt` (`SupplierPayments__AuthorizationValidityHours`): the PaymentIntent is cancelled and the payment `Canceled`.
+4. **Hold warnings**: money held for `MaxHoldDays - HoldWarningDays` days or more, once: an e-mail to the admins. Nothing moves.
+
+Since SP-15c-c the same run has a **fifth step, after the four**, for the complaints about the jobs (`IServiceDisputeJobService`, [suppliers.md](suppliers.md#3810-the-complaint-and-the-dispute--sp-15c-c)): (a) disputes `AwaitingSupplier` whose `SupplierReplyDueAt` passed go to the admins (`AwaitingDecision`, e-mail `awaiting_decision:no_reply`); (b) disputes `AwaitingDecision` whose `DecisionDueAt` passed: the admins are told once (`decision_overdue`); (c) decisions for the customer (`ResolvedForCustomer`, `SettledAt` empty) older than `DisputeRefundAlertMinutes` whose refund did not go through and none is waiting for Stripe: the admins are told once (`refund_incomplete`); (d) held payments of a request still `PresoInCarico`/`InCorso` whose `ScheduledEndUtc` is `DisputeNoShowHours` ago and with no dispute: CasaZen opens the no-show complaint. It never calls Stripe and moves no money; a failure of this step does not keep the releases from running.
+
+**Log.** `Service disputes: N sent to the admins, … overdue, … refund alert(s), … no-show complaint(s) opened, E error(s)` (only when something happened; the funds line is the one below). `Service funds: N released, M release(s) waiting or refused, … closed request(s) settled, … block(s) released, … hold warning(s), E error(s)` (only when something happened). Errors that need a person are `LogError`: `Payment {id}: the transfer to the supplier failed N times (last: …)`, `Held payment {id} has been held for N days`, `Transfer {tr} does not match what was meant to be released`, `Held payment {id} was canceled but PaymentIntent … succeeded`.
+
+```sql
+-- The payments CasaZen holds, by status (8 Authorized, 9 Held, 10 Released, 11 Disputed, 12 TransferFailed)
+SELECT "Status", count(*), min("CapturedAt"), min("ReleaseAt") FROM casazen_prod."ServiceRequestPayments" WHERE "FundsModel" = 1 GROUP BY 1 ORDER BY 1;
+-- The disputes waiting for somebody (0 AwaitingSupplier, 1 AwaitingDecision), oldest first
+SELECT "Id", "ServiceRequestId", "Status", "NoShow", "OpenedAt", "SupplierReplyDueAt", "DecisionDueAt" FROM casazen_prod."ServicePaymentDisputes" WHERE "Status" IN (0, 1) ORDER BY "OpenedAt";
+-- Decisions for the customer whose refund is not done yet
+SELECT d."Id", d."ResolvedAt", d."DecidedRefundCents", d."RefundTargetCents", p."RefundedCents", p."Status" FROM casazen_prod."ServicePaymentDisputes" d JOIN casazen_prod."ServiceRequestPayments" p ON p."Id" = d."ServiceRequestPaymentId" WHERE d."Status" = 3 AND d."SettledAt" IS NULL;
+-- Transfers that keep failing
+SELECT "Id", "TransferAttempts", "TransferFailureCode", "TransferNextAttemptAt" FROM casazen_prod."ServiceRequestPayments" WHERE "FundsModel" = 1 AND "Status" = 12;
+```
+
+`RecurringJobsConcurrencyTests` fails if the job loses its lock or its schedule.
 
 ## 15. In-app notifications (UI-12a)
 
@@ -651,3 +710,37 @@ of <audience> <id>`, `… the N users were told already`, `… nobody to tell fo
 [in-app-notifications.md § 6](in-app-notifications.md#6-checking-rolling-back), last query), and the audience has at least one
 active user (a booking that is gone, or every member deactivated, writes nothing and logs `nobody to tell`). `InAppNotificationJobTests` and
 `InAppNotificationRetentionJobTests` fail if the job loses its retry or its lock, or the retention its schedule.
+
+## 16. Backup suppliers (SP-BKP)
+
+Task SP-BKP. One recurring job follows the groups of backup suppliers ([suppliers.md § 36](suppliers.md#36-backup-suppliers-for-a-hosts-request--sp-bkp)):
+
+| Job | When | Lock (wait) | What |
+|---|---|---|---|
+| `service-request-groups` (`ServiceRequestGroupJob`) | `*/5` | `ServiceRequestGroupJob.ExecuteAsync` (60 s) | One run, under a PostgreSQL **session lock** (scope 1314; a second run is skipped and says so in the log), lists the groups that are not over and have something due (the primary's hour is over, the second window is over, or the request the host follows was taken, refused or cancelled by the host without the group having followed), oldest first, **at most 500 per run**, and resolves each one under **its own advisory lock** (scope 1315, taken before any supplier calendar lock): the job goes to the backup that accepted first (its time checked again; the next one when it is not free), or the second window opens, or the requests nobody took lapse with `NoResponse`. |
+
+**Registered at every startup whatever `Features:SupplierRequestBackups` says**: the flag only gates the creation of groups, and a group that
+exists has to be followed to the end even if the flag is turned off (with no group a run reads one empty index and stops). It never
+touches the requests of the old job: `service-request-auto-cancel` skips every request that has a `GroupId`. **Idempotent**: a group that was
+resolved is no longer due; a take or a refusal that happens in the same moment wins and the run counts a conflict (the request, and the group,
+are saved only if they are as they were read, `xmin`). A group whose primary proposed another time is the host's to decide and is not moved.
+
+**Logs.** `Service request groups: N examined, C closed, W second windows opened, X changed under the run, F failed` (only when a group was due);
+`Service request groups run skipped: another run is in progress`; `Group <id> closed: …`, `Group <id>: the primary is out, the backups can take the job
+until …` and `Group <id> lapsed: nobody took the job` for each group; a group that could not be handled is logged by id and retried at the next run
+(`Warning` with the counts when `F` > 0).
+
+```sql
+-- Groups waiting past their window (expected 0 a few minutes after the window ends; 0 Primary, 1 Backup window, 2 Closed)
+SELECT "Id", "Phase", "PrimaryDueAt", "BackupDueAt" FROM casazen_prod."ServiceRequestGroups"
+WHERE "Phase" = 0 AND "PrimaryDueAt" < now() - interval '15 minutes'
+   OR "Phase" = 1 AND "BackupDueAt" < now() - interval '15 minutes';
+
+-- Backup requests still waiting although their group is over (expected 0)
+SELECT r."Id" FROM casazen_prod."ServiceRequests" r
+JOIN casazen_prod."ServiceRequestGroups" g ON g."Id" = r."GroupId"
+WHERE g."Phase" = 2 AND r."GroupRole" = 2 AND r."Status" = 0;
+```
+
+`RecurringJobsConcurrencyTests` requires `[DisableConcurrentExecution]` on the job and `RecurringJobsFeatureFlagTests` that it is registered with every
+flag off and never removed.

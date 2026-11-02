@@ -23,6 +23,11 @@ public sealed partial class SupplierPaymentService
         {
             ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded => PublicServicePaymentState.Paid,
             ServicePaymentStatus.Processing or ServicePaymentStatus.NeedsReview => PublicServicePaymentState.Processing,
+
+            // The money CasaZen holds (SP-15c-a): the payer has paid (or the block is made), there is nothing left to pay.
+            ServicePaymentStatus.Held or ServicePaymentStatus.Released or ServicePaymentStatus.Disputed or ServicePaymentStatus.TransferFailed
+                => PublicServicePaymentState.Paid,
+            ServicePaymentStatus.Authorized => PublicServicePaymentState.Processing,
             ServicePaymentStatus.Requested or ServicePaymentStatus.Failed when supplier.CanReceivePayments => PublicServicePaymentState.Payable,
             _ => PublicServicePaymentState.Unavailable,
         };
@@ -93,6 +98,16 @@ public sealed partial class SupplierPaymentService
         Guid? hostOrgId,
         CancellationToken cancellationToken)
     {
+        // The model of a payment never changes (SP-15c-b): the money CasaZen holds is paid to the platform, with a session of its own; this
+        // method is the direct charge on the supplier's account (SP-15a). The model is read here without the lock and again, with it, below.
+        var model = await db.ServiceRequestPayments
+            .AsNoTracking()
+            .Where(p => p.Id == paymentId && p.ServiceRequestId == requestId)
+            .Select(p => (ServiceFundsModel?)p.FundsModel)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (model == ServiceFundsModel.PlatformHeld)
+            return await OpenHeldSessionAsync(requestId, paymentId, token, hostOrgId, cancellationToken);
+
         ServicePaymentSession? session = null;
         DomainException? refusal = null;
         await using (var transaction = await LockAsync(requestId, cancellationToken))
@@ -108,11 +123,20 @@ public sealed partial class SupplierPaymentService
             if (hostOrgId is { } host && payment.PayerOrgId != host)
                 throw PaymentNotFound();
 
+            // A payment that became a held one between the two reads cannot be paid on the supplier's account.
+            if (payment.FundsModel == ServiceFundsModel.PlatformHeld)
+                throw NotPayable();
+
             switch (payment.Status)
             {
-                case ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded:
+                case ServicePaymentStatus.Paid or ServicePaymentStatus.PartiallyRefunded or ServicePaymentStatus.Refunded or ServicePaymentStatus.Released:
                     throw AlreadyPaid();
-                case ServicePaymentStatus.Processing or ServicePaymentStatus.NeedsReview:
+                case ServicePaymentStatus.Processing
+                    or ServicePaymentStatus.NeedsReview
+                    or ServicePaymentStatus.Authorized
+                    or ServicePaymentStatus.Held
+                    or ServicePaymentStatus.Disputed
+                    or ServicePaymentStatus.TransferFailed:
                     throw InFlight();
                 case ServicePaymentStatus.Canceled:
                     throw NotPayable();

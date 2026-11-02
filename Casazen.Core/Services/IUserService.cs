@@ -42,6 +42,23 @@ public interface IUserService
     /// </exception>
     /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The user does not exist.</exception>
     Task<Auth0SyncResult> DeleteRegisteredUserAsync(string id, string actorId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The permanent removal of an account by the person it belongs to, for an account that is only a guest's: what the stores ask of an app
+    /// that lets people register («Elimina account»). The same steps as <see cref="DeleteRegisteredUserAsync"/>: Auth0 is deleted first
+    /// (<see cref="IAuth0ManagementService.DeleteUserAsync"/>, a user it no longer has counts as deleted) and when that fails nothing is
+    /// removed in CasaZen and the failed result is returned, so a retry is safe; then the account row goes with what hangs from it (the
+    /// devices, the notifications, the memberships). It <b>never touches bookings or guest records</b>: they belong to the hosts' books
+    /// (accounting, the Alloggiati communication) and are not tied to the account, only to the email typed at the checkout.
+    /// </summary>
+    /// <exception cref="Casazen.Core.Exceptions.DomainConflictException">
+    /// <see cref="GuestAccountErrorCodes.IsProfessional"/>: the account has a host org, a supplier link or a role other than none and guest
+    /// (a platform administrator included), so someone depends on its data: it is removed by support, not from the app (nothing is
+    /// removed, Auth0 is not called). <see cref="UserActivationErrors.DeleteBlocked"/>: a related row refuses the delete (Auth0 is gone, the
+    /// CasaZen row stays and a retry removes it).
+    /// </exception>
+    /// <exception cref="Casazen.Core.Exceptions.NotFoundException">The user does not exist.</exception>
+    Task<Auth0SyncResult> DeleteOwnGuestAccountAsync(string userId, CancellationToken cancellationToken = default);
     Task<bool> ValidateCredentialsAsync(string email, string password);
 
     /// <summary>

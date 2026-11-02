@@ -25,6 +25,11 @@ namespace Casazen.Core.Suppliers;
 /// The request was born taken, accepted automatically for a regular host (SP-04d): the take is a step of CasaZen itself
 /// (<see cref="ServiceRequestActorParty.System"/>), with no member of the supplier to name.
 /// </param>
+/// <param name="QuoteEvents">
+/// What happened to the quotes of the request (SP-04b), oldest first, or <c>null</c> to leave the quotes out of the history (what the host's
+/// and the supplier's older readers get): the quote sent, turned down and taken back become steps of the status <c>Richiesto</c> with an
+/// <see cref="ServiceRequestHistoryEntry.Event"/>, and the take that accepted a quote says so.
+/// </param>
 public sealed record ServiceRequestMilestones(
     ServiceRequestStatus Status,
     DateTime CreatedAt,
@@ -39,7 +44,8 @@ public sealed record ServiceRequestMilestones(
     ServiceRequestActorParty? CancelledBy = null,
     ServiceRequestActorParty? PaidBy = null,
     ServiceRequestActorParty Requester = ServiceRequestActorParty.Host,
-    bool AutoAccepted = false);
+    bool AutoAccepted = false,
+    IReadOnlyList<ServiceRequestQuoteEvent>? QuoteEvents = null);
 
 /// <summary>
 /// The history of a service request (SU-08): one step per transition of <see cref="ServiceRequestStateMachine"/>, with
@@ -63,6 +69,31 @@ public static class ServiceRequestHistory
             new(ServiceRequestStatus.Richiesto, request.CreatedAt, request.Requester, null, null),
         };
 
+        // The quotes (SP-04b) happen while the request is new: between its creation and its take. An accepted one is not a step of its own,
+        // it is the take; a quote nobody answered is the cancellation (below).
+        var acceptedAQuote = false;
+        foreach (var quoteEvent in (request.QuoteEvents ?? []).OrderBy(e => e.At))
+        {
+            switch (quoteEvent.Kind)
+            {
+                case ServiceRequestQuoteEventKinds.Sent:
+                    steps.Add(new ServiceRequestHistoryEntry(
+                        ServiceRequestStatus.Richiesto, quoteEvent.At, ServiceRequestActorParty.Supplier, null, null, ServiceRequestHistoryEvents.QuoteSent));
+                    break;
+                case ServiceRequestQuoteEventKinds.Withdrawn:
+                    steps.Add(new ServiceRequestHistoryEntry(
+                        ServiceRequestStatus.Richiesto, quoteEvent.At, ServiceRequestActorParty.Supplier, null, null, ServiceRequestHistoryEvents.QuoteWithdrawn));
+                    break;
+                case ServiceRequestQuoteEventKinds.Rejected:
+                    steps.Add(new ServiceRequestHistoryEntry(
+                        ServiceRequestStatus.Richiesto, quoteEvent.At, request.Requester, null, null, ServiceRequestHistoryEvents.QuoteRejected));
+                    break;
+                case ServiceRequestQuoteEventKinds.Accepted:
+                    acceptedAQuote = true;
+                    break;
+            }
+        }
+
         if (request.TakenAt is { } takenAt)
         {
             steps.Add(new ServiceRequestHistoryEntry(
@@ -70,7 +101,8 @@ public static class ServiceRequestHistory
                 takenAt,
                 request.AutoAccepted ? ServiceRequestActorParty.System : ServiceRequestActorParty.Supplier,
                 request.AutoAccepted || string.IsNullOrWhiteSpace(takenByName) ? null : takenByName.Trim(),
-                null));
+                null,
+                acceptedAQuote ? ServiceRequestHistoryEvents.QuoteAccepted : null));
         }
 
         if (request.StartedAt is { } startedAt)
@@ -108,7 +140,8 @@ public static class ServiceRequestHistory
                 request.CancelledAt ?? request.UpdatedAt,
                 request.CancelledBy ?? request.Requester,
                 null,
-                string.IsNullOrWhiteSpace(request.CancellationReason) ? null : request.CancellationReason));
+                string.IsNullOrWhiteSpace(request.CancellationReason) ? null : request.CancellationReason,
+                request.CancellationReason == ServiceRequestCancellationReasons.QuoteNotAnswered ? ServiceRequestHistoryEvents.QuoteExpired : null));
         }
 
         return steps;

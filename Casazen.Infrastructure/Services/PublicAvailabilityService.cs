@@ -19,7 +19,8 @@ public sealed class PublicAvailabilityService(
     IConfiguration configuration,
     TimeProvider? timeProvider = null) : IPublicAvailabilityService
 {
-    private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+    // The nights taken by stays, holds and blocks: the definition the calendar and the per-site reads share.
+    private readonly PublicOccupancyReader _occupancy = new(db, configuration, timeProvider);
 
     public async Task<PublicAvailability> GetAsync(
         Guid propertyId,
@@ -52,29 +53,9 @@ public sealed class PublicAvailabilityService(
             };
         }
 
-        var expiredHoldCutoff = CheckoutHolds.CutoffAt(
-            _clock.GetUtcNow().UtcDateTime, CheckoutHolds.GetTtlMinutes(configuration));
+        // Dates only, never the guest or the source of a stay (the reader ignores the tenant filter for the same reason as above).
+        var taken = await _occupancy.TakenNightsAsync([propertyId], from, to, cancellationToken);
 
-        // Same filter and projection reason as above: dates only, never the guest or the source of a stay.
-        var stays = await db.Bookings
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .Where(PropertyOccupancy.BookingTakesNightIn(propertyId, from, to))
-            .Where(CheckoutHolds.OccupiesDates(expiredHoldCutoff))
-            .Select(b => new { Start = b.CheckInDate, End = b.CheckOutDate })
-            .ToListAsync(cancellationToken);
-
-        var blocks = await db.CalendarBlocks
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .Where(PropertyOccupancy.BlockTakesNightIn(propertyId, from, to))
-            .Select(b => new { Start = b.StartUtc, End = b.EndUtc })
-            .ToListAsync(cancellationToken);
-
-        var nights = new SortedSet<DateTime>();
-        foreach (var stay in stays)
-            nights.UnionWith(PropertyOccupancy.NightsIn(stay.Start, stay.End, from, to));
-        foreach (var block in blocks)
-            nights.UnionWith(PropertyOccupancy.NightsIn(block.Start, block.End, from, to));
-
-        return new PublicAvailability(propertyId, from, to, [.. nights], published.MinNights);
+        return new PublicAvailability(propertyId, from, to, [.. taken[propertyId]], published.MinNights);
     }
 }

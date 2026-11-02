@@ -71,7 +71,13 @@ public sealed partial class SupplierPaymentService
             async () =>
             {
                 var payment = await LoadPaymentAsync(found.Id, cancellationToken);
-                return payment is null ? null : await ApplyObservationAsync(payment, observed, cancellationToken);
+                if (payment is null)
+                    return null;
+
+                // The money CasaZen holds is on the platform and follows its own cycle (SP-15c-a); a direct charge, the one of SP-15a.
+                return payment.FundsModel == ServiceFundsModel.PlatformHeld
+                    ? ApplyHeldIntentEvent(payment, paymentEvent)
+                    : await ApplyObservationAsync(payment, observed, cancellationToken);
             },
             cancellationToken);
 
@@ -306,8 +312,16 @@ public sealed partial class SupplierPaymentService
         return new ServicePaymentNotice(ServicePaymentNoticeKind.Received, payment.Id);
     }
 
-    /// <summary>The request of a payment that was paid becomes <c>Pagato</c>, by the payer (the host). Any other state is left as it is and logged.</summary>
-    private async Task MarkRequestPaidAsync(ServiceRequestPayment payment, DateTime paidAt, DateTime now, CancellationToken cancellationToken)
+    /// <summary>
+    /// The request of a payment that was paid becomes <c>Pagato</c>, by the payer (the host) or, for the money CasaZen held,
+    /// by the one who released it (the customer who said "all fine", or the system). Any other state is left as it is and logged.
+    /// </summary>
+    private async Task MarkRequestPaidAsync(
+        ServiceRequestPayment payment,
+        DateTime paidAt,
+        DateTime now,
+        CancellationToken cancellationToken,
+        ServiceRequestActorParty paidBy = ServiceRequestActorParty.Host)
     {
         // The request has two parties and is not tenant-filtered; scoped by the id the payment points to.
         var request = await db.ServiceRequests
@@ -324,7 +338,7 @@ public sealed partial class SupplierPaymentService
         {
             request.Status = ServiceRequestStatus.Pagato;
             request.PaidAt = paidAt;
-            request.PaidBy = ServiceRequestActorParty.Host;
+            request.PaidBy = paidBy;
             request.UpdatedAt = now;
         }
         else if (request.Status != ServiceRequestStatus.Pagato)
@@ -368,8 +382,67 @@ public sealed partial class SupplierPaymentService
             dispute.DisputeId, found.Id, dispute.PaymentIntentId, dispute.AccountId ?? "none", dispute.EventId,
             dispute.AmountCents, dispute.Currency ?? "none", dispute.Reason ?? "none", dispute.Status ?? "none");
 
+        // SP-15c-a: the dispute is also written on the payment, for the admin console; the status of the payment does not change.
+        await UnderPaymentLockAsync(
+            found.ServiceRequestId,
+            async () =>
+            {
+                var payment = await LoadPaymentAsync(found.Id, cancellationToken);
+                if (payment is not null)
+                {
+                    var now = Now();
+                    payment.CardDisputeId = Truncate(dispute.DisputeId, 255);
+                    payment.CardDisputeStatus = Truncate(dispute.Status, 50);
+                    payment.CardDisputeAt = now;
+                    payment.UpdatedAt = now;
+                }
+
+                return true;
+            },
+            cancellationToken);
+
+        // SP-REL: a dispute takes back the point of the job and costs the supplier more (SupplierRanking). Stripe is the only door for now:
+        // the claim a host will open from CasaZen (SP-15c-c) records the same event.
+        await RecordDisputeAsync(found.ServiceRequestId, dispute.DisputeId, cancellationToken);
+
         var detail = $"{dispute.DisputeId} · {dispute.Reason ?? "reason n/a"} · {dispute.Status ?? "status n/a"}";
         return new ServicePaymentEventResult(true, [new ServicePaymentNotice(ServicePaymentNoticeKind.Disputed, found.Id, Detail: Truncate(detail, 200))]);
+    }
+
+    /// <summary>
+    /// Records the dispute on the reliability of the supplier of the request (once for each request: Stripe may send the event again).
+    /// A request from a supplier's showcase is not part of the ranking. Never fails the event: the admins are told whatever happens here.
+    /// </summary>
+    private async Task RecordDisputeAsync(Guid serviceRequestId, string disputeId, CancellationToken cancellationToken)
+    {
+        if (reliability is null)
+            return;
+
+        try
+        {
+            // The request has two parties and is not tenant-filtered; scoped by the id the payment points to.
+            var owner = await db.ServiceRequests
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(r => r.Id == serviceRequestId)
+                .Select(r => new { r.SupplierOrgId, r.RentalContext })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (owner is null || owner.RentalContext == ServiceRequestRentalContext.Showcase)
+                return;
+
+            await reliability.RecordAsync(
+                owner.SupplierOrgId,
+                SupplierReliabilityEventKind.DisputeOpened,
+                serviceRequestId,
+                Now(),
+                asBackup: false,
+                detail: Truncate(disputeId, 200),
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "The dispute {DisputeId} of request {RequestId} could not be recorded on the supplier's reliability", disputeId, serviceRequestId);
+        }
     }
 
     // ─── account.updated ────────────────────────────────────────────────────────────────────────────────────────────

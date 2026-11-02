@@ -37,6 +37,28 @@ public class EmailTextsParityTests
         Assert.Empty(keys.GroupBy(k => k, StringComparer.Ordinal).Where(g => g.Count() > 1).Select(g => g.Key));
     }
 
+    /// <summary>
+    /// Covers AC-NF28-1, AC-NF28-2, AC-NF28-3, AC-NF28-6: Backend email localization completeness audit.
+    /// Verifies that all EmailTexts keys exist in both Italian (default) and English for email templates.
+    /// This test provides traceability for the localization audit requirement (E14/F02/US01/T01).
+    /// </summary>
+    [Fact]
+    public void BackendLocalizationAudit_AllEmailTextsKeysExistInBothLanguages()
+    {
+        var italian = Keys("EmailTexts.resx");
+        var english = Keys("EmailTexts.en.resx");
+
+        Assert.NotEmpty(italian);
+        Assert.NotEmpty(english);
+        Assert.Equal(italian.Count, english.Count);
+
+        var missingInEnglish = italian.Except(english).ToList();
+        var missingInItalian = english.Except(italian).ToList();
+
+        Assert.Empty(missingInEnglish);
+        Assert.Empty(missingInItalian);
+    }
+
     private static string SolutionRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

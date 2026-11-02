@@ -116,6 +116,32 @@ public static class OrgRoleCatalog
         return projection;
     }
 
+    private static readonly IReadOnlySet<string> EveryAgencyPermission =
+        new HashSet<string>(AgencyPermissions.All, StringComparer.Ordinal);
+
+    private static readonly IReadOnlySet<string> PropertyManagerAgencyPermissions =
+        new HashSet<string>([AgencyPermissions.OwnerView], StringComparer.Ordinal);
+
+    private static readonly IReadOnlySet<string> NoAgencyPermission = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The agency permissions (<see cref="AgencyPermissions"/>) <paramref name="role"/> holds in an org on the agency plan (DEB-01,
+    /// 2026-10-31): the owner and the administrator hold all of them; the property manager the list of the owners, IBAN masked
+    /// (<see cref="AgencyPermissions.OwnerView"/>), and nothing else (no full IBAN, statements, invoices, withholding, wire transfers,
+    /// activities or suppliers); the collaborator and the accountant none.
+    /// </summary>
+    /// <remarks>
+    /// They are not rows of the seeded roles: they follow the org role of the <see cref="Casazen.Core.Entities.OrgMember"/> row (the
+    /// policy handler <c>AgencyPermissionAuthorizationHandler</c>), so they need no migration and stay out of the matrix of the roles
+    /// (AM-02c) until the product owner wants them there (<c>docs/runbooks/org-team.md</c> § 57).
+    /// </remarks>
+    public static IReadOnlySet<string> AgencyPermissionsOf(OrgRole role) => role switch
+    {
+        OrgRole.Owner or OrgRole.Admin => EveryAgencyPermission,
+        OrgRole.PropertyManager => PropertyManagerAgencyPermissions,
+        _ => NoAgencyPermission,
+    };
+
     private static readonly string[] ShortRentOperational =
     [
         "property.read", "property.write", "booking.read", "booking.write", "payment.read", "payment.write",

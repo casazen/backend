@@ -114,3 +114,9 @@ Per D-02, direct booking for CHF properties is not supported in phase 1:
 - Backend: Property.Country + Property.Currency fields, SwissMunicipality migration, direct booking validation
 - Frontend: Country selector in property form, currency display
 - Multi-currency bookings without conversion deferred (totals per currency, no exchange rates)
+
+## Amendment 2026-10-30 (CHF-MONEY): ADR-001-R10 superseded
+
+**Why:** the pilot customer operates mostly in Lombardy and Switzerland, and the booking path already knew the currency of a house in the search but quoted, charged and refunded in euros.
+
+**Decision delta:** direct booking for a CHF property is **supported**. A stay is priced, charged (PaymentIntent and deferred charge), refunded, previewed for cancellation, shown to the guest and e-mailed in `Property.Currency` (`EUR` or `CHF`), read through `StayCurrency`; the services of the booking path write no `"EUR"` (guarded by `BookingCurrencyArchitectureTests`). A currency other than EUR or CHF is still refused (`currency_not_supported`). No conversion between currencies is done anywhere, and the Swiss tourist tax (Kurtaxe) is not modelled: a house outside Italy gets no Italian rate. Where Stripe settles a franc charge (in francs, or converted to euros on the account) is a choice of the account owner, not of this code.

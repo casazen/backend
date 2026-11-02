@@ -78,10 +78,12 @@ public sealed class ServiceCustomerPrivacyService(
         var today = _clock.TodayInRome();
         var requests = await AnonymizeRequestPlacesAsync(period, today, cancellationToken);
         var customers = await AnonymizeCustomersAsync(period, today, cancellationToken);
+        var threads = await DeleteThreadsAsync(period, today, cancellationToken);
 
         logger.LogInformation(
-            "GDPR retention: supplier customers applied: {Customers} customers and the place of {Requests} requests anonymized",
-            customers, requests);
+            "GDPR retention: supplier customers applied: {Customers} customers and the place of {Requests} requests anonymized, "
+            + "the thread of {Threads} requests on measure deleted",
+            customers, requests, threads);
         return new ServiceCustomerRetentionRun(true, customers, requests);
     }
 
@@ -121,6 +123,40 @@ public sealed class ServiceCustomerPrivacyService(
         }
 
         return anonymized;
+    }
+
+    /// <summary>
+    /// The messages of the requests on measure that are over (SP-10b) once their period ended, counted from the end of the request (its
+    /// cancellation, else its last change): what two people wrote to each other is free text that can say anything, so it is deleted and the
+    /// request stays for the supplier's accounts (the comune, the status, the dates). Marked by what is gone: a thread with no message is not a
+    /// candidate, so a second run finds nothing. A request still open keeps its thread, and a closed one takes no new message.
+    /// </summary>
+    private async Task<int> DeleteThreadsAsync(RetentionPeriodOptions period, DateTime today, CancellationToken cancellationToken)
+    {
+        var candidates = await CandidateThreadsOf(db, period.CandidateStartBefore(today)).ToListAsync(cancellationToken);
+        var dueIds = candidates
+            .Where(c => period.HasEnded(c.ReferenceUtc, today))
+            .Select(c => c.Id)
+            .Take(ShowcaseBookingLimits.RetentionBatchSize)
+            .ToList();
+
+        var deleted = 0;
+        foreach (var chunk in dueIds.Chunk(ChunkSize))
+        {
+            db.ChangeTracker.Clear();
+
+            // By key, from stubs: the messages are deleted without being read (their text is personal data and is encrypted).
+            var messageIds = await db.ServiceRequestMessages
+                .AsNoTracking()
+                .Where(m => chunk.Contains(m.ServiceRequestId))
+                .Select(m => m.Id)
+                .ToListAsync(cancellationToken);
+            db.ServiceRequestMessages.RemoveRange(messageIds.Select(id => new ServiceRequestMessage { Id = id }));
+            await db.SaveChangesAsync(cancellationToken);
+            deleted += chunk.Length;
+        }
+
+        return deleted;
     }
 
     /// <summary>
@@ -223,6 +259,23 @@ public sealed class ServiceCustomerPrivacyService(
                 db.ServiceRequests.IgnoreQueryFilters()
                     .Where(r => r.CustomerId == c.Id)
                     .Max(r => (DateTime?)(r.ScheduledEndUtc ?? r.CreatedAt)) ?? c.CreatedAt));
+
+    /// <summary>
+    /// The requests on measure (SP-10b) that are over (final status) and still have messages, with the date the period counts from: the
+    /// cancellation, else the last change. Coarsely cut in SQL at <paramref name="candidateBefore"/> like <see cref="CandidateRequestsOf"/>;
+    /// the exact check is made on the row. It reads no text: only ids and dates.
+    /// </summary>
+    /// <remarks>Static and internal so a test can read the SQL it becomes on the PostgreSQL provider without a server.</remarks>
+    internal static IQueryable<RequestReference> CandidateThreadsOf(AppDbContext db, DateTime candidateBefore) =>
+        db.ServiceRequests
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.RentalContext == ServiceRequestRentalContext.Showcase
+                        && r.Kind == ServiceRequestKind.Custom
+                        && !OpenStatuses.Contains(r.Status)
+                        && db.ServiceRequestMessages.Any(m => m.ServiceRequestId == r.Id)
+                        && (r.ScheduledEndUtc ?? r.CancelledAt ?? r.UpdatedAt) < candidateBefore)
+            .Select(r => new RequestReference(r.Id, r.ScheduledEndUtc ?? r.CancelledAt ?? r.UpdatedAt));
 
     /// <summary>A request and the date its retention period counts from.</summary>
     internal sealed record RequestReference(Guid Id, DateTime ReferenceUtc);

@@ -130,6 +130,7 @@ internal sealed class ServiceRequestScenario : IDisposable
     /// </param>
     /// <param name="paymentOptions">The options of the payments (SP-15a): a platform commission of 10 % when null.</param>
     /// <param name="paymentLogger">Where the payment service logs (SP-15b tests read the errors it writes); nowhere when null.</param>
+    /// <param name="alternatives">The other suppliers offered to the customer of a request nobody answered (SP-10c); none are looked for when null.</param>
     public static async Task<ServiceRequestScenario> CreateAsync(
         ServiceRequestOptions? options = null,
         FailingSaveInterceptor? saveInterceptor = null,
@@ -137,7 +138,8 @@ internal sealed class ServiceRequestScenario : IDisposable
         string? publicSiteBaseUrl = EmailTestHelpers.PublicSiteBaseUrl,
         IDataProtectionProvider? dataProtection = null,
         SupplierPaymentsOptions? paymentOptions = null,
-        Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null)
+        Microsoft.Extensions.Logging.ILogger<SupplierPaymentService>? paymentLogger = null,
+        IShowcaseAlternativesService? alternatives = null)
     {
         var builder = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString());
         if (saveInterceptor is not null)
@@ -148,7 +150,16 @@ internal sealed class ServiceRequestScenario : IDisposable
         var emails = new RecordingEmailQueue();
         var pushes = new ClearablePushQueue();
         var kit = new ServiceRequestTestKit(
-            db, emails, pushes, clock, options, publicSiteBaseUrl, showcaseOptions, paymentOptions: paymentOptions, paymentLogger: paymentLogger);
+            db,
+            emails,
+            pushes,
+            clock,
+            options,
+            publicSiteBaseUrl,
+            showcaseOptions,
+            paymentOptions: paymentOptions,
+            paymentLogger: paymentLogger,
+            alternatives: alternatives);
         var scenario = new ServiceRequestScenario(kit, clock, emails, pushes);
         await scenario.SeedWorldAsync();
         return scenario;
@@ -249,6 +260,18 @@ internal sealed class ServiceRequestScenario : IDisposable
     /// <summary>The request as saved, whatever the context tracks.</summary>
     public async Task<ServiceRequest> ReadAsync(Guid id) =>
         await Db.ServiceRequests.IgnoreQueryFilters().AsNoTracking().SingleAsync(r => r.Id == id);
+
+    /// <summary>The reliability events of the supplier as saved (SP-REL), oldest first.</summary>
+    public async Task<List<SupplierReliabilityEvent>> ReliabilityEventsAsync(Guid? supplierOrgId = null)
+    {
+        var supplier = supplierOrgId ?? SupplierOrgId;
+        return await Db.SupplierReliabilityEvents
+            .AsNoTracking()
+            .Where(e => e.SupplierOrgId == supplier)
+            .OrderBy(e => e.OccurredAt)
+            .ThenBy(e => e.Kind)
+            .ToListAsync();
+    }
 
     /// <summary>A request written straight to the database in <paramref name="status"/>, for the states the flows reach slowly.</summary>
     public async Task<ServiceRequest> SeedAsync(

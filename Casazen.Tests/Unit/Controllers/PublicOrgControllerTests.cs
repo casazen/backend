@@ -105,7 +105,7 @@ public class PublicOrgControllerTests
         var result = await _controller.GetOrg("legacy-theme-org", CancellationToken.None);
 
         var dto = Assert.IsType<PublicOrgDto>(Assert.IsType<OkObjectResult>(result.Result).Value);
-        Assert.Equal("mare", dto.PublicThemeId);
+        Assert.Equal("terra", dto.PublicThemeId);
         Assert.Equal(org.ThemeColor, dto.PrimaryColor);
         Assert.Equal(dto.PrimaryColor, dto.ThemeColor);
     }

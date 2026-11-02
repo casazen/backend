@@ -15,7 +15,7 @@ pagamento). Codice: `LeasesController`, `LongRentRentsController`, `LongRentAgen
 | `GET /api/long-rent/rents?month=&status=&page=&pageSize=` | `lease.read` | Registro canoni del mese con i numeri del mese (§ 3) |
 | `POST /api/long-rent/rents/{id}/reminder` | `lease.create` | Sollecito e-mail di un canone, nota facoltativa (§ 4) |
 | `POST /api/long-rent/rents/reminders` | `lease.create` | Sollecito di massa (da 1 a 50 canoni, stessa nota) |
-| `GET /api/long-rent/deadlines?from=&to=&type=` | `lease.read` | Scadenze in ordine di data (§ 5) |
+| `GET /api/long-rent/deadlines?from=&to=&type=&leaseId=` | `lease.read` | Scadenze in ordine di data (§ 5) |
 | `GET /api/long-rent/overview` | `lease.read` | Numeri d'area, checklist e prossima scadenza (§ 5) |
 | `GET /api/long-rent/fiscal?year=` e `/fiscal/export?year=` | `lease.read` | Report fiscale per contratto (stima per il commercialista) e il suo CSV (§ 12) |
 
@@ -118,7 +118,7 @@ Solo e-mail, **a mano**: nessun invio automatico, nessun SMS né WhatsApp.
 
 `GET /api/long-rent/deadlines`: `from` e `to` (`yyyy-MM-dd`, estremi inclusi; default oggi e oggi + 90 giorni; al massimo 366 giorni,
 altro = 400 `long_rent_deadlines_range_invalid`), `type` facoltativo (`RliRegistration`, `Questura`, `LeaseEnd`, `Notice`, `Rent`; altro =
-400 `long_rent_deadlines_type_unknown`).
+400 `long_rent_deadlines_type_unknown`) e `leaseId` facoltativo (LR-03c, la scheda di un contratto: restringe a quel contratto, in SQL, ciò che l'ambito del chiamante già raggiunge; un contratto di un'altra organizzazione, fuori ambito o senza scadenze nella finestra dà un elenco vuoto, non un 404).
 
 | Tipo | Data | Compare finché |
 |---|---|---|
@@ -194,9 +194,27 @@ Tutti richiedono `lease.create` (come le scritture dei canoni) e autorizzano il 
 |---|---|---|
 | `POST /api/leases/{id}/notice` `{ from, on }` | Registra la disdetta data da `Landlord` o `Tenant` il giorno `on` (dall'inizio del contratto a oggi): il contratto finisce col periodo in corso e non si rinnova. `noticeWarning` = `notice_possibly_late` se `on` è dopo «fine del periodo − 6 mesi» (CasaZen lo dice e non giudica la validità legale, LR-D29). Evento `NoticeRecorded` | 422 `lease_type_has_no_renewal` (transitorio), `lease_notice_date_invalid`; 409 `lease_not_in_force`, `lease_notice_already_recorded`, `lease_already_terminated`, `lease_busy` |
 | `DELETE /api/leases/{id}/notice` | Toglie la disdetta, **solo finché `CurrentTermEndDate >= oggi`**. Se non c'è, non cambia nulla (200). Evento `NoticeRemoved` | 409 `lease_term_already_ended`, `lease_busy` |
-| `POST /api/leases/{id}/terminate` `{ on }` | Termina il contratto il giorno `on`, il suo ultimo giorno (dall'inizio alla fine del periodo in corso; anche un giorno passato): `CurrentTermEndDate` e `TerminatedOn` diventano `on`, il rinnovo si ferma per sempre e **le rate del piano dei canoni il cui periodo inizia dopo `on` e non sono pagate vengono annullate** (§ 10.3). **Irreversibile**: nessun `DELETE`, l'interfaccia chiede una conferma. Evento `Terminated` | 422 `lease_termination_date_invalid`; 409 `lease_not_in_force`, `lease_already_terminated`, `lease_busy` |
+| `POST /api/leases/{id}/terminate` `{ on }` | Termina il contratto il giorno `on`, il suo ultimo giorno, **solo se il contratto è già iniziato** (`inizio <= oggi`) e con `inizio < on <= fine del periodo in corso` (anche un giorno passato; un giorno uguale all'inizio non è una cessazione, § 10.2.1): `CurrentTermEndDate` e `TerminatedOn` diventano `on` (`EndDate`, la fine che il contratto dichiara, non si tocca), il rinnovo si ferma per sempre e **le rate del piano dei canoni il cui periodo inizia dopo `on` e non sono pagate vengono annullate** (§ 10.3). **Irreversibile**: nessun `DELETE`, l'interfaccia chiede una conferma. Evento `Terminated` | 422 `lease_termination_date_invalid` (con `min` e `max`, `yyyy-MM-dd`: il primo e l'ultimo giorno ammessi); 409 `lease_not_in_force`, `lease_already_terminated`, `lease_busy` |
 
 «In vigore» vuol dire firmato da tutte le parti e non rifiutato: `Signed`, `RegistrationPending`, `SentToProvider`, `Registered` (`LeaseRenewal.InForceStatuses`; la registrazione è un obbligo fiscale, non una condizione del contratto). `lease_busy` è la riga del contratto bloccata da un'altra operazione per più di 5 secondi: nulla è stato scritto, si riprova. Un'azione e il job dello stesso contratto si eseguono uno dopo l'altro, ognuno su ciò che l'altro ha confermato.
+
+#### 10.2.1 La cessazione anticipata ha una data possibile (LR-TERM, 25/10/2026)
+
+L'utente, provando in test, ha trovato un contratto con `Inizio 01/11/2026`, `Fine 01/11/2026` e `Terminato il 01/11/2026`: il giorno della cessazione era uguale all'inizio e il contratto non era nemmeno iniziato (oggi era il 25/10). Una cessazione anticipata ha senso solo **dopo l'inizio** del contratto e con una data **fra l'inizio e la fine**. La regola del server (`LeaseTermService.EnsureTerminationDate`):
+
+| Caso | Risposta |
+|---|---|
+| il contratto non è ancora iniziato (`inizio > oggi`, giorno di Roma) | 422 `lease_termination_date_invalid`, testo `LeaseTerminationNotStarted`: «non è ancora iniziato: per annullarlo serve la risoluzione consensuale, da comunicare all'Agenzia delle Entrate entro 30 giorni». Il 30 viene da `LongRentRules.Current.RegistrationDays` (`registrationDays` di `GET /api/long-rent/rules`), non è scritto nel testo |
+| `on <= inizio` o `on > fine del periodo in corso` | 422 `lease_termination_date_invalid`, testo `LeaseTerminationDateInvalid` con i due giorni ammessi |
+| `inizio < on <= fine del periodo in corso` | 200; nulla si riscrive tranne `TerminatedOn` e `CurrentTermEndDate` |
+
+Il problema porta sempre `min` (= inizio + 1 giorno) e `max` (= fine del periodo in corso), così l'interfaccia non propone mai una data che il server rifiuta; con `min > max` (dati sporchi: periodo di un giorno o vuoto) nessuna data va bene. **Nessun backfill**: i contratti già terminati con un giorno uguale all'inizio restano com'erano; la guida non propone più «Organizza la fine del contratto» (`nextStep.code = OrganizeEnd`) a un contratto il cui periodo finisce il giorno dell'inizio o prima (`LeaseFlow`, § 11.2): nessuno scrive il passo, non viene proposto.
+
+**Fatti verificati sul web (25/10/2026)** su cui poggiano i testi dell'interfaccia (nessuna cifra di legge è scritta nell'interfaccia: i mesi e i giorni vengono da `GET /api/long-rent/rules`):
+
+- Una locazione registrata risolta in anticipo va comunicata all'Agenzia delle Entrate **entro 30 giorni** dall'evento (modello RLI). Imposta fissa di registro per la risoluzione, salvo che **tutti i locatori abbiano optato per la cedolare secca**: allora nessuna imposta, ma la comunicazione resta. Fonte: <https://www.agenziaentrate.gov.it/portale/schede/fabbricatiterreni/adempimenti-successivi/risoluzione>. (La cifra dell'imposta fissa, 67 €, è sulla pagina della fonte e non nel codice.)
+- Il conduttore può recedere per gravi motivi con **preavviso di 6 mesi** (art. 3 c. 6 L. 431/1998; l'affitto si paga fino alla fine del preavviso, `noticeMonths` delle regole); per la **cessazione consensuale** le parti possono accordarsi su una data anche prima.
+- Il deposito di 3 mensilità (massimo ammesso, art. 11 L. 392/1978), la durata 3+2 del canone concordato e la registrazione entro 30 giorni dalla stipula erano già a posto.
 
 ### 10.3 Il piano dei canoni segue il contratto
 
@@ -235,7 +253,7 @@ Una migrazione additiva, `AddLeaseTermLifecycle` (generata con `dotnet ef`, dopo
 | Viste dell'elenco, conteggi della panoramica, scadenze `LeaseEnd` e `Notice` (§ 2, § 5) | `CurrentTermEndDate`; `Notice` sparisce con una disdetta o un termine registrati |
 | Occupazione dell'immobile: cambio modalità (PM-02) e cancellazione dell'immobile (`LeaseOccupancy`) | un contratto rinnovato tiene l'immobile fino alla nuova fine + 1; con una disdetta o un termine anticipato lo libera dal giorno dopo l'ultimo giorno. La bozza resta un blocco. Un contratto che si rinnova da solo e aspetta la corsa del job tiene l'immobile anche se la sua fine è già passata (nessuna data lo libera finché il job non ha girato): un passaggio ad affitto breve dovuto quella mattina fallisce con `blocked_by_lease` invece di precedere il rinnovo |
 | Privacy dei conduttori (`LeasePartyPrivacyService`): richiesta di cancellazione, retention, «altro contratto in corso» | un contratto rinnovato non si anonimizza finché dura |
-| Promemoria Questura (`rli-deadline-reminder`), piano dei canoni (`ConfigureScheduleAsync`, periodo finale parziale), riepilogo fiscale (`FiscalService`: immobile «locato» nell'anno), avviso di sovrapposizione della revisione della bozza | la fine del periodo in corso |
+| Promemoria Questura (`rli-deadline-reminder`), piano dei canoni (`ConfigureScheduleAsync`, periodo finale parziale), riepilogo fiscale (`FiscalService`: immobile «locato» nell'anno), controllo che due contratti dello stesso immobile non coprano gli stessi giorni (`LeasePeriodRules`, LR-OVERLAP: l'ultimo giorno è `TerminatedOn ?? CurrentTermEndDate`) | la fine del periodo in corso |
 | Contratto stampato, registrazione RLI, IMU, consulenza cedolare, controllo del termine alla firma, data di consegna per la Questura | restano sulla `EndDate`: sono il primo periodo che il contratto dichiara |
 
 ### 10.7 Decisioni applicate e punti aperti
@@ -246,6 +264,9 @@ Una migrazione additiva, `AddLeaseTermLifecycle` (generata con `dotnet ef`, dopo
 - **Nessun rinnovo retroattivo** (decisione del PO, 17/10): un contratto già finito quando CasaZen lo conosce resta «concluso» (`TerminatedOn` = ultimo giorno), alla migrazione, alla firma/importazione (un contratto importato con la fine nel passato) e nella riparazione del job (§ 10.5). Scelta la marca esplicita invece di un confronto con la data di creazione della bozza: così ogni lettore, l'interfaccia compresa, distingue un contratto concluso da uno che sta per rinnovarsi senza rifare il calcolo, e il riferimento è il momento in cui il contratto diventa firmato, non quello in cui è stata aperta la bozza. Se un locatore dice che un contratto concluso è andato avanti, l'assistenza azzera `TerminatedOn` e la corsa dopo lo porta avanti. Confine: «già finito» è il giorno di Roma, ultimo giorno escluso; un contratto firmato o importato il giorno stesso del suo ultimo giorno è ancora in corso e, senza disdetta, si rinnova la notte dopo.
 - Il giorno di una disdetta o di un termine è un giorno di calendario (Roma); il termine anticipato fissa l'**ultimo** giorno del contratto, che è terminato dal giorno dopo (come ogni contratto: `Ended` legge `CurrentTermEndDate < oggi`).
 - **Limite noto, PM-02** (LR-14-FU4): per un contratto che si rinnova da solo l'anteprima del cambio modalità indica come primo giorno libero la fine del periodo + 1 anche senza una disdetta registrata; chi programma il passaggio ad affitto breve per quel giorno, senza disdetta, trova alla mezzanotte il contratto che si rinnova e il passaggio fallisce (`blocked_by_lease`, l'host è avvisato). Dovrebbe essere l'interfaccia a chiedere prima la disdetta.
+
+- **LR-TERM** (25/10/2026): la cessazione anticipata vuole `inizio < ultimo giorno <= fine del periodo in corso` e un contratto già iniziato; vedi § 10.2.1 per la regola, i fatti verificati sul web e la fonte. Punti aperti (id proposti): LR-TERM-FU1, la cifra dei giorni per comunicare la cessazione oggi è `registrationDays` (la legge dà lo stesso termine), una cifra a parte nelle regole la separerebbe; LR-TERM-FU2, la risoluzione consensuale di un contratto non ancora iniziato oggi è solo una frase, non un flusso; LR-TERM-FU3, i contratti già terminati il primo giorno restano com'erano (nessun backfill).
+- **LR-OVERLAP e rinnovo tacito**: il job `lease-term-renewal` rinnova per legge senza guardare gli altri contratti dell'immobile; se il periodo rinnovato coprisse i giorni di un contratto che segue, chi affitta deve registrare la disdetta o la cessazione del primo (LR-OVERLAP-FU1: decidere se il job debba saltare o segnalare quel rinnovo). Vedi `long-rent-lease-draft.md` § 18.
 
 ### 10.8 Promemoria della disdetta: il job `lease-notice-reminder` (LR-11c-a)
 
@@ -266,6 +287,10 @@ ORDER BY "OccurredAt";
 
 - **Non fa** (restano fuori, LR-11c ridotto): impostazioni d'area con le soglie scelte dal locatore, avviso di canone in ritardo, sollecito automatico al conduttore, stato dei modelli. Se un giorno servono soglie per organizzazione, `Thresholds` è l'unico punto da cambiare. Soglie: 30 e 7 giorni sono l'indicazione dell'incarico; il brief di LR-11c (LR-D20) consiglia 7 giorni e il giorno stesso, e il giorno stesso è tenuto.
 - Prova: `LeaseNoticeReminderJobTests` (CI, PostgreSQL): una volta sola per soglia e ultimo giorno, solo al locatore, mai per un contratto con disdetta, terminato, in bozza, non registrato o transitorio.
+
+### 10.9 Le operazioni del contratto: lettere in bozza, disdetta e recesso (LR-OPS-1)
+
+Il «come» delle azioni di questo capitolo: la bozza della lettera di disdetta da mandare all'inquilino (con i motivi che la legge ammette alla prima scadenza), il **recesso del conduttore** (`POST /api/leases/{id}/withdrawal`: il giorno di ricezione più il preavviso diventa l'ultimo giorno del contratto, con **le stesse regole e gli stessi effetti** della cessazione anticipata di § 10.2.1; due eventi in coda a `LeaseEventType`: `WithdrawalRecorded` e `LetterSent`) e «Segna come inviata». Le lettere sono bozze non approvate finché il PO non le approva con `LeaseLetters__Variants__…`; nulla parte verso il conduttore. Tutto è in [`lease-operations.md`](lease-operations.md). Il **rinnovo esplicito** (`POST /api/leases/{id}/renewal`, 1b) formalizza un rinnovo o una proroga nell'ultimo tratto prima della fine del periodo (dall'ultimo giorno per la disdetta; registrarlo sposta la fine e chiude la finestra fino a quella del periodo dopo) con le regole di LR-OVERLAP (nuovo periodo libero) e il piano dei canoni esteso; il rinnovo tacito del job (§ 10.4) non cambia. Nuovi codici: `lease_withdrawal_date_invalid`, `lease_withdrawal_notice_invalid`, `lease_letter_date_invalid`, `lease_disdetta_reason_required`, `lease_letter_unavailable`, `lease_renewal_end_invalid`, `lease_renewal_blocked_by_notice`, `lease_renewal_period_over`, `lease_renewal_not_yet`, `lease_letter_not_applicable`. Il pezzo 1c aggiunge `lease_istat_waived`, `lease_istat_no_increase`, `lease_istat_percent_invalid`, `lease_istat_no_rent`, `lease_letter_effect_date_invalid` e i `lease_deposit_*` (nessun deposito, giorni, tassi, interessi, trattenute, giorno della restituzione): [`lease-operations.md`](lease-operations.md) §§ 2.5-2.8.
 
 ## 11. Il percorso del contratto: stato e prossimo passo (LR-01b)
 
@@ -323,7 +348,23 @@ L'elenco: l'istruzione di sempre, più **una** che chiede quali tra i contratti 
 
 ### 11.5 Cosa non c'è (versione ridotta)
 
-`progress` (avanzamento), i filtri `stage` e `actor`, `stages` e `todo` della Panoramica, `canEdit`, il filtro `leaseId` e i tipi `LeaseStart` e `DepositReturn` delle scadenze, `flow` nel dettaglio: la riga dell'elenco è l'unico posto dove un contratto ha `stage` e `nextStep` (il dettaglio `GET /api/leases/{id}` non li porta ancora). I valori di legge restano quelli di `LongRentRules` (LR-D29).
+i filtri `stage` e `actor` (la lista si filtra e si ordina sul client: è intera e non paginata), `stages` e `todo` della Panoramica, `canEdit`, il filtro `leaseId` e i tipi `LeaseStart` e `DepositReturn` delle scadenze, `flow` nel dettaglio: la riga dell'elenco è l'unico posto dove un contratto ha `stage` e `nextStep` (il dettaglio `GET /api/leases/{id}` non li porta ancora). I valori di legge restano quelli di `LongRentRules` (LR-D29).
+
+### 11.6 L'avanzamento (`progress`, LR-02b)
+
+Ogni riga dell'elenco porta anche `progress { kind, unit, done, total, percent }`, deciso dalla stessa funzione (`LeaseFlow.ProgressOf`): la barra
+e le parole sono dell'interfaccia, i numeri sono del server. `percent` va da 0 a 100.
+
+| Stato | `kind` / `unit` | `done` di `total` |
+|---|---|---|
+| Bozza, dati da completare | `Setup` / `Steps` | i passi dati della bozza (1–5) senza nulla che manca, su **8** |
+| In revisione | `Setup` / `Steps` | 5, oppure 6 a revisione confermata, su 8 |
+| In firma | `Setup` / `Steps` | 6 su 8 (contratto scaricato per la firma) |
+| Firmato (da registrare) | `Setup` / `Steps` | 7 su 8; l'ottavo passo, la registrazione, è quello che lo fa partire |
+| In corso, in scadenza | `Term` / `Years` o `Months` | l'anno (o il mese, se il periodo è più corto di 12 mesi) in cui si trova, sugli anni (mesi) del periodo **in corso** (`CurrentTermEndDate`, LR-14: un contratto rinnovato conta gli anni dall'inizio del primo periodo); `percent` = giorni trascorsi su giorni del periodo |
+| Concluso | `End` / `Steps` | 8 su 8, 100 |
+
+Nessuna istruzione SQL in più: per le bozze serve il flusso che il lettore già costruisce (§ 11.4).
 
 ## 12. Report fiscale per contratto, per il commercialista (LR-11b)
 
@@ -387,3 +428,86 @@ Ogni cifra dichiara la sua base; il file lo dice nella terza riga e la prima rig
 - **LR-11b-FU1** IRPEF aggregata con gli «altri redditi» (non salvati) · **FU2** registro e bollo per i contratti ordinari · **FU3** «Invita il
   commercialista» · **FU4** i pagamenti ricevuti nell'anno per contratti finiti prima (righe con 0 mesi) · **FU5** mensilità parziali in
   proporzione ai giorni.
+
+## 13. Inquilini: l'elenco per persona, la copia dei dati e la cancellazione (LR-09)
+
+Il modello non ha un'anagrafica dei conduttori: una **persona** si ricava dalle parti dei contratti dell'org (`LongRentTenantRules.PersonKey`).
+L'identità è il **codice fiscale normalizzato** (`Trim` + maiuscolo, lo stesso confronto del servizio di privacy): una persona su più contratti
+è una riga sola; un codice fiscale sbagliato fa due persone e un nome non unisce mai due codici (il limite è scritto nella pagina). Una parte senza
+codice fiscale (righe anteriori alla validazione) è una persona a sé. Le parti anonimizzate non sono più persone della pagina.
+
+### 13.1 Endpoint
+
+Tutti `api/long-rent/tenants`, classe `lease.read`, ristretti in SQL all'org e, se non org-wide, agli immobili raggiungibili (`HostScope`, come
+l'elenco dei contratti); una persona senza contratti nella portata del chiamante è 404 `tenant_not_found`.
+
+| Metodo | Percorso | Permesso | Note |
+|---|---|---|---|
+| `GET` | `?view=All\|Current\|Former&q=&page=&pageSize=` | `lease.read` | 400 `validation_error` per una vista sconosciuta. Righe ordinate per cognome, nome. `q`: nome e cognome (in ogni ordine) e nome degli immobili. `counts`: persone per vista, sulla ricerca chiesta. |
+| `GET` | `{id}` | `lease.read` | La riga, gli ultimi 6 canoni scaduti (`payments`), il ritardo (`overdue`: quanti, quanto, il più vecchio) e `onTimeDays`. |
+| `GET` | `{id}/export` | `lease.read` + `lease.create` | Il file JSON `dati-personali.json` (nome neutro) con i dati in chiaro della persona; `TenantPrivacy`: 10 ogni 10 minuti per persona. |
+| `POST` | `{id}/erasure-request` | `lease.read` + `lease.create` | La richiesta di cancellazione, contratto per contratto; stesso limite. |
+
+L'`id` è **opaco**: l'id di una delle righe di parte della persona (quella del contratto più vecchio), mai il codice fiscale. Qualunque riga
+della persona porta alla stessa persona, quindi un indirizzo salvato resta valido quando arriva un contratto nuovo. Nessun hash del codice
+fiscale: senza una chiave segreta in configurazione sarebbe invertibile a tentativi.
+
+### 13.2 Chi è «attuale» e chi «ex»
+
+«Ex inquilino» = **tutti** i contratti della persona nello stato `Concluded` del percorso (§ 11: fine del periodo in corso senza rinnovo, disdetta,
+termine anticipato, respinto); «attuale» = almeno un contratto non concluso, anche in preparazione. Non si legge mai `EndDate` (LR-14).
+
+### 13.3 Puntualità
+
+Sulle rate **scadute** (`DueDate` ≤ oggi, non annullate) dei contratti della persona: `total` le conta tutte, `onTime` quelle pagate entro
+`LongRentTenants:OnTimeDays` giorni dalla scadenza (default 5, 0–60; un valore non valido vale il default; letta da `IConfiguration`, nessuna
+sezione in `appsettings.json`). Una rata ancora da venire non conta; una scaduta e non pagata conta come non puntuale. La puntualità è del
+contratto: i co-conduttori di uno stesso contratto hanno la stessa.
+
+### 13.4 La copia dei dati (articoli 15 e 20 GDPR)
+
+Per ogni contratto che il chiamante può gestire (`lease.create` sull'immobile, una verifica per immobile): i dati che quel contratto ha **della
+persona** come parte (nome, codice fiscale, cittadinanza, e-mail, residenza, «documenti verificati il»), i termini del contratto, l'immobile
+(nome, indirizzo, città), le rate e il tipo e il giorno degli eventi. **Mai** i dati delle altre parti dello stesso contratto (co-conduttori,
+locatore) né il contenuto (`Payload`) degli eventi. Niente telefono, documenti o messaggi (LR-D3, LR-D16, LR-D23). Risposta `Cache-Control:
+private, no-store`; nel log solo l'utente e il numero di contratti.
+
+### 13.5 La richiesta di cancellazione
+
+Si appoggia a `ILeasePartyPrivacyService.RequestErasureAsync`, **contratto per contratto**, quindi con le regole del pulsante «Chiedi la
+cancellazione dei dati» della scheda del contratto (nessuna regola nuova qui): un contratto **finito** (il giorno dopo la fine del periodo in
+corso) viene anonimizzato subito (`Anonymized`; `PartiallyAnonymized` se una parte è anche in un altro contratto non finito della stessa org: la
+conserva fino a quella fine); un contratto **non finito** non viene toccato: la richiesta resta registrata e le parti sono anonimizzate dal
+giorno dopo la fine (`Scheduled`, `anonymizationFrom`), ed è il contratto che «trattiene» i dati. Il contratto firmato e le ricevute non si
+toccano mai. Ogni contratto registra l'evento `ErasureRequested` (una volta). Idempotente. **Attenzione:** come per il pulsante del contratto,
+l'anonimizzazione di un contratto finito riguarda tutte le sue parti non trattenute, non solo la persona che ha chiesto.
+
+### 13.6 Costo e rimandato
+
+- Istruzioni SQL fisse, qualunque sia il numero di persone: le parti, l'elenco dei contratti dell'area (lo stesso della pagina Contratti) e le rate
+  dei soli contratti della pagina. Il raggruppamento per persona è in memoria (le parti conduttore di un'org sono poche centinaia).
+- **LR-09-FU1** sollecito diretto dalla scheda della persona (oggi la scheda porta al registro dei canoni del mese in ritardo) · **FU2** la
+  cancellazione solo della persona e non delle altre parti dei contratti finiti · **FU3** «Esporta i contatti» di tutte le persone · **FU4** la
+  voce di cancellazione nel registro attività dell'org (serve un tipo nuovo in `OrgActivityType`).
+
+## 14. Immobili: APE, catasto, «poi libero» e cambio di modalità (LR-07a)
+
+`GET api/long-rent/properties` dà, per ogni immobile attivo in modalità lunga che il chiamante raggiunge (`HostScope`, in SQL), ciò che l'elenco
+degli immobili e quello dei contratti non dicono. **Solo letture**: nessuna tabella, nessuna migrazione, nessun flag. Policy di classe
+`property.read` del contesto lungo. Quattro istruzioni qualunque sia il numero di immobili: gli immobili, i loro documenti APE, i cambi di modalità
+programmati e, solo per chi può leggere i contratti, l'elenco dei contratti dell'area (lo stesso della pagina Contratti: lo stato di un contratto è
+quello che la pagina mostra). Il resto è in memoria. `Cache-Control: private, no-store`.
+
+| Campo | Cosa dice |
+|---|---|
+| `ape` / `apeValid` / `apeClass` | `Missing` (nessun certificato), `ToConfirm` (c'è un file ma non codice e classe: il locatore li conferma digitandoli), `Identified` (codice **e** classe registrati; `apeValid` vero, `apeClass` = classe del più recente). È la regola della bozza del contratto e di `ApeComplianceService` (che accetta subito un certificato identificato): **il contenuto del file non si rilegge in un elenco**, si legge al caricamento e alla creazione del contratto. |
+| `cadastralComplete` | Foglio, particella, categoria e rendita (il subalterno è facoltativo): `Property.IsCadastralDataComplete`, la regola di `HasCadastralData`. |
+| `status` | `Rented` (un contratto in vigore: stato `Active` o `Expiring`, cioè registrato e non finito alla fine del periodo in corso, LR-14), `InPreparation` (nessuno in vigore ma uno in arrivo: bozza, revisione, in firma, firmato da registrare: l'immobile è libero da affittare), `Free`. **`null`** se il chiamante non può leggere i contratti. |
+| `currentLease` | Il contratto che tiene l'immobile: tra quelli in vigore, quello iniziato per ultimo (uno registrato in anticipo, un rinnovo che parte il mese prossimo, non lo tiene finché ne corre un altro). `leaseId`, `stage`, `currentTermEndDate`, `noticeOn` e **`freeFrom`** = il primo giorno libero **solo se il contratto non prosegue** (disdetta o termine anticipato registrati, o tipo che non si rinnova: il transitorio); `null` per un contratto che nessuno ha disdetto, che si rinnova da solo (D5): l'immobile resta affittato. |
+| `preparingLease` | Se non ce n'è uno in vigore: il contratto in arrivo toccato per ultimo, `leaseId` e `stage`. |
+| `scheduledModeChange` | Il cambio di modalità programmato (PM-02): `toMode` e `effectiveDate`. |
+
+`view=All|Rented|Free` (400 `validation_error` per altro; `Free` comprende `InPreparation`) e `q` (nome, indirizzo, città, interno) sono facoltativi.
+Senza `lease.read` lo stato e i contratti sono `null` e `Rented`/`Free` non contengono nulla: non si indovina. **Mai** il nome di un conduttore, un'e-mail
+o un importo: quelli restano nell'elenco dei contratti. Rimandato: **LR-07a-FU1** la classe e la scadenza dell'APE rilette dal file (oggi solo ciò che è
+registrato) · **FU2** il «poi libero» per i contratti con rinnovo che il locatore non vuole più (serve la disdetta registrata, LR-OPS-1).

@@ -104,6 +104,9 @@ public static class ShowcaseBookingFields
     public const string PrivacyNoticeVersion = "privacyNoticeVersion";
     public const string Token = "token";
 
+    /// <summary>The words of a request on measure (SP-10b), or of a message of its thread.</summary>
+    public const string Message = "message";
+
     /// <summary>The reason a customer gives when it cancels its booking (SP-11).</summary>
     public const string Reason = "reason";
 }

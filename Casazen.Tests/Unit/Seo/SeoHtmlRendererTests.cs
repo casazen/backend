@@ -11,7 +11,7 @@ public class SeoHtmlRendererTests
 {
     private const string Canonical = "https://public.example.test/book/villa";
 
-    private static SeoDocument Document(bool indexable = true, string? canonical = Canonical, string? image = "https://cdn.example.test/logo.png") => new()
+    private static SeoDocument Document(bool indexable = true, string? canonical = Canonical, string? image = "https://cdn.example.test/logo.png", string? twitterCard = null) => new()
     {
         Language = "it",
         Title = "Villa Rossi — Prenota direttamente",
@@ -20,6 +20,7 @@ public class SeoHtmlRendererTests
         Indexable = indexable,
         SiteName = "Villa Rossi",
         ImageUrl = image,
+        TwitterCard = twitterCard,
         JsonLd = [SeoJsonLd.Organization("Villa Rossi", canonical, image, "Il tuo rifugio sul lago.")],
         BodyHtml = "<main><h1>Villa Rossi</h1></main>\n",
     };
@@ -64,6 +65,17 @@ public class SeoHtmlRendererTests
         Assert.Contains("<meta name=\"twitter:card\" content=\"summary\">", html);
         Assert.DoesNotContain("og:image", html);
         Assert.DoesNotContain("twitter:image", html);
+    }
+
+    [Fact]
+    public void Render_ImageWithTheSmallCardRequested_KeepsTheImageTagsAndUsesTheRequestedCard()
+    {
+        // A square mark (the brand of the guides) is a «summary», not a large image that would crop it.
+        var html = SeoHtmlRenderer.Render(Document(twitterCard: "summary"));
+
+        Assert.Contains("<meta name=\"twitter:card\" content=\"summary\">", html);
+        Assert.Contains("<meta property=\"og:image\" content=\"https://cdn.example.test/logo.png\">", html);
+        Assert.Contains("<meta name=\"twitter:image\" content=\"https://cdn.example.test/logo.png\">", html);
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Repositories;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -39,6 +40,7 @@ public class ServiceRequestRepository(AppDbContext db) : IServiceRequestReposito
             .IgnoreQueryFilters()
             .Include(r => r.Property)
             .Include(r => r.SupplierOrg)
+            .OnlyVisibleToHost()
             .Where(r => r.OrgId == orgId);
 
         if (status is not null)

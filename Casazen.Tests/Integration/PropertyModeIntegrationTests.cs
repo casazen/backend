@@ -474,12 +474,14 @@ public class PropertyModeIntegrationTests : IClassFixture<CasazenWebApplicationF
     [Fact]
     public async Task ApplyDue_BackToShortStays_TheComplianceIsEvaluatedAgainAndAPropertyThatLostARequirementIsSuspended()
     {
-        // BE-PM01-2: the status was frozen while the property was long-term. This one has no CIN certificate nor checklist.
+        // BE-PM01-2: the status was frozen while the property was long-term. This one lost its CIN meanwhile (the documents and
+        // the checklist would not suspend it: they are reminders since the PO decision of 2026-11-01).
         var property = await PublishedPropertyTests.SeedAsync(_factory, "pm02-suspend");
         await WithDbAsync(async db =>
         {
             var row = await db.Properties.SingleAsync(p => p.Id == property.Id);
             row.RentalMode = RentalMode.Long;
+            row.CinCode = null;
             await db.SaveChangesAsync();
         });
         await SeedChangeAsync(property, RentalMode.Short, TimeProvider.System.TodayInRome());

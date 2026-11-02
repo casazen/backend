@@ -105,6 +105,28 @@ public class SharedResourcesLocalizationTests : IClassFixture<CasazenWebApplicat
         Assert.True(missing.Count == 0, $"Message keys missing from SharedResources.resx: {string.Join(", ", missing)}");
     }
 
+    /// <summary>
+    /// Covers AC-NF28-1, AC-NF28-2, AC-NF28-3, AC-NF28-6: Backend localization completeness audit.
+    /// Verifies that all SharedResources keys exist in both Italian (default) and English, with no missing translations.
+    /// This test provides traceability for the localization audit requirement (E14/F02/US01/T01).
+    /// </summary>
+    [Fact]
+    public void BackendLocalizationAudit_AllSharedResourcesKeysExistInBothLanguages()
+    {
+        var italian = ReadKeys(CultureInfo.InvariantCulture);
+        var english = ReadKeys(new CultureInfo("en"));
+
+        Assert.NotEmpty(italian);
+        Assert.NotEmpty(english);
+        Assert.Equal(italian.Count, english.Count);
+
+        var missingInEnglish = italian.Where(key => !english.Contains(key)).ToList();
+        var missingInItalian = english.Where(key => !italian.Contains(key)).ToList();
+
+        Assert.True(missingInEnglish.Count == 0, $"Keys in IT but missing in EN: {string.Join(", ", missingInEnglish)}");
+        Assert.True(missingInItalian.Count == 0, $"Keys in EN but missing in IT: {string.Join(", ", missingInItalian)}");
+    }
+
     private static HashSet<string> ReadKeys(CultureInfo culture) => ReadEntries(culture).Keys.ToHashSet(StringComparer.Ordinal);
 
     private static Dictionary<string, string> ReadEntries(CultureInfo culture)

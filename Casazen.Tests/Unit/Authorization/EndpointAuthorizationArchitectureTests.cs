@@ -92,6 +92,21 @@ public class EndpointAuthorizationArchitectureTests
     };
 
     /// <summary>
+    /// The anonymous endpoints of the request on measure from the supplier showcase (SP-10b), each with the reason it is public: the
+    /// customer has no account, and the first call only keeps what it wrote until the customer's e-mail is checked.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string> PublicSupplierInquiry = new Dictionary<string, string>
+    {
+        ["PublicSupplierInquiryController.Create"] = "A customer without an account asks an active supplier for something on measure and leaves the data of the request and its words; nothing reaches the supplier until the e-mail is checked (SP-10b, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+        ["PublicSupplierInquiryController.ConfirmEmail"] = "The customer follows the link of the verification e-mail: the token in the body is the secret, and only then the request exists (SP-10b, behind SupplierShowcaseBooking, rate limited).",
+    };
+
+    private static IEnumerable<MethodInfo> PublicInquiryActions() =>
+        typeof(PublicSupplierInquiryController)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => !m.IsSpecialName && m.GetCustomAttributes(inherit: true).OfType<IActionHttpMethodProvider>().Any());
+
+    /// <summary>
     /// The anonymous endpoints of the customer's own area of a booking made from the supplier showcase (SP-11), each with the reason it
     /// is public: the customer has no account, and proves it is the one who booked with the code of the booking and its e-mail address.
     /// </summary>
@@ -102,6 +117,15 @@ public class EndpointAuthorizationArchitectureTests
         ["PublicSupplierBookingManagementController.Reschedule"] = "The customer moves its own new request to another free slot, proving it with the code and the e-mail address in the body (SP-11, behind SupplierShowcaseBooking, rate limited per IP and per address).",
         ["PublicSupplierBookingManagementController.AcceptProposal"] = "The customer accepts the other time the supplier proposed for its own booking, proving it with the code and the e-mail address in the body (SP-11, behind SupplierShowcaseBooking, rate limited per IP and per address).",
         ["PublicSupplierBookingManagementController.RejectProposal"] = "The customer turns down the other time the supplier proposed for its own booking, proving it with the code and the e-mail address in the body (SP-11, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+        ["PublicSupplierBookingManagementController.AcceptQuote"] = "The customer accepts the quote the supplier sent for its own booking, proving it with the code and the e-mail address in the body, and the version of the quote it read (SP-04b, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+        ["PublicSupplierBookingManagementController.RejectQuote"] = "The customer turns down the quote the supplier sent for its own booking, proving it with the code and the e-mail address in the body, and the version of the quote it read (SP-04b, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+        ["PublicSupplierBookingManagementController.AcceptOffer"] = "The customer accepts the offer the supplier sent for its own request on measure, proving it with the code and the e-mail address in the body, and the version of the offer it read (SP-10b-b, behind SupplierShowcaseBooking, rate limited per IP and per address); any other booking is the same 404.",
+        ["PublicSupplierBookingManagementController.DeclineOffer"] = "The customer turns down the offer the supplier sent for its own request on measure, proving it with the code and the e-mail address in the body, and the version of the offer it read (SP-10b-b, behind SupplierShowcaseBooking, rate limited per IP and per address); any other booking is the same 404.",
+        ["PublicSupplierBookingManagementController.PostMessage"] = "The customer writes in the conversation of its own request on measure, proving it with the code and the e-mail address in the body (SP-10b, behind SupplierShowcaseBooking, rate limited per IP and per address); any other booking is the same 404.",
+        ["PublicSupplierBookingManagementController.ConfirmOk"] = "The customer of a booking paid inside CasaZen says the work is fine, proving it with the code and the e-mail address in the body, and the money CasaZen holds goes to the supplier at once (SP-15c-a, behind SupplierShowcaseBooking, rate limited per IP and per address); a booking not paid inside CasaZen is the same 422 as one whose work is not done.",
+        ["PublicSupplierBookingManagementController.ReportProblem"] = "The customer of a booking paid inside CasaZen reports a problem with the job, proving it with the code and the e-mail address in the body, and the money CasaZen holds stops until a person decides (SP-15c-c, behind SupplierShowcaseBooking, rate limited per IP and per address).",
+        ["PublicSupplierBookingManagementController.Alternatives"] = "The customer of a request that CasaZen closed because the supplier did not answer in time reads the other suppliers it can turn to (at most three, no personal data), proving it is the one who made the request with the code and the e-mail address in the body (SP-10c, behind SupplierShowcaseBooking, rate limited per IP and per address); for any other booking the list is empty.",
+        ["PublicSupplierBookingManagementController.WithdrawProblem"] = "The customer takes its complaint back, proving it with the code and the e-mail address in the body (SP-15c-c, behind SupplierShowcaseBooking, rate limited per IP and per address).",
     };
 
     private static IEnumerable<MethodInfo> PublicBookingManagementActions() =>
@@ -248,6 +272,60 @@ public class EndpointAuthorizationArchitectureTests
 
         Assert.Equal("api/public/suppliers/{slug}/bookings", route?.Template);
         Assert.NotNull(typeof(PublicSupplierBookingController).GetCustomAttribute<AllowAnonymousAttribute>());
+    }
+
+    [Fact]
+    public void PublicSupplierInquiry_EveryAnonymousAction_IsListedWithItsReason()
+    {
+        var anonymous = Actions()
+            .Where(a => a.IsAnonymous && a.Key.StartsWith(nameof(PublicSupplierInquiryController) + ".", StringComparison.Ordinal))
+            .Select(a => a.Key)
+            .Order()
+            .ToList();
+
+        Assert.Equal(PublicSupplierInquiry.Keys.Order(), anonymous);
+        Assert.All(PublicSupplierInquiry, entry => Assert.True(entry.Value.Length >= 40, $"{entry.Key}: say why it is public"));
+    }
+
+    [Fact]
+    public void PublicSupplierInquiry_EveryAction_IsBehindTheFlag_RateLimited_AndBoundedInSize()
+    {
+        var registered = RateLimitingServiceCollectionExtensions.Policies.Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(PublicSupplierInquiry.Count, PublicInquiryActions().Count());
+        foreach (var action in PublicInquiryActions())
+        {
+            // The flag is read by the middleware that runs before authentication and model binding: every action carries the attribute.
+            var gates = action.GetCustomAttributes<FeatureGateAttribute>(inherit: true).Select(g => g.Flag).ToList();
+            Assert.Equal(new[] { FeatureFlags.SupplierShowcaseBooking }, gates);
+
+            var policy = RateLimitPolicyOf(action);
+            Assert.False(string.IsNullOrEmpty(policy), $"{action.Name} has no rate limit");
+            Assert.Contains(policy!, registered);
+
+            var limit = action.GetCustomAttribute<RequestSizeLimitAttribute>();
+            Assert.NotNull(limit);
+            Assert.True(GetBytes(limit) <= 64 * 1024, $"{action.Name}: the body of an anonymous call is small");
+        }
+
+        Assert.Empty(typeof(PublicSupplierInquiryController).GetCustomAttributes<FeatureGateAttribute>(inherit: true));
+    }
+
+    [Fact]
+    public void PublicSupplierInquiry_TheCreateHasTheLimitsOfTheBooking_TheCheckUsesTheLookupOne_TheRoutesAreUnderThePublicSuppliersPrefix()
+    {
+        var create = typeof(PublicSupplierInquiryController).GetMethod(nameof(PublicSupplierInquiryController.Create))!;
+        var confirm = typeof(PublicSupplierInquiryController).GetMethod(nameof(PublicSupplierInquiryController.ConfirmEmail))!;
+
+        Assert.Equal(RateLimitPolicies.PublicSupplierBookingCreate, RateLimitPolicyOf(create));
+        // The second limit, per e-mail address and supplier, runs next to the one per IP (and is the booking's own).
+        Assert.Single(create.GetCustomAttributes<SupplierBookingEmailRateLimitAttribute>());
+        Assert.Equal(RateLimitPolicies.PublicBookingLookup, RateLimitPolicyOf(confirm));
+        Assert.Empty(confirm.GetCustomAttributes<SupplierBookingEmailRateLimitAttribute>());
+
+        var route = typeof(PublicSupplierInquiryController).GetCustomAttribute<RouteAttribute>();
+        Assert.Equal("api/public/suppliers/{slug}/inquiries", route?.Template);
+        Assert.NotNull(typeof(PublicSupplierInquiryController).GetCustomAttribute<AllowAnonymousAttribute>());
     }
 
     [Fact]

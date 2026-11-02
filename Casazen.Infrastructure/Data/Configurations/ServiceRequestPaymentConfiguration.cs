@@ -35,6 +35,17 @@ internal sealed class ServiceRequestPaymentConfiguration : IEntityTypeConfigurat
             .HasDatabaseName("UIX_ServiceRequestPayments_StripePaymentIntentId")
             .HasFilter("\"StripePaymentIntentId\" IS NOT NULL");
 
+        // SP-15c-a: a transfer pays one payment and a payment has one transfer, so the release can never pay a supplier twice.
+        entity.HasIndex(p => p.StripeTransferId)
+            .IsUnique()
+            .HasDatabaseName("UIX_ServiceRequestPayments_StripeTransferId")
+            .HasFilter("\"StripeTransferId\" IS NOT NULL");
+
+        // The funds job reads the payments held by CasaZen by state and by the time they are due.
+        entity.HasIndex(p => new { p.Status, p.ReleaseAt })
+            .HasDatabaseName("IX_ServiceRequestPayments_Held_Status_ReleaseAt")
+            .HasFilter($"\"FundsModel\" = {(int)ServiceFundsModel.PlatformHeld}");
+
         entity.HasIndex(p => new { p.SupplierOrgId, p.Status });
         entity.HasIndex(p => p.PayerOrgId);
 
@@ -65,6 +76,22 @@ internal sealed class ServiceRequestPaymentConfiguration : IEntityTypeConfigurat
                 "CK_ServiceRequestPayments_Paid",
                 $"\"Status\" NOT IN ({(int)ServicePaymentStatus.Paid}, {(int)ServicePaymentStatus.PartiallyRefunded}, {(int)ServicePaymentStatus.Refunded}) "
                 + "OR (\"PaidAt\" IS NOT NULL AND \"PaidVia\" IS NOT NULL)");
+
+            // SP-15c-a, the payment held by CasaZen. The states of the held cycle exist only for it, and its PaymentIntent is on the
+            // platform, never on a supplier's account.
+            t.HasCheckConstraint(
+                "CK_ServiceRequestPayments_Funds",
+                $"\"FundsModel\" IN ({(int)ServiceFundsModel.DirectCharge}, {(int)ServiceFundsModel.PlatformHeld}) "
+                + $"AND (\"Status\" < {(int)ServicePaymentStatus.Authorized} OR \"FundsModel\" = {(int)ServiceFundsModel.PlatformHeld}) "
+                + $"AND (\"FundsModel\" = {(int)ServiceFundsModel.DirectCharge} OR \"ConnectedAccountId\" IS NULL)");
+
+            // Money held says when the card was charged; a released payment says which transfer paid the supplier and when.
+            t.HasCheckConstraint(
+                "CK_ServiceRequestPayments_Held",
+                $"(\"Status\" NOT IN ({(int)ServicePaymentStatus.Held}, {(int)ServicePaymentStatus.Released}, {(int)ServicePaymentStatus.Disputed}, {(int)ServicePaymentStatus.TransferFailed}) "
+                + "OR \"CapturedAt\" IS NOT NULL) "
+                + $"AND (\"Status\" <> {(int)ServicePaymentStatus.Released} OR (\"StripeTransferId\" IS NOT NULL AND \"ReleasedAt\" IS NOT NULL)) "
+                + "AND \"TransferAttempts\" >= 0");
         });
     }
 }

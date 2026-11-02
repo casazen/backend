@@ -125,6 +125,41 @@ public class SeoHtmlSanitizerTests
     }
 
     [Fact]
+    public void Sanitize_ListItemWithNoTextOrAnEmptyLink_DropsTheItemAndKeepsTheOthers()
+    {
+        // The «Fonti ufficiali» of a published guide ended with a bullet and nothing after it.
+        var result = SeoHtmlSanitizer.Sanitize(
+            "<ul><li><a href=\"https://example.com\">fonte</a></li><li><a href=\"https://example.com/x\"></a></li><li></li></ul>");
+
+        Assert.Equal("<ul><li><a href=\"https://example.com\" rel=\"noopener noreferrer\">fonte</a></li></ul>", result);
+    }
+
+    [Fact]
+    public void Sanitize_ListWithOnlyEmptyItems_DropsTheWholeList()
+    {
+        var result = SeoHtmlSanitizer.Sanitize("<p>Fonti ufficiali</p><ul><li></li><li> </li></ul>");
+
+        Assert.Equal("<p>Fonti ufficiali</p>", result);
+    }
+
+    [Theory]
+    [InlineData("<p></p><p>testo</p>", "<p>testo</p>")]
+    [InlineData("<p><br></p><p>testo</p>", "<p>testo</p>")]
+    [InlineData("<h2> </h2><p>testo</p>", "<p>testo</p>")]
+    public void Sanitize_BlockWithNoText_IsDropped(string html, string expected)
+    {
+        Assert.Equal(expected, SeoHtmlSanitizer.Sanitize(html));
+    }
+
+    [Fact]
+    public void Sanitize_EmptyTableCell_IsKept()
+    {
+        const string html = "<table><tbody><tr><td></td><td>5</td></tr></tbody></table>";
+
+        Assert.Equal(html, SeoHtmlSanitizer.Sanitize(html));
+    }
+
+    [Fact]
     public void Sanitize_AlreadySanitizedHtml_IsStable()
     {
         const string html = "<h2>Titolo</h2><p><a href=\"https://example.com\">link</a> &amp; testo</p>";

@@ -26,8 +26,12 @@ public sealed record LeaseReviewCheck(string Code, LeaseReviewSeverity Severity,
 /// <summary>What the review knows besides the flow: the other contracts of the property and the state of the template.</summary>
 public sealed record LeaseReviewFacts
 {
-    /// <summary>Other contracts of the same property, not ended and not rejected, whose dates overlap the first period of this one (decision LR-D14: a warning, not a block).</summary>
-    public int OverlappingLeases { get; init; }
+    /// <summary>
+    /// The other lease of the same property that covers some of the days of this one (<see cref="LeasePeriodRules"/>, LR-OVERLAP):
+    /// two leases cannot cover the same days, so it blocks. It replaces the warning of decision LR-D14 (one may let by rooms), which the
+    /// product owner reversed on 2026-10-25.
+    /// </summary>
+    public LeasePeriodConflict? PeriodConflict { get; init; }
 
     /// <summary>The contract template of this type and regime is not approved (decision LR-D28: to know, not a block).</summary>
     public bool TemplateNotApproved { get; init; }
@@ -154,8 +158,16 @@ public static class LeaseReview
             // A contract already signed starts when it started: a start in the past is the normal case, nothing to check.
             if (start < input.Today && !imported)
                 Add(LeaseNeedCodes.StartInPast, LeaseReviewSeverity.Warn, 4, ("start", start.ToString("yyyy-MM-dd")));
-            if (facts.OverlappingLeases > 0)
-                Add(LeaseNeedCodes.LeaseOverlap, LeaseReviewSeverity.Warn, 4, ("count", facts.OverlappingLeases));
+            if (facts.PeriodConflict is { } conflict)
+            {
+                Add(
+                    LeaseNeedCodes.LeaseOverlap,
+                    LeaseReviewSeverity.Block,
+                    4,
+                    ("conflictingLeaseId", conflict.ConflictingLeaseId),
+                    ("conflictingFrom", conflict.ConflictingFrom.ToString("yyyy-MM-dd")),
+                    ("conflictingTo", conflict.ConflictingTo.ToString("yyyy-MM-dd")));
+            }
         }
 
         // 5 · the documents of the parties are checked by the landlord, not kept

@@ -82,7 +82,10 @@ public interface IOrgService
     /// (DB-03b-a) changes only for the fields the call carries (<see cref="FieldUpdate{T}"/>): <paramref name="legalName"/>
     /// and <paramref name="registeredOffice"/> that are not sent keep their value, so a caller that does not know them never erases
     /// them; a blank clears the field. They are validated before anything is written (<c>DomainRuleException</c>, codes in
-    /// <c>OrgOperatorRules</c>).
+    /// <c>OrgOperatorRules</c>). The same holds for the settings of the account (AM-08b-b): the phone <paramref name="contactPhone"/>
+    /// (never published; codes in <c>OrgSettingsRules</c>) and the language <paramref name="defaultLanguage"/> (<c>it</c> or <c>en</c>;
+    /// blank = the default). When the operator data, the phone or the language really change, the activity log gets one line,
+    /// <c>OrgSettingsChanged</c> (the fact, never the values).
     /// </summary>
     Task<Org?> UpdateSettingsAsync(
         Guid orgId,
@@ -93,7 +96,9 @@ public interface IOrgService
         string? actorUserId = null,
         CancellationToken cancellationToken = default,
         FieldUpdate<string> legalName = default,
-        FieldUpdate<string> registeredOffice = default);
+        FieldUpdate<string> registeredOffice = default,
+        FieldUpdate<string> contactPhone = default,
+        FieldUpdate<string> defaultLanguage = default);
 
     /// <summary>
     /// Whether <paramref name="slug"/> can become the org's public slug (A1-23): its normalized form and, when it
@@ -103,6 +108,17 @@ public interface IOrgService
     Task<OrgSlugAvailability?> CheckSlugAvailabilityAsync(
         Guid orgId,
         string slug,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Turns on or off the org's default for sending its requests to backup suppliers too (SP-BKP, <see cref="Org.SupplierBackupsEnabled"/>,
+    /// on by default). When the value really changes the activity log gets one line, <c>OrgSettingsChanged</c> (the fact, never the value).
+    /// Returns <c>null</c> when the org does not exist.
+    /// </summary>
+    Task<Org?> SetSupplierBackupsEnabledAsync(
+        Guid orgId,
+        bool enabled,
+        string? actorUserId = null,
         CancellationToken cancellationToken = default);
 }
 

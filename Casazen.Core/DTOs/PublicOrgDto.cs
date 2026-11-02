@@ -65,6 +65,9 @@ public class PublicOrgDto
     /// <summary>The theme the site renders: always one of <c>PublicSiteThemes.All</c> (unset or unsupported → default).</summary>
     public string PublicThemeId { get; set; } = PublicSiteThemes.Default;
 
+    /// <summary>The font pair the host chose (<c>PublicSiteFonts.All</c>), or null: the site uses the font its theme starts with.</summary>
+    public string? PublicFontId { get; set; }
+
     public bool ShowPoweredBy { get; set; }
 
     /// <summary>
@@ -95,6 +98,7 @@ public class PublicOrgDto
         Operator = PublicOperatorDto.FromOrg(org),
         AcceptsBookings = org.CanTakeDirectPayments,
         PublicThemeId = PublicSiteThemes.Resolve(org.PublicThemeId),
+        PublicFontId = PublicSiteFonts.Resolve(org.PublicFontId),
         ShowPoweredBy = effectiveTier == PlanTier.Starter,
     };
 }

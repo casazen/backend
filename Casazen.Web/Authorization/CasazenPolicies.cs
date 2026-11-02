@@ -50,6 +50,15 @@ public static class CasazenPolicies
     /// </summary>
     public const string GuestSession = "GuestSession";
 
+    /// <summary>
+    /// The person with a CasaZen account who books as a guest (the mobile app's guest area, <c>api/guest/*</c>): any signed-in account
+    /// with a subject, whatever its role, and with <b>no host org and no supplier link needed</b>, because a guest has neither. It opens
+    /// only the actions that read the caller's own bookings (the direct bookings whose guest has the account's verified email address, which
+    /// the action checks and answers 403 <c>guest_email_not_verified</c> for) and the deletion of the account. Not a guest-session
+    /// token (<see cref="GuestSession"/>, a code and an email with no account): that one is another scheme and opens none of these.
+    /// </summary>
+    public const string GuestAccount = "GuestAccount";
+
     private const string ShortRent = "RequireContext:short-rent:";
     private const string LongRent = "RequireContext:long-rent:";
 
@@ -109,6 +118,12 @@ public static class CasazenPolicies
     public const string AlloggiatiSubmit = ShortRent + HostPermissions.AlloggiatiSubmit;
 
     /// <summary>
+    /// Decide on manual biometric verification (NF-12, ADR-013): approve or reject guest check-in after biometric
+    /// escalation. Owner, admins, and property managers only (NOT staff per D-08). Short-rent context.
+    /// </summary>
+    public const string VerificationDecision = ShortRent + "verification.decision";
+
+    /// <summary>
     /// Read a property's long-term side that is not a lease: the long-rent service requests (D2, SU-07). Long-rent
     /// context only, so a short-rent <c>property.read</c> never reaches it; the row is checked with
     /// <see cref="LongRentPropertyOperations"/>.
@@ -123,38 +138,48 @@ public static class CasazenPolicies
     public const string LeaseSign = LongRent + "lease.sign";
     public const string LeaseRegister = LongRent + "lease.register";
 
-    /// <summary>Agency tier B2B policies (ADR-010, ADR-012): all require <c>Org.PlanTier == PlanTier.Agency</c>.</summary>
+    /// <summary>
+    /// Agency tier B2B policies (ADR-010, ADR-012): each requires the agency plan (<c>Org.PlanTier == PlanTier.Agency</c>, reads only
+    /// once the org is downgraded) <b>and</b> its agency permission held by the caller's org role (DEB-01,
+    /// <see cref="OrgRoleCatalog.AgencyPermissionsOf"/>): the rest of the name is the permission (<see cref="ParseAgencyPolicy"/>).
+    /// </summary>
     private const string Agency = "RequireAgencyTier:";
 
-    /// <summary>View property owner list and details (agency B2B, ADR-012).</summary>
-    public const string AgencyOwnerView = Agency + "agency.owner.view";
+    /// <summary>View property owner list and details, IBAN masked (agency B2B, ADR-012).</summary>
+    public const string AgencyOwnerView = Agency + AgencyPermissions.OwnerView;
 
     /// <summary>View full IBAN of property owners (requires audit log, agency B2B, ADR-012-R3).</summary>
-    public const string AgencyOwnerFinancialRead = Agency + "agency.owner.financial.read";
+    public const string AgencyOwnerFinancialRead = Agency + AgencyPermissions.OwnerFinancialRead;
 
-    /// <summary>Create, edit and publish monthly statements (agency B2B).</summary>
-    internal const string AgencyStatementManage = Agency + "agency.statement.manage";
+    /// <summary>Generate, approve and publish monthly statements (agency B2B).</summary>
+    public const string AgencyStatementManage = Agency + AgencyPermissions.StatementManage;
 
-    /// <summary>View monthly statements (agency B2B).</summary>
-    internal const string AgencyStatementView = Agency + "agency.statement.view";
+    /// <summary>View and export monthly statements (agency B2B).</summary>
+    public const string AgencyStatementView = Agency + AgencyPermissions.StatementView;
 
     /// <summary>Create and issue invoices (agency B2B).</summary>
-    internal const string AgencyInvoiceManage = Agency + "agency.invoice.manage";
+    public const string AgencyInvoiceManage = Agency + AgencyPermissions.InvoiceManage;
 
     /// <summary>Manage withholding tax (agency B2B).</summary>
-    internal const string AgencyWithholdingManage = Agency + "agency.withholding.manage";
+    public const string AgencyWithholdingManage = Agency + AgencyPermissions.WithholdingManage;
 
     /// <summary>Create wire transfer batches (agency B2B).</summary>
-    internal const string AgencyWireManage = Agency + "agency.wire.manage";
+    public const string AgencyWireManage = Agency + AgencyPermissions.WireManage;
 
     /// <summary>Manage internal staff activities (agency B2B).</summary>
-    internal const string AgencyActivityManage = Agency + "agency.activity.manage";
+    public const string AgencyActivityManage = Agency + AgencyPermissions.ActivityManage;
 
     /// <summary>Manage trusted suppliers (agency B2B).</summary>
-    internal const string AgencySupplierManage = Agency + "agency.supplier.manage";
+    public const string AgencySupplierManage = Agency + AgencyPermissions.SupplierManage;
 
     /// <summary>Invite and manage property owners (agency B2B, ADR-011-R4).</summary>
-    public const string AgencyOwnerManage = Agency + "agency.owner.manage";
+    public const string AgencyOwnerManage = Agency + AgencyPermissions.OwnerManage;
+
+    /// <summary>
+    /// Owner portal access (ADR-011): checks JWT claim context=owner_portal and resolves OwnerUserId.
+    /// MUST NOT include host roles. Enforced on every owner portal endpoint.
+    /// </summary>
+    public const string OwnerPortal = "OwnerPortal";
 
     /// <summary>
     /// Invite, change, deactivate, reactivate and remove the people of the caller's org (AM-02): the permission
@@ -184,20 +209,35 @@ public static class CasazenPolicies
         GuestRead, GuestWrite,
         OtaRead, OtaWrite,
         ServiceRequestWrite, GuestManage, AlloggiatiSubmit,
+        VerificationDecision,
         LongRentPropertyRead, LongRentPropertyWrite,
         LeaseRead, LeaseCreate, LeaseSign, LeaseRegister,
         OrgMembersManage, OrgActivityRead,
     ];
 
-    /// <summary>The agency tier policies registered at startup (ADR-010, ADR-012).</summary>
+    /// <summary>The agency tier policies registered at startup (ADR-010, ADR-012): one per agency permission.</summary>
     public static IReadOnlyList<string> AgencyPolicies { get; } =
     [
         AgencyOwnerView,
         AgencyOwnerFinancialRead,
         AgencyOwnerManage,
+        AgencyStatementManage,
+        AgencyStatementView,
+        AgencyInvoiceManage,
+        AgencyWithholdingManage,
+        AgencyWireManage,
         AgencyActivityManage,
         AgencySupplierManage,
     ];
+
+    /// <summary>The agency permission an agency policy requires: <c>RequireAgencyTier:agency.wire.manage</c> needs <c>agency.wire.manage</c>.</summary>
+    public static string ParseAgencyPolicy(string policyName)
+    {
+        if (!policyName.StartsWith(Agency, StringComparison.Ordinal) || policyName.Length == Agency.Length)
+            throw new ArgumentException($"'{policyName}' is not an agency policy.", nameof(policyName));
+
+        return policyName[Agency.Length..];
+    }
 
     /// <summary>
     /// Splits a context policy name into its contexts and permission: <c>RequireContext:short-rent:property.read</c>

@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 
 namespace Casazen.Web.DTOs;
@@ -16,7 +17,9 @@ public class DirectBookingResponse
     public string? SetupIntentClientSecret { get; set; }
     public ConnectedAccountPublishableContext ConnectedAccountPublishableContext { get; set; } = null!;
     public decimal Amount { get; set; }
-    public string Currency { get; set; } = "EUR";
+
+    /// <summary>ISO 4217 code of the property (EUR or CHF, <see cref="StayCurrency"/>): <see cref="Amount"/> is in it and so is the PaymentIntent.</summary>
+    public string Currency { get; set; } = StayCurrency.Default;
     public decimal TouristTaxAmount { get; set; }
     public decimal BasePrice { get; set; }
     public DateTime FreeRefundDeadline { get; set; }

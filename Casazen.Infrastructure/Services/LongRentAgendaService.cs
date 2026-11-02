@@ -38,7 +38,7 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
         // Installments alone need no lease at all.
         IReadOnlyList<LeaseRow> leases = query.Type == LongRentDeadlineType.Rent
             ? Array.Empty<LeaseRow>()
-            : await LoadLeasesAsync(scope, cancellationToken);
+            : await LoadLeasesAsync(scope, query.LeaseId, cancellationToken);
         return await DeadlinesAsync(scope, query, leases, cancellationToken);
     }
 
@@ -116,12 +116,18 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
         var truncated = false;
         if (Wants(LongRentDeadlineType.Rent))
         {
-            var rents = await db.RentLedgerEntries
+            var due = db.RentLedgerEntries
                 .AsNoTracking()
                 .WithinScope(scope)
                 .Where(e => (e.Status == RentLedgerStatus.Scheduled || e.Status == RentLedgerStatus.Failed)
                     && e.DueDate <= to
-                    && (e.DueDate >= from || carriesOverdue))
+                    && (e.DueDate >= from || carriesOverdue));
+
+            // The sheet of one lease (LR-03c): the same installments, narrowed to that lease in SQL.
+            if (query.LeaseId is { } onlyLease)
+                due = due.Where(e => e.LeaseContractId == onlyLease);
+
+            var rents = await due
                 .OrderBy(e => e.DueDate)
                 .ThenBy(e => e.Id)
                 .Take(LongRentDeadlineRules.MaxRentItems + 1)
@@ -207,7 +213,7 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
             .Select(g => new { LeaseId = g.Key, Count = g.Count(), Amount = g.Sum(e => e.AmountDue), Oldest = g.Min(e => e.DueDate) })
             .ToListAsync(cancellationToken);
 
-        var leases = await LoadLeasesAsync(scope, cancellationToken);
+        var leases = await LoadLeasesAsync(scope, leaseId: null, cancellationToken);
         var checklist = new List<LongRentChecklistItem>();
         if (behind.Count > 0)
         {
@@ -333,15 +339,20 @@ public sealed class LongRentAgendaService(AppDbContext db, TimeProvider? timePro
     /// or its Questura communication never done is a closed matter, not an agenda item), and not a draft the landlord is still typing
     /// (the wizard keeps its values in <c>DraftData</c> while some are missing, LR-12: its dates may be starting values, and it has no
     /// deadline yet; it is still counted among the leases to sign). Scalars only, nothing of the parties but the first tenant's name
-    /// and whether a tenant is extra-EU.
+    /// and whether a tenant is extra-EU. <paramref name="leaseId"/> (LR-03c, the sheet of a contract) keeps that lease alone, narrowed in SQL;
+    /// <c>null</c> keeps all of the scope.
     /// </summary>
-    private async Task<List<LeaseRow>> LoadLeasesAsync(HostScope scope, CancellationToken cancellationToken)
+    private async Task<List<LeaseRow>> LoadLeasesAsync(HostScope scope, Guid? leaseId, CancellationToken cancellationToken)
     {
         var todayStored = _clock.TodayInRome();
-        var rows = await db.LeaseContracts
+        var open = db.LeaseContracts
             .AsNoTracking()
             .WithinScope(scope)
-            .Where(l => l.Status != LeaseStatus.Rejected && l.CurrentTermEndDate >= todayStored && (l.DraftData == null || l.Status != LeaseStatus.Draft))
+            .Where(l => l.Status != LeaseStatus.Rejected && l.CurrentTermEndDate >= todayStored && (l.DraftData == null || l.Status != LeaseStatus.Draft));
+        if (leaseId is { } onlyLease)
+            open = open.Where(l => l.Id == onlyLease);
+
+        var rows = await open
             .Select(l => new
             {
                 l.Id,

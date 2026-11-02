@@ -70,9 +70,10 @@ public sealed class SuppressionService(
 
     /// <summary>
     /// Computes SHA-256 hash of the normalized email address (blind index).
-    /// Not HMAC - just SHA-256 of the normalized string.
+    /// Not HMAC - just SHA-256 of the normalized string. Also the <c>emailHash</c> of the signed unsubscribe link
+    /// (<see cref="Email.MarketingUnsubscribeLinks"/>), so the entry that link adds is the one this service checks.
     /// </summary>
-    private static string ComputeEmailHash(string email)
+    internal static string ComputeEmailHash(string email)
     {
         var normalized = ShowcaseBookingRules.NormalizeEmail(email);
         var bytes = Encoding.UTF8.GetBytes(normalized);

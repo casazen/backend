@@ -115,6 +115,38 @@ public class ConnectController(
         }
     }
 
+    /// <summary>
+    /// Single-use login link to the Express Dashboard of the org's own Stripe account (AM-08b-d, «Gestisci su Stripe»): balance,
+    /// payouts and bank details live on Stripe. Needs an account that is already linked and never creates one: 422
+    /// <c>stripe_connect_dashboard_not_ready</c> without an account or when Stripe refuses the link because the onboarding is not
+    /// complete (the way forward is the onboarding link). For the org's billing administrator, like the onboarding. The URL is a
+    /// credential: it is not logged and not stored.
+    /// </summary>
+    [HttpPost("dashboard-link")]
+    [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+    [ProducesResponseType(typeof(DashboardLinkResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<DashboardLinkResponseDto>> CreateDashboardLink(CancellationToken cancellationToken)
+    {
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "NoOrganizationAssigned");
+
+        try
+        {
+            var url = await connectOnboardingService.CreateDashboardLinkAsync(orgId.Value, cancellationToken);
+            return Ok(new DashboardLinkResponseDto { Url = url });
+        }
+        catch (StripeConnectException ex)
+        {
+            return StripeConnectProblem(ex);
+        }
+    }
+
     [HttpGet("status")]
     [Authorize(Policy = CasazenPolicies.PaymentRead)]
     [ProducesResponseType(typeof(ConnectStatusDto), StatusCodes.Status200OK)]

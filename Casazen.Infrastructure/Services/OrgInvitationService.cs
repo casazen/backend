@@ -93,6 +93,11 @@ public sealed partial class OrgInvitationService(
         // A missing public URL is a configuration error, found before anything is saved.
         publicSiteLinks.EnsureConfigured();
 
+        // An invitation that names no language goes out in the language of the account (AM-08b-b, the settings of the org).
+        var language = string.IsNullOrWhiteSpace(request.Language)
+            ? await db.Orgs.AsNoTracking().Where(o => o.Id == request.OrgId).Select(o => o.DefaultLanguage).FirstOrDefaultAsync(cancellationToken)
+            : request.Language;
+
         var now = Now;
         var token = OrgInvitationTokens.Generate();
         var invitation = new OrgInvitation
@@ -107,7 +112,7 @@ public sealed partial class OrgInvitationService(
             Status = OrgInvitationStatus.Pending,
             ExpiresAt = now + OrgInvitationRules.Validity,
             InvitedByUserId = actor.UserId,
-            Language = OrgInvitationRules.NormalizeLanguage(request.Language),
+            Language = OrgInvitationRules.NormalizeLanguage(language),
             CreatedAt = now,
             UpdatedAt = now,
         };

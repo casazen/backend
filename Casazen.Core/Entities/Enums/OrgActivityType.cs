@@ -65,6 +65,13 @@ public enum OrgActivityType
     /// <summary>Tier was assigned to the org (admin-only in phase 1, ADR-010-R7). Subject: the org. Details: to-tier.</summary>
     TierAssigned = 23,
 
+    /// <summary>
+    /// The data of the company was changed (AM-08b-b): the legal name or the registered office of the operator, the phone or the
+    /// language of the account. Subject: the org. No details: neither what changed nor the values are recorded. The contact email
+    /// is not part of it (it has never had a line: the log would carry an address).
+    /// </summary>
+    OrgSettingsChanged = 24,
+
     // ─── Property mode (PM-02, written since AM-02c) ─────────────────────────────────────────────────────
 
     /// <summary>
@@ -81,6 +88,14 @@ public enum OrgActivityType
     /// after. The area is the one of the mode the property is in now.
     /// </summary>
     PropertyModeChanged = 42,
+
+    /// <summary>
+    /// A host activated a property while some of its compliance reminders were still open (the required documents, the safety
+    /// sheet) and declared, with the activation, to know that they are the host's own obligations and to complete them later
+    /// (PO decision 2026-11-01, option A: only the base data and the CIN block the activation). Written by
+    /// <c>PropertyComplianceStatusService</c>. Subject: the property. Details: the reminders open at that moment.
+    /// </summary>
+    PropertyActivatedWithReminders = 43,
 
     // ─── Trusted suppliers (reserved: the host's trusted suppliers) ──────────────────────────────────────
 

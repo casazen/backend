@@ -83,10 +83,13 @@ public class UsersController(
     // ─── Self-service endpoints ──────────────────────────────────────────────
 
     /// <summary>
-    /// Returns the caller's own profile. Creates the DB record on first call (upsert by sub).
+    /// Returns the caller's own profile. Creates the DB record on first call (upsert by sub). <c>emailVerified</c> tells whether
+    /// Auth0 verified the account's email address: the guest area of the mobile app (<c>api/guest/*</c>) needs it.
     /// </summary>
     [HttpGet("me")]
-    public async Task<ActionResult<UserDetailDto>> GetMe()
+    public async Task<ActionResult<UserDetailDto>> GetMe(
+        [FromServices] IAccountEmailResolver accountEmails,
+        CancellationToken cancellationToken)
     {
         var sub = GetSub();
         if (sub == null)
@@ -95,7 +98,7 @@ public class UsersController(
         var (email, firstName, lastName) = AccountEmailResolver.ReadProfile(User);
 
         var user = await userService.GetCurrentUserAsync(sub, email, firstName, lastName);
-        return Ok(await ToOwnDetailAsync(user));
+        return Ok(await ToOwnDetailAsync(user, accountEmails, cancellationToken));
     }
 
     /// <summary>Completes first-time onboarding by assigning roles from rental type choice.</summary>
@@ -136,7 +139,10 @@ public class UsersController(
 
     /// <summary>Updates the caller's own profile (first name, last name, phone).</summary>
     [HttpPut("me")]
-    public async Task<ActionResult<UserDetailDto>> UpdateMe([FromBody] UpdateProfileDto dto)
+    public async Task<ActionResult<UserDetailDto>> UpdateMe(
+        [FromBody] UpdateProfileDto dto,
+        [FromServices] IAccountEmailResolver accountEmails,
+        CancellationToken cancellationToken)
     {
         var sub = GetSub();
         if (sub == null)
@@ -154,7 +160,7 @@ public class UsersController(
             existing.PhoneNumber = dto.PhoneNumber;
 
         var updated = await userService.UpdateUserAsync(existing);
-        return Ok(await ToOwnDetailAsync(updated));
+        return Ok(await ToOwnDetailAsync(updated, accountEmails, cancellationToken));
     }
 
     /// <summary>Changes the role of a user. Admin only.</summary>
@@ -470,8 +476,14 @@ public class UsersController(
     private async Task<Org?> ResolveOrgAsync(User user) =>
         user.OrgId.HasValue ? await orgService.GetByIdAsync(user.OrgId.Value) : null;
 
-    /// <summary>The caller's own profile, with where it stands with the host onboarding gate (PL-02).</summary>
-    private async Task<UserDetailDto> ToOwnDetailAsync(User user)
+    /// <summary>
+    /// The caller's own profile, with where it stands with the host onboarding gate (PL-02) and whether its email address is
+    /// verified (the token's claim; Auth0 only when the token has none, <see cref="IAccountEmailResolver"/>).
+    /// </summary>
+    private async Task<UserDetailDto> ToOwnDetailAsync(
+        User user,
+        IAccountEmailResolver accountEmails,
+        CancellationToken cancellationToken)
     {
         var org = await ResolveOrgAsync(user);
         var detail = ToDetail(user, org);
@@ -481,6 +493,7 @@ public class UsersController(
         // A supplier org owns no properties: the "first property" step is for host orgs only.
         if (user.OrgId is Guid orgId && org?.OrgType != OrgType.Supplier)
             detail.HasProperties = await onboardingService.OrgHasPropertiesAsync(orgId, HttpContext.RequestAborted);
+        detail.EmailVerified = (await accountEmails.ResolveAsync(User, user.Id, cancellationToken)).EmailVerified;
         return detail;
     }
 

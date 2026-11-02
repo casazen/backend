@@ -20,7 +20,12 @@ public sealed record TouristTaxComune(string? IstatCode, string? Name)
     public static TouristTaxComune ForProperty(Property property)
     {
         ArgumentNullException.ThrowIfNull(property);
-        return new TouristTaxComune(property.ComuneIstatCode, property.City);
+
+        // The rates are those of the Italian comuni. A house in another country (CHF-MONEY: Switzerland, whose Kurtaxe is not modelled) is
+        // never matched to one by a name that happens to be the same: its amount would be euros added to a total in another currency.
+        return string.IsNullOrWhiteSpace(property.Country) || string.Equals(property.Country, "IT", StringComparison.OrdinalIgnoreCase)
+            ? new TouristTaxComune(property.ComuneIstatCode, property.City)
+            : new TouristTaxComune(null, null);
     }
 
     /// <summary>True when there is nothing to look up (no code and an empty name).</summary>

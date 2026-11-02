@@ -39,6 +39,7 @@ public class ComplianceWizardService(
         Guid propertyId,
         string userId,
         bool? tosAccepted,
+        bool? remindersAcknowledged = null,
         CancellationToken cancellationToken = default)
     {
         var property = await LoadPropertyAsync(propertyId, cancellationToken)
@@ -52,8 +53,10 @@ public class ComplianceWizardService(
             throw new DomainConflictException("activation_tos_required", "ActivationTosRequired");
 
         // Same evaluation and transitions as the re-evaluation after a change (CO-06): Active without blockers; with
-        // blockers a pending or suspended property stays as it is and an active one is suspended.
-        var check = await complianceStatus.ActivateAsync(propertyId, cancellationToken);
+        // blockers a pending or suspended property stays as it is and an active one is suspended. The reminders still open (the
+        // documents, the safety checklist) need the host's acknowledgement (409 activation_reminders_ack_required otherwise).
+        var check = await complianceStatus.ActivateAsync(
+            propertyId, new HostActivation(userId, remindersAcknowledged == true), cancellationToken);
         if (check.Status == PropertyComplianceStatus.Active)
             logger.LogInformation("Property {PropertyId} compliance activated", propertyId);
 
@@ -98,7 +101,11 @@ public class ComplianceWizardService(
                 incompleteCheckIns.Add(ComplianceSummaryItem.ForBooking(
                     ComplianceCockpitAction.CompleteGuestCheckIn,
                     booking.Id,
-                    $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim()));
+                    $"{booking.Guest.FirstName} {booking.Guest.LastName}".Trim()) with
+                {
+                    DueAt = ComplianceDeadlines.Of(
+                        ComplianceCockpitAction.CompleteGuestCheckIn, booking.CheckInDate, booking.CheckOutDate, booking.ArrivedAt),
+                });
             }
         }
 
@@ -110,9 +117,12 @@ public class ComplianceWizardService(
                 .InScope(scope)
                 .Where(StayLifecycleRules.CheckOutDue(today))
                 .OrderBy(b => b.CheckOutDate)
-                .Select(b => new { b.Id, GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim() })
+                .Select(b => new { b.Id, b.CheckInDate, b.CheckOutDate, b.ArrivedAt, GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim() })
                 .ToListAsync(cancellationToken))
-            .Select(b => ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.CheckOut, b.Id, b.GuestName))
+            .Select(b => ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.CheckOut, b.Id, b.GuestName) with
+            {
+                DueAt = ComplianceDeadlines.Of(ComplianceCockpitAction.CheckOut, b.CheckInDate, b.CheckOutDate, b.ArrivedAt),
+            })
             .ToList();
 
         var (alloggiatiFailures, alloggiatiManualRequired) = await GetAlloggiatiSectionsAsync(scope, today, cancellationToken);
@@ -198,6 +208,8 @@ public class ComplianceWizardService(
                 b.Id,
                 b.GuestId,
                 b.CheckInDate,
+                b.CheckOutDate,
+                b.ArrivedAt,
                 GuestName = (b.Guest.FirstName + " " + b.Guest.LastName).Trim(),
             })
             .ToListAsync(cancellationToken);
@@ -221,12 +233,20 @@ public class ComplianceWizardService(
             if (AlloggiatiStatusRules.IsFailure(status))
             {
                 failures.Add((stay.CheckInDate, ComplianceSummaryItem.ForBooking(
-                    ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.Id, stay.GuestName)));
+                    ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.Id, stay.GuestName) with
+                {
+                    DueAt = ComplianceDeadlines.Of(
+                        ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.CheckInDate, stay.CheckOutDate, stay.ArrivedAt),
+                }));
             }
             else if (status == AlloggiatiWebStatus.DaInviareManualmente)
             {
                 manual.Add((stay.CheckInDate, ComplianceSummaryItem.ForBooking(
-                    ComplianceCockpitAction.SendAlloggiati, stay.Id, stay.GuestName)));
+                    ComplianceCockpitAction.SendAlloggiati, stay.Id, stay.GuestName) with
+                {
+                    DueAt = ComplianceDeadlines.Of(
+                        ComplianceCockpitAction.SendAlloggiati, stay.CheckInDate, stay.CheckOutDate, stay.ArrivedAt),
+                }));
             }
         }
 

@@ -1,4 +1,5 @@
 using Casazen.Core.Features;
+using Casazen.Core.Suppliers;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
@@ -46,6 +47,14 @@ public class ShowcaseBookingOptions
     public int ProposalResponseMinutes { get; set; } = 24 * 60;
 
     /// <summary>
+    /// Minutes a supplier has to answer a request on measure (SP-10b), counted from the moment the customer checks its e-mail: one hour,
+    /// the promise of the product. After it the request lapses with the reason <c>NoResponse</c> and the customer is told (the
+    /// <c>service-request-expiry</c> job, the one of the bookings); the first message of the supplier stops the clock. Env var
+    /// <c>Suppliers__Showcase__InquiryResponseMinutes</c>.
+    /// </summary>
+    public int InquiryResponseMinutes { get; set; } = ShowcaseInquiryLimits.DefaultResponseMinutes;
+
+    /// <summary>
     /// Hours before the work in which the customer can still cancel a booking <b>for free</b> (24, SP-11). In v1 a cancellation
     /// after that costs nothing either (decision D6: no exit cost), so the number only decides what the customer is told
     /// ("free until …") and whether the supplier is told the notice was short; it is the value a later fee would read. Elapsed
@@ -79,6 +88,12 @@ public class ShowcaseBookingOptions
         {
             failures.Add(
                 $"Suppliers__Showcase__ProposalResponseMinutes must be between {MinProposalResponseMinutes} and {MaxProposalResponseMinutes} minutes.");
+        }
+
+        if (InquiryResponseMinutes is < ShowcaseInquiryLimits.MinResponseMinutes or > ShowcaseInquiryLimits.MaxResponseMinutes)
+        {
+            failures.Add(
+                $"Suppliers__Showcase__InquiryResponseMinutes must be between {ShowcaseInquiryLimits.MinResponseMinutes} and {ShowcaseInquiryLimits.MaxResponseMinutes} minutes.");
         }
 
         if (FreeCancellationHours is < MinFreeCancellationHours or > MaxFreeCancellationHours)

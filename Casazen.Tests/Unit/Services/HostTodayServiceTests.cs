@@ -41,6 +41,7 @@ public class HostTodayServiceTests
             Mock.Of<IEmailQueue>(),
             EmailTestHelpers.Links(),
             Options.Create(new ComplianceOptions()),
+            new ActivityLog(db),
             NullLogger<PropertyComplianceStatusService>.Instance,
             Clock);
 

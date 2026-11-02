@@ -29,6 +29,7 @@ public class ServiceRequestPaymentRefundTenancyTests
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs"] = "The sync job looks for the refunds that wait for Stripe, across every supplier, and handles each by id under the payment lock; a job has no tenant.",
         ["Casazen.Infrastructure/Services/SupplierPaymentService.Notices.cs"] = "The emails after a refund commit: the refund is read by its id.",
         ["Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs"] = "The detail and the commission export of the platform admin (AdminOnly): read-only projections, on purpose.",
+        ["Casazen.Infrastructure/Services/SupplierPaymentService.DisputesAdmin.cs"] = "The admin's decision of a dispute for the customer (SP-15c-c): the refund it decides is reserved with the decision, under the payment lock, as a new pending row.",
     };
 
     // The statements allowed after "db.ServiceRequestPaymentRefunds" (whitespace removed): an insert, the tracked rows, or a
@@ -197,6 +198,7 @@ public class ServiceRequestPaymentRefundTenancyTests
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Jobs.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.Notices.cs")]
     [InlineData("Casazen.Infrastructure/Services/SupplierPaymentAdminService.cs")]
+    [InlineData("Casazen.Infrastructure/Services/SupplierPaymentService.DisputesAdmin.cs")]
     public void EveryStatementOnTheTable_CarriesAnExplicitPredicateOrIsAnInsert(string relative)
     {
         var text = File.ReadAllText(Path.Combine(FindRepositoryRoot(), relative.Replace('/', Path.DirectorySeparatorChar)));

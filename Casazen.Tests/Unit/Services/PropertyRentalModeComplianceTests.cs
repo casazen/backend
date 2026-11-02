@@ -247,6 +247,7 @@ public class PropertyRentalModeComplianceTests
             WizardService(db, status.Object).CompleteActivationAsync(property.Id, "auth0|owner", tosAccepted: null));
 
         Assert.Equal(PropertyRentalModeErrorCodes.NotBookableInLongMode, error.Code);
+        status.Verify(s => s.ActivateAsync(It.IsAny<Guid>(), It.IsAny<HostActivation>(), It.IsAny<CancellationToken>()), Times.Never);
         status.Verify(s => s.ActivateAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
@@ -264,6 +265,7 @@ public class PropertyRentalModeComplianceTests
             _emails,
             EmailTestHelpers.Links(),
             Options.Create(new ComplianceOptions { StatusCheck = { NotifyOnFirstCheck = true } }),
+            new ActivityLog(db),
             NullLogger<PropertyComplianceStatusService>.Instance,
             new FixedTimeProvider(new DateTimeOffset(Now)));
 

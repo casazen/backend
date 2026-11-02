@@ -242,7 +242,7 @@ public sealed class LeaseDraftService(
 
         var values = LeaseDraftProjection.ReadValues(lease);
         var evaluation = await EvaluateAsync(lease, values, fullApeCheck: true, cancellationToken);
-        var checks = LeaseReview.Compute(FlowInput(evaluation, lease), await ReviewFactsAsync(lease, evaluation, cancellationToken));
+        var checks = LeaseReview.Compute(FlowInput(evaluation, lease), ReviewFacts(lease, evaluation));
         return new LeaseReviewView(lease.DraftVersion, lease.ReviewConfirmedAt, checks, Count(checks));
     }
 
@@ -260,6 +260,9 @@ public sealed class LeaseDraftService(
         var checks = LeaseReview.Compute(FlowInput(evaluation, lease), new LeaseReviewFacts());
         if (LeaseReview.HasBlock(checks))
             throw new DomainRuleException(LeaseDraftErrorCodes.ReviewBlocked, "LeaseReviewBlocked");
+
+        // LR-OVERLAP: the contract takes its days only if no other lease of the property has them (409 lease_period_overlaps).
+        await EnsurePeriodFreeAsync(lease, evaluation, cancellationToken);
 
         // The data may have become complete without a save (the agreement data of the comune were loaded, a date typed ahead of today has
         // come): the columns and the rows are written now, as a save would, so what is confirmed is what every other reader sees and
@@ -350,31 +353,13 @@ public sealed class LeaseDraftService(
         }
     }
 
-    private async Task<LeaseReviewFacts> ReviewFactsAsync(LeaseContract lease, DraftEvaluation evaluation, CancellationToken cancellationToken)
+    private LeaseReviewFacts ReviewFacts(LeaseContract lease, DraftEvaluation evaluation)
     {
-        var overlapping = 0;
-        if (evaluation.Reading is { Start: { } start, End: { } end })
-        {
-            var from = LeaseDraftRules.ToStoredDate(start);
-            var to = LeaseDraftRules.ToStoredDate(end);
-            // The other contracts of the property that still stand: not rejected, and not a draft nobody handed out for signature
-            // (decision LR-D14: a warning, one can let by rooms).
-            overlapping = await db.LeaseContracts
-                .AsNoTracking()
-                .CountAsync(
-                    l => l.PropertyId == lease.PropertyId
-                        && l.Id != lease.Id
-                        && l.Status != LeaseStatus.Rejected
-                        && (l.Status != LeaseStatus.Draft || l.SentForSignatureAt != null)
-                        && l.StartDate <= to
-                        && l.CurrentTermEndDate >= from,
-                    cancellationToken);
-        }
-
         var blocker = lease.Origin == LeaseOrigin.Imported ? null : templates.GetFinalContractBlocker(lease);
         return new LeaseReviewFacts
         {
-            OverlappingLeases = overlapping,
+            // LR-OVERLAP: the lease in the way, found while the draft was evaluated (the rule of the days of LeasePeriodRules).
+            PeriodConflict = evaluation.PeriodConflict,
             TemplateNotApproved = blocker == Casazen.Infrastructure.External.LeaseContractTemplateService.TemplateNotApprovedCode,
             TemplateDataMissing = blocker == Casazen.Infrastructure.External.LeaseContractTemplateService.DataMissingCode
                 && evaluation.Flow.DataComplete,
@@ -408,6 +393,9 @@ public sealed class LeaseDraftService(
             // What was confirmed must still stand: a block that appeared since (the APE was removed) stops the download.
             if (LeaseReview.HasBlock(LeaseReview.Compute(FlowInput(evaluation, lease), new LeaseReviewFacts())))
                 throw new DomainRuleException(LeaseDraftErrorCodes.ReviewBlocked, "LeaseReviewBlocked");
+
+            // LR-OVERLAP: nor can it go to the signature if another lease has taken the days since (409 lease_period_overlaps).
+            await EnsurePeriodFreeAsync(lease, evaluation, cancellationToken);
 
             // The gate of GET contract.pdf, so the state never says something that download would refuse (decision LR-D28): the
             // term of the type, then the template of the regime (422 contract_template_not_approved / contract_data_missing).
@@ -516,9 +504,16 @@ public sealed class LeaseDraftService(
 
     // ---- evaluation ----------------------------------------------------------------------------------------------
 
-    /// <summary>What the values typed mean for the lease: how they read, the flow they give and the range of the canone concordato.</summary>
+    /// <summary>
+    /// What the values typed mean for the lease: how they read, the flow they give, the range of the canone concordato and the other lease
+    /// of the property that covers some of the same days (LR-OVERLAP, only a warning here: <see cref="EnsurePeriodFreeAsync"/> is the block).
+    /// </summary>
     private sealed record DraftEvaluation(
-        LeaseDraftReading Reading, LeaseDraftProgressInput Input, LeaseDraftFlow Flow, ConcordatoAssessmentResult? Concordato);
+        LeaseDraftReading Reading,
+        LeaseDraftProgressInput Input,
+        LeaseDraftFlow Flow,
+        ConcordatoAssessmentResult? Concordato,
+        LeasePeriodConflict? PeriodConflict);
 
     /// <param name="fullApeCheck">
     /// Read the energy certificate itself (the review, the confirmation, the download for signature) instead of only checking that
@@ -576,8 +571,29 @@ public sealed class LeaseDraftService(
             Concordato = outcome,
             Today = _clock.TodayInRomeAsDateOnly(),
         };
-        return new DraftEvaluation(reading, input, LeaseDraftProgress.Compute(input), concordato);
+
+        // LR-OVERLAP, the soft warning: once the property and both dates are there, the lease that has some of the same days (no lock: it is
+        // told, not enforced; the steps that make this lease a contract check again under the lock of the property).
+        LeasePeriodConflict? conflict = null;
+        if (facts.PropertyExists && values.PropertyId is { } propertyId && reading is { Start: { } start, End: { } end })
+        {
+            conflict = await LeasePeriodGuard.FindAsync(
+                db, propertyId, lease.Id, LeaseDraftRules.ToStoredDate(start), LeaseDraftRules.ToStoredDate(end), cancellationToken);
+        }
+
+        return new DraftEvaluation(reading, input, LeaseDraftProgress.Compute(input) with { PeriodConflict = conflict }, concordato, conflict);
     }
+
+    /// <summary>
+    /// LR-OVERLAP, the hard rule: 409 <c>lease_period_overlaps</c> when another lease of the property covers some of the days of this one,
+    /// asked under the lock of the property, in the transaction of the step that makes the lease a contract. Nothing to check while the
+    /// property or a date is missing (the data steps say so).
+    /// </summary>
+    private Task EnsurePeriodFreeAsync(LeaseContract lease, DraftEvaluation evaluation, CancellationToken cancellationToken) =>
+        evaluation.Reading is { Start: { } start, End: { } end }
+            ? LeasePeriodGuard.EnsureFreeAsync(
+                db, lease.PropertyId, lease.Id, LeaseDraftRules.ToStoredDate(start), LeaseDraftRules.ToStoredDate(end), cancellationToken)
+            : Task.CompletedTask;
 
     private async Task<LeaseDraftFacts> LoadFactsAsync(Guid? propertyId, bool fullApeCheck, CancellationToken cancellationToken)
     {
@@ -637,7 +653,7 @@ public sealed class LeaseDraftService(
     };
 
     private static LeaseDraftFlow FlowOf(DraftEvaluation evaluation, LeaseContract lease) =>
-        LeaseDraftProgress.Compute(FlowInput(evaluation, lease));
+        LeaseDraftProgress.Compute(FlowInput(evaluation, lease)) with { PeriodConflict = evaluation.PeriodConflict };
 
     // ---- locking and loading -------------------------------------------------------------------------------------
 

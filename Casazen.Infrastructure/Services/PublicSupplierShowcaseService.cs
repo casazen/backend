@@ -1,10 +1,13 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -28,7 +31,10 @@ public sealed class PublicSupplierShowcaseService(
     ISupplierKpiService kpis,
     ISupplierComuneMatcher comuneMatcher,
     PublicSupplierSlotCache cache,
-    TimeProvider clock) : IPublicSupplierShowcaseService
+    TimeProvider clock,
+    ISupplierShowcaseContentService? content = null,
+    IFeatureFlags? features = null,
+    IOptions<ShowcaseBookingOptions>? bookingOptions = null) : IPublicSupplierShowcaseService
 {
     public async Task<SupplierProfile?> FindActiveSupplierAsync(string? slug, CancellationToken cancellationToken = default)
     {
@@ -63,6 +69,7 @@ public sealed class PublicSupplierShowcaseService(
 
         // One after the other: the reads share the request's context.
         var services = await WithUrgentAsync(supplier.OrgId, await catalog.ListPublicAsync(supplier.OrgId, cancellationToken), cancellationToken);
+        services = await InShowcaseOrderAsync(supplier.OrgId, services, cancellationToken);
         var median = await kpis.GetMedianResponseMinutesAsync(supplier.OrgId, cancellationToken);
         return new PublicSupplierExtension(services, median);
     }
@@ -72,7 +79,88 @@ public sealed class PublicSupplierShowcaseService(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(supplier);
-        return await WithUrgentAsync(supplier.OrgId, await catalog.ListPublicAsync(supplier.OrgId, cancellationToken), cancellationToken);
+        var services = await WithUrgentAsync(supplier.OrgId, await catalog.ListPublicAsync(supplier.OrgId, cancellationToken), cancellationToken);
+        return await InShowcaseOrderAsync(supplier.OrgId, services, cancellationToken);
+    }
+
+    public async Task<PublishedShowcasePage?> GetPublishedPageAsync(SupplierProfile supplier, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(supplier);
+        if (content is null || supplier.Status != SupplierStatus.Active)
+            return null;
+
+        // The published version only: the draft is never read here.
+        var published = await content.GetPublishedAsync(supplier.OrgId, cancellationToken);
+        if (published is null)
+            return null;
+
+        var settings = await agenda.GetBookingSettingsAsync(supplier.OrgId, cancellationToken);
+        var account = await db.Orgs
+            .AsNoTracking()
+            .Where(org => org.Id == supplier.OrgId)
+            .Select(org => new { org.StripeConnectedAccountId, org.ConnectChargesEnabled, org.ConnectPayoutsEnabled })
+            .FirstOrDefaultAsync(cancellationToken);
+        var accountReady = account is not null
+                           && SupplierVerification.CanReceivePayments(
+                               account.StripeConnectedAccountId, account.ConnectChargesEnabled, account.ConnectPayoutsEnabled);
+        var paymentsOn = features?.IsEnabled(FeatureFlags.SupplierOnlinePayments) == true;
+
+        var bookings = ShowcaseBookings.Evaluate(published: true, published.Paused, settings.OnlineBookingEnabled, paymentsOn, accountReady);
+        var jobsDone = await kpis.CountJobsDoneAsync(supplier.OrgId, cancellationToken);
+
+        return new PublishedShowcasePage(
+            published.Content,
+            published.Paused,
+            bookings.Open,
+            SupplierVerification.IsVerified(supplier.Status, accountReady, supplier.VatNumber),
+            jobsDone >= ShowcaseContentLimits.JobsDoneMinToShow ? jobsDone : null,
+            settings.RespondWithinMinutes,
+            paymentsOn && accountReady,
+            bookingOptions?.Value.CurrentPrivacyNoticeVersion);
+    }
+
+    public async Task<bool> IsPausedAsync(SupplierProfile supplier, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(supplier);
+        return content is not null && (await content.GetPublishedAsync(supplier.OrgId, cancellationToken))?.Paused == true;
+    }
+
+    public async Task<IReadOnlyDictionary<string, DateTime>> GetNextSlotsAsync(
+        SupplierProfile supplier,
+        IReadOnlyList<SupplierPublicService> services,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(supplier);
+        ArgumentNullException.ThrowIfNull(services);
+
+        var today = clock.TodayInRomeAsDateOnly();
+        var next = new Dictionary<string, DateTime>(StringComparer.Ordinal);
+        foreach (var service in services)
+        {
+            // The same plan, from the same cache, as the slots of the service: a page of ten services costs at most ten plans every 30 seconds.
+            var plan = await GetPlanAsync(supplier.OrgId, service, today, urgent: false, cancellationToken);
+            var first = plan.Days.SelectMany(day => day.Slots).Select(slot => (DateTime?)slot.StartUtc).Min();
+            if (first is { } start)
+                next[service.Slug] = start;
+        }
+
+        return next;
+    }
+
+    /// <summary>
+    /// The services in the order the supplier published (SP-13a): every active service as the catalog has it until the supplier publishes an
+    /// order, then only the ones of the order. The booking of a service reads the catalog and not this list.
+    /// </summary>
+    private async Task<IReadOnlyList<SupplierPublicService>> InShowcaseOrderAsync(
+        Guid supplierOrgId,
+        IReadOnlyList<SupplierPublicService> services,
+        CancellationToken cancellationToken)
+    {
+        if (content is null || services.Count == 0)
+            return services;
+
+        var published = await content.GetPublishedAsync(supplierOrgId, cancellationToken);
+        return published is null ? services : ShowcaseContentRules.ApplyServiceOrder(services, published.Content.ServiceOrder);
     }
 
     public async Task<SupplierPublicService?> FindServiceAsync(

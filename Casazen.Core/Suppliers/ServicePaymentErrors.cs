@@ -166,6 +166,47 @@ public static class ServicePaymentErrors
     /// <summary>The key of <see cref="ExportMonthInvalid"/>.</summary>
     public const string ExportMonthInvalidMessageKey = "ServicePaymentExportMonthInvalid";
 
+    // ─── The payment held by CasaZen (SP-15c-a) ──────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 409: the customer's card could not be charged when the supplier accepted (the block is gone, the bank refused, Stripe is not
+    /// reachable). The request is <b>not</b> taken: nothing changed, and the customer is told.
+    /// </summary>
+    public const string CaptureFailed = "service_payment_capture_failed";
+
+    /// <summary>The key of <see cref="CaptureFailed"/>.</summary>
+    public const string CaptureFailedMessageKey = "ServicePaymentCaptureFailed";
+
+    /// <summary>
+    /// 409: the block on the customer's card is no longer usable (it lapsed after <c>SupplierPayments:AuthorizationValidityHours</c>, or it
+    /// was canceled): the request cannot be taken and is closed; the customer books again.
+    /// </summary>
+    public const string AuthorizationExpired = "service_payment_authorization_expired";
+
+    /// <summary>The key of <see cref="AuthorizationExpired"/>.</summary>
+    public const string AuthorizationExpiredMessageKey = "ServicePaymentAuthorizationExpired";
+
+    /// <summary>
+    /// 422: the request is paid with an amount the customer already blocked on the card, so the supplier cannot declare another total or
+    /// add extras when it completes the work (VT-D18, R7): a change goes through a new offer.
+    /// </summary>
+    public const string AmountLocked = "service_payment_amount_locked";
+
+    /// <summary>The key of <see cref="AmountLocked"/>.</summary>
+    public const string AmountLockedMessageKey = "ServicePaymentAmountLocked";
+
+    /// <summary>422: there is nothing for the payer to confirm (the work is not completed, or the money is already released or given back).</summary>
+    public const string NotConfirmable = "service_payment_not_confirmable";
+
+    /// <summary>The key of <see cref="NotConfirmable"/>.</summary>
+    public const string NotConfirmableMessageKey = "ServicePaymentNotConfirmable";
+
+    /// <summary>409: the money is held by CasaZen (blocked, held, in dispute, or being released): the supplier cannot ask for it or record it as received.</summary>
+    public const string HeldByCasaZen = "service_payment_held";
+
+    /// <summary>The key of <see cref="HeldByCasaZen"/>.</summary>
+    public const string HeldByCasaZenMessageKey = "ServicePaymentHeld";
+
     /// <summary>Every <c>SharedResources</c> key of this feature (a test checks that each one exists in Italian and English).</summary>
     public static IReadOnlyList<string> MessageKeys { get; } =
     [
@@ -196,5 +237,10 @@ public static class ServicePaymentErrors
         CommissionUntilInvalidMessageKey,
         CommissionReasonMessageKey,
         ExportMonthInvalidMessageKey,
+        CaptureFailedMessageKey,
+        AuthorizationExpiredMessageKey,
+        AmountLockedMessageKey,
+        NotConfirmableMessageKey,
+        HeldByCasaZenMessageKey,
     ];
 }

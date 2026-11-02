@@ -38,6 +38,31 @@ public class SeoJsonLdTests
         "https://public.example.test/book/rossi");
 
     [Fact]
+    public void VacationRental_WhatTheHostStated_IsWrittenAndWhatTheHostDidNotSay_IsLeftOut()
+    {
+        var given = SeoJsonLd.VacationRental(Rental() with
+        {
+            FloorSizeSqm = 70,
+            CheckInTime = new TimeOnly(15, 30),
+            CheckOutTime = new TimeOnly(10, 0),
+            PetsNotAllowed = true,
+        });
+
+        Assert.Equal(70, given["containsPlace"]!["floorSize"]!["value"]!.GetValue<int>());
+        Assert.Equal("MTK", given["containsPlace"]!["floorSize"]!["unitCode"]!.GetValue<string>());
+        Assert.Equal("15:30", given["checkinTime"]!.GetValue<string>());
+        Assert.Equal("10:00", given["checkoutTime"]!.GetValue<string>());
+        // The host said «No pets»: an explicit false, not silence.
+        Assert.False(given["petsAllowed"]!.GetValue<bool>());
+
+        var silent = SeoJsonLd.VacationRental(Rental());
+        Assert.Null(silent["checkinTime"]);
+        Assert.Null(silent["checkoutTime"]);
+        Assert.Null(silent["petsAllowed"]);
+        Assert.Null(silent["containsPlace"]!["floorSize"]);
+    }
+
+    [Fact]
     public void VacationRental_PublishedProperty_HasTheFieldsOfSpecAc12ThatTheDataModelHolds()
     {
         var node = SeoJsonLd.VacationRental(Rental());
@@ -198,5 +223,41 @@ public class SeoJsonLdTests
     public void Article_NoModificationDate_LeavesItOut()
     {
         Assert.False(SeoJsonLd.Article("T", null, null, null, "it", "CasaZen").ContainsKey("dateModified"));
+    }
+
+    [Fact]
+    public void WebSite_HasNameUrlAndLanguageOfThePlatform()
+    {
+        var node = SeoJsonLd.WebSite("CasaZen", "https://public.example.test/", "it");
+
+        Assert.Equal("https://schema.org", node["@context"]!.GetValue<string>());
+        Assert.Equal("WebSite", node["@type"]!.GetValue<string>());
+        Assert.Equal("CasaZen", node["name"]!.GetValue<string>());
+        Assert.Equal("https://public.example.test/", node["url"]!.GetValue<string>());
+        Assert.Equal("it", node["inLanguage"]!.GetValue<string>());
+        Assert.False(SeoJsonLd.WebSite("CasaZen", null, "it").ContainsKey("url"));
+    }
+
+    [Fact]
+    public void FaqPage_WritesEachQuestionWithItsAnswerAndLeavesOutTheIncomplete()
+    {
+        var node = SeoJsonLd.FaqPage(
+        [
+            ("Quanto costa?", "3,00 € a persona per notte."),
+            ("", "Senza domanda."),
+            ("Senza risposta?", "  "),
+            ("Chi è esente?", "Gli ospiti sotto i 14 anni."),
+        ]);
+
+        Assert.Equal("FAQPage", node["@type"]!.GetValue<string>());
+        var questions = node["mainEntity"]!.AsArray();
+        Assert.Equal(2, questions.Count);
+        Assert.Equal("Question", questions[0]!["@type"]!.GetValue<string>());
+        Assert.Equal("Quanto costa?", questions[0]!["name"]!.GetValue<string>());
+        Assert.Equal("Answer", questions[0]!["acceptedAnswer"]!["@type"]!.GetValue<string>());
+        Assert.Equal("3,00 € a persona per notte.", questions[0]!["acceptedAnswer"]!["text"]!.GetValue<string>());
+        Assert.Equal("Chi è esente?", questions[1]!["name"]!.GetValue<string>());
+        // Nested objects carry no @context of their own.
+        Assert.False(questions[0]!.AsObject().ContainsKey("@context"));
     }
 }

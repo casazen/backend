@@ -157,7 +157,7 @@ public class SupplierPaymentCompletionTests
     [Fact]
     public async Task Complete_ARateThatChangesLater_NeverRewritesAPaymentThatExists()
     {
-        using var s = await ServiceRequestScenario.CreateAsync(paymentOptions: new SupplierPaymentsOptions { CommissionPercent = 10m });
+        using var s = await ServiceRequestScenario.CreateAsync(paymentOptions: new SupplierPaymentsOptions { CommissionPercent = 10m, HeldForHosts = false });
         var first = await s.CompletedOnlineAsync();
 
         // The product owner decides another percentage: the existing payment keeps the figures it was created with.
@@ -177,7 +177,7 @@ public class SupplierPaymentCompletionTests
     [Fact]
     public async Task Complete_AFreePlatformPercentage_ChargesNoCommissionAndSendsNoFee()
     {
-        using var s = await ServiceRequestScenario.CreateAsync(paymentOptions: new SupplierPaymentsOptions { CommissionPercent = 0m });
+        using var s = await ServiceRequestScenario.CreateAsync(paymentOptions: new SupplierPaymentsOptions { CommissionPercent = 0m, HeldForHosts = false });
 
         var completed = await s.CompletedOnlineAsync();
 
@@ -191,7 +191,7 @@ public class SupplierPaymentCompletionTests
     public async Task Complete_WithoutAConfiguredCommission_DoesNotInventOne()
     {
         // The options are validated at startup; if one still reaches the service without a percentage, it stops instead of using a default.
-        using var s = await ServiceRequestScenario.CreateAsync(paymentOptions: new SupplierPaymentsOptions { CommissionPercent = null });
+        using var s = await ServiceRequestScenario.CreateAsync(paymentOptions: new SupplierPaymentsOptions { CommissionPercent = null, HeldForHosts = false });
         await s.EnablePaymentsAsync();
         var taken = await s.TakenAsync();
 

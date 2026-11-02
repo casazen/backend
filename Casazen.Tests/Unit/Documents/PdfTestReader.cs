@@ -13,7 +13,10 @@ internal static partial class PdfTestReader
     /// <summary>Words below this height (points from the bottom edge) are in the footer ("Pagina N di M").</summary>
     private const double FooterTop = 60;
 
-    /// <summary>Letters at least this large are the watermark; the body uses at most 15 pt.</summary>
+    /// <summary>
+    /// Letters at least this large are the watermark; the body uses at most 15 pt. The watermark is as large as fits the page diagonal (160 pt
+    /// for "BOZZA", 34 pt for "BOZZA — testo non ancora approvato"), so the size alone cannot tell it: it is also the only rotated text.
+    /// </summary>
     private const double WatermarkMinSize = 40;
 
     /// <summary>Every word of every page (body, footer, watermark), separated by one space.</summary>
@@ -44,7 +47,7 @@ internal static partial class PdfTestReader
                 p.Width,
                 p.Height,
                 string.Join(' ', p.GetWords().Where(w => !IsWatermark(w)).Select(w => w.Text)),
-                string.Concat(p.Letters.Where(l => l.PointSize >= WatermarkMinSize).Select(l => l.Value)));
+                string.Concat(p.Letters.Where(IsWatermark).Select(l => l.Value)));
         }).ToList();
     }
 
@@ -54,7 +57,7 @@ internal static partial class PdfTestReader
         using var document = PdfDocument.Open(pdf);
         return document.GetPages()
             .SelectMany(p => p.Letters)
-            .Where(l => l.PointSize < WatermarkMinSize && !string.IsNullOrWhiteSpace(l.Value))
+            .Where(l => !IsWatermark(l) && !string.IsNullOrWhiteSpace(l.Value))
             .Max(l => l.BoundingBox.Right);
     }
 
@@ -72,7 +75,9 @@ internal static partial class PdfTestReader
         return (FontDescriptorPattern().Count(raw), FontFile2Pattern().Count(raw));
     }
 
-    private static bool IsWatermark(Word word) => word.Letters.Count > 0 && word.Letters.All(l => l.PointSize >= WatermarkMinSize);
+    private static bool IsWatermark(Word word) => word.Letters.Count > 0 && word.Letters.All(IsWatermark);
+
+    private static bool IsWatermark(Letter letter) => letter.PointSize >= WatermarkMinSize || letter.TextOrientation != TextOrientation.Horizontal;
 
     private static string Latin1(byte[] pdf) => System.Text.Encoding.Latin1.GetString(pdf);
 

@@ -228,7 +228,7 @@ public class SupplierPaymentSessionTests
     [Fact]
     public async Task CreatePublicSession_AFeeThatIsZeroOrNotBelowTheAmount_IsNeverSent()
     {
-        using var s = await ServiceRequestScenario.CreateAsync(paymentOptions: new SupplierPaymentsOptions { CommissionPercent = 0m });
+        using var s = await ServiceRequestScenario.CreateAsync(paymentOptions: new SupplierPaymentsOptions { CommissionPercent = 0m, HeldForHosts = false });
         var (payment, token) = await CompletedOnlineAsync(s);
 
         await s.Payments.CreatePublicSessionAsync(payment.Id, token);

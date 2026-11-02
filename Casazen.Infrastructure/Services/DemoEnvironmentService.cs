@@ -6,6 +6,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
+using Casazen.Core.SiteProfile;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -309,9 +310,56 @@ public class DemoEnvironmentService(
             property.CadastralIncome = cadastral.Income;
         }
 
+        // SR-07a: the type, beds, area and house rules of the wizard «Aggiungi immobile», so the host's list is not empty.
+        if (template.Profile is { } profile)
+        {
+            property.AccommodationType = profile.Type;
+            property.Beds = profile.Beds;
+            property.AreaSqm = profile.AreaSqm;
+            property.ListingTitle = profile.ListingTitle;
+            property.CheckInFrom = profile.CheckInFrom;
+            property.CheckOutBy = profile.CheckOutBy;
+            property.SmokingPolicy = profile.Smoking;
+            property.PetsPolicy = profile.Pets;
+            property.PartiesPolicy = profile.Parties;
+            property.QuietHoursFrom = profile.QuietHoursFrom;
+            property.QuietHoursTo = profile.QuietHoursTo;
+            property.ExtraGuestFeePerNight = profile.ExtraGuestFeePerNight;
+            PropertyHouseRules.SyncAmenities(property);
+        }
+
+        // DB-11a: what the host says about the house on its public page, through the rules of the host form (a demo can never hold
+        // what a host could not).
+        if (template.SiteProfile is { } siteProfile)
+            SitePropertyProfileRules.Apply(property, SitePropertyProfileRules.Normalize(siteProfile, property.CheckInFrom, now.Year));
+
         db.Properties.Add(property);
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.Property, property.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+
+        // DB-11a: the points of interest around the house, with the distance rounded as for a host. They go with their property (cascade) when the
+        // showcase is reset, so they need no marker of their own.
+        for (var position = 0; position < (template.Pois?.Count ?? 0); position++)
+        {
+            var poi = template.Pois![position];
+            db.PropertyPois.Add(new PropertyPoi
+            {
+                PropertyId = property.Id,
+                OrgId = orgId,
+                Position = position,
+                Kind = poi.Kind,
+                NameIt = poi.NameIt,
+                NameEn = poi.NameEn,
+                Mode = poi.Mode,
+                Minutes = poi.Minutes,
+                Direction = poi.Direction,
+                DistanceMeters = PoiDistance.Round(poi.DistanceMeters),
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
 
         if (template.Publish || template.Mode == RentalMode.Long)
         {
@@ -367,7 +415,7 @@ public class DemoEnvironmentService(
             NumberOfAdults = 2,
             Status = template.Status,
             Source = template.Source,
-            PaymentOption = PaymentOption.Immediate,
+            PaymentOption = template.PaymentOption,
             BasePrice = total,
             CleaningFee = Math.Min(property.CleaningFee, total),
             TotalPrice = total,
@@ -378,6 +426,9 @@ public class DemoEnvironmentService(
             UpdatedAt = madeAt,
             ConfirmedAt = template.Status == BookingStatus.Pending ? null : madeAt,
             CancelledAt = template.Status == BookingStatus.Cancelled ? madeAt : null,
+            CancellationReason = template.Status == BookingStatus.Cancelled ? template.CancellationReason : null,
+            // "Pay at the property" is a request the guest confirms by email and the host accepts (BK-06): a demo stay of that kind was both.
+            GuestEmailVerifiedAt = template.PaymentOption == PaymentOption.OnSite && template.Status != BookingStatus.Pending ? madeAt : null,
             CheckedOutAt = template.Status == BookingStatus.CheckedOut
                 ? DateTime.SpecifyKind(checkIn.AddDays(template.Nights).AddHours(9), DateTimeKind.Utc)
                 : null,

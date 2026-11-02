@@ -15,6 +15,10 @@ public class ResolveHostBrandingDto
     public string? PrimaryColor { get; set; }
     /// <summary>The theme the site renders: always one of <c>PublicSiteThemes.All</c> (unset or unsupported → default).</summary>
     public string PublicThemeId { get; set; } = PublicSiteThemes.Default;
+
+    /// <summary>The font pair the host chose (<c>PublicSiteFonts.All</c>), or null: the site uses the font its theme starts with.</summary>
+    public string? PublicFontId { get; set; }
+
     public string? HeroImageUrl { get; set; }
     public string? Tagline { get; set; }
     public string DisplayName { get; set; } = string.Empty;
@@ -30,6 +34,7 @@ public class ResolveHostBrandingDto
         LogoUrl = org.LogoUrl,
         PrimaryColor = org.ThemeColor,
         PublicThemeId = PublicSiteThemes.Resolve(org.PublicThemeId),
+        PublicFontId = PublicSiteFonts.Resolve(org.PublicFontId),
         HeroImageUrl = org.HeroImageUrl,
         Tagline = org.Tagline,
         DisplayName = org.DisplayName,

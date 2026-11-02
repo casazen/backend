@@ -52,12 +52,15 @@ public static class BookingMapper
         response.BasePrice = booking.BasePrice;
         response.CleaningFee = booking.CleaningFee;
         response.TouristTax = booking.TouristTax;
+        // The amounts are in the currency of the property (CHF-MONEY); a booking read without its property says the default one.
+        response.Currency = StayCurrency.ForProperty(booking.Property);
         response.PriceOverridden = booking.PriceOverridden;
         response.PriceOverrideNote = booking.PriceOverrideNote;
         response.Status = booking.Status.ToString();
         response.CancellationNote = booking.CancellationNote;
         response.Source = booking.Source.ToString();
         response.SpecialRequests = booking.SpecialRequests;
+        response.ExpectedArrivalTime = booking.ExpectedArrivalTime;
         response.PaymentOption = booking.PaymentOption.ToString();
         response.OnSiteRequestState = OnSiteRequests.StateOf(booking, nowUtc)?.ToString();
         response.RequestExpiresAt = OnSiteRequests.StateOf(booking, nowUtc) is null ? null : booking.RequestExpiresAt;

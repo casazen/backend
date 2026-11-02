@@ -71,7 +71,10 @@ public sealed class ComplianceMissingService(
         foreach (var property in properties)
         {
             var steps = await complianceStatus.GetBlockingStepsAsync(property, cancellationToken);
+            // Only what blocks: the reminders (documents, safety checklist) are acknowledged at the activation, they do not keep
+            // the property from it.
             var blockers = steps
+                .Where(step => step.Blocker)
                 .SelectMany(step => step.Blockers.Select(blocker => new ComplianceMissing(blocker.Code, step.Id)))
                 .ToList();
 

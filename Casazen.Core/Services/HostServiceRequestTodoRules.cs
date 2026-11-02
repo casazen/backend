@@ -10,24 +10,26 @@ namespace Casazen.Core.Services;
 /// (<see cref="Casazen.Core.Suppliers.ServiceRequestStateMachine"/>):
 /// <list type="bullet">
 /// <item><see cref="HostTodoAction.RespondToServiceRequest"/>: a new request (<see cref="ServiceRequestStatus.Richiesto"/>) on which the
-/// supplier proposed another time, which the host accepts or turns down.</item>
+/// supplier proposed another time, or sent a quote (SP-04b), which the host accepts or turns down.</item>
 /// <item><see cref="HostTodoAction.ConfirmFinalAmount"/>: a finished job (<see cref="ServiceRequestStatus.Completato"/>) whose final
 /// amount is above the quote by more than the tolerance and waits for the host (<see cref="ServiceRequest.FinalAmountNeedsConfirmation"/>).</item>
 /// <item><see cref="HostTodoAction.PayServiceRequest"/>: a finished job with nothing left to confirm, waiting to be paid (online, or marked
 /// paid by hand).</item>
 /// </list>
-/// The quotes of SP-04b are not in the product yet: when they are, a quote to accept is another case of the first.
+/// A quote to accept (SP-04b) is the same case as a time to accept: an offer of the supplier that waits for the host's answer.
 /// </summary>
 public static class HostServiceRequestTodoRules
 {
     /// <summary>The service requests that ask something of the host: the ones <see cref="ActionOf"/> gives an action to.</summary>
     public static Expression<Func<ServiceRequest, bool>> NeedTheHost() =>
-        r => (r.Status == ServiceRequestStatus.Richiesto && r.ProposedStartUtc != null) || r.Status == ServiceRequestStatus.Completato;
+        r => (r.Status == ServiceRequestStatus.Richiesto && (r.ProposedStartUtc != null || r.QuoteSentAt != null))
+             || r.Status == ServiceRequestStatus.Completato;
 
     /// <summary>
     /// What a request asks of the host, if anything. The order of the things to do among the requests (<see cref="Rank"/>) is the one
-    /// of the answers: the time to accept first, then the amount to confirm, then the jobs to pay.
+    /// of the answers: the offer to accept first (the time or the quote the supplier made), then the amount to confirm, then the jobs to pay.
     /// </summary>
+    /// <param name="hasProposal">The supplier made an offer the host has not answered: a proposed time or a quote.</param>
     public static HostTodoAction? ActionOf(ServiceRequestStatus status, bool hasProposal, bool finalAmountNeedsConfirmation) => status switch
     {
         ServiceRequestStatus.Richiesto when hasProposal => HostTodoAction.RespondToServiceRequest,

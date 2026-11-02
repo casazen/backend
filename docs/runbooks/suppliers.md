@@ -26,6 +26,8 @@ Section 27: the read models of the console screens "Oggi" and "Richieste" (SP-04
 conflicts with a fix, "how customers see you" and the unlinking of the calendar (SP-03b, redesign wave).
 Section 29: the console's settings, earnings and clients (SP-16a, redesign wave).
 Section 32: the urgent requests with a surcharge, the supplier's settings, the urgent slots, the estimate and the booking (SP-04c, redesign wave).
+Section 33: the content of the supplier's showcase, the draft the editor autosaves, its publication with undo, the pause, the switch of the bookings, what the public page reads of it, the short status, the statistics and the checklist (SP-13a, redesign wave).
+Section 36: the backup suppliers of a host's request, the hour of the primary, the pre-approval, the second window and the job that follows the groups (SP-BKP).
 
 ## 1. How a supplier joins
 
@@ -231,7 +233,7 @@ request created on the web never showed in the app.
 
 | Context | Tied to | API (host side) | Rule (422, ProblemDetails `code`) |
 |---|---|---|---|
-| **Short-rent** (`RentalContext = ShortRent`, 0) | One stay: `BookingId` + its `PropertyId` | `api/service-requests` (policies `property.read` / `property.write` in short-rent) | `bookingId` missing → `service_request_booking_required`; a booking that is not of that property and org (or does not exist) → `service_request_booking_mismatch` |
+| **Short-rent** (`RentalContext = ShortRent`, 0) | The property and, when the host names one, a stay of it: `BookingId` (optional since SR-08a, section 34.4) + its `PropertyId` | `api/service-requests` (policies `property.read` / `property.write` in short-rent) | a booking that is not of that property and org (or does not exist) → `service_request_booking_mismatch` |
 | **Long-rent** (`RentalContext = LongRent`, 1) | The property only (`BookingId` null) | `api/long-rent/service-requests` (policies `property.read` / `property.write` **in long-rent**) | a `bookingId` → `service_request_booking_not_allowed` |
 
 - The context is stored on the request (`ServiceRequests.RentalContext`) and is never inferred from `BookingId`.
@@ -256,10 +258,10 @@ property page sends `POST /api/long-rent/service-requests` with the property onl
 
 | Endpoint | Policy | Notes |
 |---|---|---|
-| `GET /api/long-rent/service-requests?propertyId=&status=&view=` | long-rent `property.read` | the long-rent requests in scope (owner or org-wide role); `view=open` keeps the ones still to follow (`Richiesto`, `PresoInCarico`, `InCorso`, `Completato`), `view=closed` the ones that are over (`Pagato`, `Rifiutato`, `Annullato`, the final statuses of the state machine); no `view` or an unknown one keeps all (LR-08a) |
+| `GET /api/long-rent/service-requests?propertyId=&status=&view=&leaseId=` | long-rent `property.read` | the long-rent requests in scope (owner or org-wide role); `leaseId` (LR-03c, the sheet of a contract) keeps the ones made for that lease, narrowing the scope and never widening it (another org's lease gives an empty list); `view=open` keeps the ones still to follow (`Richiesto`, `PresoInCarico`, `InCorso`, `Completato`), `view=closed` the ones that are over (`Pagato`, `Rifiutato`, `Annullato`, the final statuses of the state machine); no `view` or an unknown one keeps all (LR-08a) |
 | `GET /api/long-rent/service-requests/{id}` | long-rent `property.read` | one request in the same shape as the list (dates of its path and `history` included); 404 `service_request_not_found` for another org, a property outside the caller's scope or a short-rent request (LR-08a) |
 | `GET /api/long-rent/service-requests/suppliers?propertyId=&category=` | long-rent `property.read` | active suppliers of the property's comune (same answer as `GET /api/suppliers?propertyId=`) |
-| `POST /api/long-rent/service-requests` | long-rent `property.write` | body as the short-rent one, without `bookingId` |
+| `POST /api/long-rent/service-requests` | long-rent `property.write` | body as the short-rent one, without `bookingId`; optional `leaseId` (LR-03c): a lease of the property in the host's org, else 404 `lease_not_found` or 422 `service_request_lease_mismatch`. `ServiceRequest.LeaseContractId` is only a link (nullable FK, set null if the lease is deleted, `CK_ServiceRequests_LeaseContract`: long-rent only); the DTO of the host carries `leaseId`, the supplier's views never do and nothing of the tenant reaches the supplier (LR-D22). Backups of a group copy the link |
 | `POST /api/long-rent/service-requests/{id}/mark-paid` | long-rent `property.write` | completed long-rent request only |
 
 ### 7.3 Existing requests (migration `AddServiceRequestRentalContext`)
@@ -305,15 +307,34 @@ property page sends `POST /api/long-rent/service-requests` with the property onl
 | `verified` | The "Verificato" badge: the supplier is `Active` **and** has a VAT number (`SupplierVerification.IsProfileVerified`). It does **not** look at Stripe (`IsVerified`, the badge of the payments account of section 25, still needs the Connect account). Only the boolean leaves the server, never the VAT number. |
 | `showcaseSlug` | The address of the public showcase (`/fornitori/{slug}`); null when the supplier has none. |
 
-Parameters: `q` keeps the suppliers whose legal name or category code contains **every** word (any case; blank = all); `sort` is `name` (default), `price` (lowest first, no price last) or
+Parameters: `q` keeps the suppliers that have **every** word (blank = all) in their legal name, in a category (its code, its Italian name or its English name, from `EmailTexts`: `pulizie`,
+`cleaning` and `Pulizìe` all find the cleaners) or in the name of one of their **published** services, all of them and not only the three listed (MKT, SR-09a-FU2). Case and accents do not matter
+(`SearchText.Fold`, the folding of the global search: `pulizìe` finds `Pulizie`); a draft or a deleted service is never searchable. `sort` is `name` (default), `price` (lowest first, no price last) or
 `response` (fastest first, not measured last); ties by name. Another `sort` is 400 `validation_error` (`SupplierSortInvalid`). `totalCount` and `pageSize` are the size of the filtered list (one page, as before).
+
+**One supplier (MKT).** `GET /api/suppliers/{orgId}?propertyId=` (or `?comune=`) answers the same entry, with the same fields and no more, but **with every published service** (the list carries three):
+it is the page of a supplier in the marketplace (`/app/short-rent/marketplace/suppliers/{orgId}`, shareable). The target is resolved exactly as for the list (`propertyId` authorized as a host resource: 404 for a
+property that is not the caller's org's, 403 for one it may not read; 400 `SupplierSearchTargetRequired` with neither), and the supplier must be one the list would show there: a supplier that is not `Active`, or that
+does not work in that comune, is 404 `supplier_not_found`, so a supplier is never reachable by id alone.
 
 **Cost.** Two reads for the whole list whatever its size, never one per supplier: `ISupplierServiceCatalogService.ListPickerServicesAsync` (one statement on the published services of all the
 orgs asked for; the explicit org predicate is `PublicListingsOfMany`, allowed by `SupplierServiceListingTenancyTests`) and `ISupplierKpiService.GetMedianResponseMinutesBatchAsync` (the pairs of the
 window of all of them, grouped in memory). The long-rent search (`GET api/long-rent/service-requests/suppliers`) keeps its old answer: it carries `verified` and `showcaseSlug` (they come from the
 profile) but not the services, the price or the response time.
 
-`SupplierPickerPrivacyIntegrationTests` keeps the rule: only `Active` suppliers, and the fields of the answer are a whitelist (no VAT number, no Stripe account).
+`SupplierPickerPrivacyIntegrationTests` keeps the rule: only `Active` suppliers, and the fields of the answer are a whitelist (no VAT number, no Stripe account), for the list and for the one supplier alike.
+
+### 7.6 The suppliers the host already asked: «Le mie app» of the marketplace — MKT (SR-09c)
+
+`GET /api/service-requests/suppliers` answers one entry for each supplier that has at least one **short-rent** request of the caller's org, the one asked most recently first:
+`supplierOrgId`, `supplierName`, `requestsCount`, `openCount` (the requests that are not over: every one that is not `Rifiutato`, `Pagato` or `Annullato`), `lastRequestAt` and
+`lastCategory`; one page with all of them (`PagedResultDto`, as the picker). It is a view **derived** from the requests (`IHostSupplierUsageReader`, two reads whatever their number), not a
+relationship of its own: the trusted suppliers of the account (AM-10) are another thing. Nothing is shown about the supplier but its name (the legal name of its profile, the name of its org
+when it has none): the contact is on its page (`GET /api/suppliers/{orgId}`, § 7.5), which the host opens from the list.
+
+The perimeter is the rule, and `HostSupplierUsageReaderTests` keeps it: `property.read`; only the requests of the caller's org (an explicit `OrgId` predicate, `ServiceRequest` has no
+tenant filter); for a collaborator «Solo alcuni» (`InScope`) only the requests of the properties it was given, so a supplier it never asked through them is not listed; never a request of the
+long-rent context or one born from a supplier's showcase. The controller is its own file (`ServiceRequestSuppliersController`) so that `suppliers` is never taken for the id of a request.
 
 ## 8. Service requests: validation, errors and concurrent transitions — SU-10
 
@@ -1517,7 +1538,9 @@ are SP-10's). The recurring job **`service-request-auto-cancel`** (every 10 minu
 `CancellationReason = NoResponse`, and it tells the host ("nessuna risposta") and the supplier. It is **idempotent** (a cancelled request leaves the
 set it reads; the change is saved under the `xmin` check, so a supplier that takes the request at the same moment wins and the run counts a conflict),
 it runs one at a time (a PostgreSQL session lock, scope `ServiceRequestAutoCancelRun` 1_310, on top of Hangfire's), and a run handles at most **500**
-requests, oldest deadline first.
+requests, oldest deadline first. **A request that belongs to a group of backup suppliers (section 36, SP-BKP) is left alone by this job**
+(`GroupId IS NULL` in the statement, and again before the save): the primary and the backups lapse, or are given the job, by the logic of the group
+(`service-request-groups`), whose windows are the hour of the primary and the second window, not `HostResponseMinutes`.
 
 It is **behind the flag `Features__SupplierRequestAutoCancel`, off by default**: it changes what happens to the requests that exist. With the flag off the
 job is not scheduled (an earlier schedule is removed) and the service refuses to run if triggered by hand; nothing is ever cancelled by time. Requests
@@ -1540,7 +1563,7 @@ Queued **after** the change is saved, by the winner of a race only; a queue that
 
 | Event | To | Email | Push `type` |
 |---|---|---|---|
-| New request | the supplier | comune, time, amount, link to the inbox | `service-request-created` |
+| New request (not if the supplier turned «Nuove richieste» off, SP-16d, section 35) | the supplier | comune, time, amount, link to the inbox | `service-request-created` |
 | New request accepted automatically (SP-04d, section 21.14), **instead of** the line above | the supplier | comune, time, amount, link to the inbox; no address, no contact | `service-request-auto-accepted` |
 | Taken, started, completed (with final amount, the over-quote note and the supplier's notes), rejected | the host | status email | `service-request-taken`, `-started`, `-completed`, `-rejected` |
 | Cancelled by the supplier / by CasaZen (no answer) | the host | status email | `service-request-cancelled` |
@@ -1548,7 +1571,11 @@ Queued **after** the change is saved, by the winner of a race only; a queue that
 | Reminder | the supplier | reminder | `service-request-reminder` |
 | Another time proposed | the host | the interval and the message | `service-request-time-proposed` |
 | Proposal accepted / turned down | the supplier | answer | `service-request-proposal-accepted` / `-rejected` |
-| Marked as paid | the supplier | unchanged | `service-request-paid` |
+| Quote sent (SP-04b, section 34) | the host | the lines, the total, the time of the work, the note | `service-request-quote-sent` |
+| Quote accepted / turned down (SP-04b) | the supplier | answer, price and time | `service-request-quote-accepted` / `-rejected` |
+| Marked as paid (not if the supplier turned «Pagamenti ricevuti» off, SP-16d) | the supplier | unchanged | `service-request-paid` |
+| The day before the work, 18:00 Rome (SP-16d, section 35.2) | the supplier | service, time, comune, link to the request; no address, no contact | `service-request-day-before` |
+| A payment made through CasaZen arrived (SP-16d, section 35.3) | the supplier | gross, commission, net before Stripe's fees (SP-15b) | `service-payment-received` |
 
 The requests born from a supplier's showcase (SP-10) have the customer as their other party: its e-mails are listed in sections 23.8 and
 24.7, and the push `type` `service-request-rescheduled` (SP-11) is the one new `type` of the customer's own area.
@@ -1566,7 +1593,8 @@ Statuses travel **by name**. **`Annullato` is new** and a client that does not k
 
 Section `Suppliers:ServiceRequests` (validated at startup, `appsettings.json` has the defaults): `Suppliers__ServiceRequests__HostResponseMinutes` (120,
 10 to 4320), `…__FinalAmountTolerancePercent` (20, 0 to 100), `…__RemindIntervalHours` (6, 1 to 72), `…__RegularHostMinJobs` (3, 1 to 100,
-section 21.14). Flag: `Features__SupplierRequestAutoCancel` (`feature-flags.md`, `deploy-checklist.md` § 2.11). Hangfire: `hangfire.md`.
+section 21.14), and since SP-BKP `…__PrimaryResponseMinutes` (60), `…__BackupResponseMinutes` (60) and `…__MaxBackupSuppliers` (3), section 36.8. Flag:
+`Features__SupplierRequestAutoCancel` (`feature-flags.md`, `deploy-checklist.md` § 2.11); for the backups `Features__SupplierRequestBackups` (section 36). Hangfire: `hangfire.md`.
 
 ### 21.13 After a deploy
 
@@ -1615,7 +1643,7 @@ and the contact of the host as after any take (decision D9).
 **Messages.** Only the ones the flow already sends, and no other to anybody: the **host** gets the usual "taken" email and push (`service-request-taken`); the
 **supplier** gets, **instead of** the "new request" email and push, the email and push `service-request-auto-accepted` ("accettata in automatico"; comune, time and amount,
 never the address or the contact of the host, and an invitation to cancel from the console if it cannot do the job). Nothing is sent to the guest or to a third party.
-The setting `NotifyNewRequests` is not read by any code yet (SP-16d connects it, and will gate this message with the one of a new request).
+The setting `NotifyNewRequests` governs this message like the one of a new request (SP-16d, section 35): a supplier that turned it off gets neither.
 
 **Response time.** A request accepted automatically is born taken, so its wait would be 0: it is **left out of the average** (`GET api/supplier/today`, the overview of
 section 27) and of the public median, and it counts as **accepted** in the acceptance rate.
@@ -1629,7 +1657,7 @@ always cancel); the demo showcase has no supplier with the option on (it has no 
 
 **For the tasks stacked on this one.** `PUT api/supplier/settings` writes `AutoAcceptRegulars` under the same agenda lock that creating a request takes, so a request is
 judged on the value as it is saved; SP-16c shows the switch and the explanation; SP-08c shows `autoAccepted` and the "Accettata in automatico" step; SP-16d gates this
-message by `NotifyNewRequests`.
+message by `NotifyNewRequests` (done, section 35).
 
 **After a deploy.**
 - [ ] Migration `AddServiceRequestAutoAccepted` applied; every row has `AutoAccepted = false`.
@@ -1692,8 +1720,8 @@ in whole minutes (a half rounds up), **present only with at least 5 of them** (`
 otherwise: it is measured, never configured. A median, not an average: one request left over a weekend does not make a supplier that
 answers in minutes look slow. The **"pausa" state of the demo does not exist in the backend** (gap report 07: "bozza = vetrina in
 pausa non esiste"): a supplier that is not `Active` is the 404 above, and the pause the supplier chooses itself (a draft and a live
-showcase, and the online-booking switch `SupplierSettings.OnlineBookingEnabled`, which no endpoint writes yet) arrives with SP-13 and
-SP-16; the DTO will then gain a `paused` flag.
+showcase, and the online-booking switch `SupplierSettings.OnlineBookingEnabled`) is the showcase content of SP-13a (section 33): the page gains
+`paused` and `bookingsOpen` when the supplier published content, and the slots and the estimate of a paused showcase answer 422 `supplier_booking_offline`.
 
 ### 22.4 Services
 
@@ -1814,7 +1842,7 @@ limits (`RateLimiting__PublicSupplierSlots__*`, `RateLimiting__PublicSupplierQuo
   `OnlineBookingEnabled` is false (`supplier_booking_offline`), and gates its endpoints with the same flag.
 - **SP-12 / SP-06** (screens): the endpoints above are the whole contract; `slots` is the list of "i primi orari", `quote` drives the
   estimate box and the "chiedi un preventivo" state, `coverage` and `reason` pick the wording; the "IVA" wording follows `pricesIncludeVat`.
-- **SP-13** (showcase editor): when the supplier can pause the showcase, add `paused` to the page and gate the slots and the estimate on it.
+- **SP-13** (showcase editor): done in SP-13a, section 33.9 (`paused` on the page, the slots and the estimate gated on it).
 
 ### 22.10 After a deploy
 
@@ -1844,8 +1872,8 @@ reviews. All behind the flag `Features__SupplierShowcaseBooking` (off by default
 2. `POST api/public/suppliers/{slug}/bookings` **holds** the chosen slot for `Suppliers__Showcase__EmailVerificationMinutes` (30 by
    default) and e-mails the customer a link. The supplier hears **nothing**; no request exists. The data the customer typed wait in the
    hold, encrypted.
-3. The link opens the showcase page `…/fornitori/{slug}/conferma?hold={id}&token={token}`; the page calls
-   `POST …/bookings/{id}/confirm-email` with the token. **Only now** the request is created, the customer is created or brought up to
+3. The link opens the showcase page `…/fornitori/{slug}/conferma?hold={id}#token={token}` (the token is in the **fragment** since SP-15c-a: a
+   browser never sends it to a server, so it is in no access log); the page calls `POST …/bookings/{id}/confirm-email` with the token. **Only now** the request is created, the customer is created or brought up to
    date, the hold stops holding and the request starts holding the slot **in the same transaction**, the customer gets the receipt and
    the supplier the new request (e-mail and push, comune and "Nome C." only, D9).
 4. The supplier has `SupplierSettings.RespondWithinMinutes` (180, D8) to answer. It takes the request (the customer is told, with the
@@ -2001,14 +2029,14 @@ undoes the change. The customer's e-mails are in the language it chose (`it` / `
 | Template | To | When |
 |---|---|---|
 | `supplier-booking-verification` | customer | the hold is made: the link, how long the time is kept, "ignore it if it was not you" |
-| `supplier-booking-receipt` | customer | the address is checked: the code, the time by which the supplier has to answer, the estimate, "you pay nothing now" |
+| `supplier-booking-receipt` | customer | the address is checked: the code, the time by which the supplier has to answer, the estimate, "you pay nothing now"; for a booking whose card is blocked (38.8) the amount blocked, that nothing is charged unless the supplier accepts and that the block is released otherwise, **instead of** the estimate and of "you pay nothing now" |
 | `supplier-booking-new-request` | supplier | the address is checked: service, comune, "Nome C.", time, estimate, the time to answer by (+ push) |
 | `supplier-booking-accepted` | customer | the supplier takes it: the time, its price (or the estimate), the reminder **only if it will be sent** |
 | `supplier-booking-declined` | customer | the supplier refuses it, with its reason |
 | `supplier-booking-time-proposed` | customer | the supplier proposes another time: both times, its message, the time to answer by |
 | `supplier-booking-reminder` | customer | 18:00 of the day before |
 | `supplier-booking-cancelled` | customer | the supplier cancels it, with its reason |
-| `supplier-booking-expired` | customer | nobody answered in time (the supplier is told by the existing mail of SP-04) |
+| `supplier-booking-expired` | customer | nobody answered in time (the supplier is told by the existing mail of SP-04); it lists up to three other suppliers of the comune and category that take bookings (SP-10c, section 34.11) |
 
 **Only what is true** (D24): the deadlines named are the ones the jobs enforce, nothing says the supplier answers "in an hour" or that
 the price is "guaranteed", and nothing is said about payment (nothing is paid with this request). A test searches every template in both
@@ -2020,7 +2048,7 @@ languages for the phrases that must never appear. The proposal e-mail points to 
 | Job | Cron (UTC) | Always registered | What |
 |---|---|---|---|
 | `service-request-expiry` | `*/5 * * * *` | yes | deletes the holds past their expiry (the checked ones are kept until then for the replay of the link), cancels the showcase requests past `ResponseDueAt` (also a proposal the customer did not answer: reason `ProposalNotAnswered`, SP-11) and tells the customer (and, for a lapsed proposal, the supplier) |
-| `service-request-reminders` | hourly | yes | the reminder of the day before 18:00 Rome, once (`ReminderSentAt`), only for a request taken before that time |
+| `service-request-reminders` | hourly | yes | the reminder of the day before 18:00 Rome, once, only for a request taken before that time: to the customer of a showcase request (`ReminderSentAt`) and, since SP-16d, to the supplier of any taken request (`SupplierReminderSentAt`, section 35) |
 | `gdpr-data-retention` | 03:00 | yes | + the customers of the suppliers (23.7), off until configured |
 
 The retention changes the customers of one supplier under that supplier's calendar lock and reads them again after taking it: a
@@ -2540,6 +2568,268 @@ the jobs, the refunds and the export are in [`stripe.md`](stripe.md) § "Service
       supplier's own commission and see the next payment carry it; download the export (`stripe.md` → Verification, points 2 and 3).
 - [ ] Production: `Features__SupplierOnlinePayments` still off until the legal texts and the tax treatment of the commission are approved.
 
+## 38. The money CasaZen holds: block, charge, hold, release — SP-15c-a
+
+Redesign wave task SP-15c-a (branch `feature/rd-supplier-payments-platform`, backend only; the booking of the showcase that uses it is the pull request
+stacked on this one, **38.8**). Decision **VT-D1** (supersedes D2 for the payments below): the customer **pays at once**, CasaZen **holds** the money and
+**releases** it to the supplier when the customer says "all fine" or a configurable time after the work is done; if the request is refused, cancelled or
+lapses, the customer gets everything back. Gateway, parameters and Stripe events: [`stripe.md`](stripe.md) § "The money CasaZen holds for the services
+(SP-15c)". SP-15a and SP-15b (the direct charge on the supplier's account, `FundsModel = DirectCharge`) are **not changed**: they work as before until
+SP-15c-b moves the host's payments to this cycle. **Keep `Features__SupplierOnlinePayments` off in production** until the legal texts, the tax treatment
+(VT-D20, VT-D21) and the test-mode check of VT-D22 are done.
+
+### 38.1 The rules, as implemented
+
+| Rule | Where | Default (configuration) |
+|---|---|---|
+| **R1** the payer pays the whole amount at once: the card is **blocked** at the booking (PaymentIntent on the platform, manual capture, cards only) | `StripePlatformPaymentGateway.CreateAsync`, `SupplierPaymentService.AuthorizeHoldAsync` | usable for `SupplierPayments__AuthorizationValidityHours` = 48 h (1 to 96) |
+| **R2** the card is **charged** when the supplier accepts; if the supplier refuses, does not answer or the customer cancels first, nothing is charged | `CaptureForTakeAsync` (before the request changes state), `SettleClosedRequestAsync` | the take is refused (409) if the card cannot be charged or the block lapsed |
+| **R3** release = the later of the completion and the charge, plus the window | `HeldPaymentRules.ReleaseAt`, set by `PlanAsync` when the supplier completes | `SupplierPayments__ReleaseAfterMinutes` = 60 |
+| **R4/R5** a refund and a release never share the same euros: before the release a refund (R5: everything, the commission included) takes the money back; after the release nothing is refunded from here | `HeldPaymentRules.Release/ReleasableCents/RefundableCents`, `ReserveHeld` | — |
+| **R6** no application fee: the commission is the part not transferred | `StripePlatformPaymentGateway`, `ApplicationFeeArchitectureTests` | `SupplierPayments__CommissionPercent` (10, provisional) / the supplier's override, snapshotted when the payment is created |
+| **R7** the final amount is the blocked amount: the supplier cannot declare another total or add extras (422 `service_payment_amount_locked`); a change goes through a new offer (SP-10b-b) | `PlanHeldCompletionAsync` | — |
+
+### 38.2 Statuses (`ServicePaymentStatus`, append only)
+
+`Authorized` (8) · `Held` (9) · `Released` (10) · `Disputed` (11, SP-15c-c) · `TransferFailed` (12), with `Canceled`, `Refunded`, `PartiallyRefunded` and `NeedsReview`
+of SP-15b. `PartiallyRefunded` of a held payment means "nothing is left for the supplier, CasaZen kept its commission" (the cycle is over). A held payment
+has `PaidAt` (when the card was charged, moved to the day of the release) and `PaidVia = Stripe`, so the supplier's earnings count it as paid only once
+`Released`; before that the console shows `held`.
+
+### 38.3 What the supplier sees
+
+The console states (`SupplierEarningStates`): `held` (charged and held, or a transfer being retried) and `in_dispute` count as still to be collected;
+`Released` counts as paid. A supplier cannot ask for, remind or record as received (`payment/offline`) a payment CasaZen holds: 409
+`service_payment_held`. When the money is due and the supplier's Stripe account cannot receive it yet, it gets one e-mail asking it to complete the account
+(`service-funds-account-not-ready`); the e-mail of a release is the receipt of a payment received (gross, commission, net, no payout date promised).
+
+### 38.4 Concurrency and failures
+
+Everything that changes the payment runs under the advisory lock `ServiceRequestPayment` (key: the request id), after the supplier's calendar lock when
+both are needed (a take), never the other way round. Every Stripe call has an idempotency key and, when it meets a state it cannot act on, **reads the
+real one** (`payment_intent_unexpected_state`). A Stripe step that succeeded while its database change was rolled back with a caller that failed
+afterwards (the take lost a race) is made good by the webhook and by the `service-funds` job: money is never lost, only late. Tables, indexes and checks of
+the migration `AddHeldServicePayments`: `FundsModel`, the held states exist only for `PlatformHeld` and never with a connected account
+(`CK_ServiceRequestPayments_Funds`), `Held`/`Released`/`Disputed`/`TransferFailed` say when the card was charged and `Released` the transfer
+(`CK_ServiceRequestPayments_Held`), one transfer id per payment (`UIX_ServiceRequestPayments_StripeTransferId`). Additive only.
+
+### 38.5 Admin
+
+The admin list and detail show the new statuses by name. A card dispute (a chargeback) is recorded on the payment (`CardDisputeId`, `CardDisputeStatus`,
+`CardDisputeAt`); after the release it is **CasaZen's loss** and nothing is recovered from the supplier (VT-D22). The admin refund
+(`POST api/admin/service-payments/{id}/refund`) works on held money before the release (any amount up to what was paid minus what was refunded) and is
+refused after it. The commission export (SP-15b) lists the direct charges as before and, since SP-15c-b, the commission CasaZen retained from the money it held as `retained` rows (38.9).
+
+### 38.6 Not done here (follow-ups)
+
+- The host's requests on this cycle, the host's "all fine", the admin refund R4/R5 and the export of the commission kept are **SP-15c-b** (38.9); the
+  complaint ("report a problem", also for hosts), the dispute and the penalty, **SP-15c-c** (38.10); the screens, **SP-15c-d** (after SP-12b).
+- A shorter Stripe timeout for the platform client; an admin action to settle `NeedsReview` for a held payment; the recovery of a card dispute after the
+  release (decision of the product owner, VT-D16).
+
+### 38.7 Checks
+
+- [ ] Migration `AddHeldServicePayments` applied (new columns, `CK_ServiceRequestPayments_Funds`/`_Held`, `UIX_ServiceRequestPayments_StripeTransferId`,
+      `IX_ServiceRequestPayments_Held_Status_ReleaseAt`, `CK_ShowcaseBookingHolds_Payment`, `UIX_ShowcaseBookingHolds_StripePaymentIntentId`).
+- [ ] `service-funds` (`*/5`) among the recurring jobs (`GET api/admin/jobs`).
+- [ ] The platform endpoint sends the events of [`INFRA.md`](../INFRA.md) § Stripe before the flag goes on in any environment.
+- [ ] The five-step test-mode script of `results/VT-D22.md` of the wave was run and its answers are in the pull request that switches the flag on.
+
+### 38.8 The booking from the showcase, paid inside CasaZen — SP-15c-a (second pull request, stacked on the first)
+
+A booking with a total (`SupplierQuoteOutcome.Estimate`) is **paid inside CasaZen** when `ISupplierFundsService.CanAuthorizeAsync` says so: the flag
+`SupplierOnlinePayments` is on, the platform's publishable key is set, the supplier's Stripe account takes charges and payouts, and the total is at least
+`SupplierPayments__MinAmountCents`. Otherwise (flag off, account not ready, a booking on quote) **nothing changes**: the booking is made as it always was
+and its request is manual. The flag decides only the creation; what is already in flight follows its course whatever it says.
+
+| Step | What happens | Where |
+|---|---|---|
+| 1 | `POST api/public/suppliers/{slug}/bookings` saves the hold under the supplier's calendar lock, **then** (outside the lock) creates the PaymentIntent of the block and records it on the hold (`StripePaymentIntentId` and `PaymentAmountCents` together: the table checks it), **then** queues the verification e-mail. The answer carries `payment` (`amountCents`, `currency`, `clientSecret`, `publishableKey`, `authorized`). If Stripe cannot create the block the hold is deleted and the caller gets 503 `payment_provider_error` (no e-mail). The same `clientRequestId` is the same hold and the same PaymentIntent; a retry reads the block from Stripe **before** the lock. | `ShowcaseBookingService.CreateHoldAsync`, `BlockCardAsync` |
+| 2 | The customer confirms the card in the browser (Payment Element). Stripe sends `payment_intent.amount_capturable_updated`; the handler finds no payment for the PaymentIntent but a hold (metadata `showcaseHoldId`, `supplierOrgId`) and calls `ApplyHoldAuthorizationAsync`: the block must be the platform's, the whole total, nothing charged, no fee (`HeldChargeVerification`) or **no request is ever created from it** (the hold lapses and its block is released). The block is recorded on the hold (`PaymentAuthorizedAt`). | `StripeWebhookHandler.HandleServiceChargeAsync` |
+| 3 | `POST …/bookings/{id}/confirm-email` records `EmailVerifiedAt`. If the block is not recorded yet the answer is `status: "AwaitingPayment"`, `awaitingPayment: true`: **no request, the supplier knows nothing**; the page asks again (a second click is `alreadyConfirmed`). | `ConfirmEmailAsync` |
+| 4 | **The request is born when both are true, in either order**, by `CreateRequestFromHoldAsync` (the one place), under the supplier's calendar lock, in one transaction: customer, request (`Richiesto`, already `PaymentMode = Online`), the `Authorized` payment (amount = the total the customer saw, commission snapshotted, payer `Private`), the hold consumed. The receipt to the customer and the news to the supplier go **after** the commit (after the webhook transaction, for the second order). | `CreateRequestFromHoldAsync`, `CompleteHoldAuthorizationAsync` |
+| 5 | The supplier accepts (`TakeAsync`, or the customer accepts a proposed time): the card is **charged first** (`CaptureForTakeAsync`, inside the calendar lock, before the request changes state). A card that cannot be charged or a block that lapsed is 409 (`service_payment_capture_failed`, `service_payment_authorization_expired`) and the request stays new. | `ServiceRequestService.CaptureHeldMoneyAsync` |
+| 6 | Refused, cancelled (by the supplier or the customer) or lapsed: the block is released, or the charged money is refunded in full (`SettleClosedRequestAsync`, after the closing is saved; never throws; the `service-funds` job is the net). | `ServiceRequestService.SettleClosedMoneyAsync`, `ServiceRequestAutoCancelService` |
+| 7 | The supplier completes: the payment exists already, completing only fixes `release_at` (38.1). The customer may say "all fine" (`POST api/public/supplier-bookings/confirm-ok`, code + e-mail in the body like the other actions): the supplier is paid at once. | `ShowcaseBookingManager.ConfirmOkAsync` |
+
+**The customer's lookup** (`POST api/public/supplier-bookings/lookup`, and every answer of that area) adds `payment` — `status` (`authorized` · `held` ·
+`released` · `refunded` · `canceled` · `review`), `amountCents`, `currency`, `refundedCents`, `releaseAtUtc/Local` (while the money is held and the work is
+done: when it goes to the supplier if the customer says nothing) — and `actions.canConfirmOk` (the work is done and money is held that can still be
+released; the same facts the release checks). A booking that is not paid inside CasaZen has `payment: null`. `canReport` ("Segnala un problema") arrives
+with the complaint, SP-15c-c.
+
+**What keeps the money straight here**
+
+- *Nothing is created without a block, and a block without a request is released.* An expired hold that has a PaymentIntent and no request is released
+  by `ReleaseExpiredHoldAsync` (the block first, under the supplier's calendar lock, then the hold); a hold whose block could not be released is **kept**
+  and tried again by the next `service-request-expiry` run. A hold that became a request is deleted as before and its PaymentIntent — the payment's — is
+  never touched (the query that finds the ones to release excludes consumed holds).
+- *The answer time never reaches past the block.* A request born with a blocked card has `ResponseDueAt = min(the supplier's time, authorizedAt +
+  AuthorizationValidityHours − min(1 h, a quarter of it))` (`HeldPaymentRules.LatestResponseAt`), so the customer reads an answer time that is true.
+  Safety net: a **new** showcase request that is paid inside CasaZen and has **no payment left that is not canceled** (the block lapsed, or the bank refused
+  the charge) is cancelled by the next expiry run as "nobody answered" (`ServiceRequestAutoCancelService.UnpayableShowcaseIdsOf`), whatever its deadline.
+- *The price is the blocked amount.* On a request paid inside CasaZen the supplier cannot send a quote or commit another price when it takes
+  (422 `service_payment_amount_locked`); a different price needs the new offer of SP-10b-b.
+- *A take never turns a paid booking into a manual one* (`ResolvePaymentModeAsync` keeps `Online`), and a manual booking is never charged.
+- *The customer is told the truth* (D24): the receipt says the amount is blocked and not charged unless the supplier accepts; the e-mail of the take says the
+  card was charged and that CasaZen holds the amount until after the work; the supplier's new-request e-mail says the amount is already blocked. Nothing
+  is promised about when a bank frees a block.
+
+**Residual risks / decisions to confirm**
+
+- The capture (and, for an expired hold, the cancellation of the block) is a Stripe call made **inside the supplier's calendar lock**: a slow Stripe holds
+  that supplier's bookings for the duration (the SDK default timeout is long; see 38.6, "a shorter Stripe timeout").
+- If the webhook of the block is lost or late the customer waits on `AwaitingPayment` until the hold lapses (30 minutes by default): the block is then
+  released and nothing is charged; Stripe retries a failed delivery for days, but the hold does not live that long. The request is **not** created from a
+  Stripe read in `confirm-email` on purpose (a call to Stripe under the calendar lock).
+- A card with 3-D Secure that is abandoned leaves a PaymentIntent `requires_action`: the hold lapses and its PaymentIntent is canceled.
+- The e-mails of "work finished, you can report a problem until…" and "released" for the customer arrive with SP-15c-c; the refund e-mail is the one of 38.5.
+- The link of the verification e-mail carries the token in the **fragment** (`#token=`, FE-SP10-1): the page of SP-12b/SP-15c-d must read it from there
+  (`location.hash`); no frontend reads the booking link in `develop` yet.
+
+**Checks (test environment, flag on, Stripe test keys, supplier connected):** book a service with a total and confirm the card (`4242…`): the hold has
+the PaymentIntent, no request exists and the supplier got nothing; check the e-mail: the request appears with an `Authorized` payment (both orders:
+e-mail before the card shows `awaitingPayment`); let another hold lapse: its PaymentIntent is `canceled` on the Dashboard; accept as the supplier: the
+card is charged (`Held`); cancel as the customer before and after the acceptance: block released, then full refund; refuse a booking: block released;
+complete and press "all fine": one transfer of the net to the connected account. With the flag off: the same booking is made as before (no
+`payment`, a manual request).
+
+### 38.9 The host's payments on the held cycle — SP-15c-b
+
+What a **host** pays for a job the supplier completed (the link of SP-15b, or the host's own session) now goes through CasaZen too, unless
+`SupplierPayments__HeldForHosts` is `false` (default `true`: the way back to the direct charge of SP-15a in an environment, without a deploy; it only
+decides the payments **created from then on**, an existing payment keeps the model it was created with).
+
+| Step | What happens | Where |
+|---|---|---|
+| 1 | The supplier completes: `PlanAsync` creates the payment `Requested`, `FundsModel = PlatformHeld`, `TransferGroup = service-request-{id}`, commission snapshotted (no fee is ever sent to Stripe: the commission is the part that is not transferred); the link goes to the host exactly as in SP-15b (same token, same e-mails, same reminders, same "late" flag). | `NewPaymentAsync` |
+| 2 | The host opens the link (`POST api/public/service-payments/{id}/payment-session`) or its own session (`POST api/service-requests/{id}/payment-session`, long-rent twin): a PaymentIntent **on the platform**, automatic capture, cards only, transfer group of the request; reused while payable with the same amount and no fee, replaced otherwise, never replaced if Stripe says it was paid or is in progress (the payment shows as processing, the webhook settles it). `stripeAccountId` is **null**: Stripe.js is loaded with the publishable key alone. A supplier whose account cannot receive money any more collects nothing (409 `service_payment_supplier_not_ready`). | `OpenHeldSessionAsync` (`FundsSession.cs`) |
+| 3 | `payment_intent.succeeded` (checked against the payment: platform, PaymentIntent, amount, currency, no fee) makes the payment `Held` and sets `ReleaseAt = charge + SupplierPayments__ReleaseAfterMinutes` (R3: a host pays after the work). A refused card is `payment_intent.payment_failed`: the payment is `Failed` with the code and payable again with the same PaymentIntent. The `service-payment-sync` job (every 15 min) reads the PaymentIntent of the open held payments touched in the last 3 days (not in the last 10 minutes) and records a charge whose event was lost. | `ApplyChargeEvent`, `ApplyHeldPaymentFailed`, `SynchronizeHeldPaymentAsync` |
+| 4 | The supplier is paid by the `service-funds` job once `ReleaseAt` has passed, or at once when the host says "all fine": `POST api/service-requests/{id}/confirm-ok` (long-rent: `POST api/long-rent/service-requests/{id}/confirm-ok`), same permission as `mark-paid`; 404 for another org's request, 422 `service_payment_not_confirmable` when there is nothing to release (not paid yet, closed, stopped). One transfer of the net, whatever the number of runs or clicks; the request becomes `Pagato` at the release, not at the charge. | `ConfirmOkAsHostAsync` |
+| 5 | The supplier cannot ask for or remind a payment the host has paid (409 `service_payment_held`), but can still ask for, remind and — as a traced exception — declare **received outside CasaZen** a payment still to be made: its PaymentIntent **on the platform** is canceled first, one that was paid meanwhile wins (processing, 409). | `RequestPaymentAsync`, `RecordOfflineAsync` |
+
+**Admin refund** (`POST api/admin/service-payments/{id}/refund`): by default everything still refundable goes back from the platform's balance, the
+commission included (**R5**, cancelling is always free); with `"keepCommission": true` only what the supplier would have been paid goes back (the price
+minus the commission, minus what was already refunded), CasaZen keeps the commission and the supplier gets nothing (**R4**, the supplier was at fault; the
+amount may be lower but never higher). Either way **only before the release**: after the transfer the money is the supplier's (422
+`service_payment_not_refundable`). `keepCommission` on a direct charge is 422.
+
+**Commission export** (`GET api/admin/supplier-payments/export?year=&month=`): a new row type `retained` for the money CasaZen held, one per payment, on the
+day the commission became CasaZen's — the day of the transfer, or, for a payment where the supplier got nothing, the day of the last refund that
+succeeded. `gross` is what stayed with CasaZen of the payer's money (the price minus what was given back), `commission` is CasaZen's commission, `net`
+what the supplier got. A payment refunded in full has no row. The rows of the direct charge (`payment`, `refund`) are unchanged.
+
+**Residual risks / decisions to confirm**
+
+- The model of a payment is fixed when it is created: a payment created while `HeldForHosts` was on stays held if it is switched off, and the other way
+  round. The tests of SP-15a/15b pin the direct charge (`HeldForHosts = false` in their harness); the held cycle has its own (`HostHeldPaymentTests`).
+- The Payment Element must be loaded **without** `stripeAccount` for a held payment (the frontend, SP-15c-d); a client that still sends the account of
+  a direct charge would not find the PaymentIntent.
+- A host that pays a `Failed` held payment again reuses the same PaymentIntent; the sync job reads open payments for 3 days after the last touch, a
+  lost event after that is settled by the next session or by an admin (`NeedsReview` is not reached from here).
+- The host's DTO does not carry the payment yet (status, amount, `releaseAt`, whether "all fine" is possible): the host page reads the request status
+  (`Completato` until the release, `Pagato` after) and the payment page of the link. A payment block in the host's DTO is a follow-up (SP-15c-b2).
+- "Segnala un problema" for hosts (and the long-rent twin) is the complaint of SP-15c-c.
+
+### 38.10 The complaint and the dispute — SP-15c-c
+
+Redesign wave task SP-15c-c (branch `feature/rd-supplier-payments-dispute`, backend only, stacked on 38.9). Decisions **VT-D1** (the payer pays at once;
+CasaZen holds the money until "all fine" or the hour after the work; a complaint stops it; when the supplier is at fault CasaZen keeps its commission,
+the rest goes back to the payer and the supplier is penalized) and **VT-D16** (the window, the amount decided by an admin, the no-show, the times).
+**Text only** (VT-D12: no photos). The flag `SupplierOnlinePayments` is unchanged and stays off in production; like the webhooks and the release, the
+complaint and everything after it are **not** behind the flag (the money they stop is already held). Stripe is called by this task **only** for the
+refund of a decision, through the refund machinery of SP-15b/15c (idempotency key of a reserved row). Gateway and events: [`stripe.md`](stripe.md)
+§ "The complaint and the dispute (SP-15c-c)"; the e-mails: [`email.md`](email.md) § "The complaint about a job (SP-15c-c)".
+
+| Step | What happens | Where |
+|---|---|---|
+| 1. The window | The payer — the private customer of a showcase (code and e-mail, as for every action of its area) or the host (owns the request, holds `servicerequest.write` / long-rent `property.write`) — may report a problem **from the completion (`Completato`) until the money is due** (`ReleaseAt`: 60 minutes after the completion, or after the charge for a host), **never after "all fine"** (`ReleaseConfirmedAt`) **nor after the transfer**. For a job nobody marked completed (taken, and the time agreed for it ended) it may report **from the end of that time**; if nobody does, CasaZen opens the complaint itself `DisputeNoShowHours` (48) after the end. Outside: 422 `service_dispute_window_closed` (`windowEndedAt`) / `service_dispute_too_early` / `service_dispute_not_reportable` (no money held by CasaZen, or not a job that was done). | `ServiceDisputeRules.CanReport` (pure) |
+| 2. Opening | Under the payment lock (the one the release and the refunds take): the dispute `AwaitingSupplier` is written and the payment goes `Held` → **`Disputed`** in the same transaction. The release accepts only `Held`/`TransferFailed` (`HeldPaymentRules.Release`), so a complaint and a release **never both win**: the one that takes the lock first decides, the other is refused (a complaint after the release is a 422; "all fine" after a complaint is 422 `service_payment_not_confirmable`). **One open dispute per payment** (unique partial index `UIX_ServicePaymentDisputes_OpenPerPayment`): a second complaint is the same dispute and writes nothing. | `OpenDisputeAsync` |
+| 3. The supplier's reply | `DisputeSupplierReplyHours` (48) from the opening. **One** reply (the same words again are the same reply; other words are 409 `service_dispute_already_replied`); it moves the dispute to `AwaitingDecision` and starts the admins' target `DisputeDecisionTargetHours` (72). If the time passes without a reply the job sends the dispute to the admins anyway; a reply that comes later is **still taken** while the dispute is open. | `ReplyToDisputeAsync`, job step 1 |
+| 4. The decision | Only an admin, only in `AwaitingDecision` (before: 409 `service_dispute_awaiting_supplier`, `supplierReplyDueAt`). **For the supplier:** payment `Disputed` → `Held`, `ReleaseAt = now`: the funds job pays the net at its next run (a no-show: the request is completed first, the work was done and not marked). **For the customer:** the refund of the amount decided is **reserved in the same transaction** as the decision (a pending refund row, origin `System`, reason `dispute:{id}`, key `service-charge-refund:{payment}:{n}`), so neither a release nor another refund can take its euros; Stripe is asked **after the commit**; the payment stays `Disputed` until that refund **has succeeded**, and then ends `PartiallyRefunded` (nothing left for the supplier) or goes back to `Held` due now (the funds job pays what is left). | `ResolveDisputeAsync`, `SettleDecidedDisputeAsync` |
+| 5. The amount | From 1 cent to the supplier's part that is left: **price − commission − refunded − being refunded** (`ServiceDisputeRules.RefundableToPayer`); left out means all of it. **The commission is never given back by a dispute** (R4): 422 `service_dispute_refund_exceeds` (`maxRefundCents`) / `service_dispute_refund_invalid`. When nothing is left (the admin tool refunded it already) the decision stands with no money and the supplier is penalized all the same. For the supplier: no amount (422). | `DecideRefund` |
+| 6. Idempotent, and a race is a 409 | The same decision on a decided dispute (same outcome, same amount or none) answers the same and moves nothing: no second refund, no second penalty, no second e-mail. A different decision, or one that lost to the payer's withdrawal, is 409 `service_dispute_state_changed`. | `ResolveDisputeAsync` |
+| 7. The payer takes it back | While open, only the payer: the payment goes back to `Held`, due now; the supplier is paid at the next run and told; no penalty. | `WithdrawDisputeAsync` |
+| 8. The penalty | After the commit of a decision **for the customer**, `ISupplierDisputePenalties.RecordAsync` is called with `DisputeLost` (or `NoShow` when the supplier never marked the work completed). The only implementation today **logs**: nothing in the ranking changes and nothing is shown publicly (VT-D17: the weights are not approved). The dispute row (`ResolvedForCustomer`, `NoShow`) is the record the events are rebuilt from; a failure of the sink never undoes the decision. | `RecordPenaltyAsync`, `LoggingSupplierDisputePenalties` |
+
+**The job** (`service-funds`, every 5 minutes, always registered; a step after the releases): (1) disputes whose reply time passed go to the admins (alert
+`awaiting_decision:no_reply`); (2) disputes whose target passed: the admins are told once (`decision_overdue`); (3) a decision for the customer whose refund
+did not go through `DisputeRefundAlertMinutes` (30) after the decision and with no refund waiting for Stripe: the admins are told once
+(`refund_incomplete`) — a payment that has meanwhile given back what the decision asked is settled here, not alerted; (4) the no-show: a held payment of a
+request still `PresoInCarico`/`InCorso` whose `ScheduledEndUtc` is `DisputeNoShowHours` ago and that has no dispute gets one, opened by CasaZen
+(`reason = not_done`, `noShow = true`). Each dispute is handled alone, under its lock and read again after it; an error on one is logged and counted.
+
+**States × actions** (`ServiceDisputeStatus`, append only: `AwaitingSupplier` 0, `AwaitingDecision` 1, `ResolvedForSupplier` 2, `ResolvedForCustomer` 3, `Withdrawn` 4)
+
+| State | Supplier replies | Payer withdraws | Admin decides | Payment |
+|---|---|---|---|---|
+| `AwaitingSupplier` | yes (once) | yes | no (409, the supplier has time) | `Disputed` |
+| `AwaitingDecision` | yes if it had not (late reply) | yes | yes | `Disputed` |
+| `ResolvedForSupplier` / `Withdrawn` | no (409 `service_dispute_not_open`) | no | no | `Held` due now → `Released` |
+| `ResolvedForCustomer` | no | no | no | `Disputed` until the refund succeeded, then `PartiallyRefunded` or `Held` due now |
+
+**Endpoints**
+
+| Who | Endpoint | |
+|---|---|---|
+| Customer of a showcase | `POST api/public/supplier-bookings/report-problem` (`reason`, `text`), `POST …/withdraw-problem` — same proof, limits and uniform 404 as `confirm-ok`; the answer is the booking with `payment.dispute` and `actions.canReportProblem` / `canWithdrawProblem` | new |
+| Host (short rent / long rent) | `POST api/service-requests/{id}/report-problem`, `…/withdraw-problem`, `GET …/{id}/problem` and the same under `api/long-rent/service-requests/{id}` | new |
+| Supplier | `GET api/supplier/requests/{id}/dispute`, `POST api/supplier/requests/{id}/dispute/reply` (`text`) | new |
+| Admin | `GET api/admin/service-payment-disputes?status=&supplierOrgId=&openOnly=&page=&pageSize=`, `GET …/{id}`, `POST …/{id}/resolve` (`outcome`: `for_supplier` \| `for_customer`, `refundCents`, `note`) | new |
+
+`reason` is one of `not_done`, `incomplete`, `poor_quality`, `not_as_described`, `other` (`other` needs the words); `text` and `note` are at most 1000
+characters, plain text, no control characters (422 `service_dispute_invalid` with `fields`). Every view is made for its audience and can carry nothing
+else: the payer reads **its own words**, the state and the decision (and *that* the supplier replied, not what it wrote); the supplier reads the payer's
+words and its own reply; the admin reads everything; **the note of the admin is in no view of the parties**.
+
+**Configuration** (`SupplierPayments__*`, all validated at startup, see the deploy checklist)
+
+| Variable | Default | |
+|---|---|---|
+| `DisputeSupplierReplyHours` | 48 | time the supplier has to reply (1 to 720) |
+| `DisputeDecisionTargetHours` | 72 | target of the admins from the moment the dispute reaches them (it decides nothing: the admins get an e-mail when it passes) |
+| `DisputeNoShowHours` | 48 | after the end of the time agreed for the work, CasaZen opens the no-show complaint |
+| `DisputeRefundAlertMinutes` | 30 | after a decision for the customer, the admins are told if its refund did not go through |
+
+**Data** — table `ServicePaymentDisputes` (migration `AddServicePaymentDisputes`, additive: one table, three foreign keys that restrict, four indexes, three
+checks). The three texts (`CustomerTextEncrypted`, `SupplierReplyEncrypted`, `AdminNoteEncrypted`) are **encrypted at rest** with the purpose
+`Casazen.ServicePaymentDispute` ([`encryption.md`](encryption.md)), are in no log and in no e-mail, and follow the retention of the payment data
+([`gdpr.md`](gdpr.md)). The table is not tenant-filtered (two parties and an anonymous payer, like the payment): `ServicePaymentDisputeTenancyTests` keeps
+every statement on an explicit predicate and the table inside the payments service.
+
+**Residual risks / decisions to confirm**
+
+- **`[CONSULENTE LEGALE]`** The window of **one hour** is very short for a consumer (the rule of the product owner, configurable: `ReleaseAfterMinutes`); that a
+  consumer is not given back the commission when the supplier is at fault (VT-D1) and the texts of the e-mails to the payer have not been seen by a lawyer.
+- **The admins' work.** The decision is a person's: 72 hours is a target, nothing is decided by itself. The queue and the detail exist as API; the console
+  screens are AM-09/AM-10 and SP-15c-d. Until then the work queue is the e-mail alert and `GET api/admin/service-payment-disputes?openOnly=true`.
+- **The refund comes out of the platform's balance.** If it is not enough Stripe refuses the refund (VT-D22 questions 3 and 4): the decision stands, the
+  payment stays `Disputed`, nothing is paid out, the admins get one e-mail after 30 minutes, and the admin refund tool with `keepCommission` completes it.
+- **A request cancelled while a dispute is open** (only a job nobody marked completed can be) is not settled automatically (a `Disputed` payment is left
+  alone by the closing of a request): the admin decides the dispute. Decided for the supplier, the payment is `Held` again and, the request being closed, the
+  `service-funds` job refunds the payer **in full** (rule R5: a cancelled request is never paid); if the whole price must go back and the supplier was at
+  fault, the admin refund tool does it first and the decision then stands with no money.
+- **A no-show decided for the customer leaves the request as it is** (taken): the payment is refunded and the supplier penalized, but closing the request
+  (and the wording the clients show for it) is a follow-up with the frontend (SP-15c-d). Decided for the supplier, the request is completed.
+- **The supplier cannot complete a job whose money a complaint stopped**: `complete` answers 409 `service_dispute_open` (the work would be declared done
+  while the payer says it was not). It replies to the complaint instead; decided for it, the job is completed for it and paid by the next run. The same
+  wall protects the amount: a `Disputed` payment is never recomputed or re-planned by a completion.
+- **The host's DTO has no `payment`/`dispute` block yet** (follow-up SP-15c-b2): the host page reads `GET …/{id}/problem` (404 `service_dispute_not_found` when
+  there is none) and the request status.
+- **The penalty is only logged** until the reliability events of the ranking exist (follow-up **SP-15c-c2**: the kinds `DisputeLost` and `NoShow`, their weights
+  and the moving window are VT-D17); the events can be rebuilt from the dispute rows. A penalty is lost, but logged, if the process dies between the commit of
+  the decision and the call of the sink.
+- A card dispute (a chargeback) is another thing (38.5): it is recorded on the payment and answered on Stripe; it never moves a payment to `Disputed`.
+
+**Checks**
+
+- [ ] Migration `AddServicePaymentDisputes` applied (`ServicePaymentDisputes`, `UIX_ServicePaymentDisputes_OpenPerPayment`, the three checks).
+- [ ] `service-funds` (`*/5`) is among the recurring jobs and its log shows the `Service disputes:` line when there is work.
+- [ ] An active platform admin has an e-mail (the alerts go to every one); `SupplierPayments__Dispute*` are as the product owner decided.
+- [ ] Test environment (flag on, Stripe test keys): book, take, complete, report a problem (the page shows it, the release does not happen), let the supplier
+      reply, decide once for the customer with a partial amount (the refund appears on Stripe, the rest is transferred) and once for the supplier; try the
+      same decision twice; leave a taken job past its time and see the no-show opened after 48 hours.
+
 ## 27. Read models for the console: "Oggi" and "Richieste" — SP-04e
 
 Redesign wave task SP-04e (branch `feature/rd-supplier-read-models`, backend only: **no flag, no migration, no new table**; the screens that
@@ -2607,8 +2897,8 @@ requests with the **same statuses and the same "has a proposal" test as the tabs
 
 ### 27.4 The inbox: two tabs, `source`, `q`
 
-- **`tab=da-rispondere`**: `Richiesto` with **no** proposed time waiting (nor, from SP-04b, a quote): the supplier still has to answer.
-  **`tab=in-attesa`**: `Richiesto` **with** a proposed time the customer has not answered. Both by urgency (`ResponseDueAt`, the ones without last),
+- **`tab=da-rispondere`**: `Richiesto` with **no** proposed time waiting (nor, since SP-04b, a quote): the supplier still has to answer.
+  **`tab=in-attesa`**: `Richiesto` **with** a proposed time, or a quote (section 34), the customer has not answered. Both by urgency (`ResponseDueAt`, the ones without last),
   both on the statuses of `nuove`. **`tab=nuove` is unchanged** (every new request, same order): the Golden Journey and the other users do not change.
   The 400 for another tab (`SupplierInboxTabInvalid`) now lists the six.
 - **`source=casazen|showcase`**: where the request comes from (`item.source`): a CasaZen host, or the supplier's public showcase. Any case; another
@@ -2634,7 +2924,7 @@ of SP-03b uses the same type, so the file is the same in both), never stored, ne
 |---|---|---|
 | `to_answer` | the supplier has to answer (take, refuse, propose another time) | `Richiesto`, no proposed time waiting |
 | `proposal_pending` | the supplier proposed another time, the customer has not answered | `Richiesto` with a proposed time |
-| `quote_pending` | the supplier sent a quote, the customer has not answered. **Reserved for SP-04b: nothing produces it yet** | `Richiesto` |
+| `quote_pending` | the supplier sent a quote, the customer has not answered (SP-04b, section 34) | `Richiesto` with a quote |
 | `scheduled` | taken, the work is yet to start | `PresoInCarico` |
 | `in_progress` | the work started | `InCorso` |
 | `completed` | done, not paid yet | `Completato` |
@@ -2702,8 +2992,8 @@ thousands of requests, `(SupplierOrgId, CreatedAt)` is the first candidate (with
   the split and the two buttons, `late` the "Da fare" row (`payment` is there for **every completed job**, with `id` and `status` null until a record exists:
   test `payment.id` to know whether there is one, never `payment != null`); `overview.onlinePayments` decides "Incassi" or "Lavori completati"; `previous.from/to`
   say what the delta compares with; `today.jobsTotal` says when the 50 jobs are not all of them. The Golden Journey keeps using `nuove`.
-- **SP-04b (quote)**: add `Quote` to `SupplierServiceRequestView` and pass `hasPendingQuote: Quote is not null` in `SupplierServiceRequestView.Phase`; add the
-  same test to the predicate `AwaitingCustomer` of `SupplierServiceRequestReader.Filter` and to `TabCountsOf`. **SP-04d (auto-accept)**: done (section 21.14): the
+- **SP-04b (quote)**: done (section 34): `SupplierServiceRequestView.Quote` and `Phase`, the predicate `AwaitingCustomer` of `SupplierServiceRequestReader.Filter` and `TabCountsOf`.
+  **SP-04d (auto-accept)**: done (section 21.14): the
   requests accepted automatically are excluded from `SupplierKpiService.AnswersBetween` (and from the average of `today` and the public median). **LR-08a (`tenantContact`)**: independent
   fields of the same DTO.
 - **SP-16a (earnings)**: the definitions of "collected" (`Paid` by `PaidAt`) and "late" (flagged and still owed) are here (`ServicePaymentSchedule.IsOwed`,
@@ -2728,7 +3018,7 @@ carries `jobsTotal` (additive) so that the cap of 50 jobs, which a week can reac
 
 - The rules of `canRequest` and `canRecordOffline` are written twice, in `ServicePaymentActions` and in `SupplierPaymentService`; the matrix test of 27
   states keeps them equal, so whoever changes one changes both (the deeper fix is for the endpoints to call `ServicePaymentActions` too). The same goes for
-  "waiting for the customer": the filter, the counters and `phase` each test the proposed time, and SP-04b adds the quote to the three.
+  "waiting for the customer": the filter, the counters and `phase` each test the proposed time and the quote (SP-04b, section 34).
 - `IFeatureFlags` and `ISupplierPaymentReadModels` are optional constructor parameters of the KPI service and of the reader (so the tests that build them by hand
   stay as they are); the container always gives both, and `SupplierReadModelsPaymentsIntegrationTests`, which goes through the real host, fails if the registration is lost.
 - Cost: what is to be collected is added up in memory over the supplier's completed jobs not paid yet, and the answers of the mean are read as pairs. That is
@@ -2933,7 +3223,7 @@ green).
   range, section 28.3).
 - **SP-04e** (inbox/today read models, merged) — uses the same `SupplierRequestPhases` for `phase` in its DTOs (section 27.5): one file.
 - **SP-04c** (urgent slots) — `GET preview/slots` ignores `urgent` today; when the planner learns urgent slots, `urgent=true` returns them.
-- **SP-04b** (quotes) — `quote_pending` is a phase that nothing produces yet (`SupplierRequestPhases.Of(…, hasPendingQuote)`).
+- **SP-04b** (quotes, merged) — `quote_pending` is produced (section 34); the calendar and the agenda carry `hasPendingQuote` like `hasPendingProposal`.
 
 ### 28.8 After a deploy
 
@@ -2962,9 +3252,9 @@ supplier org of the caller's **own link** (`GetLinkedSupplierOrgIdAsync`: a read
 |---|---|---|---|
 | `onlineBookingEnabled` | `OnlineBookingEnabled` | `false` | the booking from the showcase (SP-10): off is 422 `supplier_booking_offline`. **Read-only here** (below) |
 | `autoAcceptRegulars` | `AutoAcceptRegulars` | `false` | SP-04d, section 21.14 (a regular host is one with at least three jobs taken with the supplier): on, the requests of its regular hosts are accepted automatically |
-| `notifyNewRequests` | `NotifyNewRequests` | `true` | SP-16d; until it is deployed no code reads it |
-| `notifyDayBeforeReminder` | `NotifyDayBeforeReminder` | `true` | SP-16d, same |
-| `notifyPayments` | `NotifyPaymentMarked` | `true` | SP-16d, same |
+| `notifyNewRequests` | `NotifyNewRequests` | `true` | SP-16d (section 35): the e-mail and the push of a new request (a host's, accepted automatically, from the showcase) |
+| `notifyDayBeforeReminder` | `NotifyDayBeforeReminder` | `true` | SP-16d: the reminder of the day before to the supplier (section 35.2) |
+| `notifyPayments` | `NotifyPaymentMarked` | `true` | SP-16d: the notice that a job was paid (the customer marked it, or it was paid through CasaZen; section 35.3) |
 | `respondWithinMinutes` | `RespondWithinMinutes` | `180` (3 h, D8) | the deadline of a booking from the showcase (`ResponseDueAt`); a request of a CasaZen host has its own (`Suppliers:ServiceRequests:HostResponseMinutes`, 2 h) and shows it as `respondBy` |
 
 - **`GET`** answers the defaults while the supplier never saved a setting: a read **never creates the row**. **`PUT`** replaces the five settings the console
@@ -2973,8 +3263,8 @@ supplier org of the caller's **own link** (`GetLinkedSupplierOrgIdAsync`: a read
   `supplier_settings_invalid` with `fields` naming every setting at fault (as `PUT availability/rules`), and nothing is written. The answer of the `PUT` has the
   shape of the `GET`.
 - **`onlineBookingEnabled` is not a field of the `PUT`** (decision SP-D29): a value sent for it is ignored, so a settings call can never open the showcase to
-  bookings. The only writer will be the showcase editor (SP-13a, publish and pause). Until it is deployed **nothing writes the column**, so the public booking stays
-  closed for every supplier whatever the flag `SupplierShowcaseBooking` says (`deploy-checklist.md`).
+  bookings. The only writer is the showcase editor (SP-13a, section 33.8): publishing, reopening, pausing and the supplier's Stripe account. A supplier opens its bookings only with
+  the payments on and its account ready, so the public booking stays closed for every other supplier whatever the flag `SupplierShowcaseBooking` says (`deploy-checklist.md`).
 - The row is shared with the rules and the hours of the agenda (section 20): the first write creates it, and **every write takes the same advisory lock**
   (`SupplierCalendarSync` of the supplier org) and reads the row after taking it, so two saves never overwrite each other's columns. A save leaves the other
   columns (the five rules, `HoursConfiguredAt`, `ParallelJobs`) exactly as they were. The code is in `SupplierAgendaService` (the only reader and writer of the
@@ -3200,14 +3490,910 @@ a service without its own switch is not urgent; the supplier's switch comes firs
 Nothing to configure. The migration adds the columns with the defaults above to the rows that exist (a supplier keeps its settings; urgent is off for all of them). To try it on a test supplier: `PUT availability/urgent`
 (`enabled: true`), `PUT services/{id}` with `urgentEnabled: true` and a surcharge, then `GET …/slots?service=…&urgent=true` with `SupplierShowcaseBooking` on.
 
+## 33. The content of the showcase: draft, publication, pause, the bookings switch and the public page — SP-13a
+
+Redesign wave task SP-13a (branch `feature/rd-showcase-content-api`, backend only: the editor is SP-13c to SP-13e), **no new feature flag** (the override of 17 October allows only the eight that exist; the endpoints are always on, and nothing a supplier saves is
+seen by a customer until it is published and until the public page reads it, which is the third part of the task), migration `AddSupplierShowcaseContent` (additive: one new table). The supplier writes the texts, the style and the order of its
+services of its public page `/fornitori/{slug}`. **Part 1** is the **draft** (33.1 to 33.5): reading it, saving it as the editor autosaves, and throwing the changes away. **Part 2** (33.6 to 33.8) is the **publication** with its undo,
+the **pause**, the readiness checks and the **switch of the bookings** (`SupplierSettings.OnlineBookingEnabled`, which until now no endpoint wrote). **Part 3** (33.9 to 33.11) is what the **public page** reads of the
+published content, the **short status**, the **statistics** and the **checklist** of the console.
+
+### 33.1 What is stored
+
+Table `SupplierShowcaseContents`, **one row per supplier** (primary key and foreign key = the supplier org, cascade like the settings), created by the first save: a supplier that never saved has no row and a read creates none.
+
+| Column | What |
+|---|---|
+| `DraftJson` | the draft (`jsonb`), a `ShowcaseContentDocument` in the camel-case shape of the API |
+| `PublishedJson`, `PreviousPublishedJson`, `PreviousPublishedAt`, `UndoUntil`, `PublishedAt`, `PausedAt` | what the next part uses (null until then) |
+| `SchemaVersion` | `1`: the format of the documents; a change of shape gets a new number |
+| `SavedAt`, `CreatedAt`, `UpdatedAt` | UTC |
+| `Version` | PostgreSQL `xmin` (no column of its own): the editor sends it back with the next save |
+
+The lock `SupplierShowcaseContent` (scope 1_303, key = the supplier org) is taken by every change, **before** the supplier's calendar lock when a change also writes `OnlineBookingEnabled` (the next part); the merge of duplicate profiles
+(`fix-orphaned`, 9.3) takes it first too.
+
+### 33.2 The contract (`schemaVersion` 1)
+
+Plain text, **no contact data**: telephone, WhatsApp, e-mail, hours of answer, domain, search-engine title and description and indexing are not part of it (interview Q4/Q7, decision D11), and a save that names one is a 422 on that member.
+Every member is optional: a draft may be incomplete.
+
+| Key | Content | Limits |
+|---|---|---|
+| `style` | `acqua`, `scintilla`, `fresco`, `naturale` (`null` = the style recommended for the trade) | |
+| `font` | `moderno`, `editoriale`, `classico` | |
+| `color` | `#RRGGBB` of the buttons, or empty | **white text on it must read at 4.5:1 or more** (WCAG AA): checked on the server (`ShowcaseColor`), the same formula as the prototype; a three-digit color is refused |
+| `logo` | `{ mode: mark\|text\|image, url? }` | `url` only for `image` (the other modes drop it), PNG/JPG/WebP of the supplier's own folder, never SVG |
+| `cover` | `{ url?, alt? }` | `alt` 120 |
+| `tagline`, `intro`, `bio` | the sentence in large type, the text under the title, "chi siamo" | 90, 180, 700 |
+| `team[]` | `{ name, role }` | 12 items; 60, 60 |
+| `values[]` | strengths | 6 items; 100 |
+| `guarantee` | `{ title, text }` written by the supplier | 60, 160 |
+| `certs[]` | `{ label, detail }` written by the supplier, never prefilled | 8 items; 80, 160 |
+| `faq[]` | `{ q, a }` | 12 items; 120, 600 |
+| `gallery[]` | `{ photoUrl, beforeUrl?, caption, place, alt }` (a before/after needs both photos) | 12 items; 70, 40, 120 |
+| `prep[]` | "prima che arriviamo" | 6 items; 160 |
+| `sections` | `{ trust, how, works, zones, certs, faq }` booleans, all `true` by default (the services and the final actions are always shown) | |
+| `serviceOrder[]` | slugs of the services to show, in order, **only `Active` ones of the supplier, each once**. Empty = every active service in the order of the catalog; otherwise only these | 30 |
+
+The limits are constants in `Casazen.Core/Suppliers/ShowcaseContent.cs` (`ShowcaseContentLimits`): the ones of the design (90, 180, 700, 60, 160, 70, 40) are the counters of the editor, the others are proposals open to the product owner.
+
+**Text** (`ShowcaseText`): trimmed, a run of white space becomes one space (a line) or one line break (the paragraphs of `bio` and of a FAQ answer: at most one blank line), control, invisible and direction-changing characters are removed, and **markup is
+refused** (a `<` followed by a letter, `/`, `!` or `?`; a lone "5 < 10" is fine). **Images** are references to objects of `suppliers/{orgId}/` of the public bucket (`IFileStorage.TryGetPublicKey`, `StorageKeys.SupplierFolder`) with the extension
+`.jpg`, `.jpeg`, `.png` or `.webp`: another site, another supplier's file or an SVG is a 422 on that field. The upload itself, with the checks on the content, is SP-13b.
+
+### 33.3 Endpoints (policy `RequireSupplier`, supplier org from the caller's own link, never provisioned by a content call)
+
+| Method and path | What |
+|---|---|
+| `GET api/supplier/showcase/content` | `{ schemaVersion, state, version, draft, published, changes[], savedAt, publishedAt, pausedAt, undoUntil, publicPath, publicUrl }`. `state` is derived: `Draft` (nothing published), `Online`, `ChangesReady`, `Paused`; `changes` are the members of the contract in which the draft (cleaned of empty rows) differs from what is published, in the order of the table above; `version` is `0` while there is no row. It gives an active supplier that has no slug its slug, as the preview does (`GET api/supplier/showcase`, which stays as it is) |
+| `PATCH api/supplier/showcase/content` | the autosave. Body: `{ "version": n, ...members to change }` as a **JSON merge patch** (RFC 7396): a member that is there replaces the stored one, an object (`sections`, `logo`, `cover`, `guarantee`) is merged member by member, a list replaces the whole list, `null` clears. The result is validated as a whole and every field at fault is collected: 422 `showcase_content_invalid` with `fields` (`tagline`, `faq[2].a`, `cover.url`...) and, when the color is the one at fault because white text cannot be read on it, `suggestedColor` (the same hue, darker). Body at most 64 KB; rate limit `SupplierShowcaseSave` (120 / min **per person**) |
+| `POST api/supplier/showcase/discard` | the draft goes back to what is published (an empty draft while nothing is). The body may carry `{ "version": n }`; when it does it must be the current one |
+| `POST api/supplier/showcase/publish` | publishes the draft (33.7). The body may carry `{ "version": n }`. 422 `showcase_not_publishable` (`fields` = the codes of what is missing), `showcase_supplier_not_active`, `showcase_content_invalid` (a half-filled row) |
+| `POST api/supplier/showcase/publish/undo` | "Annulla": the version published before is published again (33.7). 409 `showcase_undo_unavailable` |
+| `POST api/supplier/showcase/pause`, `POST api/supplier/showcase/resume` | pause and "Riattiva" (33.7). 422 `showcase_not_published`; `resume` also 422 `showcase_supplier_not_active` |
+
+Every answer is the same document as `GET content`, which since part 2 also carries `readiness` (33.6) and `bookings` (33.8).
+
+Errors: 404 `not_found` (no linked supplier), 400 `validation_error` (malformed or oversized body), 409 `showcase_version_conflict`, 422 `showcase_content_invalid`.
+
+### 33.4 Concurrency
+
+Every change takes the supplier's content lock and reads the row after taking it; a save carries the `version` the editor read (the first save, `0`, creates the row) and a stale one is a **409, never a lost update and never a 500** (two tabs, the wizard
+and the editor, two members of one supplier). The lock only exists on PostgreSQL; outside it (in-memory tests) nothing is locked and the version is not incremented.
+
+A service that stopped being active since the draft was saved is a stale reference, not a mistake of the save: a save that does **not** name `serviceOrder` drops it from the order quietly, so the autosave of a sentence never fails because of the catalog.
+A save that names `serviceOrder` is checked.
+
+### 33.5 Tenancy and privacy
+
+`SupplierShowcaseContents` is keyed by the supplier org and is **not** `ITenantOwned` (a supplier-only account has no `User.OrgId`): it is in the allow-list of `TenantQueryFilterArchitectureTests` with the reason, every statement carries the explicit
+`OrgId` predicate, and `SupplierShowcaseContentTenancyTests` allows only `SupplierShowcaseContentService`, the supplier repair and the context to use the table. A host never reads it and the draft never leaves the supplier's own endpoints. Nothing of the
+content goes in a log (ids and counts only). The merge of duplicate profiles (`fix-orphaned`) moves the duplicate's row to the keeper only when the keeper has none (the keeper's own stays, the duplicate's goes with its profile); it counts in `showcaseRowsMoved`.
+
+### 33.6 Readiness ("cosa manca")
+
+`readiness { canPublish, items[] }` is judged from the draft (cleaned of empty rows) and the supplier's facts, **again on the server at every publication**: a button disabled in the editor is a convenience, not a guard. Every item has a stable
+`code` (the editor writes the text), a `level` (`ok`, `warn` or `todo`), `required` and a `target` (the page of the web app where the supplier fixes it, `?step=` for the editor's own steps).
+
+| Code | Rule | Required | Target |
+|---|---|---|---|
+| `services` | at least one **active** service is shown (the ones of `serviceOrder`, or every active one when it is empty; a published service always has a price or "su preventivo") | yes | `/app/supplier/services` |
+| `zones` | the supplier serves at least one comune (`ComuneIstatCodesJson` or `ComuniJson`) | yes | `/app/supplier/profile` |
+| `color` | no color, or one white text reads on at 4.5:1 (a saved draft cannot hold another, so this is the guard of data written otherwise) | yes | `/app/supplier/showcase?step=style` |
+| `hours` | working hours saved with at least one band | advised | `/app/supplier/availability` |
+| `presentation` | a sentence of 12 characters or more and a "chi siamo" of 60 or more | advised | `?step=texts` |
+| `photos` | three jobs with a photo | advised | `?step=works` |
+| `faq` | three questions with their answer | advised | `?step=texts` |
+| `verified` | "Verificato" (decision D11): active profile, a VAT number and a Stripe account that can take charges and payouts | advised | `/app/supplier/settings` |
+
+A required item that is `todo` is a 422 `showcase_not_publishable` on `publish`, with `fields` = the codes.
+
+### 33.7 Publication, undo, pause and resume
+
+- **Publish.** An active supplier only (422 `showcase_supplier_not_active`). The draft is cleaned (`ShowcaseContentRules.ForPublication`): an empty row is dropped, a half-filled one (a question with no answer, a job with no photo, a guarantee with a title and no
+  text...) is a 422 `showcase_content_invalid` with its path, and the services of `serviceOrder` are reduced to the ones that are **active now**. Then the readiness is judged (33.6). The published document becomes `PublishedJson` **and the draft**
+  (so `changes` is empty), the version published before goes to `PreviousPublishedJson` and `UndoUntil` is set to 5 minutes from now (`ShowcaseContentLimits.UndoWindow`). Publishing a **paused** showcase publishes the content and leaves it paused.
+- **Undo** ("Annulla"). Until `undoUntil`: the previous version is published again (none, for the first publication: the showcase is a `Draft` again), `PublishedAt` goes back with it, the draft is not touched. **Any other change ends the possibility**
+  (a save, a discard, a pause, a resume); after the time it is 409 `showcase_undo_unavailable`.
+- **Pause.** Only a published showcase (422 `showcase_not_published`); idempotent. The state is `Paused` (it wins over `ChangesReady`), the bookings close.
+- **Resume** ("Riattiva"). A paused showcase is reopened; **on one that is not paused it judges the bookings again** (the account became ready after the publication), so it is also the way to open them at the supplier's wish.
+
+A publication, an undo, a pause and a resume write the content row **and** the switch of the bookings in one transaction (the switch first: a lost race rolls both back). Both are under the content lock, then the agenda lock, always in this order.
+
+### 33.8 The bookings switch (`OnlineBookingEnabled`)
+
+`SupplierSettings.OnlineBookingEnabled` has **one writer**, `ISupplierAgendaService.SetOnlineBookingEnabledAsync`, called only by the content service (the settings of the console still neither take nor change it, decision SP-D29). The value is
+`published ∧ not paused ∧ payments on ∧ account ready`, where *payments on* is the flag `SupplierOnlinePayments` and *account ready* is what `SupplierVerification.CanReceivePayments` says of the Stripe account cached on the org (charges **and**
+payouts enabled; never a call to Stripe). It is written by publish and resume (the rule), pause (off), undo (the rule for what is published after it) and by `account.updated`.
+
+`bookings { open, blockedBy[] }` of the answer is the derived rule `published ∧ not paused ∧ switch ∧ payments on ∧ account ready` (decision VT-D7: the bookings open only with the payment; until then the showcase is read-only), with the reasons in this order:
+`not_published`, `paused`, `payments_off`, `payments_account_not_ready`, and `bookings_off` (everything is ready but the switch: "Riattiva" turns it on). A publication with the account not ready is **not** an error: the showcase is online and the answer
+says why the bookings are closed.
+
+**`account.updated`.** `StripeWebhookHandler` calls `ReconcileBookingsAsync` for a supplier whose ability to take charges and payouts changed in either direction (`ConnectAccountUpdate.SupplierReadinessChanged`), inside the transaction of the event: the
+new bookings **close** when the account stops being ready (the ones already made are untouched: a booking is a request, not the switch) and **open again** when it is, if the showcase is published and not paused. A supplier with no content row is left
+alone. The booking itself (`POST api/public/suppliers/{slug}/bookings`) still reads only the switch (section 23): it refuses with `supplier_booking_offline` while it is off.
+
+### 33.9 The public page
+
+`GET api/public/suppliers/{slug}` (section 18) gains **additive members, left out until the supplier has published content** (`[JsonIgnore(WhenWritingNull)]`: the page of a supplier that published nothing is, member for member, what it was; a test compares the
+member names). They come from `IPublicSupplierShowcaseService.GetPublishedPageAsync`, which reads the **published** version only (`ISupplierShowcaseContentService.GetPublishedAsync`: one statement scoped by the supplier org): **a draft is never public**, and
+neither is the one a supplier is writing while another version is online.
+
+| Member | What |
+|---|---|
+| `content` | the published document without `serviceOrder`: `style`, `font`, `color`, `logo`, `cover`, `tagline`, `intro`, `bio`, `team`, `values`, `guarantee`, `certs`, `faq`, `gallery`, `prep`, `sections` (plain text; images are the supplier's own) |
+| `paused` | the supplier paused the showcase |
+| `bookingsOpen` | `published ∧ not paused ∧ OnlineBookingEnabled ∧ payments on ∧ account ready` (33.8), computed on every read: it is false (read-only showcase) until the supplier's account can take charges and payouts |
+| `trust` | `{ verified, jobsDone? }`: "Verificato" (decision D11: active profile, VAT number, Stripe account able to take charges and payouts; **the VAT number itself is never shown**) and the **true** count of jobs completed or paid, left out below `ShowcaseContentLimits.JobsDoneMinToShow` (5). No rating, reviews, insurance or years (D11, D13, D24) |
+| `respondWithinMinutes` | the supplier's setting (`RespondWithinMinutes`, 180 by default), never written by hand on the page |
+| `acceptsOnlinePayments` | `SupplierOnlinePayments` on and the account able to take charges and payouts |
+| `privacyNoticeVersion` | `Suppliers:Showcase:PrivacyNoticeVersion` (the version a booking records); left out when not configured. Until now no endpoint gave it to the frontend |
+| `services[].nextSlotUtc` | the first free slot of each service (UTC), from the same plan and the same 30-second cache as the slots, **only while `bookingsOpen`**; left out for a service with no free slot in the horizon |
+
+Never on the page: telephone, e-mail, VAT number, status, ids (a test serializes the new members and looks for them). The `services` (and `medianResponseMinutes`) of the page and the list `GET …/services` keep the **flag**
+`SupplierShowcaseBooking` as before (section 22.2): with it off a published showcase shows its content and no service. When the supplier published an order (`serviceOrder`), `services` and the list show **only the services of the order, in that order**
+(`ShowcaseContentRules.ApplyServiceOrder`); the booking of a service still reads the catalog, so a service the supplier does not show is reachable by its slug (known limit below).
+
+**Paused.** The slots (`GET …/slots`) and the estimate (`POST …/quote`) of a paused showcase answer **422 `supplier_booking_offline`**, as the booking does (its switch is off): no slot is offered and no estimate given. The page and the services list still answer. A
+showcase that is online but whose bookings are closed for another reason (the account is not ready) is **not** paused: its slots and estimates answer as they always did, and `bookingsOpen: false` tells the screen to show it read-only.
+
+### 33.10 The short status and the statistics
+
+| Endpoint | What |
+|---|---|
+| `GET api/supplier/showcase/status` | `{ published, hasDraft, paused, url, requests30d, pending30d, changes[], publishedAt, savedAt, completeness }` for the home and the checklist of the console: `hasDraft` = the draft has changes a publication would publish, `completeness` = the percentage (0 to 100) of the readiness items that are done (33.6), `url` the absolute address |
+| `GET api/supplier/showcase/stats` | `{ days: 30, requests, pending }`: the requests that came from the showcase in the last 30 days (`ServiceRequest.RentalContext = Showcase`, scoped by the supplier org) and how many still wait for the supplier's answer (`Richiesto`). **Visits and conversion are not counted** (decision VT-D15) |
+
+### 33.11 The checklist of the console
+
+`SupplierChecklistDto.ShowcasePublished` (`GET api/supplier/checklist`, section 21.7) reads the real publication: for a supplier that **never used the editor** (no content row) the plain page of SU-13 counts, so it stays what it was (an active supplier
+with an address); once the supplier has a content row it is true only for a showcase that is **published and not paused**, and, as before, never for a supplier that is not active.
+
+### 33.12 Known limits and follow-ups
+
+- **SP-13a-FU1** — a service the supplier does not show (it is not in the published `serviceOrder`) is still bookable by its slug (`POST …/bookings` reads the catalog): hiding is a choice about the page. Making the booking follow the order is a decision of the product owner.
+- **SP-13a-FU2** — `services` of the page need `SupplierShowcaseBooking` on, as before: a published showcase with the flag off shows its content and no service. Showing the read-only price list without the flag is a decision of the product owner.
+- The images of the content are references: the upload with its checks on the content is SP-13b (section 33b); the editor can also point to the supplier's own photos of its profile and services.
+- The long text fields are plain text in one language (Italian): no translation (the design has one).
+
+### 33.13 After a deploy
+
+- [ ] Migration `AddSupplierShowcaseContent` applied (table `SupplierShowcaseContents`, primary key and foreign key to `SupplierProfiles` in cascade).
+- [ ] As a supplier (test environment): `GET api/supplier/showcase/content` is 200 with `state: "Draft"`, `version: 0`, an empty `draft` and no `published`; `PATCH` with `{ "version": 0, "tagline": "Pronti in un'ora" }` is 200 with the new `version`;
+      the same `PATCH` again with `version: 0` is 409; `{ "version": n, "color": "#FFFF00" }` is 422 with `suggestedColor`; `POST discard` gives an empty draft.
+- [ ] Another supplier's `GET` shows its own (empty) content, never the first one's.
+- [ ] `GET api/public/suppliers/{slug}` is exactly what it was: the draft is not on the public page.
+- [ ] Part 2, test environment, `Features__SupplierOnlinePayments=true`: `POST api/supplier/showcase/publish` of a supplier with an active service, a comune and a Stripe account that can take charges and payouts is 200 with `state: "Online"`,
+      `bookings.open: true` and `GET api/supplier/settings` shows `onlineBookingEnabled: true`; `POST …/pause` closes it (`blockedBy: ["paused"]`) and `POST …/resume` opens it; `POST …/publish/undo` right after a first publication gives `Draft` again.
+- [ ] The same publication with an account that is not ready is 200, `bookings.open: false`, `blockedBy: ["payments_account_not_ready"]`; without the active service or the comune it is 422 `showcase_not_publishable` with `fields`.
+- [ ] A Stripe `account.updated` that disables charges on the supplier's account sets `onlineBookingEnabled` back to false; the one that enables them sets it to true again (a published, not paused showcase).
+- [ ] Part 3: `GET api/public/suppliers/{slug}` of a supplier that **published nothing** is unchanged (no `content`, `paused`, `bookingsOpen`, `trust`...); after a publication it carries `content` (the published text, never the draft), `paused: false`,
+      `bookingsOpen` and `trust.verified`; with `SupplierShowcaseBooking` on and the bookings open, `services[].nextSlotUtc`. `POST …/pause` makes `GET …/slots?service=…` and `POST …/quote` answer 422 `supplier_booking_offline`.
+- [ ] `GET api/supplier/showcase/status` and `…/stats` answer for the caller's supplier only; `GET api/supplier/checklist` has `showcasePublished: true` for a supplier that never used the editor and for one that published, `false` while paused.
+
+### 33.14 The AI help of the texts (editor, step «Testi»)
+
+`POST api/supplier/showcase/texts/suggestion` and `GET api/supplier/showcase/texts/suggestion/status` (same controller, same policy `RequireSupplier`, supplier org from the caller's own link). **No new feature flag**: the help appears only while a provider is
+configured (`IShowcaseTextSuggestionService.IsAvailableAsync`: not the stub, a key and an address, see [`ai.md`](ai.md)), so with `Ai__Provider=Stub` (or no key) the editor keeps the static starter and shows none of it. It writes nothing: the editor shows the draft, the supplier chooses the members,
+they go into the draft with an «Annulla» and are marked «Bozza scritta dall'AI» until the supplier changes them; nothing is public before the publication (33.7).
+
+- **What it drafts.** Only the four members the static starter also covers (SP-13d): `tagline`, `intro`, `bio` («Chi siamo»), `prep` («Prima che arriviamo»). The guarantee, the people, the strengths, the certifications and the questions are the supplier's own and are **never** drafted (VT-D20).
+- **What goes to the provider** (`ShowcaseTextPrompt`, versioned, part of the cache key): the category names, the names of the comuni the supplier covers, the names it gave its services, the texts already in its draft (to keep the tone) and what it typed in `answers` (`about`, `years`, `specialties`,
+  `differentiator`: the **only** source of a personal claim). Everything is scrubbed of e-mails, phone numbers and fiscal codes (`PiiScrubber`, FD-21). Never the legal name, a person, a contact, a price, a time, a count of jobs or a rating. The supplier data is read on the server: the request carries only the members to draft, the answers and `regenerate`.
+- **What comes back is checked** (`ShowcaseTextRules`, the rules of the static starter applied to a text nobody reviewed): plain text, the limits of 33.2 (a «chi siamo» over its limit is cut at the last sentence, the others are dropped), no exclamation mark, emoji or markup, and **no claim the supplier did not make**:
+  guarantee, certification, insurance, years or experience, a time («in 24 ore»), a price or discount, a rating, an adjective nobody measured (professionale, affidabile, puntuale…), «verificato»/«ufficiale»/«partner», contact data, and any figure the supplier did not give. A claim of those kinds that the supplier wrote itself
+  (in `answers`, in the name of a service, in its draft) may be repeated. A member that fails is reported in `rejected`; when none survives the answer is 422 `showcase_suggestion_unusable`.
+- **Errors.** 422 `showcase_ai_unavailable` (no provider, or it failed), 422 `showcase_suggestion_not_enough_data` (no category, zone, service or answer to write from), 422 `ai_budget_exhausted` (platform budget, `ai.md`), 429 `rate_limited` (`[AiRateLimit]`: per user and per organization, `ai.md`).
+- **Cost.** Behind the platform budget; an answer that gave something usable is kept per supplier for the next identical request (`IAiResponseCache`), `regenerate: true` skips it.
+- [ ] After a deploy, test environment: `GET …/texts/suggestion/status` is `{ "available": true }` with a provider configured; `POST …/texts/suggestion` with `{}` for a supplier with a category or a service is 200 with `basis` listing what was used and, in the texts, none of the claims above;
+      with `Ai__Provider=Stub` the status is `false` and the POST is 422 `showcase_ai_unavailable`.
+
+## 33b. The images of the showcase: logo, cover and photos of the jobs — SP-13b
+
+Redesign wave task SP-13b (branch `feature/rd-supplier-showcase-media`; the upload zone of the editor is its twin frontend PR), **no new feature flag** (like the content, section 33: a file changes nothing a customer sees until the
+supplier puts it in the content and publishes), migration `AddSupplierShowcaseMedia` (additive: one new table), one new recurring job. The editor uploads an image here and puts the address it gets back into the content (`logo.url`,
+`cover.url`, `gallery[].photoUrl` or `beforeUrl`).
+
+### 33b.1 The endpoints
+
+| Endpoint | What |
+|---|---|
+| `POST api/supplier/showcase/media` | multipart: `kind` (`logo`, `cover`, `work` = the photo of a job, `before` = its "before" photo) and `file`. Answers `{ id, kind, url, contentType, bytes, width, height, createdAt }`; `url` goes into the content as it is |
+| `DELETE api/supplier/showcase/media/{id}` | 204. 404 `showcase_media_not_found` for an id that is not the caller's own (another supplier's file does not exist here); 409 `showcase_media_in_use` while the draft, the published version or the one before it still points to it |
+
+Both are for the caller's own linked supplier org (never a value of the request), policy `RequireSupplier`, and rate limited **per signed-in person** (`SupplierShowcaseMedia`, 40 per 10 minutes, `RateLimiting__SupplierShowcaseMedia__*`).
+
+| Status | `code` | When |
+|---|---|---|
+| 413 | `showcase_media_too_large` | a logo over **200 KB** or a photo over **10 MB** (`maxBytes` in the answer); a request over 11 MB is refused by the framework with the same 413 |
+| 415 | `showcase_media_unsupported_type` | the **content** is not a PNG, a JPEG or a WebP: an SVG, a PDF, a HEIC, a text named `.jpg`. The name and the declared `Content-Type` are never looked at |
+| 422 | `showcase_media_none` / `_kind_invalid` | no file / a missing or unknown `kind` |
+| 422 | `showcase_media_invalid_image` | the file starts like an accepted image but is not a whole, still one: damaged, cut short, or an animation (an animated WebP) |
+| 422 | `showcase_media_dimensions` | more than 12,000 pixels on a side or 60 million in all (`maxSide`): a small file can hold a picture a browser cannot draw |
+| 422 | `showcase_media_limit_reached` | the supplier already stores 60 files (`limit`), the unused ones included |
+
+### 33b.2 What is checked and what is done to the file
+
+In this order, and **nothing is stored for a request that fails any step**: the kind, the size by kind, the type read from the first bytes, the rewriting, the size in pixels, the limit of files.
+
+**The file is written again without its metadata** (`ShowcaseImageSanitizer`, plain managed code, the pixels are not decoded): the EXIF block with the **GPS position**, the camera and the time, XMP, IPTC and Photoshop blocks, comments, text chunks, the thumbnails (the one inside the EXIF block
+and the one of the JFIF header), the "extra pictures" of some phones and **every byte after the end of the image** (a file can be a valid picture followed by a page or a script) do not get through. What stays is what a browser needs: the tables and the frame, the color profile (ICC), the chunks that
+say how colors are read (PNG: gamma, sRGB, transparency, palette), the alpha flag of a WebP. **The orientation of a JPEG** is the one piece of metadata kept, as an EXIF block of one tag, so a photo taken on its side is drawn upright. A file whose structure is not that of a whole image is a 422;
+a JPEG cut off before its end marker is closed and accepted. An animated PNG becomes its still image; an animated WebP is refused.
+
+Then the object is stored in the **public** bucket as `suppliers/{orgId}/showcase/{kind}-{random}.{ext}` (the extension follows the type found, a random name nobody can guess), and a row of `SupplierShowcaseMedia` is added under the supplier's content lock (the one of 33.1), with the limit checked again.
+A failed or refused upload removes its object again.
+
+### 33b.3 What the server does not do: recompress and resize
+
+The brief asks for photos "recompressed and resized". **No imaging library is part of the application** (the same choice as the PDF library, whose licence and absence of native code are written in `lease-contract-templates.md`): ImageSharp has a licence with a revenue threshold and SkiaSharp
+brings native binaries. So the server does not decode and encode the pixels; it keeps what it received, minus the metadata, up to 10 MB. **The editor makes a photo smaller before it sends it** (2,400 pixels on the longest side, orientation applied, as it already does for the pages of a document). Follow-up SP-13b-FU1.
+
+### 33b.4 The content points only to images that were uploaded
+
+`SupplierShowcaseContentService` accepts an address in the folder `suppliers/{orgId}/showcase/` only when the supplier has a row for that file (it reads the keys of its own rows when a save mentions the folder). A name somebody made up, another supplier's file, or a file the cleanup removed since is a
+422 `showcase_content_invalid` on that field, never a broken picture on a public page. The photos of the profile and of the services (`suppliers/{orgId}/photos/`) are accepted as before.
+
+### 33b.5 The nightly cleanup
+
+Job `supplier-showcase-media-cleanup` (`SupplierShowcaseMediaCleanupJob`, 04:20 UTC, `[DisableConcurrentExecution]`, a PostgreSQL session lock per run, **always registered**): for each supplier that has a file older than **24 hours**, under the supplier's content lock, it removes the files that **nothing points to**: not the draft, not the
+published version, **not the version published before it** (the undo of 5 minutes). The question "is this file in use" is a search of the key in the text of the three documents, so a member that a later format adds to the content is covered too. A file that is used is kept whatever its age; one that is not is kept for 24 hours
+(the time to save it into the draft, to undo a removal, to come back from a night's break). Order: the object first, then the row; a storage that fails leaves the row and the next run tries again. At most 500 files a run. Idempotent: a second run finds nothing. It logs only a count.
+
+### 33b.6 Known limits and follow-ups
+
+- **SP-13b-FU1** — recompression and resizing on the server (an imaging library): a decision of the product owner on the licence or the native files. Until then the editor makes the photos smaller, and a client that sends a 10 MB photo gets a 10 MB photo on its public page.
+- **SP-13b-FU2** — the photos of the **profile and of the services** (`UploadSupplierPhotoAsync`) are still stored as they arrive, with their EXIF. The same rewriting would apply.
+- **SP-13b-FU3** — the repair of duplicate supplier profiles (`fix-orphaned`) moves the content but not the rows of `SupplierShowcaseMedia`: they go with the duplicate profile (cascade) and the files stay in the bucket, no longer tracked.
+- **SP-13b-FU4** — the orientation is kept for a JPEG only; a PNG or a WebP with an EXIF orientation is stored without it (a camera does not write those). HEIC and AVIF are not accepted: the editor converts a photo to JPEG in the browser when it can.
+- **SP-13b-FU5** — no `GET api/supplier/showcase/media`: the editor knows the files it uploaded in the session; a list would let the picker offer earlier uploads.
+
+### 33b.7 After a deploy
+
+- [ ] Migration `AddSupplierShowcaseMedia` applied (table `SupplierShowcaseMedia`, foreign key to `SupplierProfiles` in cascade, unique index on `StorageKey`).
+- [ ] Hangfire shows `supplier-showcase-media-cleanup` (daily, 04:20 UTC); 38 recurring jobs with every flag on (hangfire.md).
+- [ ] As a supplier (test environment): `POST api/supplier/showcase/media` with `kind=cover` and a JPEG taken with a phone is 200 with a `url` under `suppliers/{orgId}/showcase/`; the file at that address has **no EXIF GPS** (`exiftool` shows no position) and is drawn upright; the same upload as an SVG named `.png` is 415;
+      a logo of 250 KB is 413; an unknown `kind` is 422.
+- [ ] `PATCH api/supplier/showcase/content` with `{ "version": n, "cover": { "url": "<that url>" } }` is 200; with a made-up name in the same folder it is 422 `showcase_content_invalid` with `cover.url`.
+- [ ] `DELETE api/supplier/showcase/media/{id}` of that file is 409 while the draft points to it, 204 once the cover was changed; another supplier's id is 404.
+
+## 34. The host's interventions: list, counters, the action to do, the house alone — SR-08a
+
+The page "Interventi" of Affitti brevi reads one list, with the counters of its chips and, on every request, what the host can do about it. The server
+decides; the page has no state machine of its own. Short-rent only (`api/service-requests`, `property.read` in short-rent, filtered by the caller's org and
+by its scope «Solo alcuni»); a long-rent request, or one of a supplier's showcase, is never part of it. No flag, no migration.
+
+### 34.1 Endpoints at a glance
+
+| Call | What it answers |
+|---|---|
+| `GET api/service-requests` | `{ items, total, page, pageSize }`, newest first unless `sort` says otherwise. The host's filters, all optional: `view`, `status`, `propertyId`, `bookingId`, `supplierOrgId`, `category`, `from`, `to`, `q`, `sort`, `page`, `pageSize` (1-100). With `view=supplier` it is still the supplier's inbox (unchanged). |
+| `GET api/service-requests/counts` | `{ all, pending, active, toPay, done, needsAction }` for the requests that pass the same filters but `view`, `sort` and the page. One aggregate statement. |
+| `GET api/service-requests/{id}`, the answers of `POST …/cancel`, `…/remind`, `…/proposal/accept`, `…/proposal/reject`, `…/final-amount/confirm`, `…/mark-paid` and of `POST api/service-requests` | the same request, with the extras of 33.3. |
+
+### 34.2 The chips, the filters, the order
+
+- `view` (any case): `all` (default), `pending` = `Richiesto`; `active` = `PresoInCarico`, `InCorso`; `topay` = `Completato`; `done` = `Pagato`, `Rifiutato`, `Annullato` (the statuses nothing leaves, `ServiceRequestStateMachine.IsFinal`); `needsaction` = what asks something of the host, the very definition of the Home's «Da fare» (`HostServiceRequestTodoRules.NeedTheHost`). The first four partition the requests, so their counters add up to `all`; `needsAction` overlaps them.
+- `from`/`to` (`yyyy-MM-dd`, Europe/Rome days, both included): the day of the work, that is the scheduled time or, for a request that has none, the day it was made.
+- `q` (2 to 60 characters, no control character): the name of the property, of the supplier (display name and name), of the service, or the category (its code or its label in Italian and in English). Never the notes, never the guest.
+- `category` is a code of `GET api/service-categories`. `sort` is `scheduled`, `created` or `status`, then `:asc` or `:desc`: `scheduled` the next work first (no time last, both ways), `created` the newest first, `status` what waits for the host first and then the status in the order of the work (refused, in progress, taken, new, finished, paid, cancelled). The id closes every order, so a page boundary never repeats or skips a request.
+- 400 with `service_request_list_invalid_view`, `…_invalid_sort`, `…_invalid_range` (`from` after `to`), `…_invalid_text`, `…_invalid_category`; `status` keeps ignoring a value it does not know (as before). `bookingId`/`propertyId` of another org are 404, one the caller may not read 403 (unchanged).
+- Cost: one statement for the page (with the property and the supplier), one for the total only when the page is full or past the end, one for the stays and one for the contacts of the supplier, whatever the size of the page.
+
+### 34.3 What a request says to its host (null for the supplier, and for the long-rent twin)
+
+- `propertyCity`; `stay` `{ bookingId, guestName, checkIn, checkOut }` or null when the request is for the house alone. **The guest is the host's**: the supplier's own mapping (`MapDtoForSupplier`, `SupplierServiceRequestView`) has no field for it, and a test reads the supplier's answers for it (decision D9).
+- `supplierContact` `{ phone, email }` of the supplier's profile **from the moment it took the request** (`TakenAt` set), never before.
+- `hostAction` `{ kind, remindAvailableAt? }` and `availableActions[]`, worked out in `HostServiceRequestActions` from the status, a proposed time, the amount to confirm, the way it is paid and the last reminder, using the Home's definition of what asks something of the host: `Richiesto` with a proposed time → `acceptProposal` (with `rejectProposal`); `Richiesto` without one → `remind`, or `none` with `remindAvailableAt` when the last reminder is less than `RemindIntervalHours` old; `Completato` → `confirmFinalAmount` while the amount waits for the host, then `pay` (`PaymentMode = Online`) or `markPaid` (`Manual`); `Rifiutato`/`Annullato` → `requestAgain`; anything else `none`. `availableActions` lists every action the endpoints would accept now, the `kind` first, plus `cancel` (up to the work in progress) and `requestAgain` after a payment. **An open set**: a client shows nothing for a word it does not know. The quote of SP-04b is another offer to answer (`respondToQuote`): it gets its word when that task lands.
+
+### 34.4 The house alone (SR-D3)
+
+`bookingId` is optional on `POST api/service-requests`: the request is for the property, with no stay. A `bookingId` that is not a stay of the property in the host's org is still 422 `service_request_booking_mismatch`; the long-rent rule (`service_request_booking_not_allowed`) is unchanged, and `service_request_booking_required` no longer exists. The time still defaults as in SP-04 (10:00 Europe/Rome of the check-out day, for the duration of the host, of the service or 120 minutes); **without a stay** it is today's 10:00 and, once that has gone by, tomorrow's. The answer of the `POST` says `scheduleDefaulted: true` whenever the host named no time. The notifications, the Home, the calendar and the supplier's reads already took a missing `bookingId` into account (older requests could not be traced to a stay).
+
+### 34.5 Decisions applied (defaults, nothing asked)
+
+SR-D3 (the stay is optional), SR-D20 (`pay` and `markPaid` follow `paymentMode`; online payments stay behind `SupplierOnlinePayments`), SR-D21 (the quote enters with SP-04b), SR-D35 (no «pay all»). Counters are `camelCase` like the other counters (`toPay`, while the chip is `topay`). The supplier's contact is the phone and the e-mail of its profile, given at the take. No rate limit on the list (a signed-in read of the caller's own org).
+
+## 34. The request on measure from the showcase — SP-10b (part a)
+
+Redesign wave task SP-10b, first of its two parts (branches `feature/rd-supplier-inquiry`, `feature/rd-supplier-inquiry-chat` and `feature/rd-supplier-inquiry-customer`, backend only), **no new feature flag** (the override of 17 October allows only the eight that exist: the endpoints ride on
+`SupplierShowcaseBooking`, which keeps them 404 wherever the booking is off), migration `AddShowcaseInquiries` (additive: one column, two tables, three CHECKs). Where the booking (section 23) needs a slot, the **request on measure**
+is for what the price list does not say: a service that is not in it, or is but with variations. The customer describes it in its own words, checks its e-mail and, only then, a request exists for the supplier, who answers inside CasaZen: the quote and the
+particular requests stay inside the app (interview of 9 October, Q3 and Q7), with no public contact of the supplier and no generic "Scrivici". This part is the **opening**: the inquiry, the check of the address, the request with its first message, and the
+mails. The conversation follows: the supplier's side (reading and writing the thread, refusing; section 34.7) and the customer's (the thread in its own area, writing, closing, the retention; section 34.8); the offer and its acceptance are SP-10b-b.
+
+### 34.1 The request
+
+`ServiceRequest.Kind` (new column: `Standard` = 0 for every request there was, `Custom` = 1; CHECK `CK_ServiceRequests_Kind`: only the Showcase context can have a `Custom` one). **It is not a status**: the lifecycle is the one of every
+request (`Richiesto`, `PresoInCarico` ... `Rifiutato`, `Annullato`), so the mobile app, the inbox, the counters and the cancellations keep working with no new value. A request on measure is born `Richiesto`, with:
+
+- **no time** (`ScheduledStartUtc` and `ScheduledEndUtc` null) and no price: both come with the offer (SP-10b-b);
+- the comune the customer gave (`LocationCity`, and `LocationComuneIstat` when it picked one from the official list) and nothing else of the place: the street comes later;
+- the service it is about when the customer named one (`ServiceListingId`, `ServiceNameSnapshot`, its category), else the first category of the supplier;
+- `ResponseDueAt` = the moment the address is checked + `Suppliers__Showcase__InquiryResponseMinutes` (60; 5 to 1440, out of range: **startup**). If the supplier does not answer by then the always-on job `service-request-expiry` cancels the
+  request with the reason `NoResponse`, as it does with a booking nobody answered; the first message of the supplier stops the clock (next part). The reminders to the supplier, the points a silence costs and
+  the other suppliers offered to the customer are section 34.11 (SP-10c);
+- `Notes` empty: what the customer wrote is the first **message** (34.4).
+
+### 34.2 Endpoints
+
+Both are anonymous, behind `SupplierShowcaseBooking` (404 like a route that does not exist while it is off), never indexable (`X-Robots-Tag: noindex`) and never cached (`Cache-Control: no-store`).
+
+| Endpoint | What |
+|---|---|
+| `POST api/public/suppliers/{slug}/inquiries` | Body: `clientRequestId`, `service?` (slug of a published service, a service on quote too), `comuneIstat?`, `city`, `message` (10 to 1000 characters), `fullName`, `email`, `phone`, `locale`, `privacyAccepted`, `privacyNoticeVersion` and the trap `website`. 201 `{ id, expiresAt }` and nothing else; the same `clientRequestId` is the same inquiry (no second e-mail). 404 for a supplier that is not active and `supplier_service_not_found`; 422 `supplier_booking_invalid` (with `fields`), `supplier_booking_consent_required` / `_outdated`, `supplier_booking_outside_zone`; 429 `rate_limited` |
+| `POST api/public/suppliers/{slug}/inquiries/{id}/confirm-email` | Body: `{ token }`. 200 `{ publicCode, status, serviceName?, respondBy?, alreadyConfirmed }`; a second click answers the same with `alreadyConfirmed` and does nothing again. 404 `supplier_booking_link_invalid` (unknown inquiry, another supplier's, wrong token: one answer), 409 `supplier_booking_link_expired`, 422 `supplier_booking_supplier_unavailable` |
+
+The codes are those of the booking (section 23): the same fields, the same consent, the same zone (the comune has to be one the supplier covers), the same 429. The e-mail carries the link `/fornitori/{slug}/conferma?inquiry={id}#token={token}`: the page reads
+`inquiry` from the query and the **token from the fragment**, which a browser never sends to a server, so the token is in no access log, and posts both to `confirm-email`. The booking's link keeps `?hold=` in the query and, since SP-15c-a, carries its token in the fragment too (`#token=`).
+
+A showcase the supplier **paused** (SP-13a, section 33.7) takes no new request on measure: `POST …/inquiries` answers 422 `supplier_booking_offline`, the answer its slots and its estimate give, and nothing is stored or sent. The check of an address written before the pause is not gated (that customer is answered all the same).
+
+### 34.3 Nothing before the check, almost nothing after
+
+Decision D34 holds: until the address is checked the supplier receives **nothing** (no request, no e-mail, no push) and the customer has only a row that lapses (`ShowcaseInquiries`, 30 minutes by default: `Suppliers__Showcase__EmailVerificationMinutes`). The row keeps what the
+customer typed as an **encrypted** JSON (`PayloadEncrypted`, the purpose of the customers of the suppliers); when the address is checked it becomes the customer (`ServiceCustomers`, the same one as for a booking), the request and its first message, the payload is
+erased and the token hash stays so that a second click answers the same. The job `service-request-expiry` deletes the rows that lapsed (it counts them with the holds in `holdsDeleted`).
+
+When the address is checked the customer gets a receipt (in its language: the code `XXXXX-XXXXX`, the deadline of the supplier, the link to the request) and the supplier an e-mail and a push in Italian with the comune, the service when there is one, "Nome C." (decision D9) and the
+deadline. **Never a word of the customer's message, its full name, e-mail or phone**, nor its address: the words are read in the request, by the two parties (a test looks for them in the mail and the push). The full name and the contacts come with the take, as for every
+showcase request.
+
+### 34.4 The messages
+
+Table `ServiceRequestMessages` (the request, `OrgId` = the supplier org, `Author` `Customer` / `Supplier` / `System`, `BodyEncrypted`, `CreatedAt`, `ReadAt`): the thread of a request on measure, in order. The first message is written when the address is checked; the supplier reads and writes the others from the console (34.7) and the customer in its own area (34.8). The body is free text a person wrote, **encrypted at rest** with its own purpose (`Casazen.ServiceRequestMessage`), 10 to 1000 characters for the first one, at most 200 messages per request, plain text only: no attachments, and in v1 no masking of numbers or addresses
+(forbidden by the conditions and reportable: decisions VT-D11 and VT-D12).
+
+### 34.5 Limits against abuse
+
+Per IP: the policy `PublicSupplierBookingCreate` of the booking (5 per 10 minutes, one budget for both). Per address and supplier: the booking's `SupplierBookingCreatePerEmail` (3 per hour, one budget for both too). And at most **three requests of one address wait at the same
+time** for one supplier (the inquiries whose address is not checked yet plus the requests on measure still `Richiesto`): the fourth is the same 429, with the same wait, so the three look alike and none tells whether an address is known. The trap `website` is answered like a
+request and nothing is done. The body is at most 16 KB (the check, 1 KB).
+
+### 34.6 Tenancy
+
+`ShowcaseInquiries` and `ServiceRequestMessages` are keyed by the supplier org and are **not** `ITenantOwned` (the customer is anonymous and a supplier-only account has no `User.OrgId`): they are in the allow-list of `TenantQueryFilterArchitectureTests` with the reason, every statement
+carries the explicit `OrgId` predicate, and `ShowcaseInquiryTenancyTests` allows only `ShowcaseInquiryService`, the expiry job and the repair to use them. The merge of duplicate supplier profiles (`fix-orphaned`) drops the duplicate's inquiries that wait and moves the
+messages of the requests that moved.
+
+### 34.7 The conversation, the supplier's side (part b)
+
+The supplier's console reads and writes the thread of a request on measure. Both endpoints are for the caller's own supplier (policy `Supplier`, the org comes from its supplier link), only for requests of the kind `Custom`: any other id — a host's request, a
+booking, one of another supplier, one that does not exist — is the same 404 `not_found`. Not behind a flag (only the showcase flag can make such a request exist).
+
+| Endpoint | What |
+|---|---|
+| `GET api/supplier/requests/{id}/thread` | `{ requestId, status, canWrite, respondBy?, messages[] }`; each message is `{ id, author, body, createdAt, readAt? }` in the order written (at most 200). Reading marks the customer's messages as read by the supplier: the answer shows each one as it was **before** this reading (`readAt: null` marks what is new), the next reading shows them read. A supplier that is no longer active can still read (`canWrite: false`) |
+| `POST api/supplier/requests/{id}/messages` | Body: `{ body }`, 1 to 1000 characters of plain text. 201 with the message. 422 `service_request_message_invalid` (empty, too long, a control character), `service_request_thread_full` (200 messages), `supplier_not_active` (suspended) or the code of the Terms to accept again; 409 `service_request_thread_closed` (refused, cancelled or done) and `service_request_state_changed` (the request changed under the call) |
+
+- **The first message of the supplier stops the clock** of the hour: `ResponseDueAt` goes, so the always-on job does not close a conversation that is going on. A request nobody answered is still closed by the job (reason `NoResponse`). The conversation has no other
+  deadline in v1: a thread nobody writes in stays open until a party closes it or the retention anonymizes the customer (follow-up SP-10b-FU1: close an idle conversation after some days).
+- **The customer is told, never with the words**: an e-mail in its language, "the supplier replied", with the link to the request page (`/fornitori/{slug}/richiesta?code=...`). A few lines in a row are **one** e-mail: after a message the same author's next ones, for ten
+  minutes, tell nobody (`ServiceRequestThreadRules.NotificationQuietPeriod`). No push (the customer has no app; the mobile app does not know the new push types).
+- **A request on measure is not taken like a booking**: `POST api/service-requests/{id}/take`, `…/propose-time` and `POST api/supplier/inbox/accept` answer 422 `supplier_inquiry_needs_offer` (the work, the price and the time are agreed in the conversation and with an offer, SP-10b-b).
+  Refusing it is the usual `POST api/service-requests/{id}/reject`.
+- **The end of the request** is told to the customer with its own mails, which do not speak of a day and a time the request does not have: refused (`supplier-inquiry-declined`, with the reason the supplier gave) and closed because nobody answered in time
+  (`supplier-inquiry-expired`). Both lead to the supplier's page.
+- The supplier console's request (`GET api/supplier/inbox`, `…/inbox/{id}`) has a new member `kind` (`Standard` / `Custom`), so the console knows which requests have a thread.
+
+### 34.8 The conversation, the customer's side (part c)
+
+The customer reads and writes in its own area (section 24: the code of the request and the e-mail address, no account). Nothing changes for any other booking: the answer of `POST api/public/supplier-bookings/lookup` (and of every action of that area) has three members **only for a request on
+measure**, and they are not in the JSON of a booking at all.
+
+| Member / endpoint | What |
+|---|---|
+| `kind` | `Custom`. For such a request `startUtc`, `endUtc` and the cancellation terms are the day it was made (it has no time): to be ignored; closing it is always free (`cancellationTerms.isFree`) |
+| `thread` | `{ canWrite, messages[] }`, each `{ id, author, body, createdAt, readAt? }` with `author` `customer` / `supplier` / `system`, in the order written. Reading marks the supplier's messages as read **by the customer**; the answer shows each as it was before the reading (`readAt: null` = new), the next reading shows them read. `canWrite`: the request is open and the supplier is active |
+| `negotiation` | derived, never stored: `AwaitingSupplier` (new, the supplier has not written), `InConversation` (new, it wrote), `Agreed`, `Declined`, `Closed` (cancelled, or closed because nobody answered). An open set: the offer (SP-10b-b) adds its own |
+| `POST api/public/supplier-bookings/messages` | Body: `{ slug, code, email, body }` (the code and the address are in the body, as in the rest of the area), `body` 1 to 1000 characters of plain text. 200 with the request as it is now, thread included. 404 `supplier_booking_not_found` (the usual single answer, a booking that is not a request on measure included); 422 `service_request_message_invalid`, `service_request_thread_full`, `supplier_booking_supplier_unavailable` (the supplier is not active); 409 `service_request_thread_closed`, `service_request_state_changed`; 429 (per IP and per address, the area's) |
+
+- **The supplier is told, never with the words**: an e-mail in Italian (`supplier-inquiry-message`) with the comune and "Nome C." (decision D9), at most one for the messages of ten minutes — the description counts as the first, since the supplier was told of it when the address was
+  checked. No push (the mobile app does not know the new types).
+- **The customer closes the request** with the usual `POST api/public/supplier-bookings/cancel` (a new request any time; free): `Annullato` by the customer. The supplier is told with `supplier-inquiry-closed-by-customer` (comune, "Nome C.", the reason the customer wrote; no day and no time) and the push of
+  the cancellation; the customer gets **no receipt** (it closed the request itself, and the receipt of a booking speaks of a day and a time). The thread is read only from then on, for both.
+- **Retention.** The nightly job `gdpr-data-retention` (`Gdpr:Retention:SupplierCustomers`, off until configured) **deletes the messages** of a request on measure that is over (final status) once the period ended, counted from its cancellation (else its last change). The request stays for the
+  supplier's accounts (comune, status, dates); a request still open keeps its thread; a second run finds nothing. The customer's name, e-mail and phone are anonymized by the same job, as before. The statements are across suppliers on purpose and read ids only, never the text
+  (`ShowcaseInquiryTenancyTests`).
+
+### 34.9 After a deploy
+
+- [ ] Migration `AddShowcaseInquiries` applied (`ServiceRequests.Kind` = 0 on every existing row; tables `ShowcaseInquiries` and `ServiceRequestMessages`; CHECKs `CK_ServiceRequests_Kind`, `CK_ShowcaseInquiries_Expiry`, `CK_ServiceRequestMessages_Author`).
+- [ ] With `Features__SupplierShowcaseBooking` **off** (production): both endpoints answer 404 `not_found`, as before the task.
+- [ ] Test environment, flag on: an inquiry for an active supplier is 201 and the supplier gets nothing; the link of the e-mail ends in `#token=...`; `confirm-email` is 200 and now the supplier's inbox has a request `Richiesto` with "Nome C.", the comune and no time, and its e-mail does
+      not contain the words of the customer.
+- [ ] As a supplier of the test environment: `GET api/supplier/requests/{id}/thread` of that request shows the customer's words and `kind: "Custom"` is in the inbox; `POST …/messages` is 201, the customer's e-mail has a link and none of the words, and `respondBy`
+      goes; the same calls as another supplier are 404; `POST api/service-requests/{id}/take` is 422 `supplier_inquiry_needs_offer`; refusing it tells the customer with the reason and closes the thread (409 on a new message).
+- [ ] As the customer (code and address of that request): `POST api/public/supplier-bookings/lookup` has `kind: "Custom"`, `negotiation` and the `thread` with the supplier's message as new, then as read; `POST …/messages` is 200 with the thread, the supplier's e-mail has the comune, "Nome C." and none
+      of the words; a booking (not on measure) answers the same lookup as before, with none of the three members; `POST …/cancel` closes the request for free, the supplier is told without a day, the customer gets no receipt, and a new message from either side is 409 `service_request_thread_closed`.
+
+### 34.10 The offer and its acceptance — SP-10b-b
+
+Redesign wave task SP-10b-b (branch `feature/rd-supplier-inquiry-offer`, backend only): **no new flag, no migration**. The offer is the **quote of SP-04b** (the section "The quote with the customer's approval", just below) under the vocabulary of the conversation —
+decision SP-D30: one engine, never a second mechanism. Same columns on `ServiceRequests` (`Quote*`), same one-offer-at-a-time rule (a new offer replaces the old one), same version (`QuoteSentAt`, the instant the supplier sent it), same deadline of the customer
+(`Suppliers__Showcase__ProposalResponseMinutes`, 24 hours: the *validity* of the offer), same trace of events, same calendar lock. What a request on measure adds: an offer **always brings its time**, its lines say **how many of what**, the customer answers it with its own
+endpoints, and no clock runs on the supplier once it has answered.
+
+**For the frontends (SP-08e: the supplier; SP-12c: the customer)** the whole contract is in the two tables below. Times are UTC instants; the customer's answers carry the Rome offset next to them (`startLocal`, `endLocal`).
+
+*The supplier* (policy `Supplier`, the org from its supplier link; only requests of the kind `Custom`: any other id is the same 404 `service_request_not_found`):
+
+| Endpoint | What |
+|---|---|
+| `POST api/supplier/requests/{id}/offer` | Body: `{ lines: [{ label, quantity, unitAmountCents }], startUtc, endUtc?, note? }`. 1 to 20 lines, `label` at most 120 characters, `quantity` 1 to 999, `unitAmountCents` 1 to 10,000,000; the amount of a line is `quantity × unitAmountCents` and the total is what they add up to (at most 100,000 euro): computed by the server, never typed. `startUtc` is required (whole minutes); `endUtc` too unless the request names a service with a duration (a request on measure usually names none: **send `endUtc`**). `note` at most 500. 200 `{ requestId, status: "Richiesto", negotiation: "OfferSent", offer }`. The customer is e-mailed and has 24 hours. A new offer replaces the one that waits. 400 `validation_error`; 404; 422 `service_request_offer_invalid` (lines/quantities/prices/total), `service_request_cannot_offer` (the request is not new), `service_request_time_invalid` (no end, or an end not after the start), `service_request_supplier_not_active` or the code of the Terms to accept again; 409 `supplier_slot_unavailable` / `supplier_commitment_conflict` (a time the supplier cannot do: outside its hours, taken, closed), `service_request_state_changed` |
+| `POST api/supplier/requests/{id}/offer/withdraw` | The supplier takes the offer back: the request stays new, the conversation goes on, no clock runs. 200 `{ requestId, status, negotiation: "InConversation", offer: null }`; 422 `service_request_no_offer` (none waits); 409 `service_request_state_changed` |
+| `GET api/supplier/requests/{id}/thread` | Now also `negotiation` (see below), `offer` (the one that waits, or `null`) and `canSendOffer` (the request is new and the supplier is active). `respondBy` is the supplier's own deadline and is `null` while an offer waits (the clock is the customer's) |
+
+*The offer* (`offer`, in the supplier's thread and in the customer's lookup): `{ sentAt, lines: [{ label, quantity, unitAmountCents, amountCents }], totalCents, currency: "EUR", note?, startUtc, endUtc, startLocal, endLocal, validUntil, paymentRequired? }`. `sentAt` is the **version**: the
+customer repeats it when it answers. `paymentRequired` is in the customer's reading only: accepting is paid inside CasaZen (`SupplierOnlinePayments` on, the supplier able to receive payments, the total at least `SupplierPayments:MinAmountCents`).
+
+*The customer* (the area of section 24: `slug`, `code` and `email` in the body, behind `SupplierShowcaseBooking`, rate limited per IP and per address, one 404 for everything that does not identify a booking — a booking that is not a request on measure included):
+
+| Member / endpoint | What |
+|---|---|
+| `offer` in the answer of `lookup` and of every action | The offer that waits (above); left out when there is none and for every other booking. A request on measure never has a `quote`; a booking from a slot never has an `offer` |
+| `negotiation` | Derived, never stored (an open set: treat an unknown state as `InConversation`): `AwaitingSupplier`, `InConversation`, **`OfferSent`** (an offer waits), **`AwaitingPayment`** (the customer accepted an offer that is paid inside CasaZen and its card is not through yet), **`OfferDeclined`** (the customer turned the last one down and the supplier has not sent another), `Agreed` (taken), `Declined` (the supplier refused), **`Expired`** (the customer did not answer the offer in time and the request closed), `Closed` |
+| `actions.canRespondToOffer` | An offer waits, its `validUntil` has not passed and the supplier is active. (`canRespondToQuote` is `false` for a request on measure; `canReschedule` too: the time is the offer's) |
+| `POST api/public/supplier-bookings/offer/accept` | Body: `{ slug, code, email, offerSentAt }` (`offerSentAt` = `offer.sentAt` as read). **Not paid inside CasaZen** (`offer.paymentRequired: false`): the request is **taken on the supplier's behalf** (`Richiesto → PresoInCarico`) at the time and the total of the offer; the answer is the booking as it is now (`status: "PresoInCarico"`, `negotiation: "Agreed"`, `startUtc`/`endUtc` = the offer's, `price.quotedAmountCents` = the total, `price.lines` with their `quantity` and `unitAmountCents`). **Paid inside CasaZen** (`offer.paymentRequired: true`): the request is **not** taken by this call; the answer is the booking still `Richiesto` with `negotiation: "AwaitingPayment"`, `payment.status: "awaiting_card"` and **`paymentSession`** (`{ clientSecret, publishableKey, amountCents, currency }`) — see "The card" below. Asked again before the card is blocked it returns the same session; asked again once the card is blocked it takes the request and answers `PresoInCarico`. 404 `supplier_booking_not_found`; 422 `supplier_booking_no_offer` (none waits: never sent, withdrawn, **already accepted**, or the request closed), `supplier_booking_offer_expired`, `supplier_booking_supplier_unavailable`; 409 `service_request_offer_changed` (the supplier replaced or withdrew it: read it again), `supplier_slot_unavailable` / `supplier_commitment_conflict` (**the time is gone: nothing changed and the offer stands** — the customer can turn it down, write to the supplier or cancel), `service_request_state_changed`; 429 |
+| `POST api/public/supplier-bookings/offer/decline` | Same body. The offer goes, the request stays `Richiesto`, `negotiation` is `OfferDeclined`, **no clock runs on the supplier** (it answered; the conversation is not closed behind the customer's back), the supplier is told. Same errors, but for the time |
+
+The old quote endpoints do not answer an offer: `POST api/public/supplier-bookings/quote/accept|reject` of a request on measure is 422 `supplier_booking_no_quote`, and `POST api/service-requests/{id}/quote` (the supplier's) on one is 422 `supplier_inquiry_needs_offer`, like `take` and `propose-time`.
+
+**Money and the time (the rules the tests prove).**
+- The price agreed is the **total of the offer** (`QuotedAmountCents`), the lines are the price lines of the work (kind `quote`, with `quantity` and `unitAmountCents`), and the time of the request becomes the offer's. A supplier cannot change either afterwards: the completion
+  keeps the lines the customer accepted, and a different final amount is the usual decision-D7 case.
+- The offer **holds no slot**. The time is judged by the slot planner when the offer is sent (409 if it is not a free slot) and **again, under the supplier's calendar lock, when the customer accepts**: of the offer and another job on the same hour the first to be saved wins, the loser
+  gets 409 `supplier_slot_unavailable` and **nothing changes**. Two acceptances of the same offer: the first takes the request, the second finds no offer (422 `supplier_booking_no_offer`) and nothing is told twice.
+- *Payment.* An offer that is not paid inside CasaZen is taken with `PaymentMode = Manual` (the supplier records what it received outside CasaZen, section 26), exactly as for a quote. One that is paid inside CasaZen follows "The card" below: **the amount charged is the total of
+  the offer**, once, and only when the request is taken.
+- *The deadline.* The customer has `Suppliers__Showcase__ProposalResponseMinutes` (24 hours) from the instant the supplier sent the offer (`validUntil`). After it the always-on job `service-request-expiry` cancels the request (`Annullato`, by CasaZen, reason
+  `QuoteNotAnswered`, `negotiation: "Expired"`) and tells **the truth to both**: the customer that it did not answer the offer (`supplier-inquiry-offer-expired`), the supplier that the customer did not (`supplier-booking-quote-lapsed` + push `service-request-quote-expired`) — never that the
+  supplier was silent (decision D24). The supplier loses no point of its reliability (a showcase request is outside the ranking).
+- An offer turned down or taken back leaves `ResponseDueAt` empty: the first reply of the supplier (its offer is one) stopped the hour of section 34.1 for good.
+
+**The card (an offer paid inside CasaZen, SP-10b-b part 2; the flag `SupplierOnlinePayments` stays off in production and is not touched).** The same held cycle as the booking of section 38.8, started by the customer's acceptance instead of the supplier's: the supplier already agreed by sending the offer.
+1. *Accept.* `offer/accept` judges the offer (version, deadline, supplier) and **the time** (the planner and the jobs the supplier accepted, read only: nobody is asked to pay for a time that is already gone, 409 `supplier_slot_unavailable`), then — outside the calendar lock — `OpenOfferPaymentAsync` creates the payment of the
+   request (`Requested`, platform funds, private payer, total and commission snapshotted: section 38) and the PaymentIntent that **blocks** the card for the total (manual capture, cards only, no fee), and answers with the session. One live payment per request: a payment made for an earlier offer is dropped first (its PaymentIntent canceled).
+2. *The card.* The page confirms the PaymentIntent with the Payment Element (SCA/3-D Secure included). Stripe sends `payment_intent.amount_capturable_updated`: the payment becomes `Authorized` (checked: platform, PaymentIntent, **the whole total**, nothing charged, no fee; otherwise `NeedsReview`, an e-mail to the admins, and the request is **not** taken).
+3. *Taken.* Once that event is committed the server completes the acceptance (`CompleteOfferAcceptanceAsync`), and the customer's own next `offer/accept` does the same if the event is late (it also records a block it finds on Stripe that the event had not yet recorded: **a customer who paid is never asked to pay again because an event was late**). Under the supplier's calendar lock: the offer that stands,
+   the supplier's status and the payment are read again; the payment must be the one made for **this** offer (the total, and created after the supplier sent it: an offer replaced meanwhile makes the card a stale one, which is released, never charged); the time is judged again; then `CaptureForTakeAsync` **charges the card — after the time is judged and before the request changes state** — and the request becomes
+   `PresoInCarico` with `PaymentMode = Online`, the payment `Held`. From here it is the cycle of section 38 (`release_at` when the supplier completes the work; `all fine`; complaint). The supplier cannot change the price (422 `service_payment_amount_locked`).
+4. *What goes wrong, and what the customer reads.* **The time is gone** (the supplier took another job meanwhile): the block is released at once, nothing is charged, the customer is e-mailed (`supplier-inquiry-offer-not-completed`: «l'orario non è più disponibile … non ti abbiamo addebitato nulla … la richiesta resta aperta») and, from `offer/accept`, reads 409. **The card cannot be charged** (the block lapsed, the bank refused, Stripe did not answer):
+   whatever is left of the block is released and the customer is told the same way, with the payment sentence. A block that is not the total, or a charge that Stripe reports differently, is `NeedsReview` and charges nothing.
+5. *The offer ends without being taken* — the customer turns it down, the supplier replaces or takes it back, the customer lets it lapse, either party closes the request: the block (or the PaymentIntent still waiting for a card) is released (`CancelOfferPaymentAsync`, `SettleClosedRequestAsync`); money that was somehow charged is given back in full. The funds job `service-funds` is the safety net for all of it.
+
+**What is told, and to whom** (all queued after the change is saved, by the winner only; nothing parts for a person who did nothing): the offer → the customer, `service-request-quote-received` (the lines say "2 × 45,00 €" when they have a quantity, the total, the time, the note and
+the deadline; the time is said not to be reserved before the customer accepts); the acceptance → the supplier (`service-request-quote-answered`, "Nome C." and the comune only, + push `service-request-quote-accepted`) and the customer (`supplier-booking-accepted` with the time and the price);
+the "no" → the supplier (same mail, + push `service-request-quote-rejected`); the supplier cancelling a job it had agreed → the customer (`supplier-booking-cancelled`), and giving the request up before any offer was accepted → `supplier-inquiry-declined`. Until this task these last
+two sent the customer nothing.
+
+**Decisions applied (defaults, nothing asked).** (1) The validity of the offer is the existing 24-hour setting of the customer's answers, not a second one per offer; a per-offer validity is a follow-up (SP-10b-b-FU1). (2) When the offer lapses the whole request closes (the engine of
+the quote); keeping the conversation after an expiry is a follow-up (SP-10b-b-FU2). (3) `negotiation` stays derived (the last event of the trace of the quotes tells "turned down" from "taken back"; read from a statement of its own so the view of the booking still selects no trace).
+(4) An offer's `endUtc` is required in practice because a request on measure names no service.
+
+**Known limits.** The offer carries lines, a total, a time and a note: no deposit, no instalments, no attachments, no VAT split (gross as declared, D4). The offer in the console of the supplier is read from the thread (`GET …/thread`), not from the inbox row. The customer's reminder before the offer lapses is not built (SP-10b-b-FU3).
+A card blocked for an offer is usable for `SupplierPayments:AuthorizationValidityHours` (48), longer than the offer's day: a block that was never used is released with the offer. The real Stripe is never reached by the code or the tests of this task: the check in test mode (3-D Secure, a refused card, the charge after the block) is the user's, like the rest of VT-D22.
+
+**After a deploy.**
+- [ ] No migration. With `Features__SupplierShowcaseBooking` **off** (production): the two customer endpoints answer 404 `not_found` as before; the supplier's ones need a request on measure, which cannot exist.
+- [ ] Test environment, flag on: as the supplier, `POST api/supplier/requests/{id}/offer` on a request on measure with an `endUtc` is 200 and the customer gets one e-mail with the total; the same body on a booking from a slot, on another supplier's request and on a missing id is the same 404; a Sunday is 409 `supplier_slot_unavailable`.
+- [ ] Test environment with the payments on and the supplier's Stripe account ready (section 25): `lookup` has `offer.paymentRequired: true`; `offer/accept` answers `negotiation: "AwaitingPayment"` and a `paymentSession`; confirming the card with Stripe's test card makes the request `PresoInCarico` within seconds (the webhook), the PaymentIntent is `succeeded` for the total and the payment is `Held`; with the test card that requires 3-D Secure the same; with a declined card nothing is taken and the session can be used again. With the supplier busy at that time (another job at the same hour) the customer reads 409 and the PaymentIntent is `canceled`.
+- [ ] As the customer: `lookup` has `offer`, `negotiation: "OfferSent"`, `actions.canRespondToOffer: true` and no `quote`; `offer/accept` with a wrong `offerSentAt` is 409 `service_request_offer_changed`, with the right one the request is `PresoInCarico` at the offer's time and total, the supplier gets its mail and push, a second
+      `offer/accept` is 422 `supplier_booking_no_offer`; `offer/decline` leaves `negotiation: "OfferDeclined"` and the request open ten days later.
+
+### 34.11 The hour to answer, the reminders and the other suppliers — SP-10c
+
+Redesign wave task SP-10c (branch `feature/rd-supplier-reply-sla`, backend only, stacked on SP-10b-b): **no new flag** (the new call rides on `SupplierShowcaseBooking`), migration `AddServiceRequestReplyReminders` (additive: two nullable `timestamptz` columns on
+`ServiceRequests`; it goes down by dropping them). The interview of 9 October (Q7): «risposte dirette entro massimo un'ora, altrimenti ti vengono proposti altri fornitori». What SP-10b already did: the request on measure has `ResponseDueAt` = the moment the address is checked +
+`Suppliers__Showcase__InquiryResponseMinutes` (60), the supplier's first message stops the clock, and `service-request-expiry` closes the request (`Annullato`, `CancelledBy = System`, reason `NoResponse`) and tells the customer. What this task adds:
+
+**1. The reminders to the supplier** (the second pass of `service-request-expiry`, after the requests whose deadline passed were closed: `ShowcaseReplyReminderService`, the rules in `ShowcaseReplyReminderRules`). While a request on measure is `Richiesto`, has a deadline and no offer waiting for
+the customer, the supplier is reminded **at half of the time it has** (30 minutes into the hour) and **10 minutes before the deadline**, by e-mail (`supplier-inquiry-reply-reminder`, Italian: the comune, "Nome C." and the time to answer by; never the words of the customer, the
+address or the contacts) and by push (`service-request-reply-reminder`, key `service-request:{id}:reply-reminder-half|last`). **Once each**: `ServiceRequests.ReplyReminderHalfSentAt` and `ReplyReminderLastSentAt` are saved **before** the mail and the push are queued, and only if nobody touched
+the request since it was read (`xmin`): a supplier whose message, offer or refusal is saved at the same moment wins and is not reminded, and a crash between the save and the queue loses a reminder, never doubles it. A run that is late sends only the last call; a wait of 20 minutes or less has only the last
+call and one of 10 or less none. The job runs every 5 minutes, so the last call reaches the supplier between 5 and 10 minutes before the deadline. A supplier that is not `Active` is not reminded (and the request is not marked, so it still is once it is back). It is an **operational notice**, like the
+reminder of a host: no switch of «Notifiche» hides it (the supplier has to act, or the request closes).
+
+**2. The silence weighs on the supplier.** When the job closes a request on measure that the supplier never answered, `ServiceRequestAutoCancelService` writes **`NoReplyInTime`** (section 37: `ISupplierReliabilityService.RecordNoReplyAsync`, `AsBackup = false`, the wait counted from the creation of the request
+to the deadline) and the mail to the supplier says that it costs points when it does (no penalty when the supplier could not have answered: not active, time off, outside its working hours). **Only this event** is written for a request on measure: an answer in time earns no `RepliedInTime`, a completed job no
+`JobCompletedClean`, and the bookings from a showcase still neither earn nor cost points; a request the **customer** let lapse (`QuoteNotAnswered`, `ProposalNotAnswered`) is never the supplier's silence. The weights are those of `SupplierRanking:*` (proposals still to approve, VT-D17): nothing new is
+configured here. (Follow-up SP-10c-FU1: the symmetric credit, if the product owner wants it.)
+
+**3. The other suppliers** (`IShowcaseAlternativesService`, `ShowcaseAlternativesService`; the rules in `ShowcaseAlternativeRules`). When CasaZen closed a request **because the supplier did not answer in time** — and only then: `Annullato`, `CancelledBy = System`, `NoResponse`; not a refusal, not a cancellation by
+the customer, not an offer or a time the customer did not answer — the customer is offered **up to 3 alternatives**: the `Active` suppliers that cover the comune of the request (the ISTAT code when the customer chose it, the name otherwise) and have the category of the request — `ISupplierMatchService.RankActiveAsync`,
+**the one ranking** of section 37, the same score and the same weights as for the hosts — **whose showcase is published, not paused and takes bookings** (`bookingsOpen`, VT-D7: it includes the flag `SupplierOnlinePayments` and the supplier's payments account, so **with the payments off, as in production today,
+no showcase takes bookings and the list is empty**), never the supplier of the request. At most 12 suppliers are looked at, best first, to find the 3. For each: `name`, `slug`, `coverUrl` and `coverAlt`, `verified` («Verificato»), `medianResponseMinutes` (measured, from 5 requests in 90 days; absent until
+then) and `service`, the service of the same category with the lowest «da» price (`slug`, `name`, `fromPriceCents` absent when on quote, `priceUnit` `PerJob`, `PerHour`, `PerSet` or `PerSquareMeter`, `requiresQuote`); **no score, no id, no contact, no address, and no way to list suppliers**. A failure of the
+ranking is an empty list (logged), never an error.
+- *Where the customer meets them.* (a) **`POST api/public/supplier-bookings/alternatives`** with the body `{ slug, code, email }` of `lookup`: the same proof of who is asking, the same uniform 404 `supplier_booking_not_found`, the same two limits with one 429 `rate_limited`, the same `noindex` and `no-store`,
+  behind `SupplierShowcaseBooking`; it answers `{ "alternatives": [ … ] }`, and for a request in any other state the list is empty (200). (b) **`alternatives`** in `lookup` and in every answer of the area, with the same members, **present only for a request closed for want of an answer** (an empty list when there is
+  nobody to suggest: the page then says so plainly) and absent for every other booking. (c) The e-mails of the closed request, `supplier-inquiry-expired` (a request on measure) and `supplier-booking-expired` (a booking on a listed service, whose term stays the supplier's own `RespondWithinMinutes`, 180 by default):
+  a list of names that link to the public pages, each with «Verificato», the typical time to answer and the «da €» of its service; with nobody to suggest the mail says «Per ora non abbiamo altri fornitori da proporti per questa richiesta.», and when the alternatives could not be looked for at all it says nothing about them.
+  **Nothing promises a call back** (decision D24).
+
+**For the frontend** (SP-12c, the customer's page): `lookup.alternatives?: Alternative[]` and `POST …/alternatives → { alternatives: Alternative[] }`, `Alternative = { name, slug, coverUrl?, coverAlt?, verified, medianResponseMinutes?, service?: { slug, name, fromPriceCents?, priceUnit, requiresQuote } }`; the link to a
+supplier is `/fornitori/{slug}` and to its service `/fornitori/{slug}/servizi/{service.slug}`. For the supplier's console (SP-08e) the reminders are e-mail and push only: nothing new in the API, and `negotiation` of a request closed for want of an answer is what it was.
+
+**Decisions applied (defaults, nothing asked).** (1) The reminders at half of the time and at 10 minutes are in the code (`ShowcaseReplyReminderRules.LastLead`), not configuration. (2) The alternatives are 3 at most and at most 12 are looked at (`ShowcaseAlternativesLimits`). (3) `bookingsOpen` is required, as the task says
+(VT-D7). (4) The order is the one ranking, with the reliability on as SP-REL left it (`SupplierRanking:ReliabilityEnabled`): to keep the public order neutral until VT-D17 is approved set `SupplierRanking__ReliabilityEnabled=false` (it neutralises the order the hosts see too). (5) For a booking on a listed service the
+term and the closing are unchanged: only the customer's mail gets the alternatives, and no `NoReplyInTime` is written (its hours are the supplier's own setting).
+
+**Known limits.** No reminder to the customer, and no push that says «we found you another supplier» (the customer has no app); the e-mail is written when the request closes, the page looks again every time. Follow-ups: SP-10c-FU1 the symmetric `RepliedInTime` credit for requests on measure; SP-10c-FU2 booking an alternative straight from
+the page of the closed request (copying the customer's data), if the product owner wants it.
+
+**After a deploy.**
+- [ ] Migration `AddServiceRequestReplyReminders` applied (`ServiceRequests.ReplyReminderHalfSentAt` and `ReplyReminderLastSentAt`, null on every existing row). **If backend #721 (`AddSupplierShowcaseMedia`) enters before or after this task, regenerate this migration on top of it** (`dotnet ef migrations add AddServiceRequestReplyReminders`): the two are independent, they only share the model snapshot.
+- [ ] With `Features__SupplierShowcaseBooking` **off** (production): `POST api/public/supplier-bookings/alternatives` answers 404 `not_found`; with no request on measure nothing is reminded.
+- [ ] Test environment, flag on, `Suppliers__Showcase__InquiryResponseMinutes` left at 60: a request on measure left alone gets the supplier one e-mail and one push at about 30 minutes and another pair at about 50; answering with a message before stops them; at 60 minutes the request closes, the customer gets `supplier-inquiry-expired`, the supplier
+      the cancellation mail, and a `NoReplyInTime` row is in `SupplierReliabilityEvents` for the request.
+- [ ] Same environment with `Features__SupplierOnlinePayments` on and a second supplier of the same comune and category whose showcase is published and takes bookings: the closed request's `lookup` and `POST …/alternatives` list it (not the first supplier, not a paused or unpublished one), and the customer's e-mail links to its page.
+
+## 34. The quote with the customer's approval — SP-04b
+
+Redesign wave task SP-04b (branch `feature/rd-supplier-quote`): **no flag** (the brief's `SupplierQuotes` was not created: the functions of the wave are always on), migration
+`AddServiceRequestQuote` (additive: columns and checks, nothing is backfilled). The supplier answers a **new** request with a **quote** — lines, a total, a note, optionally another time — and
+the **customer** accepts or turns it down: the host (short-rent and long-rent) with `property.write`, or the private customer of a showcase request with the code and the e-mail of its booking.
+Accepting is a take made on the supplier's behalf: the total is the price agreed, the lines are the price lines (kind `quote`). Payment inside CasaZen stays behind the flag `SupplierOnlinePayments`
+(off until the test with Stripe, VT-D22): the quote only decides the amount; the way the request is paid is decided at the take, as for any take (section 26.1).
+
+### 34.1 The model: an offer on a new request, not an eighth status
+
+A quote lives on a request that is still `Richiesto`, like a proposed time (section 21.3): `ServiceRequestStatus` does not change (the mobile app does not know new values). Columns on `ServiceRequests`:
+`QuoteSentAt` (the **version** of the quote: kept to the microsecond, compared to the millisecond so a client that reads it as a JavaScript date can give it back), `QuoteSentByUserId`, `QuoteLinesJson`, `QuoteTotalCents`, `QuoteNote`, `QuoteScheduledStartUtc/EndUtc` (another time, optional) and
+`QuoteEventsJson` (the trace: what happened to the quotes of the request, the last 30). Checks in the database: the quote is there with all its columns or not at all, **only on a request that
+is `Richiesto`**, from 1 to 20 lines, a total from 1 cent to the bound of a request (100 000 €), its other time has both ends or none (`CK_ServiceRequests_Quote`); **a quote and a proposed time are
+never both there** (`CK_ServiceRequests_QuoteOffer`). That the total is the sum of the lines is the rule of `ServiceRequestQuoteRules.Normalize` (a CHECK cannot add up a JSON array).
+
+One offer at a time: a quote **takes the place** of a proposed time (and the other way round: `propose-time` drops the quote, with a `withdrawn` event). A new quote replaces the one that waits. The offer is
+dropped by **every** transition out of `Richiesto` (`TransitionAsync` clears it: take, refuse, cancel, accept a proposal) and by the auto-cancel job.
+
+### 34.2 Who does what
+
+| Who | Endpoint | What |
+|---|---|---|
+| supplier (`Supplier`) | `POST api/service-requests/{id}/quote` | `{ lines[1..20] {label ≤120, amountCents 1..10 000 000}, note ≤500?, scheduledStartUtc?, scheduledEndUtc? }`; only a `Richiesto` request; sends or **replaces**; answers the request with `quote` |
+| supplier | `POST api/service-requests/{id}/quote/withdraw` | takes it back: the request is "to answer" again (nobody is told) |
+| host (`property.write`) | `POST api/service-requests/{id}/quote/accept` · `…/quote/reject` | `{ quoteSentAt }` (the `quote.sentAt` it read); the twins for long-rent are at `api/long-rent/service-requests/{id}/quote/accept|reject` (`property.write` in long-rent) |
+| showcase customer (anonymous, behind `SupplierShowcaseBooking`) | `POST api/public/supplier-bookings/quote/accept` · `…/quote/reject` | `{ slug, code, email, quoteSentAt }` **in the body**, never in the URL; the same pipeline as `proposal/accept` (one 404 for everything that does not identify the booking, rate limit per IP and per address, `[PrivateAnswer]`) |
+
+`lookup` of the showcase customer gains `quote { sentAt, lines[{label, amountCents}], totalCents, note, startUtc/endUtc (+Local), answerBy }` and `actions.canRespondToQuote`; while a quote waits
+`canReschedule` is false (the quote is about the time the booking has; the customer turns it down first) and `respondBy` is null (the clock that runs is `quote.answerBy`). `ServiceRequestDto`
+(host, and the supplier's older readers) and `SupplierServiceRequestDto` (the console: inbox, today, detail) gain `quote { sentAt, lines, totalCents, note, scheduledStart, scheduledEnd, answerBy }`;
+the console's `phase` is `quote_pending` and the request is in the tab `in-attesa`. `answerBy` is the customer's deadline for a showcase request and `null` for a host.
+
+### 34.3 Accepting: the money and the time
+
+- **Money.** `QuotedAmountCents` = the total, `PriceLinesJson` = the lines with kind `quote` (open set of kinds, `price.lines[].kind`), `PaymentMode` decided as for any take (`ResolvePaymentModeAsync`: always `Manual` for a showcase
+  request), `ResponseDueAt` cleared. The total is the **reference of decision D7**: a final amount more than 20 % above it needs the customer's confirmation. Completing without a declared total
+  gives `FinalAmountCents` = the total with **the lines the customer approved** (`ServiceRequestPricing.ComposeFinalPrice(agreedLines)`), plus the extras; with a declared total that is not the quote the work
+  is priced as a whole (one `base` line). The payment, when it is made inside CasaZen, is the final amount with the commission of CasaZen taken out of it, exactly as for any request (section 26).
+- **Time.** The quote leans on the time the request has. If it offers **another time**, that time is checked with the slot planner when it is sent (409 `supplier_slot_unavailable`,
+  `supplier_commitment_conflict`) **and again at the acceptance under the supplier's calendar lock** (`SupplierCalendarSync`): the offer holds no slot. If it is gone, 409 and **the quote stays** (the customer can
+  turn it down or cancel). The overlap with a job the supplier already accepted is checked at the acceptance for the quote's time or, with none of its own, the request's.
+- **A request is taken once.** The acceptance is a normal transition (`xmin`): of two acceptances, or an acceptance and a cancellation, one wins and the other gets 409 `service_request_state_changed`; a second
+  acceptance finds no quote (422 `service_request_no_quote`, showcase: `supplier_booking_no_quote`). A supplier suspended meanwhile cannot be taken for (422 `service_request_supplier_inactive`, showcase:
+  `supplier_booking_supplier_unavailable`).
+
+### 34.4 Errors
+
+| Code | HTTP | When |
+|---|---|---|
+| `service_request_quote_invalid` | 422 | lines or total outside the limits (not 1 to 20 lines, a line without description, an amount outside 1 cent to 100 000 €, a total above it, a note over 500) |
+| `service_request_invalid_transition` | 422 | a quote on a request that is not new |
+| `service_request_no_quote` | 422 | nothing to answer or withdraw (never sent, withdrawn, answered, the request moved on) |
+| `service_request_quote_changed` | 409 | the answer repeats a version that is not the one that waits: the supplier replaced the quote; nothing changed, read it again. Also for the showcase customer |
+| `supplier_slot_unavailable`, `supplier_commitment_conflict` | 409 | the other time cannot be done (at sending, at accepting) |
+| `supplier_booking_no_quote`, `supplier_booking_quote_expired` | 422 | showcase customer: no quote, or its time to answer has passed |
+| `service_request_not_found` | 404 | another org's request, a request of the public showcase for a host, a long-rent request at the short-rent endpoint |
+
+### 34.5 The deadline
+
+A **showcase customer** has `Suppliers:Showcase:ProposalResponseMinutes` (24 hours; the quote reuses the key of the proposed time, no new setting) from the instant the quote was sent: the request's
+`ResponseDueAt` is moved to it, and the always-on job `service-request-expiry` cancels the request when it passes, by CasaZen, with the reason `QuoteNotAnswered` (a code, not a sentence); the supplier did answer, so
+the **customer** is told it is the one who did not (`supplier-booking-quote-expired`) and the **supplier** that the customer did not answer (`supplier-booking-quote-lapsed`), never that the supplier stayed silent
+(decision D24). A **host has no deadline**: the quote leaves `ResponseDueAt` as it was (the supplier's own), and `service-request-auto-cancel` (behind `SupplierRequestAutoCancel`) skips a request with a quote
+waiting, as it skips one with a proposed time (decision D8). When the quote goes (turned down, withdrawn) the supplier has its time to answer again: a showcase request gets the whole `RespondWithinMinutes`,
+a host's request keeps its deadline unless it has passed, and then the window of `HostResponseMinutes` starts again.
+
+### 34.6 What is told, and to whom (e-mail and push; nothing else is sent)
+
+| Event | To | E-mail (`EmailTemplates.Names`) | Push `type` (new, for the app) |
+|---|---|---|---|
+| quote sent | the host (Italian, the link to the stay when the request has one) | `service-request-quote-received` | `service-request-quote-sent` (to the hosts of the property) |
+| quote sent | the showcase customer (its language, with the lines, the total and the deadline) | `service-request-quote-received` | — |
+| accepted / turned down by the host or the customer | the supplier (Italian, comune and "Nome C." only) | `service-request-quote-answered` | `service-request-quote-accepted` / `service-request-quote-rejected` (to the supplier org) |
+| accepted by a showcase customer | the customer, the usual "request taken" e-mail with the price agreed | `supplier-booking-accepted` | — |
+| not answered in time (showcase) | the customer / the supplier | `supplier-booking-quote-expired` / `supplier-booking-quote-lapsed` | `service-request-quote-expired` (to the supplier org) |
+
+A quote taken back sends nothing. No text promises a time of answer, a payment date or a payment (decisions D24, SP-D14). The delivery key of every push carries the instant of the quote, so a retry is one push and
+the next quote is another (`PushDeliveryKeys.ServiceRequestQuote`). **For the mobile app (MO-SP04-1):** four new `data.type` values, and the new `quote` field in the DTOs; the status values do not change.
+
+### 34.7 The history
+
+`history[]` of the **supplier's console** (`GET api/supplier/inbox/{id}`) tells the quotes: `quote_sent`, `quote_rejected` and `quote_withdrawn` are steps of the status `Richiesto` with `event` set, the take that
+accepted a quote has `event: quote_accepted`, the cancellation of a quote nobody answered has `event: quote_expired` (and the reason code `QuoteNotAnswered`). A client that does not know `event` shows the step by its
+status. The history of the host's DTO and of the supplier's older readers (`ServiceRequestDto.history`) does **not** carry the quote steps, so the timelines already built (repeated "Richiesto" steps) do not change.
+The host's Home gets the quote among the things to do (`RespondToServiceRequest`: the same case as a proposed time).
+
+### 34.8 Decisions applied (defaults, nothing asked)
+
+SP-D15 as written: the quote leans on the time of the request and may offer another, which is not held; one quote at a time, a new one replaces the old; the customer of the showcase has the 24 hours of the proposed time, a
+host has no deadline; the total is the price agreed and the reference of D7. SP-D17: host and showcase customer, the same states and the same endpoints. SP-D30: this is the engine that the offer of the showcase (SP-10b-b)
+reuses. The brief's flag `SupplierQuotes` is not created (override of 17/10): sending is always on, and the answers of the host and of the customer exist in the same release as the offer.
+
+### 34.9 Known limits (follow-ups, nothing is broken)
+
+- **SP-04b-FU1** — the supplier's average response time counts a quote accepted days later like a proposed time accepted late (`TakenAt` is the instant of the customer's answer): a column for the instant
+  the supplier answered is the fix (as SP-04e-F1).
+- **SP-04b-FU2** — a showcase customer cannot ask for another time while a quote waits, only turn the quote down first; no message from the customer to the supplier exists (the chat is SP-10b).
+- **SP-04b-FU3** — a quote taken back is not told to the customer (it sees the quote vanish from the page); the e-mail of a quote that was replaced says nothing of the previous one.
+- The note and the lines of a quote are the supplier's text and are not scrubbed by the retention of the customers' personal data (like the message of a proposed time); an accepted quote keeps its lines (not the note) as price lines.
+- Demo seed: not applicable (the demo showcase has no supplier, service or request data, runbook 27.12).
+
+### 34.10 After a deploy
+
+Nothing to configure and no new setting. The migration adds the columns (empty) and the two checks. To try it on a test supplier: `POST api/service-requests/{id}/quote` with a line or two on a new request of a host, then
+`POST …/quote/accept` with `quoteSentAt` as given; for a showcase booking `SupplierShowcaseBooking` has to be on (section 23).
+
+## 35. The notices of the supplier: the three switches, the reminder of the day before, the payment received — SP-16d
+
+Redesign wave task SP-16d (branch `feature/rd-supplier-notifications`): **no flag**, migration `AddServiceRequestSupplierReminder` (additive: one nullable column
+`ServiceRequests.SupplierReminderSentAt`, nothing is backfilled). The card «Notifiche» of the console writes three switches (`PUT api/supplier/settings`, section 29.1)
+that were columns nothing read; now they do what they say.
+
+### 35.1 What each switch governs
+
+| Switch (column of `SupplierSettings`) | Governs (e-mail **and** push) | Never hidden by a switch |
+|---|---|---|
+| `notifyNewRequests` (`NotifyNewRequests`) | a new request to answer: a host's (`service-request-created`), the same accepted automatically (`service-request-auto-accepted`, section 21.14, it is the new-request notice in its other form) and one from the public showcase (`supplier-booking-new-request`, section 23) | a cancellation, the answer to a proposed time or to a quote, a quote nobody answered, the reminder of the host, a payment that failed or was refunded |
+| `notifyDayBeforeReminder` (`NotifyDayBeforeReminder`) | the reminder of the day before (35.2) | — |
+| `notifyPayments` (`NotifyPaymentMarked`) | a job paid: the customer marked it as paid (`service-request-paid`, a request paid outside CasaZen) and the payment made through CasaZen (`service-payment-received`, with the net, 35.3) | the refund and the payment that failed (SP-15b) |
+
+- A supplier that never saved its settings has **no row** (it is lazy, section 29.1) and gets the defaults: all three **on**. A switch is read at the moment of sending.
+- **One place decides.** `SupplierNotificationPreferences.AllowsAsync(db, supplierOrgId, kind)` reads the row (`SupplierNotificationRules.Allows` is the pure rule) and every path that queues
+  one of the three kinds asks it **in the same method**. `SupplierNotifyingPathsArchitectureTests` names the notices, lists the files that may queue them and fails when a use is not behind the
+  question or is in a file that is not on the list: a path written later has to be added there on purpose.
+- The customer's receipt of a showcase booking (`supplier-booking-receipt`) does not depend on the supplier's switch.
+
+### 35.2 The reminder of the day before, to the supplier
+
+The job of the customers' reminder (`service-request-reminders`, hourly, section 23 and `hangfire.md`) has a **second pass**, `SupplierDayBeforeReminders`, under the same session lock. It looks at the requests
+in status `PresoInCarico` with a start time in the next 48 hours and no `SupplierReminderSentAt`, **of any context** (a host's short or long stay, or the showcase), and reminds the supplier of those whose
+time has come: **18:00 Europe/Rome of the day before** (daylight saving time follows the clock of Rome, `ServiceRequestReminderRules`), the work not started, **once**.
+
+- **Once.** The request is marked (`SupplierReminderSentAt`, in a save that carries `xmin`: a request cancelled or changed meanwhile wins and is left as it is) **before** the notice is queued, so a crash or a
+  repeated run sends it once or not at all. The mark is also written when nothing is sent because the supplier turned the reminder off or is suspended: the request was judged, and a supplier that turns the switch on that
+  night does not get it late.
+- A request taken **after** that time gets none (the supplier took it a moment ago), as for the customer. Requests that existed before the deploy are judged by the same rule; a job already past is not reminded.
+- **What it says** (`ServiceRequestNotifier.NotifySupplierDayBeforeAsync`, Italian, e-mail `service-request-day-before` and push `service-request-day-before`): the service, the time (and its end) in Rome and the
+  **comune**, and a link to the request (`/app/supplier/inbox/{id}`). **Never the address, the contact, the name of the property, the notes or the name of the customer** (decision D9: they are in the console after the
+  take, and the arguments of a queued job are no place for personal data, SEC-SP10-2). Not sent to a supplier that is not active.
+- The run record (`ServiceRequestReminderRun`) counts `SupplierSent` and `SupplierFailed` next to `Sent` and `Failed` of the customers; at most 500 rows per pass.
+
+### 35.3 The payment received
+
+- A payment made through CasaZen that becomes `Paid` (the webhook, or the sync job of SP-15b) already e-mailed the supplier the receipt (`service-payment-received`: gross, commission, net before Stripe's fees). SP-16d adds the **push**
+  (`service-payment-received`: «{service}: {net} netti per te, prima delle commissioni di Stripe»; `entityId` is the request) and puts both behind `notifyPayments`. Nothing is promised about when the money reaches the bank (D14, D24).
+- The notice that the host marked a request **paid outside CasaZen** (`service-request-paid`, SU-09) follows the same switch.
+- **Not** sent for a payment the supplier recorded itself as received outside CasaZen (`payment/offline`, section 26: it raises no notice to the supplier), and the refund (SP-15b) always arrives.
+
+### 35.4 For the mobile app
+
+Two new `data.type` of push, both to the supplier org: `service-request-day-before` and `service-payment-received` (`entityId`: the service request, route as the other supplier pushes). Delivery keys: one per request
+(`service-request:{id}:day-before`) and one per payment (`service-payment:{id}:received`), so a retry is one push. The bell of the web app knows them (frontend SP-08d, together with the four types of the quote).
+
+### 35.5 Decisions applied (defaults, nothing asked)
+
+- The automatic-acceptance notice follows `notifyNewRequests` (it is the new-request notice when there is nothing left to answer); the host-reminder, the cancellation and the answers stay always on.
+- A reminder skipped because of the switch or of a suspension is marked as judged (see 35.2).
+- The channel follows the event: e-mail and push go together under one switch (the design's choice of channels is not in this release). Language: Italian, as the other notices of the supplier.
+- The hour (18:00 of the day before) is not the supplier's to choose.
+
+### 35.6 Known limits (follow-ups, nothing is broken)
+
+- SP-16d-FU1: SMS, WhatsApp, a daily summary, the choice of channels and of the hour, and notices for expiring documents or reviews are not here (out of the scope of the task).
+
+### 35.7 After a deploy
+
+**Release note: at the deploy the suppliers start receiving the reminder of the day before** for the jobs they already took and that start in the next hours (at most 500 per run, each once). Nothing to configure and no new
+setting. To try it on a test supplier: take a request for tomorrow, then run `service-request-reminders` from the Hangfire dashboard after 18:00 Rome of today (or move the work to the next hours), and check the e-mail (no address in it)
+and the push; turn `notifyDayBeforeReminder` off with `PUT api/supplier/settings` and a second request is not reminded. The migration `AddServiceRequestSupplierReminder` adds the column (nullable); it goes down by dropping it.
+
+## 36. Backup suppliers for a host's request — SP-BKP
+
+Task SP-BKP (branches `feature/rd-supplier-backup-groups` and `feature/rd-supplier-backup-groups-ui`). It builds the rule the product owner stated on
+2026-10-29/30: «anche per i fornitori, la rule è che hanno un'ora per confermare la presa in carico dell'attività, altrimenti pre-approvi altri 3 fornitori che
+prenderanno il lavoro al posto del fornitore selezionato che non ha risposto in tempo» and, between the two ways to read it, «in parallelo, vince il primo che
+accetta: servono i gruppi di richieste, ma il fornitore selezionato ha comunque un'ora per accettare, quindi avvisa che i tre fornitori contattati sono dei backup e
+il lavoro sarà accettato solo se il fornitore principale non accetta» (decision SR-D9, option (b): groups of requests). Before it, a request had one supplier
+(`SupplierOrgId` is mandatory) and nothing replaced the one that stayed silent (section 21.8 only cancels). On 2026-10-30 the product owner added two rules: the backups
+are picked, and their points moved, by the **reliability ranking** of the suppliers (SP-REL, section 37), and «dal momento in cui uno dei tre accetta il lavoro, si chiude la gara, gli altri due non
+possono più accettare» (**the first backup that accepts closes the race**, section 36.1). Out of scope: the alternatives offered to the customers of a showcase (SP-12c), the commissions and
+payments, the mobile app, the Railway variables.
+
+### 36.1 The rule
+
+When a host sends a request to a supplier (the **primary**), the same request is sent at the same moment to up to three **backups** of the same category and comune,
+declared as such. One group = one primary + up to three backups, each a row of `ServiceRequests` with the same data (host, property, stay, category, notes, time,
+price estimate) and its own supplier. Three windows:
+
+| When | Who can do what |
+|---|---|
+| **Hour of the primary** (`Suppliers__ServiceRequests__PrimaryResponseMinutes`, 60, from the creation) | The primary takes (or refuses) as for any request. A backup can only **accept as a backup** or refuse. **The first backup that accepts closes the race**: the other backups' requests are closed at that instant (`BackupRaceClosed`) and only the one that accepted holds its slot. |
+| **The hour is over** | If the primary took the job, the group is over: the backup that accepted is **released** (`PrimaryTookIt`, its slot is free again, no penalty). Otherwise the **backup that accepted** (`BackupAcceptedAt`) has the job: its slot is checked again under the supplier's calendar lock and, if it is no longer free, that backup is dropped (`BackupSlotUnavailable`) and the primary gets the second window. The primary's request is cancelled with `NoResponse` (and loses the points of a missed deadline, section 37). |
+| **Second window** (`…__BackupResponseMinutes`, 60, from the moment the hour was found over with nobody able to take the job; at once when the primary refuses or cancels) | Every request of the group still waiting can be taken, **the first has the job** (the primary too, now with no priority) and the others are closed (`TakenByBackup`). If nobody takes it the requests lapse with `NoResponse`, as a single request does (section 21.8), and the host is told that nobody answered. |
+
+The host cancelling the request closes the backups (`RequestCancelledByHost`, without the host's words). A primary that proposed another time is the host's to decide:
+the group does not move until the host answers; if the host turns the time down the window that had passed starts again, for the primary and the backups together.
+
+**The race of the backups** (decision of 2026-10-30). Accepting as a backup is the moment the race ends: under the group's lock and the supplier's calendar lock, in **one save**, the request of the backup that accepts gets
+`BackupAcceptedAt` and every other backup request still waiting becomes `Annullato` by CasaZen with the reason `BackupRaceClosed` (no `ResponseDueAt`, no penalty). Those backups are told once (`service-request-backup-closed`,
+«un altro fornitore di riserva ha già accettato») and any later `accept-as-backup` or `take` of theirs is **409 `service_request_backup_race_closed`**. The backup that accepted **holds its slot**: its agenda counts the request from
+then on (`ServiceRequestGroupRules.HoldsSupplierTime`, also in its load for the ranking), and the slot is checked **when it accepts** (409 `supplier_slot_unavailable` if the time is not free, and then nothing is closed: the race stays
+open for the next backup). The backups that did not accept never hold a slot. If the acceptance comes after the primary's hour (the job has not looked yet) the backup has the job at once.
+
+### 36.2 What the supplier sees and does
+
+- **A backup** sees its request in the inbox like any other, declared as a backup (`backup: { role: "backup", state, primaryDueAt, backupDueAt, acceptedAt }`): `state` is
+  `waiting` (the primary has its hour: it can accept as a backup or refuse), `accepted`, `active` (second window: it can take the job), `won`, or `closed`. Before the take it
+  sees what any supplier sees (decision D9, section 21.6): the comune, the time, the price, **never the property or the host's notes**, in the console, in the emails and in the
+  pushes. `respondBy` is the end of the primary's hour (then the end of the second window).
+- `POST api/service-requests/{id}/accept-as-backup` (policy `Supplier`): the acceptance, which **closes the race for the other backups** (section 36.1). The request stays `Richiesto` but now holds
+  the slot of the supplier; accepting twice is not an error and keeps the first instant. 422 `service_request_not_a_waiting_backup` for a request that is not a backup waiting; 422
+  `service_request_backup_already_active` in the second window (take the job instead); 409 `supplier_slot_unavailable` if its time is no longer free for the supplier (nothing is closed then); 409
+  `service_request_backup_race_closed` when another backup accepted first (the request is `Annullato` with `cancellationReason: BackupRaceClosed`); 409 `service_request_state_changed` when the group closed
+  meanwhile. The answer reflects the request after the group was looked at: `PresoInCarico` when the primary's hour was already over.
+- **Taking a backup request during the primary's hour** is 422 `service_request_backup_waits_for_primary` (so the batch accept and the apps cannot jump the queue). A backup cannot
+  propose another time (422 `service_request_backup_cannot_propose`); it can refuse (`reject`, `cancel`), and nobody tells the host.
+- **After its hour the primary** can still take the job if no backup accepted (it is in the race without priority); if a backup holds a pre-approval the primary is refused with 422
+  `service_request_primary_window_passed`, even before the job has run. `backup.role: "primary"` with `state: priority | late` tells the primary where it is.
+- The winner is a request like any other (`PresoInCarico`, `TakenAt`, `TakenByUserId` = the member who accepted); its `backup.state` is `won`.
+
+### 36.3 What the host sees and does
+
+- The host's lists, detail, calendar, "Oggi", search, used suppliers and every action show **one request per group**: the primary, and, once a backup took the job, the backup in its place
+  (`GroupRole`: `Primary`, `PromotedBackup`). A waiting backup and the primary it replaced (`Backup`, `ReplacedPrimary`) are never listed and cannot be read, cancelled or reminded by the host
+  (404): the group is reached through the request it follows.
+- `group` in `ServiceRequestDto` (list, detail, creation): `{ id, phase: PrimaryWindow | BackupWindow | Closed, primaryDueAt, backupDueAt, closedAt, members: [{ requestId, role, supplierOrgId,
+  supplierName, status, acceptedAt, tookTheJob, cancellationReason }] }`, the host's own supplier first. While the second window is open the request is `Richiesto`: the host sees it waiting.
+- When a backup takes the job the host gets «il fornitore principale non ha risposto: l'ha presa in carico X» (email `service-request-taken-by-backup` and the same push key as the take); when
+  nobody takes it, the usual «nessuna risposta» email and push.
+- Per request: `useBackupSuppliers` in the body of `POST api/service-requests` and `api/long-rent/service-requests` (`false` = this request goes alone). Per organization:
+  `GET/PUT api/orgs/me/service-request-settings` (`{ useBackupSuppliers }`, policy `OrgBillingAdmin`, **on by default** because the rule is general; the column is `Orgs.SupplierBackupsEnabled`).
+
+### 36.4 Choosing the backups
+
+`ServiceRequestBackupSelector` takes `ISupplierMatchService.RankActiveAsync` (the score of `MatchAsync` and of the supplier list, section 37: 70, minus 8 for each open request up to 40, plus the urgency, plus
+5 for a bio, plus the **reliability** of the supplier; no AI; a backup that only waits and has not accepted is not "load"), so the three backups are the **three best-ranked** eligible suppliers: the active suppliers of the property's comune that declared the category, **without the primary and the host's own org, without the ones that must accept
+new Terms, and without the ones whose time is not free**. «Free» is the check a take makes, made earlier: no job it took overlaps (`PresoInCarico`, `InCorso`) and, when the host picked the time
+among the primary's published slots (`ServiceRequestGroup.SlotPlanned`), the time is one of the backup's own slots too (hours, time off, closed days, notice, daily maximum, buffer). At most
+`…__MaxBackupSuppliers` (3), after looking at no more than 12 candidates; fewer, or none, and the request goes as before (with the 120 minutes of section 21.8). A failure while choosing never stops
+the request. A request accepted automatically (SP-04d) has no backups. The backup request has **no `ServiceListingId`** (the primary's service belongs to another catalog) but keeps the name and the
+price estimate the host saw.
+
+### 36.5 Data
+
+Migration `AddServiceRequestBackupGroups` (additive, no backfill): table `ServiceRequestGroups` (`OrgId` = the host, `Phase`, `PrimaryDueAt`, `BackupDueAt`, `SlotPlanned`, `CreatedAt`, `ClosedAt`, `xmin`),
+columns `ServiceRequests.GroupId`, `GroupRole` (0 `None`, 1 `Primary`, 2 `Backup`, 3 `ReplacedPrimary`, 4 `PromotedBackup`; never renumbered), `BackupAcceptedAt`, `BackupAcceptedByUserId`, and
+`Orgs.SupplierBackupsEnabled` (default true). Checks `CK_ServiceRequestGroups_Phase`, `…_Windows` and `CK_ServiceRequests_GroupRole`; unique partial indexes: one `Primary` and at most one
+`PromotedBackup` per group. `ServiceRequestStatus` is **unchanged** (seven values; the mobile app does not know new ones). `ServiceRequestGroups` is not tenant-filtered (it has more than two parties and a system job: allow-list of
+`TenantQueryFilterArchitectureTests`, explicit predicates, `ServiceRequestGroupTenancyTests`).
+
+### 36.6 Concurrency
+
+Every change of a group runs under the advisory lock `ServiceRequestGroup` (key: the group id, scope 1315), **taken before** the supplier's calendar lock (`SupplierCalendarSync`), never after; the group and
+its requests are read again after taking it (the change tracker is cleared) and saved in **one** `SaveChanges` with the `xmin` checks of the rows: of a take of the primary, a take of a backup and the job, one
+wins and the others get 409/422 and nothing of theirs is saved. The pass over a group is `IServiceRequestService.ResolveGroupAsync`, idempotent, called by the job (section 36.8) and right after a refusal,
+a cancellation, the host's answer to a proposal or an acceptance as a backup; it never fails the call that triggered it. The planner and the conflicts of the console do not count a backup that waits and
+has not accepted (`AgendaRequestsOf`, `HoldsSupplierTime`); the old job `service-request-auto-cancel` skips every request with a `GroupId`. The locks, the checks and the unique indexes only exist on PostgreSQL:
+`ServiceRequestBackupGroupPostgresTests` (`[PostgresFact]`, run in CI, not on a laptop without PostgreSQL) proves the primary's take closing the backups, the silent primary giving the job to the backup that
+accepted first (and the other finding the race closed, 409), two backups **accepting** at the same moment (one has it, the other gets 409 `service_request_backup_race_closed`), two backups taking at the
+same moment in the second window (one wins), the host's cancellation and the job's session lock.
+
+### 36.7 Emails and pushes (Italian, queued after the commit, by the winner only)
+
+| Event | To | Template / push `type` |
+|---|---|---|
+| Group created | each backup | `service-request-backup-invited` (comune, time, amount, until when the primary has) / `service-request-backup-invited` |
+| Second window opened | the backups still waiting | `service-request-backup-active` / `service-request-backup-active` |
+| The job went to a backup that had accepted | that backup | `service-request-backup-won` / `service-request-backup-won` |
+| Another backup accepted first (the race is closed) | the other backups, once, at that moment | `service-request-backup-closed` (kind `RaceClosed`: «nessuna penalità») / `service-request-backup-closed` |
+| The primary took the job | the backup that had accepted: released, its time is free again (kind `ReleasedByPrimary`); the others: closed (`PrimaryTookIt`) | `service-request-backup-closed` / `service-request-backup-closed` |
+| A backup took the job in the second window, the host cancelled, or the backup's time was not free | the backups closed | `service-request-backup-closed` / `service-request-backup-closed` (never the host's words) |
+| A backup took the job | the host | `service-request-taken-by-backup` / `service-request-taken` (same key as a take) |
+| The primary lost the job | the primary | `service-request-cancelled-to-supplier` (expired; with the line about the reliability points when it lost them, section 37) / `service-request-cancelled` |
+| Nobody took the job | the host and every supplier whose request lapsed (the primary, and the backups that stayed silent, with the line about the points when they lost them) | `service-request-status-changed` (nessuna risposta), `service-request-cancelled-to-supplier` |
+
+### 36.8 Configuration and job
+
+Section `Suppliers:ServiceRequests` gains `PrimaryResponseMinutes` (60), `BackupResponseMinutes` (60) and `MaxBackupSuppliers` (3, 1 to 5), validated at startup. Flag `Features__SupplierRequestBackups`
+(`feature-flags.md`): **off by default, and it gates only the creation of groups**. The recurring job `service-request-groups` (`*/5`, section 16 of `hangfire.md`) is always registered, one run at a time
+(session lock 1314 on top of Hangfire's), at most 500 groups per run; it also repairs a group whose followed request moved on without the group having followed (a crash between the two).
+
+### 36.9 Decisions with a default (the product owner can change them)
+
+1. The backups are the three best of the ranking of the suppliers (load, bio, reliability: section 37), not picked by the host. 2. The primary's hour counts from the creation of the request. 3. After its hour the primary can still take the job when no backup
+accepted (it only loses the priority); the strict reading («the primary is out after one hour») is a one-line change in `ServiceRequestGroupRules.CanTake`. 4. The second window is 60 minutes, counted from the moment the
+job finds the hour over. 5. A backup that accepted and whose time is not free any more when the job comes to it is dropped, and **nobody replaces it**: the race is closed for good, so the primary gets the second window. 6. A backup cannot propose another time, nor send a quote (SP-04b): 422 `service_request_backup_cannot_propose` / `…_cannot_quote`. 7. The rule applies to short-rent and long-rent requests and
+to the turnover request of a check-out; not to a showcase request, nor to one the supplier accepts automatically. 8. A pending proposal or quote of the primary freezes the group (the host is the one waited for): accepting it is the primary's take and closes the backups, turning it down or taking it back starts the window again. 9. «In pausa» is read as the supplier's time off
+and closed days (the planner), since a supplier has no pause of its own for the host's requests.
+
+### 36.10 Known limits
+
+The mobile app does not know the pre-approval: a backup request shows there as a new request and «accept» answers 422 `service_request_backup_waits_for_primary` with a localized message; the app
+does not show the group of the host's request. A backup that accepted is not asked again at assignment (no confirmation step): it can cancel the job before it starts, like any supplier. The group counts in the
+reliability of the suppliers (section 37): the replies in time (a backup too), the missed hour of the primary and the silent backups' small share; a backup closed by the race or released because the primary took the job loses
+nothing. Until the flags `Features__SupplierRequestBackups` or `Features__SupplierRequestAutoCancel` are on nothing lapses, so nobody loses points.
+
+### 36.11 After a deploy
+
+- [ ] Migration `AddServiceRequestBackupGroups` applied (table `ServiceRequestGroups`, the four columns of `ServiceRequests`, `Orgs.SupplierBackupsEnabled` true for every row).
+- [ ] `GET /api/public/features` has `supplierRequestBackups: false`; `service-request-groups` **is** in the Hangfire recurring jobs.
+- [ ] Test environment, `Features__SupplierRequestBackups=true`, three suppliers of the same comune and category: as the host, a request for one of them → 201 with `group.phase: "PrimaryWindow"` and three `members`;
+      the other two see the request in their inbox with `backup.role: "backup"`, `state: "waiting"` and **no property name and no notes**; `POST …/take` as a backup → 422 `service_request_backup_waits_for_primary`.
+- [ ] A backup `accept-as-backup` → 200, `state: "accepted"`; the other two backups are `Annullato` with `BackupRaceClosed` at once, and their `accept-as-backup` / `take` → 409 `service_request_backup_race_closed`; the primary `take` → 200 and the
+      backup that accepted is `Annullato` with `PrimaryTookIt` (released, its agenda is free again); the host's list has the one request.
+- [ ] Another request, nobody answers for an hour: the backup that accepted first has the job (`PresoInCarico`), the primary is `Annullato` `NoResponse`, and the host's list shows the backup's request
+      (`GET /api/service-requests` does not list the others). With nobody accepting, the second window opens (`group.phase: "BackupWindow"`), then `NoResponse` for all after another hour.
+- [ ] `PUT api/orgs/me/service-request-settings { "useBackupSuppliers": false }` → new requests of that org go to one supplier only.
+
 ## Known limits (other tasks)
 
 - Booking from the showcase (SP-10, SP-11): the customer finds, cancels, moves and answers a proposed time of its request (section 24).
   A showcase request is not paid inside CasaZen (section 26.2, SP-15c): the supplier records the payment it received outside it.
-  `SupplierSettings.OnlineBookingEnabled` is read by `GET api/supplier/settings` (section 29.1) but no endpoint writes it yet (SP-13a, the showcase editor).
+  `SupplierSettings.OnlineBookingEnabled` is read by `GET api/supplier/settings` (section 29.1) and written only by the showcase editor (section 33.8).
 - A supplier who lost the claim token cannot register again with the same email (409 `supplier_email_taken`): the
   claim without token links the existing profile once the Auth0 email is verified (section 2.2). The web pages show
   the localized message of the 409; a dedicated "link it" button for that code is a frontend follow-up.
 - Service requests: the host timeline, rejection reason and "paid" confirmation are in section 14 (SU-09), but only on
   the web: the app's supplier choice (today the first result) is MO-10 and its error states MO-07. `chargeToGuest` is
   still always refused, also for long-rent (open product point).
+
+## 35. The host reads a supplier's services and free slots to ask for an intervention — SR-08a (part 2)
+
+The request wizard of Affitti brevi picks a service of the supplier and one of its free slots. Two reads, for a property of the host, change nothing and need no flag
+(`property.read` in short-rent, the property authorized as a `HostResource`: 400 `validation_error` without `propertyId`, 404 `property_not_found` outside the caller's org,
+403 for a property the caller may not read or reach).
+
+| Call | What it answers |
+|---|---|
+| `GET api/suppliers/{supplierOrgId}/services?propertyId=&category=` | `{ items: [{ id, name, category, durationMinutes, priceFromCents, priceUnit, requiresQuote, estimatedAmountCents }] }`: the `Active` services of the supplier in its catalog order. `id` is the `serviceListingId` of the request; `estimatedAmountCents` is the price a request starts with (`SupplierServiceForRequest.EstimateOf`: the «from» price of a service priced per job, none on quote or per hour/set/m²). No public text, photo, supplement or slug. `category`: a code of `GET api/service-categories` (422 `invalid_service_category` otherwise). |
+| `GET api/suppliers/{supplierOrgId}/services/{serviceId}/slots?propertyId=&date=` | `{ serviceId, durationMinutes, from, to, slots: [{ startUtc, endUtc }] }` from `date` (`yyyy-MM-dd`, Europe/Rome; never before today, today when missing) for 14 days at most, cut at the supplier's horizon (`PublicSlotWindow`, the window of the public page and of the supplier's own preview). A first day past the horizon, or a service without a duration, is `from`/`to` null and no slot. |
+
+- **The offer is the check.** The slots are the plan of `ISupplierAgendaService.PlanAsync` for `SupplierServiceForRequest.ToSlotQuery()`: the very query `ServiceRequestService` checks the time of a request with (`ResolveCreateSchedule`, `EnsureSlotFreeAsync`). A slot offered here is one `POST api/service-requests` accepts with `serviceListingId` and `scheduledStartUtc` equal to its `startUtc`; if someone takes it first, 409 `supplier_slot_unavailable` (and 409 `supplier_commitment_conflict` when the time overlaps a job the supplier already accepted). With `durationMinutes` the creation does **not** check the slot: the slots are for the services of the catalog.
+- **The same rules as the creation come first**: 404 `supplier_not_found`; 422 `service_request_supplier_inactive` (the supplier is not `Active`) and `service_request_supplier_outside_comune` (it does not cover the comune of the property, by ISTAT code or by the written city); for the slots, 404 `supplier_service_not_found` (another supplier's, or deleted) and 422 `service_request_service_unavailable` (a draft or a paused service).
+- **Privacy and cost**: the slots carry two instants and nothing of the supplier's agenda (no reason, job or person); the services come out through `ISupplierServiceCatalogService`, the only code that reads that table. Not cached: the host reads a few days of one supplier once per choice. Rate limit `HostSupplierSlots` on the slots, 60 / min **per signed-in person** (`RateLimiting__HostSupplierSlots__PermitLimit`, 429 `rate_limited`), and the window cannot be longer than 14 days.
+
+## 37. The reliability and the ranking of the suppliers — SP-REL
+
+One score ranks the suppliers (`Casazen.Core.Suppliers.SupplierRanking`, pure functions over the weights of `SupplierRankingOptions`, section `SupplierRanking`): it decides **who is recommended** to a host (`POST api/service-requests/match`), **in which order the suppliers are listed** when a host asks for a job (`GET api/suppliers`, `GET api/long-rent/service-requests/suppliers`) and, with the backups (SP-BKP), **who is called**. It is the score the platform always had plus the **reliability** of the supplier: who answers in time and does its jobs without disputes goes up, who misses deadlines or is disputed goes down. It was SP-10c's open point; only its events were built, not the rest of SP-10c (no staff console, no host claim: SP-15c-c).
+
+**The score** (1 to 100, `SupplierMatchService` reads it for every supplier of a comune in two queries, the open requests and the events of the window):
+
+`BaseScore 70` − `8` per request the supplier holds (up to `40`) + `15` for an emergency / `8` for a high urgency + `5` for a supplier that wrote a bio + `reliability points`, clamped to 1..100. A tie goes to the supplier with less work, then to the name.
+
+**The events** (`SupplierReliabilityEvents`, one row per supplier, request and kind: a job or a webhook that runs twice adds nothing; `ISupplierReliabilityService`, the only code that touches the table):
+
+| Kind | Written when | Points |
+|---|---|---|
+| `RepliedInTime` | The supplier takes, refuses, proposes another time or sends a quote on a new request **before its `ResponseDueAt`** (saying no in time counts). Answering twice adds nothing. | `+1` each, up to `+10` |
+| `JobCompletedClean` | `CompleteAsync` moves the request to `Completato`. | `+2` each, up to `+20` |
+| `NoReplyInTime` | The job `service-request-auto-cancel` cancels a request of a host nobody answered (the supplier the host chose: `AsBackup = false`). The job `service-request-expiry` writes it too for a request on measure of a public showcase that the supplier never answered in its hour (SP-10c, section 34.11). In a group of backups (SP-BKP, section 36) the groups pass writes it: for the primary when its hour ends without an answer (when the second window opens, or when a backup takes the job in its place), and for each backup that stayed silent through both windows when the group lapses with `NoResponse` (`AsBackup = true`). A backup closed by the race, or released because the primary took the job, gets none. | `−10` for the supplier chosen, `−2` (`20 %`, `BackupPenaltyShare`) for a backup |
+| `DisputeOpened` | `charge.dispute.created` of Stripe on the payment of the request (`SupplierPaymentService.ApplyDisputeCreatedAsync`). It takes back the `+2` of that job. **Until SP-15c-c (the claim a host opens from CasaZen) exists, disputes come only from Stripe chargebacks**; that task records the same event with `RecordAsync`. | `−12` |
+
+Rules, all in `SupplierRanking:*` (zero them, or `ReliabilityEnabled=false`, and the ranking is the one of before; the events are still recorded, so the weights can be changed later and applied to what already happened):
+
+- **Window**: the events of the last `WindowDays` (90) days. A supplier with no event starts neutral (`0`).
+- **Caps**: the bonuses stop at `+10` and `+20`; the penalties stop together at `MaxTotalPenalty` (`40`), so one bad month never zeroes a supplier, and the score stays within 1..100.
+- **A missed deadline is not held against a supplier that could not answer.** `RecordNoReplyAsync` looks at the time the request waited (from the creation, or from the start of the last window when the deadline was restarted, to the deadline): no penalty when the supplier was not `Active`, was on time off every day of it, or when the whole window falls outside its working hours (a Sunday, the night). A supplier that wrote **no working hours** is taken to have been there. The request lapses all the same; only the points are not taken, and the e-mail does not say they were.
+- **Only the requests of the hosts count** (short rent and long rent). A booking from a supplier's own public showcase neither earns nor costs points: its customer chose the supplier and the deadline is the supplier's own setting. The one exception (SP-10c, section 34.11): a **request on measure** that the supplier never answered in its hour writes `NoReplyInTime` (the hour is the rule of the platform, not the supplier's setting); nothing else of a showcase request counts.
+- **Nothing is written for what the supplier did not choose**: a backup closed because another one accepted first, or released because the primary accepted, loses nothing (SP-BKP).
+- **A failure to write an event never fails the operation** (it is logged); the event is written after the change is saved, by the winner only.
+
+**Who sees what.** The host sees the **order** of the list and one boolean, `recommended` on the first supplier of the default order, only when it is strictly ahead of the second (with a tie nobody is "the" recommended one); `GET api/suppliers?sort=` takes `recommended` (the default, blank included), `name`, `price` or `response`, anything else is 400 `validation_error` (`SupplierSortInvalid`). Nobody sees the number, the points or the events (`SupplierPickerPrivacyIntegrationTests` keeps the answer to a whitelist of fields). The supplier is told **why it loses points** only in the e-mail of the request that lapsed (`service-request-cancelled-to-supplier`, line `ServiceRequestExpired_PointsHint`), and only when it did.
+
+**Reading it in support.** The events of a supplier, newest first: `SELECT "Kind", "RequestId", "AsBackup", "OccurredAt", "Detail" FROM "SupplierReliabilityEvents" WHERE "SupplierOrgId" = '<org>' ORDER BY "OccurredAt" DESC;` (kinds: 1 replied in time, 2 no reply in time, 3 job completed clean, 4 dispute opened). Not tenant-filtered (TN-2 allow-list, `SupplierReliabilityTenancyTests`): every statement in the code carries the supplier predicate. The migration `AddSupplierReliabilityEvents` only adds the table. The table fills from the deploy on: the events before it are not rebuilt, so every supplier starts neutral.
+
+**What needs a flag.** Nothing in the ranking: it is on with the code. But the **missed-deadline points** exist only where requests are really cancelled for lack of an answer: with `Features__SupplierRequestAutoCancel` off (the default) and without the backups (`Features__SupplierRequestBackups`), no request lapses, so no `NoReplyInTime` is written and the reliability can only go up. Turn those on to make a silent supplier lose points.

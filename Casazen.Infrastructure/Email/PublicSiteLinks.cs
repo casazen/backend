@@ -17,11 +17,26 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     /// <summary>Supplier console inbox.</summary>
     public string SupplierInbox() => Build("/app/supplier/inbox");
 
+    /// <summary>A request in the supplier console (SP-16d, the reminder of the day before). Only the id of the request is in the link, no personal data.</summary>
+    public string SupplierRequest(Guid serviceRequestId) => Build($"/app/supplier/inbox/{serviceRequestId:D}");
+
     /// <summary>Guest self check-in page for a raw session token.</summary>
     public string GuestCheckIn(string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
         return Build($"/checkin/{Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>
+    /// Page of the web app where a guest stops the marketing e-mails of an org (route <c>/unsubscribe</c>, DEB-01; the page is a frontend
+    /// task). <paramref name="signedQuery"/> (<c>orgId</c>, <c>emailHash</c>, <c>expiresAt</c>, <c>signature</c>, built by
+    /// <see cref="MarketingUnsubscribeLinks"/>) travels in the <b>fragment</b>, which a browser never sends to a server, so it is in no
+    /// access log: the page reads it and posts it unchanged as the query of <c>POST api/public/marketing/unsubscribe</c>. Never the address.
+    /// </summary>
+    public string MarketingUnsubscribe(string signedQuery)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(signedQuery);
+        return Build($"/unsubscribe#{signedQuery}");
     }
 
     /// <summary>
@@ -162,6 +177,12 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public string SupplierConnectOnboardingRefresh() => Build(SupplierSettingsPagePath + "?stripe_refresh=1");
 
     /// <summary>
+    /// The supplier's settings page, where the payments account is completed (SP-15c-a: the e-mail of a payment waiting for the account links
+    /// here). Built by the server.
+    /// </summary>
+    public string SupplierSettings() => Build(SupplierSettingsPagePath);
+
+    /// <summary>
     /// "Le mie prenotazioni" of the org's booking site (BK-10, BK-11): the guest finds a booking there with its code and
     /// email. The checkout outcome page (BK-07) needs the checkout token, which only the guest's browser has, so emails
     /// link here. With <paramref name="bookingCode"/> the page opens with the code filled in (<c>?code=</c>) and still asks
@@ -188,16 +209,32 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
 
     /// <summary>
     /// Page of the supplier's showcase where the customer checks the e-mail of a booking (route
-    /// <c>/fornitori/:slug/conferma</c>, SP-10): the page reads the booking id and the token of the link and sends them to
-    /// <c>POST api/public/suppliers/{slug}/bookings/{id}/confirm-email</c>. Only the id and the random token (single use,
-    /// valid for the minutes of the hold) are in the link, no personal data.
+    /// <c>/fornitori/:slug/conferma</c>, SP-10): the page reads <c>hold</c> from the query and the <c>token</c> from the <b>fragment</b>
+    /// — which a browser never sends to a server, so the token is in no access log (SP-15c-a, FE-SP10-1: the link of the booking used to
+    /// carry it in the query) — and sends them to <c>POST api/public/suppliers/{slug}/bookings/{id}/confirm-email</c>. Only the id and the
+    /// random token (single use, valid for the minutes of the hold) are in the link, no personal data.
     /// </summary>
     public string SupplierBookingConfirmation(string supplierSlug, Guid holdId, string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(supplierSlug);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
         return Build(
-            $"/fornitori/{Uri.EscapeDataString(supplierSlug)}/conferma?hold={holdId:D}&token={Uri.EscapeDataString(token)}");
+            $"/fornitori/{Uri.EscapeDataString(supplierSlug)}/conferma?hold={holdId:D}#token={Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>
+    /// Page of the supplier's showcase where the customer checks the e-mail of a request on measure (SP-10b; the same route as the booking's,
+    /// <c>/fornitori/:slug/conferma</c>, told apart by the query key): the page reads <c>inquiry</c> from the query and <c>token</c> from the
+    /// <b>fragment</b> — which a browser never sends to a server, so the token is in no access log — and sends them to
+    /// <c>POST api/public/suppliers/{slug}/inquiries/{id}/confirm-email</c>. Only the id and the random token (single use, valid for the minutes
+    /// of the inquiry) are in the link, no personal data.
+    /// </summary>
+    public string SupplierInquiryConfirmation(string supplierSlug, Guid inquiryId, string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(supplierSlug);
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build(
+            $"/fornitori/{Uri.EscapeDataString(supplierSlug)}/conferma?inquiry={inquiryId:D}#token={Uri.EscapeDataString(token)}");
     }
 
     /// <summary>
@@ -276,8 +313,15 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public const string BillingPagePath = "/app/short-rent/settings/plan";
 
     /// <summary>
+    /// Billing page of the account area (route <c>/app/account/billing</c> of the web app, AM-08a): the one page that holds the
+    /// plan and the billing of the org for the people of the account, so Stripe can bring them back to it (AM-08a-FU1).
+    /// </summary>
+    public const string AccountBillingPagePath = "/app/account/billing";
+
+    /// <summary>
     /// Allow-list of the pages Stripe may send the browser back to (PL-16, A1-36): the plan and billing pages of the web
-    /// app in each rental context, so a long-term landlord comes back to its own shell. Exact paths, no query string.
+    /// app in each rental context, so a long-term landlord comes back to its own shell, and the billing page of the
+    /// account area (AM-08a-FU1). Exact paths, no query string.
     /// </summary>
     public static readonly IReadOnlySet<string> BillingReturnPagePaths = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -285,6 +329,7 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
         "/app/short-rent/settings/billing",
         "/app/long-rent/settings/plan",
         "/app/long-rent/settings/billing",
+        AccountBillingPagePath,
     };
 
     /// <summary>True when <paramref name="path"/> is exactly one of <see cref="BillingReturnPagePaths"/>.</summary>

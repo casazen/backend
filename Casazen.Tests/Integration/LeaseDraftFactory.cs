@@ -81,6 +81,40 @@ public class LeaseDraftFactory : CasazenWebApplicationFactory
 
         await db.SaveChangesAsync();
     }
+
+    /// <summary>
+    /// A new long-term property of the org, owned by <paramref name="ownerId"/>, ready (<see cref="MakeReadyAsync"/>) and with no lease: the
+    /// property a test writes its drafts on, since two leases of one property cannot cover the same days (LR-OVERLAP) and the property of
+    /// a <c>LongRentWorld</c> already has leases.
+    /// </summary>
+    public async Task<Guid> AddReadyPropertyAsync(Guid orgId, string ownerId)
+    {
+        Guid id;
+        await using (var scope = Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var property = new Property
+            {
+                OwnerId = ownerId,
+                OrgId = orgId,
+                Name = "Casa senza contratti",
+                Description = "Property with no lease, for the guided draft tests",
+                Address = $"Via Libera {Guid.NewGuid():N}",
+                City = "Bari",
+                PostalCode = "70121",
+                Bedrooms = 2,
+                Bathrooms = 1,
+                RentalMode = RentalMode.Long,
+                IsActive = true,
+            };
+            db.Properties.Add(property);
+            await db.SaveChangesAsync();
+            id = property.Id;
+        }
+
+        await MakeReadyAsync(id);
+        return id;
+    }
 }
 
 /// <summary>The same host with every contract template approved: the download for signature can succeed.</summary>

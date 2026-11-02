@@ -104,6 +104,39 @@ public partial class SupplierKpiService(
             .Where(r => r.SupplierOrgId == supplierOrgId)
             .AnyAsync(r => r.TakenAt != null || r.Status == ServiceRequestStatus.Rifiutato, cancellationToken);
 
+    public async Task<ShowcaseRequestStats> GetShowcaseRequestStatsAsync(
+        Guid supplierOrgId,
+        int days,
+        CancellationToken cancellationToken = default)
+    {
+        var since = timeProvider.GetUtcNow().UtcDateTime.AddDays(-days);
+
+        // ServiceRequest has no tenant filter (two parties, TN-2 allow-list): scoped by the supplier org explicitly. A request of the showcase
+        // is born with the rental context Showcase (SP-10): the host's requests to the same supplier are not counted.
+        var counts = await db.ServiceRequests
+            .AsNoTracking()
+            .Where(r => r.SupplierOrgId == supplierOrgId
+                        && r.RentalContext == ServiceRequestRentalContext.Showcase
+                        && r.CreatedAt >= since)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Requests = g.Count(),
+                Pending = g.Count(r => r.Status == ServiceRequestStatus.Richiesto),
+            })
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return new ShowcaseRequestStats(days, counts?.Requests ?? 0, counts?.Pending ?? 0);
+    }
+
+    public Task<int> CountJobsDoneAsync(Guid supplierOrgId, CancellationToken cancellationToken = default) =>
+        db.ServiceRequests
+            .AsNoTracking()
+            .Where(r => r.SupplierOrgId == supplierOrgId)
+            .CountAsync(
+                r => r.Status == ServiceRequestStatus.Completato || r.Status == ServiceRequestStatus.Pagato,
+                cancellationToken);
+
     public async Task<int?> GetMedianResponseMinutesAsync(Guid supplierOrgId, CancellationToken cancellationToken = default)
     {
         // The requests of the average of GET today (SP-04): taken in the last 90 days, the latest ones when there are many (a
