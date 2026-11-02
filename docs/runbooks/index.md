@@ -78,6 +78,7 @@ Il punto di partenza per un deploy è [`deploy-checklist.md`](deploy-checklist.m
 | [`cin-format.md`](cin-format.md) | CIN format and data migration | CO-01, CO-06, CO-20, FD-13, RS-2, SU-04 |
 | [`compliance.md`](compliance.md) | compliance status of the properties (suspension, nightly check, historic recalculation) | BK-05, CO-01, CO-06, CO-07, CO-17, FD-13, SU-04 |
 | [`alloggiati.md`](alloggiati.md) | Alloggiati Web, honest status and manual submission | CO-02, CO-09, CO-10, CO-11, CO-12, CO-13, CO-14, CO-21 |
+| [`compliance-autopilot.md`](compliance-autopilot.md) | «Gestisci con AI» of the page of the adempimenti: what the assistant does, its limits and its AI | CO-04, CO-09, CO-11, CO-17 |
 | [`gdpr.md`](gdpr.md) | guest data rights, consents and retention (GDPR) | CO-12, CO-15, FD-11, LT-12, TN-1 |
 | [`comuni-istat.md`](comuni-istat.md) | official ISTAT list of the comuni | CO-12, RS-6, SU-04 |
 | [`ross1000.md`](ross1000.md) | flussi turistici (Ross1000 Lombardia, ISTAT) e portali regionali | CO-12, CO-13, CO-22, RS-9, SU-04 |

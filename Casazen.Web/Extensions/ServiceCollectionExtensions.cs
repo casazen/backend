@@ -545,6 +545,10 @@ public static class ServiceCollectionExtensions
             .BindConfiguration(OfficialReferenceDataOptions.SectionName);
         services.AddScoped<IStayGuestService, StayGuestService>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
+        // «Gestisci con AI» of the page of the adempimenti: asks the guests for their data (e-mail with the check-in link, chat messages the
+        // host sends, written by the AI when one is in effect) and closes the departures that are over; the rest stays the host's.
+        services.AddScoped<IAutopilotMessageWriter, AutopilotMessageWriter>();
+        services.AddScoped<IComplianceAutopilotService, ComplianceAutopilotService>();
         // D.L. 145/2023 safety checklist of a short-stay property (CO-07).
         services.AddScoped<IPropertySafetyChecklistService, PropertySafetyChecklistService>();
         // Single evaluation of the activation blockers, suspension and nightly check of the published properties (CO-06).
