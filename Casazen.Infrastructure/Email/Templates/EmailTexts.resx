@@ -594,6 +594,12 @@
   <data name="Push_GuestMessage_Body" xml:space="preserve">
     <value>{0}: un ospite ti ha scritto.</value>
   </data>
+  <data name="Push_GuestCheckInCompleted_Title" xml:space="preserve">
+    <value>Check-in online completato</value>
+  </data>
+  <data name="Push_GuestCheckInCompleted_Body" xml:space="preserve">
+    <value>{0}: un ospite ha completato il check-in online.</value>
+  </data>
   <data name="Push_CheckoutReminder_Title" xml:space="preserve">
     <value>Promemoria check-out</value>
   </data>

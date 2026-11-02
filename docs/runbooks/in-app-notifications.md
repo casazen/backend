@@ -59,6 +59,7 @@ and write what is still missing (at most three rounds, then Hangfire retries). R
 |---|---|---|
 | `new-booking`, `ota-stay-review` | hosts of the booking | booking |
 | `guest-message` | hosts of the booking (every message of the guest) | booking |
+| `guest-checkin-completed` | hosts of the booking (the guest completed the online check-in, § 10) | booking |
 | `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed`, `checkout-reminder` | hosts of the booking | booking |
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed` | hosts of the property | service request |
 | `service-request-cancelled` | the other party: the hosts of the property when the supplier cancels, the supplier org when the host or the customer of its showcase cancels; both when nobody answered in time | service request |
@@ -171,6 +172,7 @@ route of the same screen (the links the e-mails use are built in `PublicSiteLink
 | `new-booking`, `ota-stay-review`, `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}` |
 | `checkout-reminder` | booking | `/bookings/{bookingId}/checkout` | `/app/short-rent/bookings/{bookingId}` |
 | `guest-message` | booking | `/bookings/{bookingId}/messages` | `/app/short-rent/bookings/{bookingId}?tab=messages` |
+| `guest-checkin-completed` | booking | `/bookings/{bookingId}` | `/app/short-rent/bookings/{bookingId}?tab=guest` |
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed`, `-cancelled` (host side) | service request | `/bookings/{bookingId}` when the request has a booking, else `/properties` | the service request of the host (by `entityId`) |
 | `service-request-created`, `-auto-accepted`, `-paid`, `-reminder`, `-proposal-accepted`, `-proposal-rejected`, `-rescheduled`, `-cancelled` (supplier side) | service request | `/properties` | supplier inbox, `/app/supplier/inbox` (the request by `entityId`) |
 
@@ -215,9 +217,19 @@ needs a backplane (for example the Redis backplane of SignalR, or Azure SignalR 
 clients (skip negotiation). Until then keep the web service at one replica; a client that misses a message catches up with the
 refetch on reconnect and the slow poll.
 
-## 10. Messages of the guest
+## 10. Messages and check-in of the guest
 
-A message of the guest of a direct booking (`GuestMessageService.SendAsGuestAsync`, after it is saved, never on a replayed send) queues
+**Online check-in.** The guest who completes the check-in on the public page (`GuestCheckInService.SubmitAsync`, after the data and the
+session are saved, never on a refused or repeated submit) queues a push to `PushAudience.BookingHosts(bookingId)`: type
+`guest-checkin-completed`, delivery key `guest-checkin:{sessionId:N}:completed` (one per completed session), route `/bookings/{id}`.
+The lock-screen text is the property only: *Check-in online completato* / *«{property}»: un ospite ha completato il check-in online.*
+(`Push_GuestCheckInCompleted_*` in `EmailTexts.resx` and `.en.resx`); **no guest name and nothing typed in the form**. Through the
+decorator this is also the entry of the bell and the live `notificationsChanged` message (§ 9) of every host of the booking. Best
+effort like the other pushes: a failure is logged with the ids and never fails the guest's submit. The web client opens the booking on
+the *Documenti* tab (`?tab=guest`) and, on this message, reads again what the check-in changes (the booking and its check-in link, the
+guests, Alloggiati Web, the cockpit and the Home) so the page open in front of the host updates without a reload.
+
+**Messages.** A message of the guest of a direct booking (`GuestMessageService.SendAsGuestAsync`, after it is saved, never on a replayed send) queues
 a push to `PushAudience.BookingHosts(bookingId)`: type `guest-message`, delivery key `booking-message:{messageId:N}` (**one push and
 one bell entry for every message**; the e-mail stays throttled to one every ten minutes), route `/bookings/{id}/messages`. The
 lock-screen text is the property only: *Nuovo messaggio da un ospite* / *«{property}»: un ospite ti ha scritto.* (`Push_GuestMessage_*`
@@ -243,11 +255,13 @@ at most 200 (`GuestMessageRules.UnreadThreadsMax`). Never any text. Use it for t
 `Casazen.Web/BackgroundJobs/InAppNotificationRetentionJob.cs`, migration `AddInAppNotifications`; real time:
 `Casazen.Core/Services/IInAppNotificationPublisher.cs`, `Casazen.Web/Hubs/NotificationsHub.cs`,
 `Casazen.Web/Infrastructure/{SignalRInAppNotificationPublisher,HubAccessToken}.cs`; guest messages:
-`Casazen.Infrastructure/Services/GuestMessageService.cs`, `Casazen.Web/Controllers/HostMessagesController.cs`.
+`Casazen.Infrastructure/Services/GuestMessageService.cs`, `Casazen.Web/Controllers/HostMessagesController.cs`; online check-in:
+`Casazen.Infrastructure/Services/GuestCheckInService.cs` (`PushToHosts`).
 Tests: `InAppNotificationPushDecoratorTests`, `InAppNotificationJobTests`, `InAppNotificationServiceTests`,
 `MeNotificationsControllerTests`, `InAppNotificationRetentionJobTests`,
 `InAppNotificationSqlShapeTests`, `InAppNotificationsIntegrationTests` (HTTP, the chain from a push to the
 notification), and on PostgreSQL `InAppNotificationsPostgresTests` (schema, the race on the unique index, the single-statement
 updates and the retention, whose rows a user reaches, the cascades), `InAppNotificationJobPublishTests`, `NotificationsHubTests`,
-`GuestMessagePushTests`, `HostMessagesControllerTests`, `CorsPolicyTests` (hub), and on PostgreSQL `GuestMessageNotificationsPostgresTests`. The architecture tests list the entity
+`GuestMessagePushTests`, `HostMessagesControllerTests`, `GuestCheckInCompletedPushTests`, `GuestCheckInServiceTests` (the hosts are told),
+`GuestCheckInNotificationIntegrationTests` (from the guest's submit to the bell), `CorsPolicyTests` (hub), and on PostgreSQL `GuestMessageNotificationsPostgresTests`. The architecture tests list the entity
 (`TenantQueryFilterArchitectureTests`) and the four actions (`EndpointAuthorizationArchitectureTests`).

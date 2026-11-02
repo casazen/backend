@@ -354,6 +354,93 @@ public class GuestCheckInServiceTests
         Assert.True(secondResult.Duplicate);
     }
 
+    // ─── The hosts are told (push, bell, live message) ───
+
+    /// <summary>What a service asks of <see cref="IPushNotificationService"/>; it can be made to fail.</summary>
+    private sealed class RecordingPush : IPushNotificationService
+    {
+        public List<(string Key, PushAudience Audience, PushNotificationPayload Payload)> Calls { get; } = [];
+
+        public Exception? Throws { get; init; }
+
+        public bool Enqueue(string deliveryKey, PushAudience audience, PushNotificationPayload payload)
+        {
+            if (Throws is not null)
+                throw Throws;
+
+            Calls.Add((deliveryKey, audience, payload));
+            return true;
+        }
+    }
+
+    [Fact]
+    public async Task Submit_ValidData_TellsTheHostsOfTheBookingOnce_NamingThePropertyOnly()
+    {
+        await using var seed = await SeedAsync();
+        var push = new RecordingPush();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance, pushNotifications: push);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        Assert.True(result.Success);
+        var session = await seed.Db.GuestCheckInSessions.SingleAsync();
+        var (key, audience, payload) = Assert.Single(push.Calls);
+        Assert.Equal(PushDeliveryKeys.GuestCheckInCompleted(session.Id), key);
+        Assert.Equal(PushAudience.BookingHosts(seed.BookingId), audience);
+        Assert.Equal(PushTypes.GuestCheckInCompleted, payload.Type);
+        Assert.Equal(seed.BookingId, payload.BookingId);
+        Assert.Equal(PushRoutes.Booking(seed.BookingId), payload.Route);
+        Assert.Contains("Test Property", payload.Body);
+        // The lock screen never carries a guest's name, the booker's or one typed in the form.
+        foreach (var name in new[] { "Mario", "Rossi", "Luigi", "Verdi" })
+            Assert.DoesNotContain(name, payload.Title + payload.Body);
+    }
+
+    [Fact]
+    public async Task Submit_DataTheFormRefuses_TellsNobody()
+    {
+        await using var seed = await SeedAsync();
+        var push = new RecordingPush();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance, pushNotifications: push);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest(gender: null));
+
+        Assert.False(result.Success);
+        Assert.Empty(push.Calls);
+    }
+
+    [Fact]
+    public async Task Submit_SentTwice_TellsTheHostsForTheFirstOnly()
+    {
+        await using var seed = await SeedAsync();
+        var push = new RecordingPush();
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance, pushNotifications: push);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        _ = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+        var second = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        Assert.True(second.Duplicate);
+        Assert.Single(push.Calls);
+    }
+
+    [Fact]
+    public async Task Submit_TheQueueFails_TheCheckInIsStillCompleted()
+    {
+        await using var seed = await SeedAsync();
+        var push = new RecordingPush { Throws = new InvalidOperationException("hangfire is down") };
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance, pushNotifications: push);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var result = await svc.SubmitAsync(token, BuildValidSubmitRequest());
+
+        // The guest's data is saved and the guest is told it worked: telling the hosts is best effort.
+        Assert.True(result.Success);
+        Assert.Equal(GuestCheckInSessionStatus.Completo, (await seed.Db.GuestCheckInSessions.SingleAsync()).Status);
+    }
+
     [Fact]
     public async Task GetSessionByToken_CompletedSession_ReturnsNullButSubmitReturnsDuplicate()
     {

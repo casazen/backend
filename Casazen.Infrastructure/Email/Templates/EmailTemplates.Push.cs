@@ -156,6 +156,13 @@ public static partial class EmailTemplates
     public static PushText GuestMessagePush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_GuestMessage", propertyName);
 
+    /// <summary>
+    /// The guest completed the online check-in of a stay, to the host: the property only, never the guest's name or any of the
+    /// data typed in the form.
+    /// </summary>
+    public static PushText GuestCheckInCompletedPush(CultureInfo culture, string propertyName) =>
+        Push(culture, "Push_GuestCheckInCompleted", propertyName);
+
     /// <summary>Check-out day of a stay, to the host (CO-10 stay alert).</summary>
     public static PushText CheckoutReminderPush(CultureInfo culture, string propertyName) =>
         Push(culture, "Push_CheckoutReminder", propertyName);
