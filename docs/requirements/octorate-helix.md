@@ -119,7 +119,7 @@ introdurre automazioni AI: §5 e §7.
 
 ## 3. Fonti
 
-S1–S11 sono le fonti della v1.3, aggiornate dove indicato; S12–S22 sono nuove.
+S1–S11 sono le fonti della v1.3, aggiornate dove indicato; S12–S24 sono nuove.
 
 | ID | Fonte | Uso |
 |---|---|---|
@@ -145,6 +145,8 @@ S1–S11 sono le fonti della v1.3, aggiornate dove indicato; S12–S22 sono nuov
 | S20 | Verifica tecnica in sola lettura del 31/10/2026: variabili Octorate su Railway (nomi e confronto dei valori senza stamparli), accesso con le credenziali applicative e lettura di `GET /rest/v1/api/configuration` | Credenziali valide; configurazione reale del partner CasaZen (§9.1) |
 | S21 | Risposta di Octorate (Hospitality Engineering) riferita dal PO il 02/11/2026 alla mail del 31/10: non risponde alle domande tecniche e rimanda a una sessione di onboarding a pagamento con un tecnico specializzato; il PO non la usa per ora. Il prezzo non è stato comunicato | Le domande D15–D35 restano senza risposta: §14.3 |
 | S22 | Verifica tecnica in sola lettura del 02/11/2026 (stesso metodo di S20: credenziali applicative sul sandbox, nessuna scrittura, nessun dato personale stampato) e pagine pubbliche lette lo stesso giorno: prezzi, PMS e motore di prenotazione di `octorate.com`, un confronto prezzi di un concorrente (CheckIn Facile), documentazione di Railway sugli IP in uscita statici | Catalogo reale dei portali, quota, strutture visibili al partner; moduli e prezzi pubblici di Octorate come peso per D17 e D34; IP statici in uscita (§14.3) |
+| S23 | Ricerca sulla documentazione pubblica di Octorate e degli integratori, 02/11/2026 (circa 40 pagine: centro assistenza `community.octorate.com`, pagine prodotto di `octorate.com`, help center di Vikey e Chekin; rapporto di lavoro, non nel repository). Due punti controllati di persona: la guida sulla doppia fatturazione (2025) e la guida al push dei portali (marzo 2026) | Passi dell'host per Alloggiati, ISTAT, fatture e tassa; moduli; prerequisiti per portale; CIN; programma partner (§10.6) |
+| S24 | Analisi in sola lettura di OpenAPI e Postman (stessi sha256 di S13) su 12 domande, 02/11/2026 (rapporto di lavoro, non nel repository) | Operazioni e campi per check-in e Polizia, tassa, documenti fiscali, motore di prenotazione, webhook, licenza, reti e quota, prenotazioni, messaggi, contenuti; correzioni al documento (§10.4, §14.3) |
 
 Precedenze: S18 (testo originale di Octorate) prevale su S7 (il riassunto del PO). Un'operazione
 presente nella specifica S13 ma dichiarata non disponibile da S18 **non si usa** finché Octorate
@@ -742,7 +744,8 @@ contenuti non passano da Octorate (S18).
    esportazione in blocco (un file per struttura) per chi aggiorna più annunci di seguito; con «Fallo
    per me» (UX-15) l'aggiornamento lo fa il supporto di CasaZen.
 6. **In seguito (P2, da verificare):** il catalogo dei portali di Octorate marca Expedia con
-   funzioni di contenuto e tariffe (S22): prima si prova se l'API le consente su un annuncio Expedia
+   funzioni di contenuto e tariffe e la guida di marzo 2026 indica il push di camere e appartamenti
+   su un ID Expedia esistente (S22, S23): prima si prova se l'API le consente su un annuncio Expedia
    reale (H8b). Solo se Octorate non le offre (domanda 14 della mail), valutare un collegamento
    diretto di CasaZen alle API dei contenuti di Expedia riservate ai partner di connettività.
 
@@ -1913,8 +1916,9 @@ nel repository:
    3 minuti: scambio immediato, nessuna durata minima presunta; un codice scaduto riavvia il
    consenso. Lo scambio è una chiamata da server a server, `POST .../rest/v1/identity/token` in
    `application/x-www-form-urlencoded` con `client_id`, `client_secret`, `redirect_uri`,
-   `grant_type=code` e `code`; la risposta contiene `access_token`, `refresh_token` ed `expireDate`
-   (S19). Il refresh token arriva **solo** alla prima autorizzazione: si salva subito.
+   `grant_type=code` e `code`; la risposta contiene `access_token`, `refresh_token` ed `expires_in`
+   (`expireDate` è deprecato: S24; S19). Il refresh token arriva **solo** alla prima autorizzazione:
+   si salva subito.
 4. Il backend scambia il codice con il client secret e conserva cifrati access e refresh token.
    L'access token dura 24 ore; il refresh token non scade secondo S9. La scadenza è scritta nel
    token stesso: CasaZen la legge da lì, non la presume, e prima di ogni chiamata rinnova un token
@@ -2032,13 +2036,13 @@ diversamente (§3, precedenze).
 | Contenuti e canali | Tutto ciò che è stato chiesto (proprietà, camere, contenuti, tariffe, disponibilità) è disponibile via API. Booking.com, Airbnb, Vrbo, HomeToGo e Holidu ricevono contenuti e vi si creano proprietà e camere; gli altri canali si possono solo collegare. Entrambi i processi sono complessi | `pushQueue` solo per `booking_xml`, `airbnb_xml`, `homeaway`; invio per connessione per gli altri; Expedia nei metadati | Editor unico per i cinque canali con contenuti; **Expedia e gli altri canali solo collegati**: i loro contenuti si gestiscono sul canale, con una guida dentro il wizard (LST-01, LST-12, §11.1) |
 | Check-in e Polizia | Via API si creano le schedine Alloggiati e ISTAT e il check-in dell'ospite; l'invio agli enti lo fa Octorate; il collegamento ai portali degli enti si fa **solo dal pannello Octorate**; gli esiti si vedono nel pannello e **non** sono disponibili via API | Ospiti del check-in in scrittura con tutti i campi Alloggiati e statistici; per ospite `policeSentTime` e `policeSentStatus`; nella struttura `policeAccount` (`autorun`, `valid`, `lastCron`); nessuna operazione per avviare l'invio o scaricare la ricevuta | CasaZen scrive gli ospiti e Octorate invia (PO-02). Collegamento agli enti: passo guidato sul pannello Octorate (CHK-03). Esito: «Affidato a Octorate» con la ricevuta ufficiale scaricata dal web service della Polizia o caricata (CHK-04); i campi di S13 si verificano in sandbox e non sono la base del prodotto (D18). ISTAT con prova guidata (CHK-05) |
 | Tassa di soggiorno | Va gestita sull'infrastruttura di CasaZen | `touristTax` «calcolata al momento»; per ospite `cityTaxPrice`, `cityTaxExemption` (30 motivi), `excludeCityTax`; nessuna operazione per le regole | CasaZen calcola, riepiloga e ricorda le scadenze (CHK-07); scrive i valori per ospite in Octorate solo se servono ai documenti emessi in Octorate (D20) |
-| Documenti fiscali | Nessuna generazione via API per ora; si recuperano solo anagrafiche dei clienti e documenti fiscali generati in Octorate | Lettura con tipo e stato SDI (`fiscalInvoiceGroup`); PDF di riepilogo; esistono `createDoubleHeadingInvoice` e `issueSummaryDocument` | Le due operazioni di creazione **non si usano**. Prima scelta del PO: emette Octorate, anche per il suo motore di prenotazione, e CasaZen legge (FIS-04), se Octorate lo consente (D34); altrimenti emette CasaZen per le sole prenotazioni dirette (FIS-02, FIS-03) |
+| Documenti fiscali | Nessuna generazione via API per ora; si recuperano solo anagrafiche dei clienti e documenti fiscali generati in Octorate | Lettura con tipo e stato SDI (`fiscalInvoiceGroup`); PDF di riepilogo; esistono `createDoubleHeadingInvoice` e `issueSummaryDocument` | Le due operazioni di creazione **non si usano** finché non sono provate in sandbox e confermate (D19 riaperta, S24). Prima scelta del PO: emette Octorate, anche per il suo motore di prenotazione, e CasaZen legge (FIS-04), se Octorate lo consente (D34); altrimenti emette CasaZen per le sole prenotazioni dirette (FIS-02, FIS-03) |
 | Prenotazioni | Nessuna vera differenza tra prenotazione diretta e da portale | Stesso modello per tutte; `otaId` e componenti di prezzo | Un solo modello in CasaZen (BKG); le dirette nascono in CasaZen e vanno in Octorate come le altre (BKG-03) |
 | Report | Nessun report via API: il partner costruisce le proprie statistiche dai soggiorni | Confermato | CasaZen calcola dai dati di prenotazioni, pagamenti e documenti (REP) |
 | Recensioni | — (S6 e S7: solo Airbnb) | Tre operazioni, risposta solo Airbnb | Invariato (OCT-12, MSG-09) |
-| Dati degli ospiti | Anagrafica e dati di fatturazione dell'ospite; nessun altro dato. Dati sensibili (email, telefono) solo con accesso limitato a IP statici, **anche in sandbox** | `contactInfo` con permesso speciale, ogni lettura registrata; `emailAvailable`, `phoneAvailable`; nessun campo di consenso | IP statici prima di qualunque prova con dati sensibili; lettura per la singola prenotazione, per il servizio e, per i clienti diretti del motore di prenotazione, anche per il marketing con il soft opt-in; mai in blocco (CRM-07, PO-17). D24 |
+| Dati degli ospiti | Anagrafica e dati di fatturazione dell'ospite; nessun altro dato. Dati sensibili (email, telefono) solo con accesso limitato a IP statici, **anche in sandbox** | `contactInfo` con permesso speciale, ogni lettura registrata; `emailAvailable`, `phoneAvailable`; nessun campo di consenso sulla prenotazione (`newsletterConcent*` in sola lettura solo nella rubrica clienti, S24) | IP statici prima di qualunque prova con dati sensibili; lettura per la singola prenotazione, per il servizio e, per i clienti diretti del motore di prenotazione, anche per il marketing con il soft opt-in; mai in blocco (CRM-07, PO-17). D24 |
 | Marketplace | Elenco dei partner nel Partner Hub pubblico; le integrazioni si completano sul sito del partner, **mai da Octorate** | `meta/portals` con `OTA` o `EXTERNAL_TOOL`; connessioni; moduli in `license`; nessun elenco dei partner | Catalogo curato da CasaZen sul modello del Partner Hub; attivazione guidata sul sito del partner con stato dichiarato dall'utente (MKT-01, MKT-03). D16 chiusa |
-| Messaggi | Integrati per Booking.com, Airbnb, Vrbo ed Expedia; gli altri portali danno telefono ed email dell'ospite: si scrive per email, WhatsApp o con la chat di Octorate | Chat con processori `CHANNEL`, `WHATSAPP`, `MAIL`, `DIRECT`; `readAll`, membri, traduzione, modelli | Hub per i quattro canali integrati; per gli altri thread su email o WhatsApp con i contatti letti da `contactInfo` (servono gli IP statici) o sulla chat di Octorate (MSG-03, MSG-10) |
+| Messaggi | Integrati per Booking.com, Airbnb, Vrbo ed Expedia; gli altri portali danno telefono ed email dell'ospite: si scrive per email, WhatsApp o con la chat di Octorate | Chat con sei processori (`CHANNEL`, `WHATSAPP`, `WHATSAPP_MANUAL`, `MAIL`, `DIRECT`, `NOTE`; S24); `readAll`, membri, traduzione, modelli | Hub per i quattro canali integrati; per gli altri thread su email o WhatsApp con i contatti letti da `contactInfo` (servono gli IP statici) o sulla chat di Octorate (MSG-03, MSG-10) |
 
 ## 10. Inventario API verificato (OpenAPI del 31/10/2026, S13)
 
@@ -2055,14 +2059,14 @@ solo nella collection, da confermare prima dell'uso.
 |---|---|---|
 | Autenticazione | POST `/rest/v1/identity/token`, `/rest/v1/identity/refresh`, `/rest/v1/identity/migrate` | `apilogin` (client credentials) solo in Postman |
 | Configurazione | GET, PATCH `/rest/v1/api/configuration` (`ApiOperations`) | `environment`, `quotaLimit`, `quotaStatus`, `permissions`, `redirectUri`, `reseller`, `maintenance`; `category` sola lettura (D22); `applicationName`, `description`, `icon`, `secretVisibility` = come CasaZen appare nell'elenco delle API di Octorate |
-| Proprietà | POST `/rest/v2/accommodation` (`ApiOperations`); GET `/rest/v1/accommodation` e `/rest/v1/accommodation/{acc}`; PATCH `/rest/v2/accommodation/{acc}`; DELETE `/rest/v1/accommodation/{acc}/account` | `welcome_user` vero di default manda le credenziali all'email indicata; `network_name` aggiunge la struttura a un gruppo con lo stesso refresh token (`refresh_properties`): modello per le agenzie (§9.1); `welcome_alternative_email` manda le credenziali solo all'indirizzo indicato; il DELETE disattiva senza cancellare |
+| Proprietà | POST `/rest/v2/accommodation` (`ApiOperations`); GET `/rest/v1/accommodation` e `/rest/v1/accommodation/{acc}`; PATCH `/rest/v2/accommodation/{acc}`; DELETE `/rest/v1/accommodation/{acc}/account` | `welcome_user` vero di default manda le credenziali all'email indicata; `network_name` aggiunge la struttura a un gruppo con lo stesso refresh token (`refresh_properties`): modello per le agenzie (§9.1); `welcome_alternative_email` manda le credenziali solo all'indirizzo indicato; `DELETE .../account` disattiva senza cancellare, `DELETE /rest/v1/accommodation/{acc}` cancella (S24) |
 | Unità e tariffe | POST `/rest/v1/roomrates/{acc}` e `/rest/v3/roomrates/{acc}`; GET `/rest/v1/roomrates/{acc}/{roomid}`, `/rest/v2/roomrates/{acc}`, `/rest/v3/roomrates/{acc}`; PATCH `/rest/v1/roomrates/{acc}/{id}` e `/rest/v3/roomrates/{acc}/{id}`; GET, POST `/rest/v1/rateplans/{acc}`; PUT, DELETE `/rest/v1/rateplans/{acc}/{id}`; POST `/rest/v2/roomrates/{acc}/runRules` | tre versioni coesistono: sceglierne una con Octorate (ADR); `legalId`, `legalIdIssuer`, `quantity`, `ratePlans`; 304 se nulla cambia |
 | Connessioni e mapping | POST `/rest/v1/connection/{acc}`; GET `/rest/v1/connection`; PATCH, DELETE `/rest/v1/connection/{acc}/{connection}`; POST `/rest/v1/connection/{action}/{acc}/{connection}`; GET, POST `.../connection/external/...` e `.../connection/mapping/...`; DELETE `.../mapping/{acc}/{connection}/{mappingId}` | azioni `IMPORT_ROOMS`, `IMPORT_RESERVATIONS`, `IMPORT_CALENDAR`, `MARK_CONNECTED`, `COMMIT_MAPPING_AS_COMPLETED`, `IMPORT_ROOMS_PMS`, `IMPORT_RESA_DECREMENT_AVAIL`, `EMAIL_HELP_CUSTOMER`; 550 se il partner fallisce |
 | ARI | GET `/rest/v1/calendar/{acc}`; POST `/rest/v1/calendar/bulk`; GET `/rest/v1/calendar/{acc}/{productId}/availabilityCheck`; POST `/rest/v1/content/products/{acc}/{productId}/{portalname}/calendar` | `GET /calendar/process/{id}` e `/calendar/failures` solo in Postman |
 | Prenotazioni | GET, POST `/rest/v1/reservation/{acc}`; PUT, PATCH, DELETE `/rest/v1/reservation/{acc}/{id}`; POST `/rest/v1/reservation/bulk/{acc}`; POST, DELETE `.../{reservationId}/split`; DELETE `/rest/v1/reservation/{acc}/group/{refer}`; POST `/rest/v2/reservation/{acc}/{refer}/contactInfo` | `GET .../{id}` deprecata; `GET .../search` è il motore di prenotazione |
 | Chat | GET `/rest/v1/chat/{property}/threads`, `.../threads/{id}`, `.../threads/{thread}/messages`, `.../threads/{thread}/templates`, `.../unreadedMessagesCount`, `.../messages`; POST `.../messages`; PUT `.../messages/{messageId}`; PATCH `.../threads/{thread}/archive`, `read`, `setAsUnread`, `aiAssistant`, `processor`, `.../messages/readAll`, `.../translate/{language}`; PUT, DELETE `.../threads/members/{personId}`; POST `.../preApprove`, `.../specialOffer`; PATCH `.../withdraw`; GET `/rest/v1/accommodation/recentMessages` | v1.3 OCT-10 |
 | Recensioni | GET `/rest/v2/review/{acc}/{refer}`; POST `.../sendHostReply`, `.../sendHostReview` | risposta e recensione dell'host solo Airbnb; categorie di voto e `privateReview` |
-| Webhook | POST `/rest/v1/subscription/{event}`; GET `/rest/v1/subscription`, `/rest/v1/subscription/list`; PUT, DELETE `/rest/v1/subscription/{id}` | `RESERVATION_CREATED`, `RESERVATION_CHANGE`, `RESERVATION_CANCELLED`, `RESERVATION_CONFIRMED`, `CHAT_MESSAGE_RECEIVED`, `CONTENT_NOTIFICATION`, `CONTENT_PUSH`, `PORTAL_SUBSCRIPTION_CALENDAR`; nessun evento per check-in, Polizia o fatture |
+| Webhook | POST `/rest/v1/subscription/{event}`; GET `/rest/v1/subscription`, `/rest/v1/subscription/list`; PUT, DELETE `/rest/v1/subscription/{id}` | `RESERVATION_CREATED`, `RESERVATION_CHANGE`, `RESERVATION_CANCELLED`, `RESERVATION_CONFIRMED`, `CHAT_MESSAGE_RECEIVED`, `CONTENT_NOTIFICATION`, `CONTENT_PUSH`, `PORTAL_SUBSCRIPTION_CALENDAR`; nessun evento per check-in, Polizia, fatture o pagamenti; registrazione per partner e non per struttura; un 406 ferma le ripetizioni (fino a 2 giorni); nessuna firma documentata (S24) |
 | Contenuti per connessione | GET, POST `/rest/v1/content/connections/{connection}/accommodationconf`, `services`, `fees`, `extrabeds`, `contacts`, `cancellationPolicies` (DELETE per elemento); POST `.../rentalagreement`, `.../push`; GET `.../meta/{portal}` | impostazioni per canale |
 | Contenuti per prodotto | `/rest/v1/content/products/{acc}/{productId}/`: `descriptions`, `listing`, `rooms`, `photos` (coda), `availabilityconf`, `fees`, `rate`, `pricing`, `reservation`, `cancellation`, `pushQueue/{portalname}`; GET `.../process/{processId}` | `pushQueue` solo `booking_xml`, `airbnb_xml`, `homeaway`; `amenities` deprecati; `addTextToHouseRules` e `addTextToField` sono generatori di testo, non scritture |
 
@@ -2070,10 +2074,10 @@ solo nella collection, da confermare prima dell'uso.
 
 | Area | Operazioni | Note |
 |---|---|---|
-| Check-in e Polizia | POST `/rest/v2/checkin/{acc}/{id}/guest`; PUT, DELETE `/rest/v1/checkin/{acc}/{reservationId}/guest/{guestId}`; PUT `/rest/v1/checkin/{acc}/{reservationId}?status=` `CHECKIN_END`, `CHECKOUT_END`, `NO_SHOW`; GET `/rest/v2/checkin/documents/{acc}`, `/rest/v2/checkin/city/{country}`, `/rest/v2/checkin/{acc}/tags`, `/rest/v1/meta/documents`; GET `/rest/v1/meta/cities` (Postman) | `ApiReservationGuestDTO` e V2: anagrafica; documento con i codici della Polizia (`documentType`, `cityPoliceCode`); `accommodatedType` (singolo, capofamiglia, capogruppo, familiare, membro); campi statistici (`tourismType`, `travelWay`, `degree`, `travelRefer`, residenza, cittadinanza); `draft` (da rivedere prima dell'invio); `validated`, `validatedDate` (record inserito dall'ospite); `policeSentTime`, `policeSentStatus` (sola lettura); tassa per ospite. Nessuna operazione per avviare l'invio o per le ricevute |
-| Struttura: Polizia, fiscale, licenza | nella struttura (`ApiAccommodationDTO`): lettura con GET `/rest/v1/accommodation/{acc}`; scrittura con PATCH `/rest/v2/accommodation/{acc}` (`ApiOperations`) da confermare per questi campi (D17, D21) | `policeAccount` (`codice`, `wsCode`, `autorun`, `valid`, `groupGuest`, `lastCron`); `vatCode`, `fiscalCode`, `companyType`, `taxes`, `invoiceOptions` (`treasuryActive`, `splitCommissionPropertyManager`); `license`; `checkinStart`, `checkinEnd`; `propertyCategory` |
-| Ospiti (rubrica) | GET `/rest/v1/guests/{acc}/list`, `/rest/v1/guests/{acc}/{guestId}`, `/rest/v1/guests/{acc}/suggestions`; POST `/rest/v1/guests/{acc}`; PUT `/rest/v1/guests/{acc}/{guestId}`; POST `.../{guestId}/contactInfo` | contatti solo con permesso speciale, ogni lettura registrata; nessun campo di consenso |
-| Fatture e documenti | GET `/rest/v2/invoice/{codice}`; POST `/rest/v2/invoice/{acc}/summary/{refer}`; GET `/rest/v2/invoice/pdf/{acc}/summary/{idDocumentEncrypted}`; POST `/rest/v2/invoice/{codice}/{refer}/createDoubleHeadingInvoice` | filtri per prenotazione, tipo, pagato, scaduto, `fiscalInvoiceGroup` (`EMPTY`, `REJECTED_BEFORE`, `BEFORE_SDI`, `SDI_PROCESSING`, `SDI_REJECTED`, `DONE`), `passive` (documenti ricevuti); tipi `PROFORMA`, `INVOICE`, `FISCALRECEIPT`, `GENERICRECEIPT`, `CREDIT_NOTE` (Postman); modulo `invoice` della licenza; creazione da chiarire (D19) |
+| Check-in e Polizia | POST `/rest/v2/checkin/{acc}/{id}/guest`; PUT, DELETE `/rest/v1/checkin/{acc}/{reservationId}/guest/{guestId}`; PUT `/rest/v1/checkin/{acc}/{reservationId}?status=` `CHECKIN_END`, `CHECKOUT_END`, `NO_SHOW`; GET `/rest/v2/checkin/documents/{acc}`, `/rest/v2/checkin/city/{country}`, `/rest/v2/checkin/{acc}/tags`, `/rest/v1/meta/documents`; GET `/rest/v1/meta/cities` (Postman) | `ApiReservationGuestDTO` e V2: anagrafica; documento con i codici della Polizia (`documentType`, `cityPoliceCode`); `accommodatedType` (singolo, capofamiglia, capogruppo, familiare, membro); campi statistici (`tourismType`, `travelWay`, `degree`, `travelRefer`, residenza, cittadinanza); `draft` (da rivedere prima dell'invio); `validated`, `validatedDate` (record inserito dall'ospite); `policeSentTime` (ora) e `policeSentStatus` (booleano, senza elenco di esiti) non marcati `readOnly` nella specifica: non scriverli (S24); tassa per ospite. Nessuna operazione per avviare l'invio o per le ricevute. Telefono ed email non si leggono mai (solo `phoneAvailable` ed `emailAvailable`) e un salvataggio senza `skipContactInfo: true` può sovrascriverli (S24) |
+| Struttura: Polizia, fiscale, licenza | nella struttura (`ApiAccommodationDTO`): lettura con GET `/rest/v1/accommodation/{acc}`; scrittura con PATCH `/rest/v2/accommodation/{acc}` (`ApiOperations`) da confermare per questi campi (D17, D21) | `policeAccount` (`codice`, `wsCode`, `sendId`, `autorun`, `valid`, `groupGuest`, `groupGuestByRoom`, `lastCron`; non `readOnly`, quindi scrivibile per schema ma mai esemplificato: S24; una sola credenziale Polizia e statistiche per struttura Octorate); `vatCode`, `fiscalCode`, `companyType`, `taxes`, `invoiceOptions` (`treasuryActive`, `splitCommissionPropertyManager`); `license`; `checkinStart`, `checkinEnd`; `propertyCategory` |
+| Ospiti (rubrica) | GET `/rest/v1/guests/{acc}/list`, `/rest/v1/guests/{acc}/{guestId}`, `/rest/v1/guests/{acc}/suggestions`; POST `/rest/v1/guests/{acc}`; PUT `/rest/v1/guests/{acc}/{guestId}`; POST `.../{guestId}/contactInfo` | contatti solo con permesso speciale, ogni lettura registrata; nessun consenso sulla prenotazione; `newsletterConcent`, `newsletterConcentIp`, `newsletterConcentDate` in sola lettura solo nella rubrica (S24) |
+| Fatture e documenti | GET `/rest/v2/invoice/{codice}`; POST `/rest/v2/invoice/{acc}/summary/{refer}`; GET `/rest/v2/invoice/pdf/{acc}/summary/{idDocumentEncrypted}`; POST `/rest/v2/invoice/{codice}/{refer}/createDoubleHeadingInvoice` | filtri per prenotazione, tipo, pagato, scaduto, `fiscalInvoiceGroup` (`EMPTY`, `REJECTED_BEFORE`, `BEFORE_SDI`, `SDI_PROCESSING`, `SDI_REJECTED`, `DONE`), `passive` (documenti ricevuti); otto tipi (`PROFORMA`, `INVOICE`, `FISCALRECEIPT`, `GENERICRECEIPT`, `CREDIT_NOTE`, `CORRECTING_INVOICE`, `SIMPLIFIED_INVOICE`, `SUMMARY_DOCUMENT`); modulo `invoice` della licenza; creazione: `createDoubleHeadingInvoice` (doppia intestazione, invia email a proprietario e ospite) e `issueSummaryDocument` (PDF di riepilogo non fiscale), prerequisiti e risposta non dichiarati; nessun download di PDF o XML e nessun campo per SDI, serie o regime della struttura (S24; D19 riaperta) |
 | Pagamenti della prenotazione | POST `/rest/v1/reservation/{acc}/{id}/payment`; PUT, DELETE `.../payment/{paymentId}`; PATCH `/rest/v1/payment/{acc}/{paymentId}/move`; DELETE `/rest/v1/payment/{acc}/{paymentId}` | modo, `source` (`PRIVATE`, `AGENCY`), `transaction` esterna, `cityTaxAmount`, fattura collegata. Carte (`addCard`, `detokenize`, `register`) fuori perimetro: PCI |
 | Prezzo e stato della prenotazione | campi di `ApiReservationRespDTO` | componenti `DAILY_ROOM_PRICE`, `ROOM_NET`, `VAT`, `EXTRA`, `CLEANING`, `DISCOUNT`, `COMMISSION`, `TOURIST_TAX`, `BREAKFAST`; `paymentStatus` (`UNPAID`, `PARTIALLY_PAID`, `PAID_DEPOSIT`, `PAID`), `totalPaid`, `status` (`CANCELLED`, `WAITING`, `CONFIRMED`), `effectiveCheckin`, `arrivalTime`, `cancelledBy`, `cancelledTime`, `otaId`, `threadId`; per portale `commissionIncludedInPayments` |
 | Prodotti extra | GET `/rest/v1/extra/{acc}`; POST `/rest/v1/extra/bulk/{acc}`; PUT, DELETE `/rest/v1/extra/{acc}/{productId}`; PUT `.../updateAll`; sulla prenotazione POST `.../{id}/extras`, PUT, DELETE `.../extra/{extraId}` | servizi venduti con il soggiorno (calcolo, IVA ed esenzioni italiane, visibilità): base per offrire i servizi CasaZen sulla prenotazione (P2) |
@@ -2081,7 +2085,7 @@ solo nella collection, da confermare prima dell'uso.
 | Foto della struttura | GET, POST `/rest/v1/accommodation/{acc}/photos`; DELETE `.../photos/{name}`; GET `/rest/v1/accommodation/{acc}/queue`, `.../queue/{id}` | caricamento da URL in coda: le foto devono essere raggiungibili da Octorate (PO-15) |
 | Traduzioni | PATCH `/rest/v1/roomrates/{acc}/{roomid}/translateMissingDescriptions/{language}` e v3 | Octorate traduce le descrizioni mancanti da una lingua: alternativa all'AI di CasaZen (AI-02) |
 | Portali e strumenti | GET `/rest/v1/meta/portals` (`ApiOperations`) | `portalCategory` `OTA` o `EXTERNAL_TOOL`, `creatable`, `enabled`, `preferred`, `website`, `logo`, requisiti (`requiresHotelId`, `requiresPassword`, `requiresTokenAuthentication`), funzioni (`featureContent`, `octorateManageable`), `commissionIncludedInPayments`: base del catalogo MKT. Letto il 2/11 (S22): 229 portali, 213 OTA, 13 strumenti esterni, 3 senza categoria (§14.3) |
-| Licenza e moduli | `license` (`ApiLicenseForm`) nella struttura; permesso `license` del partner; «Add licence» tra le operazioni admin di Postman, senza URL | moduli: tier del channel manager, `chat`, `invoice`, `fiscalPrinter`, `smartOffer`, `octoDaily` (pulizie), `rms`, `businessIntelligence`, `bookingEngine`, `octoSite`, `webConcierge`, `metaSearch`, `rateChecker`; attivazione da partner da confermare (D21) |
+| Licenza e moduli | `license` (`ApiLicenseForm`) nella struttura; permesso `license` del partner; «Add licence» tra le operazioni admin di Postman, senza URL | moduli: tier del channel manager, `chat`, `invoice`, `fiscalPrinter`, `smartOffer`, `octoDaily` (pulizie), `rms`, `businessIntelligence`, `bookingEngine`, `octoSite`, `webConcierge`, `metaSearch`, `rateChecker`; attivazione da partner da confermare (D21); flag PMS non elencati (`realPlanning`, `versionPmsStats`, `octoSiteAdvanced`), nessun flag Alloggiati o ISTAT; il nostro permesso `license` è `NONE` e «Add licence» è un segnaposto vuoto (S24) |
 | Notifiche Octorate all'host | PATCH `/rest/v2/accommodation/{acc}/changeGoodMorningEmail` | la mail quotidiana di Octorate si spegne per non duplicare gli avvisi di CasaZen (D25) |
 | Report | — | nessuna operazione di report o statistiche |
 
@@ -2129,6 +2133,16 @@ e `amenities` deprecati; `addTextToHouseRules` non scrive le regole; recensioni 
 operazioni, risposta solo Airbnb; webhook anche per chat e contenuti; quota esaurita = 403
 `ApiQuotaException`, nessun 429; rete di test senza OTA; inventario di 208 operazioni.
 
+Rispetto alla v2.0 (S23 e S24, 2/11): la documentazione di prodotto di Octorate è nel centro assistenza
+`community.octorate.com`, non su Gitbook; `expireDate` è deprecato (si usa `expires_in`) e il codice
+OAuth vale 3 minuti; `addToNetwork` e `retrieveNetwork` esistono (la guida del 2019 diceva che le
+reti non si modificano); `DELETE /rest/v1/accommodation/{acc}` cancella la struttura; la specifica
+descrive `quotaStatus` come «chiamate rimaste»; esistono otto tipi di documento e sei processori di
+chat; esistono campi di consenso nella rubrica clienti (`newsletterConcent*`) ma non sulla
+prenotazione; le due operazioni di creazione dei documenti fiscali esistono (D19 riaperta); il webhook
+si registra per partner; `policeAccount` ha otto campi ed è scrivibile per schema; l'ospite si riscrive
+solo con `skipContactInfo: true`; 53 operazioni sono solo nella collection Postman.
+
 Rispetto alla v1.3: le operazioni di check-in, ospiti, fatture, pagamenti, prodotti extra e
 politiche non sono più fuori perimetro (§10.2). I tre punti in cui la specifica sembrava andare
 oltre il resoconto S7 (esito per ospite dell'invio alla Polizia, calcolo della tassa, creazione
@@ -2146,7 +2160,9 @@ Le guide sono del 2019–2020: servono per il «come», la specifica S13 resta l
   member (CasaZen) e utente (il proprietario).
 - **Quota.** La guida del 2019 indica 100 chiamate per struttura ogni 5 minuti; la configurazione
   reale oggi dice `quotaLimit` 164 (S20): CasaZen legge la quota dalla configurazione e non la
-  scrive nel codice.
+  scrive nel codice. La specifica descrive `quotaStatus` come «chiamate rimaste» e dichiara
+  l'intestazione `X-RateLimit-Remaining` (S24); il 2/11 `quotaStatus` non si è comportato come un
+  contatore semplice (§14.3).
 - **Creazione di una struttura.** Campi minimi dell'esempio: nome, indirizzo, città, CAP,
   `isoCountry`, `isoCurrency` (codici ISO), latitudine e longitudine (obbligatorie), email,
   telefono, nome e cognome del referente. Risposta `codice` e `status` `created` (oppure l'id di una
@@ -2158,8 +2174,8 @@ Le guide sono del 2019–2020: servono per il «come», la specifica S13 resta l
   disponibilità, soggiorno, restrizioni e chiusure, prezzo in percentuale o incremento,
   arrotondamento). Le tariffe di LST-09 (non rimborsabile, sconti) si modellano così; per Airbnb
   si collega di solito solo la tariffa standard con l'occupazione più bassa.
-- **Reti.** Una rete raccoglie più strutture in un solo calendario; non si possono modificare reti
-  esistenti, solo crearne di nuove; sul conto radice funzionano solo alcune letture. Per Vrbo la
+- **Reti.** Una rete raccoglie più strutture in un solo calendario; per la guida del 2019 non si
+  possono modificare reti esistenti, ma la specifica ha `addToNetwork` e `retrieveNetwork` (S24); sul conto radice funzionano solo alcune letture. Per Vrbo la
   guida indica spesso la configurazione «multiaccount» in rete: da chiarire per appartamenti di
   proprietari diversi (D28).
 - **Collegamento a un canale.** Se la connessione non esiste si può creare via API, ma **l'accesso
@@ -2183,8 +2199,52 @@ Le guide sono del 2019–2020: servono per il «come», la specifica S13 resta l
   per i 5xx di Octorate il supporto è `tech@octorate.com`.
 - **Contatti.** Sviluppo e assistenza tecnica in inglese `development@octorate.com` (S10); whitelist
   di produzione e prezzi `openapi@octorate.com`; errori 5xx `tech@octorate.com`. Octorate offre anche
-  una documentazione di prodotto su Gitbook e un assistente GPT per l'integrazione (non
-  necessari).
+  una documentazione di prodotto nel centro assistenza `community.octorate.com` (S23) e un
+  assistente per l'integrazione (non necessari).
+
+### 10.6 Dalla documentazione pubblica di prodotto (S23, 2/11/2026)
+
+Il centro assistenza è `community.octorate.com` (non Gitbook). Molte guide hanno 5–7 anni, le più
+recenti sono del 2025–2026. Descrivono i passi che l'host compie nel pannello Octorate o nei portali
+esterni: nessuna pagina pubblica descrive un software terzo che li esegua al posto dell'host.
+
+- **Alloggiati.** Octorate invia da solo ogni giorno, dal menu PMS, dopo che l'host ha inserito le
+  credenziali del portale, la chiave del web service (si genera solo nel portale della Polizia: profilo,
+  «Chiave Web Service», «Genera Nuovo Codice») e il numero struttura di ogni camera; il «Test di
+  connessione» deve dare «Attivata». Le guide stanno nel menu PMS (la guida ISTAT dice «pacchetto PMS
+  attivo», quella Alloggiati non nomina il piano). Oltre 30 notti l'invio è a mano (due guide concordi).
+  Per i profili «Gestore di Appartamenti» serve l'ID di ogni appartamento in ogni camera. «Raggruppa
+  ospiti» decide se parte solo il capogruppo o tutti. Non documentati: orario dell'invio, soggiorni fino
+  a 24 ore, avvisi di errore e ricevuta (la guida descrive solo lo stato «invio sospeso» e il pulsante
+  per rimandare). Vikey e Chekin dichiarano di inviare loro ad Alloggiati: nessuna guida dice che
+  Octorate invii gli ospiti arrivati da un'altra app (un solo mittente per immobile: CHK-03).
+- **ISTAT.** Dal PMS, per regione; invio diretto solo dove la regione lo consente (avviso rosso
+  altrimenti e file da caricare a mano); si alimenta dalle schedine complete con invio abilitato; un
+  account ISTAT si collega a un solo ID Octorate; l'elenco delle regioni non è pubblico.
+- **Documenti fiscali.** Si creano a mano dal dettaglio prenotazione («crea ricevuta/fattura»): proforma,
+  fattura, ricevuta fiscale, generica. L'XML per lo SDI parte da solo solo se la struttura è collegata a
+  Studioboost (la guida del 2019 cita anche PA Digitale); altrimenti si scarica e lo invia l'host.
+  Emissione automatica al check-out o all'incasso: non documentata. Per i property manager (funzione
+  Octoblu) un'unica azione crea due documenti, fattura con l'intestazione del property manager e ricevuta
+  con quella del proprietario, e un terzo se la commissione è ripartita; la guida non cita API.
+- **Tassa di soggiorno.** Calcolo per persona e notte, periodi, tetto per persona e notti massime,
+  esenzioni per età e categorie; calcolo automatico nel motore di prenotazione (aprile 2026); portali che
+  incassano come sostituto d'imposta; esportazioni Excel, PDF e TXT per PayTourist. Nessun versamento.
+- **Motore di prenotazione.** Widget o link su siti esistenti, prova di 14 giorni, il Website Builder non
+  serve; gateway Stripe, PayPal, Nexi, SysPay e bonifico. Non documentati: come si riconoscono le
+  prenotazioni dirette e le fatture sulle dirette.
+- **Creazione e contenuti per portale** (guida di marzo 2026): Airbnb con account host attivo;
+  Booking.com con il Legal ID per creare la struttura (le sole camere no); Vrbo con partita IVA e modulo
+  di onboarding, senza il quale l'annuncio non è pubblicato; Holidu solo con l'ID di Holidu e minimo 15
+  strutture per le agenzie in Italia, Spagna, Portogallo, Francia, Grecia e area DACH (30 altrove in
+  Europa); **Expedia: camere e appartamenti si inviano su un ID Expedia già esistente** (la struttura non
+  si crea); HomeToGo non è citato.
+- **CIN.** Documentato solo per il motore di prenotazione (campo nell'appartamento, CIN e CIR nello stesso
+  campo); per i portali nessuna guida.
+- **Programma partner.** Solo il modulo «Become a partner» del Partner Hub; nessuna certificazione, costo,
+  categoria di quota o regola sugli IP statici nelle pagine pubbliche.
+- **Messaggi.** Web Concierge, e-mail con modelli, WhatsApp Business e l'agente AI OctoAgent (collegato al
+  PMS Cloud); nessun interruttore documentato per spegnerlo.
 
 ## 11. Matrice delle capacità
 
@@ -2200,7 +2260,7 @@ sono sconosciuti.
 | Airbnb | documentato (S5–S7) | documentato (`airbnb_xml`, `airbnbApprovalStatus`) | lettura, risposta e recensione dell'host documentate | API documentata (S7); funzioni specifiche da provare |
 | Booking.com | documentato (S5–S7) | documentato (`booking_xml`) | non supportato | API documentata (S7); cambio date solo da extranet |
 | Vrbo | documentato (S5–S7) | documentato (`homeaway`) | non supportato | API documentata (S7) |
-| Expedia | documentato (S5–S7) | **non supportato (S18)**: solo collegamento; contenuti e creazione dall'extranet di Expedia (il catalogo dei portali la marca però con funzioni di contenuto e tariffe, come Booking.com: da provare su un annuncio reale, H8b, S22) | non supportato | API documentata (S7, S18) |
+| Expedia | documentato (S5–S7) | **non supportato (S18)**: solo collegamento; contenuti e creazione dall'extranet di Expedia (il catalogo dei portali la marca però con funzioni di contenuto e tariffe, come Booking.com, e la guida di Octorate di marzo 2026 indica il push di camere e appartamenti su un ID Expedia esistente: da provare su un annuncio reale, H8b, S22, S23) | non supportato | API documentata (S7, S18) |
 | HomeToGo (opzionale) | documentato (S5–S7) | documentato (S18): contenuti e creazione di proprietà e camere | non supportato | nessuna chat integrata: email, WhatsApp o chat di Octorate (S18) |
 | Holidu (opzionale) | documentato (S7, S18) | documentato (S18): contenuti e creazione di proprietà e camere | non supportato | nessuna chat integrata: email, WhatsApp o chat di Octorate (S18) |
 | Google Vacation Rentals (opzionale) | non supportato in Europa (S6) | — | — | — |
@@ -2223,9 +2283,9 @@ produzione (G3/G4).
 | ISTAT | invio da Octorate | documentato in generale; collegamento solo dal pannello Octorate; regioni sconosciute | S7, S18 | file di CasaZen (Q1-15) o portale regionale |
 | ISTAT | esito | non supportato | S7 | prova guidata e caricamento (CHK-05) |
 | Tassa di soggiorno | importo ed esenzioni per ospite e prenotazione | campi presenti (S13); la tassa va gestita da CasaZen (S18) | S13, S18 | calcolo CasaZen (CHK-07) |
-| Tassa di soggiorno | configurazione delle regole via API | non trovato | S13 | regole in CasaZen |
+| Tassa di soggiorno | configurazione delle regole via API | non trovato per il motore interno (solo pannello); esiste `ExternalPricing.taxes[]` verso i portali | S13, S24 | regole in CasaZen |
 | Fatture | lettura con stato SDI e PDF | documentato | S7, S13 | — |
-| Fatture | creazione | non disponibile (S18), anche se la specifica ha due operazioni | S7, S13, S18 | emissione CasaZen (FIS-02) |
+| Fatture | creazione | non disponibile (S18); la specifica ha due operazioni di creazione, D19 riaperta (S24) | S7, S13, S18, S24 | emissione CasaZen (FIS-02) |
 | Pagamenti | lettura e registrazione sulla prenotazione | documentato | S5, S13 | — |
 | Ospiti e contatti | anagrafica e dati di fatturazione; contatti con permesso speciale e IP statici, anche in sandbox | documentato | S7, S13, S18 | dati raccolti da CasaZen nel check-in |
 | Marketplace | portali e strumenti esterni attivabili | documentato | S13 | — |
@@ -2349,26 +2409,26 @@ aperte, blocca lo sviluppo con l'adattatore Mock; che cosa blocca davvero, e com
 
 | ID | Domanda | Perché serve |
 |---|---|---|
-| D15 | Quali sistemi regionali ISTAT invia Octorate (per regione) e come si configurano; esiste un esito leggibile? | CHK-05, PO-03 |
+| D15 | Quali sistemi regionali ISTAT invia Octorate (per regione) e come si configurano; esiste un esito leggibile? **S23, S24:** l'elenco delle regioni non è pubblico; l'invio diretto vale solo dove la regione lo consente; l'esito arriva per e-mail; nella specifica nessuna operazione ISTAT | CHK-05, PO-03 |
 | D16 | **Risposta S18:** l'elenco dei partner è il Partner Hub pubblico e le integrazioni si completano sempre sul sito del partner, mai da Octorate. Chiusa | MKT-01, MKT-03 |
-| D17 | **In parte risposta da S18:** il collegamento ai portali degli enti si fa solo dal pannello Octorate. Resta da chiedere: `policeAccount.valid` e `autorun` sono leggibili via API per verificare il collegamento dal wizard? Alloggiati e ISTAT richiedono il vostro modulo gestionale (costo, licenza)? | CHK-03 |
+| D17 | **In parte risposta da S18:** il collegamento ai portali degli enti si fa solo dal pannello Octorate. Resta da chiedere: `policeAccount.valid` e `autorun` sono leggibili via API per verificare il collegamento dal wizard? Alloggiati e ISTAT richiedono il vostro modulo gestionale (costo, licenza)? **S23, S24:** le guide Alloggiati stanno nel menu PMS e la guida ISTAT vale per chi ha il «pacchetto PMS attivo»; la licenza dell'API non ha un flag Alloggiati o ISTAT | CHK-03 |
 | D18 | **In parte risposta da S18:** gli esiti degli invii non sono disponibili via API. Resta da chiarire, a bassa priorità, che cosa indicano i campi `policeSentStatus` e `policeSentTime` della specifica e se una ricevuta via API è prevista | CHK-04 |
-| D19 | **Risposta S18:** nessuna generazione di documenti fiscali via API «al momento»; si leggono anagrafiche e documenti generati in Octorate. Chiusa; da riaprire solo se Octorate annuncia la funzione | FIS-02 |
-| D20 | **In parte risposta da S18:** la tassa si gestisce in CasaZen. Resta da chiedere, ora che il PO preferisce che i documenti li emetta Octorate (PO-05): i valori per ospite scritti da CasaZen vengono usati nei documenti? | CHK-07 |
-| D21 | Un partner può attivare o cambiare la licenza di una proprietà (moduli `chat`, `invoice`…)? Con quale modello commerciale? | MKT-05, PO-12 |
+| D19 | **Risposta S18:** nessuna generazione di documenti fiscali via API «al momento»; si leggono anagrafiche e documenti generati in Octorate. **Riaperta il 2/11 (S24):** la specifica ha `createDoubleHeadingInvoice` (doppia intestazione per property manager, invia email a proprietario e ospite) e `issueSummaryDocument` (PDF di riepilogo non fiscale), senza prerequisiti né risposta dichiarati e senza download di PDF o XML; si prova la risposta in sandbox su una struttura di prova, moduli, effetti e costo restano da chiedere (D34) | FIS-02 |
+| D20 | **In parte risposta da S18:** la tassa si gestisce in CasaZen. Resta da chiedere, ora che il PO preferisce che i documenti li emetta Octorate (PO-05): i valori per ospite scritti da CasaZen vengono usati nei documenti? **S24:** anche Octorate calcola `touristTax` (rischio di doppio calcolo): prima di scrivere valori per ospite si verifica lo stato del suo motore di tassa | CHK-07 |
+| D21 | Un partner può attivare o cambiare la licenza di una proprietà (moduli `chat`, `invoice`…)? Con quale modello commerciale? **S24:** il nostro permesso `license` è `NONE` e «Add licence» è un segnaposto vuoto; la licenza si può passare nel corpo di creazione di una struttura (esempio Postman) | MKT-05, PO-12 |
 | D22 | Quale `category` è assegnata a CasaZen e quale tetto di quota in lettura ne deriva? | OCT-13, quote |
 | D23 | Quali sono oggi i portali `EXTERNAL_TOOL` e come si collegano? | MKT-01 |
-| D24 | **In parte risposta da S18:** senza accesso limitato a IP statici niente dati sensibili, neanche in sandbox. Resta da chiedere: procedura e tempi per registrare gli IP, condizioni e vincoli d'uso del permesso `contactInfo` | CRM-07, MSG-03 |
+| D24 | **In parte risposta da S18:** senza accesso limitato a IP statici niente dati sensibili, neanche in sandbox. Resta da chiedere: procedura e tempi per registrare gli IP, condizioni e vincoli d'uso del permesso `contactInfo` **S24:** la specifica non cita IP statici; ha i livelli `RESERVATION_SENTITIVE_*`, i permessi `sensitiveData` e `contactInfo` e un `allowedAddress` sul token, non descritto | CRM-07, MSG-03 |
 | D25 | Oltre alla mail del mattino, quali notifiche Octorate riceve l'host e come si spengono per gli immobili gestiti da CasaZen? | UX-08, MSG-05 |
 | D26 | Lo stato `CHECKIN_END`, `CHECKOUT_END`, `NO_SHOW` ha effetti verso le OTA o verso gli invii? | CHK-06 |
 | D27 | Una struttura creata via API con `welcome_user` falso: come si consegnano in seguito le credenziali al proprietario (su sua richiesta o quando lascia CasaZen)? Esiste un'operazione o una procedura, e il proprietario conserva struttura, collegamenti alle OTA e storico? | PO-19, D11 |
 | D28 | Vrbo: la vostra guida indica la configurazione «multiaccount» in rete. Per appartamenti indipendenti di proprietari diversi (un consenso e un token per struttura) come si gestiscono contenuti e collegamento? | LST-01, §10.5 |
-| D29 | Per creare un annuncio nuovo via API su Booking.com, Airbnb, Vrbo, HomeToGo e Holidu cosa deve già avere l'host sul canale (account, contratto, struttura) e quali approvazioni restano sul canale? Esistono guide aggiornate per i contenuti di Booking.com e Vrbo (in arrivo dal 2019)? | LST-03, LST-12 |
+| D29 | Per creare un annuncio nuovo via API su Booking.com, Airbnb, Vrbo, HomeToGo e Holidu cosa deve già avere l'host sul canale (account, contratto, struttura) e quali approvazioni restano sul canale? Esistono guide aggiornate per i contenuti di Booking.com e Vrbo (in arrivo dal 2019)? **In parte risposta da S23** (guida di marzo 2026): Airbnb con account host attivo; Booking.com con il Legal ID per creare la struttura; Vrbo con partita IVA e modulo di onboarding; Holidu con l'ID e minimo 15 strutture per le agenzie in Italia; Expedia solo su un ID esistente; HomeToGo non citato | LST-03, LST-12 |
 | D30 | Configurazione del partner CasaZen: togliere il permesso `cardDetail` (non serve); confermare l'indirizzo base `https://api.octorate.com/connect` (quello dell'email risponde 404 sui percorsi `/v1`); significato di `quotaStatus` (2 dopo due chiamate); `category` assegnata (D22) | §9.1, OCT-13 |
-| D31 | Alloggiati tramite Octorate: a che ora parte l'invio automatico giornaliero? Come gestite i soggiorni fino a 24 ore (invio entro 6 ore) e quelli oltre 30 notti? Avvisate l'host di un invio fallito, e come? `lastCron` e `valid` di `policeAccount` sono leggibili via API? | CHK-04, CHK-12 |
+| D31 | Alloggiati tramite Octorate: a che ora parte l'invio automatico giornaliero? Come gestite i soggiorni fino a 24 ore (invio entro 6 ore) e quelli oltre 30 notti? Avvisate l'host di un invio fallito, e come? `lastCron` e `valid` di `policeAccount` sono leggibili via API? **S23, S24:** oltre 30 notti l'invio è a mano (due guide concordi); orario, soggiorni fino a 24 ore e avvisi di errore non sono documentati; `lastCron` e `valid` esistono in `policeAccount` | CHK-04, CHK-12 |
 | D32 | ISTAT tramite Octorate: per ogni regione periodicità e scadenze dell'invio; l'esito arriva per email: a quale indirizzo, si può aggiungerne uno di CasaZen, in quale formato? | CHK-05, CHK-13 |
 | D33 | Un'agenzia con circa 250 appartamenti in una rete Octorate: un solo consenso dell'utente amministratore dà un token valido per tutte le strutture della rete? Le strutture aggiunte dopo entrano nello stesso token? Si può revocare l'accesso a una singola struttura? La quota è per struttura o per token? | §9.1, LST-02 |
-| D34 | **Documenti fiscali e motore di prenotazione (PO-05).** (a) Octorate può emettere in automatico, senza passaggi a mano nel pannello, ricevute e fatture, compresa la fattura elettronica allo SDI, per tutte le prenotazioni: OTA, motore di prenotazione e dirette create da CasaZen via API? Con quali moduli (`invoice`, `fiscalPrinter`) e costi? (b) L'agenzia può usare il motore di prenotazione di Octorate sul proprio sito (modulo `bookingEngine`): come si integra, quanto costa, e le prenotazioni arrivano a CasaZen come le altre (webhook `RESERVATION_*`), riconoscibili come dirette? (c) Il motore mostra l'informativa privacy dell'agenzia al momento della prenotazione (serve al soft opt-in, PO-17)? | FIS-02, BKG-01, CRM-07 |
+| D34 | **Documenti fiscali e motore di prenotazione (PO-05).** (a) Octorate può emettere in automatico, senza passaggi a mano nel pannello, ricevute e fatture, compresa la fattura elettronica allo SDI, per tutte le prenotazioni: OTA, motore di prenotazione e dirette create da CasaZen via API? Con quali moduli (`invoice`, `fiscalPrinter`) e costi? (b) L'agenzia può usare il motore di prenotazione di Octorate sul proprio sito (modulo `bookingEngine`): come si integra, quanto costa, e le prenotazioni arrivano a CasaZen come le altre (webhook `RESERVATION_*`), riconoscibili come dirette? (c) Il motore mostra l'informativa privacy dell'agenzia al momento della prenotazione (serve al soft opt-in, PO-17)? **S23, S24:** i documenti si creano a mano dal dettaglio prenotazione, per i property manager con un'azione unica per la doppia intestazione; lo SDI è automatico solo con Studioboost; l'emissione automatica al check-out non è documentata; nel motore di prenotazione non c'è un campo che riconosca le prenotazioni dirette né un consenso registrato | FIS-02, BKG-01, CRM-07 |
 | D35 | **Banco di prova prima del pilota (PO-22).** La rete di test non collega le OTA (S6): si può attivare in produzione, con licenza, una struttura reale non di Quokka collegata ai canali, per provare pubblicazione, prezzi, prenotazioni e messaggi? Con quali costi e tempi, e come si disattiva alla fine? | §12 (H8b), G3 |
 
 ### 14.3 Octorate non risponde: come si procede (2/11/2026)
@@ -2406,7 +2466,7 @@ mail del 31/10 e rimanda a una sessione di onboarding a pagamento con un tecnico
 
 | Fascia | Domande | Cosa bloccano | Da soli | Se manca |
 |---|---|---|---|---|
-| A. Si verificano da soli in sandbox | D33 (un consenso per la rete); D30 (indirizzo base, significato della quota); D12 (prenotazioni e chat di prova); D27 (credenziali dei proprietari: prova del `welcome_user` falso); D9 (canale delle dirette); D17 e D18 (forma di `policeAccount`, `policeSentStatus`); D7 (quota); D23 (chiusa da S22) | Niente | Sì, prima parte di H8 | Un token per struttura nello stesso archivio (§9.1); strutture create solo per chi accetta subito le credenziali |
+| A. Si verificano da soli in sandbox | D33 (un consenso per la rete); D30 (indirizzo base, significato della quota); D12 (prenotazioni e chat di prova); D27 (credenziali dei proprietari: prova del `welcome_user` falso); D9 (canale delle dirette); D17 e D18 (forma di `policeAccount`, `policeSentStatus`); D7 (quota); D19 (risposta delle due operazioni di creazione dei documenti); D23 (chiusa da S22) | Niente | Sì, prima parte di H8 | Un token per struttura nello stesso archivio (§9.1); strutture create solo per chi accetta subito le credenziali |
 | B. Passaggi di un partner e questioni commerciali | Certificazione e passaggio a produzione; D24 (IP statici); callback di produzione; D30 (permesso `cardDetail`) e D22 (categoria); D14 e D21 (listino e moduli); D17 e D34 (moduli per Alloggiati, ISTAT, fatture, motore di prenotazione); D35 (struttura di prova); D11 (titolarità contrattuale e uscita) | H8b, H9 e i dati sensibili degli ospiti (IP statici) | No | Nessuna struttura reale e nessun dato sensibile finché mancano |
 | C. Solo Octorate, o la prova su una struttura reale | D1 e D29 (prerequisiti per creare su ogni OTA); D2 (CIN per portale); D3, D4 e D25 (messaggi, risposte automatiche, notifiche); D6 (migrazione di annunci esistenti); D8 (eventi per OTA); D26 (effetti degli stati del soggiorno); D28 (Vrbo in rete); D15, D31 e D32 (invio Alloggiati e ISTAT: orari, regioni, esiti); D20 (tassa nei documenti di Octorate); D5, D10 e D13 (recensioni, altri canali, unità di `totalPrice`); ricevute: come le gestiscono gli altri partner; contenuti di Expedia | Niente: cambiano un'attivazione, non il disegno | No: si provano su H8b | Passo guidato sul canale (LST-12, LST-13); risposte AI solo in bozza (PO-08); CIN inserito a mano nel canale con guida; ricevuta dalla Polizia o caricata (CHK-04); ISTAT con file di CasaZen (CHK-05) |
 
@@ -2444,6 +2504,13 @@ mail del 31/10 e rimanda a una sessione di onboarding a pagamento con un tecnico
   comprende. Sono prezzi ai clienti finali: non sostituiscono il listino da partner (D14) e danno
   peso alle domande D17 e D34 (quale modulo serve per ogni funzione, e a che costo). Nessuna decisione
   cambia.
+- **Dalla documentazione e dalla specifica (S23, S24).** Octorate invia Alloggiati ogni giorno dal PMS
+  dopo che l'host ha collegato nel pannello credenziali, chiave del web service e numero struttura;
+  oltre 30 notti è a mano; orario, ricevuta e avvisi di errore non sono documentati. La specifica non
+  ha operazioni per avviare l'invio, per ISTAT o per scaricare ricevute; `policeAccount` è scrivibile
+  per schema ma mai esemplificato. I documenti si creano a mano dal pannello e lo SDI è automatico solo
+  con Studioboost; la specifica ha due operazioni di creazione (D19 riaperta) e nessun download di PDF
+  o XML. Dettagli in §10.4 e §10.6.
 
 **Passi.** (1) Helix parte da H0 su questa versione. (2) Prima parte di H8 in sandbox, con strutture
 finte poi disattivate. (3) Abilitare gli IP statici in test e scrivere a `openapi@octorate.com`
@@ -2460,8 +2527,9 @@ punto 2.
   o struttura reale) con il ripiego di ciascuna. Verifica in sola lettura del 2/11 (S22): catalogo
   di 229 portali (Expedia con funzioni di contenuto, 13 strumenti esterni tra cui Nuki e Salto,
   canali 233 e 270 per le dirette), quota, nessuna struttura visibile al partner, IP statici in
-  uscita di Railway, moduli e prezzi pubblici di Octorate. H8 con una prima parte senza risposte di
-  Octorate. Nessuna decisione del PO cambia (PO-02, PO-03 e PO-05 restano come decisi il 31/10); il
+  uscita di Railway, moduli e prezzi pubblici di Octorate; ricerca sulla documentazione pubblica (S23,
+  §10.6) e analisi della specifica (S24, correzioni in §10.4 e D19 riaperta). H8 con una prima parte
+  senza risposte di Octorate. Nessuna decisione del PO cambia (PO-02, PO-03 e PO-05 restano come decisi il 31/10); il
   trattamento dei dati si affronta più avanti.
 - **2.0 · 31 ottobre 2026:** nuovo mandato del PO (S12): da solo channel management a otto
   processi con CasaZen unico punto di accesso. Aggiunti: base del codice al 30/10 (§4), regole UX
