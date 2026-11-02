@@ -763,6 +763,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IValidateOptions<Casazen.Core.Options.SupplierRankingOptions>, Casazen.Core.Options.SupplierRankingOptionsValidator>();
         services.AddScoped<ISupplierReliabilityService, SupplierReliabilityService>();
         services.AddScoped<ISupplierMatchService, SupplierMatchService>();
+        // «Descrivi di cosa hai bisogno» of the guided request: the AI reads the host's words and proposes the service, the urgency and who to ask
+        // (WIZ-AI-REQUEST, runbook ai.md). Shown only while an AI provider is in effect; the request is created by the wizard as always.
+        services.AddScoped<IServiceRequestAssistService, ServiceRequestAssistService>();
         // Internal activities performed by staff on properties (NF-22, agency tier).
         services.AddScoped<IInternalActivityService, InternalActivityService>();
         services.AddScoped<CalendarSyncService>();

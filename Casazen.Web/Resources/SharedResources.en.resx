@@ -1888,6 +1888,15 @@
   <data name="ServiceRequestNotesTooLong" xml:space="preserve">
     <value>The notes can be at most {1} characters long.</value>
   </data>
+  <data name="ServiceRequestAssistTextRequired" xml:space="preserve">
+    <value>Describe in a few words what you need.</value>
+  </data>
+  <data name="ServiceRequestAssistTextTooShort" xml:space="preserve">
+    <value>Write a few more words: at least {0} characters are needed.</value>
+  </data>
+  <data name="ServiceRequestAssistTextTooLong" xml:space="preserve">
+    <value>The description can be at most {1} characters long.</value>
+  </data>
   <data name="ServiceRequestRejectReasonRequired" xml:space="preserve">
     <value>Enter the reason for the rejection.</value>
   </data>
