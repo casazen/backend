@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -18,6 +19,12 @@ public class DeepSeekAiProvider(
     IOptions<AiOptions> options,
     ILogger<DeepSeekAiProvider> logger) : IAiProvider
 {
+    /// <summary>
+    /// HTTP client of the calls made with an <see cref="AiRequest"/>: a model that reads photos and writes a long text takes longer than the
+    /// 30 seconds of the client of the text calls (<c>AiProviderRegistration</c>).
+    /// </summary>
+    public const string LongCallHttpClientName = "AiLongCall";
+
     public Task<AiGenerationResult> GenerateAsync(
         string prompt,
         AiModelTier tier,
@@ -95,6 +102,158 @@ public class DeepSeekAiProvider(
         var content = DeepSeekWebSearchClient.ExtractTextContent(json) ?? string.Empty;
         var (promptTokens, completionTokens) = DeepSeekWebSearchClient.ExtractUsage(json);
         return new AiGenerationResult(content, promptTokens, completionTokens, tier, false);
+    }
+
+    public Task<AiGenerationResult> GenerateAsync(
+        AiRequest request,
+        AiModelTier tier,
+        string cacheKey,
+        CancellationToken cancellationToken = default) =>
+        GenerateAsync(request, tier, cacheKey, options.Value, cancellationToken);
+
+    /// <summary>
+    /// A call with instructions and images (<see cref="AiRequest"/>), with the settings in effect. The images go to the providers that read
+    /// them (<see cref="AiOptions.AcceptsImages"/>): as <c>image_url</c> parts of the chat completions, as <c>image</c> blocks of the
+    /// Anthropic messages. When the provider refuses the request because of them (a compatible service whose model reads text only) the
+    /// call is repeated once with the text alone, and the result says that no image was read.
+    /// </summary>
+    public async Task<AiGenerationResult> GenerateAsync(
+        AiRequest request,
+        AiModelTier tier,
+        string cacheKey,
+        AiOptions config,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (string.IsNullOrWhiteSpace(config.ApiKey))
+        {
+            logger.LogDebug("Ai:ApiKey not configured; returning empty AI response.");
+            return new AiGenerationResult(string.Empty, 0, 0, tier, FromCache: false, ProviderConfigured: false);
+        }
+
+        // FD-21 (PO 2026-10-08): scrub PII from every prompt before it leaves CasaZen.
+        var scrubbed = request with
+        {
+            Prompt = PiiScrubber.Scrub(request.Prompt),
+            SystemPrompt = request.SystemPrompt is null ? null : PiiScrubber.Scrub(request.SystemPrompt),
+        };
+
+        if (config.AcceptsImages() && scrubbed.Images.Count > 0)
+        {
+            try
+            {
+                return await SendAsync(scrubbed, scrubbed.Images, tier, config, cancellationToken);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.BadRequest
+                or HttpStatusCode.UnprocessableEntity
+                or HttpStatusCode.UnsupportedMediaType
+                or HttpStatusCode.RequestEntityTooLarge)
+            {
+                logger.LogWarning(
+                    "AI provider {Provider} refused a request with {Images} images ({Status}): sent again with the text alone",
+                    config.Provider, scrubbed.Images.Count, (int?)ex.StatusCode);
+            }
+        }
+
+        return await SendAsync(scrubbed, [], tier, config, cancellationToken);
+    }
+
+    private async Task<AiGenerationResult> SendAsync(
+        AiRequest request,
+        IReadOnlyList<AiImage> images,
+        AiModelTier tier,
+        AiOptions config,
+        CancellationToken cancellationToken)
+    {
+        var maxTokens = request.MaxCompletionTokens ?? config.MaxCompletionTokens;
+        var client = httpClientFactory.CreateClient(LongCallHttpClientName);
+
+        if (config.UsesAnthropicMessages())
+        {
+            var blocks = new List<object>();
+            foreach (var image in images)
+            {
+                blocks.Add(new
+                {
+                    type = "image",
+                    source = new { type = "base64", media_type = image.MediaType, data = Convert.ToBase64String(image.Data) },
+                });
+            }
+
+            blocks.Add(new { type = "text", text = request.Prompt });
+            var anthropicPayload = new Dictionary<string, object?>
+            {
+                ["model"] = config.Model,
+                ["max_tokens"] = maxTokens,
+                ["messages"] = new[] { new { role = "user", content = blocks } },
+            };
+            if (!string.IsNullOrWhiteSpace(request.SystemPrompt))
+                anthropicPayload["system"] = request.SystemPrompt;
+            if (request.Temperature is { } anthropicTemperature)
+                anthropicPayload["temperature"] = anthropicTemperature;
+
+            using var anthropicRequest = new HttpRequestMessage(HttpMethod.Post, $"{config.AnthropicBaseUrl.TrimEnd('/')}/v1/messages");
+            anthropicRequest.Headers.Add("x-api-key", config.ApiKey);
+            anthropicRequest.Headers.Add("anthropic-version", "2023-06-01");
+            anthropicRequest.Content = new StringContent(JsonSerializer.Serialize(anthropicPayload), Encoding.UTF8, "application/json");
+
+            using var anthropicResponse = await client.SendAsync(anthropicRequest, cancellationToken);
+            anthropicResponse.EnsureSuccessStatusCode();
+
+            var anthropicJson = await anthropicResponse.Content.ReadAsStringAsync(cancellationToken);
+            var (anthropicPrompt, anthropicCompletion) = DeepSeekWebSearchClient.ExtractUsage(anthropicJson);
+            return new AiGenerationResult(
+                DeepSeekWebSearchClient.ExtractTextContent(anthropicJson) ?? string.Empty,
+                anthropicPrompt,
+                anthropicCompletion,
+                tier,
+                FromCache: false,
+                ImagesRead: images.Count);
+        }
+
+        var messages = new List<object>();
+        if (!string.IsNullOrWhiteSpace(request.SystemPrompt))
+            messages.Add(new { role = "system", content = request.SystemPrompt });
+
+        if (images.Count == 0)
+        {
+            messages.Add(new { role = "user", content = request.Prompt });
+        }
+        else
+        {
+            var parts = new List<object>();
+            foreach (var image in images)
+            {
+                parts.Add(new
+                {
+                    type = "image_url",
+                    image_url = new { url = $"data:{image.MediaType};base64,{Convert.ToBase64String(image.Data)}" },
+                });
+            }
+
+            parts.Add(new { type = "text", text = request.Prompt });
+            messages.Add(new { role = "user", content = parts });
+        }
+
+        var payload = new
+        {
+            model = config.Model,
+            messages,
+            max_tokens = maxTokens,
+            temperature = request.Temperature ?? 0.2,
+        };
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{config.OpenAiBaseUrl.TrimEnd('/')}/chat/completions");
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.ApiKey);
+        httpRequest.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        using var response = await client.SendAsync(httpRequest, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(cancellationToken);
+        var (promptTokens, completionTokens) = ExtractUsage(json);
+        return new AiGenerationResult(
+            ExtractCompletionContent(json), promptTokens, completionTokens, tier, FromCache: false, ImagesRead: images.Count);
     }
 
     public static string ExtractCompletionContent(string json)

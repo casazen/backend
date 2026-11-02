@@ -1513,6 +1513,24 @@
   <data name="GuestCheckInLinkUnavailable" xml:space="preserve">
     <value>The online check-in link cannot be sent now: the booking is not confirmed, the check-in is already completed or it is not time yet.</value>
   </data>
+  <data name="GuestEmailNotVerified" xml:space="preserve">
+    <value>Confirm your email address to see your bookings: open the link in the verification message you received when you signed up, then sign in again.</value>
+  </data>
+  <data name="GuestAccountBookingNotFound" xml:space="preserve">
+    <value>This booking is not among yours.</value>
+  </data>
+  <data name="GuestAccountScopeUnknown" xml:space="preserve">
+    <value>The bookings filter is not valid: use “upcoming” or “past”.</value>
+  </data>
+  <data name="GuestAccountIsProfessional" xml:space="preserve">
+    <value>This account also manages properties or services on CasaZen and cannot be deleted from the app: contact CasaZen support.</value>
+  </data>
+  <data name="GuestAccountDeleteFailed" xml:space="preserve">
+    <value>We could not delete your account and nothing was removed: try again in a moment.</value>
+  </data>
+  <data name="GuestAccountDeleteBlocked" xml:space="preserve">
+    <value>The account cannot be deleted automatically because other data is still linked to it: contact CasaZen support.</value>
+  </data>
   <data name="GuestBookingOrgRequired" xml:space="preserve">
     <value>The booking site is missing: open “My bookings” again from the property's website.</value>
   </data>
@@ -1710,6 +1728,9 @@
   </data>
   <data name="ActivationTosRequired" xml:space="preserve">
     <value>You must accept the terms of service.</value>
+  </data>
+  <data name="ActivationRemindersAckRequired" xml:space="preserve">
+    <value>To activate, confirm that you know the safety sheet and the documents still to complete are your obligation.</value>
   </data>
   <data name="ActivationBaseDataIncomplete" xml:space="preserve">
     <value>Complete the basic details of the property: name, address, city, guests and rate.</value>
@@ -2227,6 +2248,9 @@
   <data name="PropertyPhotoUrlRequired" xml:space="preserve">
     <value>Specify the photo.</value>
   </data>
+  <data name="AiPhotosInvalid" xml:space="preserve">
+    <value>The photos sent to the AI are not valid (too many, too large or not JPEG, PNG or WebP). Reload the page and try again.</value>
+  </data>
   <data name="PropertyPhotoUrlTooLong" xml:space="preserve">
     <value>The photo address is too long.</value>
   </data>
@@ -2307,6 +2331,120 @@
   </data>
   <data name="SeoGuideCta" xml:space="preserve">
     <value>List your home</value>
+  </data>
+  <data name="SeoNavFeatures" xml:space="preserve">
+    <value>Features</value>
+  </data>
+  <data name="SeoNavSuppliers" xml:space="preserve">
+    <value>For suppliers</value>
+  </data>
+  <data name="SeoNavAbout" xml:space="preserve">
+    <value>About us</value>
+  </data>
+  <data name="SeoNavGuides" xml:space="preserve">
+    <value>Guides</value>
+  </data>
+  <data name="SeoNavSearch" xml:space="preserve">
+    <value>Find a home</value>
+  </data>
+  <data name="SeoNavMainLabel" xml:space="preserve">
+    <value>Main navigation</value>
+  </data>
+  <data name="SeoNavBreadcrumbLabel" xml:space="preserve">
+    <value>Breadcrumb</value>
+  </data>
+  <data name="SeoNavFooterLabel" xml:space="preserve">
+    <value>Site links</value>
+  </data>
+  <data name="SeoFooterTagline" xml:space="preserve">
+    <value>CasaZen: software for short and long-term rentals, in compliance with the rules.</value>
+  </data>
+  <data name="SeoGuideMetaTitle" xml:space="preserve">
+    <value>Short-term rentals in {0}: guide to the CIN and the tourist tax {1}</value>
+  </data>
+  <data name="SeoTaxMetaTitle" xml:space="preserve">
+    <value>Tourist tax in {0} {1}: rates, exemptions and calculation</value>
+  </data>
+  <data name="SeoGuideMetaDescription" xml:space="preserve">
+    <value>Guide for hosts in {0}: CIN, Alloggiati Web and tourist tax ({1}). Updated in {2}.</value>
+  </data>
+  <data name="SeoTaxMetaDescription" xml:space="preserve">
+    <value>Tourist tax in {0}: {1}. Exemptions, frequently asked questions and the municipality's official source.</value>
+  </data>
+  <data name="SeoFactsHeading" xml:space="preserve">
+    <value>Tourist tax in {0} at a glance</value>
+  </data>
+  <data name="SeoFactRateLabel" xml:space="preserve">
+    <value>Rate</value>
+  </data>
+  <data name="SeoFactRateFixed" xml:space="preserve">
+    <value>{0} per person per night</value>
+  </data>
+  <data name="SeoFactNightsLabel" xml:space="preserve">
+    <value>Nights</value>
+  </data>
+  <data name="SeoFactNightsValue" xml:space="preserve">
+    <value>up to a maximum of {0} nights</value>
+  </data>
+  <data name="SeoFactExemptLabel" xml:space="preserve">
+    <value>Exemptions</value>
+  </data>
+  <data name="SeoFactExemptValue" xml:space="preserve">
+    <value>guests under {0} years of age</value>
+  </data>
+  <data name="SeoFactSinceLabel" xml:space="preserve">
+    <value>In force since</value>
+  </data>
+  <data name="SeoFactSourceLabel" xml:space="preserve">
+    <value>Official source</value>
+  </data>
+  <data name="SeoFactSourceLink" xml:space="preserve">
+    <value>Rates published by the municipality of {0}</value>
+  </data>
+  <data name="SeoFaqHeading" xml:space="preserve">
+    <value>Frequently asked questions</value>
+  </data>
+  <data name="SeoFaqRateQuestion" xml:space="preserve">
+    <value>How much is the tourist tax in {0}?</value>
+  </data>
+  <data name="SeoFaqRateAnswer" xml:space="preserve">
+    <value>In {0} the tourist tax is {1}.</value>
+  </data>
+  <data name="SeoFaqNightsQuestion" xml:space="preserve">
+    <value>For how many nights is the tourist tax due in {0}?</value>
+  </data>
+  <data name="SeoFaqNightsAnswer" xml:space="preserve">
+    <value>The tax applies up to a maximum of {0} nights.</value>
+  </data>
+  <data name="SeoFaqExemptQuestion" xml:space="preserve">
+    <value>Who is exempt from the tourist tax in {0}?</value>
+  </data>
+  <data name="SeoFaqExemptAnswer" xml:space="preserve">
+    <value>Guests under {0} years of age are exempt. For any other exemption or reduction, refer to the municipality's official sources.</value>
+  </data>
+  <data name="SeoFaqSourceQuestion" xml:space="preserve">
+    <value>Where can I find the official rates of {0}?</value>
+  </data>
+  <data name="SeoFaqSourceAnswer" xml:space="preserve">
+    <value>The rates are published by the municipality of {0}: read the official document.</value>
+  </data>
+  <data name="SeoSeeAlsoHeading" xml:space="preserve">
+    <value>See also</value>
+  </data>
+  <data name="SeoSeeAlsoHub" xml:space="preserve">
+    <value>All the guides by municipality</value>
+  </data>
+  <data name="SeoSeeAlsoOtherGuides" xml:space="preserve">
+    <value>More guides in {0}</value>
+  </data>
+  <data name="SeoSeeAlsoOtherCalculators" xml:space="preserve">
+    <value>More tourist tax pages in {0}</value>
+  </data>
+  <data name="SeoHubIntro" xml:space="preserve">
+    <value>Guides for people who rent out homes to tourists: for each municipality the rules on the CIN, Alloggiati Web and the tourist tax, with rates and official sources. Guides published: {0}. Tourist tax pages: {1}.</value>
+  </data>
+  <data name="SeoHubMetaDescription" xml:space="preserve">
+    <value>Guides for short-term rental hosts, municipality by municipality: CIN, Alloggiati Web and tourist tax, with rates and official sources. For example: {0}.</value>
   </data>
   <data name="SeoAmenity_WiFi" xml:space="preserve">
     <value>WiFi</value>
@@ -2712,6 +2850,15 @@
   </data>
   <data name="ShowcaseUndoUnavailable" xml:space="preserve">
     <value>The last publication can no longer be undone: too much time has passed or you changed something else meanwhile.</value>
+  </data>
+  <data name="ShowcaseAiUnavailable" xml:space="preserve">
+    <value>The AI suggestion is not available right now: use the starting text or write it yourself, and try again later.</value>
+  </data>
+  <data name="ShowcaseSuggestionNotEnoughData" xml:space="preserve">
+    <value>To write a text that is true we need at least a category, a zone or a service: add them to your profile, or write two lines about yourself, and try again.</value>
+  </data>
+  <data name="ShowcaseSuggestionUnusable" xml:space="preserve">
+    <value>I could not write a suitable text: try again, add two lines about yourself or write it yourself.</value>
   </data>
   <data name="SupplierHoursInvalid" xml:space="preserve">
     <value>The working hours are not valid (fields: {0}). Check the bands: a day has at most 3, they cannot overlap, and each one must end after it starts (in minutes after midnight, from 0 to 1440).</value>

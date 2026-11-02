@@ -175,4 +175,24 @@ public static class RateLimitPolicies
     /// trying a few more, and no more than a script could waste.
     /// </summary>
     public const string SupplierShowcaseMedia = "SupplierShowcaseMedia";
+
+    /// <summary>
+    /// The reads of the signed-in guest of the mobile app (<c>GET api/guest/bookings</c> and <c>GET api/guest/bookings/{id}</c>): the list of
+    /// the account's bookings across the booking sites and one of them. A policy of a signed-in endpoint, partitioned by <b>person</b> like
+    /// <see cref="GlobalSearch"/>: the app reads on opening a screen and on a pull to refresh, and the people of one network share an address.
+    /// </summary>
+    public const string GuestAccountRead = "GuestAccountRead";
+
+    /// <summary>
+    /// Opening a guest-area session for a booking of the account (<c>POST api/guest/bookings/{id}/session</c>): it mints the token that opens
+    /// the cancellation and the messages of the booking. Partitioned by <b>person</b>; the app opens one when the guest enters those screens and
+    /// keeps it until it ends (2 hours by default), so a handful in ten minutes is plenty.
+    /// </summary>
+    public const string GuestAccountSession = "GuestAccountSession";
+
+    /// <summary>
+    /// The deletion of the guest's own account (<c>DELETE api/guest/account</c>): irreversible, so tight and partitioned by <b>person</b>; a
+    /// few tries leave room for the retry after an answer 502 of Auth0.
+    /// </summary>
+    public const string GuestAccountDelete = "GuestAccountDelete";
 }

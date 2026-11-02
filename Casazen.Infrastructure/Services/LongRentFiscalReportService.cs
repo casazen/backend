@@ -21,7 +21,8 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="LongRentFiscalRules"/>, the same for the page and the file.</para>
 /// <para>In force means signed by every party (<see cref="LeaseRenewal.InForceStatuses"/>) and not over before the year: a lease is
 /// there when its first day is not after the last day of the year and the end of the period it is in now (LR-14) is not before the first.
-/// A payment received in the year for a lease that was over by then is therefore not in the report: it is not in any year's.</para>
+/// A payment received in the year for a lease that was over by then is therefore not in the report: it is not in any year's. A lease
+/// ended on the day it starts (or before) never ran and is left out (<see cref="LongRentFiscalRules.Ran"/>).</para>
 /// <para>Nothing is written and nothing is logged: the names of the tenants never reach a log.</para>
 /// </remarks>
 public sealed class LongRentFiscalReportService(
@@ -63,6 +64,11 @@ public sealed class LongRentFiscalReportService(
                 TenantAnonymized = l.Parties.Where(p => p.Role == PartyRole.Tenant).OrderBy(p => p.Position).Select(p => p.AnonymizedAt != null).FirstOrDefault(),
             })
             .ToListAsync(cancellationToken);
+
+        // A lease ended on the day it starts never ran: it is in no report (decision of the product owner, 2026-11-01).
+        found = found
+            .Where(l => LongRentFiscalRules.Ran(DateOnly.FromDateTime(l.StartDate), DateOnly.FromDateTime(l.CurrentTermEndDate)))
+            .ToList();
 
         var leaseIds = found.Select(l => l.Id).ToList();
         var trackedFrom = new Dictionary<Guid, DateOnly>();

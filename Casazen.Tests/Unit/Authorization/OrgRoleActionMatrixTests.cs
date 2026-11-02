@@ -101,6 +101,7 @@ public class OrgRoleActionMatrixTests
         { typeof(BookingCancellationController), nameof(BookingCancellationController.Cancel), Operators },
         { typeof(FiscalController), nameof(FiscalController.AssignRegime), Operators },
         { typeof(PricingAdapterController), nameof(PricingAdapterController.SaveConfig), Operators },
+        { typeof(PropertyPriceSuggestionController), nameof(PropertyPriceSuggestionController.Suggest), Operators },
         { typeof(OtaController), nameof(OtaController.GetIntegrations), Operators },
         { typeof(OtaController), nameof(OtaController.SyncAll), Operators },
         { typeof(OtaIntegrationsController), nameof(OtaIntegrationsController.Create), Operators },

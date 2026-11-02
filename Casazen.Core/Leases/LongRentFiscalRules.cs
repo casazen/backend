@@ -59,6 +59,13 @@ public static class LongRentFiscalRules
     ];
 
     /// <summary>
+    /// Whether a lease ran at all: the last day of the period it is in now (<paramref name="currentTermEnd"/>) is after its first day.
+    /// A lease ended on the day it starts, or before, never ran and is in no report (decision of the product owner, 2026-11-01);
+    /// without this the whole-month rule would give it a month of rent and a tax estimate.
+    /// </summary>
+    public static bool Ran(DateOnly start, DateOnly currentTermEnd) => currentTermEnd > start;
+
+    /// <summary>
     /// The months of <paramref name="year"/> with at least one day of the lease, from <paramref name="start"/> to
     /// <paramref name="end"/> (both included): 0 for a lease that does not touch the year or whose dates are in disorder.
     /// </summary>

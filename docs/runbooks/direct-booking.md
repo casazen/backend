@@ -443,6 +443,67 @@ Code: `Casazen.Core/Services/CancellationRefundPolicy.cs` (`EvaluateGuestRefund`
 `Casazen.Web/Infrastructure/GuestBookingCancelRateLimiter.cs`, `GuestCancellationProblems.cs`, `DTOs/GuestCancellationDtos.cs`.
 Test: `GuestSelfCancellationPostgresTests` (the amount shown is the amount refunded, per property, once, never for another guest).
 
+### 8.6 The guest with an account: «Le mie prenotazioni» of the mobile app
+
+The stores ask two things of an app that lets people register: the account can be deleted **in the app**, and the guest sees what they booked.
+The mobile app lets a guest search for free, **register to book** and see their bookings; the guest area of §§ 8.4-8.5 (code + email, no
+account) stays as it is for the guest of a booking site. Server side, with no flag, no migration and no new configuration key:
+
+| Endpoint | Auth and limit | Answers |
+|---|---|---|
+| `GET /api/users/me` | JWT (as before) | gains **`emailVerified`** (bool): Auth0 says the account's email is verified (the Action claim `https://casazen.app/email_verified`, else the Management API: `AccountEmailResolver`). Also in the answer of `PUT /api/users/me`; `null` in the admin's `GET /api/users/{id}` |
+| `GET /api/guest/bookings?scope=upcoming\|past&page=1&pageSize=20` | policy `GuestAccount` (any signed-in account); `GuestAccountRead`, 60 per min **per person** | 200 `{ items, total, page, pageSize }`; 400 `validation_error` (another `scope`); 401; **403 `guest_email_not_verified`**; 429 |
+| `GET /api/guest/bookings/{id}` | same | 200 the body of § 8.2 plus `id` and `orgSlug`; 401; 403; **404 `guest_booking_not_found`**; 429 |
+| `POST /api/guest/bookings/{id}/session` | same; `GuestAccountSession`, 20 per 10 min per person | 200 `{ accessToken, expiresAt, bookingCode, orgSlug }`; 401; 403; 404; 429 |
+| `DELETE /api/guest/account` | policy `GuestAccount`; `GuestAccountDelete`, 5 per 10 min per person; **no verified email needed** | 204; 401 (also the second call); **409 `guest_account_is_professional`**; 409 `user_delete_blocked`; **502** with an `auth0_*` code (nothing removed); 429 |
+
+- **What ties a booking to the account is its email.** The bookings were made on a public site with no account, so they carry the address typed at
+  the checkout; the account's address, **verified**, is the only link. A booking is the account's when it is a booking of the public checkout
+  (`Source = Direct`), of an **active** org, in **any** org, and its guest's email equals the account's (trimmed, case-insensitive). The tenant
+  filter and the soft-delete filter of the property are ignored by name in these reads (`IgnoreQueryFilters([Tenant, SoftDelete])`: a guest has
+  no host org, and a stay at a house the host has since deleted is still theirs); the predicates are the access check. Without a verified email
+  the three booking actions answer 403 `guest_email_not_verified` (the claim is read from the access token, so after the person verifies the
+  address the app gets a new token with the refresh grant, which runs the Action again, §§ 6 and 12 of [auth0.md](auth0.md)). A person who books
+  with a different address from the one of the account (an Apple «Hide My Email» relay, a work address) does not see those bookings: nothing links them.
+- **The list.** `scope=upcoming` (default): check-out **today or later in Europe/Rome** (`RomeCalendar`, the injected `TimeProvider`), by check-in
+  **ascending**; `scope=past`: check-out before today, by check-in **descending**. `pageSize` 1-50 (20 by default, a larger one counts as 50), `page`
+  from 1. The states that are dead ends for the guest, `Expired` (a lapsed hold, a request nobody answered) and `DatesUnavailable` (a payment that came
+  when the dates were gone), are **not listed** (and not counted in `total`); `Declined`, `Cancelled`, `AwaitingHostApproval`, `AwaitingGuestEmail`,
+  `AwaitingPayment`, `PaymentProcessing` and `PaymentFailed` are, with their `status` (the names of § 8.2). The state of every booking is worked
+  out as in § 8.2 (`GuestBookings.StatusOf`), in memory, over the account's bookings of the scope: a person has a few.
+- **A list item** (`GuestAccountBookingSummary`): `id`, `orgSlug`, `bookingCode` (`XXXXX-XXXXX`), `status`, `propertyId`, `propertySlug` (or null),
+  `propertyName`, `city` (empty when the house has none), `photoUrl` (the first https photo of the public gallery, or null), `checkInDate`,
+  `checkOutDate` (`yyyy-MM-dd`, Rome days), `nights`, `adults`, `children`, `currency` (EUR or CHF, of the house), `totalPrice`, `paidAmount`,
+  `refundedAmount` (as in § 8.2: collected by Stripe, refunds included), `paymentOption` (`Immediate`, `OnCancellationDeadline`, `OnSite`) and
+  `hostName` (`Org.DisplayName`, or null).
+- **Nothing private leaves.** The detail is the projection of § 8.2 (`GuestBookingLookupService.ViewOfAsync`, the same method, so a field added to
+  one is in both) and the list item is built from the same rules. They hold no note of the host (the reason of a cancellation, the note of an agreed
+  price), no channel data of an OTA stay, no Stripe identifier, no document or contact of the guest and nothing of the people of the stay or of another
+  guest. The test `GuestAccountIntegrationTests` plants a marker in each of those fields and looks for it in the raw JSON of the list, the detail and the
+  session. The online check-in of the detail (`checkIn.status`) reads its sessions and reports by the id of the booking with the tenant filter ignored
+  by name, because the request has the tenant of the guest's own host org or none (a guest session has the org of the booking).
+- **404 for everything.** A booking of another person, an id that does not exist and a string that is not an id get the same 404
+  `guest_booking_not_found` (the message speaks of «your bookings», the code is the one of § 8.2).
+- **The session** is the token of § 8.4 (`gs1.`, the org of the booking's site and the **hash of the account's verified email**, the same length:
+  `GuestArea__SessionMinutes`, 2 hours by default, 24 at most, no refresh), opened for a booking the account owns. The app sends it as
+  `Authorization: Bearer` to the endpoints of the guest area with `bookingCode` in the path (`GET /api/public/guest/bookings/{code}/cancellation`
+  and `POST …/cancel` of § 8.5, the messages with the host) and opens a new one when it ends: the guest is never asked for the code. The token is
+  tied to the org and the email, as the one a code opens, so it also reads the other bookings of that site and email.
+- **The deletion** is in [gdpr.md](gdpr.md) § 11: Auth0 first, then the CasaZen row; the bookings and the guest records of the hosts stay.
+- **Demo.** The store reviewers' account is a demo guest: `DemoShowcaseCatalog.GuestAppEmail` (`ospite.app.demo@example.com`) has three stays of the
+  public checkout on the demo villa (upcoming, past, cancelled; paid at the property, so nothing reaches Stripe). The Auth0 account is created
+  **by hand** ([auth0.md](auth0.md) § 12), with the email marked as verified; [demo-environment.md](demo-environment.md).
+
+Logs: the unverified email and the other refusals are plain 4xx; no email, no booking code and no token is logged. Rate limits are the policies of
+[proxy-ip.md](proxy-ip.md) § 4 (`Rate limit exceeded: policy GuestAccountRead | GuestAccountSession | GuestAccountDelete on …`).
+
+Code: `Casazen.Core/Services/IGuestAccountBookingService.cs` (records, `GuestAccountErrorCodes`, `GuestAccountBookings.NotFound`),
+`Casazen.Infrastructure/Services/GuestAccountBookingService.cs`, `GuestBookingLookupService.cs` (`ViewOfAsync`), `GuestSessionService.SessionMinutesOf`,
+`Casazen.Web/Controllers/GuestAccountController.cs`, `DTOs/GuestAccountDtos.cs`, `CasazenPolicies.GuestAccount`,
+`Infrastructure/AccountEmailResolver.cs`. Tests: `GuestAccountIntegrationTests` (list, scopes and order, two orgs, the email case, unverified, another
+person's booking, nothing private, the session against the cancellation preview, `emailVerified`, the refusals of the deletion, the deletion on
+PostgreSQL), `GuestAccountBookingServiceTests`, `UserServiceGuestAccountDeletionTests`, `DemoShowcaseTests`.
+
 ## 9. Deferred charge of "Paga più tardi" (BK-08)
 
 Task BK-08 (audit defect A3-14, P1). A booking with `PaymentOption = OnCancellationDeadline` saves the guest's payment

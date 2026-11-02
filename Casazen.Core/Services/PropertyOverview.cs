@@ -137,11 +137,12 @@ public static class PropertyLifecycle
     }
 
     /// <summary>
-    /// What a short-stay property lacks, from the blocking steps of its activation (<paramref name="blockingSteps"/>, the very
+    /// What a short-stay property lacks, from the compliance steps of its activation (<paramref name="blockingSteps"/>, the very
     /// ones <c>GET /api/properties/{id}/compliance/activation</c> shows) and the two pieces of advice: the blockers in the order
-    /// of the wizard (<see cref="PropertyMissingCodes.BaseData"/>, <see cref="PropertyMissingCodes.Cin"/>,
-    /// <see cref="PropertyMissingCodes.Documents"/>, <see cref="PropertyMissingCodes.Safety"/>), then — for a property that is not
-    /// activated yet and has no blocker left — the confirmation, then the photos and the calendar.
+    /// of the wizard (<see cref="PropertyMissingCodes.BaseData"/>, <see cref="PropertyMissingCodes.Cin"/>), then — for a property
+    /// that is not activated yet and has no blocker left — the confirmation, then the reminders still open
+    /// (<see cref="PropertyMissingCodes.Documents"/>, <see cref="PropertyMissingCodes.Safety"/>: they do not block since the PO
+    /// decision of 2026-11-01, an active property keeps them in its list), then the photos and the calendar.
     /// </summary>
     public static IReadOnlyList<PropertyMissingItem> MissingOf(
         Property property,
@@ -151,13 +152,18 @@ public static class PropertyLifecycle
         ArgumentNullException.ThrowIfNull(property);
         ArgumentNullException.ThrowIfNull(blockingSteps);
 
-        var missing = blockingSteps
+        var steps = blockingSteps.ToList();
+        var missing = steps
             .Where(step => step.Blocker && step.Status != "complete")
             .Select(step => new PropertyMissingItem(CodeOf(step.Id), Blocking: true))
             .ToList();
 
         if (missing.Count == 0 && property.ComplianceStatus != PropertyComplianceStatus.Active)
             missing.Add(new PropertyMissingItem(PropertyMissingCodes.ActivationNotConfirmed, Blocking: true));
+
+        missing.AddRange(steps
+            .Where(step => !step.Blocker && step.Status != "complete")
+            .Select(step => new PropertyMissingItem(CodeOf(step.Id), Blocking: false)));
 
         if (property.PhotoUrls.Count < RecommendedPhotoCount)
             missing.Add(new PropertyMissingItem(PropertyMissingCodes.Photos, Blocking: false));

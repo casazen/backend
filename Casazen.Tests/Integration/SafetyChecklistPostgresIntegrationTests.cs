@@ -32,9 +32,10 @@ public class SafetyChecklistPostgresIntegrationTests : IClassFixture<CasazenWebA
         var (hostId, propertyId) = await SeedPropertyReadyExceptSafetyAsync();
         using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
 
+        // PO decision 2026-11-01 (option A): the safety checklist is a reminder, so without it the activation asks the acknowledgement.
         var before = await CompleteAsync(client, propertyId);
         Assert.Equal(HttpStatusCode.Conflict, before.StatusCode);
-        Assert.Contains("safety_extinguishers_missing", BlockerCodes(await ReadJsonAsync(before)));
+        Assert.Equal("activation_reminders_ack_required", (await ReadJsonAsync(before)).GetProperty("code").GetString());
 
         var saved = await SaveAsync(client, propertyId, Checklist(
             entrepreneurial: false,
@@ -65,7 +66,7 @@ public class SafetyChecklistPostgresIntegrationTests : IClassFixture<CasazenWebA
     }
 
     [PostgresFact]
-    public async Task HomeWithGasWithoutDetectors_ActivationReturns409WithDetectorBlockers()
+    public async Task HomeWithGasWithoutDetectors_ActivationAsksTheAcknowledgementThenActivates()
     {
         var (hostId, propertyId) = await SeedPropertyReadyExceptSafetyAsync();
         using var client = _factory.CreateAuthenticatedClient(hostId, "PropertyOwner");
@@ -83,19 +84,18 @@ public class SafetyChecklistPostgresIntegrationTests : IClassFixture<CasazenWebA
             ["safety_gas_detector_missing", "safety_co_detector_missing"],
             saved.GetProperty("blockers").EnumerateArray().Select(b => b.GetProperty("code").GetString()));
 
-        var response = await CompleteAsync(client, propertyId);
+        // PO decision 2026-11-01 (option A): the safety checklist is a reminder; the host acknowledges it once to activate.
+        var refused = await CompleteAsync(client, propertyId);
 
-        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-        var problem = await ReadJsonAsync(response);
-        Assert.Equal("property_activation_blocked", problem.GetProperty("code").GetString());
-        Assert.Equal("Pending", problem.GetProperty("complianceStatus").GetString());
-        Assert.Equal(["safety"], problem.GetProperty("incompleteBlockers").EnumerateArray().Select(s => s.GetString()));
-        var blockers = problem.GetProperty("blockers").EnumerateArray().ToList();
-        Assert.Equal(["safety_gas_detector_missing", "safety_co_detector_missing"], blockers.Select(b => b.GetProperty("code").GetString()));
-        Assert.All(blockers, b => Assert.Equal("safety", b.GetProperty("step").GetString()));
-        Assert.StartsWith("Rilevatore di gas combustibili", blockers[0].GetProperty("message").GetString());
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Equal("application/problem+json", refused.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("activation_reminders_ack_required", (await ReadJsonAsync(refused)).GetProperty("code").GetString());
         Assert.Equal(PropertyComplianceStatus.Pending, (await LoadPropertyAsync(propertyId)).ComplianceStatus);
+
+        var completed = await CompleteAsync(client, propertyId, remindersAcknowledged: true);
+
+        Assert.Equal(HttpStatusCode.OK, completed.StatusCode);
+        Assert.Equal(PropertyComplianceStatus.Active, (await LoadPropertyAsync(propertyId)).ComplianceStatus);
     }
 
     [PostgresFact]
@@ -170,8 +170,10 @@ public class SafetyChecklistPostgresIntegrationTests : IClassFixture<CasazenWebA
         confirm = true,
     };
 
-    private static Task<HttpResponseMessage> CompleteAsync(HttpClient client, Guid propertyId) =>
-        client.PostAsJsonAsync($"/api/properties/{propertyId}/compliance/activation/complete", new { tosAccepted = true });
+    private static Task<HttpResponseMessage> CompleteAsync(HttpClient client, Guid propertyId, bool remindersAcknowledged = false) =>
+        client.PostAsJsonAsync(
+            $"/api/properties/{propertyId}/compliance/activation/complete",
+            new { tosAccepted = true, remindersAcknowledged });
 
     private static async Task<JsonElement> SaveAsync(HttpClient client, Guid propertyId, object body)
     {
@@ -182,9 +184,6 @@ public class SafetyChecklistPostgresIntegrationTests : IClassFixture<CasazenWebA
 
     private static JsonElement Item(JsonElement checklist, string code) =>
         checklist.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("code").GetString() == code);
-
-    private static List<string?> BlockerCodes(JsonElement problem) =>
-        problem.GetProperty("blockers").EnumerateArray().Select(b => b.GetProperty("code").GetString()).ToList();
 
     private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();

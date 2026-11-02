@@ -100,6 +100,33 @@ public static class SeoJsonLd
             ("url", Text(url)),
             ("mainEntity", Node("ItemList", ("itemListElement", ListItems(items, "url")))));
 
+    /// <summary>The site itself (the platform, not an org's booking site): name, home URL and language.</summary>
+    public static JsonObject WebSite(string name, string? url, string language) =>
+        Root("WebSite",
+            ("name", Text(name)),
+            ("url", Text(url)),
+            ("inLanguage", Text(language)));
+
+    /// <summary>
+    /// Questions and answers that are on the page, word for word: the markup must say what the visible text says, so the
+    /// caller builds both from the same list. Entries with an empty question or answer are left out.
+    /// </summary>
+    public static JsonObject FaqPage(IEnumerable<(string Question, string Answer)> items)
+    {
+        var questions = new JsonArray();
+        foreach (var (question, answer) in items)
+        {
+            if (string.IsNullOrWhiteSpace(question) || string.IsNullOrWhiteSpace(answer))
+                continue;
+
+            questions.Add(Node("Question",
+                ("name", Text(question)),
+                ("acceptedAnswer", Node("Answer", ("text", Text(answer))))));
+        }
+
+        return Root("FAQPage", ("mainEntity", questions));
+    }
+
     /// <summary>What <see cref="VacationRental"/> reads of a property: published data only.</summary>
     public sealed record VacationRentalData(
         string Name,

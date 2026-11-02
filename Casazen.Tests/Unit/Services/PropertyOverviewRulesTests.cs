@@ -66,7 +66,7 @@ public class PropertyOverviewRulesTests
     }
 
     [Fact]
-    public void Missing_ListsTheBlockersInTheOrderOfTheWizard_ThenTheAdvice()
+    public void Missing_ListsTheBlockersInTheOrderOfTheWizard_ThenTheRemindersAndTheAdvice()
     {
         var property = NewProperty(RentalMode.Short, PropertyComplianceStatus.Pending, paused: false, shownByHost: true);
         property.PhotoUrls = ["a.jpg", "b.jpg"];
@@ -74,14 +74,27 @@ public class PropertyOverviewRulesTests
         {
             Step("base-data", complete: false),
             Step("cin", complete: true),
-            Step("documents", complete: false),
-            Step("safety", complete: false),
+            Reminder("documents", complete: false),
+            Reminder("safety", complete: false),
         };
 
         var missing = PropertyLifecycle.MissingOf(property, steps, hasCalendarFeed: false);
 
-        var expected = new[] { ("base_data", true), ("documents", true), ("safety", true), ("photos", false), ("calendar", false) };
+        var expected = new[] { ("base_data", true), ("documents", false), ("safety", false), ("photos", false), ("calendar", false) };
         Assert.Equal(expected, missing.Select(m => (m.Code, m.Blocking)).ToArray());
+    }
+
+    [Fact]
+    public void Missing_AnActivatedPropertyWithRemindersOpen_KeepsThemInItsList()
+    {
+        // PO decision 2026-11-01 (option A): the documents and the safety checklist do not block, an active property still shows them.
+        var property = NewProperty(RentalMode.Short, PropertyComplianceStatus.Active, paused: false, shownByHost: true);
+        property.PhotoUrls = [.. Enumerable.Range(1, PropertyLifecycle.RecommendedPhotoCount).Select(i => $"{i}.jpg")];
+        var steps = new[] { Step("base-data", true), Step("cin", true), Reminder("documents", true), Reminder("safety", false) };
+
+        var missing = PropertyLifecycle.MissingOf(property, steps, hasCalendarFeed: true);
+
+        Assert.Equal(("safety", false), Assert.Single(missing.Select(m => (m.Code, m.Blocking))));
     }
 
     [Fact]
@@ -123,4 +136,8 @@ public class PropertyOverviewRulesTests
 
     private static ComplianceActivationStep Step(string id, bool complete) =>
         new(id, id, complete ? "complete" : "pending", Blocker: true);
+
+    /// <summary>A step that does not block (the documents, the safety checklist): open, it is a warning.</summary>
+    private static ComplianceActivationStep Reminder(string id, bool complete) =>
+        new(id, id, complete ? "complete" : "warning", Blocker: false);
 }

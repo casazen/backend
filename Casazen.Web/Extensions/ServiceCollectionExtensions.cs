@@ -248,6 +248,11 @@ public static class ServiceCollectionExtensions
                 .AddAuthenticationSchemes(GuestSessionDefaults.AuthenticationScheme)
                 .RequireAuthenticatedUser()
                 .RequireClaim(GuestSessionDefaults.OrgIdClaim))
+            // The person who books as a guest with a CasaZen account (the mobile app's guest area): a signed-in account with a subject
+            // and nothing else, since a guest has no host org, no supplier link and no role. The actions check the verified email.
+            .AddPolicy(CasazenPolicies.GuestAccount, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireAssertion(context => !string.IsNullOrWhiteSpace(context.User.GetUserId())))
             // Owner portal access (ADR-011): context=owner_portal claim, MUST NOT include host roles.
             .AddPolicy(CasazenPolicies.OwnerPortal, policy =>
                 policy.Requirements.Add(new OwnerPortalRequirement()));
@@ -427,6 +432,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyPhotoAltService, PropertyPhotoAltService>();
         services.AddScoped<IPropertyFloorPlanService, PropertyFloorPlanService>();
         services.AddScoped<IPropertyPoiService, PropertyPoiService>();
+        // «Suggerisci un testo» of the wizard: the AI writes the listing from the photos, the comune and the data (api/properties/{id}/listing-text).
+        services.AddScoped<IPropertyListingTextService, PropertyListingTextService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();
         services.AddScoped<IApeComplianceService, ApeComplianceService>();
         // The code of an APE the file does not show legibly, from the public CENED register of Lombardy (open data, no key).
@@ -600,6 +607,9 @@ public static class ServiceCollectionExtensions
         // The content of the supplier's showcase (SP-13a): the draft, the published version, and the changes between them. Rows keyed
         // by the supplier org, not tenant-filtered; every change under the SupplierShowcaseContent lock.
         services.AddScoped<ISupplierShowcaseContentService, SupplierShowcaseContentService>();
+        // The AI help of the showcase editor: drafts of the sentence, the introduction, "chi siamo" and the tips, written from what is true of the
+        // supplier and checked against the rules of the static starter. Reads the supplier's own data, calls the AI provider, writes nothing.
+        services.AddScoped<IShowcaseTextSuggestionService, ShowcaseTextSuggestionService>();
         // The images of the supplier's showcase (SP-13b): the logo, the cover and the photos of the jobs it uploads from the editor, and the daily
         // cleanup of the ones nothing points to. Rows keyed by the supplier org, not tenant-filtered; every change under the content lock.
         services.AddScoped<ISupplierShowcaseMediaService, SupplierShowcaseMediaService>();
@@ -777,6 +787,9 @@ public static class ServiceCollectionExtensions
         // The tokens are sealed with Data Protection (the key ring in the database), so every replica reads them.
         services.AddSingleton<GuestSessionTokens>();
         services.AddScoped<IGuestSessionService, GuestSessionService>();
+        // The bookings of the guest who has an account (the mobile app, GuestAccountController): the direct bookings of any site whose guest
+        // has the account's verified email, and the same guest-area session opened for them (docs/runbooks/direct-booking.md § 8.6).
+        services.AddScoped<IGuestAccountBookingService, GuestAccountBookingService>();
         // Verified reviews of the stays (DB-12a, docs/runbooks/site-reviews.md): the public reads and the guest's review, the host's
         // answers, reports and invitations, and the staff's decisions. The signed link is made by Data Protection, nothing is stored for it.
         services.AddSingleton<ReviewLinkTokens>();

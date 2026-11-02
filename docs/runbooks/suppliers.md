@@ -3673,6 +3673,23 @@ with an address); once the supplier has a content row it is true only for a show
       `bookingsOpen` and `trust.verified`; with `SupplierShowcaseBooking` on and the bookings open, `services[].nextSlotUtc`. `POST …/pause` makes `GET …/slots?service=…` and `POST …/quote` answer 422 `supplier_booking_offline`.
 - [ ] `GET api/supplier/showcase/status` and `…/stats` answer for the caller's supplier only; `GET api/supplier/checklist` has `showcasePublished: true` for a supplier that never used the editor and for one that published, `false` while paused.
 
+### 33.14 The AI help of the texts (editor, step «Testi»)
+
+`POST api/supplier/showcase/texts/suggestion` and `GET api/supplier/showcase/texts/suggestion/status` (same controller, same policy `RequireSupplier`, supplier org from the caller's own link). **No new feature flag**: the help appears only while a provider is
+configured (`IShowcaseTextSuggestionService.IsAvailableAsync`: not the stub, a key and an address, see [`ai.md`](ai.md)), so with `Ai__Provider=Stub` (or no key) the editor keeps the static starter and shows none of it. It writes nothing: the editor shows the draft, the supplier chooses the members,
+they go into the draft with an «Annulla» and are marked «Bozza scritta dall'AI» until the supplier changes them; nothing is public before the publication (33.7).
+
+- **What it drafts.** Only the four members the static starter also covers (SP-13d): `tagline`, `intro`, `bio` («Chi siamo»), `prep` («Prima che arriviamo»). The guarantee, the people, the strengths, the certifications and the questions are the supplier's own and are **never** drafted (VT-D20).
+- **What goes to the provider** (`ShowcaseTextPrompt`, versioned, part of the cache key): the category names, the names of the comuni the supplier covers, the names it gave its services, the texts already in its draft (to keep the tone) and what it typed in `answers` (`about`, `years`, `specialties`,
+  `differentiator`: the **only** source of a personal claim). Everything is scrubbed of e-mails, phone numbers and fiscal codes (`PiiScrubber`, FD-21). Never the legal name, a person, a contact, a price, a time, a count of jobs or a rating. The supplier data is read on the server: the request carries only the members to draft, the answers and `regenerate`.
+- **What comes back is checked** (`ShowcaseTextRules`, the rules of the static starter applied to a text nobody reviewed): plain text, the limits of 33.2 (a «chi siamo» over its limit is cut at the last sentence, the others are dropped), no exclamation mark, emoji or markup, and **no claim the supplier did not make**:
+  guarantee, certification, insurance, years or experience, a time («in 24 ore»), a price or discount, a rating, an adjective nobody measured (professionale, affidabile, puntuale…), «verificato»/«ufficiale»/«partner», contact data, and any figure the supplier did not give. A claim of those kinds that the supplier wrote itself
+  (in `answers`, in the name of a service, in its draft) may be repeated. A member that fails is reported in `rejected`; when none survives the answer is 422 `showcase_suggestion_unusable`.
+- **Errors.** 422 `showcase_ai_unavailable` (no provider, or it failed), 422 `showcase_suggestion_not_enough_data` (no category, zone, service or answer to write from), 422 `ai_budget_exhausted` (platform budget, `ai.md`), 429 `rate_limited` (`[AiRateLimit]`: per user and per organization, `ai.md`).
+- **Cost.** Behind the platform budget; an answer that gave something usable is kept per supplier for the next identical request (`IAiResponseCache`), `regenerate: true` skips it.
+- [ ] After a deploy, test environment: `GET …/texts/suggestion/status` is `{ "available": true }` with a provider configured; `POST …/texts/suggestion` with `{}` for a supplier with a category or a service is 200 with `basis` listing what was used and, in the texts, none of the claims above;
+      with `Ai__Provider=Stub` the status is `false` and the POST is 422 `showcase_ai_unavailable`.
+
 ## 33b. The images of the showcase: logo, cover and photos of the jobs — SP-13b
 
 Redesign wave task SP-13b (branch `feature/rd-supplier-showcase-media`; the upload zone of the editor is its twin frontend PR), **no new feature flag** (like the content, section 33: a file changes nothing a customer sees until the

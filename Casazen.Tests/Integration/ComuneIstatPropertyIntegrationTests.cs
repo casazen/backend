@@ -227,7 +227,9 @@ public class ComuneIstatPropertyIntegrationTests
 
         var documents = await GetStepAsync(client, propertyId, "documents");
 
-        Assert.Equal("pending", documents.GetProperty("status").GetString());
+        // A reminder since the PO decision of 2026-11-01: open, the step is a warning that does not block.
+        Assert.Equal("warning", documents.GetProperty("status").GetString());
+        Assert.False(documents.GetProperty("blocker").GetBoolean());
         Assert.Contains("CinCertificate", documents.GetProperty("message").GetString());
         Assert.Contains(requiredHere, documents.GetProperty("message").GetString());
     }
