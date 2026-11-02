@@ -300,6 +300,21 @@ public class ListingPriceSuggestionServiceTests
             () => CreateService(db, ai.Object).SuggestAsync(property, PricePositioning.Market, "it", cancellation.Token));
     }
 
+    [Fact]
+    public async Task SuggestAsync_AModelThatReasonsAloud_IsReadFromItsAnswerNotItsDrafts()
+    {
+        await using var db = CreateDb();
+        var (_, property) = await SeedHomeAsync(db);
+        await SeedOtherHomesAsync(db, 100m, 120m, 140m, 160m);
+        var answer = "<think>Una bozza: {\"nightlyRate\": 900, \"rationale\": \"troppo\"}. Meglio meno.</think>\n" + GoodAnswer;
+
+        var suggestion = await CreateService(db, ProviderAnswering(answer).Object).SuggestAsync(property, PricePositioning.Market, "it");
+
+        Assert.True(suggestion.AiUsed);
+        Assert.Equal(135m, suggestion.NightlyRate);
+        Assert.Equal("Zona centrale e terrazza.", suggestion.Rationale);
+    }
+
     [Theory]
     [InlineData("Non saprei che prezzo suggerire.")]
     [InlineData("""{"rangeMin": 100, "rangeMax": 200}""")]
