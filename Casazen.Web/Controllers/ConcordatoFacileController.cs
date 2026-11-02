@@ -300,6 +300,60 @@ public class ConcordatoFacileController(
     }
 
     /// <summary>
+    /// CF-DONE: makes the lease of the guided service follow its practice. What the person uploaded from the service (the signed contract with
+    /// its attestation in one file, the receipt of the registration) is read into the lease and, as the practice says the contract is signed,
+    /// the draft is imported as signed, then the registration is declared from the receipt (<see cref="IConcordatoFacileCompletionService"/>).
+    /// It does what can be done now and says what the lease waits for: it can be called as often as the screen needs (it never fails because of
+    /// the documents or of the practice, only a lease that is not the caller's is a 404). It records a signature and a registration, so
+    /// it needs <c>lease.sign</c> and <c>lease.register</c> on the property of the lease, as the manual ways to the same do: 403 otherwise.
+    /// </summary>
+    /// <param name="leaseId">The lease contract ID from the route</param>
+    /// <param name="completion">The service that makes the lease follow its practice</param>
+    /// <param name="hostResources">The lookup of the property of the lease, for the resource-based authorization</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    [HttpPost("sync")]
+    [Authorize(Policy = CasazenPolicies.LeaseRegister)]
+    [ProducesResponseType(typeof(SyncResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<SyncResponse>> Sync(
+        Guid leaseId,
+        [FromServices] IConcordatoFacileCompletionService completion,
+        [FromServices] IHostResourceLookup hostResources,
+        CancellationToken cancellationToken)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized();
+
+        var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        if (orgId is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "org_not_found", "NoOrganizationAssigned");
+
+        // The lease of the caller's org (the same 404 for another org's lease and for none), and its property for the resource check.
+        var propertyId = await db.LeaseContracts
+            .AsNoTracking()
+            .Where(l => l.Id == leaseId && l.OrgId == orgId.Value)
+            .Select(l => (Guid?)l.PropertyId)
+            .FirstOrDefaultAsync(cancellationToken);
+        var resource = propertyId is { } property ? await hostResources.ForPropertyAsync(property, cancellationToken) : null;
+        if (resource is null)
+            return this.ApiProblem(StatusCodes.Status404NotFound, "lease_not_found", "LeaseNotFound");
+
+        if (!await authorizationService.IsAuthorizedAsync(User, resource, LeaseOperations.Sign)
+            || !await authorizationService.IsAuthorizedAsync(User, resource, LeaseOperations.Register))
+        {
+            return Forbid();
+        }
+
+        var result = await completion.SyncAsync(leaseId, orgId.Value, userId, cancellationToken);
+
+        Response.Headers.CacheControl = "private, no-store";
+        return Ok(new SyncResponse { State = result.State, LeaseStatus = result.LeaseStatus.ToString() });
+    }
+
+    /// <summary>
     /// Looks up which lease a practice belongs to (NF-06).
     /// Used when returning from the ConcordatoFacile partner portal with a practice parameter.
     /// Validates practice ID format and verifies tenant isolation.

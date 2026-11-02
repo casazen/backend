@@ -46,7 +46,14 @@ public sealed record LeaseDraftFill(LeaseDraftValues Values, IReadOnlyList<Field
 /// </remarks>
 public static class LeaseDraftContractFill
 {
-    public static LeaseDraftFill Merge(LeaseDraftValues current, LeaseContractReading reading, LeaseOrigin origin, Func<Guid> newId)
+    /// <param name="deriveLandlordCitizenship">
+    /// For the draft of the guided service (CF-DONE): the contract of the service states the citizenship of the tenant, not the one of the
+    /// landlord, and the review of an imported draft blocks without it. A landlord who is a person born in Italy (per the place of birth of
+    /// the fiscal code) is then taken as Italian, marked <see cref="FieldReading.Derived"/> so the screen says it is to be checked. The
+    /// tenant's is never guessed (it decides the communication to the Questura), nor a landlord born abroad or a company.
+    /// </param>
+    public static LeaseDraftFill Merge(
+        LeaseDraftValues current, LeaseContractReading reading, LeaseOrigin origin, Func<Guid> newId, bool deriveLandlordCitizenship = false)
     {
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(reading);
@@ -64,8 +71,8 @@ public static class LeaseDraftContractFill
 
         run.Values = run.Values with
         {
-            Landlords = FillRole(run, PartyRole.Landlord, run.Values.Landlords, run.Values.Tenants, reading, newId),
-            Tenants = FillRole(run, PartyRole.Tenant, run.Values.Tenants, run.Values.Landlords, reading, newId),
+            Landlords = FillRole(run, PartyRole.Landlord, run.Values.Landlords, run.Values.Tenants, reading, newId, deriveLandlordCitizenship),
+            Tenants = FillRole(run, PartyRole.Tenant, run.Values.Tenants, run.Values.Landlords, reading, newId, deriveCitizenship: false),
         };
 
         return new LeaseDraftFill(run.Values, run.Fields, run.Changed);
@@ -256,7 +263,8 @@ public static class LeaseDraftContractFill
         IReadOnlyList<LeaseDraftParty> existing,
         IReadOnlyList<LeaseDraftParty> otherRole,
         LeaseContractReading reading,
-        Func<Guid> newId)
+        Func<Guid> newId,
+        bool deriveCitizenship)
     {
         var list = existing.ToList();
         foreach (var read in reading.Parties.Where(p => p.Role == role))
@@ -283,7 +291,7 @@ public static class LeaseDraftContractFill
 
             if (index >= 0)
             {
-                list[index] = FillEntry(run, list[index], read, role);
+                list[index] = FillEntry(run, list[index], read, role, deriveCitizenship);
                 continue;
             }
 
@@ -295,11 +303,14 @@ public static class LeaseDraftContractFill
                 continue;
             }
 
-            list.Add(FillEntry(run, new LeaseDraftParty { Id = newId() }, read, role));
+            list.Add(FillEntry(run, new LeaseDraftParty { Id = newId() }, read, role, deriveCitizenship));
         }
 
         return list;
     }
+
+    /// <summary>The citizenship a landlord born in Italy is given when the contract of the service does not state it.</summary>
+    private const string DerivedCitizenship = "IT";
 
     private static bool SameName(LeaseDraftParty entry, ReadParty read) =>
         LeaseDraftRules.Clean(entry.FirstName) is { } first && LeaseDraftRules.Clean(entry.LastName) is { } last
@@ -307,7 +318,7 @@ public static class LeaseDraftContractFill
         && string.Equals(first, read.FirstName, StringComparison.OrdinalIgnoreCase)
         && string.Equals(last, read.LastName, StringComparison.OrdinalIgnoreCase);
 
-    private static LeaseDraftParty FillEntry(Run run, LeaseDraftParty entry, ReadParty read, PartyRole role)
+    private static LeaseDraftParty FillEntry(Run run, LeaseDraftParty entry, ReadParty read, PartyRole role, bool deriveCitizenship)
     {
         var next = entry;
 
@@ -339,6 +350,16 @@ public static class LeaseDraftContractFill
         Field("lastName", entry.LastName, read.LastName, read.NameConfidence, (e, v) => e with { LastName = v }, usable: read.LastName is { Length: <= 100 });
         Field("residence", entry.Residence, read.Residence, read.ResidenceConfidence, (e, v) => e with { Residence = v }, usable: read.Residence is { Length: <= Party.ResidenceMaxLength });
         Field("citizenship", entry.Citizenship, read.Citizenship, read.CitizenshipConfidence, (e, v) => e with { Citizenship = v }, usable: read.Citizenship is { Length: 2 });
+
+        // CF-DONE: the contract of the guided service does not state the landlord's citizenship. A person born in Italy is taken as Italian,
+        // and said to be derived (the screen asks to check it); anybody else stays empty, and is asked.
+        if (deriveCitizenship && LeaseDraftRules.Clean(next.Citizenship) is null && ItalianFiscalCode.IsPersonBornInItaly(next.FiscalCode))
+        {
+            next = next with { Citizenship = DerivedCitizenship };
+            run.Changed = true;
+            run.Add("citizenship", FieldReadingState.Read, LeaseContractTextParser.AcceptedConfidence, derived: true, partyId: entry.Id, role: role);
+        }
+
         return next;
     }
 }

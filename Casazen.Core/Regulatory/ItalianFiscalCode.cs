@@ -68,6 +68,17 @@ public static class ItalianFiscalCode
     /// <summary>True when the normalized code is a valid 16-character or 11-digit fiscal code.</summary>
     public static bool IsValid(string? code) => Classify(code) is not null;
 
+    /// <summary>
+    /// True for the valid code of a natural person who was born in Italy: the place of birth (positions 12 to 15) is a municipality, whose
+    /// code begins with a letter other than Z (the codes of the foreign states begin with Z). False for a company, a person born abroad and
+    /// anything that is not a valid code.
+    /// </summary>
+    public static bool IsPersonBornInItaly(string? code)
+    {
+        var normalized = Normalize(code);
+        return IsValidPersonCode(normalized) && normalized[11] != 'Z';
+    }
+
     /// <summary>16-character code of a natural person, already normalized: structure, month, day and check character.</summary>
     public static bool IsValidPersonCode(string code)
     {
