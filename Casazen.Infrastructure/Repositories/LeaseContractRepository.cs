@@ -160,6 +160,7 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                 l.ReviewConfirmedAt,
                 l.PropertyDeliveryDate,
                 l.QuesturaCommunicationDate,
+                l.IsConcordatoFacileSource,
                 PartyCount = l.Parties.Count,
                 HasExtraEUTenant = l.Parties.Any(p => p.Role == PartyRole.Tenant && p.IsExtraEU),
                 // The first tenant (the order entered), by three scalar subqueries on the unique index of the parties
@@ -197,7 +198,8 @@ public class LeaseContractRepository(AppDbContext context) : ILeaseContractRepos
                     x.OverdueCount,
                     x.OverdueAmount,
                     x.OldestOverdue,
-                    x.NextDueDate))
+                    x.NextDueDate,
+                    x.IsConcordatoFacileSource))
                 .ToList(),
             todayInRome);
 
