@@ -8,6 +8,7 @@ using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Email.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -27,7 +28,8 @@ public class GuestCheckInService(
     IAlloggiatiCodeTableService? codeTableService = null,
     IOptions<GuestCheckInOptions>? options = null,
     TimeProvider? timeProvider = null,
-    IOptions<GdprOptions>? gdprOptions = null) : IGuestCheckInService
+    IOptions<GdprOptions>? gdprOptions = null,
+    IPushNotificationService? pushNotifications = null) : IGuestCheckInService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly GuestCheckInOptions _options = options?.Value ?? new GuestCheckInOptions();
@@ -315,6 +317,8 @@ public class GuestCheckInService(
             "Guest check-in submitted for session {SessionId}, booking {BookingId}: {GuestCount} guests",
             session.Id, session.BookingId, saved.Guests.Count);
 
+        PushToHosts(session);
+
         return new GuestCheckInSubmitResult
         {
             Success = true,
@@ -322,6 +326,34 @@ public class GuestCheckInService(
             BookingId = session.BookingId,
             GuestId = guest.Id,
         };
+    }
+
+    /// <summary>
+    /// Tells the hosts of the booking that the guest completed the online check-in: a push to their phones and, through the push
+    /// decorator, the entry of the bell and the live message of the open web sessions (<c>docs/runbooks/in-app-notifications.md</c>).
+    /// The text names the property only, never the guest or what was typed. Best effort after the check-in is saved: whatever goes
+    /// wrong here is logged and never fails the guest's submit.
+    /// </summary>
+    private void PushToHosts(GuestCheckInSession session)
+    {
+        if (pushNotifications is null)
+            return;
+
+        try
+        {
+            var booking = session.Booking;
+            var push = EmailTemplates.GuestCheckInCompletedPush(EmailTemplates.DefaultCulture, booking.Property.Name);
+            pushNotifications.Enqueue(
+                PushDeliveryKeys.GuestCheckInCompleted(session.Id),
+                PushAudience.BookingHosts(booking.Id),
+                new PushNotificationPayload(
+                    push.Title, push.Body, PushTypes.GuestCheckInCompleted, booking.Id, PushRoutes.Booking(booking.Id)));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex, "Push about the check-in of session {SessionId}, booking {BookingId} could not be prepared", session.Id, session.BookingId);
+        }
     }
 
     public async Task<string> RegenerateTokenAsync(Guid bookingId, Guid orgId) =>

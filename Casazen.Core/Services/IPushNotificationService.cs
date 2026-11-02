@@ -123,6 +123,12 @@ public static class PushDeliveryKeys
     /// <summary>A message the guest of a direct booking wrote, to the host: one per message, so every message is one push.</summary>
     public static string GuestMessage(Guid messageId) => $"booking-message:{messageId:N}";
 
+    /// <summary>
+    /// The guest completed the online check-in, to the hosts of the booking: one per completed session, stable across retries
+    /// (a link issued again and completed again is another event).
+    /// </summary>
+    public static string GuestCheckInCompleted(Guid sessionId) => $"guest-checkin:{sessionId:N}:completed";
+
     /// <summary>A booking confirmed without the host's action (payment, saved card), to the host.</summary>
     public static string NewBooking(Guid bookingId) => $"booking:{bookingId:N}:new";
 
@@ -219,6 +225,9 @@ public static class PushTypes
 
     /// <summary>The guest of a direct booking wrote a message: pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its thread.</summary>
     public const string GuestMessage = "guest-message";
+
+    /// <summary>The guest completed the online check-in (US-020): pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its detail.</summary>
+    public const string GuestCheckInCompleted = "guest-checkin-completed";
     public const string GuestDataMissing = "guest-data-missing";
     public const string AlloggiatiDeadline = "alloggiati-deadline";
     public const string AlloggiatiOverdue = "alloggiati-overdue";
