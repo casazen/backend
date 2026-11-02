@@ -166,6 +166,8 @@ La scheda del contratto fatto con il servizio non chiede mai di compilare dati: 
 | `ReceiptNotUsable` | La ricevuta non basta a dichiarare la registrazione (scansione, richiesta scartata dall'Agenzia, nessun codice o giorno): la persona dichiara a mano |
 | `Completed` | Registrato: la procedura è finita e il blocco sparisce dalla scheda |
 
+**La cittadinanza del locatore.** Il contratto del servizio dichiara quella del conduttore ma non quella del locatore, e la revisione di una bozza importata si blocca senza. Per la bozza del servizio un locatore **persona fisica nata in Italia** (luogo di nascita del codice fiscale che non comincia per `Z`) è preso come italiano (`IT`) e il campo risulta *derivato* («controlla»); quella del conduttore non si indovina mai (decide la comunicazione alla Questura), né quella di un locatore nato all'estero o di una società: restano da chiedere. Un valore già scritto non si sovrascrive.
+
 **Che cosa scrive.** Importa il documento `Contract` come copia firmata (`ImportSignedContractFromDocumentAsync`) con il giorno della firma letto dal contratto o, in mancanza, dalla ricevuta; poi dichiara la registrazione con la ricevuta (`DeclareManualRegistrationFromDocumentAsync`: codice di identificazione, oppure numero e serie, e giorno della registrazione). Per il resto valgono le regole delle dichiarazioni a mano (stesso controllo della revisione, stesso blocco dei periodi sovrapposti, stesso evento nella cronologia). Nel contratto firmato e nel documento restano solo ciò che ci è sempre stato: nessun valore personale nel `ExtractionResult`.
 
 ## 4. Il pagamento in dettaglio (Stripe)
