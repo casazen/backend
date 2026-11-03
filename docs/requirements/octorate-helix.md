@@ -5,7 +5,7 @@ del 31/10, decisioni del PO prese lo stesso giorno: §14.1). Credenziali del par
 31/10 dagli ambienti test e produzione di CasaZen (S20); l'account Octorate è ancora in sandbox.
 Il 2/11 Octorate ha scelto di non rispondere alle domande tecniche e rimanda a una sessione di
 onboarding a pagamento, che il PO non usa per ora: il documento resta valido, le decisioni del PO non
-cambiano e si procede come in §14.3 (nessuna domanda blocca lo sviluppo con l'adattatore Mock).
+cambiano (salvo la precisazione di PO-19 del 3/11) e si procede come in §14.3 (nessuna domanda blocca lo sviluppo con l'adattatore Mock).
 
 La v2.0 allarga il perimetro dal solo channel management (v1.3) agli otto processi che il PO
 vuole gestire interamente da CasaZen, con Octorate dietro le quinte; aggiunge regole UX
@@ -1690,7 +1690,8 @@ si era rimasti (UX-03). Le parti richiamano i requisiti già definiti:
 
 1. **Collegamento a Octorate.** «Le tue strutture sono già su Octorate?» Sì: un consenso per account
    o rete (§9.1). No: CasaZen crea le strutture, in rete per le agenzie, senza mandare credenziali
-   al proprietario (PO-19).
+   al proprietario: l'utente Octorate nasce con un indirizzo di CasaZen (PO-19, 3/11) e il passo sul pannello per
+   Polizia e ISTAT lo compie il supporto di CasaZen per conto dell'host (ONB-04, UX-15).
 2. **Strutture.** Abbinamento proposto in automatico tra strutture Octorate e immobili di CasaZen,
    con conferma dell'utente, oppure creazione degli immobili che mancano (LST-02, LST-03).
 3. **Canali.** Per ogni OTA: collegamento (accesso al canale sul pannello Octorate quando serve, con
@@ -1898,6 +1899,10 @@ Numeri assegnati dalla fase ADR di Helix.
 9. Catalogo del marketplace e attivazioni (MKT).
 10. Emendamenti: ADR-002 (passaggio dal calendario iCal al connettore per canale), ADR-022
     (eventi del connettore sul bus).
+11. Credenziali Octorate delle strutture create da CasaZen: indirizzo di CasaZen
+    (`welcome_alternative_email`), arrivo e deposito nel secret store (mai lasciate in una casella di posta),
+    uso da parte del supporto per conto dell'host, consegna al proprietario su richiesta o all'uscita, revoca
+    (PO-19, D27).
 
 ## 9. Contratto OAuth e confini con Octorate
 
@@ -1966,9 +1971,12 @@ propria struttura»). Quindi:
   token** con l'elenco delle strutture coperte (`refresh_properties`): è il modello per un'agenzia
   che porta i suoi appartamenti su Octorate. Per creare una rete Octorate stessa consiglia
   `welcome_user` falso. CasaZen crea la struttura con `welcome_user` **falso** (il default di
-  Octorate è vero): il proprietario non riceve email da Octorate e resta in CasaZen. Le
-  credenziali si attivano solo su sua richiesta o quando lascia CasaZen (PO-19, deciso dal PO il
-  31/10; procedura da concordare con Octorate, D11 e D27).
+  Octorate è vero) e con `welcome_alternative_email` = un indirizzo di CasaZen (PO-19 precisata dal PO
+  il 3/11): nasce un utente Octorate (provato in sandbox, S25), le credenziali arrivano solo a CasaZen, il
+  proprietario non riceve email da Octorate e resta in CasaZen. Le credenziali si consegnano al
+  proprietario solo su sua richiesta o quando lascia CasaZen (D11). Senza indirizzo alternativo la struttura
+  non avrebbe mai un utente e non si potrebbe collegare alla Polizia e all'ISTAT dal pannello. Resta da
+  confermare con Octorate che l'utente così creato può farlo (D27).
 
 Il wizard chiede all'inizio «Le tue strutture sono già su Octorate?» (uno dei punti in cui il nome
 si mostra, PO-01) e sceglie da solo l'ingresso giusto: l'utente non deve sapere cosa sia un
@@ -2430,7 +2438,7 @@ cambiata in seguito tocca solo i requisiti indicati.
 | PO-16 | Chi comanda prezzi e disponibilità? | **Confermato dal PO il 31/10:** CasaZen è l'unico scrittore per gli immobili collegati; le regole automatiche di Octorate (chiusure automatiche, prezzi derivati, revenue) restano spente o lette e mostrate | LST-09, LST-10 | No |
 | PO-17 | Dati degli ospiti presi da Octorate per il CRM | **Deciso dal PO il 31/10:** dati della prenotazione e del soggiorno; i contatti letti con `contactInfo` servono al servizio (messaggi, check-in, fattura); quelli dei clienti diretti (sito di CasaZen, già coperto da PO-07, e motore di prenotazione del sito dell'agenzia) entrano anche nel marketing con il soft opt-in, se le condizioni d'uso di Octorate lo consentono (D24) e l'informativa è mostrata alla prenotazione (D34); mai gli indirizzi di inoltro delle OTA, mai letture in blocco | CRM-02, CRM-07 | No |
 | PO-18 | Come si identifica l'ospite? | **Deciso dal PO il 31/10:** verifica biometrica dal vivo del solo ospite che lascia il documento (capogruppo o capofamiglia: selfie dalla fotocamera confrontato con il suo documento, dal link del check-in o dal QR all'ingresso), esito immediato e codice della serratura subito dopo; l'identificazione di persona non è praticabile; ripiego: verifica dell'operatore in videochiamata. Confermati dal legale (31/10): validità della verifica a distanza dal vivo del solo capogruppo, consenso biometrico e DPIA | CHK-11, DEB-09 | No |
-| PO-19 | Quando CasaZen crea una struttura nuova su Octorate, il proprietario riceve da Octorate le credenziali del suo account (`welcome_user`)? | **Deciso dal PO il 31/10:** no. CasaZen crea la struttura con `welcome_user` falso, l'esperienza resta in CasaZen e il token arriva con la creazione; le credenziali si attivano solo su richiesta del proprietario o alla sua uscita da CasaZen, con la procedura da concordare con Octorate (D11, D27) | §9.1, LST-02, LST-03 | No |
+| PO-19 | Quando CasaZen crea una struttura nuova su Octorate, il proprietario riceve da Octorate le credenziali del suo account (`welcome_user`)? | **Deciso dal PO il 31/10:** no. CasaZen crea la struttura con `welcome_user` falso, l'esperienza resta in CasaZen e il token arriva con la creazione; le credenziali si attivano solo su richiesta del proprietario o alla sua uscita da CasaZen, con la procedura da concordare con Octorate (D11, D27). **Precisata dal PO il 3/11:** le strutture create da CasaZen si creano con `welcome_user` falso e con `welcome_alternative_email` = un indirizzo di CasaZen: nasce un utente Octorate (provato in sandbox) le cui credenziali arrivano solo a CasaZen, il proprietario non riceve nulla da Octorate e il passo sul pannello per collegare Polizia e ISTAT lo compie il supporto di CasaZen per conto dell'host, che gli affida le sue credenziali (ONB-04, UX-15) | §9.1, LST-02, LST-03 | No |
 | PO-20 | Nome pubblico, descrizione e icona dell'app CasaZen su Octorate (oggi «Luca La Malfa», visibile nella pagina di consenso) e visibilità nell'elenco delle API di Octorate (`secretVisibility`, oggi vero) | **Confermato dal PO il 31/10:** nome «CasaZen» con icona e descrizione IT/EN impostati subito in test (`postConfiguration`); app non visibile nell'elenco (`secretVisibility` falso) fino alla certificazione, poi decisione commerciale | §9.1, UX-12 | No |
 | PO-21 | Chi confronta il volto: i modelli specializzati eseguiti nel backend di CasaZen (ADR-013) o un fornitore esterno specializzato? | **Confermato dal PO il 31/10:** modelli nel backend (già deciso in ADR-013); un fornitore esterno solo se la taratura non raggiunge gli obiettivi, con valutazione legale (UE, accordo sul trattamento, nessuna conservazione) ⚖ | CHK-14 | No |
 | PO-22 | Prima del pilota Quokka si prova su un annuncio reale che non è di Quokka? | **Deciso dal PO il 31/10:** sì. Un annuncio reale, non di Quokka, collegato alle OTA con una licenza Octorate di produzione: si provano pubblicazione, prezzi e disponibilità, prenotazioni, messaggi, check-in con invio e documenti prima di toccare i dati di Quokka (banco di prova H8b; D35) | §12, §13 | Solo l'avvio del pilota |
@@ -2469,7 +2477,7 @@ aperte, blocca lo sviluppo con l'adattatore Mock; che cosa blocca davvero, e com
 | D24 | **In parte risposta da S18:** senza accesso limitato a IP statici niente dati sensibili, neanche in sandbox. Resta da chiedere: procedura e tempi per registrare gli IP, condizioni e vincoli d'uso del permesso `contactInfo` **S24:** la specifica non cita IP statici; ha i livelli `RESERVATION_SENTITIVE_*`, i permessi `sensitiveData` e `contactInfo` e un `allowedAddress` sul token, non descritto | CRM-07, MSG-03 |
 | D25 | Oltre alla mail del mattino, quali notifiche Octorate riceve l'host e come si spengono per gli immobili gestiti da CasaZen? | UX-08, MSG-05 |
 | D26 | Lo stato `CHECKIN_END`, `CHECKOUT_END`, `NO_SHOW` ha effetti verso le OTA o verso gli invii? | CHK-06 |
-| D27 | Una struttura creata via API con `welcome_user` falso: come si consegnano in seguito le credenziali al proprietario (su sua richiesta o quando lascia CasaZen)? Esiste un'operazione o una procedura, e il proprietario conserva struttura, collegamenti alle OTA e storico? **S25:** con `welcome_user` falso la struttura non ha nessun utente Octorate (`DELETE .../account` dà 404) e non ha `policeAccount`; il collegamento alla Polizia e all'ISTAT si fa dal pannello (S18), quindi per un proprietario senza accesso serve un utente. **Provato (S25, 3/11):** `policeAccount` nel `PATCH` è ignorato in silenzio; un utente nasce solo alla creazione, con `welcome_user` vero oppure con `welcome_alternative_email` anche se `welcome_user` è falso (le credenziali vanno solo a quell'indirizzo); un `PATCH` con `welcome_user: true` non crea nulla (304) e non esiste un invito successivo. Con `welcome_user` falso e senza indirizzo alternativo la struttura non avrà mai un utente e il collegamento alla Polizia e all'ISTAT dal pannello non è possibile: la scelta (PO-19) è del PO e nessuna decisione cambia qui | PO-19, D11 |
+| D27 | Una struttura creata via API con `welcome_user` falso: come si consegnano in seguito le credenziali al proprietario (su sua richiesta o quando lascia CasaZen)? Esiste un'operazione o una procedura, e il proprietario conserva struttura, collegamenti alle OTA e storico? **S25:** con `welcome_user` falso la struttura non ha nessun utente Octorate (`DELETE .../account` dà 404) e non ha `policeAccount`; il collegamento alla Polizia e all'ISTAT si fa dal pannello (S18), quindi per un proprietario senza accesso serve un utente. **Provato (S25, 3/11):** `policeAccount` nel `PATCH` è ignorato in silenzio; un utente nasce solo alla creazione, con `welcome_user` vero oppure con `welcome_alternative_email` anche se `welcome_user` è falso (le credenziali vanno solo a quell'indirizzo); un `PATCH` con `welcome_user: true` non crea nulla (304) e non esiste un invito successivo. Con `welcome_user` falso e senza indirizzo alternativo la struttura non avrà mai un utente e il collegamento alla Polizia e all'ISTAT dal pannello non è possibile: **Risolta dal PO il 3/11:** si usa `welcome_alternative_email` con un indirizzo di CasaZen (PO-19 precisata); resta da confermare con Octorate che l'utente così creato può collegare Polizia e ISTAT dal pannello | PO-19, D11 |
 | D28 | Vrbo: la vostra guida indica la configurazione «multiaccount» in rete. Per appartamenti indipendenti di proprietari diversi (un consenso e un token per struttura) come si gestiscono contenuti e collegamento? | LST-01, §10.5 |
 | D29 | Per creare un annuncio nuovo via API su Booking.com, Airbnb, Vrbo, HomeToGo e Holidu cosa deve già avere l'host sul canale (account, contratto, struttura) e quali approvazioni restano sul canale? Esistono guide aggiornate per i contenuti di Booking.com e Vrbo (in arrivo dal 2019)? **In parte risposta da S23** (guida di marzo 2026): Airbnb con account host attivo; Booking.com con il Legal ID per creare la struttura; Vrbo con partita IVA e modulo di onboarding; Holidu con l'ID e minimo 15 strutture per le agenzie in Italia; Expedia solo su un ID esistente; HomeToGo non citato | LST-03, LST-12 |
 | D30 | Configurazione del partner CasaZen: togliere il permesso `cardDetail` (non serve); confermare l'indirizzo base `https://api.octorate.com/connect` (quello dell'email risponde 404 sui percorsi `/v1`); significato di `quotaStatus` (2 dopo due chiamate); `category` assegnata (D22) **S25:** `quotaStatus` conta le unità usate, per nodo (§10.5) | §9.1, OCT-13 |
@@ -2514,7 +2522,7 @@ mail del 31/10 e rimanda a una sessione di onboarding a pagamento con un tecnico
 
 | Fascia | Domande | Cosa bloccano | Da soli | Se manca |
 |---|---|---|---|---|
-| A. Si verificano da soli in sandbox | D33 (un consenso per la rete: provato, S25); D30 (indirizzo base, significato della quota: provato, S25); D12 (prenotazioni e chat di prova); D27 (credenziali dei proprietari: provato, S25; la scelta è del PO); D9 (canale delle dirette: 233 e 270 identici, S25); D17 e D18 (forma di `policeAccount`, `policeSentStatus`); D7 (quota); D19 (risposta delle due operazioni di creazione dei documenti: provata, S25); D23 (chiusa da S22) | Niente | Sì, prima parte di H8 | Un token per struttura nello stesso archivio (§9.1); strutture create solo per chi accetta subito le credenziali |
+| A. Si verificano da soli in sandbox | D33 (un consenso per la rete: provato, S25); D30 (indirizzo base, significato della quota: provato, S25); D12 (prenotazioni e chat di prova); D27 (credenziali dei proprietari: provato, S25; scelta del PO del 3/11); D9 (canale delle dirette: 233 e 270 identici, S25); D17 e D18 (forma di `policeAccount`, `policeSentStatus`); D7 (quota); D19 (risposta delle due operazioni di creazione dei documenti: provata, S25); D23 (chiusa da S22) | Niente | Sì, prima parte di H8 | Un token per struttura nello stesso archivio (§9.1); strutture create solo per chi accetta subito le credenziali |
 | B. Passaggi di un partner e questioni commerciali | Certificazione e passaggio a produzione; D24 (IP statici); callback di produzione; D30 (permesso `cardDetail`) e D22 (categoria); D14 e D21 (listino e moduli); D17 e D34 (moduli per Alloggiati, ISTAT, fatture, motore di prenotazione); D35 (struttura di prova); D11 (titolarità contrattuale e uscita) | H8b, H9 e i dati sensibili degli ospiti (IP statici) | No | Nessuna struttura reale e nessun dato sensibile finché mancano |
 | C. Solo Octorate, o la prova su una struttura reale | D1 e D29 (prerequisiti per creare su ogni OTA); D2 (CIN per portale); D3, D4 e D25 (messaggi, risposte automatiche, notifiche); D6 (migrazione di annunci esistenti); D8 (eventi per OTA); D26 (effetti degli stati del soggiorno); D28 (Vrbo in rete); D15, D31 e D32 (invio Alloggiati e ISTAT: orari, regioni, esiti); D20 (tassa nei documenti di Octorate); D5, D10 e D13 (recensioni, altri canali, unità di `totalPrice`); ricevute: come le gestiscono gli altri partner; contenuti di Expedia | Niente: cambiano un'attivazione, non il disegno | No: si provano su H8b | Passo guidato sul canale (LST-12, LST-13); risposte AI solo in bozza (PO-08); CIN inserito a mano nel canale con guida; ricevuta dalla Polizia o caricata (CHK-04); ISTAT con file di CasaZen (CHK-05) |
 
@@ -2567,10 +2575,12 @@ mail del 31/10 e rimanda a una sessione di onboarding a pagamento con un tecnico
   pannello (S18), per un proprietario senza accesso serve un utente. La scrittura di `policeAccount` via
   API è ignorata in silenzio e un utente nasce solo alla creazione (`welcome_user` vero, oppure
   `welcome_alternative_email` anche con `welcome_user` falso): con `welcome_user` falso e nessun indirizzo la
-  struttura non avrà mai un utente (D27; la scelta è del PO). La `license` è di sola lettura per il
+  struttura non avrà mai un utente (D27: il PO ha scelto il 3/11 `welcome_alternative_email` con un
+  indirizzo di CasaZen). La `license` è di sola lettura per il
   partner. Un ospite completo di check-in è accettato con `city` e `residenceCity` come nomi riconosciuti (il
   server li traduce in codici di Polizia), risulta subito `validated` (`draft` è ignorato) e i suoi dati
-  personali non si rileggono. Le fatture
+  personali non si rileggono. Per le strutture create da CasaZen il passo sul pannello lo compie il supporto
+  per conto dell'host (ONB-04, UX-15, oggi P2: dipendenza da tenere presente). Le fatture
   doppie dànno 500 senza la «configurazione da rivenditore» e l'unico documento generato è un riepilogo
   non fiscale.
 
@@ -2592,7 +2602,9 @@ punto 2.
   uscita di Railway, moduli e prezzi pubblici di Octorate; ricerca sulla documentazione pubblica (S23,
   §10.6) e analisi della specifica (S24, correzioni in §10.4 e D19 riaperta); prove nel sandbox (S25: rete e token
   provati, calendario ignorato senza licenza di sola lettura, utente Octorate solo alla creazione: D27). H8 con
-  una prima parte senza risposte di Octorate. Nessuna decisione del PO cambia (PO-02, PO-03 e PO-05 restano come decisi il 31/10); il
+  una prima parte senza risposte di Octorate. Nessuna decisione del PO cambia (PO-02, PO-03 e PO-05 restano come decisi il 31/10); il 3/11 il PO ha
+  precisato PO-19: le strutture create da CasaZen si creano con `welcome_alternative_email` = un indirizzo di
+  CasaZen (nasce un utente Octorate, il supporto compie il passo sul pannello per conto dell'host); il
   trattamento dei dati si affronta più avanti.
 - **2.0 · 31 ottobre 2026:** nuovo mandato del PO (S12): da solo channel management a otto
   processi con CasaZen unico punto di accesso. Aggiunti: base del codice al 30/10 (§4), regole UX
