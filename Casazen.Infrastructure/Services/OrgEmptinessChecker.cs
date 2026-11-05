@@ -13,23 +13,26 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>The tables are read from the model.</b> Every entity of <see cref="AppDbContext"/> that implements
 /// <see cref="ITenantOwned"/> is checked, so a new tenant table is part of the "org is empty" rule from the day it exists,
 /// without anyone remembering to add it here. Only <see cref="OnboardingRows"/> are left out (what the onboarding itself
-/// writes for a person who has not done anything yet) and <see cref="OrgMember"/> (the person's own owner row is expected,
-/// anything else is another member). <c>IgnoreQueryFilters()</c> with no argument: the soft-deleted properties count too,
-/// and the filter of the request's tenant is not the org being asked about.</para>
+/// writes for a person who has not done anything yet, and the drafts of the wizards) and <see cref="OrgMember"/> (the person's
+/// own owner row is expected, anything else is another member). <c>IgnoreQueryFilters()</c> with no argument: the soft-deleted
+/// properties count too, and the filter of the request's tenant is not the org being asked about.</para>
 /// <para>This is the guard of a destructive-looking move (the person leaves the org and the org is deactivated), so it
 /// fails closed: any doubt is a blocker and the acceptance is refused.</para>
 /// </remarks>
 public sealed class OrgEmptinessChecker(AppDbContext db) : IOrgEmptinessChecker
 {
     /// <summary>
-    /// Tenant tables that do not make an org "used": the consents and the signup attribution the onboarding records, and the
-    /// previous slugs of the org (a person can rename the org before doing anything else). They stay with the org that is left.
+    /// Tenant tables that do not make an org "used": the consents and the signup attribution the onboarding records, the
+    /// previous slugs of the org (a person can rename the org before doing anything else) and the drafts of the wizards (the
+    /// progress of a form is not use of the org, and the rows are anonymized after 30 days but never deleted, so counting them
+    /// would refuse the move for good: ADR-024, AM-02). They stay with the org that is left.
     /// </summary>
     internal static readonly IReadOnlySet<Type> OnboardingRows = new HashSet<Type>
     {
         typeof(ConsentRecord),
         typeof(SignupAttribution),
         typeof(OrgSlugAlias),
+        typeof(WizardDraft),
     };
 
     private static readonly MethodInfo HasRowsMethod = typeof(OrgEmptinessChecker)
