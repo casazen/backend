@@ -121,4 +121,43 @@ public class DemoShowcaseTests
         Assert.Contains(stays, s => s.CheckInOffsetDays < 0 && s.Status == BookingStatus.CheckedOut);
         Assert.Contains(stays, s => s.Status == BookingStatus.Cancelled && s.CancellationReason == BookingCancellationReason.GuestRequested);
     }
+
+    [Fact]
+    public void ReportYearOverYear_TheDemoHasFinishedStaysAboutOneYearAgo_OnSeveralChannels()
+    {
+        var stays = DemoShowcaseCatalog.Properties
+            .SelectMany(p => p.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.ReportYearOverYear))
+            .ToList();
+
+        // NF-96: the same months of the year before the other demo stays are in, so the comparison of the reports is never empty.
+        Assert.Contains(DemoShowcaseCatalog.Scenario.ReportYearOverYear, DemoShowcaseCatalog.Scenarios);
+        Assert.NotEmpty(stays);
+        Assert.All(stays, s => Assert.EndsWith("@example.com", s.Email, StringComparison.Ordinal));
+        Assert.All(stays, s => Assert.Equal(BookingStatus.CheckedOut, s.Status));
+        Assert.All(stays, s => Assert.InRange(s.CheckInOffsetDays, -400, -300));
+        Assert.Equal(stays.Count, stays.Select(s => s.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.True(stays.Select(s => s.Source).Distinct().Count() >= 3, "A comparison by channel needs several channels.");
+        Assert.True(
+            DemoShowcaseCatalog.Properties.Count(p => p.Bookings.Any(b => b.Scenario == DemoShowcaseCatalog.Scenario.ReportYearOverYear)) >= 2,
+            "A comparison by property needs more than one property.");
+    }
+
+    [Fact]
+    public void Catalog_NoDemoProperty_HasTwoStaysOnTheSameNight()
+    {
+        foreach (var property in DemoShowcaseCatalog.Properties)
+        {
+            var taken = property.Bookings
+                .Where(b => b.Status != BookingStatus.Cancelled)
+                .OrderBy(b => b.CheckInOffsetDays)
+                .ToList();
+            for (var index = 1; index < taken.Count; index++)
+            {
+                var before = taken[index - 1];
+                Assert.True(
+                    before.CheckInOffsetDays + before.Nights <= taken[index].CheckInOffsetDays,
+                    $"{property.Key}: the stays {before.Key} and {taken[index].Key} take the same night.");
+            }
+        }
+    }
 }

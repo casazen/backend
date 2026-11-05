@@ -2083,6 +2083,18 @@
   <data name="ReportInvalidFormat" xml:space="preserve">
     <value>Invalid format: use format=json or format=csv.</value>
   </data>
+  <data name="ReportInvalidGroupBy" xml:space="preserve">
+    <value>Invalid grouping: use groupBy=none, groupBy=property or groupBy=channel.</value>
+  </data>
+  <data name="ReportInvalidGroupByOwner" xml:space="preserve">
+    <value>Invalid grouping: use groupBy=none or groupBy=property.</value>
+  </data>
+  <data name="ReportInvalidCompare" xml:space="preserve">
+    <value>Invalid comparison: use compare=none or compare=previousYear.</value>
+  </data>
+  <data name="ReportInvalidBucket" xml:space="preserve">
+    <value>Invalid bucket: use bucket=auto, bucket=week or bucket=month.</value>
+  </data>
   <data name="CsvTooManyRows" xml:space="preserve">
     <value>The file would have more than {0} rows: narrow the period or pick a single property.</value>
   </data>

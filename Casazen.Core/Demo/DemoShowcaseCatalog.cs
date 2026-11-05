@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-10-31.1";
+    public const string Version = "2026-11-05.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -68,6 +68,7 @@ public static class DemoShowcaseCatalog
         public const string PropertyWizardFields = "property-wizard-fields";
         public const string PropertySiteProfile = "property-site-profile";
         public const string GuestAppAccount = "guest-app-account";
+        public const string ReportYearOverYear = "report-year-over-year";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -109,6 +110,7 @@ public static class DemoShowcaseCatalog
         Scenario.PropertyWizardFields,
         Scenario.PropertySiteProfile,
         Scenario.GuestAppAccount,
+        Scenario.ReportYearOverYear,
     ];
 
     /// <summary>
@@ -280,6 +282,11 @@ public static class DemoShowcaseCatalog
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
                     CancellationReason: BookingCancellationReason.GuestRequested),
+                // NF-96: stays of the same months one year earlier (finished, three channels), so the comparison with the year before of the
+                // performance report and of the trend is never empty in the demo. Invented guests at example.com, like the rest.
+                new("anno-prima-diretta", "Chiara", "Neri", "ospite.demo.anno-prima-1@example.com", -351, 4, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Direct),
+                new("anno-prima-airbnb", "Pietro", "Gallo", "ospite.demo.anno-prima-2@example.com", -344, 3, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Airbnb),
+                new("anno-prima-booking", "Sofie", "Peeters", "ospite.demo.anno-prima-3@example.com", -325, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.BookingCom),
             ]),
         new(
             Key: "appartamento-brera",
@@ -321,6 +328,8 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("past-guest-roma", "Francesca", "Romano", "francesca.demo@example.com", -15, 5, BookingStatus.CheckedOut, Scenario.AlloggiatiRegistered),
+                // NF-96: the same months one year earlier (see the villa).
+                new("anno-prima-roma", "Elisa", "Fontana", "ospite.demo.anno-prima-4@example.com", -380, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Direct),
             ]),
         new(
             Key: "bilocale-navigli",
@@ -373,6 +382,8 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("airbnb-ical", "Thomas", "Schmidt", "thomas.demo@example.com", 7, 3, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.Airbnb),
+                // NF-96: the same months one year earlier (see the villa).
+                new("anno-prima-firenze", "Hugo", "Martin", "ospite.demo.anno-prima-5@example.com", -358, 3, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Airbnb),
             ]),
         new(
             Key: "loft-torino",
@@ -454,6 +465,8 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("booking-com-ical", "Marie", "Dubois", "marie.demo@example.com", 21, 5, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.BookingCom),
+                // NF-96: the same months one year earlier (see the villa).
+                new("anno-prima-amalfi", "Lucia", "Esposito", "ospite.demo.anno-prima-6@example.com", -344, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.BookingCom),
             ]),
     ];
 
