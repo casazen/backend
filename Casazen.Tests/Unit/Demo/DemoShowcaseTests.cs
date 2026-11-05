@@ -1,8 +1,11 @@
 using Casazen.Core.Demo;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
+using Casazen.Core.Services;
+using Casazen.Core.SiteProfile;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Demo;
@@ -188,5 +191,52 @@ public class DemoShowcaseTests
         Assert.Equal(2, shared.Count);
         Assert.All(shared, o => Assert.Equal(50m, o.SharePercent));
         Assert.Single(shared.Select(o => o.PropertyKey).Distinct(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void PropertySiteProfile_TheDemoHouseHasItsHeadlineAndDescriptionInEnglish_SoItCanBePublished()
+    {
+        var house = Assert.Single(
+            DemoShowcaseCatalog.Properties,
+            p => p.Scenarios.Contains(DemoShowcaseCatalog.Scenario.PropertySiteProfile));
+        var english = house.SiteProfile?.Translations?["en"];
+
+        Assert.False(string.IsNullOrWhiteSpace(english?.Title));
+        Assert.False(string.IsNullOrWhiteSpace(english?.Description));
+        Assert.True(english!.Title!.Length <= SitePropertyProfileRules.ListingTextMaxLength(ListingTextField.Title));
+    }
+
+    [Fact]
+    public void PropertyRoomsAndDiscounts_TheDemoHouseHasValidRoomsMatchingItsCounters_AndAWeekAndAMonthDiscount()
+    {
+        var house = Assert.Single(
+            DemoShowcaseCatalog.Properties,
+            p => p.Scenarios.Contains(DemoShowcaseCatalog.Scenario.PropertyRoomsAndDiscounts));
+
+        var rooms = PropertyRoomRules.Normalize([.. (house.Rooms ?? []).Select(room => new RoomInput(null, room.Type, room.Beds))]);
+        var tiers = StayDiscountRules.Normalize([.. (house.StayDiscounts ?? []).Select(tier => new StayDiscountTier(tier.MinNights, tier.PercentOff))]);
+
+        Assert.Contains(DemoShowcaseCatalog.Scenario.PropertyRoomsAndDiscounts, DemoShowcaseCatalog.Scenarios);
+        // The counters of the property are what the rooms give, as the rooms service sets them.
+        Assert.Equal(house.Bedrooms, rooms.Bedrooms);
+        Assert.Equal(house.Profile!.Beds, rooms.Beds);
+        Assert.Equal([7, 28], tiers.Select(tier => tier.MinNights));
+        Assert.Equal(ChildrenPolicy.Yes, house.Profile.Children);
+    }
+
+    [Fact]
+    public void ListingChannelStates_TheDemoHouseShowsPublishedToFixAndManagedOnChannel_WithAnErrorOnlyWhereThereIsOneToFix()
+    {
+        var house = Assert.Single(
+            DemoShowcaseCatalog.Properties,
+            p => p.Scenarios.Contains(DemoShowcaseCatalog.Scenario.ListingChannelStates));
+        var states = house.ChannelStates ?? [];
+
+        Assert.Contains(DemoShowcaseCatalog.Scenario.ListingChannelStates, DemoShowcaseCatalog.Scenarios);
+        Assert.Equal(states.Count, states.Select(s => s.ChannelCode).Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains(states, s => s.Status == ChannelPublishStatus.Published);
+        Assert.Contains(states, s => s.Status == ChannelPublishStatus.ToFix && s.ErrorCode is not null && s.ErrorMessage is not null);
+        Assert.Contains(states, s => s.Status == ChannelPublishStatus.ManagedOnChannel);
+        Assert.All(states.Where(s => s.Status != ChannelPublishStatus.ToFix), s => Assert.Null(s.ErrorCode));
     }
 }

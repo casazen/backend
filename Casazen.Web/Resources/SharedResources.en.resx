@@ -3971,6 +3971,45 @@
   <data name="PropertyPoiMinutesInvalid" xml:space="preserve">
     <value>The minutes must be between {0} and {1}.</value>
   </data>
+  <data name="PropertySiteProfileLanguageUnknown" xml:space="preserve">
+    <value>The language is not one of those available for the listing.</value>
+  </data>
+  <data name="PropertyListingDataPayloadTooLong" xml:space="preserve">
+    <value>The content sent is too long.</value>
+  </data>
+  <data name="PropertyRoomsTooMany" xml:space="preserve">
+    <value>You can add {0} rooms at most.</value>
+  </data>
+  <data name="PropertyRoomsTypeInvalid" xml:space="preserve">
+    <value>The room type is not valid.</value>
+  </data>
+  <data name="PropertyRoomsBedTypeInvalid" xml:space="preserve">
+    <value>The bed type is not valid.</value>
+  </data>
+  <data name="PropertyRoomsBedCountInvalid" xml:space="preserve">
+    <value>For each kind of bed in a room, give {0} to {1} beds.</value>
+  </data>
+  <data name="PropertyRoomsBedsTotalInvalid" xml:space="preserve">
+    <value>The unit must have {0} to {1} beds in all.</value>
+  </data>
+  <data name="PropertyRoomsDuplicateId" xml:space="preserve">
+    <value>A room is listed twice.</value>
+  </data>
+  <data name="PropertyRoomNotFound" xml:space="preserve">
+    <value>The room does not exist in this property.</value>
+  </data>
+  <data name="PropertyStayDiscountsTooMany" xml:space="preserve">
+    <value>You can add {0} length-of-stay discounts at most.</value>
+  </data>
+  <data name="PropertyStayDiscountsMinNightsInvalid" xml:space="preserve">
+    <value>The minimum nights must be between {0} and {1}.</value>
+  </data>
+  <data name="PropertyStayDiscountsPercentInvalid" xml:space="preserve">
+    <value>The discount must be above 0 and at most {0}%.</value>
+  </data>
+  <data name="PropertyStayDiscountsDuplicate" xml:space="preserve">
+    <value>Two discounts have the same minimum nights.</value>
+  </data>
   <data name="ServiceRequestThreadClosed" xml:space="preserve">
     <value>This request is closed: no more messages can be added.</value>
   </data>

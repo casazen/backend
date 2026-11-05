@@ -43,13 +43,26 @@ public class DirectBookingQuoteResponse
 
     /// <summary>
     /// The price of all the nights: the nightly rate x nights, plus the weekend surcharge on the weekend nights when the
-    /// property charges one (DB-03). With no surcharge, the default, it is the nightly rate x nights as it always was.
+    /// property charges one (DB-03), <b>before</b> the length-of-stay discount. With no surcharge, the default, it is the nightly rate
+    /// x nights as it always was.
     /// </summary>
     public decimal LodgingTotal { get; set; }
 
+    /// <summary>
+    /// What the length-of-stay discount of the property takes off the nights, in euros (NF-35); <c>0</c> when no tier applies. It is never
+    /// taken off the cleaning fee or the tourist tax. <c>basePrice = lodgingTotal - lengthOfStayDiscount + cleaningFee</c>.
+    /// </summary>
+    public decimal LengthOfStayDiscount { get; set; }
+
+    /// <summary>The percentage of the tier that applies (for example <c>10</c>); <c>null</c> when none does.</summary>
+    public decimal? LengthOfStayDiscountPercent { get; set; }
+
+    /// <summary>The fewest nights of the tier that applies; <c>null</c> when none does.</summary>
+    public int? LengthOfStayDiscountMinNights { get; set; }
+
     public decimal CleaningFee { get; set; }
 
-    /// <summary>Lodging + cleaning.</summary>
+    /// <summary>Lodging after the length-of-stay discount + cleaning.</summary>
     public decimal BasePrice { get; set; }
 
     public TouristTaxQuoteDto TouristTax { get; set; } = new();
@@ -67,7 +80,8 @@ public class DirectBookingQuoteResponse
     /// The price breakdown in cents (DB-03), in order: <c>Nights</c> (the ordinary nights; every night when there is no
     /// weekend surcharge; one more line for each other price that the host confirmed for dates of the stay, so the list may
     /// hold several), <c>WeekendNights</c> (Friday and Saturday nights at the rate with the surcharge, only when there
-    /// are such nights), <c>CleaningFee</c> (only when not zero), <c>TouristTax</c> (only when its amount is known: see
+    /// are such nights), <c>LengthOfStayDiscount</c> (a negative amount, only when a tier of the property applies),
+    /// <c>CleaningFee</c> (only when not zero), <c>TouristTax</c> (only when its amount is known: see
     /// <see cref="TouristTax"/> otherwise) and <c>Total</c>. The lines before the total add up to it, to the cent. The
     /// numbers above (<see cref="TotalPrice"/> and the others) are unchanged.
     /// </summary>
@@ -90,6 +104,9 @@ public class DirectBookingQuoteResponse
         Nights = quote.Nights,
         NightlyRate = quote.NightlyRate,
         LodgingTotal = quote.Lodging.Total,
+        LengthOfStayDiscount = quote.Lodging.Discount?.Amount ?? 0m,
+        LengthOfStayDiscountPercent = quote.Lodging.Discount?.PercentOff,
+        LengthOfStayDiscountMinNights = quote.Lodging.Discount?.MinNights,
         CleaningFee = quote.CleaningFee,
         BasePrice = quote.BasePrice,
         TouristTax = TouristTaxQuoteDto.From(quote.TouristTax),
@@ -107,16 +124,16 @@ public class DirectBookingQuoteResponse
 /// </summary>
 public class QuoteLineDto
 {
-    /// <summary><c>Nights</c>, <c>WeekendNights</c>, <c>CleaningFee</c>, <c>TouristTax</c> or <c>Total</c>.</summary>
+    /// <summary><c>Nights</c>, <c>WeekendNights</c>, <c>LengthOfStayDiscount</c>, <c>CleaningFee</c>, <c>TouristTax</c> or <c>Total</c>.</summary>
     public QuoteLineKind Kind { get; set; }
 
-    /// <summary>Nights of a night line, 1 for the cleaning fee; null for the tourist tax and the total.</summary>
+    /// <summary>Nights of a night line, 1 for the cleaning fee; null for the discount, the tourist tax and the total.</summary>
     public int? Quantity { get; set; }
 
-    /// <summary>Price of one night (night lines) or the fee (cleaning); null for the tourist tax and the total.</summary>
+    /// <summary>Price of one night (night lines) or the fee (cleaning); null for the discount, the tourist tax and the total.</summary>
     public long? UnitAmountCents { get; set; }
 
-    /// <summary>Amount of the line; for <c>Total</c>, the total to pay.</summary>
+    /// <summary>Amount of the line (negative for the length-of-stay discount); for <c>Total</c>, the total to pay.</summary>
     public long AmountCents { get; set; }
 
     public static QuoteLineDto From(QuoteLine line) => new()

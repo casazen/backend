@@ -341,7 +341,7 @@ public sealed class PublicSiteSearchService(
                 continue;
 
             // What the host wrote for the page (the zone) and the labels of the house: the ones the host chose and the ones its data give.
-            var profile = SitePropertyProfileJson.Parse(row.SiteProfileJson);
+            var profile = SitePropertyProfileJson.ParseForPublicPage(row.SiteProfileJson);
             var tags = SitePropertyProfileRules.EffectiveTags(
                 profile.Tags, SitePropertyProfileRules.DerivedTags(row.Amenities, row.AreaKind, row.PetsPolicy));
             // The position the public sees: rounded to about 1 km, and for a house whose host gave none, the centre of its comune.

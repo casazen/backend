@@ -347,6 +347,17 @@ public class UpdatePropertyRequest
         }
     }
 
+    /// <summary>Children (<c>No</c>, <c>OnRequest</c>, <c>Yes</c>): the structured rule the channels receive (NF-37); <c>null</c> clears the rule, leaving it out keeps it.</summary>
+    public ChildrenPolicy? ChildrenPolicy
+    {
+        get;
+        set
+        {
+            field = value;
+            ChildrenPolicySent = true;
+        }
+    }
+
     /// <summary>Quiet hours start, <c>HH:mm</c>; <c>null</c> clears it, leaving it out keeps it. Start and end are set together or cleared together (422 <c>property_quiet_hours_incomplete</c>).</summary>
     public TimeOnly? QuietHoursFrom
     {
@@ -417,6 +428,10 @@ public class UpdatePropertyRequest
     /// <summary>True when the body carries <see cref="PartiesPolicy"/>, <c>null</c> included.</summary>
     [JsonIgnore]
     public bool PartiesPolicySent { get; private set; }
+
+    /// <summary>True when the body carries <see cref="ChildrenPolicy"/>, <c>null</c> included.</summary>
+    [JsonIgnore]
+    public bool ChildrenPolicySent { get; private set; }
 
     /// <summary>True when the body carries <see cref="QuietHoursFrom"/>, <c>null</c> included.</summary>
     [JsonIgnore]
@@ -538,6 +553,8 @@ public class UpdatePropertyRequest
             property.PetsPolicy = PetsPolicy;
         if (PartiesPolicySent)
             property.PartiesPolicy = PartiesPolicy;
+        if (ChildrenPolicySent)
+            property.ChildrenPolicy = ChildrenPolicy;
         if (QuietHoursFromSent)
             property.QuietHoursFrom = QuietHoursFrom;
         if (QuietHoursToSent)
