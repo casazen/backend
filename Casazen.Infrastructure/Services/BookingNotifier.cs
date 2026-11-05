@@ -79,6 +79,47 @@ public sealed class BookingNotifier(
     }
 
     /// <summary>
+    /// A booking that arrived from a channel (the channel manager) is confirmed (E08/F06/US01/T02, NF-79): the push to the hosts'
+    /// devices that a direct booking already sends, with the name of the channel in the title. No email to the guest (the channel
+    /// writes to its guest) and none to the host (the push is the alert). The recipients and the push key are the ones of
+    /// <see cref="AlertHostOfNewBooking"/>, the key being the booking: a redelivered event, or the creation and the confirmation of the
+    /// same booking, are one push. Skipped when the booking is no longer confirmed (cancelled in the meantime).
+    /// </summary>
+    public async Task ChannelBookingAsync(Guid bookingId, CancellationToken cancellationToken = default)
+    {
+        var data = await TryLoadAsync(bookingId, "Channel booking", cancellationToken);
+        if (data is null)
+            return;
+
+        if (data.Status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut))
+        {
+            logger.LogWarning(
+                "Channel booking alert of booking {BookingId} skipped: the booking is {Status} by now",
+                bookingId,
+                data.Status);
+            return;
+        }
+
+        try
+        {
+            // No guest name on the lock screen: property, channel, dates and number of guests.
+            var push = EmailTemplates.ChannelBookingPush(
+                EmailTemplates.DefaultCulture,
+                data.Summary.PropertyName,
+                data.ChannelName,
+                data.Summary.CheckInDate,
+                data.Summary.CheckOutDate,
+                data.Summary.Guests);
+            if (!EnqueueNewBookingPush(data, push))
+                logger.LogWarning("Channel booking push for booking {BookingId} was not queued", data.BookingId);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Channel booking push for booking {BookingId} could not be prepared", data.BookingId);
+        }
+    }
+
+    /// <summary>
     /// The host cancelled the booking: one email to the guest with the refund Stripe already confirmed
     /// (<paramref name="refundedAmount"/>, whose own confirmation email the caller has claimed) and the refund still in
     /// progress (<paramref name="refundStartedAmount"/>, confirmed by a later email). The host's reason is never sent.
@@ -281,17 +322,23 @@ public sealed class BookingNotifier(
                 data.Summary.CheckInDate,
                 data.Summary.CheckOutDate,
                 data.Summary.Guests);
-            pushNotifications.Enqueue(
-                PushDeliveryKeys.NewBooking(data.BookingId),
-                PushAudience.BookingHosts(data.BookingId),
-                new PushNotificationPayload(
-                    push.Title, push.Body, PushTypes.NewBooking, data.BookingId, PushRoutes.Booking(data.BookingId)));
+            EnqueueNewBookingPush(data, push);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "New booking push for booking {BookingId} could not be prepared", data.BookingId);
         }
     }
+
+    /// <summary>
+    /// The new-booking push to the hosts of the booking, whichever way the booking came (a direct checkout, a channel): the key is the
+    /// booking, so a device gets one push per booking, and the audience is its hosts (until the per-user preferences of NF-65 decide).
+    /// </summary>
+    private bool EnqueueNewBookingPush(BookingEmailData data, PushText push) =>
+        pushNotifications.Enqueue(
+            PushDeliveryKeys.NewBooking(data.BookingId),
+            PushAudience.BookingHosts(data.BookingId),
+            new PushNotificationPayload(push.Title, push.Body, PushTypes.NewBooking, data.BookingId, PushRoutes.Booking(data.BookingId)));
 
     /// <summary>
     /// The email to the host side (AM-03): the org's contact address and, if they are other people, the member in charge of
@@ -338,6 +385,8 @@ public sealed class BookingNotifier(
                 b.Id,
                 b.BookingCode,
                 b.Status,
+                b.Source,
+                b.ChannelLabel,
                 GuestFirstName = b.Guest.FirstName,
                 GuestLastName = b.Guest.LastName,
                 GuestEmail = b.Guest.Email,
@@ -400,7 +449,8 @@ public sealed class BookingNotifier(
             new BookingHostContact(row.OrgDisplayName, row.OrgContactEmail),
             summary,
             row.PaidAmount,
-            row.FreeRefundDeadline);
+            row.FreeRefundDeadline,
+            EmailTemplates.OtaChannelName(row.Source, row.ChannelLabel));
     }
 
     private sealed record BookingEmailData(
@@ -414,5 +464,6 @@ public sealed class BookingNotifier(
         BookingHostContact HostContact,
         BookingEmailSummary Summary,
         decimal PaidAmount,
-        DateTime? FreeRefundDeadline);
+        DateTime? FreeRefundDeadline,
+        string ChannelName);
 }

@@ -15,7 +15,10 @@ namespace Casazen.Infrastructure.Services;
 /// transaction that inserts it: two bookings entered together on the same dates cannot both succeed. A booking that completes a
 /// portal's block goes through <see cref="IOtaStayService.ConvertBlockAsync"/>, under the lock of the property's feeds, with the same
 /// final check. The minimum stay is a rule of the guests' checkout, not of the host who enters a booking: it is only reported.
-/// No email, no push and no payment is started here.
+/// No email, no push and no payment is started here. The booking is created and confirmed in one step, and its two events
+/// (<c>BookingCreated</c>, <c>BookingConfirmed</c>, origin Host, E08/F06/US01/T01) are recorded by the two writers above, in the
+/// save that inserts the booking: <see cref="BookingService"/> for a booking by direct contact, <see cref="OtaStayService"/> for the
+/// completion of a block. They cannot be recorded from here, which does not save: an event after the commit could be lost.
 /// </remarks>
 public sealed class ManualBookingService(
     IBookingService bookings,

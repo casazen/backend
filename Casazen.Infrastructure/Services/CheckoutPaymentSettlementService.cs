@@ -1,9 +1,11 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -80,7 +82,8 @@ public sealed class CheckoutPaymentSettlementService(
     BookingNotifier notifier,
     IConfiguration configuration,
     ILogger<CheckoutPaymentSettlementService> logger,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null)
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -172,6 +175,9 @@ public sealed class CheckoutPaymentSettlementService(
             booking.CancelledAt = null;
             booking.CancellationReason = null;
             booking.UpdatedAt = now;
+
+            // The guest's payment confirmed the stay: the event is saved with the confirmation, in the transaction of the webhook event.
+            await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingConfirmed, booking, BookingEventOrigin.Guest, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
 
             if (validHold)
@@ -191,6 +197,7 @@ public sealed class CheckoutPaymentSettlementService(
             booking.CancelledAt = now;
             booking.CancellationReason = BookingCancellationReason.DatesUnavailableAtPayment;
             booking.UpdatedAt = now;
+            await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingCancelled, booking, BookingEventOrigin.System, cancellationToken);
         }
 
         await db.SaveChangesAsync(cancellationToken);
