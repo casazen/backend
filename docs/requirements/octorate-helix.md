@@ -1,11 +1,12 @@
 # Requirements Helix — CasaZen × Octorate: un solo punto di accesso
 
-Versione 2.1 · 2 novembre 2026 · Stato: **requisiti pronti per Helix** (nuovo mandato del PO
+Versione 2.2 · 5 novembre 2026 · Stato: **requisiti pronti per Helix** (nuovo mandato del PO
 del 31/10, decisioni del PO prese lo stesso giorno: §14.1). Credenziali del partner verificate il
 31/10 dagli ambienti test e produzione di CasaZen (S20); l'account Octorate è ancora in sandbox.
 Il 2/11 Octorate ha scelto di non rispondere alle domande tecniche e rimanda a una sessione di
 onboarding a pagamento, che il PO non usa per ora: il documento resta valido, le decisioni del PO non
-cambiano (salvo la precisazione di PO-19 del 3/11) e si procede come in §14.3 (nessuna domanda blocca lo sviluppo con l'adattatore Mock).
+cambiano (salvo la precisazione di PO-19 del 3/11) e si procede come in §14.3 (nessuna domanda blocca lo sviluppo, che lavora sul sandbox di Octorate).
+La v2.2 (5/11) registra le decisioni del PO del 4/11 (niente adattatore Mock; i task che dipendono da capacità non provabili oggi non si congelano: §14.4), recepisce le modifiche fatte il 4 e 5 novembre alla sola copia di Helix (percorso guidato con handoff controllato, tre scenari di collegamento, CHK-15) e fissa il perimetro della prima consegna Helix (§12.1).
 
 La v2.0 allarga il perimetro dal solo channel management (v1.3) agli otto processi che il PO
 vuole gestire interamente da CasaZen, con Octorate dietro le quinte; aggiunge regole UX
@@ -29,9 +30,10 @@ fase 1, 6.1–6.8 processi, 6.9 onboarding) · §7 Automazioni AI ·
   i trasversali sono `UX` (§5) e `AI` (§7); `DEB` sono i debiti della fase 1 da chiudere prima o
   insieme ai processi (§6.0); `ONB` è l'onboarding con Octorate (§6.9). L'intake di Helix può
   tenere una feature per requisito.
-- **Priorità.** **P0** = demo completa con l'adattatore Mock e fondazioni; **P1** = live dove la
+- **Priorità.** **P0** = dimostrabile sul sandbox di Octorate e sui dati di CasaZen, più le
+  fondazioni (dal 4/11 non c'è l'adattatore Mock: PO-23); **P1** = live dove la
   capacità Octorate è provata o confermata per iscritto; **P2** = dopo il pilota, oppure dipende
-  da una decisione o da una terza parte (§14).
+  da una decisione o da una terza parte (§14). La prima consegna Helix non include tutto il P1: §12.1.
 - **Stato di una capacità Octorate** (vocabolario della v1.3): `sconosciuto`, `documentato`
   (OpenAPI o email), `provato sandbox`, `confermato per OTA`, `non supportato`, `simulato`.
   Una capacità non provata resta spenta in live e l'interfaccia lo dice.
@@ -41,8 +43,10 @@ fase 1, 6.1–6.8 processi, 6.9 onboarding) · §7 Automazioni AI ·
   la estende, non la duplica. Helix rifà comunque il confronto con il codice corrente all'avvio.
 - **Regime di test del processo Helix.** In locale build, format, lint e typecheck; una prova
   minima scritta per ogni regola di denaro, dati, permessi o privacy (indicata nel requisito);
-  per ogni wizard le prove UX di UX-14. Le suite le esegue la CI. Nessuna chiamata reale a
-  Octorate, alle OTA o agli enti come prova.
+  per ogni wizard le prove UX di UX-14. Le suite le esegue la CI. Nessuna chiamata di produzione
+  a Octorate, alle OTA o agli enti come prova; il client di Octorate lavora sul sandbox (dal 4/11
+  non c'è un adattatore Mock né un client con dati finti) e le verifiche contro il sandbox si
+  fanno con le credenziali di test (H8).
 - **Segreti.** Nessun valore di credenziale in Git, PR, log, fixture, documentazione o frontend
   (v1.3 §2); il client secret vive solo nel secret store del backend.
 
@@ -286,11 +290,17 @@ ritrova lo stesso passo con gli stessi dati; nessun `target="_blank"` dentro un 
 2. I moduli condivisi sono componenti usati sia nelle pagine sia nei sotto-passi: una sola
    implementazione, una sola validazione.
 3. Un sito esterno solo quando è inevitabile (consenso sul channel manager, accesso a una OTA,
-   Stripe, portale Alloggiati per la chiave del web service, portale regionale): una schermata
-   spiega in una frase cosa succede e cosa fare, il sito si apre nella stessa scheda e il
-   ritorno porta **allo stesso passo** con la bozza intatta. Se il sito esterno non può
-   riportare l'utente, il passo mostra «Quando hai finito, torna qui e premi Ho fatto» e
-   CasaZen verifica da solo l'esito dove può (per esempio `policeAccount.valid`, §10.2).
+   Stripe, portale Alloggiati per la chiave del web service, portale regionale): CasaZen conserva
+   sempre l'ownership del processo. Prima dell'uscita salva bozza, passo e un handoff correlato e
+   mostra cosa succede e cosa fare. Se il provider supporta callback/OAuth, il sito si apre nella
+   stessa scheda e la callback riporta **automaticamente allo stesso passo** con la bozza intatta.
+   Se il provider non supporta il ritorno, CasaZen resta aperto sul passo «Sto aspettando il
+   collegamento» e apre il pannello esterno in una finestra/scheda secondaria controllata: verifica
+   l'esito in background con backoff, avanza automaticamente appena lo legge e intercetta la
+   chiusura o il ritorno del focus. Solo quando l'esito non è tecnicamente leggibile chiede
+   «Hai completato il collegamento?»; «Ho fatto» non è il percorso normale e non appare prima del
+   tentativo di verifica. L'utente non viene mai lasciato su una pagina esterna senza un passo
+   CasaZen durevole che ne mostra stato, ripresa, errore e assistenza.
 4. Uscite da eliminare già trovate nel codice (S14): nel wizard di check-out il passo
    Alloggiati porta alla scheda della prenotazione (`checkout-wizard-steps.tsx`,
    `checkout-alloggiati-link` → `?tab=alloggiati`); il wizard di attivazione porta alla modifica
@@ -604,13 +614,15 @@ capienza; l'utente conferma) → importa → riepilogo.
 
 1. Per gli annunci già presenti sui canali si conservano gli identificativi esistenti (D6); un
    abbinamento ambiguo resta da confermare e blocca le scritture su quell'immobile (OCT-04).
-2. Un immobile non ancora presente in Octorate si crea da CasaZen solo con LST-03, che ottiene il
-   token della proprietà alla creazione senza consenso separato. Il wizard sceglie l'ingresso con
-   una sola domanda iniziale (i due ingressi di §9.1; PO-19 per le credenziali del proprietario).
+2. Un immobile non ancora presente in Octorate ma già pubblicato su una OTA segue l'import D6 e
+   conserva gli identificativi esistenti. Solo un immobile non ancora pubblicato si crea da
+   CasaZen con LST-03, che ottiene il token della proprietà alla creazione senza consenso separato.
+   Il wizard sceglie lo scenario con la domanda iniziale a tre risposte di §9.1 (PO-19 per le
+   credenziali del proprietario nel solo scenario nuovo).
 3. La sincronizzazione iCal dell'immobile passa al connettore canale per canale senza doppie
    importazioni (ADR-002, OCT-03 della v1.3 §3).
 
-Accettazione: con l'adattatore Mock, dieci immobili collegati, importati e abbinati senza uscire
+Accettazione: sul sandbox di Octorate, dieci immobili collegati, importati e abbinati senza uscire
 dal wizard; un abbinamento ambiguo compare in «Da fare».
 
 #### LST-03 — Wizard «Nuovo annuncio» e «Controlla l'annuncio importato» · P0
@@ -803,7 +815,7 @@ ricevuta archiviata.
 Prove: nessun documento o dato Alloggiati alimenta CRM o segmenti (regola esistente Q1-05);
 isolamento per organizzazione.
 
-#### CHK-02 — Ospiti inviati a Octorate · P0 (Mock), P1 (live)
+#### CHK-02 — Ospiti inviati a Octorate · P0 (sandbox), P1 (live)
 
 1. Quando i dati di un soggiorno sono completi e confermati dall'host (o dall'operatore, Q1-12),
    CasaZen crea o aggiorna gli ospiti in Octorate (`POST /rest/v2/checkin/...`,
@@ -837,7 +849,7 @@ Prova: nessun ospite con `draft` falso verso Octorate se il mittente dell'immobi
 3. Lo stesso modello vale per i flussi ISTAT (CHK-05) e per gli immobili svizzeri (notifica del
    Ticino, Q1-15).
 
-#### CHK-04 — Esito dell'invio e ricevuta · P0 (Mock), P1 (live)
+#### CHK-04 — Esito dell'invio e ricevuta · P0 (sandbox), P1 (live)
 
 1. Gli esiti degli invii non sono disponibili via API (S18): dopo l'invio dei dati a Octorate lo
    stato è «Affidato a Octorate» e diventa «Inviato, ricevuta acquisita» con la prova del punto 2
@@ -1061,13 +1073,45 @@ Alloggiati e gli stati onesti (`Inviato` solo con ricevuta). CHK-12 aggiunge:
 Prova: nessun verde senza una prova archiviata; ogni stadio di avviso parte una volta sola (meccanismo
 esistente).
 
-#### CHK-13 — Esiti dalle email di Octorate · P2, da verificare
+#### CHK-13 — Esiti dalle email di Octorate · differito, da verificare
 
 Octorate manda all'host per email l'esito ISTAT (Appendice A) e forse avvisi sugli invii alla
 Polizia (D25, D32). Se Octorate permette di indicare un indirizzo di notifica, CasaZen dà a ogni
 organizzazione un indirizzo dedicato in entrata: le email si leggono, si abbinano a immobile e
 periodo e diventano la prova di CHK-05 (da giallo a verde) senza caricamenti a mano. La ricezione
-delle email con il fornitore in uso è un tema ADR.
+delle email con il fornitore in uso è un tema ADR. **Non fa parte dell'implementazione corrente**:
+finché Octorate e il formato non sono confermati, CasaZen non crea l'indirizzo in entrata e usa
+sempre l'handoff di CHK-15 per consultare questi esiti.
+
+#### CHK-15 — Handoff controllato da CasaZen verso Octorate · P0
+
+Per ora CasaZen **non legge, copia o interpreta** dal pannello Octorate gli esiti Alloggiati e
+ISTAT. Non usa Playwright, iframe, browser remoti o scraping e non conserva credenziali Octorate per
+questo scopo. Quando l'esito deve essere controllato, l'utente lo verifica direttamente in Octorate.
+
+CasaZen mantiene però la regia del processo attraverso il **Cassetto Compliance**. Dalla singola
+prenotazione e dal riepilogo compliance mostra l'azione «Verifica nel tuo Cassetto Compliance» con
+una guida breve che indica struttura, prenotazione o periodo, sezione collegata da aprire e cosa
+controllare. Il dialog resta CasaZen e mostra in secondo piano la dicitura trasparente «Dati
+consultati su Octorate». Prima del passaggio salva il punto di partenza
+e il target della verifica; poi naviga verso Octorate nella **stessa scheda**, mai in una nuova
+scheda. Quando l'utente torna a CasaZen con il browser, la schermata e i filtri precedenti vengono
+ripristinati e la guida ricorda che l'esito resta consultabile in Octorate.
+
+Il collegamento è un handoff, non un'integrazione di lettura: CasaZen può registrare che il passaggio
+è stato avviato, ma non deduce che l'invio sia riuscito e non chiede una conferma che diventi prova.
+Per gli adempimenti delegati a Octorate il riepilogo mostra «Verifica nel tuo Cassetto Compliance»
+o «Da verificare nel Cassetto Compliance», non verde, rosso o «conforme» sulla base del pannello
+esterno. Restano validi
+solo gli stati e le prove che CasaZen possiede tramite percorsi già implementati e diversi dal
+pannello Octorate, per esempio una ricevuta ufficiale Alloggiati scaricata dal web service della
+Polizia. CHK-13 è differito e non è una fonte dell'implementazione corrente.
+
+Per soggiorni fino a 24 ore la guida porta alla sezione Octorate per l'invio manuale immediato; oltre
+30 notti indica il percorso file Octorate e portale Alloggiati. Per una regione ISTAT non coperta da
+Octorate guida invece al portale regionale o al file CasaZen solo quando esiste un tracciato
+ufficiale. Gli URL e i percorsi Octorate sono configurati, non inventati nel client; se non esiste un
+deep link stabile si apre la home autenticata e la guida descrive i passaggi di menu.
 
 #### Flusso completo di un soggiorno e dove si ferma l'automazione
 
@@ -1081,14 +1125,15 @@ delle email con il fornitore in uso è un tema ADR.
 | Dati completi | Gli ospiti vanno a Octorate con `draft` falso (CHK-02) | CasaZen | Sì |
 | Invio alla Polizia | Giro automatico giornaliero di Octorate, se il collegamento è «Attivata» nel suo pannello; oltre 30 notti a mano | Octorate | Sì, una volta al giorno (orario: D31) |
 | Giorno dopo | Ricevuta della Polizia scaricata e confrontata con gli ospiti attesi (CHK-04); senza credenziali, caricamento guidato | CasaZen o host | Sì con le credenziali |
-| Periodo ISTAT | Invio dei dati della regione da parte di Octorate; esito per email all'host; prova in CasaZen (CHK-05, CHK-13) | Octorate, host | In parte |
+| Periodo ISTAT | Invio dei dati della regione da parte di Octorate; il property manager usa l'handoff CasaZen per controllare l'esito nel pannello Octorate (CHK-05, CHK-15) | Octorate, host | Invio automatico; verifica guidata |
 | Tassa di soggiorno | Calcolo a ogni prenotazione, riepilogo per comune e periodo, scadenze, dati pronti per il portale del comune, ricevuta caricata (CHK-07) | CasaZen e host | In parte |
 
 **Cosa non si può automatizzare con Octorate.** I webhook di Octorate riguardano prenotazioni,
 messaggi e contenuti: **non esistono eventi né API per invii, esiti o ricevute degli enti** (S13,
 S18). L'automazione quindi copre l'inizio della pratica e l'invio dei dati, non la prova: la prova
-arriva dalla ricevuta della Polizia (via web service con le credenziali dell'host), dai caricamenti
-guidati o, se verificato, dalle email di Octorate (CHK-13). Restano punti di attenzione: il giro
+arriva dalla ricevuta della Polizia (via web service con le credenziali dell'host) o dai percorsi
+ufficiali già supportati. Gli esiti presenti solo in Octorate si consultano con l'handoff CHK-15;
+le email di Octorate restano differite (CHK-13). Restano punti di attenzione: il giro
 giornaliero può non bastare per i soggiorni fino a 24 ore (invio entro 6 ore), i soggiorni oltre 30
 notti vanno inviati a mano, i collegamenti agli enti si attivano solo nel pannello Octorate.
 
@@ -1128,7 +1173,7 @@ Cosa fa, per chi, cosa serve per attivarlo (dai flag del portale: identificativo
 sul canale, utente e password, accesso con consenso; oppure dal catalogo), costi e chi li
 fattura, quali dati vengono condivisi (privacy), come si disattiva, domande frequenti.
 
-#### MKT-03 — Attivazione guidata · P0 (Mock), P1 (live)
+#### MKT-03 — Attivazione guidata · P0 (sandbox), P1 (live)
 
 Wizard nel livello guidato, diverso per tipo:
 
@@ -1688,10 +1733,14 @@ alle OTA, codice della serratura. Ogni parte si può rimandare con «Lo faccio d
 voce in «Da fare», tranne quando è il prerequisito della parte successiva; si riprende sempre da dove
 si era rimasti (UX-03). Le parti richiamano i requisiti già definiti:
 
-1. **Collegamento a Octorate.** «Le tue strutture sono già su Octorate?» Sì: un consenso per account
-   o rete (§9.1). No: CasaZen crea le strutture, in rete per le agenzie, senza mandare credenziali
-   al proprietario: l'utente Octorate nasce con un indirizzo di CasaZen (PO-19, 3/11) e il passo sul pannello per
-   Polizia e ISTAT lo compie il supporto di CasaZen per conto dell'host (ONB-04, UX-15).
+1. **Collegamento a Octorate.** «Dove si trovano oggi i tuoi annunci?» con tre scenari (§9.1):
+   (a) già su Octorate: un consenso per account o rete; (b) già sulle OTA o in un altro gestionale:
+   collegamento delle OTA nel pannello Octorate, import D6 e mapping senza ricreare gli annunci;
+   (c) mai pubblicati: CasaZen crea le strutture nuove, in rete per le agenzie, senza mandare
+   credenziali al proprietario. Solo nel caso (c) l'utente Octorate nasce con un indirizzo di
+   CasaZen (PO-19, 3/11) e il passo sul pannello per Polizia e ISTAT lo compie il supporto di
+   CasaZen per conto dell'host (ONB-04, UX-15). Un portafoglio misto può assegnare lo scenario per
+   gruppi di immobili.
 2. **Strutture.** Abbinamento proposto in automatico tra strutture Octorate e immobili di CasaZen,
    con conferma dell'utente, oppure creazione degli immobili che mancano (LST-02, LST-03).
 3. **Canali.** Per ogni OTA: collegamento (accesso al canale sul pannello Octorate quando serve, con
@@ -1739,9 +1788,11 @@ suoi prerequisiti verificati: collegamento valido, mapping confermato, mittente 
 #### ONB-04 — Passaggi sul pannello Octorate guidati e verificati · P0
 
 I passi che Octorate permette solo dal suo pannello (collegamento alla Polizia e all'ISTAT, accesso
-ai canali) sono sotto-passi guidati secondo UX-02 punto 3: istruzioni brevi con immagini, apertura
-nella stessa scheda, ritorno allo stesso passo, verifica automatica dove possibile (D17, D31),
-altrimenti conferma dell'utente. Un passo lasciato a metà crea sempre una voce in «Da fare»; con
+ai canali) sono sotto-passi guidati secondo UX-02 punto 3: istruzioni brevi con immagini e handoff
+controllato. Con callback il ritorno allo stesso passo è automatico; senza callback CasaZen resta
+aperto in attesa mentre il pannello è in una scheda/finestra secondaria, verifica con backoff e
+riprende automaticamente appena può leggere l'esito. Solo un esito tecnicamente non verificabile
+richiede conferma dell'utente. Un passo lasciato a metà crea sempre una voce in «Da fare»; con
 «Fallo per me» (UX-15) lo completa il supporto di CasaZen.
 
 #### ONB-05 — Riaprire e cambiare · P1
@@ -1806,7 +1857,7 @@ implementare tali moduli» in OCT-07) non valgono più: le sostituiscono §6.2, 
 
 | ID | Priorità / fonte | Requisito e criterio di accettazione |
 |---|---|---|
-| OCT-01 | P0 · S2–S4 | Adapter Mock e client Octorate con modalità interne Mock/Sandbox/Production; stessi contratti applicativi. Demo funziona senza rete esterna; nessuna chiamata Production dal Mock. Configurazione mancante impedisce attivazione live. Sandbox: S5 dichiara un solo server («Production - Restricted for Sandbox»); l'ambiente è un attributo dell'API member (`GET /rest/v1/api/configuration`, campo `environment` = `SANDBOX` o `PRODUCTION`), la chiamata nell'ambiente sbagliato dà 403 `WrongEnviroment` e le proprietà di prova hanno `sandboxProperty`. S6: la rete di test non è collegabile ai portali e non prova il push: la modalità Sandbox copre il contratto API, non gli effetti sulle OTA (§6, G2). |
+| OCT-01 | P0 · S2–S4 | Client Octorate con modalità interne Sandbox/Production; stessi contratti applicativi; l'ambiente lo decidono le credenziali. **Dal 4/11 non esiste un adattatore Mock né un client con dati finti** (PO-23, sostituisce ADR-023-R11): il client lavora sul sandbox dal primo task. Nessuna chiamata Production dalle modalità di prova. Configurazione mancante impedisce attivazione live. Sandbox: S5 dichiara un solo server («Production - Restricted for Sandbox»); l'ambiente è un attributo dell'API member (`GET /rest/v1/api/configuration`, campo `environment` = `SANDBOX` o `PRODUCTION`), la chiamata nell'ambiente sbagliato dà 403 `WrongEnviroment` e le proprietà di prova hanno `sandboxProperty`. S6: la rete di test non è collegabile ai portali e non prova il push: la modalità Sandbox copre il contratto API, non gli effetti sulle OTA (§6, G2). |
 | OCT-02 | P0 · S3/S4 | Separazione per tenant, ambiente e proprietà in DB, token, job e query. Un operatore non può leggere o scrivere risorse di altro tenant neppure passando ID esterni validi. Owner/guest non ricevono permessi operativi OTA. |
 | OCT-03 | P0/P1 · S3/S4/S7–S10 | OAuth server-side per operation: authorizationCode e clientCredentials solo dove prescritti; state e callback validati, PKCE (il corpo di `POST /rest/v1/identity/token` prevede `code_challenge`). Segreti cifrati/secret store, rinnovo concorrente controllato, revoca e riconnessione. Token scaduto o scope insufficiente genera stato azionabile, mai successo simulato. S5: `OAuthLogin` (authorization code per proprietà o rete) e `ApiOperations` (client credentials, solo per creare proprietà, portali e sottoscrizioni; `apilogin` compare solo in Postman). S9 prevale sul lifecycle: access token valido 24 ore e refresh token senza scadenza; rinnovo serializzato per proprietà. Permessi per risorsa (`RESERVATION_READ/WRITE`, `CONTENT_*`, `CALENDAR_*`, `CONNECTION_*`, `WEBHOOK_WRITE`): chiedere il minimo; `CREDIT_CARD_*` e `RESERVATION_SENTITIVE_*` (ortografia della specifica) fuori perimetro salvo ADR. CasaZen non raccoglie né conserva username/password Octorate: il proprietario completa il login direttamente sul frontend Octorate. Prima dei dati reali: validare credenziali, scope, rate limit/quote e ambienti; configurare secret vault e IP statici da comunicare per whitelist. S7 conferma che email, telefono e altri dati sensibili non sono accessibili senza IP statici autorizzati e che non esiste un fallback sandbox. |
 | OCT-04 | P0 · S2/S3 | Mapping tenant→proprietà→unità→rate plan→connessione→listing esterno. Vincoli univoci nello scope corretto, conflitti e import preview; nessuna scrittura con mapping ambiguo. Conservare ID annunci esistenti, recensioni e continuità solo dopo prova/conferma OTA. S5: connessione (`POST /rest/v1/connection/{accommodation}`, verifica licenza e credenziali), azioni `IMPORT_ROOMS`, `IMPORT_RESERVATIONS`, `IMPORT_CALENDAR`, poi mapping `productId` ↔ `externalId` (`updateCalendar` e `pullReservations` attivabili solo dopo il mapping; `pullMappedOnly` vero di default), `MARK_CONNECTED` o `COMMIT_MAPPING_AS_COMPLETED`; i prodotti esterni con `manageable` falso sono solo informativi (§5.1 D6). |
@@ -1817,10 +1868,10 @@ implementare tali moduli» in OCT-07) non valgono più: le sostituiscono §6.2, 
 | OCT-09 | P0/P1 · S3/S4 | Riconciliazione periodica con checkpoint, finestre sovrapposte e paginazione da contratto; recupero eventi persi e confronto stato remoto. Concorrenza serializzata per risorsa; dopo crash il job riprende senza duplicati. S5: elenco `GET /rest/v1/reservation/{accommodation}` con `type` `MODIFIED_BETWEEN`, `CREATETIME`, `CANCELLATION` o `STAY`, `size` da 1 a 200, `page` da 0 a 1000, date `yyyy-MM-dd` sempre in ora di Roma. `GET .../reservation/{accommodation}/search` non è un elenco: è la ricerca del booking engine. Chat: `createdAfter` sui messaggi del thread e `GET /rest/v1/accommodation/recentMessages` (ultime 24 ore). Finestre sovrapposte di almeno 2 giorni, la finestra di retry dei webhook (proposta). |
 | OCT-10 | P0/P1 · S2–S4/S7 | Inbox web e mobile: conversazioni per canale/proprietà/prenotazione, lettura, risposta e stato errore/consegna disponibile. S7 conferma le API di messaggistica per Airbnb, Booking.com, Vrbo ed Expedia; per gli altri canali non promettere inbox OTA e usare solo i contatti disponibili (email, telefono, WhatsApp) o gli strumenti chat Octorate. Pre-booking, post-stay e allegati sono capacità distinte. Due click/retry non duplicano messaggi; timeout ambiguo resta da riconciliare. S5: thread con `defaultProcessor` (`DIRECT`, `WHATSAPP`, `CHANNEL`, `WHATSAPP_MANUAL`, `MAIL`, `NOTE`) e messaggi con `status` (`CREATED`, `WAIT_AUTH`, `SENT`, `ERROR`, `MANUAL_VERIFY`). Verso le OTA: processor `CHANNEL` con attributo `OTA_FLOW_DIRECTION` = `TO`; la licenza ha un flag `chat` e la connessione un flag `messages`: verificare che siano inclusi e attivi. Ingresso quasi in tempo reale con `CHAT_MESSAGE_RECEIVED` più riconciliazione; thread e prenotazione si collegano con `reservation` e `threadId`. Allegati, offerte speciali e pre-approvazione esistono nel modello ma il supporto per OTA non è confermato (§5.1 D3). |
 | OCT-11 | P0/P1 · S2–S4 | AI: bozza modificabile e inviata dall'operatore nel Base. Invio automatico solo con opzione/permesso attivo, regole e soglia approvate, supporto OTA confermato; altrimenti bozza. Audit modello/versione, decisione e approvazione; contesto minimo per tenant. Bloccare contatti/link Airbnb pre-booking e azioni non consentite; nessuna modifica date Booking via chat. Octorate ha un proprio assistente AI per thread (`PATCH /rest/v1/chat/{accommodationId}/threads/{thread}/aiAssistant`, flag `aiDriven`, attributo `AI_SKIP_DISABLE`): sui thread gestiti da CasaZen resta disattivo e va verificato a ogni sincronizzazione, per evitare doppie risposte. La policy delle OTA sulle risposte automatiche non è né in S5 né in S6. |
-| OCT-12 | P0/P1 · S2–S4 | Review UI e workflow risposta in Mock per tutti i canali, etichettati simulati. Live solo per Airbnb, con S5: `GET /rest/v2/review/{accommodationId}/{refer}` (recensione dell'ospite e dell'host per prenotazione, visibile solo a recensione pubblicata, stato `REVIEW_PUBLISHED`), `POST .../sendHostReply` (solo Airbnb, a recensione dell'ospite pubblicata) e `POST .../sendHostReview` (solo Airbnb, a finestra aperta; 409 se non ammessa o già inviata): lettura, risposta e recensione dell'host sono capacità separate. Nessun elenco per proprietà: si legge per prenotazione. S6: per Booking.com, Vrbo ed Expedia nessuna integrazione, quindi nessuna lettura o risposta live; nessun endpoint inventato, scraping o risposta live implicita. Il gap sulle altre OTA resta nel go/no-go e un eventuale fallback manuale è un'eccezione di prodotto da approvare. |
+| OCT-12 | P0/P1 · S2–S4 | Review UI e workflow risposta per tutti i canali, con le capacità non disponibili etichettate come simulate o non supportate (niente Mock: OCT-01). Live solo per Airbnb, con S5: `GET /rest/v2/review/{accommodationId}/{refer}` (recensione dell'ospite e dell'host per prenotazione, visibile solo a recensione pubblicata, stato `REVIEW_PUBLISHED`), `POST .../sendHostReply` (solo Airbnb, a recensione dell'ospite pubblicata) e `POST .../sendHostReview` (solo Airbnb, a finestra aperta; 409 se non ammessa o già inviata): lettura, risposta e recensione dell'host sono capacità separate. Nessun elenco per proprietà: si legge per prenotazione. S6: per Booking.com, Vrbo ed Expedia nessuna integrazione, quindi nessuna lettura o risposta live; nessun endpoint inventato, scraping o risposta live implicita. Il gap sulle altre OTA resta nel go/no-go e un eventuale fallback manuale è un'eccezione di prodotto da approvare. |
 | OCT-13 | P0/P1 · S3/S4 | Resilienza: timeout/cancellazione, backoff con jitter e Retry-After se presente, rate limit per scope effettivo e backpressure. Distinguere validazione, 401, 403, 404, 409/422 se previsti, 5xx. S5 non documenta né 429 né Retry-After: la quota esaurita è un 403 `ApiQuotaException`, da distinguere dai 403 di permessi (`ApiSecurityException`) e di ambiente (`WrongEnviroment`); un 550 `ApiPartnerServerError` indica il fallimento del partner o della OTA. Decidere sul `code` stabile di `ApiError` e non sul testo; salvare `request-id`; leggere `X-RateLimit-Remaining` e, se presente, `X-RateLimit-Additional-Cost`; quota in `quotaLimit` e `quotaStatus` di `GET /rest/v1/api/configuration`. Nessun header o chiave di idempotenza né ETag documentati; alcune PATCH rispondono 304 se nulla cambia; alcuni esempi di errore sono pagine HTML del server, quindi non assumere JSON. Retry scritture solo se sicuro/idempotente o previa riconciliazione. Nessuna tempesta di retry. |
 | OCT-14 | P0/P1 · S3/S4 | Dashboard stato per proprietà/canale, lag, quota, errori, ultima riconciliazione, operazioni sospese e replay autorizzato. Correlation ID e audit senza token/documenti/testi sensibili nei log. Kill switch scritture per tenant/proprietà/canale, senza perdere eventi ricevuti. |
-| OCT-15 | P0 · S3/S4 | Demo deterministica con agenzia DEMO e 10 proprietà fittizie: mapping, contenuti/foto, ARI, creazione/modifica/cancellazione, chat/AI e review. Reset ripristina dataset; mostra sempre Mock e le funzionalità non certificate; nessun dato reale Quokka. |
+| OCT-15 | P0 · S3/S4 | Demo deterministica con agenzia DEMO e 10 proprietà fittizie: mapping, contenuti/foto, ARI, creazione/modifica/cancellazione, chat/AI e review. Reset ripristina dataset; mostra sempre che sono dati di prova e le funzionalità non certificate; nessun dato reale Quokka. **[v2.2: da ridefinire senza Mock. La demo può usare le strutture di prova del sandbox (S25) e l'Agenzia DEMO di CasaZen; il contenuto del dataset e il reset sono una decisione del PO ancora aperta, §14.4.]** |
 
 Riferimenti nella v2.0: OCT-04, OCT-05 e OCT-06 → `LST`; OCT-07, OCT-08 e OCT-09 → `BKG`;
 OCT-10 e OCT-11 → `MSG`; OCT-12 → MSG-09; OCT-14 → MKT-04 e UX-09; OCT-15 → G1 con l'Agenzia
@@ -1863,7 +1914,7 @@ OCT-13). Conservazione e cancellazione dei dati degli ospiti definite prima dei 
 ### 8.3 Componenti
 
 - **Connettore Octorate** per capacità (contenuti, ARI, prenotazioni, check-in, chat, documenti,
-  portali), con modalità Mock, Sandbox e Production, client generato dalla specifica, OAuth per
+  portali), con modalità Sandbox e Production, client generato dalla specifica, OAuth per
   proprietà e resilienza (OCT-01…03, 13). Affianca `IChannelAdapter` senza riattivare gli
   adattatori diretti (§4).
 - **Ingresso degli eventi**: webhook persistiti prima dell'ACK, rilettura dell'oggetto via API
@@ -1959,12 +2010,22 @@ S9: operazioni `postConfiguration`, `token` e `refresh` nella documentazione
 (`https://api.octorate.com/connect/showcases/authentication.html`), supporto tecnico
 `openapi@octorate.com`.
 
-**Due ingressi.** Il consenso OAuth presuppone che il proprietario abbia già le credenziali della
-sua struttura su Octorate (S9: «il cliente accede con le credenziali create all'interno della
-propria struttura»). Quindi:
+**Tre scenari nel wizard, due meccanismi tecnici di acquisizione del token.** Il consenso OAuth
+presuppone che il proprietario abbia già le credenziali della sua struttura su Octorate (S9: «il
+cliente accede con le credenziali create all'interno della propria struttura»). Il wizard CasaZen
+deve però distinguere tre situazioni operative, perché «non è su Octorate» non significa «non
+esiste ancora»:
 
 - **strutture già su Octorate** → un consenso OAuth nel wizard «Collega i tuoi canali» (LST-02),
   che copre tutte le strutture visibili a chi autorizza (per un'agenzia, tutta la rete);
+- **annunci già esistenti sulle OTA o gestiti da un altro channel manager, ma non ancora in
+  Octorate** → il wizard guida, per ogni OTA, l'accesso nel pannello Octorate e l'import senza
+  ricreare gli annunci: connessione del canale, `IMPORT_ROOMS`, `IMPORT_RESERVATIONS`,
+  `IMPORT_CALENDAR`, mapping e `MARK_CONNECTED` (D6). Le credenziali o il consenso della OTA sono
+  inseriti direttamente in Octorate o nella pagina OAuth della OTA, mai in CasaZen. Se Octorate
+  richiede una struttura tecnica per ospitare l'import, CasaZen la predispone in modalità
+  import-only: non crea né pubblica un nuovo annuncio sulla OTA e non invia contenuti prima che il
+  mapping dell'annuncio esistente sia confermato;
 - **struttura nuova, creata da CasaZen** con `POST /rest/v2/accommodation` (`ApiOperations`,
   LST-03) → la risposta contiene già il refresh token, quindi non serve un consenso. Con
   `network_name` la struttura entra in un gruppo e la risposta restituisce **lo stesso refresh
@@ -1978,10 +2039,15 @@ propria struttura»). Quindi:
   non avrebbe mai un utente e non si potrebbe collegare alla Polizia e all'ISTAT dal pannello. Resta da
   confermare con Octorate che l'utente così creato può farlo (D27).
 
-Il wizard chiede all'inizio «Le tue strutture sono già su Octorate?» (uno dei punti in cui il nome
-si mostra, PO-01) e sceglie da solo l'ingresso giusto: l'utente non deve sapere cosa sia un
-consenso OAuth. Chi usa un altro channel manager passa dal secondo ingresso, con l'import degli
-annunci dai canali (D6).
+Il wizard chiede all'inizio «Dove si trovano oggi i tuoi annunci?» (uno dei punti in cui il nome
+Octorate si può mostrare, PO-01) e offre tre risposte: «Sono già su Octorate», «Sono già sulle OTA
+o in un altro gestionale» e «Non sono ancora stati pubblicati». La seconda risposta avvia
+l'import D6; la terza, e soltanto la terza, avvia la creazione LST-03. L'utente non deve sapere
+cosa sia un consenso OAuth e non deve perdere il wizard CasaZen: una callback riprende
+automaticamente lo stesso passo; quando non esiste callback, CasaZen resta aperto in attesa e il
+pannello Octorate/OTA si apre in una scheda secondaria controllata. Per un portafoglio misto la
+scelta si può assegnare per gruppi di immobili, e nessun immobile dichiarato esistente può cadere
+nel percorso di creazione.
 
 **Verifica del 31/10/2026 (S20, sola lettura).**
 
@@ -2355,21 +2421,21 @@ spenta in live fino ad allora.
 ## 12. Pacchetti Helix, dipendenze e prove di uscita
 
 I nomi sono pacchetti di lavoro, non comandi di Helix. Ogni pacchetto chiude un percorso
-completo, dal dato alla schermata, dimostrabile con l'adattatore Mock.
+completo, dal dato alla schermata, dimostrabile sul sandbox di Octorate (dal 4/11 senza adattatore Mock, PO-23).
 
 | Pacchetto | Dipende da | Contenuto | Prove di uscita |
 |---|---|---|---|
 | S0 — Sicurezza e privacy | — | DEB-01 | Fatto il 31/10 con la PR backend #728 |
 | H0 — Gap e contratti | — | Confronto con il codice corrente per le otto aree, per i wizard esistenti (elenco delle uscite, UX-02) e per lo stato reale della fase 1 (§4.5); snapshot API o blocco esplicito; ADR di §8.4; matrice delle capacità; autorità dei dati; backlog requisito → operazione → prova | Backlog completo; nessun requisito senza fonte |
 | U0 — Livello guidato e «Da fare» | H0 | UX-01…UX-13 (UX-15 dopo): livello guidato, bozze sul server, sotto-passi, indirizzi dei passi, servizio unico «Da fare», preferenze e avvisi (push, email, popup; DEB-07); conversione dei wizard esistenti al livello e rimozione delle uscite | UX-14 sui wizard esistenti; nessuna dipendenza da Octorate |
-| H1 — Fondazioni del connettore | H0 | DEB-02 (bus di eventi con outbox) e OCT-01…03, 08, 09, 13, 14: adattatore Mock e client, OAuth per proprietà, webhook in entrata e riconciliazione sul bus, resilienza, interruttori, stato delle connessioni | Isolamento per tenant e proprietà; nessuna chiamata live dal Mock; duplicati e fuori ordine senza effetti doppi |
-| H2 — Annunci e ARI | H1, U0 | LST-01…13 | Import, creazione, modifica e pubblicazione per canale in Mock, con errori parziali per canale |
-| H3 — Prenotazioni e calendario | H1 | BKG-01…09 | Creazione, modifica e cancellazione in Mock; webhook duplicati, persi e fuori ordine; nessun doppio scrittore con iCal |
-| H4 — Check-in e adempimenti | H3, U0 | CHK-01…14, DEB-08, DEB-09 | Dati dell'ospite fino a Octorate in Mock; mittente unico; ricevuta dal server finto Alloggiati; tassa al centesimo; nessun codice d'accesso senza identificazione registrata |
+| H1 — Fondazioni del connettore | H0 | DEB-02 (bus di eventi con outbox) e OCT-01…03, 08, 09, 13, 14: client contro il sandbox, OAuth per proprietà, webhook in entrata e riconciliazione sul bus, resilienza, interruttori, stato delle connessioni | Isolamento per tenant e proprietà; nessuna chiamata di produzione dalle modalità di prova; duplicati e fuori ordine senza effetti doppi |
+| H2 — Annunci e ARI | H1, U0 | LST-01…13 | Import, creazione, modifica e pubblicazione per canale sul sandbox (gli effetti sulle OTA solo simulati o «da provare in produzione»), con errori parziali per canale |
+| H3 — Prenotazioni e calendario | H1 | BKG-01…09 | Creazione, modifica e cancellazione sul sandbox; webhook duplicati, persi e fuori ordine; nessun doppio scrittore con iCal |
+| H4 — Check-in e adempimenti | H3, U0 | CHK-01…14, DEB-08, DEB-09 | Dati dell'ospite fino a Octorate sul sandbox; mittente unico; ricevuta dal server finto Alloggiati; tassa al centesimo; nessun codice d'accesso senza identificazione registrata |
 | H5 — Messaggi e AI | H3, U0 | MSG-01…11, AI-06, DEB-03, DEB-06 | Hub con thread OTA simulati e diretti; soglia di confidenza, categorie sensibili, approvazione da push |
 | H6 — Documenti, clienti e report | H3 (H4 per la tassa) | FIS-01…07, CRM-01…08, REP-01…08, DEB-04, DEB-05, DEB-10 | Emittente unico; documenti Octorate simulati letti; pubblico raggiungibile per base giuridica; report coerenti con le prenotazioni |
 | H7 — Marketplace | H1, U0 | MKT-01…07 | Catalogo dalle tre fonti; attivazione e disattivazione di un portale simulato; stato |
-| O1 — Onboarding | H1–H7, U0 | ONB-01…05: il percorso che accende tutti i flussi, anche in blocco per le agenzie | Agenzia DEMO configurata da zero in Mock, 10 immobili in blocco, ripresa a metà percorso, nessun flusso attivo senza prerequisiti |
+| O1 — Onboarding | H1–H7, U0 | ONB-01…05: il percorso che accende tutti i flussi, anche in blocco per le agenzie | Agenzia DEMO configurata da zero sul sandbox, 10 immobili in blocco, ripresa a metà percorso, nessun flusso attivo senza prerequisiti |
 | H8 — Sandbox | H1 per la prima parte, H2–H7 per il resto; credenziali valide | Prove del contratto API con l'account test (ex H5 della v1.3): OAuth e rinnovo, letture prima delle scritture, errori 400/401/403/404/422, 403 di quota, 550, timeout, webhook. **Prima parte senza risposte di Octorate** (§14.3): reti e strutture di prova create con le sole credenziali del partner, prenotazioni e pagamenti di prova, configurazione dell'app, catalogo dei portali; i dati sensibili degli ospiti solo dopo la registrazione degli IP statici (D24) | Rapporto per capacità; le celle con effetti sulle OTA restano «da provare in produzione» |
 | H8b — Banco di prova in produzione | H8, licenza di produzione (D35) | Un annuncio reale non di Quokka collegato alle OTA (PO-22): pubblicazione dei contenuti, prezzi e disponibilità, una prenotazione da un canale (anche fatta dal team) con modifica e cancellazione, messaggi, check-in con invio, documento fiscale; alla fine disattivazione pulita | Ogni capacità «da provare in produzione» ha una prova registrata o un blocco dichiarato |
 | H9 — Preparazione del pilota | H8b, approvazioni | Import in sola lettura, confronto dei mapping, convivenza con il sistema attuale, rollback, soglie (ex H6) | G3 |
@@ -2379,18 +2445,49 @@ completo, dal dato alla schermata, dimostrabile con l'adattatore Mock.
 CHK-07 (calcolo della tassa, già in CasaZen); FIS-02 e FIS-05 (FIS-03, l'emissione di CasaZen,
 aspetta la risposta D34: PO-05); REP sui dati
 già presenti; CRM-02/03/06/08 (base giuridica dei contatti e correzioni delle campagne); MSG-05
-(preferenze di notifica) e l'hub sui thread diretti esistenti. Tutto il resto parte con
-l'adattatore Mock. DEB-11 segue le priorità della fase 1, non questo documento.
+(preferenze di notifica) e l'hub sui thread diretti esistenti. Tutto il resto parte contro il
+sandbox di Octorate. DEB-11 segue le priorità della fase 1, non questo documento.
 
 Ogni PR cita gli identificativi dei requisiti, aggiorna matrice e prove, documenta migrazioni e
 configurazione, resta nel suo pacchetto e non attiva la produzione. Report separati per prove
 del simulatore e prove contrattuali ufficiali.
 
+### 12.1 Perimetro della prima consegna Helix (5/11/2026)
+
+Il piano di consegna di Helix (run R20261103-1506) è stato alleggerito il 5/11 su indicazione del
+PO: da 308 a 234 task (PO-25). Non cambia nessuna decisione del PO (PO-01…22) e nessuna priorità
+di questo documento: cambia **quando** si costruiscono alcuni requisiti P1/P2 e quali filoni
+stanno in un piano a parte. Nulla è stato cancellato: i task rimandati sono conservati nel piano
+di Helix (`kb/plan/deferred/README.md`) e si ripristinano.
+
+- **Seconda tornata:** assistente AI avanzato (invio automatico, livelli di fiducia, lezioni e
+  wizard «Insegna»: parte di MSG-06 e MSG-07, che nella prima tornata restano in sola bozza come
+  da PO-08); recensioni OTA (MSG-09); messaggi programmati (MSG-11); routine eseguibili (DEB-06);
+  segmenti, campagne e promemoria (DEB-04, CRM-04, CRM-05, e con loro CRM-06); pacchetto per il
+  commercialista oltre l'esportazione CSV/Excel (REP-06); app mobile oltre le bozze offline
+  (REP-08, UX-13 e le parti mobile di messaggi, calendario e importi); catalogo partner gestito
+  dall'admin e suggerimenti nei processi (MKT-06, MKT-07); la parte di FIS-03 che emette e invia
+  (bozza al check-out, porta SDI, scarti e correzioni, pannello di emissione, pagina pubblica),
+  perché FIS-03 aspetta la risposta D34 (v. sotto) e l'intermediario SDI non è scelto (PO-06);
+  file svizzeri (DEB-11, P2); profilo «Gestione Appartamenti» del client Alloggiati (DEB-08, già
+  descritto nel documento AW-01).
+- **Piano a parte («Proprietari»):** onboarding dei proprietari, contabilità dei proprietari con
+  chiusura mensile e portale operativo del proprietario. Richiesti il 5/11 fuori da questo
+  documento (ONB-06, FIN-08, OWN-01), vanno scritti in un documento proprio. Restano qui DEB-10
+  (catena finanziaria dell'agenzia) e le cifre per proprietario di REP-01.
+- **Task accorpati:** nove task piccoli sono stati assorbiti dal task vicino (stessa PR), senza
+  cambiare requisiti.
+- **Nota su CRM-06 (P0):** presuppone una campagna e viaggia con le campagne; l'invio di
+  marketing resta chiuso dal flag `crmMarketing` e da CRM-08, che resta nella prima tornata.
+
 ## 13. Gate di accettazione
 
 - **G0 — Design.** Contratti interni, autorità dei dati, ADR, backlog e blocchi esterni registrati.
-- **G1 — Demo.** Tutti i requisiti P0 dimostrabili in Mock con l'«Agenzia DEMO» (Q1-27), errori e
-  ripristino compresi; prove UX-14 verdi su ogni wizard; simulazione sempre dichiarata.
+- **G1 — Demo.** Tutti i requisiti P0 dimostrabili sul sandbox di Octorate (strutture di prova) e
+  sui dati di CasaZen, errori e ripristino compresi; ciò che il sandbox non prova (licenza per
+  camera, OTA collegate, chat, fatture) si dimostra con la simulazione dichiarata delle OTA oppure
+  passa a G2 e H8b; prove UX-14 verdi su ogni wizard; simulazione sempre dichiarata. L'«Agenzia
+  DEMO» (Q1-27) come vettore della demo è da ridefinire senza Mock (OCT-15, §14.4).
 - **G2 — Sandbox.** OAuth e capacità disponibili provate con evidenze; rapporto separato delle
   capacità mancanti. La rete di test non collega le OTA (S6): contenuti, ARI, prenotazioni da OTA,
   messaggi e recensioni sulle OTA risultano «da provare in produzione» e si provano sul banco di
@@ -2460,8 +2557,8 @@ annuncio reale prima del pilota. Nuove domande a Octorate: D34 e D35.
 ### 14.2 Domande a Octorate (si aggiungono a D1–D14)
 
 Stato al 2/11/2026: Octorate non risponde (S21). Nessuna di queste domande, né D1–D14 ancora
-aperte, blocca lo sviluppo con l'adattatore Mock; che cosa blocca davvero, e come si procede, è in
-§14.3.
+aperte, blocca lo sviluppo, che lavora sul sandbox di Octorate; che cosa blocca davvero, e come si
+procede, è in §14.3.
 
 | ID | Domanda | Perché serve |
 |---|---|---|
@@ -2496,7 +2593,7 @@ mail del 31/10 e rimanda a una sessione di onboarding a pagamento con un tecnico
 **Regole.**
 
 1. **Si procede.** Nessuna domanda di §14.2, né D1–D14 ancora aperta, blocca H0–H7 e O1: si costruisce
-   con l'adattatore Mock. Una capacità senza risposta resta `documentato` o `sconosciuto` e spenta
+   sul sandbox di Octorate (dal 4/11 senza adattatore Mock, PO-23). Una capacità senza risposta resta `documentato` o `sconosciuto` e spenta
    in live (§0); valgono la colonna «Se manca» di §11.2 e la tabella qui sotto.
 2. **Prima si verifica da soli.** Con le sole credenziali del partner, in sandbox, si possono creare
    reti e strutture di prova (`POST /rest/v2/accommodation` con `network_name` e `welcome_user`
@@ -2590,7 +2687,36 @@ finte poi disattivate. (3) Abilitare gli IP statici in test e scrivere a `openap
 listino, struttura di prova, titolarità e uscita). (5) Decidere la sessione a pagamento solo dopo il
 punto 2.
 
+### 14.4 Decisioni del PO del 4 e 5 novembre 2026
+
+Registrate qui perché stavano solo nelle note del piano di Helix. La numerazione PO-23…25 è stata
+assegnata alla registrazione.
+
+| ID | Decisione | Requisiti |
+|---|---|---|
+| PO-23 | **4/11.** Nessun adattatore Mock e nessun client con dati finti: il client Octorate lavora sul sandbox reale dal primo task, con le strutture e i dati di prova della rete di test. Sostituisce ADR-023-R11 e le frasi di questo documento che facevano dipendere P0, G1 e H1–H4 dal Mock | OCT-01, §12, G1 |
+| PO-24 | **4/11.** I task che dipendono da capacità che il sandbox non prova (licenza per camera, OTA collegate, chat, fatture) non si congelano: sono il nucleo del prodotto. Si costruiscono e si provano con quello che il sandbox consente e con la simulazione delle OTA descritta nelle note del piano (`ota-simulation`); il resto resta «da provare in produzione» (H8b). Il ripiego di ciascuno è nella colonna «Se manca» di §11.2 | §11.2, §13 |
+| PO-25 | **5/11.** La prima consegna di Helix è alleggerita come in §12.1 (da 308 a 234 task); il filone proprietari esce da questo documento | §12.1 |
+
+**Ancora aperte, non decise:** (a) se costruire un responder lato CasaZen che recita Octorate per il
+solo lato push (disponibilità, contenuti, chat, webhook): riaprirebbe PO-23 per quelle capacità e
+per nient'altro; (b) l'invio a `openapi@octorate.com` della richiesta per il sandbox (licenza
+sulle strutture di prova, categoria OTA, ambiti chat e fatture, callback), bozza non inviata;
+(c) la conferma del segreto nell'indirizzo del webhook come autenticazione (OCT-08,
+ADR-023-R7); (d) come si ridefiniscono OCT-15 e G1 senza Mock.
+
 ## 15. Revisioni
+
+- **2.2 · 5 novembre 2026:** registrate le decisioni del PO del 4/11 (PO-23 e PO-24: niente
+  adattatore Mock, nessun task congelato per una capacità non provata) e del 5/11 (PO-25: prima
+  consegna alleggerita, §12.1; filone proprietari fuori da questo documento), nel nuovo §14.4.
+  Tolto il Mock da priorità P0, regime di test, OCT-01, OCT-12, OCT-15, §8.3, §12, G1 e §14.3.
+  Recepite nel documento le modifiche fatte il 4 e 5 novembre alla sola copia di Helix: UX-02 con
+  handoff controllato (callback o attesa con verifica in background; «Ho fatto» solo se l'esito
+  non è leggibile), tre scenari di collegamento in LST-02, ONB-01 e §9.1 (già su Octorate; già sulle
+  OTA o in un altro gestionale, con import D6; mai pubblicati), CHK-13 differito e nuovo CHK-15
+  (handoff controllato verso Octorate, Cassetto Compliance). ADR-023 (R7, R11) e ADR-026 (R1, R4)
+  emendati nella PR degli ADR.
 
 - **2.1 · 2 novembre 2026:** Octorate non risponde alle domande tecniche della mail del 31/10 e
   rimanda a una sessione di onboarding a pagamento (S21); il PO non la usa per ora. Nuovo §14.3:
