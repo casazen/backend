@@ -51,16 +51,13 @@ public sealed partial class HostDashboardService
         var period = data.Current.Period;
 
         // The weeks or months of the Home's chart, cut at the edges of the period, and the same days one year earlier.
-        var unit = HostReportRules.TrendUnitFor(period, query.Bucket);
-        var spans = HostOverviewSeriesRules.BucketsOf(period, unit);
-        var windows = spans.Select(span => (span.From, span.To)).ToList();
-        var previousWindows = data.Previous is null ? null : HostReportRules.PreviousYearBuckets(windows);
-        var buckets = spans
-            .Select((span, index) => new HostTrendBucket(
-                span.Label, span.From, span.To, previousWindows?[index].From, previousWindows?[index].To))
-            .ToList();
+        var (unit, buckets) = HostReportRules.TrendBucketsOf(period, query.Bucket, data.Previous is not null);
+        var windows = buckets.Select(bucket => (bucket.From, bucket.To)).ToList();
+        var previousWindows = data.Previous is null
+            ? null
+            : buckets.Select(bucket => (bucket.PreviousYearFrom!.Value, bucket.PreviousYearTo!.Value)).ToList();
 
-        // The most revenue first, at most MaxTrendSeries lines: the rest is summed in one more, never dropped.
+        // The most revenue first, at most MaxSeries lines (25 unless asked otherwise): the rest is summed in one more, never dropped.
         var sources = TrendSources(query.GroupBy, data)
             .Select(source => (Source: source, Revenue: StayKpiRules.RevenueOf(source.Stays, period.From, period.To)))
             .OrderByDescending(item => item.Revenue)
@@ -68,10 +65,11 @@ public sealed partial class HostDashboardService
             .ThenBy(item => item.Source.Key, StringComparer.Ordinal)
             .Select(item => item.Source)
             .ToList();
-        if (sources.Count > HostPerformanceRules.MaxTrendSeries)
+        var most = Math.Max(2, query.MaxSeries);
+        if (sources.Count > most)
         {
-            var kept = sources.Take(HostPerformanceRules.MaxTrendSeries - 1).ToList();
-            kept.Add(MergedSource(sources.Skip(HostPerformanceRules.MaxTrendSeries - 1).ToList()));
+            var kept = sources.Take(most - 1).ToList();
+            kept.Add(MergedSource(sources.Skip(most - 1).ToList()));
             sources = kept;
         }
 

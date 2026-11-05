@@ -125,6 +125,10 @@ public enum HostTrendBucketUnit
 
 /// <summary>What a trend asks of <see cref="IHostDashboardService.GetTrendAsync"/>: the same as a performance report, and the size of the buckets.</summary>
 /// <param name="Bucket">The size of the buckets; <see cref="HostTrendBucketUnit.Auto"/> chooses by the length of the period.</param>
+/// <param name="MaxSeries">
+/// The most lines the answer has (<see cref="HostPerformanceRules.MaxTrendSeries"/> by default); the rest is summed in the one called
+/// <see cref="HostPerformanceRules.OtherSeriesKey"/>. A caller that weights each property by itself (the owner portal) asks for all of them.
+/// </param>
 public sealed record HostTrendQuery(
     DateOnly From,
     DateOnly To,
@@ -132,7 +136,8 @@ public sealed record HostTrendQuery(
     HostPerformanceGroupBy GroupBy = HostPerformanceGroupBy.None,
     bool CompareYear = false,
     IReadOnlyCollection<Guid>? PropertyIds = null,
-    HostTrendBucketUnit Bucket = HostTrendBucketUnit.Auto);
+    HostTrendBucketUnit Bucket = HostTrendBucketUnit.Auto,
+    int MaxSeries = HostPerformanceRules.MaxTrendSeries);
 
 /// <summary>A bucket of a trend: a week or a month, cut at the edges of the period, and the days it is compared with.</summary>
 /// <param name="Label">A stable key, never text to show: the ISO week (<c>2026-W42</c>) or the month (<c>2026-10</c>).</param>

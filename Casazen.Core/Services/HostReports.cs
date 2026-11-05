@@ -116,6 +116,26 @@ public static class HostReportRules
 
         return moved;
     }
+
+    /// <summary>
+    /// The buckets of a trend over <paramref name="period"/> (NF-96): the weeks or months of the Home's chart
+    /// (<see cref="HostOverviewSeriesRules.BucketsOf"/>), cut at the edges of the period, each with the same days one year earlier when
+    /// <paramref name="compareYear"/> (<see cref="PreviousYearBuckets"/>). The one place that cuts them: the reports of the host and
+    /// the owner portal read their buckets here, so the lines of both answer the same weeks.
+    /// </summary>
+    public static (HostOverviewSeriesUnit Unit, IReadOnlyList<HostTrendBucket> Buckets) TrendBucketsOf(
+        HostDashboardPeriod period, HostTrendBucketUnit requested, bool compareYear)
+    {
+        ArgumentNullException.ThrowIfNull(period);
+
+        var unit = TrendUnitFor(period, requested);
+        var spans = HostOverviewSeriesRules.BucketsOf(period, unit);
+        var previous = compareYear ? PreviousYearBuckets(spans.Select(span => (span.From, span.To)).ToList()) : null;
+        var buckets = spans
+            .Select((span, index) => new HostTrendBucket(span.Label, span.From, span.To, previous?[index].From, previous?[index].To))
+            .ToList();
+        return (unit, buckets);
+    }
 }
 
 /// <summary>Revenue of one property in the period, by accrual: the very rule of the Home, on this property's stays.</summary>

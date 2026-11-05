@@ -602,12 +602,44 @@ and `trend` compare, and only with the same days one year earlier.
   the nights, and (only if a paused property has revenue) their names; once more for the year before.
 - **Narrowing.** `HostPerformanceQuery.PropertyIds` / `HostTrendQuery.PropertyIds` narrow the properties to those ids **inside** the
   caller's scope, never wider (null = no extra narrowing, an empty set = nothing); the agency report by owner and the owner portal use
-  it. A `propertyId` outside the scope, or outside the narrowing, is the same 404.
+  it. A `propertyId` outside the scope, or outside the narrowing, is the same 404. `HostTrendQuery.MaxSeries` (25 unless asked) lets a
+  caller that weights each property by itself, the owner portal, ask for every line.
 - **The CSV** of both reports carries the Italian title with its base on the first row (`Prestazioni per immobile, per competenza, dal
   01/10/2026 al 31/10/2026`, `Prestazioni per canale, ...`, `Prestazioni complessive, ...`, `Andamento ...`), then the header, the rows
   and a `Totale` row (the trend: a row for each bucket of each line). The columns of the year before and of the differences are there
   only when the report compared. File names: `casazen-prestazioni-per-immobile-competenza-20261001-20261031.csv`,
   `casazen-andamento-competenza-...`.
+
+#### Owner portal (ADR-011, NF-96)
+
+Policy `OwnerPortal` on the class (JWT claim `context=owner_portal` and a valid `owner_id`; never a host role); 401 without a valid owner
+claim. The owner sees only its own ownerships (`PropertyOwnership.OwnerUserId`): the ones in force today (`OwnershipStart` up to now,
+`OwnershipEnd` null or not before now), and for a report also those that had started by its last day and had not ended before its first.
+A property of another owner, an ended ownership or a missing property is one and the same 404. No guest name, e-mail or phone and nothing
+of any other owner in any field (ADR-011-R3).
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/owner-portal/properties` | OwnerPortal | The owner's properties: `occupancyRate` is now the Home's occupancy of the last 30 days (`IHostDashboardService.GetLast30DaysOccupancyAsync`), a percentage from 0 to 100 to one decimal; it used to be a placeholder of 0. `totalRevenue` (all non-cancelled bookings of all time) and the recent bookings are unchanged |
+| `GET` | `/api/owner-portal/overview` | OwnerPortal | NF-96. Occupancy, revenue, ADR and RevPAR of the owner's properties for `from`..`to`, and with `compare=previousYear` the same calendar days one year earlier and the differences: `{ title, basis, currency, groupBy, period, comparePeriod, rows, total }`, a row `{ key, propertyId, label, figures, previousYear, revenueDeltaPercent, occupancyDeltaPoints, adrDeltaPercent, revParDeltaPercent, revenueShare }` with the weighted `figures` of `GET /api/reports/by-owner` |
+| `GET` | `/api/owner-portal/trend` | OwnerPortal | NF-96. The same figures week by week or month by month: `{ title, basis, currency, groupBy, unit, period, comparePeriod, buckets, series }` as the host's trend, with the weighted figures |
+
+Query of both: `from`, `to` (`yyyy-MM-dd`, Rome days, both included, at most 24 months), optional `propertyId` (404 when it is not one of the
+owner's), `groupBy` `none` (default, the total only) or `property` (no channel cut: 400 `report_invalid_group_by`), `compare` `none` or
+`previousYear` (400 `report_invalid_compare`). Errors as the host's reports: 400 `report_invalid_period`, 422 `report_period_too_long`.
+
+- **The Home's numbers, weighted.** `OwnerPortalService.GetOwnerOverviewAsync` / `GetOwnerTrendAsync` call
+  `IHostDashboardService.GetPerformanceAsync` / `GetTrendAsync` once for each org the owner has properties in (`new HostScope(orgId)`,
+  narrowed to the owner's properties with `PropertyIds`: they never widen the scope), so revenue, nights, ADR and RevPAR are worked out
+  by the Home's rules, and multiply the figures of each property by the owner's share (`SharePercent / 100`, several rows of one property
+  added and capped at the whole). The total is the sum of the weighted rows (the orgs added up), ADR, RevPAR and the occupancy are worked
+  out from the weighted values, and a property that did not exist a year ago contributes nothing to the year before. The owners of a
+  co-owned property together are the Home's figure for it. Weighted nights and stays can be fractions.
+- **Trend.** The buckets are the host's (`HostReportRules.TrendBucketsOf`: weeks up to 92 days, months beyond); every property line is
+  the host's line for it multiplied by the share; all together is the sum of the lines; with `groupBy=property` at most 25 lines, the
+  rest summed in `other`.
+- **Wiring.** `IOwnerPortalService` was not registered in the dependency injection (the controller could not be built); it is now. Its
+  new constructor parameter, `IHostDashboardService`, is optional so that code that builds the service for the older reads compiles.
 
 #### Guests & digital check-in
 
