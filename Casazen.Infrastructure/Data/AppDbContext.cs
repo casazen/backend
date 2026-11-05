@@ -292,6 +292,9 @@ public class AppDbContext(
     // Transactional outbox of the domain events, published on the event bus by the dispatcher (ADR-022-R1, R2)
     public DbSet<OutboxEvent> OutboxEvents { get; set; } = null!;
 
+    // The progress of the wizards, saved on the server so that a person resumes it on any device (ADR-024)
+    public DbSet<WizardDraft> WizardDrafts { get; set; } = null!;
+
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
@@ -1497,6 +1500,28 @@ public class AppDbContext(
                 .HasFilter("\"DedupKey\" IS NOT NULL")
                 .HasDatabaseName(OutboxEvent.DedupIndexName);
             entity.HasIndex(e => new { e.DispatchedAt, e.OccurredAt });
+        });
+
+        // ─── Drafts of the wizards (ADR-024) ─────────────────────────────────────
+        // One draft per person, wizard and entity. The unique indexes are what makes two devices that save the first draft at the same
+        // moment lose to each other (the loser gets 23505 and is answered as a conflict). The database takes two NULLs for different
+        // values, so the draft of a new entity (no EntityId) has an index of its own. The anonymized rows (UserId = '') are left out of
+        // both: they all share the empty UserId, and two of them for the same org, wizard and entity would fail the retention job.
+        // xmin is the concurrency token: two parallel saves of the same version cannot both win. The index on ExpiresAt serves the
+        // retention, which reads the drafts that are over and not yet anonymized.
+        modelBuilder.Entity<WizardDraft>(entity =>
+        {
+            entity.Property(d => d.RowVersion).IsRowVersion();
+            entity.HasIndex(d => new { d.OrgId, d.UserId, d.WizardType, d.EntityId })
+                .IsUnique()
+                .HasFilter("\"EntityId\" IS NOT NULL AND \"UserId\" <> ''")
+                .HasDatabaseName(WizardDraft.ExistingEntityIndexName);
+            entity.HasIndex(d => new { d.OrgId, d.UserId, d.WizardType })
+                .IsUnique()
+                .HasFilter("\"EntityId\" IS NULL AND \"UserId\" <> ''")
+                .HasDatabaseName(WizardDraft.NewEntityIndexName);
+            entity.HasIndex(d => d.ExpiresAt)
+                .HasFilter("\"UserId\" <> ''");
         });
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
