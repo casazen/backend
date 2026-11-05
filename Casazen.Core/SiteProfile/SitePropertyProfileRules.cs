@@ -40,17 +40,51 @@ public static class SitePropertyProfileErrorCodes
     public const string VideoUrlInvalid = "property_site_profile_video_url_invalid";
 
     public const string TourUrlInvalid = "property_site_profile_tour_url_invalid";
+
+    /// <summary>A text of the listing is written in a language that is not one of <see cref="ListingLanguages.All"/> (NF-31).</summary>
+    public const string LanguageUnknown = "property_site_profile_language_unknown";
 }
 
-/// <summary>A text as the host form sends it: both parts optional until the rules have looked at them.</summary>
-public sealed record LocalizedTextInput(string? It, string? En);
+/// <summary>
+/// A text as the host form sends it: both parts optional until the rules have looked at them. <paramref name="Others"/> is the same text in the
+/// other languages of the listing (NF-31): <c>null</c> = not sent, and the stored ones are kept; an empty map removes them.
+/// </summary>
+public sealed record LocalizedTextInput(string? It, string? En, IReadOnlyDictionary<string, string?>? Others = null);
+
+/// <summary>
+/// The texts of a listing in one language as the host form sends them (NF-31): a field that is blank is not written. For Italian only the
+/// transport counts (the other Italian texts are in the property and in the profile texts).
+/// </summary>
+public sealed record ListingTextsInput(
+    string? Title = null,
+    string? Description = null,
+    string? Spaces = null,
+    string? Access = null,
+    string? Neighborhood = null,
+    string? Transport = null,
+    string? Rules = null)
+{
+    public string? Get(ListingTextField field) => field switch
+    {
+        ListingTextField.Title => Title,
+        ListingTextField.Description => Description,
+        ListingTextField.Spaces => Spaces,
+        ListingTextField.Access => Access,
+        ListingTextField.Neighborhood => Neighborhood,
+        ListingTextField.Transport => Transport,
+        ListingTextField.Rules => Rules,
+        _ => null,
+    };
+}
 
 /// <summary>A highlight as the host form sends it.</summary>
 public sealed record SiteHighlightInput(string? Icon, LocalizedTextInput? Title, LocalizedTextInput? Text);
 
 /// <summary>
 /// What the host sends to save the site profile of a property (DB-11a): the whole profile, as the editor shows it. A part that is
-/// left out is cleared, so the form always sends all it shows.
+/// left out is cleared, so the form always sends all it shows. The exception is what NF-31 added, so a client that does not know it cannot
+/// erase it: <paramref name="Translations"/> left out (<c>null</c>) keeps the stored translations and their origins, and so does a text
+/// sent without <see cref="LocalizedTextInput.Others"/>; an empty map clears them.
 /// </summary>
 public sealed record SitePropertyProfileInput(
     int? FloorLevel,
@@ -70,7 +104,8 @@ public sealed record SitePropertyProfileInput(
     LocalizedTextInput? RulesNote,
     IReadOnlyList<SiteHighlightInput>? Highlights,
     IReadOnlyList<LocalizedTextInput>? SafetyNotes,
-    IReadOnlyList<string>? Tags);
+    IReadOnlyList<string>? Tags,
+    IReadOnlyDictionary<string, ListingTextsInput>? Translations = null);
 
 /// <summary>The profile after the rules: what is stored in the columns of the property.</summary>
 public sealed record SitePropertyProfileValues(
@@ -94,6 +129,8 @@ public sealed record SitePropertyProfileValues(
 /// <param name="TourUrl">The canonical embed address of the 360° tour; <c>null</c> = none.</param>
 /// <param name="Tags">The labels the host chose.</param>
 /// <param name="DerivedTags">The labels the data of the house gives it (a pool, a terrace, a place on the coast...): shown on the site whatever the host chose.</param>
+/// <param name="Translations">The texts of the listing in the languages of the channel manager, by language code (NF-31); Italian only for the transport.</param>
+/// <param name="Origins">Who wrote each translated text, by <c>"language.field"</c> (<c>fr.title</c>): a text always has one, a person's where none was recorded.</param>
 public sealed record SitePropertyProfileView(
     Guid PropertyId,
     int? FloorLevel,
@@ -116,6 +153,8 @@ public sealed record SitePropertyProfileView(
     IReadOnlyList<LocalizedText> SafetyNotes,
     IReadOnlyList<string> Tags,
     IReadOnlyList<string> DerivedTags,
+    IReadOnlyDictionary<string, ListingTexts> Translations,
+    IReadOnlyDictionary<string, TextOrigin> Origins,
     DateTime UpdatedAt);
 
 /// <summary>
@@ -131,8 +170,17 @@ public static class SitePropertyProfileRules
     /// <param name="input">What the host sent.</param>
     /// <param name="checkInFrom">The earliest arrival time already stored (SR-07a), to check the latest against; <c>null</c> = none.</param>
     /// <param name="currentYear">This year, on the clock of Rome: a renovation cannot be later.</param>
+    /// <param name="previous">
+    /// The profile already stored, <c>null</c> for a property that has none. It gives the origin of the texts of the listing a person saves
+    /// (<see cref="ListingTextOrigins.WhenPersonSaves"/>) and what is kept when the input leaves out the translations or the other languages
+    /// of a text (NF-31).
+    /// </param>
     /// <exception cref="DomainRuleException">422 with one of <see cref="SitePropertyProfileErrorCodes"/> and the <c>field</c> that broke it.</exception>
-    public static SitePropertyProfileValues Normalize(SitePropertyProfileInput input, TimeOnly? checkInFrom, int currentYear)
+    public static SitePropertyProfileValues Normalize(
+        SitePropertyProfileInput input,
+        TimeOnly? checkInFrom,
+        int currentYear,
+        SitePropertyProfileDocument? previous = null)
     {
         ArgumentNullException.ThrowIfNull(input);
 
@@ -162,17 +210,24 @@ public static class SitePropertyProfileRules
         var tour = string.IsNullOrWhiteSpace(input.TourUrl) ? null : SiteEmbedUrls.NormalizeTour(input.TourUrl)
             ?? throw Error(SitePropertyProfileErrorCodes.TourUrlInvalid, "PropertySiteProfileTourUrlInvalid", "tourUrl");
 
+        var (translations, origins) = NormalizeTranslations(input.Translations, previous);
         var document = new SitePropertyProfileDocument
         {
-            Zone = NormalizeText(input.Zone, SitePropertyProfileLimits.ZoneMaxLength, "zone"),
-            Near = NormalizeText(input.Near, SitePropertyProfileLimits.NearMaxLength, "near"),
-            FloorNote = NormalizeText(input.FloorNote, SitePropertyProfileLimits.FloorNoteMaxLength, "floorNote"),
-            OutdoorNote = NormalizeText(input.OutdoorNote, SitePropertyProfileLimits.OutdoorNoteMaxLength, "outdoorNote"),
-            CheckInMethod = NormalizeText(input.CheckInMethod, SitePropertyProfileLimits.CheckInMethodMaxLength, "checkInMethod"),
-            RulesNote = NormalizeText(input.RulesNote, SitePropertyProfileLimits.RulesNoteMaxLength, "rulesNote", multiline: true),
+            Zone = NormalizeText(input.Zone, SitePropertyProfileLimits.ZoneMaxLength, "zone", allowOthers: true, previous: previous?.Zone),
+            Near = NormalizeText(input.Near, SitePropertyProfileLimits.NearMaxLength, "near", allowOthers: true, previous: previous?.Near),
+            FloorNote = NormalizeText(
+                input.FloorNote, SitePropertyProfileLimits.FloorNoteMaxLength, "floorNote", allowOthers: true, previous: previous?.FloorNote),
+            OutdoorNote = NormalizeText(
+                input.OutdoorNote, SitePropertyProfileLimits.OutdoorNoteMaxLength, "outdoorNote", allowOthers: true, previous: previous?.OutdoorNote),
+            CheckInMethod = NormalizeText(
+                input.CheckInMethod, SitePropertyProfileLimits.CheckInMethodMaxLength, "checkInMethod", allowOthers: true, previous: previous?.CheckInMethod),
+            RulesNote = NormalizeText(
+                input.RulesNote, SitePropertyProfileLimits.RulesNoteMaxLength, "rulesNote", multiline: true, allowOthers: true, previous: previous?.RulesNote),
             Highlights = Highlights(input.Highlights),
             SafetyNotes = SafetyNotes(input.SafetyNotes),
             Tags = Tags(input.Tags),
+            Translations = translations,
+            Origins = origins,
         };
 
         return new SitePropertyProfileValues(
@@ -254,7 +309,58 @@ public static class SitePropertyProfileRules
             document.SafetyNotes,
             [.. SitePropertyProfileLimits.Tags.Where(document.Tags.Contains)],
             DerivedTags(property.Amenities, property.AreaKind, property.PetsPolicy),
+            document.Translations,
+            ListingTextOrigins.Effective(document),
             property.UpdatedAt);
+    }
+
+    /// <summary>
+    /// The profile after a machine translation wrote <paramref name="translated"/> (NF-31): the document with the translated texts added as
+    /// <see cref="TextOrigin.AutoTranslated"/>, except where a person already wrote something. The service call a machine translation will
+    /// use is the only way a text gets that origin: nothing a person sends through the host form can carry it.
+    /// </summary>
+    /// <param name="document">The profile as stored.</param>
+    /// <param name="translated">The translated texts, by language code. Italian is not translated into: only the other languages count.</param>
+    /// <exception cref="DomainRuleException">422 <see cref="SitePropertyProfileErrorCodes.LanguageUnknown"/> or <see cref="SitePropertyProfileErrorCodes.TextTooLong"/>.</exception>
+    public static SitePropertyProfileDocument MergeAutoTranslations(
+        SitePropertyProfileDocument document,
+        IReadOnlyDictionary<string, ListingTextsInput> translated)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(translated);
+
+        var translations = document.Translations.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        var origins = document.Origins.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        foreach (var (rawCode, input) in translated)
+        {
+            var language = ListingLanguages.Normalize(rawCode)
+                ?? throw Error(SitePropertyProfileErrorCodes.LanguageUnknown, "PropertySiteProfileLanguageUnknown", "translations");
+            if (language == ListingLanguages.Italian)
+                continue;
+
+            var machine = NormalizeListingTexts(input, language);
+            var current = translations.GetValueOrDefault(language) ?? new ListingTexts();
+            foreach (var field in ListingTextResolver.Fields)
+            {
+                if (machine.Get(field) is not { } text)
+                    continue;
+
+                if (!ListingTextOrigins.MachineMayWrite(current.Get(field), ListingTextOrigins.OriginOf(document, language, field)))
+                    continue;
+
+                current = current.With(field, text);
+                origins[ListingTextResolver.Key(language, field)] = TextOrigin.AutoTranslated;
+            }
+
+            if (!current.IsEmpty)
+                translations[language] = current;
+        }
+
+        return document with
+        {
+            Translations = new SortedDictionary<string, ListingTexts>(translations, StringComparer.Ordinal),
+            Origins = new SortedDictionary<string, TextOrigin>(origins, StringComparer.Ordinal),
+        };
     }
 
     /// <summary>Writes the normalized profile into the columns of the property; the caller saves.</summary>
@@ -379,11 +485,18 @@ public static class SitePropertyProfileRules
     /// A text as stored (<see cref="CleanText"/>), Italian always present, within <paramref name="maxLength"/>; <c>null</c> when the host wrote nothing.
     /// </summary>
     /// <exception cref="DomainRuleException">422 <see cref="SitePropertyProfileErrorCodes.ItalianRequired"/> or <see cref="SitePropertyProfileErrorCodes.TextTooLong"/> with the <paramref name="field"/>.</exception>
-    public static LocalizedText? NormalizeText(LocalizedTextInput? input, int maxLength, string field, bool multiline = false)
+    public static LocalizedText? NormalizeText(
+        LocalizedTextInput? input,
+        int maxLength,
+        string field,
+        bool multiline = false,
+        bool allowOthers = false,
+        LocalizedText? previous = null)
     {
         var italian = CleanText(input?.It, multiline);
         var english = CleanText(input?.En, multiline);
-        if (italian is null && english is null)
+        var others = allowOthers && input?.Others is { } sent ? NormalizeOthers(sent, maxLength, field, multiline) : null;
+        if (italian is null && english is null && others is null)
             return null;
 
         if (italian is null)
@@ -392,8 +505,122 @@ public static class SitePropertyProfileRules
         if (italian.Length > maxLength || (english?.Length ?? 0) > maxLength)
             throw Error(SitePropertyProfileErrorCodes.TextTooLong, "PropertySiteProfileTextTooLong", field, maxLength);
 
-        return new LocalizedText(italian, english);
+        // The other languages the input does not mention are the ones stored: a client that does not know them cannot erase them (NF-31).
+        if (allowOthers && input?.Others is null)
+            others = previous?.Others;
+
+        return new LocalizedText(italian, english) { Others = others };
     }
+
+    // The same text in the other languages of the listing: each a language of ListingLanguages.Others, within the same length as the Italian one.
+    private static IReadOnlyDictionary<string, string>? NormalizeOthers(
+        IReadOnlyDictionary<string, string?> sent,
+        int maxLength,
+        string field,
+        bool multiline)
+    {
+        var others = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (rawCode, rawText) in sent)
+        {
+            var language = ListingLanguages.Normalize(rawCode);
+            if (language is null or ListingLanguages.Italian or ListingLanguages.English)
+                throw Error(SitePropertyProfileErrorCodes.LanguageUnknown, "PropertySiteProfileLanguageUnknown", field);
+
+            var text = CleanText(rawText, multiline);
+            if (text is null)
+                continue;
+
+            if (text.Length > maxLength)
+                throw Error(SitePropertyProfileErrorCodes.TextTooLong, "PropertySiteProfileTextTooLong", field, maxLength);
+
+            others[language] = text;
+        }
+
+        return others.Count == 0 ? null : others;
+    }
+
+    // The translations of a save by a person: the ones sent replace the stored ones (a language or a field left out is cleared), the origin of
+    // each text follows from the one stored before (ListingTextOrigins.WhenPersonSaves). Left out altogether (null), nothing changes.
+    private static (IReadOnlyDictionary<string, ListingTexts> Translations, IReadOnlyDictionary<string, TextOrigin> Origins) NormalizeTranslations(
+        IReadOnlyDictionary<string, ListingTextsInput>? input,
+        SitePropertyProfileDocument? previous)
+    {
+        if (input is null)
+            return (previous?.Translations ?? new Dictionary<string, ListingTexts>(), previous?.Origins ?? new Dictionary<string, TextOrigin>());
+
+        var translations = new SortedDictionary<string, ListingTexts>(StringComparer.Ordinal);
+        foreach (var (rawCode, texts) in input)
+        {
+            var language = ListingLanguages.Normalize(rawCode)
+                ?? throw Error(SitePropertyProfileErrorCodes.LanguageUnknown, "PropertySiteProfileLanguageUnknown", "translations");
+
+            // The same language sent twice (IT and it) is one language: the fields of the later one win.
+            var merged = translations.GetValueOrDefault(language) ?? new ListingTexts();
+            var written = NormalizeListingTexts(texts, language);
+            foreach (var field in ListingTextResolver.Fields)
+            {
+                if (written.Get(field) is { } text)
+                    merged = merged.With(field, text);
+            }
+
+            if (!merged.IsEmpty)
+                translations[language] = merged;
+        }
+
+        var origins = new SortedDictionary<string, TextOrigin>(StringComparer.Ordinal);
+        foreach (var (language, texts) in translations)
+        {
+            foreach (var field in ListingTextResolver.Fields)
+            {
+                if (texts.Get(field) is not { } text)
+                    continue;
+
+                var previousText = previous?.Translations.GetValueOrDefault(language)?.Get(field);
+                var previousOrigin = previous is null ? TextOrigin.UserWritten : ListingTextOrigins.OriginOf(previous, language, field);
+                origins[ListingTextResolver.Key(language, field)] = ListingTextOrigins.WhenPersonSaves(text, previousText, previousOrigin);
+            }
+        }
+
+        return (translations, origins);
+    }
+
+    // The texts of one language, cleaned and within their limits. Italian keeps only the transport: its other texts are the columns of the
+    // property and the profile texts, and a second copy here would be a second store.
+    private static ListingTexts NormalizeListingTexts(ListingTextsInput? texts, string language)
+    {
+        var result = new ListingTexts();
+        if (texts is null)
+            return result;
+
+        foreach (var field in ListingTextResolver.Fields)
+        {
+            if (language == ListingLanguages.Italian && field != ListingTextField.Transport)
+                continue;
+
+            var text = CleanText(texts.Get(field), multiline: field != ListingTextField.Title);
+            if (text is null)
+                continue;
+
+            var maxLength = ListingTextMaxLength(field);
+            if (text.Length > maxLength)
+            {
+                throw Error(
+                    SitePropertyProfileErrorCodes.TextTooLong, "PropertySiteProfileTextTooLong", $"translations.{language}.{ListingTextResolver.CodeOf(field)}", maxLength);
+            }
+
+            result = result.With(field, text);
+        }
+
+        return result;
+    }
+
+    /// <summary>The most characters a text of <paramref name="field"/> can have, in any language: the limit of the headline, of the description, or <see cref="SitePropertyProfileLimits.ListingTextMaxLength"/>.</summary>
+    public static int ListingTextMaxLength(ListingTextField field) => field switch
+    {
+        ListingTextField.Title => Casazen.Core.Services.ListingTextLimits.TitleMaxLength,
+        ListingTextField.Description => Casazen.Core.Services.ListingTextLimits.DescriptionMaxLength,
+        _ => SitePropertyProfileLimits.ListingTextMaxLength,
+    };
 
     /// <summary>
     /// A text as stored: no control characters, one space where there were several (and, in a one-line text, where there were line

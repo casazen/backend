@@ -81,6 +81,9 @@ public sealed class PropertyResponse
     /// <summary>What the house rules say about parties and events; null = not set.</summary>
     public PartiesPolicy? PartiesPolicy { get; init; }
 
+    /// <summary>What the house rules say about children (NF-37); null = not set. The rule the channels receive; the public page reads the site profile's own answer.</summary>
+    public ChildrenPolicy? ChildrenPolicy { get; init; }
+
     /// <summary>Quiet hours start, on the property's clock; null = no quiet hours.</summary>
     public TimeOnly? QuietHoursFrom { get; init; }
 
@@ -213,6 +216,7 @@ public sealed class PropertyResponse
             SmokingPolicy = property.SmokingPolicy,
             PetsPolicy = property.PetsPolicy,
             PartiesPolicy = property.PartiesPolicy,
+            ChildrenPolicy = property.ChildrenPolicy,
             QuietHoursFrom = property.QuietHoursFrom,
             QuietHoursTo = property.QuietHoursTo,
             ExtraGuestFeePerNight = property.ExtraGuestFeePerNight,

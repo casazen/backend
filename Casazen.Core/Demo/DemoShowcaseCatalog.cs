@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-10-31.1";
+    public const string Version = "2026-11-05.2";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -68,6 +68,9 @@ public static class DemoShowcaseCatalog
         public const string PropertyWizardFields = "property-wizard-fields";
         public const string PropertySiteProfile = "property-site-profile";
         public const string GuestAppAccount = "guest-app-account";
+        public const string ReportYearOverYear = "report-year-over-year";
+        public const string ListingChannelStates = "listing-channel-states";
+        public const string PropertyRoomsAndDiscounts = "property-rooms-and-discounts";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -109,6 +112,9 @@ public static class DemoShowcaseCatalog
         Scenario.PropertyWizardFields,
         Scenario.PropertySiteProfile,
         Scenario.GuestAppAccount,
+        Scenario.ReportYearOverYear,
+        Scenario.ListingChannelStates,
+        Scenario.PropertyRoomsAndDiscounts,
     ];
 
     /// <summary>
@@ -136,6 +142,19 @@ public static class DemoShowcaseCatalog
             "VRDLCU80D15F205A", "IT10J0200805017000105432100", OwnerTaxRegime.Private, 50m, 12m, Scenario.OwnerShares),
         new("anna-ferrari", "Anna", "Ferrari", "anna.proprietario@example.com", "+39 336 5544332",
             "FRRNNA85E50H501B", "IT07X0300203280284975071923", OwnerTaxRegime.VatHolder, 100m, 18m, Scenario.OwnerMandate),
+    ];
+
+    /// <summary>
+    /// Who owns which demo property and for how much (ADR-012-R4, NF-96): the report by owner of the agency and the owner portal weight the
+    /// figures of a property by these shares. The shares of a property add up to 100: the house of the agency demo owner is his alone and
+    /// has stays (it is the one with a finished stay and one a year earlier), and the villa is shared 50/50 by two owners, so the weighting
+    /// shows. Owners are the ones of <see cref="PropertyOwners"/>, properties the ones of <see cref="Properties"/>, both by key.
+    /// </summary>
+    public static IReadOnlyList<DemoPropertyOwnershipTemplate> PropertyOwnerships { get; } =
+    [
+        new("mario-rossi", "casa-trastevere", 100m, Scenario.PropertyOwnerAgency),
+        new("giulia-bianchi", "villa-lago", 50m, Scenario.OwnerShares),
+        new("luca-verdi", "villa-lago", 50m, Scenario.OwnerShares),
     ];
 
     /// <summary>
@@ -188,11 +207,11 @@ public static class DemoShowcaseCatalog
             NightlyRate: 180m,
             CleaningFee: 40m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile],
+            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile, Scenario.ListingChannelStates, Scenario.PropertyRoomsAndDiscounts],
             Profile: new DemoPropertyProfile(
                 AccommodationType.HouseOrVilla, 5, 140, "Villa sul lago con giardino (demo)",
                 new TimeOnly(15, 0), new TimeOnly(10, 0), SmokingPolicy.No, PetsPolicy.OnRequest, PartiesPolicy.No,
-                new TimeOnly(22, 0), new TimeOnly(8, 0), 20m),
+                new TimeOnly(22, 0), new TimeOnly(8, 0), 20m, ChildrenPolicy.Yes),
             // DB-11a: what the host says about the house on its public page: invented like the rest of the demo, no video or tour (nothing
             // of a third party is embedded from a demo).
             SiteProfile: new SitePropertyProfileInput(
@@ -218,13 +237,43 @@ public static class DemoShowcaseCatalog
                     new SiteHighlightInput("key", new LocalizedTextInput("Check-in autonomo", "Self check-in"), null),
                 ],
                 SafetyNotes: [new LocalizedTextInput("Rilevatore di fumo", "Smoke detector"), new LocalizedTextInput("Estintore", "Fire extinguisher")],
-                Tags: []),
+                Tags: [],
+                // NF-31: the listing in English, written by hand (the demo translates nothing by machine), so the headline and the description
+                // exist in the two languages a publication needs.
+                Translations: new Dictionary<string, ListingTextsInput>
+                {
+                    ["en"] = new ListingTextsInput(
+                        Title: "Lake villa with garden (demo)",
+                        Description: "Demo listing on the lake. Data, CIN and documents are invented and marked as test."),
+                }),
             Pois:
             [
                 new(PoiKind.Beach, "Lido di Como (demo)", "Como lido (demo)", PoiTravelMode.Walk, 6, CompassPoint.S, 450),
                 new(PoiKind.Food, "Trattoria sul lungolago (demo)", "Lakefront trattoria (demo)", PoiTravelMode.Walk, 3, CompassPoint.SE, 250),
                 new(PoiKind.Sight, "Funicolare per Brunate (demo)", "Brunate funicular (demo)", PoiTravelMode.Walk, 15, CompassPoint.NE, 1300),
                 new(PoiKind.Transport, "Stazione di Como San Giovanni (demo)", "Como San Giovanni station (demo)", PoiTravelMode.Car, 10, CompassPoint.W, 3200),
+            ],
+            // NF-27, NF-38: where the content of the house stands on three channels, one in each state the host meets most: live, to fix, and
+            // written on the channel itself. Invented: the demo is connected to no channel manager and nothing here is ever sent.
+            ChannelStates:
+            [
+                new("booking_xml", ChannelPublishStatus.Published, null, null, 3),
+                new("airbnb_xml", ChannelPublishStatus.ToFix, "demo_photos_below_minimum", "Servono almeno cinque foto per questo canale (dimostrazione).", 5),
+                new("expedia", ChannelPublishStatus.ManagedOnChannel, null, null, null),
+            ],
+            // NF-34, NF-35: the rooms of the house with their beds (three bedrooms and five beds, as the counters above say) and two
+            // length-of-stay discounts: a week, and a month.
+            Rooms:
+            [
+                new(PropertyRoomType.Bedroom, [new RoomBed(BedType.Double, 1)]),
+                new(PropertyRoomType.Bedroom, [new RoomBed(BedType.Double, 1)]),
+                new(PropertyRoomType.Bedroom, [new RoomBed(BedType.Single, 2)]),
+                new(PropertyRoomType.LivingRoom, [new RoomBed(BedType.SofaBed, 1)]),
+            ],
+            StayDiscounts:
+            [
+                new(7, 10m),
+                new(28, 20m),
             ],
             Bookings:
             [
@@ -280,6 +329,11 @@ public static class DemoShowcaseCatalog
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
                     CancellationReason: BookingCancellationReason.GuestRequested),
+                // NF-96: stays of the same months one year earlier (finished, three channels), so the comparison with the year before of the
+                // performance report and of the trend is never empty in the demo. Invented guests at example.com, like the rest.
+                new("anno-prima-diretta", "Chiara", "Neri", "ospite.demo.anno-prima-1@example.com", -351, 4, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Direct),
+                new("anno-prima-airbnb", "Pietro", "Gallo", "ospite.demo.anno-prima-2@example.com", -344, 3, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Airbnb),
+                new("anno-prima-booking", "Sofie", "Peeters", "ospite.demo.anno-prima-3@example.com", -325, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.BookingCom),
             ]),
         new(
             Key: "appartamento-brera",
@@ -321,6 +375,8 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("past-guest-roma", "Francesca", "Romano", "francesca.demo@example.com", -15, 5, BookingStatus.CheckedOut, Scenario.AlloggiatiRegistered),
+                // NF-96: the same months one year earlier (see the villa).
+                new("anno-prima-roma", "Elisa", "Fontana", "ospite.demo.anno-prima-4@example.com", -380, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Direct),
             ]),
         new(
             Key: "bilocale-navigli",
@@ -373,6 +429,8 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("airbnb-ical", "Thomas", "Schmidt", "thomas.demo@example.com", 7, 3, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.Airbnb),
+                // NF-96: the same months one year earlier (see the villa).
+                new("anno-prima-firenze", "Hugo", "Martin", "ospite.demo.anno-prima-5@example.com", -358, 3, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Airbnb),
             ]),
         new(
             Key: "loft-torino",
@@ -454,6 +512,8 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("booking-com-ical", "Marie", "Dubois", "marie.demo@example.com", 21, 5, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.BookingCom),
+                // NF-96: the same months one year earlier (see the villa).
+                new("anno-prima-amalfi", "Lucia", "Esposito", "ospite.demo.anno-prima-6@example.com", -344, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.BookingCom),
             ]),
     ];
 
@@ -579,7 +639,35 @@ public sealed record DemoPropertyTemplate(
     IReadOnlyList<DemoBookingTemplate> Bookings,
     DemoPropertyProfile? Profile = null,
     SitePropertyProfileInput? SiteProfile = null,
-    IReadOnlyList<DemoPoi>? Pois = null);
+    IReadOnlyList<DemoPoi>? Pois = null,
+    IReadOnlyList<DemoChannelState>? ChannelStates = null,
+    IReadOnlyList<DemoRoom>? Rooms = null,
+    IReadOnlyList<DemoStayDiscount>? StayDiscounts = null);
+
+/// <summary>
+/// A room of a demo property with its beds (NF-34): invented like the rest of the demo. The counters of the property (<c>Bedrooms</c>, <c>Beds</c>)
+/// are those the rooms give, as the rooms service sets them.
+/// </summary>
+public sealed record DemoRoom(PropertyRoomType Type, IReadOnlyList<RoomBed> Beds);
+
+/// <summary>A length-of-stay discount of a demo property (NF-35): from <paramref name="MinNights"/> nights, <paramref name="PercentOff"/> percent less on the lodging.</summary>
+public sealed record DemoStayDiscount(int MinNights, decimal PercentOff);
+
+/// <summary>
+/// The state of a demo property on one channel of the channel manager (NF-27, NF-38): invented like the rest of the demo. It exists so the list
+/// of the channels of the host is not empty and shows each state; nothing is sent, a demo property is connected to no channel manager.
+/// </summary>
+/// <param name="ChannelCode">The code of the portal, as <see cref="ListingChannelState.ChannelCode"/> keeps it.</param>
+/// <param name="Status">Where the content stands on the channel.</param>
+/// <param name="ErrorCode">A stable code of what is wrong (only for <see cref="ChannelPublishStatus.ToFix"/>).</param>
+/// <param name="ErrorMessage">What is wrong, in simple words (only for <see cref="ChannelPublishStatus.ToFix"/>).</param>
+/// <param name="LastSyncedHoursAgo">How many hours before the reset the channel last answered; <c>null</c> = never.</param>
+public sealed record DemoChannelState(
+    string ChannelCode,
+    ChannelPublishStatus Status,
+    string? ErrorCode,
+    string? ErrorMessage,
+    int? LastSyncedHoursAgo);
 
 /// <summary>
 /// A point of interest of a demo property (DB-11a): invented like the rest of the demo. The distance is stored through the same rounding as a host's
@@ -604,7 +692,8 @@ public sealed record DemoPropertyProfile(
     PartiesPolicy? Parties,
     TimeOnly? QuietHoursFrom,
     TimeOnly? QuietHoursTo,
-    decimal? ExtraGuestFeePerNight);
+    decimal? ExtraGuestFeePerNight,
+    ChildrenPolicy? Children = null);
 
 /// <summary>State a demo host invite is created in.</summary>
 public enum DemoHostInviteState
@@ -639,6 +728,12 @@ public sealed record DemoPropertyOwnerTemplate(
     decimal OwnershipSharePercent,
     decimal CommissionRate,
     string Scenario);
+
+/// <summary>
+/// The share of a demo property an owner holds (ADR-012-R4): <paramref name="SharePercent"/> of <paramref name="PropertyKey"/>, from the
+/// start of the showcase and without an end. The owner is a <see cref="DemoPropertyOwnerTemplate"/> by key.
+/// </summary>
+public sealed record DemoPropertyOwnershipTemplate(string OwnerKey, string PropertyKey, decimal SharePercent, string Scenario);
 
 /// <summary>A guest segment for demo campaigns (NF-24): condition is empty to match all consented guests.</summary>
 public sealed record DemoGuestSegmentTemplate(

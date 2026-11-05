@@ -32,6 +32,7 @@ public class BookingService(
     OnSiteRequestNotifier onSiteNotifier,
     IPricingAdapterService pricingAdapterService,
     TimeProvider? timeProvider = null,
+    IStayDiscountService? stayDiscountService = null,
     IDomainEventRecorder? domainEvents = null) : IBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -424,7 +425,9 @@ public class BookingService(
     /// be calculated. The property has no accommodation category (yet): only the rates for every accommodation of the
     /// comune apply. The night price for percentage rates is the price of that night, cleaning excluded (the nightly rate,
     /// or the rate with the surcharge on a weekend night). The payment options come from the free refund deadline of the
-    /// stay (<see cref="DirectBookingPaymentRules"/>, A3-16). With no surcharge, the default, the price is what it always was.
+    /// stay (<see cref="DirectBookingPaymentRules"/>, A3-16). The length-of-stay discount of the property (NF-35) is taken off the
+    /// lodging, and the base price is what remains plus the cleaning fee. With no surcharge and no discount, the default, the price
+    /// is what it always was.
     /// </summary>
     private async Task<DirectBookingQuote> PriceStayAsync(
         Property property,
@@ -448,8 +451,16 @@ public class BookingService(
         // of DB-03 applies to it); the nights without one cost the rate, plus the surcharge on a Friday or a Saturday.
         var hostPrices = await pricingAdapterService.GetAppliedNightlyPricesAsync(
             property.Id, checkInDate, checkInDate.AddDays(nights), cancellationToken);
-        var lodging = StayPricing.Lodging(checkInDate, nights, property.NightlyRate, property.WeekendSurchargePercent, hostPrices);
-        var basePrice = lodging.Total + property.CleaningFee;
+
+        // NF-35: the length-of-stay discounts of the property, read once for this quote. Every path that prices a stay (the guest's quote and
+        // checkout, the host's quote and manual booking) comes through here, so they all give the same price, to the cent: the discount is
+        // taken off the lodging only, never off the cleaning fee or the tourist tax.
+        IReadOnlyList<StayDiscountTier> discountTiers = [];
+        if (stayDiscountService is not null)
+            discountTiers = await stayDiscountService.GetForPricingAsync(property.Id, cancellationToken);
+
+        var lodging = StayPricing.Lodging(checkInDate, nights, property.NightlyRate, property.WeekendSurchargePercent, hostPrices, discountTiers);
+        var basePrice = lodging.NetTotal + property.CleaningFee;
         var touristTax = await touristTaxQuoteService.QuoteAsync(
             TouristTaxComune.ForProperty(property),
             new TouristTaxStay(

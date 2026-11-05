@@ -2083,6 +2083,21 @@
   <data name="ReportInvalidFormat" xml:space="preserve">
     <value>Formato non valido: usa format=json oppure format=csv.</value>
   </data>
+  <data name="ReportInvalidGroupBy" xml:space="preserve">
+    <value>Raggruppamento non valido: usa groupBy=none, groupBy=property oppure groupBy=channel.</value>
+  </data>
+  <data name="ReportInvalidGroupByOwner" xml:space="preserve">
+    <value>Raggruppamento non valido: usa groupBy=none oppure groupBy=property.</value>
+  </data>
+  <data name="ReportInvalidCompare" xml:space="preserve">
+    <value>Confronto non valido: usa compare=none oppure compare=previousYear.</value>
+  </data>
+  <data name="ReportInvalidBucket" xml:space="preserve">
+    <value>Intervallo non valido: usa bucket=auto, bucket=week oppure bucket=month.</value>
+  </data>
+  <data name="OwnerAnonymizedLabel" xml:space="preserve">
+    <value>Proprietario anonimizzato</value>
+  </data>
   <data name="CsvTooManyRows" xml:space="preserve">
     <value>Il file avrebbe più di {0} righe: restringi il periodo o scegli un solo immobile.</value>
   </data>
@@ -3955,6 +3970,45 @@
   </data>
   <data name="PropertyPoiMinutesInvalid" xml:space="preserve">
     <value>I minuti devono essere compresi tra {0} e {1}.</value>
+  </data>
+  <data name="PropertySiteProfileLanguageUnknown" xml:space="preserve">
+    <value>La lingua non è tra quelle disponibili per l'annuncio.</value>
+  </data>
+  <data name="PropertyListingDataPayloadTooLong" xml:space="preserve">
+    <value>Il contenuto inviato è troppo lungo.</value>
+  </data>
+  <data name="PropertyRoomsTooMany" xml:space="preserve">
+    <value>Puoi indicare al massimo {0} stanze.</value>
+  </data>
+  <data name="PropertyRoomsTypeInvalid" xml:space="preserve">
+    <value>Il tipo di stanza non è valido.</value>
+  </data>
+  <data name="PropertyRoomsBedTypeInvalid" xml:space="preserve">
+    <value>Il tipo di letto non è valido.</value>
+  </data>
+  <data name="PropertyRoomsBedCountInvalid" xml:space="preserve">
+    <value>Per ogni tipo di letto, in una stanza, indica da {0} a {1} letti.</value>
+  </data>
+  <data name="PropertyRoomsBedsTotalInvalid" xml:space="preserve">
+    <value>L'alloggio deve avere da {0} a {1} letti in tutto.</value>
+  </data>
+  <data name="PropertyRoomsDuplicateId" xml:space="preserve">
+    <value>Una stanza è indicata due volte.</value>
+  </data>
+  <data name="PropertyRoomNotFound" xml:space="preserve">
+    <value>La stanza non esiste in questo immobile.</value>
+  </data>
+  <data name="PropertyStayDiscountsTooMany" xml:space="preserve">
+    <value>Puoi indicare al massimo {0} sconti per soggiorno lungo.</value>
+  </data>
+  <data name="PropertyStayDiscountsMinNightsInvalid" xml:space="preserve">
+    <value>Le notti minime devono essere comprese tra {0} e {1}.</value>
+  </data>
+  <data name="PropertyStayDiscountsPercentInvalid" xml:space="preserve">
+    <value>Lo sconto deve essere maggiore di 0 e al massimo del {0}%.</value>
+  </data>
+  <data name="PropertyStayDiscountsDuplicate" xml:space="preserve">
+    <value>Due sconti hanno le stesse notti minime.</value>
   </data>
   <data name="ServiceRequestThreadClosed" xml:space="preserve">
     <value>Questa richiesta è chiusa: non si possono più aggiungere messaggi.</value>

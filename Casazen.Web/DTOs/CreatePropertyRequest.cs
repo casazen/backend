@@ -169,6 +169,9 @@ public class CreatePropertyRequest
     /// <summary>Parties and events (<c>No</c>, <c>OnRequest</c>); left out = not set.</summary>
     public PartiesPolicy? PartiesPolicy { get; set; }
 
+    /// <summary>Children (<c>No</c>, <c>OnRequest</c>, <c>Yes</c>): the structured rule the channels receive (NF-37); left out = not set.</summary>
+    public ChildrenPolicy? ChildrenPolicy { get; set; }
+
     /// <summary>Quiet hours start, <c>HH:mm</c>; sent together with <see cref="QuietHoursTo"/> or not at all (422 <c>property_quiet_hours_incomplete</c>).</summary>
     public TimeOnly? QuietHoursFrom { get; set; }
 
@@ -258,6 +261,7 @@ public class CreatePropertyRequest
         SmokingPolicy = SmokingPolicy,
         PetsPolicy = PetsPolicy,
         PartiesPolicy = PartiesPolicy,
+        ChildrenPolicy = ChildrenPolicy,
         QuietHoursFrom = QuietHoursFrom,
         QuietHoursTo = QuietHoursTo,
         ExtraGuestFeePerNight = ExtraGuestFeePerNight,
