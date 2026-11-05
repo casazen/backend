@@ -1,7 +1,10 @@
 using System.Data;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -29,7 +32,8 @@ public sealed class CheckoutHoldExpiryService(
     OnSiteRequestNotifier onSiteNotifier,
     IConfiguration configuration,
     ILogger<CheckoutHoldExpiryService> logger,
-    TimeProvider? timeProvider = null) : ICheckoutHoldExpiryService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null) : ICheckoutHoldExpiryService
 {
     private const string CanceledStatus = "canceled";
     private const string ResourceMissingCode = "resource_missing";
@@ -210,6 +214,8 @@ public sealed class CheckoutHoldExpiryService(
                         ? OnSiteRequests.ExpiryReason(booking)
                         : BookingCancellationReason.CheckoutHoldExpired;
                     ExpireBooking(booking, reason);
+                    // The hold, or the request, ended by the rules of the checkout: the cancellation is the system's, saved with it.
+                    await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingCancelled, booking, BookingEventOrigin.System, cancellationToken);
                     await db.SaveChangesAsync(cancellationToken);
                     if (transaction is not null)
                         await transaction.CommitAsync(cancellationToken);
@@ -574,6 +580,9 @@ public sealed class CheckoutHoldExpiryService(
         foreach (var payment in booking.Payments)
             db.Entry(payment).State = EntityState.Detached;
         db.Entry(booking).State = EntityState.Detached;
+
+        // Nor the event of the cancellation that did not happen (ADR-022-R1).
+        BookingEvents.Withdraw(db, booking.Id);
     }
 
     private async Task<IDbContextTransaction?> BeginTransactionAsync(CancellationToken cancellationToken)

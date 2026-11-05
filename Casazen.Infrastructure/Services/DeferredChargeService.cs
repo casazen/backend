@@ -1,8 +1,10 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -86,7 +88,8 @@ public sealed class DeferredChargeService(
     BookingNotifier notifier,
     IConfiguration configuration,
     ILogger<DeferredChargeService> logger,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null)
 {
     private const string PaymentIntentUnexpectedStateCode = "payment_intent_unexpected_state";
 
@@ -483,6 +486,10 @@ public sealed class DeferredChargeService(
         booking.CancelledAt = now;
         booking.CancellationReason = BookingCancellationReason.DeferredPaymentNotCompleted;
         booking.UpdatedAt = now;
+
+        // Cancelled by the rules of the deferred payment: the system's cancellation, saved by the save of the booking's turn (a failed
+        // turn clears the context, event included).
+        await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingCancelled, booking, BookingEventOrigin.System, cancellationToken);
         logger.LogInformation(
             "Booking {BookingId} cancelled: deferred payment not completed since {FailedAt}; dates released",
             booking.Id,

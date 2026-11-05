@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -102,6 +103,8 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
             (await HasActiveOverlapAsync(booking.PropertyId, booking.CheckInDate.Date, booking.CheckOutDate.Date) ||
              await HasBlockingCalendarBlockAsync(booking)))
         {
+            // The booking is refused: the events its caller recorded for it go with it, not into the next save of this context.
+            BookingEvents.Withdraw(context, booking.Id);
             throw new InvalidOperationException(PropertyUnavailableMessage);
         }
 
@@ -128,6 +131,7 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
                 pendingCutoff: null,
                 excludeBookingId: booking.Id))
         {
+            BookingEvents.Withdraw(context, booking.Id);
             throw new InvalidOperationException(PropertyUnavailableMessage);
         }
 
@@ -173,6 +177,11 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         var guestId = booking.GuestId;
         context.Payments.RemoveRange(booking.Payments);
         context.Bookings.Remove(booking);
+        // The attempt was never a booking (BK-18): the events of its creation, not published yet, go with it.
+        context.OutboxEvents.RemoveRange(await context.OutboxEvents
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .Where(e => e.OrgId == booking.OrgId && e.EntityId == bookingId && e.DispatchedAt == null)
+            .ToListAsync());
         await context.SaveChangesAsync();
 
         // IgnoreQueryFilters: a reference from any org keeps the guest, as the Restrict foreign keys count every row.

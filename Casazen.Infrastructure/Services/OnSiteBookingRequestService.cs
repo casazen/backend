@@ -1,9 +1,12 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
@@ -28,7 +31,8 @@ public sealed class OnSiteBookingRequestService(
     BookingNotifier bookingNotifier,
     IConfiguration configuration,
     ILogger<OnSiteBookingRequestService> logger,
-    TimeProvider? timeProvider = null) : IOnSiteBookingRequestService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null) : IOnSiteBookingRequestService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -129,6 +133,8 @@ public sealed class OnSiteBookingRequestService(
             booking.ConfirmedAt = now;
             booking.RequestExpiresAt = null;
             booking.UpdatedAt = now;
+            // The host's acceptance: the confirmation is recorded by the save that confirms the booking (ADR-022-R1).
+            await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingConfirmed, booking, BookingEventOrigin.Host, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
@@ -163,6 +169,8 @@ public sealed class OnSiteBookingRequestService(
                 payment.UpdatedAt = now;
             }
 
+            // A request turned down is a cancellation made by the rules of the request, not a cancellation of a stay: origin System.
+            await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingCancelled, booking, BookingEventOrigin.System, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
