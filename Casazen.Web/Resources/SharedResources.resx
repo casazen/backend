@@ -4139,4 +4139,19 @@
   <data name="OctorateWebhookSecretInvalid" xml:space="preserve">
     <value>L'indirizzo del webhook non è valido.</value>
   </data>
+  <data name="OctorateStateInvalid" xml:space="preserve">
+    <value>La richiesta di collegamento non è più valida (scaduta, già usata o avviata da un altro account). Ricomincia il collegamento del channel manager.</value>
+  </data>
+  <data name="OctorateExchangeFailed" xml:space="preserve">
+    <value>Il channel manager non ha confermato l'autorizzazione. Ricomincia il collegamento.</value>
+  </data>
+  <data name="OctorateConnectionNeedsWholeOrg" xml:space="preserve">
+    <value>Il collegamento del channel manager riguarda tutti gli immobili dell'organizzazione: può gestirlo solo chi li vede tutti.</value>
+  </data>
+  <data name="OctorateCodeRequired" xml:space="preserve">
+    <value>Manca il codice di autorizzazione restituito dal channel manager.</value>
+  </data>
+  <data name="OctorateStateRequired" xml:space="preserve">
+    <value>Manca lo stato della richiesta di collegamento restituito dal channel manager.</value>
+  </data>
 </root>

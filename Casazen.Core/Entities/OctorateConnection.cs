@@ -16,8 +16,9 @@ namespace Casazen.Core.Entities;
 /// <c>EncryptedColumns</c> (purpose <c>Casazen.Octorate.OAuth</c>) writes the payload to the column, so no code encrypts or
 /// decrypts by hand and the database never holds a token in clear (ADR-023-R1). A token is never logged, never returned by an
 /// endpoint and never put in an exception message (ADR-023-R13).</para>
-/// <para>The refresh token arrives once, with the first authorization (or the creation of a property): it is kept until the host
-/// disconnects or Octorate refuses it. A refresh gives a new access token and no new refresh token.</para>
+/// <para>The refresh token arrives once, with the first authorization (or the creation of a property): it is kept until Octorate
+/// refuses it, also while the host is disconnected, because the reconnection reuses it. A refresh gives a new access token and no new
+/// refresh token.</para>
 /// </remarks>
 [Table("OctorateConnections")]
 public class OctorateConnection : ITenantOwned
@@ -47,7 +48,10 @@ public class OctorateConnection : ITenantOwned
     /// <summary>The access token, in clear in memory and encrypted in the column (no length: the payload is longer than the text).</summary>
     public string? EncryptedAccessToken { get; set; }
 
-    /// <summary>The refresh token, in clear in memory and encrypted in the column; empty once the host disconnects.</summary>
+    /// <summary>
+    /// The refresh token, in clear in memory and encrypted in the column. Kept, unused, while the host is disconnected (Octorate gives it
+    /// only with the first authorization, the reconnection reuses it); empty once Octorate refuses it.
+    /// </summary>
     public string? EncryptedRefreshToken { get; set; }
 
     /// <summary>When the access token expires (UTC), as Octorate said with the token; <c>null</c> when not known (refreshed before use).</summary>

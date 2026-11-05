@@ -33,8 +33,10 @@ public interface IOctorateTokenService
     Task<string> RefreshRejectedTokenAsync(Guid orgId, string rejectedAccessToken, CancellationToken ct);
 
     /// <summary>
-    /// Forgets the tokens of the org's connection and marks it <c>Disconnected</c>: no call is made for the org until the host gives the
-    /// consent again. The mappings and the data imported from Octorate are kept. Nothing happens when the org has no connection.
+    /// Marks the org's connection <c>Disconnected</c> and forgets its access token: no call is made for the org until the host gives the
+    /// consent again. The refresh token stays encrypted and unused, because Octorate gives it only with the first authorization and the
+    /// reconnection reuses it; it is forgotten when Octorate refuses it. The mappings and the data imported from Octorate are kept.
+    /// Nothing happens when the org has no connection.
     /// </summary>
     /// <exception cref="UnauthorizedAccessException">An authenticated request disconnects another org.</exception>
     Task DisconnectAsync(Guid orgId, CancellationToken ct);

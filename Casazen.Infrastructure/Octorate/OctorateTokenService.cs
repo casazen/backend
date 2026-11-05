@@ -117,11 +117,17 @@ public sealed class OctorateTokenService(
         if (connection is null)
             return;
 
-        Forget(connection);
+        // The access token goes; the refresh token stays encrypted and unused while disconnected, because Octorate gives it only with
+        // the first authorization: the reconnection (the host sent to the consent page again) reuses it. A refusal of Octorate
+        // forgets it (DisconnectRefusedAsync).
+        connection.EncryptedAccessToken = null;
+        connection.TokenExpiresAt = null;
+        connection.Status = OctorateConnectionStatus.Disconnected;
+        connection.UpdatedAt = Now();
         await db.SaveChangesAsync(ct);
 
         logger.LogInformation(
-            "Octorate connection {ConnectionId} of org {OrgId} disconnected, tokens forgotten", connection.Id, orgId);
+            "Octorate connection {ConnectionId} of org {OrgId} disconnected, access token forgotten", connection.Id, orgId);
     }
 
     /// <summary>

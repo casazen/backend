@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
@@ -25,11 +26,12 @@ namespace Casazen.Web.Controllers;
 /// to a CasaZen property yet, or another partner's) is acknowledged with 200 and recorded nowhere, so Octorate does not retry it for two
 /// days; only the outcome is logged, not the code.</para>
 /// <para>The secret is part of the path: the request logs must not print the path of <c>/api/webhooks/octorate/*</c>
-/// (docs/runbooks/octorate-webhooks.md).</para>
+/// (docs/runbooks/octorate-webhooks.md). Behind <c>Features:OctorateConnector</c>: 404 while it is off, before anything is read.</para>
 /// </remarks>
 [ApiController]
 [Route("api/webhooks/octorate/{secret}")]
 [AllowAnonymous]
+[FeatureGate(FeatureFlags.OctorateConnector)]
 public sealed class OctorateWebhookController(
     OctorateWebhookVerifier verifier,
     AppDbContext db,

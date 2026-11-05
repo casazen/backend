@@ -1,7 +1,8 @@
 # Runbook: Octorate webhooks
 
 Task E02/F01/US01/T03 (ADR-023-R7, ADR-022-R19). How Octorate tells CasaZen that something changed, how the call is
-authenticated, and what CasaZen does with it.
+authenticated, and what CasaZen does with it. The endpoint sits behind `Features__OctorateConnector` (E02/F01/US02/T01): while
+the flag is off it answers 404, like a route that does not exist, before anything of the call is read.
 
 ## 1. What Octorate sends
 

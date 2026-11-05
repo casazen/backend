@@ -105,3 +105,17 @@ public sealed class OctorateRateLimitException(int? octorateStatusCode)
 /// <summary>Octorate refused the request itself (400, 405, 406, 415, 422 and the other 4xx not mapped above): 502.</summary>
 public sealed class OctorateRequestRejectedException(int octorateStatusCode)
     : OctorateException("octorate_request_rejected", "OctorateRequestRejected", StatusCodes.Status502BadGateway, octorateStatusCode);
+
+/// <summary>
+/// The <c>state</c> of a consent is not valid (E02/F01/US02/T01): unknown, already used, expired, or bound to another org, user or
+/// redirect address. Always the same 400, whatever failed, so the answer tells nothing about which check refused it.
+/// </summary>
+public sealed class OctorateOAuthStateInvalidException()
+    : OctorateException("octorate_state_invalid", "OctorateStateInvalid", StatusCodes.Status400BadRequest, null);
+
+/// <summary>
+/// Octorate did not exchange the consent code for tokens (E02/F01/US02/T01): a code that is not valid or expired (403
+/// <c>OAuthGrant</c>), no answer, or an answer without the tokens. 502: the host starts the consent again.
+/// </summary>
+public sealed class OctorateExchangeFailedException(int? octorateStatusCode, Exception? innerException = null)
+    : OctorateException("octorate_exchange_failed", "OctorateExchangeFailed", StatusCodes.Status502BadGateway, octorateStatusCode, innerException);

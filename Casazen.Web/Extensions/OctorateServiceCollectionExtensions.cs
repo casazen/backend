@@ -1,5 +1,8 @@
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Octorate;
+using Casazen.Web.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Extensions;
 
@@ -26,6 +29,15 @@ public static class OctorateServiceCollectionExtensions
 
         // The webhook (E02/F01/US01/T03): the secret of the address, compared in constant time; the controller needs no registration.
         services.AddSingleton<OctorateWebhookVerifier>();
+
+        // The consent and the connection (E02/F01/US02/T01): the Octorate options, validated at startup with the flag on, the
+        // single-use states and the connect service. The code exchange uses the HttpClient of the token service.
+        services.AddOptions<OctorateOptions>()
+            .BindConfiguration(OctorateOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<OctorateOptions>, OctorateOptionsValidator>();
+        services.AddScoped<OctorateOAuthStateService>();
+        services.AddScoped<IOctorateConnectService, OctorateConnectService>();
 
         return services;
     }
