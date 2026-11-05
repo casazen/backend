@@ -138,6 +138,9 @@ builder.Services.AddCasazenLongRentLeaseOperations(builder.Configuration);
 // OTA partner adapters with resilience patterns: registered only with Features:OtaPartnerApi on (D10, FD-20)
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 
+// What the booking events start by themselves: the cleaning and special-request "To do", the alert of a booking from a channel (E08/F06)
+builder.Services.AddCasazenBookingOperations();
+
 // Localization — Italian (default) and English.
 // No ResourcesPath: resource names follow the marker type's namespace, so IStringLocalizer<SharedResources>
 // (Casazen.Web.Resources.SharedResources) reads Resources/SharedResources.resx and SharedResources.en.resx.

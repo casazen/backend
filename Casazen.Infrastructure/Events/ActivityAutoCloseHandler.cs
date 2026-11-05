@@ -30,11 +30,17 @@ public sealed class ActivityAutoCloseHandler(
     IInternalActivityService activities,
     ILogger<ActivityAutoCloseHandler> logger) : IEventHandler<DomainEvent>
 {
-    /// <summary>The types of item each event satisfies: the check-in done, the check-out done, the Alloggiati receipt arrived.</summary>
+    /// <summary>
+    /// The types of item each event satisfies: the check-in done (the stay arrived, so a special request of the booking has been read
+    /// or lost its purpose), the check-out done, the booking cancelled (nothing to read any more), the property declared ready (the
+    /// cleaning of the stay is settled), the Alloggiati receipt arrived.
+    /// </summary>
     internal static readonly IReadOnlyDictionary<DomainEventType, ActivityType[]> Rules = new Dictionary<DomainEventType, ActivityType[]>
     {
-        [DomainEventType.CheckInCompleted] = [ActivityType.CheckInPending],
+        [DomainEventType.CheckInCompleted] = [ActivityType.CheckInPending, ActivityType.BookingSpecialRequest],
         [DomainEventType.CheckOutCompleted] = [ActivityType.CheckOutPending],
+        [DomainEventType.BookingCancelled] = [ActivityType.BookingSpecialRequest],
+        [DomainEventType.PropertyReadyDeclared] = [ActivityType.CleaningDue],
         [DomainEventType.AlloggiatiReceiptArrived] = [ActivityType.AlloggiatiDeadline, ActivityType.ReceiptToRetrieve],
     };
 

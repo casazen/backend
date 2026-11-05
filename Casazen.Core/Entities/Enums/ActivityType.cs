@@ -47,4 +47,16 @@ public enum ActivityType
 
     /// <summary>The connection to the channel manager was lost.</summary>
     ReconnectChannelManager = 12,
+
+    /// <summary>
+    /// A stay ended and nobody asked for a cleaning: the property has to be declared ready or a cleaning requested before the
+    /// next arrival (E08/F06/US01/T02). About the booking that ended; closes when the property is declared ready.
+    /// </summary>
+    CleaningDue = 13,
+
+    /// <summary>
+    /// A booking came with a special request of the guest, to read before the arrival (E08/F06/US01/T02). About the booking; closes
+    /// at the check-in or when the booking is cancelled.
+    /// </summary>
+    BookingSpecialRequest = 14,
 }
