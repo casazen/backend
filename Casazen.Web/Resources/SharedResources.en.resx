@@ -4175,4 +4175,10 @@
   <data name="OctorateMappingRefreshConflict" xml:space="preserve">
     <value>The channel manager listings are already being refreshed: try again in a moment.</value>
   </data>
+  <data name="OctorateMappingPropertyRequired" xml:space="preserve">
+    <value>Say which property the listing is.</value>
+  </data>
+  <data name="OctorateRoomRequired" xml:space="preserve">
+    <value>Say which room of the listing it is.</value>
+  </data>
 </root>

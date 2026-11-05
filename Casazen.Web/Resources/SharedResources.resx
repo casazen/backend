@@ -4175,4 +4175,10 @@
   <data name="OctorateMappingRefreshConflict" xml:space="preserve">
     <value>Gli annunci del channel manager si stanno già aggiornando: riprova tra qualche istante.</value>
   </data>
+  <data name="OctorateMappingPropertyRequired" xml:space="preserve">
+    <value>Indica a quale immobile corrisponde l'annuncio.</value>
+  </data>
+  <data name="OctorateRoomRequired" xml:space="preserve">
+    <value>Indica la camera dell'annuncio.</value>
+  </data>
 </root>
