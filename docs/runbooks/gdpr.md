@@ -268,3 +268,24 @@ Checks (test tenant): create a guest account in the app, verify the email, book 
 longer lists the user; `select count(*) from "Users" where "Id" = '<sub>';` is 0; the booking and its guest are still there. With the same account
 holding a host org: 409 and the user still in Auth0. With the Management API credentials removed from Railway: 502 `auth0_management_not_configured` and
 the user still in both.
+
+## 12. Drafts of the wizards (ADR-024, E01/F02)
+
+A person who fills a wizard (the guest data of a booking, the listing, the check-in...) has the progress saved on the server at every step, so it resumes on any device
+and never loses what it typed. The draft is the person's own: one per org, person, wizard and entity (`WizardDrafts`), read, saved and discarded only by that person
+through `api/wizards/{type}/draft` ([TECHNICAL.md](../TECHNICAL.md)); the draft of another person or of another org is a 404.
+
+| Data | Where | Protection |
+|---|---|---|
+| the typed data **without** the fields that name a person | `WizardDrafts.DraftJson` (`jsonb`) | not encrypted; never holds a personal field |
+| the fields that name a person or hold a secret (any case, at any depth of the data, the whole value under such a name): `guestName`, `guestEmail`, `guestPhone`, `guestFiscalCode`, `emergencyContact`; `firstName`, `lastName`, `fullName`, `surname`, `givenNames`, `email`, `marketingEmail`, `phone`, `phoneNumber`, `address`, `residence`; `fiscalCode`, `iban`; `birthDate`, `dateOfBirth`, `birthPlace`, `placeOfBirth`, `birthComuneName`, `birthComuneCode`, `birthProvince`, `birthCountryName`, `birthCountryCode`, `citizenship`, `citizenshipName`, `citizenshipCode`, `nationality`; `documentNumber`, `documentType`, `documentTypeCode`, `documentIssueDate`, `documentExpiryDate`, `documentIssuePlace`, `documentIssuePlaceName`, `documentIssuePlaceCode`, `documentIssuingCountry`; `username`, `password`, `wsKey`, `apiKey`, `apiSecret` (`WizardDraftPiiFields.PII_FIELD_NAMES`, pinned by `WizardDraftPiiTests`. A closed list: a name that is not in it stays in clear in `DraftJson`, so a wizard that asks for another identifier or secret adds its name there. The mobile app mirrors it) | `WizardDrafts.EncryptedFieldsJson` | encrypted at rest (`Casazen.WizardDraft.PII`, the one mechanism of `EncryptedColumns`), read back in clear only for the owner of the draft, in no log, e-mail or push |
+
+| Trigger | What happens | Code |
+|---|---|---|
+| Retention | Nightly job `gdpr-data-retention`: a draft past `ExpiresAt` (**30 days from its last save**, a fixed rule of the product, no configuration) loses its data (`DraftJson = '{}'`, `EncryptedFieldsJson = NULL`) and its person (`UserId = ''`). **The row is never deleted** (audit trail: org, wizard, entity, version, instants). Idempotent: an anonymized row has no user, so a second run finds nothing. It is one `UPDATE` that never reads the drafts, so a draft whose Data Protection keys are lost or rotated is anonymized like the others and never stops the night. Until the night it runs, an expired draft is already gone for the person (not shown, rewritten by the next save) | `WizardDraftRetentionService` |
+| The person discards it | `DELETE api/wizards/{type}/draft`: the same anonymization at once | `WizardDraftService.DeleteDraftAsync` |
+
+Verification after deploy: Railway logs at 03:00 UTC show `GDPR retention: wizard drafts applied: N drafts anonymized` and `GDPR wizard draft retention done`.
+Database: `select count(*) from "WizardDrafts" where "ExpiresAt" < now() and "UserId" <> '';` is 0 once the job has run. The logs carry counts only, never the content of a draft.
+
+Not part of the erasure of a guest (art. 17): a draft belongs to the host user who typed it, not to a guest record; the guest data typed in it is anonymized with the draft, within 30 days of the last save at most.

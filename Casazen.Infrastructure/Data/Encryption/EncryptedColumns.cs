@@ -92,6 +92,13 @@ public static class EncryptedColumns
     public const string DocumentImagePurpose = "Casazen.DocumentImage";
 
     /// <summary>
+    /// Purpose of the personal half of a wizard draft (ADR-024-R2): <see cref="WizardDraft.EncryptedFieldsJson"/>, the JSON with the fields that
+    /// name a person (guest name, e-mail, phone, fiscal code, document, birth, address...) split off the data the person typed. Nothing is
+    /// searched in it. Never change it: stored drafts would become unreadable.
+    /// </summary>
+    public const string WizardDraftPiiPurpose = "Casazen.WizardDraft.PII";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -184,6 +191,10 @@ public static class EncryptedColumns
         new EncryptedEntity<PropertyAccessCode>(
             PropertyAccessCodeEncryptionPurpose.Purpose,
             nameof(PropertyAccessCode.EncryptedCode)),
+        // ADR-024: the personal half of a wizard draft (E01/F02/US01/T02).
+        new EncryptedEntity<WizardDraft>(
+            WizardDraftPiiPurpose,
+            nameof(WizardDraft.EncryptedFieldsJson)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

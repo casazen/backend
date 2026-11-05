@@ -75,4 +75,7 @@ public static class TestDataEntities
     /// deletes it by its marker before it deletes the stays and the houses.
     /// </summary>
     public const string PopupAlert = "PopupAlert";
+
+    /// <summary>A saved draft of a wizard (<see cref="WizardDraft"/>): the demo host's, written by the showcase and deleted by its reset.</summary>
+    public const string WizardDraft = "WizardDraft";
 }

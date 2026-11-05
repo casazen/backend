@@ -333,7 +333,10 @@ token, one writes and the other finds the work done (4), whichever read the row 
 
 **"Empty" (`IOrgEmptinessChecker`).** The org is a host org, on Starter, with no Stripe customer, subscription, Connect
 account, custom domain, subdomain or branding; the person is the only user and the only member; and no row in **any
-tenant-owned table**, except the consents, the signup attribution and the previous slugs the onboarding itself writes.
+tenant-owned table**, except the consents, the signup attribution and the previous slugs the onboarding itself writes, and the
+drafts of the wizards (`WizardDraft`, ADR-024: the progress of a half-filled form is not use of the org; the rows are anonymized
+after 30 days and never deleted, so they would otherwise refuse the move for good). The drafts of the org that is left stay with it
+and are anonymized by the nightly retention like any other.
 The tables are read from the EF model (`ITenantOwned`), so a new tenant table blocks the move from the day it exists;
 `OrgEmptinessCheckerTests` fails if one cannot be read. Any doubt is "not empty". An invitation the person sent from that org
 counts as data: whoever invited somebody cannot leave.

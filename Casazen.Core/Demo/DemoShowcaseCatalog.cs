@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-05.2";
+    public const string Version = "2026-11-05.3";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -72,6 +72,7 @@ public static class DemoShowcaseCatalog
         public const string ListingChannelStates = "listing-channel-states";
         public const string PropertyRoomsAndDiscounts = "property-rooms-and-discounts";
         public const string PopupAlerts = "popup-alerts";
+        public const string WizardDrafts = "wizard-drafts";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -117,6 +118,7 @@ public static class DemoShowcaseCatalog
         Scenario.ListingChannelStates,
         Scenario.PropertyRoomsAndDiscounts,
         Scenario.PopupAlerts,
+        Scenario.WizardDrafts,
     ];
 
     /// <summary>
@@ -612,6 +614,22 @@ public static class DemoShowcaseCatalog
         // Snoozed: the host chose «Remind me later» on the house still in draft; the alert comes back in three hours.
         new("bozza-da-completare", AlertType.ComplianceIssue, DraftKey, null, AlertUrgency.Normal, 3, Scenario.PopupAlerts),
     ];
+
+    /// <summary>
+    /// Wizard drafts demo (ADR-024): one half-filled draft of the demo host (a manual booking left at the guest step), so that the screens
+    /// that resume a draft have one to show. The typed data is invented (the guest is <c>@example.com</c> and the name says TEST); the
+    /// reset splits it as the service does, so the guest's name, e-mail and phone are stored encrypted and the rest in clear. Saved two days
+    /// ago: inside the 30 days a draft is kept, so the retention does not take it the night after a reset.
+    /// </summary>
+    public static IReadOnlyList<DemoWizardDraftTemplate> WizardDrafts { get; } =
+    [
+        new(
+            "prenotazione-a-meta",
+            WizardType.BookingCreate,
+            """{"step":"ospite","nights":3,"guestCount":2,"guestName":"Ospite Demo (TEST)","guestEmail":"ospite.demo.bozza@example.com","guestPhone":"+390000000000","notes":"Bozza di dimostrazione: prenotazione a mano lasciata a metà."}""",
+            -2,
+            Scenario.WizardDrafts),
+    ];
 }
 
 public sealed record DemoPlace(string City, string IstatCode, string RegionCode, string PostalCode, string Address);
@@ -900,4 +918,16 @@ public sealed record DemoPopupAlertTemplate(
     string? BookingKey,
     AlertUrgency Urgency,
     int? SnoozedForHours,
+    string Scenario);
+
+/// <summary>
+/// A saved draft of the demo host (ADR-024): <paramref name="DataJson"/> is what the person typed in the wizard, a JSON object with
+/// the personal fields still in it (the seeding splits them off, as the service does). Saved <paramref name="SavedOffsetDays"/> days
+/// from today (negative: in the past, inside the 30 days a draft is kept). The demo host has one draft per wizard of a new entity.
+/// </summary>
+public sealed record DemoWizardDraftTemplate(
+    string Key,
+    WizardType Type,
+    string DataJson,
+    int SavedOffsetDays,
     string Scenario);
