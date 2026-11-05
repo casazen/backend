@@ -53,6 +53,15 @@ public class PropertyListingDataProofTests
 
         await using (var seed = new AppDbContext(options, new FixedTenantContext(orgA)))
         {
+            seed.Orgs.Add(new OrgEntity
+            {
+                Id = orgA,
+                Name = "Org A",
+                Slug = $"org-{orgA:N}",
+                DisplayName = "Org A",
+                ContactEmail = "org-a@example.com",
+                PlanTier = PlanTier.Pro,
+            });
             seed.Properties.Add(property);
             await seed.SaveChangesAsync();
         }
