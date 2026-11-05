@@ -24,6 +24,9 @@ public static class OctorateServiceCollectionExtensions
         services.AddScoped<IOctorateOrgScope, OctorateOrgScope>();
         services.AddSingleton<OctorateRateLimiter>();
 
+        // The webhook (E02/F01/US01/T03): the secret of the address, compared in constant time; the controller needs no registration.
+        services.AddSingleton<OctorateWebhookVerifier>();
+
         return services;
     }
 }

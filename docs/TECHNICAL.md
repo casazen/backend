@@ -995,6 +995,7 @@ never a link to the dashboard.
 | `POST` | `/webhooks/stripe/connect` | Anonymous (signature) | Stripe Connect webhook; processed once per event id |
 | `POST` | `/webhooks/ota/{platform}` | Anonymous | OTA inbound webhook |
 | `POST` | `/webhooks/esign` | Anonymous | E-sign provider webhook |
+| `POST` | `/api/webhooks/octorate/{secret}` | Anonymous (secret in the address) | Octorate webhook (E02/F01/US01/T03): Octorate signs nothing, so the secret of the address is compared in constant time with `Octorate:WebhookSecret` (401 otherwise, 500 when not configured); only the event name, the accommodation and the object id are read from the body, the org is resolved from the confirmed mapping of the accommodation and one `OctorateWebhookReceived` event per org is written to the outbox (200 at once, ids only); an accommodation with no confirmed mapping is acknowledged with 200 and recorded nowhere (`docs/runbooks/octorate-webhooks.md`) |
 | `GET` | `/api/health/live` | Anonymous | Liveness: the process answers (always 200) |
 | `GET` | `/api/health/ready` | Anonymous | Readiness: database, Hangfire, email, storage, Stripe, Auth0; 200 healthy/degraded, 503 unhealthy; `commit` of the build (`docs/runbooks/health-checks.md`) |
 | `GET` | `/api/health` | Anonymous | Same as `/api/health/ready` |

@@ -4133,4 +4133,10 @@
   <data name="OctorateRequestRejected" xml:space="preserve">
     <value>Il channel manager ha rifiutato la richiesta.</value>
   </data>
+  <data name="OctorateWebhookNotConfigured" xml:space="preserve">
+    <value>Il webhook del channel manager non è configurato su questo ambiente.</value>
+  </data>
+  <data name="OctorateWebhookSecretInvalid" xml:space="preserve">
+    <value>L'indirizzo del webhook non è valido.</value>
+  </data>
 </root>

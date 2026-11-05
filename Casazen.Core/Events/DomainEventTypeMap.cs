@@ -26,7 +26,8 @@ public static class DomainEventTypeMap
     /// <summary>The typed events, one line each.</summary>
     private static readonly IReadOnlyDictionary<DomainEventType, Type> TypedEvents = new Dictionary<DomainEventType, Type>
     {
-        // [DomainEventType.OctorateWebhookReceived] = typeof(OctorateWebhookReceivedEvent),   (E02/F01/US01/T03)
+        // A notification of the Octorate webhook (E02/F01/US01/T03): event name, accommodation and object id, read from the payload.
+        [DomainEventType.OctorateWebhookReceived] = typeof(OctorateWebhookReceivedEvent),
     };
 
     private static readonly ConcurrentDictionary<Type, Func<Guid, Guid, DomainEventType, Guid, DateTime, string, DomainEvent>> Factories = new();
