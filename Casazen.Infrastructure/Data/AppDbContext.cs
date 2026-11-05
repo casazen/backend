@@ -292,6 +292,9 @@ public class AppDbContext(
     // Transactional outbox of the domain events, published on the event bus by the dispatcher (ADR-022-R1, R2)
     public DbSet<OutboxEvent> OutboxEvents { get; set; } = null!;
 
+    // The connection of an org to its Octorate account, one per environment, with its OAuth tokens encrypted (ADR-023, E02/F01/US01/T01)
+    public DbSet<OctorateConnection> OctorateConnections { get; set; } = null!;
+
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
@@ -1497,6 +1500,17 @@ public class AppDbContext(
                 .HasFilter("\"DedupKey\" IS NOT NULL")
                 .HasDatabaseName(OutboxEvent.DedupIndexName);
             entity.HasIndex(e => new { e.DispatchedAt, e.OccurredAt });
+        });
+
+        // ─── Octorate connector (ADR-023) ────────────────────────────────────────
+        // One connection per org and environment: one consent covers every property the Octorate user sees (an agency's whole
+        // network), and the client acts for the org of its scope. The account id is for display and audit, not part of the key. The
+        // two token columns get the Data Protection converter from EncryptedColumns (no length: the payload is longer than the text).
+        modelBuilder.Entity<OctorateConnection>(entity =>
+        {
+            entity.HasIndex(c => new { c.OrgId, c.Environment })
+                .IsUnique()
+                .HasDatabaseName(OctorateConnection.OrgEnvironmentIndexName);
         });
 
         // ─── Internal activities: the staff work (NF-22) and the "To do" list (ADR-026) ───

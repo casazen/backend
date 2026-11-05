@@ -138,6 +138,9 @@ builder.Services.AddCasazenLongRentLeaseOperations(builder.Configuration);
 // OTA partner adapters with resilience patterns: registered only with Features:OtaPartnerApi on (D10, FD-20)
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 
+// Octorate connector (epic E02, ADR-023): its services, clients, handlers and jobs, all registered in AddCasazenOctorate.
+builder.Services.AddCasazenOctorate(builder.Configuration);
+
 // Localization — Italian (default) and English.
 // No ResourcesPath: resource names follow the marker type's namespace, so IStringLocalizer<SharedResources>
 // (Casazen.Web.Resources.SharedResources) reads Resources/SharedResources.resx and SharedResources.en.resx.

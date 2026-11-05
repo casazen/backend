@@ -315,6 +315,14 @@ internal static class PostgresAdvisoryLocks
         /// (LR-OVERLAP). Always taken after the row lock of the lease, never before it.
         /// </summary>
         LeasePeriod = 1_211,
+
+        /// <summary>
+        /// The refresh of the OAuth access token of one Octorate connection (key: connection id, <c>connectionId.ToString("N")</c>,
+        /// ADR-023-R2): a new access token invalidates the previous one when that was never used, so two instances never refresh the
+        /// same connection at once. The holder reads the connection again inside the lock (another one may have refreshed it) and
+        /// saves the new token before releasing it. The values 20_100 to 20_199 are the Octorate connector (epic E02).
+        /// </summary>
+        OctorateTokenRefresh = 20_111,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

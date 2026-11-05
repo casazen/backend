@@ -2833,6 +2833,52 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("MarketingConsentRecords");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateConnection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EncryptedAccessToken")
+                        .HasColumnType("text");
+
+                    b.Property<string>("EncryptedRefreshToken")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Environment")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OctorateAccountId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("TokenExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "Environment")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OctorateConnections_OrgId_Environment");
+
+                    b.ToTable("OctorateConnections");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OfficialSourceFetch", b =>
                 {
                     b.Property<Guid>("Id")
