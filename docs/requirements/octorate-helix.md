@@ -2462,9 +2462,9 @@ del simulatore e prove contrattuali ufficiali.
 ### 12.1 Perimetro della prima consegna Helix (5/11/2026)
 
 Il piano di consegna di Helix (run R20261103-1506) è stato alleggerito il 5/11 su indicazione del
-PO: da 308 a 222 task in due giri (PO-25 e PO-26). Non cambia nessuna decisione del PO (PO-01…22) e nessuna priorità
-di questo documento: cambia **quando** si costruiscono alcuni requisiti P1/P2 e quali filoni
-stanno in un piano a parte. Nulla è stato cancellato: i task rimandati sono conservati nel piano
+PO: da 308 a 233 task (PO-25, PO-26 e PO-29). Non cambia nessuna decisione del PO (PO-01…22) e le
+sole priorità spostate sono quelle di §14.4: cambia **quando** si costruiscono alcuni requisiti
+P1/P2. Nulla è stato cancellato: i task rimandati sono conservati nel piano
 di Helix (`kb/plan/deferred/README.md`) e si ripristinano.
 
 - **Seconda tornata:** assistente AI avanzato (invio automatico, livelli di fiducia, lezioni e
@@ -2480,10 +2480,12 @@ di Helix (`kb/plan/deferred/README.md`) e si ripristinano.
   Questura, invio, ricevute, profilo «Gestione Appartamenti» del documento AW-01) con i suoi stati
   e l'azione «Invia ora» sul web; ISTAT regionale (CHK-05: tabella delle regioni, prove, pagina);
   Expedia «solo ciò che è cambiato» (LST-13, PO-27).
-- **Piano a parte («Proprietari»):** onboarding dei proprietari, contabilità dei proprietari con
-  chiusura mensile e portale operativo del proprietario. Richiesti il 5/11 fuori da questo
-  documento (ONB-06, FIN-08, OWN-01), vanno scritti in un documento proprio. Restano qui DEB-10
-  (catena finanziaria dell'agenzia) e le cifre per proprietario di REP-01.
+- **Filone proprietari (ONB-06, FIN-08, OWN-01), rientrato nel piano il 5/11 su richiesta del PO
+  (PO-29):** onboarding dei proprietari, contabilità dei proprietari con chiusura mensile e portale
+  operativo del proprietario (11 task). La fonte sono i requisiti NF-109, NF-110 e NF-111 di Helix
+  (`kb/intake/requirements.md`, 5/11), non ancora riportati in questo documento: un testo di
+  requisiti dedicato resta da scrivere. Restano qui anche DEB-10 (catena finanziaria
+  dell'agenzia) e le cifre per proprietario di REP-01.
 - **Task accorpati:** nove task piccoli sono stati assorbiti dal task vicino (stessa PR), senza
   cambiare requisiti.
 - **Nota su CRM-06 (P0):** presuppone una campagna e viaggia con le campagne; l'invio di
@@ -2698,17 +2700,18 @@ punto 2.
 
 ### 14.4 Decisioni del PO del 4 e 5 novembre 2026
 
-Registrate qui perché stavano solo nelle note del piano di Helix. La numerazione PO-23…28 è stata
+Registrate qui perché stavano solo nelle note del piano di Helix. La numerazione PO-23…29 è stata
 assegnata alla registrazione.
 
 | ID | Decisione | Requisiti |
 |---|---|---|
 | PO-23 | **4/11.** Nessun adattatore Mock e nessun client con dati finti: il client Octorate lavora sul sandbox reale dal primo task, con le strutture e i dati di prova della rete di test. Sostituisce ADR-023-R11 e le frasi di questo documento che facevano dipendere P0, G1 e H1–H4 dal Mock | OCT-01, §12, G1 |
 | PO-24 | **4/11.** I task che dipendono da capacità che il sandbox non prova (licenza per camera, OTA collegate, chat, fatture) non si congelano: sono il nucleo del prodotto. Si costruiscono e si provano con quello che il sandbox consente e con la simulazione delle OTA descritta nelle note del piano (`ota-simulation`); il resto resta «da provare in produzione» (H8b). Il ripiego di ciascuno è nella colonna «Se manca» di §11.2 | §11.2, §13 |
-| PO-25 | **5/11.** La prima consegna di Helix è alleggerita come in §12.1 (da 308 a 234 task nel primo giro); il filone proprietari esce da questo documento | §12.1 |
-| PO-26 | **5/11, secondo giro.** Il client Alloggiati diretto di CasaZen (DEB-08) e l'ISTAT regionale (CHK-05) vanno in seconda tornata (222 task). PO-02 e PO-03 non cambiano: per gli immobili collegati invia Octorate. Nella prima consegna CasaZen non scarica le ricevute con `Ricevuta` e non invia da sé: per gli altri immobili la prova si carica a mano (CHK-08) o si consulta in Octorate (CHK-15) | CHK-03, CHK-04, CHK-05, DEB-08 |
+| PO-25 | **5/11.** La prima consegna di Helix è alleggerita come in §12.1 (da 308 a 234 task nel primo giro); il filone proprietari, uscito in quel giro, rientra con PO-29 | §12.1 |
+| PO-26 | **5/11, secondo giro.** Il client Alloggiati diretto di CasaZen (DEB-08) e l'ISTAT regionale (CHK-05) vanno in seconda tornata (secondo giro). PO-02 e PO-03 non cambiano: per gli immobili collegati invia Octorate. Nella prima consegna CasaZen non scarica le ricevute con `Ricevuta` e non invia da sé: per gli altri immobili la prova si carica a mano (CHK-08) o si consulta in Octorate (CHK-15) | CHK-03, CHK-04, CHK-05, DEB-08 |
 | PO-27 | **5/11.** LST-13 (Expedia «solo ciò che è cambiato») passa da P0 a P1 e si rimanda. I contenuti Expedia restano gestiti sul canale (eccezione di LST-01, già accettata per il pilota). Le prove sono contraddittorie (S18: solo collegamento; S22 e S23: funzioni di contenuto e invio a un ID esistente): prima di costruire si prova su un annuncio Expedia reale (H8b). Se Octorate sa inviare i contenuti, LST-13 si riduce o cade | LST-13, H8b |
 | PO-28 | **5/11.** CRM-06 (pubblico raggiungibile) passa da P0 a P1: presuppone una campagna e segue CRM-05. L'invio di marketing resta chiuso dal flag `crmMarketing` e da CRM-08 (P0, nella prima tornata) | CRM-06, CRM-05, CRM-08 |
+| PO-29 | **5/11.** Il portale dei proprietari rientra nel piano su richiesta del PO: onboarding dei proprietari (NF-109), contabilità con chiusura mensile (NF-110) e portale operativo (NF-111), 11 task; il piano torna a 233 task. La sua fonte sono gli NF di Helix, non questo documento | NF-109, NF-110, NF-111 |
 
 **Hosting, fatto verificato il 5/11.** Railway è l'host in uso: dall'API di Railway l'ultimo deploy di
 produzione è del 2/11 (v3.0.0) e l'ultimo di test del 3/11. Le note «Railway cancellato dal PO il
@@ -2737,7 +2740,7 @@ ADR-023-R7); (d) come si ridefiniscono OCT-15 e G1 senza Mock.
   emendati nella PR degli ADR. Secondo giro del 5/11: client Alloggiati diretto (DEB-08) e ISTAT
   regionale (CHK-05) in seconda tornata (PO-26); LST-13 e CRM-06 da P0 a P1 (PO-27, PO-28);
   definita in §0 la corrispondenza P0/P1/P2 con must/should/could e il criterio di taglio; chiarito
-  in §14.4 che Railway è in uso.
+  in §14.4 che Railway è in uso. Il portale dei proprietari rientra nel piano (PO-29).
 
 - **2.1 · 2 novembre 2026:** Octorate non risponde alle domande tecniche della mail del 31/10 e
   rimanda a una sessione di onboarding a pagamento (S21); il PO non la usa per ora. Nuovo §14.3:

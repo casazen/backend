@@ -18,7 +18,7 @@ Web reporting, tourist tax, GDPR).
 - **OTA resilience**: Polly (retry + circuit-breaker + rate-limit per platform)
 - **Tests**: xUnit (unit + integration), AAA pattern
 - **CI/CD**: GitHub Actions (`.github/workflows/ci-cd.yml`)
-- **Hosting**: Supabase (DB) + Vercel (FE); Railway è stato cancellato dal PO il 2026-10-02 e l'hosting gratuito del backend è in revisione (`docs/runbooks/free-hosting-analysis.md`, task HOSTING). `docs/INFRA.md` è storico per la parte Railway.
+- **Hosting**: Supabase (DB) + Vercel (FE); Railway è l'host in uso per test e produzione (verificato il 5/11/2026; la revisione dell'hosting del 2/10 non ha cambiato l'host, v. `docs/INFRA.md`).
 - **Stato del risanamento**: `Sessions/risanamento/RIEPILOGO-FINALE.md` (cosa è fatto, cosa resta); runbook in `docs/runbooks/index.md`
 
 ## Repo layout
