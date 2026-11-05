@@ -4309,6 +4309,65 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("PlatformInvoices");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.PopupAlert", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AlertType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("Deadline")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DismissedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RemindAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Urgency")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("RemindAt")
+                        .HasDatabaseName("IX_PopupAlerts_RemindAt_Due")
+                        .HasFilter("\"RemindAt\" IS NOT NULL AND \"DismissedAt\" IS NULL AND \"DeliveredAt\" IS NULL");
+
+                    b.HasIndex("UserId", "DismissedAt", "RemindAt")
+                        .HasDatabaseName("IX_PopupAlerts_UserId_DismissedAt_RemindAt");
+
+                    b.ToTable("PopupAlerts");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.PricingAdapterConfig", b =>
                 {
                     b.Property<Guid>("Id")
@@ -9598,6 +9657,40 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("UserContextMemberships");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.UserNotificationPreferences", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("LegalAlertsOverrideQuietHours")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<TimeOnly>("QuietHoursEnd")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly>("QuietHoursStart")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("OrgId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_UserNotificationPreferences_OrgId_UserId");
+
+                    b.ToTable("UserNotificationPreferences");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.WireBatch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -10678,6 +10771,21 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Org");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.PopupAlert", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.PricingAdapterConfig", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", null)
@@ -11732,6 +11840,21 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Role");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.UserNotificationPreferences", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.WireBatch", b =>
