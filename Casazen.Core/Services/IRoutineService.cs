@@ -26,6 +26,26 @@ public interface IRoutineService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// <see cref="TriggerAsync(Guid, RoutineEventType, string, object, CancellationToken)"/> for the routines that
+    /// <paramref name="routineFilter"/> also accepts: a time trigger starts only the routines whose configured offset is its own
+    /// (ADR-022-R8). A routine already executed for <paramref name="eventId"/> is skipped, also when a parallel delivery of the same
+    /// event claimed it first (unique index on routine and event, ADR-022-R7).
+    /// </summary>
+    /// <param name="orgId">Organization ID for tenant isolation (TN-1).</param>
+    /// <param name="eventType">Event type that occurred.</param>
+    /// <param name="eventId">Unique identifier for this event occurrence, the same on every delivery of the event.</param>
+    /// <param name="payload">Event payload (ids and codes, no personal data).</param>
+    /// <param name="routineFilter">Which of the active routines of the event type run.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task TriggerAsync(
+        Guid orgId,
+        RoutineEventType eventType,
+        string eventId,
+        object payload,
+        Func<Routine, bool> routineFilter,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Resume a routine execution after a Wait action (AC-NF26-10, ADR-022-R10).
     /// Called by the Hangfire job at the scheduled resume time.
     /// </summary>

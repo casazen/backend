@@ -58,20 +58,25 @@ public interface IRequestTenantContext : ITenantContext
 /// own <see cref="AppDbContext"/> depends on this service. The lookup hits <c>Users</c>, which carries no
 /// tenant filter, so it cannot recurse.
 /// </para>
+/// <para>
+/// Outside a request a scope has no tenant and the filter is off (Hangfire jobs, design time), unless the scope is put under one
+/// org with <see cref="EnterOrg"/>: the handlers of the event bus run that way, each under the org of its event (ADR-022-R6, R17).
+/// </para>
 /// </remarks>
 public sealed class TenantContext(
     IHttpContextAccessor httpContextAccessor,
     IServiceScopeFactory scopeFactory,
-    ILogger<TenantContext> logger) : IRequestTenantContext
+    ILogger<TenantContext> logger) : IRequestTenantContext, IBackgroundTenantScope
 {
     private bool _resolved;
     private bool _unresolvedReadLogged;
     private bool _callerInactive;
     private bool _callerOrgMemberDeactivated;
+    private bool _backgroundOrgScope;
     private Guid? _orgId;
 
     public bool FilterEnabled =>
-        httpContextAccessor.HttpContext?.User.Identity?.IsAuthenticated == true;
+        _backgroundOrgScope || httpContextAccessor.HttpContext?.User.Identity?.IsAuthenticated == true;
 
     public Guid? OrgId
     {
@@ -131,6 +136,20 @@ public sealed class TenantContext(
 
         _orgId = orgId;
         _resolved = true;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The scope is then scoped like an authenticated request of that org: <see cref="OrgId"/> is the org and
+    /// <see cref="FilterEnabled"/> is true, so the EF tenant filter of every <c>ITenantOwned</c> read of the scope applies.
+    /// </remarks>
+    public void EnterOrg(Guid orgId)
+    {
+        if (orgId == Guid.Empty)
+            throw new ArgumentException("A background scope needs an org.", nameof(orgId));
+
+        SetOrgId(orgId);
+        _backgroundOrgScope = true;
     }
 
     private string? ResolveSub()
