@@ -531,6 +531,7 @@ property is not found; any other failure is a 500.
 | `GET` | `/api/reports/bookings-by-channel` | short-rent payment.read | Confirmed stays of the Home per `Booking.Source`: a row `{ source, bookingCount, nights, amount, amountCents, share }`, `total { bookingCount, nights, amount, amountCents }` |
 | `GET` | `/api/reports/performance` | short-rent payment.read | NF-96. Occupancy, revenue, **ADR and RevPAR** of the Home for the whole scope, per property or per channel, and next to the same calendar days one year earlier: `{ title, basis, currency, groupBy, period, comparePeriod, rows, total }`, a row `{ key, propertyId, label, figures, previousYear, revenueDeltaPercent, occupancyDeltaPoints, adrDeltaPercent, revParDeltaPercent, revenueShare }`, `figures { occupiedNights, availableNights, closedNights, occupancyRate, revenue, revenueCents, stayCount, revenueNights, adr, adrCents, revPar, revParCents }`. Extra query: `groupBy` `none` (default, the total only), `property`, `channel`; `compare` `none` (default) or `previousYear` |
 | `GET` | `/api/reports/trend` | short-rent payment.read | NF-96. The same figures for each week or month: `{ title, basis, currency, groupBy, unit, period, comparePeriod, buckets, series }`, a bucket `{ label, from, to, previousYearFrom, previousYearTo }`, a line `{ key, propertyId, label, points, previousYear }` (`points` and `previousYear` have one entry for each bucket, the second `null` where there was nothing to compare with). Extra query: the two above and `bucket` `auto` (default), `week`, `month` |
+| `GET` | `/api/reports/by-owner` | `agency.statement.view` + short-rent payment.read | NF-96. The performance of an agency's properties cut by property owner: `{ title, basis, currency, period, rows, unassigned, total }`, a row `{ ownerId, displayName, propertyCount, figures, revenueShare }` (the anonymized label for an anonymized owner), `figures` and `total` the weighted `{ revenue, revenueCents, occupiedNights, availableNights, closedNights, occupancyRate, stayCount, revenueNights, adr, adrCents, revPar, revParCents }`. Only `from`, `to` and `format` (`json` or `csv`) |
 
 All of them take `from` and `to` (`yyyy-MM-dd`, Europe/Rome days, both included; years 2000 to 2100), an optional `propertyId` and `format`
 (`json`, the default, or `csv`). Errors: 400 `report_invalid_period` (a day missing, `to` before `from`, a year out of range), 400
@@ -580,6 +581,23 @@ and `trend` compare, and only with the same days one year earlier.
   day one of them can be empty. `groupBy=property` or `channel` gives a line for each, **at most 25, the ones with most revenue first:
   when there are more, the 24 with most revenue and a 25th line `other` that is the sum of the rest** (their stays and nights taken
   together), never dropped.
+- **By owner (`GET /api/reports/by-owner`, NF-96).** `OwnerReportsController` carries **both** `agency.statement.view` (the owner and the
+  administrators of an org on the agency plan; the property manager holds only `agency.owner.view`, so it is refused, and an org that
+  is not on the agency plan answers 403 `feature_requires_agency_tier`, like the other agency endpoints) and `payment.read` (aggregated
+  money, SR-D7). `IOwnerReportService.GetByOwnerAsync` reads the performance of **every property of the caller's scope once**
+  (`GetPerformanceAsync` by property: the Home's numbers, no second rule) and splits it by owner in memory. **What an owner holds of a
+  property** is the share of each `PropertyOwnership` whose period overlaps the days of the report (`OwnershipStart` to `OwnershipEnd`,
+  Rome days, both included), times the part of those days the ownership was in force: a house owned 50/50 all the period is half of
+  each owner's figures, one that changed hands on 15 October is counted for each owner for its own days; the weights of a property never
+  exceed 1 (scaled down otherwise) and what no owner holds goes to the `unassigned` row, so **the owners and `unassigned` add up to the
+  Home's total, a co-owned house once**. `total` is the Home's figure for the same days (all the stays at once), so it can differ by a
+  cent from the sum of the rounded rows. The figures are decimals (a half stay, a half night); ADR, RevPAR and the occupancy are worked
+  out from the weighted values. An owner appears if it holds a part of a property of the report in the period; its row has
+  `propertyCount`. **Privacy:** only the id and the name are read (`FirstName`, `LastName`, `AnonymizedAt`): never the fiscal code, the
+  IBAN, the e-mail or the phone, which are not even selected, so they are neither in the JSON nor in the CSV; an owner with
+  `AnonymizedAt` set shows `OwnerAnonymizedLabel` (the CSV: `Proprietario anonimizzato`). The CSV carries the title
+  `Prestazioni per proprietario, per competenza`, with the days, on the first row; the file is
+  `casazen-prestazioni-per-proprietario-competenza-20261001-20261031.csv`.
 - **Fixed number of queries** whatever the number of properties: the active properties, the stays, the bookings and the blocks that make
   the nights, and (only if a paused property has revenue) their names; once more for the year before.
 - **Narrowing.** `HostPerformanceQuery.PropertyIds` / `HostTrendQuery.PropertyIds` narrow the properties to those ids **inside** the

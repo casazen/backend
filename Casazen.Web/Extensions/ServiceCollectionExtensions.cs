@@ -588,6 +588,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgEmptinessChecker, OrgEmptinessChecker>();
         services.AddScoped<IOrgInvitationService, OrgInvitationService>();
         services.AddScoped<IOwnerInvitationService, OwnerInvitationService>();
+        // NF-96: the performance of an agency's properties cut by property owner, over the Home's numbers (GET /api/reports/by-owner).
+        services.AddScoped<IOwnerReportService, OwnerReportService>();
         services.AddScoped<IOrgTeamService, OrgTeamService>();
         // AM-03: the properties each member reaches («Solo alcuni») and the member in charge of a property.
         services.AddScoped<IOrgPropertyAccessService, OrgPropertyAccessService>();

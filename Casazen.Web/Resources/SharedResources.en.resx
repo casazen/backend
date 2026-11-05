@@ -2095,6 +2095,9 @@
   <data name="ReportInvalidBucket" xml:space="preserve">
     <value>Invalid bucket: use bucket=auto, bucket=week or bucket=month.</value>
   </data>
+  <data name="OwnerAnonymizedLabel" xml:space="preserve">
+    <value>Anonymized owner</value>
+  </data>
   <data name="CsvTooManyRows" xml:space="preserve">
     <value>The file would have more than {0} rows: narrow the period or pick a single property.</value>
   </data>

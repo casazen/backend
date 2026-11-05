@@ -2095,6 +2095,9 @@
   <data name="ReportInvalidBucket" xml:space="preserve">
     <value>Intervallo non valido: usa bucket=auto, bucket=week oppure bucket=month.</value>
   </data>
+  <data name="OwnerAnonymizedLabel" xml:space="preserve">
+    <value>Proprietario anonimizzato</value>
+  </data>
   <data name="CsvTooManyRows" xml:space="preserve">
     <value>Il file avrebbe più di {0} righe: restringi il periodo o scegli un solo immobile.</value>
   </data>

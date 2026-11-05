@@ -68,6 +68,7 @@ public class DemoShowcaseTests
             .SelectMany(p => p.Scenarios.Concat(p.Bookings.Select(b => b.Scenario)))
             .Concat(DemoShowcaseCatalog.HostInvites.Select(i => i.Scenario))
             .Concat(DemoShowcaseCatalog.PropertyOwners.Select(o => o.Scenario))
+            .Concat(DemoShowcaseCatalog.PropertyOwnerships.Select(o => o.Scenario))
             .Concat(DemoShowcaseCatalog.GuestSegments.Select(s => s.Scenario))
             .Concat(DemoShowcaseCatalog.Campaigns.Select(c => c.Scenario))
             .Concat(DemoShowcaseCatalog.AgencyInvoices.Select(inv => inv.Scenario))
@@ -159,5 +160,33 @@ public class DemoShowcaseTests
                     $"{property.Key}: the stays {before.Key} and {taken[index].Key} take the same night.");
             }
         }
+    }
+
+    [Fact]
+    public void PropertyOwnerships_TheSharesOfEachDemoProperty_AddUpToOneHundred_AndOneHouseIsCoOwned()
+    {
+        var ownerships = DemoShowcaseCatalog.PropertyOwnerships;
+        var owners = DemoShowcaseCatalog.PropertyOwners.Select(o => o.Key).ToHashSet(StringComparer.Ordinal);
+        var properties = DemoShowcaseCatalog.Properties.Select(p => p.Key).ToHashSet(StringComparer.Ordinal);
+
+        Assert.All(ownerships, o =>
+        {
+            Assert.Contains(o.OwnerKey, owners);
+            Assert.Contains(o.PropertyKey, properties);
+            Assert.Contains(o.Scenario, DemoShowcaseCatalog.Scenarios);
+            // The share of an ownership is the one the owner's template says.
+            Assert.Equal(DemoShowcaseCatalog.PropertyOwners.Single(x => x.Key == o.OwnerKey).OwnershipSharePercent, o.SharePercent);
+        });
+        Assert.All(ownerships.GroupBy(o => o.PropertyKey), house => Assert.Equal(100m, house.Sum(o => o.SharePercent)));
+
+        // NF-96: the owner of the agency demo has a house with stays, and one house is shared 50/50 by two owners, so the weighting shows.
+        var agencyOwner = Assert.Single(ownerships, o => o.Scenario == DemoShowcaseCatalog.Scenario.PropertyOwnerAgency);
+        Assert.Contains(
+            DemoShowcaseCatalog.Properties.Single(p => p.Key == agencyOwner.PropertyKey).Bookings,
+            b => b.Status == BookingStatus.CheckedOut);
+        var shared = ownerships.Where(o => o.Scenario == DemoShowcaseCatalog.Scenario.OwnerShares).ToList();
+        Assert.Equal(2, shared.Count);
+        Assert.All(shared, o => Assert.Equal(50m, o.SharePercent));
+        Assert.Single(shared.Select(o => o.PropertyKey).Distinct(StringComparer.Ordinal));
     }
 }

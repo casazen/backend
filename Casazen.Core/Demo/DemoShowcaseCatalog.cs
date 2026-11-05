@@ -141,6 +141,19 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
+    /// Who owns which demo property and for how much (ADR-012-R4, NF-96): the report by owner of the agency and the owner portal weight the
+    /// figures of a property by these shares. The shares of a property add up to 100: the house of the agency demo owner is his alone and
+    /// has stays (it is the one with a finished stay and one a year earlier), and the villa is shared 50/50 by two owners, so the weighting
+    /// shows. Owners are the ones of <see cref="PropertyOwners"/>, properties the ones of <see cref="Properties"/>, both by key.
+    /// </summary>
+    public static IReadOnlyList<DemoPropertyOwnershipTemplate> PropertyOwnerships { get; } =
+    [
+        new("mario-rossi", "casa-trastevere", 100m, Scenario.PropertyOwnerAgency),
+        new("giulia-bianchi", "villa-lago", 50m, Scenario.OwnerShares),
+        new("luca-verdi", "villa-lago", 50m, Scenario.OwnerShares),
+    ];
+
+    /// <summary>
     /// Agency invoices demo (ADR-019): one issued invoice to demonstrate the invoice generation flow.
     /// Series is the year, invoice number is sequential, amounts are test data.
     /// </summary>
@@ -652,6 +665,12 @@ public sealed record DemoPropertyOwnerTemplate(
     decimal OwnershipSharePercent,
     decimal CommissionRate,
     string Scenario);
+
+/// <summary>
+/// The share of a demo property an owner holds (ADR-012-R4): <paramref name="SharePercent"/> of <paramref name="PropertyKey"/>, from the
+/// start of the showcase and without an end. The owner is a <see cref="DemoPropertyOwnerTemplate"/> by key.
+/// </summary>
+public sealed record DemoPropertyOwnershipTemplate(string OwnerKey, string PropertyKey, decimal SharePercent, string Scenario);
 
 /// <summary>A guest segment for demo campaigns (NF-24): condition is empty to match all consented guests.</summary>
 public sealed record DemoGuestSegmentTemplate(
