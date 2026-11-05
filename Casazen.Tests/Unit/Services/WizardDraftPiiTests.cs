@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Casazen.Core.Services;
 using Xunit;
 
@@ -31,6 +32,21 @@ public class WizardDraftPiiTests
 
     private static readonly string[] Secrets =
         ["Mario Rossi", "mario.rossi@example.com", "Via Segretissima", "Giulia Verdi", "CA12345AB", "Anna Bianchi", "+393331234567"];
+
+    // The list as the mobile app mirrors it, pinned: an entry added or dropped is a decision and changes the mobile copy. Besides the first
+    // guest fields it holds the secrets and identifiers a wizard can make a person type (the Alloggiati Web account of ComplianceSender:
+    // username, password, wsKey; the owner's iban and fiscalCode; email and phone) and the other spellings the code uses for the same data.
+    private static readonly string[] PersonalFieldNames =
+    [
+        "guestName", "guestEmail", "guestPhone", "guestFiscalCode", "emergencyContact",
+        "firstName", "lastName", "fullName", "surname", "givenNames", "email", "marketingEmail", "phone", "phoneNumber", "address", "residence",
+        "fiscalCode", "iban",
+        "birthDate", "dateOfBirth", "birthPlace", "placeOfBirth", "birthComuneName", "birthComuneCode", "birthProvince", "birthCountryName",
+        "birthCountryCode", "citizenship", "citizenshipName", "citizenshipCode", "nationality",
+        "documentNumber", "documentType", "documentTypeCode", "documentIssueDate", "documentExpiryDate", "documentIssuePlace",
+        "documentIssuePlaceName", "documentIssuePlaceCode", "documentIssuingCountry",
+        "username", "password", "wsKey", "apiKey", "apiSecret",
+    ];
 
     [Fact]
     public void Split_PersonalFieldsAtAnyDepth_NeverStayInThePlainHalf()
@@ -96,6 +112,58 @@ public class WizardDraftPiiTests
         using var list = JsonDocument.Parse("""["guestName"]""");
 
         Assert.Throws<ArgumentException>(() => WizardDraftPii.Split(list.RootElement));
+    }
+
+    [Fact]
+    public void Split_EveryPersonalFieldName_SecretsAndIdentifiersIncluded_NeverStaysInThePlainHalf_WhateverTheCaseAndTheDepth()
+    {
+        // The list is exactly this one.
+        Assert.Equal(
+            PersonalFieldNames.Select(n => n.ToLowerInvariant()).Order(StringComparer.Ordinal),
+            WizardDraftPiiFields.PII_FIELD_NAMES.Select(n => n.ToLowerInvariant()).Order(StringComparer.Ordinal));
+
+        // Every name three times, each with a value of its own: as the code spells it at the top, in capitals inside an object (the account of
+        // the ComplianceSender wizard, say) and in lower case inside the element of a list (the guests of a check-in).
+        var secrets = new List<string>();
+        var account = new JsonObject { ["label"] = "Alloggiati Web" };
+        var guest = new JsonObject { ["room"] = 1 };
+        var typed = new JsonObject
+        {
+            ["step"] = "credenziali",
+            ["account"] = account,
+            ["guests"] = new JsonArray(guest, new JsonObject { ["room"] = 2 }),
+        };
+        foreach (var name in PersonalFieldNames)
+        {
+            foreach (var (target, spelling) in new[] { (typed, name), (account, name.ToUpperInvariant()), (guest, name.ToLowerInvariant()) })
+            {
+                var secret = $"S{secrets.Count:D3}";
+                secrets.Add(secret);
+                target[spelling] = secret;
+            }
+        }
+
+        using var document = JsonDocument.Parse(typed.ToJsonString());
+        var split = WizardDraftPii.Split(document.RootElement);
+
+        // No value and no name (whatever its case) stays in the plain half; every value is in the personal one.
+        Assert.NotNull(split.PersonalJson);
+        foreach (var secret in secrets)
+        {
+            Assert.DoesNotContain(secret, split.PlainJson, StringComparison.Ordinal);
+            Assert.Contains(secret, split.PersonalJson, StringComparison.Ordinal);
+        }
+
+        foreach (var name in PersonalFieldNames)
+            Assert.DoesNotContain($"\"{name}\"", split.PlainJson, StringComparison.OrdinalIgnoreCase);
+
+        // What is not personal stays in its shape, and the two halves put together give back exactly what was typed.
+        using var plain = JsonDocument.Parse(split.PlainJson);
+        Assert.Equal("credenziali", plain.RootElement.GetProperty("step").GetString());
+        Assert.Equal("Alloggiati Web", plain.RootElement.GetProperty("account").GetProperty("label").GetString());
+        Assert.Equal(2, plain.RootElement.GetProperty("guests").GetArrayLength());
+        using var merged = WizardDraftPii.Merge(split.PlainJson, split.PersonalJson);
+        Assert.Equal(Canonical(document.RootElement), Canonical(merged.RootElement));
     }
 
     /// <summary>The same JSON whatever the order of the properties: objects sorted by name, strings and numbers as they are.</summary>

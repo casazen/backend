@@ -95,24 +95,72 @@ public static class WizardDraftErrors
 }
 
 /// <summary>
-/// The names of the fields that identify a person, split off the data of a draft and encrypted (ADR-024-R2). Matched whatever their case and
-/// at any depth of the data, so a guest inside a list is covered too; the whole value under such a name is kept encrypted. The mobile app
-/// mirrors this list: it has one home, here.
+/// The names of the fields that identify a person or hold a secret, split off the data of a draft and encrypted (ADR-024-R2). Matched
+/// whatever their case (the code spells one field <c>wsKey</c>, <c>WsKey</c> or <c>WSKey</c>, <c>fiscalCode</c> or <c>FiscalCode</c>) and at
+/// any depth of the data, so a guest inside a list is covered too; the whole value under such a name is kept encrypted. The list is
+/// closed: a name that is not here stays in clear in the plain half, so a wizard that makes a person type another identifier or secret
+/// adds its name here (and to the test that pins the list). The mobile app mirrors this list: it has one home, here.
 /// </summary>
 public static class WizardDraftPiiFields
 {
     public static readonly IReadOnlySet<string> PII_FIELD_NAMES = new[]
     {
+        // The guest of a booking and the person to call in an emergency.
         "guestName",
         "guestEmail",
         "guestPhone",
         "guestFiscalCode",
+        "emergencyContact",
+
+        // The names, the contacts and the address of a person, as the DTOs of the guests and of the check-in spell them.
+        "firstName",
+        "lastName",
+        "fullName",
+        "surname",
+        "givenNames",
+        "email",
+        "marketingEmail",
+        "phone",
+        "phoneNumber",
+        "address",
+        "residence",
+
+        // Tax and bank data (the owner of a property).
+        "fiscalCode",
+        "iban",
+
+        // Birth and citizenship.
+        "birthDate",
+        "dateOfBirth",
+        "birthPlace",
+        "placeOfBirth",
+        "birthComuneName",
+        "birthComuneCode",
+        "birthProvince",
+        "birthCountryName",
+        "birthCountryCode",
+        "citizenship",
+        "citizenshipName",
+        "citizenshipCode",
+        "nationality",
+
+        // The identity document.
         "documentNumber",
         "documentType",
-        "birthDate",
-        "birthPlace",
-        "citizenship",
-        "address",
-        "emergencyContact",
+        "documentTypeCode",
+        "documentIssueDate",
+        "documentExpiryDate",
+        "documentIssuePlace",
+        "documentIssuePlaceName",
+        "documentIssuePlaceCode",
+        "documentIssuingCountry",
+
+        // Secrets: the Alloggiati Web account of a property (the ComplianceSender wizard, ADR-029; the repository encrypts it as
+        // PropertyQuesturaCredentials) and the keys of an integration.
+        "username",
+        "password",
+        "wsKey",
+        "apiKey",
+        "apiSecret",
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 }
