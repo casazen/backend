@@ -229,6 +229,9 @@ builder.Services.Configure<Casazen.Core.Options.StayAlertOptions>(
 // ADR-022-R8: how often the time triggers of the routines are written to the outbox (Routine:EvaluationIntervalMinutes).
 builder.Services.Configure<Casazen.Core.Options.RoutineOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.RoutineOptions.SectionName));
+// ADR-022-R15: how long the dispatched domain events stay in the outbox (EventBus:RetentionDays, never below 30).
+builder.Services.Configure<Casazen.Core.Options.EventBusOptions>(
+    builder.Configuration.GetSection(Casazen.Core.Options.EventBusOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.GuestCheckInOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.GuestCheckInOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.RliOptions>(

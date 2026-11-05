@@ -32,6 +32,20 @@ public static class RecurringJobsRegistration
             (routineOptions ?? new RoutineOptions()).EmitterCron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
+        // ADR-022-R4: the outbox dispatcher publishes the recorded domain events on the bus every minute, whatever the flags say.
+        recurringJobManager.AddOrUpdate<OutboxDispatcherJob>(
+            OutboxDispatcherJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OutboxDispatcherJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // ADR-022-R15: the dispatched events older than EventBus:RetentionDays are deleted and the old dead letters anonymized, nightly.
+        recurringJobManager.AddOrUpdate<OutboxCleanupJob>(
+            OutboxCleanupJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OutboxCleanupJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
         ConfigureServiceRequestAutoCancel(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel));
 
         // SP-BKP: the groups of backup suppliers are followed whatever the flag SupplierRequestBackups says (it only gates their creation): a
