@@ -3496,6 +3496,57 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("OtaSyncLogs");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OutboxEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("DeadLettered")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("DedupKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("DispatchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("EventType")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DispatchedAt", "OccurredAt");
+
+                    b.HasIndex("OrgId", "DedupKey")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OutboxEvents_OrgId_DedupKey")
+                        .HasFilter("\"DedupKey\" IS NOT NULL");
+
+                    b.ToTable("OutboxEvents");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OwnerInvitation", b =>
                 {
                     b.Property<Guid>("Id")
