@@ -21,6 +21,24 @@ public static class HostReportDocuments
     /// <summary>Title of the bookings by channel: by accrual, the confirmed stays with a night in the period.</summary>
     public const string BookingsByChannelTitle = "Prenotazioni per canale, per competenza";
 
+    /// <summary>Title of the performance of the whole scope (NF-96): occupancy, revenue, ADR and RevPAR, by accrual.</summary>
+    public const string PerformanceTotalTitle = "Prestazioni complessive, per competenza";
+
+    /// <summary>Title of the performance per property.</summary>
+    public const string PerformanceByPropertyTitle = "Prestazioni per immobile, per competenza";
+
+    /// <summary>Title of the performance per channel.</summary>
+    public const string PerformanceByChannelTitle = "Prestazioni per canale, per competenza";
+
+    /// <summary>Title of the trend of the whole scope: the same figures for each week or month.</summary>
+    public const string TrendTotalTitle = "Andamento, per competenza";
+
+    /// <summary>Title of the trend per property.</summary>
+    public const string TrendByPropertyTitle = "Andamento per immobile, per competenza";
+
+    /// <summary>Title of the trend per channel.</summary>
+    public const string TrendByChannelTitle = "Andamento per canale, per competenza";
+
     private const string Total = "Totale";
 
     // ---------------------------------------------------------------- files
@@ -62,6 +80,151 @@ public static class HostReportDocuments
         return CsvWriter.Write(rows);
     }
 
+    /// <summary>The title of a performance report, with its base: what the file carries on its first row and the JSON as <c>title</c>.</summary>
+    public static string PerformanceTitle(HostPerformanceGroupBy groupBy) => groupBy switch
+    {
+        HostPerformanceGroupBy.Property => PerformanceByPropertyTitle,
+        HostPerformanceGroupBy.Channel => PerformanceByChannelTitle,
+        _ => PerformanceTotalTitle,
+    };
+
+    /// <summary>The title of a trend, with its base.</summary>
+    public static string TrendTitle(HostPerformanceGroupBy groupBy) => groupBy switch
+    {
+        HostPerformanceGroupBy.Property => TrendByPropertyTitle,
+        HostPerformanceGroupBy.Channel => TrendByChannelTitle,
+        _ => TrendTotalTitle,
+    };
+
+    /// <summary>The file name of a performance report or of a trend: <c>prestazioni-per-immobile-competenza</c>, <c>andamento-competenza</c>...</summary>
+    public static string PerformanceFileName(HostPerformanceGroupBy groupBy, bool trend) => (trend ? "andamento" : "prestazioni") + groupBy switch
+    {
+        HostPerformanceGroupBy.Property => "-per-immobile-competenza",
+        HostPerformanceGroupBy.Channel => "-per-canale-competenza",
+        _ => "-competenza",
+    };
+
+    /// <summary>
+    /// The performance report as a file: the title with its base and the days on the first row, the header, a row for each property or
+    /// channel and the total. The columns of the year before and of the differences are there only when the report compared; a
+    /// channel has no nights (they belong to a property), so those cells are empty.
+    /// </summary>
+    public static byte[] Csv(HostPerformanceReport report, HostPerformanceGroupBy groupBy)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        var compared = report.PreviousYearPeriod is not null;
+        var header = new List<string>
+        {
+            groupBy switch
+            {
+                HostPerformanceGroupBy.Property => "Immobile",
+                HostPerformanceGroupBy.Channel => "Canale",
+                _ => "Perimetro",
+            },
+            "Notti occupate",
+            "Notti disponibili",
+            "Notti chiuse dall'host",
+            "Occupazione (%)",
+            "Ricavo per competenza (€)",
+            "Soggiorni",
+            "Notti dei soggiorni",
+            "ADR (€)",
+            "RevPAR (€)",
+        };
+        if (compared)
+            header.AddRange(ComparisonHeader);
+
+        var rows = StartCompared(PerformanceTitle(groupBy), report.Period, report.PreviousYearPeriod, [.. header]);
+        foreach (var row in report.Rows)
+        {
+            var label = groupBy == HostPerformanceGroupBy.Channel ? FiscalReportDocuments.ChannelLabel(row.Key) : row.Label;
+            rows.Add(PerformanceRow(label, row, compared));
+        }
+
+        rows.Add(PerformanceRow(Total, report.Total, compared));
+        return CsvWriter.Write(rows);
+    }
+
+    /// <summary>
+    /// The trend as a file: the title with its base and the days on the first row, the header, and a row for each bucket of each line
+    /// (the whole scope, a property or a channel), with the same days one year earlier next to it when the trend compared.
+    /// </summary>
+    public static byte[] Csv(HostTrendReport report, HostPerformanceGroupBy groupBy)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        var compared = report.PreviousYearPeriod is not null;
+        var header = new List<string>
+        {
+            groupBy switch
+            {
+                HostPerformanceGroupBy.Property => "Immobile",
+                HostPerformanceGroupBy.Channel => "Canale",
+                _ => "Perimetro",
+            },
+            "Periodo",
+            "Dal",
+            "Al",
+            "Notti occupate",
+            "Notti disponibili",
+            "Occupazione (%)",
+            "Ricavo per competenza (€)",
+            "Soggiorni",
+            "Notti dei soggiorni",
+            "ADR (€)",
+            "RevPAR (€)",
+        };
+        if (compared)
+        {
+            header.AddRange(
+            [
+                "Occupazione anno precedente (%)",
+                "Ricavo anno precedente (€)",
+                "ADR anno precedente (€)",
+                "RevPAR anno precedente (€)",
+            ]);
+        }
+
+        var rows = StartCompared(TrendTitle(groupBy), report.Period, report.PreviousYearPeriod, [.. header]);
+        foreach (var series in report.Series)
+        {
+            var label = SeriesLabel(series, groupBy);
+            for (var index = 0; index < report.Buckets.Count; index++)
+            {
+                var bucket = report.Buckets[index];
+                var figures = series.Points[index].Figures;
+                var cells = new List<object?>
+                {
+                    label,
+                    bucket.Label,
+                    Date(bucket.From),
+                    Date(bucket.To.AddDays(-1)),
+                    figures.HasNights ? (int?)figures.OccupiedNights : null,
+                    figures.HasNights ? (int?)figures.AvailableNights : null,
+                    Percent(figures.OccupancyRate),
+                    figures.Revenue,
+                    figures.StayCount,
+                    figures.RevenueNights,
+                    figures.Adr,
+                    figures.RevPar,
+                };
+                if (compared)
+                {
+                    var before = index < series.PreviousYear.Count ? series.PreviousYear[index]?.Figures : null;
+                    cells.Add(Percent(before?.OccupancyRate));
+                    cells.Add(before?.Revenue);
+                    cells.Add(before?.Adr);
+                    cells.Add(before?.RevPar);
+                }
+
+                rows.Add(cells);
+            }
+        }
+
+        return CsvWriter.Write(rows);
+    }
+
     /// <summary>The file name of a report: the report, its base where it has one, and the days (<c>casazen-ricavo-per-immobile-competenza-20261001-20261031.csv</c>).</summary>
     public static string FileName(string report, HostDashboardPeriod period)
     {
@@ -79,6 +242,75 @@ public static class HostReportDocuments
         Row($"{title}, dal {Date(period.From)} al {Date(period.To.AddDays(-1))}"),
         Row(header),
     ];
+
+    // The same, for a report that also gives the same days one year earlier: the first row says which days they are.
+    private static List<IReadOnlyList<object?>> StartCompared(
+        string title, HostDashboardPeriod period, HostDashboardPeriod? comparedWith, string[] header)
+    {
+        var days = $"{title}, dal {Date(period.From)} al {Date(period.To.AddDays(-1))}";
+        if (comparedWith is not null)
+            days += $", confrontato con dal {Date(comparedWith.From)} al {Date(comparedWith.To.AddDays(-1))}";
+
+        return [Row(days), Row(header)];
+    }
+
+    // The columns of the year before and of the differences a compared performance report adds.
+    private static readonly string[] ComparisonHeader =
+    [
+        "Occupazione anno precedente (%)",
+        "Ricavo anno precedente (€)",
+        "ADR anno precedente (€)",
+        "RevPAR anno precedente (€)",
+        "Variazione ricavo (%)",
+        "Variazione occupazione (punti)",
+        "Variazione ADR (%)",
+        "Variazione RevPAR (%)",
+    ];
+
+    // One row of a performance report. The nights are empty for a channel (they belong to a property); the year before is empty when
+    // there was nothing to compare with, and so are the differences.
+    private static IReadOnlyList<object?> PerformanceRow(string label, HostPerformanceRow row, bool compared)
+    {
+        var figures = row.Figures;
+        var cells = new List<object?>
+        {
+            label,
+            figures.HasNights ? (int?)figures.OccupiedNights : null,
+            figures.HasNights ? (int?)figures.AvailableNights : null,
+            figures.HasNights ? (int?)figures.ClosedNights : null,
+            Percent(figures.OccupancyRate),
+            figures.Revenue,
+            figures.StayCount,
+            figures.RevenueNights,
+            figures.Adr,
+            figures.RevPar,
+        };
+        if (!compared)
+            return cells;
+
+        var before = row.PreviousYear;
+        cells.Add(Percent(before?.OccupancyRate));
+        cells.Add(before?.Revenue);
+        cells.Add(before?.Adr);
+        cells.Add(before?.RevPar);
+        cells.Add(HostPerformanceRules.DeltaPercent(figures.Revenue, before?.Revenue));
+        cells.Add(HostPerformanceRules.DeltaPoints(figures.OccupancyRate, before?.OccupancyRate));
+        cells.Add(HostPerformanceRules.DeltaPercent(figures.Adr, before?.Adr));
+        cells.Add(HostPerformanceRules.DeltaPercent(figures.RevPar, before?.RevPar));
+        return cells;
+    }
+
+    // The name of a line of a trend as the file shows it: the whole scope, a property, a channel, or what did not fit in the lines.
+    private static string SeriesLabel(HostTrendSeries series, HostPerformanceGroupBy groupBy)
+    {
+        if (series.Key == HostPerformanceRules.TotalKey)
+            return Total;
+
+        if (series.Key == HostPerformanceRules.OtherSeriesKey)
+            return groupBy == HostPerformanceGroupBy.Channel ? "Altri canali" : "Altri immobili";
+
+        return groupBy == HostPerformanceGroupBy.Channel ? FiscalReportDocuments.ChannelLabel(series.Key) : series.Label;
+    }
 
     private static IReadOnlyList<object?> OccupancyRow(string name, HostDashboardOccupancy occupancy) =>
         Row(

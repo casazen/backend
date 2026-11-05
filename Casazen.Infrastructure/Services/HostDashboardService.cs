@@ -188,7 +188,30 @@ public sealed partial class HostDashboardService(
         DateTime nowUtc,
         CancellationToken cancellationToken)
     {
-        var byProperty = new Dictionary<Guid, HostDashboardOccupancy>();
+        var sets = await GetNightSetsByPropertyAsync(propertyIds, period, nowUtc, cancellationToken);
+        return sets.ToDictionary(property => property.Key, property => property.Value.Occupancy(period));
+    }
+
+    // The nights a property has taken and the ones its host closed, as dates: the very sets the occupancy of the Home counts, kept so
+    // that the reports (NF-96) can count them again for the days of a week or a month. The figures of the parts add up to the whole.
+    private sealed class PropertyNights(HashSet<DateTime> taken, HashSet<DateTime> closedOnly)
+    {
+        public HashSet<DateTime> Taken { get; } = taken;
+
+        public HashSet<DateTime> ClosedOnly { get; } = closedOnly;
+
+        public HostDashboardOccupancy Occupancy(HostDashboardPeriod period) =>
+            new(Taken.Count, period.Nights - ClosedOnly.Count, ClosedOnly.Count);
+    }
+
+    // The nights of each property of <propertyIds>, one entry for every one of them.
+    private async Task<IReadOnlyDictionary<Guid, PropertyNights>> GetNightSetsByPropertyAsync(
+        IReadOnlyCollection<Guid> propertyIds,
+        HostDashboardPeriod period,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var byProperty = new Dictionary<Guid, PropertyNights>();
         if (propertyIds.Count == 0)
             return byProperty;
 
@@ -226,7 +249,7 @@ public sealed partial class HostDashboardService(
                 closedOnly.UnionWith(PropertyOccupancy.NightsIn(block.Start, block.End, period.From, period.To));
             closedOnly.ExceptWith(taken);
 
-            byProperty[propertyId] = new HostDashboardOccupancy(taken.Count, period.Nights - closedOnly.Count, closedOnly.Count);
+            byProperty[propertyId] = new PropertyNights(taken, closedOnly);
         }
 
         return byProperty;

@@ -322,6 +322,7 @@ public class DemoEnvironmentService(
             property.SmokingPolicy = profile.Smoking;
             property.PetsPolicy = profile.Pets;
             property.PartiesPolicy = profile.Parties;
+            property.ChildrenPolicy = profile.Children;
             property.QuietHoursFrom = profile.QuietHoursFrom;
             property.QuietHoursTo = profile.QuietHoursTo;
             property.ExtraGuestFeePerNight = profile.ExtraGuestFeePerNight;
@@ -359,7 +360,58 @@ public class DemoEnvironmentService(
             });
         }
 
+        // NF-27, NF-38, NF-34, NF-35: where the content of the house stands on the channels of the channel manager (invented: nothing is sent
+        // anywhere), its rooms with their beds and its length-of-stay discounts. Like the points of interest they go with their property (cascade)
+        // at the next reset, and each carries a marker of its own as the demo rule asks.
+        var listingRows = new List<(string EntityType, Guid Id, string Key)>();
+        foreach (var channel in template.ChannelStates ?? [])
+        {
+            var state = new ListingChannelState
+            {
+                OrgId = orgId,
+                PropertyId = property.Id,
+                ChannelCode = channel.ChannelCode,
+                Status = channel.Status,
+                ErrorCode = channel.ErrorCode,
+                ErrorMessage = channel.ErrorMessage,
+                LastSyncedAt = channel.LastSyncedHoursAgo is { } hoursAgo ? now.AddHours(-hoursAgo) : null,
+                ContentVersion = channel.Status == ChannelPublishStatus.Published ? 1 : 0,
+            };
+            db.ListingChannelStates.Add(state);
+            listingRows.Add((TestDataEntities.ListingChannelState, state.Id, template.Key + "/" + channel.ChannelCode));
+        }
+
+        for (var position = 0; position < (template.Rooms?.Count ?? 0); position++)
+        {
+            var demoRoom = template.Rooms![position];
+            var room = new PropertyRoom
+            {
+                OrgId = orgId,
+                PropertyId = property.Id,
+                Position = position,
+                Type = demoRoom.Type,
+                Beds = demoRoom.Beds,
+            };
+            db.PropertyRooms.Add(room);
+            listingRows.Add((TestDataEntities.PropertyRoom, room.Id, template.Key + "/room-" + (position + 1)));
+        }
+
+        foreach (var demoDiscount in template.StayDiscounts ?? [])
+        {
+            var tier = new PropertyStayDiscount
+            {
+                OrgId = orgId,
+                PropertyId = property.Id,
+                MinNights = demoDiscount.MinNights,
+                PercentOff = demoDiscount.PercentOff,
+            };
+            db.PropertyStayDiscounts.Add(tier);
+            listingRows.Add((TestDataEntities.PropertyStayDiscount, tier.Id, template.Key + "/discount-" + demoDiscount.MinNights));
+        }
+
         await db.SaveChangesAsync(cancellationToken);
+        foreach (var (entityType, id, key) in listingRows)
+            await MarkAsync(orgId, entityType, id, TestDataOrigins.Showcase, key, cancellationToken);
 
         if (template.Publish || template.Mode == RentalMode.Long)
         {

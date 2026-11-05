@@ -153,6 +153,12 @@ internal static class PostgresAdvisoryLocks
         PropertyPhotos = 1_074,
 
         /// <summary>
+        /// Length-of-stay discounts of one property (key: property id): two saves of the tiers never read the stored ones at the same time, so the
+        /// unique minimum of nights and the limit of five tiers are decided on rows nobody else is changing (NF-35).
+        /// </summary>
+        PropertyStayDiscounts = 1_075,
+
+        /// <summary>
         /// Service catalog of one supplier (key: supplier org id, <c>orgId.ToString("N")</c>): the changes of a supplier's
         /// services (create, duplicate, edit, delete, publish, pause, photos) and the merge of duplicate supplier profiles
         /// (<c>fix-orphaned</c>) run one at a time, so the limit of services, the free slug and the photo list are never

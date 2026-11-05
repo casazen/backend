@@ -9,9 +9,10 @@ using Microsoft.Extensions.Logging;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// The alternative text of the photos of a property (DB-11a). Saving takes the per-property photo lock (the one of
-/// <see cref="PropertyPhotoService"/>) and re-reads the row after taking it, so a photo uploaded or deleted at the same moment is neither lost
-/// nor given a text that belongs to another. Only <c>PhotoAltJson</c> and <c>UpdatedAt</c> are written. The texts are never written to the log.
+/// The alternative text (the caption), the room and the size of the photos of a property (DB-11a, NF-32). Saving takes the per-property photo
+/// lock (the one of <see cref="PropertyPhotoService"/>) and re-reads the row after taking it, so a photo uploaded or deleted at the same moment
+/// is neither lost nor given a text that belongs to another. Only <c>PhotoAltJson</c> and <c>UpdatedAt</c> are written. The texts are never
+/// written to the log. A room can only be one of the same property: another property's room is a 404, as if it did not exist.
 /// </summary>
 public class PropertyPhotoAltService(
     AppDbContext db,
@@ -26,7 +27,7 @@ public class PropertyPhotoAltService(
             .Where(p => p.Id == propertyId)
             .Select(p => new { p.PhotoUrls, p.PhotoAltJson })
             .FirstOrDefaultAsync(cancellationToken);
-        return row is null ? null : PropertyPhotoMeta.Of(row.PhotoUrls, row.PhotoAltJson);
+        return row is null ? null : PropertyPhotoMeta.Of(row.PhotoUrls, row.PhotoAltJson, withRoom: true);
     }
 
     public async Task<IReadOnlyList<PublicPropertyPhotoDto>?> SaveAsync(
@@ -38,9 +39,11 @@ public class PropertyPhotoAltService(
 
         // The rules first: nothing is locked or read for a text that cannot be stored.
         var texts = new Dictionary<string, LocalizedText?>(StringComparer.Ordinal);
+        var rooms = new Dictionary<string, Guid?>(StringComparer.Ordinal);
         foreach (var photo in photos)
         {
             texts[photo.Url] = SitePropertyProfileRules.NormalizeText(photo.Alt, SitePropertyProfileLimits.PhotoAltMaxLength, "photos");
+            rooms[photo.Url] = photo.RoomId;
         }
 
         await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
@@ -63,13 +66,31 @@ public class PropertyPhotoAltService(
             };
         }
 
-        // The texts of the photos listed; every other photo of the gallery loses its text; sizes stay as they are.
+        // A room is one of this property's rooms (the tenant filter already hides the rooms of another org): a room of another property is 404.
+        var wanted = rooms.Values.OfType<Guid>().Distinct().ToList();
+        if (wanted.Count > 0)
+        {
+            var own = await db.PropertyRooms.AsNoTracking()
+                .Where(r => r.PropertyId == propertyId && wanted.Contains(r.Id))
+                .Select(r => r.Id)
+                .ToListAsync(cancellationToken);
+            if (own.Count != wanted.Count)
+            {
+                throw new NotFoundException($"Room not in property {propertyId}")
+                {
+                    Code = PropertyRoomErrorCodes.RoomNotFound,
+                    MessageKey = "PropertyRoomNotFound",
+                };
+            }
+        }
+
+        // The texts and the rooms of the photos listed; every other photo of the gallery loses both; sizes stay as they are.
         var current = PropertyPhotoMeta.Parse(property.PhotoAltJson);
         var next = new Dictionary<string, PhotoMeta>(StringComparer.Ordinal);
         foreach (var url in property.PhotoUrls)
         {
             current.TryGetValue(url, out var known);
-            var meta = new PhotoMeta(texts.GetValueOrDefault(url), known?.Width, known?.Height);
+            var meta = new PhotoMeta(texts.GetValueOrDefault(url), known?.Width, known?.Height, rooms.GetValueOrDefault(url));
             if (!meta.IsEmpty)
                 next[url] = meta;
         }
@@ -82,6 +103,6 @@ public class PropertyPhotoAltService(
             await transaction.CommitAsync(cancellationToken);
 
         logger.LogInformation("Photo texts of property {PropertyId} of org {OrgId} saved", property.Id, property.OrgId);
-        return PropertyPhotoMeta.Of(property.PhotoUrls, property.PhotoAltJson);
+        return PropertyPhotoMeta.Of(property.PhotoUrls, property.PhotoAltJson, withRoom: true);
     }
 }
