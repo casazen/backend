@@ -401,10 +401,29 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GuestDataEraser>();
         services.AddScoped<IGuestDataRetentionService, GuestDataRetentionService>();
         services.AddScoped<ILeasePartyPrivacyService, LeasePartyPrivacyService>();
-        // NF-10: Document OCR and MRZ extraction for guest check-in (ADR-009-R22, ADR-013-R10).
+        // NF-10 / NF-24: reading of the identity document of the guest check-in, in memory only (ADR-009-R22, ADR-013-R6, R8, R10,
+        // E03/F04/US01/T02). The MRZ locator is stateless; the Tesseract readers bind the library installed in the image the first time a
+        // document is read and verify the SHA-256 of their language files (section MrzOcr, docs/TECHNICAL.md).
+        services.AddOptions<Casazen.Core.Options.MrzOcrOptions>()
+            .BindConfiguration(Casazen.Core.Options.MrzOcrOptions.SectionName);
+        services.AddSingleton<IMrzBandLocator, MrzImageLocator>();
+        services.AddSingleton<TesseractMrzTextReader>();
+        services.AddSingleton<IMrzTextReader>(serviceProvider => serviceProvider.GetRequiredService<TesseractMrzTextReader>());
+        services.AddSingleton<TesseractPageTextReader>();
+        services.AddSingleton<IPageTextReader>(serviceProvider => serviceProvider.GetRequiredService<TesseractPageTextReader>());
         services.AddScoped<IMrzExtractionService, MrzExtractionService>();
         services.AddScoped<IDocumentOcrService, DocumentOcrService>();
-        // NF-11: Biometric verification for guest check-in (ADR-013).
+        // NF-11 / NF-24: Biometric verification for guest check-in (ADR-013, E03/F04/US01/T01). The three ONNX models are verified (SHA-256)
+        // and loaded once, in the background, where Features:CheckInIdentityVerification is on; without them every verification is the operator
+        // path (section Biometrics, docs/TECHNICAL.md). The large recognition model is downloaded with the client below.
+        services.AddOptions<Casazen.Core.Options.BiometricModelOptions>()
+            .BindConfiguration(Casazen.Core.Options.BiometricModelOptions.SectionName);
+        services.AddHttpClient(BiometricModelStore.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddSingleton<BiometricModelStore>();
+        services.AddSingleton<IBiometricModelStore>(serviceProvider => serviceProvider.GetRequiredService<BiometricModelStore>());
+        services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<BiometricModelStore>());
+        services.AddSingleton<IFaceDetector, FaceDetector>();
+        services.AddSingleton<IFaceEmbedder, FaceEmbedder>();
         services.AddScoped<IAntiSpoofingService, AntiSpoofingService>();
         services.AddScoped<IBiometricVerificationService, BiometricVerificationService>();
         // NF-12: Operator verification queue for manual biometric decisions (ADR-013).

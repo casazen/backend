@@ -163,12 +163,18 @@ public class BiometricVerificationLogProofTests
         var resultType = typeof(BiometricVerificationResult);
         var resultProperties = resultType.GetProperties().Select(p => p.Name.ToLowerInvariant()).ToList();
 
-        var forbiddenResultFields = new[] { "image", "selfie", "photo", "crop", "embedding", "vector", "bytes", "blob" };
+        // E03/F04/US01/T01: FaceInSelfie and FaceAreaRatioSelfie are a flag and a number, so the word "selfie" is allowed in a name; what is
+        // forbidden is any property that could hold a picture, a crop or a vector, by name and by type.
+        var forbiddenResultFields = new[] { "image", "photo", "crop", "embedding", "vector", "bytes", "blob" };
         foreach (var forbidden in forbiddenResultFields)
         {
             var matchingProps = resultProperties.Where(name => name.Contains(forbidden)).ToList();
             Assert.Empty(matchingProps);
         }
+
+        Assert.DoesNotContain(
+            resultType.GetProperties(),
+            p => p.PropertyType == typeof(byte[]) || p.PropertyType == typeof(float[]) || typeof(Stream).IsAssignableFrom(p.PropertyType));
 
         // ADR-013-R2: The service implementation MUST have try-finally blocks that delete:
         // - selfieBytes (Array.Clear)
