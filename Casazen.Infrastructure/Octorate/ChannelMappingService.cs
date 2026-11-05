@@ -414,7 +414,8 @@ public sealed class ChannelMappingService(
         {
             OrgId = orgId,
             OwnerId = userId,
-            Name = Cut(listing.Name, 100) ?? $"Octorate {listing.Id}",
+            // A listing with no name gets a neutral one: the host sees it, and the product says «channel manager», never the supplier's name.
+            Name = Cut(listing.Name, 100) ?? $"Annuncio {listing.Id}",
             Address = Cut(listing.Address, 500) ?? string.Empty,
             City = Cut(listing.City, 50) ?? string.Empty,
             PostalCode = Cut(listing.PostalCode, 10) ?? string.Empty,
