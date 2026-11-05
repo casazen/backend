@@ -295,6 +295,11 @@ public class AppDbContext(
     // The connection of an org to its Octorate account, one per environment, with its OAuth tokens encrypted (ADR-023, E02/F01/US01/T01)
     public DbSet<OctorateConnection> OctorateConnections { get; set; } = null!;
 
+    // The listings found on the channel manager and their mapping to the CasaZen properties, and the single-use OAuth states of the
+    // consent (ADR-023, ADR-027, E02/F01/US02/T02)
+    public DbSet<OctorateListingMapping> OctorateListingMappings { get; set; } = null!;
+    public DbSet<OctorateOAuthState> OctorateOAuthStates { get; set; } = null!;
+
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
@@ -1511,6 +1516,45 @@ public class AppDbContext(
             entity.HasIndex(c => new { c.OrgId, c.Environment })
                 .IsUnique()
                 .HasDatabaseName(OctorateConnection.OrgEnvironmentIndexName);
+        });
+
+        // A listing found through a connection, once per org, connection and accommodation; a property is confirmed to one listing
+        // only (partial unique index on Status = 2, OctorateMappingStatus.Confirmed). A connection with mappings is never deleted
+        // (RESTRICT); a deleted property leaves its mapping without property (SET NULL). The webhook finds the org of a notification
+        // by the accommodation code across orgs (a system read): its own index.
+        modelBuilder.Entity<OctorateListingMapping>(entity =>
+        {
+            entity.HasOne<OctorateConnection>()
+                .WithMany()
+                .HasForeignKey(m => m.ConnectionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Property>()
+                .WithMany()
+                .HasForeignKey(m => m.PropertyId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.Property(m => m.SnapshotRoomsJson).HasColumnType("jsonb");
+            entity.Property(m => m.CandidatePropertyIdsJson).HasColumnType("jsonb");
+            entity.Property(m => m.ChannelIdsJson).HasColumnType("jsonb");
+            entity.HasIndex(m => new { m.OrgId, m.ConnectionId, m.OctorateAccommodationId })
+                .IsUnique()
+                .HasDatabaseName(OctorateListingMapping.AccommodationIndexName);
+            entity.HasIndex(m => new { m.OrgId, m.PropertyId })
+                .IsUnique()
+                .HasFilter("\"Status\" = 2")
+                .HasDatabaseName(OctorateListingMapping.ConfirmedPropertyIndexName);
+            entity.HasIndex(m => new { m.OrgId, m.Status });
+            entity.HasIndex(m => m.OctorateAccommodationId);
+        });
+
+        // The OAuth state of a consent: only its SHA-256 is stored (char 64, unique); the expired rows are deleted by ExpiresAt.
+        modelBuilder.Entity<OctorateOAuthState>(entity =>
+        {
+            entity.Property(s => s.StateHash).IsFixedLength();
+            entity.HasIndex(s => s.StateHash)
+                .IsUnique()
+                .HasDatabaseName(OctorateOAuthState.StateHashIndexName);
+            entity.HasIndex(s => s.ExpiresAt);
         });
 
         // ─── Internal activities: the staff work (NF-22) and the "To do" list (ADR-026) ───
