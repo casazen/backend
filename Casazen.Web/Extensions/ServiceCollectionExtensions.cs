@@ -599,6 +599,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgEmptinessChecker, OrgEmptinessChecker>();
         services.AddScoped<IOrgInvitationService, OrgInvitationService>();
         services.AddScoped<IOwnerInvitationService, OwnerInvitationService>();
+        // NF-96: the performance of an agency's properties cut by property owner, over the Home's numbers (GET /api/reports/by-owner).
+        services.AddScoped<IOwnerReportService, OwnerReportService>();
+        // ADR-011, NF-96: the owner portal (the owner's properties, and their overview and trend on the Home's numbers). It was never
+        // registered: the controller of the portal could not be built.
+        services.AddScoped<IOwnerPortalService, OwnerPortalService>();
         services.AddScoped<IOrgTeamService, OrgTeamService>();
         // AM-03: the properties each member reaches («Solo alcuni») and the member in charge of a property.
         services.AddScoped<IOrgPropertyAccessService, OrgPropertyAccessService>();

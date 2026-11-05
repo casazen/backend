@@ -68,6 +68,7 @@ public class DemoShowcaseTests
             .SelectMany(p => p.Scenarios.Concat(p.Bookings.Select(b => b.Scenario)))
             .Concat(DemoShowcaseCatalog.HostInvites.Select(i => i.Scenario))
             .Concat(DemoShowcaseCatalog.PropertyOwners.Select(o => o.Scenario))
+            .Concat(DemoShowcaseCatalog.PropertyOwnerships.Select(o => o.Scenario))
             .Concat(DemoShowcaseCatalog.GuestSegments.Select(s => s.Scenario))
             .Concat(DemoShowcaseCatalog.Campaigns.Select(c => c.Scenario))
             .Concat(DemoShowcaseCatalog.AgencyInvoices.Select(inv => inv.Scenario))
@@ -120,5 +121,72 @@ public class DemoShowcaseTests
         Assert.Contains(stays, s => s.CheckInOffsetDays > 0 && s.Status == BookingStatus.Confirmed);
         Assert.Contains(stays, s => s.CheckInOffsetDays < 0 && s.Status == BookingStatus.CheckedOut);
         Assert.Contains(stays, s => s.Status == BookingStatus.Cancelled && s.CancellationReason == BookingCancellationReason.GuestRequested);
+    }
+
+    [Fact]
+    public void ReportYearOverYear_TheDemoHasFinishedStaysAboutOneYearAgo_OnSeveralChannels()
+    {
+        var stays = DemoShowcaseCatalog.Properties
+            .SelectMany(p => p.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.ReportYearOverYear))
+            .ToList();
+
+        // NF-96: the same months of the year before the other demo stays are in, so the comparison of the reports is never empty.
+        Assert.Contains(DemoShowcaseCatalog.Scenario.ReportYearOverYear, DemoShowcaseCatalog.Scenarios);
+        Assert.NotEmpty(stays);
+        Assert.All(stays, s => Assert.EndsWith("@example.com", s.Email, StringComparison.Ordinal));
+        Assert.All(stays, s => Assert.Equal(BookingStatus.CheckedOut, s.Status));
+        Assert.All(stays, s => Assert.InRange(s.CheckInOffsetDays, -400, -300));
+        Assert.Equal(stays.Count, stays.Select(s => s.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.True(stays.Select(s => s.Source).Distinct().Count() >= 3, "A comparison by channel needs several channels.");
+        Assert.True(
+            DemoShowcaseCatalog.Properties.Count(p => p.Bookings.Any(b => b.Scenario == DemoShowcaseCatalog.Scenario.ReportYearOverYear)) >= 2,
+            "A comparison by property needs more than one property.");
+    }
+
+    [Fact]
+    public void Catalog_NoDemoProperty_HasTwoStaysOnTheSameNight()
+    {
+        foreach (var property in DemoShowcaseCatalog.Properties)
+        {
+            var taken = property.Bookings
+                .Where(b => b.Status != BookingStatus.Cancelled)
+                .OrderBy(b => b.CheckInOffsetDays)
+                .ToList();
+            for (var index = 1; index < taken.Count; index++)
+            {
+                var before = taken[index - 1];
+                Assert.True(
+                    before.CheckInOffsetDays + before.Nights <= taken[index].CheckInOffsetDays,
+                    $"{property.Key}: the stays {before.Key} and {taken[index].Key} take the same night.");
+            }
+        }
+    }
+
+    [Fact]
+    public void PropertyOwnerships_TheSharesOfEachDemoProperty_AddUpToOneHundred_AndOneHouseIsCoOwned()
+    {
+        var ownerships = DemoShowcaseCatalog.PropertyOwnerships;
+        var owners = DemoShowcaseCatalog.PropertyOwners.Select(o => o.Key).ToHashSet(StringComparer.Ordinal);
+        var properties = DemoShowcaseCatalog.Properties.Select(p => p.Key).ToHashSet(StringComparer.Ordinal);
+
+        Assert.All(ownerships, o =>
+        {
+            Assert.Contains(o.OwnerKey, owners);
+            Assert.Contains(o.PropertyKey, properties);
+            Assert.Contains(o.Scenario, DemoShowcaseCatalog.Scenarios);
+            // The share of an ownership is the one the owner's template says.
+            Assert.Equal(DemoShowcaseCatalog.PropertyOwners.Single(x => x.Key == o.OwnerKey).OwnershipSharePercent, o.SharePercent);
+        });
+        Assert.All(ownerships.GroupBy(o => o.PropertyKey), house => Assert.Equal(100m, house.Sum(o => o.SharePercent)));
+
+        // NF-96: the owner of the agency demo has a house with stays, and one house is shared 50/50 by two owners, so the weighting shows.
+        var agencyOwner = Assert.Single(ownerships, o => o.Scenario == DemoShowcaseCatalog.Scenario.PropertyOwnerAgency);
+        Assert.Contains(
+            DemoShowcaseCatalog.Properties.Single(p => p.Key == agencyOwner.PropertyKey).Bookings,
+            b => b.Status == BookingStatus.CheckedOut);
+        var shared = ownerships.Where(o => o.Scenario == DemoShowcaseCatalog.Scenario.OwnerShares).ToList();
+        Assert.Equal(2, shared.Count);
+        Assert.All(shared, o => Assert.Equal(50m, o.SharePercent));
+        Assert.Single(shared.Select(o => o.PropertyKey).Distinct(StringComparer.Ordinal));
     }
 }

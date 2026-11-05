@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-10-31.1";
+    public const string Version = "2026-11-05.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -68,6 +68,7 @@ public static class DemoShowcaseCatalog
         public const string PropertyWizardFields = "property-wizard-fields";
         public const string PropertySiteProfile = "property-site-profile";
         public const string GuestAppAccount = "guest-app-account";
+        public const string ReportYearOverYear = "report-year-over-year";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -109,6 +110,7 @@ public static class DemoShowcaseCatalog
         Scenario.PropertyWizardFields,
         Scenario.PropertySiteProfile,
         Scenario.GuestAppAccount,
+        Scenario.ReportYearOverYear,
     ];
 
     /// <summary>
@@ -136,6 +138,19 @@ public static class DemoShowcaseCatalog
             "VRDLCU80D15F205A", "IT10J0200805017000105432100", OwnerTaxRegime.Private, 50m, 12m, Scenario.OwnerShares),
         new("anna-ferrari", "Anna", "Ferrari", "anna.proprietario@example.com", "+39 336 5544332",
             "FRRNNA85E50H501B", "IT07X0300203280284975071923", OwnerTaxRegime.VatHolder, 100m, 18m, Scenario.OwnerMandate),
+    ];
+
+    /// <summary>
+    /// Who owns which demo property and for how much (ADR-012-R4, NF-96): the report by owner of the agency and the owner portal weight the
+    /// figures of a property by these shares. The shares of a property add up to 100: the house of the agency demo owner is his alone and
+    /// has stays (it is the one with a finished stay and one a year earlier), and the villa is shared 50/50 by two owners, so the weighting
+    /// shows. Owners are the ones of <see cref="PropertyOwners"/>, properties the ones of <see cref="Properties"/>, both by key.
+    /// </summary>
+    public static IReadOnlyList<DemoPropertyOwnershipTemplate> PropertyOwnerships { get; } =
+    [
+        new("mario-rossi", "casa-trastevere", 100m, Scenario.PropertyOwnerAgency),
+        new("giulia-bianchi", "villa-lago", 50m, Scenario.OwnerShares),
+        new("luca-verdi", "villa-lago", 50m, Scenario.OwnerShares),
     ];
 
     /// <summary>
@@ -280,6 +295,11 @@ public static class DemoShowcaseCatalog
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
                     CancellationReason: BookingCancellationReason.GuestRequested),
+                // NF-96: stays of the same months one year earlier (finished, three channels), so the comparison with the year before of the
+                // performance report and of the trend is never empty in the demo. Invented guests at example.com, like the rest.
+                new("anno-prima-diretta", "Chiara", "Neri", "ospite.demo.anno-prima-1@example.com", -351, 4, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Direct),
+                new("anno-prima-airbnb", "Pietro", "Gallo", "ospite.demo.anno-prima-2@example.com", -344, 3, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Airbnb),
+                new("anno-prima-booking", "Sofie", "Peeters", "ospite.demo.anno-prima-3@example.com", -325, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.BookingCom),
             ]),
         new(
             Key: "appartamento-brera",
@@ -321,6 +341,8 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("past-guest-roma", "Francesca", "Romano", "francesca.demo@example.com", -15, 5, BookingStatus.CheckedOut, Scenario.AlloggiatiRegistered),
+                // NF-96: the same months one year earlier (see the villa).
+                new("anno-prima-roma", "Elisa", "Fontana", "ospite.demo.anno-prima-4@example.com", -380, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Direct),
             ]),
         new(
             Key: "bilocale-navigli",
@@ -373,6 +395,8 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("airbnb-ical", "Thomas", "Schmidt", "thomas.demo@example.com", 7, 3, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.Airbnb),
+                // NF-96: the same months one year earlier (see the villa).
+                new("anno-prima-firenze", "Hugo", "Martin", "ospite.demo.anno-prima-5@example.com", -358, 3, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Airbnb),
             ]),
         new(
             Key: "loft-torino",
@@ -454,6 +478,8 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("booking-com-ical", "Marie", "Dubois", "marie.demo@example.com", 21, 5, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.BookingCom),
+                // NF-96: the same months one year earlier (see the villa).
+                new("anno-prima-amalfi", "Lucia", "Esposito", "ospite.demo.anno-prima-6@example.com", -344, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.BookingCom),
             ]),
     ];
 
@@ -639,6 +665,12 @@ public sealed record DemoPropertyOwnerTemplate(
     decimal OwnershipSharePercent,
     decimal CommissionRate,
     string Scenario);
+
+/// <summary>
+/// The share of a demo property an owner holds (ADR-012-R4): <paramref name="SharePercent"/> of <paramref name="PropertyKey"/>, from the
+/// start of the showcase and without an end. The owner is a <see cref="DemoPropertyOwnerTemplate"/> by key.
+/// </summary>
+public sealed record DemoPropertyOwnershipTemplate(string OwnerKey, string PropertyKey, decimal SharePercent, string Scenario);
 
 /// <summary>A guest segment for demo campaigns (NF-24): condition is empty to match all consented guests.</summary>
 public sealed record DemoGuestSegmentTemplate(
