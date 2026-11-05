@@ -253,7 +253,12 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | `PUT` | `/api/properties/{id}/images/order` | Set the order: body = every photo URL of the gallery, each once. 409 `property_photos_changed` when the list is not the current gallery. Answers with the gallery |
 | `PUT` | `/api/properties/{id}/images/cover` | Make a photo the cover (body `{ "url": ... }`): it moves first. Answers with the gallery |
 | `GET` | `/api/properties/{id}/site-profile` | DB-11a. The optional facts and texts of the property page of the booking site (floor, renovation, energy class and index, kind of place, children, latest arrival, video and tour, zone, what is near, notes, highlights, safety notes, labels) plus `derivedTags` (the labels the data of the house give it). Short-rent only; `null`/empty = the host never said ([`direct-booking.md` §14](runbooks/direct-booking.md#14-the-site-profile-of-a-property-db-11a)) |
-| `PUT` | `/api/properties/{id}/site-profile` | DB-11a. Replaces the whole profile (what the body leaves out is cleared); texts in Italian (always) and English (optional), fixed lists for labels and highlight icons, a YouTube/Vimeo video and a Matterport tour stored as canonical embeds. 422 `property_site_profile_*` with the `field`, 422 `property_not_bookable_in_long_mode`. Answers with what is stored |
+| `PUT` | `/api/properties/{id}/site-profile` | DB-11a. Replaces the whole profile (what the body leaves out is cleared); texts in Italian (always) and English (optional), fixed lists for labels and highlight icons, a YouTube/Vimeo video and a Matterport tour stored as canonical embeds. 422 `property_site_profile_*` with the `field`, 422 `property_not_bookable_in_long_mode`. Answers with what is stored. **NF-31, multilingual texts**: the body also carries `translations` (language code of `ListingLanguages` to `{ title, description, spaces, access, neighborhood, transport, rules }`, the headline up to 60 characters, the description up to 2000, the others up to 1000; Italian keeps only `transport`, its other texts are `Property.ListingTitle`, `Description`, `HouseRules` and the `it` parts of the profile texts) and, in the six profile texts (`zone`, `near`, `floorNote`, `outdoorNote`, `checkInMethod`, `rulesNote`), `others` (the same text in the other languages). Left out, the stored ones are kept; an empty object clears them. There is no second store, no table and no migration: everything is in `Properties.SiteProfileJson`. The answer carries `translations` and `origins` (`"fr.title"` to `UserWritten`, `AutoTranslated` or `ModifiedAfterTranslation`): a person's save is `UserWritten`, or `ModifiedAfterTranslation` when it changes a machine translation; `AutoTranslated` can only come from `IPropertySiteProfileService.SaveAutoTranslationsAsync` (the call machine translation will use, AI-02, not built), which never overwrites a person's text. 422 `property_site_profile_language_unknown`. The public booking page keeps reading Italian and English only (`SitePropertyProfileDocument.ForPublicPage`). `ListingTextResolver` is the one reader of a text by language and field (Italian from the columns and the `It` parts; any other language from the document); `LanguageMapper.ValidateForPublish` lists the missing Italian and English headline and description (`en.title`...); `AmenityCatalogMapper` maps every `PropertyAmenity` to the amenity of the channel manager and to the Airbnb and Booking.com codes (published codes, not yet read again on the sandbox) |
+| `GET` | `/api/properties/{id}/rooms` | NF-34. The rooms of the unit in order: `id`, `position`, `type` (`Bedroom`, `LivingRoom`, `Studio`, `Other`) and `beds` (`[{ type, count }]`, `type` one of `Single`, `Double`, `Queen`, `King`, `SofaBed`, `Bunk`, `Crib`); an empty list when the host listed none. `property.read` and the row check (`PropertyOperations`): a property of another org is 404 |
+| `PUT` | `/api/properties/{id}/rooms` | NF-34. Body `{ rooms: [{ id?, type, beds }] }` replaces the whole list: a room sent with the `id` of a stored one is updated (its photos keep their room), a stored room not sent is removed and its photos lose the assignment. At most 20 rooms, 1 to 10 beds of a kind in a room, at least one bed in all and no more than the beds of a property (1 to 100): 422 `property_rooms_invalid` (the message says which rule), 422 `property_not_bookable_in_long_mode`, 404 `property_room_not_found` for an `id` that is not one of the property's. The same save sets `bedrooms` to the number of `Bedroom` rooms and `beds` to the number of beds; `maxGuests`, `bathrooms` and the area are not derived. `property.write` and the row check |
+| `GET` | `/api/properties/{id}/stay-discounts` | NF-35. The length-of-stay discounts in order of nights (`[{ minNights, percentOff }]`); an empty list when none |
+| `PUT` | `/api/properties/{id}/stay-discounts` | NF-35. Body `{ discounts: [{ minNights, percentOff }] }` replaces the whole list (an empty one removes them all). At most 5 tiers, each with its own `minNights` from 2 to 365 and a `percentOff` above 0 and at most 100 (two decimals): 422 `property_stay_discounts_invalid`, 422 `property_not_bookable_in_long_mode`. A stay gets the tier with the most nights it reaches, off the lodging only, rounded to the cent half away from zero (`StayPricing.DiscountFor`); never off the cleaning fee or the tourist tax. `property.write` and the row check |
+| `PUT` | `/api/properties/{id}/site-profile/photos` | NF-32. Besides the caption (`alt`) a photo can name the room it shows (`roomId`, an id of `GET .../rooms`): 404 `property_room_not_found` for a room of another property; the gallery answers with `roomId`; removing a room from the rooms clears it from the photos |
 
 Property record choices (PC-02):
 - **Update = PUT with PATCH semantics**, not a full PUT: a client that does not know or show a field (the long-term
@@ -263,6 +268,9 @@ Property record choices (PC-02):
 - **Bathrooms stay a whole number** (`int` in the model and the database, 1-50): the form accepts whole numbers only,
   no migration. **Bedrooms 0-100**, `0` = studio (monolocale); the activation wizard no longer requires a bedroom.
 - **No country nor currency** on the property: amounts are in euros and the form has no such fields.
+- **Children rule** (NF-37): `childrenPolicy` (`No`, `OnRequest`, `Yes`; `null` = never said) is stored next to `petsPolicy`, `smokingPolicy`,
+  `partiesPolicy` and the quiet hours, sent and answered by the property API with the same PATCH semantics (left out keeps it, `null` clears
+  it). Unlike pets and smoking it decides no amenity; the public page keeps reading `childrenWelcome` of the site profile.
 
 #### Bookings
 
@@ -542,13 +550,17 @@ property is not found; any other failure is a 500.
 | `GET` | `/api/reports/revenue-by-property` | short-rent payment.read | Revenue of the Home, by accrual (`competenza`), per property: `{ title, basis, currency, period, rows, total }`, a row `{ propertyId, propertyName, amount, amountCents, stayCount, nights }` |
 | `GET` | `/api/reports/occupancy-by-property` | short-rent payment.read | Occupancy of the Home per active short-rent property: a row `{ propertyId, propertyName, occupancy { occupiedNights, availableNights, closedNights, rate } }`, `total` the same shape |
 | `GET` | `/api/reports/bookings-by-channel` | short-rent payment.read | Confirmed stays of the Home per `Booking.Source`: a row `{ source, bookingCount, nights, amount, amountCents, share }`, `total { bookingCount, nights, amount, amountCents }` |
+| `GET` | `/api/reports/performance` | short-rent payment.read | NF-96. Occupancy, revenue, **ADR and RevPAR** of the Home for the whole scope, per property or per channel, and next to the same calendar days one year earlier: `{ title, basis, currency, groupBy, period, comparePeriod, rows, total }`, a row `{ key, propertyId, label, figures, previousYear, revenueDeltaPercent, occupancyDeltaPoints, adrDeltaPercent, revParDeltaPercent, revenueShare }`, `figures { occupiedNights, availableNights, closedNights, occupancyRate, revenue, revenueCents, stayCount, revenueNights, adr, adrCents, revPar, revParCents }`. Extra query: `groupBy` `none` (default, the total only), `property`, `channel`; `compare` `none` (default) or `previousYear` |
+| `GET` | `/api/reports/trend` | short-rent payment.read | NF-96. The same figures for each week or month: `{ title, basis, currency, groupBy, unit, period, comparePeriod, buckets, series }`, a bucket `{ label, from, to, previousYearFrom, previousYearTo }`, a line `{ key, propertyId, label, points, previousYear }` (`points` and `previousYear` have one entry for each bucket, the second `null` where there was nothing to compare with). Extra query: the two above and `bucket` `auto` (default), `week`, `month` |
+| `GET` | `/api/reports/by-owner` | `agency.statement.view` + short-rent payment.read | NF-96. The performance of an agency's properties cut by property owner: `{ title, basis, currency, period, rows, unassigned, total }`, a row `{ ownerId, displayName, propertyCount, figures, revenueShare }` (the anonymized label for an anonymized owner), `figures` and `total` the weighted `{ revenue, revenueCents, occupiedNights, availableNights, closedNights, occupancyRate, stayCount, revenueNights, adr, adrCents, revPar, revParCents }`. Only `from`, `to` and `format` (`json` or `csv`) |
 
-All three take `from` and `to` (`yyyy-MM-dd`, Europe/Rome days, both included; years 2000 to 2100), an optional `propertyId` and `format`
-(`json`, the default, or `csv`). Errors: 400 `report_invalid_period` (a day missing, `to` before `from`, a year out of range), 400
-`report_invalid_format`, **422 `report_period_too_long` beyond 24 calendar months** (1 January 2025 to 31 December 2026 is the longest
-that starts there), 404 for a `propertyId` the caller does not reach, 403 without an org. Limited to the caller's `HostScope`, in SQL.
-They need `payment.read` (SR-D7): the collaborator never receives an aggregated amount, whatever the page does. No PDF, no comparison
-with the period before, nothing about a guest.
+All of them take `from` and `to` (`yyyy-MM-dd`, Europe/Rome days, both included; years 2000 to 2100) and `format` (`json`, the default, or
+`csv`); all but `by-owner` also an optional `propertyId`. Errors: 400 `report_invalid_period` (a day missing, `to` before `from`, a year out of range), 400
+`report_invalid_format`, 400 `report_invalid_group_by`, `report_invalid_compare` and `report_invalid_bucket` (performance and trend),
+**422 `report_period_too_long` beyond 24 calendar months** (1 January 2025 to 31 December 2026 is the longest that starts there), 404 for
+a `propertyId` the caller does not reach, 403 without an org. Limited to the caller's `HostScope`, in SQL. They need `payment.read`
+(SR-D7): the collaborator never receives an aggregated amount, whatever the page does. No PDF, nothing about a guest; only `performance`
+and `trend` compare, and only with the same days one year earlier.
 - **One rule, the Home's.** The reads are `IHostDashboardService.GetRevenueByPropertyAsync`, `GetOccupancyByPropertyAsync` and
   `GetBookingsByChannelAsync`: the stays are the very rows of the revenue of the Home (`RevenueStays`: confirmed, with a night in the
   period) priced by `StayKpiRules`, and the nights are the ones the Home sums (`GetNightsByPropertyAsync`). So `total` is the figure
@@ -565,6 +577,90 @@ with the period before, nothing about a guest.
 - **The CSV** is written by `CsvWriter` (`Casazen.Core.Utilities`): UTF-8 with BOM, `;`, a decimal comma, `CRLF`, at most 10,000 rows
   (422 `csv_too_many_rows`), and a text that a spreadsheet would run as a formula (`= + - @`, a tab or a CR first) gets a leading
   apostrophe. A number is written by the writer, never as text. The fiscal reports write through it too, without a limit, unchanged.
+- **ADR and RevPAR (NF-96).** Both are on the Home's revenue: the confirmed stays pro rata per night, lodging plus cleaning, tourist
+  tax excluded. **ADR** = that revenue over the nights of the confirmed stays that fall in the period (`revenueNights`); **RevPAR** = the
+  same revenue over the available nights (the Home's: nights of the period of the active short-rent properties minus the ones the host
+  closed by hand). Each is to the cent and is **null, never 0, when its denominator is 0**. `total` is the figure the Home gives for the
+  same days (`GetPerformanceAsync` reads the Home's stays and nights, `GetNightSetsByPropertyAsync`, and rounds the revenue once, on
+  all the stays); a property row has all the figures; a **channel row has no nights** (they belong to a property), so its night
+  figures, occupancy and RevPAR are null and it carries stays, revenue nights, revenue, ADR and `revenueShare`. `groupBy=none` has no
+  rows, the total only. A paused property that has revenue is a row with its money and no nights.
+- **The year before.** `compare=previousYear` works out the same calendar days one year earlier (`HostReportRules.PreviousYear`):
+  1 to 31 October 2026 against 1 to 31 October 2025. **29 February becomes 28 February**, so the year before is one day shorter when the
+  days span a leap day (1 to 29 February 2028 are 29 days, 1 to 28 February 2027 are 28). Every row and the total carry `previousYear`
+  and the differences worked out by the server (`HostPerformanceRules`): `revenueDeltaPercent`, `adrDeltaPercent` and
+  `revParDeltaPercent` in percent to one decimal, `occupancyDeltaPoints` in percentage points to one decimal. A percentage is null when
+  the year before is null or zero (never a division by zero); points are null when either has no rate. **`previousYear` is null, never
+  zeros, when there was nothing to compare with**: a property that did not exist yet (created after the last day of that period, in
+  Europe/Rome) and had no stay then, a channel without a stay, a scope with nothing available and no stay. The total keeps the Home's
+  numbers for those days, availability of every active property included.
+- **Trend.** One bucket for each ISO week (from Monday) up to 92 days and for each calendar month beyond (`bucket=auto`; the Home's chart
+  cuts by the same code with a limit of 62 days), cut at the edges of the period. The figures of a bucket are those of a report for its
+  days: the nights are counted again for them (the sets of nights of the Home) and a stay across two buckets counts in each for its
+  nights there; the revenue is handed out so that the buckets of a line add up to the revenue of the period to the cent. Each bucket
+  has the same days one year earlier; the buckets of the year before cover its period exactly, none of its days twice, so with a leap
+  day one of them can be empty. `groupBy=property` or `channel` gives a line for each, **at most 25, the ones with most revenue first:
+  when there are more, the 24 with most revenue and a 25th line `other` that is the sum of the rest** (their stays and nights taken
+  together), never dropped.
+- **By owner (`GET /api/reports/by-owner`, NF-96).** `OwnerReportsController` carries **both** `agency.statement.view` (the owner and the
+  administrators of an org on the agency plan; the property manager holds only `agency.owner.view`, so it is refused, and an org that
+  is not on the agency plan answers 403 `feature_requires_agency_tier`, like the other agency endpoints) and `payment.read` (aggregated
+  money, SR-D7). `IOwnerReportService.GetByOwnerAsync` reads the performance of **every property of the caller's scope once**
+  (`GetPerformanceAsync` by property: the Home's numbers, no second rule) and splits it by owner in memory. **What an owner holds of a
+  property** is the share of each `PropertyOwnership` whose period overlaps the days of the report (`OwnershipStart` to `OwnershipEnd`,
+  Rome days, both included), times the part of those days the ownership was in force: a house owned 50/50 all the period is half of
+  each owner's figures, one that changed hands on 15 October is counted for each owner for its own days; the weights of a property never
+  exceed 1 (scaled down otherwise) and what no owner holds goes to the `unassigned` row, so **the owners and `unassigned` add up to the
+  Home's total, a co-owned house once**. `total` is the Home's figure for the same days (all the stays at once), so it can differ by a
+  cent from the sum of the rounded rows. The figures are decimals (a half stay, a half night); ADR, RevPAR and the occupancy are worked
+  out from the weighted values. An owner appears if it holds a part of a property of the report in the period; its row has
+  `propertyCount`. **Privacy:** only the id and the name are read (`FirstName`, `LastName`, `AnonymizedAt`): never the fiscal code, the
+  IBAN, the e-mail or the phone, which are not even selected, so they are neither in the JSON nor in the CSV; an owner with
+  `AnonymizedAt` set shows `OwnerAnonymizedLabel` (the CSV: `Proprietario anonimizzato`). The CSV carries the title
+  `Prestazioni per proprietario, per competenza`, with the days, on the first row; the file is
+  `casazen-prestazioni-per-proprietario-competenza-20261001-20261031.csv`.
+- **Fixed number of queries** whatever the number of properties: the active properties, the stays, the bookings and the blocks that make
+  the nights, and (only if a paused property has revenue) their names; once more for the year before.
+- **Narrowing.** `HostPerformanceQuery.PropertyIds` / `HostTrendQuery.PropertyIds` narrow the properties to those ids **inside** the
+  caller's scope, never wider (null = no extra narrowing, an empty set = nothing); the agency report by owner and the owner portal use
+  it. A `propertyId` outside the scope, or outside the narrowing, is the same 404. `HostTrendQuery.MaxSeries` (25 unless asked) lets a
+  caller that weights each property by itself, the owner portal, ask for every line.
+- **The CSV** of both reports carries the Italian title with its base on the first row (`Prestazioni per immobile, per competenza, dal
+  01/10/2026 al 31/10/2026`, `Prestazioni per canale, ...`, `Prestazioni complessive, ...`, `Andamento ...`), then the header, the rows
+  and a `Totale` row (the trend: a row for each bucket of each line). The columns of the year before and of the differences are there
+  only when the report compared. File names: `casazen-prestazioni-per-immobile-competenza-20261001-20261031.csv`,
+  `casazen-andamento-competenza-...`.
+
+#### Owner portal (ADR-011, NF-96)
+
+Policy `OwnerPortal` on the class (JWT claim `context=owner_portal` and a valid `owner_id`; never a host role); 401 without a valid owner
+claim. The owner sees only its own ownerships (`PropertyOwnership.OwnerUserId`): the ones in force today (`OwnershipStart` up to now,
+`OwnershipEnd` null or not before now), and for a report also those that had started by its last day and had not ended before its first.
+A property of another owner, an ended ownership or a missing property is one and the same 404. No guest name, e-mail or phone and nothing
+of any other owner in any field (ADR-011-R3).
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/owner-portal/properties` | OwnerPortal | The owner's properties: `occupancyRate` is now the Home's occupancy of the last 30 days (`IHostDashboardService.GetLast30DaysOccupancyAsync`), a percentage from 0 to 100 to one decimal; it used to be a placeholder of 0. `totalRevenue` (all non-cancelled bookings of all time) and the recent bookings are unchanged |
+| `GET` | `/api/owner-portal/overview` | OwnerPortal | NF-96. Occupancy, revenue, ADR and RevPAR of the owner's properties for `from`..`to`, and with `compare=previousYear` the same calendar days one year earlier and the differences: `{ title, basis, currency, groupBy, period, comparePeriod, rows, total }`, a row `{ key, propertyId, label, figures, previousYear, revenueDeltaPercent, occupancyDeltaPoints, adrDeltaPercent, revParDeltaPercent, revenueShare }` with the weighted `figures` of `GET /api/reports/by-owner` |
+| `GET` | `/api/owner-portal/trend` | OwnerPortal | NF-96. The same figures week by week or month by month: `{ title, basis, currency, groupBy, unit, period, comparePeriod, buckets, series }` as the host's trend, with the weighted figures |
+
+Query of both: `from`, `to` (`yyyy-MM-dd`, Rome days, both included, at most 24 months), optional `propertyId` (404 when it is not one of the
+owner's), `groupBy` `none` (default, the total only) or `property` (no channel cut: 400 `report_invalid_group_by`), `compare` `none` or
+`previousYear` (400 `report_invalid_compare`). Errors as the host's reports: 400 `report_invalid_period`, 422 `report_period_too_long`.
+
+- **The Home's numbers, weighted.** `OwnerPortalService.GetOwnerOverviewAsync` / `GetOwnerTrendAsync` call
+  `IHostDashboardService.GetPerformanceAsync` / `GetTrendAsync` once for each org the owner has properties in (`new HostScope(orgId)`,
+  narrowed to the owner's properties with `PropertyIds`: they never widen the scope), so revenue, nights, ADR and RevPAR are worked out
+  by the Home's rules, and multiply the figures of each property by the owner's share (`SharePercent / 100`, several rows of one property
+  added and capped at the whole). The total is the sum of the weighted rows (the orgs added up), ADR, RevPAR and the occupancy are worked
+  out from the weighted values, and a property that did not exist a year ago contributes nothing to the year before. The owners of a
+  co-owned property together are the Home's figure for it. Weighted nights and stays can be fractions.
+- **Trend.** The buckets are the host's (`HostReportRules.TrendBucketsOf`: weeks up to 92 days, months beyond); every property line is
+  the host's line for it multiplied by the share; all together is the sum of the lines; with `groupBy=property` at most 25 lines, the
+  rest summed in `other`.
+- **Wiring.** `IOwnerPortalService` was not registered in the dependency injection (the controller could not be built); it is now. Its
+  new constructor parameter, `IHostDashboardService`, is optional so that code that builds the service for the older reads compiles.
 
 #### Guests & digital check-in
 
@@ -959,7 +1055,7 @@ never a link to the dashboard.
 | `POST` | `/api/public/supplier-bookings/quote/accept` \| `quote/reject` | Anonymous | The customer accepts the quote the supplier sent (the request is taken on the supplier's behalf at the total of the quote) or turns it down; `{ slug, code, email, quoteSentAt }` in the body; 409 `service_request_quote_changed`, 422 `supplier_booking_no_quote` / `supplier_booking_quote_expired` (SP-04b, flag `SupplierShowcaseBooking`) |
 | `GET` | `/api/public/bookings/property/{propertyId}/availability` | Anonymous | Booked dates for public calendar, and the `minNights` of the property (DB-03) |
 | `GET` | `/api/public/bookings/{bookingId}/status` | Anonymous | Booking status (payment option) |
-| `POST` | `/api/public/bookings/quote` | Anonymous | Price of a stay with its breakdown in cents (`lines`: nights, weekend nights, cleaning, tourist tax, total); 422 `direct_booking_min_nights_not_met` below the minimum stay (DB-03, [direct-booking.md](runbooks/direct-booking.md) § 11) |
+| `POST` | `/api/public/bookings/quote` | Anonymous | Price of a stay with its breakdown in cents (`lines`: nights, weekend nights, length-of-stay discount, cleaning, tourist tax, total); 422 `direct_booking_min_nights_not_met` below the minimum stay (DB-03, [direct-booking.md](runbooks/direct-booking.md) § 11). NF-35: when a length-of-stay tier of the property applies, the answer carries `lengthOfStayDiscount` (euros taken off the nights, `0` when none), `lengthOfStayDiscountPercent` and `lengthOfStayDiscountMinNights` (`null` when none) and a `LengthOfStayDiscount` line with a negative amount; `lodgingTotal` is before the discount and `basePrice = lodgingTotal - lengthOfStayDiscount + cleaningFee`; the cleaning fee and the tourist tax are never reduced. The checkout and the host's quote and manual booking price the stay the same way |
 | `POST` | `/api/public/bookings/lookup` | Anonymous | Guest booking lookup by id + email (rate-limited) |
 | `POST` | `/api/public/guest/session` | Anonymous | The guest's session with no account (DB-06a): `{ orgSlug, bookingCode, email }` → `{ accessToken, expiresAt, bookingCode }`; a signed stateless token (Data Protection, 2 h by default, 24 h at most); one 404 `guest_booking_not_found` for everything that does not match; limits per IP, per email (shared with the lookup) and per code ([direct-booking.md](runbooks/direct-booking.md) § 8.4) |
 | `GET` / `POST` | `/api/public/guest/bookings/{code}/messages` | Guest session | The thread of the guest's booking and the guest's message to the host (DB-14a): `POST { text }` with `Idempotency-Key`, 409 `thread_closed` after the 7th day past the check-out, card numbers and IBANs replaced by «[rimosso]», an email to the host without the text; limits per IP and per session ([guest-messages.md](runbooks/guest-messages.md)) |
@@ -1269,6 +1365,44 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | Resend | `Resend` SDK (`ResendEmailService`, the only `IEmailService`) | `Email` section (`Email__Provider`, `Email__ApiKey`, `Email__FromAddress`, `Email__FromName`); see `docs/runbooks/email.md` | Transactional emails (queued on Hangfire) |
 | Alloggiati Web | None yet (manual submission, CO-13 adds the SOAP client) | `AlloggiatiWebService.cs`, `docs/runbooks/alloggiati.md` | Italian police guest registration |
 | OTA platforms (6) | `IChannelAdapter` implementations | `appsettings.json → OTA` | Booking sync and pricing push |
+
+### Identity verification models (E03/F04/US01/T01, ADR-013, NF-24, NF-51)
+
+The face check of the guest check-in (`POST /api/public/checkin/{token}/selfie`, behind `Features__CheckInIdentityVerification`, off by default) runs in the API process, from memory, with ONNX Runtime on the CPU. Nothing leaves the process and nothing is written: the selfie, the photo of the document, the crops and the vectors are zeroed in a `finally` block on success, failure and timeout (ADR-013-R2), and the result carries scores, flags, model name and version and the duration, never a picture, a crop or a vector. What the code cannot reach (the temporaries of the decoder and of ONNX Runtime) is freed but not scrubbed.
+
+| Step | Class | Model |
+|---|---|---|
+| Decode JPEG/PNG, apply the EXIF orientation, check the size before decoding | `RasterImage` (StbImageSharp: public domain, managed, no native code; ImageSharp has a revenue-threshold licence and SkiaSharp brings native binaries) | none |
+| Faces and five landmarks | `FaceDetector` | YuNet, MIT, OpenCV Zoo `face_detection_yunet_2023mar.onnx` (~230 KB, ships with the application) |
+| Liveness | `AntiSpoofingService.ScoreLivenessAsync` (`DetectLivenessAsync` is kept) | MiniFASNetV2, Apache-2.0, Silent-Face-Anti-Spoofing, ONNX export of `2.7_80x80_MiniFASNetV2` (~2 MB, ships with the application) |
+| Face vector | `FaceEmbedder` | AuraFace-v1 `glintr100.onnx`, Apache-2.0 (~260 MB: external, downloaded and hash-verified, ADR-013-R8). **SFace** (OpenCV Zoo `face_recognition_sface_2021dec.onnx`, Apache-2.0, 128 values) is the documented fallback: `Biometrics__RecognitionMean=0`, `Biometrics__RecognitionStd=1` and the other `Biometrics__FaceRecognition__*` values |
+| Decision | `BiometricVerificationService.VerifyAsync` | cosine similarity (negative values are 0), thresholds received from the caller |
+
+**Order of one verification** (all of it within `Biometrics__VerificationTimeoutMs`, default 2500 ms, ADR-013-R1): the thresholds are checked (the accept threshold must be above the escalate one, both between 0 and 1); the two pictures are decoded; YuNet runs on both; the selfie must hold exactly one face covering at least `Biometrics__MinFaceAreaRatio` of the picture (default 0.08); MiniFASNet scores the selfie and a score under `Biometrics__LivenessThreshold` (default 0.7) is not live; both faces are aligned on their landmarks (the ArcFace similarity transform), embedded and compared. The outcome follows ADR-013-R4: `Accept` at or above the accept threshold, `Reject` at or under the escalate threshold, `Escalate` between the two.
+
+**Reason codes** of `BiometricVerificationResult.ReasonCode` (codes only): `no_face` (no face in the selfie or in the photo of the document, `Reject`), `multiple_faces`, `face_too_small`, `not_live`, `image_unreadable` (`Reject`), `biometrics_unavailable`, `timeout`, `error`, `thresholds_invalid` (`Escalate`: the operator decides). `Similarity` is 0 when no comparison was made; `LivenessScore`, `FaceInSelfie`, `FaceInDocument`, `FaceAreaRatioSelfie` and `DurationMs` are always filled.
+
+**Safe default.** The models are loaded once, in the background, at startup of an environment where `Features__CheckInIdentityVerification` is on (`BiometricModelStore`; it never delays the start of the host). **A file is used only when its SHA-256 equals the pinned one** (`Biometrics__<Model>__Sha256`): a missing file (`file_missing`), a hash that is not pinned (`hash_not_configured`), a different one (`hash_mismatch`), a failed download (`download_failed`), a model that does not load or has other inputs or outputs (`load_failed`, `model_incompatible`) or a configuration error (`config_invalid`) leaves the store unavailable, and every verification answers `Escalate` with `biometrics_unavailable`. No code path returns "live" or "match" without the models having run. The provenance of each model (name, version, licence, training-data provenance, weight hash; ADR-013-R14) is logged at every start. The large model is downloaded to `Biometrics__FaceRecognition__Path` from `Biometrics__FaceRecognition__DownloadUrl` (https only, never without a pinned hash, kept only if the hash matches, 1.5 GB at most, `Biometrics__DownloadTimeoutMinutes`). Railway containers are ephemeral, so the download happens at every deploy and the verification is the operator path until it ends.
+
+**Supplying the models (operator, once).** No model file is part of this change and no hash is pinned: until they are, the verification is the operator path. For each model: download it from its official source, read its licence and training-data note, compute `sha256sum <file>`, put the 64 hexadecimal characters in `Biometrics__<Model>__Sha256` (`FaceDetector`, `AntiSpoofing`, `FaceRecognition`), and for the two small ones commit the file under `Casazen.Web/MlModels/biometrics/` (≤ 100 MB may be in the repository, ADR-013-R8; see `Casazen.Web/MlModels/README.md`). MiniFASNet is published as PyTorch weights: export `MiniFASNetV2` with `torch.onnx.export` (input `1x3x80x80`, output `1x3`, the second class is the real face) and review the result like any other model. The thresholds (`LivenessThreshold`, and the accept and escalate thresholds the controller passes, 0.85 and 0.70 today) are **provisional**: they must be calibrated on real data before the flag goes on (ADR-013 pre-launch gate; cosine similarities of genuine pairs are usually well under 0.85).
+
+### Identity document reading (E03/F04/US01/T02, ADR-013-R6, R8, R10, NF-24, NF-51)
+
+`POST /api/public/checkin/{token}/document` (behind `Features__CheckInIdentityVerification`) reads the MRZ of the picture with `IMrzExtractionService` and, when it is not readable, the printed fields with `IDocumentOcrService`; the response (`ExtractedDocumentFields`) does not change, it now carries real values. The picture is held in memory only (ADR-013-R6): the multipart body is buffered in memory, decoded by `RasterImage`, and every pixel array is zeroed in a `finally` block; there is no temporary file and no `DocumentImage` row (the services have no database or storage dependency).
+
+**MRZ.** `MrzExtractionService.ReadAsync` turns the picture gray and tries it as it is, then a quarter turn clockwise, a quarter turn counter-clockwise and a half turn (a picture taller than wide starts with the quarter turns), each within `MrzOcr__TimeoutSeconds` (12). `MrzImageLocator` estimates the tilt of the text (-10 to +10 degrees), levels the picture, marks the ink with a local threshold, finds the dense rows of the lower 70 % of the page that have the height of a line, keeps the lines at least 12 times as wide as high, and proposes the blocks of two or three lines of the same height, the same left and right edges and a regular spacing. Each line is cut, contrast-stretched and brought to about 40 pixels (a binarised twin is made) and read by `TesseractMrzTextReader`: Tesseract in process, one line at a time (page-segmentation mode 7), only `A-Z`, `0-9` and `<` allowed, the OCR-B language file `MrzOcr__Mrz__Path`. The gray strips are read first, the binarised ones when the digits do not pass. Two lines of 44 characters are TD-3 (passport), two of 36 are TD-2 (residence permit, some cards), three of 30 are TD-1 (ID card); lines up to three characters short or long are padded with the filler or cut.
+
+**Check digits (ICAO 9303).** The document number, the date of birth, the date of expiry, the personal number (TD-3, or nothing but fillers) and the **composite digit** of the second line (TD-3: positions 1-10, 14-20, 22-43; TD-2: 1-10, 14-20, 22-35; TD-1: line 1 positions 6-30 and line 2 positions 1-7, 9-15, 19-29) are all validated. Before the digits, the numeric fields get the corrections an OCR-B model needs (`O I S B Z` back to `0 1 5 8 2`) and the alphabetic ones (country codes, names) the inverse. A document number longer than nine characters (filler in the place of its digit, the rest and its digit in the optional data, TD-1 and TD-2) is joined. **`CheckDigitsValid` is true only when every digit passes**; the confidence is 0.95 (0.90 when characters were corrected) and **0.40 when any digit fails**; a field whose own digit failed (document number, date of birth, expiry) is not returned; when none of the three passes the reading is null. A reading with a failed digit is never presented as certain.
+
+**Result.** `IsExpired` is true when the expiry date is before today in Europe/Rome (from the injected `TimeProvider`), `ExpirationDate` is returned, and the century of a date is chosen by its kind (a date of birth is never in the future; an expiry date is 20xx up to 30 years ahead). `Quality` holds the hints of the picture as codes (`mrz_not_found`, `glare`, `blur`) when the reading is not certain, and `ReadAsync` returns them also when nothing was read (the verification agent turns them into guidance). Thresholds `MrzOcr__GlareShareThreshold` (0.04) and `MrzOcr__BlurRatioThreshold` (0.6) are provisional. `ExtractAsync` keeps its contract: null when the MRZ is not readable, and the guided manual entry applies unchanged.
+
+**Printed fields (fallback).** `DocumentOcrService` reads the whole page with `TesseractPageTextReader` (Italian and English language files) and takes a value only when it stands next to its own label in Italian, English, French, German or Spanish (the same line or the next) and its format is plausible: full name, document number, date of birth, nationality (a three-letter code, or the Italian word for Italian), sex, date of expiry, **date of issue and place of issue** (the two fields the MRZ does not carry). A document with nothing readable gives null. The confidence is 0.55, so the check-in page always asks the guest to confirm. The raw text is not returned.
+
+**Tesseract.** The library is the one the image already installs for the energy certificate (`tesseract-ocr`, `libtesseract.so.5`), bound through its C interface when the first document is read (`TesseractNative`); the picture is given as raw pixels copied to unmanaged memory that is zeroed before it is freed. No NuGet wrapper is added: the available ones look the native library up under a file name of their own, which the Debian package does not use, and would need a link or a copy in the image. Without the library the reading is unavailable (`library_missing` in the log) and the manual entry applies. The language files are external model files with a **pinned SHA-256** (`MrzOcr__Mrz__Sha256`, `MrzOcr__VisualZoneItalian__Sha256`, `MrzOcr__VisualZoneEnglish__Sha256`, ADR-013-R8): empty, missing or different means the file is not used (`hash_not_configured`, `file_missing`, `hash_mismatch`). `ocrb.traineddata` goes under `Casazen.Web/MlModels/ocr/` (see its README); the Italian and English files are the ones of the image packages (`/usr/share/tesseract-ocr/5/tessdata`), whose hashes are pinned from the deployed image.
+
+**Logs.** Counts and codes only: the format (`TD1`, `TD2`, `TD3`), whether the digits passed, the number of hints, the duration. **No MRZ text, name, number or date of birth is logged at any level**, and an exception is logged by type, never with its message. The OCR text is a managed string that cannot be scrubbed; it is never stored and leaves scope when the call returns.
+
+**Not proved here.** The locator and the thresholds are tuned on pictures built in the tests, not on photos of real documents; the check digits make a wrong reading detectable, not a missed one impossible. Calibrate with real samples before turning the flag on.
 
 ---
 

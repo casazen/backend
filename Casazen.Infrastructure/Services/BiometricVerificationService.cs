@@ -1,24 +1,29 @@
+using System.Diagnostics;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
-/// Face comparison service using AuraFace-v1/SFace + YuNet for biometric check-in (ADR-013, NF-11).
-/// All processing is in-memory only with immediate deletion in finally blocks (ADR-013-R2).
-/// Returns three-level outcome (Accept/Escalate/Reject) based on configurable thresholds (ADR-013-R4).
+/// Face comparison service using AuraFace-v1/SFace + YuNet + MiniFASNet for biometric check-in (ADR-013, NF-11, NF-24, NF-51).
+/// All processing is in-memory only with immediate deletion in finally blocks (ADR-013-R2). Runs synchronously inside the request and stops after
+/// <c>Biometrics:VerificationTimeoutMs</c> (ADR-013-R1). Returns the three-level outcome (Accept/Escalate/Reject) from the thresholds received
+/// (ADR-013-R4). <b>The safe default is the operator</b>: models not available, a timeout or an error are <c>Escalate</c>, never a match.
 /// </summary>
 public class BiometricVerificationService(
     IAntiSpoofingService antiSpoofingService,
-    ILogger<BiometricVerificationService> logger) : IBiometricVerificationService
+    ILogger<BiometricVerificationService> logger,
+    IBiometricModelStore? modelStore = null,
+    IFaceDetector? faceDetector = null,
+    IFaceEmbedder? faceEmbedder = null,
+    IOptions<BiometricModelOptions>? options = null) : IBiometricVerificationService
 {
-    private const string ModelName = "AuraFace-v1"; // or "SFace" as fallback
-    private const string ModelVersion = "1.0.0";
-
     /// <summary>
-    /// Verifies a selfie against the document photo with in-memory processing only (ADR-013-R2).
-    /// All image data (selfie, crop, embeddings) is deleted in finally blocks before returning.
+    /// Verifies a selfie against the document photo with in-memory processing only (ADR-013-R2): the pictures are decoded, the faces found and
+    /// compared, and every picture, crop and vector is zeroed in the finally block, on success, failure and timeout.
     /// </summary>
     public async Task<BiometricVerificationResult> VerifyAsync(
         Stream selfieStream,
@@ -27,146 +32,135 @@ public class BiometricVerificationService(
         double escalateThreshold,
         CancellationToken cancellationToken = default)
     {
-        byte[]? selfieBytes = null;
-        byte[]? documentPhotoBytes = null;
-        byte[]? selfieCrop = null;
-        byte[]? documentCrop = null;
-        float[]? selfieEmbedding = null;
-        float[]? documentEmbedding = null;
+        var started = Stopwatch.GetTimestamp();
+        var settings = options?.Value ?? new BiometricModelOptions();
+        var result = new BiometricVerificationResult
+        {
+            ModelName = string.IsNullOrWhiteSpace(settings.FaceRecognition.Name) ? "unknown" : settings.FaceRecognition.Name,
+            ModelVersion = string.IsNullOrWhiteSpace(settings.FaceRecognition.Version) ? "unknown" : settings.FaceRecognition.Version,
+        };
 
+        byte[]? selfieBytes = null;
+        byte[]? documentBytes = null;
+        RasterImage? selfie = null;
+        RasterImage? document = null;
+        float[]? selfieVector = null;
+        float[]? documentVector = null;
         try
         {
-            // Step 1: Load images into memory (will be deleted in finally)
-            using (var ms = new MemoryStream())
+            if (!(acceptThreshold > escalateThreshold) || escalateThreshold < 0 || acceptThreshold > 1)
+                return Finish(result, BiometricOutcome.Escalate, BiometricReasonCodes.ThresholdsInvalid, started);
+
+            if (modelStore is not { IsAvailable: true } || faceDetector is null || faceEmbedder is null)
             {
-                await selfieStream.CopyToAsync(ms, cancellationToken);
-                selfieBytes = ms.ToArray();
+                logger.LogInformation("Biometric verification goes to the operator: the models are not available");
+                return Finish(result, BiometricOutcome.Escalate, BiometricReasonCodes.Unavailable, started);
             }
 
-            using (var ms = new MemoryStream())
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(settings.VerificationTimeoutMs);
+            var token = timeout.Token;
+
+            // Step 1: the two pictures into memory (they are zeroed in the finally block).
+            selfieBytes = await ImageBytes.ReadAllAsync(selfieStream, settings.MaxImageBytes, token);
+            documentBytes = await ImageBytes.ReadAllAsync(documentPhotoStream, settings.MaxImageBytes, token);
+            try
             {
-                await documentPhotoStream.CopyToAsync(ms, cancellationToken);
-                documentPhotoBytes = ms.ToArray();
+                selfie = RasterImage.Decode(selfieBytes, settings.MaxImagePixels);
+                document = RasterImage.Decode(documentBytes, settings.MaxImagePixels);
+            }
+            catch (InvalidDataException)
+            {
+                return Finish(result, BiometricOutcome.Reject, BiometricReasonCodes.ImageUnreadable, started);
             }
 
-            // Step 2: Anti-spoofing check on selfie (ADR-013, AC-NF11-6)
-            using (var selfieMemStream = new MemoryStream(selfieBytes))
-            {
-                var isLive = await antiSpoofingService.DetectLivenessAsync(selfieMemStream, cancellationToken);
+            ImageBytes.Zero(documentBytes);
 
-                if (!isLive)
-                {
-                    logger.LogWarning("Anti-spoofing check failed: selfie appears to be spoofed");
-                    return new BiometricVerificationResult
-                    {
-                        Outcome = BiometricOutcome.Reject,
-                        Similarity = 0.0,
-                        ModelName = ModelName,
-                        ModelVersion = ModelVersion,
-                        IsLive = false,
-                    };
-                }
-            }
+            // Step 2: YuNet on both pictures. No face in either one is a Reject; the selfie must hold one face, large enough.
+            var selfieFaces = faceDetector.Detect(selfie, settings.DetectionScoreThreshold, token);
+            var documentFaces = faceDetector.Detect(document, settings.DocumentDetectionScoreThreshold, token);
+            result.FaceInSelfie = selfieFaces.Count > 0;
+            result.FaceInDocument = documentFaces.Count > 0;
+            if (!result.FaceInSelfie || !result.FaceInDocument)
+                return Finish(result, BiometricOutcome.Reject, BiometricReasonCodes.NoFace, started);
 
-            // TODO: Steps 3-6 will integrate real face detection and comparison models
-            // For now, this is a placeholder implementation that demonstrates the structure
+            result.FaceAreaRatioSelfie = selfieFaces[0].AreaRatio;
+            if (selfieFaces.Count > 1)
+                return Finish(result, BiometricOutcome.Reject, BiometricReasonCodes.MultipleFaces, started);
 
-            // Step 3: YuNet face detection on both images
-            // - Load YuNet model (MIT license)
-            // - Detect face in selfie, extract bounding box
-            // - Detect face in document photo, extract bounding box
-            // - If no face detected in either -> Reject
+            if (selfieFaces[0].AreaRatio < settings.MinFaceAreaRatio)
+                return Finish(result, BiometricOutcome.Reject, BiometricReasonCodes.FaceTooSmall, started);
 
-            // Step 4: Crop faces from both images
-            // selfieCrop = CropFace(selfieBytes, faceBoundingBox);
-            // documentCrop = CropFace(documentPhotoBytes, faceBoundingBox);
+            // Step 3: anti-spoofing on the selfie (AC-NF11-6): the model runs, a score under the threshold is not live.
+            LivenessResult liveness;
+            using (var selfieCopy = new MemoryStream(selfieBytes, writable: false))
+                liveness = await antiSpoofingService.ScoreLivenessAsync(selfieCopy, token);
 
-            // Step 5: Generate face embeddings with AuraFace-v1 (or SFace fallback)
-            // - Load AuraFace-v1 glintr100.onnx (Apache-2.0)
-            // - Preprocess crops (resize, normalize)
-            // - Run inference to get embeddings
-            // selfieEmbedding = GenerateEmbedding(selfieCrop);
-            // documentEmbedding = GenerateEmbedding(documentCrop);
+            ImageBytes.Zero(selfieBytes);
+            result.IsLive = liveness.IsLive;
+            result.LivenessScore = liveness.Score;
+            if (!liveness.IsLive)
+                return Finish(result, BiometricOutcome.Reject, BiometricReasonCodes.NotLive, started);
 
-            // Step 6: Calculate cosine similarity between embeddings
-            // var similarity = CosineSimilarity(selfieEmbedding, documentEmbedding);
+            // Step 4: crop, align, normalise, embed both faces and compare them. The document photo is the largest face of its picture.
+            selfieVector = faceEmbedder.Embed(selfie, selfieFaces[0], token);
+            documentVector = faceEmbedder.Embed(document, documentFaces[0], token);
+            result.Similarity = Math.Clamp(EmbeddingMath.CosineSimilarity(selfieVector, documentVector), 0.0, 1.0);
 
-            // Placeholder: simulate similarity score
-            var similarity = 0.75; // Placeholder value
-
-            logger.LogInformation(
-                "Biometric verification completed (placeholder): similarity={Similarity}, accept={Accept}, escalate={Escalate}",
-                similarity, acceptThreshold, escalateThreshold);
-
-            // Step 7: Determine outcome based on thresholds (ADR-013-R4)
-            var outcome = similarity >= acceptThreshold
-                ? BiometricOutcome.Accept
-                : similarity >= escalateThreshold
-                    ? BiometricOutcome.Escalate
-                    : BiometricOutcome.Reject;
-
-            return new BiometricVerificationResult
-            {
-                Outcome = outcome,
-                Similarity = similarity,
-                ModelName = ModelName,
-                ModelVersion = ModelVersion,
-                IsLive = true,
-            };
+            // Step 5: the outcome of the thresholds (ADR-013-R4).
+            return Finish(result, MapOutcome(result.Similarity, acceptThreshold, escalateThreshold), null, started);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogWarning("Biometric verification timed out; it goes to the operator");
+            return Finish(result, BiometricOutcome.Escalate, BiometricReasonCodes.Timeout, started);
+        }
+        catch (BiometricUnavailableException)
+        {
+            logger.LogWarning("Biometric verification goes to the operator: the models are not available");
+            return Finish(result, BiometricOutcome.Escalate, BiometricReasonCodes.Unavailable, started);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Biometric verification failed");
-
-            // On error, escalate to operator (safe default)
-            return new BiometricVerificationResult
-            {
-                Outcome = BiometricOutcome.Escalate,
-                Similarity = 0.0,
-                ModelName = ModelName,
-                ModelVersion = ModelVersion,
-                IsLive = false,
-            };
+            // On error, escalate to operator (safe default). The type only: a message could carry what was being read.
+            logger.LogError("Biometric verification failed ({ErrorType}); it goes to the operator", ex.GetType().Name);
+            return Finish(result, BiometricOutcome.Escalate, BiometricReasonCodes.Error, started);
         }
         finally
         {
             // ADR-013-R2: Immediate deletion guarantee
-            // Delete all image data (selfie, crop, embedding) before returning
-            if (selfieBytes != null)
-            {
-                Array.Clear(selfieBytes, 0, selfieBytes.Length);
-                selfieBytes = null;
-            }
-
-            if (documentPhotoBytes != null)
-            {
-                Array.Clear(documentPhotoBytes, 0, documentPhotoBytes.Length);
-                documentPhotoBytes = null;
-            }
-
-            if (selfieCrop != null)
-            {
-                Array.Clear(selfieCrop, 0, selfieCrop.Length);
-                selfieCrop = null;
-            }
-
-            if (documentCrop != null)
-            {
-                Array.Clear(documentCrop, 0, documentCrop.Length);
-                documentCrop = null;
-            }
-
-            if (selfieEmbedding != null)
-            {
-                Array.Clear(selfieEmbedding, 0, selfieEmbedding.Length);
-                selfieEmbedding = null;
-            }
-
-            if (documentEmbedding != null)
-            {
-                Array.Clear(documentEmbedding, 0, documentEmbedding.Length);
-                documentEmbedding = null;
-            }
+            // Delete all image data (selfie, document photo, crops, embeddings) before returning, on success, failure and timeout.
+            ImageBytes.Zero(selfieBytes);
+            ImageBytes.Zero(documentBytes);
+            ImageBytes.Zero(selfieVector);
+            ImageBytes.Zero(documentVector);
+            selfie?.Dispose();
+            document?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// ADR-013-R4: Accept at or above the accept threshold, Reject at or under the escalate threshold, Escalate between the two.
+    /// </summary>
+    internal static BiometricOutcome MapOutcome(double similarity, double acceptThreshold, double escalateThreshold) =>
+        similarity >= acceptThreshold
+            ? BiometricOutcome.Accept
+            : similarity > escalateThreshold
+                ? BiometricOutcome.Escalate
+                : BiometricOutcome.Reject;
+
+    private BiometricVerificationResult Finish(BiometricVerificationResult result, BiometricOutcome outcome, string? reason, long started)
+    {
+        result.Outcome = outcome;
+        result.ReasonCode = reason;
+        result.DurationMs = (int)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        logger.LogInformation(
+            "Biometric verification: outcome={Outcome} reason={Reason} similarity={Similarity:F3} liveness={Liveness:F3} faceInSelfie={FaceInSelfie} faceInDocument={FaceInDocument} durationMs={DurationMs}",
+            outcome, reason ?? "none", result.Similarity, result.LivenessScore, result.FaceInSelfie, result.FaceInDocument, result.DurationMs);
+        return result;
     }
 }

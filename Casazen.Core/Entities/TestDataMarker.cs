@@ -58,6 +58,18 @@ public static class TestDataEntities
     public const string HostInvite = "HostInviteRecord";
     public const string PropertyOwner = "PropertyOwner";
 
+    /// <summary>The state of a property on one channel of the channel manager (NF-27, NF-38); goes with its property.</summary>
+    public const string ListingChannelState = "ListingChannelState";
+
+    /// <summary>The sending of one photo of a property to the channel manager (NF-32); goes with its property.</summary>
+    public const string PhotoUploadTask = "PhotoUploadTask";
+
+    /// <summary>A room of a property with its beds (NF-34); goes with its property.</summary>
+    public const string PropertyRoom = "PropertyRoom";
+
+    /// <summary>A length-of-stay discount tier of a property (NF-35); goes with its property.</summary>
+    public const string PropertyStayDiscount = "PropertyStayDiscount";
+
     /// <summary>A saved draft of a wizard (<see cref="WizardDraft"/>): the demo host's, written by the showcase and deleted by its reset.</summary>
     public const string WizardDraft = "WizardDraft";
 }

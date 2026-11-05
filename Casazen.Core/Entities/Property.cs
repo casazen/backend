@@ -206,6 +206,12 @@ public class Property : ITenantOwned
     /// <summary>What the house rules say about parties and events; null = never said.</summary>
     public PartiesPolicy? PartiesPolicy { get; set; }
 
+    /// <summary>
+    /// What the house rules say about children (NF-37); null = never said. It is the structured rule the channels receive, next to pets,
+    /// smoking, parties and the quiet hours; the public page keeps reading <see cref="ChildrenWelcome"/> of the site profile.
+    /// </summary>
+    public ChildrenPolicy? ChildrenPolicy { get; set; }
+
     /// <summary>Quiet hours start, on the property's clock; null = none. Always set together with <see cref="QuietHoursTo"/>. Whole minutes.</summary>
     public TimeOnly? QuietHoursFrom { get; set; }
 

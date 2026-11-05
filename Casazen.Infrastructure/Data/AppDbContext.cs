@@ -110,6 +110,14 @@ public class AppDbContext(
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
     public DbSet<PropertyFloorPlan> PropertyFloorPlans { get; set; } = null!;
     public DbSet<PropertyPoi> PropertyPois { get; set; } = null!;
+
+    // The content of a property on the channels of the channel manager: the state on each channel and the sending of its photos (NF-27, NF-32, NF-38)
+    public DbSet<ListingChannelState> ListingChannelStates { get; set; } = null!;
+    public DbSet<PhotoUploadTask> PhotoUploadTasks { get; set; } = null!;
+
+    // The listing data of a unit the channels ask for: its rooms with their beds and its length-of-stay discounts (NF-34, NF-35)
+    public DbSet<PropertyRoom> PropertyRooms { get; set; } = null!;
+    public DbSet<PropertyStayDiscount> PropertyStayDiscounts { get; set; } = null!;
     public DbSet<TestDataMarker> TestDataMarkers { get; set; } = null!;
     public DbSet<DemoEnvironmentSetting> DemoEnvironmentSettings { get; set; } = null!;
     public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
@@ -416,6 +424,16 @@ public class AppDbContext(
         // DB-11a: the floor plan levels and the points of interest of a property, going with it; each carries the org of its property (TN-2).
         modelBuilder.ApplyConfiguration(new PropertyFloorPlanConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyPoiConfiguration());
+
+        // NF-27, NF-32, NF-38: the state of a property on each channel of the channel manager (unique per property and channel) and the sending
+        // of its photos (unique per property and photo address); each carries the org of its property (TN-2) and goes with it.
+        modelBuilder.ApplyConfiguration(new ListingChannelStateConfiguration());
+        modelBuilder.ApplyConfiguration(new PhotoUploadTaskConfiguration());
+
+        // NF-34, NF-35: the rooms of a unit with their beds and its length-of-stay discounts (one tier for each minimum of nights); each carries
+        // the org of its property (TN-2) and goes with it.
+        modelBuilder.ApplyConfiguration(new PropertyRoomConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyStayDiscountConfiguration());
 
         modelBuilder.Entity<AlloggiatiCodeEntry>()
             .HasOne(e => e.Import)

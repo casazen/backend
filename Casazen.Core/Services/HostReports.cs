@@ -52,6 +52,90 @@ public static class HostReportRules
         var from = firstDay.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         return new HostDashboardPeriod(HostDashboardPeriodKind.Custom, from, from.AddDays(lastDay.DayNumber - firstDay.DayNumber + 1));
     }
+
+    /// <summary>
+    /// A trend is cut by week up to this many days, by month beyond (NF-96): thirteen weeks is a chart one reads, a year of weeks is not.
+    /// The Home's chart uses the same rule with a shorter limit (<see cref="HostOverviewSeriesRules.MaxWeeklyDays"/>).
+    /// </summary>
+    public const int MaxWeeklyTrendDays = 92;
+
+    /// <summary>
+    /// The unit of the buckets of a trend: the one asked for, or, for <see cref="HostTrendBucketUnit.Auto"/>, weeks up to
+    /// <see cref="MaxWeeklyTrendDays"/> days and months beyond, through the Home's own rule (<see cref="HostOverviewSeriesRules.UnitFor(HostDashboardPeriod, int)"/>).
+    /// </summary>
+    public static HostOverviewSeriesUnit TrendUnitFor(HostDashboardPeriod period, HostTrendBucketUnit requested)
+    {
+        ArgumentNullException.ThrowIfNull(period);
+
+        return requested switch
+        {
+            HostTrendBucketUnit.Week => HostOverviewSeriesUnit.Week,
+            HostTrendBucketUnit.Month => HostOverviewSeriesUnit.Month,
+            _ => HostOverviewSeriesRules.UnitFor(period, MaxWeeklyTrendDays),
+        };
+    }
+
+    /// <summary>
+    /// The same calendar days one year earlier (NF-96): <c>2026-10-01</c> to <c>2026-10-31</c> becomes <c>2025-10-01</c> to
+    /// <c>2025-10-31</c>. 29 February becomes 28 February of a year that has no 29th, so the previous period is one day shorter when
+    /// the days span a leap day (1 to 29 February 2028 are 29 days, 1 to 28 February 2027 are 28).
+    /// </summary>
+    public static (DateOnly First, DateOnly Last) PreviousYear(DateOnly firstDay, DateOnly lastDay) =>
+        (firstDay.AddYears(-1), lastDay.AddYears(-1));
+
+    /// <summary>The nights of the same calendar days one year earlier (<see cref="PreviousYear"/>), as <see cref="PeriodOf"/> gives them.</summary>
+    public static HostDashboardPeriod PreviousYearPeriodOf(DateOnly firstDay, DateOnly lastDay)
+    {
+        var (first, last) = PreviousYear(firstDay, lastDay);
+        return PeriodOf(first, last);
+    }
+
+    /// <summary>
+    /// The days of each bucket of a trend moved one year back, to be compared with it. Each one ends on the very day one year before the
+    /// day its bucket ends and starts the day after the one before it ended (the first on the same day one year earlier), so the buckets
+    /// of the year before cover its period exactly and none of its days is in two of them, even when 29 February makes two days of
+    /// this year the same day of the year before: the bucket that would have nothing left is empty (its <c>To</c> is its <c>From</c>).
+    /// </summary>
+    /// <param name="buckets">The buckets of the period, in order, each from its first night to the day after its last.</param>
+    public static IReadOnlyList<(DateTime From, DateTime To)> PreviousYearBuckets(IReadOnlyList<(DateTime From, DateTime To)> buckets)
+    {
+        ArgumentNullException.ThrowIfNull(buckets);
+
+        var moved = new List<(DateTime From, DateTime To)>(buckets.Count);
+        DateTime? endedOn = null;
+        foreach (var bucket in buckets)
+        {
+            var from = endedOn ?? bucket.From.AddYears(-1);
+            var to = bucket.To.AddDays(-1).AddYears(-1).AddDays(1);
+            if (to < from)
+                to = from;
+
+            moved.Add((from, to));
+            endedOn = to;
+        }
+
+        return moved;
+    }
+
+    /// <summary>
+    /// The buckets of a trend over <paramref name="period"/> (NF-96): the weeks or months of the Home's chart
+    /// (<see cref="HostOverviewSeriesRules.BucketsOf"/>), cut at the edges of the period, each with the same days one year earlier when
+    /// <paramref name="compareYear"/> (<see cref="PreviousYearBuckets"/>). The one place that cuts them: the reports of the host and
+    /// the owner portal read their buckets here, so the lines of both answer the same weeks.
+    /// </summary>
+    public static (HostOverviewSeriesUnit Unit, IReadOnlyList<HostTrendBucket> Buckets) TrendBucketsOf(
+        HostDashboardPeriod period, HostTrendBucketUnit requested, bool compareYear)
+    {
+        ArgumentNullException.ThrowIfNull(period);
+
+        var unit = TrendUnitFor(period, requested);
+        var spans = HostOverviewSeriesRules.BucketsOf(period, unit);
+        var previous = compareYear ? PreviousYearBuckets(spans.Select(span => (span.From, span.To)).ToList()) : null;
+        var buckets = spans
+            .Select((span, index) => new HostTrendBucket(span.Label, span.From, span.To, previous?[index].From, previous?[index].To))
+            .ToList();
+        return (unit, buckets);
+    }
 }
 
 /// <summary>Revenue of one property in the period, by accrual: the very rule of the Home, on this property's stays.</summary>
