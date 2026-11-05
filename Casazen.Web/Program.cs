@@ -226,6 +226,9 @@ builder.Services.Configure<Casazen.Core.Options.ComplianceOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.ComplianceOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.StayAlertOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.StayAlertOptions.SectionName));
+// ADR-022-R8: how often the time triggers of the routines are written to the outbox (Routine:EvaluationIntervalMinutes).
+builder.Services.Configure<Casazen.Core.Options.RoutineOptions>(
+    builder.Configuration.GetSection(Casazen.Core.Options.RoutineOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.GuestCheckInOptions>(
     builder.Configuration.GetSection(Casazen.Core.Options.GuestCheckInOptions.SectionName));
 builder.Services.Configure<Casazen.Core.Options.RliOptions>(
@@ -422,7 +425,10 @@ if (hangfireStorage is not null)
             .LogInformation("Hangfire storage schema: {HangfireSchema}", hangfireStorage.Schema);
         using var scope = app.Services.CreateScope();
         var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
-        RecurringJobsRegistration.Configure(recurringJobManager, scope.ServiceProvider.GetRequiredService<IFeatureFlags>());
+        RecurringJobsRegistration.Configure(
+            recurringJobManager,
+            scope.ServiceProvider.GetRequiredService<IFeatureFlags>(),
+            scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<RoutineOptions>>().Value);
     });
 }
 

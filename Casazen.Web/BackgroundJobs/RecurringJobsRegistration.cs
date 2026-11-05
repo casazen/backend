@@ -1,4 +1,5 @@
 using Casazen.Core.Features;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Jobs;
 using Hangfire;
@@ -16,9 +17,20 @@ public static class RecurringJobsRegistration
     public const string OtaSyncAllJobId = "ota-sync-all";
     public const string BookingPullAllJobId = "booking-pull-all";
 
-    public static void Configure(IRecurringJobManager recurringJobManager, IFeatureFlags featureFlags)
+    /// <param name="recurringJobManager">The Hangfire schedule of the environment.</param>
+    /// <param name="featureFlags">The flags that decide the jobs behind a feature.</param>
+    /// <param name="routineOptions">The interval of the time triggers of the routines (section <c>Routine</c>); the defaults when omitted.</param>
+    public static void Configure(IRecurringJobManager recurringJobManager, IFeatureFlags featureFlags, RoutineOptions? routineOptions = null)
     {
         ConfigureOtaPartnerJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OtaPartnerApi));
+
+        // ADR-022-R8: the time triggers of the stays ("2 days before check-in") are written to the outbox every
+        // Routine:EvaluationIntervalMinutes (default 5), whatever the flags say; an org without a time routine gets nothing.
+        recurringJobManager.AddOrUpdate<TimeEventEmitterJob>(
+            TimeEventEmitterJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            (routineOptions ?? new RoutineOptions()).EmitterCron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         ConfigureServiceRequestAutoCancel(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel));
 
