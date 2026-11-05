@@ -4,6 +4,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using System.Text.Json;
 
 namespace Casazen.Infrastructure.Services;
@@ -16,17 +17,38 @@ public class RoutineService(
     AppDbContext dbContext,
     ILogger<RoutineService> logger) : IRoutineService
 {
-    public async Task TriggerAsync(
+    /// <summary>
+    /// The unique index on <c>RoutineExecutions (RoutineId, EventId)</c> (migration <c>AddRoutineEngine</c>): a second execution of
+    /// a routine for the same event is refused by the database (ADR-022-R7).
+    /// </summary>
+    internal const string ExecutionPerEventIndexName = "IX_RoutineExecutions_RoutineId_EventId";
+
+    public Task TriggerAsync(
         Guid orgId,
         RoutineEventType eventType,
         string eventId,
         object payload,
         CancellationToken cancellationToken = default)
     {
-        // Find all active routines for this event type and org (TN-1: tenant isolation)
-        var routines = await dbContext.Routines
-            .Where(r => r.OrgId == orgId && r.Active && r.EventType == eventType)
-            .ToListAsync(cancellationToken);
+        return TriggerAsync(orgId, eventType, eventId, payload, static _ => true, cancellationToken);
+    }
+
+    public async Task TriggerAsync(
+        Guid orgId,
+        RoutineEventType eventType,
+        string eventId,
+        object payload,
+        Func<Routine, bool> routineFilter,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(routineFilter);
+
+        // Find all active routines for this event type and org (TN-1: tenant isolation), then the ones the caller asks for
+        var routines = (await dbContext.Routines
+                .Where(r => r.OrgId == orgId && r.Active && r.EventType == eventType)
+                .ToListAsync(cancellationToken))
+            .Where(routineFilter)
+            .ToList();
 
         logger.LogInformation(
             "Triggering {Count} routine(s) for org {OrgId} event {EventType} with ID {EventId}",
@@ -145,7 +167,20 @@ public class RoutineService(
         };
 
         dbContext.RoutineExecutions.Add(execution);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsDuplicateExecution(ex))
+        {
+            // A parallel delivery of the same event claimed this routine first: the unique index refused this second claim
+            // (ADR-022-R7). The routine has run once; nothing failed.
+            dbContext.Entry(execution).State = EntityState.Detached;
+            logger.LogInformation(
+                "Routine {RoutineId} already executed for event {EventId} by a parallel delivery, skipping (idempotence)",
+                routine.Id, eventId);
+            return;
+        }
 
         var result = new RoutineExecutionResult();
 
@@ -403,6 +438,9 @@ public class RoutineService(
     {
         return CheckGuardrails(action, payload) != null;
     }
+
+    private static bool IsDuplicateExecution(DbUpdateException exception) =>
+        exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: ExecutionPerEventIndexName };
 
     private class RoutineAction
     {

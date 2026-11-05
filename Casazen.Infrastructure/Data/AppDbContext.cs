@@ -289,6 +289,9 @@ public class AppDbContext(
     public DbSet<Routine> Routines { get; set; } = null!;
     public DbSet<RoutineExecution> RoutineExecutions { get; set; } = null!;
 
+    // Transactional outbox of the domain events, published on the event bus by the dispatcher (ADR-022-R1, R2)
+    public DbSet<OutboxEvent> OutboxEvents { get; set; } = null!;
+
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
@@ -1482,6 +1485,19 @@ public class AppDbContext(
         modelBuilder.Entity<RoutineExecution>()
             .HasIndex(e => new { e.RoutineId, e.EventId })
             .IsUnique();
+
+        // ─── Transactional outbox of the domain events (ADR-022) ─────────────────
+        // A time trigger emitted twice (a restart, two overlapping runs) loses on the unique key of its org (ADR-022-R8); the events
+        // without a key are never compared. The dispatcher reads the undispatched events by OccurredAt and the cleanup the old
+        // dispatched ones: both through (DispatchedAt, OccurredAt).
+        modelBuilder.Entity<OutboxEvent>(entity =>
+        {
+            entity.HasIndex(e => new { e.OrgId, e.DedupKey })
+                .IsUnique()
+                .HasFilter("\"DedupKey\" IS NOT NULL")
+                .HasDatabaseName(OutboxEvent.DedupIndexName);
+            entity.HasIndex(e => new { e.DispatchedAt, e.OccurredAt });
+        });
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
         // tenant one) so it composes independently: IgnoreQueryFilters([TenantQueryFilter]) (entitlement counts,

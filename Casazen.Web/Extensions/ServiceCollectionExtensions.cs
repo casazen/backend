@@ -3,12 +3,14 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
+using Casazen.Core.Events;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Features;
 using Casazen.Infrastructure.Http;
@@ -423,7 +425,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICampaignService, CampaignService>();
         // NF-26: Automation routines (ADR-022).
         services.AddScoped<IRoutineService, RoutineService>();
-        services.AddScoped<RoutineEventDispatcher>();
+        // ADR-022: domain events are recorded in the outbox of the current unit of work (R1) and published by the dispatcher on the
+        // in-process bus, which runs each handler in its own scope under the event's org (R3, R6).
+        services.AddScoped<IDomainEventRecorder, DomainEventRecorder>();
+        services.AddSingleton<IEventBus, InProcessEventBus>();
+        // NF-21: the bus is the one way an event reaches the routines of its org (E01/F01/US01/T05).
+        services.AddScoped<IEventHandler<DomainEvent>, RoutineEventHandler>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
@@ -456,6 +463,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<TenantContext>();
         services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
         services.AddScoped<IRequestTenantContext>(sp => sp.GetRequiredService<TenantContext>());
+        // A scope opened outside a request (a handler of the event bus) is put under one org through the same instance (ADR-022-R6).
+        services.AddScoped<IBackgroundTenantScope>(sp => sp.GetRequiredService<TenantContext>());
         services.AddScoped<IOrgContextResolver, OrgContextResolver>();
         services.AddScoped<ISupplierOrgContextResolver, SupplierOrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
