@@ -170,6 +170,9 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | `GET` | `/api/me/notifications/unread-count` | same | `{ count }` |
 | `POST` | `/api/me/notifications/{id}/read` | same | 204, idempotent; 404 for a notification that is not the caller's (another user's, another org's, deleted, unknown), never 403 |
 | `POST` | `/api/me/notifications/read-all` | same | 204 |
+| `GET` | `/api/me/activities` | JWT (`Authenticated`; the caller's `HostScope`) | ADR-026, NF-07: the caller's «To do» list, the open items of its org (`InternalActivities` rows with an `action`, `CompletedAt` null) its scope reaches: a collaborator «Solo alcuni» only the items of the properties it was given, never an organization-level item (no property); sorted by the server, urgency `High` first, then `dueAt` (none last), then creation; at most 50: `[{ id, activityType, action, entityType, entityId, propertyId, dueAt, urgency, reason, createdAt }]`. No personal or staff data (no person, rate, note): the client reads the detail from the entity's API and maps `action` to its route (`ACTION_ROUTE_MAP`). `private, no-store`; empty for a caller with no org or scope |
+| `GET` | `/api/me/activities/count` | same | `{ count }`: the open `High` items of the list (the nav badge) |
+| `POST` | `/api/me/activities/{id}/close` | same | Closes an item by hand (`Status` `Completed`, `CompletedAt`, `ClosedBy` = the caller); 204, idempotent; 404 for an item the caller's scope does not reach (a property not given, another org, unknown). The items are raised and closed by the system through `IInternalActivityService.CreateAsync` / `CloseAsync` (idempotent per type and entity while open) and `ActivityAutoCloseHandler` (`CheckInCompleted` closes `CheckInPending`, `CheckOutCompleted` closes `CheckOutPending`, `AlloggiatiReceiptArrived` closes `AlloggiatiDeadline` and `ReceiptToRetrieve`, for the event's booking); a closed row is kept for the audit |
 
 #### Multi-tenancy (orgs & workspace)
 
@@ -537,13 +540,17 @@ property is not found; any other failure is a 500.
 | `GET` | `/api/reports/revenue-by-property` | short-rent payment.read | Revenue of the Home, by accrual (`competenza`), per property: `{ title, basis, currency, period, rows, total }`, a row `{ propertyId, propertyName, amount, amountCents, stayCount, nights }` |
 | `GET` | `/api/reports/occupancy-by-property` | short-rent payment.read | Occupancy of the Home per active short-rent property: a row `{ propertyId, propertyName, occupancy { occupiedNights, availableNights, closedNights, rate } }`, `total` the same shape |
 | `GET` | `/api/reports/bookings-by-channel` | short-rent payment.read | Confirmed stays of the Home per `Booking.Source`: a row `{ source, bookingCount, nights, amount, amountCents, share }`, `total { bookingCount, nights, amount, amountCents }` |
+| `GET` | `/api/reports/performance` | short-rent payment.read | NF-96. Occupancy, revenue, **ADR and RevPAR** of the Home for the whole scope, per property or per channel, and next to the same calendar days one year earlier: `{ title, basis, currency, groupBy, period, comparePeriod, rows, total }`, a row `{ key, propertyId, label, figures, previousYear, revenueDeltaPercent, occupancyDeltaPoints, adrDeltaPercent, revParDeltaPercent, revenueShare }`, `figures { occupiedNights, availableNights, closedNights, occupancyRate, revenue, revenueCents, stayCount, revenueNights, adr, adrCents, revPar, revParCents }`. Extra query: `groupBy` `none` (default, the total only), `property`, `channel`; `compare` `none` (default) or `previousYear` |
+| `GET` | `/api/reports/trend` | short-rent payment.read | NF-96. The same figures for each week or month: `{ title, basis, currency, groupBy, unit, period, comparePeriod, buckets, series }`, a bucket `{ label, from, to, previousYearFrom, previousYearTo }`, a line `{ key, propertyId, label, points, previousYear }` (`points` and `previousYear` have one entry for each bucket, the second `null` where there was nothing to compare with). Extra query: the two above and `bucket` `auto` (default), `week`, `month` |
+| `GET` | `/api/reports/by-owner` | `agency.statement.view` + short-rent payment.read | NF-96. The performance of an agency's properties cut by property owner: `{ title, basis, currency, period, rows, unassigned, total }`, a row `{ ownerId, displayName, propertyCount, figures, revenueShare }` (the anonymized label for an anonymized owner), `figures` and `total` the weighted `{ revenue, revenueCents, occupiedNights, availableNights, closedNights, occupancyRate, stayCount, revenueNights, adr, adrCents, revPar, revParCents }`. Only `from`, `to` and `format` (`json` or `csv`) |
 
-All three take `from` and `to` (`yyyy-MM-dd`, Europe/Rome days, both included; years 2000 to 2100), an optional `propertyId` and `format`
-(`json`, the default, or `csv`). Errors: 400 `report_invalid_period` (a day missing, `to` before `from`, a year out of range), 400
-`report_invalid_format`, **422 `report_period_too_long` beyond 24 calendar months** (1 January 2025 to 31 December 2026 is the longest
-that starts there), 404 for a `propertyId` the caller does not reach, 403 without an org. Limited to the caller's `HostScope`, in SQL.
-They need `payment.read` (SR-D7): the collaborator never receives an aggregated amount, whatever the page does. No PDF, no comparison
-with the period before, nothing about a guest.
+All of them take `from` and `to` (`yyyy-MM-dd`, Europe/Rome days, both included; years 2000 to 2100) and `format` (`json`, the default, or
+`csv`); all but `by-owner` also an optional `propertyId`. Errors: 400 `report_invalid_period` (a day missing, `to` before `from`, a year out of range), 400
+`report_invalid_format`, 400 `report_invalid_group_by`, `report_invalid_compare` and `report_invalid_bucket` (performance and trend),
+**422 `report_period_too_long` beyond 24 calendar months** (1 January 2025 to 31 December 2026 is the longest that starts there), 404 for
+a `propertyId` the caller does not reach, 403 without an org. Limited to the caller's `HostScope`, in SQL. They need `payment.read`
+(SR-D7): the collaborator never receives an aggregated amount, whatever the page does. No PDF, nothing about a guest; only `performance`
+and `trend` compare, and only with the same days one year earlier.
 - **One rule, the Home's.** The reads are `IHostDashboardService.GetRevenueByPropertyAsync`, `GetOccupancyByPropertyAsync` and
   `GetBookingsByChannelAsync`: the stays are the very rows of the revenue of the Home (`RevenueStays`: confirmed, with a night in the
   period) priced by `StayKpiRules`, and the nights are the ones the Home sums (`GetNightsByPropertyAsync`). So `total` is the figure
@@ -560,6 +567,90 @@ with the period before, nothing about a guest.
 - **The CSV** is written by `CsvWriter` (`Casazen.Core.Utilities`): UTF-8 with BOM, `;`, a decimal comma, `CRLF`, at most 10,000 rows
   (422 `csv_too_many_rows`), and a text that a spreadsheet would run as a formula (`= + - @`, a tab or a CR first) gets a leading
   apostrophe. A number is written by the writer, never as text. The fiscal reports write through it too, without a limit, unchanged.
+- **ADR and RevPAR (NF-96).** Both are on the Home's revenue: the confirmed stays pro rata per night, lodging plus cleaning, tourist
+  tax excluded. **ADR** = that revenue over the nights of the confirmed stays that fall in the period (`revenueNights`); **RevPAR** = the
+  same revenue over the available nights (the Home's: nights of the period of the active short-rent properties minus the ones the host
+  closed by hand). Each is to the cent and is **null, never 0, when its denominator is 0**. `total` is the figure the Home gives for the
+  same days (`GetPerformanceAsync` reads the Home's stays and nights, `GetNightSetsByPropertyAsync`, and rounds the revenue once, on
+  all the stays); a property row has all the figures; a **channel row has no nights** (they belong to a property), so its night
+  figures, occupancy and RevPAR are null and it carries stays, revenue nights, revenue, ADR and `revenueShare`. `groupBy=none` has no
+  rows, the total only. A paused property that has revenue is a row with its money and no nights.
+- **The year before.** `compare=previousYear` works out the same calendar days one year earlier (`HostReportRules.PreviousYear`):
+  1 to 31 October 2026 against 1 to 31 October 2025. **29 February becomes 28 February**, so the year before is one day shorter when the
+  days span a leap day (1 to 29 February 2028 are 29 days, 1 to 28 February 2027 are 28). Every row and the total carry `previousYear`
+  and the differences worked out by the server (`HostPerformanceRules`): `revenueDeltaPercent`, `adrDeltaPercent` and
+  `revParDeltaPercent` in percent to one decimal, `occupancyDeltaPoints` in percentage points to one decimal. A percentage is null when
+  the year before is null or zero (never a division by zero); points are null when either has no rate. **`previousYear` is null, never
+  zeros, when there was nothing to compare with**: a property that did not exist yet (created after the last day of that period, in
+  Europe/Rome) and had no stay then, a channel without a stay, a scope with nothing available and no stay. The total keeps the Home's
+  numbers for those days, availability of every active property included.
+- **Trend.** One bucket for each ISO week (from Monday) up to 92 days and for each calendar month beyond (`bucket=auto`; the Home's chart
+  cuts by the same code with a limit of 62 days), cut at the edges of the period. The figures of a bucket are those of a report for its
+  days: the nights are counted again for them (the sets of nights of the Home) and a stay across two buckets counts in each for its
+  nights there; the revenue is handed out so that the buckets of a line add up to the revenue of the period to the cent. Each bucket
+  has the same days one year earlier; the buckets of the year before cover its period exactly, none of its days twice, so with a leap
+  day one of them can be empty. `groupBy=property` or `channel` gives a line for each, **at most 25, the ones with most revenue first:
+  when there are more, the 24 with most revenue and a 25th line `other` that is the sum of the rest** (their stays and nights taken
+  together), never dropped.
+- **By owner (`GET /api/reports/by-owner`, NF-96).** `OwnerReportsController` carries **both** `agency.statement.view` (the owner and the
+  administrators of an org on the agency plan; the property manager holds only `agency.owner.view`, so it is refused, and an org that
+  is not on the agency plan answers 403 `feature_requires_agency_tier`, like the other agency endpoints) and `payment.read` (aggregated
+  money, SR-D7). `IOwnerReportService.GetByOwnerAsync` reads the performance of **every property of the caller's scope once**
+  (`GetPerformanceAsync` by property: the Home's numbers, no second rule) and splits it by owner in memory. **What an owner holds of a
+  property** is the share of each `PropertyOwnership` whose period overlaps the days of the report (`OwnershipStart` to `OwnershipEnd`,
+  Rome days, both included), times the part of those days the ownership was in force: a house owned 50/50 all the period is half of
+  each owner's figures, one that changed hands on 15 October is counted for each owner for its own days; the weights of a property never
+  exceed 1 (scaled down otherwise) and what no owner holds goes to the `unassigned` row, so **the owners and `unassigned` add up to the
+  Home's total, a co-owned house once**. `total` is the Home's figure for the same days (all the stays at once), so it can differ by a
+  cent from the sum of the rounded rows. The figures are decimals (a half stay, a half night); ADR, RevPAR and the occupancy are worked
+  out from the weighted values. An owner appears if it holds a part of a property of the report in the period; its row has
+  `propertyCount`. **Privacy:** only the id and the name are read (`FirstName`, `LastName`, `AnonymizedAt`): never the fiscal code, the
+  IBAN, the e-mail or the phone, which are not even selected, so they are neither in the JSON nor in the CSV; an owner with
+  `AnonymizedAt` set shows `OwnerAnonymizedLabel` (the CSV: `Proprietario anonimizzato`). The CSV carries the title
+  `Prestazioni per proprietario, per competenza`, with the days, on the first row; the file is
+  `casazen-prestazioni-per-proprietario-competenza-20261001-20261031.csv`.
+- **Fixed number of queries** whatever the number of properties: the active properties, the stays, the bookings and the blocks that make
+  the nights, and (only if a paused property has revenue) their names; once more for the year before.
+- **Narrowing.** `HostPerformanceQuery.PropertyIds` / `HostTrendQuery.PropertyIds` narrow the properties to those ids **inside** the
+  caller's scope, never wider (null = no extra narrowing, an empty set = nothing); the agency report by owner and the owner portal use
+  it. A `propertyId` outside the scope, or outside the narrowing, is the same 404. `HostTrendQuery.MaxSeries` (25 unless asked) lets a
+  caller that weights each property by itself, the owner portal, ask for every line.
+- **The CSV** of both reports carries the Italian title with its base on the first row (`Prestazioni per immobile, per competenza, dal
+  01/10/2026 al 31/10/2026`, `Prestazioni per canale, ...`, `Prestazioni complessive, ...`, `Andamento ...`), then the header, the rows
+  and a `Totale` row (the trend: a row for each bucket of each line). The columns of the year before and of the differences are there
+  only when the report compared. File names: `casazen-prestazioni-per-immobile-competenza-20261001-20261031.csv`,
+  `casazen-andamento-competenza-...`.
+
+#### Owner portal (ADR-011, NF-96)
+
+Policy `OwnerPortal` on the class (JWT claim `context=owner_portal` and a valid `owner_id`; never a host role); 401 without a valid owner
+claim. The owner sees only its own ownerships (`PropertyOwnership.OwnerUserId`): the ones in force today (`OwnershipStart` up to now,
+`OwnershipEnd` null or not before now), and for a report also those that had started by its last day and had not ended before its first.
+A property of another owner, an ended ownership or a missing property is one and the same 404. No guest name, e-mail or phone and nothing
+of any other owner in any field (ADR-011-R3).
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/owner-portal/properties` | OwnerPortal | The owner's properties: `occupancyRate` is now the Home's occupancy of the last 30 days (`IHostDashboardService.GetLast30DaysOccupancyAsync`), a percentage from 0 to 100 to one decimal; it used to be a placeholder of 0. `totalRevenue` (all non-cancelled bookings of all time) and the recent bookings are unchanged |
+| `GET` | `/api/owner-portal/overview` | OwnerPortal | NF-96. Occupancy, revenue, ADR and RevPAR of the owner's properties for `from`..`to`, and with `compare=previousYear` the same calendar days one year earlier and the differences: `{ title, basis, currency, groupBy, period, comparePeriod, rows, total }`, a row `{ key, propertyId, label, figures, previousYear, revenueDeltaPercent, occupancyDeltaPoints, adrDeltaPercent, revParDeltaPercent, revenueShare }` with the weighted `figures` of `GET /api/reports/by-owner` |
+| `GET` | `/api/owner-portal/trend` | OwnerPortal | NF-96. The same figures week by week or month by month: `{ title, basis, currency, groupBy, unit, period, comparePeriod, buckets, series }` as the host's trend, with the weighted figures |
+
+Query of both: `from`, `to` (`yyyy-MM-dd`, Rome days, both included, at most 24 months), optional `propertyId` (404 when it is not one of the
+owner's), `groupBy` `none` (default, the total only) or `property` (no channel cut: 400 `report_invalid_group_by`), `compare` `none` or
+`previousYear` (400 `report_invalid_compare`). Errors as the host's reports: 400 `report_invalid_period`, 422 `report_period_too_long`.
+
+- **The Home's numbers, weighted.** `OwnerPortalService.GetOwnerOverviewAsync` / `GetOwnerTrendAsync` call
+  `IHostDashboardService.GetPerformanceAsync` / `GetTrendAsync` once for each org the owner has properties in (`new HostScope(orgId)`,
+  narrowed to the owner's properties with `PropertyIds`: they never widen the scope), so revenue, nights, ADR and RevPAR are worked out
+  by the Home's rules, and multiply the figures of each property by the owner's share (`SharePercent / 100`, several rows of one property
+  added and capped at the whole). The total is the sum of the weighted rows (the orgs added up), ADR, RevPAR and the occupancy are worked
+  out from the weighted values, and a property that did not exist a year ago contributes nothing to the year before. The owners of a
+  co-owned property together are the Home's figure for it. Weighted nights and stays can be fractions.
+- **Trend.** The buckets are the host's (`HostReportRules.TrendBucketsOf`: weeks up to 92 days, months beyond); every property line is
+  the host's line for it multiplied by the share; all together is the sum of the lines; with `groupBy=property` at most 25 lines, the
+  rest summed in `other`.
+- **Wiring.** `IOwnerPortalService` was not registered in the dependency injection (the controller could not be built); it is now. Its
+  new constructor parameter, `IHostDashboardService`, is optional so that code that builds the service for the older reads compiles.
 
 #### Guests & digital check-in
 

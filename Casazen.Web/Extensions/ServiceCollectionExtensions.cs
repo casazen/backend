@@ -3,12 +3,14 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
+using Casazen.Core.Events;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Documents;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Features;
 using Casazen.Infrastructure.Http;
@@ -423,7 +425,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICampaignService, CampaignService>();
         // NF-26: Automation routines (ADR-022).
         services.AddScoped<IRoutineService, RoutineService>();
-        services.AddScoped<RoutineEventDispatcher>();
+        // ADR-022: domain events are recorded in the outbox of the current unit of work (R1) and published by the dispatcher on the
+        // in-process bus, which runs each handler in its own scope under the event's org (R3, R6).
+        services.AddScoped<IDomainEventRecorder, DomainEventRecorder>();
+        services.AddSingleton<IEventBus, InProcessEventBus>();
+        // NF-21: the bus is the one way an event reaches the routines of its org (E01/F01/US01/T05).
+        services.AddScoped<IEventHandler<DomainEvent>, RoutineEventHandler>();
+        // ADR-026-R4: an event whose condition is met closes the "To do" items it satisfies (E04/F01/US01/T01).
+        services.AddScoped<IEventHandler<DomainEvent>, ActivityAutoCloseHandler>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
@@ -460,6 +469,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<TenantContext>();
         services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<TenantContext>());
         services.AddScoped<IRequestTenantContext>(sp => sp.GetRequiredService<TenantContext>());
+        // A scope opened outside a request (a handler of the event bus) is put under one org through the same instance (ADR-022-R6).
+        services.AddScoped<IBackgroundTenantScope>(sp => sp.GetRequiredService<TenantContext>());
         services.AddScoped<IOrgContextResolver, OrgContextResolver>();
         services.AddScoped<ISupplierOrgContextResolver, SupplierOrgContextResolver>();
         services.AddScoped<IOrgService, OrgService>();
@@ -592,6 +603,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrgEmptinessChecker, OrgEmptinessChecker>();
         services.AddScoped<IOrgInvitationService, OrgInvitationService>();
         services.AddScoped<IOwnerInvitationService, OwnerInvitationService>();
+        // NF-96: the performance of an agency's properties cut by property owner, over the Home's numbers (GET /api/reports/by-owner).
+        services.AddScoped<IOwnerReportService, OwnerReportService>();
+        // ADR-011, NF-96: the owner portal (the owner's properties, and their overview and trend on the Home's numbers). It was never
+        // registered: the controller of the portal could not be built.
+        services.AddScoped<IOwnerPortalService, OwnerPortalService>();
         services.AddScoped<IOrgTeamService, OrgTeamService>();
         // AM-03: the properties each member reaches («Solo alcuni») and the member in charge of a property.
         services.AddScoped<IOrgPropertyAccessService, OrgPropertyAccessService>();
