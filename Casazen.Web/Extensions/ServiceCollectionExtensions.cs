@@ -431,6 +431,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IEventBus, InProcessEventBus>();
         // NF-21: the bus is the one way an event reaches the routines of its org (E01/F01/US01/T05).
         services.AddScoped<IEventHandler<DomainEvent>, RoutineEventHandler>();
+        // ADR-026-R4: an event whose condition is met closes the "To do" items it satisfies (E04/F01/US01/T01).
+        services.AddScoped<IEventHandler<DomainEvent>, ActivityAutoCloseHandler>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
