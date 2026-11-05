@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
+using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
 using Xunit;
 
@@ -135,6 +136,24 @@ public class DemoShowcaseTests
         Assert.False(string.IsNullOrWhiteSpace(english?.Title));
         Assert.False(string.IsNullOrWhiteSpace(english?.Description));
         Assert.True(english!.Title!.Length <= SitePropertyProfileRules.ListingTextMaxLength(ListingTextField.Title));
+    }
+
+    [Fact]
+    public void PropertyRoomsAndDiscounts_TheDemoHouseHasValidRoomsMatchingItsCounters_AndAWeekAndAMonthDiscount()
+    {
+        var house = Assert.Single(
+            DemoShowcaseCatalog.Properties,
+            p => p.Scenarios.Contains(DemoShowcaseCatalog.Scenario.PropertyRoomsAndDiscounts));
+
+        var rooms = PropertyRoomRules.Normalize([.. (house.Rooms ?? []).Select(room => new RoomInput(null, room.Type, room.Beds))]);
+        var tiers = StayDiscountRules.Normalize([.. (house.StayDiscounts ?? []).Select(tier => new StayDiscountTier(tier.MinNights, tier.PercentOff))]);
+
+        Assert.Contains(DemoShowcaseCatalog.Scenario.PropertyRoomsAndDiscounts, DemoShowcaseCatalog.Scenarios);
+        // The counters of the property are what the rooms give, as the rooms service sets them.
+        Assert.Equal(house.Bedrooms, rooms.Bedrooms);
+        Assert.Equal(house.Profile!.Beds, rooms.Beds);
+        Assert.Equal([7, 28], tiers.Select(tier => tier.MinNights));
+        Assert.Equal(ChildrenPolicy.Yes, house.Profile.Children);
     }
 
     [Fact]

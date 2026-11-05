@@ -432,6 +432,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IPropertyPhotoAltService, PropertyPhotoAltService>();
         services.AddScoped<IPropertyFloorPlanService, PropertyFloorPlanService>();
         services.AddScoped<IPropertyPoiService, PropertyPoiService>();
+        // NF-34, NF-35: the rooms of a unit with their beds and its length-of-stay discounts (api/properties/{id}/rooms and /stay-discounts);
+        // the booking service reads the tiers to price a stay. Property services, not Octorate ones.
+        services.AddScoped<IPropertyRoomService, PropertyRoomService>();
+        services.AddScoped<IStayDiscountService, StayDiscountService>();
         // «Suggerisci un testo» of the wizard: the AI writes the listing from the photos, the comune and the data (api/properties/{id}/listing-text).
         services.AddScoped<IPropertyListingTextService, PropertyListingTextService>();
         services.AddScoped<IApeDocumentInspector, ApeDocumentInspector>();

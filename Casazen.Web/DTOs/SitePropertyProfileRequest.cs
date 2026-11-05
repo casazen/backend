@@ -165,7 +165,7 @@ public sealed class SiteHighlightRequest
     public SiteHighlightInput ToInput() => new(Icon, Title?.ToInput(), Text?.ToInput());
 }
 
-/// <summary>Body of <c>PUT /api/properties/{id}/site-profile/photos</c>: the photos that have an alternative text; the others lose theirs.</summary>
+/// <summary>Body of <c>PUT /api/properties/{id}/site-profile/photos</c>: the photos that have an alternative text or a room; the others lose theirs.</summary>
 public sealed class PropertyPhotoAltRequest
 {
     /// <summary>At most as many as a gallery can hold.</summary>
@@ -173,10 +173,10 @@ public sealed class PropertyPhotoAltRequest
     public List<PropertyPhotoAltItem>? Photos { get; set; }
 
     public IReadOnlyList<Casazen.Core.Services.PhotoAltInput> ToInput() =>
-        [.. (Photos ?? []).Where(p => !string.IsNullOrWhiteSpace(p.Url)).Select(p => new Casazen.Core.Services.PhotoAltInput(p.Url!, p.Alt?.ToInput()))];
+        [.. (Photos ?? []).Where(p => !string.IsNullOrWhiteSpace(p.Url)).Select(p => new Casazen.Core.Services.PhotoAltInput(p.Url!, p.Alt?.ToInput(), p.RoomId))];
 }
 
-/// <summary>The alternative text of one photo.</summary>
+/// <summary>The alternative text (the caption) and the room of one photo.</summary>
 public sealed class PropertyPhotoAltItem
 {
     /// <summary>The address of the photo, as the gallery lists it.</summary>
@@ -185,6 +185,12 @@ public sealed class PropertyPhotoAltItem
 
     /// <summary>The text in Italian and, if the host wants, English; blank = none.</summary>
     public SiteTextRequest? Alt { get; set; }
+
+    /// <summary>
+    /// The room of the property the photo shows (an id of <c>GET api/properties/{id}/rooms</c>); left out or <c>null</c> = none. A room that is not
+    /// one of the property's is a 404 <c>property_room_not_found</c>. Like the text, the room of a photo the body does not list is cleared.
+    /// </summary>
+    public Guid? RoomId { get; set; }
 }
 
 /// <summary>Form of <c>POST /api/properties/{id}/site-profile/floor-plans</c> (multipart): the image of a level and what the host says of it.</summary>

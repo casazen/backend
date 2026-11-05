@@ -4451,6 +4451,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<TimeOnly?>("CheckOutBy")
                         .HasColumnType("time without time zone");
 
+                    b.Property<int?>("ChildrenPolicy")
+                        .HasColumnType("integer");
+
                     b.Property<bool?>("ChildrenWelcome")
                         .HasColumnType("boolean");
 
@@ -5276,6 +5279,42 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("PropertyQuesturaCredentials");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyRoom", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BedsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("PropertyId", "Position");
+
+                    b.ToTable("PropertyRooms", t =>
+                        {
+                            t.HasCheckConstraint("CK_PropertyRooms_Position", "\"Position\" >= 0");
+
+                            t.HasCheckConstraint("CK_PropertyRooms_Type", "\"Type\" BETWEEN 0 AND 3");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.PropertySafetyChecklist", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5403,6 +5442,41 @@ namespace Casazen.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("PropertySafetyChecklistItems");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyStayDiscount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("MinNights")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("PercentOff")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("PropertyId", "MinNights")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_PropertyStayDiscounts_PropertyId_MinNights");
+
+                    b.ToTable("PropertyStayDiscounts", t =>
+                        {
+                            t.HasCheckConstraint("CK_PropertyStayDiscounts_MinNights", "\"MinNights\" BETWEEN 2 AND 365");
+
+                            t.HasCheckConstraint("CK_PropertyStayDiscounts_PercentOff", "\"PercentOff\" > 0 AND \"PercentOff\" <= 100");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PushDelivery", b =>
@@ -10805,6 +10879,21 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Property");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyRoom", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.PropertySafetyChecklist", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", null)
@@ -10844,6 +10933,21 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Checklist");
 
                     b.Navigation("EvidenceDocument");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyStayDiscount", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.RentBankMovement", b =>

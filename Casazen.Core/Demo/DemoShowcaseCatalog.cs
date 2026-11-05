@@ -69,6 +69,7 @@ public static class DemoShowcaseCatalog
         public const string PropertySiteProfile = "property-site-profile";
         public const string GuestAppAccount = "guest-app-account";
         public const string ListingChannelStates = "listing-channel-states";
+        public const string PropertyRoomsAndDiscounts = "property-rooms-and-discounts";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -111,6 +112,7 @@ public static class DemoShowcaseCatalog
         Scenario.PropertySiteProfile,
         Scenario.GuestAppAccount,
         Scenario.ListingChannelStates,
+        Scenario.PropertyRoomsAndDiscounts,
     ];
 
     /// <summary>
@@ -190,11 +192,11 @@ public static class DemoShowcaseCatalog
             NightlyRate: 180m,
             CleaningFee: 40m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile, Scenario.ListingChannelStates],
+            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile, Scenario.ListingChannelStates, Scenario.PropertyRoomsAndDiscounts],
             Profile: new DemoPropertyProfile(
                 AccommodationType.HouseOrVilla, 5, 140, "Villa sul lago con giardino (demo)",
                 new TimeOnly(15, 0), new TimeOnly(10, 0), SmokingPolicy.No, PetsPolicy.OnRequest, PartiesPolicy.No,
-                new TimeOnly(22, 0), new TimeOnly(8, 0), 20m),
+                new TimeOnly(22, 0), new TimeOnly(8, 0), 20m, ChildrenPolicy.Yes),
             // DB-11a: what the host says about the house on its public page: invented like the rest of the demo, no video or tour (nothing
             // of a third party is embedded from a demo).
             SiteProfile: new SitePropertyProfileInput(
@@ -243,6 +245,20 @@ public static class DemoShowcaseCatalog
                 new("booking_xml", ChannelPublishStatus.Published, null, null, 3),
                 new("airbnb_xml", ChannelPublishStatus.ToFix, "demo_photos_below_minimum", "Servono almeno cinque foto per questo canale (dimostrazione).", 5),
                 new("expedia", ChannelPublishStatus.ManagedOnChannel, null, null, null),
+            ],
+            // NF-34, NF-35: the rooms of the house with their beds (three bedrooms and five beds, as the counters above say) and two
+            // length-of-stay discounts: a week, and a month.
+            Rooms:
+            [
+                new(PropertyRoomType.Bedroom, [new RoomBed(BedType.Double, 1)]),
+                new(PropertyRoomType.Bedroom, [new RoomBed(BedType.Double, 1)]),
+                new(PropertyRoomType.Bedroom, [new RoomBed(BedType.Single, 2)]),
+                new(PropertyRoomType.LivingRoom, [new RoomBed(BedType.SofaBed, 1)]),
+            ],
+            StayDiscounts:
+            [
+                new(7, 10m),
+                new(28, 20m),
             ],
             Bookings:
             [
@@ -598,7 +614,18 @@ public sealed record DemoPropertyTemplate(
     DemoPropertyProfile? Profile = null,
     SitePropertyProfileInput? SiteProfile = null,
     IReadOnlyList<DemoPoi>? Pois = null,
-    IReadOnlyList<DemoChannelState>? ChannelStates = null);
+    IReadOnlyList<DemoChannelState>? ChannelStates = null,
+    IReadOnlyList<DemoRoom>? Rooms = null,
+    IReadOnlyList<DemoStayDiscount>? StayDiscounts = null);
+
+/// <summary>
+/// A room of a demo property with its beds (NF-34): invented like the rest of the demo. The counters of the property (<c>Bedrooms</c>, <c>Beds</c>)
+/// are those the rooms give, as the rooms service sets them.
+/// </summary>
+public sealed record DemoRoom(PropertyRoomType Type, IReadOnlyList<RoomBed> Beds);
+
+/// <summary>A length-of-stay discount of a demo property (NF-35): from <paramref name="MinNights"/> nights, <paramref name="PercentOff"/> percent less on the lodging.</summary>
+public sealed record DemoStayDiscount(int MinNights, decimal PercentOff);
 
 /// <summary>
 /// The state of a demo property on one channel of the channel manager (NF-27, NF-38): invented like the rest of the demo. It exists so the list
@@ -639,7 +666,8 @@ public sealed record DemoPropertyProfile(
     PartiesPolicy? Parties,
     TimeOnly? QuietHoursFrom,
     TimeOnly? QuietHoursTo,
-    decimal? ExtraGuestFeePerNight);
+    decimal? ExtraGuestFeePerNight,
+    ChildrenPolicy? Children = null);
 
 /// <summary>State a demo host invite is created in.</summary>
 public enum DemoHostInviteState

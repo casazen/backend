@@ -121,13 +121,17 @@ public class PropertySiteProfileController(
 
     /// <summary>
     /// Saves the alternative text of the photos (Italian always, English if the host wants): the body lists the photos that have one, and the
-    /// gallery photos it does not list lose theirs, so the editor sends them all. The size of a photo is read from the file when it is uploaded
-    /// and is not part of the body. Answers with the gallery as stored.
+    /// gallery photos it does not list lose theirs, so the editor sends them all. Each photo can also name the room it shows (<c>roomId</c>, a room
+    /// of the same property); the gallery answers with it. The size of a photo is read from the file when it is uploaded and is not part of the
+    /// body. Answers with the gallery as stored.
     /// </summary>
     /// <response code="200">The photos as stored.</response>
     /// <response code="400"><c>validation_error</c>: a text is absurdly long.</response>
     /// <response code="403">The caller may not change this property.</response>
-    /// <response code="404">No property in the caller's org, or <c>property_photo_not_found</c>: an address that is not in its gallery.</response>
+    /// <response code="404">
+    /// No property in the caller's org, or <c>property_photo_not_found</c>: an address that is not in its gallery, or <c>property_room_not_found</c>:
+    /// a room that is not one of the property's.
+    /// </response>
     /// <response code="422"><c>property_site_profile_italian_required</c> or <c>_text_too_long</c> with <c>field: photos</c>. Nothing is saved.</response>
     [HttpPut("photos")]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]

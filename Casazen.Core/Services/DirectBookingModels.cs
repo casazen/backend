@@ -57,8 +57,9 @@ public record DirectBookingQuoteInput(
 /// <param name="PaymentOptions">Which payment options the checkout may offer for this stay (A3-16).</param>
 /// <param name="Lodging">
 /// How the nights of the stay are priced (DB-03): the nights at the nightly rate and the weekend nights with the property's
-/// surcharge. <c>BasePrice = Lodging.Total + CleaningFee</c>; with no surcharge (the default) <c>Lodging.Total</c> is
-/// <c>NightlyRate x Nights</c>, as it has always been.
+/// surcharge, less the length-of-stay discount when a tier of the property applies (NF-35). <c>BasePrice = Lodging.NetTotal + CleaningFee</c>;
+/// with no surcharge and no discount (the default) <c>Lodging.Total</c> is <c>NightlyRate x Nights</c> and equals <c>Lodging.NetTotal</c>, as
+/// it has always been.
 /// </param>
 /// <param name="Cancellation">
 /// What cancelling costs for this stay (DB-03b): the last days of the full and of the partial refund, on the policy of the stay, Europe/Rome
@@ -91,7 +92,10 @@ public record DirectBookingQuote(
 /// <param name="WeekendNights">Friday and Saturday nights charged at <paramref name="WeekendNightlyRate"/>; 0 without a surcharge.</param>
 /// <param name="NightlyRate">The property's nightly rate.</param>
 /// <param name="WeekendNightlyRate">The nightly rate plus the weekend surcharge, rounded to the cent (the rate itself when there is none).</param>
-/// <param name="Total">The price of all the nights, an exact number of cents.</param>
+/// <param name="Total">
+/// The price of all the nights, an exact number of cents, <b>before</b> the length-of-stay discount (<see cref="Discount"/>): what the guest pays
+/// for the nights is <see cref="NetTotal"/>.
+/// </param>
 public sealed record StayLodging(
     int WeekdayNights,
     int WeekendNights,
@@ -99,6 +103,15 @@ public sealed record StayLodging(
     decimal WeekendNightlyRate,
     decimal Total)
 {
+    /// <summary>
+    /// The length-of-stay discount taken off the nights (NF-35, ADR-028): the tier of the property that the stay reaches and the amount it takes
+    /// off <see cref="Total"/>. <c>null</c> = none applies, which is every stay of a property with no tier.
+    /// </summary>
+    public StayDiscount? Discount { get; init; }
+
+    /// <summary>What the guest pays for the nights: <see cref="Total"/> less the discount; the cleaning fee and the tourist tax are not in it.</summary>
+    public decimal NetTotal => Total - (Discount?.Amount ?? 0m);
+
     /// <summary>
     /// The nights of the stay whose price the host set for their date (a seasonal price the host confirmed, PC-15), in date
     /// order. Each costs that price: the weekend surcharge is not added to it, and these nights are in neither
@@ -113,6 +126,20 @@ public sealed record StayLodging(
 /// <summary>One night whose price the host set for its date: the Europe/Rome calendar date the night starts and its price.</summary>
 public sealed record PricedNight(DateOnly Date, decimal Price);
 
+/// <summary>
+/// One tier of the length-of-stay discount of a property (NF-35): from <paramref name="MinNights"/> nights the lodging costs
+/// <paramref name="PercentOff"/> percent less. The rule that picks the tier and rounds the amount is <see cref="StayPricing.DiscountFor"/>.
+/// </summary>
+public sealed record StayDiscountTier(int MinNights, decimal PercentOff);
+
+/// <summary>
+/// The length-of-stay discount a stay got (NF-35, ADR-028-R3, R4): the tier that applied and what it took off the nights.
+/// </summary>
+/// <param name="MinNights">The nights of the tier that applied.</param>
+/// <param name="PercentOff">Its percentage.</param>
+/// <param name="Amount">What it takes off the price of the nights: <c>round(total x percent / 100, 2)</c>, half away from zero, an exact number of cents.</param>
+public sealed record StayDiscount(int MinNights, decimal PercentOff, decimal Amount);
+
 /// <summary>What a line of the quote is. Serialized by name: never rename or reorder a member the frontend reads.</summary>
 public enum QuoteLineKind
 {
@@ -125,6 +152,13 @@ public enum QuoteLineKind
 
     /// <summary>Friday and Saturday nights at the rate with the weekend surcharge; present only when there are such nights.</summary>
     WeekendNights = 1,
+
+    /// <summary>
+    /// The length-of-stay discount (NF-35): a negative amount, taken off the nights only, never off the cleaning fee or the tourist tax; present
+    /// only when a tier of the property applies. It comes after the night lines and before the cleaning fee; its number is the next free one, the
+    /// other members keep theirs.
+    /// </summary>
+    LengthOfStayDiscount = 5,
 
     /// <summary>The cleaning fee, once; present only when it is not zero.</summary>
     CleaningFee = 2,
@@ -140,9 +174,9 @@ public enum QuoteLineKind
 /// One line of the price breakdown of a quote (DB-03), in cents so the frontend never adds euros with decimals.
 /// </summary>
 /// <param name="Kind">What the line is.</param>
-/// <param name="Quantity">Number of nights for the night lines, 1 for the cleaning fee, <c>null</c> for the tax and the total.</param>
+/// <param name="Quantity">Number of nights for the night lines, 1 for the cleaning fee, <c>null</c> for the discount, the tax and the total.</param>
 /// <param name="UnitAmountCents">Price of one night for the night lines, the fee for the cleaning fee; <c>null</c> otherwise.</param>
-/// <param name="AmountCents">Amount of the line (quantity x unit for the night lines); the total for <see cref="QuoteLineKind.Total"/>.</param>
+/// <param name="AmountCents">Amount of the line (quantity x unit for the night lines, negative for the length-of-stay discount); the total for <see cref="QuoteLineKind.Total"/>.</param>
 public sealed record QuoteLine(QuoteLineKind Kind, int? Quantity, long? UnitAmountCents, long AmountCents);
 
 /// <summary>Payment options of a stay, decided by the backend so the checkout never offers or promises what does not apply.</summary>
