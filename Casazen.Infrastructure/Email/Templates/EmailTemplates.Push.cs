@@ -150,6 +150,30 @@ public static partial class EmailTemplates
     }
 
     /// <summary>
+    /// A booking that arrived from a channel (E08/F06/US01/T02), to the host: the same copy as <see cref="NewBookingPush"/> with the
+    /// name of the channel in the title ("Nuova prenotazione da Airbnb"). Property, dates and number of guests only, never the guest's name.
+    /// </summary>
+    public static PushText ChannelBookingPush(
+        CultureInfo culture,
+        string propertyName,
+        string channelName,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        int guests)
+    {
+        var dateFormat = EmailTexts.Get("Format_Date", culture);
+        return new PushText(
+            string.Format(culture, EmailTexts.Get("Push_ChannelBooking_Title", culture), channelName),
+            string.Format(
+                culture,
+                EmailTexts.Get("Push_ChannelBooking_Body", culture),
+                propertyName,
+                checkInDate.ToString(dateFormat, culture),
+                checkOutDate.ToString(dateFormat, culture),
+                guests.ToString(culture)));
+    }
+
+    /// <summary>
     /// A message from the guest of a direct booking, to the host: the property only. Neither the guest's name nor the text of
     /// the message reach the lock screen.
     /// </summary>

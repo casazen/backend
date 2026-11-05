@@ -1,12 +1,14 @@
 using Stripe;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.OrgTeam;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Options;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -37,7 +39,8 @@ public class StripeWebhookHandler(
     IOptions<ConcordatoFacileOptions>? concordatoFacileOptions = null,
     ISupplierShowcaseContentService? showcaseContent = null,
     IShowcaseBookingService? showcaseBookings = null,
-    IServiceRequestOfferCompletion? offerCompletion = null)
+    IServiceRequestOfferCompletion? offerCompletion = null,
+    IDomainEventRecorder? domainEvents = null)
 {
     private const string DirectBookingKind = "direct-booking";
 
@@ -946,6 +949,10 @@ public class StripeWebhookHandler(
         booking.Status = BookingStatus.Confirmed;
         booking.UpdatedAt = DateTime.UtcNow;
         booking.ConfirmedAt = booking.UpdatedAt;
+
+        // The card is saved and the stay confirmed: the event is saved with the confirmation, in the transaction of the Stripe event
+        // (the repository takes it back if it refuses the booking).
+        await BookingEvents.RecordAsync(domainEvents, dbContext, DomainEventType.BookingConfirmed, booking, BookingEventOrigin.Guest);
         await bookingRepository.UpdateAsync(booking);
 
         logger.LogInformation("Booking {BookingId} confirmed with payment method {PaymentMethodId}", bookingId, paymentMethodId);
