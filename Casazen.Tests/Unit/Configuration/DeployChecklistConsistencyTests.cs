@@ -62,6 +62,7 @@ public class DeployChecklistConsistencyTests
         ["SupplierPayments"] = typeof(SupplierPaymentsOptions),
         ["ApeRegistry"] = typeof(ApeRegistryOptions),
         ["ConcordatoFacile"] = typeof(ConcordatoFacileOptions),
+        ["Biometrics"] = typeof(BiometricModelOptions),
     };
 
     /// <summary>Roots whose keys are composed at runtime (no literal in the code, not in <c>appsettings.json</c>), with why.</summary>

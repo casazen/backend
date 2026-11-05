@@ -25,6 +25,10 @@
     <None Update="LeaseLetters\**\*.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <!-- Texts of the legal documents provided by the product owner (D14, PL-14): docs/runbooks/legal-documents.md. -->
     <None Update="LegalDocuments\**\*.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- Small model files of the identity verification (E03/F04/US01, ADR-013-R8): shipped with the API once the operator adds them, each
+         used only when its SHA-256 equals the pinned one. See MlModels/README.md and docs/TECHNICAL.md. -->
+    <None Update="MlModels\**\*.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Update="MlModels\**\*.traineddata" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

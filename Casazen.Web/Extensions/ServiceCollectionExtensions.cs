@@ -402,7 +402,17 @@ public static class ServiceCollectionExtensions
         // NF-10: Document OCR and MRZ extraction for guest check-in (ADR-009-R22, ADR-013-R10).
         services.AddScoped<IMrzExtractionService, MrzExtractionService>();
         services.AddScoped<IDocumentOcrService, DocumentOcrService>();
-        // NF-11: Biometric verification for guest check-in (ADR-013).
+        // NF-11 / NF-24: Biometric verification for guest check-in (ADR-013, E03/F04/US01/T01). The three ONNX models are verified (SHA-256)
+        // and loaded once, in the background, where Features:CheckInIdentityVerification is on; without them every verification is the operator
+        // path (section Biometrics, docs/TECHNICAL.md). The large recognition model is downloaded with the client below.
+        services.AddOptions<Casazen.Core.Options.BiometricModelOptions>()
+            .BindConfiguration(Casazen.Core.Options.BiometricModelOptions.SectionName);
+        services.AddHttpClient(BiometricModelStore.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddSingleton<BiometricModelStore>();
+        services.AddSingleton<IBiometricModelStore>(serviceProvider => serviceProvider.GetRequiredService<BiometricModelStore>());
+        services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<BiometricModelStore>());
+        services.AddSingleton<IFaceDetector, FaceDetector>();
+        services.AddSingleton<IFaceEmbedder, FaceEmbedder>();
         services.AddScoped<IAntiSpoofingService, AntiSpoofingService>();
         services.AddScoped<IBiometricVerificationService, BiometricVerificationService>();
         // NF-12: Operator verification queue for manual biometric decisions (ADR-013).

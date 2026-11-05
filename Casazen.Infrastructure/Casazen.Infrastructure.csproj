@@ -24,6 +24,11 @@
     <PackageReference Include="Microsoft.Extensions.Http.Polly" Version="10.0.12" />
     <PackageReference Include="Polly.Extensions.Http" Version="3.0.0" />
     <PackageReference Include="Ical.Net" Version="4.3.1" />
+    <!-- Identity verification (E03/F04/US01, ADR-013): ONNX Runtime runs the face detector, the anti-spoofing and the face recognition models in
+         process, in memory only (MIT). StbImageSharp decodes the JPEG/PNG of the guest in memory (public domain, fully managed, no native code):
+         ImageSharp has a revenue-threshold licence and SkiaSharp brings native binaries (docs/runbooks/suppliers.md § 33b.3). -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.31.1" />
+    <PackageReference Include="StbImageSharp" Version="2.30.16" />
     <!-- PDF rendering (LT-09): MIT, fully managed. Licence and font notes in docs/runbooks/lease-contract-templates.md. -->
     <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
     <!-- Official tourist-tax PDF text extraction (RS-7): Apache-2.0, same package the tests already use. -->
