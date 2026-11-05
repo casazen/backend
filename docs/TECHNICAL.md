@@ -1226,7 +1226,7 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | `StripeWebhookJob` | On Stripe event (enqueued) | Process Stripe webhook events asynchronously |
 
 ### Deployment
-- **Containerisation**: `Dockerfile` at repo root. Local API uses PostgreSQL/Supabase per `docs/INFRA.md`. Hosting in revisione: Railway è stato cancellato dal PO (2026-10-02), vedi `docs/runbooks/free-hosting-analysis.md` (task HOSTING).
+- **Containerisation**: `Dockerfile` at repo root. Local API uses PostgreSQL/Supabase per `docs/INFRA.md`. Hosting: Railway è in uso per test e produzione (verificato il 5/11/2026, v. `docs/INFRA.md`).
 - **CI/CD**: GitHub Actions — build + test on push (`.github/workflows/ci-cd.yml`); deploys are not run by Actions and tags `v*` do not deploy (see `docs/INFRA.md`, deploy model in revision)
 - **Environments**: Development (local), staging, production
 
