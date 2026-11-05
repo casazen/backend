@@ -1502,6 +1502,33 @@ public class AppDbContext(
             entity.HasIndex(e => new { e.DispatchedAt, e.OccurredAt });
         });
 
+        // ─── Internal activities: the staff work (NF-22) and the "To do" list (ADR-026) ───
+        // An organization-level To do has no property, so the property is optional; deleting a property still deletes its
+        // activities, as when it was required. The action is stored by name (the members are appended by later tasks).
+        // The list reads the open To do rows of an org (Action set, CompletedAt null) on every page of the shell; the unique index
+        // keeps one open item per type and entity, so a second CreateAsync, even a parallel one, returns the first.
+        modelBuilder.Entity<InternalActivity>(entity =>
+        {
+            entity.HasOne(a => a.Property)
+                .WithMany()
+                .HasForeignKey(a => a.PropertyId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.Property(a => a.Action)
+                .HasConversion<string>()
+                .HasMaxLength(50);
+            // Kept on its own: the two indexes below are partial (open To do rows only), so they cannot serve the staff rows,
+            // the closed items or the cascade of an org.
+            entity.HasIndex(a => a.OrgId);
+            entity.HasIndex(a => new { a.OrgId, a.Urgency, a.Deadline })
+                .HasFilter("\"Action\" IS NOT NULL AND \"CompletedAt\" IS NULL")
+                .HasDatabaseName("IX_InternalActivities_OpenTodo");
+            entity.HasIndex(a => new { a.OrgId, a.ActivityType, a.EntityType, a.EntityId })
+                .IsUnique()
+                .HasFilter("\"Action\" IS NOT NULL AND \"CompletedAt\" IS NULL")
+                .HasDatabaseName(InternalActivity.OpenTodoIndexName);
+        });
+
         // ─── Drafts of the wizards (ADR-024) ─────────────────────────────────────
         // One draft per person, wizard and entity. The unique indexes are what makes two devices that save the first draft at the same
         // moment lose to each other (the loser gets 23505 and is answered as a conflict). The database takes two NULLs for different

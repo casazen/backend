@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261105202712_AddWizardDraft")]
+    [Migration("20261105211434_AddWizardDraft")]
     partial class AddWizardDraft
     {
         /// <inheritdoc />
@@ -2309,6 +2309,10 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Action")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<string>("ActivityType")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -2316,6 +2320,10 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<Guid?>("BookingId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("ClosedBy")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
@@ -2327,6 +2335,16 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<DateTime?>("Deadline")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EntityType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<decimal?>("InternalRate")
                         .HasColumnType("decimal(18,2)");
 
@@ -2337,8 +2355,12 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
-                    b.Property<Guid>("PropertyId")
+                    b.Property<Guid?>("PropertyId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
 
                     b.Property<bool>("RechargeToOwner")
                         .HasColumnType("boolean");
@@ -2347,7 +2369,6 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("StaffUserId")
-                        .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
@@ -2356,6 +2377,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<int?>("Urgency")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("BookingId");
@@ -2363,6 +2387,15 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("OrgId");
 
                     b.HasIndex("PropertyId");
+
+                    b.HasIndex("OrgId", "Urgency", "Deadline")
+                        .HasDatabaseName("IX_InternalActivities_OpenTodo")
+                        .HasFilter("\"Action\" IS NOT NULL AND \"CompletedAt\" IS NULL");
+
+                    b.HasIndex("OrgId", "ActivityType", "EntityType", "EntityId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_InternalActivities_OpenTodo")
+                        .HasFilter("\"Action\" IS NOT NULL AND \"CompletedAt\" IS NULL");
 
                     b.ToTable("InternalActivities");
                 });
@@ -10049,8 +10082,7 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasOne("Casazen.Core.Entities.Property", "Property")
                         .WithMany()
                         .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("Booking");
 
