@@ -1,3 +1,5 @@
+using Casazen.Core.Authorization;
+
 namespace Casazen.Core.Services;
 
 /// <summary>
@@ -34,4 +36,47 @@ public interface IAccessCodeService
     /// <param name="ct">Cancellation token</param>
     /// <returns>Plain text code, or null if verification not passed</returns>
     Task<string?> ReleaseToGuestAsync(Guid bookingId, string channel, CancellationToken ct = default);
+
+    /// <summary>
+    /// Which of the properties <paramref name="scope"/> reaches have a lock code (NF-50, E03/F01/US03/T01), a page at a time: the
+    /// property, whether a code is set and when it was last set. The properties are narrowed in SQL by the scope
+    /// (<c>InScope</c>, AM-03), so a collaborator «Solo alcuni» gets the properties it was given and nobody gets those of another org.
+    /// </summary>
+    /// <remarks>
+    /// It reads that a code exists and the date of it, never the code: the encrypted column is not selected, so nothing is decrypted
+    /// and neither the code nor its ciphertext can reach the answer (ADR-013). Whether a caller may release a code to a guest is
+    /// another rule (<see cref="GetAccessCodeAsync"/>, <see cref="ReleaseToGuestAsync"/>) that this does not touch.
+    /// </remarks>
+    /// <param name="scope">What the caller reaches (resolved by the web layer from the org membership, never from client input).</param>
+    /// <param name="page">The page wanted (1-based), brought within <see cref="AccessCodeStatusPage.MaxPage"/>.</param>
+    /// <param name="pageSize">The page size wanted, brought within 1 and <see cref="AccessCodeStatusPage.MaxPageSize"/>.</param>
+    /// <param name="ct">Cancellation token</param>
+    Task<AccessCodeStatusPage> GetStatusAsync(HostScope scope, int page, int pageSize, CancellationToken ct = default);
 }
+
+/// <summary>A page of the lock code status of the properties of the host (NF-50).</summary>
+/// <param name="Items">The properties of the page, by name (the id as the tie-break, so a property is never on two pages nor on none).</param>
+/// <param name="TotalCount">All the properties the scope reaches, on every page.</param>
+/// <param name="Page">The page taken (1-based) after bringing the request within the limits.</param>
+/// <param name="PageSize">The size taken after bringing the request within the limits.</param>
+public sealed record AccessCodeStatusPage(IReadOnlyList<AccessCodeStatusItem> Items, int TotalCount, int Page, int PageSize)
+{
+    /// <summary>The page size when the caller does not say how big.</summary>
+    public const int DefaultPageSize = 50;
+
+    /// <summary>The most properties a page may hold.</summary>
+    public const int MaxPageSize = 100;
+
+    /// <summary>The highest page number taken: the order is fixed, a number past the end is just an empty page.</summary>
+    public const int MaxPage = 100_000;
+}
+
+/// <summary>
+/// Whether one property has a lock code. There is no field for the code on purpose: the status never carries it, in any form.
+/// </summary>
+/// <param name="PropertyId">The property.</param>
+/// <param name="Name">The name of the property.</param>
+/// <param name="City">The city of the property.</param>
+/// <param name="AccessCodeSet">True when a lock code was set for the property.</param>
+/// <param name="UpdatedAt">When the code was last set (UTC); <c>null</c> when none is set.</param>
+public sealed record AccessCodeStatusItem(Guid PropertyId, string Name, string City, bool AccessCodeSet, DateTime? UpdatedAt);
