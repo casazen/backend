@@ -57,4 +57,7 @@ public static class TestDataEntities
     public const string Booking = "Booking";
     public const string HostInvite = "HostInviteRecord";
     public const string PropertyOwner = "PropertyOwner";
+
+    /// <summary>A saved draft of a wizard (<see cref="WizardDraft"/>): the demo host's, written by the showcase and deleted by its reset.</summary>
+    public const string WizardDraft = "WizardDraft";
 }

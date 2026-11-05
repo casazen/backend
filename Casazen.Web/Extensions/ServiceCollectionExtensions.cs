@@ -402,8 +402,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IGuestDataRetentionService, GuestDataRetentionService>();
         services.AddScoped<ILeasePartyPrivacyService, LeasePartyPrivacyService>();
         // ADR-024: the drafts of the wizards, saved on the server so that a person resumes them on any device (E01/F02/US01). Their personal
-        // half is an encrypted column (EncryptedColumns).
+        // half is an encrypted column (EncryptedColumns); the nightly retention (gdpr-data-retention) anonymizes the drafts past their 30 days.
         services.AddScoped<IWizardDraftService, WizardDraftService>();
+        services.AddScoped<IWizardDraftRetentionService, WizardDraftRetentionService>();
         // NF-10: Document OCR and MRZ extraction for guest check-in (ADR-009-R22, ADR-013-R10).
         services.AddScoped<IMrzExtractionService, MrzExtractionService>();
         services.AddScoped<IDocumentOcrService, DocumentOcrService>();

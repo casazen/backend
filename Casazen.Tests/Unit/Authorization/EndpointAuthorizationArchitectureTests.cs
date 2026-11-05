@@ -51,6 +51,11 @@ public class EndpointAuthorizationArchitectureTests
         ["OrgAccessRequestsController.Create"] = "A member asks the administrators of its org for access to something its role does not give it (AM-02b): by definition it lacks the permission of the thing, and any role may ask, so no context policy fits. The service decides: the caller must be an active member of the org (403 otherwise), at most three requests a day for each person, and the endpoint is rate limited per person.",
         ["OrgRolesController.Get"] = "The matrix of the five org roles (AM-02c): what each role holds in each context and how much of each capability that is. It describes the product's roles, names no person and reads no tenant data, and any active member may read it (to know what its own role can do), so no single context permission fits. The service decides: the caller must be an active member of its org (403 otherwise); behind the OrgTeam flag.",
 
+        // The caller's own work in progress: the drafts of the wizards (ADR-024).
+        ["WizardDraftsController.Get"] = "ADR-024: the caller's own draft of a wizard, in every context (host, landlord, supplier), so no single context permission fits: by the token's sub and the caller's org (IWizardDraftService); the draft of another person or another org is a 404, never a 403.",
+        ["WizardDraftsController.Save"] = "ADR-024: the caller saves its own draft, by the token's sub and the caller's org (same reason as Get); a version behind the server's is a 409 with the server's draft, and the body is bounded.",
+        ["WizardDraftsController.Delete"] = "ADR-024: the caller discards its own draft, by the token's sub and the caller's org (same reason as Get); never the draft of another person.",
+
         // Catalogs without tenant data.
         ["BillingController.GetPlans"] = "Public plan catalog from configuration; every billing change is RequireOrgBillingAdmin.",
         ["TouristTaxRatesController.GetAll"] = "Platform reference data (tourist tax rates per comune), not tenant data; writes are AdminOnly.",

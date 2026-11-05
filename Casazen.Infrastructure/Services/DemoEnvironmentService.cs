@@ -115,6 +115,8 @@ public class DemoEnvironmentService(
         if (!string.Equals(confirmation, DemoShowcaseCatalog.ResetConfirmation, StringComparison.Ordinal))
             throw new DomainRuleException("demo_reset_confirmation", "DemoResetConfirmation");
 
+        // The drafts first: removing the showcase properties drops every showcase marker of the org, and these are found by theirs.
+        await RemoveShowcaseWizardDraftsAsync(orgId, cancellationToken);
         var removed = await RemoveShowcaseAsync(orgId, cancellationToken);
         await RemoveShowcaseHostInvitesAsync(orgId, cancellationToken);
         var unpublished = removeUnpublished ? await RemoveUnpublishedAsync(orgId, cancellationToken) : 0;
@@ -128,6 +130,9 @@ public class DemoEnvironmentService(
 
         foreach (var invite in DemoShowcaseCatalog.HostInvites)
             await CreateHostInviteAsync(orgId, ownerId, invite, cancellationToken);
+
+        foreach (var draft in DemoShowcaseCatalog.WizardDrafts)
+            await CreateWizardDraftAsync(orgId, ownerId, draft, cancellationToken);
 
         settings.LastResetAt = UtcNow();
         settings.LastResetBy = actorUserId;
@@ -211,6 +216,56 @@ public class DemoEnvironmentService(
         await Markers()
             .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.HostInvite)
             .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>Deletes the wizard drafts the showcase wrote for the org, found by their markers (invented rows: nothing of a real person).</summary>
+    private async Task RemoveShowcaseWizardDraftsAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var draftIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.WizardDraft)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (draftIds.Count == 0)
+            return;
+
+        await db.WizardDrafts.IgnoreQueryFilters([Tenant]).Where(d => draftIds.Contains(d.Id)).ExecuteDeleteAsync(cancellationToken);
+        await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.WizardDraft)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// One saved draft of the demo host, split as the service splits a real one (the personal fields go to the encrypted half). Skipped when
+    /// the host already has a draft of that wizard (a real one, which the showcase never touches): there is one per person and wizard.
+    /// </summary>
+    private async Task CreateWizardDraftAsync(
+        Guid orgId, string ownerId, DemoWizardDraftTemplate template, CancellationToken cancellationToken)
+    {
+        var taken = await db.WizardDrafts.IgnoreQueryFilters([Tenant])
+            .AnyAsync(d => d.OrgId == orgId && d.UserId == ownerId && d.WizardType == template.Type && d.EntityId == null, cancellationToken);
+        if (taken)
+        {
+            logger.LogInformation("Demo wizard draft {Key} skipped: the host already has a draft of that wizard", template.Key);
+            return;
+        }
+
+        using var data = System.Text.Json.JsonDocument.Parse(template.DataJson);
+        var parts = WizardDraftPii.Split(data.RootElement);
+        var savedAt = UtcNow().AddDays(template.SavedOffsetDays);
+        var draft = new WizardDraft
+        {
+            OrgId = orgId,
+            UserId = ownerId,
+            WizardType = template.Type,
+            Version = 1,
+            DraftJson = parts.PlainJson,
+            EncryptedFieldsJson = parts.PersonalJson,
+            LastSavedAt = savedAt,
+            ExpiresAt = savedAt.AddDays(WizardDraftLimits.RetentionDays),
+        };
+        db.WizardDrafts.Add(draft);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.WizardDraft, draft.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
     /// <summary>
