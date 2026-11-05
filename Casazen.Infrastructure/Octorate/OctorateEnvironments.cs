@@ -36,4 +36,17 @@ public static class OctorateEnvironments
     public static bool Matches(OctorateEnvironment expected, string? reported) =>
         !string.IsNullOrWhiteSpace(reported)
         && string.Equals(reported.Trim(), ReportedNameOf(expected), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The environment check of a connection (NF-28): the configuration Octorate reported for the credentials must be the one of the
+    /// connection (Test with <c>SANDBOX</c>, Production with <c>PRODUCTION</c>). Called right after the token exchange and at every
+    /// reconnection; the caller leaves the connection disconnected when it throws.
+    /// </summary>
+    /// <exception cref="OctorateWrongEnvironmentException">Another environment, or none reported.</exception>
+    public static void EnsureMatches(OctorateEnvironment expected, Casazen.Core.Services.OctorateConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        if (!Matches(expected, configuration.Environment))
+            throw new OctorateWrongEnvironmentException(null);
+    }
 }

@@ -18,6 +18,12 @@ public static class OctorateServiceCollectionExtensions
         services.AddHttpClient(OctorateTokenService.HttpClientName, OctorateHttp.Configure);
         services.AddScoped<IOctorateTokenService, OctorateTokenService>();
 
+        // The API client (E02/F01/US01/T02), always registered: the org of every call comes from the scope of the DI scope, the
+        // rate-limit buckets are the application's (one per org).
+        services.AddHttpClient<IOctorateApiClient, OctorateApiClient>(OctorateHttp.Configure);
+        services.AddScoped<IOctorateOrgScope, OctorateOrgScope>();
+        services.AddSingleton<OctorateRateLimiter>();
+
         return services;
     }
 }

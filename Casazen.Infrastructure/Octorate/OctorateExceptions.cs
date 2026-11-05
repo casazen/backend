@@ -74,3 +74,34 @@ public sealed class OctorateAuthException : OctorateException
 /// <summary>Octorate failed (5xx), did not answer in time, or answered something that cannot be read: 502, worth a later retry.</summary>
 public sealed class OctorateServerException(int? octorateStatusCode, Exception? innerException = null)
     : OctorateException("octorate_unavailable", "OctorateUnavailable", StatusCodes.Status502BadGateway, octorateStatusCode, innerException);
+
+/// <summary>Octorate does not know what the call names (404): the accommodation, the room, the reservation.</summary>
+public sealed class OctorateNotFoundException()
+    : OctorateException("octorate_not_found", "OctorateNotFound", StatusCodes.Status404NotFound, StatusCodes.Status404NotFound);
+
+/// <summary>Octorate refused a change that conflicts with its data (409).</summary>
+public sealed class OctorateConflictException()
+    : OctorateException("octorate_conflict", "OctorateConflict", StatusCodes.Status409Conflict, StatusCodes.Status409Conflict);
+
+/// <summary>
+/// The credentials belong to the other environment (NF-28, ADR-023-R6): Octorate answered 403 <c>WrongEnviroment</c> (Octorate's
+/// spelling), or its configuration reports an environment that is not the connection's. The connection is left disconnected: it never
+/// silently goes on in the wrong environment.
+/// </summary>
+public sealed class OctorateWrongEnvironmentException(int? octorateStatusCode)
+    : OctorateException("octorate_wrong_environment", "OctorateWrongEnvironment", StatusCodes.Status409Conflict, octorateStatusCode)
+{
+    /// <summary>The <c>type</c> of Octorate's 403 for credentials of the other environment, spelled as Octorate spells it.</summary>
+    public const string OctorateErrorType = "WrongEnviroment";
+}
+
+/// <summary>
+/// Too many calls (ADR-023-R8, R9): CasaZen's own bucket of the org is empty (no call left Octorate), or Octorate answered 429 again after
+/// the three retries. 429, try again later.
+/// </summary>
+public sealed class OctorateRateLimitException(int? octorateStatusCode)
+    : OctorateException("octorate_rate_limited", "OctorateRateLimited", StatusCodes.Status429TooManyRequests, octorateStatusCode);
+
+/// <summary>Octorate refused the request itself (400, 405, 406, 415, 422 and the other 4xx not mapped above): 502.</summary>
+public sealed class OctorateRequestRejectedException(int octorateStatusCode)
+    : OctorateException("octorate_request_rejected", "OctorateRequestRejected", StatusCodes.Status502BadGateway, octorateStatusCode);

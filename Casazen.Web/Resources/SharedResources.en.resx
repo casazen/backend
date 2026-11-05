@@ -4109,4 +4109,28 @@
   <data name="BankImportSelectionsInvalid" xml:space="preserve">
     <value>Choose from 1 to 500 payments to confirm.</value>
   </data>
+  <data name="OctorateNotConnected" xml:space="preserve">
+    <value>The connection to the channel manager is not active: connect it again from the channel settings.</value>
+  </data>
+  <data name="OctorateAuthFailed" xml:space="preserve">
+    <value>The channel manager refused CasaZen's access. Try again later; if it happens again, connect the account again.</value>
+  </data>
+  <data name="OctorateUnavailable" xml:space="preserve">
+    <value>The channel manager is not answering right now. Try again in a few minutes.</value>
+  </data>
+  <data name="OctorateNotFound" xml:space="preserve">
+    <value>The channel manager cannot find what was requested.</value>
+  </data>
+  <data name="OctorateConflict" xml:space="preserve">
+    <value>The channel manager refused the change because it conflicts with its data. Refresh the page and try again.</value>
+  </data>
+  <data name="OctorateWrongEnvironment" xml:space="preserve">
+    <value>The channel manager account belongs to another environment (test or production): the connection was not activated.</value>
+  </data>
+  <data name="OctorateRateLimited" xml:space="preserve">
+    <value>Too many requests to the channel manager in a short time: try again in a minute.</value>
+  </data>
+  <data name="OctorateRequestRejected" xml:space="preserve">
+    <value>The channel manager refused the request.</value>
+  </data>
 </root>
