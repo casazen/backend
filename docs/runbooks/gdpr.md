@@ -280,7 +280,7 @@ through `api/wizards/{type}/draft` ([TECHNICAL.md](../TECHNICAL.md)); the draft 
 
 | Trigger | What happens | Code |
 |---|---|---|
-| Retention | Nightly job `gdpr-data-retention`: a draft past `ExpiresAt` (**30 days from its last save**, a fixed rule of the product, no configuration) loses its data (`DraftJson = '{}'`, `EncryptedFieldsJson = NULL`) and its person (`UserId = ''`). **The row is never deleted** (audit trail: org, wizard, entity, version, instants). Idempotent: an anonymized row has no user, so a second run finds nothing. Until the night it runs, an expired draft is already gone for the person (not shown, rewritten by the next save) | `WizardDraftRetentionService` |
+| Retention | Nightly job `gdpr-data-retention`: a draft past `ExpiresAt` (**30 days from its last save**, a fixed rule of the product, no configuration) loses its data (`DraftJson = '{}'`, `EncryptedFieldsJson = NULL`) and its person (`UserId = ''`). **The row is never deleted** (audit trail: org, wizard, entity, version, instants). Idempotent: an anonymized row has no user, so a second run finds nothing. It is one `UPDATE` that never reads the drafts, so a draft whose Data Protection keys are lost or rotated is anonymized like the others and never stops the night. Until the night it runs, an expired draft is already gone for the person (not shown, rewritten by the next save) | `WizardDraftRetentionService` |
 | The person discards it | `DELETE api/wizards/{type}/draft`: the same anonymization at once | `WizardDraftService.DeleteDraftAsync` |
 
 Verification after deploy: Railway logs at 03:00 UTC show `GDPR retention: wizard drafts applied: N drafts anonymized` and `GDPR wizard draft retention done`.

@@ -16,12 +16,16 @@ namespace Casazen.Tests.Integration;
 /// <summary>
 /// ADR-024-R5 on a real PostgreSQL database: the nightly retention (<see cref="IWizardDraftRetentionService"/>, run by
 /// <c>GdprDataRetentionJob</c>) anonymizes the drafts past their 30 days and never deletes a row, leaves alone the draft a person saved
-/// again, finds nothing the second time, and does not trip on the unique indexes when several rows end up with the same empty user (they are
-/// left out of both).
+/// again, finds nothing the second time, does not trip on the unique indexes when several rows end up with the same empty user (they are
+/// left out of both), and never reads the personal half of a draft: one that can no longer be decrypted is anonymized like the others and
+/// does not stop the drafts after it.
 /// </summary>
 public class WizardDraftRetentionPostgresTests
 {
     private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
+
+    // Another key ring: what it protected cannot be read with Provider, as a draft whose Data Protection keys were lost or rotated.
+    private static readonly IDataProtectionProvider LostKeys = new EphemeralDataProtectionProvider();
 
     private static readonly Guid Org = Guid.Parse("00000000-0000-0000-0000-0000000000a1");
     private static readonly Guid BookingId = Guid.Parse("00000000-0000-0000-0000-0000000000c3");
@@ -31,9 +35,16 @@ public class WizardDraftRetentionPostgresTests
 
     private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 11, 5, 9, 30, 15, TimeSpan.Zero));
 
-    private async Task SaveAsync(PostgresTestDatabase database, string userId, WizardType type, Guid? entityId, int clientVersion, string guest)
+    private async Task SaveAsync(
+        PostgresTestDatabase database,
+        string userId,
+        WizardType type,
+        Guid? entityId,
+        int clientVersion,
+        string guest,
+        IDataProtectionProvider? keys = null)
     {
-        await using var db = new AppDbContext(database.CreateOptions(), tenantContext: null, Provider);
+        await using var db = new AppDbContext(database.CreateOptions(), tenantContext: null, keys ?? Provider);
         using var data = JsonDocument.Parse($$"""{"step":"ospiti","guestName":"{{guest}}"}""");
         var result = await new WizardDraftService(db, _clock)
             .SaveDraftAsync(Org, userId, new SaveDraftRequest(type, entityId, clientVersion, data), CancellationToken.None);
@@ -101,6 +112,42 @@ public class WizardDraftRetentionPostgresTests
         }
 
         // Idempotent: a second night finds nothing to do.
+        Assert.Equal(0, (await RunRetentionAsync(database)).Drafts);
+    }
+
+    [PostgresFact]
+    public async Task WizardDraft_RetentionJob_APersonalHalfThatCannotBeDecrypted_IsAnonymizedAllTheSame_AndTheOtherDraftsToo_Test()
+    {
+        await using var database = PostgresTestDatabase.CreateMigrated("wzdr");
+
+        // Alice's first draft was protected with keys that are lost (LostKeys); the other two can be read with the keys of the job.
+        await SaveAsync(database, Alice, WizardType.CheckIn, BookingId, 0, "Giulia Verdi", LostKeys);
+        await SaveAsync(database, Bob, WizardType.CheckIn, BookingId, 0, "Luca Neri");
+        await SaveAsync(database, Alice, WizardType.BookingCreate, null, 0, "Anna Bianchi");
+        _clock.Advance(TimeSpan.FromDays(31));
+
+        // The premise: with the keys of the job the draft of Alice cannot be loaded (a retention that read the drafts would fail on it).
+        await using (var reader = new AppDbContext(database.CreateOptions(), tenantContext: null, Provider))
+        {
+            await Assert.ThrowsAnyAsync<Exception>(
+                () => reader.WizardDrafts.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).ToListAsync());
+        }
+
+        var run = await RunRetentionAsync(database);
+
+        // All three are anonymized, the unreadable one included, and none is deleted.
+        Assert.Equal(3, run.Drafts);
+        await using var stored = database.CreateContext();
+        var rows = await stored.WizardDrafts.AsNoTracking().ToListAsync();
+        Assert.Equal(3, rows.Count);
+        Assert.All(rows, r =>
+        {
+            Assert.Empty(r.UserId);
+            Assert.Equal("{}", r.DraftJson);
+            Assert.Null(r.EncryptedFieldsJson);
+        });
+
+        // Nothing is left to read, so the next night finds nothing and does not fail.
         Assert.Equal(0, (await RunRetentionAsync(database)).Drafts);
     }
 }

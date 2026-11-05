@@ -86,7 +86,8 @@ public class WizardDraft : ITenantOwned
 
     /// <summary>
     /// Takes the person and the data out of the row and keeps the rest (org, wizard, entity, version, instants) for the audit trail: the
-    /// state of a draft the retention reached or the person discarded.
+    /// state of a draft the retention reached or the person discarded. The nightly retention writes the same three values in SQL, without
+    /// loading the rows (<c>WizardDraftRetentionService</c>): a change here is a change there.
     /// </summary>
     public void Anonymize()
     {
