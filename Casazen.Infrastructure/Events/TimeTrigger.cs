@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -20,6 +21,8 @@ public static class TimeTrigger
 
     /// <summary>The largest offset taken, one year in hours: a longer one is a mistake in the routine, not a trigger.</summary>
     public const int MaxOffsetHours = 366 * 24;
+
+    private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
 
     /// <summary>The kind the emitter writes for each routine event type of a stay.</summary>
     public static IReadOnlyDictionary<RoutineEventType, string> StayKinds { get; } = new Dictionary<RoutineEventType, string>
@@ -80,6 +83,33 @@ public static class TimeTrigger
     /// </summary>
     public static string DedupKey(string kind, int offsetHours, Guid entityId, DateTime dueAtUtc) =>
         string.Create(CultureInfo.InvariantCulture, $"{kind}:{offsetHours}:{entityId:D}:{dueAtUtc:yyyy-MM-dd'T'HH}Z");
+
+    /// <summary>
+    /// Reads the payload of a time trigger (names in any case). False when it is not one: not JSON, no kind, a negative offset.
+    /// </summary>
+    public static bool TryReadPayload(string? payloadJson, [NotNullWhen(true)] out TimeTriggerPayload? payload)
+    {
+        payload = null;
+        if (string.IsNullOrWhiteSpace(payloadJson))
+            return false;
+
+        try
+        {
+            payload = JsonSerializer.Deserialize<TimeTriggerPayload>(payloadJson, ReadOptions);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        if (payload is null || string.IsNullOrEmpty(payload.Kind) || payload.Offset < 0)
+        {
+            payload = null;
+            return false;
+        }
+
+        return true;
+    }
 
     private static bool TryWholeNumber(JsonElement value, out long number)
     {

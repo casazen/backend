@@ -42,7 +42,7 @@ public class OutboxEventRecorderTests
         Assert.Equal(DomainEventType.BookingConfirmed, row.EventType);
         Assert.Equal(bookingId, row.EntityId);
         Assert.Equal(Now.UtcDateTime, row.OccurredAt);
-        Assert.Equal($$"""{"bookingId":"{{bookingId}}","nights":3}""", row.PayloadJson);
+        Assert.Equal($$"""{"BookingId":"{{bookingId}}","Nights":3}""", row.PayloadJson);
         Assert.Null(row.DedupKey);
         Assert.Null(row.DispatchedAt);
         Assert.Equal(0, row.Attempts);

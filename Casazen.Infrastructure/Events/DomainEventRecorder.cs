@@ -22,8 +22,12 @@ public sealed class DomainEventRecorder(
     ITenantContext tenantContext,
     TimeProvider timeProvider) : IDomainEventRecorder
 {
-    /// <summary>The JSON of the payloads: camelCase, the convention of the API and of the handlers that read them.</summary>
-    internal static readonly JsonSerializerOptions PayloadJsonOptions = new(JsonSerializerDefaults.Web);
+    /// <summary>
+    /// The JSON of the payloads: System.Text.Json with its defaults, so the names are the ones the producer declares (an anonymous
+    /// object of a service keeps <c>IdVerified</c>, the name the server-side guardrails of the routines read, ADR-022-R11; a payload
+    /// type can fix its names with <c>[JsonPropertyName]</c>). The handlers read the payloads without regard to case.
+    /// </summary>
+    internal static readonly JsonSerializerOptions PayloadJsonOptions = new();
 
     public void Record(DomainEventType type, Guid entityId, object payload, string? dedupKey = null, Guid? orgId = null)
     {

@@ -14,7 +14,7 @@ public interface IDomainEventRecorder
     /// </summary>
     /// <param name="type">What happened.</param>
     /// <param name="entityId">The entity it happened to (booking, service request, payment...).</param>
-    /// <param name="payload">Serialized as JSON (camelCase): ids and codes only, never personal data in clear (ADR-022-R21).</param>
+    /// <param name="payload">Serialized as JSON with the names it declares: ids and codes only, never personal data in clear (ADR-022-R21).</param>
     /// <param name="dedupKey">Optional key unique within the org: a second event with the same key is refused by the database.</param>
     /// <param name="orgId">
     /// The org of the event. Optional inside an authenticated request (the caller's org is used); required everywhere else (a

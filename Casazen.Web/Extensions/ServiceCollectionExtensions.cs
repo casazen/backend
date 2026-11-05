@@ -3,6 +3,7 @@
 using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Documents;
+using Casazen.Core.Events;
 using Casazen.Core.Features;
 using Casazen.Core.Multitenancy;
 using Casazen.Core.Repositories;
@@ -424,11 +425,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICampaignService, CampaignService>();
         // NF-26: Automation routines (ADR-022).
         services.AddScoped<IRoutineService, RoutineService>();
-        services.AddScoped<RoutineEventDispatcher>();
         // ADR-022: domain events are recorded in the outbox of the current unit of work (R1) and published by the dispatcher on the
         // in-process bus, which runs each handler in its own scope under the event's org (R3, R6).
         services.AddScoped<IDomainEventRecorder, DomainEventRecorder>();
         services.AddSingleton<IEventBus, InProcessEventBus>();
+        // NF-21: the bus is the one way an event reaches the routines of its org (E01/F01/US01/T05).
+        services.AddScoped<IEventHandler<DomainEvent>, RoutineEventHandler>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();
