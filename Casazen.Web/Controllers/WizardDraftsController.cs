@@ -105,7 +105,7 @@ public class WizardDraftsController(IWizardDraftService drafts, IOrgContextResol
 
         // The document of the body lives as long as the request.
         Response.RegisterForDispose(data);
-        if (data.RootElement.ValueKind != JsonValueKind.Object)
+        if (data.RootElement.ValueKind != JsonValueKind.Object || WizardDraftPii.HasNullCharacter(data.RootElement))
             return DataInvalid();
         if (await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken) is not { } orgId)
             return NoOrganization();

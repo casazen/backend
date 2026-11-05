@@ -121,19 +121,22 @@ public class WizardDraftsControllerTests
     }
 
     [Fact]
-    public async Task Post_ATypeInTheBodyThatIsNotTheOneOfTheAddress_OrDataThatIsNotAnObject_IsRefused400_AndNothingIsSaved()
+    public async Task Post_ATypeInTheBodyThatIsNotTheOneOfTheAddress_OrDataThatIsNotAnObjectOrHoldsU0000_IsRefused400_AndNothingIsSaved()
     {
         var controller = NewController();
         using var data = JsonDocument.Parse("""{"step":2}""");
         using var list = JsonDocument.Parse("[1]");
+        using var nul = JsonDocument.Parse("{\"note\":\"a\\u0000b\"}");
 
         var mismatch = await controller.Save(
             "CheckIn", new SaveWizardDraftRequest { Type = WizardType.CheckOut, Data = data }, CancellationToken.None);
         var notAnObject = await controller.Save("CheckIn", new SaveWizardDraftRequest { Data = list }, CancellationToken.None);
+        var withNul = await controller.Save("CheckIn", new SaveWizardDraftRequest { Data = nul }, CancellationToken.None);
         var noData = await controller.Save("CheckIn", new SaveWizardDraftRequest { Data = null }, CancellationToken.None);
 
         Assert.Equal("wizard_type_mismatch", AssertProblem(mismatch.Result, StatusCodes.Status400BadRequest).Extensions["code"]);
         Assert.Equal("wizard_draft_data_invalid", AssertProblem(notAnObject.Result, StatusCodes.Status400BadRequest).Extensions["code"]);
+        Assert.Equal("wizard_draft_data_invalid", AssertProblem(withNul.Result, StatusCodes.Status400BadRequest).Extensions["code"]);
         Assert.Equal("wizard_draft_data_invalid", AssertProblem(noData.Result, StatusCodes.Status400BadRequest).Extensions["code"]);
         _drafts.Verify(
             d => d.SaveDraftAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<SaveDraftRequest>(), It.IsAny<CancellationToken>()),

@@ -40,7 +40,7 @@ public sealed class WizardDraftService(AppDbContext db, TimeProvider timeProvide
         if (!Enum.IsDefined(request.Type))
             throw new DomainRuleException(WizardDraftErrors.TypeUnknown, "WizardDraftTypeUnknown");
 
-        if (request.Data.RootElement.ValueKind != JsonValueKind.Object)
+        if (request.Data.RootElement.ValueKind != JsonValueKind.Object || WizardDraftPii.HasNullCharacter(request.Data.RootElement))
             throw new DomainRuleException(WizardDraftErrors.DataInvalid, "WizardDraftDataInvalid");
 
         var parts = WizardDraftPii.Split(request.Data.RootElement);

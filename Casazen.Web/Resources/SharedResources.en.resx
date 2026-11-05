@@ -4122,7 +4122,7 @@
     <value>The type in the request body does not match the one in the address.</value>
   </data>
   <data name="WizardDraftDataInvalid" xml:space="preserve">
-    <value>The draft data must be a JSON object.</value>
+    <value>The draft data are not valid: they must be a JSON object with no null characters.</value>
   </data>
   <data name="WizardDraftTooLarge" xml:space="preserve">
     <value>The draft is too large: at most {0} KB of data.</value>

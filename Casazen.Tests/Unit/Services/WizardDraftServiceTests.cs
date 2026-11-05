@@ -181,7 +181,7 @@ public class WizardDraftServiceTests
     }
 
     [Fact]
-    public async Task SaveDraft_DataThatIsNotAnObject_OrIsTooLarge_IsRefused_AndNothingIsWritten()
+    public async Task SaveDraft_DataThatIsNotAnObject_HasANullCharacter_OrIsTooLarge_IsRefused_AndNothingIsWritten()
     {
         await using var db = NewDb();
         var service = new WizardDraftService(db, _clock);
@@ -190,6 +190,16 @@ public class WizardDraftServiceTests
         var notAnObject = await Assert.ThrowsAsync<DomainRuleException>(() =>
             service.SaveDraftAsync(OrgA, Alice, new SaveDraftRequest(WizardType.ListingCreate, null, 0, list), CancellationToken.None));
         Assert.Equal(WizardDraftErrors.DataInvalid, notAnObject.Code);
+
+        // A text with the character U+0000 (here as a value, and as a property name inside a list) cannot be stored in a jsonb column.
+        using var nul = JsonDocument.Parse("{\"note\":\"a\\u0000b\"}");
+        using var nulName = JsonDocument.Parse("{\"rooms\":[{\"a\\u0000\":1}]}");
+        foreach (var data in new[] { nul, nulName })
+        {
+            var withNul = await Assert.ThrowsAsync<DomainRuleException>(() =>
+                service.SaveDraftAsync(OrgA, Alice, new SaveDraftRequest(WizardType.ListingCreate, null, 0, data), CancellationToken.None));
+            Assert.Equal(WizardDraftErrors.DataInvalid, withNul.Code);
+        }
 
         using var huge = JsonDocument.Parse("{\"notes\":\"" + new string('x', WizardDraftLimits.MaxDataBytes) + "\"}");
         var tooLarge = await Assert.ThrowsAsync<DomainPayloadTooLargeException>(() =>

@@ -4122,7 +4122,7 @@
     <value>Il tipo indicato nel corpo della richiesta non corrisponde a quello dell'indirizzo.</value>
   </data>
   <data name="WizardDraftDataInvalid" xml:space="preserve">
-    <value>I dati della bozza devono essere un oggetto JSON.</value>
+    <value>I dati della bozza non sono validi: devono essere un oggetto JSON senza caratteri nulli.</value>
   </data>
   <data name="WizardDraftTooLarge" xml:space="preserve">
     <value>La bozza è troppo grande: al massimo {0} KB di dati.</value>

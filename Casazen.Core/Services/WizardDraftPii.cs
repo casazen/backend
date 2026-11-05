@@ -27,6 +27,37 @@ public static class WizardDraftPii
     public static bool IsPersonalField(string name) => WizardDraftPiiFields.PII_FIELD_NAMES.Contains(name);
 
     /// <summary>
+    /// True when a property name or a text anywhere in <paramref name="element"/> holds the character U+0000, which a <c>jsonb</c> column
+    /// cannot store (PostgreSQL refuses it): a draft like that is refused with a 4xx before it reaches the database.
+    /// </summary>
+    public static bool HasNullCharacter(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (property.Name.Contains('\0') || HasNullCharacter(property.Value))
+                        return true;
+                }
+
+                return false;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                {
+                    if (HasNullCharacter(item))
+                        return true;
+                }
+
+                return false;
+            case JsonValueKind.String:
+                return element.GetString()?.Contains('\0') == true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
     /// The plain half (never holds a personal field) and the personal half (<c>null</c> when the data has none) of the data of a draft.
     /// </summary>
     /// <exception cref="ArgumentException"><paramref name="data"/> is not a JSON object.</exception>
