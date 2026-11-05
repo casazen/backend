@@ -1,6 +1,7 @@
 ﻿using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Options;
 using Casazen.Core.Repositories;
@@ -8,6 +9,7 @@ using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Core.Validation;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.External;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -29,7 +31,8 @@ public class BookingService(
     ICheckoutHoldExpiryService checkoutHoldExpiry,
     OnSiteRequestNotifier onSiteNotifier,
     IPricingAdapterService pricingAdapterService,
-    TimeProvider? timeProvider = null) : IBookingService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null) : IBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -90,6 +93,9 @@ public class BookingService(
         try
         {
             logger.LogInformation("Creating manual booking for property {PropertyId}", booking.PropertyId);
+            // The host entered it, confirmed from the start: created and confirmed, saved with the booking by the repository (the
+            // events of a booking the repository refuses go with it, ADR-022-R1).
+            BookingEvents.RecordCreated(domainEvents, booking, BookingEventOrigin.Host);
             return await repository.AddAsync(booking);
         }
         catch (InvalidOperationException ex) when (
@@ -242,6 +248,10 @@ public class BookingService(
         Booking createdBooking;
         try
         {
+            // The hold is created (Pending): its event is saved with it, in the same insert (a checkout whose payment cannot be started
+            // is removed with its events, BK-18). The confirmation follows with the payment.
+            BookingEvents.RecordCreated(domainEvents, booking, BookingEventOrigin.Guest);
+
             // Booking and guest snapshot (and the marketing consent, when the guest gave it) in one insert: a concurrent
             // checkout that takes the dates first leaves none of them.
             createdBooking = marketingConsent is null

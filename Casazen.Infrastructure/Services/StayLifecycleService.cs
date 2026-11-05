@@ -1,10 +1,12 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
@@ -27,7 +29,8 @@ public sealed class StayLifecycleService(
     IAlloggiatiReportScheduler alloggiatiReportScheduler,
     IServiceRequestService serviceRequestService,
     ILogger<StayLifecycleService> logger,
-    TimeProvider? timeProvider = null) : IStayLifecycleService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null) : IStayLifecycleService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -41,7 +44,7 @@ public sealed class StayLifecycleService(
             if (StayLifecycleRules.ArrivalError(booking, today) is { } error)
                 throw error;
 
-            MarkArrived(booking, today);
+            await MarkArrivedAsync(booking, today, cancellationToken);
             await SaveAsync(transaction, cancellationToken);
         }
 
@@ -70,7 +73,7 @@ public sealed class StayLifecycleService(
 
             arrivalRegistered = booking.Status == BookingStatus.Confirmed;
             if (arrivalRegistered)
-                MarkArrived(booking, today);
+                await MarkArrivedAsync(booking, today, cancellationToken);
 
             booking.CheckoutWizardStartedAt ??= UtcNow();
             booking.UpdatedAt = UtcNow();
@@ -110,7 +113,7 @@ public sealed class StayLifecycleService(
 
             arrivalRegistered = booking.Status == BookingStatus.Confirmed;
             if (arrivalRegistered)
-                MarkArrived(booking, today);
+                await MarkArrivedAsync(booking, today, cancellationToken);
 
             // Joins this transaction (same context): the request and the check-out are saved together or not at all.
             var turnoverRequest = checkOut.Turnover is null
@@ -124,6 +127,11 @@ public sealed class StayLifecycleService(
             // CO-15: retention is now computed nightly from the stay's check-out date, no eager extension here.
             var record = await LoadOrCreateCheckoutAsync(booking, cancellationToken);
             CloseCheckout(record, checkOut, turnoverRequest);
+
+            // The check-out, and the property declared ready at the same time when the wizard says so: saved with the check-out.
+            await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.CheckOutCompleted, booking, BookingEventOrigin.Host, cancellationToken);
+            if (record.PropertyReadyAt is not null)
+                await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.PropertyReadyDeclared, booking, BookingEventOrigin.Host, cancellationToken);
             await SaveAsync(transaction, cancellationToken);
         }
 
@@ -195,6 +203,9 @@ public sealed class StayLifecycleService(
                 record.PropertyNotes = trimmed;
             record.CurrentStep = CheckoutWizardStep.PropertyReady;
             record.UpdatedAt = UtcNow();
+
+            // The declaration closes the cleaning "To do" of the stay: its event is saved with the declaration, once.
+            await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.PropertyReadyDeclared, booking, BookingEventOrigin.Host, cancellationToken);
             await SaveAsync(transaction, cancellationToken);
         }
 
@@ -270,12 +281,15 @@ public sealed class StayLifecycleService(
     /// is unknown, and the Alloggiati term keeps running from the start of the check-in day (never later than the legal
     /// one, <see cref="Casazen.Core.Regulatory.AlloggiatiTerms"/>).
     /// </summary>
-    private void MarkArrived(Booking booking, DateTime todayInRome)
+    private async Task MarkArrivedAsync(Booking booking, DateTime todayInRome, CancellationToken cancellationToken)
     {
         booking.Status = BookingStatus.CheckedIn;
         if (booking.ArrivedAt is null && booking.CheckInDate.Date == todayInRome.Date)
             booking.ArrivedAt = UtcNow();
         booking.UpdatedAt = UtcNow();
+
+        // The check-in of the stay, whichever way the arrival is registered: saved with it, once per booking (ADR-022-R1, R8).
+        await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.CheckInCompleted, booking, BookingEventOrigin.Host, cancellationToken);
     }
 
     private async Task SaveAsync(IDbContextTransaction? transaction, CancellationToken cancellationToken)
