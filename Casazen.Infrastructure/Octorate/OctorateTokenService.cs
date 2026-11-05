@@ -26,9 +26,13 @@ namespace Casazen.Infrastructure.Octorate;
 /// previous one when that was never used, so the refresh is single-flight per connection: it runs under the PostgreSQL advisory lock
 /// <see cref="PostgresAdvisoryLocks.Scope.OctorateTokenRefresh"/> of the connection, reads the connection again inside the lock
 /// (another instance may have refreshed it already) and saves the new token before the lock is released.</para>
-/// <para><b>Refusal.</b> A refresh token Octorate refuses (400, 401 or 403: <c>errRefreshTokenInvalid</c>, <c>invalid_grant</c>) puts the
-/// connection in <see cref="OctorateConnectionStatus.Disconnected"/> and forgets the tokens, with no retry: the host connects again (the
-/// "Reconnect" To do is raised from this status). A failure of Octorate (5xx, timeout) changes nothing and is thrown, for a later retry.</para>
+/// <para><b>Refusal.</b> Only a refresh token Octorate says is not valid (the suggestion <c>errRefreshTokenInvalid</c> of its
+/// <c>ApiSecurityException</c>, or <c>invalid_grant</c>; ADR-023-R12) puts the connection in
+/// <see cref="OctorateConnectionStatus.Disconnected"/> and forgets the tokens, with no retry: the host connects again (the "Reconnect"
+/// To do is raised from this status). Any other refusal (400, 401 or 403: credentials of the other environment, a client secret that was
+/// rotated or mistyped, a call Octorate does not take) says nothing about the refresh token, which Octorate gives only once: the tokens
+/// stay as they are and the typed error is thrown, so the next call works as soon as the configuration is put right. A failure of
+/// Octorate (5xx, timeout) changes nothing and is thrown, for a later retry.</para>
 /// <para><b>Audit.</b> Every token handed out writes the structured line <c>OctorateTokenAccessed</c> with the org and the connection id,
 /// never the token nor an answer of Octorate.</para>
 /// </remarks>
@@ -54,6 +58,12 @@ public sealed class OctorateTokenService(
     public static readonly TimeSpan RefreshWindow = TimeSpan.FromMinutes(5);
 
     private const string RefreshPath = "/rest/v1/identity/refresh";
+
+    /// <summary>The <c>suggestion</c> of the 403 <c>ApiSecurityException</c> Octorate answers to a refresh token that is not valid.</summary>
+    private const string RefreshTokenInvalidSuggestion = "errRefreshTokenInvalid";
+
+    /// <summary>The OAuth error of a refresh token (or grant) that is not valid, expired or revoked.</summary>
+    private const string InvalidGrant = "invalid_grant";
 
     private static readonly EventId TokenAccessedEvent = new(52_001, "OctorateTokenAccessed");
 
@@ -160,9 +170,11 @@ public sealed class OctorateTokenService(
             throw OctorateAuthException.NotConnected();
         }
 
-        var outcome = await CallRefreshAsync(refreshToken, ct);
+        var outcome = await CallRefreshAsync(connection, refreshToken, ct);
         if (outcome.Tokens is not { } tokens)
         {
+            // Octorate said the refresh token itself is not valid: the only refusal that forgets the tokens. Every other one was thrown
+            // by CallRefreshAsync with the tokens untouched.
             await DisconnectRefusedAsync(connection, transaction, outcome.StatusCode, outcome.ErrorType, ct);
             throw OctorateAuthException.Refused(outcome.StatusCode);
         }
@@ -188,10 +200,12 @@ public sealed class OctorateTokenService(
     }
 
     /// <summary>
-    /// The refresh call. A refusal (400, 401, 403) comes back as an outcome without tokens; a failure of Octorate (5xx, 429, timeout,
-    /// network, an answer that cannot be read) is thrown as <see cref="OctorateServerException"/> and changes nothing.
+    /// The refresh call. A refresh token Octorate says is not valid comes back as an outcome without tokens (the caller disconnects the
+    /// connection); any other refusal (400, 401, 403) is thrown as its typed error (<see cref="OctorateApiClient.ErrorOf"/>) with the tokens
+    /// untouched; a failure of Octorate (5xx, 429, timeout, network, an answer that cannot be read) is thrown as
+    /// <see cref="OctorateServerException"/> and changes nothing.
     /// </summary>
-    private async Task<RefreshOutcome> CallRefreshAsync(string refreshToken, CancellationToken ct)
+    private async Task<RefreshOutcome> CallRefreshAsync(OctorateConnection connection, string refreshToken, CancellationToken ct)
     {
         var clientId = configuration[ClientIdKey];
         var clientSecret = configuration[ClientSecretKey];
@@ -234,11 +248,31 @@ public sealed class OctorateTokenService(
                 return new RefreshOutcome(OctorateHttp.ReadTokens(body, Now(), status), status, null);
 
             if (status is 400 or 401 or 403)
-                return new RefreshOutcome(null, status, OctorateHttp.ReadError(body).Type);
+            {
+                var (type, suggestion) = OctorateHttp.ReadError(body);
+                if (IsRefreshTokenInvalid(suggestion, body))
+                    return new RefreshOutcome(null, status, suggestion ?? type ?? InvalidGrant);
+
+                // Nothing about the refresh token (credentials of the other environment, a client secret that was rotated or mistyped, a call
+                // Octorate does not take): the tokens stay, because Octorate gives the refresh token only once and a mistake in the
+                // configuration must not cost every org its connection. Never the body, never a token in the log.
+                logger.LogWarning(
+                    "Octorate refused the refresh of connection {ConnectionId} of org {OrgId} (HTTP {StatusCode}, {ErrorType}): not about the refresh token, the tokens are kept",
+                    connection.Id, connection.OrgId, status, type ?? suggestion ?? "no type");
+                throw OctorateApiClient.ErrorOf(status, type, body);
+            }
 
             throw new OctorateServerException(status);
         }
     }
+
+    /// <summary>
+    /// True when Octorate says the refresh token itself is not valid any more: the suggestion <c>errRefreshTokenInvalid</c> of its
+    /// <c>ApiSecurityException</c> (the 403 seen in the sandbox) or the OAuth error <c>invalid_grant</c> (ADR-023-R12). Nothing else is.
+    /// </summary>
+    internal static bool IsRefreshTokenInvalid(string? suggestion, string body) =>
+        string.Equals(suggestion, RefreshTokenInvalidSuggestion, StringComparison.OrdinalIgnoreCase)
+        || body.Contains(InvalidGrant, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The refresh token is gone or refused: the connection is disconnected for good (ADR-023-R12), with no retry.</summary>
     private async Task DisconnectRefusedAsync(

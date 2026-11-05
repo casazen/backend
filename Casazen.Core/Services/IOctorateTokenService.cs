@@ -10,8 +10,9 @@ public interface IOctorateTokenService
 {
     /// <summary>
     /// A valid access token of the org's connection in the environment of this CasaZen, refreshed first when it expires within five
-    /// minutes. The refresh is single-flight per connection (a PostgreSQL advisory lock), and a refresh token Octorate refuses puts the
-    /// connection in <c>Disconnected</c> with no retry.
+    /// minutes. The refresh is single-flight per connection (a PostgreSQL advisory lock). A refresh token Octorate says is not valid
+    /// (<c>errRefreshTokenInvalid</c>, <c>invalid_grant</c>) puts the connection in <c>Disconnected</c> with no retry; any other refusal of
+    /// the refresh (credentials of the other environment, a wrong client secret) is thrown as its typed error and keeps the tokens.
     /// </summary>
     /// <exception cref="UnauthorizedAccessException">An authenticated request asks for another org's token.</exception>
     Task<string> GetAccessTokenAsync(Guid orgId, CancellationToken ct);
