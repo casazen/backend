@@ -1,5 +1,6 @@
 using Casazen.Core.Demo;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
@@ -120,5 +121,21 @@ public class DemoShowcaseTests
         Assert.Contains(stays, s => s.CheckInOffsetDays > 0 && s.Status == BookingStatus.Confirmed);
         Assert.Contains(stays, s => s.CheckInOffsetDays < 0 && s.Status == BookingStatus.CheckedOut);
         Assert.Contains(stays, s => s.Status == BookingStatus.Cancelled && s.CancellationReason == BookingCancellationReason.GuestRequested);
+    }
+
+    [Fact]
+    public void ListingChannelStates_TheDemoHouseShowsPublishedToFixAndManagedOnChannel_WithAnErrorOnlyWhereThereIsOneToFix()
+    {
+        var house = Assert.Single(
+            DemoShowcaseCatalog.Properties,
+            p => p.Scenarios.Contains(DemoShowcaseCatalog.Scenario.ListingChannelStates));
+        var states = house.ChannelStates ?? [];
+
+        Assert.Contains(DemoShowcaseCatalog.Scenario.ListingChannelStates, DemoShowcaseCatalog.Scenarios);
+        Assert.Equal(states.Count, states.Select(s => s.ChannelCode).Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains(states, s => s.Status == ChannelPublishStatus.Published);
+        Assert.Contains(states, s => s.Status == ChannelPublishStatus.ToFix && s.ErrorCode is not null && s.ErrorMessage is not null);
+        Assert.Contains(states, s => s.Status == ChannelPublishStatus.ManagedOnChannel);
+        Assert.All(states.Where(s => s.Status != ChannelPublishStatus.ToFix), s => Assert.Null(s.ErrorCode));
     }
 }

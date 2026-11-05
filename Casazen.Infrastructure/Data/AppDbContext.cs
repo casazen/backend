@@ -110,6 +110,10 @@ public class AppDbContext(
     public DbSet<PropertyDocument> PropertyDocuments { get; set; } = null!;
     public DbSet<PropertyFloorPlan> PropertyFloorPlans { get; set; } = null!;
     public DbSet<PropertyPoi> PropertyPois { get; set; } = null!;
+
+    // The content of a property on the channels of the channel manager: the state on each channel and the sending of its photos (NF-27, NF-32, NF-38)
+    public DbSet<ListingChannelState> ListingChannelStates { get; set; } = null!;
+    public DbSet<PhotoUploadTask> PhotoUploadTasks { get; set; } = null!;
     public DbSet<TestDataMarker> TestDataMarkers { get; set; } = null!;
     public DbSet<DemoEnvironmentSetting> DemoEnvironmentSettings { get; set; } = null!;
     public DbSet<SeoContentPage> SeoContentPages { get; set; } = null!;
@@ -410,6 +414,11 @@ public class AppDbContext(
         // DB-11a: the floor plan levels and the points of interest of a property, going with it; each carries the org of its property (TN-2).
         modelBuilder.ApplyConfiguration(new PropertyFloorPlanConfiguration());
         modelBuilder.ApplyConfiguration(new PropertyPoiConfiguration());
+
+        // NF-27, NF-32, NF-38: the state of a property on each channel of the channel manager (unique per property and channel) and the sending
+        // of its photos (unique per property and photo address); each carries the org of its property (TN-2) and goes with it.
+        modelBuilder.ApplyConfiguration(new ListingChannelStateConfiguration());
+        modelBuilder.ApplyConfiguration(new PhotoUploadTaskConfiguration());
 
         modelBuilder.Entity<AlloggiatiCodeEntry>()
             .HasOne(e => e.Import)

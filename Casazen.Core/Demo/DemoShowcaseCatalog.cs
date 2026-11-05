@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-10-31.1";
+    public const string Version = "2026-11-05.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -68,6 +68,7 @@ public static class DemoShowcaseCatalog
         public const string PropertyWizardFields = "property-wizard-fields";
         public const string PropertySiteProfile = "property-site-profile";
         public const string GuestAppAccount = "guest-app-account";
+        public const string ListingChannelStates = "listing-channel-states";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -109,6 +110,7 @@ public static class DemoShowcaseCatalog
         Scenario.PropertyWizardFields,
         Scenario.PropertySiteProfile,
         Scenario.GuestAppAccount,
+        Scenario.ListingChannelStates,
     ];
 
     /// <summary>
@@ -188,7 +190,7 @@ public static class DemoShowcaseCatalog
             NightlyRate: 180m,
             CleaningFee: 40m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile],
+            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile, Scenario.ListingChannelStates],
             Profile: new DemoPropertyProfile(
                 AccommodationType.HouseOrVilla, 5, 140, "Villa sul lago con giardino (demo)",
                 new TimeOnly(15, 0), new TimeOnly(10, 0), SmokingPolicy.No, PetsPolicy.OnRequest, PartiesPolicy.No,
@@ -225,6 +227,14 @@ public static class DemoShowcaseCatalog
                 new(PoiKind.Food, "Trattoria sul lungolago (demo)", "Lakefront trattoria (demo)", PoiTravelMode.Walk, 3, CompassPoint.SE, 250),
                 new(PoiKind.Sight, "Funicolare per Brunate (demo)", "Brunate funicular (demo)", PoiTravelMode.Walk, 15, CompassPoint.NE, 1300),
                 new(PoiKind.Transport, "Stazione di Como San Giovanni (demo)", "Como San Giovanni station (demo)", PoiTravelMode.Car, 10, CompassPoint.W, 3200),
+            ],
+            // NF-27, NF-38: where the content of the house stands on three channels, one in each state the host meets most: live, to fix, and
+            // written on the channel itself. Invented: the demo is connected to no channel manager and nothing here is ever sent.
+            ChannelStates:
+            [
+                new("booking_xml", ChannelPublishStatus.Published, null, null, 3),
+                new("airbnb_xml", ChannelPublishStatus.ToFix, "demo_photos_below_minimum", "Servono almeno cinque foto per questo canale (dimostrazione).", 5),
+                new("expedia", ChannelPublishStatus.ManagedOnChannel, null, null, null),
             ],
             Bookings:
             [
@@ -579,7 +589,24 @@ public sealed record DemoPropertyTemplate(
     IReadOnlyList<DemoBookingTemplate> Bookings,
     DemoPropertyProfile? Profile = null,
     SitePropertyProfileInput? SiteProfile = null,
-    IReadOnlyList<DemoPoi>? Pois = null);
+    IReadOnlyList<DemoPoi>? Pois = null,
+    IReadOnlyList<DemoChannelState>? ChannelStates = null);
+
+/// <summary>
+/// The state of a demo property on one channel of the channel manager (NF-27, NF-38): invented like the rest of the demo. It exists so the list
+/// of the channels of the host is not empty and shows each state; nothing is sent, a demo property is connected to no channel manager.
+/// </summary>
+/// <param name="ChannelCode">The code of the portal, as <see cref="ListingChannelState.ChannelCode"/> keeps it.</param>
+/// <param name="Status">Where the content stands on the channel.</param>
+/// <param name="ErrorCode">A stable code of what is wrong (only for <see cref="ChannelPublishStatus.ToFix"/>).</param>
+/// <param name="ErrorMessage">What is wrong, in simple words (only for <see cref="ChannelPublishStatus.ToFix"/>).</param>
+/// <param name="LastSyncedHoursAgo">How many hours before the reset the channel last answered; <c>null</c> = never.</param>
+public sealed record DemoChannelState(
+    string ChannelCode,
+    ChannelPublishStatus Status,
+    string? ErrorCode,
+    string? ErrorMessage,
+    int? LastSyncedHoursAgo);
 
 /// <summary>
 /// A point of interest of a demo property (DB-11a): invented like the rest of the demo. The distance is stored through the same rounding as a host's

@@ -359,7 +359,29 @@ public class DemoEnvironmentService(
             });
         }
 
+        // NF-27, NF-38: where the content of the house stands on the channels of the channel manager. Invented: nothing is sent anywhere. Like the
+        // points of interest they go with their property (cascade) at the next reset, and carry a marker of their own as the demo rule asks.
+        var channelStates = new List<(ListingChannelState State, string Key)>();
+        foreach (var channel in template.ChannelStates ?? [])
+        {
+            var state = new ListingChannelState
+            {
+                OrgId = orgId,
+                PropertyId = property.Id,
+                ChannelCode = channel.ChannelCode,
+                Status = channel.Status,
+                ErrorCode = channel.ErrorCode,
+                ErrorMessage = channel.ErrorMessage,
+                LastSyncedAt = channel.LastSyncedHoursAgo is { } hoursAgo ? now.AddHours(-hoursAgo) : null,
+                ContentVersion = channel.Status == ChannelPublishStatus.Published ? 1 : 0,
+            };
+            db.ListingChannelStates.Add(state);
+            channelStates.Add((state, template.Key + "/" + channel.ChannelCode));
+        }
+
         await db.SaveChangesAsync(cancellationToken);
+        foreach (var (state, key) in channelStates)
+            await MarkAsync(orgId, TestDataEntities.ListingChannelState, state.Id, TestDataOrigins.Showcase, key, cancellationToken);
 
         if (template.Publish || template.Mode == RentalMode.Long)
         {
