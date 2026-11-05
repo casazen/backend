@@ -39,6 +39,9 @@ public static class OctorateServiceCollectionExtensions
         services.AddScoped<OctorateOAuthStateService>();
         services.AddScoped<IOctorateConnectService, OctorateConnectService>();
 
+        // The mapping of the listings to the CasaZen properties and the import (E02/F01/US02/T03); thresholds in Octorate:Mapping.
+        services.AddScoped<IChannelMappingService, ChannelMappingService>();
+
         return services;
     }
 }

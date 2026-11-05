@@ -4154,4 +4154,25 @@
   <data name="OctorateStateRequired" xml:space="preserve">
     <value>Manca lo stato della richiesta di collegamento restituito dal channel manager.</value>
   </data>
+  <data name="OctorateMappingNotFound" xml:space="preserve">
+    <value>Annuncio del channel manager non trovato tra quelli della tua organizzazione.</value>
+  </data>
+  <data name="OctoratePropertyNotFound" xml:space="preserve">
+    <value>Immobile non trovato.</value>
+  </data>
+  <data name="OctorateMappingPropertyTaken" xml:space="preserve">
+    <value>Questo immobile è già collegato a un altro annuncio del channel manager.</value>
+  </data>
+  <data name="OctorateRoomInvalid" xml:space="preserve">
+    <value>La camera scelta non appartiene a questo annuncio del channel manager.</value>
+  </data>
+  <data name="OctorateMappingNotConfirmed" xml:space="preserve">
+    <value>Conferma prima a quale immobile corrisponde l'annuncio, poi scegli la camera.</value>
+  </data>
+  <data name="OctorateMappingAlreadyConfirmed" xml:space="preserve">
+    <value>Questo annuncio è già collegato a un immobile: non serve importarlo.</value>
+  </data>
+  <data name="OctorateMappingRefreshConflict" xml:space="preserve">
+    <value>Gli annunci del channel manager si stanno già aggiornando: riprova tra qualche istante.</value>
+  </data>
 </root>

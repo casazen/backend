@@ -28,4 +28,17 @@ public interface IOctorateApiClient
 
     /// <summary>Changes the members of <paramref name="update"/> that are set, and nothing else (<c>PATCH /rest/v2/accommodation/{acc}</c>).</summary>
     Task UpdatePropertyAsync(string accommodationId, OctoratePropertyUpdate update, CancellationToken ct);
+
+    /// <summary>
+    /// The products of an accommodation, rooms and the rates derived from them, with their guests, bedrooms, bathrooms and beds
+    /// (<c>GET /rest/v3/roomrates/{acc}?fields=...</c>; the v3 read requires <c>fields</c>).
+    /// </summary>
+    Task<OctorateRoom[]> GetRoomsAsync(string accommodationId, CancellationToken ct);
+
+    /// <summary>
+    /// The channel connections of an accommodation and the id of the listing on each channel
+    /// (<c>GET /rest/v1/connection?accommodation={acc}&amp;fields=id,channelId,channelName,hotelId,status</c>): only those fields are asked,
+    /// so the portal credentials a connection holds never reach CasaZen.
+    /// </summary>
+    Task<OctorateChannelConnection[]> GetConnectionsAsync(string accommodationId, CancellationToken ct);
 }

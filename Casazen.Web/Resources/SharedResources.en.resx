@@ -4154,4 +4154,25 @@
   <data name="OctorateStateRequired" xml:space="preserve">
     <value>The state of the connection request returned by the channel manager is missing.</value>
   </data>
+  <data name="OctorateMappingNotFound" xml:space="preserve">
+    <value>Channel manager listing not found among those of your organization.</value>
+  </data>
+  <data name="OctoratePropertyNotFound" xml:space="preserve">
+    <value>Property not found.</value>
+  </data>
+  <data name="OctorateMappingPropertyTaken" xml:space="preserve">
+    <value>This property is already linked to another channel manager listing.</value>
+  </data>
+  <data name="OctorateRoomInvalid" xml:space="preserve">
+    <value>The chosen room does not belong to this channel manager listing.</value>
+  </data>
+  <data name="OctorateMappingNotConfirmed" xml:space="preserve">
+    <value>First confirm which property the listing is, then choose the room.</value>
+  </data>
+  <data name="OctorateMappingAlreadyConfirmed" xml:space="preserve">
+    <value>This listing is already linked to a property: there is nothing to import.</value>
+  </data>
+  <data name="OctorateMappingRefreshConflict" xml:space="preserve">
+    <value>The channel manager listings are already being refreshed: try again in a moment.</value>
+  </data>
 </root>

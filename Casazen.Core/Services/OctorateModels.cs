@@ -49,6 +49,56 @@ public sealed record OctorateProperty
 }
 
 /// <summary>
+/// A product of an accommodation (<c>GET /rest/v3/roomrates/{acc}</c>): a room (unit), or a rate derived from one
+/// (<see cref="DerivedFromId"/>, Octorate's <c>derivedRule.parent</c>). The rooms, beds and guests the matcher and the import use.
+/// </summary>
+public sealed record OctorateRoom
+{
+    /// <summary>The product id (the <c>product</c> of the reservations and of the calendar).</summary>
+    public required string Id { get; init; }
+
+    public string? Name { get; init; }
+
+    /// <summary>The adults the room takes (<c>adults</c>).</summary>
+    public int? Adults { get; init; }
+
+    /// <summary>The children the room takes besides the adults (<c>children</c>).</summary>
+    public int? Children { get; init; }
+
+    /// <summary>Bedrooms (<c>bedroomQuantity</c>).</summary>
+    public int? Bedrooms { get; init; }
+
+    /// <summary>Bathrooms (<c>bathroomQuantity</c>).</summary>
+    public int? Bathrooms { get; init; }
+
+    /// <summary>Beds (<c>bedQuantity</c>).</summary>
+    public int? Beds { get; init; }
+
+    /// <summary>Square meters (<c>squareMetersSize</c>).</summary>
+    public int? AreaSqm { get; init; }
+
+    /// <summary>The room this product is a rate of (<c>derivedRule.parent</c>); <c>null</c> for a room.</summary>
+    public string? DerivedFromId { get; init; }
+
+    /// <summary>True for a room (a unit), false for a rate derived from another product.</summary>
+    public bool IsRoom => DerivedFromId is null;
+
+    /// <summary>The guests the room takes, adults and children; <c>null</c> when Octorate says neither.</summary>
+    public int? MaxGuests => Adults is null && Children is null ? null : (Adults ?? 0) + (Children ?? 0);
+}
+
+/// <summary>
+/// A connection of an accommodation to a channel (<c>GET /rest/v1/connection?accommodation={acc}</c>): the identifier the listing
+/// already has on that channel, exactly as Octorate gives it (decision D6). The portal credentials of a connection are never asked for.
+/// </summary>
+/// <param name="Id">The connection id on Octorate.</param>
+/// <param name="ChannelId">The channel (portal) code: 142 Booking.com, 274 Airbnb, 235 Vrbo, ...</param>
+/// <param name="ChannelName">The channel name as Octorate gives it.</param>
+/// <param name="ExternalId">The id of the listing on the channel (<c>hotelId</c>).</param>
+/// <param name="Status">The state of the connection as Octorate gives it.</param>
+public sealed record OctorateChannelConnection(string? Id, string? ChannelId, string? ChannelName, string? ExternalId, string? Status);
+
+/// <summary>
 /// A partial change of an accommodation (<c>PATCH /rest/v2/accommodation/{acc}</c>): only the members that are set are sent, the
 /// others stay as they are on Octorate.
 /// </summary>

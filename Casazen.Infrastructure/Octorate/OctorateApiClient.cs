@@ -45,6 +45,13 @@ public sealed class OctorateApiClient(
     /// <summary>The <c>type</c> of Octorate's 403 for an access token that is not valid (any more): refresh and retry once.</summary>
     private const string ApiLoginInvalidType = "ApiLoginInvalid";
 
+    /// <summary>The members of a product read by <see cref="GetRoomsAsync"/> (the v3 read answers 400 without <c>fields</c>).</summary>
+    private const string RoomFields =
+        "id,name,adults,children,bedroomQuantity,bathroomQuantity,bedQuantity,squareMetersSize,derivedRule";
+
+    /// <summary>The members of a connection read by <see cref="GetConnectionsAsync"/>: never its portal username or password.</summary>
+    private const string ConnectionFields = "id,channelId,channelName,hotelId,status";
+
     /// <summary>The JSON of a partial change: camelCase, the members that are not set are left out.</summary>
     private static readonly JsonSerializerOptions PartialUpdateJson = new(JsonSerializerDefaults.Web)
     {
@@ -127,6 +134,26 @@ public sealed class OctorateApiClient(
             },
             "accommodation-update",
             ct);
+    }
+
+    public async Task<OctorateRoom[]> GetRoomsAsync(string accommodationId, CancellationToken ct)
+    {
+        var id = CheckedAccommodationId(accommodationId);
+        using var document = await GetJsonAsync(
+            $"/rest/v3/roomrates/{Uri.EscapeDataString(id)}?fields={Uri.EscapeDataString(RoomFields)}", "rooms", ct);
+        return [.. Items(document.RootElement).Select(ReadRoom).OfType<OctorateRoom>()];
+    }
+
+    public async Task<OctorateChannelConnection[]> GetConnectionsAsync(string accommodationId, CancellationToken ct)
+    {
+        var id = CheckedAccommodationId(accommodationId);
+        using var document = await GetJsonAsync(
+            $"/rest/v1/connection?accommodation={Uri.EscapeDataString(id)}&fields={Uri.EscapeDataString(ConnectionFields)}", "connections", ct);
+        var root = document.RootElement;
+        IEnumerable<JsonElement> items = root.ValueKind == JsonValueKind.Object && !root.TryGetProperty("data", out _)
+            ? new[] { root }
+            : Items(root);
+        return [.. items.Select(ReadConnection).OfType<OctorateChannelConnection>()];
     }
 
     /// <summary>
@@ -278,6 +305,43 @@ public sealed class OctorateApiClient(
             SandboxProperty = BoolOf(item, "sandboxProperty"),
         };
     }
+
+    /// <summary>A product of an answer of <c>roomrates</c>, or <c>null</c> when the item has no usable id.</summary>
+    internal static OctorateRoom? ReadRoom(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var id = OctorateHttp.StringOf(item, "id");
+        if (id is null || id.Length > MaxAccommodationIdLength)
+            return null;
+
+        item.TryGetProperty("derivedRule", out var derivedRule);
+        var parent = OctorateHttp.StringOf(derivedRule, "parent");
+        return new OctorateRoom
+        {
+            Id = id,
+            Name = OctorateHttp.StringOf(item, "name"),
+            Adults = IntOf(item, "adults"),
+            Children = IntOf(item, "children"),
+            Bedrooms = IntOf(item, "bedroomQuantity"),
+            Bathrooms = IntOf(item, "bathroomQuantity"),
+            Beds = IntOf(item, "bedQuantity"),
+            AreaSqm = IntOf(item, "squareMetersSize"),
+            DerivedFromId = parent is null or "0" || parent == id ? null : parent,
+        };
+    }
+
+    /// <summary>A channel connection of an answer of <c>connection</c>; <c>null</c> for an item that is not an object.</summary>
+    internal static OctorateChannelConnection? ReadConnection(JsonElement item) =>
+        item.ValueKind != JsonValueKind.Object
+            ? null
+            : new OctorateChannelConnection(
+                OctorateHttp.StringOf(item, "id"),
+                OctorateHttp.StringOf(item, "channelId"),
+                OctorateHttp.StringOf(item, "channelName"),
+                OctorateHttp.StringOf(item, "hotelId"),
+                OctorateHttp.StringOf(item, "status"));
 
     /// <summary>The items of a list answer: a bare array (v1) or the <c>data</c> array of a <c>{data, page}</c> answer (v2, v3).</summary>
     internal static IEnumerable<JsonElement> Items(JsonElement root)

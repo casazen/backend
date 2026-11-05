@@ -50,7 +50,34 @@ public sealed class OctorateOptions
     /// <summary>The secret in the address of the webhook (<c>Octorate__WebhookSecret</c>, 32+ characters), never committed.</summary>
     public string? WebhookSecret { get; set; }
 
+    /// <summary>The thresholds of the matcher of the listings (<c>Octorate:Mapping</c>, E02/F01/US02/T03).</summary>
+    public OctorateMappingOptions Mapping { get; set; } = new();
+
     /// <summary>The life of a consent state, brought into 1 to <see cref="MaxStateLifetimeMinutes"/> minutes.</summary>
     public TimeSpan StateLifetime =>
         TimeSpan.FromMinutes(StateLifetimeMinutes is >= 1 and <= MaxStateLifetimeMinutes ? StateLifetimeMinutes : DefaultStateLifetimeMinutes);
+}
+
+/// <summary>
+/// The thresholds that turn the score of the matcher (0 to 100) into a proposal (<c>Octorate:Mapping</c>, E02/F01/US02/T03): a single
+/// winner with at least <see cref="ProposeMinScore"/> and <see cref="ProposeMinMargin"/> points over the second is proposed; a best
+/// score from <see cref="CandidateMinScore"/> up, or a tie, is ambiguous and a person chooses; below it there is no candidate and the
+/// listing is offered for import. Defaults proposed by the plan, to calibrate on the sandbox network.
+/// </summary>
+public sealed class OctorateMappingOptions
+{
+    public const int DefaultProposeMinScore = 85;
+    public const int DefaultProposeMinMargin = 15;
+    public const int DefaultCandidateMinScore = 50;
+
+    public int ProposeMinScore { get; set; } = DefaultProposeMinScore;
+
+    public int ProposeMinMargin { get; set; } = DefaultProposeMinMargin;
+
+    public int CandidateMinScore { get; set; } = DefaultCandidateMinScore;
+
+    /// <summary>True when 0 &lt;= candidate &lt; propose &lt;= 100 and the margin is 0 to 100.</summary>
+    public bool IsValid =>
+        CandidateMinScore >= 0 && CandidateMinScore < ProposeMinScore && ProposeMinScore <= 100
+        && ProposeMinMargin is >= 0 and <= 100;
 }

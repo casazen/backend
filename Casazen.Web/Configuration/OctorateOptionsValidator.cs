@@ -22,6 +22,13 @@ public sealed class OctorateOptionsValidator(IFeatureFlags featureFlags, IHostEn
         if (options.StateLifetimeMinutes is < 1 or > OctorateOptions.MaxStateLifetimeMinutes)
             failures.Add($"Octorate__StateLifetimeMinutes must be 1 to {OctorateOptions.MaxStateLifetimeMinutes} minutes.");
 
+        if (!options.Mapping.IsValid)
+        {
+            failures.Add(
+                "Octorate__Mapping__CandidateMinScore, __ProposeMinScore and __ProposeMinMargin must satisfy "
+                + "0 <= CandidateMinScore < ProposeMinScore <= 100 and 0 <= ProposeMinMargin <= 100.");
+        }
+
         CheckAddress(failures, "Octorate__ApiBaseUrl", options.ApiBaseUrl);
         CheckAddress(failures, "Octorate__AuthorizationEndpoint", options.AuthorizationEndpoint);
         CheckAddress(failures, "Octorate__RedirectUri", options.RedirectUri);
