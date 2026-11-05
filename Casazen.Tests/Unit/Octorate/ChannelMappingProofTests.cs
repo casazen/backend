@@ -18,8 +18,9 @@ namespace Casazen.Tests.Unit.Octorate;
 
 /// <summary>
 /// The proofs of the mapping of the listings (E02/F01/US02/T03): nothing is written to a property while its mapping is proposed or
-/// ambiguous (data rule, OCT-04); a person confirms only to a property of the org within its reach (permission rule, ADR-023-R4); the
-/// import never creates anything on Octorate (data rule, ADR-027-R8).
+/// ambiguous (data rule, OCT-04); a person confirms only to a property of the org within its reach, never takes over a listing whose
+/// property it does not reach, and a confirmed listing is not moved to another property (permission rule, ADR-023-R4); the import never
+/// creates anything on Octorate (data rule, ADR-027-R8).
 /// </summary>
 public class ChannelMappingProofTests
 {
@@ -27,6 +28,8 @@ public class ChannelMappingProofTests
     private static readonly Guid OrgB = Guid.Parse("9a8b7c6d-5e4f-4a3b-9c2d-1e0f2a3b4c02");
     private const string Admin = "auth0|admin-a";
     private const string Collaborator = "auth0|collaborator-a";
+    private const string Legacy = "auth0|legacy-manager-a";
+    private static readonly IReadOnlySet<string> ManagerRoles = new HashSet<string> { "PropertyManager" };
 
     [Fact]
     public async Task ChannelMapping_UnconfirmedBlocksWrites_Test()
@@ -126,6 +129,24 @@ public class ChannelMappingProofTests
         var movedRow = await db.OctorateListingMappings.AsNoTracking().SingleAsync(m => m.OctorateAccommodationId == "1001");
         Assert.Equal(OctorateMappingStatus.Confirmed, movedRow.Status);
         Assert.Equal(granted, movedRow.PropertyId);
+
+        // An org-wide account in no org team (an owner from before the team, a test account) is decided by the roles of its token, which the
+        // web layer hands to the service: without them it would reach only the properties it created, and the service would refuse (404)
+        // what the web layer allowed. Choosing the room of the listing confirmed to `granted`, a property it did not create:
+        var withoutRoles = await Assert.ThrowsAsync<NotFoundException>(
+            () => service.SetRoomAsync(OrgA, "1001", "956528", Legacy, CancellationToken.None));
+        Assert.Equal("octorate_property_not_found", withoutRoles.Code);
+        await service.SetRoomAsync(OrgA, "1001", "956528", Legacy, CancellationToken.None, ManagerRoles);
+
+        // The same for a listing with no property, an org-level decision that only a person who reaches the whole org takes.
+        db.OctorateListingMappings.Add(Mapping(OrgA, connection, "1003", OctorateMappingStatus.Ambiguous, null, $"[\"{mine}\",\"{granted}\"]"));
+        await db.SaveChangesAsync();
+        var noProperty = await Assert.ThrowsAsync<NotFoundException>(
+            () => service.RejectAsync(OrgA, "1003", Legacy, CancellationToken.None));
+        Assert.Equal("octorate_mapping_not_found", noProperty.Code);
+        await service.RejectAsync(OrgA, "1003", Legacy, CancellationToken.None, ManagerRoles);
+        var rejected = await db.OctorateListingMappings.AsNoTracking().SingleAsync(m => m.OctorateAccommodationId == "1003");
+        Assert.Equal(OctorateMappingStatus.Rejected, rejected.Status);
     }
 
     [Fact]
@@ -219,11 +240,13 @@ public class ChannelMappingProofTests
 
     /// <summary>
     /// The real scope resolver over the org team in the database: <see cref="Admin"/> is an administrator of org A (every property),
-    /// <see cref="Collaborator"/> a collaborator of org A «Solo alcuni» who was given <paramref name="grantedToCollaborator"/> only.
+    /// <see cref="Collaborator"/> a collaborator of org A «Solo alcuni» who was given <paramref name="grantedToCollaborator"/> only,
+    /// <see cref="Legacy"/> an account in no org team (the token roles decide it).
     /// </summary>
     private static HostScopeResolver Resolver(Guid? grantedToCollaborator = null)
     {
         var store = new Mock<IUserAuthorizationSnapshotStore>();
+        store.Setup(s => s.GetAsync(Legacy, It.IsAny<CancellationToken>())).ReturnsAsync(UserAuthorizationSnapshot.Missing);
         store.Setup(s => s.GetAsync(Admin, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Snapshot(new OrgMemberSnapshot(OrgA, OrgRole.Admin, OrgMemberStatus.Active)));
         store.Setup(s => s.GetAsync(Collaborator, It.IsAny<CancellationToken>()))

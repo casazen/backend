@@ -66,13 +66,30 @@ public class OctorateMappingEndpointsTests
         AssertNotFound(takeover, "octorate_mapping_not_found");
 
         mappings.Verify(
-            m => m.ConfirmAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            m => m.ConfirmAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string>(),
+                It.IsAny<Guid>(),
+                It.IsAny<string?>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>(),
+                It.IsAny<IReadOnlySet<string>?>()),
             Times.Never);
 
-        // The person who reaches the property of the listing (its creator, in an account with no org team) confirms it.
+        // The person who reaches the property of the listing (its creator, in an account with no org team) confirms it, and the roles of its
+        // token go to the service with the call: the service decides the reach of an account in no org team with them, as this layer did.
         Assert.IsType<NoContentResult>(
             await owner.Confirm("1001", new ConfirmMappingRequest { PropertyId = PropertyOfOrgA }, CancellationToken.None));
-        mappings.Verify(m => m.ConfirmAsync(OrgA, "1001", PropertyOfOrgA, null, Owner, It.IsAny<CancellationToken>()), Times.Once);
+        mappings.Verify(
+            m => m.ConfirmAsync(
+                OrgA,
+                "1001",
+                PropertyOfOrgA,
+                null,
+                Owner,
+                It.IsAny<CancellationToken>(),
+                It.Is<IReadOnlySet<string>?>(roles => roles != null && roles.Contains("PropertyOwner"))),
+            Times.Once);
     }
 
     /// <summary>A listing of the org with the property it is proposed or confirmed to.</summary>

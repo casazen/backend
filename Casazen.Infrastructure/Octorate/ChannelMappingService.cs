@@ -23,10 +23,12 @@ namespace Casazen.Infrastructure.Octorate;
 /// (<see cref="IsWriteBlockedAsync"/>), and an ambiguous row raises one "To do" (<see cref="ActivityType.ConfirmChannelMapping"/>,
 /// organization-level), closed when the row is confirmed or rejected.</para>
 /// <para><b>Reach.</b> Confirming, choosing the room and rejecting check that the property belongs to the org and is within the reach of
-/// the person as the org team decides it (<see cref="IHostScopeResolver"/>, from the membership in the database, with no token role:
-/// services do not read roles); the web layer has already checked the policy and the row with the token. Confirming also needs the
-/// reach of the property the listing is already proposed or confirmed to, and does not move a confirmed listing to another property
-/// (409): it is rejected first. A row without a property is an org-level decision: only a person who reaches the whole org rejects it.</para>
+/// the person as the org team decides it (<see cref="IHostScopeResolver"/>, from the membership in the database); a person in no org
+/// team is decided by the roles of its token, which the web layer hands over (<c>tokenRoles</c>) so the service decides with the same
+/// inputs as the controller that has already checked the policy and the row (none given: only the properties the person created).
+/// Confirming also needs the reach of the property the listing is already proposed or confirmed to, and does not move a confirmed
+/// listing to another property (409): it is rejected first. A row without a property is an org-level decision: only a person who
+/// reaches the whole org rejects it.</para>
 /// <para><b>Quota.</b> A refresh reads the rooms of each open listing (one call each) only while the org has more than
 /// <see cref="RoomReadReserve"/> calls left in its bucket, the listings without rooms first; the others keep their snapshot until the next
 /// refresh. Confirming and choosing the room read the rooms of their listing again.</para>
@@ -205,7 +207,8 @@ public sealed class ChannelMappingService(
         Guid propertyId,
         string? octorateProductId,
         string userId,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlySet<string>? tokenRoles = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         var row = await RowAsync(orgId, octorateAccommodationId, ct);
@@ -214,10 +217,10 @@ public sealed class ChannelMappingService(
         // reaching the new one alone does not take the listing over, and a confirmed listing is not moved at all (it is rejected first).
         // A property that was deleted is no property.
         var linked = row.PropertyId is { } linkedId && linkedId != propertyId ? await FindPropertyAsync(orgId, linkedId, ct) : null;
-        if (linked is not null && !await CanReachAsync(orgId, linked, userId, ct))
+        if (linked is not null && !await CanReachAsync(orgId, linked, userId, tokenRoles, ct))
             throw PropertyNotFound();
 
-        await EnsureReachableAsync(orgId, propertyId, userId, ct);
+        await EnsureReachableAsync(orgId, propertyId, userId, tokenRoles, ct);
         if (linked is not null && row.Status == OctorateMappingStatus.Confirmed)
             throw LinkedToOtherProperty();
 
@@ -247,14 +250,20 @@ public sealed class ChannelMappingService(
         Audit("confirmed", row, userId);
     }
 
-    public async Task SetRoomAsync(Guid orgId, string octorateAccommodationId, string octorateProductId, string userId, CancellationToken ct)
+    public async Task SetRoomAsync(
+        Guid orgId,
+        string octorateAccommodationId,
+        string octorateProductId,
+        string userId,
+        CancellationToken ct,
+        IReadOnlySet<string>? tokenRoles = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         var row = await RowAsync(orgId, octorateAccommodationId, ct);
         if (row.Status != OctorateMappingStatus.Confirmed || row.PropertyId is not { } propertyId)
             throw new DomainRuleException("octorate_mapping_not_confirmed", "OctorateMappingNotConfirmed");
 
-        await EnsureReachableAsync(orgId, propertyId, userId, ct);
+        await EnsureReachableAsync(orgId, propertyId, userId, tokenRoles, ct);
         if (string.IsNullOrWhiteSpace(octorateProductId))
             throw RoomInvalid();
 
@@ -270,15 +279,15 @@ public sealed class ChannelMappingService(
         Audit("room-set", row, userId);
     }
 
-    public async Task RejectAsync(Guid orgId, string octorateAccommodationId, string userId, CancellationToken ct)
+    public async Task RejectAsync(Guid orgId, string octorateAccommodationId, string userId, CancellationToken ct, IReadOnlySet<string>? tokenRoles = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         var row = await RowAsync(orgId, octorateAccommodationId, ct);
         if (row.PropertyId is { } propertyId)
         {
-            await EnsureReachableAsync(orgId, propertyId, userId, ct);
+            await EnsureReachableAsync(orgId, propertyId, userId, tokenRoles, ct);
         }
-        else if (await hostScopeResolver.ResolveAsync(userId, NoTokenRoles, orgId, ct) is not { IsOrgWide: true })
+        else if (await hostScopeResolver.ResolveAsync(userId, tokenRoles ?? NoTokenRoles, orgId, ct) is not { IsOrgWide: true })
         {
             // A listing with no property is an org-level decision.
             throw MappingNotFound();
@@ -524,11 +533,14 @@ public sealed class ChannelMappingService(
             ?? throw MappingNotFound();
     }
 
-    /// <summary>The property belongs to the org and the person reaches it (org team in the database, no token role): 404 otherwise.</summary>
-    private async Task EnsureReachableAsync(Guid orgId, Guid propertyId, string userId, CancellationToken ct)
+    /// <summary>
+    /// The property belongs to the org and the person reaches it (org team in the database; the roles of the token only for a person in no
+    /// org team, as the web layer decided it): 404 otherwise.
+    /// </summary>
+    private async Task EnsureReachableAsync(Guid orgId, Guid propertyId, string userId, IReadOnlySet<string>? tokenRoles, CancellationToken ct)
     {
         var property = await FindPropertyAsync(orgId, propertyId, ct);
-        if (property is null || !await CanReachAsync(orgId, property, userId, ct))
+        if (property is null || !await CanReachAsync(orgId, property, userId, tokenRoles, ct))
             throw PropertyNotFound();
     }
 
@@ -540,8 +552,8 @@ public sealed class ChannelMappingService(
             .Select(p => new PropertyRef(p.Id, p.OwnerId))
             .FirstOrDefaultAsync(ct);
 
-    private Task<bool> CanReachAsync(Guid orgId, PropertyRef property, string userId, CancellationToken ct) =>
-        hostScopeResolver.CanReachPropertyAsync(userId, NoTokenRoles, orgId, property.Id, property.OwnerId, ct);
+    private Task<bool> CanReachAsync(Guid orgId, PropertyRef property, string userId, IReadOnlySet<string>? tokenRoles, CancellationToken ct) =>
+        hostScopeResolver.CanReachPropertyAsync(userId, tokenRoles ?? NoTokenRoles, orgId, property.Id, property.OwnerId, ct);
 
     /// <summary>The properties of the org a listing can be proposed for: not deleted, and not confirmed to another listing already.</summary>
     private async Task<IReadOnlyList<MatchProperty>> CandidatesAsync(Guid orgId, CancellationToken ct)

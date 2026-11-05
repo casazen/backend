@@ -8,6 +8,12 @@ namespace Casazen.Core.Services;
 /// mapping (OCT-04); the identifiers a listing already has on its channels are kept exactly as Octorate gives them (D6); the import
 /// never creates anything on Octorate (ADR-027-R8).
 /// </summary>
+/// <remarks>
+/// <b>Reach of the person.</b> <c>ConfirmAsync</c>, <c>SetRoomAsync</c> and <c>RejectAsync</c> check the reach of <c>userId</c> as the org
+/// team decides it. A person with no membership row (an owner from before the team, a test account) is decided by the roles of its
+/// token, which the caller hands over as <c>tokenRoles</c> exactly as the web layer decided it; without them (<c>null</c>) such a person
+/// reaches only the properties it created.
+/// </remarks>
 public interface IChannelMappingService
 {
     /// <summary>
@@ -26,13 +32,26 @@ public interface IChannelMappingService
     /// or confirmed to must be within the reach of <paramref name="userId"/> too (404 otherwise), and a listing confirmed to another
     /// property is not moved: it is rejected first (409 <c>octorate_mapping_linked_to_other_property</c>).
     /// </summary>
-    Task ConfirmAsync(Guid orgId, string octorateAccommodationId, Guid propertyId, string? octorateProductId, string userId, CancellationToken ct);
+    Task ConfirmAsync(
+        Guid orgId,
+        string octorateAccommodationId,
+        Guid propertyId,
+        string? octorateProductId,
+        string userId,
+        CancellationToken ct,
+        IReadOnlySet<string>? tokenRoles = null);
 
     /// <summary>Sets the Octorate room of a confirmed listing with several rooms; a room of another accommodation is refused.</summary>
-    Task SetRoomAsync(Guid orgId, string octorateAccommodationId, string octorateProductId, string userId, CancellationToken ct);
+    Task SetRoomAsync(
+        Guid orgId,
+        string octorateAccommodationId,
+        string octorateProductId,
+        string userId,
+        CancellationToken ct,
+        IReadOnlySet<string>? tokenRoles = null);
 
     /// <summary>Rejects the mapping of the listing: it is not one of the org's CasaZen properties, and refreshes leave it alone.</summary>
-    Task RejectAsync(Guid orgId, string octorateAccommodationId, string userId, CancellationToken ct);
+    Task RejectAsync(Guid orgId, string octorateAccommodationId, string userId, CancellationToken ct, IReadOnlySet<string>? tokenRoles = null);
 
     /// <summary>
     /// Creates the CasaZen property of a listing CasaZen does not have, through the property create path (plan limit, CIN and tenant

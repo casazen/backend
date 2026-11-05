@@ -97,7 +97,8 @@ public sealed class OctorateMappingController(
         if (!await CanDecideAsync(caller, await RowAsync(caller, octorateAccommodationId, cancellationToken)))
             return MappingNotFound();
 
-        await mappings.ConfirmAsync(caller.OrgId, octorateAccommodationId, propertyId, request.OctorateProductId, caller.UserId, cancellationToken);
+        await mappings.ConfirmAsync(
+            caller.OrgId, octorateAccommodationId, propertyId, request.OctorateProductId, caller.UserId, cancellationToken, caller.Roles);
         return NoContent();
     }
 
@@ -121,7 +122,8 @@ public sealed class OctorateMappingController(
         if (!await CanDecideAsync(caller, await RowAsync(caller, octorateAccommodationId, cancellationToken)))
             return MappingNotFound();
 
-        await mappings.SetRoomAsync(caller.OrgId, octorateAccommodationId, request.OctorateProductId, caller.UserId, cancellationToken);
+        await mappings.SetRoomAsync(
+            caller.OrgId, octorateAccommodationId, request.OctorateProductId, caller.UserId, cancellationToken, caller.Roles);
         return NoContent();
     }
 
@@ -140,7 +142,7 @@ public sealed class OctorateMappingController(
         if (!await CanDecideAsync(caller, await RowAsync(caller, octorateAccommodationId, cancellationToken)))
             return MappingNotFound();
 
-        await mappings.RejectAsync(caller.OrgId, octorateAccommodationId, caller.UserId, cancellationToken);
+        await mappings.RejectAsync(caller.OrgId, octorateAccommodationId, caller.UserId, cancellationToken, caller.Roles);
         return NoContent();
     }
 
@@ -163,7 +165,10 @@ public sealed class OctorateMappingController(
         return Created($"/api/properties/{propertyId}", new ImportListingResponse(propertyId));
     }
 
-    /// <summary>The caller's id, org and scope; <c>null</c> when it has no org or reaches nothing in it.</summary>
+    /// <summary>
+    /// The caller's id, org, scope and token roles; <c>null</c> when it has no org or reaches nothing in it. The roles go to the service, which
+    /// decides the reach of a person in no org team with them, as this controller did.
+    /// </summary>
     private async Task<Caller?> CallerAsync(CancellationToken cancellationToken)
     {
         if (User.GetUserId() is not { Length: > 0 } userId
@@ -173,7 +178,7 @@ public sealed class OctorateMappingController(
             return null;
         }
 
-        return new Caller(userId, orgId, scope);
+        return new Caller(userId, orgId, scope, User.GetRoles());
     }
 
     /// <summary>The row-level check of <c>PropertiesController</c>: the property is in the caller's org and the caller may write it.</summary>
@@ -225,5 +230,5 @@ public sealed class OctorateMappingController(
     private ObjectResult MappingNotFound() =>
         this.ApiProblem(StatusCodes.Status404NotFound, "octorate_mapping_not_found", "OctorateMappingNotFound");
 
-    private sealed record Caller(string UserId, Guid OrgId, HostScope Scope);
+    private sealed record Caller(string UserId, Guid OrgId, HostScope Scope, IReadOnlySet<string> Roles);
 }
