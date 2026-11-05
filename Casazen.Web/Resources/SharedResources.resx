@@ -4163,4 +4163,25 @@
   <data name="BankImportSelectionsInvalid" xml:space="preserve">
     <value>Scegli da 1 a 500 incassi da confermare.</value>
   </data>
+  <data name="WizardDraftConflict" xml:space="preserve">
+    <value>Questa bozza è stata modificata da un altro dispositivo: scegli se tenere la tua versione o prendere quella salvata.</value>
+  </data>
+  <data name="WizardDraftNotFound" xml:space="preserve">
+    <value>Nessuna bozza salvata.</value>
+  </data>
+  <data name="WizardDraftTypeUnknown" xml:space="preserve">
+    <value>Tipo di procedura guidata sconosciuto.</value>
+  </data>
+  <data name="WizardDraftTypeMismatch" xml:space="preserve">
+    <value>Il tipo indicato nel corpo della richiesta non corrisponde a quello dell'indirizzo.</value>
+  </data>
+  <data name="WizardDraftDataInvalid" xml:space="preserve">
+    <value>I dati della bozza non sono validi: devono essere un oggetto JSON senza caratteri nulli.</value>
+  </data>
+  <data name="WizardDraftTooLarge" xml:space="preserve">
+    <value>La bozza è troppo grande: al massimo {0} KB di dati.</value>
+  </data>
+  <data name="WizardDraftClientVersionInvalid" xml:space="preserve">
+    <value>La versione della bozza non è valida.</value>
+  </data>
 </root>

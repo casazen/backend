@@ -36,9 +36,10 @@ public class OrgEmptinessCheckerTests
     [Fact]
     public void OnboardingRows_AreExactlyWhatTheOnboardingLeavesAndAllTenantOwned()
     {
-        // A new entry here is a decision, not a convenience: it makes an org with that table filled still "empty".
+        // A new entry here is a decision, not a convenience: it makes an org with that table filled still "empty". The wizard drafts
+        // are one (ADR-024): a half-filled form is not use of the org, and its rows are anonymized but never deleted.
         Assert.Equal(
-            [typeof(ConsentRecord), typeof(OrgSlugAlias), typeof(SignupAttribution)],
+            [typeof(ConsentRecord), typeof(OrgSlugAlias), typeof(SignupAttribution), typeof(WizardDraft)],
             OrgEmptinessChecker.OnboardingRows.OrderBy(t => t.Name, StringComparer.Ordinal));
         Assert.All(OrgEmptinessChecker.OnboardingRows, t => Assert.True(typeof(ITenantOwned).IsAssignableFrom(t), t.Name));
     }
@@ -166,6 +167,23 @@ public class OrgEmptinessCheckerTests
     {
         await using var db = NewDb();
         var orgId = await SeedEmptyOrgAsync(db);
+
+        var result = await new OrgEmptinessChecker(db).CheckAsync(orgId, OwnerId);
+
+        Assert.True(result.IsEmpty);
+        Assert.Empty(result.Blockers);
+    }
+
+    [Fact]
+    public async Task CheckAsync_WizardDrafts_LiveOrAnonymized_DoNotMakeTheOrgInUse()
+    {
+        // ADR-024: a wizard saves its progress from the first step and the rows are anonymized, never deleted. If they counted, the person
+        // who opened a wizard before accepting an invitation would get 409 invitation_user_has_organization, for good (AM-02).
+        await using var db = NewDb();
+        var orgId = await SeedEmptyOrgAsync(db);
+        db.WizardDrafts.Add(new WizardDraft { OrgId = orgId, UserId = OwnerId, WizardType = WizardType.ListingCreate, Version = 1 });
+        db.WizardDrafts.Add(new WizardDraft { OrgId = orgId, UserId = string.Empty, WizardType = WizardType.BookingCreate, Version = 3 });
+        await db.SaveChangesAsync();
 
         var result = await new OrgEmptinessChecker(db).CheckAsync(orgId, OwnerId);
 

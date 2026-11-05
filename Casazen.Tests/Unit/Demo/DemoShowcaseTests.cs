@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Casazen.Core.Demo;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -84,6 +85,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.F24Records.Select(f24 => f24.Scenario))
             .Concat(DemoShowcaseCatalog.WireBatches.Select(wb => wb.Scenario))
             .Concat(DemoShowcaseCatalog.Routines.Select(rt => rt.Scenario))
+            .Concat(DemoShowcaseCatalog.WizardDrafts.Select(wd => wd.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -104,6 +106,33 @@ public class DemoShowcaseTests
             Enum.GetValues<DemoHostInviteState>().Order(),
             invites.Select(i => i.State).Distinct().Order());
         Assert.Contains(DemoShowcaseCatalog.Scenario.HostInvitePending, DemoShowcaseCatalog.Scenarios);
+    }
+
+    [Fact]
+    public void WizardDrafts_TheDemoDraft_IsObviouslyTestData_InsideItsThirtyDays_AndHasPersonalDataToEncrypt()
+    {
+        var drafts = DemoShowcaseCatalog.WizardDrafts;
+
+        Assert.Contains(DemoShowcaseCatalog.Scenario.WizardDrafts, DemoShowcaseCatalog.Scenarios);
+        Assert.NotEmpty(drafts);
+        Assert.Equal(drafts.Count, drafts.Select(d => d.Key).Distinct(StringComparer.Ordinal).Count());
+        // One draft per wizard: the demo host has a single draft of a new entity for each one (the unique index of the table).
+        Assert.Equal(drafts.Count, drafts.Select(d => d.Type).Distinct().Count());
+        Assert.All(drafts, draft =>
+        {
+            Assert.True(Enum.IsDefined(draft.Type));
+            // Saved in the past but inside the 30 days, so the retention does not anonymize it the night after a reset.
+            Assert.InRange(draft.SavedOffsetDays, 1 - WizardDraftLimits.RetentionDays, 0);
+
+            using var data = JsonDocument.Parse(draft.DataJson);
+            var split = WizardDraftPii.Split(data.RootElement);
+
+            // The personal half exists, so the demo walks through the encryption; what is in it is invented (example.com, TEST).
+            Assert.NotNull(split.PersonalJson);
+            Assert.Contains("@example.com", split.PersonalJson, StringComparison.Ordinal);
+            Assert.Contains("TEST", split.PersonalJson, StringComparison.Ordinal);
+            Assert.DoesNotContain("@", split.PlainJson, StringComparison.Ordinal);
+        });
     }
 
     [Fact]

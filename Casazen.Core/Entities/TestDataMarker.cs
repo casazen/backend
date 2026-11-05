@@ -69,4 +69,7 @@ public static class TestDataEntities
 
     /// <summary>A length-of-stay discount tier of a property (NF-35); goes with its property.</summary>
     public const string PropertyStayDiscount = "PropertyStayDiscount";
+
+    /// <summary>A saved draft of a wizard (<see cref="WizardDraft"/>): the demo host's, written by the showcase and deleted by its reset.</summary>
+    public const string WizardDraft = "WizardDraft";
 }
