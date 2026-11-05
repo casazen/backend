@@ -30,10 +30,17 @@ fase 1, 6.1–6.8 processi, 6.9 onboarding) · §7 Automazioni AI ·
   i trasversali sono `UX` (§5) e `AI` (§7); `DEB` sono i debiti della fase 1 da chiudere prima o
   insieme ai processi (§6.0); `ONB` è l'onboarding con Octorate (§6.9). L'intake di Helix può
   tenere una feature per requisito.
-- **Priorità.** **P0** = dimostrabile sul sandbox di Octorate e sui dati di CasaZen, più le
-  fondazioni (dal 4/11 non c'è l'adattatore Mock: PO-23); **P1** = live dove la
-  capacità Octorate è provata o confermata per iscritto; **P2** = dopo il pilota, oppure dipende
-  da una decisione o da una terza parte (§14). La prima consegna Helix non include tutto il P1: §12.1.
+- **Priorità.** **P0** = requisito della prima consegna Helix: si costruisce e si dimostra sul
+  sandbox di Octorate e sui dati di CasaZen (dal 4/11 non c'è l'adattatore Mock: PO-23). **P1** =
+  seconda tornata (§12.1), oppure «live» dove la capacità Octorate è provata o confermata per
+  iscritto. **P2** = dopo il pilota, oppure dipende da una decisione o da una terza parte (§14).
+  La priorità di questo documento è l'unico criterio per decidere che cosa rimandare; solo il PO
+  sposta un requisito di fascia e ogni spostamento è registrato in §14.4 (finora LST-13 e CRM-06,
+  da P0 a P1). I tre requisiti «P0 (sandbox), P1 (live)» (CHK-02, CHK-04, MKT-03) si costruiscono
+  e si provano sul sandbox nella prima consegna; il «live» vale dove la capacità è provata.
+  **Corrispondenza con l'intake di Helix** (`kb/intake/requirements.md`, «Priority hint»): P0 =
+  must, P1 = should, P2 = could, requisito per requisito (CHK-02, CHK-04, MKT-03 e CRM-08 sono
+  must con condizione).
 - **Stato di una capacità Octorate** (vocabolario della v1.3): `sconosciuto`, `documentato`
   (OpenAPI o email), `provato sandbox`, `confermato per OTA`, `non supportato`, `simulato`.
   Una capacità non provata resta spenta in live e l'interfaccia lo dice.
@@ -737,7 +744,7 @@ mai con gli aiuti di testo `addTextToHouseRules` e `addTextToField` (§10.1).
    AI-03.
 3. Un errore di pubblicazione crea una voce in «Da fare» (UX-07).
 
-#### LST-13 — Expedia senza fatica: solo ciò che è cambiato, pronto da incollare · P0
+#### LST-13 — Expedia senza fatica: solo ciò che è cambiato, pronto da incollare · P1 (era P0: PO-27, 5/11)
 
 Richiesta del PO (31/10): rendere facile a Quokka la modifica degli annunci su Expedia, i cui
 contenuti non passano da Octorate (S18).
@@ -1636,7 +1643,7 @@ risultati (inviati, errori, disiscrizioni, prenotazioni dirette attribuite con i
 Promemoria automatici con le routine: prima dell'arrivo e ringraziamento (servizio), offerta di
 ritorno (solo con base giuridica).
 
-#### CRM-06 — Pubblico raggiungibile, mai un vicolo cieco · P0
+#### CRM-06 — Pubblico raggiungibile, mai un vicolo cieco · P1 (era P0: PO-28, 5/11)
 
 Ogni campagna mostra quante persone si possono raggiungere per canale e base giuridica, quante no e
 perché, e le azioni per allargare il pubblico (consenso nel check-in attivo, QR di benvenuto,
@@ -2431,7 +2438,7 @@ completo, dal dato alla schermata, dimostrabile sul sandbox di Octorate (dal 4/1
 | H1 — Fondazioni del connettore | H0 | DEB-02 (bus di eventi con outbox) e OCT-01…03, 08, 09, 13, 14: client contro il sandbox, OAuth per proprietà, webhook in entrata e riconciliazione sul bus, resilienza, interruttori, stato delle connessioni | Isolamento per tenant e proprietà; nessuna chiamata di produzione dalle modalità di prova; duplicati e fuori ordine senza effetti doppi |
 | H2 — Annunci e ARI | H1, U0 | LST-01…13 | Import, creazione, modifica e pubblicazione per canale sul sandbox (gli effetti sulle OTA solo simulati o «da provare in produzione»), con errori parziali per canale |
 | H3 — Prenotazioni e calendario | H1 | BKG-01…09 | Creazione, modifica e cancellazione sul sandbox; webhook duplicati, persi e fuori ordine; nessun doppio scrittore con iCal |
-| H4 — Check-in e adempimenti | H3, U0 | CHK-01…14, DEB-08, DEB-09 | Dati dell'ospite fino a Octorate sul sandbox; mittente unico; ricevuta dal server finto Alloggiati; tassa al centesimo; nessun codice d'accesso senza identificazione registrata |
+| H4 — Check-in e adempimenti | H3, U0 | CHK-01…14 (tranne CHK-05), DEB-09; DEB-08 e CHK-05 sono in seconda tornata (§12.1, PO-26) | Dati dell'ospite fino a Octorate sul sandbox; mittente unico; ricevuta caricata a mano (CHK-08); tassa al centesimo; nessun codice d'accesso senza identificazione registrata |
 | H5 — Messaggi e AI | H3, U0 | MSG-01…11, AI-06, DEB-03, DEB-06 | Hub con thread OTA simulati e diretti; soglia di confidenza, categorie sensibili, approvazione da push |
 | H6 — Documenti, clienti e report | H3 (H4 per la tassa) | FIS-01…07, CRM-01…08, REP-01…08, DEB-04, DEB-05, DEB-10 | Emittente unico; documenti Octorate simulati letti; pubblico raggiungibile per base giuridica; report coerenti con le prenotazioni |
 | H7 — Marketplace | H1, U0 | MKT-01…07 | Catalogo dalle tre fonti; attivazione e disattivazione di un portale simulato; stato |
@@ -2455,7 +2462,7 @@ del simulatore e prove contrattuali ufficiali.
 ### 12.1 Perimetro della prima consegna Helix (5/11/2026)
 
 Il piano di consegna di Helix (run R20261103-1506) è stato alleggerito il 5/11 su indicazione del
-PO: da 308 a 234 task (PO-25). Non cambia nessuna decisione del PO (PO-01…22) e nessuna priorità
+PO: da 308 a 222 task in due giri (PO-25 e PO-26). Non cambia nessuna decisione del PO (PO-01…22) e nessuna priorità
 di questo documento: cambia **quando** si costruiscono alcuni requisiti P1/P2 e quali filoni
 stanno in un piano a parte. Nulla è stato cancellato: i task rimandati sono conservati nel piano
 di Helix (`kb/plan/deferred/README.md`) e si ripristinano.
@@ -2469,8 +2476,10 @@ di Helix (`kb/plan/deferred/README.md`) e si ripristinano.
   dall'admin e suggerimenti nei processi (MKT-06, MKT-07); la parte di FIS-03 che emette e invia
   (bozza al check-out, porta SDI, scarti e correzioni, pannello di emissione, pagina pubblica),
   perché FIS-03 aspetta la risposta D34 (v. sotto) e l'intermediario SDI non è scelto (PO-06);
-  file svizzeri (DEB-11, P2); profilo «Gestione Appartamenti» del client Alloggiati (DEB-08, già
-  descritto nel documento AW-01).
+  file svizzeri (DEB-11, P2); il client Alloggiati diretto di CasaZen (DEB-08: client SOAP, conti
+  Questura, invio, ricevute, profilo «Gestione Appartamenti» del documento AW-01) con i suoi stati
+  e l'azione «Invia ora» sul web; ISTAT regionale (CHK-05: tabella delle regioni, prove, pagina);
+  Expedia «solo ciò che è cambiato» (LST-13, PO-27).
 - **Piano a parte («Proprietari»):** onboarding dei proprietari, contabilità dei proprietari con
   chiusura mensile e portale operativo del proprietario. Richiesti il 5/11 fuori da questo
   documento (ONB-06, FIN-08, OWN-01), vanno scritti in un documento proprio. Restano qui DEB-10
@@ -2689,14 +2698,23 @@ punto 2.
 
 ### 14.4 Decisioni del PO del 4 e 5 novembre 2026
 
-Registrate qui perché stavano solo nelle note del piano di Helix. La numerazione PO-23…25 è stata
+Registrate qui perché stavano solo nelle note del piano di Helix. La numerazione PO-23…28 è stata
 assegnata alla registrazione.
 
 | ID | Decisione | Requisiti |
 |---|---|---|
 | PO-23 | **4/11.** Nessun adattatore Mock e nessun client con dati finti: il client Octorate lavora sul sandbox reale dal primo task, con le strutture e i dati di prova della rete di test. Sostituisce ADR-023-R11 e le frasi di questo documento che facevano dipendere P0, G1 e H1–H4 dal Mock | OCT-01, §12, G1 |
 | PO-24 | **4/11.** I task che dipendono da capacità che il sandbox non prova (licenza per camera, OTA collegate, chat, fatture) non si congelano: sono il nucleo del prodotto. Si costruiscono e si provano con quello che il sandbox consente e con la simulazione delle OTA descritta nelle note del piano (`ota-simulation`); il resto resta «da provare in produzione» (H8b). Il ripiego di ciascuno è nella colonna «Se manca» di §11.2 | §11.2, §13 |
-| PO-25 | **5/11.** La prima consegna di Helix è alleggerita come in §12.1 (da 308 a 234 task); il filone proprietari esce da questo documento | §12.1 |
+| PO-25 | **5/11.** La prima consegna di Helix è alleggerita come in §12.1 (da 308 a 234 task nel primo giro); il filone proprietari esce da questo documento | §12.1 |
+| PO-26 | **5/11, secondo giro.** Il client Alloggiati diretto di CasaZen (DEB-08) e l'ISTAT regionale (CHK-05) vanno in seconda tornata (222 task). PO-02 e PO-03 non cambiano: per gli immobili collegati invia Octorate. Nella prima consegna CasaZen non scarica le ricevute con `Ricevuta` e non invia da sé: per gli altri immobili la prova si carica a mano (CHK-08) o si consulta in Octorate (CHK-15) | CHK-03, CHK-04, CHK-05, DEB-08 |
+| PO-27 | **5/11.** LST-13 (Expedia «solo ciò che è cambiato») passa da P0 a P1 e si rimanda. I contenuti Expedia restano gestiti sul canale (eccezione di LST-01, già accettata per il pilota). Le prove sono contraddittorie (S18: solo collegamento; S22 e S23: funzioni di contenuto e invio a un ID esistente): prima di costruire si prova su un annuncio Expedia reale (H8b). Se Octorate sa inviare i contenuti, LST-13 si riduce o cade | LST-13, H8b |
+| PO-28 | **5/11.** CRM-06 (pubblico raggiungibile) passa da P0 a P1: presuppone una campagna e segue CRM-05. L'invio di marketing resta chiuso dal flag `crmMarketing` e da CRM-08 (P0, nella prima tornata) | CRM-06, CRM-05, CRM-08 |
+
+**Hosting, fatto verificato il 5/11.** Railway è l'host in uso: dall'API di Railway l'ultimo deploy di
+produzione è del 2/11 (v3.0.0) e l'ultimo di test del 3/11. Le note «Railway cancellato dal PO il
+2/10» di `docs/INFRA.md` e dei runbook sono storiche. Resta aperta solo la scelta degli IP statici
+in uscita (§14.3), che su Railway sono una funzione del piano Pro, oggi spenta in entrambi gli
+ambienti.
 
 **Ancora aperte, non decise:** (a) se costruire un responder lato CasaZen che recita Octorate per il
 solo lato push (disponibilità, contenuti, chat, webhook): riaprirebbe PO-23 per quelle capacità e
@@ -2716,7 +2734,10 @@ ADR-023-R7); (d) come si ridefiniscono OCT-15 e G1 senza Mock.
   non è leggibile), tre scenari di collegamento in LST-02, ONB-01 e §9.1 (già su Octorate; già sulle
   OTA o in un altro gestionale, con import D6; mai pubblicati), CHK-13 differito e nuovo CHK-15
   (handoff controllato verso Octorate, Cassetto Compliance). ADR-023 (R7, R11) e ADR-026 (R1, R4)
-  emendati nella PR degli ADR.
+  emendati nella PR degli ADR. Secondo giro del 5/11: client Alloggiati diretto (DEB-08) e ISTAT
+  regionale (CHK-05) in seconda tornata (PO-26); LST-13 e CRM-06 da P0 a P1 (PO-27, PO-28);
+  definita in §0 la corrispondenza P0/P1/P2 con must/should/could e il criterio di taglio; chiarito
+  in §14.4 che Railway è in uso.
 
 - **2.1 · 2 novembre 2026:** Octorate non risponde alle domande tecniche della mail del 31/10 e
   rimanda a una sessione di onboarding a pagamento (S21); il PO non la usa per ora. Nuovo §14.3:
