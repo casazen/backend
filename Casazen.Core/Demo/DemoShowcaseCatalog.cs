@@ -220,7 +220,15 @@ public static class DemoShowcaseCatalog
                     new SiteHighlightInput("key", new LocalizedTextInput("Check-in autonomo", "Self check-in"), null),
                 ],
                 SafetyNotes: [new LocalizedTextInput("Rilevatore di fumo", "Smoke detector"), new LocalizedTextInput("Estintore", "Fire extinguisher")],
-                Tags: []),
+                Tags: [],
+                // NF-31: the listing in English, written by hand (the demo translates nothing by machine), so the headline and the description
+                // exist in the two languages a publication needs.
+                Translations: new Dictionary<string, ListingTextsInput>
+                {
+                    ["en"] = new ListingTextsInput(
+                        Title: "Lake villa with garden (demo)",
+                        Description: "Demo listing on the lake. Data, CIN and documents are invented and marked as test."),
+                }),
             Pois:
             [
                 new(PoiKind.Beach, "Lido di Como (demo)", "Como lido (demo)", PoiTravelMode.Walk, 6, CompassPoint.S, 450),

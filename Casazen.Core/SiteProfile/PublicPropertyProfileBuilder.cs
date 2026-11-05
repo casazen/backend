@@ -42,7 +42,8 @@ public static class PublicPropertyProfileBuilder
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var document = SitePropertyProfileJson.Parse(source.SiteProfileJson);
+        // The page reads the texts in Italian and English only: the other languages of the listing (NF-31) are for the channels.
+        var document = SitePropertyProfileJson.ParseForPublicPage(source.SiteProfileJson);
         var video = SiteEmbedUrls.NormalizeVideo(source.VideoUrl);
         var tour = SiteEmbedUrls.NormalizeTour(source.TourUrl);
         var derived = SitePropertyProfileRules.DerivedTags(source.Amenities, source.AreaKind, source.Pets);

@@ -69,6 +69,14 @@ public sealed class SitePropertyProfileRequest
     [MaxLength(50, ErrorMessage = TooLong)]
     public List<string>? Tags { get; set; }
 
+    /// <summary>
+    /// The texts of the listing in the languages of the channel manager (NF-31): the language code (<c>en</c>, <c>fr</c>, <c>de</c>...) to its
+    /// texts. Left out (or <c>null</c>) the stored translations are kept; an empty object clears them. Who wrote each text is never sent: the
+    /// server works it out from what is stored.
+    /// </summary>
+    [MaxLength(20, ErrorMessage = TooLong)]
+    public Dictionary<string, ListingTextsRequest?>? Translations { get; set; }
+
     public SitePropertyProfileInput ToInput() => new(
         FloorLevel,
         RenovatedYear,
@@ -87,10 +95,17 @@ public sealed class SitePropertyProfileRequest
         RulesNote?.ToInput(),
         Highlights?.Select(h => h.ToInput()).ToList(),
         SafetyNotes?.Select(n => n.ToInput()).ToList(),
-        Tags);
+        Tags,
+        Translations?
+            .Where(pair => pair.Value is not null)
+            .ToDictionary(pair => pair.Key, pair => pair.Value!.ToInput(), StringComparer.Ordinal));
 }
 
-/// <summary>A text in Italian (always, wherever there is a text) and, if the host wants, in English.</summary>
+/// <summary>
+/// A text in Italian (always, wherever there is a text) and, if the host wants, in English. The profile texts (zone, near, floor note,
+/// outdoor note, check-in method, note on the rules) can also carry the same text in the other languages of the listing in
+/// <see cref="Others"/>.
+/// </summary>
 public sealed class SiteTextRequest
 {
     [MaxLength(2000, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
@@ -99,7 +114,42 @@ public sealed class SiteTextRequest
     [MaxLength(2000, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
     public string? En { get; set; }
 
-    public LocalizedTextInput ToInput() => new(It, En);
+    /// <summary>
+    /// The same text in the other languages of the listing (NF-31): the language code (<c>fr</c>, <c>de</c>, <c>es</c>...) to the text; <c>it</c>
+    /// and <c>en</c> are the two members above. Left out (or <c>null</c>) the stored ones are kept; an empty object removes them. Read by the
+    /// profile texts only: the booking site shows Italian and English.
+    /// </summary>
+    [MaxLength(20, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
+    public Dictionary<string, string?>? Others { get; set; }
+
+    public LocalizedTextInput ToInput() => new(It, En, Others);
+}
+
+/// <summary>The texts of the listing in one language (NF-31): the seven fields of the channel manager. A blank field is not written.</summary>
+public sealed class ListingTextsRequest
+{
+    [MaxLength(4000, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
+    public string? Title { get; set; }
+
+    [MaxLength(4000, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
+    public string? Description { get; set; }
+
+    [MaxLength(4000, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
+    public string? Spaces { get; set; }
+
+    [MaxLength(4000, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
+    public string? Access { get; set; }
+
+    [MaxLength(4000, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
+    public string? Neighborhood { get; set; }
+
+    [MaxLength(4000, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
+    public string? Transport { get; set; }
+
+    [MaxLength(4000, ErrorMessage = "PropertySiteProfilePayloadTooLong")]
+    public string? Rules { get; set; }
+
+    public ListingTextsInput ToInput() => new(Title, Description, Spaces, Access, Neighborhood, Transport, Rules);
 }
 
 /// <summary>One highlight: an icon of the fixed list, a short title and an optional line.</summary>

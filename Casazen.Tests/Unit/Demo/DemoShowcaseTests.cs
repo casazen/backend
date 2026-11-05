@@ -4,6 +4,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
+using Casazen.Core.SiteProfile;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Demo;
@@ -121,6 +122,19 @@ public class DemoShowcaseTests
         Assert.Contains(stays, s => s.CheckInOffsetDays > 0 && s.Status == BookingStatus.Confirmed);
         Assert.Contains(stays, s => s.CheckInOffsetDays < 0 && s.Status == BookingStatus.CheckedOut);
         Assert.Contains(stays, s => s.Status == BookingStatus.Cancelled && s.CancellationReason == BookingCancellationReason.GuestRequested);
+    }
+
+    [Fact]
+    public void PropertySiteProfile_TheDemoHouseHasItsHeadlineAndDescriptionInEnglish_SoItCanBePublished()
+    {
+        var house = Assert.Single(
+            DemoShowcaseCatalog.Properties,
+            p => p.Scenarios.Contains(DemoShowcaseCatalog.Scenario.PropertySiteProfile));
+        var english = house.SiteProfile?.Translations?["en"];
+
+        Assert.False(string.IsNullOrWhiteSpace(english?.Title));
+        Assert.False(string.IsNullOrWhiteSpace(english?.Description));
+        Assert.True(english!.Title!.Length <= SitePropertyProfileRules.ListingTextMaxLength(ListingTextField.Title));
     }
 
     [Fact]

@@ -48,6 +48,12 @@ public static class SitePropertyProfileLimits
     public const int PhotoAltMaxLength = 200;
 
     /// <summary>
+    /// Longest text of a listing in a language other than Italian, but the headline and the description, which have their own limit
+    /// (<c>ListingTextLimits</c>): spaces, access, neighborhood, transport and rules (NF-31).
+    /// </summary>
+    public const int ListingTextMaxLength = 1000;
+
+    /// <summary>
     /// The energy classes of an APE (D.Lgs. 192/2005), best first. The class is stated by the host from the APE it holds: the
     /// system never fills it in.
     /// </summary>

@@ -3956,6 +3956,9 @@
   <data name="PropertyPoiMinutesInvalid" xml:space="preserve">
     <value>The minutes must be between {0} and {1}.</value>
   </data>
+  <data name="PropertySiteProfileLanguageUnknown" xml:space="preserve">
+    <value>The language is not one of those available for the listing.</value>
+  </data>
   <data name="ServiceRequestThreadClosed" xml:space="preserve">
     <value>This request is closed: no more messages can be added.</value>
   </data>

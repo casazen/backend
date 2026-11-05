@@ -59,6 +59,10 @@ public class PropertySiteProfileController(
     /// Saves the profile: the body is the whole profile, and whatever it leaves out is cleared. Texts are written in Italian and, if the
     /// host wants, in English (nothing is translated for them); a video must be a YouTube or Vimeo address and a tour a Matterport one,
     /// stored in their canonical embed form; the labels and the highlight icons come from fixed lists. Answers with what is stored.
+    /// The profile texts can also carry the same text in the other languages of the channel manager (<c>others</c>), and <c>translations</c> holds
+    /// the texts of the listing in each language (title, description, spaces, access, neighborhood, transport, rules; Italian is only the
+    /// transport): left out, the stored ones are kept. The answer lists who wrote each translated text (<c>origins</c>); a person's save never
+    /// marks a text as machine translated.
     /// </summary>
     /// <response code="200">The profile as stored.</response>
     /// <response code="400"><c>validation_error</c>: a text or a list is absurdly long.</response>
@@ -69,7 +73,7 @@ public class PropertySiteProfileController(
     /// <c>property_site_profile_text_too_long</c>, <c>_italian_required</c>, <c>_too_many_highlights</c>, <c>_highlight_icon_unknown</c>,
     /// <c>_too_many_safety_notes</c>, <c>_tag_unknown</c>, <c>_floor_level_invalid</c>, <c>_renovated_year_invalid</c>,
     /// <c>_energy_class_invalid</c>, <c>_energy_index_invalid</c>, <c>_energy_index_without_class</c>, <c>_check_in_window_invalid</c>,
-    /// <c>_video_url_invalid</c>, <c>_tour_url_invalid</c>, with the <c>field</c> that broke the rule. Nothing is saved.
+    /// <c>_video_url_invalid</c>, <c>_tour_url_invalid</c>, <c>_language_unknown</c>, with the <c>field</c> that broke the rule. Nothing is saved.
     /// </response>
     [HttpPut]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
