@@ -4238,6 +4238,9 @@
   <data name="OctorateMappingPropertyTaken" xml:space="preserve">
     <value>Questo immobile è già collegato a un altro annuncio del channel manager.</value>
   </data>
+  <data name="OctorateMappingLinkedToOtherProperty" xml:space="preserve">
+    <value>Questo annuncio è già collegato a un altro immobile: scollegalo prima, poi collegalo a quello nuovo.</value>
+  </data>
   <data name="OctorateRoomInvalid" xml:space="preserve">
     <value>La camera scelta non appartiene a questo annuncio del channel manager.</value>
   </data>

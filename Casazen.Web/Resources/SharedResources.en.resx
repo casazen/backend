@@ -4238,6 +4238,9 @@
   <data name="OctorateMappingPropertyTaken" xml:space="preserve">
     <value>This property is already linked to another channel manager listing.</value>
   </data>
+  <data name="OctorateMappingLinkedToOtherProperty" xml:space="preserve">
+    <value>This listing is already linked to another property: unlink it first, then link it to the new one.</value>
+  </data>
   <data name="OctorateRoomInvalid" xml:space="preserve">
     <value>The chosen room does not belong to this channel manager listing.</value>
   </data>

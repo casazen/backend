@@ -22,7 +22,9 @@ public interface IChannelMappingService
     /// <summary>
     /// Confirms the listing to a property of the org within the reach of <paramref name="userId"/>, not confirmed to another listing;
     /// reads the channel identifiers and the rooms from Octorate. The room is set when the listing has exactly one, or to
-    /// <paramref name="octorateProductId"/> when given (it must be a room of the listing).
+    /// <paramref name="octorateProductId"/> when given (it must be a room of the listing). The property the listing is already proposed
+    /// or confirmed to must be within the reach of <paramref name="userId"/> too (404 otherwise), and a listing confirmed to another
+    /// property is not moved: it is rejected first (409 <c>octorate_mapping_linked_to_other_property</c>).
     /// </summary>
     Task ConfirmAsync(Guid orgId, string octorateAccommodationId, Guid propertyId, string? octorateProductId, string userId, CancellationToken ct);
 

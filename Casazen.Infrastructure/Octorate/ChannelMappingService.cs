@@ -24,8 +24,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// organization-level), closed when the row is confirmed or rejected.</para>
 /// <para><b>Reach.</b> Confirming, choosing the room and rejecting check that the property belongs to the org and is within the reach of
 /// the person as the org team decides it (<see cref="IHostScopeResolver"/>, from the membership in the database, with no token role:
-/// services do not read roles); the web layer has already checked the policy and the row with the token. A row without a property is an
-/// org-level decision: only a person who reaches the whole org rejects it.</para>
+/// services do not read roles); the web layer has already checked the policy and the row with the token. Confirming also needs the
+/// reach of the property the listing is already proposed or confirmed to, and does not move a confirmed listing to another property
+/// (409): it is rejected first. A row without a property is an org-level decision: only a person who reaches the whole org rejects it.</para>
 /// <para><b>Quota.</b> A refresh reads the rooms of each open listing (one call each) only while the org has more than
 /// <see cref="RoomReadReserve"/> calls left in its bucket, the listings without rooms first; the others keep their snapshot until the next
 /// refresh. Confirming and choosing the room read the rooms of their listing again.</para>
@@ -208,7 +209,18 @@ public sealed class ChannelMappingService(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         var row = await RowAsync(orgId, octorateAccommodationId, ct);
+
+        // The property the listing is proposed or confirmed to is the decision of whoever reaches it, not only the new property's:
+        // reaching the new one alone does not take the listing over, and a confirmed listing is not moved at all (it is rejected first).
+        // A property that was deleted is no property.
+        var linked = row.PropertyId is { } linkedId && linkedId != propertyId ? await FindPropertyAsync(orgId, linkedId, ct) : null;
+        if (linked is not null && !await CanReachAsync(orgId, linked, userId, ct))
+            throw PropertyNotFound();
+
         await EnsureReachableAsync(orgId, propertyId, userId, ct);
+        if (linked is not null && row.Status == OctorateMappingStatus.Confirmed)
+            throw LinkedToOtherProperty();
+
         if (await db.OctorateListingMappings.AnyAsync(
                 m => m.OrgId == orgId && m.Status == OctorateMappingStatus.Confirmed && m.PropertyId == propertyId && m.Id != row.Id, ct))
         {
@@ -515,20 +527,21 @@ public sealed class ChannelMappingService(
     /// <summary>The property belongs to the org and the person reaches it (org team in the database, no token role): 404 otherwise.</summary>
     private async Task EnsureReachableAsync(Guid orgId, Guid propertyId, string userId, CancellationToken ct)
     {
-        var property = await db.Properties
+        var property = await FindPropertyAsync(orgId, propertyId, ct);
+        if (property is null || !await CanReachAsync(orgId, property, userId, ct))
+            throw PropertyNotFound();
+    }
+
+    /// <summary>A property of the org with the creator the reach of an account in no org team depends on; <c>null</c> when it is not the org's or was deleted.</summary>
+    private Task<PropertyRef?> FindPropertyAsync(Guid orgId, Guid propertyId, CancellationToken ct) =>
+        db.Properties
             .AsNoTracking()
             .Where(p => p.Id == propertyId && p.OrgId == orgId)
-            .Select(p => new { p.Id, p.OwnerId })
+            .Select(p => new PropertyRef(p.Id, p.OwnerId))
             .FirstOrDefaultAsync(ct);
-        if (property is null || !await hostScopeResolver.CanReachPropertyAsync(userId, NoTokenRoles, orgId, property.Id, property.OwnerId, ct))
-        {
-            throw new NotFoundException("Property not found for the Octorate mapping.")
-            {
-                Code = "octorate_property_not_found",
-                MessageKey = "OctoratePropertyNotFound",
-            };
-        }
-    }
+
+    private Task<bool> CanReachAsync(Guid orgId, PropertyRef property, string userId, CancellationToken ct) =>
+        hostScopeResolver.CanReachPropertyAsync(userId, NoTokenRoles, orgId, property.Id, property.OwnerId, ct);
 
     /// <summary>The properties of the org a listing can be proposed for: not deleted, and not confirmed to another listing already.</summary>
     private async Task<IReadOnlyList<MatchProperty>> CandidatesAsync(Guid orgId, CancellationToken ct)
@@ -634,10 +647,19 @@ public sealed class ChannelMappingService(
     private static NotFoundException MappingNotFound() =>
         new("Octorate mapping not found.") { Code = "octorate_mapping_not_found", MessageKey = "OctorateMappingNotFound" };
 
+    private static NotFoundException PropertyNotFound() =>
+        new("Property not found for the Octorate mapping.") { Code = "octorate_property_not_found", MessageKey = "OctoratePropertyNotFound" };
+
     private static DomainConflictException PropertyTaken() =>
         new("octorate_mapping_property_taken", "OctorateMappingPropertyTaken");
+
+    private static DomainConflictException LinkedToOtherProperty() =>
+        new("octorate_mapping_linked_to_other_property", "OctorateMappingLinkedToOtherProperty");
 
     private static DomainRuleException RoomInvalid() => new("octorate_room_invalid", "OctorateRoomInvalid");
 
     private static DomainConflictException PlanLimitReached() => new("plan_limit_reached", "PlanLimitReached");
+
+    /// <summary>A property of the org and the user who created it, which decides the reach of an account in no org team.</summary>
+    private sealed record PropertyRef(Guid Id, string OwnerId);
 }

@@ -104,6 +104,28 @@ public class ChannelMappingProofTests
         var taken = await Assert.ThrowsAsync<DomainConflictException>(
             () => service.ConfirmAsync(OrgA, "1002", mine, null, Admin, CancellationToken.None));
         Assert.Equal("octorate_mapping_property_taken", taken.Code);
+
+        // The listing is confirmed to `mine`. Whoever reaches only the new property (the collaborator was given `granted` alone) does not
+        // take it over: it is not theirs to move (404).
+        var takeover = await Assert.ThrowsAsync<NotFoundException>(
+            () => service.ConfirmAsync(OrgA, "1001", granted, null, Collaborator, CancellationToken.None));
+        Assert.Equal("octorate_property_not_found", takeover.Code);
+
+        // Whoever reaches both is refused too (409): a confirmed listing is not moved, it is rejected first. Nothing was read or changed.
+        var moved = await Assert.ThrowsAsync<DomainConflictException>(
+            () => service.ConfirmAsync(OrgA, "1001", granted, null, Admin, CancellationToken.None));
+        Assert.Equal("octorate_mapping_linked_to_other_property", moved.Code);
+        var stays = await db.OctorateListingMappings.AsNoTracking().SingleAsync(m => m.OctorateAccommodationId == "1001");
+        Assert.Equal(OctorateMappingStatus.Confirmed, stays.Status);
+        Assert.Equal(mine, stays.PropertyId);
+        client.Verify(c => c.GetRoomsAsync("1001", It.IsAny<CancellationToken>()), Times.Once);
+
+        // Rejected first, the listing is confirmed to the other property.
+        await service.RejectAsync(OrgA, "1001", Admin, CancellationToken.None);
+        await service.ConfirmAsync(OrgA, "1001", granted, null, Admin, CancellationToken.None);
+        var movedRow = await db.OctorateListingMappings.AsNoTracking().SingleAsync(m => m.OctorateAccommodationId == "1001");
+        Assert.Equal(OctorateMappingStatus.Confirmed, movedRow.Status);
+        Assert.Equal(granted, movedRow.PropertyId);
     }
 
     [Fact]

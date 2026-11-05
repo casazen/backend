@@ -19,8 +19,9 @@ namespace Casazen.Web.Controllers;
 /// check of the property the action is about, as <c>PropertiesController</c> does for the short-stay side of a property
 /// (<see cref="PropertyOperations.Write"/> on <see cref="HostResource.ForProperty"/>, AM-03): a property of another org or one the caller
 /// does not reach answers 404, the same answer as a property that does not exist. The import, which creates a property, also needs
-/// <see cref="CasazenPolicies.PropertyWrite"/>. A listing with no property is an org-level decision: only a caller who reaches the whole
-/// org rejects it.</para>
+/// <see cref="CasazenPolicies.PropertyWrite"/>. Confirming, choosing the room and rejecting also check the listing itself: a listing
+/// proposed or confirmed to a property is the decision of whoever reaches that property, and a listing with no property is an org-level
+/// decision, so only a caller who reaches the whole org confirms or rejects it.</para>
 /// <para><b>Reach of the list.</b> A caller who reaches the whole org sees every listing; a collaborator «Solo alcuni» only the listings
 /// of the properties it reaches (proposed, confirmed or among the candidates), with the other candidates left out.</para>
 /// <para>Behind <c>Features:OctorateConnector</c>: 404 while it is off, before authentication.</para>
@@ -69,10 +70,10 @@ public sealed class OctorateMappingController(
         return Ok(await VisibleAsync(await mappings.RefreshAsync(caller.OrgId, cancellationToken), caller.Scope));
     }
 
-    /// <summary>Confirms the listing to the property of the body.</summary>
+    /// <summary>Confirms the listing to the property of the body. A listing already confirmed to another property is not moved: reject it first.</summary>
     /// <response code="204">Confirmed.</response>
-    /// <response code="404">The listing is not the org's, or the property is not in the org or not reachable by the caller.</response>
-    /// <response code="409"><c>octorate_mapping_property_taken</c>: the property is confirmed to another listing.</response>
+    /// <response code="404">The listing is not the org's or the caller does not reach it (its property, or the whole org for a listing with no property), or the property is not in the org or not reachable by the caller.</response>
+    /// <response code="409"><c>octorate_mapping_property_taken</c>: the property is confirmed to another listing; <c>octorate_mapping_linked_to_other_property</c>: the listing is confirmed to another property.</response>
     /// <response code="422"><c>octorate_room_invalid</c>: the room given is not a room of the listing.</response>
     [HttpPut("mapping/{octorateAccommodationId}")]
     [Authorize(Policy = CasazenPolicies.OtaWrite)]
@@ -90,6 +91,11 @@ public sealed class OctorateMappingController(
 
         if (request.PropertyId is not { } propertyId || !await CanWritePropertyAsync(caller, propertyId))
             return PropertyNotFound();
+
+        // The listing itself, as SetRoom and Reject check it: a listing proposed or confirmed to a property is the decision of whoever
+        // reaches that property (the others do not see it in the list), so reaching the new property alone does not take it over.
+        if (!await CanDecideAsync(caller, await RowAsync(caller, octorateAccommodationId, cancellationToken)))
+            return MappingNotFound();
 
         await mappings.ConfirmAsync(caller.OrgId, octorateAccommodationId, propertyId, request.OctorateProductId, caller.UserId, cancellationToken);
         return NoContent();
