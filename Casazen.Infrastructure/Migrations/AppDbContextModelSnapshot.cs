@@ -9912,6 +9912,66 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("WithholdingLogs");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.WizardDraft", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DraftJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("EncryptedFieldsJson")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LastSavedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("WizardType")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasFilter("\"UserId\" <> ''");
+
+                    b.HasIndex("OrgId", "UserId", "WizardType")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_WizardDrafts_OrgId_UserId_WizardType")
+                        .HasFilter("\"EntityId\" IS NULL AND \"UserId\" <> ''");
+
+                    b.HasIndex("OrgId", "UserId", "WizardType", "EntityId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_WizardDrafts_OrgId_UserId_WizardType_EntityId")
+                        .HasFilter("\"EntityId\" IS NOT NULL AND \"UserId\" <> ''");
+
+                    b.ToTable("WizardDrafts");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
                 {
                     b.Property<int>("Id")

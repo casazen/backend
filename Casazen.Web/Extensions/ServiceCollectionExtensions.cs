@@ -401,6 +401,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GuestDataEraser>();
         services.AddScoped<IGuestDataRetentionService, GuestDataRetentionService>();
         services.AddScoped<ILeasePartyPrivacyService, LeasePartyPrivacyService>();
+        // ADR-024: the drafts of the wizards, saved on the server so that a person resumes them on any device (E01/F02/US01). Their personal
+        // half is an encrypted column (EncryptedColumns); the nightly retention (gdpr-data-retention) anonymizes the drafts past their 30 days.
+        services.AddScoped<IWizardDraftService, WizardDraftService>();
+        services.AddScoped<IWizardDraftRetentionService, WizardDraftRetentionService>();
         // NF-10 / NF-24: reading of the identity document of the guest check-in, in memory only (ADR-009-R22, ADR-013-R6, R8, R10,
         // E03/F04/US01/T02). The MRZ locator is stateless; the Tesseract readers bind the library installed in the image the first time a
         // document is read and verify the SHA-256 of their language files (section MrzOcr, docs/TECHNICAL.md).

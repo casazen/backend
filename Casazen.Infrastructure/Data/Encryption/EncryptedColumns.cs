@@ -92,6 +92,13 @@ public static class EncryptedColumns
     public const string DocumentImagePurpose = "Casazen.DocumentImage";
 
     /// <summary>
+    /// Purpose of the personal half of a wizard draft (ADR-024-R2): <see cref="WizardDraft.EncryptedFieldsJson"/>, the JSON with the fields that
+    /// name a person (guest name, e-mail, phone, fiscal code, document, birth, address...) split off the data the person typed. Nothing is
+    /// searched in it. Never change it: stored drafts would become unreadable.
+    /// </summary>
+    public const string WizardDraftPiiPurpose = "Casazen.WizardDraft.PII";
+
+    /// <summary>
     /// Purpose of the OAuth tokens of the connection of an organization to Octorate (ADR-023-R1): the access and the refresh token of
     /// <see cref="OctorateConnection"/>. Their own purpose: a payload of another column never reads as a token. Never change it: the
     /// stored refresh tokens, which Octorate gives once, would become unreadable and every host would have to connect again.
@@ -191,6 +198,10 @@ public static class EncryptedColumns
         new EncryptedEntity<PropertyAccessCode>(
             PropertyAccessCodeEncryptionPurpose.Purpose,
             nameof(PropertyAccessCode.EncryptedCode)),
+        // ADR-024: the personal half of a wizard draft (E01/F02/US01/T02).
+        new EncryptedEntity<WizardDraft>(
+            WizardDraftPiiPurpose,
+            nameof(WizardDraft.EncryptedFieldsJson)),
         // ADR-023-R1: the OAuth tokens of the Octorate connection of an organization (E02/F01/US01/T01).
         new EncryptedEntity<OctorateConnection>(
             OctorateOAuthPurpose,

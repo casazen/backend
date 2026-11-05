@@ -4163,6 +4163,27 @@
   <data name="BankImportSelectionsInvalid" xml:space="preserve">
     <value>Choose from 1 to 500 payments to confirm.</value>
   </data>
+  <data name="WizardDraftConflict" xml:space="preserve">
+    <value>This draft was changed from another device: choose whether to keep your version or take the saved one.</value>
+  </data>
+  <data name="WizardDraftNotFound" xml:space="preserve">
+    <value>No saved draft.</value>
+  </data>
+  <data name="WizardDraftTypeUnknown" xml:space="preserve">
+    <value>Unknown wizard type.</value>
+  </data>
+  <data name="WizardDraftTypeMismatch" xml:space="preserve">
+    <value>The type in the request body does not match the one in the address.</value>
+  </data>
+  <data name="WizardDraftDataInvalid" xml:space="preserve">
+    <value>The draft data are not valid: they must be a JSON object with no null characters.</value>
+  </data>
+  <data name="WizardDraftTooLarge" xml:space="preserve">
+    <value>The draft is too large: at most {0} KB of data.</value>
+  </data>
+  <data name="WizardDraftClientVersionInvalid" xml:space="preserve">
+    <value>The draft version is not valid.</value>
+  </data>
   <data name="OctorateNotConnected" xml:space="preserve">
     <value>The connection to the channel manager is not active: connect it again from the channel settings.</value>
   </data>

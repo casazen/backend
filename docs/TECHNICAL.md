@@ -216,6 +216,16 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 |---|---|---|---|
 | `GET` | `/api/onboarding/status` | JWT | Host / org onboarding wizard status |
 
+#### Wizard drafts (ADR-024, E01/F02)
+
+`{type}` is the name of a `WizardType` (`ListingCreate`, `ListingEdit`, `BookingCreate`, `BookingEdit`, `CheckIn`, `CheckOut`, `ComplianceSender`, `TouristTax`; a number, or a name that is not one: 400 `wizard_type_unknown`). `entityId` tells what the wizard edits (the query of `GET` and `DELETE`, a member of the body of `POST`); none means the draft of a new entity. The person is always the token's `sub` and the org the caller's own; the answers are `private, no-store`. A caller with no host org gets 404 `not_found`.
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/wizards/{type}/draft?entityId=` | JWT (`Authenticated`: the caller's own draft) | `{ type, entityId, version, data, lastSavedAt }`: `data` is what the person typed, the plain half put together with the decrypted personal fields; **404 `wizard_draft_not_found`** when there is none, it expired (30 days from the last save) or it is another person's or another org's (never 403) |
+| `POST` | `/api/wizards/{type}/draft` | same | Body `{ entityId?, clientVersion, data }` (`clientVersion` = the `version` the client last saw, 0 at the first save; `data` a JSON object, at most 256 KB; a `type` in the body, if there, must be the one of the address: 400 `wizard_type_mismatch`). 200 with the draft as saved (`lastSavedAt` is the "saved at" of the screen). **409 `draft_conflict`** when the client is behind the server, or lost a parallel save (`xmin`; the loser of two first saves is refused by the unique index): nothing is written and the problem carries `serverDraft` and `serverVersion` for "keep mine / take theirs". 400 `wizard_draft_data_invalid`, 413 `wizard_draft_too_large`. The personal fields (`guestName`, `guestEmail`, `guestPhone`, `guestFiscalCode`, `documentNumber`, `documentType`, `birthDate`, `birthPlace`, `citizenship`, `address`, `emergencyContact`, any case, at any depth) are stored encrypted (`Casazen.WizardDraft.PII`), the rest in clear |
+| `DELETE` | `/api/wizards/{type}/draft?entityId=` | same | 204, idempotent: the draft of the caller loses its data and its person (the row stays for the audit trail, as after the retention); never another person's |
+
 #### Properties
 
 | Method | Path | Description |
@@ -1304,6 +1314,22 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | | | **unique** `(DeliveryKey, UserId)` (`UIX_InAppNotifications_DeliveryKey_UserId`), indexes on `(UserId, ReadAt, CreatedAt)`, `CreatedAt`, `OrgId` | Once per event and user |
 | `CreatedAt`, `ReadAt` | `DateTime`, `DateTime?` | — | The instant of the event (UTC, microseconds); `null` while unread. Deleted 90 days after `CreatedAt` (`docs/runbooks/in-app-notifications.md`) |
 
+#### `WizardDraft` (ADR-024, E01/F02)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Client-generated |
+| `OrgId` | `Guid` | tenant key (`ITenantOwned`), no foreign key | The org the person worked in |
+| `UserId` | `string` (255) | not a foreign key | The Auth0 subject. The retention overwrites it with the empty string |
+| `WizardType` | `int` (enum) | explicit numbers, never reused | `ListingCreate` 1, `ListingEdit` 2, `BookingCreate` 3, `BookingEdit` 4, `CheckIn` 5, `CheckOut` 6, `ComplianceSender` 7, `TouristTax` 8 |
+| `EntityId` | `Guid?` | not a key | What the wizard edits; `null` for a wizard that creates something |
+| `Version` | `int` | — | The counter the client sees (1 at the first save, plus one at every save); a save behind it is a conflict |
+| `DraftJson` | `jsonb` | — | The typed data without the personal fields; `{}` once anonymized |
+| `EncryptedFieldsJson` | `text`, nullable | encrypted at rest (`Casazen.WizardDraft.PII`) | The personal fields (`WizardDraftPiiFields`), `null` when there are none or once anonymized |
+| `LastSavedAt`, `ExpiresAt` | `DateTime` | — | UTC, microseconds; `ExpiresAt` = `LastSavedAt` + 30 days |
+| `RowVersion` | `uint` | `xmin` (no column of its own) | Concurrency token: two parallel saves of the same `Version` cannot both win |
+| | | **unique** `(OrgId, UserId, WizardType, EntityId)` where `EntityId IS NOT NULL AND UserId <> ''` (`UIX_WizardDrafts_OrgId_UserId_WizardType_EntityId`) and `(OrgId, UserId, WizardType)` where `EntityId IS NULL AND UserId <> ''` (`UIX_WizardDrafts_OrgId_UserId_WizardType`); index on `ExpiresAt` where `UserId <> ''` | The anonymized rows (empty `UserId`) are left out of the unique indexes. The nightly `gdpr-data-retention` job anonymizes the drafts past `ExpiresAt` and never deletes a row |
+
 ---
 
 ## Design Patterns
@@ -1340,7 +1366,7 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | `BookingPullJob` | Every 15 minutes | Pull new bookings from all OTA platforms |
 | `DynamicPricingJob` | Daily at 02:00 UTC | Recomputes the seasonal suggestions due by Rome date (daily/weekly), upsert per date |
 | `AlloggiatiWebReportJob` | Scheduled at 00:00 Europe/Rome of the arrival day | Marks the communication "to send manually" (CasaZen does not transmit: no web service client) |
-| `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry |
+| `GdprDataRetentionJob` | Scheduled | Anonymise guest data past retention expiry, and the wizard drafts past their 30 days (ADR-024: the data and the person go, the row stays) |
 | `EmailDeliveryJob` | On email queued (`IEmailQueue`) | Hands one queued email to Resend; retried on transient errors (`docs/runbooks/email.md`) |
 | `OrgInvitationMaintenanceJob` | Hourly at :10 UTC | AM-02: reminder of the third day, expiry and deletion of closed org invitations after 30 days (`docs/runbooks/org-team.md` § 15) |
 | `InAppNotificationJob` | On push queued (`IPushNotificationService`) | UI-12a: writes one in-app notification per user of the push's audience, once per event and user (`docs/runbooks/in-app-notifications.md`) |
