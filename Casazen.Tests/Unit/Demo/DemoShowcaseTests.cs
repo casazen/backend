@@ -84,6 +84,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.F24Records.Select(f24 => f24.Scenario))
             .Concat(DemoShowcaseCatalog.WireBatches.Select(wb => wb.Scenario))
             .Concat(DemoShowcaseCatalog.Routines.Select(rt => rt.Scenario))
+            .Concat(DemoShowcaseCatalog.PopupAlerts.Select(alert => alert.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -222,6 +223,29 @@ public class DemoShowcaseTests
         Assert.Equal(house.Profile!.Beds, rooms.Beds);
         Assert.Equal([7, 28], tiers.Select(tier => tier.MinNights));
         Assert.Equal(ChildrenPolicy.Yes, house.Profile.Children);
+    }
+
+    [Fact]
+    public void PopupAlerts_TheDemoHostHasOneOpenAndOneSnoozedAlert_AboutStaysAndHousesOfTheShowcase()
+    {
+        var alerts = DemoShowcaseCatalog.PopupAlerts;
+        var houses = DemoShowcaseCatalog.Properties.ToDictionary(p => p.Key, StringComparer.Ordinal);
+
+        // NF-08, ADR-025: the queue of the demo host has an alert pending at once and one that comes back later.
+        Assert.Contains(DemoShowcaseCatalog.Scenario.PopupAlerts, DemoShowcaseCatalog.Scenarios);
+        Assert.Equal(alerts.Count, alerts.Select(a => a.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.Single(alerts, a => a.SnoozedForHours is null);
+        Assert.Single(alerts, a => a.SnoozedForHours > 0);
+        Assert.All(alerts, a => Assert.Equal(DemoShowcaseCatalog.Scenario.PopupAlerts, a.Scenario));
+        Assert.All(alerts, a => Assert.True(Enum.IsDefined(a.Type) && Enum.IsDefined(a.Urgency)));
+
+        // A reference only: the house or the stay it points at exists in the template, and the seed finds it by that key.
+        Assert.All(alerts, a =>
+        {
+            Assert.True(houses.TryGetValue(a.PropertyKey, out var house), $"{a.Key}: no demo property {a.PropertyKey}.");
+            if (a.BookingKey is not null)
+                Assert.Contains(house!.Bookings, b => b.Key == a.BookingKey);
+        });
     }
 
     [Fact]

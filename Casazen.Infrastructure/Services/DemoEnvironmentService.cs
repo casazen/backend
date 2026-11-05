@@ -115,6 +115,7 @@ public class DemoEnvironmentService(
         if (!string.Equals(confirmation, DemoShowcaseCatalog.ResetConfirmation, StringComparison.Ordinal))
             throw new DomainRuleException("demo_reset_confirmation", "DemoResetConfirmation");
 
+        await RemoveShowcasePopupAlertsAsync(orgId, cancellationToken);
         var removed = await RemoveShowcaseAsync(orgId, cancellationToken);
         await RemoveShowcaseHostInvitesAsync(orgId, cancellationToken);
         var unpublished = removeUnpublished ? await RemoveUnpublishedAsync(orgId, cancellationToken) : 0;
@@ -128,6 +129,10 @@ public class DemoEnvironmentService(
 
         foreach (var invite in DemoShowcaseCatalog.HostInvites)
             await CreateHostInviteAsync(orgId, ownerId, invite, cancellationToken);
+
+        // NF-08: the popup alerts of the demo host point at the stays and houses just created, so they come last.
+        foreach (var alert in DemoShowcaseCatalog.PopupAlerts)
+            await CreatePopupAlertAsync(orgId, ownerId, alert, cancellationToken);
 
         settings.LastResetAt = UtcNow();
         settings.LastResetBy = actorUserId;
@@ -251,6 +256,66 @@ public class DemoEnvironmentService(
         });
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.HostInvite, invite.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes the popup alerts the showcase wrote for the org, found by their markers. They point at the demo stays and houses by id and
+    /// have no foreign key to them, so they are removed by hand and before the markers of the showcase are (NF-08, ADR-025).
+    /// </summary>
+    private async Task RemoveShowcasePopupAlertsAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var alertIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.PopupAlert)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (alertIds.Count == 0)
+            return;
+
+        await db.PopupAlerts.IgnoreQueryFilters([Tenant]).Where(a => alertIds.Contains(a.Id)).ExecuteDeleteAsync(cancellationToken);
+        await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.PopupAlert)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// One popup alert of the demo host, in the state of its template (open, or snoozed until some hours from now), about a stay or a
+    /// house the showcase has just created (found by the template key of its marker). Written for the owner of the org. Skipped, with a
+    /// warning, when the stay or house was not created or the owner has no account row (the alert would point at no user).
+    /// </summary>
+    private async Task CreatePopupAlertAsync(
+        Guid orgId, string ownerId, DemoPopupAlertTemplate template, CancellationToken cancellationToken)
+    {
+        var aboutBooking = template.BookingKey is not null;
+        var markerType = aboutBooking ? TestDataEntities.Booking : TestDataEntities.Property;
+        var markerKey = template.BookingKey ?? template.PropertyKey;
+        var entityId = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == markerType && m.TemplateKey == markerKey)
+            .Select(m => m.EntityId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (entityId == Guid.Empty || !await db.Users.AsNoTracking().AnyAsync(u => u.Id == ownerId, cancellationToken))
+        {
+            logger.LogWarning(
+                "Demo popup alert {Key} of org {OrgId} was skipped: the stay or house it names, or the owner account, does not exist",
+                template.Key,
+                orgId);
+            return;
+        }
+
+        var now = UtcNow();
+        var alert = new PopupAlert
+        {
+            OrgId = orgId,
+            UserId = ownerId,
+            AlertType = template.Type,
+            EntityType = aboutBooking ? PopupAlert.BookingEntityType : PopupAlert.PropertyEntityType,
+            EntityId = entityId,
+            Urgency = template.Urgency,
+            CreatedAt = now,
+            RemindAt = template.SnoozedForHours is { } hours ? now.AddHours(hours) : null,
+        };
+        db.PopupAlerts.Add(alert);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.PopupAlert, alert.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
     private async Task<int> RemoveUnpublishedAsync(Guid orgId, CancellationToken cancellationToken)
