@@ -4265,4 +4265,52 @@
   <data name="OctorateRoomRequired" xml:space="preserve">
     <value>Say which room of the listing it is.</value>
   </data>
+  <data name="OctorateHandoffTopicRequired" xml:space="preserve">
+    <value>Say what you want to check: Alloggiati or ISTAT.</value>
+  </data>
+  <data name="OctorateHandoffPropertyRequired" xml:space="preserve">
+    <value>Say which property to check.</value>
+  </data>
+  <data name="OctorateHandoffReturnPathRequired" xml:space="preserve">
+    <value>The CasaZen page to come back to is missing.</value>
+  </data>
+  <data name="OctorateHandoffReturnPathInvalid" xml:space="preserve">
+    <value>The page to come back to must be a CasaZen path, starting with a slash (/).</value>
+  </data>
+  <data name="OctorateHandoffPeriodInvalid" xml:space="preserve">
+    <value>The period must be a month (yyyy-MM) or a day (yyyy-MM-dd).</value>
+  </data>
+  <data name="OctorateHandoffTargetNotFound" xml:space="preserve">
+    <value>Property or booking not found among those of your organization.</value>
+  </data>
+  <data name="OctorateHandoffPropertyNotMapped" xml:space="preserve">
+    <value>This property is not connected to the channel manager: connect it before checking the compliance items there.</value>
+  </data>
+  <data name="OctorateHandoffDestinationUnavailable" xml:space="preserve">
+    <value>The passage to the Cassetto Compliance is not available right now. Try again in a few minutes.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiDailyMenu" xml:space="preserve">
+    <value>Sign in to Octorate if asked, then open the PMS menu and go to the Alloggiati section.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiDailyCheck" xml:space="preserve">
+    <value>Check that the guests of the stay show as sent and not as «invio sospeso» (sending suspended): if they do, use the button to send them again. If the connection does not show «Attivata» (active), complete the Alloggiati portal details in the panel. Octorate sends once a day.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiShortStayMenu" xml:space="preserve">
+    <value>Sign in to Octorate if asked, then open the PMS menu and go to the Alloggiati section, where you find the immediate manual send.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiShortStayCheck" xml:space="preserve">
+    <value>The stay lasts 24 hours at most: the communication is due within 6 hours of arrival and Octorate's daily send may come later. Send it manually right away and check that the outcome shows as sent.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiLongStayMenu" xml:space="preserve">
+    <value>Sign in to Octorate if asked, then open the PMS menu and go to the Alloggiati section for the manual send file; the file is then sent from the Alloggiati Web portal.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiLongStayCheck" xml:space="preserve">
+    <value>The stay is longer than 30 nights: Octorate's daily send does not cover it and it has to be done by hand. Check that it was sent from the Alloggiati Web portal and that the outcome shows as sent.</value>
+  </data>
+  <data name="OctorateHandoffGuideIstatPeriodMenu" xml:space="preserve">
+    <value>Sign in to Octorate if asked, then open the PMS menu and go to the ISTAT section.</value>
+  </data>
+  <data name="OctorateHandoffGuideIstatPeriodCheck" xml:space="preserve">
+    <value>Check that the period shows as sent for the region of the structure. A red warning means the region does not allow direct sending: in that case the file has to be uploaded by hand on the regional portal.</value>
+  </data>
 </root>
