@@ -133,6 +133,50 @@ public class BookingOverlapHandlerTests : IAsyncLifetime
         Assert.Empty(await _db.PopupAlerts.AsNoTracking().ToListAsync());
     }
 
+    [Fact]
+    public async Task Overlap_TheNightsTheChannelManagerHoldsClosed_AreItsOwnReservation_AndNotAConflict_ButTheBlockOfTheHostIs()
+    {
+        // Oct 14-17 is free on both properties. On the first the sync of the calendar of the channel manager closed those nights before the
+        // booking was imported (a block of source Octorate, the echo of the reservation); on the other the host closed the same nights by hand.
+        var withTheEcho = await ChannelBookingAsync(_world.Granted, 14, 17);
+        var withTheHostBlock = await ChannelBookingAsync(_world.Hidden, 14, 17);
+        _db.CalendarBlocks.AddRange(
+            new CalendarBlock
+            {
+                OrgId = _world.OrgId,
+                PropertyId = _world.Granted.Id,
+                Source = CalendarBlockSource.Octorate,
+                ExternalUid = "octorate-2026-10-14",
+                StartUtc = HostScopeScenario.Day(2026, 10, 14),
+                EndUtc = HostScopeScenario.Day(2026, 10, 17),
+                Summary = "Closed on the channel manager",
+            },
+            new CalendarBlock
+            {
+                OrgId = _world.OrgId,
+                PropertyId = _world.Hidden.Id,
+                Source = CalendarBlockSource.Manual,
+                StartUtc = HostScopeScenario.Day(2026, 10, 14),
+                EndUtc = HostScopeScenario.Day(2026, 10, 17),
+                Summary = "Lavori in casa",
+            });
+        await _db.SaveChangesAsync();
+
+        foreach (var type in new[] { DomainEventType.BookingCreated, DomainEventType.BookingConfirmed, DomainEventType.BookingModified })
+        {
+            await Handler().HandleAsync(await BookedAsync(type, withTheEcho), Ct);
+            await Handler().HandleAsync(await BookedAsync(type, withTheHostBlock), Ct);
+        }
+
+        // The echo is nobody else taking the nights: no item and no alert, so nothing is left open when the next sync takes the block away.
+        Assert.Empty(await TodosAsync(withTheEcho.Id));
+        Assert.Empty(await AlertsAsync(withTheEcho.Id));
+
+        // The block of the host is another matter: one item and its alert.
+        Assert.Null(Assert.Single(await TodosAsync(withTheHostBlock.Id)).CompletedAt);
+        Assert.NotEmpty(await AlertsAsync(withTheHostBlock.Id));
+    }
+
     // --- Proofs ---------------------------------------------------------------------------------------------------------------------
 
     /// <summary>

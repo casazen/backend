@@ -29,7 +29,9 @@ namespace Casazen.Infrastructure.Events;
 /// <item><b>One rule</b>: the conflicts are the ones of <see cref="CalendarAlertRules"/> that feed the host calendar and the Home, on the bookings
 /// that take their dates (<see cref="CheckoutHolds.OccupiesDates"/>) and the calendar blocks (<see cref="PropertyOccupancy"/>), read for the
 /// nights of the booking; there is no second implementation. A booking that takes no night of its own (cancelled, an expired hold) has no
-/// conflict.</item>
+/// conflict. The nights the channel manager holds closed (a block of source <see cref="CalendarBlockSource.Octorate"/>, written by the sync of its
+/// calendar) are not counted: for a booking that came from it they are its own reservation, often written before the booking is imported, and
+/// nothing else takes them.</item>
 /// <item><b>One item for a booking</b>, whatever the number of conflicts or events: the reason names the property and the first range of nights
 /// the booking shares, in the language of the org, with no name, contact or note of the guest (ADR-026-R3). It is <see cref="ActivityUrgency.High"/>
 /// and due at the start of the first shared night in Rome. <see cref="IInternalActivityService.CreateAsync"/> returns the item that is open, so an
@@ -293,6 +295,10 @@ public sealed class BookingOverlapHandler(
         var blocks = await db.CalendarBlocks
             .AsNoTracking()
             .Where(b => b.OrgId == stay.OrgId)
+            // The nights the channel manager holds closed are its view of its own reservations, the one that has just arrived among them (the sync
+            // of its calendar writes them every 15 minutes, before or after the booking is imported): nothing else takes those nights, and the item
+            // raised for them would stay open when the next sync removes the block, because only a booking event closes it.
+            .Where(b => b.Source != CalendarBlockSource.Octorate)
             .Where(PropertyOccupancy.BlockTakesNightIn(stay.PropertyId, stay.CheckIn, stay.CheckOut))
             .Select(b => new { b.Id, b.Source, b.StartUtc, b.EndUtc })
             .ToListAsync(ct);

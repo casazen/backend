@@ -1146,7 +1146,7 @@ site) on a property whose mapping is confirmed is created on Octorate once, by `
   (`HostNotificationAudience`: the member in charge while they still reach it, and the administrators of the org), written before the item and once for
   each person while it is open. `BookingOverlapHandler` (registered in `AddCasazenBookingOperations`, not behind the connector flag: it reads CasaZen's
   data only) reads the bookings that take their dates (`CheckoutHolds.OccupiesDates`) and the calendar blocks (`PropertyOccupancy`) for the nights of the
-  booking and asks `CalendarAlertRules.ConflictsOfStay`, the rule that feeds the host calendar and the Home: there is no other. One item for a booking,
+  booking, except the nights the channel manager itself holds closed (the blocks of source `Octorate`, written by the calendar sync: for a booking that came from it they are its own reservation, often written before the booking is imported, and the item they would raise stays open when the next sync removes the block), and asks `CalendarAlertRules.ConflictsOfStay`, the rule that feeds the host calendar and the Home: there is no other. One item for a booking,
   whatever the number of conflicts or events; its reason (`EmailTexts` `TodoReason_BookingOverlap`, in the language of the org: «{property}: la
   prenotazione arriva su notti già occupate, dal {first night} al {day they are free again}») names the property and the first shared range and nothing of the
   guest. An item the host closed by hand is not raised again for the same nights (a change of the price must not bring it back); other nights are another item.
