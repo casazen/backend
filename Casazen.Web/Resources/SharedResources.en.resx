@@ -4890,4 +4890,49 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OctorateSyncLinkedElsewhere" xml:space="preserve">
     <value>The booking exists in the channel manager, but CasaZen already links it to another booking: check whether it is a duplicate.</value>
   </data>
+  <data name="OctorateSyncNotMirrored" xml:space="preserve">
+    <value>The property is not linked to the channel manager right now (the connection was lost or the mapping is still to be confirmed): the cancellation was not sent. Reconnect or confirm the mapping, then try again.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceDefault" xml:space="preserve">
+    <value>To change this booking, ask the guest to request the change on the channel they booked through.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceAirbnb" xml:space="preserve">
+    <value>To change this Airbnb booking, ask the guest to request the change on Airbnb.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceBookingCom" xml:space="preserve">
+    <value>On Booking.com the guest changes the dates from the app or the extranet: ask the guest to do it there.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceExpedia" xml:space="preserve">
+    <value>To change this Expedia booking, ask the guest to request the change on Expedia.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceVrbo" xml:space="preserve">
+    <value>To change this Vrbo booking, ask the guest to request the change on Vrbo.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceTripAdvisor" xml:space="preserve">
+    <value>To change this Tripadvisor booking, ask the guest to request the change on Tripadvisor.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceAgoda" xml:space="preserve">
+    <value>To change this Agoda booking, ask the guest to request the change on Agoda.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceDefault" xml:space="preserve">
+    <value>To cancel this booking, ask the guest to cancel it on the channel they booked through.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceAirbnb" xml:space="preserve">
+    <value>To cancel this Airbnb booking, ask the guest to cancel it on Airbnb.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceBookingCom" xml:space="preserve">
+    <value>To cancel this Booking.com booking, ask the guest to cancel it on Booking.com.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceExpedia" xml:space="preserve">
+    <value>To cancel this Expedia booking, ask the guest to cancel it on Expedia.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceVrbo" xml:space="preserve">
+    <value>To cancel this Vrbo booking, ask the guest to cancel it on Vrbo.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceTripAdvisor" xml:space="preserve">
+    <value>To cancel this Tripadvisor booking, ask the guest to cancel it on Tripadvisor.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceAgoda" xml:space="preserve">
+    <value>To cancel this Agoda booking, ask the guest to cancel it on Agoda.</value>
+  </data>
 </root>

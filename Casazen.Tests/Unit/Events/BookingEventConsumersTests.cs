@@ -403,8 +403,9 @@ public class BookingEventConsumersTests : IAsyncLifetime
             .Where(d => d.ServiceType == typeof(IEventHandler<DomainEvent>))
             .Select(d => d.ImplementationType)
             .ToList();
-        // In the order of registration: the three of E08/F06 (cleaning «To do», special request «To do», channel alert), then the two
-        // that write to Octorate (E08/F01/US01): the booking created on confirmation (T03) and the payment recorded once paid (T04).
+        // In the order of registration: the three of E08/F06 (cleaning «To do», special request «To do», channel alert), then the ones
+        // that write to Octorate: the booking created on confirmation (E08/F01/US01/T03), the payment recorded once paid (T04) and the
+        // cancellation pushed after the local one (E08/F02/US02/T02).
         Assert.Equal(
             [
                 typeof(BookingCleaningActivityHandler),
@@ -412,6 +413,7 @@ public class BookingEventConsumersTests : IAsyncLifetime
                 typeof(ChannelBookingAlertHandler),
                 typeof(OctorateBookingCreateHandler),
                 typeof(OctoratePaymentHandler),
+                typeof(OctorateBookingCancelHandler),
             ],
             handlers);
     }

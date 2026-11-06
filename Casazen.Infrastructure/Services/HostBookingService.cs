@@ -34,9 +34,13 @@ public sealed class HostBookingService(
     IOnSiteBookingRequestService onSiteRequests,
     ILogger<HostBookingService> logger,
     TimeProvider? timeProvider = null,
-    IDomainEventRecorder? domainEvents = null) : IHostBookingService
+    IDomainEventRecorder? domainEvents = null,
+    OtaChannelActionPolicy? channelPolicy = null) : IHostBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    /// <summary>Which channels let the host change a reservation from CasaZen: closed for every one unless the configuration opens it (D8).</summary>
+    private readonly OtaChannelActionPolicy _channelPolicy = channelPolicy ?? OtaChannelActionPolicy.Closed;
 
     public async Task<Booking> UpdateAsync(HostBookingUpdate update, CancellationToken cancellationToken = default)
     {
@@ -51,7 +55,18 @@ public sealed class HostBookingService(
 
         var current = await db.Bookings.AsNoTracking()
             .Where(b => b.Id == update.BookingId)
-            .Select(b => new { b.PropertyId, b.CheckInDate, b.CheckOutDate, b.OtaCommission, b.OtaNetAmount, b.OtaPaidAmount, b.OtaBalanceAmount })
+            .Select(b => new
+            {
+                b.PropertyId,
+                b.Source,
+                b.OctorateReservationId,
+                b.CheckInDate,
+                b.CheckOutDate,
+                b.OtaCommission,
+                b.OtaNetAmount,
+                b.OtaPaidAmount,
+                b.OtaBalanceAmount,
+            })
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw BookingNotFound(update.BookingId);
 
@@ -61,6 +76,12 @@ public sealed class HostBookingService(
         {
             throw new DomainRuleException(BookingErrorCodes.OtaAmountsReadonly, "BookingOtaAmountsReadonly");
         }
+
+        // A booking that came from a channel is changed on its channel (E08/F02/US02/T01, D8, NF-75). Where the channel does not let the host do it
+        // from CasaZen (every channel unless the configuration opens it) nothing is changed here, so the booking never differs from what the channel
+        // holds: 422 with the one sentence that says how to ask the guest or the channel, before any hold is released or lock taken.
+        if (OtaChannelActionPolicy.IsChannelBooking(current.Source, current.OctorateReservationId) && !_channelPolicy.For(current.Source).CanModify)
+            throw _channelPolicy.ChangeNotAllowed(current.Source);
 
         // Abandoned checkout holds of the new dates are released first, as for a new booking (BK-21). Outside the
         // booking lock: the expiry takes its own locks and may call Stripe.
