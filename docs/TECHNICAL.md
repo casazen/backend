@@ -773,11 +773,15 @@ caller sees and may not use is 403. The accountant reads and cannot write; the c
   booking has a reservation there that names a customer record, it writes the billing members to that record (`PUT /rest/v1/guests/{acc}/{guestId}`: `fiscalCode`,
   `vatCode`, `address` on one line, `zip`, `city`, `country` and `legalMail`, the PEC; nothing else, nothing cleared, no record made for a reservation that names
   none) once for each change: the hash of the body written is kept on the row (`OctorateBillingHash`, encrypted at rest, with `OctorateBillingSentAt`), and
-  only after Octorate answered 2xx to a `PUT` that was sent. A failing or refused call (no answer, a 5xx, the rate limit,
-  a refusal of the credentials or of the guests' sensitive data, which needs CasaZen's outbound IPs whitelisted, D24) is logged with ids and a code, never a
-  value, and rethrown, so the outbox delivers the event again and, after five deliveries, keeps it dead-lettered with the code; a record Octorate does not know,
-  a request it rejects, a conflict or no connection is logged the same way and left. A booking whose reservation is being created, or whose confirmation is
-  still in the outbox, makes the event be delivered again (`OctorateBillingPendingException`) instead of dropping the data.
+  only after Octorate answered 2xx to a `PUT` that was sent. **No failure is swallowed.** The write-back keeps the code of every failure on the row
+  (`OctorateBillingError` and `OctorateBillingErrorAt`, a code and a time, never a value; cleared by the next successful write, or when the data is again what
+  Octorate holds), logs it with ids and the code, and, for a failing or refused call (no answer, a 5xx, the rate limit, a refusal of the credentials or of the
+  guests' sensitive data, which needs CasaZen's outbound IPs whitelisted, D24), also rethrows it, so the outbox delivers the event again and, after five
+  deliveries, keeps it dead-lettered with the code. A record or a reservation Octorate does not know, a request it rejects, a conflict, the wrong environment,
+  no connection, and a reservation that names no customer record (`octorate_no_customer_record`: nothing was sent) are kept on the row and left, not retried:
+  the same answer five times would help nobody, and the data is written at the next save. The pre-fill has no row of its own to keep a code on (a booking may
+  have no data at all), so it rethrows every failure of the call and lets the outbox keep it. A booking whose reservation is being created, or whose
+  confirmation is still in the outbox, makes the event be delivered again (`OctorateBillingPendingException`) instead of dropping the data.
   **Names from the OpenAPI, wire shape not proven:** the routes and the members are those of the OpenAPI (`GuestDTO`, `invoiceHolderId`); the operations of the
   address book declare no body and no answer, and no call could be made to the sandbox. The denomination of a company, the code of the recipient on the SDI and
   the province are not written (the OpenAPI makes the first two read-only and has no province), and the PEC is never read (write-only). Check all this on the
@@ -1905,6 +1909,9 @@ Who an invoice of a booking is made out to. One row for each booking; it goes wi
 | `Name` (200), `FiscalCode` (16), `VatNumber` (28, with the country prefix), `AddressStreet` (200), `AddressCivic` (20), `PostalCode` (10), `City` (100), `Pec` (254) | `text`, nullable | encrypted at rest (`Casazen.BookingInvoiceData`) | The denomination or «First Last», the codice fiscale, the VAT number, the address and the PEC; the length is the limit checked on input |
 | `Province` (2), `CountryCode` (2, default `IT`), `SdiRecipientCode` (7) | `string` | not encrypted | The province, the ISO 3166-1 alpha-2 country and the code of the recipient on the SDI |
 | `Source` | `int` (enum) | explicit numbers, never reused | The highest source that ever wrote the row: `Octorate` 1, `CheckIn` 2, `Host` 3. It is the precedence |
+| `OctorateBillingHash` | `text`, nullable | encrypted at rest (`Casazen.BookingInvoiceData`) | The hash of the billing data last written to Octorate (E06/F02/US01/T04): the data is not written again while its hash is this one. Never part of an answer of the API |
+| `OctorateBillingSentAt` | `DateTime?` | — | When that write happened (UTC) |
+| `OctorateBillingError`, `OctorateBillingErrorAt` | `string?` (64), `DateTime?` | not encrypted: a code, never a value | The code of the last failure of the write to Octorate (`octorate_not_found`, `octorate_request_rejected`, `octorate_unavailable`..., or `octorate_no_customer_record` when the reservation names no customer record) and when it happened; null until a write failed and again once one succeeded |
 | `CreatedAt`, `UpdatedAt`, `UpdatedByUserId` | `DateTime`, `DateTime`, `string?` (255) | — | UTC; the person who saved it last when it was the host |
 | `xmin` | `uint` | concurrency token (`RowVersion`) | PostgreSQL system column; no column of its own |
 

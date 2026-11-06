@@ -21,11 +21,13 @@ namespace Casazen.Infrastructure.Octorate;
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>Never the import's problem.</b> The import has committed the booking and the event before this runs; whatever goes wrong here leaves a booking
-/// with no data from Octorate, never a failed import. A failing or refused call (no answer, a 5xx, the rate limit, a refusal of the credentials or of the
-/// guests' sensitive data before CasaZen's outbound IPs are whitelisted, D24) is logged with ids and a code and rethrown, so the outbox delivers the
-/// event again and, after five deliveries, keeps it dead-lettered with the code (AC-E06-F02-US01-03). A customer record Octorate does not know, a request
-/// it rejects, no connection, or data that fails the checks of the invoice data as a whole is logged with ids and a code and left: the same answer five
-/// times would help nobody. No log carries a name, a number or an address.</item>
+/// with no data from Octorate, never a failed import. Nothing that goes wrong in the call to Octorate is swallowed: a failing or refused call (no answer, a
+/// 5xx, the rate limit, a refusal of the credentials or of the guests' sensitive data before CasaZen's outbound IPs are whitelisted, D24, a record or a
+/// reservation Octorate does not know, a request it rejects, a conflict, the wrong environment, no connection) is logged with ids and a code and
+/// rethrown, so the outbox delivers the event again and, after five deliveries, keeps it dead-lettered with the code (AC-E06-F02-US01-03): the booking
+/// may have no data at all, so there is no row of its own to keep the code on. Only data that fails the checks of the invoice data as a whole once put
+/// together with what is stored (a refusal of our own rules, not of a call) is logged with ids and a code and left. No log carries a name, a number or
+/// an address.</item>
 /// <item><b>Only what is valid.</b> A field of Octorate that fails the checks of the invoice data (a fiscal code that does not check out, a province
 /// written in full) is left out and the rest is saved; the host sees the field empty.</item>
 /// <item><b>Idempotent.</b> A save that fills nothing writes nothing and records no event, so an event delivered again changes nothing; the save by
@@ -90,24 +92,17 @@ public sealed class InvoiceDataFromOctorateHandler(
             {
                 billing = await client.GetBookerBillingDataAsync(accommodationId, reservationId, ct);
             }
-            catch (OctorateException ex) when (OctorateBillingSyncRules.IsRetryable(ex))
-            {
-                logger.LogWarning(
-                    "Billing data of booking {BookingId} of org {OrgId} not read from Octorate: {Code}; the event is delivered again",
-                    bookingId,
-                    orgId,
-                    ex.Code);
-                throw;
-            }
             catch (OctorateException ex)
             {
+                // Nothing is swallowed: the booking has no row to keep a code on (it may have no data at all), so the outbox keeps the failure, with its
+                // code, as it keeps every other: the event is delivered again and, after five deliveries, dead-lettered.
                 logger.LogWarning(
-                    "Billing data of booking {BookingId} of org {OrgId} not read from Octorate: {Code} (HTTP {Status}); the booking has no data from Octorate",
+                    "Billing data of booking {BookingId} of org {OrgId} not read from Octorate: {Code} (HTTP {Status}); the event is delivered again",
                     bookingId,
                     orgId,
                     ex.Code,
                     ex.OctorateStatusCode);
-                return;
+                throw;
             }
         }
 

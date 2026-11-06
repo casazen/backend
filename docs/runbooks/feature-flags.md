@@ -115,6 +115,9 @@ before the flag is turned on anywhere:
    OpenAPI makes `company` and `destinationOffice` read-only and has no province), and it creates no customer record for a reservation that names none.
 5. Fix `OctorateBillingMapping` for what the sandbox says and raise `ContractVersion`: the data already written is then written again in the new shape.
 6. Turn the flag on in the test environment first, with `Features__OctorateConnector`; the logs of the two handlers carry the booking, the org and a code, never a value.
+   Where a booking's data did not reach Octorate, the code of the last failure is on its invoice data (`BookingInvoiceData.OctorateBillingError`, with
+   `OctorateBillingErrorAt`; `octorate_no_customer_record` is a reservation that names no customer record), and the events that could not be delivered are
+   dead-lettered in the outbox with their code (the pre-fill keeps no code of its own: a booking may have no data at all).
 
 A booking saved before it is confirmed, and one whose creation on Octorate failed, have no reservation to write to: their data is written at the next save of the
 invoice data. A reservation that names no customer record has nothing to write to either, whatever the save: nothing is sent and nothing is marked as written.

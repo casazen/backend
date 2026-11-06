@@ -12,6 +12,19 @@ namespace Casazen.Infrastructure.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<string>(
+                name: "OctorateBillingError",
+                table: "BookingInvoiceData",
+                type: "character varying(64)",
+                maxLength: 64,
+                nullable: true);
+
+            migrationBuilder.AddColumn<DateTime>(
+                name: "OctorateBillingErrorAt",
+                table: "BookingInvoiceData",
+                type: "timestamp with time zone",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
                 name: "OctorateBillingHash",
                 table: "BookingInvoiceData",
                 type: "text",
@@ -27,6 +40,14 @@ namespace Casazen.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropColumn(
+                name: "OctorateBillingError",
+                table: "BookingInvoiceData");
+
+            migrationBuilder.DropColumn(
+                name: "OctorateBillingErrorAt",
+                table: "BookingInvoiceData");
+
             migrationBuilder.DropColumn(
                 name: "OctorateBillingHash",
                 table: "BookingInvoiceData");

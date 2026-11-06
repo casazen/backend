@@ -67,6 +67,9 @@ public class BookingInvoiceData : ITenantOwned
     /// <summary>Longest <see cref="UpdatedByUserId"/>.</summary>
     public const int UpdatedByUserIdMaxLength = 255;
 
+    /// <summary>Longest <see cref="OctorateBillingError"/>: a code, never a text.</summary>
+    public const int OctorateBillingErrorMaxLength = 64;
+
     /// <summary>The country of a recipient that does not say: Italy.</summary>
     public const string DefaultCountryCode = "IT";
 
@@ -136,6 +139,18 @@ public class BookingInvoiceData : ITenantOwned
 
     /// <summary>When the billing data was last written to Octorate (UTC); <c>null</c> until it was.</summary>
     public DateTime? OctorateBillingSentAt { get; set; }
+
+    /// <summary>
+    /// The code of the last failure of the write of the billing data to Octorate (E06/F02/US01/T04): a stable code, the one of the error Octorate gave
+    /// (<c>octorate_not_found</c>, <c>octorate_request_rejected</c>, <c>octorate_unavailable</c>...) or <c>octorate_no_customer_record</c> when the
+    /// reservation names no record to write to; never a value of the data, so it is not personal data and not encrypted. It is what a person who asks
+    /// why a booking's data is not on Octorate reads. <c>null</c> until a write failed, and again once one succeeded.
+    /// </summary>
+    [MaxLength(OctorateBillingErrorMaxLength)]
+    public string? OctorateBillingError { get; set; }
+
+    /// <summary>When the last failure of the write to Octorate happened (UTC); <c>null</c> exactly when <see cref="OctorateBillingError"/> is.</summary>
+    public DateTime? OctorateBillingErrorAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

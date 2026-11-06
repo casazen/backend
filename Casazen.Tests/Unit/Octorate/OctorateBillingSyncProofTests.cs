@@ -290,7 +290,7 @@ public class OctorateBillingSyncProofTests
     // --- A failing or refused Octorate is never the host's problem --------------------------------------------------------------------
 
     [Fact]
-    public async Task WriteBack_FailuresAreNeverTheHostsProblem_AndLeakNothing()
+    public async Task WriteBack_EveryFailureLeavesItsCode_IsNeverTheHostsProblem_AndLeaksNothing()
     {
         var rig = new Rig();
         var booking = await rig.SeedBookingAsync();
@@ -303,7 +303,7 @@ public class OctorateBillingSyncProofTests
 
         // A failing or refused call is thrown, so that the outbox delivers the event again (and keeps it dead-lettered with the code after five
         // deliveries): no answer, a 5xx, the rate limit, a refusal of the credentials or of the guests' data (the outbound IPs, D24). Nothing is marked
-        // as written, and the log names the booking and the code, never a value of the invoice.
+        // as written, the code of the failure stays on the invoice data with its time, and the log names the booking and the code, never a value.
         foreach (var redelivered in new OctorateException[]
                  {
                      new OctorateServerException(503),
@@ -316,26 +316,36 @@ public class OctorateBillingSyncProofTests
                 .ThrowsAsync(redelivered);
 
             await Assert.ThrowsAsync(redelivered.GetType(), () => rig.WriteBack(logger: logger).HandleAsync(saved, Ct));
-            Assert.Null((await rig.RowAsync(booking.Id)).OctorateBillingHash);
+
+            var failed = await rig.RowAsync(booking.Id);
+            Assert.Null(failed.OctorateBillingHash);
+            Assert.Equal(redelivered.Code, failed.OctorateBillingError);
+            Assert.Equal(Now.UtcDateTime, failed.OctorateBillingErrorAt);
         }
 
-        // A record Octorate does not know, a request it rejects, a conflict, no connection: the same answer five times would help nobody, so nothing
-        // is thrown and nothing is marked as written.
+        // A record Octorate does not know, a request it rejects, a conflict, the wrong environment, no connection: the same answer five times would
+        // help nobody, so nothing is thrown and nothing is marked as written, but none of them is swallowed: the code stays on the invoice data.
         foreach (var leftAlone in new OctorateException[]
                  {
                      OctorateAuthException.NotConnected(),
                      new OctorateNotFoundException(),
                      new OctorateRequestRejectedException(400),
                      new OctorateConflictException(),
+                     new OctorateWrongEnvironmentException(403),
                  })
         {
             rig.Client
                 .Setup(c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()))
                 .ThrowsAsync(leftAlone);
+            rig.Clock.Advance(TimeSpan.FromMinutes(1));
 
             await rig.WriteBack(logger: logger).HandleAsync(saved, Ct);
 
-            Assert.Null((await rig.RowAsync(booking.Id)).OctorateBillingHash);
+            var left = await rig.RowAsync(booking.Id);
+            Assert.Null(left.OctorateBillingHash);
+            Assert.Null(left.OctorateBillingSentAt);
+            Assert.Equal(leftAlone.Code, left.OctorateBillingError);
+            Assert.Equal(rig.Clock.GetUtcNow().UtcDateTime, left.OctorateBillingErrorAt);
         }
 
         var log = logger.AllOutput;
@@ -344,13 +354,97 @@ public class OctorateBillingSyncProofTests
         Assert.Contains(OctorateAuthException.NotConnectedCode, log, StringComparison.Ordinal);
         string[] personal = [CompanyName, "Ristorante", VatNumber, "12345678903", CompanyPec, "pec.example.com"];
         Assert.All(personal, value => Assert.DoesNotContain(value, log, StringComparison.OrdinalIgnoreCase));
+        var stored = await rig.RowAsync(booking.Id);
+        Assert.All(personal, value => Assert.DoesNotContain(value, stored.OctorateBillingError ?? string.Empty, StringComparison.OrdinalIgnoreCase));
 
-        // Octorate answers at the next delivery: written, and marked.
+        // Octorate answers at the next delivery: written, marked, and the code of the failures is gone.
         rig.Client
             .Setup(c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         await rig.WriteBack().HandleAsync(saved, Ct);
-        Assert.NotNull((await rig.RowAsync(booking.Id)).OctorateBillingHash);
+
+        var written = await rig.RowAsync(booking.Id);
+        Assert.NotNull(written.OctorateBillingHash);
+        Assert.Null(written.OctorateBillingError);
+        Assert.Null(written.OctorateBillingErrorAt);
+    }
+
+    [Fact]
+    public async Task WriteBack_AReservationWithNoCustomerRecord_MarksNothingAsWritten_AndSaysWhy()
+    {
+        var rig = new Rig();
+        var booking = await rig.SeedBookingAsync();
+        await rig.SaveInvoiceAsync(booking.Id, CompanyData(), InvoiceDataSource.Host);
+        var saved = Saved(booking.Id, InvoiceDataSource.Host);
+        var logger = new CapturingLogger<OctorateBillingWriteBackHandler>();
+        rig.Client
+            .Setup(c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        // The reservation names no customer record: nothing was sent, so nothing is marked as written, and the data says why. Delivered again, the
+        // same: no hash is ever stored for a write that did not happen.
+        await rig.WriteBack(logger: logger).HandleAsync(saved, Ct);
+        await rig.WriteBack(logger: logger).HandleAsync(saved, Ct);
+
+        var row = await rig.RowAsync(booking.Id);
+        Assert.Null(row.OctorateBillingHash);
+        Assert.Null(row.OctorateBillingSentAt);
+        Assert.Equal(OctorateBillingSyncRules.NoCustomerRecordCode, row.OctorateBillingError);
+        Assert.Equal(Now.UtcDateTime, row.OctorateBillingErrorAt);
+        Assert.Contains(OctorateBillingSyncRules.NoCustomerRecordCode, logger.AllOutput, StringComparison.Ordinal);
+        rig.Client.Verify(
+            c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
+
+        // The customer is made in Octorate: the next save writes, marks the data and clears the code.
+        rig.Client
+            .Setup(c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        rig.Clock.Advance(TimeSpan.FromMinutes(5));
+        await rig.WriteBack().HandleAsync(saved, Ct);
+
+        var written = await rig.RowAsync(booking.Id);
+        Assert.NotNull(written.OctorateBillingHash);
+        Assert.Equal(rig.Clock.GetUtcNow().UtcDateTime, written.OctorateBillingSentAt);
+        Assert.Null(written.OctorateBillingError);
+        Assert.Null(written.OctorateBillingErrorAt);
+    }
+
+    [Fact]
+    public async Task WriteBack_TheCodeOfAFailedWrite_IsClearedWhenTheDataIsAgainWhatOctorateHolds()
+    {
+        var rig = new Rig();
+        var booking = await rig.SeedBookingAsync();
+        await rig.SaveInvoiceAsync(booking.Id, CompanyData(), InvoiceDataSource.Host);
+        var saved = Saved(booking.Id, InvoiceDataSource.Host);
+        rig.Client
+            .Setup(c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        await rig.WriteBack().HandleAsync(saved, Ct);
+        var first = await rig.RowAsync(booking.Id);
+        Assert.NotNull(first.OctorateBillingHash);
+
+        // A change that Octorate refuses: the hash stays the one of what Octorate holds, and the code of the refusal is on the data.
+        await rig.SaveInvoiceAsync(booking.Id, new SaveInvoiceDataCommand { City = "Como" }, InvoiceDataSource.Host);
+        rig.Client
+            .Setup(c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateRequestRejectedException(400));
+        await rig.WriteBack().HandleAsync(saved, Ct);
+        var refused = await rig.RowAsync(booking.Id);
+        Assert.Equal(first.OctorateBillingHash, refused.OctorateBillingHash);
+        Assert.Equal("octorate_request_rejected", refused.OctorateBillingError);
+
+        // The host puts the data back as it was: it is what Octorate holds, so nothing is sent and the code of the refusal is no longer the state.
+        await rig.SaveInvoiceAsync(booking.Id, new SaveInvoiceDataCommand { City = "Cernobbio" }, InvoiceDataSource.Host);
+        await rig.WriteBack().HandleAsync(saved, Ct);
+
+        var back = await rig.RowAsync(booking.Id);
+        Assert.Equal(first.OctorateBillingHash, back.OctorateBillingHash);
+        Assert.Null(back.OctorateBillingError);
+        Assert.Null(back.OctorateBillingErrorAt);
+        rig.Client.Verify(
+            c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2));
     }
 
     [Fact]
@@ -398,46 +492,41 @@ public class OctorateBillingSyncProofTests
         rig.Client.VerifyNoOtherCalls();
     }
 
-    // --- The pre-fill never fails the import --------------------------------------------------------------------------------------------
+    // --- The pre-fill: nothing swallowed, and never the import's problem -----------------------------------------------------------------
 
     [Fact]
-    public async Task PreFill_FailuresAndLimits_NeverFailTheImport()
+    public async Task PreFill_EveryFailureOfOctorate_IsDeliveredAgain_NeverSwallowed()
     {
         var rig = new Rig();
         var booking = await rig.SeedBookingAsync();
         var created = Created(booking, BookingEventOrigin.Octorate);
         var logger = new CapturingLogger<InvoiceDataFromOctorateHandler>();
 
-        // An unknown record, no connection, a request Octorate rejects: the same answer five times would help nobody, so nothing is thrown and the
-        // booking has no data from Octorate.
-        foreach (var leftAlone in new OctorateException[]
-                 {
-                     OctorateAuthException.NotConnected(),
-                     new OctorateNotFoundException(),
-                     new OctorateRequestRejectedException(400),
-                 })
-        {
-            rig.Client.Setup(c => c.GetBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<CancellationToken>())).ThrowsAsync(leftAlone);
-            await rig.FromOctorate(logger: logger).HandleAsync(created, Ct);
-            Assert.Null(await rig.RowOrNullAsync(booking.Id));
-        }
-
-        // Octorate has nothing for the booker: nothing is saved either.
+        // Octorate has nothing for the booker (the reservation names no customer record, or the record holds no billing data): not an error, and
+        // nothing is saved either.
         rig.Client.Setup(c => c.GetBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<CancellationToken>())).ReturnsAsync((OctorateBillingData?)null);
         await rig.FromOctorate().HandleAsync(created, Ct);
         Assert.Null(await rig.RowOrNullAsync(booking.Id));
 
-        // A failing or refused call is thrown, so that the outbox delivers the event again (the import it came from is long committed): no answer, a
-        // 5xx, the rate limit, a refusal of the guests' data before the outbound IPs are whitelisted (D24).
-        foreach (var redelivered in new OctorateException[]
+        // Every failure of the call is thrown, whatever it is, so that the outbox delivers the event again (the import it came from is long committed)
+        // and, after five deliveries, keeps it dead-lettered with the code: the booking may have no data at all, so it has no row of its own to keep the
+        // code on, and nothing is swallowed. No answer, a 5xx, the rate limit, a refusal of the guests' data before the outbound IPs are whitelisted
+        // (D24), but also a record or a reservation Octorate does not know, a request it rejects, a conflict, the wrong environment, no connection.
+        foreach (var failure in new OctorateException[]
                  {
                      new OctorateServerException(503),
                      new OctorateRateLimitException(429),
                      OctorateAuthException.Refused(403),
+                     OctorateAuthException.NotConnected(),
+                     new OctorateNotFoundException(),
+                     new OctorateRequestRejectedException(400),
+                     new OctorateConflictException(),
+                     new OctorateWrongEnvironmentException(403),
                  })
         {
-            rig.Client.Setup(c => c.GetBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<CancellationToken>())).ThrowsAsync(redelivered);
-            await Assert.ThrowsAsync(redelivered.GetType(), () => rig.FromOctorate(logger: logger).HandleAsync(created, Ct));
+            rig.Client.Setup(c => c.GetBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<CancellationToken>())).ThrowsAsync(failure);
+            await Assert.ThrowsAsync(failure.GetType(), () => rig.FromOctorate(logger: logger).HandleAsync(created, Ct));
+            Assert.Contains(failure.Code, logger.AllOutput, StringComparison.Ordinal);
         }
 
         Assert.Null(await rig.RowOrNullAsync(booking.Id));
@@ -445,6 +534,7 @@ public class OctorateBillingSyncProofTests
         // The log names the booking and the code of each failure.
         Assert.Contains(booking.Id.ToString(), logger.AllOutput, StringComparison.Ordinal);
         Assert.Contains(OctorateAuthException.RefusedCode, logger.AllOutput, StringComparison.Ordinal);
+        Assert.Contains(OctorateAuthException.NotConnectedCode, logger.AllOutput, StringComparison.Ordinal);
     }
 
     [Fact]

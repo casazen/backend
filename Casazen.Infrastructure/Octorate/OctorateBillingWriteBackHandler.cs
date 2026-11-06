@@ -12,21 +12,25 @@ namespace Casazen.Infrastructure.Octorate;
 /// <summary>
 /// The billing data saved in CasaZen reaches Octorate when Octorate is the issuer of the documents (E06/F02/US01/T04, FIS-02 point 1, AC-NF82-1): the
 /// consumer of <c>InvoiceDataSaved</c>. If <see cref="IDocumentIssuerService"/> says Octorate issues for the booking and the booking has a reservation
-/// there, the data is written to the customer record of the booker (<see cref="IOctorateApiClient.UpsertBookerBillingDataAsync"/>), once for each change.
+/// there, the data is written to the customer record the reservation names (<see cref="IOctorateApiClient.UpsertBookerBillingDataAsync"/>), once for
+/// each change.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>Once for each change.</b> The data is read from the booking when the event is handled, not from the event (which carries no personal data,
 /// ADR-022-R21), and hashed as it is written (<see cref="OctorateBillingMapping.HashOf"/>); the hash of the last successful write is kept on the invoice
 /// data (<see cref="BookingInvoiceData.OctorateBillingHash"/>, encrypted). The same hash again, whether it is an event delivered again, two saves in a row or
-/// a save that changed nothing Octorate keeps, writes nothing. The hash is stored after the call: a write whose answer was lost is made again, and the
-/// call is a <c>PUT</c> of the same members.</item>
+/// a save that changed nothing Octorate keeps, writes nothing. The hash is stored after the call, and only for a <c>PUT</c> that was sent and that Octorate
+/// answered 2xx: a write whose answer was lost is made again (the call is a <c>PUT</c> of the same members), and a reservation that names no customer
+/// record, to which nothing was sent, is never marked as written.</item>
 /// <item><b>No echo.</b> What came from Octorate (<see cref="InvoiceDataSource.Octorate"/>) is never sent back.</item>
-/// <item><b>Never the host's problem.</b> The host's save committed the data and the event before this runs; a failure here is never an error shown to
-/// it. A failing or refused call (no answer, a 5xx, the rate limit, a refusal of the credentials or of the guests' sensitive data before CasaZen's
-/// outbound IPs are whitelisted, D24) is logged with ids and a code and rethrown, so the outbox delivers the event again and, after five deliveries,
-/// keeps it dead-lettered with the code (AC-E06-F02-US01-03). A record Octorate does not know, a request it rejects, a conflict or no connection is
-/// logged with ids and a code and left: the same answer five times would help nobody, and the data is written at the next save. No log carries a
+/// <item><b>Never the host's problem, never silent.</b> The host's save committed the data and the event before this runs; a failure here is never an error
+/// shown to it. Every failure leaves its code on the invoice data (<see cref="BookingInvoiceData.OctorateBillingError"/> and its time), whatever happens
+/// to the event, and is logged with ids and a code. A failing or refused call (no answer, a 5xx, the rate limit, a refusal of the credentials or of the
+/// guests' sensitive data before CasaZen's outbound IPs are whitelisted, D24) is also rethrown, so the outbox delivers the event again and, after five
+/// deliveries, keeps it dead-lettered with the code (AC-E06-F02-US01-03). A record Octorate does not know, a request it rejects, a conflict, the wrong
+/// environment, no connection, or a reservation that names no customer record is not rethrown: the same answer five times would help nobody, and the
+/// data is written at the next save. The code stays until a write succeeds (or the data is again what Octorate holds). No log, and no code, carries a
 /// name, a number or an address.</item>
 /// <item><b>Not lost on the way.</b> A booking CasaZen creates on Octorate whose reservation is still being created, or whose confirmation is waiting in
 /// the outbox, makes the event be delivered again after the create (<see cref="OctorateBillingPendingException"/>) instead of dropping the data. A booking
@@ -103,14 +107,23 @@ public sealed class OctorateBillingWriteBackHandler(
         if (row is null)
             return;
 
-        // Nothing about the recipient (only the guest's «yes»), or nothing Octorate takes (a person's name alone): an empty record is never sent.
+        // Nothing about the recipient (only the guest's «yes»), or nothing Octorate takes (a name alone): an empty record is never sent.
         var data = OctorateBillingData.From(InvoiceDataView.Of(row));
         if (data is null || !OctorateBillingMapping.HasMembersToWrite(data))
             return;
 
         var hash = OctorateBillingMapping.HashOf(data);
         if (string.Equals(row.OctorateBillingHash, hash, StringComparison.Ordinal))
+        {
+            // What Octorate holds is what the row holds now: the failure of an earlier, different write is not the state of the booking any more.
+            if (row.OctorateBillingError is not null)
+            {
+                ClearFailure(row);
+                await db.SaveChangesAsync(ct);
+            }
+
             return;
+        }
 
         bool written;
         using (orgScope.Use(orgId))
@@ -119,23 +132,22 @@ public sealed class OctorateBillingWriteBackHandler(
             {
                 written = await client.UpsertBookerBillingDataAsync(accommodationId, reservationId, data, ct);
             }
-            catch (OctorateException ex) when (OctorateBillingSyncRules.IsRetryable(ex))
-            {
-                logger.LogWarning(
-                    "Billing data of booking {BookingId} of org {OrgId} not written to Octorate: {Code}; the event is delivered again",
-                    bookingId,
-                    orgId,
-                    ex.Code);
-                throw;
-            }
             catch (OctorateException ex)
             {
+                var retry = OctorateBillingSyncRules.IsRetryable(ex);
                 logger.LogWarning(
-                    "Billing data of booking {BookingId} of org {OrgId} not written to Octorate: {Code} (HTTP {Status}); it is written at the next save of the invoice data",
+                    "Billing data of booking {BookingId} of org {OrgId} not written to Octorate: {Code} (HTTP {Status}); {Next}",
                     bookingId,
                     orgId,
                     ex.Code,
-                    ex.OctorateStatusCode);
+                    ex.OctorateStatusCode,
+                    retry ? "the event is delivered again" : "it is written at the next save of the invoice data");
+
+                // The code stays on the data, for whoever asks why this booking is not on Octorate; then the failure goes where it must.
+                await RecordFailureAsync(row, ex.Code, ct);
+                if (retry)
+                    throw;
+
                 return;
             }
         }
@@ -144,16 +156,37 @@ public sealed class OctorateBillingWriteBackHandler(
         if (!written)
         {
             logger.LogInformation(
-                "Billing data of booking {BookingId} of org {OrgId} not written to Octorate: its reservation names no customer record",
+                "Billing data of booking {BookingId} of org {OrgId} not written to Octorate: {Code}",
                 bookingId,
-                orgId);
+                orgId,
+                OctorateBillingSyncRules.NoCustomerRecordCode);
+            await RecordFailureAsync(row, OctorateBillingSyncRules.NoCustomerRecordCode, ct);
             return;
         }
 
         row.OctorateBillingHash = hash;
         row.OctorateBillingSentAt = timeProvider.GetUtcNow().UtcDateTime;
+        ClearFailure(row);
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Billing data of booking {BookingId} of org {OrgId} written to Octorate", bookingId, orgId);
+    }
+
+    /// <summary>
+    /// Keeps the code of a failure, and when it happened, on the invoice data. A code and a time, never a value of the data. A failure to save it is not
+    /// caught: the event is delivered again, and the write is tried again with it.
+    /// </summary>
+    private async Task RecordFailureAsync(BookingInvoiceData row, string code, CancellationToken ct)
+    {
+        var kept = code.Length > BookingInvoiceData.OctorateBillingErrorMaxLength ? code[..BookingInvoiceData.OctorateBillingErrorMaxLength] : code;
+        row.OctorateBillingError = kept;
+        row.OctorateBillingErrorAt = timeProvider.GetUtcNow().UtcDateTime;
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static void ClearFailure(BookingInvoiceData row)
+    {
+        row.OctorateBillingError = null;
+        row.OctorateBillingErrorAt = null;
     }
 
     /// <summary>

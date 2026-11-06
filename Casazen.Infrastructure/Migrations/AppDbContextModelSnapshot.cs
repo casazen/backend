@@ -895,6 +895,13 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("Name")
                         .HasColumnType("text");
 
+                    b.Property<string>("OctorateBillingError")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("OctorateBillingErrorAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("OctorateBillingHash")
                         .HasColumnType("text");
 
