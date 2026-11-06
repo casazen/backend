@@ -889,7 +889,8 @@ migration. `GET api/public/stays` (the parameters of `stays`), `GET api/public/s
   the register and, once the guest has a payment to complete, a **consent contact of the CRM** (origin `DirectBooking`, source
   `BookingCheckout`, version, IP, time); the e-mail one also gets the double opt-in message ([crm-consent.md](crm-consent.md) § 3). WhatsApp
   needs the guest's phone number: 422 `direct_booking_whatsapp_requires_phone` without one the CRM can store. `Guest.MarketingConsent`
-  is set by the e-mail channel only (the flag a host's recorded withdrawal looks at, read as a consent to the e-mail address). The contact
+  is set by the e-mail channel only (the flag a host's recorded withdrawal looks at, read as a consent to the e-mail address; the withdrawal
+  also suppresses the open CRM contacts of the guest, so a WhatsApp consent is ended too, [gdpr.md](gdpr.md)). The contact
   is made after the booking is saved and **never fails the checkout**: without the key of the contact index (`Crm__ContactIndexKey`,
   the CRM is closed) or if it fails, the register has the consent, with its channel in the note (`channel=email`, `channel=whatsapp`), and
   the CRM sync makes the e-mail contact later; it does not make the WhatsApp contact of a checkout (the guest gives that consent again on the

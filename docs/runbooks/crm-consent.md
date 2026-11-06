@@ -105,7 +105,8 @@ address, so the profile of the guest reads it too.
   `channel=email` or `channel=whatsapp`: the register has no column for it and the two rows of a guest who ticks both would be the same),
   **written in the same insert as the booking and the guest** (`IBookingRepository.AddWithGuestConsentsAsync`): a checkout that loses the dates
   or whose payment cannot start leaves none of them. The e-mail channel also marks `Guest.MarketingConsent` (the flag the host's recorded
-  withdrawal looks at).
+  withdrawal looks at); a WhatsApp consent does not, but the host's withdrawal on the guest's request ends it all the same: it suppresses the
+  open contacts of the guest as well as the flag ([`gdpr.md`](gdpr.md), `GdprService.UpdateMarketingConsentAsync`).
 - **Contacts.** Once the guest has a payment to complete (or a request to confirm) each channel becomes a consent contact
   (`ICrmContactService.RecordConsentAsync`: origin `DirectBooking`, source `BookingCheckout`, the version, the IP, the time, the guest and the
   default language of the org), and the e-mail one gets its double opt-in message (§ 3). The history row is not written twice
