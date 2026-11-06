@@ -17,7 +17,8 @@ public interface IBookingOctorateSyncService
     /// <exception cref="Exception">
     /// Octorate did not answer (or answered 429 or 5xx) and the reservation was not found by its reference, or the rooms of the target could not
     /// be read: the sync is <c>Failed</c> with <c>octorate_unavailable</c> and the exception propagates, so the outbox dispatcher delivers the
-    /// event again (ADR-022-R4, R5).
+    /// event again (ADR-022-R4, R5). The same when the reservation exists but a payment of the booking could not be recorded on it: the sync is
+    /// <c>Failed</c> with <c>octorate_payments_not_recorded</c> and the exception propagates; the delivery that follows records what is left.
     /// </exception>
     Task<OctorateSyncState?> PushCreateAsync(Guid bookingId, CancellationToken ct);
 
@@ -34,8 +35,11 @@ public interface IBookingOctorateSyncService
     /// Records a paid payment of a mirrored booking on its Octorate reservation, once (E08/F01/US01/T04, AC-NF74-4, D9): income, "not a card
     /// charge", with the Stripe PaymentIntent id (or <c>casazen-{paymentId}</c> for a payment the host recorded) as <c>transaction</c>, the
     /// configured <c>paymentMode</c> and the amount. Nothing for a booking that is not mirrored, of a channel (the channel collects), whose
-    /// property is write-blocked, or a payment already recorded. A payment of a booking whose reservation is still being created makes the event
-    /// be delivered again (<c>OctorateSyncPendingException</c>); the create also records the payments paid before it succeeded.
+    /// property is write-blocked, or a payment already recorded. A payment of a booking whose reservation is being created, or is about to be (its
+    /// confirmation still waits in the outbox: the booking site records the payment first), makes the event be delivered again
+    /// (<c>OctorateSyncPendingException</c>); the create also records the payments paid before it succeeded. On a mirror marked <c>Failed</c>
+    /// because a payment could not be recorded, the event records every payment still to be recorded and closes the mirror, like the
+    /// confirmation does: it is never consumed with no effect.
     /// </summary>
     Task PushPaymentAsync(Guid paymentId, CancellationToken ct);
 }

@@ -979,13 +979,17 @@ site) on a property whose mapping is confirmed is created on Octorate once, by `
   `OctorateReservationId`, `OctorateUpdatedAt`, `Synced` and `LastSyncedAt` in one save.
 - *Payments* (E08/F01/US01/T04, D9). `PaymentSucceeded` (payload `PaymentEventPayload`: ids, amount, currency, method; dedup key
   `payment-succeeded:{paymentId}`) is recorded with the status change by the payment webhook (a payment that confirms or pays a confirmed
-  booking; not one refunded at once), the deferred charge and "Registra incasso". `OctoratePaymentHandler` records the payment of a `Synced`
-  booking whose property still has a target on its reservation (`POST /rest/v1/reservation/{acc}/{id}/payment`): `transaction` = the
+  booking; not one refunded at once), the deferred charge and "Registra incasso". `OctoratePaymentHandler` records the payment of a
+  booking whose reservation exists (its mirror `Synced`; or `Failed` on its payments, and then every payment still to be recorded, like the
+  confirmation does) and whose property still has a target, on its reservation (`POST /rest/v1/reservation/{acc}/{id}/payment`): `transaction` = the
   PaymentIntent id or `casazen-{paymentId}`, `paymentMode` from `Octorate:PaymentModes` (`Stripe`, `CashOnArrival`, `BankTransfer`), the amount,
   income and never a card charge. Once: `Payment.OctorateTransactionId` (unique per org) and `OctorateRegisteredAt`; the reservation is read first,
   so a registration whose answer was lost is not sent again. The payment of a reservation that exists needs only the accommodation: the rooms
-  (and the PMS rooms) are not read. A payment that arrives while the create is `Pending` is delivered again; the create
-  records the payments paid before it succeeded. Nothing for a channel's booking or a booking that is not mirrored; refunds are not mirrored.
+  (and the PMS rooms) are not read. A payment that arrives while the create is `Pending`, or before the confirmation of a mirrored booking (the
+  booking site records the payment first and the confirmation still waits in the outbox), is delivered again, never consumed with no effect. The
+  create, and every later delivery of the confirmation or retry of the host once the reservation exists, records the payments paid before it or
+  whose recording failed, and swallows no error: the row is `Failed` `octorate_payments_not_recorded` and the exception goes up where the outbox
+  must deliver again. Nothing for a channel's booking or a booking that is not mirrored; refunds are not mirrored.
 
 | Method | Path | Policy | Description |
 |---|---|---|---|

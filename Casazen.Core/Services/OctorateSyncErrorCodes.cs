@@ -25,6 +25,12 @@ public static class OctorateSyncErrorCodes
     /// <summary>The retry endpoint was called for a sync that is neither failed nor in conflict (409).</summary>
     public const string NotRetryable = "octorate_sync_not_retryable";
 
+    /// <summary>
+    /// The reservation is on Octorate but a payment of the booking could not be recorded on it (Octorate did not answer or refused it, or
+    /// the way it was collected has no <c>paymentMode</c> configured): the delivery is repeated, and the host can ask again.
+    /// </summary>
+    public const string PaymentsNotRecorded = "octorate_payments_not_recorded";
+
     /// <summary>The resource key of the message of each code (Italian and English).</summary>
     public static IReadOnlyDictionary<string, string> MessageKeys { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -34,5 +40,6 @@ public static class OctorateSyncErrorCodes
         [ReservationChanged] = "OctorateSyncReservationChanged",
         [RoomNotChosen] = "OctorateSyncRoomNotChosen",
         [NotRetryable] = "OctorateSyncNotRetryable",
+        [PaymentsNotRecorded] = "OctorateSyncPaymentsNotRecorded",
     };
 }

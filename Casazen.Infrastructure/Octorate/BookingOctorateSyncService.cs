@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
@@ -33,6 +34,10 @@ namespace Casazen.Infrastructure.Octorate;
 /// again. The same holds for the read of the target itself (the rooms of the accommodation are read on Octorate): a failure there leaves a
 /// <c>Failed</c> row too, never a booking with no trace.</item>
 /// <item><b>Success</b>: <see cref="Booking.OctorateReservationId"/>, its <c>updateTime</c>, the state <c>Synced</c> in one save.</item>
+/// <item><b>Payments are never lost.</b> After the reservation exists (the create just made, or one that an earlier attempt or the import
+/// already linked), the payments of the booking paid before it, or whose recording failed, are recorded under the same lock. A payment that
+/// cannot be recorded is not swallowed: the row is marked <c>Failed</c> with <see cref="OctorateSyncErrorCodes.PaymentsNotRecorded"/> (the host
+/// sees it and can ask again) and the exception goes up where the outbox must deliver the event again.</item>
 /// <item><b>Logs</b> carry ids, states and codes: never a name, an amount or a body.</item>
 /// </list>
 /// </remarks>
@@ -61,16 +66,13 @@ public sealed class BookingOctorateSyncService(
             return null;
         }
 
+        // The reservation is there already (an earlier attempt made it, or the import matched its echo): what is left is its payments.
         if (booking.OctorateReservationId is not null)
-            return await StateOfAsync(bookingId, ct) ?? OctorateSyncState.Synced;
+            return await CompleteReservedAsync(booking, ct);
 
         // A booking of a channel is the channel's (it collects, it holds it), and one that came from Octorate is already there: no echo.
-        if (FiscalCopy.IsOtaBookingSource(booking.Source)
-            || booking.Status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn)
-            || booking.CheckOutDate < timeProvider.TodayInRome())
-        {
+        if (!IsMirrorable(booking.Source, booking.Status, booking.CheckOutDate))
             return null;
-        }
 
         // Before anything of this unit of work is changed: the lookup may save the only room of the mapping.
         OctorateTargetLookup lookup;
@@ -179,8 +181,7 @@ public sealed class BookingOctorateSyncService(
             sync.Attempts);
 
         // The payments made before the reservation existed (their event found nothing to record them on): recorded now, under the same lock.
-        await RegisterPaidPaymentsAsync(booking.OrgId, bookingId, target.AccommodationId, reservation.Id, ct);
-        return OctorateSyncState.Synced;
+        return await CatchUpPaymentsAsync(booking.OrgId, bookingId, target.AccommodationId, reservation.Id, ct);
     }
 
     public async Task PushPaymentAsync(Guid paymentId, CancellationToken ct)
@@ -196,7 +197,7 @@ public sealed class BookingOctorateSyncService(
         var booking = await db.Bookings
             .AsNoTracking()
             .Where(b => b.Id == payment.BookingId)
-            .Select(b => new { b.Id, b.OrgId, b.PropertyId, b.Source, b.OctorateReservationId })
+            .Select(b => new { b.Id, b.OrgId, b.PropertyId, b.Status, b.Source, b.CheckOutDate, b.OctorateReservationId })
             .FirstOrDefaultAsync(ct);
 
         // A channel collects its own bookings: nothing of theirs is recorded on Octorate.
@@ -204,18 +205,31 @@ public sealed class BookingOctorateSyncService(
             return;
 
         var state = await StateOfAsync(booking.Id, ct);
-        if (booking.OctorateReservationId is null)
+
+        // The push of the booking is under way (the reservation is being created, or the import has just linked it and the push is closing its
+        // mirror): delivered again after it, never dropped and never recorded twice.
+        if (state == OctorateSyncState.Pending)
+            throw new OctorateSyncPendingException(booking.Id);
+
+        if (booking.OctorateReservationId is not { } reservationId)
         {
-            // The reservation is being created: delivered again after the create, never dropped and never recorded twice.
-            if (state == OctorateSyncState.Pending)
+            // No reservation and no row yet: the booking site records the payment before the confirmation, and the dispatcher delivers them in
+            // that order, so the create of a mirrored booking is still to come. The event is delivered again after it, not consumed with no effect
+            // (the create also records the payments paid before it). When no confirmation of the booking is waiting there is no create to come.
+            if (state is null
+                && IsMirrorable(booking.Source, booking.Status, booking.CheckOutDate)
+                && await CreateIsComingAsync(booking.OrgId, booking.Id, ct)
+                && await targets.AccommodationOfAsync(booking.PropertyId, ct) is not null)
+            {
                 throw new OctorateSyncPendingException(booking.Id);
+            }
 
             // Not mirrored, or its create failed: there is no reservation to record the payment on (a create that succeeds later records it).
             return;
         }
 
-        // A reservation that came from Octorate (no sync row) or a mirror in error: CasaZen records nothing on it.
-        if (state != OctorateSyncState.Synced)
+        // A reservation that came from Octorate has no row of ours: CasaZen records nothing on it.
+        if (state is null)
             return;
 
         // A property no longer mirrored, or write-blocked, records nothing. Only the accommodation is needed: the rooms are not read.
@@ -226,7 +240,64 @@ public sealed class BookingOctorateSyncService(
         await using var hold = await PostgresAdvisoryLocks.TryAcquireSessionLockAsync(
                 db, PostgresAdvisoryLocks.Scope.OctorateBookingSync, booking.Id.ToString("N"), ct)
             ?? throw new OctorateSyncBusyException(booking.Id);
-        await RegisterPaymentAsync(booking.OrgId, accommodation, booking.OctorateReservationId, paymentId, ct);
+
+        // The reservation exists but its mirror is marked (a payment could not be recorded): this payment is recorded with the others, and the
+        // mirror closed when they all are, as the confirmation does. The event is never consumed with no effect.
+        if (state == OctorateSyncState.Failed)
+        {
+            await CatchUpPaymentsAsync(booking.OrgId, booking.Id, accommodation, reservationId, ct);
+            return;
+        }
+
+        await RegisterPaymentAsync(booking.OrgId, accommodation, reservationId, paymentId, ct);
+    }
+
+    /// <summary>
+    /// A booking that has its reservation on Octorate already (an earlier attempt made it, or the import matched its echo and linked it): the
+    /// mirror is closed and the payments still to be recorded are recorded (they were paid before the reservation was there, or their recording
+    /// failed). A reservation that came from Octorate or a channel has no row of ours: nothing is recorded on it.
+    /// </summary>
+    private async Task<OctorateSyncState?> CompleteReservedAsync(BookingFacts booking, CancellationToken ct)
+    {
+        var state = await StateOfAsync(booking.Id, ct);
+        if (state is null || FiscalCopy.IsOtaBookingSource(booking.Source))
+            return state ?? OctorateSyncState.Synced;
+
+        await using var hold = await PostgresAdvisoryLocks.TryAcquireSessionLockAsync(
+                db, PostgresAdvisoryLocks.Scope.OctorateBookingSync, booking.Id.ToString("N"), ct)
+            ?? throw new OctorateSyncBusyException(booking.Id);
+
+        // A property no longer mirrored, or write-blocked, records no payment, but its reservation exists: the create is done.
+        var accommodation = await targets.AccommodationOfAsync(booking.PropertyId, ct);
+        if (accommodation is null)
+            return await CloseMirrorAsync(booking.OrgId, booking.Id, ct);
+
+        return await CatchUpPaymentsAsync(booking.OrgId, booking.Id, accommodation, booking.OctorateReservationId!, ct);
+    }
+
+    /// <summary>
+    /// The payments of a booking whose reservation exists, recorded under the lock the caller holds: those paid before the reservation was there
+    /// and those whose recording failed. Every payment is tried, so one that cannot be recorded does not hold back the others. All recorded: the
+    /// mirror is <c>Synced</c>. One failed: the row is marked <c>Failed</c> with <see cref="OctorateSyncErrorCodes.PaymentsNotRecorded"/> (the host
+    /// sees it and can ask again) and the exception goes up where the outbox must deliver the event again (no answer, 429, 5xx, a missing
+    /// <c>paymentMode</c>, the database); a refusal of Octorate is logged and left to the host.
+    /// </summary>
+    private async Task<OctorateSyncState> CatchUpPaymentsAsync(
+        Guid orgId,
+        Guid bookingId,
+        string accommodationId,
+        string reservationId,
+        CancellationToken ct)
+    {
+        var (retry, refused) = await RegisterPaidPaymentsAsync(orgId, bookingId, accommodationId, reservationId, ct);
+        if (retry is null && refused is null)
+            return await CloseMirrorAsync(orgId, bookingId, ct);
+
+        await MarkPaymentsNotRecordedAsync(orgId, bookingId, ct);
+        if (retry is not null)
+            ExceptionDispatchInfo.Capture(retry).Throw();
+
+        return OctorateSyncState.Failed;
     }
 
     /// <summary>
@@ -271,8 +342,12 @@ public sealed class BookingOctorateSyncService(
             "Octorate payment {PaymentId} of org {OrgId}: recorded on reservation {ReservationId} ({Mode})", paymentId, orgId, reservationId, mode);
     }
 
-    /// <summary>The paid payments of a booking not recorded on Octorate yet; one that cannot be recorded now is left to its own event.</summary>
-    private async Task RegisterPaidPaymentsAsync(
+    /// <summary>
+    /// Records the paid payments of a booking that are not on Octorate yet, in the order they came in. A payment that cannot be recorded does not
+    /// stop the others, and its error is not lost: the first one that the outbox must deliver again is returned as <c>Retry</c> (no answer, 429,
+    /// 5xx, a missing <c>paymentMode</c>, the database), the first one that only a person can settle (Octorate refused it) as <c>Refused</c>.
+    /// </summary>
+    private async Task<(Exception? Retry, Exception? Refused)> RegisterPaidPaymentsAsync(
         Guid orgId,
         Guid bookingId,
         string accommodationId,
@@ -285,20 +360,34 @@ public sealed class BookingOctorateSyncService(
                         && p.BookingId == bookingId
                         && p.Status == PaymentStatus.Completed
                         && p.OctorateTransactionId == null)
+            .OrderBy(p => p.ProcessedAt ?? p.CreatedAt)
+            .ThenBy(p => p.Id)
             .Select(p => p.Id)
             .ToListAsync(ct);
+
+        Exception? retry = null;
+        Exception? refused = null;
         foreach (var paymentId in paid)
         {
             try
             {
                 await RegisterPaymentAsync(orgId, accommodationId, reservationId, paymentId, ct);
             }
-            catch (Exception ex) when (ex is OctorateException or InvalidOperationException or DbUpdateException)
+            catch (Exception ex) when (ex is OctorateException or InvalidOperationException or ArgumentException or DbUpdateException)
             {
                 logger.LogWarning(
-                    "Octorate push of booking {BookingId}: payment {PaymentId} not recorded now ({Error})", bookingId, paymentId, ex.GetType().Name);
+                    "Octorate push of booking {BookingId}: payment {PaymentId} not recorded ({Error})", bookingId, paymentId, ex.GetType().Name);
+                if (ex is ArgumentException or (OctorateException and not (OctorateServerException or OctorateRateLimitException)))
+                    refused ??= ex;
+                else
+                    retry ??= ex;
+
+                // A save that failed leaves its payment in the tracker: forgotten, so it is not saved again with the next one.
+                db.ChangeTracker.Clear();
             }
         }
+
+        return (retry, refused);
     }
 
     /// <summary>The <c>transaction</c> of a payment on Octorate: the Stripe PaymentIntent id, or <c>casazen-{paymentId}</c> for one the host recorded.</summary>
@@ -383,6 +472,28 @@ public sealed class BookingOctorateSyncService(
             .Where(s => s.BookingId == bookingId)
             .Select(s => (OctorateSyncState?)s.State)
             .FirstOrDefaultAsync(ct);
+
+    /// <summary>
+    /// A booking CasaZen creates on Octorate: not a channel's (it collects, it holds it), confirmed or in the house, its stay not over. The
+    /// same rule for the create and for the payment that waits for it.
+    /// </summary>
+    private bool IsMirrorable(BookingSource source, BookingStatus status, DateTime checkOutDate) =>
+        !FiscalCopy.IsOtaBookingSource(source)
+        && (status is BookingStatus.Confirmed or BookingStatus.CheckedIn)
+        && checkOutDate >= timeProvider.TodayInRome();
+
+    /// <summary>The confirmation of the booking is still waiting in the outbox: its handler creates the reservation and records the payments paid before it.</summary>
+    private Task<bool> CreateIsComingAsync(Guid orgId, Guid bookingId, CancellationToken ct) =>
+        db.OutboxEvents
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .AnyAsync(
+                e => e.OrgId == orgId
+                     && e.EntityId == bookingId
+                     && e.EventType == DomainEventType.BookingConfirmed
+                     && e.DispatchedAt == null
+                     && !e.DeadLettered,
+                ct);
 
     private static OctorateReservationCreate RequestOf(BookingFacts booking)
     {
@@ -537,6 +648,54 @@ public sealed class BookingOctorateSyncService(
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// The reservation of the booking exists: its mirror becomes <c>Synced</c> when it was <c>Pending</c> (the import linked the reservation before
+    /// the push could close the mirror) or <c>Failed</c> on a create or on its payments (the host asked again). The row of another operation
+    /// (a change, a cancellation) is left as it is. Returns the state of the row.
+    /// </summary>
+    private async Task<OctorateSyncState> CloseMirrorAsync(Guid orgId, Guid bookingId, CancellationToken ct)
+    {
+        var sync = await db.OctorateBookingSyncs.FirstOrDefaultAsync(s => s.BookingId == bookingId && s.OrgId == orgId, ct);
+        if (sync is null)
+            return OctorateSyncState.Synced;
+
+        if (sync.State != OctorateSyncState.Synced && sync.LastOperation is OctorateSyncOperation.Create or OctorateSyncOperation.Payment)
+        {
+            var now = UtcNow;
+            sync.State = OctorateSyncState.Synced;
+            sync.ErrorCode = null;
+            sync.LastSyncedAt = now;
+            sync.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+        }
+
+        return sync.State;
+    }
+
+    /// <summary>
+    /// A payment of the booking could not be recorded: its row is <c>Failed</c> with <see cref="OctorateSyncErrorCodes.PaymentsNotRecorded"/>, so the
+    /// host sees it and can ask again (the retry records what is still to be recorded). The reservation itself exists.
+    /// </summary>
+    private async Task MarkPaymentsNotRecordedAsync(Guid orgId, Guid bookingId, CancellationToken ct)
+    {
+        // What a failed save left in the tracker is forgotten, so it is not saved again with the row.
+        db.ChangeTracker.Clear();
+
+        var sync = await db.OctorateBookingSyncs.FirstOrDefaultAsync(s => s.BookingId == bookingId && s.OrgId == orgId, ct);
+        if (sync is null)
+            return;
+
+        sync.State = OctorateSyncState.Failed;
+        sync.LastOperation = OctorateSyncOperation.Payment;
+        sync.ErrorCode = OctorateSyncErrorCodes.PaymentsNotRecorded;
+        sync.UpdatedAt = UtcNow;
+        await db.SaveChangesAsync(ct);
+        logger.LogWarning(
+            "Octorate push of booking {BookingId}: its reservation exists but its payments are not all recorded ({Code})",
+            bookingId,
+            OctorateSyncErrorCodes.PaymentsNotRecorded);
+    }
+
     private OctorateBookingSync NewSync(BookingFacts booking, DateTime now)
     {
         var sync = new OctorateBookingSync
@@ -579,8 +738,8 @@ public sealed class OctorateSyncBusyException(Guid bookingId)
     : Exception($"Booking {bookingId} is being sent to Octorate by another worker: delivered again later.");
 
 /// <summary>
-/// A payment of a booking whose reservation is still being created on Octorate (E08/F01/US01/T04): the event is delivered again after the
-/// create, so the payment is never dropped and never recorded twice.
+/// A payment of a booking whose reservation is still being created on Octorate, or is about to be (E08/F01/US01/T04): the event is delivered
+/// again after the create, so the payment is never dropped and never recorded twice.
 /// </summary>
 public sealed class OctorateSyncPendingException(Guid bookingId)
-    : Exception($"The reservation of booking {bookingId} is still being created on Octorate: the payment is delivered again later.");
+    : Exception($"The reservation of booking {bookingId} is not on Octorate yet: the payment is delivered again later.");

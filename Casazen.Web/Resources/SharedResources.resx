@@ -4665,4 +4665,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OctorateSyncNotRetryable" xml:space="preserve">
     <value>Questa prenotazione non ha un invio al channel manager da ripetere.</value>
   </data>
+  <data name="OctorateSyncPaymentsNotRecorded" xml:space="preserve">
+    <value>La prenotazione è nel channel manager, ma non tutti gli incassi sono stati registrati. Controlla e riprova.</value>
+  </data>
 </root>
