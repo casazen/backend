@@ -72,7 +72,9 @@ public class BookingsControllerTests
             CreatePropertyICalSyncService(),
             Mock.Of<IOtaStayService>(),
             _mockLogger.Object,
-            Options.Create(new BookingsOptions { DefaultPageSize = 10 }));
+            Options.Create(new BookingsOptions { DefaultPageSize = 10 }),
+            Mock.Of<IBookingOctorateSyncReader>(),
+            OtaChannelActionPolicy.Closed);
 
     private static PropertyICalSyncService CreatePropertyICalSyncService()
     {

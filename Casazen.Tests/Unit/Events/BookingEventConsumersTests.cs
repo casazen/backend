@@ -3,6 +3,7 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -15,6 +16,7 @@ using Casazen.Tests.Unit.Push;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.Extensions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -432,6 +434,41 @@ public class BookingEventConsumersTests : IAsyncLifetime
         var descriptor = Assert.Single(services, d => d.ServiceType == typeof(IChannelManagerAvailability));
         Assert.Equal(typeof(ChannelManagerAvailabilityService), descriptor.ImplementationType);
         Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+    }
+
+    [Fact]
+    public void AddCasazenBookingOperations_RegistersTheReaderOfTheMirrorOnOctorate()
+    {
+        var services = new ServiceCollection();
+
+        services.AddCasazenBookingOperations();
+
+        // BookingsController takes it as a constructor parameter (E08/F03/US03/T02): without this registration the container cannot build the controller
+        // and no booking list or booking page answers. Scoped, as the context it reads through.
+        var descriptor = Assert.Single(services, d => d.ServiceType == typeof(IBookingOctorateSyncReader));
+        Assert.Equal(typeof(BookingOctorateSyncReader), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+    }
+
+    [Fact]
+    public void AddCasazenBookingOperations_RegistersThePolicyOfTheChannelsAsASingletonThatReadsTheConfiguration()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { [$"{OctorateChannelActionsOptions.SectionName}:Airbnb:CanCancel"] = "true" })
+            .Build());
+
+        services.AddCasazenBookingOperations();
+
+        // BookingsController and BookingLifecycleController take it as a constructor parameter (E08/F03/US03/T02): the changeOptions of every booking answer
+        // are the configured policy's, not a closed one by default. One instance for the process, built from Octorate:ChannelActions.
+        var descriptor = Assert.Single(services, d => d.ServiceType == typeof(OtaChannelActionPolicy));
+        Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+        using var provider = services.BuildServiceProvider();
+        var policy = provider.GetRequiredService<OtaChannelActionPolicy>();
+        Assert.Same(policy, provider.GetRequiredService<OtaChannelActionPolicy>());
+        Assert.True(policy.For(BookingSource.Airbnb).CanCancel);
+        Assert.False(policy.For(BookingSource.BookingCom).CanCancel);
     }
 
     [Fact]

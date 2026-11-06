@@ -466,6 +466,85 @@ public class DemoShowcaseTests
         Assert.All(states.Where(s => s.Status != ChannelPublishStatus.ToFix), s => Assert.Null(s.ErrorCode));
     }
 
+    /// <summary>
+    /// NF-74, NF-77 (E08/F03/US03/T02): the booking page of the demo shows a booking of a channel with all its amounts and flags, one with only what
+    /// Octorate gives today, a booking of the booking site whose mirror is synced and a booking the host entered whose change Octorate refused. The
+    /// reservations, the amounts and the mirrors are invented (TEST) and come only with the bookings that can have them.
+    /// </summary>
+    [Fact]
+    public void BookingOtaAmounts_TheDemoHasTwoBookingsOfAChannelASyncedMirrorAndAConflict_AllInvented()
+    {
+        var stays = DemoShowcaseCatalog.Properties
+            .SelectMany(p => p.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.BookingOtaAmounts))
+            .ToList();
+
+        Assert.Contains(DemoShowcaseCatalog.Scenario.BookingOtaAmounts, DemoShowcaseCatalog.Scenarios);
+        Assert.NotEmpty(stays);
+        Assert.Equal(stays.Count, stays.Select(s => s.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(stays, s => Assert.EndsWith("@example.com", s.Email, StringComparison.Ordinal));
+        Assert.All(stays, s => Assert.NotNull(s.Ota));
+        Assert.All(stays, s => Assert.Equal(BookingStatus.Confirmed, s.Status));
+
+        // The reservation ids say TEST, fit the column and are unique (the index of the table is on the org and the id).
+        var reservationIds = stays.Select(s => s.Ota!.ReservationId).ToList();
+        Assert.Equal(reservationIds.Count, reservationIds.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(reservationIds, id =>
+        {
+            Assert.Contains("TEST", id, StringComparison.Ordinal);
+            Assert.InRange(id.Length, 1, Booking.OctorateReservationIdMaxLength);
+        });
+
+        // Two bookings of a channel: all the amounts and the flags, and only the amount paid (the rest is «not available»).
+        var channel = stays.Where(s => OtaChannelActionPolicy.IsChannelBooking(s.Source, s.Ota!.ReservationId)).ToList();
+        Assert.Equal(2, channel.Count);
+        var full = Assert.Single(channel, s => s.Ota!.Commission is not null).Ota!;
+        Assert.NotNull(full.Net);
+        Assert.NotNull(full.Paid);
+        Assert.NotNull(full.Balance);
+        Assert.NotNull(full.CompanyCollect);
+        Assert.NotNull(full.CommissionIncludedInPayments);
+        // What the host receives is what the guest paid less the channel's commission, and nothing is left to pay.
+        Assert.Equal(full.Paid - full.Commission, full.Net);
+        Assert.Equal(0m, full.Balance);
+        var sparse = Assert.Single(channel, s => s.Ota!.Commission is null).Ota!;
+        Assert.NotNull(sparse.Paid);
+        Assert.Null(sparse.Net);
+        Assert.Null(sparse.Balance);
+        Assert.Null(sparse.CompanyCollect);
+
+        // Every figure is to the cent, and a booking that is not of a channel has neither a figure nor a flag: its money is CasaZen's.
+        foreach (var figure in stays.SelectMany(s => new[] { s.Ota!.Commission, s.Ota.Net, s.Ota.Paid, s.Ota.Balance }).OfType<decimal>())
+            Assert.Equal(figure, decimal.Round(figure, 2));
+
+        Assert.All(stays.Except(channel), s =>
+        {
+            Assert.Null(s.Ota!.Commission);
+            Assert.Null(s.Ota.Net);
+            Assert.Null(s.Ota.Paid);
+            Assert.Null(s.Ota.Balance);
+            Assert.Null(s.Ota.CompanyCollect);
+            Assert.Null(s.Ota.CommissionIncludedInPayments);
+        });
+
+        // A booking of the booking site that CasaZen sent to Octorate: it has a reservation there and is not a booking of a channel.
+        var synced = Assert.Single(stays, s => s.Ota!.Sync?.State == OctorateSyncState.Synced);
+        Assert.Equal(BookingSource.Direct, synced.Source);
+        Assert.False(OtaChannelActionPolicy.IsChannelBooking(synced.Source, synced.Ota!.ReservationId));
+        Assert.Null(synced.Ota.Sync!.ErrorCode);
+
+        // A booking the host entered, whose change Octorate refused: a code CasaZen knows and the stay Octorate holds, which is not the booking's.
+        var conflict = Assert.Single(stays, s => s.Ota!.Sync?.State == OctorateSyncState.Conflict);
+        var mirror = conflict.Ota!.Sync!;
+        Assert.Equal(BookingSource.Manual, conflict.Source);
+        Assert.Contains(mirror.ErrorCode!, OctorateSyncErrorCodes.MessageKeys.Keys);
+        Assert.NotEqual(0, mirror.VersionCheckInShiftDays);
+        Assert.NotNull(mirror.VersionGuests);
+        Assert.True(OctorateBookingSync.IsRetryable(mirror.State));
+
+        // The channel bookings are mirrored by nobody: the import leaves no row for them.
+        Assert.All(channel, s => Assert.Null(s.Ota!.Sync));
+    }
+
     [Fact]
     public void CrmProfiles_TheDemoHasAReturningGuestAnOtaGuestADirectCustomerACheckInConsentAndTwoGuestsSharingAPhone_AllInvented()
     {
