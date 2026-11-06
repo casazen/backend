@@ -53,6 +53,9 @@ public static class BookingOperationsServiceCollectionExtensions
         // E08/F01/US02/T02 (NF-80): a booking that arrives from the channel manager on taken nights raises an urgent To do and an alert, and the
         // item closes by itself when the nights are free again.
         services.AddScoped<IEventHandler<DomainEvent>, BookingOverlapHandler>();
+
+        // E08/F03/US03/T02 (NF-74, NF-77): the state of the mirror of a booking, read for the booking answer (a read only, no push).
+        services.AddScoped<IBookingOctorateSyncReader, BookingOctorateSyncReader>();
         return services;
     }
 }

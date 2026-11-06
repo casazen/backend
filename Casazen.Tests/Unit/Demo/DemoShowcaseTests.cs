@@ -90,6 +90,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.TouristTaxRemittances.Select(tt => tt.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplacePartners.Select(partner => partner.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplaceActivations.Select(activation => activation.Scenario))
+            .Concat(DemoShowcaseCatalog.FiscalIssuerProfiles.Select(profile => profile.Scenario))
             .Concat(DemoShowcaseCatalog.TouristTaxChannelRules.Select(rule => rule.Scenario))
             .Concat(DemoShowcaseCatalog.WelcomeLinks.Select(link => link.Scenario))
             .ToHashSet(StringComparer.Ordinal);
@@ -492,6 +493,85 @@ public class DemoShowcaseTests
         Assert.All(states.Where(s => s.Status != ChannelPublishStatus.ToFix), s => Assert.Null(s.ErrorCode));
     }
 
+    /// <summary>
+    /// NF-74, NF-77 (E08/F03/US03/T02): the booking page of the demo shows a booking of a channel with all its amounts and flags, one with only what
+    /// Octorate gives today, a booking of the booking site whose mirror is synced and a booking the host entered whose change Octorate refused. The
+    /// reservations, the amounts and the mirrors are invented (TEST) and come only with the bookings that can have them.
+    /// </summary>
+    [Fact]
+    public void BookingOtaAmounts_TheDemoHasTwoBookingsOfAChannelASyncedMirrorAndAConflict_AllInvented()
+    {
+        var stays = DemoShowcaseCatalog.Properties
+            .SelectMany(p => p.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.BookingOtaAmounts))
+            .ToList();
+
+        Assert.Contains(DemoShowcaseCatalog.Scenario.BookingOtaAmounts, DemoShowcaseCatalog.Scenarios);
+        Assert.NotEmpty(stays);
+        Assert.Equal(stays.Count, stays.Select(s => s.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(stays, s => Assert.EndsWith("@example.com", s.Email, StringComparison.Ordinal));
+        Assert.All(stays, s => Assert.NotNull(s.Ota));
+        Assert.All(stays, s => Assert.Equal(BookingStatus.Confirmed, s.Status));
+
+        // The reservation ids say TEST, fit the column and are unique (the index of the table is on the org and the id).
+        var reservationIds = stays.Select(s => s.Ota!.ReservationId).ToList();
+        Assert.Equal(reservationIds.Count, reservationIds.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(reservationIds, id =>
+        {
+            Assert.Contains("TEST", id, StringComparison.Ordinal);
+            Assert.InRange(id.Length, 1, Booking.OctorateReservationIdMaxLength);
+        });
+
+        // Two bookings of a channel: all the amounts and the flags, and only the amount paid (the rest is «not available»).
+        var channel = stays.Where(s => OtaChannelActionPolicy.IsChannelBooking(s.Source, s.Ota!.ReservationId)).ToList();
+        Assert.Equal(2, channel.Count);
+        var full = Assert.Single(channel, s => s.Ota!.Commission is not null).Ota!;
+        Assert.NotNull(full.Net);
+        Assert.NotNull(full.Paid);
+        Assert.NotNull(full.Balance);
+        Assert.NotNull(full.CompanyCollect);
+        Assert.NotNull(full.CommissionIncludedInPayments);
+        // What the host receives is what the guest paid less the channel's commission, and nothing is left to pay.
+        Assert.Equal(full.Paid - full.Commission, full.Net);
+        Assert.Equal(0m, full.Balance);
+        var sparse = Assert.Single(channel, s => s.Ota!.Commission is null).Ota!;
+        Assert.NotNull(sparse.Paid);
+        Assert.Null(sparse.Net);
+        Assert.Null(sparse.Balance);
+        Assert.Null(sparse.CompanyCollect);
+
+        // Every figure is to the cent, and a booking that is not of a channel has neither a figure nor a flag: its money is CasaZen's.
+        foreach (var figure in stays.SelectMany(s => new[] { s.Ota!.Commission, s.Ota.Net, s.Ota.Paid, s.Ota.Balance }).OfType<decimal>())
+            Assert.Equal(figure, decimal.Round(figure, 2));
+
+        Assert.All(stays.Except(channel), s =>
+        {
+            Assert.Null(s.Ota!.Commission);
+            Assert.Null(s.Ota.Net);
+            Assert.Null(s.Ota.Paid);
+            Assert.Null(s.Ota.Balance);
+            Assert.Null(s.Ota.CompanyCollect);
+            Assert.Null(s.Ota.CommissionIncludedInPayments);
+        });
+
+        // A booking of the booking site that CasaZen sent to Octorate: it has a reservation there and is not a booking of a channel.
+        var synced = Assert.Single(stays, s => s.Ota!.Sync?.State == OctorateSyncState.Synced);
+        Assert.Equal(BookingSource.Direct, synced.Source);
+        Assert.False(OtaChannelActionPolicy.IsChannelBooking(synced.Source, synced.Ota!.ReservationId));
+        Assert.Null(synced.Ota.Sync!.ErrorCode);
+
+        // A booking the host entered, whose change Octorate refused: a code CasaZen knows and the stay Octorate holds, which is not the booking's.
+        var conflict = Assert.Single(stays, s => s.Ota!.Sync?.State == OctorateSyncState.Conflict);
+        var mirror = conflict.Ota!.Sync!;
+        Assert.Equal(BookingSource.Manual, conflict.Source);
+        Assert.Contains(mirror.ErrorCode!, OctorateSyncErrorCodes.MessageKeys.Keys);
+        Assert.NotEqual(0, mirror.VersionCheckInShiftDays);
+        Assert.NotNull(mirror.VersionGuests);
+        Assert.True(OctorateBookingSync.IsRetryable(mirror.State));
+
+        // The channel bookings are mirrored by nobody: the import leaves no row for them.
+        Assert.All(channel, s => Assert.Null(s.Ota!.Sync));
+    }
+
     [Fact]
     public void CrmProfiles_TheDemoHasAReturningGuestAnOtaGuestADirectCustomerACheckInConsentAndTwoGuestsSharingAPhone_AllInvented()
     {
@@ -530,5 +610,68 @@ public class DemoShowcaseTests
         Assert.Equal(2, sharing.Select(s => CrmNormalizer.NormalizeName(s.Booking.FirstName, s.Booking.LastName)).Distinct(StringComparer.Ordinal).Count());
         Assert.NotNull(CrmNormalizer.NormalizePhone(DemoShowcaseCatalog.CrmSharedPhone));
         Assert.Null(CrmNormalizer.NormalizePhone("+390000000000"));
+    }
+
+    [Fact]
+    public void InvoiceData_TheDemoHasAFinishedDirectStayWithAnInvoiceRecipientThatPassesTheRulesOfARealOne_AllInvented()
+    {
+        var stays = DemoShowcaseCatalog.Properties
+            .SelectMany(p => p.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.InvoiceData))
+            .ToList();
+
+        // NF-81: the booking of the host has an invoice recipient to show, so the scenario has template data and a scenario without it fails.
+        Assert.Contains(DemoShowcaseCatalog.Scenario.InvoiceData, DemoShowcaseCatalog.Scenarios);
+        var stay = Assert.Single(stays);
+        var data = stay.InvoiceData;
+        Assert.NotNull(data);
+        Assert.Equal(BookingSource.Direct, stay.Source);
+        Assert.Equal(BookingStatus.CheckedOut, stay.Status);
+        Assert.EndsWith("@example.com", stay.Email, StringComparison.Ordinal);
+
+        // Invented and obviously so: TEST in the name, an address at example.com (the PEC is at a subdomain of it, pec.example.com).
+        Assert.Contains("TEST", data.Name, StringComparison.Ordinal);
+        Assert.EndsWith(".example.com", data.Pec!, StringComparison.Ordinal);
+        Assert.Equal(InvoiceDataSource.Host, data.Source);
+
+        // Valid for the rules a recipient saved through the service obeys: no failure, and the recipient is identified.
+        var state = new SaveInvoiceDataCommand
+        {
+            RecipientKind = data.Kind,
+            Name = data.Name,
+            FiscalCode = data.FiscalCode,
+            VatNumber = data.VatNumber,
+            AddressStreet = data.AddressStreet,
+            AddressCivic = data.AddressCivic,
+            PostalCode = data.PostalCode,
+            City = data.City,
+            Province = data.Province,
+            CountryCode = BookingInvoiceData.DefaultCountryCode,
+            SdiRecipientCode = data.SdiRecipientCode,
+            Pec = data.Pec,
+        };
+        Assert.Empty(InvoiceDataFormats.Validate(state, requireIdentification: true));
+    }
+
+    [Fact]
+    public void FiscalIssuerProfile_TheDemoOrgHasACompleteProfileOfItsIssuer_InventedAndNeedingNeitherTheFlagNorAConnection()
+    {
+        // FIS-02, NF-82: a scenario without template data fails (the coverage test above), and the profile is complete and obviously test data.
+        Assert.Contains(DemoShowcaseCatalog.Scenario.FiscalIssuerProfile, DemoShowcaseCatalog.Scenarios);
+        var profile = Assert.Single(DemoShowcaseCatalog.FiscalIssuerProfiles);
+        Assert.Equal(DemoShowcaseCatalog.Scenario.FiscalIssuerProfile, profile.Scenario);
+        Assert.Contains("TEST", profile.LegalName, StringComparison.Ordinal);
+        Assert.True(profile.ConfirmedOffsetDays <= 0);
+
+        // The accountant is the one mode that needs no flag and no Octorate connection, so the demo works in every environment.
+        Assert.Equal(DocumentIssuerMode.Accountant, profile.Mode);
+        Assert.True(Enum.IsDefined(profile.Regime));
+        var issuer = new IssuerData(
+            profile.LegalName, profile.AddressStreet, profile.AddressCivic, profile.PostalCode, profile.City, profile.Province, "IT",
+            profile.FatturaPaRegimeCode, null, null, null);
+
+        // Complete for the mode CasaZen too, once the organization has its VAT number on its tax profile: nothing of the profile itself is missing.
+        Assert.Empty(FiscalDocumentRules.MissingIssuerFields(issuer, profile.Regime, profile.FatturaPaRegimeCode, "12345678903", null));
+        Assert.Equal(5, profile.PostalCode.Length);
+        Assert.Equal(2, profile.Province.Length);
     }
 }

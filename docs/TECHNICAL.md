@@ -283,7 +283,7 @@ Property record choices (PC-02):
 | `GET` | `/api/bookings` | List bookings a page at a time (PC-14: `?propertyId&guestId&page&pageSize`, `Bookings:DefaultPageSize` = 10 when `pageSize` is missing, at most 100), answered as `{ items, totalCount, page, pageSize }`; since SR-03b the search below without a filter but these two, rows included |
 | `GET` | `/api/bookings/search` | The same list with days, status and text (SR-03, below): `?from&to&status&q&propertyId&guestId&page&pageSize`, same order, same answer, same default page size. SR-03b adds `&arrivalFrom&arrivalTo&view&channel&checkInStatus&sort` and, on each row, `channel`, `paymentState`, `paidAmount`, `alloggiatiStatus`, `respondBy` |
 | `GET` | `/api/bookings/counts` | SR-03b: how many bookings are in each chip of the list (`{ all, toConfirm, upcoming, inProgress, completed, cancelled }`), for the filters of the search but the chip, the page and the order |
-| `GET` | `/api/bookings/{id}` | Get a single booking; SR-05a adds `paymentState`, `paidAmount` and `guestDataComplete` (below) |
+| `GET` | `/api/bookings/{id}` | Get a single booking; SR-05a adds `paymentState`, `paidAmount` and `guestDataComplete` (below); E08/F03/US03/T02 adds `otaAmounts`, `collection`, `amountSources` (money: not for a caller without `payment.read`) and `octorateSync` (see *The booking answer* in the section on the bookings of the connector). Every booking answer, the lists too, has `otaSource` and `changeOptions` |
 | `GET` | `/api/bookings/{id}/timeline` | SR-05a: the history of the booking, derived from its timestamps and the rows tied to it (below); `booking.read` on its property, 404 outside the caller's scope |
 | `POST` | `/api/bookings` | Create a booking (availability check + tourist tax calculation) |
 | `PUT` | `/api/bookings/{id}` | Update a booking. 422 `ota_booking_change_not_allowed` for a booking that came from a channel whose channel is closed (every channel unless `Octorate:ChannelActions` opens it; nothing is changed, E08/F02/US02), 422 `ota_amounts_readonly` for a changed amount of the channel (below) |
@@ -391,7 +391,9 @@ invented one. Every booking answer now carries `confirmedAt`, `cancelledAt`, `ar
 (`{ allowed, reason }`: `reason` is `Cancelled`, `Started` or `SourceLocked`, the first that holds; `BookingEditRules`, the very rule of
 `PUT /api/bookings/{id}`, which `HostBookingService` reads: only a booking entered by the host, not started, not cancelled can have its
 dates and guests changed, SR-D5). `GET /api/bookings/{id}` adds `paymentState` (as the list), `paidAmount` (euros, `null` without
-`payment.read`) and `guestDataComplete` (`null` for a request, a hold or a cancelled booking).
+`payment.read`) and `guestDataComplete` (`null` for a request, a hold or a cancelled booking). Since E08/F03/US03/T02 every booking answer also carries
+`otaSource` and `changeOptions` (`BookingEditRules.ChangeOptionsOf`: what the host may do, below), and the detail the amounts of the channel, who
+collects, where each figure comes from and the mirror on Octorate.
 
 `GET /api/bookings/{id}/timeline` answers `{ bookingId, events: [{ kind, at, state, data }] }`, in order, by time. There is no event
 log: the entries are derived (`BookingTimeline`, pure) from the booking and from its payments, refunds, check-in links and Alloggiati
@@ -740,6 +742,78 @@ record or delete, and the collaborator has neither. It works in the org and the 
   caller, because the rest of the file is Italian. For a caller who reaches only some of the properties (`paymentsHidden`) the file has the
   owed side only: a title that says the payments are not shown, no paid, balance and status columns and no list of payments. The file is
   `casazen-tassa-soggiorno-riepilogo-20260101-20261231.csv`.
+
+#### Invoice data of a booking (FIS-01, NF-81, E06/F02/US01)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/bookings/{bookingId}/invoice-data` | short-rent `payment.read` + `booking.read` on the booking | Who an invoice of the booking is made out to: `{ bookingId, invoiceRequested, invoiceRequestedAt, recipientKind, name, fiscalCode, vatNumber, addressStreet, addressCivic, postalCode, city, province, countryCode, sdiRecipientCode, pec, source, updatedAt }`, with `recipientKind` `Guest`\|`Company` and `source` `Octorate`\|`CheckIn`\|`Host`. A booking with no data answers the empty object (`bookingId` and `invoiceRequested: false`). 404 `booking_not_found` for a booking of another org, 403 for one the caller sees and may not read (a collaborator «Solo alcuni» on a property it was not given) |
+| `PUT` | `/api/bookings/{bookingId}/invoice-data` | short-rent `payment.write` + `booking.write` on the booking | Saves who the invoice is for with the source `Host`, and answers the data as saved. A member that is left out keeps its value, one sent empty clears it. 422 with the `code` and the `field` of the first failure and every failure in `errors` (`[{ field, code }]`): `invoice_data_fiscal_code_invalid`, `invoice_data_vat_number_invalid`, `invoice_data_recipient_code_invalid`, `invoice_data_pec_invalid`, `invoice_data_recipient_required` (a company needs a VAT number or a fiscal code, a private person in Italy a fiscal code, a recipient outside Italy neither), `invoice_data_field_invalid` (too long, or a province, a country, an Italian postal code or a kind of recipient that is not one). 404 and 403 as above |
+
+`InvoiceDataController` authorizes the booking as a `HostResource` of its property (`BookingOperations`): another org's booking is invisible (404), one the
+caller sees and may not use is 403. The accountant reads and cannot write; the collaborator has neither right.
+
+- **Precedence by source, decided on the row.** `BookingInvoiceData.Source` is the highest source that ever wrote the row: Host over CheckIn
+  over Octorate (`InvoiceDataPrecedence`). When it outranks the incoming source, the incoming data fills only the fields that are empty (it
+  never overwrites and never clears a stored value) and the row keeps its source; otherwise it overwrites the fields it sends and the row takes
+  the incoming source. The kind of recipient and the country have a default, so a lower source sets them only while the row holds no data of the
+  recipient, or no address. A save that fills nothing writes nothing and records no event.
+- **The whole result is checked.** The command is merged with the stored data into a copy and the copy is validated by `InvoiceDataFormats`
+  (the fiscal code through `ItalianFiscalCode`, the VAT number with its check digit when Italian, the recipient code, the PEC, lengths and shapes),
+  so a 422 saves nothing. The text is normalized first: fiscal code upper case without spaces, VAT number with its country prefix, recipient code
+  upper case, PEC lower case. The identification of the recipient is required of what a person typed (Host, CheckIn), not of the partial data of
+  an import.
+- **Event.** A save that wrote something records `InvoiceDataSaved` (the booking and the source, no personal data) in the same unit of work
+  (ADR-022-R1). Two writers of the same row: `xmin` is its concurrency token and `BookingId` is unique, so the loser reads the row the other one
+  saved and applies the precedence to it.
+- **No document, no Alloggiati data.** Nothing is read or copied from the identity documents or the guests of the stay.
+- **Sync with Octorate (E06/F02/US01/T04)**, behind `Features:OctorateConnector` **and** `Features:OctorateBillingSync` (off). Two handlers of the outbox, so
+  neither can fail an import or a host's save. `InvoiceDataFromOctorateHandler` (`BookingCreated` of origin Octorate, a stay not yet over, a mirrored property)
+  reads the customer record the reservation names (`IOctorateApiClient.GetBookerBillingDataAsync`: `GetReservationAsync` gives its `invoiceHolderId`, which most
+  reservations do not carry, then `GET /rest/v1/guests/{acc}/{guestId}`, the `GuestDTO` of the OpenAPI), leaves out the fields that fail the checks of the invoice
+  data and saves the rest with the source Octorate (fill-only, so never over a host's or a guest's word). It makes two calls and runs only while the bucket of
+  the org (`OctorateRateLimiter`, 100 calls a minute, shared with the push of the bookings, the payments and the calendar) keeps half of it after them
+  (`OctorateBillingSyncRules.PrefillQuotaReserve`); with less, an import of many bookings pre-fills the first ones and the others are left for the host to
+  fill in, with an information line and no error (nothing triggers a later pre-fill).
+  `OctorateBillingWriteBackHandler` (`InvoiceDataSaved` whose source is not Octorate): where `IDocumentIssuerService.ResolveIssuerAsync` says Octorate and the
+  booking has a reservation there that names a customer record, it writes the billing members to that record (`PUT /rest/v1/guests/{acc}/{guestId}`: `fiscalCode`,
+  `vatCode`, `address` on one line, `zip`, `city`, `country` and `legalMail`, the PEC; nothing else, nothing cleared, no record made for a reservation that names
+  none) once for each change: the hash of the body written is kept on the row (`OctorateBillingHash`, encrypted at rest, with `OctorateBillingSentAt`), and
+  only after Octorate answered 2xx to a `PUT` that was sent. **No failure is swallowed.** The write-back keeps the code of every failure on the row
+  (`OctorateBillingError` and `OctorateBillingErrorAt`, a code and a time, never a value; cleared by the next successful write, or when the data is again what
+  Octorate holds), logs it with ids and the code, and, for a failing or refused call (no answer, a 5xx, the rate limit, a refusal of the credentials or of the
+  guests' sensitive data, which needs CasaZen's outbound IPs whitelisted, D24), also rethrows it, so the outbox delivers the event again and, after five
+  deliveries, keeps it dead-lettered with the code. A record or a reservation Octorate does not know, a request it rejects, a conflict, the wrong environment,
+  no connection, and a reservation that names no customer record (`octorate_no_customer_record`: nothing was sent) are kept on the row and left, not retried:
+  the same answer five times would help nobody, and the data is written at the next save. The pre-fill has no row of its own to keep a code on (a booking may
+  have no data at all), so it rethrows every failure of the call and lets the outbox keep it. A booking whose reservation is being created, or whose
+  confirmation is still in the outbox, makes the event be delivered again (`OctorateBillingPendingException`) instead of dropping the data.
+  **Names from the OpenAPI, wire shape not proven:** the routes and the members are those of the OpenAPI (`GuestDTO`, `invoiceHolderId`); the operations of the
+  address book declare no body and no answer, and no call could be made to the sandbox. The denomination of a company, the code of the recipient on the SDI and
+  the province are not written (the OpenAPI makes the first two read-only and has no province), and the PEC is never read (write-only). Check all this on the
+  sandbox before the flag is turned on (`docs/runbooks/feature-flags.md`).
+
+#### Issuer of the fiscal documents (FIS-02, NF-82, PO-05, E06/F02/US02)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/fiscal/documents/settings` | short-rent `property.read` + `payment.read` | How the documents of the organization are issued: `{ mode, regime, issuer, confirmedAt, casazenIssuanceEnabled, octorateIssuesAllBookings, octorateConnected, sdi, missingFields, rule }`. `mode` (`Octorate`\|`CasaZenDirectOnly`\|`Accountant`) and `regime` (`PrivatePerson`\|`VatOrdinary`\|`VatFlatRate`) are absent until the organization says them. `issuer` is `{ legalName, addressStreet, addressCivic, postalCode, city, province, countryCode, fatturaPaRegimeCode, effectiveRegimeCode, issuerSdiRecipientCode, issuerPec, defaultSeries, vatNumber, fiscalCode }`; the last two are read from the organization (its tax profile), never copied. `casazenIssuanceEnabled` is the flag `Features:FiscalDocumentIssuance`, `octorateIssuesAllBookings` the answer to D34, `sdi` is `{ providerConfigured, providerName }` of `ISdiEInvoiceProvider`, `missingFields` what the mode CasaZen would still need (empty when the profile is complete) and `rule` the configured rule of the regime (`documentKind`, `configured`, the codes) |
+| `PUT` | `/api/fiscal/documents/settings` | the above + short-rent `property.write`, and a scope over the whole org | Saves the answers of the wizard «Come emetti i documenti?» as a whole (`{ mode, regime, issuer: {…}, confirmed }`: an issuer text left out is cleared, `confirmed` sets `confirmedAt`) and answers the setting as saved. 422 `issuer_field_invalid` (with the `field` and the list of `errors`), `document_issuance_not_available` (the mode CasaZen while the flag is off), `issuer_profile_incomplete` (with the `fields` that are missing) and `octorate_not_connected` (the mode Octorate without an active connection); 403 `fiscal_settings_need_whole_org` for a caller who reaches only some of the properties. A refused save changes nothing |
+| `GET` | `/api/fiscal/documents/issuer-preview?bookingId=` | the above + `booking.read` on the booking | Who would issue the documents of the booking and why: `{ bookingId, issuer, reason }` with `issuer` `None`\|`Octorate`\|`CasaZen` and `reason` a stable code: `issuer_octorate`, `issuer_casazen`, `issuer_nobody`, `booking_not_direct`, `issuer_locked_octorate`, `issuance_off`. It changes nothing. 404 `booking_not_found` for another org's booking, 403 for one the caller may not read |
+
+- **One issuer for a booking, never two.** `IDocumentIssuerService.LockIssuerAsync` writes the row of `BookingDocumentIssuer`: idempotent for the same
+  kind, 409 `document_issuer_conflict` for the other one, and the unique index on the booking makes the database refuse a second row. CasaZen is never
+  locked as the issuer of an OTA booking (422 `document_booking_not_direct`, in every mode: `FiscalDocumentRules.IsDirectBooking` is true for `Direct`
+  and `Manual` only, never for an OTA source), nor while the flag is off (422 `document_issuance_not_available`), nor when the organization chose
+  another issuer (409). Octorate can always be locked: it issued, even by hand in its panel, and CasaZen reads. The bookings of the Octorate booking engine
+  count as direct only once the import maps them to a source that is not an OTA's (D34); until then they are OTA.
+- **The mode is accepted only when it can work.** CasaZen: the flag on and the profile complete (`FiscalDocumentRules.MissingIssuerFields`: legal name,
+  street, postal code, city, province in Italy and the regime; for a regime with VAT the regime code and the VAT number of the organization, for a private
+  person the fiscal code); Octorate: an active connection of the org in this environment; the accountant: nothing.
+- **The rules are configuration.** `FiscalDocuments` (`FiscalDocumentRulesOptions`): for each regime the kind of document, the VAT rate, the nature codes,
+  `TD01`, `TD04`, `RF01`/`RF19` and the series pattern `{year}`; the stamp duty (`77.47`, `2.00`) and `OctorateIssuesAllBookings`. `appsettings.json` ships
+  the structure and **no live VAT fallback**: the kind, the rate and the nature codes are empty until the accountant approves them, and
+  `IDocumentIssuerService.RequireRuleAsync` answers 422 `document_rule_not_configured` for a rule that is not complete.
 
 #### Owner portal (ADR-011, NF-96)
 
@@ -1098,7 +1172,37 @@ reservation of the room of a property, found through the confirmed `OctorateList
   is `totalPaid`, `OtaNetAmount` and `OtaBalanceAmount` stay null (no documented source, never derived from `roomGross`); all null when the reservation does
   not state the currency of the property. `PUT /api/bookings/{id}` answers 422 `ota_amounts_readonly` when its body carries an `ota*` amount that differs
   from the stored one. `GET /api/bookings/{id}` adds `otaAmounts` `{ commission, net, paid, balance, currency }` (null for a booking that was not imported
-  and for a caller without `payment.read`); every booking answer carries `otaSource` (the channel of an imported booking, null otherwise).
+  and for a caller without `payment.read`); every booking answer carries `otaSource` (the channel of a booking of a channel, null otherwise: see *The
+  booking answer* below).
+- *Who collects* (E08/F03/US03/T02, NF-77). `Booking.OtaCompanyCollect` (the `companyCollect` of the reservation: `COMPANY` is `true`, `HOTEL` is `false`;
+  `NONE`, no value and any other word are `null`, never guessed) and `Booking.OtaCommissionIncludedInPayments` (the `commissionIncludedInPayments` flag
+  of the portal catalog, `GET /rest/v1/meta/portals`, read from the `MarketplacePortal` cache by the `channelId` of the reservation: it is not a member
+  of the reservation and no call to Octorate is made while a booking is applied; `null` when the portal is not cached) are written by the import, on
+  create and on every newer version, for a *booking of a channel* (a channel source that is not a booking the host entered); one CasaZen owns keeps its
+  figures and gets them too (they are no figures). Any other booking never gets them, and no endpoint writes them (`PUT /api/bookings/{id}` writes
+  dates, guests and notes only, ADR-033-R3). A change of the flags alone is saved without announcing a `BookingModified`. Migration
+  `AddBookingOtaCollectionFlags` (two nullable `boolean` columns).
+- *The booking answer* (E08/F03/US03/T02, NF-74, NF-77). Every answer that carries a booking, the lists and the actions that answer a booking included,
+  has `otaSource` and `changeOptions`. `otaSource` is the channel (`Airbnb`, `BookingCom`, `Expedia`, `Vrbo`, `TripAdvisor`, `Agoda`, `OtherChannel`) of a
+  *booking of a channel* (`OtaChannelActionPolicy.IsChannelBooking`) and `null` for every other: also for a booking CasaZen made and sent to Octorate (it has
+  a reservation there too, and is the booking site's) and for a reservation of the booking engine of the agency (it counts as direct). It is what the
+  "OTA" badge of the list reads (ADR-033-R9; `BookingSearchService` loads the bookings and `BookingMapper.ToListItem` fills it, so every item has it). Whose money a booking has is another question (`BookingAmountSourceRules.HoldsChannelManagerMoney`): the channel manager's for a booking of a channel and also for a reservation of the booking engine of the agency that the import made (Source `Direct`, a reservation on Octorate and no row of the mirror: only the push of CasaZen makes that row, never the import), CasaZen's for a booking it made and sent to Octorate (it has the row). The first two keep `otaAmounts` and have `ChannelManager` as the source of their figures.
+  `changeOptions` is `BookingEditRules.ChangeOptionsOf(booking, policy)` (below), the policy being the configured one. `GET /api/bookings/{id}` adds:
+  `otaAmounts` `{ commission, net, paid, balance, currency }` for a booking whose money is the channel manager's, exactly as stored (a figure Octorate did not give is `null` on
+  the wire, never zero); `collection` `{ companyCollect, commissionIncludedInPayments }` for a booking of a channel (each flag `null` when it is not
+  known); `amountSources` `{ total, paid, balance, commission, net }` (`BookingAmountSourceRules`): `Stripe`, `ChannelManager` or `Manual`, and a figure
+  the booking does not have is left out of the JSON. A booking whose money is the channel manager's is `ChannelManager` for every figure Octorate gave; any other has `total`
+  `Stripe` when it is the quote of the booking site (`Direct`, price not overridden) and `Manual` when the host entered the booking or the price, and
+  `paid` `Stripe` when every collected payment went through Stripe, `Manual` as soon as one is a cash or bank transfer payment the host recorded (a
+  number that holds something the host typed is not presented as Stripe's), none when nothing was collected. `otaAmounts`, `collection` and
+  `amountSources` are money: `null` for a caller without `payment.read`, who still gets `paymentState`, `otaSource` and `changeOptions`.
+  `octorateSync` `{ state, lastOperation, lastSyncedAt, errorCode, canRetry, octorateVersion { checkIn, checkOut, guests } }` is the `OctorateBookingSync`
+  row of the booking, read for the booking and the org together (`IBookingOctorateSyncReader`), `null` when the booking is not mirrored; it carries no
+  money, so whoever may read the booking sees it. `canRetry` is the rule of the retry endpoint (`Failed` or `Conflict`, `OctorateBookingSync.IsRetryable`)
+  with the connector on and `booking.write` on the property of the caller. `octorateVersion` is only there in the `Conflict` state: what Octorate holds
+  after it refused a change, read from `OctorateVersionJson` (`{"checkIn":"yyyy-MM-dd","checkOut":"yyyy-MM-dd","guests":n}`, the form that
+  `OctorateVersionSnapshot.ToJson` writes; a member that cannot be read is `null`, and a time is never guessed into a stay day); the days are written
+  as the booking's own are (midnight UTC of the stay day).
 - *Guest.* A new `Guest` for the booking (name only: Octorate gives contact data only with a special permission), or the guest of the org with the same
   e-mail and the same name when the reservation carries an e-mail; purpose «GDPR art. 6.1.b», no consent claimed; the booker is the first `StayGuest`.
 - *Contacts of the guest (E07/F06/US02/T02, NF-94, `docs/runbooks/crm-octorate-contacts.md`).* No endpoint. `IOctorateContactsService.ReadForBookingAsync(orgId,
@@ -1231,7 +1335,7 @@ TripAdvisor,Agoda}` with `CanModify`, `CanCancel` (both `false`) and the keys of
 keys of `SharedResources` in Italian and English); a channel that is not listed, a portal with no source of its own (`OtherChannel`) and every source that is
 no channel are closed (`OtaChannelActionPolicy.For`). A *booking of a channel* is one with a channel source **and** an `OctorateReservationId`
 (`OtaChannelActionPolicy.IsChannelBooking`): a stay made from the iCal feed of a channel has no reservation and is CasaZen's own record.
-- *`changeOptions`* (`BookingEditRules.ChangeOptionsOf(booking, policy)`, the rule every booking answer will carry): `{ canEdit, canCancel, reasonCode,
+- *`changeOptions`* (`BookingEditRules.ChangeOptionsOf(booking, policy)`, the rule every booking answer carries since E08/F03/US03/T02): `{ canEdit, canCancel, reasonCode,
   guidanceKey, channel, cancelReasonCode, cancelGuidanceKey }`. `canEdit` is what `PUT /api/bookings/{id}` accepts (a booking entered by the host, not
   started, not cancelled); `canCancel` is the status (waiting, confirmed or in the house) and, for a booking of a channel, the rule of the channel.
   `reasonCode` and `guidanceKey` explain the first thing that is not allowed (the change, else the cancellation); `cancelReasonCode` and `cancelGuidanceKey`
@@ -1571,9 +1675,9 @@ never a link to the dashboard.
 | `POST` | `/api/public/service-payments/{id}` | Anonymous (link token in the body) | The payment page of a service a supplier completed: who asks, the lines, the state; 404 `service_payment_link_invalid` for anything wrong; no commission shown (SP-15a, rate-limited) |
 | `POST` | `/api/public/service-payments/{id}/payment-session` | Anonymous (link token in the body) | The PaymentIntent on the supplier's connected account to confirm with Stripe.js (SP-15a, rate-limited) |
 | `GET` | `/api/public/ical/{exportToken}` | Anonymous | Property iCal export feed |
-| `GET` | `/api/public/checkin/{token}` | Anonymous | Public guest check-in session. NF-40: `language` (the one the guest saved on the session, otherwise the first supported language of `Accept-Language`, otherwise `it`), `supportedLanguages` (`it`, `en`, `de`, `fr`, `es`), `requiredGuestFields` (the statistical fields the region requires: empty in this release, the regional coverage is deferred) and the new optional guest fields in the prefill (residence, document issue and expiry dates, `tourismType`, `travelWay`, `educationLevel`; never the tourist tax exemption). E03/F04/US02/T04, while `Features__CheckInIdentityVerification` is on: `documentNotArchived` (the property keeps no document: Ticino, ADR-013-R15) and `identityVerification` (`step`, `result`, `biometricOffered`, `consentRecorded`, `consentRefused`, `documentChecked`, `attemptsRemaining`, `operatorRequested`, `operatorPathOpen`, `documentNotArchived`, `verifyingGuestPosition`) |
+| `GET` | `/api/public/checkin/{token}` | Anonymous | Public guest check-in session. Carries `invoiceRequested` and `hasInvoiceData` (booleans, absent once the check-in is completed) and nothing else of the invoice data: the link is anonymous, so the stored fiscal code, VAT number, address and PEC are never returned (FIS-01, E06/F02/US01/T03). NF-40: `language` (the one the guest saved on the session, otherwise the first supported language of `Accept-Language`, otherwise `it`), `supportedLanguages` (`it`, `en`, `de`, `fr`, `es`), `requiredGuestFields` (the statistical fields the region requires: empty in this release, the regional coverage is deferred) and the new optional guest fields in the prefill (residence, document issue and expiry dates, `tourismType`, `travelWay`, `educationLevel`; never the tourist tax exemption). E03/F04/US02/T04, while `Features__CheckInIdentityVerification` is on: `documentNotArchived` (the property keeps no document: Ticino, ADR-013-R15) and `identityVerification` (`step`, `result`, `biometricOffered`, `consentRecorded`, `consentRefused`, `documentChecked`, `attemptsRemaining`, `operatorRequested`, `operatorPathOpen`, `documentNotArchived`, `verifyingGuestPosition`) |
 | `PUT` | `/api/public/checkin/{token}/language` | Anonymous | NF-40: `{ language }` saves the guest's choice on the session (the page and the emails of the session use it) → `{ language }`; 400 `language_unsupported`, 404 for an unknown or expired link, 409 `checkin_already_completed` once submitted; rate limit `GuestCheckIn` |
-| `POST` | `/api/public/checkin/{token}` | Anonymous | Submit public guest check-in; optional marketing consent, legacy `marketingConsent` or per channel (`marketingConsentEmail`, `marketingConsentWhatsApp`, `marketingEmail`, NF-05; `docs/runbooks/gdpr.md`). Since E07/F04/US01/T02 a ticked e-mail channel also makes the consent contact of the CRM (origin `CheckIn`) and queues its double opt-in message, a ticked WhatsApp channel a contact when the booker's phone is known; a booker who is a minor cannot tick a channel; a failure here never fails the check-in ([crm-consent.md](runbooks/crm-consent.md) § 4.2). The 400 of the guest rules keeps its field keys (`Guests[1].DocumentNumber`) and adds the extension `codes`, a map from each field key to the message key (`CheckInDocumentNumberInvalid`, …) that the page translates in its own language (NF-40). The guests take the optional residence, document dates and statistical fields (shape checks only); a `taxExemptionCode` sent by the guest portal is ignored (the host's decision) |
+| `POST` | `/api/public/checkin/{token}` | Anonymous | Submit public guest check-in; optional marketing consent, legacy `marketingConsent` or per channel (`marketingConsentEmail`, `marketingConsentWhatsApp`, `marketingEmail`, NF-05; `docs/runbooks/gdpr.md`). Since E07/F04/US01/T02 a ticked e-mail channel also makes the consent contact of the CRM (origin `CheckIn`) and queues its double opt-in message, a ticked WhatsApp channel a contact when the booker's phone is known; a booker who is a minor cannot tick a channel; a failure here never fails the check-in ([crm-consent.md](runbooks/crm-consent.md) § 4.2). The 400 of the guest rules keeps its field keys (`Guests[1].DocumentNumber`) and adds the extension `codes`, a map from each field key to the message key (`CheckInDocumentNumberInvalid`, …) that the page translates in its own language (NF-40). The guests take the optional residence, document dates and statistical fields (shape checks only); a `taxExemptionCode` sent by the guest portal is ignored (the host's decision). Optional `invoice` block, the answer to «Ti serve la fattura?» (FIS-01, E06/F02/US01/T03): `{ needInvoice, recipientKind, name, fiscalCode, vatNumber, addressStreet, addressCivic, postalCode, city, province, countryCode, sdiRecipientCode, pec }`. Without the block, or with `needInvoice` false, nothing changes and the check-in is never blocked. With `needInvoice` true the «yes» is recorded (`invoiceRequested`) and, when the guest typed anything about the recipient, saved as the invoice data of the booking with the source `CheckIn` (it fills what the host did not write and never overwrites it), in the same unit of work as the check-in. A data that is not valid answers 422 `invoice_data_fiscal_code_invalid` / `invoice_data_vat_number_invalid` / `invoice_data_recipient_code_invalid` / `invoice_data_pec_invalid` / `invoice_data_recipient_required` / `invoice_data_field_invalid` with the `field` and the list of `errors`, and saves nothing, the check-in included |
 | `POST` | `/api/public/checkin/{token}/biometric-consent` | Anonymous (the token), flag `CheckInIdentityVerification` (404 while off) | E03/F04/US02/T04, ADR-013-R9: `{ consentGiven, consentVersion }`. `true` records `BiometricConsentAt` and the version (required, at most 50 characters: 400 `biometric_consent_version_required`); `false` records `BiometricConsentRefusedAt`, sets `OperatorRequestedAt` and alerts the operators. Not offered (switched off for the org, the guest who verifies is a minor) or already with the operator: nothing recorded, `result: operator`. → `{ consentRecorded, result: consent_recorded \| operator, biometricOffered, operatorPathOpen, state }`; 400 `biometric_consent_answer_required` without `consentGiven` |
 | `POST` | `/api/public/checkin/{token}/document` | same | Multipart `document` (JPEG/PNG, 10 MB, buffered in memory): the reading (MRZ, then OCR) for the guest to confirm (`ExtractedDocumentFields`, unchanged) plus `acceptable`, `guidanceCodes` (capture guidance of the agent and of the MRZ hints), `documentStored`, `documentNotArchived`. The checks against the check-in data of the guest who verifies are kept on the session as flags and a hash (`DocumentCheckJson`). Outside Ticino, after the consent, the photo is kept encrypted (`DocumentImage`, private bucket) until the verification is over; in Ticino nothing is kept |
 | `POST` | `/api/public/checkin/{token}/selfie` | same | Multipart `selfie` (+ `documentPhoto` for a property in Ticino, which must be the photo read: 409 `document_photo_mismatch`, 400 `document_photo_required` without it). The agent runs in the request (ADR-013-R1); the outcome is logged (`BiometricVerificationLog`, method `Biometric`, reasons, provisional, duration) and the session updated. → `{ result: ok \| retry \| operator, guidanceCodes, attemptsRemaining, operatorPathOpen, lockCode? }`: the lock code only on `ok` (released through the gate, channel `checkin-screen`, and e-mailed at once, channel `email`); a review, the last failed attempt or an error alert the operators. 409 `biometric_consent_required`, 409 `document_check_required` |
@@ -1922,6 +2026,55 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | `RecordedByUserId` | `string` (255) | required, not a foreign key | The Auth0 subject who recorded it |
 | `CreatedAt`, `UpdatedAt` | `DateTime` | UTC | — |
 | | | index `(OrgId, ComuneKey, PeriodFrom, PeriodTo)`, **not unique** | A comune can be paid in instalments, so payments of the same comune and period are all kept |
+
+#### `BookingInvoiceData` (NF-81, E06/F02/US01/T01)
+
+Who an invoice of a booking is made out to. One row for each booking; it goes with the booking. Personal data is encrypted at rest with the purpose `Casazen.BookingInvoiceData` (no length on those columns: the payload is longer than the text, the lengths are checked on input).
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | tenant key (`ITenantOwned`) | The org of the booking, set by the service, never by a client |
+| `BookingId` | `Guid` | FK `Bookings` (CASCADE), **unique** (`UIX_BookingInvoiceData_BookingId`) | The booking; at most one row |
+| `InvoiceRequested`, `InvoiceRequestedAt` | `bool`, `DateTime?` | — | The guest said «Ti serve la fattura?» yes at the check-in, and when |
+| `RecipientKind` | `int` (enum) | explicit numbers, never reused | `Guest` 1, `Company` 2 |
+| `Name` (200), `FiscalCode` (16), `VatNumber` (28, with the country prefix), `AddressStreet` (200), `AddressCivic` (20), `PostalCode` (10), `City` (100), `Pec` (254) | `text`, nullable | encrypted at rest (`Casazen.BookingInvoiceData`) | The denomination or «First Last», the codice fiscale, the VAT number, the address and the PEC; the length is the limit checked on input |
+| `Province` (2), `CountryCode` (2, default `IT`), `SdiRecipientCode` (7) | `string` | not encrypted | The province, the ISO 3166-1 alpha-2 country and the code of the recipient on the SDI |
+| `Source` | `int` (enum) | explicit numbers, never reused | The highest source that ever wrote the row: `Octorate` 1, `CheckIn` 2, `Host` 3. It is the precedence |
+| `OctorateBillingHash` | `text`, nullable | encrypted at rest (`Casazen.BookingInvoiceData`) | The hash of the billing data last written to Octorate (E06/F02/US01/T04): the data is not written again while its hash is this one. Never part of an answer of the API |
+| `OctorateBillingSentAt` | `DateTime?` | — | When that write happened (UTC) |
+| `OctorateBillingError`, `OctorateBillingErrorAt` | `string?` (64), `DateTime?` | not encrypted: a code, never a value | The code of the last failure of the write to Octorate (`octorate_not_found`, `octorate_request_rejected`, `octorate_unavailable`..., or `octorate_no_customer_record` when the reservation names no customer record) and when it happened; null until a write failed and again once one succeeded |
+| `CreatedAt`, `UpdatedAt`, `UpdatedByUserId` | `DateTime`, `DateTime`, `string?` (255) | — | UTC; the person who saved it last when it was the host |
+| `xmin` | `uint` | concurrency token (`RowVersion`) | PostgreSQL system column; no column of its own |
+
+#### `OrgFiscalIssuerProfile` (NF-82, E06/F02/US02/T01)
+
+Who issues the fiscal documents of an organization and with which data (the wizard «Come emetti i documenti?»). One row for each organization. The VAT number and the fiscal code of the issuer stay on `Orgs` (`PartitaIvaNumber`, `FiscalCode`): the profile never copies them.
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | **unique** (`UIX_OrgFiscalIssuerProfiles_OrgId`), tenant key (`ITenantOwned`) | The organization |
+| `IssuerMode` | `int` (enum) | explicit numbers, never reused | `Octorate` 1 (the channel manager issues, CasaZen reads), `CasaZenDirectOnly` 2 (CasaZen issues, direct bookings only), `Accountant` 3 (nobody issues here) |
+| `DocumentRegime` | `int?` (enum) | explicit numbers, never reused | `PrivatePerson` 1, `VatOrdinary` 2, `VatFlatRate` 3; `null` until the issuer says it |
+| `LegalName` (200), `AddressStreet` (200), `AddressCivic` (20), `PostalCode` (10), `City` (100), `Province` (2), `CountryCode` (2, default `IT`) | `string`, nullable but the country | — | The legal name and the structured address of the issuer |
+| `FatturaPaRegimeCode` | `string?` (4) | — | `RF01`, `RF19`...: the rule of the regime gives it and the accountant can override it here |
+| `IssuerSdiRecipientCode` (7), `IssuerPec` (254), `DefaultSeries` (20) | `string?` | — | The issuer's own SDI code and PEC, and the series documents are numbered in by default |
+| `ConfirmedAt` | `DateTime?` | — | When the wizard was completed (UTC) |
+| `UpdatedAt`, `UpdatedByUserId` | `DateTime`, `string?` (255) | — | UTC; the person who saved it last |
+
+#### `BookingDocumentIssuer` (NF-82, E06/F02/US02/T01)
+
+The single issuer of the documents of a booking, written when the first document is issued by CasaZen or found issued by Octorate, and never changed. The database itself refuses a second issuer.
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | tenant key (`ITenantOwned`) | The org of the booking |
+| `BookingId` | `Guid` | FK `Bookings` (CASCADE), **unique** (`UIX_BookingDocumentIssuers_BookingId`) | The booking; at most one issuer |
+| `Issuer` | `int` (enum) | explicit numbers, never reused | `Octorate` 1, `CasaZen` 2 |
+| `LockedAt` | `DateTime` | — | UTC |
+| `LockedByDocumentId` | `Guid?` | no foreign key | The document that locked it; the table of the documents arrives with E06/F01/US02/T01 |
 
 #### Activation of CasaZen with Octorate (NF-104..NF-107, E10/F01/US01/T01)
 

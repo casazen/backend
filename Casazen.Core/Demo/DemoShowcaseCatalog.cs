@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.6";
+    public const string Version = "2026-11-06.8";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -113,6 +113,20 @@ public static class DemoShowcaseCatalog
         public const string CheckInWizardIncomplete = "checkin-wizard-incomplete";
 
         /// <summary>
+        /// Who an invoice of a booking is made out to (E06/F02/US01, FIS-01, NF-81): a finished direct stay for which the guest asked for an invoice
+        /// at the online check-in and the host completed the data of the company. Written for the booking at reset, marked as showcase data
+        /// (<c>TestDataEntities.BookingInvoiceData</c>) and gone with the booking.
+        /// </summary>
+        public const string InvoiceData = "invoice-data";
+
+        /// <summary>
+        /// Who issues the documents of the demo organization (E06/F02/US02, FIS-02, NF-82): a complete profile of the issuer, with the choice «the
+        /// accountant takes care of the documents» (no flag and no connection needed), written at reset when the org has no profile of its own and
+        /// deleted by the next reset (<c>TestDataEntities.FiscalIssuerProfile</c>). A real profile has no marker and is never touched.
+        /// </summary>
+        public const string FiscalIssuerProfile = "fiscal-issuer-profile";
+
+        /// <summary>
         /// The CRM profiles built from the bookings (E07/F01/US02, NF-88, NF-89): a returning guest with a past and an upcoming stay at two houses, a
         /// guest whose booking comes from an OTA (the address becomes a forward, service only), a direct customer with the soft opt-in notice, a guest
         /// with a confirmed marketing consent from the online check-in, and two guests who share a phone (a merge to decide). The profiles, the
@@ -126,6 +140,15 @@ public static class DemoShowcaseCatalog
         /// welcome page can be opened after every reset.
         /// </summary>
         public const string CrmWelcomeLink = "crm-welcome-link";
+
+        /// <summary>
+        /// The money and the state of a booking that has a reservation on the channel manager (E08/F03/US03/T02, NF-74, NF-77): two bookings of a
+        /// channel as the import leaves them (one with the amounts, who collects and whether the commission is taken out of the payments, one with only
+        /// what Octorate gives today and the rest «not available»), a booking of the booking site whose mirror is synced, and a booking the host entered
+        /// whose change Octorate refused (a conflict, with the dates and guests Octorate holds). The reservations, the amounts and the mirrors are
+        /// invented and marked as showcase data; nothing is sent to Octorate.
+        /// </summary>
+        public const string BookingOtaAmounts = "booking-ota-amounts";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -184,7 +207,10 @@ public static class DemoShowcaseCatalog
         Scenario.CheckInWizardNoShow,
         Scenario.CheckInWizardIncomplete,
         Scenario.CrmProfiles,
+        Scenario.InvoiceData,
+        Scenario.FiscalIssuerProfile,
         Scenario.CrmWelcomeLink,
+        Scenario.BookingOtaAmounts,
     ];
 
     /// <summary>
@@ -463,6 +489,33 @@ public static class DemoShowcaseCatalog
                 new("tassa-versata", "Irene", "Valli", "ospite.demo.tassa-1@example.com", -75, 3, BookingStatus.CheckedOut, Scenario.TouristTaxPaid, BookingSource.Direct, TouristTax: 18.00m),
                 new("tassa-da-versare", "Omar", "Haddad", "ospite.demo.tassa-2@example.com", -50, 2, BookingStatus.CheckedOut, Scenario.TouristTaxPaid, BookingSource.Direct, TouristTax: 12.00m),
                 new("tassa-senza-importo", "Katja", "Novak", "ospite.demo.tassa-3@example.com", -30, 2, BookingStatus.CheckedOut, Scenario.TouristTaxPaid, BookingSource.Airbnb),
+                // NF-81 (Scenario.InvoiceData): a finished direct stay, paid at the property, for which the guest asked for an invoice at the online
+                // check-in and the host completed the data of the company. Invented like the rest: a VAT number with a valid check digit, an
+                // address at example.com, TEST in the name.
+                new(
+                    "fattura-azienda",
+                    "Luca",
+                    "Ferri",
+                    "ospite.demo.fattura@example.com",
+                    -12,
+                    2,
+                    BookingStatus.CheckedOut,
+                    Scenario.InvoiceData,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    InvoiceData: new DemoInvoiceData(
+                        InvoiceRecipientKind.Company,
+                        "Demo Viaggi S.r.l. (TEST)",
+                        "12345678903",
+                        "IT12345678903",
+                        "Via Brera",
+                        "18",
+                        "20121",
+                        "Milano",
+                        "MI",
+                        "ABC1234",
+                        "fatture.demo@pec.example.com",
+                        InvoiceDataSource.Host)),
             ]),
         new(
             Key: "casa-trastevere",
@@ -535,6 +588,62 @@ public static class DemoShowcaseCatalog
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
                     Phone: "+39 333 0000555"),
+                // NF-77, NF-74 (Scenario.BookingOtaAmounts): a booking of Airbnb as the import leaves it, with all the amounts of the channel and the
+                // flags (the channel collects, and the portal pays net of its commission): the amounts section reads in full. Octorate gives net and
+                // balance only when a documented field has them, so the sparse one at Attico Firenze shows how a missing figure reads.
+                new(
+                    "ota-airbnb-importata",
+                    "Lena",
+                    "Vogel",
+                    "ospite.demo.ota-1@example.com",
+                    14,
+                    3,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingOtaAmounts,
+                    BookingSource.Airbnb,
+                    Ota: new DemoOtaTemplate(
+                        "TEST-OCT-7001",
+                        Commission: 61.80m,
+                        Net: 453.20m,
+                        Paid: 515.00m,
+                        Balance: 0.00m,
+                        CompanyCollect: true,
+                        CommissionIncludedInPayments: true)),
+                // A booking of the booking site that CasaZen sent to Octorate: its mirror is synced, the money is the booking site's.
+                new(
+                    "ota-sincronizzata",
+                    "Paul",
+                    "Dupont",
+                    "ospite.demo.ota-3@example.com",
+                    20,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingOtaAmounts,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    Ota: new DemoOtaTemplate(
+                        "TEST-OCT-7003",
+                        Sync: new DemoOctorateSyncTemplate(OctorateSyncState.Synced, OctorateSyncOperation.Create))),
+                // A booking the host entered, whose change Octorate refused because the reservation changed there: a conflict, with the stay Octorate
+                // holds (one day later, one guest fewer) so the host sees both versions before they choose.
+                new(
+                    "ota-conflitto",
+                    "Irene",
+                    "Sala",
+                    "ospite.demo.ota-4@example.com",
+                    24,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingOtaAmounts,
+                    BookingSource.Manual,
+                    Ota: new DemoOtaTemplate(
+                        "TEST-OCT-7004",
+                        Sync: new DemoOctorateSyncTemplate(
+                            OctorateSyncState.Conflict,
+                            OctorateSyncOperation.Update,
+                            Services.OctorateSyncErrorCodes.ReservationChanged,
+                            VersionCheckInShiftDays: 1,
+                            VersionGuests: 1))),
             ]),
         new(
             Key: "bilocale-navigli",
@@ -601,6 +710,19 @@ public static class DemoShowcaseCatalog
                     BookingStatus.Confirmed,
                     Scenario.CrmProfiles,
                     BookingSource.BookingCom),
+                // NF-77 (Scenario.BookingOtaAmounts): a booking of Booking.com with only what Octorate gives today, the amount paid. The commission, the
+                // net and the balance are «not available», who collects is not said, and Booking.com invoices its commission apart.
+                new(
+                    "ota-booking-sparsa",
+                    "Marta",
+                    "Kowalska",
+                    "ospite.demo.ota-2@example.com",
+                    30,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.BookingOtaAmounts,
+                    BookingSource.BookingCom,
+                    Ota: new DemoOtaTemplate("TEST-OCT-7002", Paid: 100.00m, CommissionIncludedInPayments: false)),
             ]),
         new(
             Key: "loft-torino",
@@ -980,6 +1102,30 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
+    /// The profile of the issuer of the documents of the demo organization (E06/F02/US02, FIS-02, NF-82): complete, so the wizard «Come emetti i
+    /// documenti?» opens on an answered setting and the settings page has data to show. Invented like the rest (TEST in the name, a plausible address
+    /// in Milano), with the choice «the accountant takes care of the documents»: it needs neither the flag of the issuance nor an Octorate connection.
+    /// Written for the org at reset only when the org has no profile (there is one per org, and a real one is never touched), marked as showcase data
+    /// (<c>TestDataEntities.FiscalIssuerProfile</c>) and deleted by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoFiscalIssuerProfileTemplate> FiscalIssuerProfiles { get; } =
+    [
+        new(
+            "emittente-demo",
+            DocumentIssuerMode.Accountant,
+            DocumentRegime.VatOrdinary,
+            "Casa Demo S.r.l. (TEST)",
+            "Via Brera",
+            "18",
+            "20121",
+            "Milano",
+            "MI",
+            "RF01",
+            -5,
+            Scenario.FiscalIssuerProfile),
+    ];
+
+    /// <summary>
     /// The channel rules of the tourist tax (NF-46, ADR-037-R3): platform data like every rule, so the showcase writes only the one of the
     /// invented comune of <c>casa-borgo-prova</c> (ISTAT 999990, which no real comune has: no real stay is ever touched), with an example source
     /// and a note that says it is test data. Created only when no rule exists for the channel and the comune, deleted by the reset of the org
@@ -1007,6 +1153,24 @@ public static class DemoShowcaseCatalog
         new("benvenuto-villa-lago", "villa-lago", CrmWelcomeToken, Scenario.CrmWelcomeLink),
     ];
 }
+
+/// <summary>
+/// The profile of the issuer of the documents of the demo organization (FIS-02): the answers of the wizard «Come emetti i documenti?», invented.
+/// <paramref name="ConfirmedOffsetDays"/> is when the wizard was completed, in days from the reset (negative: in the past).
+/// </summary>
+public sealed record DemoFiscalIssuerProfileTemplate(
+    string Key,
+    DocumentIssuerMode Mode,
+    DocumentRegime Regime,
+    string LegalName,
+    string AddressStreet,
+    string AddressCivic,
+    string PostalCode,
+    string City,
+    string Province,
+    string FatturaPaRegimeCode,
+    int ConfirmedOffsetDays,
+    string Scenario);
 
 public sealed record DemoPlace(string City, string IstatCode, string RegionCode, string PostalCode, string Address);
 
@@ -1036,7 +1200,66 @@ public sealed record DemoBookingTemplate(
     bool NoShow = false,
     string? Phone = null,
     bool SoftOptInNotice = false,
-    bool CheckInMarketingConsent = false);
+    bool CheckInMarketingConsent = false,
+    DemoOtaTemplate? Ota = null,
+    DemoInvoiceData? InvoiceData = null);
+
+/// <summary>
+/// The reservation of a demo stay on the channel manager (E08/F03/US03/T02, NF-74, NF-77): invented like the rest of the demo, nothing is sent to
+/// Octorate. The booking carries the reservation id (<c>TEST-OCT-…</c>, unique in the org) and, for a booking of a channel, the amounts and the flags the
+/// import would have stored; a booking CasaZen holds has no amount, and its mirror is <paramref name="Sync"/>. A figure left out is «not available».
+/// </summary>
+/// <param name="ReservationId">The id of the reservation on Octorate; it says TEST and is at most 50 characters.</param>
+/// <param name="Commission">What the channel kept.</param>
+/// <param name="Net">What the host receives.</param>
+/// <param name="Paid">What the guest paid.</param>
+/// <param name="Balance">What is still to pay.</param>
+/// <param name="CompanyCollect">Who collects: <c>true</c> the channel, <c>false</c> the host, <c>null</c> not said.</param>
+/// <param name="CommissionIncludedInPayments">Whether the portal pays the host net of its commission; <c>null</c> not known.</param>
+/// <param name="Sync">The mirror of the booking on Octorate (a row of <c>OctorateBookingSync</c>); <c>null</c> for a booking that has none.</param>
+public sealed record DemoOtaTemplate(
+    string ReservationId,
+    decimal? Commission = null,
+    decimal? Net = null,
+    decimal? Paid = null,
+    decimal? Balance = null,
+    bool? CompanyCollect = null,
+    bool? CommissionIncludedInPayments = null,
+    DemoOctorateSyncTemplate? Sync = null);
+
+/// <summary>
+/// The mirror of a demo booking on Octorate: the state of the last operation sent. For a conflict, the stay Octorate holds is the booking's own with the
+/// arrival moved by <paramref name="VersionCheckInShiftDays"/> days (the departure with it) and <paramref name="VersionGuests"/> guests.
+/// </summary>
+/// <param name="State">Where the mirror stands.</param>
+/// <param name="LastOperation">The last operation sent.</param>
+/// <param name="ErrorCode">A code of <c>OctorateSyncErrorCodes</c> when the operation failed or was refused.</param>
+/// <param name="VersionCheckInShiftDays">Days between the arrival of the booking and the one Octorate holds (a conflict only).</param>
+/// <param name="VersionGuests">The guests Octorate holds (a conflict only).</param>
+public sealed record DemoOctorateSyncTemplate(
+    OctorateSyncState State,
+    OctorateSyncOperation LastOperation,
+    string? ErrorCode = null,
+    int? VersionCheckInShiftDays = null,
+    int? VersionGuests = null);
+
+/// <summary>
+/// Who an invoice of a demo stay is made out to (NF-81): the invoice data written for the booking at reset, the guest's «yes» at the check-in included.
+/// Invented: a VAT number with a valid check digit, an address and a PEC at example.com, TEST in the name.
+/// </summary>
+public sealed record DemoInvoiceData(
+    InvoiceRecipientKind Kind,
+    string Name,
+    string? FiscalCode,
+    string? VatNumber,
+    string AddressStreet,
+    string AddressCivic,
+    string PostalCode,
+    string City,
+    string Province,
+    string? SdiRecipientCode,
+    string? Pec,
+    InvoiceDataSource Source);
 
 /// <summary>
 /// A registered guest of a demo stay (NF-40, NF-46): invented like the rest of the demo, with complete Alloggiati data of the right shape (an

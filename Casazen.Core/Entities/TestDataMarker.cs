@@ -140,8 +140,28 @@ public static class TestDataEntities
     public const string MarketingConsent = "MarketingConsentRecord";
 
     /// <summary>
+    /// Who an invoice of a showcase stay is made out to (<see cref="BookingInvoiceData"/>, E06/F02/US01, NF-81): written with the booking at the
+    /// reset, invented and marked TEST. It goes with its booking (the table cascades), so the reset deletes it with the stay; a real row has no
+    /// marker and is never touched.
+    /// </summary>
+    public const string BookingInvoiceData = "BookingInvoiceData";
+
+    /// <summary>
+    /// The profile of the issuer of the documents of the demo org (<see cref="OrgFiscalIssuerProfile"/>, E06/F02/US02, NF-82): written at the
+    /// reset only when the org has no profile of its own, and deleted by the next reset with its marker. A real profile has no marker and is
+    /// never touched.
+    /// </summary>
+    public const string FiscalIssuerProfile = "OrgFiscalIssuerProfile";
+
+    /// <summary>
     /// The welcome link of a showcase house (<see cref="PropertyWelcomeLink"/>, E07/F04/US01/T03, NF-90): the QR code of the demo house, with a fixed
     /// test token. It follows its house (cascade) and the reset deletes its marker with the other showcase markers.
     /// </summary>
     public const string WelcomeLink = "PropertyWelcomeLink";
+
+    /// <summary>
+    /// The mirror of a showcase booking on the channel manager (<see cref="Entities.OctorateBookingSync"/>, E08/F03/US03/T02, NF-74): the state of the last operation of
+    /// an invented reservation, nothing is sent. It goes with its booking (cascade) and the reset deletes its marker with the other showcase markers.
+    /// </summary>
+    public const string OctorateBookingSync = "OctorateBookingSync";
 }

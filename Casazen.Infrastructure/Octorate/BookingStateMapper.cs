@@ -178,6 +178,25 @@ public sealed class BookingStateMapper
     }
 
     /// <summary>
+    /// Who collects the payment of a booking that came from a channel (E08/F03/US03/T02, NF-77): <c>companyCollect</c> <c>COMPANY</c> is the channel
+    /// (<c>true</c>), <c>HOTEL</c> is the host (<c>false</c>); <c>NONE</c>, no value and any other word say nothing, so they are <c>null</c>, never guessed
+    /// either way (a host who is told the channel collects does not ask the guest for the money, and one told the opposite asks twice). The second flag
+    /// is the one the caller took from the portal catalog (<see cref="OctorateReservation.CommissionIncludedInPayments"/>): it is carried over as it is.
+    /// </summary>
+    public OtaCollection ToOtaCollection(OctorateReservation reservation)
+    {
+        ArgumentNullException.ThrowIfNull(reservation);
+
+        bool? companyCollect = reservation.CompanyCollect switch
+        {
+            OctorateReservation.CompanyCollectCompany => true,
+            OctorateReservation.CompanyCollectHotel => false,
+            _ => null,
+        };
+        return new OtaCollection(companyCollect, reservation.CommissionIncludedInPayments);
+    }
+
+    /// <summary>
     /// The price figures of the stay (lodging, total, tourist tax) from the reservation: the room gross, the total gross and the tourist tax as
     /// Octorate gives them. A figure it does not give is <c>null</c>, never zero (a zero would read as a price), and every figure is <c>null</c>
     /// when the reservation does not state the currency of the property (<see cref="InCurrencyOf"/>): the caller writes none of them.
@@ -241,6 +260,13 @@ public readonly record struct OtaAmounts(decimal? Commission, decimal? Net, deci
 {
     /// <summary>No figure.</summary>
     public static OtaAmounts None => default;
+}
+
+/// <summary>Who collects the payment of an imported channel booking and whether the commission is already taken out of it (NF-77); each <c>null</c> when it is not known.</summary>
+public readonly record struct OtaCollection(bool? CompanyCollect, bool? CommissionIncludedInPayments)
+{
+    /// <summary>Nothing known: the value of a booking that does not come from a channel.</summary>
+    public static OtaCollection None => default;
 }
 
 /// <summary>The price figures of the stay of an imported booking; each <c>null</c> when Octorate does not give it (or not in the currency of the property): a zero would read as a price.</summary>
