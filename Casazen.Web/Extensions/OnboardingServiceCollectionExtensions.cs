@@ -70,6 +70,10 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IPanelStepVerifier, IstatConnectionPanelVerifier>();
         services.AddScoped<IPanelStepVerifier, ChannelAccessDefaultPanelVerifier>();
 
+        // The integration settings (E10/F01/US02/T01, NF-108): the overview of the connection and of what can be reopened, and the reopen of a
+        // part. It reads the facts the other epics store and clears a deferral through the plan; it adds no path that changes a sender.
+        services.AddScoped<IOnboardingIntegrationService, OnboardingIntegrationService>();
+
         return services;
     }
 }
