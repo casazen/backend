@@ -1,3 +1,5 @@
+using System.Data;
+using System.Text.RegularExpressions;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
@@ -47,6 +49,57 @@ public class HostScopeNpgsqlTranslationTests
     // The service as the API builds it (SP-04 kit, over the database of the test): the listings below write no file.
     private static ServiceRequestService ServiceRequests(AppDbContext db) => new ServiceRequestTestKit(db).Service;
 
+    // The CRM profiles (E07/F01/US03): the read model, the list, the detail, and the decisions on the merges.
+    private static CrmProfileReadService CrmRead(AppDbContext db) => CrmProfileApiWorld.ReadService(db, Clock);
+
+    private static CrmProfileMergeService CrmMerge(AppDbContext db) => CrmProfileApiWorld.MergeService(db, Clock);
+
+    private static Task<CrmProfilePage> CrmList(AppDbContext db, HostScope scope, CrmProfileFilter filter) => CrmRead(db).ListAsync(scope, filter, 1, 20);
+
+    /// <summary>Every filter of the list at once, and the order by name, which sorts by a sub-query: the filters must translate together too.</summary>
+    private static readonly CrmProfileFilter EveryFilter = new("anna ross", "Italia", "it", "Direct", "vip", 2, true, CrmProfileSort.Name);
+
+    private static readonly Regex ProfileSelect = new(@"^SELECT\s+\w+\.""Id"",\s*\w+\.""Country"",\s*\w+\.""Language"",\s*\w+\.""TotalStays""", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The row of a CRM profile, for the statement that selects it (id, country, language, stays, spend, first and last stay, tags, primary
+    /// guest) in the detail and in the items of a page: with that row the probe goes on to the queries that need the profile.
+    /// </summary>
+    private static DataTable? ProfileRowOf(string sql)
+    {
+        if (!ProfileSelect.IsMatch(sql.TrimStart()))
+            return null;
+
+        var table = new DataTable();
+        table.Columns.Add("Id", typeof(Guid));
+        table.Columns.Add("Country", typeof(string));
+        table.Columns.Add("Language", typeof(string));
+        table.Columns.Add("TotalStays", typeof(int));
+        table.Columns.Add("TotalSpend", typeof(decimal));
+        table.Columns.Add("FirstStayAt", typeof(DateTime));
+        table.Columns.Add("LastStayAt", typeof(DateTime));
+        table.Columns.Add("TagsJson", typeof(string));
+        table.Columns.Add("PrimaryGuestId", typeof(Guid));
+        table.Rows.Add(Guid.NewGuid(), "Italia", "it", 1, 200m, HostScopeScenario.Day(2026, 9, 1), HostScopeScenario.Day(2026, 9, 3), "[]", DBNull.Value);
+        return table;
+    }
+
+    /// <summary>What the probe answers for a call that cannot go on with an empty answer (see <see cref="AnswerFor"/>).</summary>
+    private sealed record ProbeAnswer(int Count = 0, Func<string, DataTable?>? Rows = null);
+
+    /// <summary>
+    /// The CRM list and the merge proposals ask for a count and send the page behind it only when the count is not zero, so the probe answers
+    /// the count with one (the order of the page is the part that needs the provider); the detail and the items of a page need the row of the
+    /// profile to send the queries that follow it. Every other call goes on with the default answer.
+    /// </summary>
+    private static ProbeAnswer AnswerFor(string call) => call switch
+    {
+        "crm-detail" or "crm-items-of-a-page" => new ProbeAnswer(Rows: ProfileRowOf),
+        "crm-merge-candidates" => new ProbeAnswer(Count: 1),
+        _ when call.StartsWith("crm-list-", StringComparison.Ordinal) => new ProbeAnswer(Count: 1),
+        _ => new ProbeAnswer(),
+    };
+
     /// <summary>Every call of the code that takes the scope of the caller, by the name the failure reports.</summary>
     private static readonly Dictionary<string, Func<AppDbContext, HostScope, Task>> Calls = new()
     {
@@ -72,6 +125,24 @@ public class HostScopeNpgsqlTranslationTests
         ["cockpit"] = (db, scope) => ComplianceWizardServiceTests.CreateService(db, Clock).GetSummaryAsync(scope),
         ["alloggiati-list"] = (db, scope) =>
             new AlloggiatiWebService(db, NullLogger<AlloggiatiWebService>.Instance, Clock).GetSummaryAsync(scope, null),
+
+        // The CRM profiles (E07/F01/US03): every order of the list, every filter and the three searches, the detail, the items of a page and
+        // the merge proposals, for every kind of scope.
+        ["crm-list-by-last-stay"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(Sort: CrmProfileSort.LastStay)),
+        ["crm-list-by-spend"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(Sort: CrmProfileSort.Spend)),
+        ["crm-list-by-stays"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(Sort: CrmProfileSort.Stays)),
+        ["crm-list-by-name"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(Sort: CrmProfileSort.Name)),
+        ["crm-list-country-language-tag"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(Country: "Italia", Language: "it", Tag: "vip")),
+        ["crm-list-channel-min-stays"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(Channel: "Direct", MinStays: 2)),
+        ["crm-list-reachable-by-email"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(ReachableByEmail: true)),
+        ["crm-list-not-reachable-by-email"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(ReachableByEmail: false)),
+        ["crm-list-search-name"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(Search: "anna ross")),
+        ["crm-list-search-email"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(Search: "anna.rossi@example.com")),
+        ["crm-list-search-phone"] = (db, scope) => CrmList(db, scope, new CrmProfileFilter(Search: "+39 333 1234567")),
+        ["crm-list-everything-at-once"] = (db, scope) => CrmList(db, scope, EveryFilter),
+        ["crm-detail"] = (db, scope) => CrmRead(db).GetAsync(scope, Guid.NewGuid()),
+        ["crm-items-of-a-page"] = (db, scope) => CrmRead(db).GetItemsAsync(scope, [Guid.NewGuid()]),
+        ["crm-merge-candidates"] = (db, scope) => CrmMerge(db).ListProposedAsync(scope, 1, 20),
     };
 
     /// <summary>How many statements each call sends at least (all of them are reached when nothing was swallowed early).</summary>
@@ -93,6 +164,28 @@ public class HostScopeNpgsqlTranslationTests
         ["intervention-by-id"] = 1,
         ["cockpit"] = 6,
         ["alloggiati-list"] = 3,
+
+        // The CRM: the count and the page behind it (the probe answers the count with one); a search by an exact e-mail address asks for the
+        // contacts first, one by a phone number for the contacts and the profiles that carry the number.
+        ["crm-list-by-last-stay"] = 2,
+        ["crm-list-by-spend"] = 2,
+        ["crm-list-by-stays"] = 2,
+        ["crm-list-by-name"] = 2,
+        ["crm-list-country-language-tag"] = 2,
+        ["crm-list-channel-min-stays"] = 2,
+        ["crm-list-reachable-by-email"] = 2,
+        ["crm-list-not-reachable-by-email"] = 2,
+        ["crm-list-search-name"] = 2,
+        ["crm-list-search-email"] = 3,
+        ["crm-list-search-phone"] = 4,
+        ["crm-list-everything-at-once"] = 2,
+        // The row of the profile, then the guests that give the name, the contacts, the stays and the proposals (the reviews are asked for
+        // only when there is a stay).
+        ["crm-detail"] = 5,
+        // The row of the profile, then the guests that give the name, the bookings, the contacts and the proposals.
+        ["crm-items-of-a-page"] = 5,
+        // The count and the page of the proposals; the properties and the contacts of the page come after.
+        ["crm-merge-candidates"] = 2,
     };
 
     public static TheoryData<string, string> EveryCallWithEveryScope()
@@ -112,7 +205,8 @@ public class HostScopeNpgsqlTranslationTests
     public async Task Call_IsTranslatedToSqlByNpgsql(string call, string scope)
     {
         var statements = new List<string>();
-        await using var db = NpgsqlTranslationProbe.NewContext(statements);
+        var answer = AnswerFor(call);
+        await using var db = NpgsqlTranslationProbe.NewContext(statements, answer.Count, answer.Rows);
 
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => Calls[call](db, ScopeOf(scope)));
 
@@ -120,6 +214,12 @@ public class HostScopeNpgsqlTranslationTests
         Assert.True(
             statements.Count >= MinimumStatements[call],
             $"{call}: only {statements.Count} of the expected {MinimumStatements[call]} statements were reached.");
+    }
+
+    [Fact]
+    public void EveryCall_HasItsMinimum()
+    {
+        Assert.Equal(Calls.Keys.Order(), MinimumStatements.Keys.Order());
     }
 
     [Fact]

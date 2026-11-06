@@ -1,6 +1,7 @@
 using Casazen.Core.Events;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Octorate;
@@ -52,6 +53,27 @@ public static class CrmServiceCollectionExtensions
         services.AddSingleton<OctorateContactReadLedger>();
         services.AddScoped<IOctorateContactsService, OctorateContactsService>();
         services.AddScoped<IEventHandler<DomainEvent>, OctorateContactsEventHandler>();
+
+        // E07/F04/US01 (NF-90, CRM-03): the collection of the marketing consents. The double opt-in: the signed link of the confirmation e-mail
+        // (the secret of the signed links, no address in it) and the service that sends the e-mail and records the click. Not behind
+        // Features:CrmMarketing: a link already sent keeps working, and every collection point calls it.
+        services.AddSingleton<MarketingConfirmationLinks>();
+        services.AddScoped<IMarketingConfirmationService, MarketingConfirmationService>();
+
+        // E07/F04/US01/T03 (NF-90): the welcome link of a property (the QR code in the house) and the public page behind it, where a guest leaves a
+        // contact with a per-channel consent. The host's endpoints are behind the flag; the public ones are not (a printed code keeps working).
+        services.AddScoped<IPropertyWelcomeLinkService, PropertyWelcomeLinkService>();
+        services.AddScoped<IWelcomeConsentService, WelcomeConsentService>();
+
+        // E07/F04/US01/T04 (NF-90): the marketing choices of the guest of a booking, on the guest page (policy GuestSession, not behind the flag).
+        services.AddScoped<IGuestMarketingPreferencesService, GuestMarketingPreferencesService>();
+
+        // E07/F01/US03 (NF-88): the profile API of the host screens. The read model decides the scope of the CRM (the profiles a caller reaches), the
+        // list, the detail and the tags; the controller behind Features:CrmMarketing is a thin layer over it.
+        services.AddScoped<ICrmProfileReadService, CrmProfileReadService>();
+
+        // E07/F01/US03/T02 (NF-88): the decisions on the merges the matching proposes (list, dismiss, merge), one lock of the org for each decision.
+        services.AddScoped<ICrmProfileMergeService, CrmProfileMergeService>();
 
         return services;
     }

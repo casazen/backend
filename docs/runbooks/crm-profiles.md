@@ -1,7 +1,8 @@
 # Runbook: CRM profiles, contacts and the sync with the bookings
 
-Tasks E07/F01/US02/T01 (matching), T02 (contacts) and T03 (sync from the bookings) of the Octorate plan, requirements NF-88 (unified customer
-database), NF-89 (legal basis of a contact) and NF-20 (populated CRM). This page is the runbook of the profiles; the overview of the marketing
+Tasks E07/F01/US02/T01 (matching), T02 (contacts) and T03 (sync from the bookings), and E07/F01/US03/T01 and T02 (the profile API, § 6), of the
+Octorate plan, requirements NF-88 (unified customer database), NF-89 (legal basis of a contact) and NF-20 (populated CRM). This page is the
+runbook of the profiles; the overview of the marketing
 module (the switch, the variables, the key) is [`crm-marketing.md`](crm-marketing.md). The tables are those of E07/F01/US01
 ([`TECHNICAL.md`](../TECHNICAL.md)): `GuestCrmProfiles`, `GuestContacts`, `GuestMergeCandidates`.
 
@@ -66,7 +67,7 @@ brings the same address does not join the guest of the channel.
 ### 2.3 Proposals
 
 A proposal is a row of `GuestMergeCandidates`: two profiles, a score and the reason codes, never a name, a number or a date. The matching **never
-executes a merge**; a person decides (the merge is the profile API of E07/F01/US03).
+executes a merge**; a person decides (the merge is the profile API of E07/F01/US03, § 6).
 
 - **One row for each pair**: the smaller id first (`Guid.CompareTo`, the order the database check accepts), unique with the org. A pair that has a row
   in **any** state (proposed, merged, dismissed) is never proposed again, so a dismissed pair stays dismissed.
@@ -274,3 +275,43 @@ not take for a phone, so no two of them share one.
 | A guest with no profile although the job ran | The guest was erased, anonymized or asked for erasure (left alone on purpose), or has no row in the org of the booking |
 | Two profiles for one person | The matching proposes the merge (`GuestMergeCandidates`); a person decides. Two addresses and no common name, phone or birth date cannot be told apart |
 | An address is not marketable | `CrmContactRules.ReachabilityReason` says why (§ 3.2): forward, not confirmed, service only, suppressed |
+| `404 crm_profile_not_found` for a profile the screen showed a moment ago | It was merged into another (the screen holds the id of the tombstone), or the caller does not reach it (§ 6.1); reload the list |
+| `409 crm_merge_not_proposed` | The proposal was already decided, by a double click or by someone else (§ 6.2); nothing changed |
+| A merge proposal the owner sees is missing for a collaborator «Solo alcuni» | A profile of the pair has a guest (or a contact given by a guest) at a property the collaborator does not reach: it is not listed for it and answers 404 `crm_merge_candidate_not_found` (§ 6.2, fail closed); the owner or an administrator decides it |
+| `422 crm_tags_invalid` with fewer than 50 tags | The tags together must fit 2,000 characters (the column); shorten them or drop some |
+
+## 6. The profile API: list, detail, tags and merge (E07/F01/US03)
+
+Tasks T01 and T02. The routes are in [`TECHNICAL.md`](../TECHNICAL.md) (CRM profiles), all behind `Features:CrmMarketing` (§ 1, [`crm-marketing.md`](crm-marketing.md)). The
+pieces: `ICrmProfileReadService` (`CrmProfileReadService`: the scope, the list, the detail, the tags), `ICrmProfileMergeService`
+(`CrmProfileMergeService`: list, dismiss, merge), `CrmProfileRules` (the tags, the channel, the group of a stay: pure functions), the controller
+`CrmController` (thin), and the DTOs in `Casazen.Web/DTOs/Crm`.
+
+### 6.1 Who sees what
+
+- A caller who reaches the whole org sees every living profile, a lead from the welcome page included. A caller limited to some properties
+  (`HostScope`, a collaborator «Solo alcuni») sees a profile when one of its guests has a booking at one of them (`InScope` for `GuestCrmProfile`,
+  one `EXISTS`); a lead has no guest, so it is never in a limited scope; a caller with no property sees nothing and is never widened to the org.
+- For a limited caller everything that counts or names comes from the bookings and the guests it reaches: stays, spend, first and last arrival,
+  channels, the sort and the `minStays` filter, the history and the totals of the detail, the reviews, the name shown and the guest record the
+  screen opens. The totals stored on the profile are the whole org's and are read only by a caller who reaches the whole org, in the list.
+- The e-mail of the list is masked; the detail shows the values of the contacts to the people who may read the guests of the org. A contact given by
+  a guest that is erased is not shown, because the erasure does not reach the CRM yet (§ 1). No document, birth date, place of birth, `StayGuest` or
+  Alloggiati field is read or returned (`CrmProfileApiProofTests` reads the types and the JSON).
+- The search finds a name in the guests the caller reaches; an exact e-mail address or phone number is found by the keyed hash
+  ([`crm-marketing.md`](crm-marketing.md) § 3), so without `Crm__ContactIndexKey` only names are searched. The contacts the search and the filter
+  `reachableByEmail` look at are the ones the screen shows (`CrmProfileContactReader.Visible`): never one given by an erased guest.
+
+### 6.2 Deciding a merge
+
+A proposal (§ 2.3) is decided by whoever reaches both of its profiles **in full**. A merge moves every guest and every contact of the profile that
+goes, so a collaborator «Solo alcuni» does not decide a pair when a profile has a guest (or a contact given by a guest) at a property it does not reach:
+the pair is not listed for it, and the merge and the dismissal answer 404 `crm_merge_candidate_not_found`, as for a profile out of its scope; the
+owner, the administrators and the managers (the whole org) decide it. The rule is `ProfilesWhollyInScope`; relaxing it is a decision of the PO.
+**Dismiss** records who and when and keeps the row, so the pair is never proposed
+again. **Merge** moves the guests and the contacts of the profile that goes to the survivor **as they are** (the update sets the link and nothing
+else: basis, confirmation, suppression, version and times are untouched, no contact is copied, nothing is decrypted), joins the tags up to the cap,
+computes the aggregates of the survivor again, leaves the other profile as a tombstone (`MergedIntoProfileId`; the lists, the scope and the segments
+skip it, the matching follows it) and moves the other open proposals of that profile to the survivor, or drops those that would repeat a pair. Both
+run under the advisory lock of the org, so a double click decides once; the second one is 409 `crm_merge_not_proposed` and changes nothing
+(`CrmMergeProofTests`). There is no undo: a wrong merge is fixed by hand in the database.

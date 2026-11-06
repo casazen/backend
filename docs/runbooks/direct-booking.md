@@ -881,9 +881,26 @@ migration. `GET api/public/stays` (the parameters of `stays`), `GET api/public/s
   no version is 422 `direct_booking_marketing_consent_unavailable` and nothing is stored.
 - Recorded on the guest of the booking (`Guest.MarketingConsent`, `MarketingConsentDate`) and in the append-only register of
   the privacy history (`GuestConsentRecord`: purpose `Marketing`, action `Granted`, **the version of the text**, source
-  `BookingCheckout`, IP, time), **in the same insert as the booking and the guest snapshot** (`IBookingRepository.AddWithGuestConsentAsync`,
+  `BookingCheckout`, IP, time), **in the same insert as the booking and the guest snapshot** (`IBookingRepository.AddWithGuestConsentsAsync`,
   under the property lock). A checkout that loses the dates to a concurrent one leaves no consent; one whose payment cannot be
   started is removed with its guest and the register rows (foreign key with cascade, BK-18 § 10).
+- **Per channel (E07/F04/US01/T02, NF-90).** The box is two: `marketingConsentEmail` and `marketingConsentWhatsApp` (both optional, default
+  `false`, never preselected); the old `marketingConsent` still works and counts as the e-mail channel. Each ticked channel is one row of
+  the register and, once the guest has a payment to complete, a **consent contact of the CRM** (origin `DirectBooking`, source
+  `BookingCheckout`, version, IP, time); the e-mail one also gets the double opt-in message ([crm-consent.md](crm-consent.md) § 3). WhatsApp
+  needs the guest's phone number: 422 `direct_booking_whatsapp_requires_phone` without one the CRM can store. `Guest.MarketingConsent`
+  is set by the e-mail channel only (the flag a host's recorded withdrawal looks at, read as a consent to the e-mail address; the withdrawal
+  also suppresses the open CRM contacts of the guest, so a WhatsApp consent is ended too, [gdpr.md](gdpr.md)). The contact
+  is made after the booking is saved and **never fails the checkout**: without the key of the contact index (`Crm__ContactIndexKey`,
+  the CRM is closed) or if it fails, the register has the consent, with its channel in the note (`channel=email`, `channel=whatsapp`), and
+  the CRM sync makes the e-mail contact later; it does not make the WhatsApp contact of a checkout (the guest gives that consent again on the
+  guest page or on the welcome page, [crm-consent.md](crm-consent.md) § 4.1).
+- **The soft opt-in notice (art. 130 c. 4, PO-07).** `GET /api/public/orgs/{slug}` carries `softOptInNoticeVersion`
+  (`Gdpr__SoftOptInNoticeVersion`, `null` while the product owner has not set it). The checkout sends back the version it showed in
+  `softOptInNoticeVersion`: when it is the current one a register row (purpose `SoftOptInNotice`, action `NoticePresented`, source
+  `BookingCheckout`, version, IP) is written in the same insert; any other version, or one when none is configured, is 409
+  `direct_booking_soft_opt_in_notice_outdated` and nothing is stored. With no notice the customer's e-mail stays service only (the contact
+  service makes it soft opt-in only for a confirmed booking with a recorded notice).
 - The host reads it in the GDPR tab and can only **withdraw** it on the guest's documented request ([gdpr.md](gdpr.md)); the
   withdrawal keeps the version of the text the guest agreed to. The tab labels the source (`GuestConsentSource`): the
   frontend needs the label for `BookingCheckout` (follow-up FE).

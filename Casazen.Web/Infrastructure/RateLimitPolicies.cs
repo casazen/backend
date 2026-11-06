@@ -195,4 +195,14 @@ public static class RateLimitPolicies
     /// few tries leave room for the retry after an answer 502 of Auth0.
     /// </summary>
     public const string GuestAccountDelete = "GuestAccountDelete";
+
+    /// <summary>
+    /// The anonymous calls that give, confirm or take back a marketing consent (E07/F04/US01): the page of the double opt-in link
+    /// (<c>POST api/public/marketing/confirm</c>), the welcome page of a property (<c>GET api/public/welcome/{token}</c> and <c>POST …/consent</c>), and the
+    /// choices on the guest page (<c>PUT api/public/guest/bookings/{code}/marketing</c> and <c>POST …/marketing/resend-confirmation</c>). Each
+    /// can queue an e-mail to an address somebody typed, so they are bound per client IP: 60 in ten minutes, enough for the guests of a
+    /// building that share one network scanning the code in the same hour, and no more than a script could waste. Reading the choices on the
+    /// guest page uses <see cref="PublicBookingLookup"/>.
+    /// </summary>
+    public const string PublicMarketingConsent = "PublicMarketingConsent";
 }

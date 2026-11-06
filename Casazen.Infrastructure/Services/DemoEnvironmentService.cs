@@ -148,6 +148,10 @@ public class DemoEnvironmentService(
         // NF-88, NF-89: the CRM profiles, contacts and proposed merges of the showcase guests come from the bookings just created.
         await SeedCrmProfilesAsync(orgId, cancellationToken);
 
+        // NF-90: the welcome link (the QR code) of the demo house, which the houses just created make possible.
+        foreach (var welcomeLink in DemoShowcaseCatalog.WelcomeLinks)
+            await CreateWelcomeLinkAsync(orgId, ownerId, welcomeLink, cancellationToken);
+
         foreach (var invite in DemoShowcaseCatalog.HostInvites)
             await CreateHostInviteAsync(orgId, ownerId, invite, cancellationToken);
 
@@ -641,6 +645,53 @@ public class DemoEnvironmentService(
         db.MarketplaceActivations.Add(activation);
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.MarketplaceActivation, activation.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
+    /// <summary>
+    /// The active welcome link of a demo house (E07/F04/US01/T03, NF-90): the QR code of the house, with the fixed test token of the template. The
+    /// house is found by the template key of its marker; the link follows it (cascade), so the reset needs no step of its own to remove it. Skipped,
+    /// with a warning, when the house was not created, when the house already has an active link (a person made it) and when another org holds the
+    /// token: the token is unique among all the links, and a link of somebody else is never taken over.
+    /// </summary>
+    private async Task CreateWelcomeLinkAsync(
+        Guid orgId, string ownerId, DemoWelcomeLinkTemplate template, CancellationToken cancellationToken)
+    {
+        var propertyId = await Markers()
+            .Where(m => m.OrgId == orgId
+                && m.Origin == TestDataOrigins.Showcase
+                && m.EntityType == TestDataEntities.Property
+                && m.TemplateKey == template.PropertyKey)
+            .Select(m => m.EntityId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (propertyId == Guid.Empty)
+        {
+            logger.LogWarning(
+                "Demo welcome link {Key} of org {OrgId} was skipped: the house it names was not created", template.Key, orgId);
+            return;
+        }
+
+        var taken = await db.PropertyWelcomeLinks.IgnoreQueryFilters([Tenant])
+            .AnyAsync(l => l.Token == template.Token || (l.PropertyId == propertyId && l.RevokedAt == null), cancellationToken);
+        if (taken)
+        {
+            logger.LogWarning(
+                "Demo welcome link {Key} of org {OrgId} was skipped: the house already has an active link, or another org holds the token",
+                template.Key,
+                orgId);
+            return;
+        }
+
+        var link = new PropertyWelcomeLink
+        {
+            OrgId = orgId,
+            PropertyId = propertyId,
+            Token = template.Token,
+            CreatedAt = UtcNow(),
+            CreatedByUserId = ownerId,
+        };
+        db.PropertyWelcomeLinks.Add(link);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.WelcomeLink, link.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
     /// <summary>

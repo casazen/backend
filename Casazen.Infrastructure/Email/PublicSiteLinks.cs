@@ -40,6 +40,29 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     }
 
     /// <summary>
+    /// Page of the web app where a person confirms the subscription to the marketing e-mails of an org, the second step of the double opt-in
+    /// (route <c>/marketing/confirm</c>, E07/F04/US01/T01; the page is a frontend task). <paramref name="signedQuery"/> (<c>contactId</c>,
+    /// <c>expiresAt</c>, <c>signature</c>, built by <see cref="MarketingConfirmationLinks"/>) travels in the <b>fragment</b>, which a browser
+    /// never sends to a server, so it is in no access log: the page reads it and posts it unchanged as the query of
+    /// <c>POST api/public/marketing/confirm</c>. Never the address, never the org.
+    /// </summary>
+    public string MarketingConfirm(string signedQuery)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(signedQuery);
+        return Build($"/marketing/confirm#{signedQuery}");
+    }
+
+    /// <summary>
+    /// The welcome page of a property, the address behind the QR code printed in the house (route <c>/benvenuto/{token}</c>, E07/F04/US01/T03; the
+    /// page is a frontend task). Only the random token of the link is in the address: it says which property the page is about and nothing else.
+    /// </summary>
+    public string Welcome(string token)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        return Build($"/benvenuto/{Uri.EscapeDataString(token)}");
+    }
+
+    /// <summary>
     /// Supplier registration page of the web app for an invite (SU-01). Only the token is in the link: the page reads
     /// email and comune from the API, so no personal data ends up in URLs and logs.
     /// </summary>

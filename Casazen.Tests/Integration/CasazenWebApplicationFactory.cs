@@ -117,6 +117,7 @@ public class CasazenWebApplicationFactory : WebApplicationFactory<Program>
                 ["RateLimiting:PublicRegistration:PermitLimit"] = "1000",
                 ["RateLimiting:PublicComuni:PermitLimit"] = "1000",
                 ["RateLimiting:PublicInvitationLookup:PermitLimit"] = "1000",
+                ["RateLimiting:PublicMarketingConsent:PermitLimit"] = "1000",
                 ["RateLimiting:OrgAccessRequest:PermitLimit"] = "1000",
                 ["RateLimiting:PublicSupplierSlots:PermitLimit"] = "1000",
                 ["RateLimiting:PublicSupplierQuote:PermitLimit"] = "1000",

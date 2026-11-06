@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Microsoft.Extensions.Configuration;
@@ -63,6 +64,12 @@ public sealed class OctorateApiClient(
 
     /// <summary>The member of an accommodation read by <see cref="GetPoliceAccountAsync"/>: the police account, as Octorate documents it (Q-002).</summary>
     private const string PoliceAccountFields = "policeAccount";
+
+    /// <summary>The members of a connection read by <see cref="GetOrgConnectionsAsync"/>: ids and state, never its portal username or password.</summary>
+    private const string OrgConnectionFields = "id,channelId,hotelId,status,userLogged,loginAt,accommodationId";
+
+    /// <summary>The most digits of a connection id (Octorate's ids are 64-bit numbers).</summary>
+    private const int MaxConnectionIdDigits = 19;
 
     /// <summary>Octorate's answer of the availability check for a room that cannot be booked (OpenAPI: "Not available to book").</summary>
     internal const int NotAvailableStatus = 406;
@@ -492,6 +499,55 @@ public sealed class OctorateApiClient(
         return [.. Items(document.RootElement).Select(ReadPortal).OfType<OctoratePortal>()];
     }
 
+    public async Task<OctorateConnectionSummary[]> GetOrgConnectionsAsync(CancellationToken ct)
+    {
+        // The connections of every accommodation of the org's token in one call; only the ids and the state are asked for, so the portal
+        // username and password of a connection never reach CasaZen.
+        using var document = await GetJsonAsync(
+            $"/rest/v1/connection?fields={Uri.EscapeDataString(OrgConnectionFields)}", "org-connections", ct);
+        var root = document.RootElement;
+        IEnumerable<JsonElement> items = root.ValueKind == JsonValueKind.Object && !root.TryGetProperty("data", out _)
+            ? new[] { root }
+            : Items(root);
+        return [.. items.Select(ReadConnectionSummary).OfType<OctorateConnectionSummary>()];
+    }
+
+    public Task<OctorateConnectionActionResult> ImportRoomsAsync(string accommodationId, string connectionId, CancellationToken ct) =>
+        RunD6OperationAsync(OctorateD6Operation.ImportRooms, accommodationId, connectionId, ct);
+
+    public Task<OctorateConnectionActionResult> ImportReservationsAsync(string accommodationId, string connectionId, CancellationToken ct) =>
+        RunD6OperationAsync(OctorateD6Operation.ImportReservations, accommodationId, connectionId, ct);
+
+    public Task<OctorateConnectionActionResult> ImportCalendarAsync(string accommodationId, string connectionId, CancellationToken ct) =>
+        RunD6OperationAsync(OctorateD6Operation.ImportCalendar, accommodationId, connectionId, ct);
+
+    public Task<OctorateConnectionActionResult> MarkConnectedAsync(string accommodationId, string connectionId, CancellationToken ct) =>
+        RunD6OperationAsync(OctorateD6Operation.MarkConnected, accommodationId, connectionId, ct);
+
+    /// <summary>
+    /// One operation of the D6 sequence on a connection (<c>POST /rest/v1/connection/{action}/{acc}/{connection}</c>). The four typed methods
+    /// above are the only callers and <see cref="OctorateD6Operation"/> has no member that creates or publishes a listing, so no path of the
+    /// import reaches such an operation. A 200 whose body is not a JSON list or object, or that names another action than the one asked, is
+    /// <see cref="OctorateServerException"/>: the result is unknown and is never read as a success.
+    /// </summary>
+    private async Task<OctorateConnectionActionResult> RunD6OperationAsync(
+        OctorateD6Operation operation,
+        string accommodationId,
+        string connectionId,
+        CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var connection = CheckedConnectionId(connectionId);
+        var name = D6OperationName(operation);
+        var answer = await SendAsync(
+            () => new HttpRequestMessage(
+                HttpMethod.Post,
+                Address($"/rest/v1/connection/{name}/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(connection)}")),
+            $"connection-{name}",
+            ct);
+        return ReadD6Result(operation, connection, answer);
+    }
+
     /// <summary>
     /// One call for the org of the scope: the org first (none: it throws and nothing leaves), then its token and a call from its bucket,
     /// the answer of a success, or the typed error. Retries a 429 after the backoff delays and a refused token once after a refresh.
@@ -665,6 +721,108 @@ public sealed class OctorateApiClient(
             throw new ArgumentException($"An id has 1 to {MaxAccommodationIdLength} characters.", parameterName);
 
         return id;
+    }
+
+    /// <summary>
+    /// The id of a connection, trimmed: a number of 1 to <see cref="MaxConnectionIdDigits"/> digits, as the specification declares it
+    /// (<c>integer</c>, <c>int64</c>). Anything else is refused before a call leaves.
+    /// </summary>
+    internal static string CheckedConnectionId(string connectionId)
+    {
+        var id = connectionId?.Trim();
+        if (!IsNumericId(id))
+            throw new ArgumentException($"A connection id is a number of 1 to {MaxConnectionIdDigits} digits.", nameof(connectionId));
+
+        return id!;
+    }
+
+    private static bool IsNumericId(string? id) =>
+        !string.IsNullOrEmpty(id) && id.Length <= MaxConnectionIdDigits && id.All(char.IsAsciiDigit);
+
+    /// <summary>The <c>action</c> of the connection operation, as Octorate spells it.</summary>
+    internal static string D6OperationName(OctorateD6Operation operation) => operation switch
+    {
+        OctorateD6Operation.ImportRooms => "IMPORT_ROOMS",
+        OctorateD6Operation.ImportReservations => "IMPORT_RESERVATIONS",
+        OctorateD6Operation.ImportCalendar => "IMPORT_CALENDAR",
+        OctorateD6Operation.MarkConnected => "MARK_CONNECTED",
+        _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, "Not an operation of the D6 sequence."),
+    };
+
+    /// <summary>
+    /// The answer of an operation of the D6 sequence: the list of mappings it touched, bare or as the <c>data</c> array of the wrapper that
+    /// names the action performed (the example of the specification), and nothing else. Anything else is an answer CasaZen cannot trust and is
+    /// never read as a success: a body that is not a list or an object, <c>{}</c> or an error that came with HTTP 200, a wrapper without a
+    /// <c>data</c> array, one without <c>additionalInfo.actionPerformed</c> or one that names another action: <see cref="OctorateServerException"/>.
+    /// </summary>
+    internal static OctorateConnectionActionResult ReadD6Result(OctorateD6Operation operation, string connectionId, OctorateAnswer answer)
+    {
+        using var document = ParseJson(answer);
+        var root = document.RootElement;
+        var list = root.ValueKind switch
+        {
+            JsonValueKind.Array => root,
+            JsonValueKind.Object when NamesTheAction(root, operation) && root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array => data,
+            _ => throw new OctorateServerException(answer.StatusCode),
+        };
+
+        return new OctorateConnectionActionResult(
+            operation,
+            connectionId,
+            [.. list.EnumerateArray().Select(ReadImportedMapping).OfType<OctorateImportedMapping>()]);
+    }
+
+    /// <summary>True when the wrapper of an answer says, in <c>additionalInfo.actionPerformed</c>, that it is the answer of this operation.</summary>
+    private static bool NamesTheAction(JsonElement wrapper, OctorateD6Operation operation) =>
+        wrapper.TryGetProperty("additionalInfo", out var info)
+        && info.ValueKind == JsonValueKind.Object
+        && OctorateHttp.StringOf(info, "actionPerformed") is { } performed
+        && string.Equals(performed, D6OperationName(operation), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A mapping of an answer of an operation of the D6 sequence, or <c>null</c> when the item lacks the product or the external id.</summary>
+    internal static OctorateImportedMapping? ReadImportedMapping(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var product = OctorateHttp.StringOf(item, "productId");
+        var external = OctorateHttp.StringOf(item, "externalId");
+        return product is null || external is null || product.Length > MaxAccommodationIdLength || external.Length > MaxAccommodationIdLength
+            ? null
+            : new OctorateImportedMapping(product, external);
+    }
+
+    /// <summary>
+    /// A connection of an answer of <c>connection</c> without an accommodation filter, or <c>null</c> when the item has no numeric id, no
+    /// channel or no accommodation (the id is also read from <c>accommodation.id</c> when the answer nests it).
+    /// </summary>
+    internal static OctorateConnectionSummary? ReadConnectionSummary(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+            return null;
+
+        item.TryGetProperty("accommodation", out var accommodation);
+        var id = OctorateHttp.StringOf(item, "id");
+        var channel = OctorateHttp.StringOf(item, "channelId");
+        var accommodationId = OctorateHttp.StringOf(item, "accommodationId") ?? OctorateHttp.StringOf(accommodation, "id");
+        if (!IsNumericId(id)
+            || channel is null
+            || channel.Length > MaxAccommodationIdLength
+            || accommodationId is null
+            || accommodationId.Length > MaxAccommodationIdLength)
+        {
+            return null;
+        }
+
+        var external = OctorateHttp.StringOf(item, "hotelId");
+        return new OctorateConnectionSummary(
+            id!,
+            channel,
+            accommodationId,
+            external is { Length: <= MaxAccommodationIdLength } ? external : null,
+            OctorateHttp.StringOf(item, "status"),
+            BoolOf(item, "userLogged"),
+            DateTimeOf(item, "loginAt"));
     }
 
     /// <summary>The <c>type</c> of the list of reservations, as Octorate spells it.</summary>
@@ -1004,7 +1162,7 @@ public sealed class OctorateApiClient(
     }
 
     /// <summary>A successful answer: Octorate's status and its text.</summary>
-    private sealed record OctorateAnswer(int StatusCode, string Body);
+    internal sealed record OctorateAnswer(int StatusCode, string Body);
 
     /// <summary>
     /// Who a call is made for: an org (its token, its bucket) or the platform (the partner token, the bucket <c>platform</c>). The label is
