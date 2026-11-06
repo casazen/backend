@@ -67,7 +67,7 @@ public interface IMessageHubService
 
     /// <summary>
     /// The file of an OTA message, fetched from the address the channel manager gave (https, 30 seconds, 20 MB, one of three types). A message
-    /// outside the org or the reach of the scope is a 404 <c>not_found</c>; a message the caller reaches whose file is gone, expired, too big, of
+    /// outside the org or the reach of the scope is a 404 <c>message_not_found</c>; a message the caller reaches whose file is gone, expired, too big, of
     /// another type or unreachable is a 404 <c>attachment_unavailable</c>. The address is never in an answer, a header or a log.
     /// </summary>
     Task<OtaAttachmentContent> OpenAttachmentAsync(
@@ -177,8 +177,9 @@ public sealed record MessageHubMessage(
     string? AttachmentContentType);
 
 /// <summary>
-/// The amounts of a booking in <see cref="MessageBookingCard.Currency"/>. For a booking of a channel: the four figures the channel manager gave
-/// (each <c>null</c> when it did not, never derived from another) and the total when it is set; for a direct booking: the total and what came in.
+/// The amounts of a booking in <see cref="MessageBookingCard.Currency"/>. For a booking whose money is the channel manager's
+/// (<see cref="BookingAmountSourceRules.HoldsChannelManagerMoney"/>): the four figures the channel manager gave (each <c>null</c> when it did not,
+/// never derived from another) and the total when it is set; for any other booking, one CasaZen sent to Octorate included: the total and what came in.
 /// </summary>
 public sealed record MessageBookingAmounts(decimal? Total, decimal? Paid, decimal? Commission, decimal? Net, decimal? Balance);
 

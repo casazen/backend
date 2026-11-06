@@ -120,10 +120,14 @@ conversation is named by its booking because it has one thread per booking.
 
 **The booking card** (`booking`, ADR-032-R8): `{ bookingId, bookingCode, guestName, checkInDate, checkOutDate, guests, adults, children, status, source,
 channelLabel, currency, amounts }`, the dates as Europe/Rome days, `currency` the one of the property. It is shown only for a booking of the **same
-property** as the conversation (a stray link never shows a stay under a house it does not belong to). `amounts` is absent for a caller without
-`payment.read` (SR-D7, the same reach as the amounts of the booking itself). For a booking of a channel it holds the four figures the channel manager gave
+property** as the conversation (a stray link never shows a stay under a house it does not belong to), and so the list, the filter by booking and the
+badges carry the booking of a conversation only under the same rule (a conversation moved to another house by a new mapping shows no stay of the first
+one). `amounts` is absent for a caller without `payment.read` (SR-D7, the same reach as the amounts of the booking itself). For a booking whose money is
+the channel manager's (a booking of a channel, or a reservation of the booking engine of the agency that the import made:
+`BookingAmountSourceRules.HoldsChannelManagerMoney`, NF-77) it holds the four figures the channel manager gave
 (`commission`, `net`, `paid`, `balance`: a figure that is not available is **left out**, never zero and never derived; the commission often arrives late)
-and `total` when set; for a direct booking `total` and `paid` (from its payments). **Customer link** (`customer: { guestId }`): the guest of the booking, for
+and `total` when set; for any other booking, one CasaZen sent to Octorate included (it has a reservation there, but its money is CasaZen's), `total` and
+`paid` (from its payments). **Customer link** (`customer: { guestId }`): the guest of the booking, for
 every conversation that has one; a request has no booking and so no link. The route of the profile is built by the client.
 
 **Unassigned conversations (OCT-04).** A conversation whose listing has no confirmed mapping has no property (`PropertyId` null, `unassigned: true`).
