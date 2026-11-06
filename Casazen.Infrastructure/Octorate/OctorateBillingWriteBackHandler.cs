@@ -112,11 +112,12 @@ public sealed class OctorateBillingWriteBackHandler(
         if (string.Equals(row.OctorateBillingHash, hash, StringComparison.Ordinal))
             return;
 
+        bool written;
         using (orgScope.Use(orgId))
         {
             try
             {
-                await client.UpsertBookerBillingDataAsync(accommodationId, reservationId, data, ct);
+                written = await client.UpsertBookerBillingDataAsync(accommodationId, reservationId, data, ct);
             }
             catch (OctorateException ex) when (OctorateBillingSyncRules.IsRetryable(ex))
             {
@@ -137,6 +138,16 @@ public sealed class OctorateBillingWriteBackHandler(
                     ex.OctorateStatusCode);
                 return;
             }
+        }
+
+        // A reservation that names no customer record has nothing to write to: nothing was sent, so nothing is marked as written.
+        if (!written)
+        {
+            logger.LogInformation(
+                "Billing data of booking {BookingId} of org {OrgId} not written to Octorate: its reservation names no customer record",
+                bookingId,
+                orgId);
+            return;
         }
 
         row.OctorateBillingHash = hash;

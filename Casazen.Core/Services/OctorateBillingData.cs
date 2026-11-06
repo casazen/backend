@@ -13,8 +13,10 @@ namespace Casazen.Core.Services;
 /// <item>Every member is optional; <c>null</c> is «not there». Text is trimmed and never empty.</item>
 /// <item><see cref="Address"/> is one line, the way an address book keeps it: the street and the house number of CasaZen's invoice data, joined.</item>
 /// <item><see cref="IsCompany"/> says whether <see cref="Name"/> is the denomination of a company (the record's company name, or a VAT number) or the
-/// name of a person. A person's name is only read, never written: the record already holds the guest's name, and the name on an invoice must not
-/// rewrite who the guest is.</item>
+/// name of a person. A name is only read, never written: the record already holds the guest's name, the member that would hold the denomination of a
+/// company is not known, and the name on an invoice must not rewrite who the guest is.</item>
+/// <item>What goes where is decided by <c>OctorateBillingMapping</c>: <see cref="Province"/> is neither read nor written, <see cref="SdiRecipientCode"/>
+/// is only read (the member is read-only in Octorate) and <see cref="Pec"/> is only written (the member is write-only).</item>
 /// <item><b>Personal data.</b> <see cref="ToString"/> names the type and nothing else, so a log line that prints the value leaks nothing.</item>
 /// </list>
 /// </remarks>
@@ -48,7 +50,10 @@ public sealed record OctorateBillingData
     /// <summary>The code of the recipient on the SDI (7 letters or digits).</summary>
     public string? SdiRecipientCode { get; init; }
 
-    /// <summary>The certified e-mail (PEC) of the recipient, the address an invoice is sent to: not the e-mail address of the guest.</summary>
+    /// <summary>
+    /// The certified e-mail (PEC) of the recipient, the address an invoice is sent to: not the e-mail address of the guest. Written to Octorate; never
+    /// read from it (Octorate never returns it), so a record read from Octorate has none.
+    /// </summary>
     public string? Pec { get; init; }
 
     /// <summary>True when at least one member holds a text (a company flag alone is nothing to read or to write).</summary>

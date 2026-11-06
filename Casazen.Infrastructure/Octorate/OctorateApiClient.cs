@@ -745,9 +745,9 @@ public sealed class OctorateApiClient(
     public async Task<OctorateBillingData?> GetBookerBillingDataAsync(string accommodationId, string reservationId, CancellationToken ct)
     {
         var accommodation = CheckedAccommodationId(accommodationId);
-        var reservation = CheckedId(reservationId, nameof(reservationId));
 
-        var customerId = await CustomerIdOfReservationAsync(accommodation, reservation, ct);
+        // The record is the one the reservation names (the same read and the same reader as every other member of the reservation).
+        var customerId = (await GetReservationAsync(accommodation, reservationId, ct)).InvoiceHolderId;
         if (customerId is null)
             return null;
 
@@ -757,17 +757,20 @@ public sealed class OctorateApiClient(
         return OctorateBillingMapping.Read(Unwrap(document.RootElement));
     }
 
-    public async Task UpsertBookerBillingDataAsync(string accommodationId, string reservationId, OctorateBillingData data, CancellationToken ct)
+    public async Task<bool> UpsertBookerBillingDataAsync(string accommodationId, string reservationId, OctorateBillingData data, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(data);
         var accommodation = CheckedAccommodationId(accommodationId);
-        var reservation = CheckedId(reservationId, nameof(reservationId));
 
         var json = OctorateBillingMapping.WriteBody(data);
         if (json == OctorateBillingMapping.EmptyBody)
             throw new ArgumentException("Billing data with nothing to write is not sent.", nameof(data));
 
-        var customerId = await CustomerIdOfReservationAsync(accommodation, reservation, ct) ?? throw new OctorateNotFoundException();
+        // A reservation that names no customer record has nothing to write to, and no record is made for it: nothing was sent.
+        var customerId = (await GetReservationAsync(accommodation, reservationId, ct)).InvoiceHolderId;
+        if (customerId is null)
+            return false;
+
         await SendAsync(
             () => new HttpRequestMessage(
                 HttpMethod.Put,
@@ -777,15 +780,7 @@ public sealed class OctorateApiClient(
             },
             "customer-billing-write",
             ct);
-    }
-
-    /// <summary>The id of the customer record a reservation names (<c>GET /rest/v1/reservation/{acc}/{id}</c>), or <c>null</c> when it names none or an unusable id.</summary>
-    private async Task<string?> CustomerIdOfReservationAsync(string accommodationId, string reservationId, CancellationToken ct)
-    {
-        using var document = await GetJsonAsync(
-            $"/rest/v1/reservation/{Uri.EscapeDataString(accommodationId)}/{Uri.EscapeDataString(reservationId)}", "reservation-customer", ct);
-        var id = OctorateBillingMapping.CustomerIdOf(Unwrap(document.RootElement));
-        return id is { Length: > 0 and <= MaxAccommodationIdLength } ? id : null;
+        return true;
     }
 
     public async Task<OctorateConnectionSummary[]> GetOrgConnectionsAsync(CancellationToken ct)

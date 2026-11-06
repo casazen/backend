@@ -163,7 +163,7 @@ public class OctorateBillingSyncProofTests
         }
 
         var http = new RecordingHandler();
-        http.Answer(HttpStatusCode.OK, $$"""{ "id": "{{ReservationId}}", "guestId": {{CustomerId}}, "firstName": "Anna", "lastName": "Verdi" }""");
+        http.Answer(HttpStatusCode.OK, $$"""{ "id": "{{ReservationId}}", "invoiceHolderId": {{CustomerId}}, "firstName": "Anna", "lastName": "Verdi" }""");
         http.Answer(HttpStatusCode.OK, "{}");
         var scope = new OctorateOrgScope(rig.Tenant);
 
@@ -175,16 +175,26 @@ public class OctorateBillingSyncProofTests
         Assert.Equal(HttpMethod.Put, http.Requests[1].Method);
         Assert.EndsWith($"/rest/v1/guests/{AccommodationId}/{CustomerId}", http.Requests[1].Uri.AbsolutePath);
 
-        // The members of the body: exactly the billing members CasaZen writes, with the data of the invoice.
+        // The members of the body: exactly the billing members CasaZen writes (the writable ones of the GuestDTO of the OpenAPI), with the data of
+        // the invoice and nothing else: not the denomination, not the code of the SDI, not the province, which are not written until proven.
         using var body = JsonDocument.Parse(http.Requests[1].Body);
         var members = body.RootElement.EnumerateObject().Select(p => p.Name).Order().ToArray();
         Assert.Equal(OctorateBillingMapping.WrittenMembers.Order().ToArray(), members);
-        Assert.Equal(CompanyName, body.RootElement.GetProperty("companyName").GetString());
-        Assert.Equal(VatNumber, body.RootElement.GetProperty("vatNumber").GetString());
+        Assert.Equal(["address", "city", "country", "fiscalCode", "legalMail", "vatCode", "zip"], members);
+        Assert.Equal("12345678903", body.RootElement.GetProperty("fiscalCode").GetString());
+        Assert.Equal(VatNumber, body.RootElement.GetProperty("vatCode").GetString());
         Assert.Equal("Via del Sale Rosa 42/B", body.RootElement.GetProperty("address").GetString());
-        Assert.Equal(CompanyPec, body.RootElement.GetProperty("pec").GetString());
-        string[] neverAMember = ["document", "passport", "birth", "nationality", "phone", "email", "mail", "gender", "sex", "alloggiati", "police"];
+        Assert.Equal("22100", body.RootElement.GetProperty("zip").GetString());
+        Assert.Equal("Cernobbio", body.RootElement.GetProperty("city").GetString());
+        Assert.Equal("IT", body.RootElement.GetProperty("country").GetString());
+        Assert.Equal(CompanyPec, body.RootElement.GetProperty("legalMail").GetString());
+        Assert.DoesNotContain(CompanyName, http.Requests[1].Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("ABC1234", http.Requests[1].Body, StringComparison.Ordinal);
+        string[] neverAMember = ["document", "passport", "birth", "nationality", "phone", "mobile", "gender", "sex", "alloggiati", "police"];
         Assert.DoesNotContain(members, member => neverAMember.Any(word => member.Contains(word, StringComparison.OrdinalIgnoreCase)));
+
+        // legalMail is the PEC of the recipient; the e-mail address of the guest is another member (email) that is never written.
+        Assert.DoesNotContain(members, member => member.Equals("email", StringComparison.OrdinalIgnoreCase));
 
         // Nothing the guest holds privately is in either request, address or body.
         string[] neverAValue = [GuestEmail, GuestPhone, GuestDocumentNumber, "Anna", "Verdi", "Torino"];
@@ -211,7 +221,7 @@ public class OctorateBillingSyncProofTests
         rig.Client
             .Setup(c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()))
             .Callback<string, string, OctorateBillingData, CancellationToken>((_, _, data, _) => sent.Add(data))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync(true);
 
         // No invoice data yet: nothing to send.
         await rig.WriteBack().HandleAsync(Saved(booking.Id, InvoiceDataSource.Host), Ct);
@@ -338,7 +348,7 @@ public class OctorateBillingSyncProofTests
         // Octorate answers at the next delivery: written, and marked.
         rig.Client
             .Setup(c => c.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<OctorateBillingData>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+            .ReturnsAsync(true);
         await rig.WriteBack().HandleAsync(saved, Ct);
         Assert.NotNull((await rig.RowAsync(booking.Id)).OctorateBillingHash);
     }
@@ -551,15 +561,16 @@ public class OctorateBillingSyncProofTests
                 return await client.GetBookerBillingDataAsync(AccommodationId, ReservationId, Ct);
         }
 
-        // The record the reservation names holds a company: its billing members are read, the guest's contacts are not (the type has no member for them).
-        http.Answer(HttpStatusCode.OK, $$"""{ "id": "{{ReservationId}}", "guestId": {{CustomerId}} }""");
+        // The record the reservation names (invoiceHolderId) holds a company, in the members of the GuestDTO of the OpenAPI: its billing members are
+        // read, the guest's contacts and the PEC are not (the type has no member for the first, and Octorate never returns the second).
+        http.Answer(HttpStatusCode.OK, $$"""{ "id": "{{ReservationId}}", "invoiceHolderId": {{CustomerId}} }""");
         http.Answer(
             HttpStatusCode.OK,
             $$"""
-            { "id": {{CustomerId}}, "firstName": "Anna", "lastName": "Verdi", "email": "{{GuestEmail}}", "phoneNumber": "{{GuestPhone}}",
-              "companyName": "{{CompanyName}}", "vatNumber": "{{VatNumber}}", "taxCode": "12345678903", "address": "Via del Sale Rosa 42/B",
-              "zipCode": "22100", "city": "Cernobbio", "province": "CO", "country": "IT", "sdiCode": "ABC1234", "pec": "{{CompanyPec}}",
-              "newsletterConcent": true }
+            { "id": {{CustomerId}}, "firstname": "Anna", "lastname": "Verdi", "email": "{{GuestEmail}}", "mobile": "{{GuestPhone}}",
+              "company": "{{CompanyName}}", "vatCode": "{{VatNumber}}", "fiscalCode": "12345678903", "address": "Via del Sale Rosa 42/B",
+              "zip": "22100", "city": "Cernobbio", "district": "CO", "country": "IT", "destinationOffice": "ABC1234",
+              "legalMail": "{{CompanyPec}}", "legalMailAvailable": true, "newsletterConcent": true }
             """);
         var company = await ReadAsync();
 
@@ -571,49 +582,72 @@ public class OctorateBillingSyncProofTests
         Assert.Equal("Via del Sale Rosa 42/B", company.Address);
         Assert.Equal("22100", company.PostalCode);
         Assert.Equal("Cernobbio", company.City);
-        Assert.Equal("CO", company.Province);
         Assert.Equal("IT", company.CountryCode);
         Assert.Equal("ABC1234", company.SdiRecipientCode);
-        Assert.Equal(CompanyPec, company.Pec);
+
+        // The province is not read (no member of the schema is known to hold it) and the PEC never is (write-only): a record has neither.
+        Assert.Null(company.Province);
+        Assert.Null(company.Pec);
         Assert.EndsWith($"/rest/v1/guests/{AccommodationId}/{CustomerId}", http.Requests[1].Uri.AbsolutePath);
         Assert.DoesNotContain(GuestEmail, company.ToString(), StringComparison.Ordinal);
 
-        // A record that holds only the guest's name is no billing data.
-        http.Answer(HttpStatusCode.OK, $$"""{ "id": "{{ReservationId}}", "guestId": {{CustomerId}} }""");
-        http.Answer(HttpStatusCode.OK, $$"""{ "id": {{CustomerId}}, "firstName": "Anna", "lastName": "Verdi", "email": "{{GuestEmail}}" }""");
+        // A record that holds only the guest's name is no billing data; the name of a person is firstname and lastname, whatever the case.
+        http.Answer(HttpStatusCode.OK, $$"""{ "id": "{{ReservationId}}", "invoiceHolderId": {{CustomerId}} }""");
+        http.Answer(HttpStatusCode.OK, $$"""{ "id": {{CustomerId}}, "firstname": "Anna", "lastname": "Verdi", "email": "{{GuestEmail}}" }""");
         Assert.Null(await ReadAsync());
 
+        http.Answer(HttpStatusCode.OK, $$"""{ "id": "{{ReservationId}}", "invoiceHolderId": {{CustomerId}} }""");
+        http.Answer(HttpStatusCode.OK, """{ "firstName": "Anna", "lastName": "Verdi", "fiscalCode": "RSSMRA80A01H501U" }""");
+        var person = await ReadAsync();
+        Assert.NotNull(person);
+        Assert.False(person.IsCompany);
+        Assert.Equal("Anna Verdi", person.Name);
+        Assert.Equal("RSSMRA80A01H501U", person.FiscalCode);
+
         // Octorate refuses the guest's data (the outbound IPs): a typed error, never an empty result.
-        http.Answer(HttpStatusCode.OK, $$"""{ "id": "{{ReservationId}}", "guestId": {{CustomerId}} }""");
+        http.Answer(HttpStatusCode.OK, $$"""{ "id": "{{ReservationId}}", "invoiceHolderId": {{CustomerId}} }""");
         http.Answer(HttpStatusCode.Forbidden, """{ "type": "ApiSecurityException" }""");
         var refusal = await Assert.ThrowsAsync<OctorateAuthException>(ReadAsync);
         Assert.Equal(OctorateAuthException.RefusedCode, refusal.Code);
     }
 
     [Fact]
-    public async Task Client_WithoutACustomerRecord_ReadsNothing_AndWritesNothing()
+    public async Task Client_WithoutACustomerRecord_ReadsNothing_WritesNothing_AndSaysSo()
     {
         var http = new RecordingHandler();
         var scope = new OctorateOrgScope(NullTenantContext.Instance);
         var client = NewClient(http, scope, new FixedTimeProvider(Now));
         var data = new OctorateBillingData { IsCompany = true, Name = CompanyName, VatNumber = VatNumber };
 
-        // The reservation names no customer record: the read is empty (nothing is guessed), the write is not found (no record is created).
-        http.Answer(HttpStatusCode.OK, $$"""{ "id": "{{ReservationId}}" }""");
         using (scope.Use(OrgA))
         {
-            Assert.Null(await client.GetBookerBillingDataAsync(AccommodationId, ReservationId, Ct));
-            Assert.Single(http.Requests);
+            // The reservation names no customer record, or only a guest of the stay (a guestId, the id of a guest of the stay: another table, whose id
+            // could be another customer's): the read is empty (nothing is guessed), the write sends nothing, makes no record and answers false.
+            foreach (var answer in new[]
+                     {
+                         $$"""{ "id": "{{ReservationId}}" }""",
+                         $$"""{ "id": "{{ReservationId}}", "guestId": {{CustomerId}}, "guests": [ { "id": 67152873, "firstName": "Anna" } ] }""",
+                         $$"""{ "id": "{{ReservationId}}", "invoiceHolderId": 0 }""",
+                         $$"""{ "id": "{{ReservationId}}", "invoiceHolderId": "not a number" }""",
+                     })
+            {
+                http.Answer(HttpStatusCode.OK, answer);
+                Assert.Null(await client.GetBookerBillingDataAsync(AccommodationId, ReservationId, Ct));
 
-            http.Answer(HttpStatusCode.OK, $$"""{ "id": "{{ReservationId}}" }""");
-            await Assert.ThrowsAsync<OctorateNotFoundException>(() => client.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, data, Ct));
-            Assert.Equal(2, http.Requests.Count);
+                http.Answer(HttpStatusCode.OK, answer);
+                Assert.False(await client.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, data, Ct));
+            }
+
+            Assert.Equal(8, http.Requests.Count);
             Assert.All(http.Requests, request => Assert.Equal(HttpMethod.Get, request.Method));
+            Assert.All(http.Requests, request => Assert.EndsWith($"/rest/v1/reservation/{AccommodationId}/{ReservationId}", request.Uri.AbsolutePath));
 
-            // Data with nothing to write (a person's name alone) is refused before Octorate is called.
+            // Data with nothing to write (a name alone, a company's denomination alone) is refused before Octorate is called.
             await Assert.ThrowsAsync<ArgumentException>(
                 () => client.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, new OctorateBillingData { Name = "Mario Rossi" }, Ct));
-            Assert.Equal(2, http.Requests.Count);
+            await Assert.ThrowsAsync<ArgumentException>(
+                () => client.UpsertBookerBillingDataAsync(AccommodationId, ReservationId, new OctorateBillingData { IsCompany = true, Name = CompanyName }, Ct));
+            Assert.Equal(8, http.Requests.Count);
         }
     }
 
@@ -642,6 +676,35 @@ public class OctorateBillingSyncProofTests
         Assert.Equal(OctorateBillingMapping.HashOf(person), OctorateBillingMapping.HashOf(person with { Name = "Mario Rossi Junior" }));
         Assert.False(OctorateBillingMapping.HasMembersToWrite(new OctorateBillingData { Name = "Mario Rossi" }));
         Assert.True(OctorateBillingMapping.HasMembersToWrite(person));
+
+        // The members of the OpenAPI, and only those that are known to be writable: the denomination of a company, the code of the SDI and the province
+        // are in the model and never in the body, and the country only goes with another member (alone it would rewrite the country of a record).
+        var everything = new OctorateBillingData
+        {
+            IsCompany = true,
+            Name = CompanyName,
+            FiscalCode = "12345678903",
+            VatNumber = VatNumber,
+            Address = "Via del Sale Rosa 42/B",
+            PostalCode = "22100",
+            City = "Cernobbio",
+            Province = "CO",
+            CountryCode = "IT",
+            SdiRecipientCode = "ABC1234",
+            Pec = CompanyPec,
+        };
+        using (var body = JsonDocument.Parse(OctorateBillingMapping.WriteBody(everything)))
+        {
+            Assert.Equal(
+                ["fiscalCode", "vatCode", "address", "zip", "city", "country", "legalMail"],
+                body.RootElement.EnumerateObject().Select(p => p.Name).ToArray());
+            Assert.Equal(OctorateBillingMapping.WrittenMembers, body.RootElement.EnumerateObject().Select(p => p.Name).ToArray());
+        }
+
+        Assert.Equal("""{"vatCode":"IT12345678903","country":"IT"}""", OctorateBillingMapping.WriteBody(new OctorateBillingData { VatNumber = VatNumber, CountryCode = "IT" }));
+        Assert.False(OctorateBillingMapping.HasMembersToWrite(new OctorateBillingData { IsCompany = true, Name = CompanyName, CountryCode = "IT" }));
+        Assert.False(OctorateBillingMapping.HasMembersToWrite(new OctorateBillingData { Province = "CO", SdiRecipientCode = "ABC1234" }));
+        Assert.Equal(OctorateBillingMapping.EmptyBody, OctorateBillingMapping.WriteBody(new OctorateBillingData()));
 
         // The invoice data of a booking becomes the billing data (street and number on one line) and has nothing to send before the host types a recipient.
         var view = new InvoiceDataView(

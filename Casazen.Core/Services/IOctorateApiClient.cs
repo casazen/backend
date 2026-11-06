@@ -184,24 +184,26 @@ public interface IOctorateApiClient
     Task<OctoratePortal[]> GetPortalsAsync(CancellationToken ct);
 
     /// <summary>
-    /// The billing data of the booker of a reservation, read from the customer record (the address book of the guests) the reservation names
-    /// (<c>GET /rest/v1/reservation/{acc}/{id}</c> for the id of the record, then <c>GET /rest/v1/guests/{acc}/{guestId}</c>, E06/F02/US01/T04).
-    /// <c>null</c> when the reservation names no customer record or the record holds no billing data (a guest's name alone is not billing data): no
-    /// error, and nothing is guessed. <b>Documented, not proven:</b> the routes are the ones the requirements record from Octorate's specification
-    /// (S13, S18), the member names of the answer are assumed (<c>OctorateBillingMapping</c>); no call could be made to the sandbox, which also needs
-    /// CasaZen's outbound IPs whitelisted for the guests' sensitive data (S7, D24). That refusal (403) is <c>OctorateAuthException</c>, never an
-    /// empty result; a reservation or a record Octorate does not know is <c>OctorateNotFoundException</c>.
+    /// The billing data of the booker of a reservation, read from the customer record (the address book of the guests) the reservation names with its
+    /// <c>invoiceHolderId</c> (<see cref="GetReservationAsync"/>, then <c>GET /rest/v1/guests/{acc}/{guestId}</c>, the <c>GuestDTO</c> of the OpenAPI,
+    /// E06/F02/US01/T04). <c>null</c> when the reservation names no customer record (most do not) or the record holds no billing data (a guest's name
+    /// alone is not billing data): no error, and nothing is guessed. <b>Names from the OpenAPI, wire shape not proven:</b> the operations declare no
+    /// answer and no call could be made to the sandbox (<c>OctorateBillingMapping</c>), which also needs CasaZen's outbound IPs whitelisted for the
+    /// guests' sensitive data (S7, D24). That refusal (403) is <c>OctorateAuthException</c>, never an empty result; a reservation or a record Octorate does
+    /// not know is <c>OctorateNotFoundException</c>.
     /// </summary>
     Task<OctorateBillingData?> GetBookerBillingDataAsync(string accommodationId, string reservationId, CancellationToken ct);
 
     /// <summary>
-    /// Writes the billing data to the customer record the reservation names (<c>PUT /rest/v1/guests/{acc}/{guestId}</c>, E06/F02/US01/T04): only the
-    /// billing members of <paramref name="data"/> that are set (<c>OctorateBillingMapping.WrittenMembers</c>), never an identity document, an Alloggiati
-    /// datum, a phone number or the e-mail address of the guest, and nothing is cleared. Documented, not proven, as <see cref="GetBookerBillingDataAsync"/>:
-    /// whether the <c>PUT</c> merges or replaces the record is the first thing to check in the sandbox. A reservation that names no customer record is
-    /// <c>OctorateNotFoundException</c>: no record is created. Data with no member to write is refused (<see cref="ArgumentException"/>).
+    /// Writes the billing data to the customer record the reservation names with its <c>invoiceHolderId</c> (<c>PUT /rest/v1/guests/{acc}/{guestId}</c>,
+    /// E06/F02/US01/T04): only the billing members of <paramref name="data"/> that are set (<c>OctorateBillingMapping.WrittenMembers</c>), never an
+    /// identity document, an Alloggiati datum, a phone number or the e-mail address of the guest, and nothing is cleared. <c>true</c> once Octorate
+    /// answered 2xx; <c>false</c> when the reservation names no customer record: nothing was sent, no record is made, and the caller must not take the
+    /// data for written. Documented, not proven, as <see cref="GetBookerBillingDataAsync"/>: whether the <c>PUT</c> merges or replaces the record, and
+    /// whether Octorate keeps every member it is given, are the first things to check in the sandbox. Data with no member to write is refused
+    /// (<see cref="ArgumentException"/>).
     /// </summary>
-    Task UpsertBookerBillingDataAsync(string accommodationId, string reservationId, OctorateBillingData data, CancellationToken ct);
+    Task<bool> UpsertBookerBillingDataAsync(string accommodationId, string reservationId, OctorateBillingData data, CancellationToken ct);
 
     /// <summary>
     /// Every connection of a channel the org's token sees, in one call (<c>GET /rest/v1/connection?fields=id,channelId,hotelId,status,
