@@ -1224,6 +1224,69 @@ erDiagram
 | `DataRetentionUntil` | `datetime` | Default UtcNow+7yr | GDPR retention deadline |
 | `ErasureRequested` | `bool` | Default false | GDPR Article 17 erasure flag |
 
+#### `GuestCrmProfile` (NF-88, E07/F01/US01/T01)
+
+The CRM profile of a guest (NF-23, ADR-021): stays, spend, consent and tags across the bookings of one org, matched by the SHA-256 `CompositeKeyHash`. Only the columns of the CRM data model are listed. The profile never holds an Alloggiati field (document, citizenship, place of birth: AC-NF88-6, Q1-05).
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `PhoneKeyHash` | `string?` (64) | index `(OrgId, PhoneKeyHash)` | Keyed hash (HMAC-SHA256, lowercase hex) of the normalized phone number: finds the profiles of the org that share a phone. `null` without a phone. Never the clear number |
+| `NameBirthKeyHash` | `string?` (64) | index `(OrgId, NameBirthKeyHash)` | Keyed hash of the normalized name and the birth date together. `null` when either is missing. Never the clear data |
+| `PrimaryGuestId` | `Guid?` | not a foreign key | The guest shown as the name of the profile. A guest without bookings can be deleted, so the reader falls back to another guest of the profile |
+| `MergedIntoProfileId` | `Guid?` | not a foreign key | Tombstone of a merged profile: the profile it was merged into; `null` for a live profile |
+
+#### `GuestContact` (NF-89, E07/F01/US01/T01)
+
+One way to reach a person (an e-mail address, a phone number or a WhatsApp number) with its origin, double opt-in, legal basis and suppression. One row for each org, channel and value; the legal basis belongs to the channel.
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (RESTRICT), tenant key (`ITenantOwned`) | The org of the guest |
+| `GuestCrmProfileId` | `Guid?` | FK `GuestCrmProfiles` (CASCADE), index `(OrgId, GuestCrmProfileId)` | The profile of the contact; `null` for a lead from the welcome page that has none yet |
+| `GuestId` | `Guid?` | FK `Guests` (SET NULL) | The guest that gave the contact, when there is one |
+| `Channel` | `int` (enum) | explicit numbers, never reused | `Email` 1, `Phone` 2, `WhatsApp` 3 |
+| `Value` | `text` | encrypted at rest (`Casazen.GuestContact`) | The e-mail address or the phone number |
+| `ValueHash` | `string` (64) | **unique** `(OrgId, Channel, ValueHash)` (`UIX_GuestContacts_OrgId_Channel_ValueHash`) | HMAC-SHA256 (lowercase hex) of the normalized value keyed by `Crm:ContactIndexKey`, a secret that is not in the database: the only way a contact is found. Computed by `ICrmContactIndex` (E07/F06/US01/T01), not by the model |
+| `DisplayName` | `text`, nullable | encrypted at rest (`Casazen.GuestContact`) | The name that goes with the contact |
+| `Language` | `string` (10) | — | The language of the page at consent time |
+| `Origin` | `int` (enum) | explicit numbers, never reused | `OtaForward` 1, `CheckIn` 2, `DirectBooking` 3, `Manual` 4, `OctorateContactInfo` 5, `WelcomePage` 6, `GuestPage` 7. An OTA forward address is service only |
+| `Confirmation` | `int` (enum) | explicit numbers, never reused | The double opt-in: `Unconfirmed` 1, `Pending` 2, `Confirmed` 3 |
+| `ConfirmationSentAt`, `ConfirmationSentCount`, `ConfirmedAt` | `DateTime?`, `int`, `DateTime?` | — | The last confirmation message sent, how many were sent, and when the person confirmed |
+| `LegalBasis` | `int` (enum) | explicit numbers, never reused | `None` 0, `ServiceOnly` 1, `SoftOptIn` 2, `Consent` 3 |
+| `BasisVersion`, `BasisRecordedAt` | `string` (100), `DateTime?` | — | The version of the text (consent or notice) and the time the basis was recorded |
+| `ConsentSource`, `ConsentIpAddress` | `GuestConsentSource?`, `string?` (50) | — | Where the consent or the notice was given, and the client address as evidence (cleared on anonymization) |
+| `IsSuppressed`, `SuppressedAt`, `SuppressedSource` | `bool`, `DateTime?`, `string?` (50) | index `(OrgId, IsSuppressed)` | The person asked not to be written to on this channel, when, and how (`unsubscribe`, `manual`, `gdpr`) |
+| `CreatedAt`, `UpdatedAt` | `DateTime` | — | UTC |
+
+`GuestConsentRecord` gains the sources `WelcomePage` 5 and `GuestPage` 6 and the purpose `SoftOptInNotice` 3 (the soft opt-in notice presented to a direct customer, PO-07); they are stored as integers, so no schema change.
+
+#### `GuestMergeCandidate` (NF-88, E07/F01/US01/T01)
+
+Two profiles proposed to a person for a manual merge. The model never executes a merge: a row is a proposal and the record of the decision.
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (RESTRICT), tenant key (`ITenantOwned`) | The org of the two profiles |
+| `ProfileAId`, `ProfileBId` | `Guid` | FK `GuestCrmProfiles` (CASCADE), **unique** `(OrgId, ProfileAId, ProfileBId)` (`UIX_GuestMergeCandidates_OrgId_ProfileAId_ProfileBId`), check `ProfileAId <> ProfileBId` | The pair, stored with `ProfileAId` smaller than `ProfileBId` (`Guid.CompareTo`), so (A, B) and (B, A) are one row. The service writes them in that order: the database cannot check it, PostgreSQL sorts a `uuid` differently from .NET |
+| `Score` | `int` | check between 0 and 100 (`CK_GuestMergeCandidates_Score`) | How sure the matching is |
+| `ReasonsJson` | `jsonb` | — | A JSON array of reason codes, for example `["same_phone","same_name_birth"]`; no personal data |
+| `Status` | `int` (enum) | explicit numbers, never reused | `Proposed` 1, `Merged` 2, `Dismissed` 3 |
+| `CreatedAt`, `DecidedAt`, `DecidedByUserId` | `DateTime`, `DateTime?`, `string?` (255) | — | UTC; the Auth0 subject of the person who decided |
+
+#### `PropertyWelcomeLink` (NF-90, E07/F01/US01/T01)
+
+The link behind the welcome QR code of a property. A revoked link stays in the table.
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (RESTRICT), tenant key (`ITenantOwned`), index | The org of the property, copied from it |
+| `PropertyId` | `Guid` | FK `Properties` (CASCADE), **unique** where `RevokedAt IS NULL` (`UIX_PropertyWelcomeLinks_PropertyId_Active`) | A property has one active link |
+| `Token` | `string` (64) | **unique** (`UIX_PropertyWelcomeLinks_Token`) | Random 192 bits, base64url (32 characters); unique among all links, revoked ones included |
+| `CreatedAt`, `RevokedAt`, `CreatedByUserId` | `DateTime`, `DateTime?`, `string?` (255) | — | UTC; `null` `RevokedAt` = the active link; the Auth0 subject of the person who created it |
+
 #### `Payment`
 
 | Field | Type | Constraints | Description |

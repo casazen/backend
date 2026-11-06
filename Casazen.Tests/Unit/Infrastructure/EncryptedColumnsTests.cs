@@ -21,6 +21,9 @@ public class EncryptedColumnsTests
                 "DocumentImage.FrontImageUrl:Casazen.DocumentImage",
                 "Guest.DocumentIssuingCountry:Casazen.Guest.Document",
                 "Guest.DocumentNumber:Casazen.Guest.Document",
+                // NF-89: the value (e-mail address or phone number) and the display name of a CRM contact.
+                "GuestContact.DisplayName:Casazen.GuestContact",
+                "GuestContact.Value:Casazen.GuestContact",
                 // LR-12: the values a landlord typed in the wizard and kept in the draft, and the residence of a party of a lease.
                 "LeaseContract.DraftData:Casazen.LeaseContract.Draft",
                 // TR: the need of a transitory lease and the documentation that proves it.
