@@ -36,7 +36,8 @@ public class BookingLifecycleController(
     IHostResourceLookup hostResources,
     IAuthorizationService authorizationService,
     IStringLocalizer<SharedResources> localizer,
-    ILogger<BookingLifecycleController> logger) : ControllerBase
+    ILogger<BookingLifecycleController> logger,
+    OtaChannelActionPolicy channelPolicy) : ControllerBase
 {
     /// <summary>
     /// Price of a stay the host is entering or changing (manual booking): lodging, cleaning and the tourist tax of the
@@ -105,7 +106,7 @@ public class BookingLifecycleController(
                 request.SpecialRequests,
                 new OtaAmountsInput(request.OtaCommission, request.OtaNetAmount, request.OtaPaidAmount, request.OtaBalanceAmount)),
             cancellationToken);
-        return Ok(BookingMapper.ToResponse(updated));
+        return Ok(BookingMapper.ToResponse(updated, channelPolicy));
     }
 
     /// <summary>
@@ -128,7 +129,7 @@ public class BookingLifecycleController(
             return BookingNotFound();
 
         var arrival = await stayLifecycle.RegisterArrivalAsync(id, cancellationToken);
-        var response = BookingMapper.Fill(new ArrivalRegisteredResponse(), arrival.Booking, DateTime.UtcNow);
+        var response = BookingMapper.Fill(new ArrivalRegisteredResponse(), arrival.Booking, DateTime.UtcNow, channelPolicy);
         response.GuestDataComplete = arrival.GuestDataComplete;
         return Ok(response);
     }
@@ -157,7 +158,7 @@ public class BookingLifecycleController(
             id,
             new StayCheckOut(request?.RegisterArrival ?? false),
             cancellationToken);
-        return Ok(BookingMapper.ToResponse(checkedOut));
+        return Ok(BookingMapper.ToResponse(checkedOut, channelPolicy));
     }
 
     /// <summary>

@@ -472,7 +472,7 @@ public sealed class BookingOctorateSyncService(
             ?? throw new NotFoundException("Booking not found") { Code = "booking_not_found", MessageKey = "BookingNotFound" };
 
         var sync = await db.OctorateBookingSyncs.FirstOrDefaultAsync(s => s.BookingId == bookingId && s.OrgId == booking.OrgId, ct);
-        if (sync is null || sync.State is not (OctorateSyncState.Failed or OctorateSyncState.Conflict))
+        if (sync is null || !OctorateBookingSync.IsRetryable(sync.State))
         {
             throw new DomainConflictException(
                 OctorateSyncErrorCodes.NotRetryable, OctorateSyncErrorCodes.MessageKeys[OctorateSyncErrorCodes.NotRetryable]);
