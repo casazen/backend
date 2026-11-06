@@ -1434,11 +1434,23 @@ public class DemoEnvironmentService(
             NoShowAt = template.NoShow && template.Status == BookingStatus.Confirmed
                 ? DateTime.SpecifyKind(checkIn.AddHours(20), DateTimeKind.Utc)
                 : null,
+            // E08/F03/US03/T02 (NF-74, NF-77): the reservation of the stay on the channel manager, with the amounts and the flags the import would have
+            // stored (invented, like the rest: nothing is sent to Octorate).
+            OctorateReservationId = template.Ota?.ReservationId,
+            OctorateUpdatedAt = template.Ota is null ? null : madeAt,
+            OtaCommission = template.Ota?.Commission,
+            OtaNetAmount = template.Ota?.Net,
+            OtaPaidAmount = template.Ota?.Paid,
+            OtaBalanceAmount = template.Ota?.Balance,
+            OtaCompanyCollect = template.Ota?.CompanyCollect,
+            OtaCommissionIncludedInPayments = template.Ota?.CommissionIncludedInPayments,
         };
         db.Bookings.Add(booking);
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.Booking, booking.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
         await CreateCrmConsentsAsync(orgId, guest.Id, booking.Id, template, madeAt, cancellationToken);
+        if (template.Ota?.Sync is { } mirror)
+            await CreateOctorateSyncAsync(orgId, property, booking, mirror, madeAt, template.Key, cancellationToken);
         if (template.InvoiceData is { } invoiceData)
             await CreateInvoiceDataAsync(orgId, booking.Id, invoiceData, template.Key, madeAt, cancellationToken);
 
@@ -1455,6 +1467,54 @@ public class DemoEnvironmentService(
                     orgId, TestDataEntities.StayGuest, rows[position].Id, TestDataOrigins.Showcase, $"{template.Key}/{position}", cancellationToken);
             }
         }
+    }
+
+    /// <summary>
+    /// The mirror of a showcase booking on Octorate (E08/F03/US03/T02, NF-74): the row the push would have left for the invented reservation, in the
+    /// state the template says. A synced one was confirmed when the booking was made, and so was the create that precedes a refused change; a
+    /// conflict keeps the stay Octorate holds (the booking's own with the arrival moved), so the booking page shows both versions. It goes with its
+    /// booking at the next reset (cascade) and is marked like the rest.
+    /// </summary>
+    private async Task CreateOctorateSyncAsync(
+        Guid orgId,
+        Property property,
+        Booking booking,
+        DemoOctorateSyncTemplate template,
+        DateTime madeAt,
+        string templateKey,
+        CancellationToken cancellationToken)
+    {
+        // The create is the first operation: a later one (a change that was refused) follows a reservation Octorate had already confirmed.
+        var confirmed = template.State == OctorateSyncState.Synced || template.LastOperation != OctorateSyncOperation.Create;
+        var sync = new OctorateBookingSync
+        {
+            OrgId = orgId,
+            BookingId = booking.Id,
+            PropertyId = property.Id,
+            State = template.State,
+            LastOperation = template.LastOperation,
+            Attempts = 1,
+            LastAttemptAt = madeAt,
+            LastSyncedAt = confirmed ? madeAt : null,
+            ErrorCode = template.ErrorCode,
+            OctorateUpdateTime = confirmed ? madeAt : null,
+            OctorateVersionJson = template.State == OctorateSyncState.Conflict ? ConflictVersionJson(booking, template) : null,
+            CreatedAt = madeAt,
+            UpdatedAt = madeAt,
+        };
+        db.OctorateBookingSyncs.Add(sync);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.OctorateBookingSync, sync.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
+    }
+
+    /// <summary>The stay Octorate holds in a showcase conflict, in the stored form: the booking's own, the arrival and the departure moved by the same days.</summary>
+    private static string ConflictVersionJson(Booking booking, DemoOctorateSyncTemplate template)
+    {
+        var shift = template.VersionCheckInShiftDays ?? 0;
+        return new OctorateVersionSnapshot(
+            DateOnly.FromDateTime(booking.CheckInDate).AddDays(shift),
+            DateOnly.FromDateTime(booking.CheckOutDate).AddDays(shift),
+            template.VersionGuests ?? booking.NumberOfGuests).ToJson();
     }
 
     /// <summary>

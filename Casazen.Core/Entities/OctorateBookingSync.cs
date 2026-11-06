@@ -26,6 +26,12 @@ public class OctorateBookingSync : ITenantOwned
     /// <summary>Longest <see cref="ErrorCode"/> (varchar 64).</summary>
     public const int ErrorCodeMaxLength = 64;
 
+    /// <summary>
+    /// Whether the host can ask for the push again from a row in <paramref name="state"/>: a push that failed or was refused. The one definition of
+    /// <c>POST /api/bookings/{id}/octorate-sync/retry</c> and of the <c>canRetry</c> of the booking answer.
+    /// </summary>
+    public static bool IsRetryable(OctorateSyncState state) => state is OctorateSyncState.Failed or OctorateSyncState.Conflict;
+
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
 
@@ -60,7 +66,10 @@ public class OctorateBookingSync : ITenantOwned
 
     /// <summary>
     /// The dates and the number of guests of the reservation as Octorate holds them, read again after a 409 (jsonb), so the host can see
-    /// what differs before deciding; <c>null</c> otherwise. Never a name or a contact.
+    /// what differs before deciding; <c>null</c> otherwise. Never a name or a contact. The form is that of <see cref="Services.OctorateVersionSnapshot"/>
+    /// (<c>{"checkIn":"yyyy-MM-dd","checkOut":"yyyy-MM-dd","guests":n}</c>): whoever writes it uses <see cref="Services.OctorateVersionSnapshot.ToJson"/>, and the
+    /// booking answer (<c>octorateSync.octorateVersion</c>, E08/F03/US03/T02) reads it with <see cref="Services.OctorateVersionSnapshot.Parse"/>, only in the
+    /// <see cref="OctorateSyncState.Conflict"/> state.
     /// </summary>
     public string? OctorateVersionJson { get; set; }
 

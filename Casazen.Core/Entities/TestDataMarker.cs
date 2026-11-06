@@ -159,6 +159,12 @@ public static class TestDataEntities
     /// </summary>
     public const string WelcomeLink = "PropertyWelcomeLink";
 
+    /// <summary>
+    /// The mirror of a showcase booking on the channel manager (<see cref="Entities.OctorateBookingSync"/>, E08/F03/US03/T02, NF-74): the state of the last operation of
+    /// an invented reservation, nothing is sent. It goes with its booking (cascade) and the reset deletes its marker with the other showcase markers.
+    /// </summary>
+    public const string OctorateBookingSync = "OctorateBookingSync";
+
     // E10/F01/US01/T04: the tables of the activation of CasaZen with Octorate. The reset deletes only the rows of these tables that carry a showcase
     // marker of the org (before its houses), so a real row has no marker and is never touched.
 
