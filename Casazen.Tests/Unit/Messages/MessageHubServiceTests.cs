@@ -519,6 +519,47 @@ public class MessageHubServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetThread_ADirectBookingCasaZenSentToOctorate_KeepsItsOwnMoney_TheTotalAndWhatCameInFromItsPayments()
+    {
+        // E08: the push of a booking of CasaZen saves the id of its reservation on the booking (OctorateReservationId), and the row of the mirror.
+        // The id does not make its money the channel manager's: the card must still show what the payments hold, not the four figures of a channel.
+        var booking = await _db.Bookings.FirstAsync(b => b.Id == _world.GrantedDirectBooking.Id);
+        booking.OctorateReservationId = "RES-PUSHED-1";
+        _db.OctorateBookingSyncs.Add(new OctorateBookingSync
+        {
+            OrgId = booking.OrgId,
+            BookingId = booking.Id,
+            PropertyId = booking.PropertyId,
+            State = OctorateSyncState.Synced,
+        });
+        await _db.SaveChangesAsync();
+        var guestMessages = new Mock<IGuestMessageService>();
+        guestMessages.Setup(g => g.GetForHostAsync(booking.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new HostThreadView(GuestThreadState.Open, null, 1, true, []));
+
+        var view = await Service(guestMessages.Object).GetThreadAsync(OrgWide, MessageThreadKey.ForDirect(booking.Id), includeAmounts: true);
+
+        Assert.Equal(new MessageBookingAmounts(300m, 120m, null, null, null), view.Booking!.Amounts);
+    }
+
+    [Fact]
+    public async Task GetThread_AReservationOfTheBookingEngineOfTheAgency_HasTheMoneyOfTheChannelManager()
+    {
+        // A reservation of the booking engine of the agency that the import made counts as a direct booking, has a reservation on Octorate and no row
+        // of the mirror (CasaZen never pushed it): its money is Octorate's, as stored, and the payments of CasaZen are not read.
+        var booking = await _db.Bookings.FirstAsync(b => b.Id == _world.GrantedDirectBooking.Id);
+        booking.OctorateReservationId = "RES-ENGINE-1";
+        booking.OtaPaidAmount = 80m;
+        var thread = await _db.OtaMessageThreads.FirstAsync(t => t.Id == _world.GrantedReservation.Id);
+        thread.BookingId = booking.Id;
+        await _db.SaveChangesAsync();
+
+        var view = await Service().GetThreadAsync(OrgWide, Ota(_world.GrantedReservation), includeAmounts: true);
+
+        Assert.Equal(new MessageBookingAmounts(300m, 80m, null, null, null), view.Booking!.Amounts);
+    }
+
+    [Fact]
     public async Task GetThread_Direct_AClosedThread_CannotBeAnswered()
     {
         var guestMessages = new Mock<IGuestMessageService>();

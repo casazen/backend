@@ -653,7 +653,15 @@ public sealed class MessageHubService(
         MessageBookingAmounts? amounts = null;
         if (includeAmounts)
         {
-            if (booking.OctorateReservationId is not null || FiscalCopy.IsOtaBookingSource(booking.Source))
+            // Whose money the booking has is the one rule of NF-77 (BookingAmountSourceRules): a booking of a channel, or a reservation of the booking
+            // engine of the agency that the import made, has the figures of the channel manager; a booking CasaZen made and sent to Octorate has a
+            // reservation there too (OctorateReservationId), but its money is CasaZen's, and only the row of the mirror tells the two apart.
+            var facts = new Booking { Source = booking.Source, OctorateReservationId = booking.OctorateReservationId };
+            var pushedByCasaZen = !string.IsNullOrWhiteSpace(booking.OctorateReservationId)
+                && await db.OctorateBookingSyncs
+                    .AsNoTracking()
+                    .AnyAsync(s => s.OrgId == scope.OrgId && s.BookingId == id, cancellationToken);
+            if (BookingAmountSourceRules.HoldsChannelManagerMoney(facts, pushedByCasaZen))
             {
                 // A booking of a channel: the four figures the channel manager gave, as stored (null stays null) and the total when it is set.
                 amounts = new MessageBookingAmounts(
