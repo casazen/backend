@@ -371,6 +371,99 @@ public class GdprCrmProofTests
     }
 
     /// <summary>
+    /// Proof test (privacy rule): removing a guest who has no bookings takes its CRM data with it. The CRM backfill gives a profile and contacts to every
+    /// guest, bookings or not, so the row would otherwise leave them behind. What <c>GuestService.DeleteGuestAsync</c> does for a guest nothing
+    /// references: the files and the CRM data go, audited once, then the row. The contacts it gave and the lead of its profile are deleted, the profile
+    /// and its proposal with them, and the opt-out stays as a bare marker that no longer points at the guest or at the profile.
+    /// </summary>
+    [Fact]
+    public async Task GdprErasure_RemovalOfAGuestWithNoBookings_TakesItsCrmDataToo_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        var (guestId, profileId) = await SeedGuestWithNoBookingsAsync(store, orgId);
+
+        await using (var db = CrmTestWorld.Open(store))
+            await Service(db).EraseStoredFilesBeforeRemovalAsync(orgId, guestId, "auth0|host", Ct);
+        await using (var db = CrmTestWorld.Open(store))
+        {
+            db.Guests.Remove(await db.Guests.SingleAsync(g => g.Id == guestId, Ct));
+            await db.SaveChangesAsync(Ct);
+        }
+
+        await using var verify = CrmTestWorld.Open(store);
+        Assert.False(await verify.Guests.AnyAsync(g => g.Id == guestId, Ct));
+        Assert.False(await verify.GuestCrmProfiles.AnyAsync(p => p.Id == profileId, Ct));
+        Assert.Equal(0, await verify.GuestMergeCandidates.CountAsync(m => m.OrgId == orgId && (m.ProfileAId == profileId || m.ProfileBId == profileId), Ct));
+
+        var marker = Assert.Single(await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync(Ct));
+        Assert.Equal(Index.Hash("carla.old@example.com"), marker.ValueHash);
+        Assert.True(marker.IsSuppressed);
+        Assert.Equal(string.Empty, marker.Value);
+        Assert.Null(marker.DisplayName);
+        Assert.Null(marker.GuestId);
+        Assert.Null(marker.GuestCrmProfileId);
+
+        Assert.Equal(1, await verify.GuestPrivacyAuditEntries.CountAsync(a => a.GuestId == guestId && a.Action == GuestPrivacyAuditAction.Erased, Ct));
+    }
+
+    /// <summary>
+    /// Proof test (privacy rule, the suppression list): the address of an erased guest who had opted out comes back with a new booking. The row the erasure
+    /// left as a bare marker is found by its keyed hash and gets its value back, and it is still suppressed, with the date and the source of the opt-out:
+    /// whatever the new booking brings (a purchase and a soft opt-in notice raise nothing above service only), it is still one row for the address, and
+    /// nothing can write to it for marketing.
+    /// </summary>
+    [Fact]
+    public async Task GdprErasure_OptedOutAddressComingBack_FindsItsMarkerAndStaysSuppressed_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        var world = await SeedMarioAndAnnaAsync(store, orgId);
+        await using (var db = CrmTestWorld.Open(store))
+            await Service(db).EraseGuestDataAsync(orgId, world.MarioId, "Richiesta dell'ospite", "auth0|host", Ct);
+
+        // Someone else books with the address that had unsubscribed, on a direct booking that is a purchase, with the soft opt-in notice recorded.
+        Guid newGuestId;
+        await using (var seed = CrmTestWorld.Open(store))
+        {
+            var giulia = CrmTestWorld.AddGuest(seed, orgId, "Giulia", "Bianchi", "Mario.Old@Example.com");
+            await seed.SaveChangesAsync(Ct);
+            newGuestId = giulia.Id;
+        }
+
+        await using (var db = CrmTestWorld.Open(store))
+        {
+            var returned = await CrmTestWorld.Contacts(db, CrmTestWorld.Clock()).UpsertContactAsync(
+                new CrmContactInput(
+                    orgId,
+                    GuestContactChannel.Email,
+                    "Mario.Old@Example.com",
+                    GuestContactOrigin.DirectBooking,
+                    GuestId: newGuestId,
+                    DisplayName: "Giulia Bianchi",
+                    BookedVia: BookingSource.Direct,
+                    Notice: new CrmBasisEvidence("notice-v1", CrmTestWorld.Now.UtcDateTime),
+                    PurchaseConfirmed: true),
+                Ct);
+            Assert.NotNull(returned);
+        }
+
+        await using var verify = CrmTestWorld.Open(store);
+        var row = Assert.Single(await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == orgId && c.ValueHash == Index.Hash("mario.old@example.com")).ToListAsync(Ct));
+        Assert.Equal("mario.old@example.com", row.Value);
+        Assert.Equal(newGuestId, row.GuestId);
+
+        // The opt-out holds: still suppressed, with its own date and source, and nothing above service only.
+        Assert.True(row.IsSuppressed);
+        Assert.Equal(OptOutAt, row.SuppressedAt);
+        Assert.Equal("unsubscribe", row.SuppressedSource);
+        Assert.True(row.LegalBasis <= GuestContactLegalBasis.ServiceOnly);
+        Assert.False(CrmContactRules.CanReceiveMarketing(row));
+        Assert.Equal(CrmContactRules.ReasonSuppressed, CrmContactRules.ReachabilityReason(row));
+        Assert.True(await new SuppressionService(verify, Index, NullLogger<SuppressionService>.Instance).IsSuppressedAsync(orgId, "mario.old@example.com", Ct));
+    }
+
+    /// <summary>
     /// Proof test (privacy rule, AC-NF95-7): when the retention ends the marketing consent of a guest, its contacts on consent go back to service
     /// only, and are not suppressed (an expiry is not an opt-out: the guest can consent again). A soft opt-in and a suppression stay as they were,
     /// and a guest whose consent has not ended keeps its contacts.
@@ -593,6 +686,9 @@ public class GdprCrmProofTests
             Contact(orgId, anna.Id, annaProfile.Id, GuestContactChannel.Email, "anna.neri@example.com", "Anna Neri", GuestContactLegalBasis.Consent),
             Contact(orgId, anna.Id, annaProfile.Id, GuestContactChannel.Phone, "+393339999999", "Anna Neri", GuestContactLegalBasis.ServiceOnly));
 
+        // The unsubscribe of the old address is on the suppression list as well, where the withdrawal of a consent puts it.
+        seed.SuppressionListEntries.Add(new SuppressionListEntry { OrgId = orgId, EmailHash = Index.Hash("mario.old@example.com"), Source = "unsubscribe", AddedAt = OptOutAt });
+
         var withMario = NewProposal(orgId, marioProfile.Id, annaProfile.Id);
         var unrelated = NewProposal(orgId, annaProfile.Id, otherProfile.Id);
         seed.GuestMergeCandidates.AddRange(withMario, unrelated);
@@ -638,6 +734,29 @@ public class GdprCrmProofTests
 
         await seed.SaveChangesAsync(Ct);
         return new SharedProfile(first.Id, second.Id, profile.Id);
+    }
+
+    /// <summary>
+    /// A guest registered from the guest list, with no booking at all: a profile of its own, an e-mail address, an old address that carries an
+    /// unsubscribe, a lead on the profile, and a proposal of merge that involves the profile.
+    /// </summary>
+    private static async Task<(Guid GuestId, Guid ProfileId)> SeedGuestWithNoBookingsAsync(DbContextOptions<AppDbContext> store, Guid orgId)
+    {
+        await using var seed = CrmTestWorld.Open(store);
+        var guest = CrmTestWorld.AddGuest(seed, orgId, "Carla", "Bruni", "carla.bruni@example.com");
+        var profile = NewProfile(orgId, guest.Id, "+393335550000", "bruni carla|1990-03-03", "carla.bruni@example.com|bruni|carla");
+        var other = NewProfile(orgId, null, "+393338888888", "bianchi luca|1990-02-02", "luca.bianchi@example.com|bianchi|luca");
+        guest.GuestCrmProfileId = profile.Id;
+        seed.GuestCrmProfiles.AddRange(profile, other);
+
+        seed.GuestContacts.AddRange(
+            Contact(orgId, guest.Id, profile.Id, GuestContactChannel.Email, "carla.bruni@example.com", "Carla Bruni", GuestContactLegalBasis.ServiceOnly),
+            Contact(orgId, guest.Id, profile.Id, GuestContactChannel.Email, "carla.old@example.com", "Carla Bruni", GuestContactLegalBasis.ServiceOnly, suppressed: true),
+            Contact(orgId, null, profile.Id, GuestContactChannel.Email, "lead.carla@example.com", "Lead", GuestContactLegalBasis.ServiceOnly));
+        seed.GuestMergeCandidates.Add(NewProposal(orgId, profile.Id, other.Id));
+
+        await seed.SaveChangesAsync(Ct);
+        return (guest.Id, profile.Id);
     }
 
     private static GdprService Service(
