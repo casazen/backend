@@ -31,6 +31,10 @@ public static class CrmServiceCollectionExtensions
         // created). It finds a guest by the e-mail contact or the name and birth date, never executes a merge, and needs the key of the index.
         services.AddScoped<IGuestMatchingService, GuestMatchingService>();
 
+        // E07/F01/US02/T02 (NF-89, CRM-02): the one writer of the contacts, with the rules of who may be written to (CrmContactRules): origin,
+        // double opt-in, legal basis for each channel, suppression. Needs the key of the index as well.
+        services.AddScoped<ICrmContactService, CrmContactService>();
+
         return services;
     }
 }

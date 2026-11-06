@@ -88,4 +88,16 @@ internal static class CrmTestWorld
 
     public static GuestMatchingService Matching(AppDbContext db, TimeProvider clock, CrmOptions? options = null) =>
         new(db, CrmTestIndex.Create(), Options.Create(options ?? new CrmOptions()), clock, NullLogger<GuestMatchingService>.Instance);
+
+    public static CrmContactService Contacts(AppDbContext db, TimeProvider clock, CrmOptions? options = null)
+    {
+        var index = CrmTestIndex.Create();
+        return new CrmContactService(
+            db,
+            index,
+            new SuppressionService(db, index, NullLogger<SuppressionService>.Instance),
+            Options.Create(options ?? new CrmOptions()),
+            clock,
+            NullLogger<CrmContactService>.Instance);
+    }
 }
