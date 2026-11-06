@@ -51,12 +51,18 @@ public sealed class OctorateApiClient(
     /// <summary>The <c>type</c> of Octorate's 403 for an access token that is not valid (any more): refresh and retry once.</summary>
     private const string ApiLoginInvalidType = "ApiLoginInvalid";
 
+    /// <summary>A number at or above this is a count of milliseconds since 1970 (as seconds it would be the year 5138).</summary>
+    private const long EpochMillisecondsThreshold = 100_000_000_000;
+
     /// <summary>The members of a product read by <see cref="GetRoomsAsync"/> (the v3 read answers 400 without <c>fields</c>).</summary>
     private const string RoomFields =
         "id,name,adults,children,bedroomQuantity,bathroomQuantity,bedQuantity,squareMetersSize,derivedRule";
 
     /// <summary>The members of a connection read by <see cref="GetConnectionsAsync"/>: never its portal username or password.</summary>
     private const string ConnectionFields = "id,channelId,channelName,hotelId,status";
+
+    /// <summary>The member of an accommodation read by <see cref="GetPoliceAccountAsync"/>: the police account, as Octorate documents it (Q-002).</summary>
+    private const string PoliceAccountFields = "policeAccount";
 
     /// <summary>Octorate's answer of the availability check for a room that cannot be booked (OpenAPI: "Not available to book").</summary>
     internal const int NotAvailableStatus = 406;
@@ -135,6 +141,17 @@ public sealed class OctorateApiClient(
         var id = CheckedAccommodationId(accommodationId);
         using var document = await GetJsonAsync($"/rest/v1/accommodation/{Uri.EscapeDataString(id)}", "accommodation", ct);
         return ReadProperty(Unwrap(document.RootElement)) ?? throw new OctorateServerException(null);
+    }
+
+    public async Task<OctoratePoliceAccount> GetPoliceAccountAsync(string accommodationId, CancellationToken ct)
+    {
+        var id = CheckedAccommodationId(accommodationId);
+        using var document = await GetJsonAsync(
+            $"/rest/v1/accommodation/{Uri.EscapeDataString(id)}?fields={Uri.EscapeDataString(PoliceAccountFields)}", "police-account", ct);
+
+        // An answer that is not an accommodation is one CasaZen cannot read; an accommodation without a police account is not an error.
+        var accommodation = Unwrap(document.RootElement);
+        return accommodation.ValueKind == JsonValueKind.Object ? ReadPoliceAccount(accommodation) : throw new OctorateServerException(null);
     }
 
     public async Task UpdatePropertyAsync(string accommodationId, OctoratePropertyUpdate update, CancellationToken ct)
@@ -642,6 +659,25 @@ public sealed class OctorateApiClient(
         };
     }
 
+    /// <summary>
+    /// The police account the host connected on the Octorate panel, from an accommodation of an answer. Not every answer has it (an
+    /// accommodation created through the API has none): a member that is missing stays <c>null</c>, and nothing is assumed about it. The code
+    /// and the web service key of the object are not read.
+    /// </summary>
+    internal static OctoratePoliceAccount ReadPoliceAccount(JsonElement accommodation)
+    {
+        JsonElement police = default;
+        if (accommodation.ValueKind == JsonValueKind.Object)
+            accommodation.TryGetProperty("policeAccount", out police);
+
+        return new OctoratePoliceAccount
+        {
+            Valid = BoolOf(police, "valid"),
+            Autorun = BoolOf(police, "autorun"),
+            LastCron = DateTimeOf(police, "lastCron"),
+        };
+    }
+
     /// <summary>A product of an answer of <c>roomrates</c>, or <c>null</c> when the item has no usable id.</summary>
     internal static OctorateRoom? ReadRoom(JsonElement item)
     {
@@ -873,6 +909,38 @@ public sealed class OctorateApiClient(
             JsonValueKind.False => false,
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// A moment of an answer, in UTC: an ISO text (a text without a zone is taken as UTC) or a number of epoch milliseconds (of seconds,
+    /// when it is too small to be milliseconds). <c>null</c> when the member is missing or is none of these: never a guess.
+    /// </summary>
+    internal static DateTime? DateTimeOf(JsonElement element, string name)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var value))
+            return null;
+
+        if (value.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(value.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed))
+        {
+            return parsed.UtcDateTime;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var epoch) && epoch > 0)
+        {
+            try
+            {
+                return (epoch >= EpochMillisecondsThreshold
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(epoch)
+                    : DateTimeOffset.FromUnixTimeSeconds(epoch)).UtcDateTime;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>A successful answer: Octorate's status and its text.</summary>

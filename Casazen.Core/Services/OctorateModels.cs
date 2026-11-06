@@ -50,6 +50,25 @@ public sealed record OctorateProperty
 }
 
 /// <summary>
+/// The police account (Alloggiati Web) the host connected on the Octorate panel for one accommodation, as the API exposes it
+/// (<c>GET /rest/v1/accommodation/{acc}?fields=policeAccount</c>, Q-002): only the three members CasaZen reads. The Alloggiati code and the
+/// web service key the same object holds are never read. A member Octorate does not send is <c>null</c> and nothing is assumed about it:
+/// an accommodation created through the API has no police account at all (decisions D17 and D31), and Octorate never defined
+/// <c>valid</c> alone as «Activated».
+/// </summary>
+public sealed record OctoratePoliceAccount
+{
+    /// <summary>Whether the connection to the police portal is valid (<c>valid</c>); <c>null</c> when not exposed.</summary>
+    public bool? Valid { get; init; }
+
+    /// <summary>Whether Octorate sends the daily automatic communication for the accommodation (<c>autorun</c>); <c>null</c> when not exposed.</summary>
+    public bool? Autorun { get; init; }
+
+    /// <summary>When Octorate's daily job last ran for the accommodation (<c>lastCron</c>), in UTC; <c>null</c> when not exposed.</summary>
+    public DateTime? LastCron { get; init; }
+}
+
+/// <summary>
 /// A product of an accommodation (<c>GET /rest/v3/roomrates/{acc}</c>): a room (unit), or a rate derived from one
 /// (<see cref="DerivedFromId"/>, Octorate's <c>derivedRule.parent</c>). The rooms, beds and guests the matcher and the import use.
 /// </summary>
