@@ -337,6 +337,14 @@ internal static class PostgresAdvisoryLocks
         /// refused for dates another booking holds.
         /// </summary>
         OctorateReservation = 20_121,
+
+        /// <summary>
+        /// The mirror of one CasaZen booking on Octorate (key: booking id, <c>bookingId.ToString("N")</c>, E08/F01/US01/T03): the create and the
+        /// payments of a booking are sent one at a time, so a reservation is created once and a payment recorded once even when two deliveries
+        /// of an event, or a retry of the host, run together. A session lock (<see cref="TryAcquireSessionLockAsync"/>): held across the
+        /// commit of the attempt, the call to Octorate and the commit of its outcome; a holder that finds it taken leaves and is delivered again.
+        /// </summary>
+        OctorateBookingSync = 20_131,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

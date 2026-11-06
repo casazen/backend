@@ -26,6 +26,10 @@ public static class BookingOperationsServiceCollectionExtensions
         // E08/F01/US01/T02 (NF-74): where in Octorate a property books; every writer of a booking to Octorate asks it first.
         services.AddScoped<IOctorateBookingTargets, OctorateBookingTargets>();
 
+        // E08/F01/US01/T03 (NF-74, NF-80): a confirmed booking is created on Octorate once, with a state the host sees, and asked again on retry.
+        services.AddScoped<IBookingOctorateSyncService, BookingOctorateSyncService>();
+        services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingCreateHandler>();
+
         // E08/F01/US01/T05 (NF-74): the payment link of a booking the host entered (the checkout page and the webhook are the checkout's).
         services.AddScoped<IBookingPaymentLinkService, BookingPaymentLinkService>();
         return services;

@@ -2274,4 +2274,7 @@
   <data name="BookingPaymentLink_NotYou" xml:space="preserve">
     <value>If you do not recognise this booking, ignore this email and do not pay.</value>
   </data>
+  <data name="TodoReason_OctorateDatesTaken" xml:space="preserve">
+    <value>The booking could not be created in your channel manager: the dates are taken</value>
+  </data>
 </root>

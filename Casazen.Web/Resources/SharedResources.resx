@@ -4602,4 +4602,22 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="PaymentLinkPermissionRequired" xml:space="preserve">
     <value>Per inviare un link di pagamento serve il permesso di gestire i pagamenti di questo immobile.</value>
   </data>
+  <data name="OctorateSyncDatesUnavailable" xml:space="preserve">
+    <value>La prenotazione non è stata creata nel channel manager: le date risultano già occupate. Controlla il calendario dei canali.</value>
+  </data>
+  <data name="OctorateSyncUnavailable" xml:space="preserve">
+    <value>Il channel manager non ha risposto: la prenotazione non è ancora stata creata. Il tentativo viene ripetuto.</value>
+  </data>
+  <data name="OctorateSyncRejected" xml:space="preserve">
+    <value>Il channel manager ha rifiutato la prenotazione. Controlla i dati e riprova.</value>
+  </data>
+  <data name="OctorateSyncReservationChanged" xml:space="preserve">
+    <value>La prenotazione è stata modificata nel channel manager dopo l'ultima lettura: controlla le differenze prima di riprovare.</value>
+  </data>
+  <data name="OctorateSyncRoomNotChosen" xml:space="preserve">
+    <value>Scegli la camera del channel manager per questo immobile, poi riprova.</value>
+  </data>
+  <data name="OctorateSyncNotRetryable" xml:space="preserve">
+    <value>Questa prenotazione non ha un invio al channel manager da ripetere.</value>
+  </data>
 </root>

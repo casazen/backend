@@ -4602,4 +4602,22 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="PaymentLinkPermissionRequired" xml:space="preserve">
     <value>Sending a payment link needs the permission to manage the payments of this property.</value>
   </data>
+  <data name="OctorateSyncDatesUnavailable" xml:space="preserve">
+    <value>The booking was not created in the channel manager: the dates are already taken. Check the calendar of your channels.</value>
+  </data>
+  <data name="OctorateSyncUnavailable" xml:space="preserve">
+    <value>The channel manager did not answer: the booking is not created there yet. It is tried again.</value>
+  </data>
+  <data name="OctorateSyncRejected" xml:space="preserve">
+    <value>The channel manager refused the booking. Check its details and try again.</value>
+  </data>
+  <data name="OctorateSyncReservationChanged" xml:space="preserve">
+    <value>The booking was changed in the channel manager after it was last read: check the differences before trying again.</value>
+  </data>
+  <data name="OctorateSyncRoomNotChosen" xml:space="preserve">
+    <value>Choose the room of the channel manager for this property, then try again.</value>
+  </data>
+  <data name="OctorateSyncNotRetryable" xml:space="preserve">
+    <value>This booking has no send to the channel manager to try again.</value>
+  </data>
 </root>

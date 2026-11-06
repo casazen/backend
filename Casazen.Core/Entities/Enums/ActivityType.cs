@@ -71,4 +71,10 @@ public enum ActivityType
     /// E02/F01/US02/T03).
     /// </summary>
     CheckImportedListing = 21,
+
+    /// <summary>
+    /// A booking could not be written to the channel manager because the dates are taken there (E08/F01/US01/T03; E08/F01/US02/T02 raises it
+    /// too). About the booking, urgent: the host checks the booking and the calendars of the channels before a second guest arrives.
+    /// </summary>
+    BookingOverlap = 22,
 }

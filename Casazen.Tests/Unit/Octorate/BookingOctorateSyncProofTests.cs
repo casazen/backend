@@ -1,0 +1,161 @@
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
+using Casazen.Core.Services;
+using Casazen.Infrastructure.Octorate;
+using Casazen.Infrastructure.Services;
+using Casazen.Web.Controllers;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using Xunit;
+
+namespace Casazen.Tests.Unit.Octorate;
+
+/// <summary>
+/// The proofs of the push of the CasaZen bookings to Octorate (E08/F01/US01/T03): a create whose answer was lost never ends with a second
+/// reservation (data rule, D13), and the retry endpoint never touches a booking of another org (permission rule).
+/// </summary>
+public class BookingOctorateSyncProofTests
+{
+    /// <summary>
+    /// PROOF TEST: data rule (D13, Octorate has no idempotency key). The create reaches Octorate but its answer is lost (timeout), and the
+    /// lookup right after it fails too: the sync is <c>Failed</c> and the event is delivered again. The next delivery looks the reservation up
+    /// before anything else, finds it by the booking code and records it: one reservation on Octorate, created once. A third delivery sends
+    /// nothing.
+    /// </summary>
+    [Fact]
+    public async Task BookingPush_LostAnswer_NeverDuplicatesReservation_Test()
+    {
+        var h = new OctorateSyncHarness();
+        var bookingId = await h.SeedBookingAsync(bookingCode: "K7Q2M9X4TB");
+        var octorate = new List<OctorateReservation>();
+        var finds = 0;
+        h.Client
+            .Setup(c => c.CreateReservationAsync(It.IsAny<OctorateBookingTarget>(), It.IsAny<OctorateReservationCreate>(), It.IsAny<CancellationToken>()))
+            .Returns((OctorateBookingTarget _, OctorateReservationCreate request, CancellationToken _) =>
+            {
+                // Octorate creates the reservation, then the answer never arrives.
+                octorate.Add(new OctorateReservation
+                {
+                    Id = "130219355",
+                    Refer = request.ExternalReference,
+                    UpdatedAt = new DateTime(2026, 11, 6, 8, 0, 5, DateTimeKind.Utc),
+                });
+                return Task.FromException<OctorateReservation>(new OctorateServerException(null));
+            });
+        h.Client
+            .Setup(c => c.FindReservationByExternalReferenceAsync(OctorateSyncHarness.Accommodation, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns((string _, string reference, CancellationToken _) => ++finds == 1
+                ? Task.FromException<OctorateReservation?>(new OctorateServerException(null))
+                : Task.FromResult(octorate.FirstOrDefault(r => r.Refer == reference)));
+
+        // First delivery: the answer is lost and the reservation cannot be found yet: Failed, and the dispatcher delivers the event again.
+        await using (var db = h.NewDb(new RequestTenant(OctorateSyncHarness.OrgA)))
+        {
+            await Assert.ThrowsAsync<OctorateServerException>(
+                () => h.Service(db, new RequestTenant(OctorateSyncHarness.OrgA)).PushCreateAsync(bookingId, CancellationToken.None));
+        }
+
+        var failed = await h.ReadSyncAsync(bookingId);
+        Assert.NotNull(failed);
+        Assert.Equal(OctorateSyncState.Failed, failed.State);
+        Assert.Equal(OctorateSyncErrorCodes.Unavailable, failed.ErrorCode);
+        Assert.Null((await h.ReadBookingAsync(bookingId)).OctorateReservationId);
+
+        // Second delivery: the lookup runs before any create and finds the reservation.
+        await using (var db = h.NewDb(new RequestTenant(OctorateSyncHarness.OrgA)))
+        {
+            var state = await h.Service(db, new RequestTenant(OctorateSyncHarness.OrgA)).PushCreateAsync(bookingId, CancellationToken.None);
+            Assert.Equal(OctorateSyncState.Synced, state);
+        }
+
+        // Third delivery: the booking has its reservation, nothing is sent.
+        await using (var db = h.NewDb(new RequestTenant(OctorateSyncHarness.OrgA)))
+        {
+            var state = await h.Service(db, new RequestTenant(OctorateSyncHarness.OrgA)).PushCreateAsync(bookingId, CancellationToken.None);
+            Assert.Equal(OctorateSyncState.Synced, state);
+        }
+
+        // One reservation on Octorate, created once; the booking points to it.
+        Assert.Single(octorate);
+        h.Client.Verify(
+            c => c.CreateReservationAsync(It.IsAny<OctorateBookingTarget>(), It.IsAny<OctorateReservationCreate>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        Assert.Equal("130219355", (await h.ReadBookingAsync(bookingId)).OctorateReservationId);
+        var synced = await h.ReadSyncAsync(bookingId);
+        Assert.NotNull(synced);
+        Assert.Equal(OctorateSyncState.Synced, synced.State);
+        Assert.Null(synced.ErrorCode);
+        Assert.Equal(2, synced.Attempts);
+    }
+
+    /// <summary>
+    /// PROOF TEST: permission rule (tenant isolation). A host of org A asks the retry of a failed booking of org B: the endpoint answers 404 and
+    /// never reaches the service, and the service itself does not find the booking through the tenant filter of org A; the sync of org B stays
+    /// as it was and no event is recorded. The control: the failed booking of org A is asked again.
+    /// </summary>
+    [Fact]
+    public async Task BookingOctorateSyncRetry_OtherOrgBooking_Is404_Test()
+    {
+        var h = new OctorateSyncHarness();
+        var foreign = await h.SeedBookingAsync(orgId: OctorateSyncHarness.OrgB, bookingCode: "B0RGB00001");
+        var mine = await h.SeedBookingAsync(bookingCode: "A0RGA00001");
+        await using (var seed = h.NewDb())
+        {
+            seed.OctorateBookingSyncs.AddRange(FailedSync(OctorateSyncHarness.OrgB, foreign), FailedSync(OctorateSyncHarness.OrgA, mine));
+            await seed.SaveChangesAsync();
+        }
+
+        var tenantA = new RequestTenant(OctorateSyncHarness.OrgA);
+        await using var asOrgA = h.NewDb(tenantA);
+
+        // The endpoint: the booking of org B is not a resource the caller of org A reaches.
+        var sync = new Mock<IBookingOctorateSyncService>(MockBehavior.Strict);
+        var controller = new BookingOctorateSyncController(
+            sync.Object,
+            new HostResourceLookup(asOrgA),
+            Mock.Of<IAuthorizationService>(),
+            NullLogger<BookingOctorateSyncController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
+        };
+        var answer = await controller.Retry(foreign, overwrite: true, CancellationToken.None);
+        Assert.IsType<NotFoundResult>(answer.Result);
+        sync.VerifyNoOtherCalls();
+
+        // The service: the same booking through the tenant filter of org A is not found.
+        var service = h.Service(asOrgA, tenantA);
+        await Assert.ThrowsAsync<NotFoundException>(() => service.RequeueAsync(foreign, overwrite: false, CancellationToken.None));
+
+        await using (var read = h.NewDb())
+        {
+            var theirs = await read.OctorateBookingSyncs.AsNoTracking().SingleAsync(s => s.BookingId == foreign);
+            Assert.Equal(OctorateSyncState.Failed, theirs.State);
+            Assert.False(await read.OutboxEvents.AnyAsync(e => e.EntityId == foreign));
+        }
+
+        // The control: the failed booking of org A is asked again, once.
+        Assert.Equal(OctorateSyncState.Pending, await service.RequeueAsync(mine, overwrite: false, CancellationToken.None));
+        await Assert.ThrowsAsync<DomainConflictException>(() => service.RequeueAsync(mine, overwrite: false, CancellationToken.None));
+        await using (var read = h.NewDb())
+        {
+            var requested = await read.OutboxEvents.AsNoTracking().SingleAsync(e => e.EntityId == mine);
+            Assert.Equal(DomainEventType.OctorateSyncRequested, requested.EventType);
+            Assert.Equal(OctorateSyncHarness.OrgA, requested.OrgId);
+        }
+    }
+
+    private static Casazen.Core.Entities.OctorateBookingSync FailedSync(Guid orgId, Guid bookingId) => new()
+    {
+        OrgId = orgId,
+        BookingId = bookingId,
+        PropertyId = Guid.NewGuid(),
+        State = OctorateSyncState.Failed,
+        LastOperation = OctorateSyncOperation.Create,
+        Attempts = 1,
+        ErrorCode = OctorateSyncErrorCodes.Rejected,
+    };
+}
