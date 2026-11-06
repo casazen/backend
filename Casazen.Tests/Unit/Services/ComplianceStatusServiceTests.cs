@@ -529,6 +529,42 @@ public class ComplianceStatusServiceTests
     }
 
     [Fact]
+    public async Task Periods_ATouristTaxPaymentTheHostRecordedWithItsReceipt_IsTheProofOfTheMonthsItCovers()
+    {
+        var world = await World.SeedAsync();
+        world.Granted.City = "Milano";
+        await world.SaveAsync(world.Granted);
+        await world.AddStayAsync(world.Granted, checkInOffset: -10, nights: 2, status: BookingStatus.CheckedOut, touristTax: 12m);
+        await world.AddStayAsync(world.Granted, checkInOffset: -45, nights: 2, status: BookingStatus.CheckedOut, touristTax: 8m);
+
+        // What is not a proof: a payment with no receipt, one that covers part of the month, one of another comune.
+        await world.AddRemittanceAsync("Milano", new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), withReceipt: false);
+        await world.AddRemittanceAsync("Milano", new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 15), withReceipt: true);
+        await world.AddRemittanceAsync("Bergamo", new DateOnly(2026, 7, 1), new DateOnly(2026, 10, 31), withReceipt: true);
+        await using (var db = world.Db())
+        {
+            var status = await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None);
+            var tax = status.Items.Where(i => i.Kind == ComplianceItemKind.TouristTax).ToDictionary(i => i.Period!);
+            Assert.Equal(["2026-09", "2026-10"], tax.Keys.Order());
+            Assert.All(tax.Values, item => Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.EvidenceMissing), (item.Verdict.Light, item.Verdict.Reason)));
+        }
+
+        // The payment of October with its receipt, and a quarterly one (typed in lower case) that covers September: the existing archive is the proof.
+        await world.AddRemittanceAsync("Milano", new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 31), withReceipt: true);
+        await world.AddRemittanceAsync("milano", new DateOnly(2026, 7, 1), new DateOnly(2026, 9, 30), withReceipt: true);
+        await using (var db = world.Db())
+        {
+            var status = await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None);
+            var tax = status.Items.Where(i => i.Kind == ComplianceItemKind.TouristTax).ToDictionary(i => i.Period!);
+            foreach (var item in tax.Values)
+            {
+                Assert.Equal((ComplianceLight.Green, ComplianceReasonCodes.ReceiptArchived, ComplianceEvidenceSources.ManualUpload), (item.Verdict.Light, item.Verdict.Reason, item.Verdict.EvidenceSource));
+                Assert.Contains("tourist-tax-remittance:", item.Verdict.ProofReference, StringComparison.Ordinal);
+            }
+        }
+    }
+
+    [Fact]
     public void ClosedMonths_AreTheFullMonthsInsideTheLookback_BeforeTheMonthInProgress()
     {
         // 90 days before 2026-11-06 is 2026-08-08: August is cut by the lookback, September and October are whole, November is in progress.
@@ -801,6 +837,29 @@ public class ComplianceStatusServiceTests
                 ContentType = "application/pdf",
                 UploadedByUserId = Owner.Id,
                 UploadedAt = Start.UtcDateTime,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        /// <summary>A payment of the tourist tax the host recorded (<see cref="TouristTaxRemittance"/>), with the receipt of the payment or without it.</summary>
+        public async Task AddRemittanceAsync(string comune, DateOnly from, DateOnly to, bool withReceipt)
+        {
+            await using var db = Db();
+            var id = Guid.NewGuid();
+            db.TouristTaxRemittances.Add(new TouristTaxRemittance
+            {
+                Id = id,
+                OrgId = Org.Id,
+                Comune = comune,
+                ComuneKey = TouristTaxComune.NormalizeName(comune),
+                PeriodFrom = from,
+                PeriodTo = to,
+                PaidAmount = 20m,
+                PaidOn = to,
+                RecordedByUserId = Owner.Id,
+                ReceiptStorageKey = withReceipt ? $"tourist-tax/{Org.Id}/{id}/ricevuta.pdf" : null,
+                ReceiptFileName = withReceipt ? "ricevuta.pdf" : null,
+                ReceiptContentType = withReceipt ? "application/pdf" : null,
             });
             await db.SaveChangesAsync();
         }

@@ -448,6 +448,18 @@ public sealed class ComplianceStatusService(
         var rateKnown = new Dictionary<string, bool>(StringComparer.Ordinal);
         var staysOf = stays.ToLookup(s => s.PropertyId);
 
+        // The payments of the tourist tax the host already recorded with the receipt of the payment (TouristTaxRemittance, NF-100): the existing
+        // archive of what was paid and declared for a period of a comune, read as the proof of the month it covers, besides the proofs uploaded here.
+        var periodsFrom = months.Count == 0 ? default : months[0];
+        var periodsTo = months.Count == 0 ? default : months[^1].AddMonths(1).AddDays(-1);
+        var remittances = months.Count == 0
+            ? []
+            : await db.TouristTaxRemittances
+                .AsNoTracking()
+                .Where(r => r.OrgId == orgId && r.ReceiptStorageKey != null && r.PeriodFrom <= periodsTo && r.PeriodTo >= periodsFrom)
+                .Select(r => new RemittanceRow(r.Id, r.ComuneKey, r.PeriodFrom, r.PeriodTo, r.CreatedAt))
+                .ToListAsync(ct);
+
         foreach (var property in properties)
         {
             var sender = senderOf(property.Id);
@@ -530,8 +542,9 @@ public sealed class ComplianceStatusService(
                     {
                         Today = todayDate,
                         PeriodStart = month,
-                        Declaration = ProofOf(proofs, property.Id, ManualProofKind.TouristTaxDeclaration, month),
-                        Payment = ProofOf(proofs, property.Id, ManualProofKind.TouristTaxPayment, month),
+                        // A payment recorded with its receipt declares and pays the period it names: it proves both.
+                        Declaration = ProofOf(proofs, property.Id, ManualProofKind.TouristTaxDeclaration, month) ?? RemittanceProof(remittances, property, month),
+                        Payment = ProofOf(proofs, property.Id, ManualProofKind.TouristTaxPayment, month) ?? RemittanceProof(remittances, property, month),
                     }) is { } taxVerdict)
                 {
                     items.Add(PropertyItem(ComplianceItemKind.TouristTax, ComplianceCockpitAction.DeclareTouristTax, property, period, taxVerdict, null));
@@ -563,6 +576,27 @@ public sealed class ComplianceStatusService(
         return proof is null
             ? null
             : new ComplianceProof($"manual-proof:{proof.Id:N}", ComplianceEvidenceSources.ManualUpload, proof.UploadedAt);
+    }
+
+    /// <summary>
+    /// The latest payment of the tourist tax the host recorded with a receipt for the comune of the property whose period covers the whole month
+    /// (a monthly or a quarterly payment alike): <c>null</c> when there is none. The comune is compared as the tourist tax report compares it
+    /// (<see cref="TouristTaxComune.NormalizeName"/>), so a payment typed "forli" meets the stays of "Forlì".
+    /// </summary>
+    private static ComplianceProof? RemittanceProof(IReadOnlyList<RemittanceRow> remittances, PropertyRow property, DateOnly month)
+    {
+        var comuneKey = TouristTaxComune.NormalizeName(property.City);
+        if (comuneKey.Length == 0)
+            return null;
+
+        var lastDay = month.AddMonths(1).AddDays(-1);
+        var covering = remittances
+            .Where(r => string.Equals(r.ComuneKey, comuneKey, StringComparison.Ordinal) && r.PeriodFrom <= month && r.PeriodTo >= lastDay)
+            .OrderByDescending(r => r.CreatedAt)
+            .FirstOrDefault();
+        return covering is null
+            ? null
+            : new ComplianceProof($"tourist-tax-remittance:{covering.Id:N}", ComplianceEvidenceSources.ManualUpload, covering.CreatedAt);
     }
 
     /// <summary>
@@ -644,6 +678,8 @@ public sealed class ComplianceStatusService(
     private sealed record ReceiptRow(Guid Id, DateTime RetrievedAt);
 
     private sealed record ProofRow(Guid Id, Guid PropertyId, ManualProofKind Kind, DateOnly Day, DateTime UploadedAt);
+
+    private sealed record RemittanceRow(Guid Id, string ComuneKey, DateOnly PeriodFrom, DateOnly PeriodTo, DateTime CreatedAt);
 
     private sealed record GuestRow(Guid BookingId, int Position);
 
