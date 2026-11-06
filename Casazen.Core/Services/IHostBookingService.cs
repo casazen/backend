@@ -15,11 +15,29 @@ public interface IHostBookingService
 {
     /// <summary>
     /// Applies <paramref name="update"/>. Status, source, prices, guest and payment fields are never taken from the
-    /// caller. Dates and guests change only for a booking entered by the host (<see cref="BookingSource.Manual"/>)
-    /// before its check-in; new dates are checked against the other bookings and the imported calendar blocks (409
-    /// <see cref="BookingErrorCodes.DatesUnavailable"/>) and the price, tourist tax included, is computed again.
+    /// caller. Dates and guests change only for a booking entered by the host (<see cref="BookingSource.Manual"/>) or a
+    /// confirmed one of the booking site (<see cref="BookingSource.Direct"/>) before its check-in; new dates are checked against
+    /// the other bookings and the imported calendar blocks (409 <see cref="BookingErrorCodes.DatesUnavailable"/>) and the price,
+    /// tourist tax included, is computed again.
     /// </summary>
-    Task<Booking> UpdateAsync(HostBookingUpdate update, CancellationToken cancellationToken = default);
+    /// <remarks>
+    /// For a booking of the booking site the money follows the price (E08/F02/US01/T01, NF-75): against what the guest has paid
+    /// (<see cref="BookingEditQuote.PaidSoFar"/>), a lower price is refunded on the Stripe payments, newest first, never above what
+    /// each can still return, with the idempotency key <c>booking-edit-refund:{bookingId}:{UpdatedAt:O}</c> (plus the payment); a higher
+    /// one is charged to the card the booking saved, else the guest is sent a payment link for the difference; the same price moves
+    /// nothing. What was paid offline cannot go back online and is reported (<see cref="BookingEditSettlement.OfflineRefundDue"/>). The Stripe
+    /// call comes before the save and in the same unit of work: when Stripe refuses, nothing is saved (422
+    /// <see cref="BookingErrorCodes.SettlementFailed"/>), and the booking change and the refund row are committed together. After the
+    /// commit the guest is told by email; a failed email never undoes the edit.
+    /// </remarks>
+    Task<HostBookingUpdateResult> UpdateAsync(HostBookingUpdate update, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// What <see cref="UpdateAsync"/> would do with <paramref name="update"/>, worked out and not done (<c>POST /api/bookings/{id}/edit-quote</c>):
+    /// the new total, what the guest has paid, the difference and the action on it. The same checks as the edit (a booking that cannot be changed,
+    /// dates that are not free, guests over the capacity, ages of the minors that are missing) answer the same errors; nothing is locked or written.
+    /// </summary>
+    Task<BookingEditQuote> QuoteEditAsync(HostBookingUpdate update, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The host confirms a <see cref="BookingStatus.Pending"/> booking: the single confirmation of the console
@@ -48,6 +66,12 @@ public interface IHostBookingService
 /// The channel amounts the request carried, if any. They are never applied: a figure that differs from the stored one is refused with 422
 /// <see cref="BookingErrorCodes.OtaAmountsReadonly"/> (E02/F02/US01/T01, ADR-033-R3).
 /// </param>
+/// <param name="RequestedByUserId">The Auth0 subject of the host, kept on the refunds of the edit; <c>null</c> when there is none.</param>
+/// <param name="CanMoveMoney">
+/// The caller may handle the money of the booking (<c>payment.write</c> on its property). <c>false</c> by default: an edit whose plan moves money
+/// (a refund, the saved card charged, a payment link) is then refused with 403 <see cref="BookingErrorCodes.EditPaymentPermissionRequired"/> before
+/// anything is done; an edit that moves no money does not need it.
+/// </param>
 public sealed record HostBookingUpdate(
     Guid BookingId,
     DateTime CheckInDate,
@@ -56,7 +80,9 @@ public sealed record HostBookingUpdate(
     int NumberOfChildren,
     IReadOnlyList<int>? ChildrenAges,
     string? SpecialRequests,
-    OtaAmountsInput? OtaAmounts = null);
+    OtaAmountsInput? OtaAmounts = null,
+    string? RequestedByUserId = null,
+    bool CanMoveMoney = false);
 
 /// <summary>
 /// The commission, net, paid and balance amounts of the channel as a request to change a booking carried them (each <c>null</c> when it did

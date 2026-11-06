@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.18";
+    public const string Version = "2026-11-06.20";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -111,6 +111,12 @@ public static class DemoShowcaseCatalog
         /// yet. They are rows of the hub only: nothing is read from, or sent to, a channel manager.
         /// </summary>
         public const string MessageHub = "message-hub";
+
+        /// <summary>
+        /// The templates of the host for the messages to the guests (E05/F02/US02/T02, NF-63): three invented templates, all saying TEST, in Italian and
+        /// in English, that use the variables of a stay (guest, house, code, dates and times, host) so the host can try them in the hub and in the new message.
+        /// </summary>
+        public const string MessageTemplates = "message-templates";
 
         // NF-40, NF-45 (E03/F01/US01/T04): the host wizard "Guest check-in" in the four states of a stay, and a stay with data to complete.
         public const string CheckInWizardExpected = "checkin-wizard-expected";
@@ -231,6 +237,7 @@ public static class DemoShowcaseCatalog
         Scenario.TouristTaxPerGuest,
         Scenario.TouristTaxChannelCollected,
         Scenario.MessageHub,
+        Scenario.MessageTemplates,
         Scenario.CheckInWizardExpected,
         Scenario.CheckInWizardArrived,
         Scenario.CheckInWizardDeparted,
@@ -1280,6 +1287,35 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
+    /// The message templates of the demo host (E05/F02/US02/T02, NF-63), written for the org at reset: a welcome in Italian, the same welcome in
+    /// English, and a reminder of the departure. Together they use the eight variables a template may have (guest, house, booking code, the dates and the
+    /// times of the stay, the host), so a client can try them on a conversation of the hub and in the new message. Invented and saying TEST, they point
+    /// at no house and no stay; a template the host already has with the same name and language is left alone. Marked as showcase data
+    /// (<c>TestDataEntities.MessageTemplate</c>), deleted by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoHostMessageTemplate> HostMessageTemplates { get; } =
+    [
+        new(
+            "benvenuto-it",
+            "Benvenuto (TEST)",
+            "it",
+            "Buongiorno {{guest_name}}, benvenuto a {{property_name}}! L'arrivo è previsto il {{check_in_date}} dalle {{check_in_time}}. Per qualsiasi dubbio scrivimi pure qui. A presto, {{host_name}} (TEST)",
+            Scenario.MessageTemplates),
+        new(
+            "welcome-en",
+            "Welcome (TEST)",
+            "en",
+            "Hello {{guest_name}}, welcome to {{property_name}}! We expect you on {{check_in_date}} from {{check_in_time}}. If you have any question just write to me here. See you soon, {{host_name}} (TEST)",
+            Scenario.MessageTemplates),
+        new(
+            "partenza-it",
+            "Promemoria partenza (TEST)",
+            "it",
+            "Ciao {{guest_name}}, un promemoria per la partenza da {{property_name}}: prenotazione {{booking_code}}, check-out il {{check_out_date}} entro le {{check_out_time}}. Grazie e buon viaggio! (TEST)",
+            Scenario.MessageTemplates),
+    ];
+
+    /// <summary>
     /// The profile of the issuer of the documents of the demo organization (E06/F02/US02, FIS-02, NF-82): complete, so the wizard «Come emetti i
     /// documenti?» opens on an answered setting and the settings page has data to show. Invented like the rest (TEST in the name, a plausible address
     /// in Milano), with the choice «the accountant takes care of the documents»: it needs neither the flag of the issuance nor an Octorate connection.
@@ -1853,6 +1889,17 @@ public sealed record DemoMessageThreadTemplate(
 
 /// <summary>A message of a demo conversation: who wrote it, how long before the reset, what it says (it says TEST) and whether the host read it.</summary>
 public sealed record DemoMessageTemplate(bool FromGuest, int MinutesAgo, string Text, bool Read = false);
+
+/// <summary>
+/// A message template of the demo host (E05/F02/US02/T02, NF-63): invented like the rest of the demo, written for the org at reset and marked as
+/// showcase data (<c>TestDataEntities.MessageTemplate</c>), so the next reset deletes it. The body uses the variables a real template may use.
+/// </summary>
+/// <param name="Key">Stable key of the template inside the catalog.</param>
+/// <param name="Name">The name the host sees (it says TEST).</param>
+/// <param name="Language">The language of the body, <c>it</c> or <c>en</c>.</param>
+/// <param name="Body">The text, with its variables between double braces.</param>
+/// <param name="Scenario">The scenario it exercises.</param>
+public sealed record DemoHostMessageTemplate(string Key, string Name, string Language, string Body, string Scenario);
 
 /// <summary>
 /// A popup alert of the demo host (NF-08, ADR-025): invented like the rest of the demo, written for the owner of the org at reset and

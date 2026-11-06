@@ -93,6 +93,9 @@ public sealed class DeferredChargeService(
 {
     private const string PaymentIntentUnexpectedStateCode = "payment_intent_unexpected_state";
 
+    /// <summary>The <c>kind</c> of the PaymentIntent of the checkout of the booking site: the payment webhook settles these (see <see cref="ChargeSavedCardAsync"/>).</summary>
+    internal const string BookingEditChargeKind = "direct-booking";
+
     /// <summary>PaymentIntent statuses the guest (or a new off-session attempt) can still pay.</summary>
     private static readonly HashSet<string> PayableStatuses = new(StringComparer.Ordinal)
     {
@@ -371,6 +374,46 @@ public sealed class DeferredChargeService(
         // Succeeded or processing (the guest paid from the link, the webhook is late), or canceled on Stripe (outside
         // CasaZen: no new charge).
         return existing;
+    }
+
+    /// <summary>
+    /// The difference of a price raised after the booking was made (E08/F02/US01/T01, NF-75): <paramref name="amount"/> is charged, off-session, to the card
+    /// the booking saved (<see cref="Booking.StripePaymentMethodId"/> of <see cref="Booking.StripeCustomerId"/>) on the connected account
+    /// <paramref name="account"/>, with <paramref name="idempotencyKey"/> so a request repeated after an answer was lost gets the same charge, never a second
+    /// one. The PaymentIntent is of the checkout's kind (<c>direct-booking</c>), so the payment webhook settles one that Stripe is still processing like any
+    /// payment of a confirmed booking; it is not the deferred charge of the deadline (<see cref="DeferredCharges.Kind"/>), which this never touches.
+    /// A card that needs the guest (authentication required, declined) makes Stripe answer 402: the <see cref="StripeException"/> goes up to the caller.
+    /// </summary>
+    public async Task<PaymentIntent> ChargeSavedCardAsync(
+        Booking booking,
+        string account,
+        decimal amount,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        ArgumentException.ThrowIfNullOrWhiteSpace(account);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(amount);
+        if (string.IsNullOrWhiteSpace(booking.StripeCustomerId) || string.IsNullOrWhiteSpace(booking.StripePaymentMethodId))
+            throw new InvalidOperationException($"Booking {booking.Id} has no saved card to charge.");
+
+        return await stripeService.ChargePaymentMethodAsync(
+            account,
+            booking.StripeCustomerId,
+            booking.StripePaymentMethodId,
+            ToCents(amount),
+            await StripeCurrencyOfAsync(booking, cancellationToken),
+            new Dictionary<string, string>
+            {
+                ["bookingId"] = booking.Id.ToString(),
+                ["propertyId"] = booking.PropertyId.ToString(),
+                ["orgId"] = booking.OrgId.ToString(),
+                ["kind"] = BookingEditChargeKind,
+                ["source"] = "booking-edit",
+            },
+            idempotencyKey,
+            cancellationToken);
     }
 
     /// <summary>

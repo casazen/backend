@@ -48,6 +48,7 @@ public class OrgActivityCatalogTests
     [InlineData(OrgActivityType.OctorateComplianceHandoffStarted, 100)]
     [InlineData(OrgActivityType.OnboardingAssistRequested, 110)]
     [InlineData(OrgActivityType.OnboardingAssistUpdated, 111)]
+    [InlineData(OrgActivityType.ContactInfoRead, 120)]
     public void Type_TheIntegerOfEveryEvent_IsPinned(OrgActivityType type, int value)
     {
         // The value is what the database holds: reordering or reusing it would rewrite history.
@@ -57,7 +58,7 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Type_EveryEventOfTheEnum_IsPinnedAbove()
     {
-        Assert.Equal(28, Enum.GetValues<OrgActivityType>().Length);
+        Assert.Equal(29, Enum.GetValues<OrgActivityType>().Length);
     }
 
     [Fact]
@@ -67,9 +68,9 @@ public class OrgActivityCatalogTests
         Assert.Equal(
             ["Account", "ShortRent", "LongRent", "Supplier"],
             Enum.GetValues<OrgActivityArea>().Select(a => a.ToString()));
-        Assert.Equal([1, 2, 3, 4, 5], Enum.GetValues<OrgActivitySubjectType>().Select(s => (int)s));
+        Assert.Equal([1, 2, 3, 4, 5, 6], Enum.GetValues<OrgActivitySubjectType>().Select(s => (int)s));
         Assert.Equal(
-            ["Member", "Invitation", "Org", "Property", "Supplier"],
+            ["Member", "Invitation", "Org", "Property", "Supplier", "Booking"],
             Enum.GetValues<OrgActivitySubjectType>().Select(s => s.ToString()));
     }
 

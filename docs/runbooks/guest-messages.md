@@ -194,6 +194,68 @@ guests at `@example.com`): a direct stay of the lake villa waiting for an answer
 Booking.com request for the villa with no booking. They are rows of the hub only (marked `TestDataEntities.OtaMessageThread` / `GuestThread`); there is no
 connection to a channel manager behind them.
 
+## The hub, write side (E05/F02/US02, ADR-032, ADR-023, NF-63)
+
+**Reply** (`POST api/messages/threads/{threadKey}/reply`, policy `booking.write`, header `Idempotency-Key` 8 to 64 characters, body `{ text }`, rate limited
+per person like the direct reply). Answer `{ channel, threadKey, message, state, replayed, errorCode }`; `state` is the delivery state of the message:
+
+| State | Meaning | HTTP |
+|---|---|---|
+| `Sent` | the channel manager accepted it (also a direct message, and an e-mail that was queued) | 200 |
+| `Created`, `WaitingAuthorization` | the channel manager has it and sends it (it reports the next state; the copy of the conversation completes the row) | 200 |
+| `Error` | a typed refusal (a token it does not take, the chat module not in the license, a request it rejects), with its `errorCode`; the guest got nothing | 200 |
+| `ManualVerify` | no answer, a 5xx or an answer that cannot be read **to the post of the message**: the message **may** have gone (the same failure of the read of the thread that comes before the post is not this: nothing was sent, the row goes away, the answer is 502 `octorate_unavailable` and the same key sends the message again). **This call never sends it again**; the copy of the conversation matches it with the message that arrived (same text, within ten minutes), or a person checks on the channel | 202 |
+
+The checks, in order: the conversation within the reach of the caller (**404** `thread_not_found`, also for another org's and for the unassigned one when the
+caller does not reach every property), the guest not erased (**409** `thread_closed`; also a direct thread past the seventh day after the check-out), a
+property whose mapping is decided and the connector on (**409** `mapping_not_confirmed`, OCT-04: nothing is sent; with the connector off **409**
+`octorate_not_connected`), the key (**422** `idempotency_key_invalid`), the rules of the channel (**422** `message_text_invalid`; **422** `channel_rule_violation`
+for a link, an e-mail address or a phone number on an Airbnb request, OCT-11, `MessageChannelRules`), and then the message with the same key, which is
+answered with `replayed: true` and sends nothing (OCT-10). A message that went out marks the inbound messages as read and the conversation as answered.
+
+**What is stored and when.** The outbound row (`OtaMessages`: `Direction` Outbound, `Origin` Person or Assistant, `RuleCode`, `SentByUserId`, the key) is written
+**before** the call and committed under the advisory lock of the thread; the call is made with no lock held; the outcome (the Octorate id, the state) is stored
+under the lock again. If the copy of the conversation read the thread in between and stored the message as one of the host side, that twin is removed (same
+Octorate id): the row that knows the key and the person stays. A row left in `Created` with no id for more than two minutes (the process stopped) is turned into
+`ManualVerify` by the next send with its key. A 429 (Octorate's, or the empty bucket of the org) removes the row and answers 429: the same key can be sent later.
+
+**First message** (`GET api/bookings/{id}/contact-options`, `POST api/bookings/{id}/messages/new`): the channel is the conversation the booking has on a channel
+(never one whose mapping is undecided), else the direct conversation while it is open, else, for a booking of a channel with no chat (Agoda, TripAdvisor,
+another portal), an **e-mail** when the stay is an active one (confirmed, checked in or checked out and not a no-show: the statuses of `AlloggiatiStatusRules`;
+a pending or cancelled booking and a no-show get `no_conversation`, and the contact of their guest is not even read) and the channel manager says it holds the
+guest's address (`emailAvailable`: a flag; the address is not asked for to answer the options), else `None` with the reason. The e-mail reads the contact of **that one booking** (`POST /rest/v2/reservation/{acc}/{refer}/contactInfo`, a special
+permission that Octorate gives only to the registered static IP addresses of CasaZen, S7/D24, and logs on every read): until they are registered the answer is
+**409** `contact_info_unavailable` and nothing is queued. A read that Octorate answered is recorded as `ContactInfoRead` in the activity log (booking, person,
+purpose `message_to_guest`); the address and the phone number are in no answer, no log line and no row of CasaZen's tables, and go only to the queue of the e-mails
+(where the Hangfire job holds the address, with the text of the e-mail, for the life of the job: it is removed after the last failed attempt, and a delivered job
+is kept 24 hours by default)
+(`EmailTemplates.HostGuestMessage`, Italian or English by the guest's country, the text of the host HTML-encoded, reply-to the organization's contact address).
+
+**Templates** (`api/message-templates`, `booking.read` to list and render, `booking.write` to change): name, language (one of the 14 of the listing), a body of up
+to 2000 characters with `{{guest_name}}`, `{{property_name}}`, `{{booking_code}}`, `{{check_in_date}}`, `{{check_out_date}}`, `{{check_in_time}}`,
+`{{check_out_time}}` and `{{host_name}}`; unique per organization, name and language (**409** `message_template_exists`). A variable that is none of the eight is
+refused when the template is saved (**422** `template_variable_unknown`). `POST …/{id}/render` with `{ threadKey }` fills the variables with the booking and the
+property of the conversation (read within the caller's reach; dates as Rome dates in the language of the template, e.g. `6 novembre 2026`; times as `HH:mm`
+on the property's clock) and answers **422** `template_variable_missing` naming the variable when the conversation has no value for it (a request with no booking
+has no dates): the text never holds a literal `{{…}}`. `GET api/messages/threads/{threadKey}/channel-templates` lists the templates of the channel manager for a
+conversation of a channel, read only, to copy.
+
+**Translation** (`POST api/messages/translate`, `{ threadKey, messageId | text, targetLanguage }`): for the screen only, **never stored** (the message keeps its
+original), always marked `machineTranslated`. **CasaZen's AI only with `Features:MessageTranslationAi` on, which is off by default** (FD-21, AI-06: what a guest
+wrote goes to an external sub-processor, [ai.md](ai.md); the product owner turns it on after deciding the transfer): `Economy` tier, behind the platform budget, under
+the AI limits of the user and of the org, with the text scrubbed (`PiiScrubber` takes out e-mail addresses, phone numbers and fiscal codes; the names of the guest
+and of the host become `[[N1]]…` and are put back in the translation, a name whose words are all short, «Li Wu», is replaced as a whole name and the particles
+de, da, di, van, von, al, el are left alone; **a document number, an IBAN, a street address and the names of other people are not recognized**). With the flag off the
+provider is never asked: the channel manager's translation of that message is the only one, and it is also the one used when the AI is not configured, the budget
+is used up, or the provider fails; **422** `translation_unavailable` with neither (a text the host is still writing has no message on the channel manager, so with
+the flag off every draft is 422). **422** `translation_language_invalid` (not one of the 14), `translation_input_invalid` (a message and a text together, or neither).
+
+**Demo.** The scenario `message-templates` of the showcase (`DemoShowcaseCatalog.HostMessageTemplates`) writes three invented templates at reset (a welcome in Italian
+and in English and a reminder of the departure, all saying TEST, together using the eight variables), marked `TestDataEntities.MessageTemplate` and deleted by the
+next reset; a template the host wrote is never touched. The conversations they can be tried on are the ones of `message-hub`; the direct one is answered as always,
+while the two of a channel go through the channel manager, which a demo without a real connection does not have: the answer is a refusal of the connector (the
+state `Error` with its code, or **409** `octorate_not_connected` when the connector is off), never a message that looks sent.
+
 ## Not here (deferred)
 
 Automatic answers and the keyword router, the disclosure line, emergencies, `GuestMessageDecision`, `responseTimeMinutes`, the guest's unread badge, the guest's language (the emails are Italian), attachments, the "Scrivi" shortcut from the

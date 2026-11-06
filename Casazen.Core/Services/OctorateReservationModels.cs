@@ -66,6 +66,39 @@ public sealed record OctorateReservationCreate
 }
 
 /// <summary>
+/// The change of a reservation CasaZen makes on Octorate when the host edits one of its own bookings (<c>PATCH /rest/v1/reservation/{acc}/{id}</c>,
+/// E08/F02/US01/T02, NF-75): the stay, the guests, the price of the stay and the notes. The room (<c>pmsProduct</c>) comes from the target, never
+/// from here. Nothing else is ever written: no guest data, no status, no payment.
+/// </summary>
+public sealed record OctorateReservationUpdate
+{
+    /// <summary>The arrival day of the stay (Europe/Rome); sent as the UTC instant that day starts in Rome.</summary>
+    public required DateOnly CheckIn { get; init; }
+
+    /// <summary>The departure day of the stay (Europe/Rome), not a night.</summary>
+    public required DateOnly CheckOut { get; init; }
+
+    /// <summary>All the guests (<c>totalGuest</c>), at least one.</summary>
+    public required int Guests { get; init; }
+
+    /// <summary>The minors among <see cref="Guests"/> (<c>totalChildren</c>).</summary>
+    public required int Children { get; init; }
+
+    /// <summary>The price of the stay without the tourist tax, to the cent (<c>roomGross</c>): <see cref="Booking.BasePrice"/>, as the create sends it.</summary>
+    public required decimal RoomGross { get; init; }
+
+    /// <summary>The notes of the booking (<c>privateNotes</c>), sent only when there are some; <c>null</c> leaves the notes of the reservation as they are.</summary>
+    public string? Notes { get; init; }
+
+    /// <summary>
+    /// The <c>updateTime</c> of the version of the reservation this change is based on: the last version CasaZen saw (or, for the host's «keep mine», the
+    /// version the host was shown after a conflict). When Octorate holds another version the reservation changed there since, and the change is refused as
+    /// a conflict, never written over it. <c>null</c> when no version is known: then nothing is compared.
+    /// </summary>
+    public DateTime? BasedOnUpdateTime { get; init; }
+}
+
+/// <summary>
 /// A payment of a booking recorded on its Octorate reservation (<c>POST /rest/v1/reservation/{acc}/{id}/payment</c>): income CasaZen
 /// collected, "not a card charge" (D9). Only <c>transaction</c>, <c>paymentMode</c>, <c>amount</c>, <c>referenceTime</c> and
 /// <c>description</c> are sent: never a card, a pre-authorization or a scheduled charge.

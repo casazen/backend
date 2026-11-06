@@ -40,6 +40,13 @@ internal static class OctorateChatReader
     /// <summary>The processor of an internal note of the team, which is not part of the conversation with the guest.</summary>
     internal const string NoteProcessor = "NOTE";
 
+    /// <summary>The attribute of a message that holds its translations: a map from a language to its text (E05/F02/US02/T02).</summary>
+    internal const string TranslationMapAttribute = "TRANSLATION_MAP";
+
+    private const int TemplateNameMaxLength = 200;
+
+    private const int ExternalThreadIdMaxLength = 200;
+
     /// <summary>
     /// The page of threads an answer holds: a bare list (v1) or the array of a wrapper. <c>null</c> when the answer is neither, so a caller can
     /// tell an empty list from an answer it cannot read. An item without a usable id is left out but counted.
@@ -80,7 +87,115 @@ internal static class OctorateChatReader
             GuestName = GuestNameOf(item),
             ArchivedAt = OctorateJson.Instant(item, "archiveTime"),
             LastActivityAt = LastActivityOf(item),
+            ExternalThreadId = ExternalThreadIdOf(item),
+            HostPersonId = HostPersonIdOf(item),
         };
+    }
+
+    /// <summary>
+    /// What the channel manager answered to a message sent to a channel (<c>ChatMessageDTO</c>): its id and the state it reports. <c>null</c> when the
+    /// answer is not an object or has no usable id: the message may exist all the same, so it is never read as a success. A <c>status</c> that is
+    /// missing or none of the five words is <see cref="OtaMessageDeliveryState.ManualVerify"/> (a success Octorate did not state is never assumed).
+    /// </summary>
+    internal static OctorateChatSendResult? ReadSendResult(JsonElement message)
+    {
+        if (message.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var id = OctorateJson.Text(message, "id");
+        if (id is null || id.Length > OtaMessage.OctorateMessageIdMaxLength)
+            return null;
+
+        return new OctorateChatSendResult(id, DeliveryStateOf(OctorateJson.Text(message, "status"), OtaMessageDirection.Outbound));
+    }
+
+    /// <summary>
+    /// The templates an answer holds (<c>MailTemplateDTO</c>: <c>id</c>, <c>name</c>, <c>language</c>, <c>text</c>): a bare list or the array of a
+    /// wrapper. <c>null</c> when the answer is not a list, so a caller can tell an empty list from an answer it cannot read. An item without an id or
+    /// without a body is left out.
+    /// </summary>
+    internal static OctorateChatTemplate[]? ReadTemplates(JsonElement root)
+    {
+        if (OctorateReservationReader.ListItems(root) is not { } items)
+            return null;
+
+        var templates = new List<OctorateChatTemplate>();
+        foreach (var item in items)
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+
+            var id = OctorateJson.Text(item, "id");
+            var text = OctorateJson.Find(item, "text") is { ValueKind: JsonValueKind.String } body ? body.GetString()?.Trim() : null;
+            if (id is null || id.Length > OtaMessage.OctorateMessageIdMaxLength || string.IsNullOrEmpty(text))
+                continue;
+
+            templates.Add(new OctorateChatTemplate(
+                id,
+                Clip(OctorateJson.Text(item, "name") ?? id, TemplateNameMaxLength),
+                OctorateJson.Text(item, "language")?.ToUpperInvariant(),
+                Clip(text, OctorateApiClient.MaxTemplateTextLength)));
+        }
+
+        return [.. templates];
+    }
+
+    /// <summary>
+    /// The translation of a message in <paramref name="language"/> (<c>IT</c>, <c>EN</c>, ...), from the attribute <c>TRANSLATION_MAP</c> of the message
+    /// Octorate answers: a JSON object that maps a language to its text. <c>null</c> when the answer has no such attribute, it is not that object, or it
+    /// holds nothing in that language: never a guess.
+    /// </summary>
+    internal static string? ReadTranslation(JsonElement message, string language)
+    {
+        if (AttributeOf(message, TranslationMapAttribute) is not { } map)
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(map);
+            return document.RootElement.ValueKind == JsonValueKind.Object ? OctorateJson.Text(document.RootElement, language) : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string Clip(string value, int maxLength) => value.Length <= maxLength ? value : value[..maxLength];
+
+    /// <summary>The id of the thread on the channel: the first <c>externalId</c> of <c>chatThreadExternals</c>.</summary>
+    private static string? ExternalThreadIdOf(JsonElement thread)
+    {
+        if (OctorateJson.Find(thread, "chatThreadExternals") is not { ValueKind: JsonValueKind.Array } externals)
+            return null;
+
+        foreach (var external in externals.EnumerateArray())
+        {
+            if (OctorateJson.Text(external, "externalId") is { Length: <= ExternalThreadIdMaxLength } id)
+                return id;
+        }
+
+        return null;
+    }
+
+    /// <summary>The first member of the thread that is a user of the channel manager (it has a <c>userId</c>): the id of the person the host's messages are written as.</summary>
+    private static string? HostPersonIdOf(JsonElement thread)
+    {
+        if (OctorateJson.Find(thread, "persons") is not { ValueKind: JsonValueKind.Array } persons)
+            return null;
+
+        foreach (var person in persons.EnumerateArray())
+        {
+            if (person.ValueKind == JsonValueKind.Object
+                && OctorateJson.Text(person, "userId") is not null
+                && OctorateJson.Text(person, "id") is { Length: <= 19 } id
+                && id.All(char.IsAsciiDigit))
+            {
+                return id;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

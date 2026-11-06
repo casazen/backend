@@ -79,6 +79,14 @@ public enum ActivityType
     BookingOverlap = 22,
 
     /// <summary>
+    /// A change the host made to a booking could not be written to the channel manager because the reservation was changed there meanwhile
+    /// (E08/F02/US01/T02, NF-75): Octorate answered 409. About the booking, with both versions readable in the booking answer: the host chooses
+    /// to keep CasaZen's (the retry with <c>overwrite=true</c>) or to take Octorate's (editing the booking to match). Closes when the mirror is
+    /// <c>Synced</c> again.
+    /// </summary>
+    BookingSyncConflict = 23,
+
+    /// <summary>
     /// The content of a listing was changed on the channel manager after CasaZen's last push (E02/F03/US01/T07, NF-27): the host chooses between
     /// keeping the CasaZen version (republished over it) and taking the descriptions Octorate holds. About the property on one channel, so the item
     /// is one for each property and channel; it closes when the choice is made. The number leaves room for the values other tasks append after 22.

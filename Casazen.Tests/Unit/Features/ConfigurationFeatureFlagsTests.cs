@@ -93,6 +93,8 @@ public class ConfigurationFeatureFlagsTests
                 "OctorateBillingSync",
                 // E03/F02/US01/T03: the compliance traffic light of the cockpit and the feed of its items into the «Da fare» list, off until the proofs can be archived.
                 "ComplianceTrafficLight",
+                // E05/F02/US02/T02: the translation of a message by CasaZen's AI (the text of a guest goes to the provider), off until the product owner decides the transfer.
+                "MessageTranslationAi",
             },
             FeatureFlags.All);
     }

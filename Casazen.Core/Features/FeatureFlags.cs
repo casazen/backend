@@ -198,6 +198,18 @@ public static class FeatureFlags
     /// </summary>
     public const string ComplianceTrafficLight = "ComplianceTrafficLight";
 
+    /// <summary>
+    /// E05/F02/US02/T02 (NF-63, AI-06, FD-21): the translation of a message by CasaZen's AI, <b>off by default</b>. What a guest wrote is personal data,
+    /// and the AI provider is an external sub-processor (DeepSeek, with its seat and its archives in China, the basis of the transfer being a decision
+    /// of the product owner: <c>docs/runbooks/ai.md</c>). Off, <c>POST api/messages/translate</c> never asks the AI provider anything, not even for the text
+    /// the host is writing: it asks the channel manager to translate the message it holds (the id of its message, no word of CasaZen's leaves) and,
+    /// when that cannot be done either, answers 422 <c>translation_unavailable</c>. The endpoint itself, the templates and the reply are not behind it.
+    /// On, the text goes to the provider after the scrub of <c>MessageTranslationPrompt</c> (e-mail addresses, phone numbers, fiscal codes and the names of
+    /// the conversation; documents and addresses of a person are not recognized). It needs no variable to start; it works only with an AI provider in
+    /// effect (<c>Ai__Provider</c> and <c>Ai__ApiKey</c>). Turn it on only after the product owner has decided the transfer.
+    /// </summary>
+    public const string MessageTranslationAi = "MessageTranslationAi";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -219,5 +231,6 @@ public static class FeatureFlags
         FiscalDocumentIssuance,
         OctorateBillingSync,
         ComplianceTrafficLight,
+        MessageTranslationAi,
     ];
 }

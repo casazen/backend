@@ -105,10 +105,11 @@ public class BookingLifecyclePostgresTests : IClassFixture<BookingLifecyclePostg
     }
 
     [PostgresFact]
-    public async Task Update_DatesOfABookingFromTheBookingSite_Returns422AndNotesStillChange()
+    public async Task Update_DatesOfABookingOfAChannel_Returns422AndNotesStillChange()
     {
+        // A confirmed booking of the booking site is changed since E08/F02/US01/T01 (money settled on Stripe); a channel's stays the host's to ask for.
         var (hostId, property) = await SeedHostPropertyAsync();
-        var bookingId = await SeedBookingAsync(property, BookingStatus.Confirmed, BookingSource.Direct, NextYear(11, 2), NextYear(11, 5));
+        var bookingId = await SeedBookingAsync(property, BookingStatus.Confirmed, BookingSource.Airbnb, NextYear(11, 2), NextYear(11, 5));
         using var host = _factory.CreateAuthenticatedClient(hostId, HostRole);
 
         var moved = await host.PutAsJsonAsync($"/api/bookings/{bookingId}", new

@@ -23,6 +23,26 @@ public interface IBookingOctorateSyncService
     Task<OctorateSyncState?> PushCreateAsync(Guid bookingId, CancellationToken ct);
 
     /// <summary>
+    /// Writes an edit of a mirrored booking to its reservation on Octorate (E08/F02/US01/T02, ADR-022-R4, R5, ADR-031, NF-75), once and with a state
+    /// the host sees (<c>OctorateBookingSync</c>, operation <c>Update</c>): <c>Pending</c> before the call, then <c>Synced</c> with the new
+    /// <c>updateTime</c>. The state of the sync after the attempt, or <c>null</c> when there was nothing to write: not a booking CasaZen mirrors (a channel's
+    /// booking, one that is not confirmed or in the house), no reservation and no create under way, a reservation that came from Octorate (no row of ours).
+    /// </summary>
+    /// <param name="bookingId">The booking.</param>
+    /// <param name="askedAgain">The delivery is the host's «ask again»: only a row whose last operation is the change is pushed again.</param>
+    /// <param name="overwrite">
+    /// The host chose «keep mine» after a conflict: the change is written over the version Octorate held when the conflict was found (the latest
+    /// <c>updateTime</c>), never over a newer one. Without it a reservation that changed on Octorate is never overwritten.
+    /// </param>
+    /// <exception cref="Exception">
+    /// The reservation is not on Octorate yet but its create is under way or on its way (<c>OctorateSyncPendingException</c>): delivered again after it.
+    /// Octorate did not answer (or answered 429 or 5xx): the sync is <c>Failed</c> with <c>octorate_unavailable</c> and the exception propagates, so the
+    /// outbox dispatcher delivers the event again. A 409 is <c>Conflict</c> with <c>octorate_reservation_changed</c> and a «To do» (not an exception):
+    /// both versions are kept and the host chooses. Another refusal is <c>Failed</c> with <c>octorate_rejected</c>, not tried again by itself.
+    /// </exception>
+    Task<OctorateSyncState?> PushUpdateAsync(Guid bookingId, bool askedAgain, bool overwrite, CancellationToken ct);
+
+    /// <summary>
     /// Asks the push of a booking of the caller's org again (<c>POST /api/bookings/{id}/octorate-sync/retry</c>): only a <c>Failed</c> or
     /// <c>Conflict</c> sync; the push is queued through the event bus and the answer is <c>Pending</c>. The row itself keeps its state until the
     /// push really starts (it is then <c>Pending</c>), so a push that gives up (the booking was cancelled, its stay is over, the property is no
