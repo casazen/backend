@@ -74,6 +74,56 @@ public interface IOctorateApiClient
     Task SetCheckInStatusAsync(string accommodationId, string reservationId, OctorateCheckInStatus status, CancellationToken ct);
 
     /// <summary>
+    /// Octorate's availability check of the room of <paramref name="target"/> for the nights from <paramref name="from"/> to the night before
+    /// <paramref name="to"/> (<c>GET /rest/v1/calendar/{acc}/{productId}/availabilityCheck?startDate=&amp;endDate=</c>, E08/F01/US01/T02): 200 is
+    /// available, 406 is not, with the reason Octorate gives. The operation takes no occupancy: <paramref name="guests"/> is checked (at least
+    /// one) and the capacity stays CasaZen's own check. Any other answer is the typed error of the client, never "available".
+    /// </summary>
+    Task<OctorateAvailabilityResult> CheckAvailabilityAsync(
+        OctorateBookingTarget target,
+        DateOnly from,
+        DateOnly to,
+        int guests,
+        CancellationToken ct);
+
+    /// <summary>
+    /// Creates the reservation of a CasaZen booking (<c>POST /rest/v1/reservation/{acc}?availability=true</c>, E08/F01/US01/T02): the stay as the
+    /// UTC instants its Rome days start, the guests, <c>roomGross</c>, the direct channel of <c>Octorate:DirectChannelId</c>, the booking code as
+    /// <c>refer</c>, the room of the target (<c>product</c>, and <c>pmsProduct</c> when the target has one), and <c>availability=true</c> so the
+    /// night is taken off every channel. Never a field of Octorate's automatic charge (D9). Octorate has no idempotency key (D13): after a
+    /// timeout, a 429 or a 5xx the caller looks the reservation up with <see cref="FindReservationByExternalReferenceAsync"/> before any retry.
+    /// An answer without a reservation id is <c>OctorateServerException</c>: the reservation is then found by its reference, never assumed.
+    /// </summary>
+    /// <exception cref="InvalidOperationException"><c>Octorate:DirectChannelId</c> is not a channel id: nothing leaves.</exception>
+    Task<OctorateReservation> CreateReservationAsync(OctorateBookingTarget target, OctorateReservationCreate request, CancellationToken ct);
+
+    /// <summary>
+    /// Records a payment on a reservation (<c>POST /rest/v1/reservation/{acc}/{id}/payment</c>, E08/F01/US01/T02): income CasaZen collected,
+    /// "not a card charge" (D9): <c>transaction</c>, <c>paymentMode</c>, <c>amount</c> to the cent, <c>referenceTime</c>. Never a card, a
+    /// pre-authorization or a scheduled charge.
+    /// </summary>
+    Task<OctoratePaymentResult> RegisterPaymentAsync(
+        string accommodationId,
+        string reservationId,
+        OctoratePaymentRegistration payment,
+        CancellationToken ct);
+
+    /// <summary>
+    /// The reservation CasaZen created with <paramref name="externalReference"/> as its <c>refer</c> (the booking code), found in the list of the
+    /// reservations created in the last <c>30</c> days (<c>type=CREATETIME</c>, 200 a page, page after page): how a create whose answer was lost
+    /// is recovered, Octorate having no idempotency key (D13). <c>null</c> only when the whole list was read and has none; a list that could not
+    /// be read whole (an item that could not be read, too many pages) is <c>OctorateServerException</c>, so a caller never creates a second
+    /// reservation on a guess.
+    /// </summary>
+    Task<OctorateReservation?> FindReservationByExternalReferenceAsync(string accommodationId, string externalReference, CancellationToken ct);
+
+    /// <summary>
+    /// The PMS rooms of an accommodation (<c>GET /rest/v1/pms/{acc}</c>): each with the unit it belongs to (<c>parentId</c>). The id Octorate
+    /// wants as <c>pmsProduct</c> to create and change a reservation on a unit that has one (sandbox 2026-11-04).
+    /// </summary>
+    Task<OctoratePmsRoom[]> GetPmsRoomsAsync(string accommodationId, CancellationToken ct);
+
+    /// <summary>
     /// The catalog of portals and tools Octorate offers (<c>GET /rest/v1/meta/portals</c>, E09/F01/US01/T02). A partner-level call: it acts
     /// for the application and carries no property data, so it needs no org in <see cref="IOctorateOrgScope"/>, uses the partner token
     /// (<see cref="IOctorateTokenService.GetPartnerAccessTokenAsync"/>) and takes its call from the rate-limit bucket <c>platform</c>, not an

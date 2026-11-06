@@ -1,6 +1,7 @@
 using Casazen.Core.Events;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Events;
+using Casazen.Infrastructure.Octorate;
 
 namespace Casazen.Web.Extensions;
 
@@ -20,6 +21,9 @@ public static class BookingOperationsServiceCollectionExtensions
         services.AddScoped<IEventHandler<DomainEvent>, BookingCleaningActivityHandler>();
         services.AddScoped<IEventHandler<DomainEvent>, BookingSpecialRequestActivityHandler>();
         services.AddScoped<IEventHandler<DomainEvent>, ChannelBookingAlertHandler>();
+
+        // E08/F01/US01/T02 (NF-74): where in Octorate a property books; every writer of a booking to Octorate asks it first.
+        services.AddScoped<IOctorateBookingTargets, OctorateBookingTargets>();
         return services;
     }
 }
