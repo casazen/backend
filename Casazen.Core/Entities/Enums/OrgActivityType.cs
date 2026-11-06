@@ -157,4 +157,14 @@ public enum OrgActivityType
     /// recorded.
     /// </summary>
     OnboardingAssistUpdated = 111,
+
+    // ─── Messages to the guests (hub of messages, E05/F02/US02/T01) ──────────────────────────────────────
+
+    /// <summary>
+    /// The contact of the guest of ONE booking was read from the channel manager to write to the guest (<c>POST /rest/v2/reservation/{acc}/{refer}/contactInfo</c>:
+    /// Octorate releases the address only on request and records every read, so CasaZen records who asked as well). Written by
+    /// <c>MessageReplyService.StartConversationAsync</c>, in the save that follows the read, whether or not the guest had an address. Subject: the booking.
+    /// Details: the purpose (<c>message_to_guest</c>). The area is short-rent. Never the address, the phone number or a word of the message.
+    /// </summary>
+    ContactInfoRead = 120,
 }

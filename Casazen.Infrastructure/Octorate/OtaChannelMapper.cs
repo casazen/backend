@@ -15,7 +15,13 @@ public static class OtaChannelMapper
     private static readonly BookingStateMapper Bookings = new();
 
     /// <summary>The channel with an integrated chat that <paramref name="channelId"/> / <paramref name="channelName"/> name, or <c>null</c>.</summary>
-    public static OtaChannel? Of(string? channelId, string? channelName) => Bookings.ToSource(channelId, channelName) switch
+    public static OtaChannel? Of(string? channelId, string? channelName) => Of(Bookings.ToSource(channelId, channelName));
+
+    /// <summary>
+    /// The channel with an integrated chat that a booking came from, or <c>null</c> for every other source (Agoda, TripAdvisor, another portal, the
+    /// booking site, the host): the one definition of «a booking of a channel that has a chat», which the reply of the hub reads (E05/F02/US02/T01).
+    /// </summary>
+    public static OtaChannel? Of(BookingSource source) => source switch
     {
         BookingSource.Airbnb => OtaChannel.Airbnb,
         BookingSource.BookingCom => OtaChannel.Booking,

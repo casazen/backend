@@ -29,7 +29,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// sent), its read time and its attachment address, when they were missing, are completed.</item>
 /// <item><b>Provenance.</b> An inbound message is <see cref="MessageOrigin.Guest"/>; an outbound one written outside CasaZen is
 /// <see cref="MessageOrigin.Person"/>. An outbound row CasaZen wrote (E05/F02/US02) is matched by its Octorate id; one left in
-/// <see cref="OtaMessageDeliveryState.ManualVerify"/> without an id is matched by (thread, same text, sent within ten minutes) and completed
+/// <see cref="OtaMessageDeliveryState.ManualVerify"/> without an id, or written (<see cref="OtaMessageDeliveryState.Created"/>) and never answered for
+/// longer than <see cref="MessageReplyService.StaleSendWindow"/>, is matched by (thread, same text, sent within ten minutes) and completed
 /// with the id and the state Octorate reports, never duplicated (OCT-10). Internal notes of the team (processor <c>NOTE</c>) are not part of the
 /// conversation and are not copied.</item>
 /// <item><b>Events (ADR-022-R1).</b> In the same unit of work as the data: <c>GuestMessageReceived</c> for each new inbound message sent within the
@@ -727,7 +728,10 @@ public sealed class MessageSyncService(
             .ToListAsync(ct);
         var storedById = stored.ToDictionary(m => m.OctorateMessageId!, StringComparer.Ordinal);
 
-        // The rows CasaZen wrote and could not confirm (the answer of Octorate was lost): they have no id yet.
+        // The rows CasaZen wrote and could not confirm (the answer of Octorate was lost): they have no id yet. Those in manual verification, and those
+        // written and never answered for longer than a send can take (the process stopped after the call, or the save of the outcome failed): a row of a send
+        // that is still running is not pending, its own save settles it and takes away the copy this pass makes (MessageReplyService.StoreOutcomeAsync).
+        var staleBefore = now - MessageReplyService.StaleSendWindow;
         var pending = new List<OtaMessage>();
         if (db.Entry(thread).State != EntityState.Added)
         {
@@ -737,7 +741,8 @@ public sealed class MessageSyncService(
                             && m.ThreadId == thread.Id
                             && m.OctorateMessageId == null
                             && m.Direction == OtaMessageDirection.Outbound
-                            && m.DeliveryState == OtaMessageDeliveryState.ManualVerify)
+                            && (m.DeliveryState == OtaMessageDeliveryState.ManualVerify
+                                || (m.DeliveryState == OtaMessageDeliveryState.Created && m.CreatedAt <= staleBefore)))
                 .ToListAsync(ct);
         }
 
