@@ -270,4 +270,46 @@ public class SuppressionServiceTests
         await using var verify = new AppDbContext(options);
         Assert.False(await verify.SuppressionListEntries.AnyAsync());
     }
+
+    /// <summary>
+    /// The public unsubscribe (<c>POST api/public/marketing/unsubscribe</c>, <see cref="ISuppressionService.AddByHashAsync"/>) computes no hash: the
+    /// signed link already carries it. So the opt-out is recorded where <c>Crm__ContactIndexKey</c> is missing too (the application starts without it
+    /// while <c>Features:CrmMarketing</c> is off), whether the hash is the keyed one of a link sent with the key or the plain SHA-256 of an older link,
+    /// and the contact with the same hash is flagged; read with the key, the list then blocks both addresses.
+    /// </summary>
+    [Fact]
+    public async Task AddByHash_WithoutTheKey_StillRecordsTheOptOut()
+    {
+        var options = NewOptions();
+        var orgId = Guid.NewGuid();
+        var keyedHash = CrmTestIndex.Create().Hash("ospite@example.com");
+        var legacyHash = PlainSha256("vecchio@example.com");
+        await using (var seed = new AppDbContext(options))
+        {
+            seed.GuestContacts.Add(EmailContact(orgId, keyedHash));
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var context = new AppDbContext(options))
+        {
+            var keyless = Service(context, CrmTestIndex.Create(key: null));
+            Assert.False(keyless.CanIndexAddresses);
+            await keyless.AddByHashAsync(orgId, keyedHash, "unsubscribe");
+            await keyless.AddByHashAsync(orgId, legacyHash, "unsubscribe");
+        }
+
+        await using var verify = new AppDbContext(options);
+        var hashes = await verify.SuppressionListEntries.Where(e => e.OrgId == orgId).Select(e => e.EmailHash).ToListAsync();
+        Assert.Equal(2, hashes.Count);
+        Assert.Contains(keyedHash, hashes);
+        Assert.Contains(legacyHash, hashes);
+        var flagged = await verify.GuestContacts.SingleAsync();
+        Assert.True(flagged.IsSuppressed);
+        Assert.Equal("unsubscribe", flagged.SuppressedSource);
+
+        var keyed = Service(verify);
+        Assert.True(keyed.CanIndexAddresses);
+        Assert.True(await keyed.IsSuppressedAsync(orgId, "Ospite@Example.com"));
+        Assert.True(await keyed.IsSuppressedAsync(orgId, "vecchio@example.com"));
+    }
 }
