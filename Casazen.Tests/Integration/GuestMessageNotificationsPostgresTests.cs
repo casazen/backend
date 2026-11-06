@@ -242,11 +242,27 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         await SendAsGuestAsync(world, "uno", "key-00000006");
         var mine = await AddNotificationAsync(world, HostUser, PushTypes.GuestMessage, world.BookingId);
 
+        // The arrival of the message of the guest is an event of its own: the delivery of the alert (HostMessageAlertDelivery, NF-65) writes the
+        // counter of the bell of the host and tells its open sessions once, right there. It used to be a Hangfire job that nothing ran in this test,
+        // so the publisher saw only the reply. What is under test starts here: one reply, one telling.
+        Assert.Single(_publisher.Invocations, i => i.Method.Name == nameof(IInAppNotificationPublisher.PublishAsync));
+        _publisher.Invocations.Clear();
+
         await using (var db = NewDb())
             await Service(db).ReplyAsHostAsync(world.BookingId, "ciao", "key-00000007", HostUser);
 
+        // Answering is reading: both the row of the test and the one the alert wrote are read, and the reply tells the sessions once (a second
+        // reply, with nothing left unread, would tell nobody: see MarkRead_NothingUnreadToClear_PublishesNothing).
         Assert.NotNull((await ReloadAsync(mine)).ReadAt);
+        await using (var check = NewDb())
+        {
+            var rows = await check.InAppNotifications.AsNoTracking().Where(n => n.UserId == HostUser && n.EntityId == world.BookingId).ToListAsync();
+            Assert.Equal(2, rows.Count);
+            Assert.All(rows, n => Assert.NotNull(n.ReadAt));
+        }
+
         _publisher.Verify(p => p.PublishAsync(HostUser, PushTypes.GuestMessage, world.BookingId, It.IsAny<CancellationToken>()), Times.Once);
+        _publisher.VerifyNoOtherCalls();
     }
 
     [PostgresFact]
