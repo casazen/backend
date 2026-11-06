@@ -15,4 +15,10 @@ public enum WizardType
     CheckOut = 6,
     ComplianceSender = 7,
     TouristTax = 8,
+
+    /// <summary>The activation of CasaZen with Octorate (E10/F01, NF-104): the plan of the eleven parts and its steps, resumed where the person left off.</summary>
+    OnboardingActivation = 9,
+
+    /// <summary>The bulk configuration of an agency's properties (E10/F02, NF-105): the choices applied to all or to a selection, and the per-property table.</summary>
+    OnboardingBulk = 10,
 }

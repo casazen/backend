@@ -4590,4 +4590,10 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.rateChecker" xml:space="preserve">
     <value>Checks that your prices are consistent on every channel and flags the differences.</value>
   </data>
+  <data name="OnboardingFlowUnknown" xml:space="preserve">
+    <value>Unknown activation flow.</value>
+  </data>
+  <data name="OnboardingFlowStateUnknown" xml:space="preserve">
+    <value>Unknown flow state.</value>
+  </data>
 </root>
