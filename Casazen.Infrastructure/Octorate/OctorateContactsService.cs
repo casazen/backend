@@ -32,8 +32,10 @@ namespace Casazen.Infrastructure.Octorate;
 /// OTA forwards are told by the contact service (the source of the booking, the relay domains). A customer of the booking engine of the agency
 /// (channel <c>270</c>, to confirm in the sandbox) brings the notice of its booking only while <c>Crm:BookingEngineSoftOptIn</c> is on, and a
 /// confirmed booking makes the address soft opt-in then; otherwise service only.</item>
-/// <item><b>A refusal</b> (401/403: no static IP, no permission), a reservation Octorate no longer knows and a reservation with no guest id are
-/// remembered as not available for the booking; an outage or a limit is not remembered (a later call tries again) and is never retried here.</item>
+/// <item><b>A refusal</b> (401/403: no static IP, no permission), a request Octorate rejects (a 4xx that is no missing reservation and no limit),
+/// a reservation Octorate no longer knows and a reservation with no guest id are remembered as not available for the booking; <b>an answer that is
+/// not understood</b> (no member of a contact in it, or empty while the reservation says there is an address or a number) is remembered as
+/// unrecognized, never as a guest with no contact; an outage or a limit is not remembered (a later call tries again) and is never retried here.</item>
 /// <item><b>Privacy</b>: the logs carry ids, counts and the outcome, never an address, a number, a name or a body.</item>
 /// </list>
 /// </remarks>
@@ -54,6 +56,12 @@ public sealed class OctorateContactsService(
     /// booking engine, and its being shown is the product owner's declaration (<c>Crm:BookingEngineSoftOptIn</c>, D34), not a text CasaZen holds.
     /// </summary>
     public const string BookingEngineNoticeVersion = "octorate-booking-engine";
+
+    /// <summary>
+    /// The code the log carries when the answer of <c>contactInfo</c> is not understood (<see cref="OctorateContactReadOutcome.Unrecognized"/>): the code
+    /// only, never a member or a value of the answer.
+    /// </summary>
+    public const string UnrecognizedAnswerCode = "octorate_contact_info_unrecognized";
 
     public async Task<OctorateContactReadResult> ReadForBookingAsync(Guid orgId, Guid bookingId, CancellationToken ct = default)
     {
@@ -156,6 +164,12 @@ public sealed class OctorateContactsService(
         {
             return NotAvailable(orgId, bookingId, now, "Octorate no longer knows the reservation");
         }
+        catch (OctorateException ex) when (ex is OctorateRequestRejectedException or OctorateConflictException)
+        {
+            // Octorate refused the request itself (a 4xx that is no refusal of the data, no missing reservation and no limit): sent again it is refused
+            // again, so it is remembered like a refusal and not sent in a loop. Only the code of the error is logged.
+            return NotAvailable(orgId, bookingId, now, $"Octorate rejected the request ({ex.Code})");
+        }
         catch (OctorateException ex)
         {
             // An outage, the limit, a connection that is not usable: not the booking's fault, so nothing is remembered about it. Not retried here.
@@ -165,6 +179,21 @@ public sealed class OctorateContactsService(
                 orgId,
                 ex.Code);
             return new OctorateContactReadResult(OctorateContactReadOutcome.Deferred);
+        }
+
+        // An empty answer is "the guest has no contact" only when CasaZen understood it and Octorate did not say it holds an address or a number. With none
+        // of the members of a contact in it, or empty while the reservation says there is an address or a number, it is an answer that is not understood (the
+        // shape of contactInfo is not proven by the sandbox): said so, remembered, and never taken for a guest with no contact. Only the code is logged.
+        if (info.IsEmpty && (!info.Recognized || reservation.GuestEmailAvailable == true || reservation.GuestPhoneAvailable == true))
+        {
+            ledger.RememberUnrecognized(orgId, bookingId, now);
+            logger.LogWarning(
+                "Octorate contact of booking {BookingId} of org {OrgId}: the answer is not understood ({Code}): not asked again for {Hours} hours",
+                bookingId,
+                orgId,
+                UnrecognizedAnswerCode,
+                OctorateContactReadLedger.NotAvailableMemory.TotalHours);
+            return new OctorateContactReadResult(OctorateContactReadOutcome.Unrecognized);
         }
 
         var stored = await StoreAsync(orgId, booking, guest, reservation, info, settings, ct);

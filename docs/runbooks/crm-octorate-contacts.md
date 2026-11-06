@@ -69,10 +69,11 @@ weaker basis never lowers a stronger one and a suppression is never cleared (see
 | Outcome | Meaning | Remembered |
 |---|---|---|
 | `Stored` | At least one address or number was stored | read (24 h) |
-| `NothingToStore` | Octorate holds none for the guest (the flags say so, or the answer is empty) | read (24 h) |
+| `NothingToStore` | Octorate holds none for the guest (the flags say so, or the answer has the members of a contact, empty, and no flag says Octorate holds one) | read (24 h) |
 | `AlreadyRead` | The booking was read in the last 24 hours | - |
-| `NotAvailable` | Octorate refused the read (no static IP, no permission), no longer knows the reservation, or names no guest id | refused (6 h) |
-| `Deferred` | Octorate did not answer, or a limit was reached, or the connection is not usable: not the booking's fault | nothing; a later call tries again; **never retried in a loop** |
+| `NotAvailable` | Octorate refused the read (no static IP, no permission), rejected the request (a 4xx that is no missing reservation and no limit), no longer knows the reservation, or names no guest id | refused (6 h) |
+| `Unrecognized` | Octorate answered, but CasaZen does not understand the answer: it has none of the members of a contact (another wrapper, other names, not an object), or it is empty while the reservation says Octorate holds an address or a number. **Not "the guest has no contact"**; the log carries the code `octorate_contact_info_unrecognized` and nothing of the answer | unrecognized (6 h) |
+| `Deferred` | Octorate did not answer, or a limit was reached, or the connection is not usable, or the body cannot be parsed at all: not the booking's fault | nothing; a later call tries again; **never retried in a loop** |
 | `Disabled`, `NotAnOctorateBooking`, `StayOver`, `GuestErased`, `NotMapped`, `OverCap` | Nothing was read (rules 1 to 7) | nothing |
 
 The ledger is in memory: a restart forgets it, which can cost one more call for a booking and never a stored contact, and with several API
@@ -89,8 +90,11 @@ addresses are registered, so these points are written from the specification and
 3. The channel code of the customers of the booking engine of the agency is `270` (as the import already assumes).
 4. Which relay domains the OTAs use: `Crm__OtaForwardDomains` stays empty until a domain is seen in a real booking.
 
-If one of them is wrong the effect is on the safe side: an id that is not found gives `NotAvailable` (nothing stored), an answer that is not read gives
-`Deferred`, and an unknown relay domain is still an OTA forward by the source of the booking.
+If one of them is wrong the effect is on the safe side, and it is said: an id that is not found gives `NotAvailable` (nothing stored); a request Octorate
+rejects gives `NotAvailable` too; an answer with none of the members of a contact (other names, another wrapper, not an object), or empty while the
+reservation says Octorate holds an address or a number, gives `Unrecognized` (a warning with the code `octorate_contact_info_unrecognized`, remembered for
+6 hours): that line is the first sign that the shape is not the one assumed, and it is never recorded as a guest with no contact; a body that cannot be
+parsed at all gives `Deferred`; and an unknown relay domain is still an OTA forward by the source of the booking.
 
 ## 6. Verification once the IP addresses are registered
 
@@ -101,6 +105,8 @@ If one of them is wrong the effect is on the safe side: an id that is not found 
 4. With the IP addresses **not** registered the log says `Octorate guest-contact-info for org {OrgId}: refused (HTTP 403)` and
    `Octorate contact of booking ... is not available`, and no row is written: expected, and not repeated for 6 hours.
 5. Set `Crm__OctorateContactReadsPerHour=2`, import three bookings: two are read, the third logs `not read: the 2 reads an hour of the org are used`.
+6. If the log says `the answer is not understood (octorate_contact_info_unrecognized)` the shape of the answer of `contactInfo` is not the assumed one (§ 5):
+   look at it once in the sandbox, with a booking that has an address, and teach `OctorateApiClient.ReadGuestContactInfo` the names it uses.
 
 ## 7. Privacy
 

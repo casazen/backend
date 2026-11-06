@@ -934,8 +934,8 @@ reservation of the room of a property, found through the confirmed `OctorateList
   never an empty result) and stores the address and the number with `ICrmContactService.UpsertContactAsync` (origin `OctorateContactInfo`, service only; an OTA or
   relay address is an `OtaForward`; a customer of the booking engine, channel 270, is soft opt-in for a confirmed booking only while `Crm:BookingEngineSoftOptIn`
   is on). Nothing is read unless `Crm:OctorateContactsEnabled` and `Features:OctorateConnector` are on and the CRM module is open (`Features:CrmMarketing` and `Crm:ContactIndexKey`, `CrmProfileSyncGate`), for a stay already over, for a booking CasaZen made and sent to Octorate (it has a row of the mirror), for an erased guest, or past
-  `Crm:OctorateContactReadsPerHour` (50) reads an hour for the org; a refusal is remembered for the booking (`OctorateContactReadLedger`, in memory) and not
-  asked again in a loop. `OctorateContactsEventHandler` calls it on `BookingCreated` with `Origin = Octorate` (a failure never fails the event).
+  `Crm:OctorateContactReadsPerHour` (50) reads an hour for the org; a refusal, a request Octorate rejects and an answer CasaZen does not understand (`Unrecognized`: never read as a guest with no contact) are remembered for
+  the booking (`OctorateContactReadLedger`, in memory) and not asked again in a loop. `OctorateContactsEventHandler` calls it on `BookingCreated` with `Origin = Octorate` (a failure never fails the event).
 - *Events.* `BookingCreated`, `BookingConfirmed`, `BookingModified` (property, dates, guests or figures changed, not cancelled) and `BookingCancelled`, with
   `Origin = Octorate`, once each (`BookingEvents` keys). None for a stay that is already over and none for a reservation first seen cancelled.
 - *Out.* `SyncBookingStateAsync` sends `CHECKIN_END` / `CHECKOUT_END` (`PUT /rest/v1/checkin/{acc}/{id}?status=`) and the cancellation of a reservation made

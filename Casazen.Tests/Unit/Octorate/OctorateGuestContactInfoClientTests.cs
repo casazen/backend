@@ -77,9 +77,14 @@ public class OctorateGuestContactInfoClientTests
         Assert.DoesNotContain("1234567", info.ToString(), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// An answer that has the members of a contact and leaves them empty (a null, an empty text, a blank one) is an empty contact that CasaZen
+    /// understood: the guest has none to give.
+    /// </summary>
     [Theory]
-    [InlineData("""{}""")]
     [InlineData("""{"email":null,"phone":""}""")]
+    [InlineData("""{"phone":null}""")]
+    [InlineData("""{"data":{"mail":" "}}""")]
     public async Task OctorateClient_GuestContactInfo_AnAnswerWithNoContact_IsAnEmptyContact(string body)
     {
         var h = new Harness(HttpStatusCode.OK, body);
@@ -88,6 +93,34 @@ public class OctorateGuestContactInfoClientTests
         {
             var info = await h.Client.GetGuestContactInfoAsync("585492", "guest-77", CancellationToken.None);
 
+            Assert.True(info.IsEmpty);
+            Assert.True(info.Recognized);
+            Assert.Null(info.Email);
+            Assert.Null(info.Phone);
+        }
+    }
+
+    /// <summary>
+    /// Proof test (the shape of the answer is not proven by the sandbox): an answer with none of the members that hold an address or a number (not an
+    /// object, another wrapper, other names, a member that is an object) is not "the guest has no contact": the contact is empty and <c>Recognized</c> is
+    /// false, so the service can say the answer is not understood instead of recording a guest with nothing to give.
+    /// </summary>
+    [Theory]
+    [InlineData("""{}""")]
+    [InlineData("""[]""")]
+    [InlineData("""null""")]
+    [InlineData("""{"contactInfo":{"email":"guest@example.org"}}""")]
+    [InlineData("""{"emails":["guest@example.org"],"phones":["+393331234567"]}""")]
+    [InlineData("""{"email":{"address":"guest@example.org"}}""")]
+    public async Task OctorateClient_GuestContactInfo_AnAnswerNotUnderstood_IsNeverAnEmptyContactOfAGuestWithNone(string body)
+    {
+        var h = new Harness(HttpStatusCode.OK, body);
+
+        using (h.Scope.Use(Org))
+        {
+            var info = await h.Client.GetGuestContactInfoAsync("585492", "guest-77", CancellationToken.None);
+
+            Assert.False(info.Recognized);
             Assert.True(info.IsEmpty);
             Assert.Null(info.Email);
             Assert.Null(info.Phone);

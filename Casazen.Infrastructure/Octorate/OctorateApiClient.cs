@@ -253,20 +253,33 @@ public sealed class OctorateApiClient(
         // The answer is the guest's contact data: it is read and returned, never logged (not even on a parse failure).
         using var document = ParseJson(answer);
         var root = Unwrap(document.RootElement);
+
+        // A 200 that is not an object is an answer CasaZen does not know how to read: said so, never "the guest has no contact".
         if (root.ValueKind != JsonValueKind.Object)
-            throw new OctorateServerException(answer.StatusCode);
+            return new OctorateGuestContactInfo(null, null, Recognized: false);
 
         return ReadGuestContactInfo(root);
     }
 
+    private static readonly string[] GuestEmailNames = ["email", "emailAddress", "mail"];
+
+    private static readonly string[] GuestPhoneNames = ["phone", "phoneNumber", "mobile", "telephone"];
+
     /// <summary>
     /// The e-mail address and the phone number of an answer of <c>contactInfo</c>. The names are not proven by the sandbox (its guest contacts
     /// need the static IP whitelist): the plain ones and their usual spellings are read, a member that is missing or empty is <c>null</c>.
+    /// The answer is <see cref="OctorateGuestContactInfo.Recognized"/> only when it has at least one of those members as a text, a number or a
+    /// <c>null</c>: an object with none of them (another wrapper, other names) is not "no contact", it is an answer that is not understood.
     /// </summary>
-    internal static OctorateGuestContactInfo ReadGuestContactInfo(JsonElement root) =>
-        new(
-            OctorateJson.Text(root, "email", "emailAddress", "mail"),
-            OctorateJson.Text(root, "phone", "phoneNumber", "mobile", "telephone"));
+    internal static OctorateGuestContactInfo ReadGuestContactInfo(JsonElement root)
+    {
+        var recognized = HasContactMember(root, GuestEmailNames) || HasContactMember(root, GuestPhoneNames);
+        return new OctorateGuestContactInfo(OctorateJson.Text(root, GuestEmailNames), OctorateJson.Text(root, GuestPhoneNames), recognized);
+    }
+
+    /// <summary>A member called one of <paramref name="names"/> that holds a text, a number or <c>null</c> (a member of another kind is not what is looked for).</summary>
+    private static bool HasContactMember(JsonElement root, string[] names) =>
+        OctorateJson.Find(root, names) is { } member && member.ValueKind is JsonValueKind.String or JsonValueKind.Number or JsonValueKind.Null;
 
     public async Task<OctorateCalendarDay[]> GetCalendarAsync(
         string accommodationId,

@@ -345,6 +345,66 @@ public class OctorateContactsProofTests
     }
 
     /// <summary>
+    /// Proof test (permission rule, AC-NF94-6, and the answer of <c>contactInfo</c> that the sandbox does not prove): an answer CasaZen does not understand
+    /// (empty while the reservation says Octorate holds an address, or with no member of a contact in it) is said so, <c>Unrecognized</c>, and never read as
+    /// "the guest has no contact"; a request Octorate rejects (a 4xx that is no refusal, no missing reservation, no limit) is not available for the booking;
+    /// both are remembered and not sent in a loop, and are asked again once the wait is over; the log carries the code only. An empty answer that has the
+    /// members of a contact, with no flag that says otherwise, is a guest with none to give.
+    /// </summary>
+    [Fact]
+    public async Task OctorateContacts_AnswerNotUnderstoodOrRequestRejected_IsExplicitRememberedAndNeverAGuestWithNoContact_Test()
+    {
+        var h = new BookingImportHarness();
+        var emptyWhileAvailable = await h.SeedBookingAsync("res-empty", source: BookingSource.BookingCom);
+        var noMember = await h.SeedBookingAsync("res-shape", source: BookingSource.BookingCom);
+        var rejected = await h.SeedBookingAsync("res-rejected", source: BookingSource.BookingCom);
+        var noContact = await h.SeedBookingAsync("res-none", source: BookingSource.BookingCom);
+
+        ServeAnswer(h, "res-empty", "guest-empty", emailAvailable: true, new OctorateGuestContactInfo(null, null));
+        ServeAnswer(h, "res-shape", "guest-shape", emailAvailable: null, new OctorateGuestContactInfo(null, null, Recognized: false));
+        ServeAnswer(h, "res-none", "guest-none", emailAvailable: null, new OctorateGuestContactInfo(null, null));
+        h.Client
+            .Setup(c => c.GetReservationAsync(BookingImportTestKit.Accommodation, "res-rejected", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateReservation { Id = "res-rejected", GuestId = "guest-rejected" });
+        h.Client
+            .Setup(c => c.GetGuestContactInfoAsync(BookingImportTestKit.Accommodation, "guest-rejected", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateRequestRejectedException(422));
+        var log = new CapturingLogger<OctorateContactsService>();
+
+        await using var db = h.NewDb();
+        var service = Service(h, db, new CrmOptions { OctorateContactsEnabled = true }, log: log);
+
+        // Empty while the reservation says there is an address, and an answer with no member of a contact: not understood, remembered, not asked again.
+        Assert.Equal(OctorateContactReadOutcome.Unrecognized, (await service.ReadForBookingAsync(OrgA, emptyWhileAvailable, Ct)).Outcome);
+        Assert.Equal(OctorateContactReadOutcome.Unrecognized, (await service.ReadForBookingAsync(OrgA, noMember, Ct)).Outcome);
+        Assert.Equal(OctorateContactReadOutcome.Unrecognized, (await service.ReadForBookingAsync(OrgA, emptyWhileAvailable, Ct)).Outcome);
+        h.Clock.Advance(TimeSpan.FromHours(1));
+        Assert.Equal(OctorateContactReadOutcome.Unrecognized, (await service.ReadForBookingAsync(OrgA, noMember, Ct)).Outcome);
+        h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), "guest-empty", It.IsAny<CancellationToken>()), Times.Once);
+        h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), "guest-shape", It.IsAny<CancellationToken>()), Times.Once);
+
+        // A request Octorate rejects: not available for the booking, not sent again in a loop.
+        Assert.Equal(OctorateContactReadOutcome.NotAvailable, (await service.ReadForBookingAsync(OrgA, rejected, Ct)).Outcome);
+        Assert.Equal(OctorateContactReadOutcome.NotAvailable, (await service.ReadForBookingAsync(OrgA, rejected, Ct)).Outcome);
+        h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), "guest-rejected", It.IsAny<CancellationToken>()), Times.Once);
+
+        // An answer that has the members of a contact, empty, and no flag that says otherwise: the guest has none to give (said once, read for a day).
+        Assert.Equal(OctorateContactReadOutcome.NothingToStore, (await service.ReadForBookingAsync(OrgA, noContact, Ct)).Outcome);
+        Assert.Equal(OctorateContactReadOutcome.NothingToStore, (await service.ReadForBookingAsync(OrgA, noContact, Ct)).Outcome);
+        h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), "guest-none", It.IsAny<CancellationToken>()), Times.Once);
+
+        // Once the wait is over the answer is asked for again.
+        h.Clock.Advance(OctorateContactReadLedger.NotAvailableMemory);
+        Assert.Equal(OctorateContactReadOutcome.Unrecognized, (await service.ReadForBookingAsync(OrgA, emptyWhileAvailable, Ct)).Outcome);
+        h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), "guest-empty", It.IsAny<CancellationToken>()), Times.Exactly(2));
+
+        // Nothing is stored for a guest with no contact, and the log says the code and nothing of the answer.
+        Assert.False(await db.GuestContacts.AnyAsync(Ct));
+        Assert.Contains(OctorateContactsService.UnrecognizedAnswerCode, log.AllOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain("example", log.AllOutput, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Proof test (privacy rule): the event path reads the contact only of a booking that came from Octorate. <c>BookingCreated</c> with the origin
     /// Octorate reads it; the same event of a booking made in CasaZen, another kind of event and a payload that is not a booking event read nothing;
     /// a service that fails does not fail the event and the failure is logged without the message of the error.
@@ -449,6 +509,20 @@ public class OctorateContactsProofTests
         h.Client
             .Setup(c => c.GetGuestContactInfoAsync(BookingImportTestKit.Accommodation, guestId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctorateGuestContactInfo(email, phone));
+    }
+
+    /// <summary>
+    /// Octorate answers the reservation with the id of its guest and the flag of the e-mail as given (<c>null</c>: the answer does not say), and for
+    /// that guest exactly <paramref name="answer"/>, whatever it is.
+    /// </summary>
+    private static void ServeAnswer(BookingImportHarness h, string reservationId, string guestId, bool? emailAvailable, OctorateGuestContactInfo answer)
+    {
+        h.Client
+            .Setup(c => c.GetReservationAsync(BookingImportTestKit.Accommodation, reservationId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateReservation { Id = reservationId, ChannelId = "274", GuestId = guestId, GuestEmailAvailable = emailAvailable });
+        h.Client
+            .Setup(c => c.GetGuestContactInfoAsync(BookingImportTestKit.Accommodation, guestId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(answer);
     }
 
     /// <summary>The row of the mirror CasaZen makes when it creates the reservation of a booking on Octorate: the booking is CasaZen's own.</summary>

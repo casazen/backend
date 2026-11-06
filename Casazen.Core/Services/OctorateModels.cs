@@ -431,7 +431,13 @@ public sealed record OctorateReservation
 /// </summary>
 /// <param name="Email">The e-mail address; for a booking made through a portal it is a forward address.</param>
 /// <param name="Phone">The phone number.</param>
-public sealed record OctorateGuestContactInfo(string? Email, string? Phone)
+/// <param name="Recognized">
+/// False when the answer was not understood: it was not an object, or it had none of the members that hold an address or a number (another
+/// wrapper, other names). Then <paramref name="Email"/> and <paramref name="Phone"/> are <c>null</c> because nothing could be read, not because
+/// Octorate holds nothing: the caller must not take it for "the guest has no contact". An answer that has the members and leaves them empty is
+/// recognized.
+/// </param>
+public sealed record OctorateGuestContactInfo(string? Email, string? Phone, bool Recognized = true)
 {
     /// <summary>True when Octorate gave neither an address nor a number.</summary>
     public bool IsEmpty => string.IsNullOrWhiteSpace(Email) && string.IsNullOrWhiteSpace(Phone);

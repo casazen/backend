@@ -18,7 +18,7 @@ public sealed class OctorateContactReadLedger
     /// <summary>How long a booking that was read is not read again.</summary>
     public static readonly TimeSpan ReadMemory = TimeSpan.FromHours(24);
 
-    /// <summary>How long a booking Octorate would not give the contact of is not asked about again.</summary>
+    /// <summary>How long a booking Octorate would not give the contact of, or whose answer was not understood, is not asked about again.</summary>
     public static readonly TimeSpan NotAvailableMemory = TimeSpan.FromHours(6);
 
     /// <summary>Most bookings remembered: past it the memory is cleaned, and cleared if cleaning is not enough (it only makes a call possible again).</summary>
@@ -52,7 +52,8 @@ public sealed class OctorateContactReadLedger
 
     /// <summary>
     /// What is remembered of the booking, or <c>null</c> when nothing is (or what was has been forgotten): <see cref="OctorateContactReadOutcome.AlreadyRead"/>,
-    /// <see cref="OctorateContactReadOutcome.NothingToStore"/> or <see cref="OctorateContactReadOutcome.NotAvailable"/>.
+    /// <see cref="OctorateContactReadOutcome.NothingToStore"/>, <see cref="OctorateContactReadOutcome.NotAvailable"/> or
+    /// <see cref="OctorateContactReadOutcome.Unrecognized"/>.
     /// </summary>
     public OctorateContactReadOutcome? Recall(Guid orgId, Guid bookingId, DateTimeOffset now)
     {
@@ -60,8 +61,7 @@ public sealed class OctorateContactReadLedger
         if (!_remembered.TryGetValue(key, out var memory))
             return null;
 
-        var keptFor = memory.Outcome == OctorateContactReadOutcome.NotAvailable ? NotAvailableMemory : ReadMemory;
-        if (now - memory.At < keptFor)
+        if (now - memory.At < KeptFor(memory.Outcome))
             return memory.Outcome;
 
         _remembered.TryRemove(key, out _);
@@ -80,6 +80,17 @@ public sealed class OctorateContactReadLedger
     public void RememberNotAvailable(Guid orgId, Guid bookingId, DateTimeOffset now) =>
         Remember(orgId, bookingId, OctorateContactReadOutcome.NotAvailable, now);
 
+    /// <summary>
+    /// Remembers that Octorate answered the booking in a form CasaZen does not understand, so it is not asked again for <see cref="NotAvailableMemory"/>
+    /// (the same wait as a refusal: the answer will be the same until the code reads it).
+    /// </summary>
+    public void RememberUnrecognized(Guid orgId, Guid bookingId, DateTimeOffset now) =>
+        Remember(orgId, bookingId, OctorateContactReadOutcome.Unrecognized, now);
+
+    /// <summary>How long what is remembered is kept: a read for <see cref="ReadMemory"/>, a refusal or an answer not understood for <see cref="NotAvailableMemory"/>.</summary>
+    private static TimeSpan KeptFor(OctorateContactReadOutcome outcome) =>
+        outcome is OctorateContactReadOutcome.NotAvailable or OctorateContactReadOutcome.Unrecognized ? NotAvailableMemory : ReadMemory;
+
     private void Remember(Guid orgId, Guid bookingId, OctorateContactReadOutcome outcome, DateTimeOffset now)
     {
         if (_remembered.Count >= MaxRemembered)
@@ -92,8 +103,7 @@ public sealed class OctorateContactReadLedger
     {
         foreach (var (key, memory) in _remembered)
         {
-            var keptFor = memory.Outcome == OctorateContactReadOutcome.NotAvailable ? NotAvailableMemory : ReadMemory;
-            if (now - memory.At >= keptFor)
+            if (now - memory.At >= KeptFor(memory.Outcome))
                 _remembered.TryRemove(key, out _);
         }
 

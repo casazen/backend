@@ -65,7 +65,8 @@ public enum OctorateContactReadOutcome
 
     /// <summary>
     /// Octorate does not give the contact of this booking (a refusal for lack of the static IP addresses or of the permission, a reservation it
-    /// no longer knows, a guest it names no id for): recorded for the booking, and not asked again for a while.
+    /// no longer knows, a guest it names no id for, a request it rejects with a 4xx that is not a refusal of the data, a missing reservation or a
+    /// limit): recorded for the booking, and not asked again for a while.
     /// </summary>
     NotAvailable = 9,
 
@@ -74,6 +75,14 @@ public enum OctorateContactReadOutcome
 
     /// <summary>Nothing was read: the guest of the booking was erased or anonymized, and its contacts must not come back (E07/F06/US02/T01).</summary>
     GuestErased = 11,
+
+    /// <summary>
+    /// Octorate answered, but CasaZen does not understand the answer: the contact of the guest has none of the members that hold an address or a
+    /// number (another wrapper, other names), or it is empty while the reservation says Octorate holds an address or a number. It is not "the guest
+    /// has no contact": recorded for the booking, logged with the code <c>octorate_contact_info_unrecognized</c> only, and not asked again for a
+    /// while. The answer is to be seen once in the sandbox (runbook § 5).
+    /// </summary>
+    Unrecognized = 12,
 }
 
 /// <summary>The result of a contact read for one booking.</summary>
