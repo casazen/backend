@@ -46,4 +46,11 @@ public enum DomainEventType
     /// message, an alert) runs a second time.
     /// </summary>
     OctorateSyncRequested = 20,
+
+    /// <summary>
+    /// A property was accepted by the channel manager for the first time (E02/F03/US01/T02): its structure and content are on Octorate. About the
+    /// property (<c>EntityId</c>), recorded once; E08/F05/US02/T02 consumes it to send the calendar, the prices and the restrictions. The number
+    /// leaves room for the values other tasks of the same wave append after 20.
+    /// </summary>
+    ListingPublished = 30,
 }
