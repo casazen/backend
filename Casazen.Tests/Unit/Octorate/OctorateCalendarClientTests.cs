@@ -131,6 +131,12 @@ public class OctorateCalendarClientTests
         public Task SaveTokensAsync(Guid orgId, OctorateTokenResponse tokens, CancellationToken ct) => Task.CompletedTask;
 
         public Task DisconnectAsync(Guid orgId, CancellationToken ct) => Task.CompletedTask;
+
+        public Task<string> GetPartnerAccessTokenAsync(CancellationToken ct) =>
+            throw new InvalidOperationException("No partner-level call is made in these tests.");
+
+        public Task<string> RefreshRejectedPartnerTokenAsync(string rejectedAccessToken, CancellationToken ct) =>
+            throw new InvalidOperationException("No partner-level call is made in these tests.");
     }
 
     /// <summary>Answers each call with the next queued body and keeps the addresses and the tokens it was called with.</summary>
