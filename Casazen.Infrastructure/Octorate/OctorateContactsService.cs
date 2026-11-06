@@ -18,7 +18,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-/// <item><b>Gates, in this order</b>: <c>Crm:OctorateContactsEnabled</c> and the connector flag (nothing is queried when they are off); a booking of
+/// <item><b>Gates, in this order</b>: <c>Crm:OctorateContactsEnabled</c> and the connector flag (nothing is queried when they are off); the CRM
+/// module open (<see cref="CrmProfileSyncGate"/>: <c>Features:CrmMarketing</c> on and <c>Crm:ContactIndexKey</c> set, else nothing could be
+/// stored and nothing is asked of Octorate); a booking of
 /// the org with an Octorate reservation id; a check-out that is not in the past; a guest that was not erased; what the memory of
 /// <see cref="OctorateContactReadLedger"/> says (read lately, or refused lately: no call); a confirmed listing of the property; and at most
 /// <c>Crm:OctorateContactReadsPerHour</c> reads an hour for the org. Only then Octorate is called: the reservation (for the guest id) and the
@@ -39,6 +41,7 @@ public sealed class OctorateContactsService(
     IOctorateApiClient client,
     IOctorateOrgScope orgScope,
     ICrmContactService contacts,
+    ICrmContactIndex contactIndex,
     OctorateContactReadLedger ledger,
     IOptions<CrmOptions> options,
     IFeatureFlags featureFlags,
@@ -55,6 +58,12 @@ public sealed class OctorateContactsService(
     {
         var settings = options.Value;
         if (!settings.OctorateContactsEnabled || !featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
+            return new OctorateContactReadResult(OctorateContactReadOutcome.Disabled);
+
+        // What is read is stored by the CRM, and the CRM stores nothing until its module is open (Features:CrmMarketing on and Crm:ContactIndexKey
+        // set: CrmProfileSyncGate, the one rule of the sync, the job and the demo seed). With it closed the contact could not be kept, so it is not asked
+        // of Octorate either: a sensitive read that is dropped on the floor, and made again at the next call, is the worst of both.
+        if (!CrmProfileSyncGate.IsOpen(featureFlags, contactIndex))
             return new OctorateContactReadResult(OctorateContactReadOutcome.Disabled);
 
         if (orgId == Guid.Empty || bookingId == Guid.Empty)

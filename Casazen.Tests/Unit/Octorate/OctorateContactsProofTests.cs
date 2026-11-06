@@ -186,6 +186,39 @@ public class OctorateContactsProofTests
     }
 
     /// <summary>
+    /// Proof test (privacy rule, NF-94 and the gate of the CRM module): what is read from Octorate is stored by the CRM, and the CRM stores nothing
+    /// while its module is closed (<c>Features:CrmMarketing</c> off, or <c>Crm:ContactIndexKey</c> not set). With the switches of Octorate on and the
+    /// module closed the call ends at once: no call to Octorate, no contact, and nothing spent or remembered, so the call that comes once the module is
+    /// open reads the booking. Without this a sensitive read was made, dropped when the contact could not be hashed, and made again at the next call.
+    /// </summary>
+    [Fact]
+    public async Task OctorateContacts_CrmModuleClosed_ReadsNothingFromOctorate_Test()
+    {
+        var h = new BookingImportHarness();
+        var bookingId = await h.SeedBookingAsync("res-1", source: BookingSource.BookingCom);
+        Serve(h, "res-1", "guest-1", "guest1@guest.example.org", "+393331234567");
+        var options = new CrmOptions { OctorateContactsEnabled = true };
+        var ledger = new OctorateContactReadLedger();
+        await using var db = h.NewDb();
+
+        // The flag of the module is off (the key is set).
+        var flagOff = Service(h, db, options, new TestFeatureFlags(FeatureFlags.OctorateConnector), ledger);
+        Assert.Equal(OctorateContactReadOutcome.Disabled, (await flagOff.ReadForBookingAsync(OrgA, bookingId, Ct)).Outcome);
+
+        // The flag is on and the key is not set (production without Crm__ContactIndexKey).
+        var noKey = Service(h, db, options, ledger: ledger, index: CrmTestIndex.Create(key: null));
+        Assert.Equal(OctorateContactReadOutcome.Disabled, (await noKey.ReadForBookingAsync(OrgA, bookingId, Ct)).Outcome);
+
+        h.Client.Verify(c => c.GetReservationAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.False(await db.GuestContacts.AnyAsync(Ct));
+
+        // The module open: the same booking is read, as the closed calls spent and remembered nothing.
+        var open = Service(h, db, options, ledger: ledger);
+        Assert.Equal(OctorateContactReadOutcome.Stored, (await open.ReadForBookingAsync(OrgA, bookingId, Ct)).Outcome);
+    }
+
+    /// <summary>
     /// Proof test (privacy rule, AC-NF94-2): a customer of the booking engine of the agency is soft opt-in for a confirmed booking only while the
     /// product owner's declaration (<c>Crm:BookingEngineSoftOptIn</c>) is on; with it off, or for a booking that is still pending, the address is
     /// service only and is not reachable for marketing.
@@ -346,15 +379,17 @@ public class OctorateContactsProofTests
         CrmOptions options,
         IFeatureFlags? flags = null,
         OctorateContactReadLedger? ledger = null,
-        ILogger<OctorateContactsService>? log = null) =>
+        ILogger<OctorateContactsService>? log = null,
+        ICrmContactIndex? index = null) =>
         new(
             db,
             h.Client.Object,
             h.Scope(),
             CrmTestWorld.Contacts(db, h.Clock, options),
+            index ?? CrmTestIndex.Create(),
             ledger ?? new OctorateContactReadLedger(),
             Options.Create(options),
-            flags ?? new TestFeatureFlags(FeatureFlags.OctorateConnector),
+            flags ?? new TestFeatureFlags(FeatureFlags.OctorateConnector, FeatureFlags.CrmMarketing),
             h.Clock,
             log ?? NullLogger<OctorateContactsService>.Instance);
 

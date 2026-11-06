@@ -9,7 +9,9 @@ namespace Casazen.Core.Services;
 /// <remarks>
 /// <list type="bullet">
 /// <item><b>Off until the product owner says so.</b> Nothing is read unless <c>Crm:OctorateContactsEnabled</c> is on (and the connector is on); he
-/// turns it on once the IP addresses are registered.</item>
+/// turns it on once the IP addresses are registered. <b>And only while the CRM module is open</b> (<see cref="CrmProfileSyncGate"/>:
+/// <c>Features:CrmMarketing</c> on and <c>Crm:ContactIndexKey</c> set): what is read is stored by the CRM, and with the module closed nothing could
+/// be stored, so nothing is asked of Octorate.</item>
 /// <item><b>What is stored</b> goes through <see cref="ICrmContactService"/>: origin <c>OctorateContactInfo</c>, basis service only; an address of
 /// an OTA booking or on a relay domain is an OTA forward and never marketing; a customer of the booking engine of the agency is soft opt-in for a
 /// confirmed booking only while <c>Crm:BookingEngineSoftOptIn</c> is on.</item>
@@ -37,7 +39,10 @@ public enum OctorateContactReadOutcome
     /// <summary>The contact was read (or Octorate says the guest has none) and there was nothing to store, as for a guest of Airbnb.</summary>
     NothingToStore = 2,
 
-    /// <summary>Nothing was read: <c>Crm:OctorateContactsEnabled</c>, or the connector, is off.</summary>
+    /// <summary>
+    /// Nothing was read: <c>Crm:OctorateContactsEnabled</c>, or the connector, is off, or the CRM module is closed (<c>Features:CrmMarketing</c> off or
+    /// <c>Crm:ContactIndexKey</c> not set): no call to Octorate is made.
+    /// </summary>
     Disabled = 3,
 
     /// <summary>Nothing was read: there is no such booking in the org, or it is not a booking of Octorate.</summary>

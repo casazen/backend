@@ -26,6 +26,7 @@ All of it is registered in `AddCrmMarketing` and does nothing while the switches
 |---|---|---|
 | `Crm__OctorateContactsEnabled` | `false` | The product owner turns it on **once the static IP addresses are registered with Octorate** and the hosting that gives them is decided. Off, nothing is read and nothing is queried |
 | `Features__OctorateConnector` | off | The connector flag: the contacts are read only while the connector is on |
+| `Features__CrmMarketing` and `Crm__ContactIndexKey` | off / none | **Both are needed before anything is read**: what is read is stored by the CRM, and the CRM stores nothing while its module is closed (`CrmProfileSyncGate`, [`crm-profiles.md`](crm-profiles.md) § 4.4). With either missing the call ends `Disabled` before any call to Octorate: nothing is asked, nothing is spent, nothing is remembered. On production neither is set until the product owner decides ([`crm-marketing.md`](crm-marketing.md) § 3), so the contact read waits for that decision too |
 | `Crm__OctorateContactReadsPerHour` | `50` | The most bookings one org has their contacts read in an hour (1 to 500; anything else stops the startup). A booking over the cap is read by the next call that needs it, after the hour |
 | `Crm__BookingEngineSoftOptIn` | `false` | The product owner's declaration that the terms of Octorate allow it (D24) and that the notice is shown at the booking (D34): a customer of the booking engine of the agency becomes soft opt-in for a **confirmed** booking. Off, service only |
 | `Crm__OtaForwardDomains__0`, `__1`… | empty | The relay domains of the OTAs: an address on one of them is an OTA forward whatever the booking |
@@ -37,7 +38,7 @@ Prerequisites outside the code, none of which CasaZen can check: (1) the outboun
 
 For `ReadForBookingAsync` the first rule that does not hold ends the call, and no Octorate call is made until all of them hold:
 
-1. `Crm__OctorateContactsEnabled` and the connector are on (else `Disabled`, and not even a query).
+1. `Crm__OctorateContactsEnabled` and the connector are on, and the CRM module is open: `Features__CrmMarketing` on and `Crm__ContactIndexKey` set (else `Disabled`, and not even a query).
 2. The booking is a booking of the org with an Octorate reservation id (else `NotAnOctorateBooking`).
 3. Its **check-out is not in the past** in Rome (else `StayOver`: no history is read).
 4. Its guest was not erased or anonymized (else `GuestErased`: the contacts erased by [`gdpr.md`](gdpr.md) § 13 do not come back).
@@ -93,7 +94,7 @@ If one of them is wrong the effect is on the safe side: an id that is not found 
 
 ## 6. Verification once the IP addresses are registered
 
-1. On **test**: `Features__OctorateConnector=true` and `Crm__OctorateContactsEnabled=true` (and the CRM key, [`crm-marketing.md`](crm-marketing.md) § 3).
+1. On **test**: `Features__OctorateConnector=true` and `Crm__OctorateContactsEnabled=true`, with the CRM module open: `Features__CrmMarketing=true` and the CRM key ([`crm-marketing.md`](crm-marketing.md) § 3). With either of the last two missing nothing is read, and the outcome of every call is `Disabled`.
 2. Import a booking of a sandbox structure (or wait for `BookingCreated`). The log says `Octorate contact of booking {BookingId} of org {OrgId} read: N contacts stored`.
 3. In the database: `select "Channel", "Origin", "LegalBasis", "IsSuppressed" from "GuestContacts" where "GuestId" = '<guest id>';` shows origin 5
    (`OctorateContactInfo`) or 1 (`OtaForward`) and basis 1 (`ServiceOnly`).
