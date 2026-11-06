@@ -479,7 +479,9 @@ public sealed class LeaseDraftService(
         if (lease.Origin != LeaseOrigin.Imported)
             return new LeaseDraftFillResult(false, false, lease.DraftVersion, []);
 
-        var fill = LeaseDraftContractFill.Merge(LeaseDraftProjection.ReadValues(lease), reading, lease.Origin, Guid.NewGuid);
+        // The draft of the guided service (CF-DONE): the landlord's citizenship, which its contract does not state, is derived (and marked so).
+        var fill = LeaseDraftContractFill.Merge(
+            LeaseDraftProjection.ReadValues(lease), reading, lease.Origin, Guid.NewGuid, deriveLandlordCitizenship: lease.IsConcordatoFacileSource);
         if (fill.Changed)
         {
             var evaluation = await EvaluateAsync(lease, fill.Values, fullApeCheck: false, cancellationToken);

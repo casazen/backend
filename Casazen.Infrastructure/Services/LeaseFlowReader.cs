@@ -33,7 +33,8 @@ internal sealed record LeaseFlowRow(
     int OverdueRentCount,
     decimal OverdueRentAmount,
     DateOnly? OldestOverdueRentDueDate,
-    DateOnly? NextRentDueDate);
+    DateOnly? NextRentDueDate,
+    bool IsConcordatoFacileSource = false);
 
 /// <summary>
 /// Gathers what <see cref="LeaseFlow"/> needs and asks it (LR-01b): the one place that turns the leases of a list into their stage and next
@@ -89,6 +90,8 @@ internal static class LeaseFlowReader
         SentForSignatureOn = Day(row.SentForSignatureAt),
         ReviewConfirmed = row.ReviewConfirmedAt is not null,
         Draft = draft,
+        // The draft of the guided service waits for the service's contract, never for data typed in the wizard (CF-DONE).
+        AwaitsPartnerContract = row.IsConcordatoFacileSource && row.Status == LeaseStatus.Draft,
         HasActiveRentPlan = hasActivePlan,
         OverdueRentCount = row.OverdueRentCount,
         OverdueRentAmount = row.OverdueRentAmount,
