@@ -41,7 +41,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// the error: nothing is marked accepted that Octorate did not take.</item>
 /// <item><b>Accepted is not published.</b> A row goes <c>Sending</c> then <c>Accepted</c> (the channel manager took it); the move to <c>Published</c> or
 /// <c>ToFix</c> is made only by the status of the process (E02/F03/US01/T07). The groups are read back and their SHA-256 stored as the baseline of the
-/// changes made outside CasaZen; <c>ListingPublished</c> is recorded once for the property, in the same save as the first accepted state.</item>
+/// changes made outside CasaZen, and moved to the other pushed channels of the property that are not flagged (the content is shared by the channels);
+/// <c>ListingPublished</c> is recorded once for the property, in the same save as the first accepted state.</item>
 /// <item><b>What is sent.</b> The accommodation, the unit, the descriptions in every language, the rooms with their beds, the structured rules, the
 /// photos by their public address. The amenities and the cancellation policy only behind their options (not proven on the sandbox). The CIN never,
 /// until D2 is answered. A failed read-back of the baseline does not undo the accepted state: it is recorded and the error rethrown.</item>
@@ -323,6 +324,11 @@ public sealed class ContentPushService(
             row.ContentHashesJson = new ListingChannelBaseline(hashes, processId, []).ToJson();
         }
 
+        // The groups are shared by the channels of the property: what was just written and read back is what every other pushed channel has on Octorate
+        // now. Their baseline is moved to it, or a change CasaZen made itself would be found «outside» on a channel it was not pushed to this time.
+        if (hashes.Count > 0)
+            await AlignOtherBaselinesAsync(property.Id, accepted.Select(a => a.Row.Id).ToList(), hashes, ct);
+
         // The event in the same save as the state it describes (the outbox, ADR-022): once for the property, the first time the structure is accepted.
         var dedupKey = $"listing-published:{property.Id:N}";
         if (firstPublication && !await db.OutboxEvents.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AnyAsync(e => e.OrgId == orgId && e.DedupKey == dedupKey, ct))
@@ -346,6 +352,28 @@ public sealed class ContentPushService(
 
         if (readFailure is not null)
             ExceptionDispatchInfo.Capture(readFailure).Throw();
+    }
+
+    /// <summary>
+    /// Moves the baseline of the other pushed channels of the property (<c>Accepted</c> or <c>Published</c>, with a baseline, not flagged) to the
+    /// groups just read back: they were written for every channel, so the content CasaZen put there is not a change made outside CasaZen. A channel
+    /// already flagged keeps its baseline, since its change is still the person's to decide; the process each one waits on is kept, and so are its
+    /// time of confirmation and its version (the channel itself was not pushed).
+    /// </summary>
+    private async Task AlignOtherBaselinesAsync(Guid propertyId, List<Guid> pushed, IReadOnlyDictionary<string, string> hashes, CancellationToken ct)
+    {
+        var others = await db.ListingChannelStates
+            .Where(s => s.PropertyId == propertyId
+                        && !pushed.Contains(s.Id)
+                        && (s.Status == ChannelPublishStatus.Accepted || s.Status == ChannelPublishStatus.Published)
+                        && s.ExternalChangeAt == null)
+            .ToListAsync(ct);
+        foreach (var row in others)
+        {
+            var baseline = ListingChannelBaseline.Parse(row.ContentHashesJson);
+            if (baseline.HasBaseline)
+                row.ContentHashesJson = new ListingChannelBaseline(hashes, baseline.ProcessId, []).ToJson();
+        }
     }
 
     /// <summary>

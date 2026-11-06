@@ -953,8 +953,9 @@ answered with their own code (`octorate_not_connected` 409, `octorate_auth_faile
   that row `ToFix` with an `ErrorCode` and one «To do» `PublicationError` (one for the property and channel); the others go on. A failure of a shared group
   fails the rows still waiting with its code. A channel the property is connected to that has no key in `ListingChannels` is `ManagedOnChannel`.
 - *Accepted is not published.* A row goes `Sending`, then `Accepted` with `LastSyncedAt`, `ContentVersion + 1` and the baseline in `ContentHashesJson`
-  (`ListingChannelBaseline`: the SHA-256 of each group read back, `_processId` of the push and `_changed`). `ListingPublished(propertyId)` is recorded once for
-  the property in the same save (outbox). The 15-minute `ListingStatusSyncJob` (and `CONTENT_NOTIFICATION` at once) reads the process
+  (`ListingChannelBaseline`: the SHA-256 of each group read back, `_processId` of the push and `_changed`); the same hashes become the baseline of the other
+  pushed channels of the property that are not flagged, since the content is shared. `ListingPublished(propertyId)` is recorded once for the property in the
+  same save (outbox). The 15-minute `ListingStatusSyncJob` (and `CONTENT_NOTIFICATION` at once) reads the process
   (`GET /rest/v1/content/products/{acc}/process/{processId}`: the path has no product) and moves the row to `Published` or `ToFix` with Octorate's reason; a state
   it does not understand changes nothing. A pushed channel not confirmed for 24 hours raises `syncAlert`, and the daily `ListingChannelHealthJob` one `IntegrationError`
   «To do», closed when the row is fresh again. An accepted channel is confirmed by the process of its push (every answer it understands sets `LastSyncedAt`); a

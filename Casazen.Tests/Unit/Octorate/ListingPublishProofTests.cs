@@ -306,6 +306,44 @@ public class ListingPublishProofTests
             call => call.Method.Name is nameof(IOctorateApiClient.CreatePropertyAsync));
     }
 
+    [Fact]
+    public async Task RunAsync_AnAcceptedPush_MovesTheBaselineOfTheOtherChannels_SoCasaZensOwnChangeIsNeverFoundOutside()
+    {
+        // The content is shared by the channels: what a push writes is what the other pushed channels have on Octorate too. Their baseline follows it
+        // (a change CasaZen made is not «outside»), except a channel already flagged, whose change is still the person's to decide.
+        var propertyId = await SeedPropertyAsync(OrgA, photoCount: 4);
+        var old = new ListingChannelBaseline(
+            new Dictionary<string, string> { [ListingContentGroups.Property] = "p0", [ListingContentGroups.Descriptions] = "d0", [ListingContentGroups.Rooms] = "r0" },
+            "proc-old",
+            []);
+        await SeedPushedRowAsync(propertyId, "booking_xml", ChannelPublishStatus.Published, old);
+        await SeedPushedRowAsync(propertyId, "airbnb_xml", ChannelPublishStatus.Published, old.WithChanged([ListingContentGroups.Descriptions]), flagged: true);
+        await SeedRowsAsync(propertyId, "homeaway");
+        SetUpClient("proc-new");
+        await using var db = NewDb();
+
+        await Service(db).RunAsync(propertyId, ["homeaway"], false, Host, null, CancellationToken.None);
+
+        await using var check = NewDb();
+        var rows = await check.ListingChannelStates.AsNoTracking().ToDictionaryAsync(s => s.ChannelCode);
+        var pushed = ListingChannelBaseline.Parse(rows["homeaway"].ContentHashesJson);
+        Assert.Equal(ChannelPublishStatus.Accepted, rows["homeaway"].Status);
+        Assert.Equal(ListingContentGroups.All.Order(), pushed.Hashes.Keys.Order());
+
+        var booking = ListingChannelBaseline.Parse(rows["booking_xml"].ContentHashesJson);
+        Assert.Equal(pushed.Hashes.OrderBy(e => e.Key), booking.Hashes.OrderBy(e => e.Key));
+        Assert.Equal("proc-old", booking.ProcessId);
+        Assert.Equal(ChannelPublishStatus.Published, rows["booking_xml"].Status);
+        Assert.Equal(1, rows["booking_xml"].ContentVersion);
+        Assert.Equal(Now.UtcDateTime.AddDays(-3), rows["booking_xml"].LastSyncedAt);
+        Assert.Null(rows["booking_xml"].ExternalChangeAt);
+
+        var airbnb = ListingChannelBaseline.Parse(rows["airbnb_xml"].ContentHashesJson);
+        Assert.Equal(old.Hashes.OrderBy(e => e.Key), airbnb.Hashes.OrderBy(e => e.Key));
+        Assert.Equal([ListingContentGroups.Descriptions], airbnb.ChangedGroups);
+        Assert.NotNull(rows["airbnb_xml"].ExternalChangeAt);
+    }
+
     private ContentPushService Service(AppDbContext db)
     {
         var urls = new PublicPhotoUrlService(_storage.Object);
@@ -341,6 +379,40 @@ public class ListingPublishProofTests
 
     private AppDbContext NewDb(ITenantContext? tenant = null) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, tenant ?? NullTenantContext.Instance);
+
+    /// <summary>The client of Octorate as a push of Booking.com and Vrbo finds it: connected, the photos taken, the content read back, the push taking <paramref name="processId"/>.</summary>
+    private void SetUpClient(string processId)
+    {
+        _client
+            .Setup(c => c.GetConnectionsAsync(Accommodation, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new OctorateChannelConnection("11", "142", "Booking", "h-1", "CONNECTED"), new OctorateChannelConnection("12", "235", "Vrbo", "h-2", "CONNECTED")]);
+        _client
+            .Setup(c => c.UploadPhotoAsync(Accommodation, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctoratePhotoQueueEntry("q-1", OctoratePhotoQueueState.Waiting, null, null));
+        _client
+            .Setup(c => c.PushChannelAsync(Accommodation, Product, It.IsAny<OctorateChannelTarget>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateChannelPush(processId));
+        _client.Setup(c => c.GetPropertyAsync(Accommodation, It.IsAny<CancellationToken>())).ReturnsAsync(new OctorateProperty { Id = Accommodation, Name = "Casa del Lago" });
+        _client.Setup(c => c.GetContentRoomsAsync(Accommodation, Product, It.IsAny<CancellationToken>())).ReturnsAsync(new List<OctorateContentRoom>());
+    }
+
+    /// <summary>A channel row of an earlier push: accepted by the channel manager three days ago, once.</summary>
+    private async Task SeedPushedRowAsync(Guid propertyId, string channel, ChannelPublishStatus status, ListingChannelBaseline baseline, bool flagged = false)
+    {
+        await using var db = NewDb();
+        db.ListingChannelStates.Add(new ListingChannelState
+        {
+            OrgId = OrgA,
+            PropertyId = propertyId,
+            ChannelCode = channel,
+            Status = status,
+            ContentVersion = 1,
+            LastSyncedAt = Now.UtcDateTime.AddDays(-3),
+            ContentHashesJson = baseline.ToJson(),
+            ExternalChangeAt = flagged ? Now.UtcDateTime.AddDays(-1) : null,
+        });
+        await db.SaveChangesAsync();
+    }
 
     private async Task SeedRowsAsync(Guid propertyId, params string[] channels)
     {
