@@ -60,7 +60,7 @@ public class ComplianceStatusServiceTests
 
         // The To do the feeder raises from the collaborator's status are those of its property alone.
         var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, world.Clock);
-        var feeder = new ComplianceActivityFeeder(activities, new MemoryCache(new MemoryCacheOptions()), NullLogger<ComplianceActivityFeeder>.Instance);
+        var feeder = new ComplianceActivityFeeder(activities, db, new MemoryCache(new MemoryCacheOptions()), NullLogger<ComplianceActivityFeeder>.Instance);
         await feeder.FeedAsync(world.Restricted, restricted, CancellationToken.None);
 
         var raised = await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync();
@@ -73,6 +73,69 @@ public class ComplianceStatusServiceTests
         await feeder.FeedAsync(world.OrgWide, orgWide, CancellationToken.None);
         Assert.Contains(await db.InternalActivities.AsNoTracking().ToListAsync(), a => a.EntityId == hiddenStay.Id);
     }
+
+    [Fact]
+    public async Task ComplianceFeed_NoTodoStaysOpenForAStayThatOwesNothingAnyMore_Test()
+    {
+        var world = await World.SeedAsync();
+        var (cancelled, _) = await world.AddStayAsync(world.Granted, checkInOffset: -2);
+        var (noShow, _) = await world.AddStayAsync(world.Granted, checkInOffset: -2);
+        var (stillOwes, _) = await world.AddStayAsync(world.Granted, checkInOffset: -2);
+        var (pastTheLookback, _) = await world.AddStayAsync(world.Granted, checkInOffset: -85);
+        var (hiddenCancelled, _) = await world.AddStayAsync(world.Hidden, checkInOffset: -2);
+        var (arrivingLater, _) = await world.AddStayAsync(world.Granted, checkInOffset: 20);
+
+        await using var db = world.Db();
+        ComplianceActivityFeeder Feeder() => new(
+            new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, world.Clock),
+            db,
+            new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<ComplianceActivityFeeder>.Instance);
+
+        // Every stay that has arrived and owes the communication has its To do, red; a To do someone else raised for a stay that arrives later is
+        // not touched by anything below.
+        await Feeder().FeedAsync(world.OrgWide, await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None), CancellationToken.None);
+        var others = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, world.Clock);
+        await others.CreateAsync(
+            new CreateTodoRequest
+            {
+                Type = ActivityType.AlloggiatiDeadline,
+                Action = ActivityAction.UploadAlloggiatiProof,
+                EntityType = InternalActivity.BookingEntityType,
+                EntityId = arrivingLater.Id,
+                Urgency = ActivityUrgency.High,
+                PropertyId = world.Granted.Id,
+            },
+            CancellationToken.None);
+        foreach (var stay in new[] { cancelled, noShow, stillOwes, pastTheLookback, hiddenCancelled })
+            Assert.Single(await OpenTodosOfAsync(db, stay.Id));
+
+        // The host cancels one stay, marks another as a no-show (at the hidden property too), and ten days pass: the stay of 85 days ago is now past the
+        // lookback of 90 days.
+        await world.UpdateStayAsync(cancelled, b => b.Status = BookingStatus.Cancelled);
+        await world.UpdateStayAsync(noShow, b => b.NoShowAt = Day(-1));
+        await world.UpdateStayAsync(hiddenCancelled, b => b.Status = BookingStatus.Cancelled);
+        world.Clock.Advance(TimeSpan.FromDays(10));
+
+        // The collaborator's read closes what is in its reach and nothing else: the hidden property's To do stays until someone who reaches it reads.
+        await Feeder().FeedAsync(world.Restricted, await world.StatusService(db).EvaluateAsync(world.Restricted, CancellationToken.None), CancellationToken.None);
+        foreach (var gone in new[] { cancelled, noShow, pastTheLookback })
+            Assert.Empty(await OpenTodosOfAsync(db, gone.Id));
+        Assert.Single(await OpenTodosOfAsync(db, stillOwes.Id));
+        Assert.Single(await OpenTodosOfAsync(db, hiddenCancelled.Id));
+        Assert.Single(await OpenTodosOfAsync(db, arrivingLater.Id));
+
+        var closed = await db.InternalActivities.AsNoTracking().SingleAsync(a => a.EntityId == cancelled.Id);
+        Assert.Equal((InternalActivity.StatusCompleted, InternalActivity.ClosedBySystem), (closed.Status, closed.ClosedBy));
+
+        await Feeder().FeedAsync(world.OrgWide, await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None), CancellationToken.None);
+        Assert.Empty(await OpenTodosOfAsync(db, hiddenCancelled.Id));
+        Assert.Single(await OpenTodosOfAsync(db, stillOwes.Id));
+        Assert.Single(await OpenTodosOfAsync(db, arrivingLater.Id));
+    }
+
+    private static Task<List<InternalActivity>> OpenTodosOfAsync(AppDbContext db, Guid bookingId) =>
+        db.InternalActivities.AsNoTracking().Where(a => a.Action != null && a.EntityId == bookingId && a.CompletedAt == null).ToListAsync();
 
     // ─── Handoff ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -270,11 +333,57 @@ public class ComplianceStatusServiceTests
         var passed = IdentityOf(status, verified);
         Assert.Equal((ComplianceLight.Green, ComplianceEvidenceSources.BiometricLog), (passed.Light, passed.EvidenceSource));
         Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.OperatorDecisionRequired), (IdentityOf(status, escalated).Light, IdentityOf(status, escalated).Reason));
-        // An operator's row that is not an approval (here the one that asks the guest for a new photo) is no pass.
-        Assert.NotEqual(ComplianceLight.Green, IdentityOf(status, decided).Light);
+        // An operator's row that is not an approval (here the one that asks the guest for a new photo) is no pass, and it answers the hand-off: the
+        // guest has to send a new photo, so nothing waits for an operator any more.
+        Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.SelfieAwaited), (IdentityOf(status, decided).Light, IdentityOf(status, decided).Reason));
         Assert.Null(IdentityOf(status, decided).ProofReference);
         Assert.DoesNotContain(status.Items, i => i.Kind == ComplianceItemKind.Identity && i.BookingId == noSession.Id);
         Assert.Contains(noSession.Id, status.Evaluated.IdentityBookingIds);
+    }
+
+    [Fact]
+    public async Task Identity_AnOperatorIsNeededExactlyWhenTheQueueWouldListTheSession()
+    {
+        var world = await World.SeedAsync();
+        world.IdentityOn = true;
+
+        // Far from the arrival (more than the 24 hours before which a missing verification is red): only «an operator has to decide» is red.
+        var (asked, _) = await world.AddStayAsync(world.Granted, checkInOffset: 6);
+        var (refused, _) = await world.AddStayAsync(world.Granted, checkInOffset: 6);
+        var (attemptsUsed, _) = await world.AddStayAsync(world.Granted, checkInOffset: 6);
+        var (consentGivenAttemptsUsed, _) = await world.AddStayAsync(world.Granted, checkInOffset: 6);
+        var (reviewExpired, _) = await world.AddStayAsync(world.Granted, checkInOffset: 6);
+        var (answered, _) = await world.AddStayAsync(world.Granted, checkInOffset: 6);
+        var (waitingForTheSelfie, _) = await world.AddStayAsync(world.Granted, checkInOffset: 6);
+        var (noShowIsNotAsked, _) = await world.AddStayAsync(world.Granted, checkInOffset: 6, noShow: true);
+        await world.AddSessionAsync(asked, operatorRequested: true);
+        await world.AddSessionAsync(refused, consentRefused: true);
+        await world.AddSessionAsync(attemptsUsed, outcome: BiometricOutcome.Reject, attempts: VerificationOperatorRules.MaxAttempts);
+        await world.AddSessionAsync(consentGivenAttemptsUsed, outcome: BiometricOutcome.Reject, attempts: VerificationOperatorRules.MaxAttempts, consentGiven: true);
+        await world.AddSessionAsync(reviewExpired, outcome: BiometricOutcome.Escalate, expired: true);
+        await world.AddSessionAsync(answered, operatorRequested: true);
+        await world.AddSessionAsync(waitingForTheSelfie);
+        await world.AddSessionAsync(noShowIsNotAsked, operatorRequested: true);
+        // An operator wrote a row after the hand-off (here the new photo asked for): the decision has been taken, the guest sends the selfie again.
+        await world.AddVerificationLogAsync(answered, BiometricOutcome.Escalate, byOperator: true);
+
+        await using var db = world.Db();
+        var status = await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None);
+
+        foreach (var stay in new[] { asked, refused, attemptsUsed })
+        {
+            Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.OperatorDecisionRequired), (IdentityOf(status, stay).Light, IdentityOf(status, stay).Reason));
+        }
+
+        // A consent that was given with the attempts used is still the old rule of the queue (no request recorded: a usable session that used its
+        // attempts WITHOUT a consent); a review of a session that expired is nobody's to decide; an answered hand-off is answered; and the stay
+        // that waits for the selfie is only waiting.
+        foreach (var stay in new[] { consentGivenAttemptsUsed, reviewExpired, answered, waitingForTheSelfie })
+        {
+            Assert.Equal((ComplianceLight.Yellow, ComplianceReasonCodes.SelfieAwaited), (IdentityOf(status, stay).Light, IdentityOf(status, stay).Reason));
+        }
+
+        Assert.DoesNotContain(status.Items, i => i.Kind == ComplianceItemKind.Identity && i.BookingId == noShowIsNotAsked.Id);
     }
 
     [Fact]
@@ -522,6 +631,14 @@ public class ComplianceStatusServiceTests
             await db.SaveChangesAsync();
         }
 
+        public async Task UpdateStayAsync(Booking stay, Action<Booking> change)
+        {
+            await using var db = Db();
+            var tracked = await db.Bookings.SingleAsync(b => b.Id == stay.Id);
+            change(tracked);
+            await db.SaveChangesAsync();
+        }
+
         public ComplianceStatusService StatusService(AppDbContext db)
         {
             var senders = new Mock<IPropertySenderStore>();
@@ -713,7 +830,8 @@ public class ComplianceStatusServiceTests
             int? attempts = null,
             bool consentRefused = false,
             bool operatorRequested = false,
-            bool expired = false)
+            bool expired = false,
+            bool consentGiven = false)
         {
             await using var db = Db();
             db.GuestCheckInSessions.Add(new GuestCheckInSession
@@ -724,6 +842,7 @@ public class ComplianceStatusServiceTests
                 ExpiresAt = Start.UtcDateTime.AddDays(10),
                 BiometricOutcome = outcome,
                 BiometricAttempts = attempts ?? (outcome is null ? 0 : 1),
+                BiometricConsentAt = consentGiven ? Start.UtcDateTime.AddHours(-4) : null,
                 BiometricConsentRefusedAt = consentRefused ? Start.UtcDateTime.AddHours(-4) : null,
                 OperatorRequestedAt = operatorRequested ? Start.UtcDateTime.AddHours(-3) : null,
                 Status = expired ? GuestCheckInSessionStatus.Scaduto : GuestCheckInSessionStatus.Inviato,

@@ -107,6 +107,15 @@ public sealed class ComplianceStatusService(
             ? new Dictionary<Guid, ComplianceConnectionHealth>()
             : (await health.GetManyAsync(channelManagerProperties, ct)).ToDictionary(pair => pair.Key, pair => pair.Value);
 
+        // A property whose send was NOT read in this call (over the limit of live reads, no answer in memory) is neither fine nor in trouble: it gets
+        // no connection item and no verdict, and the universe says so, so its To do about the connection is neither raised nor closed on that.
+        var connectionNotRead = connections
+            .Where(pair => pair.Value.Alloggiati.Reason == ComplianceConnectionHealthRules.NotCheckedYetReason)
+            .Select(pair => pair.Key)
+            .ToHashSet();
+        foreach (var propertyId in connectionNotRead)
+            connections.Remove(propertyId);
+
         // The proofs the host uploaded, for the properties of the caller's reach and the days of the window (a month earlier, for the periods).
         var proofFrom = DateOnly.FromDateTime(windowStart).AddMonths(-1);
         var proofRows = propertyIds.Count == 0
@@ -139,7 +148,8 @@ public sealed class ComplianceStatusService(
 
         return new ComplianceStatusResult(
             items,
-            new ComplianceEvaluatedUniverse(universe.Bookings, universe.IdentityBookings, universe.Properties, universe.Periods));
+            new ComplianceEvaluatedUniverse(
+                universe.Bookings, universe.IdentityBookings, universe.Properties, universe.Periods, windowStart, connectionNotRead));
     }
 
     // ─── Alloggiati Web ─────────────────────────────────────────────────────────────────────────────────
@@ -320,17 +330,29 @@ public sealed class ComplianceStatusService(
         var sessions = (await db.GuestCheckInSessions
                 .AsNoTracking()
                 .Where(s => bookingIds.Contains(s.BookingId))
-                .Select(s => new SessionRow(s.Id, s.BookingId, s.BiometricOutcome, s.BiometricAttempts, s.CreatedAt))
+                .Select(s => new SessionRow(s.Id, s.BookingId, s.OperatorRequestedAt, s.CreatedAt))
                 .ToListAsync(ct))
             .GroupBy(s => s.BookingId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(s => s.CreatedAt).First());
-        var logs = (await db.BiometricVerificationLogs
+
+        // Which sessions wait for an operator: the definition of the operator queue itself (VerificationOperatorRules), read in the same shape, so the
+        // stay the queue lists is the stay painted red here (a request of the guest, a refused consent, a review, the attempts used, a session not expired).
+        var waitingForOperator = (await db.GuestCheckInSessions
+                .AsNoTracking()
+                .Where(s => bookingIds.Contains(s.BookingId))
+                .Where(VerificationOperatorRules.NeedsOperator)
+                .Select(s => s.Id)
+                .ToListAsync(ct))
+            .ToHashSet();
+
+        var logsOfBooking = (await db.BiometricVerificationLogs
                 .AsNoTracking()
                 .Where(l => bookingIds.Contains(l.BookingId))
                 .Select(l => new LogRow(l.Id, l.BookingId, l.Outcome, l.Method == VerificationMethod.Operator, l.CreatedAt))
                 .ToListAsync(ct))
             .GroupBy(l => l.BookingId)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.CreatedAt).First());
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var logs = logsOfBooking.ToDictionary(pair => pair.Key, pair => pair.Value.OrderByDescending(l => l.CreatedAt).First());
 
         foreach (var stay in upcoming)
         {
@@ -349,6 +371,17 @@ public sealed class ComplianceStatusService(
                     log.CreatedAt);
             }
 
+            // An operator is needed when the session waits for one and no row of an operator answered the hand-off since (a decision, or the
+            // new photo asked for): the same reading as the queue.
+            DateTime? lastOperatorRow = logsOfBooking.TryGetValue(stay.Id, out var rows)
+                ? rows.Where(l => l.ByOperator).Select(l => (DateTime?)l.CreatedAt).Max()
+                : null;
+            var operatorNeeded = proof is null
+                                 && waitingForOperator.Contains(session.Id)
+                                 && !VerificationOperatorRules.IsDecided(
+                                     VerificationOperatorRules.HandOffStartedAt(session.OperatorRequestedAt, session.CreatedAt),
+                                     lastOperatorRow);
+
             var arrivalStart = RomeCalendar.StartOfDayUtc(stay.CheckInDate);
             var verdict = ComplianceLightRules.Identity(new IdentityFacts
             {
@@ -356,7 +389,7 @@ public sealed class ComplianceStatusService(
                 NowUtc = nowUtc,
                 RedHoursBeforeArrival = redHoursBeforeArrival,
                 Proof = proof,
-                OperatorDecisionNeeded = proof is null && (session.Outcome == BiometricOutcome.Escalate || session.Attempts >= 3),
+                OperatorDecisionNeeded = operatorNeeded,
             });
 
             items.Add(new ComplianceStatusItem(
@@ -616,7 +649,7 @@ public sealed class ComplianceStatusService(
 
     private sealed record LinkRow(Guid BookingId, int Position, DateTime? SentAt);
 
-    private sealed record SessionRow(Guid Id, Guid BookingId, BiometricOutcome? Outcome, int Attempts, DateTime CreatedAt);
+    private sealed record SessionRow(Guid Id, Guid BookingId, DateTime? OperatorRequestedAt, DateTime CreatedAt);
 
     private sealed record LogRow(Guid Id, Guid BookingId, BiometricOutcome Outcome, bool ByOperator, DateTime CreatedAt);
 }
