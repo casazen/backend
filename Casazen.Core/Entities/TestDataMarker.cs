@@ -130,4 +130,11 @@ public static class TestDataEntities
     /// marker and is never touched.
     /// </summary>
     public const string BookingInvoiceData = "BookingInvoiceData";
+
+    /// <summary>
+    /// The profile of the issuer of the documents of the demo org (<see cref="OrgFiscalIssuerProfile"/>, E06/F02/US02, NF-82): written at the
+    /// reset only when the org has no profile of its own, and deleted by the next reset with its marker. A real profile has no marker and is
+    /// never touched.
+    /// </summary>
+    public const string FiscalIssuerProfile = "OrgFiscalIssuerProfile";
 }

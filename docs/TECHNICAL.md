@@ -719,6 +719,28 @@ caller sees and may not use is 403. The accountant reads and cannot write; the c
   saved and applies the precedence to it.
 - **No document, no Alloggiati data.** Nothing is read or copied from the identity documents or the guests of the stay.
 
+#### Issuer of the fiscal documents (FIS-02, NF-82, PO-05, E06/F02/US02)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/fiscal/documents/settings` | short-rent `property.read` + `payment.read` | How the documents of the organization are issued: `{ mode, regime, issuer, confirmedAt, casazenIssuanceEnabled, octorateIssuesAllBookings, octorateConnected, sdi, missingFields, rule }`. `mode` (`Octorate`\|`CasaZenDirectOnly`\|`Accountant`) and `regime` (`PrivatePerson`\|`VatOrdinary`\|`VatFlatRate`) are absent until the organization says them. `issuer` is `{ legalName, addressStreet, addressCivic, postalCode, city, province, countryCode, fatturaPaRegimeCode, effectiveRegimeCode, issuerSdiRecipientCode, issuerPec, defaultSeries, vatNumber, fiscalCode }`; the last two are read from the organization (its tax profile), never copied. `casazenIssuanceEnabled` is the flag `Features:FiscalDocumentIssuance`, `octorateIssuesAllBookings` the answer to D34, `sdi` is `{ providerConfigured, providerName }` of `ISdiEInvoiceProvider`, `missingFields` what the mode CasaZen would still need (empty when the profile is complete) and `rule` the configured rule of the regime (`documentKind`, `configured`, the codes) |
+| `PUT` | `/api/fiscal/documents/settings` | the above + short-rent `property.write`, and a scope over the whole org | Saves the answers of the wizard «Come emetti i documenti?» as a whole (`{ mode, regime, issuer: {…}, confirmed }`: an issuer text left out is cleared, `confirmed` sets `confirmedAt`) and answers the setting as saved. 422 `issuer_field_invalid` (with the `field` and the list of `errors`), `document_issuance_not_available` (the mode CasaZen while the flag is off), `issuer_profile_incomplete` (with the `fields` that are missing) and `octorate_not_connected` (the mode Octorate without an active connection); 403 `fiscal_settings_need_whole_org` for a caller who reaches only some of the properties. A refused save changes nothing |
+| `GET` | `/api/fiscal/documents/issuer-preview?bookingId=` | the above + `booking.read` on the booking | Who would issue the documents of the booking and why: `{ bookingId, issuer, reason }` with `issuer` `None`\|`Octorate`\|`CasaZen` and `reason` a stable code: `issuer_octorate`, `issuer_casazen`, `issuer_nobody`, `booking_not_direct`, `issuer_locked_octorate`, `issuance_off`. It changes nothing. 404 `booking_not_found` for another org's booking, 403 for one the caller may not read |
+
+- **One issuer for a booking, never two.** `IDocumentIssuerService.LockIssuerAsync` writes the row of `BookingDocumentIssuer`: idempotent for the same
+  kind, 409 `document_issuer_conflict` for the other one, and the unique index on the booking makes the database refuse a second row. CasaZen is never
+  locked as the issuer of an OTA booking (422 `document_booking_not_direct`, in every mode: `FiscalDocumentRules.IsDirectBooking` is true for `Direct`
+  and `Manual` only, never for an OTA source), nor while the flag is off (422 `document_issuance_not_available`), nor when the organization chose
+  another issuer (409). Octorate can always be locked: it issued, even by hand in its panel, and CasaZen reads. The bookings of the Octorate booking engine
+  count as direct only once the import maps them to a source that is not an OTA's (D34); until then they are OTA.
+- **The mode is accepted only when it can work.** CasaZen: the flag on and the profile complete (`FiscalDocumentRules.MissingIssuerFields`: legal name,
+  street, postal code, city, province in Italy and the regime; for a regime with VAT the regime code and the VAT number of the organization, for a private
+  person the fiscal code); Octorate: an active connection of the org in this environment; the accountant: nothing.
+- **The rules are configuration.** `FiscalDocuments` (`FiscalDocumentRulesOptions`): for each regime the kind of document, the VAT rate, the nature codes,
+  `TD01`, `TD04`, `RF01`/`RF19` and the series pattern `{year}`; the stamp duty (`77.47`, `2.00`) and `OctorateIssuesAllBookings`. `appsettings.json` ships
+  the structure and **no live VAT fallback**: the kind, the rate and the nature codes are empty until the accountant approves them, and
+  `IDocumentIssuerService.RequireRuleAsync` answers 422 `document_rule_not_configured` for a rule that is not complete.
+
 #### Owner portal (ADR-011, NF-96)
 
 Policy `OwnerPortal` on the class (JWT claim `context=owner_portal` and a valid `owner_id`; never a host role); 401 without a valid owner

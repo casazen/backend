@@ -134,6 +134,7 @@ public class DemoEnvironmentService(
         await RemoveShowcaseTouristTaxRemittancesAsync(orgId, cancellationToken);
         await RemoveShowcaseMarketplaceAsync(orgId, cancellationToken);
         await RemoveShowcaseCrmAsync(orgId, cancellationToken);
+        await RemoveShowcaseFiscalIssuerProfilesAsync(orgId, cancellationToken);
         var removed = await RemoveShowcaseAsync(orgId, cancellationToken);
         await RemoveShowcaseHostInvitesAsync(orgId, cancellationToken);
         var unpublished = removeUnpublished ? await RemoveUnpublishedAsync(orgId, cancellationToken) : 0;
@@ -157,6 +158,10 @@ public class DemoEnvironmentService(
         // NF-100: the tourist tax payments of the demo host name the comune of a house just created, so they come after the houses.
         foreach (var remittance in DemoShowcaseCatalog.TouristTaxRemittances)
             await CreateTouristTaxRemittanceAsync(orgId, ownerId, remittance, cancellationToken);
+
+        // FIS-02, NF-82: the profile of the issuer of the demo org (one for each org, skipped when the org has its own).
+        foreach (var profile in DemoShowcaseCatalog.FiscalIssuerProfiles)
+            await CreateFiscalIssuerProfileAsync(orgId, ownerId, profile, cancellationToken);
 
         // NF-08: the popup alerts of the demo host point at the stays and houses just created, so they come last.
         foreach (var alert in DemoShowcaseCatalog.PopupAlerts)
@@ -401,6 +406,58 @@ public class DemoEnvironmentService(
         db.PopupAlerts.Add(alert);
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.PopupAlert, alert.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
+    /// <summary>Deletes the profile of the issuer the showcase wrote for the org, found by its marker (FIS-02). A real profile has no marker and is never touched.</summary>
+    private async Task RemoveShowcaseFiscalIssuerProfilesAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var profileIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.FiscalIssuerProfile)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (profileIds.Count == 0)
+            return;
+
+        await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters([Tenant]).Where(p => p.OrgId == orgId && profileIds.Contains(p.Id)).ExecuteDeleteAsync(cancellationToken);
+        await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.FiscalIssuerProfile)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The profile of the issuer of the demo org, complete and invented (FIS-02, NF-82). There is one for each org: it is skipped, with a line in the
+    /// log, when the org already has one (a real one, which the showcase never touches or replaces).
+    /// </summary>
+    private async Task CreateFiscalIssuerProfileAsync(
+        Guid orgId, string ownerId, DemoFiscalIssuerProfileTemplate template, CancellationToken cancellationToken)
+    {
+        if (await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters([Tenant]).AnyAsync(p => p.OrgId == orgId, cancellationToken))
+        {
+            logger.LogInformation("Demo issuer profile {Key} skipped: org {OrgId} already has a profile of its own", template.Key, orgId);
+            return;
+        }
+
+        var now = UtcNow();
+        var profile = new OrgFiscalIssuerProfile
+        {
+            OrgId = orgId,
+            IssuerMode = template.Mode,
+            DocumentRegime = template.Regime,
+            LegalName = template.LegalName,
+            AddressStreet = template.AddressStreet,
+            AddressCivic = template.AddressCivic,
+            PostalCode = template.PostalCode,
+            City = template.City,
+            Province = template.Province,
+            CountryCode = OrgFiscalIssuerProfile.DefaultCountryCode,
+            FatturaPaRegimeCode = template.FatturaPaRegimeCode,
+            ConfirmedAt = now.AddDays(template.ConfirmedOffsetDays),
+            UpdatedAt = now,
+            UpdatedByUserId = ownerId,
+        };
+        db.OrgFiscalIssuerProfiles.Add(profile);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.FiscalIssuerProfile, profile.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
     /// <summary>

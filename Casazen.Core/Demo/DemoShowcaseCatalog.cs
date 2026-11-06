@@ -98,6 +98,13 @@ public static class DemoShowcaseCatalog
         public const string InvoiceData = "invoice-data";
 
         /// <summary>
+        /// Who issues the documents of the demo organization (E06/F02/US02, FIS-02, NF-82): a complete profile of the issuer, with the choice «the
+        /// accountant takes care of the documents» (no flag and no connection needed), written at reset when the org has no profile of its own and
+        /// deleted by the next reset (<c>TestDataEntities.FiscalIssuerProfile</c>). A real profile has no marker and is never touched.
+        /// </summary>
+        public const string FiscalIssuerProfile = "fiscal-issuer-profile";
+
+        /// <summary>
         /// The CRM profiles built from the bookings (E07/F01/US02, NF-88, NF-89): a returning guest with a past and an upcoming stay at two houses, a
         /// guest whose booking comes from an OTA (the address becomes a forward, service only), a direct customer with the soft opt-in notice, a guest
         /// with a confirmed marketing consent from the online check-in, and two guests who share a phone (a merge to decide). The profiles, the
@@ -155,6 +162,7 @@ public static class DemoShowcaseCatalog
         Scenario.MarketplaceActivationDeclared,
         Scenario.CrmProfiles,
         Scenario.InvoiceData,
+        Scenario.FiscalIssuerProfile,
     ];
 
     /// <summary>
@@ -866,7 +874,49 @@ public static class DemoShowcaseCatalog
     [
         new("attivazione-dichiarata", "partner-di-prova", -3, Scenario.MarketplaceActivationDeclared),
     ];
+
+    /// <summary>
+    /// The profile of the issuer of the documents of the demo organization (E06/F02/US02, FIS-02, NF-82): complete, so the wizard «Come emetti i
+    /// documenti?» opens on an answered setting and the settings page has data to show. Invented like the rest (TEST in the name, a plausible address
+    /// in Milano), with the choice «the accountant takes care of the documents»: it needs neither the flag of the issuance nor an Octorate connection.
+    /// Written for the org at reset only when the org has no profile (there is one per org, and a real one is never touched), marked as showcase data
+    /// (<c>TestDataEntities.FiscalIssuerProfile</c>) and deleted by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoFiscalIssuerProfileTemplate> FiscalIssuerProfiles { get; } =
+    [
+        new(
+            "emittente-demo",
+            DocumentIssuerMode.Accountant,
+            DocumentRegime.VatOrdinary,
+            "Casa Demo S.r.l. (TEST)",
+            "Via Brera",
+            "18",
+            "20121",
+            "Milano",
+            "MI",
+            "RF01",
+            -5,
+            Scenario.FiscalIssuerProfile),
+    ];
 }
+
+/// <summary>
+/// The profile of the issuer of the documents of the demo organization (FIS-02): the answers of the wizard «Come emetti i documenti?», invented.
+/// <paramref name="ConfirmedOffsetDays"/> is when the wizard was completed, in days from the reset (negative: in the past).
+/// </summary>
+public sealed record DemoFiscalIssuerProfileTemplate(
+    string Key,
+    DocumentIssuerMode Mode,
+    DocumentRegime Regime,
+    string LegalName,
+    string AddressStreet,
+    string AddressCivic,
+    string PostalCode,
+    string City,
+    string Province,
+    string FatturaPaRegimeCode,
+    int ConfirmedOffsetDays,
+    string Scenario);
 
 public sealed record DemoPlace(string City, string IstatCode, string RegionCode, string PostalCode, string Address);
 

@@ -1,3 +1,4 @@
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 
@@ -16,6 +17,13 @@ public static class FiscalDocumentExtensions
 
         // Who an invoice of a booking is made out to, with the precedence of its sources (E06/F02/US01/T02).
         services.AddScoped<IInvoiceDataService, InvoiceDataService>();
+
+        // The rules of the documents of each regime, from the section FiscalDocuments. Nothing validates them at startup: a rule that is not complete
+        // only makes issuance refuse (document_rule_not_configured), it never stops the application.
+        services.AddOptions<FiscalDocumentRulesOptions>().Bind(configuration.GetSection(FiscalDocumentRulesOptions.SectionName));
+
+        // Who issues the documents of an organization and of each booking (E06/F02/US02/T02).
+        services.AddScoped<IDocumentIssuerService, DocumentIssuerService>();
 
         return services;
     }

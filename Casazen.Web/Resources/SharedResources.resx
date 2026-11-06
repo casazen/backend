@@ -4692,4 +4692,25 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="InvoiceDataFieldInvalid" xml:space="preserve">
     <value>Un dato della fattura non è valido o è troppo lungo: controllalo e riprova.</value>
   </data>
+  <data name="DocumentIssuanceNotAvailable" xml:space="preserve">
+    <value>L'emissione dei documenti da parte di CasaZen non è ancora disponibile: scegli un altro modo.</value>
+  </data>
+  <data name="IssuerProfileIncomplete" xml:space="preserve">
+    <value>Mancano dei dati dell'emittente per emettere con CasaZen: completali e riprova.</value>
+  </data>
+  <data name="DocumentBookingNotDirect" xml:space="preserve">
+    <value>CasaZen non emette documenti per le prenotazioni che arrivano da un portale, solo per quelle dirette.</value>
+  </data>
+  <data name="DocumentIssuerConflict" xml:space="preserve">
+    <value>I documenti di questa prenotazione sono già di un altro emittente: una prenotazione ha un solo emittente.</value>
+  </data>
+  <data name="DocumentRuleNotConfigured" xml:space="preserve">
+    <value>Le regole del documento per il tuo regime non sono ancora state approvate: finché non lo sono, non si può emettere.</value>
+  </data>
+  <data name="IssuerFieldInvalid" xml:space="preserve">
+    <value>Un dato dell'emittente non è valido o è troppo lungo: controllalo e riprova.</value>
+  </data>
+  <data name="FiscalSettingsNeedWholeOrg" xml:space="preserve">
+    <value>Solo chi gestisce tutti gli immobili dell'organizzazione può cambiare chi emette i documenti.</value>
+  </data>
 </root>

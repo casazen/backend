@@ -90,6 +90,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.TouristTaxRemittances.Select(tt => tt.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplacePartners.Select(partner => partner.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplaceActivations.Select(activation => activation.Scenario))
+            .Concat(DemoShowcaseCatalog.FiscalIssuerProfiles.Select(profile => profile.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -452,5 +453,28 @@ public class DemoShowcaseTests
             Pec = data.Pec,
         };
         Assert.Empty(InvoiceDataFormats.Validate(state, requireIdentification: true));
+    }
+
+    [Fact]
+    public void FiscalIssuerProfile_TheDemoOrgHasACompleteProfileOfItsIssuer_InventedAndNeedingNeitherTheFlagNorAConnection()
+    {
+        // FIS-02, NF-82: a scenario without template data fails (the coverage test above), and the profile is complete and obviously test data.
+        Assert.Contains(DemoShowcaseCatalog.Scenario.FiscalIssuerProfile, DemoShowcaseCatalog.Scenarios);
+        var profile = Assert.Single(DemoShowcaseCatalog.FiscalIssuerProfiles);
+        Assert.Equal(DemoShowcaseCatalog.Scenario.FiscalIssuerProfile, profile.Scenario);
+        Assert.Contains("TEST", profile.LegalName, StringComparison.Ordinal);
+        Assert.True(profile.ConfirmedOffsetDays <= 0);
+
+        // The accountant is the one mode that needs no flag and no Octorate connection, so the demo works in every environment.
+        Assert.Equal(DocumentIssuerMode.Accountant, profile.Mode);
+        Assert.True(Enum.IsDefined(profile.Regime));
+        var issuer = new IssuerData(
+            profile.LegalName, profile.AddressStreet, profile.AddressCivic, profile.PostalCode, profile.City, profile.Province, "IT",
+            profile.FatturaPaRegimeCode, null, null, null);
+
+        // Complete for the mode CasaZen too, once the organization has its VAT number on its tax profile: nothing of the profile itself is missing.
+        Assert.Empty(FiscalDocumentRules.MissingIssuerFields(issuer, profile.Regime, profile.FatturaPaRegimeCode, "12345678903", null));
+        Assert.Equal(5, profile.PostalCode.Length);
+        Assert.Equal(2, profile.Province.Length);
     }
 }
