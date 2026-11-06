@@ -4298,6 +4298,12 @@
   <data name="OctorateRoomRequired" xml:space="preserve">
     <value>Indica la camera dell'annuncio.</value>
   </data>
+  <data name="BookingOtaAmountsReadonly" xml:space="preserve">
+    <value>Gli importi del canale (commissione, netto, pagato e saldo) arrivano dal channel manager e non si possono modificare.</value>
+  </data>
+  <data name="OctorateChannelCancelNotAllowed" xml:space="preserve">
+    <value>Una prenotazione che arriva da un portale si annulla sul portale: CasaZen non può annullarla al posto suo.</value>
+  </data>
   <data name="SenderNotApplicable" xml:space="preserve">
     <value>Questo immobile non è in Italia: non c'è da scegliere chi invia le comunicazioni ad Alloggiati Web e all'ISTAT. Le comunicazioni del suo Paese restano a cura tua.</value>
   </data>
@@ -4583,5 +4589,11 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.rateChecker" xml:space="preserve">
     <value>Controlla che i tuoi prezzi siano allineati su tutti i canali e segnala le differenze.</value>
+  </data>
+  <data name="OnboardingFlowUnknown" xml:space="preserve">
+    <value>Flusso di attivazione sconosciuto.</value>
+  </data>
+  <data name="OnboardingFlowStateUnknown" xml:space="preserve">
+    <value>Stato del flusso sconosciuto.</value>
   </data>
 </root>

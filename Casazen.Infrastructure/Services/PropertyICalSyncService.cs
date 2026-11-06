@@ -608,7 +608,8 @@ public partial class PropertyICalSyncService
     /// <summary>
     /// Syncs every import feed with a URL, least recently synced first. Each feed runs in its own DI scope (its own
     /// <see cref="AppDbContext"/>) and its own try/catch: a feed that fails, even unexpectedly, never stops the others,
-    /// including the other feeds of the same property (A2-12, PC-11). Only cancellation stops the batch.
+    /// including the other feeds of the same property (A2-12, PC-11). Only cancellation stops the batch. A deprecated feed (the Octorate
+    /// calendar of its channel replaced it, ADR-002-R14) is not synced: it and its blocks are kept as they are.
     /// </summary>
     public async Task SyncAllFeedsAsync(CancellationToken ct = default)
     {
@@ -621,7 +622,7 @@ public partial class PropertyICalSyncService
             .ToListAsync(ct);
         var feedIds = await _db.PropertyICalFeeds
             .AsNoTracking()
-            .Where(f => f.ImportUrl != null && f.ImportUrl != "" && !deletedPropertyIds.Contains(f.PropertyId))
+            .Where(f => f.ImportUrl != null && f.ImportUrl != "" && !f.Deprecated && !deletedPropertyIds.Contains(f.PropertyId))
             .OrderBy(f => f.LastImportAt.HasValue)
             .ThenBy(f => f.LastImportAt)
             .Select(f => f.Id)

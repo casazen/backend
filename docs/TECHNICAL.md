@@ -217,11 +217,12 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/onboarding/status` | JWT | Host / org onboarding wizard status |
+| `GET` | `/api/onboarding/status` | JWT (`Authenticated`: needed before any context exists) | Host / org onboarding wizard status: the seven `steps` of the activation checklist (PL-15) and the milestones. **`flows`** (E10/F01/US01/T02, NF-106): with `Features:OctorateOnboarding` on **and** a caller who passes the short-rent `property.read` (`PropertyRead`), the summary of the six flows over the properties the caller reaches, `[{ flow, active, toComplete, notAvailable, total }]` in the order `Listings`, `Bookings`, `CheckInCompliance`, `Messages`, `Documents`, `Reports`; otherwise `[]`, and with the flag off the endpoint answers exactly as before. Never behind the flag |
+| `GET` | `/api/onboarding/flows/{flow}/properties?state=&search=&page=&pageSize=` | short-rent `property.read` (`PropertyRead`) + `HostScope`, behind `Features:OctorateOnboarding` (404 before authentication while off) | E10/F01/US01/T02, NF-106: the properties of the caller with the status of one flow, by name (the id as the tie-break), `{ items, totalCount, page, pageSize }` (`page` from 1, `pageSize` 50 when missing, at most 100). `{flow}` is a member name of `OnboardingFlow` (400 `onboarding_flow_unknown`); `state` keeps one of `active`, `toComplete`, `notAvailable` (400 `onboarding_flow_state_unknown`); `search` finds a text in the name or the city. An item is `{ propertyId, name, city, flow, state, reason, action, prerequisites: [{ key, met, reason }] }`: codes only, the client translates them. `reason` and `action` are stable codes (`connection_missing`, `connection_lost`, `mapping_unconfirmed`, `mapping_unavailable`, `sender_missing`, `channel_content_to_fix`, `cin_missing_or_invalid`, `tax_rate_missing`, `flow_not_activated`, `property_long_rent`, `property_inactive`, `content_managed_on_channel`, `not_provided`; `connect`, `reconnect`, `confirmMapping`, `chooseSender`, `fixListing`, `enterCin`, `enterTaxRate`, `activate`); prerequisite keys are `connection`, `mapping`, `singleSender`, `content`, `cin`, `taxRate`. Bound in SQL to the caller's org and to what it reaches (AM-03); `Cache-Control: no-store`; 403 for a caller with no org. Nothing is written: the state is derived on every read |
 
 #### Wizard drafts (ADR-024, E01/F02)
 
-`{type}` is the name of a `WizardType` (`ListingCreate`, `ListingEdit`, `BookingCreate`, `BookingEdit`, `CheckIn`, `CheckOut`, `ComplianceSender`, `TouristTax`; a number, or a name that is not one: 400 `wizard_type_unknown`). `entityId` tells what the wizard edits (the query of `GET` and `DELETE`, a member of the body of `POST`); none means the draft of a new entity. The person is always the token's `sub` and the org the caller's own; the answers are `private, no-store`. A caller with no host org gets 404 `not_found`.
+`{type}` is the name of a `WizardType` (`ListingCreate`, `ListingEdit`, `BookingCreate`, `BookingEdit`, `CheckIn`, `CheckOut`, `ComplianceSender`, `TouristTax`, `OnboardingActivation`, `OnboardingBulk`; a number, or a name that is not one: 400 `wizard_type_unknown`). `entityId` tells what the wizard edits (the query of `GET` and `DELETE`, a member of the body of `POST`); none means the draft of a new entity. The person is always the token's `sub` and the org the caller's own; the answers are `private, no-store`. A caller with no host org gets 404 `not_found`.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
@@ -893,6 +894,66 @@ answered with their own code (`octorate_not_connected` 409, `octorate_auth_faile
 | `DELETE` | `/api/octorate/mapping/{octorateAccommodationId}` | `OtaWrite` + row check (whole-org scope for a listing with no property) | Rejects the mapping (204): the listing is not one of the org's properties; refreshes leave it alone |
 | `POST` | `/api/octorate/mapping/{octorateAccommodationId}/import` | `OtaWrite` + `PropertyWrite` | Creates the CasaZen property of the listing through the property create path (409 `plan_limit_reached` at the plan limit), inactive and with a "check the imported listing" To do, and confirms the mapping (201 `{ propertyId }`). Only reads from Octorate: nothing is created there |
 
+**Bookings of the connector (E02/F02/US01/T01, ADR-031, ADR-033).** `BookingImportService` (`IBookingImportService`) keeps one `Booking` for each
+reservation of the room of a property, found through the confirmed `OctorateListingMapping`; no endpoint, the work is done by the daily job
+`octorate-booking-import` (02:00 Europe/Rome), the reconciliation and the webhook handlers, all behind `Features:OctorateConnector`.
+- *Key and order.* `Booking.OctorateReservationId` (varchar 50) with the unique index `(OrgId, OctorateReservationId)` filtered to the rows that have one;
+  `OctorateUpdatedAt` is the `updateTime` last applied, so a read with an older or equal time changes nothing and a reservation is never made twice
+  (`ExternalId` keeps its meaning, the reference on the channel, and is not used). Each reservation is applied under the advisory lock
+  `OctorateReservation` and saved with its events in one transaction.
+- *What is read.* `GET /rest/v1/reservation/{acc}` with `type=MODIFIED_BETWEEN`, 200 asked for a page, page after page until a page with no item at
+  all (a server may serve fewer than the size asked for, so a short page is not the end; `IOctorateApiClient.GetReservationsAsync` returns an
+  `OctorateReservationPage`, the reservations read and the number of items the page held), then the single read of each reservation that is new or
+  newer than the one held (the list has neither the payments nor the price breakdown). A reservation of another room of the listing is reported in the
+  result (`Unmapped`) and never creates a property. A reservation is found by (org, Octorate id) only: when a newer version of it is read from the
+  room of another property of the org, its booking is moved to that property (a `BookingModified` event is recorded), so its nights are not held on
+  the old one. The checkpoint is `OctorateListingMapping.BookingsImportedThrough`: null means "read the whole history (3 years)", otherwise the next
+  run starts two days before it; it moves only when a run read everything it had to (not after the rate limit, an error, or an item of the list that
+  could not be read: no id, or one over 50 characters, counted as failed).
+- *Mapping* (`BookingStateMapper`). `WAITING` Pending, `CONFIRMED` Confirmed, `CANCELLED` Cancelled; a stay checked in or out is never moved back, and a
+  booking CasaZen owns (entered by the host, or with payments or a saved card) keeps its figures and is not brought back from a cancellation by a read.
+  The channel comes from `channelId` (142 Booking.com, 274 Airbnb, 235 Vrbo, 4 Expedia, 270 the booking engine of the agency = `Direct`) then from the name;
+  a portal with no value of its own is `BookingSource.OtherChannel` (9) with the name in `ChannelLabel`. `checkin` and `checkout` are UTC instants put
+  on the clock of `Property.Timezone` and kept as the local date. Prices: `roomGross`, `totalGross` and `touristTax` as given; a price Octorate does not
+  give is not written (the booking keeps the one it had, never a zero put in its place; a new booking with none keeps the column default, the price
+  columns not being nullable). Amounts are taken only from a reservation that **states** the currency of the property: another currency, or none, brings
+  no amount (no price, no OTA figure) and the figures already held stay. `currency` is read as the object `{ currencyCode }` of the OpenAPI, or as a plain code.
+- *OTA figures* (read-only, ADR-033-R2/R3). `OtaCommission` is the sum of the `COMMISSION` lines of `priceBreakdown` (null without one), `OtaPaidAmount`
+  is `totalPaid`, `OtaNetAmount` and `OtaBalanceAmount` stay null (no documented source, never derived from `roomGross`); all null when the reservation does
+  not state the currency of the property. `PUT /api/bookings/{id}` answers 422 `ota_amounts_readonly` when its body carries an `ota*` amount that differs
+  from the stored one. `GET /api/bookings/{id}` adds `otaAmounts` `{ commission, net, paid, balance, currency }` (null for a booking that was not imported
+  and for a caller without `payment.read`); every booking answer carries `otaSource` (the channel of an imported booking, null otherwise).
+- *Guest.* A new `Guest` for the booking (name only: Octorate gives contact data only with a special permission), or the guest of the org with the same
+  e-mail and the same name when the reservation carries an e-mail; purpose «GDPR art. 6.1.b», no consent claimed; the booker is the first `StayGuest`.
+- *Events.* `BookingCreated`, `BookingConfirmed`, `BookingModified` (property, dates, guests or figures changed, not cancelled) and `BookingCancelled`, with
+  `Origin = Octorate`, once each (`BookingEvents` keys). None for a stay that is already over and none for a reservation first seen cancelled.
+- *Out.* `SyncBookingStateAsync` sends `CHECKIN_END` / `CHECKOUT_END` (`PUT /rest/v1/checkin/{acc}/{id}?status=`) and the cancellation of a reservation made
+  in CasaZen (`DELETE /rest/v1/reservation/{acc}/{id}`); 422 `octorate_channel_cancel_not_allowed` for a reservation that came from a portal; nothing for
+  a booking that is not mirrored. An inbound change never calls it.
+- *Notifications and reconciliation (E02/F02/US01/T02, ADR-031).* The webhook (`OctorateWebhookReceived`) is a signal: `BookingCreatedHandler`
+  (`RESERVATION_CREATED`, `RESERVATION_CONFIRMED`), `BookingModifiedHandler` (`RESERVATION_CHANGE`) and `BookingCancelledHandler`
+  (`RESERVATION_CANCELLED`) take the property from the confirmed mapping of the event and re-read the reservations changed since two days before
+  the notification (`ImportIncrementalAsync`), logging only `{eventId, eventType, processed}`; a run stopped by the rate limit or an error of Octorate
+  makes the handler throw so that the dispatcher delivers the event again. The job `octorate-booking-sync` (every 6 hours, UTC) reads the same
+  window from the last complete read of each listing and corrects the differences, leaving alone a booking changed in CasaZen within 5 minutes
+  (`BookingImportOptions.SkipChangedWithin`). `CheckInCompleted` and `CheckOutCompleted` (check-out wizard included) queue `OctorateBookingStatePushJob`
+  through `OctorateBookingStatePushHandler` for a booking that has an Octorate reservation (`docs/runbooks/octorate-webhooks.md` § 4b).
+- *Calendar and the iCal feeds (E02/F02/US01/T03, ADR-002, NF-36).* The job `CalendarSync` (every 15 minutes, UTC, behind the flag, next to
+  `property-ical-sync`) reads the calendar of each confirmed listing (`GET /rest/v1/calendar/{acc}`, from today to a year ahead on the clock of the
+  property) and never writes to Octorate (PO-16). The nights it holds closed (`stopSells`, or availability 0 on a day that has a price: a day with
+  neither is a calendar nobody opened and closes nothing; a calendar with no opened day at all is not read, and nor is an answer in which no day has
+  units or a stop flag (an open day needs an explicit signal) or that does not reach both ends of the window asked for: blocks and feeds stay as
+  they were) that no
+  booking, manual block or iCal block takes already become `CalendarBlock`s of source
+  `Octorate` (2), one for each run of nights, key `(PropertyId, ExternalUid)` = `octorate:{date of the first night}` (unique filtered index), no feed, no
+  currency, never exported and never turned into a stay; the host cannot remove them. The minimum and maximum stay and the closed arrival and
+  departure of a day are read and stored nowhere. After a read that worked, `ICalMigrationService.DeprecateCoveredFeedsAsync` sets `Deprecated` and
+  `DeprecatedAt` on the feeds of the property whose channel (Airbnb 274, Booking.com 142) the confirmed listing has; `SyncAllFeedsAsync` skips them
+  and they, their blocks and the export are kept; a feed of channel `Other` is never touched. The hand-over is not one way: when a property is not read
+  any more (its mapping is not confirmed, or its connection is not connected) `ReinstateFeedsAsync` clears the flags and the feeds are imported again.
+  `GET /api/properties/{id}/ical/feeds`, the calendar
+  overview and `GET /api/dashboard/ical-feeds` answer `deprecated` (the first also `deprecatedAt`); details in `docs/runbooks/ical.md` § Octorate.
+
 #### Marketplace (epic E09, NF-54 to NF-59)
 
 One catalog of five groups and the Active tab, read from CasaZen's own database: nothing here calls Octorate while a page loads (the portals are the
@@ -1494,7 +1555,7 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | `Id` | `Guid` | PK | Client-generated |
 | `OrgId` | `Guid` | tenant key (`ITenantOwned`), no foreign key | The org the person worked in |
 | `UserId` | `string` (255) | not a foreign key | The Auth0 subject. The retention overwrites it with the empty string |
-| `WizardType` | `int` (enum) | explicit numbers, never reused | `ListingCreate` 1, `ListingEdit` 2, `BookingCreate` 3, `BookingEdit` 4, `CheckIn` 5, `CheckOut` 6, `ComplianceSender` 7, `TouristTax` 8 |
+| `WizardType` | `int` (enum) | explicit numbers, never reused | `ListingCreate` 1, `ListingEdit` 2, `BookingCreate` 3, `BookingEdit` 4, `CheckIn` 5, `CheckOut` 6, `ComplianceSender` 7, `TouristTax` 8, `OnboardingActivation` 9, `OnboardingBulk` 10 |
 | `EntityId` | `Guid?` | not a key | What the wizard edits; `null` for a wizard that creates something |
 | `Version` | `int` | — | The counter the client sees (1 at the first save, plus one at every save); a save behind it is a conflict |
 | `DraftJson` | `jsonb` | — | The typed data without the personal fields; `{}` once anonymized |
@@ -1518,6 +1579,21 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | `RecordedByUserId` | `string` (255) | required, not a foreign key | The Auth0 subject who recorded it |
 | `CreatedAt`, `UpdatedAt` | `DateTime` | UTC | — |
 | | | index `(OrgId, ComuneKey, PeriodFrom, PeriodTo)`, **not unique** | A comune can be paid in instalments, so payments of the same comune and period are all kept |
+
+#### Activation of CasaZen with Octorate (NF-104..NF-107, E10/F01/US01/T01)
+
+Six tables keep what the activation cannot derive: the host's intents and the activation facts. **The state of a part of the plan and of a flow is never stored**: it is derived on every read from the connection, the mapping, the sender... (the principle of the activation checklist of PL-15). Every table is `ITenantOwned` (`OrgId` FK `Orgs` RESTRICT, global tenant query filter); a property-bound row goes with its property (FK `Properties` CASCADE). Ids are `Guid`, users are `string` (255, the Auth0 subject, never a foreign key), enums are stored as their number (explicit values, never renumbered), no row holds a secret or personal data. Nothing writes to them yet except the tasks of E10 that follow; they are not read while `Features:OctorateOnboarding` is off.
+
+| Table (entity) | Fields | Keys and indexes | Notes |
+|---|---|---|---|
+| `OnboardingPartStates` (`OnboardingPartState`) | `PartKey` (`OnboardingPartKey` 1..11: `OctorateConnection`, `Properties`, `Channels`, `Listings`, `PricesRules`, `Compliance`, `Identification`, `MessagesAi`, `FiscalDocuments`, `Partners`, `Activation`), `Status` (`Open` 1, `Deferred` 2), `DeferredAt?`, `RemindAt?`, `ActivityId?` (the "To do", a reference), `UpdatedAt`, `UpdatedByUserId` | **unique** `(OrgId, PartKey)` (`UIX_OnboardingPartStates_OrgId_PartKey`) | Only a deferral is stored: a part with no row is open |
+| `PropertyFlowActivations` (`PropertyFlowActivation`) | `PropertyId`, `Flow` (`OnboardingFlow` 1..6: `Listings`, `Bookings`, `CheckInCompliance`, `Messages`, `Documents`, `Reports`), `ActivatedAt`, `ActivatedByUserId`, `DeactivatedAt?`, `DeactivatedByUserId?` | **unique** `(PropertyId, Flow)` (`UIX_PropertyFlowActivations_PropertyId_Flow`) | An activation after a deactivation reuses the row and clears `DeactivatedAt`. The row is not the state: a flow is active only while a row without `DeactivatedAt` exists **and** every prerequisite holds |
+| `OnboardingPanelSteps` (`OnboardingPanelStep`) | `PropertyId?`, `Kind` (`PanelStepKind`: `PoliceConnection` 1, `IstatConnection` 2, `ChannelAccess` 3), `ChannelCode?` (40), `Status` (`PanelStepStatus`: `Started` 1, `Verified` 2, `Confirmed` 3, `NotValid` 4, `AssistRequested` 5), `HandoffMode` (`PanelHandoffMode`: `RedirectCallback` 1, `ManagedWindow` 2), `HandoffNonceHash?` (64, the SHA-256 of the nonce, never the nonce), `HandoffExpiresAt?`, `CallbackConsumedAt?`, `ResumeWizardType?` (`WizardType`), `ResumeDraftEntityId?`, `ResumeStepCode?` (50), `StartedAt`, `NextVerificationAt?`, `VerificationAttempts`, `CompletedAt?`, `VerifiedAt?`, `LastVerificationOutcome?` (20: `verified`, `notValid`, `unverifiable`), `CompletedByUserId?`, `ActivityId?` | **unique** `(OrgId, PropertyId, Kind, ChannelCode)` with `NULLS NOT DISTINCT` (`UIX_OnboardingPanelSteps_OrgId_PropertyId_Kind_ChannelCode`) | Persists the ownership before the hand-over to the Octorate panel, the exact step to resume and the count that rate-limits the background verification. Needs PostgreSQL 15 or later (`NULLS NOT DISTINCT`) |
+| `OnboardingAssistRequests` (`OnboardingAssistRequest`) | `PartKey`, `PropertyId?`, `Context` (30: `panelPolice`, `panelIstat`, `panelChannelAccess`, `part`), `Status` (`OnboardingAssistStatus`: `Requested` 1, `InProgress` 2, `Done` 3, `Cancelled` 4), `DraftWizardType?`, `DraftEntityId?`, `RequestedByUserId`, `RequestedAt`, `AssignedToUserId?`, `UpdatedAt`, `CompletedAt?`, `StaffNote?` (500, no personal data), `ActivityId?` | **unique** `(OrgId, PartKey, PropertyId)` with `NULLS NOT DISTINCT`, only where `Status IN (1, 2)` (`UIX_OnboardingAssistRequests_OpenPerPartAndProperty`) | One open «Do it for me» request for each part and property. The wizard draft is a **reference** (type and entity id), never a copy of its content |
+| `OnboardingPilotMembers` (`OnboardingPilotMember`) | `PropertyId`, `AddedAt`, `AddedByUserId` | **unique** `PropertyId` (`UIX_OnboardingPilotMembers_PropertyId`) | The pilot group of an agency's progressive activation |
+| `PropertyOnboardingData` (`PropertyOnboardingData`) | `PropertyId`, `AlloggiatiRoomNumbersJson?` (`jsonb`, an array of at most 20 short codes), `UpdatedAt`, `UpdatedByUserId` | **unique** `PropertyId` (`UIX_PropertyOnboardingData_PropertyId`) | The lock code stays in the encrypted `PropertyAccessCode` |
+
+The migration is `AddOnboardingActivation`. The tables are not part of the demo reset yet (`TestDataEntities`): the demo scenario task of E10 (E10/F01/US01/T04) adds their constants together with the rows it marks. A row in any of them makes the org "in use" for `OrgEmptinessChecker` (the default: a table is checked unless it is listed in `OnboardingRows`).
 
 ---
 

@@ -108,6 +108,14 @@ public class OctorateListingMapping : ITenantOwned
     /// <summary>When the mapping was confirmed (UTC).</summary>
     public DateTime? ConfirmedAt { get; set; }
 
+    /// <summary>
+    /// The instant (UTC) at which the last complete read of the reservations of this listing started (E02/F02/US01/T01): the import and the
+    /// reconciliation read again from it, minus an overlap of two days (the retry window of the webhooks). <c>null</c> until a full import of
+    /// the listing completed: the next run then reads the whole history. It moves only when a run read everything it had to, so a run
+    /// stopped by the rate limit or by an error never leaves a gap behind it.
+    /// </summary>
+    public DateTime? BookingsImportedThrough { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

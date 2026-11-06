@@ -365,6 +365,10 @@ public sealed record HostDashboardKpis(
 
 /// <summary>State of one iCal import feed (PC-11) for the dashboard widget; never its URL.</summary>
 /// <param name="LastError">Stored error code of the last sync (translated by the web layer).</param>
+/// <param name="Deprecated">
+/// The Octorate calendar of the feed's channel replaced the import (E02/F02/US01/T03): the feed is no longer synced, so a last try that gets
+/// older is expected and not a reason to look at it.
+/// </param>
 public sealed record HostDashboardIcalFeed(
     Guid FeedId,
     Guid PropertyId,
@@ -373,4 +377,5 @@ public sealed record HostDashboardIcalFeed(
     string? Label,
     DateTime? LastImportAt,
     PropertyICalImportStatus? LastImportStatus,
-    string? LastError);
+    string? LastError,
+    bool Deprecated = false);

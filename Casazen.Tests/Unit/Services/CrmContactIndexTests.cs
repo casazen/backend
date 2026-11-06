@@ -179,10 +179,10 @@ public class CrmContactIndexTests
     }
 
     [Fact]
-    public void TheFlag_IsListedLastAndOffByDefault()
+    public void TheFlag_IsListedAndOffByDefault()
     {
         Assert.Equal("CrmMarketing", FeatureFlags.CrmMarketing);
-        Assert.Equal(FeatureFlags.CrmMarketing, FeatureFlags.All.Last());
+        Assert.Contains(FeatureFlags.CrmMarketing, FeatureFlags.All);
         Assert.False(new ConfigurationFeatureFlags(new ConfigurationBuilder().Build()).IsEnabled(FeatureFlags.CrmMarketing));
     }
 }

@@ -361,6 +361,15 @@ public class AppDbContext(
     public DbSet<MarketplacePartnerText> MarketplacePartnerTexts { get; set; } = null!;
     public DbSet<MarketplaceActivation> MarketplaceActivations { get; set; } = null!;
 
+    // The activation of CasaZen with Octorate: what the host chose to do later for each part of the plan, the flows activated on each property, the
+    // guided steps of the Octorate panel, the «Do it for me» requests, the pilot group of an agency and the per-property data (E10/F01/US01/T01, NF-104..NF-107)
+    public DbSet<OnboardingPartState> OnboardingPartStates { get; set; } = null!;
+    public DbSet<PropertyFlowActivation> PropertyFlowActivations { get; set; } = null!;
+    public DbSet<OnboardingPanelStep> OnboardingPanelSteps { get; set; } = null!;
+    public DbSet<OnboardingAssistRequest> OnboardingAssistRequests { get; set; } = null!;
+    public DbSet<OnboardingPilotMember> OnboardingPilotMembers { get; set; } = null!;
+    public DbSet<PropertyOnboardingData> PropertyOnboardingData { get; set; } = null!;
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
@@ -511,6 +520,14 @@ public class AppDbContext(
         modelBuilder.Entity<Booking>()
             .HasIndex(b => new { b.OrgId, b.BookingCode })
             .IsUnique();
+
+        // A reservation of Octorate is one booking in an org (E02/F02/US01/T01, ADR-033-R1): the key of the import, whoever imports it and
+        // however many times. Only the rows that have an Octorate id are in it; the others (null) are as many as there are bookings.
+        modelBuilder.Entity<Booking>()
+            .HasIndex(b => new { b.OrgId, b.OctorateReservationId })
+            .IsUnique()
+            .HasFilter("\"OctorateReservationId\" IS NOT NULL")
+            .HasDatabaseName(Booking.OctorateReservationIndexName);
 
         // GPS coordinates (PC-06, A2-33): 6 decimals are about 0.1 m, the old 2 decimals placed a house up to a kilometre
         // away on the map. numeric(9,6) holds -999.999999..999.999999: the API accepts only -90..90 and -180..180.
@@ -1407,6 +1424,21 @@ public class AppDbContext(
             .HasIndex(b => new { b.FeedId, b.ExternalUid })
             .IsUnique();
 
+        // The index of the foreign key to the property, declared here so that it stays: EF drops the index of a foreign key when another index
+        // starts with the same column, filtered or not, and the filtered index below holds the Octorate blocks only. Every read of the blocks
+        // of a property (availability, calendar, export) goes through this one.
+        modelBuilder.Entity<CalendarBlock>()
+            .HasIndex(b => b.PropertyId);
+
+        // The blocks read from the Octorate calendar have no feed (E02/F02/US01/T03): the unique index on (FeedId, ExternalUid) does not cover
+        // them (a null feed is never equal to another), so their key is the property and the UID, for that source only
+        // (CalendarBlockSource.Octorate = 2).
+        modelBuilder.Entity<CalendarBlock>()
+            .HasIndex(b => new { b.PropertyId, b.ExternalUid })
+            .IsUnique()
+            .HasFilter("\"Source\" = 2")
+            .HasDatabaseName(CalendarBlock.OctorateUidIndexName);
+
         // OTA stay created from an imported block (CO-21, D7): one stay per block. Deleting the booking keeps the block,
         // which takes its nights again on its own.
         modelBuilder.Entity<CalendarBlock>()
@@ -1757,6 +1789,18 @@ public class AppDbContext(
                 .HasDatabaseName(MarketplaceActivation.PropertyLevelIndexName);
             entity.HasIndex(a => new { a.OrgId, a.Status });
         });
+
+        // ─── Activation of CasaZen with Octorate (NF-104..NF-107, E10/F01/US01/T01) ─────────────────────────────
+        // The host's intents and the activation facts only: the state of a part or of a flow is derived on read. One state for each org and
+        // part, one activation for each property and flow, one panel step for each org, property, kind and channel (two NULLs are equal),
+        // one open «Do it for me» request for each org, part and property, one pilot membership and one data row for each property. The
+        // property-bound rows go with their property (cascade); every row carries its org (restrict) and the tenant filter applies to all.
+        modelBuilder.ApplyConfiguration(new OnboardingPartStateConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyFlowActivationConfiguration());
+        modelBuilder.ApplyConfiguration(new OnboardingPanelStepConfiguration());
+        modelBuilder.ApplyConfiguration(new OnboardingAssistRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new OnboardingPilotMemberConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyOnboardingDataConfiguration());
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
         // tenant one) so it composes independently: IgnoreQueryFilters([TenantQueryFilter]) (entitlement counts,
