@@ -285,7 +285,7 @@ Property record choices (PC-02):
 | `GET` | `/api/bookings` | List bookings a page at a time (PC-14: `?propertyId&guestId&page&pageSize`, `Bookings:DefaultPageSize` = 10 when `pageSize` is missing, at most 100), answered as `{ items, totalCount, page, pageSize }`; since SR-03b the search below without a filter but these two, rows included |
 | `GET` | `/api/bookings/search` | The same list with days, status and text (SR-03, below): `?from&to&status&q&propertyId&guestId&page&pageSize`, same order, same answer, same default page size. SR-03b adds `&arrivalFrom&arrivalTo&view&channel&checkInStatus&sort` and, on each row, `channel`, `paymentState`, `paidAmount`, `alloggiatiStatus`, `respondBy` |
 | `GET` | `/api/bookings/counts` | SR-03b: how many bookings are in each chip of the list (`{ all, toConfirm, upcoming, inProgress, completed, cancelled }`), for the filters of the search but the chip, the page and the order |
-| `GET` | `/api/bookings/{id}` | Get a single booking; SR-05a adds `paymentState`, `paidAmount` and `guestDataComplete` (below) |
+| `GET` | `/api/bookings/{id}` | Get a single booking; SR-05a adds `paymentState`, `paidAmount` and `guestDataComplete` (below); E08/F03/US03/T02 adds `otaAmounts`, `collection`, `amountSources` (money: not for a caller without `payment.read`) and `octorateSync` (see *The booking answer* in the section on the bookings of the connector). Every booking answer, the lists too, has `otaSource` and `changeOptions` |
 | `GET` | `/api/bookings/{id}/timeline` | SR-05a: the history of the booking, derived from its timestamps and the rows tied to it (below); `booking.read` on its property, 404 outside the caller's scope |
 | `POST` | `/api/bookings` | Create a booking (availability check + tourist tax calculation) |
 | `PUT` | `/api/bookings/{id}` | Update a booking. 422 `ota_booking_change_not_allowed` for a booking that came from a channel whose channel is closed (every channel unless `Octorate:ChannelActions` opens it; nothing is changed, E08/F02/US02), 422 `ota_amounts_readonly` for a changed amount of the channel (below) |
@@ -393,7 +393,9 @@ invented one. Every booking answer now carries `confirmedAt`, `cancelledAt`, `ar
 (`{ allowed, reason }`: `reason` is `Cancelled`, `Started` or `SourceLocked`, the first that holds; `BookingEditRules`, the very rule of
 `PUT /api/bookings/{id}`, which `HostBookingService` reads: only a booking entered by the host, not started, not cancelled can have its
 dates and guests changed, SR-D5). `GET /api/bookings/{id}` adds `paymentState` (as the list), `paidAmount` (euros, `null` without
-`payment.read`) and `guestDataComplete` (`null` for a request, a hold or a cancelled booking).
+`payment.read`) and `guestDataComplete` (`null` for a request, a hold or a cancelled booking). Since E08/F03/US03/T02 every booking answer also carries
+`otaSource` and `changeOptions` (`BookingEditRules.ChangeOptionsOf`: what the host may do, below), and the detail the amounts of the channel, who
+collects, where each figure comes from and the mirror on Octorate.
 
 `GET /api/bookings/{id}/timeline` answers `{ bookingId, events: [{ kind, at, state, data }] }`, in order, by time. There is no event
 log: the entries are derived (`BookingTimeline`, pure) from the booking and from its payments, refunds, check-in links and Alloggiati
@@ -1168,7 +1170,37 @@ reservation of the room of a property, found through the confirmed `OctorateList
   is `totalPaid`, `OtaNetAmount` and `OtaBalanceAmount` stay null (no documented source, never derived from `roomGross`); all null when the reservation does
   not state the currency of the property. `PUT /api/bookings/{id}` answers 422 `ota_amounts_readonly` when its body carries an `ota*` amount that differs
   from the stored one. `GET /api/bookings/{id}` adds `otaAmounts` `{ commission, net, paid, balance, currency }` (null for a booking that was not imported
-  and for a caller without `payment.read`); every booking answer carries `otaSource` (the channel of an imported booking, null otherwise).
+  and for a caller without `payment.read`); every booking answer carries `otaSource` (the channel of a booking of a channel, null otherwise: see *The
+  booking answer* below).
+- *Who collects* (E08/F03/US03/T02, NF-77). `Booking.OtaCompanyCollect` (the `companyCollect` of the reservation: `COMPANY` is `true`, `HOTEL` is `false`;
+  `NONE`, no value and any other word are `null`, never guessed) and `Booking.OtaCommissionIncludedInPayments` (the `commissionIncludedInPayments` flag
+  of the portal catalog, `GET /rest/v1/meta/portals`, read from the `MarketplacePortal` cache by the `channelId` of the reservation: it is not a member
+  of the reservation and no call to Octorate is made while a booking is applied; `null` when the portal is not cached) are written by the import, on
+  create and on every newer version, for a *booking of a channel* (a channel source that is not a booking the host entered); one CasaZen owns keeps its
+  figures and gets them too (they are no figures). Any other booking never gets them, and no endpoint writes them (`PUT /api/bookings/{id}` writes
+  dates, guests and notes only, ADR-033-R3). A change of the flags alone is saved without announcing a `BookingModified`. Migration
+  `AddBookingOtaCollectionFlags` (two nullable `boolean` columns).
+- *The booking answer* (E08/F03/US03/T02, NF-74, NF-77). Every answer that carries a booking, the lists and the actions that answer a booking included,
+  has `otaSource` and `changeOptions`. `otaSource` is the channel (`Airbnb`, `BookingCom`, `Expedia`, `Vrbo`, `TripAdvisor`, `Agoda`, `OtherChannel`) of a
+  *booking of a channel* (`OtaChannelActionPolicy.IsChannelBooking`) and `null` for every other: also for a booking CasaZen made and sent to Octorate (it has
+  a reservation there too, and is the booking site's) and for a reservation of the booking engine of the agency (it counts as direct). It is what the
+  "OTA" badge of the list reads (ADR-033-R9; `BookingSearchService` loads the bookings and `BookingMapper.ToListItem` fills it, so every item has it). Whose money a booking has is another question (`BookingAmountSourceRules.HoldsChannelManagerMoney`): the channel manager's for a booking of a channel and also for a reservation of the booking engine of the agency that the import made (Source `Direct`, a reservation on Octorate and no row of the mirror: only the push of CasaZen makes that row, never the import), CasaZen's for a booking it made and sent to Octorate (it has the row). The first two keep `otaAmounts` and have `ChannelManager` as the source of their figures.
+  `changeOptions` is `BookingEditRules.ChangeOptionsOf(booking, policy)` (below), the policy being the configured one. `GET /api/bookings/{id}` adds:
+  `otaAmounts` `{ commission, net, paid, balance, currency }` for a booking whose money is the channel manager's, exactly as stored (a figure Octorate did not give is `null` on
+  the wire, never zero); `collection` `{ companyCollect, commissionIncludedInPayments }` for a booking of a channel (each flag `null` when it is not
+  known); `amountSources` `{ total, paid, balance, commission, net }` (`BookingAmountSourceRules`): `Stripe`, `ChannelManager` or `Manual`, and a figure
+  the booking does not have is left out of the JSON. A booking whose money is the channel manager's is `ChannelManager` for every figure Octorate gave; any other has `total`
+  `Stripe` when it is the quote of the booking site (`Direct`, price not overridden) and `Manual` when the host entered the booking or the price, and
+  `paid` `Stripe` when every collected payment went through Stripe, `Manual` as soon as one is a cash or bank transfer payment the host recorded (a
+  number that holds something the host typed is not presented as Stripe's), none when nothing was collected. `otaAmounts`, `collection` and
+  `amountSources` are money: `null` for a caller without `payment.read`, who still gets `paymentState`, `otaSource` and `changeOptions`.
+  `octorateSync` `{ state, lastOperation, lastSyncedAt, errorCode, canRetry, octorateVersion { checkIn, checkOut, guests } }` is the `OctorateBookingSync`
+  row of the booking, read for the booking and the org together (`IBookingOctorateSyncReader`), `null` when the booking is not mirrored; it carries no
+  money, so whoever may read the booking sees it. `canRetry` is the rule of the retry endpoint (`Failed` or `Conflict`, `OctorateBookingSync.IsRetryable`)
+  with the connector on and `booking.write` on the property of the caller. `octorateVersion` is only there in the `Conflict` state: what Octorate holds
+  after it refused a change, read from `OctorateVersionJson` (`{"checkIn":"yyyy-MM-dd","checkOut":"yyyy-MM-dd","guests":n}`, the form that
+  `OctorateVersionSnapshot.ToJson` writes; a member that cannot be read is `null`, and a time is never guessed into a stay day); the days are written
+  as the booking's own are (midnight UTC of the stay day).
 - *Guest.* A new `Guest` for the booking (name only: Octorate gives contact data only with a special permission), or the guest of the org with the same
   e-mail and the same name when the reservation carries an e-mail; purpose «GDPR art. 6.1.b», no consent claimed; the booker is the first `StayGuest`.
 - *Contacts of the guest (E07/F06/US02/T02, NF-94, `docs/runbooks/crm-octorate-contacts.md`).* No endpoint. `IOctorateContactsService.ReadForBookingAsync(orgId,
@@ -1301,7 +1333,7 @@ TripAdvisor,Agoda}` with `CanModify`, `CanCancel` (both `false`) and the keys of
 keys of `SharedResources` in Italian and English); a channel that is not listed, a portal with no source of its own (`OtherChannel`) and every source that is
 no channel are closed (`OtaChannelActionPolicy.For`). A *booking of a channel* is one with a channel source **and** an `OctorateReservationId`
 (`OtaChannelActionPolicy.IsChannelBooking`): a stay made from the iCal feed of a channel has no reservation and is CasaZen's own record.
-- *`changeOptions`* (`BookingEditRules.ChangeOptionsOf(booking, policy)`, the rule every booking answer will carry): `{ canEdit, canCancel, reasonCode,
+- *`changeOptions`* (`BookingEditRules.ChangeOptionsOf(booking, policy)`, the rule every booking answer carries since E08/F03/US03/T02): `{ canEdit, canCancel, reasonCode,
   guidanceKey, channel, cancelReasonCode, cancelGuidanceKey }`. `canEdit` is what `PUT /api/bookings/{id}` accepts (a booking entered by the host, not
   started, not cancelled); `canCancel` is the status (waiting, confirmed or in the house) and, for a booking of a channel, the rule of the channel.
   `reasonCode` and `guidanceKey` explain the first thing that is not allowed (the change, else the cancellation); `cancelReasonCode` and `cancelGuidanceKey`

@@ -145,6 +145,21 @@ public class Booking : ITenantOwned
     [Precision(10, 2)]
     public decimal? OtaBalanceAmount { get; set; }
 
+    /// <summary>
+    /// Who collects the payment of a booking that came from a channel (E08/F03/US03/T02, NF-77): <c>true</c> when the channel (the company) collects it,
+    /// <c>false</c> when the host does; <c>null</c> when Octorate does not say (<c>companyCollect</c> absent or <c>NONE</c>, as in the sandbox samples) and for
+    /// every booking that does not come from a channel. Read-only after the import, like the figures above (ADR-033-R3): only the import writes it.
+    /// </summary>
+    public bool? OtaCompanyCollect { get; set; }
+
+    /// <summary>
+    /// Whether the portal of a booking that came from a channel pays the host net of its commission, so the commission is already taken out of the
+    /// payments (<c>commissionIncludedInPayments</c> of the portal catalog, <c>GET /rest/v1/meta/portals</c>, kept by <see cref="MarketplacePortal"/>: it is
+    /// not a member of the reservation). <c>null</c> when the portal is not in the catalog the marketplace caches, and for every booking that does not come
+    /// from a channel. Read-only after the import (ADR-033-R3).
+    /// </summary>
+    public bool? OtaCommissionIncludedInPayments { get; set; }
+
     /// <summary>Lodging (nightly rate x nights) plus <see cref="CleaningFee"/>; tourist tax excluded.</summary>
     [Precision(18, 2)]
     public decimal BasePrice { get; set; }
