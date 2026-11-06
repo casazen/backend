@@ -75,6 +75,46 @@ public class PublicSiteSearchDayRulesTests
     }
 
     [Fact]
+    public async Task SearchStays_TheAdvanceOfARule_IsCountedOnTheClockOfEachHouse()
+    {
+        // 11:01 UTC on the 9th of October: still the 9th in Rome, already the 10th in Auckland (13 hours ahead). A night with a minimum advance of one
+        // day is a day ahead of the house in Rome and is today for the one in Auckland.
+        var now = new DateTimeOffset(2026, 10, 9, 11, 1, 0, TimeSpan.Zero);
+        var arrival = new DateOnly(2026, 10, 10);
+        await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"search-advance-clock-{Guid.NewGuid():N}").Options);
+        var org = NewOrg();
+        var inRome = NewHouse(org, "A a Roma");
+        var inAuckland = NewHouse(org, "B ad Auckland");
+        inAuckland.Timezone = "Pacific/Auckland";
+        db.Orgs.Add(org);
+        db.Properties.AddRange(inRome, inAuckland);
+        db.PropertyDayRules.AddRange(
+            new PropertyDayRule { OrgId = org.Id, PropertyId = inRome.Id, StayDate = arrival, MinAdvanceDays = 1 },
+            new PropertyDayRule { OrgId = org.Id, PropertyId = inAuckland.Id, StayDate = arrival, MinAdvanceDays = 1 });
+        await db.SaveChangesAsync();
+        var configuration = new ConfigurationBuilder().Build();
+        var clock = new FixedTimeProvider(now);
+        var rules = new PropertyDayRuleService(
+            db,
+            Mock.Of<IOctorateBookingTargets>(),
+            Mock.Of<Core.Features.IFeatureFlags>(),
+            configuration,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<PropertyDayRuleService>.Instance,
+            clock);
+        var taxRates = new Mock<ITouristTaxRateRepository>();
+        taxRates
+            .Setup(r => r.GetActiveInPeriodAsync(It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<TouristTaxRate>());
+        var search = new PublicSiteSearchService(db, taxRates.Object, configuration, new PublicReadCache(configuration), rules, clock);
+
+        var cards = (await search.SearchStaysAsync(org, Criteria(arrival, 1))).Items.ToDictionary(card => card.Name);
+
+        Assert.True(cards["A a Roma"].Availability.Available);
+        Assert.False(cards["B ad Auckland"].Availability.Available);
+        Assert.Equal(PublicStayReasons.Advance, cards["B ad Auckland"].Availability.Reason);
+    }
+
+    [Fact]
     public async Task SiteCalendar_ReadsTheRulesOnce_AndANightClosedToArrivalIsNotAvailableForTheHouse()
     {
         await using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"site-day-rules-{Guid.NewGuid():N}").Options);

@@ -37,12 +37,16 @@ public sealed record PublicStayHouse(
     string? OrgSlug = null,
     string? HostName = null,
     string Currency = PublicStayHouse.DefaultCurrency,
-    string Country = PublicStayHouse.DefaultCountry)
+    string Country = PublicStayHouse.DefaultCountry,
+    string Timezone = PublicStayHouse.DefaultTimezone)
 {
     /// <summary>What a house without a currency of its own costs in (the property says <c>EUR</c> until it is in Switzerland).</summary>
     public const string DefaultCurrency = "EUR";
 
     public const string DefaultCountry = "IT";
+
+    /// <summary>The clock of a house without one of its own: the calendar of the market, Europe/Rome (the property says its own IANA zone).</summary>
+    public const string DefaultTimezone = Casazen.Core.Utilities.RomeCalendar.TimeZoneId;
 
     /// <summary>The labels of the house (what the host chose and what its data give), in the order of the vocabulary.</summary>
     public IReadOnlyList<string> Tags => Labels ?? [];
@@ -72,6 +76,11 @@ public sealed record PublicStayHouse(
 /// </param>
 /// <param name="TaxRates">The active tourist tax rates of every comune that overlap the stay: the planner picks the ones of each house.</param>
 /// <param name="Ratings">The public rating of each house that has reviews.</param>
+/// <param name="NowUtc">
+/// The instant the search is worked out at (UTC). The advance rules of the nights count the days from «today» on the clock of each house
+/// (<see cref="PublicStayHouse.Timezone"/>, <see cref="DayRuleRules.TodayOf"/>), as the quote and the checkout do; <c>null</c> (a caller that did not say) counts them
+/// from <paramref name="Today"/>, the calendar of Rome, for every house.
+/// </param>
 /// <param name="DayRules">
 /// The rules of the nights of each house that has any (E08/F05/US01/T04, NF-36), by date: the closed arrival and departure, the minimum and the
 /// maximum stay, the advance. The planner judges a stay with <see cref="DayRuleStayChecks"/>, the check of the quote and the checkout, so a
@@ -84,7 +93,8 @@ public sealed record PublicStayData(
     IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, decimal>> HostPrices,
     IReadOnlyList<TouristTaxRate> TaxRates,
     IReadOnlyDictionary<Guid, PublicRatingSummary> Ratings,
-    IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>>? DayRules = null);
+    IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>>? DayRules = null,
+    DateTime? NowUtc = null);
 
 /// <summary>
 /// The decisions of the search of the site (DB-07a), as pure functions of the houses and of what was read about them: which house is free
@@ -338,7 +348,9 @@ public static class PublicStayPlanner
         var party = criteria.Adults + criteria.Children;
 
         // The rules of the nights (NF-36) are judged by the check the quote and the checkout use, so what the list offers the checkout accepts.
-        var violation = DayRuleStayChecks.FirstViolation(checkIn, checkOut, data.Today, house.MinNights, rules);
+        // The advance of a rule counts the days from today on the clock of the house, the one the quote and the checkout read it on.
+        var todayOfHouse = TodayOf(data, house);
+        var violation = DayRuleStayChecks.FirstViolation(checkIn, checkOut, todayOfHouse, house.MinNights, rules);
         var reason = ReasonNotFree(house, data, criteria, party, checkIn, checkOut, taken, violation);
         DateOnly? firstFree = reason switch
         {
@@ -349,7 +361,7 @@ public static class PublicStayPlanner
                 or PublicStayReasons.DepartureClosed
                 or PublicStayReasons.MaxNights
                 or PublicStayReasons.Advance => NextFreeCheckIn(
-                    taken, checkIn < data.Today ? data.Today : checkIn, nights, house, rules, data.Today),
+                    taken, checkIn < data.Today ? data.Today : checkIn, nights, house, rules, todayOfHouse),
             _ => null,
         };
 
@@ -599,6 +611,7 @@ public static class PublicStayPlanner
             ? []
             : pool.Where(house => party <= house.MaxGuests && (!criteria.Pets || house.AcceptsPets)).ToList();
 
+        var todays = candidates.ToDictionary(house => house.Id, house => TodayOf(data, house));
         var found = new List<PublicStayAlternative>();
         foreach (var offset in AlternativeOffsets)
         {
@@ -614,7 +627,7 @@ public static class PublicStayPlanner
                 // Another date helps a house only when its nights are free and the stay breaks no rule of its nights (NF-36), the minimum stay
                 // among them: the dates proposed are dates the checkout accepts.
                 if (AnyTaken(TakenOf(data, house.Id), start, end)
-                    || DayRuleStayChecks.FirstViolation(start, end, data.Today, house.MinNights, RulesOf(data, house.Id)) is not null)
+                    || DayRuleStayChecks.FirstViolation(start, end, todays[house.Id], house.MinNights, RulesOf(data, house.Id)) is not null)
                 {
                     continue;
                 }
@@ -653,6 +666,7 @@ public static class PublicStayPlanner
         ArgumentNullException.ThrowIfNull(data);
 
         var candidates = data.AcceptsBookings ? houses.Where(house => party <= house.MaxGuests).ToList() : [];
+        var todays = candidates.ToDictionary(house => house.Id, house => TodayOf(data, house));
         var days = new List<PublicSiteCalendarDay>();
         for (var day = first; day < to; day = day.AddDays(1))
         {
@@ -661,7 +675,7 @@ public static class PublicStayPlanner
             foreach (var house in candidates)
             {
                 RulesOf(data, house.Id).TryGetValue(day, out var rule);
-                if (TakenOf(data, house.Id).Contains(day) || !DayRuleStayChecks.CanArriveOn(day, data.Today, rule))
+                if (TakenOf(data, house.Id).Contains(day) || !DayRuleStayChecks.CanArriveOn(day, todays[house.Id], rule))
                     continue;
 
                 var price = StayPricing.ToCents(StayPricing.NightPrice(
@@ -739,6 +753,15 @@ public static class PublicStayPlanner
 
     private static IReadOnlyDictionary<DateOnly, decimal>? HostPricesOf(PublicStayData data, Guid houseId) =>
         data.HostPrices.TryGetValue(houseId, out var prices) ? prices : null;
+
+    /// <summary>
+    /// Today on the calendar of a house: the date it is now on its own clock (<see cref="DayRuleRules.TodayOf"/>), the way the quote and the checkout read it, so the
+    /// advance rules of the nights agree with them whatever the zone of the house. Without the instant of the search it is today in Rome.
+    /// </summary>
+    private static DateOnly TodayOf(PublicStayData data, PublicStayHouse house) =>
+        data.NowUtc is { } now
+            ? DayRuleRules.TodayOf(house.Timezone, new DateTimeOffset(DateTime.SpecifyKind(now, DateTimeKind.Utc)))
+            : data.Today;
 
     /// <summary>The rules of the nights of a house; none for a house that has none (or when the search read none).</summary>
     private static IReadOnlyDictionary<DateOnly, DayRuleValues> RulesOf(PublicStayData data, Guid houseId) =>

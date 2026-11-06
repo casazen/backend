@@ -167,7 +167,8 @@ public sealed class PublicSiteSearchService(
             await LoadHostPricesAsync(ids, today, until, rules, cancellationToken),
             TaxRates: [],
             await LoadRatingsAsync(orgId, ids, cancellationToken),
-            rules);
+            rules,
+            _clock.GetUtcNow().UtcDateTime);
         return PublicStayPlanner.Similar(target, houses, data, max);
     }
 
@@ -226,7 +227,8 @@ public sealed class PublicSiteSearchService(
             await LoadHostPricesAsync(ids, from, to, rules, CancellationToken.None),
             taxRatesOfPeriod,
             await LoadRatingsAsync(org?.Id, ids, CancellationToken.None),
-            rules);
+            rules,
+            _clock.GetUtcNow().UtcDateTime);
 
         return PublicStayPlanner.Search(houses, data, criteria, _clock.GetUtcNow().UtcDateTime);
     }
@@ -258,7 +260,8 @@ public sealed class PublicSiteSearchService(
                 await LoadHostPricesAsync(ids, first, end, rules, CancellationToken.None),
                 TaxRates: [],
                 Ratings: new Dictionary<Guid, PublicRatingSummary>(),
-                DayRules: rules);
+                DayRules: rules,
+                NowUtc: _clock.GetUtcNow().UtcDateTime);
             days.AddRange(PublicStayPlanner.SiteDays(houses, data, first, end, adults + children));
         }
 
@@ -325,6 +328,7 @@ public sealed class PublicSiteSearchService(
                 OrgStripeConnectedAccountId = p.Org.StripeConnectedAccountId,
                 OrgConnectChargesEnabled = p.Org.ConnectChargesEnabled,
                 Currency = p.Currency,
+                Timezone = p.Timezone,
                 Country = p.Country,
                 Id = p.Id,
                 Slug = p.Slug,
@@ -401,7 +405,9 @@ public sealed class PublicSiteSearchService(
                 platform ? HostNameOf(row) : null,
                 // The property says its own currency and country (EUR and IT, or CHF and CH): the price of a card is in that currency.
                 string.IsNullOrWhiteSpace(row.Currency) ? PublicStayHouse.DefaultCurrency : row.Currency.Trim().ToUpperInvariant(),
-                string.IsNullOrWhiteSpace(row.Country) ? PublicStayHouse.DefaultCountry : row.Country.Trim().ToUpperInvariant()));
+                string.IsNullOrWhiteSpace(row.Country) ? PublicStayHouse.DefaultCountry : row.Country.Trim().ToUpperInvariant(),
+                // The clock the advance rules of its nights are read on, as the quote and the checkout read them.
+                string.IsNullOrWhiteSpace(row.Timezone) ? PublicStayHouse.DefaultTimezone : row.Timezone.Trim()));
         }
 
         return houses;
@@ -555,6 +561,7 @@ public sealed class PublicSiteSearchService(
         // The currency and the country of the property (EUR / IT by default, CHF / CH in Switzerland).
         public string Currency { get; init; } = PublicStayHouse.DefaultCurrency;
         public string Country { get; init; } = PublicStayHouse.DefaultCountry;
+        public string Timezone { get; init; } = PublicStayHouse.DefaultTimezone;
 
         public Guid Id { get; init; }
         public string? Slug { get; init; }

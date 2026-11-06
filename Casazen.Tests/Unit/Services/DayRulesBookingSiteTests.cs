@@ -34,7 +34,7 @@ public class DayRulesBookingSiteTests
     private readonly string _databaseName = $"day-rules-site-{Guid.NewGuid():N}";
     private readonly AppDbContext _db;
     private readonly IConfiguration _configuration;
-    private readonly FixedTimeProvider _clock = new(Now);
+    private readonly SettableTimeProvider _clock = new(Now);
     private readonly Mock<IBookingRepository> _repository = new();
     private readonly Mock<IGuestRepository> _guests = new();
     private readonly Mock<IPropertyRepository> _properties = new();
@@ -379,6 +379,47 @@ public class DayRulesBookingSiteTests
         Assert.InRange(refused, 20, tried - 20);
     }
 
+    /// <summary>
+    /// The search and the checkout count the advance of a rule on the same clock, the one of the house (E08/F05/US01/T04, AC-NF36-2). A house in
+    /// Auckland is 13 hours ahead of UTC in October, so 11:00 UTC on the 9th is its midnight: a minute before it the night of the 10th is a day ahead,
+    /// a minute after it is today. The search stops offering the night exactly when the quote stops accepting it, while in Rome it is the 9th all along.
+    /// </summary>
+    [Theory]
+    [InlineData(10, 59, true)]
+    [InlineData(11, 1, false)]
+    public async Task Search_AndTheCheckout_CountTheAdvanceOnTheClockOfTheHouse_AroundItsMidnight(int hour, int minute, bool accepted)
+    {
+        _property.Timezone = "Pacific/Auckland";
+        await _db.SaveChangesAsync();
+        var arrival = new DateOnly(2026, 10, 10);
+        await ApplyAsync(arrival, arrival, new DayRulePatch(MinAdvanceDays: FieldPatch<int>.Set(1)));
+        var now = new DateTimeOffset(2026, 10, 9, hour, minute, 0, TimeSpan.Zero);
+        _clock.Now = now;
+
+        var rules = await _rules.GetRulesForSiteAsync([_property.Id], arrival, arrival.AddDays(2));
+        var house = new PublicStayHouse(
+            _property.Id, "casa-regole", "Casa Regole", "Como", null, 45.8m, 9.08m, [], 2, 1, 4, 60, 100m, 0m, 20m, _property.MinNights, null, null, null, [],
+            Timezone: _property.Timezone);
+        var data = new PublicStayData(
+            new DateOnly(2026, 10, 9),
+            true,
+            new Dictionary<Guid, IReadOnlySet<DateOnly>>(),
+            new Dictionary<Guid, IReadOnlyDictionary<DateOnly, decimal>>(),
+            [],
+            new Dictionary<Guid, PublicRatingSummary>(),
+            rules,
+            now.UtcDateTime);
+        var criteria = new PublicStaysCriteria(
+            arrival, arrival.AddDays(1), 2, 0, false, null, null, null, null, null, null, [], [], [], PublicSiteSearch.Recommended, 1, null, []);
+
+        var card = Assert.Single(PublicStayPlanner.Search([house], data, criteria, now.UtcDateTime).Items);
+
+        Assert.Equal(accepted, await QuoteAcceptsAsync(arrival, 1));
+        Assert.Equal(accepted, card.Availability.Available);
+        if (!accepted)
+            Assert.Equal(PublicStayReasons.Advance, card.Availability.Reason);
+    }
+
     // --- Helpers -----------------------------------------------------------------------------------------------
 
     private async Task ApplyAsync(DateOnly from, DateOnly to, DayRulePatch patch)
@@ -399,6 +440,19 @@ public class DayRulesBookingSiteTests
         AppliedAt = Now.UtcDateTime,
         ComputedAt = Now.UtcDateTime,
     };
+
+    private async Task<bool> QuoteAcceptsAsync(DateOnly arrival, int nights)
+    {
+        try
+        {
+            await _booking.QuoteDirectBookingAsync(QuoteInput(arrival, nights));
+            return true;
+        }
+        catch (DomainRuleException)
+        {
+            return false;
+        }
+    }
 
     private static DateTime Utc(DateOnly day) => day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
 
@@ -434,6 +488,14 @@ public class DayRulesBookingSiteTests
         var first = wanted.Min();
         var calendar = await _calendar.GetAsync(_property.Id, first, wanted.Max().AddDays(1));
         return wanted.Select(night => calendar.Days.Single(day => day.Date == night).NightlyPriceCents).ToList();
+    }
+
+    // A clock the test moves between the steps; every service of the test reads it.
+    private sealed class SettableTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = utcNow;
+
+        public override DateTimeOffset GetUtcNow() => Now;
     }
 
     private sealed class FixedTenant(Guid orgId) : ITenantContext

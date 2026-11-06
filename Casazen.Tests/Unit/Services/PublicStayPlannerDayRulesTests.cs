@@ -236,6 +236,52 @@ public class PublicStayPlannerDayRulesTests
         Assert.True(days[2].AnyAvailable);
     }
 
+    // --- The advance counts on the clock of the house ----------------------------------------------------------
+
+    [Theory]
+    [InlineData(10, 59, true)]
+    [InlineData(11, 1, false)]
+    public void Search_TheAdvanceOfARule_IsCountedOnTheClockOfTheHouse_NotOnTheOneOfRome(int hour, int minute, bool offered)
+    {
+        // Auckland is 13 hours ahead of UTC in October: 11:00 UTC on the 9th is its midnight. At 10:59 the 10th is a day ahead of it, a minute later it
+        // is today (advance 0). In Rome it is the 9th all that time, so the night of the 10th is a day ahead throughout.
+        var now = new DateTime(2026, 10, 9, hour, minute, 0, DateTimeKind.Utc);
+        var arrival = new DateOnly(2026, 10, 10);
+        var rome = House(Guid.NewGuid());
+        var auckland = House(Guid.NewGuid(), timezone: "Pacific/Auckland");
+        var rule = new DayRuleValues(MinAdvanceDays: 1);
+        var data = new PublicStayData(
+            Today,
+            true,
+            new Dictionary<Guid, IReadOnlySet<DateOnly>>(),
+            new Dictionary<Guid, IReadOnlyDictionary<DateOnly, decimal>>(),
+            [],
+            new Dictionary<Guid, PublicRatingSummary>(),
+            new Dictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>>
+            {
+                [rome.Id] = Rules((arrival, rule)),
+                [auckland.Id] = Rules((arrival, rule)),
+            },
+            now);
+
+        var cards = PublicStayPlanner.Search([rome, auckland], data, Criteria(arrival, 1), now).Items.ToDictionary(card => card.Id);
+
+        Assert.True(cards[rome.Id].Availability.Available);
+        Assert.Equal(offered, cards[auckland.Id].Availability.Available);
+        if (!offered)
+            Assert.Equal(PublicStayReasons.Advance, cards[auckland.Id].Availability.Reason);
+
+        // It is the clock the checkout reads: the same function of the zone and the instant.
+        var checkout = DayRuleStayChecks.FirstViolation(
+            arrival, arrival.AddDays(1), DayRuleRules.TodayOf("Pacific/Auckland", new DateTimeOffset(now)), null, Rules((arrival, rule)));
+        Assert.Equal(offered, checkout is null);
+
+        // And the days of the whole site: the night of the 10th starts a stay in Rome all along, in Auckland only while it is a day ahead.
+        var days = PublicStayPlanner.SiteDays([auckland], data, arrival, arrival.AddDays(1), 2);
+        Assert.Equal(offered, days.Single().AnyAvailable);
+        Assert.True(PublicStayPlanner.SiteDays([rome], data, arrival, arrival.AddDays(1), 2).Single().AnyAvailable);
+    }
+
     // --- The price a card shows --------------------------------------------------------------------------------
 
     [Fact]
@@ -260,7 +306,7 @@ public class PublicStayPlannerDayRulesTests
     private static IReadOnlyDictionary<DateOnly, DayRuleValues> Rules(params (DateOnly Night, DayRuleValues Values)[] rules) =>
         rules.ToDictionary(rule => rule.Night, rule => rule.Values);
 
-    private static PublicStayHouse House(Guid? id = null, int? minNights = null) => new(
+    private static PublicStayHouse House(Guid? id = null, int? minNights = null, string? timezone = null) => new(
         id ?? HouseId,
         "casa-regole",
         "Casa Regole",
@@ -280,7 +326,8 @@ public class PublicStayPlannerDayRulesTests
         null,
         null,
         null,
-        []);
+        [],
+        Timezone: timezone ?? PublicStayHouse.DefaultTimezone);
 
     private static PublicStayData Data(IReadOnlyDictionary<DateOnly, DayRuleValues>? rules) => new(
         Today,
