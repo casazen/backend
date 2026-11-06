@@ -228,6 +228,28 @@ permission that Octorate gives only to the registered static IP addresses of Cas
 purpose `message_to_guest`); the address and the phone number are in no answer, no log line and no row, and go only to the queue of the e-mails
 (`EmailTemplates.HostGuestMessage`, Italian or English by the guest's country, the text of the host HTML-encoded, reply-to the organization's contact address).
 
+**Templates** (`api/message-templates`, `booking.read` to list and render, `booking.write` to change): name, language (one of the 14 of the listing), a body of up
+to 2000 characters with `{{guest_name}}`, `{{property_name}}`, `{{booking_code}}`, `{{check_in_date}}`, `{{check_out_date}}`, `{{check_in_time}}`,
+`{{check_out_time}}` and `{{host_name}}`; unique per organization, name and language (**409** `message_template_exists`). A variable that is none of the eight is
+refused when the template is saved (**422** `template_variable_unknown`). `POST …/{id}/render` with `{ threadKey }` fills the variables with the booking and the
+property of the conversation (read within the caller's reach; dates as Rome dates in the language of the template, e.g. `6 novembre 2026`; times as `HH:mm`
+on the property's clock) and answers **422** `template_variable_missing` naming the variable when the conversation has no value for it (a request with no booking
+has no dates): the text never holds a literal `{{…}}`. `GET api/messages/threads/{threadKey}/channel-templates` lists the templates of the channel manager for a
+conversation of a channel, read only, to copy.
+
+**Translation** (`POST api/messages/translate`, `{ threadKey, messageId | text, targetLanguage }`): for the screen only, **never stored** (the message keeps its
+original), always marked `machineTranslated`. CasaZen's AI first (`Economy` tier, behind the platform budget, under the AI limits of the user and of the
+org), with the text scrubbed (`PiiScrubber` takes out e-mail addresses, phone numbers and fiscal codes; the names of the guest and of the host become
+`[[N1]]…` and are put back in the translation; other names in the free text are not recognized); the channel manager's translation of that message when the AI
+is not configured, the budget is used up, or the provider fails; **422** `translation_unavailable` with neither (a text the host is still writing has no message
+on the channel manager). **422** `translation_language_invalid` (not one of the 14), `translation_input_invalid` (a message and a text together, or neither).
+
+**Demo.** The scenario `message-templates` of the showcase (`DemoShowcaseCatalog.HostMessageTemplates`) writes three invented templates at reset (a welcome in Italian
+and in English and a reminder of the departure, all saying TEST, together using the eight variables), marked `TestDataEntities.MessageTemplate` and deleted by the
+next reset; a template the host wrote is never touched. The conversations they can be tried on are the ones of `message-hub`; the direct one is answered as always,
+while the two of a channel go through the channel manager, which a demo without a real connection does not have: the answer is a refusal of the connector (the
+state `Error` with its code, or **409** `octorate_not_connected` when the connector is off), never a message that looks sent.
+
 ## Not here (deferred)
 
 Automatic answers and the keyword router, the disclosure line, emergencies, `GuestMessageDecision`, `responseTimeMinutes`, the guest's unread badge, the guest's language (the emails are Italian), attachments, the "Scrivi" shortcut from the

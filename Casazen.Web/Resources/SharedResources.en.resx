@@ -3739,6 +3739,30 @@
   <data name="OctorateChatNotSendable" xml:space="preserve">
     <value>This conversation cannot be written to from CasaZen: the channel manager does not say who writes or the identifier of the conversation on the channel. Answer on the channel.</value>
   </data>
+  <data name="MessageTemplateVariableUnknown" xml:space="preserve">
+    <value>The template uses “{0}”, which is not a valid variable. The valid ones are guest_name, property_name, booking_code, check_in_date, check_out_date, check_in_time, check_out_time and host_name, written between double curly braces.</value>
+  </data>
+  <data name="MessageTemplateVariableMissing" xml:space="preserve">
+    <value>This conversation has no value for “{0}”: choose another template or complete the text by hand.</value>
+  </data>
+  <data name="MessageTemplateNotFound" xml:space="preserve">
+    <value>Template not found.</value>
+  </data>
+  <data name="MessageTemplateInvalid" xml:space="preserve">
+    <value>A template needs a name (up to 100 characters), one of the available languages and a text (up to 2000 characters).</value>
+  </data>
+  <data name="MessageTemplateExists" xml:space="preserve">
+    <value>A template with this name and language already exists.</value>
+  </data>
+  <data name="MessageTranslationUnavailable" xml:space="preserve">
+    <value>Translation is not available right now: neither the CasaZen translator nor the channel manager’s can translate this text.</value>
+  </data>
+  <data name="MessageTranslationLanguageInvalid" xml:space="preserve">
+    <value>The language of the translation is not one of the available ones.</value>
+  </data>
+  <data name="MessageTranslationInputInvalid" xml:space="preserve">
+    <value>Give a message to translate or a text, not both and not neither.</value>
+  </data>
   <data name="LeaseDocumentInvalid" xml:space="preserve"><value>Upload a valid PDF up to 20 MB.</value></data>
   <data name="ApeIncomplete" xml:space="preserve">
     <value>Missing or unreadable certificate data: {0}. Add all pages or replace unclear photos.</value>
