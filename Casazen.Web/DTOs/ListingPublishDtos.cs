@@ -8,11 +8,10 @@ namespace Casazen.Web.DTOs;
 public sealed class ListingPublishRequest
 {
     /// <summary>
-    /// The codes of the portals to publish to (<c>booking_xml</c>, <c>airbnb_xml</c>, <c>homeaway</c>). At least one: an empty list is refused,
-    /// never read as «all the channels».
+    /// The codes of the portals to publish to (<c>booking_xml</c>, <c>airbnb_xml</c>, <c>homeaway</c>). At least one: an empty list, or none at all, is
+    /// refused by the service with 422 <c>listing_channels_required</c>, never read as «all the channels». The body is not validated for it, so the
+    /// answer is the 422 the contract names and not a 400 of the model.
     /// </summary>
-    [Required(ErrorMessage = "ListingChannelsRequired")]
-    [MinLength(1, ErrorMessage = "ListingChannelsRequired")]
     [MaxLength(20, ErrorMessage = "ListingChannelUnknown")]
     public List<string>? Channels { get; set; }
 
