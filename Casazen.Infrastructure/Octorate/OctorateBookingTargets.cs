@@ -43,32 +43,10 @@ public sealed class OctorateBookingTargets(
 
     public async Task<OctorateTargetLookup> LookupAsync(Guid propertyId, CancellationToken ct)
     {
-        // The property as the caller sees it: the tenant filter of a request or of an event handler hides the property of another org.
-        var orgId = await db.Properties
-            .AsNoTracking()
-            .Where(p => p.Id == propertyId)
-            .Select(p => (Guid?)p.OrgId)
-            .FirstOrDefaultAsync(ct);
-        if (orgId is not { } org)
+        if (await MirroredAsync(propertyId, ct) is not { } mirrored)
             return OctorateTargetLookup.NotMirrored;
 
-        var environment = OctorateEnvironments.Of(hostEnvironment);
-        var connected = await db.OctorateConnections
-            .AsNoTracking()
-            .AnyAsync(c => c.OrgId == org && c.Environment == environment && c.Status == OctorateConnectionStatus.Connected, ct);
-        if (!connected)
-            return OctorateTargetLookup.NotMirrored;
-
-        // A property in a proposed or ambiguous row, as the proposal or as a candidate, is never written to (OCT-04).
-        if (await channelMapping.IsWriteBlockedAsync(propertyId, ct))
-            return OctorateTargetLookup.NotMirrored;
-
-        var mapping = await db.OctorateListingMappings
-            .FirstOrDefaultAsync(m => m.OrgId == org && m.PropertyId == propertyId && m.Status == OctorateMappingStatus.Confirmed, ct);
-        if (mapping is null || string.IsNullOrWhiteSpace(mapping.OctorateAccommodationId))
-            return OctorateTargetLookup.NotMirrored;
-
-        var accommodation = mapping.OctorateAccommodationId.Trim();
+        var (org, mapping, accommodation) = mirrored;
         var product = mapping.OctorateProductId?.Trim();
         if (string.IsNullOrEmpty(product))
         {
@@ -79,6 +57,43 @@ public sealed class OctorateBookingTargets(
 
         var pmsRoom = await PmsRoomOfAsync(org, accommodation, product, ct);
         return OctorateTargetLookup.Of(new OctorateBookingTarget(accommodation, product, pmsRoom));
+    }
+
+    public async Task<string?> AccommodationOfAsync(Guid propertyId, CancellationToken ct) =>
+        (await MirroredAsync(propertyId, ct))?.Accommodation;
+
+    /// <summary>
+    /// The rules every writer starts with, from CasaZen's database only: the property as the caller sees it, a connected account of its org in
+    /// this environment, no write block, a confirmed mapping with its accommodation. <c>null</c> when any is missing (not mirrored).
+    /// </summary>
+    private async Task<MirroredProperty?> MirroredAsync(Guid propertyId, CancellationToken ct)
+    {
+        // The property as the caller sees it: the tenant filter of a request or of an event handler hides the property of another org.
+        var orgId = await db.Properties
+            .AsNoTracking()
+            .Where(p => p.Id == propertyId)
+            .Select(p => (Guid?)p.OrgId)
+            .FirstOrDefaultAsync(ct);
+        if (orgId is not { } org)
+            return null;
+
+        var environment = OctorateEnvironments.Of(hostEnvironment);
+        var connected = await db.OctorateConnections
+            .AsNoTracking()
+            .AnyAsync(c => c.OrgId == org && c.Environment == environment && c.Status == OctorateConnectionStatus.Connected, ct);
+        if (!connected)
+            return null;
+
+        // A property in a proposed or ambiguous row, as the proposal or as a candidate, is never written to (OCT-04).
+        if (await channelMapping.IsWriteBlockedAsync(propertyId, ct))
+            return null;
+
+        var mapping = await db.OctorateListingMappings
+            .FirstOrDefaultAsync(m => m.OrgId == org && m.PropertyId == propertyId && m.Status == OctorateMappingStatus.Confirmed, ct);
+        if (mapping is null || string.IsNullOrWhiteSpace(mapping.OctorateAccommodationId))
+            return null;
+
+        return new MirroredProperty(org, mapping, mapping.OctorateAccommodationId.Trim());
     }
 
     /// <summary>The only room of the accommodation, kept on the mapping; <c>null</c> when it has none or several (remembered a while).</summary>
@@ -138,6 +153,9 @@ public sealed class OctorateBookingTargets(
         cache.Set(memory, new PmsRoomMemo(pmsRoom), PmsRoomMemory);
         return pmsRoom;
     }
+
+    /// <summary>A property that passed the rules of <see cref="MirroredAsync"/>: its org, its confirmed mapping and the accommodation of that mapping.</summary>
+    private sealed record MirroredProperty(Guid OrgId, Core.Entities.OctorateListingMapping Mapping, string Accommodation);
 
     private sealed record RoomNotChosenKey(Guid MappingId);
 

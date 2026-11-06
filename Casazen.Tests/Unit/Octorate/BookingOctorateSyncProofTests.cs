@@ -148,6 +148,91 @@ public class BookingOctorateSyncProofTests
         }
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule. The read of the target on Octorate (the PMS rooms of the unit) fails with a 5xx before any create: the booking
+    /// does not stay without a trace. Its row is <c>Failed</c> with <c>octorate_unavailable</c> (visible, and retryable by the host), the
+    /// exception goes up so the outbox delivers the event again, nothing is created, and the delivery that finds Octorate up again creates
+    /// the reservation once.
+    /// </summary>
+    [Fact]
+    public async Task BookingPush_TargetLookupFails_LeavesAFailedRowTheHostCanRetry_Test()
+    {
+        var h = new OctorateSyncHarness();
+        var tenant = new RequestTenant(OctorateSyncHarness.OrgA);
+        var bookingId = await h.SeedBookingAsync(bookingCode: "K7Q2M9X4TB");
+        h.Client
+            .Setup(c => c.GetPmsRoomsAsync(OctorateSyncHarness.Accommodation, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateServerException(503));
+
+        await using (var db = h.NewDb(tenant))
+        {
+            await Assert.ThrowsAsync<OctorateServerException>(() => h.Service(db, tenant).PushCreateAsync(bookingId, CancellationToken.None));
+        }
+
+        var failed = await h.ReadSyncAsync(bookingId);
+        Assert.NotNull(failed);
+        Assert.Equal(OctorateSyncState.Failed, failed.State);
+        Assert.Equal(OctorateSyncErrorCodes.Unavailable, failed.ErrorCode);
+        Assert.Null((await h.ReadBookingAsync(bookingId)).OctorateReservationId);
+        h.Client.Verify(
+            c => c.CreateReservationAsync(It.IsAny<OctorateBookingTarget>(), It.IsAny<OctorateReservationCreate>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        // Octorate answers again: the next delivery creates the reservation, once.
+        h.Client
+            .Setup(c => c.GetPmsRoomsAsync(OctorateSyncHarness.Accommodation, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { new OctoratePmsRoom(OctorateSyncHarness.PmsRoom, OctorateSyncHarness.Room, "Sky 001 Real Room") });
+        h.Client
+            .Setup(c => c.CreateReservationAsync(It.IsAny<OctorateBookingTarget>(), It.IsAny<OctorateReservationCreate>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateReservation
+            {
+                Id = "130219355",
+                Refer = "K7Q2M9X4TB",
+                UpdatedAt = new DateTime(2026, 11, 6, 8, 0, 5, DateTimeKind.Utc),
+            });
+        await using (var db = h.NewDb(tenant))
+        {
+            Assert.Equal(OctorateSyncState.Synced, await h.Service(db, tenant).PushCreateAsync(bookingId, CancellationToken.None));
+        }
+
+        h.Client.Verify(
+            c => c.CreateReservationAsync(It.IsAny<OctorateBookingTarget>(), It.IsAny<OctorateReservationCreate>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+        Assert.Equal("130219355", (await h.ReadBookingAsync(bookingId)).OctorateReservationId);
+        var synced = await h.ReadSyncAsync(bookingId);
+        Assert.NotNull(synced);
+        Assert.Equal(OctorateSyncState.Synced, synced.State);
+        Assert.Null(synced.ErrorCode);
+    }
+
+    /// <summary>
+    /// The read of the target is refused by Octorate (here a 401): the row is <c>Failed</c> with <c>octorate_rejected</c> and the push returns,
+    /// because a delivery again would be refused again; the host asks again once the cause is fixed.
+    /// </summary>
+    [Fact]
+    public async Task BookingPush_TargetLookupRefused_RecordsRejected_AndIsNotDeliveredAgain_Test()
+    {
+        var h = new OctorateSyncHarness();
+        var tenant = new RequestTenant(OctorateSyncHarness.OrgA);
+        var bookingId = await h.SeedBookingAsync();
+        h.Client
+            .Setup(c => c.GetPmsRoomsAsync(OctorateSyncHarness.Accommodation, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(OctorateAuthException.Refused(401));
+
+        await using (var db = h.NewDb(tenant))
+        {
+            Assert.Equal(OctorateSyncState.Failed, await h.Service(db, tenant).PushCreateAsync(bookingId, CancellationToken.None));
+        }
+
+        var failed = await h.ReadSyncAsync(bookingId);
+        Assert.NotNull(failed);
+        Assert.Equal(OctorateSyncState.Failed, failed.State);
+        Assert.Equal(OctorateSyncErrorCodes.Rejected, failed.ErrorCode);
+        h.Client.Verify(
+            c => c.CreateReservationAsync(It.IsAny<OctorateBookingTarget>(), It.IsAny<OctorateReservationCreate>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
     private static Casazen.Core.Entities.OctorateBookingSync FailedSync(Guid orgId, Guid bookingId) => new()
     {
         OrgId = orgId,

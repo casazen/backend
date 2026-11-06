@@ -973,7 +973,9 @@ site) on a property whose mapping is confirmed is created on Octorate once, by `
   Octorate has no idempotency key: an attempt that follows another one looks the reservation up by its `refer` (`CREATETIME` list of the last 30 days)
   before creating, and a create with no answer, 429 or 5xx is looked up at once. Found: success. Dates refused (409, 406): `Conflict`
   `octorate_dates_unavailable`, one urgent To do `BookingOverlap` on the booking, not retried. Another 4xx: `Failed` `octorate_rejected`, not retried. No
-  answer and not found: `Failed` `octorate_unavailable` and the exception propagates (the dispatcher delivers the event again). Success writes
+  answer and not found: `Failed` `octorate_unavailable` and the exception propagates (the dispatcher delivers the event again). The read of the
+  target on Octorate (the rooms of the accommodation) is part of the push: when it fails the row is `Failed` too (`octorate_unavailable` and the
+  exception for no answer, 429 or 5xx; `octorate_rejected` and no exception for another refusal), never a booking with no trace. Success writes
   `OctorateReservationId`, `OctorateUpdatedAt`, `Synced` and `LastSyncedAt` in one save.
 - *Payments* (E08/F01/US01/T04, D9). `PaymentSucceeded` (payload `PaymentEventPayload`: ids, amount, currency, method; dedup key
   `payment-succeeded:{paymentId}`) is recorded with the status change by the payment webhook (a payment that confirms or pays a confirmed
@@ -981,7 +983,8 @@ site) on a property whose mapping is confirmed is created on Octorate once, by `
   booking whose property still has a target on its reservation (`POST /rest/v1/reservation/{acc}/{id}/payment`): `transaction` = the
   PaymentIntent id or `casazen-{paymentId}`, `paymentMode` from `Octorate:PaymentModes` (`Stripe`, `CashOnArrival`, `BankTransfer`), the amount,
   income and never a card charge. Once: `Payment.OctorateTransactionId` (unique per org) and `OctorateRegisteredAt`; the reservation is read first,
-  so a registration whose answer was lost is not sent again. A payment that arrives while the create is `Pending` is delivered again; the create
+  so a registration whose answer was lost is not sent again. The payment of a reservation that exists needs only the accommodation: the rooms
+  (and the PMS rooms) are not read. A payment that arrives while the create is `Pending` is delivered again; the create
   records the payments paid before it succeeded. Nothing for a channel's booking or a booking that is not mirrored; refunds are not mirrored.
 
 | Method | Path | Policy | Description |

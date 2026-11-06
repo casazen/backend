@@ -15,8 +15,9 @@ public interface IBookingOctorateSyncService
     /// stay that is over, a property that is not mirrored): then nothing is written, not even a sync row.
     /// </summary>
     /// <exception cref="Exception">
-    /// Octorate did not answer (or answered 429 or 5xx) and the reservation was not found by its reference: the sync is <c>Failed</c> with
-    /// <c>octorate_unavailable</c> and the exception propagates, so the outbox dispatcher delivers the event again (ADR-022-R4, R5).
+    /// Octorate did not answer (or answered 429 or 5xx) and the reservation was not found by its reference, or the rooms of the target could not
+    /// be read: the sync is <c>Failed</c> with <c>octorate_unavailable</c> and the exception propagates, so the outbox dispatcher delivers the
+    /// event again (ADR-022-R4, R5).
     /// </exception>
     Task<OctorateSyncState?> PushCreateAsync(Guid bookingId, CancellationToken ct);
 

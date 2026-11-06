@@ -17,6 +17,13 @@ public interface IOctorateBookingTargets
 {
     /// <summary>The target of <paramref name="propertyId"/>, or why there is none. A property the caller cannot see is not mirrored.</summary>
     Task<OctorateTargetLookup> LookupAsync(Guid propertyId, CancellationToken ct);
+
+    /// <summary>
+    /// The accommodation of Octorate that <paramref name="propertyId"/> books into, or <c>null</c> when the property is not mirrored (the same
+    /// rules as <see cref="LookupAsync"/> up to the confirmed mapping). It reads CasaZen's database only: it never asks Octorate for the rooms,
+    /// so a writer that needs the accommodation and nothing else (the payments of a reservation that exists) does not depend on those reads.
+    /// </summary>
+    Task<string?> AccommodationOfAsync(Guid propertyId, CancellationToken ct);
 }
 
 /// <summary>Why a property has no target in Octorate (<see cref="IOctorateBookingTargets.LookupAsync"/>).</summary>

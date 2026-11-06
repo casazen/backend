@@ -225,6 +225,43 @@ public class OctorateReservationClientProofTests
         Assert.Null((await db.OctorateListingMappings.AsNoTracking().SingleAsync()).OctorateProductId);
     }
 
+    /// <summary>
+    /// The accommodation of a mirrored property is read from CasaZen's database alone: Octorate is not called (a payment of a reservation that
+    /// exists needs no room), and a property that is not mirrored has none.
+    /// </summary>
+    [Fact]
+    public async Task OctorateBookingTargets_AccommodationOf_AsksNothingToOctorate_Test()
+    {
+        var database = $"octorate-targets-accommodation-{Guid.NewGuid():N}";
+        Guid proposed, confirmed, noRoom;
+        await using (var seed = NewDb(database, null))
+        {
+            var connection = SeedConnection(seed, OrgA, OctorateConnectionStatus.Connected);
+            proposed = SeedProperty(seed, OrgA, "Casa Proposta");
+            confirmed = SeedProperty(seed, OrgA, "Casa Confermata");
+            noRoom = SeedProperty(seed, OrgA, "Casa senza camera scelta");
+            var withoutRoom = NewMapping(OrgA, connection, "1006", OctorateMappingStatus.Confirmed, noRoom);
+            withoutRoom.OctorateProductId = null;
+            seed.OctorateListingMappings.AddRange(
+                NewMapping(OrgA, connection, "1001", OctorateMappingStatus.Proposed, proposed),
+                NewMapping(OrgA, connection, "1004", OctorateMappingStatus.Confirmed, confirmed),
+                withoutRoom);
+            await seed.SaveChangesAsync();
+        }
+
+        var client = new Mock<IOctorateApiClient>(MockBehavior.Strict);
+        await using var db = NewDb(database, new RequestTenant(OrgA));
+        var targets = Targets(db, client.Object, new RequestTenant(OrgA));
+
+        Assert.Equal("1004", await targets.AccommodationOfAsync(confirmed, CancellationToken.None));
+        Assert.Equal("1006", await targets.AccommodationOfAsync(noRoom, CancellationToken.None));
+        Assert.Null(await targets.AccommodationOfAsync(proposed, CancellationToken.None));
+        Assert.Null(await targets.AccommodationOfAsync(Guid.NewGuid(), CancellationToken.None));
+
+        // Neither the rooms nor the PMS rooms were read: the strict client has no call set up.
+        client.VerifyNoOtherCalls();
+    }
+
     private static IEnumerable<string> MemberNames(JsonElement element)
     {
         switch (element.ValueKind)

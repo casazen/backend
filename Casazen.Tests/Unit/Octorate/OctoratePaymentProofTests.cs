@@ -73,6 +73,53 @@ public class OctoratePaymentProofTests
         Assert.NotNull(payments[card].OctorateRegisteredAt);
     }
 
+    /// <summary>
+    /// The payment of a reservation that exists does not depend on the read of the PMS rooms (which only the create needs): Octorate is not asked
+    /// for them, and the payment is recorded even when that read would fail.
+    /// </summary>
+    [Fact]
+    public async Task OctoratePayment_OfASyncedBooking_DoesNotReadThePmsRooms_Test()
+    {
+        var h = new OctorateSyncHarness();
+        var bookingId = await h.SeedBookingAsync();
+        await MirrorAsync(h, bookingId);
+        var cash = await SeedPaymentAsync(h, bookingId, 100m, PaymentMethod.CashOnArrival, stripePaymentIntentId: null);
+        var registered = ServeOctorate(h);
+        h.Client
+            .Setup(c => c.GetPmsRoomsAsync(OctorateSyncHarness.Accommodation, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateServerException(503));
+
+        await DeliverAsync(h, cash);
+
+        Assert.Equal($"casazen-{cash}", Assert.Single(registered).Transaction);
+        h.Client.Verify(c => c.GetPmsRoomsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>Octorate creates the reservation, keeps the payments it is sent and lists their transactions on the single read.</summary>
+    private static List<OctoratePaymentRegistration> ServeOctorate(OctorateSyncHarness h)
+    {
+        var registered = new List<OctoratePaymentRegistration>();
+        h.Client
+            .Setup(c => c.CreateReservationAsync(It.IsAny<OctorateBookingTarget>(), It.IsAny<OctorateReservationCreate>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateReservation
+            {
+                Id = ReservationId,
+                Refer = "K7Q2M9X4TB",
+                UpdatedAt = new DateTime(2026, 11, 6, 8, 0, 5, DateTimeKind.Utc),
+            });
+        h.Client
+            .Setup(c => c.GetReservationAsync(OctorateSyncHarness.Accommodation, ReservationId, It.IsAny<CancellationToken>()))
+            .Returns(() => Task.FromResult(new OctorateReservation { Id = ReservationId, PaymentTransactions = registered.Select(r => r.Transaction).ToList() }));
+        h.Client
+            .Setup(c => c.RegisterPaymentAsync(OctorateSyncHarness.Accommodation, ReservationId, It.IsAny<OctoratePaymentRegistration>(), It.IsAny<CancellationToken>()))
+            .Returns((string _, string _, OctoratePaymentRegistration payment, CancellationToken _) =>
+            {
+                registered.Add(payment);
+                return Task.FromResult(new OctoratePaymentResult("21575084"));
+            });
+        return registered;
+    }
+
     /// <summary>One delivery of <c>PaymentSucceeded</c> in its own scope of the event bus, under org A, with the connector on.</summary>
     private static async Task DeliverAsync(OctorateSyncHarness h, Guid paymentId)
     {

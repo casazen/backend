@@ -30,7 +30,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// <see cref="OctorateSyncErrorCodes.DatesUnavailable"/> and one urgent "To do" on the booking (<see cref="ActivityType.BookingOverlap"/>), not
 /// retried. Another refusal (4xx): <c>Failed</c>, <see cref="OctorateSyncErrorCodes.Rejected"/>, not retried. No answer and not found:
 /// <c>Failed</c>, <see cref="OctorateSyncErrorCodes.Unavailable"/>, and the exception propagates so the outbox dispatcher delivers the event
-/// again.</item>
+/// again. The same holds for the read of the target itself (the rooms of the accommodation are read on Octorate): a failure there leaves a
+/// <c>Failed</c> row too, never a booking with no trace.</item>
 /// <item><b>Success</b>: <see cref="Booking.OctorateReservationId"/>, its <c>updateTime</c>, the state <c>Synced</c> in one save.</item>
 /// <item><b>Logs</b> carry ids, states and codes: never a name, an amount or a body.</item>
 /// </list>
@@ -72,7 +73,24 @@ public sealed class BookingOctorateSyncService(
         }
 
         // Before anything of this unit of work is changed: the lookup may save the only room of the mapping.
-        var lookup = await targets.LookupAsync(booking.PropertyId, ct);
+        OctorateTargetLookup lookup;
+        try
+        {
+            lookup = await targets.LookupAsync(booking.PropertyId, ct);
+        }
+        catch (OctorateException ex)
+        {
+            // The lookup reads the rooms of the accommodation on Octorate. A failed read leaves the booking with a visible row (Failed, a code),
+            // so the host can ask again: with no row it would have no state and no retry, and the event would be dead-lettered after five tries.
+            var retry = ex is OctorateServerException or OctorateRateLimitException;
+            await RecordLookupFailureAsync(
+                booking, ex, retry ? OctorateSyncErrorCodes.Unavailable : OctorateSyncErrorCodes.Rejected, ct);
+            if (retry)
+                throw;
+
+            return OctorateSyncState.Failed;
+        }
+
         if (lookup.Gap == OctorateTargetGap.NotMirrored)
             return null;
 
@@ -161,7 +179,7 @@ public sealed class BookingOctorateSyncService(
             sync.Attempts);
 
         // The payments made before the reservation existed (their event found nothing to record them on): recorded now, under the same lock.
-        await RegisterPaidPaymentsAsync(booking.OrgId, bookingId, target, reservation.Id, ct);
+        await RegisterPaidPaymentsAsync(booking.OrgId, bookingId, target.AccommodationId, reservation.Id, ct);
         return OctorateSyncState.Synced;
     }
 
@@ -200,15 +218,15 @@ public sealed class BookingOctorateSyncService(
         if (state != OctorateSyncState.Synced)
             return;
 
-        // A property no longer mirrored, or write-blocked, records nothing.
-        var lookup = await targets.LookupAsync(booking.PropertyId, ct);
-        if (lookup.Target is not { } target)
+        // A property no longer mirrored, or write-blocked, records nothing. Only the accommodation is needed: the rooms are not read.
+        var accommodation = await targets.AccommodationOfAsync(booking.PropertyId, ct);
+        if (accommodation is null)
             return;
 
         await using var hold = await PostgresAdvisoryLocks.TryAcquireSessionLockAsync(
                 db, PostgresAdvisoryLocks.Scope.OctorateBookingSync, booking.Id.ToString("N"), ct)
             ?? throw new OctorateSyncBusyException(booking.Id);
-        await RegisterPaymentAsync(booking.OrgId, target, booking.OctorateReservationId, paymentId, ct);
+        await RegisterPaymentAsync(booking.OrgId, accommodation, booking.OctorateReservationId, paymentId, ct);
     }
 
     /// <summary>
@@ -217,7 +235,7 @@ public sealed class BookingOctorateSyncService(
     /// payment, unique in the org.
     /// </summary>
     /// <exception cref="InvalidOperationException">The <c>paymentMode</c> of the way the payment was collected is not configured.</exception>
-    private async Task RegisterPaymentAsync(Guid orgId, OctorateBookingTarget target, string reservationId, Guid paymentId, CancellationToken ct)
+    private async Task RegisterPaymentAsync(Guid orgId, string accommodationId, string reservationId, Guid paymentId, CancellationToken ct)
     {
         var payment = await db.Payments.FirstOrDefaultAsync(p => p.Id == paymentId && p.OrgId == orgId, ct);
         if (payment is null || payment.OctorateTransactionId is not null || payment.Status != PaymentStatus.Completed)
@@ -235,11 +253,11 @@ public sealed class BookingOctorateSyncService(
 
         using (orgScope.Use(orgId))
         {
-            var reservation = await client.GetReservationAsync(target.AccommodationId, reservationId, ct);
+            var reservation = await client.GetReservationAsync(accommodationId, reservationId, ct);
             if (!reservation.PaymentTransactions.Contains(transaction, StringComparer.Ordinal))
             {
                 await client.RegisterPaymentAsync(
-                    target.AccommodationId,
+                    accommodationId,
                     reservationId,
                     new OctoratePaymentRegistration(transaction, mode, payment.Amount, payment.ProcessedAt ?? payment.UpdatedAt),
                     ct);
@@ -257,7 +275,7 @@ public sealed class BookingOctorateSyncService(
     private async Task RegisterPaidPaymentsAsync(
         Guid orgId,
         Guid bookingId,
-        OctorateBookingTarget target,
+        string accommodationId,
         string reservationId,
         CancellationToken ct)
     {
@@ -273,7 +291,7 @@ public sealed class BookingOctorateSyncService(
         {
             try
             {
-                await RegisterPaymentAsync(orgId, target, reservationId, paymentId, ct);
+                await RegisterPaymentAsync(orgId, accommodationId, reservationId, paymentId, ct);
             }
             catch (Exception ex) when (ex is OctorateException or InvalidOperationException or DbUpdateException)
             {
@@ -433,6 +451,35 @@ public sealed class BookingOctorateSyncService(
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Octorate push of booking {BookingId}: {State} ({Code})", booking.Id, state, errorCode);
         return state;
+    }
+
+    /// <summary>
+    /// Records the failed read of the target as a failed push: the booking gets its row (<c>Failed</c> and a stable code) under the lock, so the
+    /// host sees it and can ask again. A reservation another delivery made meanwhile is left alone.
+    /// </summary>
+    private async Task RecordLookupFailureAsync(BookingFacts booking, OctorateException error, string errorCode, CancellationToken ct)
+    {
+        logger.LogWarning(
+            "Octorate push of booking {BookingId}: the target could not be read from Octorate ({Code}, HTTP {Status}); recorded as {ErrorCode}",
+            booking.Id,
+            error.Code,
+            error.OctorateStatusCode,
+            errorCode);
+
+        await using var hold = await PostgresAdvisoryLocks.TryAcquireSessionLockAsync(
+                db, PostgresAdvisoryLocks.Scope.OctorateBookingSync, booking.Id.ToString("N"), ct)
+            ?? throw new OctorateSyncBusyException(booking.Id);
+
+        var reservationId = await db.Bookings
+            .AsNoTracking()
+            .Where(b => b.Id == booking.Id)
+            .Select(b => b.OctorateReservationId)
+            .FirstOrDefaultAsync(ct);
+        if (reservationId is not null)
+            return;
+
+        var sync = await db.OctorateBookingSyncs.FirstOrDefaultAsync(s => s.BookingId == booking.Id && s.OrgId == booking.OrgId, ct);
+        await RecordAsync(booking, sync, OctorateSyncState.Failed, errorCode, ct);
     }
 
     private async Task RecordFailureAsync(OctorateBookingSync sync, string errorCode, CancellationToken ct)
