@@ -19,20 +19,27 @@ public interface IAccessCodeService
 
     /// <summary>
     /// Gets the access code for a booking (permission and verification required).
-    /// Logs the access and BLOCKS if verification not passed.
+    /// Logs the access and BLOCKS if verification not passed. <b>The verification gate</b> (shared with <see cref="ReleaseToGuestAsync"/>):
+    /// the latest <c>BiometricVerificationLog</c> of the booking is an <c>Accept</c>, of the agent or of an operator's approval; a review, a
+    /// failed attempt, an operator's rejection or no row at all release nothing (AC-NF50-4, AC-NF24-4). <b>The booking must be one the caller
+    /// reaches</b> (<paramref name="scope"/>, AM-03): a collaborator «Solo alcuni» reads the code of the properties it was given only, and a
+    /// booking of another property or org is as absent as one that does not exist.
     /// </summary>
     /// <param name="bookingId">Booking to get code for</param>
     /// <param name="userId">User requesting the code</param>
+    /// <param name="scope">What the caller reaches on host data</param>
     /// <param name="ct">Cancellation token</param>
-    /// <returns>Plain text code, or null if not set or verification failed</returns>
-    Task<string?> GetAccessCodeAsync(Guid bookingId, string userId, CancellationToken ct = default);
+    /// <returns>Plain text code, or null if not set, out of scope or verification failed</returns>
+    Task<string?> GetAccessCodeAsync(Guid bookingId, string userId, HostScope scope, CancellationToken ct = default);
 
     /// <summary>
     /// Releases the access code to a guest (verification required, logged).
-    /// Used by guest-facing endpoints after verification passes.
+    /// Used by guest-facing endpoints after verification passes. Same gate as <see cref="GetAccessCodeAsync"/>; the release log records the
+    /// channel and the time, never the code. Since E03/F04/US02 the stay must be active and not over (<c>AlloggiatiStatusRules.IsDue</c>, not
+    /// checked out): a cancelled stay, a request, a hold or a no-show get no code.
     /// </summary>
     /// <param name="bookingId">Booking to release code for</param>
-    /// <param name="channel">How the code is released ("screen", "email")</param>
+    /// <param name="channel">How the code is released, one of <see cref="AccessCodeReleaseChannels"/>; another value is an <see cref="ArgumentException"/></param>
     /// <param name="ct">Cancellation token</param>
     /// <returns>Plain text code, or null if verification not passed</returns>
     Task<string?> ReleaseToGuestAsync(Guid bookingId, string channel, CancellationToken ct = default);
@@ -52,6 +59,28 @@ public interface IAccessCodeService
     /// <param name="pageSize">The page size wanted, brought within 1 and <see cref="AccessCodeStatusPage.MaxPageSize"/>.</param>
     /// <param name="ct">Cancellation token</param>
     Task<AccessCodeStatusPage> GetStatusAsync(HostScope scope, int page, int pageSize, CancellationToken ct = default);
+}
+
+/// <summary>
+/// The channels a lock code is released through (<see cref="IAccessCodeService.ReleaseToGuestAsync"/>): what the release log records, never the
+/// code (AC-NF13-4). E03/F04/US02.
+/// </summary>
+public static class AccessCodeReleaseChannels
+{
+    /// <summary>Shown to the guest on the check-in page, in the answer of a passed selfie (E03/F04/US02/T04).</summary>
+    public const string CheckInScreen = "checkin-screen";
+
+    /// <summary>E-mailed to the guest (template <c>GuestAccessCode</c>).</summary>
+    public const string Email = "email";
+
+    /// <summary>Released by the approval of an operator from the verification queue (E03/F04/US02/T03).</summary>
+    public const string Operator = "operator";
+
+    /// <summary>A screen of a guest-facing page (the channel of before E03/F04/US02).</summary>
+    public const string Screen = "screen";
+
+    /// <summary>Every channel; any other value is refused.</summary>
+    public static IReadOnlyList<string> All { get; } = [CheckInScreen, Email, Operator, Screen];
 }
 
 /// <summary>A page of the lock code status of the properties of the host (NF-50).</summary>

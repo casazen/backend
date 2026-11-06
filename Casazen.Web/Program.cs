@@ -150,6 +150,14 @@ builder.Services.AddCasazenOctorate(builder.Configuration);
 // the reconciliation jobs and the retention of the copy, all registered in AddMessageSync.
 builder.Services.AddMessageSync();
 
+// The hub of messages (epic E05, feature F02, NF-61, NF-64): one list and one thread model over the conversations of the channels and the direct
+// ones, and the proxy of the attachments, all registered in AddMessagesHub (the next tasks of the feature add theirs there).
+builder.Services.AddMessagesHub();
+
+// Who is told what and how (epic E05, feature F03, NF-65): the notification preferences of the host users with their single decision point, and the alerts
+// of the new messages of the guests that already use it, all registered in AddNotificationPreferences.
+builder.Services.AddNotificationPreferences();
+
 // Marketplace (epic E09, NF-54 to NF-59): the catalog of channels, tools, license functions and partners; every task of the epic registers in AddCasazenMarketplace.
 builder.Services.AddCasazenMarketplace(builder.Configuration);
 

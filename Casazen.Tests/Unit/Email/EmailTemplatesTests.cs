@@ -765,6 +765,24 @@ public class EmailTemplatesTests
     }
 
     [Fact]
+    public void GuestAccessCode_ItalianAndEnglish_ShowTheHtmlEncodedCodeInTheSameLayoutBlock()
+    {
+        // The code has no words, so it is a block of the layout and not a text of the resources: the resources test above refuses a text that
+        // is the same in Italian and English. The markup is the same in both languages and the value is encoded like every other one.
+        const string block = "<p><strong style=\"font-size:22px;letter-spacing:2px;\">7391</strong></p>";
+        var italian = EmailTemplates.GuestAccessCode(EmailTemplates.DefaultCulture, "Anna", "Villa Rosa", CheckIn, "7391");
+        var english = EmailTemplates.GuestAccessCode(CultureInfo.GetCultureInfo("en"), "Anna", "Villa Rosa", CheckIn, "7391");
+        var hostile = EmailTemplates.GuestAccessCode(EmailTemplates.DefaultCulture, "Anna", "Villa Rosa", CheckIn, Payload);
+
+        Assert.Contains(block, italian.HtmlBody);
+        Assert.Contains(block, english.HtmlBody);
+        Assert.Contains("Gentile Anna,", italian.HtmlBody);
+        Assert.Contains("Dear Anna,", english.HtmlBody);
+        Assert.Contains($"<strong style=\"font-size:22px;letter-spacing:2px;\">{EncodedPayload}</strong>", hostile.HtmlBody);
+        Assert.DoesNotContain("<a href", hostile.HtmlBody);
+    }
+
+    [Fact]
     public void GuestPaymentRefundedDatesUnavailable_Italian_ExplainsWhyAndGivesTheFullAmount()
     {
         var content = EmailTemplates.GuestPaymentRefundedDatesUnavailable(

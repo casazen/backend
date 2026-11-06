@@ -17,6 +17,7 @@ namespace Casazen.Infrastructure.Jobs;
 public class AlloggiatiReceiptJob(
     AppDbContext db,
     AlloggiatiWebClient client,
+    Casazen.Core.Services.IFileStorage storage,
     ILogger<AlloggiatiReceiptJob> logger,
     TimeProvider timeProvider)
 {
@@ -139,13 +140,14 @@ public class AlloggiatiReceiptJob(
     }
 
     /// <summary>
-    /// Delete document images for a booking after receipt received (ADR-013 integration).
-    /// Sets DeletedAt timestamp; images remain in storage but are marked as deleted.
+    /// Delete the document images of a booking after the receipt arrived (ADR-013-R7): the encrypted object in the private storage <b>and</b> the
+    /// row (<see cref="DocumentImageCleaner"/>), also the rows an identity verification already deleted from the storage and marked (E03/F04/US02/T04).
+    /// The objects go before the rows are saved, so a failure of the storage leaves the rows for the next run. Internal so a test proves it.
     /// </summary>
-    private async Task DeleteDocumentImagesAsync(Guid bookingId, CancellationToken ct)
+    internal async Task DeleteDocumentImagesAsync(Guid bookingId, CancellationToken ct)
     {
         var images = await db.DocumentImages
-            .Where(i => i.BookingId == bookingId && i.DeletedAt == null)
+            .Where(i => i.BookingId == bookingId)
             .ToListAsync(ct);
 
         if (images.Count == 0)
@@ -159,11 +161,7 @@ public class AlloggiatiReceiptJob(
             images.Count,
             bookingId);
 
-        foreach (var image in images)
-        {
-            image.DeletedAt = DateTime.UtcNow;
-        }
-
+        await DocumentImageCleaner.DeleteAsync(db, storage, logger, images, ct);
         await db.SaveChangesAsync(ct);
     }
 

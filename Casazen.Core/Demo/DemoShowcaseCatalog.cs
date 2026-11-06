@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.9";
+    public const string Version = "2026-11-06.15";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -77,6 +77,12 @@ public static class DemoShowcaseCatalog
         public const string CheckInBiometricPassed = "checkin-biometric-passed";
         public const string CheckInOperatorVerified = "checkin-operator-verified";
         public const string CheckInRejected = "checkin-rejected";
+
+        /// <summary>
+        /// E03/F04/US02/T04: a stay whose identity verification passed online, by the agent, before the arrival: the consent recorded with its
+        /// version, only the head of group verified, the lock code released on the check-in page and by e-mail. Test data, no real person.
+        /// </summary>
+        public const string CheckInIdentityVerified = "checkin-identity-verified";
         public const string AlloggiatiSentReceiptPending = "alloggiati-sent-receipt-pending";
         public const string AlloggiatiRegistered = "alloggiati-registered";
         public const string StatementPublished = "statement-published";
@@ -98,6 +104,13 @@ public static class DemoShowcaseCatalog
         public const string MarketplaceActivationDeclared = "marketplace-activation-declared";
         public const string TouristTaxPerGuest = "tourist-tax-per-guest";
         public const string TouristTaxChannelCollected = "tourist-tax-channel-collected";
+
+        /// <summary>
+        /// The hub of messages (E05/F02/US01/T01, NF-61, NF-64): the conversations of the guests in one list. Three invented conversations, all saying
+        /// TEST: one with the guest of a direct stay waiting for an answer, one of Airbnb about a booking, and a request of Booking.com with no booking
+        /// yet. They are rows of the hub only: nothing is read from, or sent to, a channel manager.
+        /// </summary>
+        public const string MessageHub = "message-hub";
 
         // NF-40, NF-45 (E03/F01/US01/T04): the host wizard "Guest check-in" in the four states of a stay, and a stay with data to complete.
         public const string CheckInWizardExpected = "checkin-wizard-expected";
@@ -181,6 +194,7 @@ public static class DemoShowcaseCatalog
         Scenario.CheckInBiometricPassed,
         Scenario.CheckInOperatorVerified,
         Scenario.CheckInRejected,
+        Scenario.CheckInIdentityVerified,
         Scenario.AlloggiatiSentReceiptPending,
         Scenario.AlloggiatiRegistered,
         Scenario.StatementPublished,
@@ -202,6 +216,7 @@ public static class DemoShowcaseCatalog
         Scenario.MarketplaceActivationDeclared,
         Scenario.TouristTaxPerGuest,
         Scenario.TouristTaxChannelCollected,
+        Scenario.MessageHub,
         Scenario.CheckInWizardExpected,
         Scenario.CheckInWizardArrived,
         Scenario.CheckInWizardDeparted,
@@ -973,6 +988,22 @@ public static class DemoShowcaseCatalog
         new("biometric-passed", "attico-firenze", "airbnb-ical", "Completed", BiometricOutcome.Accept, true, false, Scenario.CheckInBiometricPassed),
         new("operator-verified", "villa-amalfi", "booking-com-ical", "Completed", BiometricOutcome.Escalate, true, true, Scenario.CheckInOperatorVerified),
         new("rejected", "loft-torino", "rejected-guest", "Rejected", BiometricOutcome.Reject, false, false, Scenario.CheckInRejected),
+
+        // E03/F04/US02/T04: the online flow passed by the agent for the head of group of the expected stay (the member skips the step); the
+        // lock code went to the check-in page and to the guest's e-mail. The consent version is a test value.
+        new(
+            "identity-verified",
+            "casa-trastevere",
+            "checkin-atteso",
+            "Completed",
+            BiometricOutcome.Accept,
+            true,
+            false,
+            Scenario.CheckInIdentityVerified,
+            Method: VerificationMethod.Biometric,
+            ConsentVersion: "TEST-biometric-consent-v1",
+            LockCodeChannels: [Services.AccessCodeReleaseChannels.CheckInScreen, Services.AccessCodeReleaseChannels.Email],
+            VerifiedGuestPosition: 0),
     ];
 
     /// <summary>
@@ -1123,6 +1154,53 @@ public static class DemoShowcaseCatalog
     public static IReadOnlyList<DemoMarketplaceActivationTemplate> MarketplaceActivations { get; } =
     [
         new("attivazione-dichiarata", "partner-di-prova", -3, Scenario.MarketplaceActivationDeclared),
+    ];
+
+    /// <summary>
+    /// The conversations of the hub of messages (E05/F02/US01/T01, NF-61, NF-64), written for the org at reset next to the stays they are about:
+    /// the guest of a direct stay of the villa who asks to arrive early and has had no answer (a conversation to answer, one message unread); a guest
+    /// of Airbnb about the stay at Casa Borgo di Prova, who got an answer and wrote again (a conversation of a channel, linked to its booking); and a
+    /// request of Booking.com for the villa, with no booking yet. Everything in them is invented and says TEST; the conversations of the channels are
+    /// rows of the copy that the sync would write (<c>OtaMessageThread</c>, <c>OtaMessage</c>), with no connection to a channel manager behind them.
+    /// Marked as showcase data (<c>TestDataEntities.OtaMessageThread</c>, <c>GuestThread</c>), deleted by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoMessageThreadTemplate> MessageThreads { get; } =
+    [
+        new(
+            "diretta-arrivo-anticipato",
+            DemoMessageThreadKind.Direct,
+            "villa-lago",
+            "tassa-per-ospite",
+            null,
+            null,
+            [
+                new(true, 190, "Buongiorno (TEST): possiamo arrivare un’ora prima del check-in? Grazie."),
+            ],
+            Scenario.MessageHub),
+        new(
+            "airbnb-prenotazione",
+            DemoMessageThreadKind.OtaReservation,
+            "casa-borgo-prova",
+            "canale-riscuote",
+            OtaChannel.Airbnb,
+            "Jonas B. (TEST)",
+            [
+                new(true, 2900, "Hello (TEST)! Is there a parking space near the house?", Read: true),
+                new(false, 2800, "Hello Jonas (TEST), yes: there is free parking right in front of the house."),
+                new(true, 75, "Perfect, thank you (TEST)! What time can we check in?"),
+            ],
+            Scenario.MessageHub),
+        new(
+            "booking-richiesta",
+            DemoMessageThreadKind.OtaRequest,
+            "villa-lago",
+            null,
+            OtaChannel.Booking,
+            "Marta R. (TEST)",
+            [
+                new(true, 1500, "Buonasera (TEST): la villa è libera dal 3 al 10 agosto? Siamo in quattro."),
+            ],
+            Scenario.MessageHub),
     ];
 
     /// <summary>
@@ -1537,7 +1615,11 @@ public sealed record DemoCheckInTemplate(
     BiometricOutcome? BiometricOutcome,
     bool HasConsent,
     bool OperatorVerified,
-    string Scenario);
+    string Scenario,
+    VerificationMethod Method = VerificationMethod.Biometric,
+    string? ConsentVersion = null,
+    IReadOnlyList<string>? LockCodeChannels = null,
+    int VerifiedGuestPosition = 0);
 
 /// <summary>An alloggiati report demo: demonstrates report states including SentReceiptPending with fake receipt.</summary>
 public sealed record DemoAlloggiatiTemplate(
@@ -1600,6 +1682,44 @@ public sealed record DemoRoutineTemplate(
     RoutineActionType ActionType,
     bool IsTestMode,
     string Scenario);
+
+/// <summary>Which of the two sources of the hub of messages a demo conversation is kept in, and what it is about.</summary>
+public enum DemoMessageThreadKind
+{
+    /// <summary>The conversation with the guest of a direct stay (<c>GuestThread</c>).</summary>
+    Direct = 0,
+
+    /// <summary>A conversation of a channel about a booking (<c>OtaMessageThread</c> of kind Reservation, linked to the booking).</summary>
+    OtaReservation = 1,
+
+    /// <summary>A conversation of a channel with no booking yet (<c>OtaMessageThread</c> of kind Request).</summary>
+    OtaRequest = 2,
+}
+
+/// <summary>
+/// A conversation of the hub of messages (E05/F02/US01/T01, NF-61, NF-64): invented like the rest of the demo, written for the org at reset next
+/// to the stay it is about and marked as showcase data (<c>TestDataEntities.OtaMessageThread</c> or <c>GuestThread</c>), so the next reset deletes it.
+/// </summary>
+/// <param name="Key">Stable key of the conversation inside the template.</param>
+/// <param name="Kind">Where it is kept and what it is about.</param>
+/// <param name="PropertyKey">The demo property (<see cref="DemoPropertyTemplate.Key"/>) it belongs to.</param>
+/// <param name="BookingKey">The demo stay (<see cref="DemoBookingTemplate.Key"/>) of that property it is about; <c>null</c> for a request.</param>
+/// <param name="Channel">The channel of a conversation of a channel; <c>null</c> for a direct one.</param>
+/// <param name="GuestName">The name the channel gives for the guest of a conversation of a channel (it says TEST); <c>null</c> for a direct one, which takes the guest of the stay.</param>
+/// <param name="Messages">The messages, in the order they were written.</param>
+/// <param name="Scenario">The scenario it exercises.</param>
+public sealed record DemoMessageThreadTemplate(
+    string Key,
+    DemoMessageThreadKind Kind,
+    string PropertyKey,
+    string? BookingKey,
+    OtaChannel? Channel,
+    string? GuestName,
+    IReadOnlyList<DemoMessageTemplate> Messages,
+    string Scenario);
+
+/// <summary>A message of a demo conversation: who wrote it, how long before the reset, what it says (it says TEST) and whether the host read it.</summary>
+public sealed record DemoMessageTemplate(bool FromGuest, int MinutesAgo, string Text, bool Read = false);
 
 /// <summary>
 /// A popup alert of the demo host (NF-08, ADR-025): invented like the rest of the demo, written for the owner of the org at reset and

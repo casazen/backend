@@ -5,6 +5,8 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -37,9 +39,18 @@ public class OrgEmptinessCheckerTests
     public void OnboardingRows_AreExactlyWhatTheOnboardingLeavesAndAllTenantOwned()
     {
         // A new entry here is a decision, not a convenience: it makes an org with that table filled still "empty". The wizard drafts
-        // are one (ADR-024): a half-filled form is not use of the org, and its rows are anonymized but never deleted.
+        // are one (ADR-024): a half-filled form is not use of the org, and its rows are anonymized but never deleted. So are the notification
+        // settings of a person (NF-65): the channels of each kind of event, its quiet hours and the slots of the email rule.
         Assert.Equal(
-            [typeof(ConsentRecord), typeof(OrgSlugAlias), typeof(SignupAttribution), typeof(WizardDraft)],
+            [
+                typeof(ConsentRecord),
+                typeof(NotificationEmailSlot),
+                typeof(OrgSlugAlias),
+                typeof(SignupAttribution),
+                typeof(UserNotificationChannelSetting),
+                typeof(UserNotificationPreferences),
+                typeof(WizardDraft),
+            ],
             OrgEmptinessChecker.OnboardingRows.OrderBy(t => t.Name, StringComparer.Ordinal));
         Assert.All(OrgEmptinessChecker.OnboardingRows, t => Assert.True(typeof(ITenantOwned).IsAssignableFrom(t), t.Name));
     }
@@ -185,6 +196,43 @@ public class OrgEmptinessCheckerTests
         db.WizardDrafts.Add(new WizardDraft { OrgId = orgId, UserId = string.Empty, WizardType = WizardType.BookingCreate, Version = 3 });
         await db.SaveChangesAsync();
 
+        var result = await new OrgEmptinessChecker(db).CheckAsync(orgId, OwnerId);
+
+        Assert.True(result.IsEmpty);
+        Assert.Empty(result.Blockers);
+    }
+
+    [Fact]
+    public async Task CheckAsync_SavedNotificationPreferences_DoNotMakeTheOrgInUse()
+    {
+        // NF-65: a person saves how it wants to be alerted (channels and quiet hours, PUT api/me/notification-preferences) in the org it has,
+        // and may still accept an invitation: the rows are never deleted, so if they counted the acceptance would be refused for good
+        // with 409 invitation_user_has_organization (AM-02). The slot of the email rule is the same kind of row.
+        await using var db = NewDb();
+        var orgId = await SeedEmptyOrgAsync(db);
+        var preferences = new NotificationPreferenceService(
+            db,
+            Mock.Of<IContextAuthorizationService>(),
+            TimeProvider.System,
+            NullLogger<NotificationPreferenceService>.Instance);
+
+        await preferences.SaveAsync(
+            OwnerId,
+            new NotificationPreferencesUpdate(
+                new QuietHoursUpdate(new TimeOnly(23, 0), new TimeOnly(7, 0)),
+                [new NotificationEventUpdate(NotificationEventType.NewGuestMessage, NotificationChannels.Email | NotificationChannels.CounterOnly)]),
+            CancellationToken.None);
+        db.NotificationEmailSlots.Add(new NotificationEmailSlot
+        {
+            OrgId = orgId,
+            UserId = OwnerId,
+            ThreadKey = $"ota:{Guid.NewGuid():D}",
+            LastEmailAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        Assert.Equal(1, await db.UserNotificationChannelSettings.CountAsync());
+        Assert.Equal(1, await db.UserNotificationPreferences.CountAsync());
         var result = await new OrgEmptinessChecker(db).CheckAsync(orgId, OwnerId);
 
         Assert.True(result.IsEmpty);

@@ -62,6 +62,31 @@ public class GuestCheckInSession : ITenantOwned
     public BiometricOutcome? BiometricOutcome { get; set; }
 
     /// <summary>
+    /// When the guest gave the biometric consent (ADR-013-R9: separate from the privacy notice, never mandatory, refusable); null while it was
+    /// not given or after it was refused. No selfie is processed without it (E03/F04/US02/T01, AC-NF50-7).
+    /// </summary>
+    public DateTime? BiometricConsentAt { get; set; }
+
+    /// <summary>The version of the consent text the guest accepted (<see cref="BiometricConsentAt"/>); at most 50 characters.</summary>
+    public string? BiometricConsentVersion { get; set; }
+
+    /// <summary>When the guest refused the biometric consent: the identity is then verified by an operator (ADR-013-R9).</summary>
+    public DateTime? BiometricConsentRefusedAt { get; set; }
+
+    /// <summary>
+    /// When the verification was handed to an operator: the guest asked for one, refused the consent, the automatic verification asked for a
+    /// review, used its attempts, failed for a technical reason, or was not offered (GDPR art. 22, AC-NF51-11). Null otherwise.
+    /// </summary>
+    public DateTime? OperatorRequestedAt { get; set; }
+
+    /// <summary>
+    /// The checks of the identity document the guest uploaded (E03/F04/US02/T04), as JSON: whether its MRZ was read, its check digits, its expiry,
+    /// whether the MRZ agrees with the check-in data field by field, whether its holder is a minor and the SHA-256 of the picture (to recognise it
+    /// when it is sent again with the selfie). Flags and a hash only: never a value read on the document. Null before the first upload.
+    /// </summary>
+    public string? DocumentCheckJson { get; set; }
+
+    /// <summary>
     /// The language the guest chose on the check-in page (two letters, one of <c>GuestLanguages.Supported</c>); null until the guest
     /// chooses. The emails of the session use it (NF-40).
     /// </summary>

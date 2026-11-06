@@ -26,16 +26,37 @@ public enum PushAudienceKind
 
     /// <summary>Active users of the supplier org (linked by <c>User.SupplierOrgId</c> or <c>User.OrgId</c>).</summary>
     SupplierOrg = 3,
+
+    /// <summary>
+    /// The users who decide the identity verification of the booking's guest (E03/F04/US02/T03): they hold <c>verification.decision</c> and
+    /// reach the booking's property. The id is the booking. An explicit value, never renumbered.
+    /// </summary>
+    VerificationOperators = 10,
+
+    /// <summary>
+    /// <b>One user</b> of a host org (E05/F03, NF-65): the person the preferences of notifications selected for an event. <see cref="PushAudience.Id"/>
+    /// is the org and <see cref="PushAudience.UserId"/> the user. Unlike the other audiences it does not write the in-app notification of the
+    /// push: the counter of the bell is a channel of its own, which the caller delivers when the user chose it. An explicit value, never renumbered.
+    /// </summary>
+    User = 11,
 }
 
-/// <summary>Recipients of a push: <see cref="Kind"/> and the id of the booking, property or supplier org.</summary>
-public sealed record PushAudience(PushAudienceKind Kind, Guid Id)
+/// <summary>
+/// Recipients of a push: <see cref="Kind"/> and the id of the booking, property or supplier org; for <see cref="PushAudienceKind.User"/> the id of
+/// the org and, in <see cref="UserId"/>, the user.
+/// </summary>
+public sealed record PushAudience(PushAudienceKind Kind, Guid Id, string? UserId = null)
 {
+    /// <summary>The devices of one user of a host org (NF-65): the user is one of the recipients <c>INotificationPreferenceService</c> selected.</summary>
+    public static PushAudience User(Guid orgId, string userId) => new(PushAudienceKind.User, orgId, userId);
+
     public static PushAudience BookingHosts(Guid bookingId) => new(PushAudienceKind.BookingHosts, bookingId);
 
     public static PushAudience PropertyHosts(Guid propertyId) => new(PushAudienceKind.PropertyHosts, propertyId);
 
     public static PushAudience SupplierOrg(Guid supplierOrgId) => new(PushAudienceKind.SupplierOrg, supplierOrgId);
+
+    public static PushAudience VerificationOperators(Guid bookingId) => new(PushAudienceKind.VerificationOperators, bookingId);
 }
 
 /// <summary>
@@ -124,6 +145,19 @@ public static class PushDeliveryKeys
     public static string GuestMessage(Guid messageId) => $"booking-message:{messageId:N}";
 
     /// <summary>
+    /// A message of a guest on a channel (E05/F03, NF-65), to one host user: one per message and user, so a re-delivered event is one push and
+    /// one notification. The key is also the delivery key of the in-app notification. A user id too long for the 200 characters of a key is
+    /// replaced by its SHA-256, so the key is stable and never refused.
+    /// </summary>
+    public static string OtaMessage(Guid messageId, string userId)
+    {
+        var key = $"ota-msg:{messageId:N}:{userId}";
+        return key.Length <= 200
+            ? key
+            : $"ota-msg:{messageId:N}:{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(userId)))}";
+    }
+
+    /// <summary>
     /// The guest completed the online check-in, to the hosts of the booking: one per completed session, stable across retries
     /// (a link issued again and completed again is another event).
     /// </summary>
@@ -151,6 +185,12 @@ public static class PushDeliveryKeys
     /// attempts. One per booking, stable across retries.
     /// </summary>
     public static string VerificationRequired(Guid bookingId) => $"verification-required:{bookingId:N}";
+
+    /// <summary>
+    /// The identity of a guest went to the operators (E03/F04/US02/T03) for <paramref name="reasonCode"/>: one per check-in session and reason, so
+    /// a repeated request of the guest is one push, and a new link of the same booking is another event.
+    /// </summary>
+    public static string VerificationOperatorAlert(Guid sessionId, string reasonCode) => $"verification-operator:{sessionId:N}:{reasonCode}";
 }
 
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
@@ -225,6 +265,12 @@ public static class PushTypes
 
     /// <summary>The guest of a direct booking wrote a message: pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its thread.</summary>
     public const string GuestMessage = "guest-message";
+
+    /// <summary>
+    /// A guest wrote in a conversation of a channel (E05/F03, NF-65): pushed to the one user the preferences selected and written to the bell;
+    /// <c>entityId</c> is the thread, the route <c>/messages/{threadKey}</c>. Neither the text nor the name of the guest is ever in it.
+    /// </summary>
+    public const string OtaMessage = "ota-message";
 
     /// <summary>The guest completed the online check-in (US-020): pushed to the hosts of the booking; <c>entityId</c> is the booking, the route its detail.</summary>
     public const string GuestCheckInCompleted = "guest-checkin-completed";

@@ -624,6 +624,15 @@
   <data name="Push_GuestMessage_Body" xml:space="preserve">
     <value>{0}: un ospite ti ha scritto.</value>
   </data>
+  <data name="Push_OtaMessage_Title" xml:space="preserve">
+    <value>Nuovo messaggio da un ospite</value>
+  </data>
+  <data name="Push_OtaMessage_Body" xml:space="preserve">
+    <value>{0}: un ospite ti ha scritto su {1}.</value>
+  </data>
+  <data name="Push_OtaMessageUnassigned_Body" xml:space="preserve">
+    <value>Un ospite ti ha scritto su {0}.</value>
+  </data>
   <data name="Push_GuestCheckInCompleted_Title" xml:space="preserve">
     <value>Check-in online completato</value>
   </data>
@@ -1710,6 +1719,27 @@
   <data name="HostReplyToGuest_Why" xml:space="preserve">
     <value>Ricevi questa email perché l'host ti ha risposto. Ne inviamo al massimo una ogni 10 minuti per conversazione.</value>
   </data>
+  <data name="HostMessageReceived_Subject" xml:space="preserve">
+    <value>Nuovo messaggio da un ospite - {0}</value>
+  </data>
+  <data name="HostMessageReceived_Body" xml:space="preserve">
+    <value>&lt;strong&gt;Un ospite&lt;/strong&gt; ti ha scritto su &lt;strong&gt;{0}&lt;/strong&gt; per &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostMessageReceived_BodyUnassigned" xml:space="preserve">
+    <value>&lt;strong&gt;Un ospite&lt;/strong&gt; ti ha scritto su &lt;strong&gt;{0}&lt;/strong&gt;. La conversazione non è ancora collegata a un alloggio.</value>
+  </data>
+  <data name="HostMessageReceived_How" xml:space="preserve">
+    <value>Per leggerlo e rispondere apri la conversazione in CasaZen. Per proteggere i dati dell'ospite, il testo del messaggio non è in questa email.</value>
+  </data>
+  <data name="HostMessageReceived_Cta" xml:space="preserve">
+    <value>Leggi e rispondi</value>
+  </data>
+  <data name="HostMessageReceived_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="HostMessageReceived_Why" xml:space="preserve">
+    <value>Ricevi questa email perché hai scelto di essere avvisato dei nuovi messaggi degli ospiti. Per non riempirti la posta, ne inviamo al massimo una ogni 10 minuti per conversazione. Puoi cambiare la scelta nelle preferenze di notifica del tuo profilo.</value>
+  </data>
   <data name="HostContact_Subject" xml:space="preserve">
     <value>Nuovo messaggio dal tuo sito di prenotazione</value>
   </data>
@@ -1772,6 +1802,63 @@
   </data>
   <data name="VerificationRequiredPush_Body" xml:space="preserve">
     <value>La prenotazione di {0} a {1} richiede verifica manuale.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Subject" xml:space="preserve">
+    <value>Verifica dell'identità da decidere — {0}</value>
+  </data>
+  <data name="VerificationOperatorAlert_Body" xml:space="preserve">
+    <value>Un ospite in arrivo a &lt;strong&gt;{0}&lt;/strong&gt; il {1} attende la verifica dell'identità da parte di un operatore.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_Review" xml:space="preserve">
+    <value>La verifica automatica chiede una revisione: la somiglianza è tra le due soglie, i dati del documento non corrispondono a quelli del check-in oppure il documento non è leggibile.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_AttemptsExhausted" xml:space="preserve">
+    <value>L'ospite ha usato tutti i tentativi della verifica automatica senza superarla.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_ConsentRefused" xml:space="preserve">
+    <value>L'ospite ha rifiutato il consenso alla verifica biometrica.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_TechnicalError" xml:space="preserve">
+    <value>La verifica automatica non è stata possibile per un problema tecnico.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_GuestRequest" xml:space="preserve">
+    <value>L'ospite ha chiesto la verifica da parte di una persona.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_BiometricsDisabled" xml:space="preserve">
+    <value>La verifica biometrica non è attiva per la tua organizzazione: l'identità va verificata da un operatore.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_MinorExcluded" xml:space="preserve">
+    <value>L'ospite da verificare è minorenne: la verifica biometrica non si applica.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_Other" xml:space="preserve">
+    <value>La verifica dell'identità richiede un operatore.</value>
+  </data>
+  <data name="VerificationOperatorAlert_ReasonCode" xml:space="preserve">
+    <value>Codice del motivo: {0}</value>
+  </data>
+  <data name="VerificationOperatorAlert_Action" xml:space="preserve">
+    <value>Apri la prenotazione in CasaZen: trovi i motivi tecnici della verifica e puoi approvarla o rifiutarla. Il codice di accesso arriva all'ospite solo dopo la tua approvazione.</value>
+  </data>
+  <data name="VerificationOperatorAlertPush_Title" xml:space="preserve">
+    <value>Verifica dell'identità da decidere</value>
+  </data>
+  <data name="VerificationOperatorAlertPush_Body" xml:space="preserve">
+    <value>Un ospite di {0} attende la verifica dell'identità.</value>
+  </data>
+  <data name="TodoReason_IdentityVerification" xml:space="preserve">
+    <value>La verifica dell'identità dell'ospite attende la decisione di un operatore</value>
+  </data>
+  <data name="GuestAccessCode_Subject" xml:space="preserve">
+    <value>Il codice di accesso per il tuo soggiorno — {0}</value>
+  </data>
+  <data name="GuestAccessCode_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="GuestAccessCode_Body" xml:space="preserve">
+    <value>la verifica della tua identità è completata. Ecco il codice di accesso di &lt;strong&gt;{0}&lt;/strong&gt; per il tuo arrivo del &lt;strong&gt;{1}&lt;/strong&gt;:</value>
+  </data>
+  <data name="GuestAccessCode_Keep" xml:space="preserve">
+    <value>Non inoltrare questa e-mail a nessuno: il codice apre l'alloggio.</value>
   </data>
   <data name="SupplierInquiryVerification_Subject" xml:space="preserve">
     <value>Conferma la tua richiesta a {0}</value>

@@ -71,8 +71,9 @@ public class AddOrgMembershipMigrationSqlTests
                 $"INSERT INTO \"Roles\" (\"Id\", \"ContextKey\", \"RoleKey\") VALUES ({role.Id}, '{role.ContextKey}', '{role.RoleKey}');",
                 script);
             // The finer permissions (servicerequest.write, guest.manage, alloggiati.submit) were added to these roles by
-            // AddPropertyMemberAccess (AM-03), a later migration: this one seeds the roles as AM-01 defined them.
-            foreach (var permission in role.Permissions.Except(HostPermissions.ShortRentFine))
+            // AddPropertyMemberAccess (AM-03), and verification.decision by AddIdentityVerificationFields (E03/F04/US02/T01), later
+            // migrations: this one seeds the roles as AM-01 defined them.
+            foreach (var permission in role.Permissions.Except(HostPermissions.ShortRentFine).Except([HostPermissions.VerificationDecision]))
             {
                 Assert.Contains(
                     $"INSERT INTO \"RolePermissions\" (\"PermissionKey\", \"RoleId\") VALUES ('{permission}', {role.Id});",

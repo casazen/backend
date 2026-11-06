@@ -268,6 +268,10 @@ public class AppDbContext(
     public DbSet<PopupAlert> PopupAlerts { get; set; } = null!;
     public DbSet<UserNotificationPreferences> UserNotificationPreferences { get; set; } = null!;
 
+    // What each user chose for each kind of event, and the slot of the one-email-every-ten-minutes rule (E05/F03, NF-65)
+    public DbSet<UserNotificationChannelSetting> UserNotificationChannelSettings { get; set; } = null!;
+    public DbSet<NotificationEmailSlot> NotificationEmailSlots { get; set; } = null!;
+
     // Approval queue for items requiring human decision before taking effect (NF-06)
     public DbSet<ApprovalQueueItem> ApprovalQueueItems { get; set; } = null!;
 
@@ -1568,6 +1572,8 @@ public class AppDbContext(
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ServiceRequestWrite },
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestManage },
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.AlloggiatiSubmit },
+            // E03/F04/US02/T01: the owner decides the identity verifications of its guests (AddIdentityVerificationFields).
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.VerificationDecision },
             new RolePermission { RoleId = 2, PermissionKey = "property.read" },
             new RolePermission { RoleId = 2, PermissionKey = "property.write" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.read" },
@@ -1599,6 +1605,16 @@ public class AppDbContext(
         // Guest check-in session (US-020 / #296)
         modelBuilder.ApplyConfiguration(new GuestCheckInSessionConfiguration());
 
+        // E03/F04/US02/T01: who decided a verification and why. The rows written before the columns are the agent's (Biometric = 1) with no
+        // reasons; the sentinel makes EF always write the value of the entity, so a new row is never left to the default by mistake.
+        modelBuilder.Entity<BiometricVerificationLog>()
+            .Property(l => l.Method)
+            .HasDefaultValue(VerificationMethod.Biometric)
+            .HasSentinel((VerificationMethod)(-1));
+        modelBuilder.Entity<BiometricVerificationLog>()
+            .Property(l => l.ReasonsJson)
+            .HasDefaultValueSql("'[]'::jsonb");
+
         modelBuilder.ApplyConfiguration(new TerritorialRentAgreementConfiguration());
 
         modelBuilder.Entity<HighTensionAreaComune>()
@@ -1620,6 +1636,11 @@ public class AppDbContext(
         // Both go with the user and with the org (ON DELETE CASCADE); the preferences are unique per (org, user).
         modelBuilder.ApplyConfiguration(new PopupAlertConfiguration());
         modelBuilder.ApplyConfiguration(new UserNotificationPreferencesConfiguration());
+
+        // ─── What each user chose for each kind of event, and the email slot of a conversation (E05/F03, NF-65) ──────
+        // Both go with the user and with the org (ON DELETE CASCADE); unique per (org, user, event type) and per (org, user, conversation).
+        modelBuilder.ApplyConfiguration(new UserNotificationChannelSettingConfiguration());
+        modelBuilder.ApplyConfiguration(new NotificationEmailSlotConfiguration());
 
         // ─── Verified reviews (DB-12a) ──────────────────────────────────────────
         // A review goes with its booking and its property (a property is soft-deleted, so in practice it stays for good): the host has no

@@ -62,6 +62,21 @@ public class InAppNotificationPushDecoratorTests
         new(title, body, type, bookingId, PushRoutes.Booking(BookingId), serviceRequestId);
 
     [Fact]
+    public void Enqueue_AUserAudience_ForwardsThePushAndQueuesNoNotification()
+    {
+        // NF-65: the counter of the bell is a channel the user may have switched off; whoever pushes to one user writes its notification itself.
+        var rig = new Rig();
+        var payload = Payload(type: PushTypes.OtaMessage, bookingId: null);
+        var audience = PushAudience.User(Guid.NewGuid(), "auth0|host");
+
+        var answer = rig.Decorator.Enqueue("ota-msg:x:auth0|host", audience, payload);
+
+        Assert.True(answer);
+        rig.Inner.Verify(i => i.Enqueue("ota-msg:x:auth0|host", audience, payload), Times.Once);
+        Assert.Empty(rig.Jobs);
+    }
+
+    [Fact]
     public void Enqueue_ForwardsThePushAndQueuesTheNotificationWithTheSameKeyAndAudience()
     {
         var rig = new Rig();

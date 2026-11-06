@@ -55,6 +55,14 @@ public static class HostScopeQueryExtensions
     public static IQueryable<GuestThread> InScope(this IQueryable<GuestThread> source, HostScope scope) =>
         source.InScope(scope, thread => thread.Property);
 
+    /// <summary>
+    /// The conversations of the channels of the scope (those of a property it reaches, E05/F02/US01/T01, ADR-032-R6). A conversation whose listing has
+    /// no confirmed mapping has no property (<c>PropertyId</c> null, OCT-04): it is outside every restricted scope, and inside the org-wide one only,
+    /// so a collaborator «Solo alcuni» never sees it and it is never shown under a property it was not mapped to.
+    /// </summary>
+    public static IQueryable<OtaMessageThread> InScope(this IQueryable<OtaMessageThread> source, HostScope scope) =>
+        source.InScope(scope, thread => thread.Property);
+
     /// <summary>The internal activities of the scope (those on properties it reaches, NF-22).</summary>
     public static IQueryable<InternalActivity> InScope(this IQueryable<InternalActivity> source, HostScope scope) =>
         source.InScope(scope, activity => activity.Property);

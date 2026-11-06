@@ -624,6 +624,15 @@
   <data name="Push_GuestMessage_Body" xml:space="preserve">
     <value>{0}: a guest wrote to you.</value>
   </data>
+  <data name="Push_OtaMessage_Title" xml:space="preserve">
+    <value>New message from a guest</value>
+  </data>
+  <data name="Push_OtaMessage_Body" xml:space="preserve">
+    <value>{0}: a guest wrote to you on {1}.</value>
+  </data>
+  <data name="Push_OtaMessageUnassigned_Body" xml:space="preserve">
+    <value>A guest wrote to you on {0}.</value>
+  </data>
   <data name="Push_GuestCheckInCompleted_Title" xml:space="preserve">
     <value>Online check-in completed</value>
   </data>
@@ -1710,6 +1719,27 @@
   <data name="HostReplyToGuest_Why" xml:space="preserve">
     <value>You receive this email because the host replied to you. We send at most one every 10 minutes per conversation.</value>
   </data>
+  <data name="HostMessageReceived_Subject" xml:space="preserve">
+    <value>New message from a guest - {0}</value>
+  </data>
+  <data name="HostMessageReceived_Body" xml:space="preserve">
+    <value>&lt;strong&gt;A guest&lt;/strong&gt; wrote to you on &lt;strong&gt;{0}&lt;/strong&gt; about &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostMessageReceived_BodyUnassigned" xml:space="preserve">
+    <value>&lt;strong&gt;A guest&lt;/strong&gt; wrote to you on &lt;strong&gt;{0}&lt;/strong&gt;. The conversation is not linked to a property yet.</value>
+  </data>
+  <data name="HostMessageReceived_How" xml:space="preserve">
+    <value>To read it and reply, open the conversation in CasaZen. To protect the guest's data, the text of the message is not in this email.</value>
+  </data>
+  <data name="HostMessageReceived_Cta" xml:space="preserve">
+    <value>Read and reply</value>
+  </data>
+  <data name="HostMessageReceived_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy this link into your browser:</value>
+  </data>
+  <data name="HostMessageReceived_Why" xml:space="preserve">
+    <value>You receive this email because you chose to be told about new messages from guests. So as not to fill your inbox, we send at most one every 10 minutes per conversation. You can change your choice in the notification preferences of your profile.</value>
+  </data>
   <data name="HostContact_Subject" xml:space="preserve">
     <value>New message from your booking site</value>
   </data>
@@ -1772,6 +1802,63 @@
   </data>
   <data name="VerificationRequiredPush_Body" xml:space="preserve">
     <value>The booking of {0} at {1} requires manual verification.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Subject" xml:space="preserve">
+    <value>Identity verification to decide — {0}</value>
+  </data>
+  <data name="VerificationOperatorAlert_Body" xml:space="preserve">
+    <value>A guest arriving at &lt;strong&gt;{0}&lt;/strong&gt; on {1} is waiting for an operator to verify their identity.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_Review" xml:space="preserve">
+    <value>The automatic verification asks for a review: the similarity is between the two thresholds, the data of the document do not match the check-in data, or the document cannot be read.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_AttemptsExhausted" xml:space="preserve">
+    <value>The guest used every attempt of the automatic verification without passing it.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_ConsentRefused" xml:space="preserve">
+    <value>The guest refused the consent to the biometric verification.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_TechnicalError" xml:space="preserve">
+    <value>The automatic verification could not run because of a technical problem.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_GuestRequest" xml:space="preserve">
+    <value>The guest asked to be verified by a person.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_BiometricsDisabled" xml:space="preserve">
+    <value>The biometric verification is not active for your organization: an operator has to verify the identity.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_MinorExcluded" xml:space="preserve">
+    <value>The guest to verify is a minor: the biometric verification does not apply.</value>
+  </data>
+  <data name="VerificationOperatorAlert_Reason_Other" xml:space="preserve">
+    <value>The identity verification needs an operator.</value>
+  </data>
+  <data name="VerificationOperatorAlert_ReasonCode" xml:space="preserve">
+    <value>Reason code: {0}</value>
+  </data>
+  <data name="VerificationOperatorAlert_Action" xml:space="preserve">
+    <value>Open the booking in CasaZen: you will find the technical reasons of the verification and can approve or reject it. The access code reaches the guest only after your approval.</value>
+  </data>
+  <data name="VerificationOperatorAlertPush_Title" xml:space="preserve">
+    <value>Identity verification to decide</value>
+  </data>
+  <data name="VerificationOperatorAlertPush_Body" xml:space="preserve">
+    <value>A guest of {0} is waiting for identity verification.</value>
+  </data>
+  <data name="TodoReason_IdentityVerification" xml:space="preserve">
+    <value>The identity verification of the guest waits for an operator's decision</value>
+  </data>
+  <data name="GuestAccessCode_Subject" xml:space="preserve">
+    <value>The access code for your stay — {0}</value>
+  </data>
+  <data name="GuestAccessCode_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="GuestAccessCode_Body" xml:space="preserve">
+    <value>your identity verification is complete. Here is the access code of &lt;strong&gt;{0}&lt;/strong&gt; for your arrival on &lt;strong&gt;{1}&lt;/strong&gt;:</value>
+  </data>
+  <data name="GuestAccessCode_Keep" xml:space="preserve">
+    <value>Do not forward this e-mail to anyone: the code opens the property.</value>
   </data>
   <data name="SupplierInquiryVerification_Subject" xml:space="preserve">
     <value>Confirm your request to {0}</value>

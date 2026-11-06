@@ -206,6 +206,38 @@ public class ComplianceActivityFeederTests
     }
 
     [Fact]
+    public async Task Feed_TheIdentityTodoHasTheTypeOfTheOperatorsAlert_SoABookingHasOneOpenItemWhicheverRaisesItFirst()
+    {
+        var world = await FeedWorld.SeedAsync();
+        var raisedByAlert = Guid.NewGuid();
+        var raisedByFeed = Guid.NewGuid();
+        await using var db = world.Db();
+        var activities = new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, world.Clock);
+
+        // The alert to the operators (VerificationOperatorAlerts) came first for one booking: the feed finds it and raises nothing more for it.
+        var alert = await activities.CreateAsync(
+            Todo(world.Property, ActivityType.IdentityVerification, ActivityAction.VerifyIdentity, raisedByAlert), CancellationToken.None);
+        var status = Result(
+            [
+                Stay(world.Property, raisedByAlert, ComplianceCockpitAction.VerifyIdentity, Red(ComplianceReasonCodes.OperatorDecisionRequired), kind: ComplianceItemKind.Identity),
+                Stay(world.Property, raisedByFeed, ComplianceCockpitAction.VerifyIdentity, Yellow(ComplianceReasonCodes.SelfieAwaited), kind: ComplianceItemKind.Identity),
+            ],
+            identity: [raisedByAlert, raisedByFeed]);
+        await world.Feeder(db).FeedAsync(world.Scope, status, CancellationToken.None);
+
+        var todos = await db.InternalActivities.AsNoTracking().Where(a => a.Action == ActivityAction.VerifyIdentity).ToListAsync();
+        Assert.Equal(2, todos.Count);
+        Assert.Equal(alert, Assert.Single(todos, t => t.EntityId == raisedByAlert).Id);
+        Assert.All(todos, t => Assert.Equal(nameof(ActivityType.IdentityVerification), t.ActivityType));
+
+        // The feed came first for the other booking: the alert, when it comes, finds the item of the feed instead of raising another.
+        var second = await activities.CreateAsync(
+            Todo(world.Property, ActivityType.IdentityVerification, ActivityAction.VerifyIdentity, raisedByFeed), CancellationToken.None);
+        Assert.Equal(Assert.Single(todos, t => t.EntityId == raisedByFeed).Id, second);
+        Assert.Equal(2, await db.InternalActivities.CountAsync(a => a.Action == ActivityAction.VerifyIdentity));
+    }
+
+    [Fact]
     public void FedActions_AndTheOnesLeftToTheirOwnProducers_AreEveryActionOfTheCockpit()
     {
         var fed = ComplianceActivityFeeder.FedActions;

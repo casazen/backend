@@ -86,6 +86,13 @@ public enum ActivityType
     ListingChangedOutside = 30,
 
     /// <summary>
+    /// The identity of the guest of a stay waits for an operator (E03/F04/US02/T03, CHK-11): the agent asked for a review, the attempts are used,
+    /// the guest refused the biometric consent or asked for a person, or the check could not run. About the booking, urgent, leading to its
+    /// verification (<see cref="ActivityAction.VerifyIdentity"/>); closed by the operator's decision.
+    /// </summary>
+    IdentityVerification = 40,
+
+    /// <summary>
     /// The tourist tax of a closed month is not declared and paid with its receipts archived (E03/F02/US01/T03, NF-52). About the property and the
     /// month (the entity type names the month, <c>PropertyPeriod:yyyy-MM</c>); closes when both receipts are archived. The numbers 50 and 51 keep
     /// clear of the values the tasks that run in parallel append after 30.

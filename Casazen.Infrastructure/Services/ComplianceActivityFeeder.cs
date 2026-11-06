@@ -52,7 +52,9 @@ public sealed class ComplianceActivityFeeder(
 
     /// <summary>
     /// The cockpit actions that feed the To do list and what each becomes. The Alloggiati ones share the action of the page of the proofs
-    /// except the one the host sends by hand; the type of the receipt to upload is the one the alert stages use.
+    /// except the one the host sends by hand; the type of the receipt to upload is the one the alert stages use. The identity item has the
+    /// type of the operators' alert (<see cref="ActivityType.IdentityVerification"/>, <c>VerificationOperatorAlerts</c>): the unique index of the
+    /// open items then keeps ONE To do for the verification of a booking whichever of the two raises it first.
     /// </summary>
     private static readonly IReadOnlyDictionary<ComplianceCockpitAction, Mapping> Fed = new Dictionary<ComplianceCockpitAction, Mapping>
     {
@@ -60,7 +62,7 @@ public sealed class ComplianceActivityFeeder(
         [ComplianceCockpitAction.ResolveAlloggiatiFailure] = new(ActivityType.AlloggiatiDeadline, ActivityAction.UploadAlloggiatiProof, Level.Booking),
         [ComplianceCockpitAction.UploadAlloggiatiReceipt] = new(ActivityType.ReceiptToRetrieve, ActivityAction.UploadAlloggiatiProof, Level.Booking),
         [ComplianceCockpitAction.SendAlloggiatiManually] = new(ActivityType.AlloggiatiDeadline, ActivityAction.SendAlloggiatiManually, Level.Booking),
-        [ComplianceCockpitAction.VerifyIdentity] = new(ActivityType.CheckInPending, ActivityAction.VerifyIdentity, Level.Booking),
+        [ComplianceCockpitAction.VerifyIdentity] = new(ActivityType.IdentityVerification, ActivityAction.VerifyIdentity, Level.Booking),
         [ComplianceCockpitAction.ActivateOctorateSend] = new(ActivityType.ReconnectChannelManager, ActivityAction.ActivateOctorateSend, Level.Property),
         [ComplianceCockpitAction.RenewPoliceCredentials] = new(ActivityType.CredentialsToRenew, ActivityAction.RenewPoliceCredentials, Level.Property),
         [ComplianceCockpitAction.EnterMunicipalityTaxRate] = new(ActivityType.MunicipalityTaxRateMissing, ActivityAction.EnterMunicipalityTaxRate, Level.Property),
