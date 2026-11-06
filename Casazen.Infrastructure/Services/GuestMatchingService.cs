@@ -71,21 +71,7 @@ public class GuestMatchingService(
 
         // 1. The profile the guest already has; a merged one is followed to the profile that took its place.
         if (guest.GuestCrmProfileId is { } linkedId && await SurvivorAsync(orgId, linkedId, cancellationToken) is { } kept)
-        {
-            var changed = false;
-            if (guest.GuestCrmProfileId != kept.Id)
-            {
-                guest.GuestCrmProfileId = kept.Id;
-                changed = true;
-            }
-
-            changed |= FillEmpty(kept, guest, keys);
-            if (changed)
-                await db.SaveChangesAsync(cancellationToken);
-
-            await ProposeSameEmailAsync(kept, keys, cancellationToken);
-            return kept;
-        }
+            return await KeepProfileAsync(guest, kept, keys, cancellationToken);
 
         // 2. The profile of the e-mail contact with the same keyed hash, else the profile with the same name and birth date.
         var byEmail = keys.EmailKey is null ? null : await ProfileOfEmailAsync(orgId, keys.EmailKey, cancellationToken);
@@ -111,33 +97,11 @@ public class GuestMatchingService(
             return found;
         }
 
-        // 3. None: a profile of its own, and a question for a person about the ones that may be the same guest.
-        var now = Now();
-        var profile = new GuestCrmProfile
-        {
-            OrgId = orgId,
-            CompositeKeyHash = ComputeCompositeKeyHash(guest.Email, guest.FirstName, guest.LastName, guest.DateOfBirth),
-            ConfirmedMarketingEmail = string.Empty,
-            MarketingConsentEmail = false,
-            MarketingConsentWhatsApp = false,
-            Language = string.Empty,
-            Country = Truncate(guest.Country, CountryMaxLength),
-            TotalStays = 0,
-            TotalSpend = 0m,
-            PropertyIdsJson = "[]",
-            TagsJson = "[]",
-            FirstStayAt = now,
-            LastStayAt = now,
-            CreatedAt = now,
-            UpdatedAt = now,
-            PhoneKeyHash = keys.PhoneKey,
-            NameBirthKeyHash = keys.NameBirthKey,
-            PrimaryGuestId = guest.Id,
-        };
-        db.GuestCrmProfiles.Add(profile);
-        guest.GuestCrmProfileId = profile.Id;
-        await db.SaveChangesAsync(cancellationToken);
-        logger.LogDebug("Created CRM profile {ProfileId} of org {OrgId} for guest {GuestId}", profile.Id, orgId, guest.Id);
+        // 3. None: a profile of its own, and a question for a person about the ones that may be the same guest. The profile is made under the
+        // lock of the guest (the event handler and the job can both be here for it): if the other sync made it first, its profile is the guest's.
+        var (profile, created) = await CreateProfileOnceAsync(guest, keys, cancellationToken);
+        if (!created)
+            return await KeepProfileAsync(guest, profile, keys, cancellationToken);
 
         await ProposeForNewProfileAsync(profile, guest, keys, cancellationToken);
         return profile;
@@ -359,6 +323,84 @@ public class GuestMatchingService(
     // ---- profiles -----------------------------------------------------------------------------------------------------------------
 
     private IQueryable<GuestCrmProfile> Profiles(Guid orgId) => db.GuestCrmProfiles.Where(p => p.OrgId == orgId);
+
+    /// <summary>
+    /// A guest that has a living profile (<paramref name="kept"/>, a merged one already followed to its survivor): links the guest to it when it
+    /// is not yet, fills what the profile has not got, saves what changed, and asks whether the address of the guest is held by a contact of
+    /// another profile.
+    /// </summary>
+    private async Task<GuestCrmProfile> KeepProfileAsync(Guest guest, GuestCrmProfile kept, MatchKeys keys, CancellationToken cancellationToken)
+    {
+        var changed = false;
+        if (guest.GuestCrmProfileId != kept.Id)
+        {
+            guest.GuestCrmProfileId = kept.Id;
+            changed = true;
+        }
+
+        changed |= FillEmpty(kept, guest, keys);
+        if (changed)
+            await db.SaveChangesAsync(cancellationToken);
+
+        await ProposeSameEmailAsync(kept, keys, cancellationToken);
+        return kept;
+    }
+
+    /// <summary>
+    /// Makes the profile of a guest that has none and links the guest to it, under the advisory lock of the guest. The event handler and the job
+    /// can sync the same guest at the same moment, and without the lock each makes a profile and the second update of the link leaves the first
+    /// one with no guest. Inside the lock the link of the guest is read again: a living profile there is the one the other sync made, and
+    /// nothing is created (<c>Created</c> is false). The lock goes with the transaction as soon as the profile is saved, so the questions that
+    /// follow run outside it.
+    /// </summary>
+    private async Task<(GuestCrmProfile Profile, bool Created)> CreateProfileOnceAsync(
+        Guest guest,
+        MatchKeys keys,
+        CancellationToken cancellationToken)
+    {
+        var orgId = guest.OrgId;
+        await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+            db, cancellationToken, (PostgresAdvisoryLocks.Scope.CrmGuestProfile, guest.Id.ToString("N")));
+
+        var linkedId = await db.Guests
+            .AsNoTracking()
+            .Where(g => g.OrgId == orgId && g.Id == guest.Id)
+            .Select(g => g.GuestCrmProfileId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (linkedId is { } id && await SurvivorAsync(orgId, id, cancellationToken) is { } made)
+            return (made, false);
+
+        var now = Now();
+        var profile = new GuestCrmProfile
+        {
+            OrgId = orgId,
+            CompositeKeyHash = ComputeCompositeKeyHash(guest.Email, guest.FirstName, guest.LastName, guest.DateOfBirth),
+            ConfirmedMarketingEmail = string.Empty,
+            MarketingConsentEmail = false,
+            MarketingConsentWhatsApp = false,
+            Language = string.Empty,
+            Country = Truncate(guest.Country, CountryMaxLength),
+            TotalStays = 0,
+            TotalSpend = 0m,
+            PropertyIdsJson = "[]",
+            TagsJson = "[]",
+            FirstStayAt = now,
+            LastStayAt = now,
+            CreatedAt = now,
+            UpdatedAt = now,
+            PhoneKeyHash = keys.PhoneKey,
+            NameBirthKeyHash = keys.NameBirthKey,
+            PrimaryGuestId = guest.Id,
+        };
+        db.GuestCrmProfiles.Add(profile);
+        guest.GuestCrmProfileId = profile.Id;
+        await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+            await transaction.CommitAsync(cancellationToken);
+
+        logger.LogDebug("Created CRM profile {ProfileId} of org {OrgId} for guest {GuestId}", profile.Id, orgId, guest.Id);
+        return (profile, true);
+    }
 
     /// <summary>
     /// The profile that is alive at the end of the merges that started at <paramref name="profileId"/> (a merged profile is a tombstone that

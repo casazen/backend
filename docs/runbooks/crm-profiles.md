@@ -205,6 +205,11 @@ empty. `SyncGuestAsync(orgId, guestId)` is the same for a guest in hand (the bac
 
 - **Running it twice changes nothing**, so a retry or an event delivered again never duplicates a profile or a contact. If a run stops half way, what it
   saved stays (each step saves its own changes) and the next run finishes it.
+- **One profile for one guest.** The event handler and the job can reach the same guest, with no profile yet, at the same moment. The profile is made
+  and the guest linked to it under a PostgreSQL advisory lock of the guest (`PostgresAdvisoryLocks.Scope.CrmGuestProfile`, held only while the profile
+  is saved); the second sync reads the link of the guest again inside the lock and uses the profile of the first, so no profile is left with no guest.
+  Two **different** guest records of one person (the same address) synced at the same moment can still make a profile each: the next sync of either
+  finds the contact of the other and proposes the pair (`same_email`, 100, § 2.3), and a person decides.
 - **A booking that fails** is logged with its ids, the kind of error and the SQLSTATE (never the message, which can carry a value) and skipped; the next
   run retries it. A failing booking never stops the job or the event.
 - **The job reads across the orgs** with `IgnoreQueryFilters([TenantQueryFilter])` (ids only), then syncs each booking or guest in a scope of its own under

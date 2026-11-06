@@ -111,6 +111,47 @@ public class GuestMatchingProofTests
     }
 
     /// <summary>
+    /// Data rule: two syncs of one guest make one profile. The event handler and the job can sync the same guest at the same moment; the one that
+    /// comes second must find, once the first has written, that the guest is linked, and use that profile, instead of making another one that
+    /// the second update of the link would leave with no guest. Here both syncs read the guest before either writes (neither sees a link); the
+    /// second ends with the profile of the first, the guest linked to it, and one profile in the org.
+    /// </summary>
+    [Fact]
+    public async Task GuestMatching_TwoSyncsOfOneGuest_MakeOneProfile_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var clock = CrmTestWorld.Clock();
+        var orgId = Guid.NewGuid();
+        Guid guestId;
+        await using (var seed = CrmTestWorld.Open(store))
+        {
+            var booker = CrmTestWorld.AddGuest(seed, orgId, "Elisa", "Fontana", "elisa.fontana@example.com");
+            CrmTestWorld.AddBooking(seed, booker, Guid.NewGuid(), BookingStatus.Confirmed, BookingSource.Direct, 15, 2, 260m);
+            await seed.SaveChangesAsync(Ct);
+            guestId = booker.Id;
+        }
+
+        // Each sync has a context of its own, as in the job and in the event bus, and has read the guest while it had no link.
+        await using var firstDb = CrmTestWorld.Open(store);
+        await using var secondDb = CrmTestWorld.Open(store);
+        var first = await firstDb.Guests.SingleAsync(g => g.Id == guestId, Ct);
+        var second = await secondDb.Guests.SingleAsync(g => g.Id == guestId, Ct);
+        Assert.Null(first.GuestCrmProfileId);
+        Assert.Null(second.GuestCrmProfileId);
+
+        var madeByFirst = await CrmTestWorld.Matching(firstDb, clock).FindOrCreateProfileAsync(first, Ct);
+        var madeBySecond = await CrmTestWorld.Matching(secondDb, clock).FindOrCreateProfileAsync(second, Ct);
+
+        Assert.Equal(madeByFirst.Id, madeBySecond.Id);
+        Assert.Equal(madeByFirst.Id, second.GuestCrmProfileId);
+        await using var verify = CrmTestWorld.Open(store);
+        var profile = Assert.Single(await verify.GuestCrmProfiles.AsNoTracking().ToListAsync(Ct));
+        Assert.Equal(madeByFirst.Id, profile.Id);
+        Assert.Equal(profile.Id, (await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == guestId, Ct)).GuestCrmProfileId);
+        Assert.Empty(await verify.GuestMergeCandidates.AsNoTracking().ToListAsync(Ct));
+    }
+
+    /// <summary>
     /// Privacy rule: a forward address of an online travel agency cannot join two guests. Two different people whose bookings come from two
     /// channels with the same forward address, a direct booking that brings an address already stored as a forward, two direct bookings with the
     /// same address on a relay domain of the list, and two bookings of a portal with no value of its own (<c>OtherChannel</c>, an OTA for the code)
