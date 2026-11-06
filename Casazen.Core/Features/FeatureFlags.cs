@@ -132,6 +132,15 @@ public static class FeatureFlags
     /// </summary>
     public const string CheckInIdentityVerification = "CheckInIdentityVerification";
 
+    /// <summary>
+    /// E02/F01/US02/T01 (ADR-023): the Octorate connector, <b>off by default</b> until the sandbox is validated. Off, every endpoint of
+    /// the connector answers 404 before authentication: the connection and the consent (<c>api/octorate/connection</c>,
+    /// <c>api/octorate/connect/*</c>), the mapping of the listings (<c>api/octorate/properties</c>, <c>api/octorate/mapping/*</c>) and
+    /// the webhook (<c>api/webhooks/octorate/{secret}</c>). On, outside Development and Testing, the <c>Octorate</c> options of the consent
+    /// are required at startup (<c>OctorateOptionsValidator</c>). This task owns the flag: the other Octorate tasks only read it.
+    /// </summary>
+    public const string OctorateConnector = "OctorateConnector";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -147,5 +156,6 @@ public static class FeatureFlags
         ConcordatoFacile,
         SupplierRequestBackups,
         CheckInIdentityVerification,
+        OctorateConnector,
     ];
 }

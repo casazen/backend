@@ -99,6 +99,13 @@ public static class EncryptedColumns
     public const string WizardDraftPiiPurpose = "Casazen.WizardDraft.PII";
 
     /// <summary>
+    /// Purpose of the OAuth tokens of the connection of an organization to Octorate (ADR-023-R1): the access and the refresh token of
+    /// <see cref="OctorateConnection"/>. Their own purpose: a payload of another column never reads as a token. Never change it: the
+    /// stored refresh tokens, which Octorate gives once, would become unreadable and every host would have to connect again.
+    /// </summary>
+    public const string OctorateOAuthPurpose = "Casazen.Octorate.OAuth";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -195,6 +202,11 @@ public static class EncryptedColumns
         new EncryptedEntity<WizardDraft>(
             WizardDraftPiiPurpose,
             nameof(WizardDraft.EncryptedFieldsJson)),
+        // ADR-023-R1: the OAuth tokens of the Octorate connection of an organization (E02/F01/US01/T01).
+        new EncryptedEntity<OctorateConnection>(
+            OctorateOAuthPurpose,
+            nameof(OctorateConnection.EncryptedAccessToken),
+            nameof(OctorateConnection.EncryptedRefreshToken)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

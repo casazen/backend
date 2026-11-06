@@ -852,6 +852,27 @@ collaborator, who has no `payment.read`, is still refused.
 | `PUT` | `/api/properties/{propertyId}/ota-integrations/{id}` | Update integration |
 | `DELETE` | `/api/properties/{propertyId}/ota-integrations/{id}` | Delete integration |
 
+#### Octorate connector (epic E02, ADR-023)
+
+Every endpoint is behind `Features:OctorateConnector` (404 while off, before authentication). Policies: ADR-023-R10 names a
+`ManageIntegrations` policy that does not exist; the connector uses the short-rent context policies `CasazenPolicies.OtaRead`
+(`ota.read`) to read and `CasazenPolicies.OtaWrite` (`ota.write`) to change, and no second policy is added. Errors of Octorate are
+answered with their own code (`octorate_not_connected` 409, `octorate_auth_failed` 502, `octorate_unavailable` 502,
+`octorate_wrong_environment` 409, `octorate_rate_limited` 429, ...). No token, code or state is ever returned or logged.
+
+| Method | Path | Policy | Description |
+|---|---|---|---|
+| `GET` | `/api/octorate/connection` | `OtaRead` | Where the org's connection stands: `status` (Connected, Disconnected, Error), `environment` (Test = sandbox, Production), `accountId`, `lastSyncedAt`, and while connected the quota Octorate reports (`quotaLimit`, `quotaRemaining`, `quotaWarning` at a tenth or less) |
+| `POST` | `/api/octorate/connect/start` | `OtaWrite`, whole-org scope | The Octorate consent address with `client_id`, `redirect_uri` (`Octorate:RedirectUri`) and a new single-use `state` bound to org, user and callback, valid `Octorate:StateLifetimeMinutes` (10); only its SHA-256 is stored. 403 `octorate_connection_needs_whole_org` for a collaborator limited to some properties |
+| `POST` | `/api/octorate/connect/complete` | `OtaWrite`, whole-org scope | Body `{ code, state }` of the callback: consumes the state (400 `octorate_state_invalid`, the same answer for a reused, expired or foreign state), exchanges the code server to server (502 `octorate_exchange_failed`), stores the tokens encrypted, checks the environment of the credentials (409 `octorate_wrong_environment`, the connection stays disconnected) and answers `{ status, environment, propertyCount }` |
+| `DELETE` | `/api/octorate/connection` | `OtaWrite`, whole-org scope | Disconnects the org (204): no call is made for it until it connects again; the access token is forgotten, the refresh token (given by Octorate only once) stays encrypted and unused for the reconnection; mappings and imported data are kept |
+| `GET` | `/api/octorate/properties` | `OtaRead` | The listings found on the channel manager with their mapping (E02/F01/US02/T04): accommodation id, name, address, city, guests, `status` (Proposed, Confirmed, Ambiguous, Rejected), `score`, `proposedProperty`, `candidates`, `channels` (channel code, id of the listing on it, state), `rooms`, `octorateProductId`, `offeredForImport`. Limited to the org and the caller's reach: a collaborator «Solo alcuni» sees only the listings of the properties it reaches |
+| `POST` | `/api/octorate/properties/refresh` | `OtaWrite` | Reads the listings on Octorate again and proposes a property for each (matcher on address, coordinates, name, postal code, city, guests; thresholds `Octorate:Mapping`); confirmed and rejected rows are not touched; an ambiguous row raises a "To do". 409 `octorate_not_connected` when the org is not connected |
+| `PUT` | `/api/octorate/mapping/{octorateAccommodationId}` | `OtaWrite` + row check `PropertyOperations.Write` (of the new property and of the listing's own; whole-org scope for a listing with no property) | Body `{ propertyId, octorateProductId? }`: confirms the listing to a property of the org the caller reaches (404 `octorate_property_not_found` otherwise, also for another org's; 404 `octorate_mapping_not_found` when the caller does not reach the property the listing is proposed or confirmed to), not confirmed to another listing (409 `octorate_mapping_property_taken`); a listing already confirmed to another property is not moved, reject it first (409 `octorate_mapping_linked_to_other_property`); reads the channel identifiers and the rooms (the only room is set, 422 `octorate_room_invalid` for a room of another listing). Nothing is written to Octorate for a property until it is confirmed |
+| `PUT` | `/api/octorate/mapping/{octorateAccommodationId}/room` | `OtaWrite` + row check | Body `{ octorateProductId }`: the Octorate room of a confirmed listing with several rooms (422 `octorate_room_invalid`, `octorate_mapping_not_confirmed`) |
+| `DELETE` | `/api/octorate/mapping/{octorateAccommodationId}` | `OtaWrite` + row check (whole-org scope for a listing with no property) | Rejects the mapping (204): the listing is not one of the org's properties; refreshes leave it alone |
+| `POST` | `/api/octorate/mapping/{octorateAccommodationId}/import` | `OtaWrite` + `PropertyWrite` | Creates the CasaZen property of the listing through the property create path (409 `plan_limit_reached` at the plan limit), inactive and with a "check the imported listing" To do, and confirms the mapping (201 `{ propertyId }`). Only reads from Octorate: nothing is created there |
+
 #### Compliance / legal
 
 | Method | Path | Auth | Description |
@@ -1141,6 +1162,7 @@ never a link to the dashboard.
 | `POST` | `/webhooks/stripe/connect` | Anonymous (signature) | Stripe Connect webhook; processed once per event id |
 | `POST` | `/webhooks/ota/{platform}` | Anonymous | OTA inbound webhook |
 | `POST` | `/webhooks/esign` | Anonymous | E-sign provider webhook |
+| `POST` | `/api/webhooks/octorate/{secret}` | Anonymous (secret in the address) | Octorate webhook (E02/F01/US01/T03): Octorate signs nothing, so the secret of the address is compared in constant time with `Octorate:WebhookSecret` (401 otherwise, 500 when not configured); only the event name, the accommodation and the object id are read from the body, the org is resolved from the confirmed mapping of the accommodation and one `OctorateWebhookReceived` event per org is written to the outbox (200 at once, ids only); an accommodation with no confirmed mapping is acknowledged with 200 and recorded nowhere (`docs/runbooks/octorate-webhooks.md`) |
 | `GET` | `/api/health/live` | Anonymous | Liveness: the process answers (always 200) |
 | `GET` | `/api/health/ready` | Anonymous | Readiness: database, Hangfire, email, storage, Stripe, Auth0; 200 healthy/degraded, 503 unhealthy; `commit` of the build (`docs/runbooks/health-checks.md`) |
 | `GET` | `/api/health` | Anonymous | Same as `/api/health/ready` |

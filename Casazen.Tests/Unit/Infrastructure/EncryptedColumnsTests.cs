@@ -26,6 +26,9 @@ public class EncryptedColumnsTests
                 // TR: the need of a transitory lease and the documentation that proves it.
                 "LeaseContract.TransitoryDocumentation:Casazen.LeaseContract.TransitoryNeed",
                 "LeaseContract.TransitoryNeed:Casazen.LeaseContract.TransitoryNeed",
+                // ADR-023-R1: the OAuth tokens of the Octorate connection of an organization.
+                "OctorateConnection.EncryptedAccessToken:Casazen.Octorate.OAuth",
+                "OctorateConnection.EncryptedRefreshToken:Casazen.Octorate.OAuth",
                 "OtaIntegration.ApiKey:Casazen.OtaIntegration.Secrets",
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
                 "Party.Residence:Casazen.LeaseParty",
