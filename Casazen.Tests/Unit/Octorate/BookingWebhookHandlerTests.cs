@@ -48,10 +48,10 @@ public class BookingWebhookHandlerTests
 
             await handler.HandleAsync(Notification(h, webhookType), CancellationToken.None);
 
-            // The handler of that kind of notification reads the list once; every other, and any notification that is not about a
-            // reservation (a chat message, a content push), reads nothing.
+            // The handler of that kind of notification reads the list once (its first page; the list is read until an empty page); every
+            // other, and any notification that is not about a reservation (a chat message, a content push), reads nothing.
             h.Client.Verify(
-                c => c.GetReservationsAsync(Accommodation, It.IsAny<OctorateReservationQuery>(), It.IsAny<CancellationToken>()),
+                c => c.GetReservationsAsync(Accommodation, It.Is<OctorateReservationQuery>(q => q.Page == 0), It.IsAny<CancellationToken>()),
                 reads ? Times.Once() : Times.Never());
         }
     }

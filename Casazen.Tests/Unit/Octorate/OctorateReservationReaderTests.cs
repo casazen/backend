@@ -136,16 +136,30 @@ public class OctorateReservationReaderTests
     }
 
     [Fact]
-    public void Read_ItemsWithoutAUsableIdAreLeftOut()
+    public void ReadPage_ItemsWithoutAUsableIdAreLeftOut_ButCounted()
     {
         using var document = JsonDocument.Parse("""[ { "status": "CONFIRMED" }, "text", { "id": "7004" }, { "id": "%s" } ]""".Replace("%s", new string('9', 51), StringComparison.Ordinal));
 
-        var items = OctorateReservationReader.ListItems(document.RootElement)!
-            .Select(item => OctorateReservationReader.Read(item))
-            .OfType<OctorateReservation>()
-            .ToList();
+        var page = OctorateReservationReader.ReadPage(document.RootElement)!;
 
-        Assert.Equal(["7004"], items.Select(i => i.Id));
+        // Four items, one reservation that can be read: the end of a list is decided on the items the page held, never on the ones that were read.
+        Assert.Equal(["7004"], page.Reservations.Select(r => r.Id));
+        Assert.Equal(4, page.ItemCount);
+        Assert.Equal(3, page.Unreadable);
+    }
+
+    [Fact]
+    public void ReadPage_AnEmptyListIsAPageWithNoItem_AndAnAnswerThatIsNotAListIsNoPage()
+    {
+        using var empty = JsonDocument.Parse("""{ "data": [], "page": { "number": 3 } }""");
+        using var notAList = JsonDocument.Parse("""{ "message": "ok" }""");
+
+        var page = OctorateReservationReader.ReadPage(empty.RootElement)!;
+
+        Assert.Equal(0, page.ItemCount);
+        Assert.Empty(page.Reservations);
+        Assert.Equal(0, page.Unreadable);
+        Assert.Null(OctorateReservationReader.ReadPage(notAList.RootElement));
     }
 
     [Fact]

@@ -133,7 +133,7 @@ internal sealed class BookingImportHarness
             Clock,
             NullLogger<BookingImportService>.Instance);
 
-    /// <summary>The list answers these reservations on its first page (and nothing after it); the single read answers each one.</summary>
+    /// <summary>The list answers these reservations on its first page (and an empty page after it); the single read answers each one.</summary>
     public void Serve(params OctorateReservation[] reservations)
     {
         Client.Reset();
@@ -145,7 +145,8 @@ internal sealed class BookingImportHarness
     {
         Client
             .Setup(c => c.GetReservationsAsync(accommodation, It.IsAny<OctorateReservationQuery>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string _, OctorateReservationQuery query, CancellationToken _) => query.Page == 0 ? reservations : []);
+            .ReturnsAsync((string _, OctorateReservationQuery query, CancellationToken _) =>
+                query.Page == 0 ? OctorateReservationPage.Of(reservations) : OctorateReservationPage.Empty);
         foreach (var reservation in reservations)
         {
             var served = reservation;

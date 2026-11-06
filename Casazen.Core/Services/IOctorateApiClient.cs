@@ -46,9 +46,10 @@ public interface IOctorateApiClient
     /// One page of the reservations of an accommodation (<c>GET /rest/v1/reservation/{acc}</c>, E02/F02/US01/T01): the kind of list,
     /// the Rome dates, the page (from 0) and its size (at most 200). The list has the identification, the dates, the state and
     /// <c>updateTime</c> of each reservation, not the payments nor the price breakdown (<see cref="GetReservationAsync"/> has them). An
-    /// item without a usable id is left out. A page shorter than the size is the last one.
+    /// item without a usable id is left out of the reservations of the page but counted in its <see cref="OctorateReservationPage.ItemCount"/>.
+    /// The list ends with a page that has no item at all, not with a short one: a server may serve fewer reservations than the size asked for.
     /// </summary>
-    Task<OctorateReservation[]> GetReservationsAsync(string accommodationId, OctorateReservationQuery query, CancellationToken ct);
+    Task<OctorateReservationPage> GetReservationsAsync(string accommodationId, OctorateReservationQuery query, CancellationToken ct);
 
     /// <summary>One reservation with its payments and price breakdown (<c>GET /rest/v1/reservation/{acc}/{id}</c>); 404 is <c>OctorateNotFoundException</c>.</summary>
     Task<OctorateReservation> GetReservationAsync(string accommodationId, string reservationId, CancellationToken ct);

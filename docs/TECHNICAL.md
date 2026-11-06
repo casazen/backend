@@ -900,10 +900,13 @@ reservation of the room of a property, found through the confirmed `OctorateList
   `OctorateUpdatedAt` is the `updateTime` last applied, so a read with an older or equal time changes nothing and a reservation is never made twice
   (`ExternalId` keeps its meaning, the reference on the channel, and is not used). Each reservation is applied under the advisory lock
   `OctorateReservation` and saved with its events in one transaction.
-- *What is read.* `GET /rest/v1/reservation/{acc}` with `type=MODIFIED_BETWEEN`, 200 a page, then the single read of each reservation that is new or
+- *What is read.* `GET /rest/v1/reservation/{acc}` with `type=MODIFIED_BETWEEN`, 200 asked for a page, page after page until a page with no item at
+  all (a server may serve fewer than the size asked for, so a short page is not the end; `IOctorateApiClient.GetReservationsAsync` returns an
+  `OctorateReservationPage`, the reservations read and the number of items the page held), then the single read of each reservation that is new or
   newer than the one held (the list has neither the payments nor the price breakdown). A reservation of another room of the listing is reported in the
-  result (`Unmapped`) and never creates a property. The checkpoint is `OctorateListingMapping.BookingsImportedThrough`: null means "read the whole history
-  (3 years)", otherwise the next run starts two days before it; it moves only when a run read everything it had to (not after the rate limit or an error).
+  result (`Unmapped`) and never creates a property. The checkpoint is `OctorateListingMapping.BookingsImportedThrough`: null means "read the whole
+  history (3 years)", otherwise the next run starts two days before it; it moves only when a run read everything it had to (not after the rate limit,
+  an error, or an item of the list that could not be read: no id, or one over 50 characters, counted as failed).
 - *Mapping* (`BookingStateMapper`). `WAITING` Pending, `CONFIRMED` Confirmed, `CANCELLED` Cancelled; a stay checked in or out is never moved back, and a
   booking CasaZen owns (entered by the host, or with payments or a saved card) keeps its figures and is not brought back from a cancellation by a read.
   The channel comes from `channelId` (142 Booking.com, 274 Airbnb, 235 Vrbo, 4 Expedia, 270 the booking engine of the agency = `Direct`) then from the name;

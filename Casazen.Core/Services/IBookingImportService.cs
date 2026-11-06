@@ -54,7 +54,7 @@ public interface IBookingImportService
 /// <param name="Skipped">Reservations that changed nothing: already applied, an older version, unreadable, or protected by <see cref="BookingImportOptions"/>.</param>
 /// <param name="Unmapped">The reservations of a room, or of a listing, that is not the property's: not imported.</param>
 /// <param name="Outcome">Whether the run read everything it had to.</param>
-/// <param name="Failed">Reservations that could not be applied (Octorate failed on them); the next run reads them again.</param>
+/// <param name="Failed">Reservations that could not be applied (Octorate failed on them) and items of the list that could not be read; the next run reads them again.</param>
 public sealed record ImportResult(
     int Created,
     int Updated,
@@ -77,8 +77,8 @@ public enum ImportOutcome
     Completed = 1,
 
     /// <summary>
-    /// The run stopped before the end (the rate limit of the org, or Octorate failing on a reservation): what was read is saved, the
-    /// listing is not marked as read, and the next run reads the window again.
+    /// The run stopped before the end (the rate limit of the org, Octorate failing on a reservation, or an item of the list that cannot be
+    /// read): what was read is saved, the listing is not marked as read, and the next run reads the window again.
     /// </summary>
     Incomplete = 2,
 

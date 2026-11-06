@@ -159,7 +159,7 @@ public sealed class OctorateApiClient(
         return [.. items.Select(ReadConnection).OfType<OctorateChannelConnection>()];
     }
 
-    public async Task<OctorateReservation[]> GetReservationsAsync(string accommodationId, OctorateReservationQuery query, CancellationToken ct)
+    public async Task<OctorateReservationPage> GetReservationsAsync(string accommodationId, OctorateReservationQuery query, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(query);
         var id = CheckedAccommodationId(accommodationId);
@@ -176,9 +176,8 @@ public sealed class OctorateApiClient(
         using var document = await GetJsonAsync(path, "reservations", ct);
 
         // An answer that is not a list is an answer CasaZen cannot read, not a list with nothing in it: the caller must not read "no
-        // reservation" into it and mark a listing as read.
-        var items = OctorateReservationReader.ListItems(document.RootElement) ?? throw new OctorateServerException(null);
-        return [.. items.Select(item => OctorateReservationReader.Read(item)).OfType<OctorateReservation>()];
+        // reservation" into it and mark a listing as read. An item that cannot be read is left out of the page but counted in it.
+        return OctorateReservationReader.ReadPage(document.RootElement) ?? throw new OctorateServerException(null);
     }
 
     public async Task<OctorateReservation> GetReservationAsync(string accommodationId, string reservationId, CancellationToken ct)

@@ -530,6 +530,35 @@ public class BookingImportProofTests
     }
 
     [Fact]
+    public async Task BookingImport_AShortPageIsNotTheEnd_AndAnItemThatCannotBeReadMakesTheRunIncomplete()
+    {
+        var h = new BookingImportHarness();
+        // A server that serves fewer reservations than the 200 asked for, an item on the first page with no usable id, and one more page after it.
+        h.Client
+            .Setup(c => c.GetReservationsAsync(Accommodation, It.IsAny<OctorateReservationQuery>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, OctorateReservationQuery query, CancellationToken _) => query.Page switch
+            {
+                0 => new OctorateReservationPage([Res("7001")], ItemCount: 2),
+                1 => OctorateReservationPage.Of(Res("7002")),
+                _ => OctorateReservationPage.Empty,
+            });
+        h.Client.Setup(c => c.GetReservationAsync(Accommodation, "7001", It.IsAny<CancellationToken>())).ReturnsAsync(Res("7001"));
+        h.Client.Setup(c => c.GetReservationAsync(Accommodation, "7002", It.IsAny<CancellationToken>())).ReturnsAsync(Res("7002"));
+        await using var db = h.NewDb();
+
+        var result = await h.Service(db).ImportAllAsync(h.PropertyId, CancellationToken.None);
+
+        // The page after the short one was read (7002 is imported) and the list was followed to its empty end. The item that could not be read
+        // counts as failed, so the run is not complete and the mark does not move: the next run reads the window again.
+        Assert.Equal(2, result.Created);
+        Assert.Equal(ImportOutcome.Incomplete, result.Outcome);
+        Assert.Equal(1, result.Failed);
+        Assert.Null(await h.ReadCheckpointAsync());
+        h.Client.Verify(c => c.GetReservationsAsync(Accommodation, It.Is<OctorateReservationQuery>(q => q.Page == 2), It.IsAny<CancellationToken>()), Times.Once);
+        h.Client.Verify(c => c.GetReservationsAsync(Accommodation, It.Is<OctorateReservationQuery>(q => q.Page == 3), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task BookingImport_TheRateLimitStopsTheRun_WhatWasReadIsKept_AndTheMarkDoesNotMove()
     {
         var h = new BookingImportHarness();

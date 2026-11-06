@@ -47,6 +47,21 @@ internal static class OctorateReservationReader
         return null;
     }
 
+    /// <summary>
+    /// The page a list answer holds: the reservations that could be read, and how many items the answer had. <c>null</c> when the answer is not a
+    /// list (<see cref="ListItems"/>). An item that is not an object, or has no usable id, is left out of the reservations but still counted: a
+    /// caller that decided where the list ends on the number of reservations read would stop at a page that only looks short and lose the pages
+    /// after it.
+    /// </summary>
+    internal static OctorateReservationPage? ReadPage(JsonElement root)
+    {
+        if (ListItems(root) is not { } items)
+            return null;
+
+        var listed = items.ToList();
+        return new OctorateReservationPage([.. listed.Select(item => Read(item)).OfType<OctorateReservation>()], listed.Count);
+    }
+
     /// <summary>The reservation of <paramref name="item"/>, or <c>null</c> when it is not an object or has no usable id.</summary>
     /// <param name="item">One reservation of an answer.</param>
     /// <param name="fallbackId">The id the call asked for, used when the answer does not repeat it.</param>

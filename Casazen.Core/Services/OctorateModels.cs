@@ -176,6 +176,32 @@ public sealed record OctorateReservationQuery(
 }
 
 /// <summary>
+/// One page of the list of reservations (<c>GET /rest/v1/reservation/{acc}</c>): the reservations that could be read, and how many items the
+/// page held. An item that is not a reservation CasaZen can read (no id, or one longer than the column) is not among
+/// <see cref="Reservations"/> but is counted in <see cref="ItemCount"/>. So the end of the list is a page with no item at all, never a page that
+/// only looks short (a server may serve fewer than the size asked for, and an unreadable item is still an item), and a page with an item that was
+/// left out is not a complete read of the list.
+/// </summary>
+/// <param name="Reservations">The reservations of the page that could be read.</param>
+/// <param name="ItemCount">The items the page held, readable or not.</param>
+public sealed record OctorateReservationPage(IReadOnlyList<OctorateReservation> Reservations, int ItemCount)
+{
+    /// <summary>A page with no item: the end of the list.</summary>
+    public static OctorateReservationPage Empty { get; } = new([], 0);
+
+    /// <summary>The items of the page that could not be read, which are not among <see cref="Reservations"/>.</summary>
+    public int Unreadable => ItemCount - Reservations.Count;
+
+    /// <summary>A page whose items were all read.</summary>
+    public static OctorateReservationPage Of(params OctorateReservation[] reservations)
+    {
+        ArgumentNullException.ThrowIfNull(reservations);
+
+        return new OctorateReservationPage(reservations, reservations.Length);
+    }
+}
+
+/// <summary>
 /// A line of the price breakdown of a reservation (<c>priceBreakdown</c> of the single read): its <c>type</c> (<c>ROOM_NET</c>, <c>VAT</c>,
 /// <c>COMMISSION</c>, <c>TOURIST_TAX</c>, ...) and the amount when the line has one.
 /// </summary>

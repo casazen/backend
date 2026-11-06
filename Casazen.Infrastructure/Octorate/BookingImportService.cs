@@ -20,9 +20,10 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>Tenant.</b> The org is the one of the confirmed <see cref="OctorateListingMapping"/> of the property; every query names it, because a
 /// job and an event handler run with no EF tenant filter. The caller opens <c>IOctorateOrgScope.Use(orgId)</c> only for the calls it makes
 /// itself; the service opens it for the client calls it makes.</item>
-/// <item><b>What is read.</b> The list of the room's reservations changed since a day (<c>MODIFIED_BETWEEN</c>, 200 a page), and the single read of
-/// each one that is new or newer than what CasaZen holds (the list has no payments nor price breakdown). A reservation of another room of the
-/// listing is not imported and is reported.</item>
+/// <item><b>What is read.</b> The list of the room's reservations changed since a day (<c>MODIFIED_BETWEEN</c>, 200 asked for a page, page after page
+/// until a page with no item: a server may serve fewer than the size asked for, so a short page is not the end), and the single read of each one
+/// that is new or newer than what CasaZen holds (the list has no payments nor price breakdown). A reservation of another room of the listing is not
+/// imported and is reported. An item of the list that cannot be read counts as failed: the run is not complete and the next one reads it again.</item>
 /// <item><b>Once.</b> The key is (org, Octorate reservation id), unique in the database; each reservation is applied under an advisory lock of
 /// that key, so the job and a webhook handler never make it twice. A version whose <c>updateTime</c> is not newer than the applied one changes
 /// nothing; an unchanged reservation is not even read again.</item>
@@ -146,6 +147,7 @@ public sealed class BookingImportService(
         var startedAt = timeProvider.GetUtcNow().UtcDateTime;
         var to = RomeCalendar.DateInRome(startedAt).AddDays(1);
         var run = new RunState();
+        var reachedEnd = false;
 
         using (orgScope.Use(target.OrgId))
         {
@@ -158,11 +160,11 @@ public sealed class BookingImportService(
                     break;
                 }
 
-                OctorateReservation[] items;
+                OctorateReservationPage listed;
                 try
                 {
                     var query = new OctorateReservationQuery(OctorateReservationListType.ModifiedBetween, from, to, page, PageSize);
-                    items = await client.GetReservationsAsync(target.AccommodationId, query, ct);
+                    listed = await client.GetReservationsAsync(target.AccommodationId, query, ct);
                 }
                 catch (OctorateRateLimitException)
                 {
@@ -170,16 +172,37 @@ public sealed class BookingImportService(
                     break;
                 }
 
-                foreach (var item in items)
+                // An item that cannot be read (no id, or one the column cannot hold) is not imported and not lost in silence: the run is not
+                // complete, so the checkpoint stays and the next run reads it again.
+                if (listed.Unreadable > 0)
+                {
+                    run.Failed += listed.Unreadable;
+                    logger.LogWarning(
+                        "Octorate reservation list of property {PropertyId} (org {OrgId}), page {Page}: {Items} items could not be read, the next run reads them again",
+                        propertyId,
+                        target.OrgId,
+                        page,
+                        listed.Unreadable);
+                }
+
+                foreach (var item in listed.Reservations)
                 {
                     ct.ThrowIfCancellationRequested();
                     if (!await HandleAsync(target, item, options, run, ct))
                         break;
                 }
 
-                if (items.Length < PageSize)
+                // The list ends with a page that has no item, not with a short one: a server may serve fewer than the size asked for.
+                if (listed.ItemCount == 0)
+                {
+                    reachedEnd = true;
                     break;
+                }
             }
+
+            // Pages run out before the list does (or the run stopped): what was not read is not "nothing".
+            if (!reachedEnd)
+                run.Stopped = true;
         }
 
         var complete = !run.Stopped && run.Failed == 0;

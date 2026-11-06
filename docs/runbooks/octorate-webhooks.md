@@ -90,9 +90,10 @@ The log line of a recorded call is `Octorate webhook recorded: event {EventId}, 
    advisory lock `OctorateReservation`, with the booking events (`Origin = Octorate`) in the same save. A repeated or out-of-order
    notification therefore changes nothing and makes no second booking; there is no table of received events (Octorate gives no event
    id). A change that came from Octorate never calls `SyncBookingStateAsync`, so nothing is echoed back.
-4. An org that disconnected meanwhile ends the handler quietly; a run that stopped before the end (the rate limit of the org) or an
-   error of Octorate makes the handler throw, and the dispatcher delivers the event again (up to five attempts, then dead letter).
-   The reconciliation (`octorate-booking-sync`, every six hours) reads what is still missing.
+4. An org that disconnected meanwhile ends the handler quietly; a run that stopped before the end (the rate limit of the org, or an item
+   of the list that cannot be read: the list is read until a page with no item) or an error of Octorate makes the handler throw, and
+   the dispatcher delivers the event again (up to five attempts, then dead letter). The reconciliation (`octorate-booking-sync`, every
+   six hours) reads what is still missing.
 
 The log line of a handled event is `Octorate webhook handled: event {EventId}, type {EventType}, processed True`: the body is never
 logged.

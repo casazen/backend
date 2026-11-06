@@ -42,16 +42,17 @@ public class OctorateBookingJobsTests
         await job.ExecuteAsync(CancellationToken.None);
 
         // Never read completely: three years back. Read completely at 2026-11-06 08:00Z: the next run starts two days before it (4 November).
+        // (The first page of each run: the list is read until an empty page, so each run asks for a second page as well.)
         h.Client.Verify(
             c => c.GetReservationsAsync(
                 Accommodation,
-                It.Is<OctorateReservationQuery>(q => q.Type == OctorateReservationListType.ModifiedBetween && q.From == new DateOnly(2023, 11, 6)),
+                It.Is<OctorateReservationQuery>(q => q.Type == OctorateReservationListType.ModifiedBetween && q.From == new DateOnly(2023, 11, 6) && q.Page == 0),
                 It.IsAny<CancellationToken>()),
             Times.Once);
         h.Client.Verify(
             c => c.GetReservationsAsync(
                 Accommodation,
-                It.Is<OctorateReservationQuery>(q => q.From == new DateOnly(2026, 11, 4)),
+                It.Is<OctorateReservationQuery>(q => q.From == new DateOnly(2026, 11, 4) && q.Page == 0),
                 It.IsAny<CancellationToken>()),
             Times.Once);
         Assert.Equal(1, await db.Bookings.CountAsync());
