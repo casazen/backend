@@ -216,7 +216,7 @@ public sealed class PropertySenderService(
 
     /// <summary>
     /// The state of a sender and how it is known. <see cref="SenderState.Active"/> only for the channel manager with Octorate's own word that
-    /// the police account is valid and its automatic send is not off; what Octorate does not say is unknown, and the host's declaration
+    /// the police account is valid and its automatic send is on; what Octorate does not say is unknown, and the host's declaration
     /// fills that gap as a declaration (<see cref="SenderState.Declared"/>), never as a verification.
     /// </summary>
     internal static (SenderState State, SenderVerification Verification, string? Reason) Evaluate(
@@ -248,8 +248,10 @@ public sealed class PropertySenderService(
     }
 
     /// <summary>
-    /// What a reading of the police account proves. Active needs <c>valid</c> true and an automatic send that is not off; <c>valid</c> false, or
-    /// the automatic send off, is inactive; anything else (not exposed, not read, Octorate unreachable) is unknown.
+    /// What a reading of the police account proves. Active needs Octorate's word on both members, <c>valid</c> true and <c>autorun</c> true:
+    /// a member it leaves out is no proof (and Octorate never defined <c>valid</c> alone as «Activated», Q-002), so <c>valid</c> true with
+    /// <c>autorun</c> missing is unknown. <c>valid</c> false, or the automatic send off, is inactive; anything else (not exposed, not read,
+    /// Octorate unreachable) is unknown.
     /// </summary>
     internal static (PoliceVerdict Verdict, string? Reason) Judge(PoliceReading? police, bool channelManagerAvailable)
     {
@@ -263,7 +265,7 @@ public sealed class PropertySenderService(
         {
             { Valid: false } => (PoliceVerdict.Inactive, SenderReasonCodes.PoliceAccountInvalid),
             { Valid: true, Autorun: false } => (PoliceVerdict.Inactive, SenderReasonCodes.PoliceAutorunOff),
-            { Valid: true } => (PoliceVerdict.Active, null),
+            { Valid: true, Autorun: true } => (PoliceVerdict.Active, null),
             _ => (PoliceVerdict.Unknown, SenderReasonCodes.PoliceNotExposed),
         };
     }
@@ -369,7 +371,7 @@ public sealed class PropertySenderService(
     /// <summary>What a reading of the police account proves.</summary>
     internal enum PoliceVerdict
     {
-        /// <summary>Octorate says the account is valid and its automatic send is not off.</summary>
+        /// <summary>Octorate says the account is valid and its automatic send is on.</summary>
         Active,
 
         /// <summary>Octorate says the account is not valid, or its automatic send is off.</summary>

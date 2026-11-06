@@ -16,9 +16,9 @@ namespace Casazen.Core.Services;
 /// together, and the guard against switching to CasaZen while the Octorate police account is still valid (ADR-029-R2) comes back with that
 /// sender.</para>
 /// <para><b>Never a false «Active».</b> <see cref="SenderState.Active"/> is answered only when Octorate itself says the police account is
-/// valid and its daily automatic send is not off. What the API does not expose stays unknown: the state is then
-/// <see cref="SenderState.Unverified"/>, or <see cref="SenderState.Declared"/> when the host said it saw «Activated», and that is the host's word,
-/// never a verification.</para>
+/// valid and its daily automatic send is on, both members read: a member the API does not expose is no proof. What the API does not expose
+/// stays unknown: the state is then <see cref="SenderState.Unverified"/>, or <see cref="SenderState.Declared"/> when the host said it saw
+/// «Activated», and that is the host's word, never a verification.</para>
 /// <para><b>Tenant and roles.</b> A property of another org is not found (<c>property_not_found</c>), as in the store. The service never
 /// checks roles: the web layer authorizes the property (<c>property.read</c> or <c>property.write</c> on it).</para>
 /// </remarks>
@@ -54,7 +54,7 @@ public interface IPropertySenderService
 
     /// <summary>
     /// Tests the sender. Channel manager: reads the accommodation on Octorate and answers <see cref="SenderConnectionTestOutcome.Verified"/> only when the
-    /// police account is valid (and its automatic send not off), <see cref="SenderConnectionTestOutcome.Inactive"/> when it is not, and
+    /// police account is valid and its automatic send is on (both read), <see cref="SenderConnectionTestOutcome.Inactive"/> when it is not, and
     /// <see cref="SenderConnectionTestOutcome.Unverifiable"/> when the API does not expose it or cannot be reached. CasaZen:
     /// <see cref="SenderConnectionTestOutcome.NotAvailable"/>. Manual: <see cref="SenderConnectionTestOutcome.NotApplicable"/>. Nothing is stored or transmitted.
     /// </summary>
@@ -212,7 +212,10 @@ public static class SenderReasonCodes
     /// <summary>The police account is valid but Octorate's daily automatic send is off.</summary>
     public const string PoliceAutorunOff = "octorate_police_autorun_off";
 
-    /// <summary>Octorate answered without the police account: the API does not expose it for this accommodation.</summary>
+    /// <summary>
+    /// Octorate answered without the police account, or without the state of its automatic send (<c>valid</c> true and <c>autorun</c> left out):
+    /// the API does not expose it for this accommodation, so nothing is proven.
+    /// </summary>
     public const string PoliceNotExposed = "octorate_police_not_exposed";
 
     /// <summary>There is no usable connection to Octorate for the property (not connected, not mapped, or the connector is off).</summary>

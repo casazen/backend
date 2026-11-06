@@ -164,6 +164,18 @@ public class PropertySenderServiceTests
         var autorunOff = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
         Assert.Equal((SenderConnectionTestOutcome.Inactive, SenderReasonCodes.PoliceAutorunOff), (autorunOff.Outcome, autorunOff.Reason));
 
+        // Octorate says the account is valid but leaves out the automatic send (or the other way round): half a proof is no proof, so
+        // nothing is verified and the host's declaration is still what the state rests on.
+        OctorateExposes(octorate, valid: true, autorun: null);
+        var validOnly = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
+        Assert.Equal((SenderConnectionTestOutcome.Unverifiable, SenderReasonCodes.PoliceNotExposed), (validOnly.Outcome, validOnly.Reason));
+        var halfProof = await service.GetAsync(world.Connected, CancellationToken.None);
+        Assert.Equal((SenderState.Declared, SenderVerification.UserDeclared), (halfProof.State, halfProof.Verification));
+        Assert.Equal<(bool?, bool?)>((true, null), (halfProof.PoliceAccountValid, halfProof.PoliceAutorun));
+        OctorateExposes(octorate, valid: null, autorun: true);
+        var autorunOnly = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
+        Assert.Equal((SenderConnectionTestOutcome.Unverifiable, SenderReasonCodes.PoliceNotExposed), (autorunOnly.Outcome, autorunOnly.Reason));
+
         // Only Octorate's own word makes it active.
         OctorateExposes(octorate, valid: true, autorun: true);
         var proof = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
