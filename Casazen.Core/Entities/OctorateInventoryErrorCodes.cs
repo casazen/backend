@@ -14,7 +14,11 @@ public static class OctorateInventoryErrorCodes
     /// </summary>
     public const string D6OperationUnverified = "d6_operation_unverified";
 
-    /// <summary>The answer is unknown (no answer in time, a failure of Octorate, an answer that cannot be read): it is not repeated by itself.</summary>
+    /// <summary>
+    /// The result of the operation is unknown (no answer in time, a failure of Octorate, an answer that cannot be read, or a request closed after
+    /// the call left): the item is marked with it BEFORE the call, so it is never asked again by itself. A person checks the panel and asks
+    /// again by naming the listing in <c>retryUnknown</c>.
+    /// </summary>
     public const string D6ResultUnknown = "d6_result_unknown";
 
     /// <summary>Octorate answered that the channel itself failed (its «partner failure», HTTP 550).</summary>

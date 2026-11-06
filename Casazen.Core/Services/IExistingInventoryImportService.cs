@@ -62,22 +62,31 @@ public interface IExistingInventoryImportService
     /// <summary>
     /// Imports the rooms of every channel whose access is given (<c>IMPORT_ROOMS</c> on each of its connections), refreshes
     /// <see cref="IChannelMappingService"/> and stops at <see cref="OctorateInventoryImportStatus.AwaitingMapping"/>. Idempotent: what has a
-    /// stamp is not asked again. It never creates a property, a listing or a connection, and never pushes content.
+    /// stamp is not asked again. It never creates a property, a listing or a connection, and never pushes content. An operation whose result is
+    /// unknown (<c>d6_result_unknown</c>: the answer never came, or the request was closed after the call left) is not asked again by itself:
+    /// <paramref name="retryUnknown"/> names (by accommodation id) the listings a person checked in the panel and wants asked again.
     /// </summary>
-    Task<ExistingInventoryBatchView> RunAsync(ExistingInventoryCaller caller, Guid batchId, CancellationToken ct);
+    Task<ExistingInventoryBatchView> RunAsync(
+        ExistingInventoryCaller caller,
+        Guid batchId,
+        CancellationToken ct,
+        IReadOnlyCollection<string>? retryUnknown = null);
 
     /// <summary>
     /// Goes on for the listings of the batch that a person confirmed (or imported as a CasaZen property): their reservations
     /// (<c>IMPORT_RESERVATIONS</c> and the import into CasaZen), calendars (<c>IMPORT_CALENDAR</c>) and <c>MARK_CONNECTED</c>. Allowed only when
     /// every listing is confirmed, rejected, or left for later: <paramref name="leaveForLater"/> names (by accommodation id) the ones the
     /// person leaves for later now; they stay write-blocked and are not marked connected, while the others go on. 409
-    /// <c>existing_inventory_mapping_pending</c> when one is none of those.
+    /// <c>existing_inventory_mapping_pending</c> when one is none of those. An operation whose result is unknown (<c>d6_result_unknown</c>) is not
+    /// asked again by itself: <paramref name="retryUnknown"/> names (by accommodation id) the listings a person checked in the panel and wants
+    /// asked again.
     /// </summary>
     Task<ExistingInventoryBatchView> ContinueAsync(
         ExistingInventoryCaller caller,
         Guid batchId,
         IReadOnlyCollection<string>? leaveForLater,
-        CancellationToken ct);
+        CancellationToken ct,
+        IReadOnlyCollection<string>? retryUnknown = null);
 
     /// <summary>
     /// Records the scenario of each assignment (a property of the org within the caller's reach, or a named group of the mixed portfolio).

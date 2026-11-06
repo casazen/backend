@@ -13,6 +13,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Web.DTOs;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -99,7 +100,7 @@ public class ExistingInventoryImportServiceTests
         Assert.Contains(view.Channels[0].Items, i => i.ErrorCode == OctorateInventoryErrorCodes.D6ResultUnknown);
         failing.Failures.Clear();
         await using (var db = failing.NewDb())
-            view = await failing.Service(db).ContinueAsync(CallerA, view.Id, null, CancellationToken.None);
+            view = await failing.Service(db).ContinueAsync(CallerA, view.Id, null, CancellationToken.None, ["1002"]);
         Assert.Equal(OctorateInventoryImportStatus.Completed, view.Status);
 
         // 4. The access is given but Octorate shows no connection: nothing is created to make one.
@@ -157,7 +158,8 @@ public class ExistingInventoryImportServiceTests
         Type[] types =
         [
             typeof(OctorateInventoryIntent), typeof(OctorateInventoryImportBatch), typeof(OctorateInventoryImportChannel), typeof(OctorateInventoryImportItem),
-            typeof(CreateExistingInventoryBatchRequest), typeof(ContinueExistingInventoryRequest), typeof(InventoryIntentsRequest), typeof(InventoryIntentAssignmentRequest),
+            typeof(CreateExistingInventoryBatchRequest), typeof(RunExistingInventoryRequest), typeof(ContinueExistingInventoryRequest), typeof(InventoryIntentsRequest),
+            typeof(InventoryIntentAssignmentRequest),
             typeof(ExistingInventoryBatchDto), typeof(ChannelAccessStartDto), typeof(InventoryIntentDto), typeof(ExistingInventoryBatchView),
             typeof(ExistingInventoryChannelView), typeof(ExistingInventoryItemView), typeof(ExistingInventoryCounts), typeof(ExistingInventoryCapabilities),
             typeof(ChannelAccessStartResult), typeof(OctorateConnectionSummary), typeof(OctorateConnectionActionResult),
@@ -446,10 +448,16 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(2, h.Calls(nameof(IOctorateApiClient.ImportCalendarAsync)));
         Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync)));
 
-        // A restart and the same command: only what has no stamp is asked again, and only the second listing is marked.
+        // A restart and the same command: the calendar of the second listing has an unknown result, so nothing is asked of Octorate by itself.
         h.Failures.Clear();
         await using (var db = h.NewDb())
             first = await h.Service(db).ContinueAsync(CallerA, first.Id, null, CancellationToken.None);
+        Assert.Equal(OctorateInventoryImportStatus.NeedsAttention, first.Status);
+        Assert.Equal(2, h.Calls(nameof(IOctorateApiClient.ImportCalendarAsync)));
+
+        // The person checked the panel and names the listing: only what has no stamp is asked again, and only the second listing is marked.
+        await using (var db = h.NewDb())
+            first = await h.Service(db).ContinueAsync(CallerA, first.Id, null, CancellationToken.None, ["1002"]);
         Assert.Equal(OctorateInventoryImportStatus.Completed, first.Status);
         Assert.Equal(2, first.Channels[0].Counts.Connected);
         Assert.Equal(2, h.Calls(nameof(IOctorateApiClient.ImportRoomsAsync)));
@@ -482,6 +490,101 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(2, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync)));
         Assert.Equal(3, h.Calls(nameof(IOctorateApiClient.ImportCalendarAsync)));
         Assert.Equal(2, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync)));
+    }
+
+    [Fact]
+    public async Task ExistingInventoryImport_ResultNobodyKnowsIsNeverAskedAgainByItself_Test()
+    {
+        // The request is closed while the call to Octorate is on its way (the connection drops, the worker stops): the call may have been
+        // done and nobody knows. The item is marked before the call leaves, so the next command does not ask for the same operation in silence.
+        var h = new Harness();
+        await h.SeedAsync(verified: true);
+        var batch = await h.RunToRoomsAsync();
+        h.Rows.AddRange([Harness.Row("1001", OctorateMappingStatus.Confirmed, h.Properties[0]), Harness.Row("1002", OctorateMappingStatus.Confirmed, h.Properties[1])]);
+        h.Failures[(OctorateD6Operation.ImportReservations, "501")] = new OperationCanceledException();
+
+        await using (var db = h.NewDb())
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None));
+        }
+
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync), "501"));
+        await using (var db = h.NewDb())
+        {
+            var marked = await db.OctorateInventoryImportItems.AsNoTracking().SingleAsync(i => i.OctorateConnectionId == "501");
+            Assert.Equal(OctorateInventoryErrorCodes.D6ResultUnknown, marked.ErrorCode);
+            Assert.Null(marked.OctorateReservationsImportedAt);
+        }
+
+        // A plain command goes on with the other listing and does not ask again for the marked one; it says why that one waits.
+        h.Failures.Clear();
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None);
+
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync), "501"));
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync), "502"));
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "502"));
+        Assert.Equal(0, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "501"));
+        Assert.Equal(OctorateInventoryImportStatus.NeedsAttention, batch.Channels[0].Status);
+        Assert.Equal(OctorateInventoryErrorCodes.D6ResultUnknown, batch.Channels[0].ErrorCode);
+        Assert.Equal(OctorateInventoryErrorCodes.D6ResultUnknown, batch.Channels[0].Items.Single(i => i.OctorateAccommodationId == "1001").ErrorCode);
+
+        // Naming another listing resumes nothing; naming this one, after the person checked the panel, asks again once and the sequence ends.
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None, ["1002"]);
+
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync), "501"));
+
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None, ["1001"]);
+
+        Assert.Equal(2, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync), "501"));
+        Assert.Equal(OctorateInventoryImportStatus.Completed, batch.Status);
+        Assert.Equal(2, batch.Channels[0].Counts.Connected);
+    }
+
+    [Fact]
+    public async Task ExistingInventoryImport_StampOfAnAnsweredCallSurvivesTheRequestBeingClosed_Test()
+    {
+        // Octorate answered the first «mark connected» and then the request was closed: the stamp is saved without the token of the request,
+        // so the next command does not mark the same connection again.
+        var h = new Harness();
+        await h.SeedAsync(verified: true);
+        var batch = await h.RunToRoomsAsync();
+        h.Rows.AddRange([Harness.Row("1001", OctorateMappingStatus.Confirmed, h.Properties[0]), Harness.Row("1002", OctorateMappingStatus.Confirmed, h.Properties[1])]);
+        using var closed = new CancellationTokenSource();
+        h.AfterAnswer = (operation, connection) =>
+        {
+            if (operation == OctorateD6Operation.MarkConnected && connection == "501")
+                closed.Cancel();
+        };
+
+        await using (var db = h.NewDb())
+        {
+            try
+            {
+                await h.Service(db).ContinueAsync(CallerA, batch.Id, null, closed.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // The request is gone, as the test meant.
+            }
+        }
+
+        await using (var db = h.NewDb())
+        {
+            var answered = await db.OctorateInventoryImportItems.AsNoTracking().SingleAsync(i => i.OctorateConnectionId == "501");
+            Assert.NotNull(answered.ConnectedAt);
+            Assert.Null(answered.ErrorCode);
+        }
+
+        h.AfterAnswer = null;
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None);
+
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "501"));
+        Assert.Equal(OctorateInventoryImportStatus.Completed, batch.Status);
     }
 
     // ─── The rules around them ────────────────────────────────────────────────────────────────────────────────
@@ -823,8 +926,11 @@ public class ExistingInventoryImportServiceTests
         /// <summary>The two properties of org A the batches are about.</summary>
         public List<Guid> Properties { get; } = [];
 
+        /// <summary>Runs after Octorate answered an operation, before the service sees the answer (a hook for a request that is closed then).</summary>
+        public Action<OctorateD6Operation, string>? AfterAnswer { get; set; }
+
         public AppDbContext NewDb() =>
-            new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, NullTenantContext.Instance);
+            new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).AddInterceptors(new HonourCancellation()).Options, NullTenantContext.Instance);
 
         public ExistingInventoryImportService Service(
             AppDbContext db,
@@ -930,10 +1036,27 @@ public class ExistingInventoryImportServiceTests
                 [],
                 confirmedAt);
 
-        private Task<OctorateConnectionActionResult> Act(OctorateD6Operation operation, string connection) =>
-            Failures.TryGetValue((operation, connection), out var failure)
-                ? Task.FromException<OctorateConnectionActionResult>(failure)
-                : Task.FromResult(new OctorateConnectionActionResult(operation, connection, [new OctorateImportedMapping("p" + connection, "e" + connection)]));
+        private Task<OctorateConnectionActionResult> Act(OctorateD6Operation operation, string connection)
+        {
+            if (Failures.TryGetValue((operation, connection), out var failure))
+                return Task.FromException<OctorateConnectionActionResult>(failure);
+
+            AfterAnswer?.Invoke(operation, connection);
+            return Task.FromResult(new OctorateConnectionActionResult(operation, connection, [new OctorateImportedMapping("p" + connection, "e" + connection)]));
+        }
+    }
+
+    /// <summary>A save with a token that is already cancelled does not happen, as with a real database provider (the in-memory one does not look).</summary>
+    private sealed class HonourCancellation : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
     }
 
     /// <summary>The panel step of the access: the state is the test's, the start is recorded.</summary>

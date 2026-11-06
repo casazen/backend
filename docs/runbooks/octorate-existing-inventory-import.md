@@ -109,7 +109,7 @@ access (doubling up to 600 seconds); see the checklist.
 | Code | Meaning | What to do |
 |---|---|---|
 | `d6_operation_unverified` | The operation is not verified for this channel (flag off). Nothing was called | Complete the step in the panel with the host, or verify the operation in the pilot and turn the flag on (§ 4) |
-| `d6_result_unknown` | No answer in time, a failure of Octorate, or an answer that cannot be read. It is not repeated by itself | Check on the panel whether the step was done; then repeat the command. A repeated command may ask the operation a second time |
+| `d6_result_unknown` | No answer in time, a failure of Octorate, an answer that cannot be read, or a request closed after the call left. The item is marked BEFORE each call and the answer replaces the mark, so it is never asked again by itself, not even after a crash | Check on the panel whether the step was done. If it was not, repeat the command naming the listing (its accommodation id) in `retryUnknown` of `run` or `continue`: that asks the operation a second time, so only after checking |
 | `d6_channel_failed` | Octorate answered 550: the channel (the OTA) failed, not CasaZen | Check the channel in the panel with the host, then repeat |
 | `channel_connection_not_found` | The access is given but Octorate shows no connection of the channel | See § 3 point 1; never create a listing to make one |
 | `channel_access_not_valid` | The check found the access refused or not valid | The host gives the access again (`access/start`) |
@@ -131,7 +131,8 @@ command. In practice:
 - The channel is `AwaitingMapping`: decide the listings through the mapping endpoints, then `continue` (naming in `leaveForLater` the ones
   to leave, also a listing the mapping does not know yet: it does not hold the others back).
 - The channel is `NeedsAttention` or `Failed`: read its `errorCode` (and the `errorCode` of the items), remove the cause (§ 5), then repeat
-  `run` (if its rooms are not all in) or `continue`.
+  `run` (if its rooms are not all in) or `continue`. A listing with `d6_result_unknown` waits for a person: after checking the panel, name it in
+  `retryUnknown`; the other listings go on without it.
 - Two commands for the same channel at the same time: the second one leaves the channel alone and returns its state.
 
 An external item (one Octorate connection) is imported and marked at most once, also across batches: a later batch inherits the stamps of the

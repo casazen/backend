@@ -126,7 +126,11 @@ public sealed class OctorateExistingInventoryController(
         return Ok(ExistingInventoryBatchDto.From(batch));
     }
 
-    /// <summary>Imports the rooms of every channel whose access is given, reads the listings again and stops at <c>AwaitingMapping</c>. Repeating it is safe.</summary>
+    /// <summary>
+    /// Imports the rooms of every channel whose access is given, reads the listings again and stops at <c>AwaitingMapping</c>. Repeating it is
+    /// safe. A listing whose last operation has an unknown result (<c>d6_result_unknown</c>) is asked again only when its accommodation id is in
+    /// <c>retryUnknown</c>.
+    /// </summary>
     /// <response code="200">The batch after the run (a channel that needs attention says why).</response>
     /// <response code="404">The batch is not the org's, or the caller does not reach it.</response>
     /// <response code="409"><c>existing_inventory_access_pending</c>: no channel has its access given yet.</response>
@@ -134,19 +138,23 @@ public sealed class OctorateExistingInventoryController(
     [ProducesResponseType(typeof(ExistingInventoryBatchDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<ExistingInventoryBatchDto>> Run(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<ExistingInventoryBatchDto>> Run(
+        Guid id,
+        [FromBody] RunExistingInventoryRequest? request,
+        CancellationToken cancellationToken)
     {
         if (await CallerAsync(cancellationToken) is not { } caller)
             return NoOrg();
 
-        var batch = await import.RunAsync(caller, id, cancellationToken);
+        var batch = await import.RunAsync(caller, id, cancellationToken, request?.RetryUnknown);
         NoStore();
         return Ok(ExistingInventoryBatchDto.From(batch));
     }
 
     /// <summary>
     /// Goes on for the listings a person confirmed: reservations, calendars, «mark connected». The accommodation ids in <c>leaveForLater</c>
-    /// stay write-blocked and are not marked connected; the other listings go on. Repeating it is safe.
+    /// stay write-blocked and are not marked connected; the other listings go on. Repeating it is safe. A listing whose last operation has an
+    /// unknown result (<c>d6_result_unknown</c>) is asked again only when its accommodation id is in <c>retryUnknown</c>.
     /// </summary>
     /// <response code="200">The batch after the run.</response>
     /// <response code="404">The batch is not the org's, or the caller does not reach it.</response>
@@ -163,7 +171,7 @@ public sealed class OctorateExistingInventoryController(
         if (await CallerAsync(cancellationToken) is not { } caller)
             return NoOrg();
 
-        var batch = await import.ContinueAsync(caller, id, request?.LeaveForLater, cancellationToken);
+        var batch = await import.ContinueAsync(caller, id, request?.LeaveForLater, cancellationToken, request?.RetryUnknown);
         NoStore();
         return Ok(ExistingInventoryBatchDto.From(batch));
     }

@@ -23,11 +23,27 @@ public sealed class CreateExistingInventoryBatchRequest
     public string? Group { get; set; }
 }
 
+/// <summary>Imports the rooms (<c>POST .../{id}/run</c>); the body is optional.</summary>
+public sealed class RunExistingInventoryRequest
+{
+    /// <summary>
+    /// The Octorate accommodation ids of the listings whose last operation has an unknown result (<c>d6_result_unknown</c>) and that the person
+    /// checked in the panel and wants asked again. Such a listing is never asked again by itself.
+    /// </summary>
+    public List<string>? RetryUnknown { get; set; }
+}
+
 /// <summary>Goes on with the confirmed listings (<c>POST .../{id}/continue</c>); the accommodation ids named are left for later.</summary>
 public sealed class ContinueExistingInventoryRequest
 {
     /// <summary>The Octorate accommodation ids of the listings the person leaves for later: they stay write-blocked and are not marked connected.</summary>
     public List<string>? LeaveForLater { get; set; }
+
+    /// <summary>
+    /// The Octorate accommodation ids of the listings whose last operation has an unknown result (<c>d6_result_unknown</c>) and that the person
+    /// checked in the panel and wants asked again. Such a listing is never asked again by itself.
+    /// </summary>
+    public List<string>? RetryUnknown { get; set; }
 }
 
 /// <summary>The scenarios of a mixed portfolio (<c>PUT api/octorate/inventory-intents</c>, E02/F01/US03).</summary>

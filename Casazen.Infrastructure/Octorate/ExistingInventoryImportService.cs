@@ -208,11 +208,16 @@ public sealed class ExistingInventoryImportService(
 
     // ─── Room import ──────────────────────────────────────────────────────────────────────────────────────────
 
-    public async Task<ExistingInventoryBatchView> RunAsync(ExistingInventoryCaller caller, Guid batchId, CancellationToken ct)
+    public async Task<ExistingInventoryBatchView> RunAsync(
+        ExistingInventoryCaller caller,
+        Guid batchId,
+        CancellationToken ct,
+        IReadOnlyCollection<string>? retryUnknown = null)
     {
         ArgumentNullException.ThrowIfNull(caller);
         var batch = await LoadBatchAsync(caller.OrgId, batchId, ct);
         await AuthorizeAsync(caller, batch, ct);
+        var retry = NormalizeIds(retryUnknown);
 
         // What the panel said about the access of each channel that waits for it, before anything else.
         foreach (var channel in Ordered(batch))
@@ -238,7 +243,7 @@ public sealed class ExistingInventoryImportService(
                 continue;
             }
 
-            await RunChannelRoomsAsync(caller, batch.Id, channelId, ct);
+            await RunChannelRoomsAsync(caller, batch.Id, channelId, retry, ct);
         }
 
         await RefreshBatchStatusAsync(batch.OrgId, batch.Id, ct);
@@ -250,7 +255,7 @@ public sealed class ExistingInventoryImportService(
     /// connection that has no stamp, and, with every room imported, the listings of the org are read again so the mapping can start. Nothing is
     /// created on Octorate. Every step is saved before the next one; any failure leaves the channel at the step that failed.
     /// </summary>
-    private async Task RunChannelRoomsAsync(ExistingInventoryCaller caller, Guid batchId, Guid channelId, CancellationToken ct)
+    private async Task RunChannelRoomsAsync(ExistingInventoryCaller caller, Guid batchId, Guid channelId, IReadOnlySet<string> retry, CancellationToken ct)
     {
         var orgId = caller.OrgId;
         var channel = await LoadChannelAsync(orgId, channelId, ct);
@@ -292,7 +297,7 @@ public sealed class ExistingInventoryImportService(
         Failure? stop = null;
         foreach (var item in channel.Items.Where(i => i.RoomsImportedAt is null).OrderBy(i => i.OctorateConnectionId, StringComparer.Ordinal).ToList())
         {
-            var failure = await DoD6Async(orgId, channel, item, OctorateD6Operation.ImportRooms, ct);
+            var failure = await DoD6Async(orgId, channel, item, OctorateD6Operation.ImportRooms, retry.Contains(item.OctorateAccommodationId), ct);
             if (failure is null)
                 continue;
 
@@ -338,7 +343,8 @@ public sealed class ExistingInventoryImportService(
         ExistingInventoryCaller caller,
         Guid batchId,
         IReadOnlyCollection<string>? leaveForLater,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlyCollection<string>? retryUnknown = null)
     {
         ArgumentNullException.ThrowIfNull(caller);
         var orgId = caller.OrgId;
@@ -346,6 +352,7 @@ public sealed class ExistingInventoryImportService(
         await AuthorizeAsync(caller, batch, ct);
 
         var leaveNow = NormalizeIds(leaveForLater);
+        var retry = NormalizeIds(retryUnknown);
         var channels = Ordered(batch).Where(c => c.AccessCompletedAt is not null && c.RoomsImportedAt is not null).ToList();
         if (channels.Count == 0)
             throw new DomainConflictException("existing_inventory_not_ready", "ExistingInventoryNotReady");
@@ -415,7 +422,7 @@ public sealed class ExistingInventoryImportService(
                 continue;
             }
 
-            await ContinueChannelAsync(orgId, batchId, channelId, plan, ct);
+            await ContinueChannelAsync(orgId, batchId, channelId, plan, retry, ct);
         }
 
         await RefreshBatchStatusAsync(orgId, batchId, ct);
@@ -427,7 +434,13 @@ public sealed class ExistingInventoryImportService(
     /// CasaZen), the calendars, «mark connected». Each phase takes the listings that finished the previous one, so one that fails does not
     /// hold the others back; a listing left for later, rejected or out of the batch is not touched. Everything is saved item by item.
     /// </summary>
-    private async Task ContinueChannelAsync(Guid orgId, Guid batchId, Guid channelId, IReadOnlyDictionary<Guid, ItemPlan> plan, CancellationToken ct)
+    private async Task ContinueChannelAsync(
+        Guid orgId,
+        Guid batchId,
+        Guid channelId,
+        IReadOnlyDictionary<Guid, ItemPlan> plan,
+        IReadOnlySet<string> retry,
+        CancellationToken ct)
     {
         var failures = new List<Failure>();
         Failure? stop = null;
@@ -444,7 +457,7 @@ public sealed class ExistingInventoryImportService(
 
         foreach (var item in reservationItems)
         {
-            var failure = await DoD6Async(orgId, channel, item, OctorateD6Operation.ImportReservations, ct);
+            var failure = await DoD6Async(orgId, channel, item, OctorateD6Operation.ImportReservations, retry.Contains(item.OctorateAccommodationId), ct);
             if (failure is null)
                 continue;
 
@@ -518,7 +531,7 @@ public sealed class ExistingInventoryImportService(
                 await db.SaveChangesAsync(ct);
                 foreach (var item in calendarItems)
                 {
-                    var failure = await DoD6Async(orgId, channel, item, OctorateD6Operation.ImportCalendar, ct);
+                    var failure = await DoD6Async(orgId, channel, item, OctorateD6Operation.ImportCalendar, retry.Contains(item.OctorateAccommodationId), ct);
                     if (failure is null)
                         continue;
 
@@ -543,7 +556,7 @@ public sealed class ExistingInventoryImportService(
                 await db.SaveChangesAsync(ct);
                 foreach (var item in connectItems)
                 {
-                    var failure = await DoD6Async(orgId, channel, item, OctorateD6Operation.MarkConnected, ct);
+                    var failure = await DoD6Async(orgId, channel, item, OctorateD6Operation.MarkConnected, retry.Contains(item.OctorateAccommodationId), ct);
                     if (failure is null)
                         continue;
 
@@ -611,13 +624,21 @@ public sealed class ExistingInventoryImportService(
 
     /// <summary>
     /// Asks Octorate for one operation of the D6 sequence on one connection, and writes the stamp: <c>null</c> when it is done (or was done
-    /// for the same connection by an earlier batch), otherwise why it is not. An operation not verified for the channel is not called.
+    /// for the same connection by an earlier batch), otherwise why it is not. An operation not verified for the channel is not called, and
+    /// neither is one whose earlier attempt left a result nobody knows, unless <paramref name="resume"/> says a person asked for it again.
     /// </summary>
+    /// <remarks>
+    /// <b>At most once.</b> The item is marked <c>d6_result_unknown</c> and saved BEFORE the call leaves, and the answer replaces the mark (the
+    /// stamp, or the code of a refusal that tells the operation did not run). So a request that is closed, a crash or a failed save between
+    /// the call and the stamp leave a code that stops the next command, never an item that looks untouched. What Octorate answered is saved
+    /// without the token of the request: the call is done whether or not the request is still there.
+    /// </remarks>
     private async Task<Failure?> DoD6Async(
         Guid orgId,
         OctorateInventoryImportChannel channel,
         OctorateInventoryImportItem item,
         OctorateD6Operation operation,
+        bool resume,
         CancellationToken ct)
     {
         if (await InheritAsync(orgId, item, operation, ct))
@@ -628,14 +649,28 @@ public sealed class ExistingInventoryImportService(
             return null;
         }
 
+        // An earlier attempt left a result nobody knows: it is not asked again by itself, whatever the flag says. A person checks the panel and
+        // resumes it by naming the listing.
+        if (item.ErrorCode == OctorateInventoryErrorCodes.D6ResultUnknown && !resume)
+            return new Failure(OctorateInventoryErrorCodes.D6ResultUnknown, OctorateInventoryImportStatus.NeedsAttention, false);
+
         if (!Settings.IsVerified(channel.ChannelCode, operation))
         {
-            // Never a success that Octorate did not confirm: the step stays guided until the pilot has verified it for this channel.
-            item.ErrorCode = OctorateInventoryErrorCodes.D6OperationUnverified;
-            item.UpdatedAt = Now();
-            await db.SaveChangesAsync(ct);
+            // Never a success that Octorate did not confirm: the step stays guided until the pilot has verified it for this channel. A result
+            // that is still unknown keeps its code.
+            if (item.ErrorCode != OctorateInventoryErrorCodes.D6ResultUnknown)
+            {
+                item.ErrorCode = OctorateInventoryErrorCodes.D6OperationUnverified;
+                item.UpdatedAt = Now();
+                await db.SaveChangesAsync(ct);
+            }
+
             return new Failure(OctorateInventoryErrorCodes.D6OperationUnverified, OctorateInventoryImportStatus.NeedsAttention, false);
         }
+
+        item.ErrorCode = OctorateInventoryErrorCodes.D6ResultUnknown;
+        item.UpdatedAt = Now();
+        await db.SaveChangesAsync(ct);
 
         OctorateConnectionActionResult result;
         try
@@ -657,7 +692,7 @@ public sealed class ExistingInventoryImportService(
             var failure = Classify(ex);
             item.ErrorCode = failure.Code;
             item.UpdatedAt = Now();
-            await db.SaveChangesAsync(ct);
+            await db.SaveChangesAsync(CancellationToken.None);
             logger.LogWarning(
                 "Existing inventory of org {OrgId}, channel {ChannelCode}, connection {ConnectionId}: {Operation} did not complete ({Error})",
                 orgId, channel.ChannelCode, item.OctorateConnectionId, operation, failure.Code);
@@ -684,7 +719,7 @@ public sealed class ExistingInventoryImportService(
 
         item.ErrorCode = null;
         item.UpdatedAt = now;
-        await db.SaveChangesAsync(ct);
+        await db.SaveChangesAsync(CancellationToken.None);
         return null;
     }
 
