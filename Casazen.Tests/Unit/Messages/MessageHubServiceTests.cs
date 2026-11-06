@@ -435,6 +435,37 @@ public class MessageHubServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetThread_AConversationAnonymizedByTheRealCode_ShowsNoWords_NoName_NoPreview_AndNoFile()
+    {
+        // Anonymized by the code that erases a guest (the one the retention and the sync of the channel manager call too), not by hand.
+        var thread = await _db.OtaMessageThreads.FirstAsync(t => t.Id == _world.GrantedReservation.Id);
+        var messages = await _db.OtaMessages.Where(m => m.ThreadId == thread.Id).ToListAsync();
+        GuestDataEraser.AnonymizeOtaThread(thread, messages, MessageHubTestKit.Now.UtcDateTime);
+        await _db.SaveChangesAsync();
+        var fetcher = new Mock<IOtaAttachmentFetcher>();
+        var service = Service(attachments: fetcher.Object);
+
+        var page = await service.ListAsync(OrgWide, new MessageHubFilter(), 1, 20);
+        var view = await service.GetThreadAsync(OrgWide, Ota(_world.GrantedReservation), includeAmounts: true);
+        var error = await Assert.ThrowsAsync<NotFoundException>(() => service.OpenAttachmentAsync(OrgWide, _world.GrantedAttachment.Id));
+
+        var row = Assert.Single(page.Items, i => i.Key == Ota(_world.GrantedReservation));
+        Assert.Null(row.Preview);
+        Assert.Equal(GuestDataEraser.AnonymizedName, row.GuestName);
+        Assert.True(view.Anonymized);
+        Assert.Equal(GuestDataEraser.AnonymizedName, view.GuestName);
+        Assert.NotEmpty(view.Messages);
+        Assert.All(view.Messages, m =>
+        {
+            Assert.Equal(string.Empty, m.Text);
+            Assert.Equal(GuestDataEraser.AnonymizedName, m.SenderName);
+            Assert.Null(m.AttachmentContentType);
+        });
+        Assert.Equal("attachment_unavailable", error.Code);
+        fetcher.Verify(f => f.FetchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task GetThread_ALongConversation_CarriesTheLatestMessagesAndSaysThereAreEarlierOnes()
     {
         for (var i = 0; i < GuestMessageRules.TranscriptMaxMessages; i++)
