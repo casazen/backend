@@ -169,7 +169,7 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
 
     /// <summary>
     /// Proof (data, permission): the overview speaks about the caller's org only, and over what the caller reaches (AM-03). The collaborator «Solo
-    /// alcuni» counts the senders and the channel states of its one property; the owner those of the two houses of the org; the other org's
+    /// alcuni» counts the senders, the channel states and the parts of the plan over its one property; the owner over the two houses of the org; the other org's
     /// connection, sender and channel states are in neither, and in turn the other org sees only its own. A scope of another org is refused.
     /// </summary>
     [Fact]
@@ -209,7 +209,14 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
         Assert.Equal([(ChannelPublishStatus.Draft, 1), (ChannelPublishStatus.Published, 1), (ChannelPublishStatus.ToFix, 1)], Counted(orgWide));
         Assert.Equal([(ChannelPublishStatus.Published, 2), (ChannelPublishStatus.ManagedOnChannel, 1)], Counted(other));
 
+        // The parts follow the reach too: the plan is read over the same scope, so the evaluators count the one house of the collaborator and the
+        // two of the owner (a plan read over the whole org for everybody would show 2 of 2 to the collaborator).
         Assert.Equal(11, orgWide.Parts.Count);
+        Assert.Equal(11, restricted.Parts.Count);
+        Assert.Equal((Done: 1, Total: 1), ProgressOf(restricted, OnboardingPartKey.PricesRules));
+        Assert.Equal((Done: 2, Total: 2), ProgressOf(orgWide, OnboardingPartKey.PricesRules));
+        Assert.Equal((Done: 1, Total: 1), ProgressOf(restricted, OnboardingPartKey.Channels));
+        Assert.Equal((Done: 2, Total: 2), ProgressOf(orgWide, OnboardingPartKey.Channels));
         await Assert.ThrowsAsync<ArgumentException>(() => service.GetOverviewAsync(_world.OtherOrgId, _world.OrgWide, Ct));
     }
 
@@ -543,6 +550,13 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
     /// <summary>The statuses that have channel states, with how many, in the order of the answer.</summary>
     private static (ChannelPublishStatus Status, int Count)[] Counted(OnboardingIntegrationOverview overview) =>
         [.. overview.Channels.Where(count => count.Count > 0).Select(count => (count.Status, count.Count))];
+
+    /// <summary>How much of a part is done over how much there is to do, as the overview shows it for the reach of its caller.</summary>
+    private static (int Done, int Total) ProgressOf(OnboardingIntegrationOverview overview, OnboardingPartKey key)
+    {
+        var part = overview.Parts.Single(p => p.Plan.Key == key).Plan;
+        return (part.Done, part.Total);
+    }
 
     private static string[] Names(JsonElement element) =>
         [.. element.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal)];
