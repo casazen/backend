@@ -127,7 +127,7 @@ public sealed record GuestMarketingChange(
 
 /// <summary>The e-mail part of a change.</summary>
 /// <param name="Enabled"><c>true</c> to consent, <c>false</c> to withdraw.</param>
-/// <param name="Address">The address to consent with; the address of the booking when it is a real one and this is empty, else required.</param>
+/// <param name="Address">The address to consent with when the booking has no real one (an OTA forward, or no usable address): then it is required. Ignored when the booking has a real address, which is the one the consent is for.</param>
 public sealed record GuestMarketingEmailChange(bool Enabled, string? Address);
 
 /// <summary>The WhatsApp part of a change.</summary>

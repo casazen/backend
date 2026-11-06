@@ -111,12 +111,64 @@ public class GuestPagePreferencesProofTests
         Assert.Single(await world.Db.SuppressionListEntries.AsNoTracking().ToListAsync(Ct));
     }
 
+    /// <summary>
+    /// Privacy rule: a session proves the booking, not the ownership of another address, so a booking with a real address consents with that
+    /// address only. An address typed next to it is ignored: the contact is the one of the booking, the confirmation e-mail goes to it and to
+    /// nobody else, and the answer shows it masked.
+    /// </summary>
+    [Fact]
+    public async Task GuestPagePreferences_ABookingWithARealAddress_ConsentsWithThatAddressOnly_Test()
+    {
+        using var world = new World();
+        var (org, house) = await world.AddSiteAsync();
+        var booking = await world.AddBookingAsync(org, house, "anna@example.com");
+        var ticket = world.TicketOf(org, "anna@example.com");
+
+        var on = await world.Service.SetAsync(ticket, BookingCodes.Format(booking.BookingCode), World.Enable("intruso@example.com"), "203.0.113.9", Ct);
+
+        Assert.Equal(GuestMarketingStates.Pending, on.Email.State);
+        Assert.Equal("a***@e***.com", on.Email.MaskedAddress);
+        var contact = Assert.Single(await world.Db.GuestContacts.AsNoTracking().ToListAsync(Ct));
+        Assert.Equal("anna@example.com", contact.Value);
+        Assert.Equal("anna@example.com", Assert.Single(world.Queue.Snapshot()).To);
+    }
+
+    /// <summary>
+    /// Privacy rule: when the booking has no real address (a relay of an online travel agency) the guest types one. Without it, or with another
+    /// relay address, the change is refused (422) and nothing is stored; with a plain address the consent and its confirmation e-mail are for it.
+    /// </summary>
+    [Fact]
+    public async Task GuestPagePreferences_ABookingWithARelayAddress_NeedsAPlainAddressTyped_Test()
+    {
+        using var world = new World(new CrmOptions { OtaForwardDomains = ["relay.example.org"] });
+        var (org, house) = await world.AddSiteAsync();
+        var booking = await world.AddBookingAsync(org, house, "res-77@relay.example.org");
+        var ticket = world.TicketOf(org, "res-77@relay.example.org");
+        var code = BookingCodes.Format(booking.BookingCode);
+
+        foreach (var typed in new string?[] { null, "altro-77@relay.example.org", "non-un-indirizzo" })
+        {
+            var refused = await Assert.ThrowsAsync<DomainRuleException>(
+                () => world.Service.SetAsync(ticket, code, World.Enable(typed), "203.0.113.9", Ct));
+            Assert.Equal(GuestMarketingErrorCodes.EmailInvalid, refused.Code);
+        }
+
+        Assert.Empty(await world.Db.GuestContacts.AsNoTracking().ToListAsync(Ct));
+        Assert.Empty(world.Queue.Snapshot());
+
+        var on = await world.Service.SetAsync(ticket, code, World.Enable("vera@example.com"), "203.0.113.9", Ct);
+
+        Assert.Equal(GuestMarketingStates.Pending, on.Email.State);
+        Assert.Equal("vera@example.com", Assert.Single(await world.Db.GuestContacts.AsNoTracking().ToListAsync(Ct)).Value);
+        Assert.Equal("vera@example.com", Assert.Single(world.Queue.Snapshot()).To);
+    }
+
     /// <summary>The world of the proofs: a store, a clock, the real session lookup, the contact and confirmation services, the service under test.</summary>
     private sealed class World : IDisposable
     {
         public const string Version = "consent-v1";
 
-        public World()
+        public World(CrmOptions? crmOptions = null)
         {
             Db = CrmTestWorld.Open(CrmTestWorld.NewStore());
             Clock = CrmTestWorld.Clock();
@@ -133,8 +185,9 @@ public class GuestPagePreferencesProofTests
                 Clock);
             var sessions = new GuestSessionService(lookup, new GuestSessionTokens(new EphemeralDataProtectionProvider(), Clock), configuration, Clock);
 
-            var crm = Options.Create(new CrmOptions());
-            var contacts = CrmTestWorld.Contacts(Db, Clock);
+            var crmValues = crmOptions ?? new CrmOptions();
+            var crm = Options.Create(crmValues);
+            var contacts = CrmTestWorld.Contacts(Db, Clock, crmValues);
             Queue = new RecordingEmailQueue();
             var confirmation = new MarketingConfirmationService(
                 Db,
@@ -165,9 +218,9 @@ public class GuestPagePreferencesProofTests
 
         public GuestMarketingPreferencesService Service { get; }
 
-        /// <summary>The guest turns e-mail on, with the address of the booking and the text in force.</summary>
-        public static GuestMarketingChange Enable() =>
-            new(new GuestMarketingEmailChange(true, null), null, Version, "it");
+        /// <summary>The guest turns e-mail on, with the text in force; <paramref name="address"/> is the address the guest typed, if any.</summary>
+        public static GuestMarketingChange Enable(string? address = null) =>
+            new(new GuestMarketingEmailChange(true, address), null, Version, "it");
 
         /// <summary>The guest turns e-mail off.</summary>
         public static GuestMarketingChange Disable() =>

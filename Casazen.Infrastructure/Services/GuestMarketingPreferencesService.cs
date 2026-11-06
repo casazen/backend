@@ -228,24 +228,24 @@ public class GuestMarketingPreferencesService(
     // ---- writing ------------------------------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// The address to consent with: the one the guest typed, which must be a plain address that is not a relay of an OTA, else the address of the
-    /// booking when it is a real one. An OTA forward, or no address, has to be typed.
+    /// The address to consent with: the address of the booking when it is a real one, and then the one the guest typed is not looked at (a
+    /// session proves the booking, not the ownership of another address, and the confirmation e-mail goes to the address named here). Only when
+    /// the booking has an OTA forward, or no usable address, the guest types one, a plain address that is not a relay of an OTA.
     /// </summary>
     private string ResolveAddress(Booking booking, string? typed)
     {
         var settings = crmOptions.Value;
-        if (!string.IsNullOrWhiteSpace(typed))
-        {
-            if (!CrmNormalizer.TryNormalizeEmail(typed, out var address) || OtaForwardAddress.IsOnRelayDomain(address, settings.OtaForwardDomains))
-                throw new DomainRuleException(GuestMarketingErrorCodes.EmailInvalid, "GuestMarketingEmailInvalid");
-
-            return address;
-        }
-
         if (CrmNormalizer.TryNormalizeEmail(booking.Guest.Email, out var bookingAddress)
             && !OtaForwardAddress.IsForward(bookingAddress, booking.Source, settings.OtaForwardDomains))
         {
             return bookingAddress;
+        }
+
+        if (!string.IsNullOrWhiteSpace(typed)
+            && CrmNormalizer.TryNormalizeEmail(typed, out var address)
+            && !OtaForwardAddress.IsOnRelayDomain(address, settings.OtaForwardDomains))
+        {
+            return address;
         }
 
         throw new DomainRuleException(GuestMarketingErrorCodes.EmailInvalid, "GuestMarketingEmailInvalid");
