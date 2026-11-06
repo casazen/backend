@@ -15,8 +15,8 @@ whatever the flag says.
 | Behind `Features__CrmMarketing` (404 before authentication while off) | Not behind it |
 |---|---|
 | Every endpoint of `CrmController` (`api/crm/*`: the CRM profiles) and of `CampaignsController` (`api/campaigns/*`: segments, campaigns, approval, schedule, send) | The public consent, confirmation, unsubscribe and welcome endpoints (`api/public/marketing/*`: a link already sent keeps working) |
-| The menu entries of the web app that open them (the frontend reads the key `crmMarketing` of `GET /api/public/features`) | The GDPR endpoints (`api/gdpr/*`), including the host recording a withdrawal: the legal record is saved whatever the flag and the key say (§ 3) |
-| | The collection of contacts and consents at the check-in and at the checkout of a booking |
+| **The send of a campaign scheduled before**: the Hangfire job `CampaignSendJob` is the only way a campaign leaves, so it is closed with the module (§ 7) | The GDPR endpoints (`api/gdpr/*`), including the host recording a withdrawal: the legal record is saved whatever the flag and the key say (§ 3) |
+| The menu entries of the web app that open them (the frontend reads the key `crmMarketing` of `GET /api/public/features`) | The collection of contacts and consents at the check-in and at the checkout of a booking |
 | | The suppression list and the keyed index (§ 3 and § 5): they serve these paths too |
 
 While the flag is off `GET /api/public/features` answers `"crmMarketing": false`.
@@ -60,7 +60,8 @@ with `Suppliers__CustomerIndexKey`, [`suppliers.md`](suppliers.md) § 23).
     name them; so do the `GuestConsentRecords` with source `HostOnGuestRequest` recorded since the release) have to be added to the list by an
     operator, and the consent tasks of the epic ([`crm-consent.md`](crm-consent.md)) must read the withdrawn consents, not only the list, when
     they build the contacts;
-  - the public unsubscribe link needs no key (it carries the hash already) and works the same.
+  - the public unsubscribe link needs no key (it carries the hash already) and works the same; a campaign is not sent at all with the flag off
+    (§ 7).
 - Nothing logs the key or a hash: only the org and the source of a suppression.
 
 ## 4. Turn the module on in the test environment
@@ -98,7 +99,21 @@ for a consent that is not in force. The withdrawal of those consents is part of 
 
 ## 6. Rollback
 
-Turning the flag off hides the module and changes no data. The suppression list, the contacts and the key stay: do not remove or change
+Turning the flag off hides the module and changes no data, but for one case: a campaign whose send time arrives while the flag is off is not sent and
+goes back to Approved (§ 7). The suppression list, the contacts and the key stay: do not remove or change
 `Crm__ContactIndexKey` (§ 3). A deployment of the previous version still reads the table (the column is the same) but writes the plain SHA-256 again and
 does not know the keyed entries: do not roll back to a version without the keyed suppression once keyed entries exist, unless the product owner accepts
 that the people who opted out in the meantime are not honored by it.
+
+## 7. The send of a campaign while the flag is off
+
+The endpoints of `CampaignsController` are closed by the flag, but a campaign can be **scheduled before** the module was closed (or while it was on),
+and its send is a Hangfire job (`CampaignSendJob` → `CampaignService.SendCampaignAsync`) that the flag of the controller does not reach. So the
+service checks the flag itself, before it reads the recipients, the key or the link secret:
+
+- **Flag off at the time of the send**: nothing is sent, whatever the key and `SIGNED_LINK_SECRET` say. The job writes one warning
+  (`Campaign <id> of org <id> not sent: Features:CrmMarketing is off`) and **ends without failing**, so Hangfire does not retry it. A campaign that
+  was `Scheduled` goes back to `Approved` with no schedule (an explicit state: it is not waiting for a send that will not happen), and the host can
+  schedule it again once the module is on. A campaign already `Approved` is left as it is.
+- **Flag on**: as before. The key is then required at startup, so the recipients and the unsubscribe links of the campaign can be computed;
+  without `SIGNED_LINK_SECRET` or `App__PublicSiteBaseUrl` the job fails and is retried ([`email.md`](email.md)).

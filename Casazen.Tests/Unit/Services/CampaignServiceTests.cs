@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
@@ -8,6 +9,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.External;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Logging;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -108,6 +110,59 @@ public class CampaignServiceTests
         Assert.Equal(CampaignStatus.Approved, (await verify.Campaigns.SingleAsync(c => c.Id == campaignId)).Status);
     }
 
+    /// <summary>
+    /// Proof test (permission rule, E07/F06/US01/T01): the module is closed behind <c>Features:CrmMarketing</c> and the Hangfire job is the way a
+    /// campaign leaves, so a campaign scheduled before the module was closed must not send a real e-mail while the flag is off. Whatever the state
+    /// of the key and of the link secret (here both missing, so that the old code failed and the job was retried), no e-mail is attempted, the job
+    /// does not fail, one warning in the log names the campaign and the flag, and the campaign goes back to Approved with no schedule: an explicit
+    /// state the host can schedule again once the module is on, not a campaign left Scheduled for a send that will not happen.
+    /// </summary>
+    [Fact]
+    public async Task SendCampaign_WithTheModuleOff_SendsNothingAndPutsTheCampaignBackToApproved_Test()
+    {
+        var (options, orgId, campaignId) = await SeedApprovedCampaignAsync("guest.person@example.com");
+        await using (var seed = new AppDbContext(options))
+        {
+            var scheduled = await seed.Campaigns.SingleAsync(c => c.Id == campaignId);
+            scheduled.Status = CampaignStatus.Scheduled;
+            scheduled.ScheduledAt = DateTime.UtcNow.AddMinutes(-1);
+            await seed.SaveChangesAsync();
+        }
+
+        var email = new Mock<IEmailService>();
+        var log = new CapturingLogger<CampaignService>();
+        await using (var context = new AppDbContext(options))
+        {
+            var withoutTheKey = CrmTestIndex.Create(key: null);
+            var service = new CampaignService(
+                context,
+                new ConditionEvaluator(Mock.Of<ILogger<ConditionEvaluator>>()),
+                new SuppressionService(context, withoutTheKey, Mock.Of<ILogger<SuppressionService>>()),
+                email.Object,
+                Links(secret: null),
+                Mock.Of<IBackgroundJobClient>(),
+                new TestFeatureFlags(),
+                TimeProvider.System,
+                log);
+
+            await service.SendCampaignAsync(campaignId);
+        }
+
+        email.VerifyNoOtherCalls();
+        await using var verify = new AppDbContext(options);
+        var campaign = await verify.Campaigns.SingleAsync(c => c.Id == campaignId);
+        Assert.Equal(CampaignStatus.Approved, campaign.Status);
+        Assert.Null(campaign.ScheduledAt);
+        Assert.Null(campaign.SentAt);
+        Assert.Equal((0, 0), (campaign.SentCount, campaign.ErrorCount));
+
+        var warning = Assert.Single(log.Entries, entry => entry.Level == LogLevel.Warning);
+        Assert.Contains("Features:CrmMarketing is off", warning.Message);
+        Assert.Equal(campaignId, Assert.IsType<Guid>(warning.Values["CampaignId"]));
+        Assert.Equal(orgId, Assert.IsType<Guid>(warning.Values["OrgId"]));
+        Assert.DoesNotContain("example.com", log.AllOutput, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static CampaignService NewService(AppDbContext context, IEmailService email, MarketingUnsubscribeLinks links) =>
         new(
             context,
@@ -116,8 +171,12 @@ public class CampaignServiceTests
             email,
             links,
             Mock.Of<IBackgroundJobClient>(),
+            ModuleOn(),
             TimeProvider.System,
             Mock.Of<ILogger<CampaignService>>());
+
+    /// <summary>The flag of the marketing module as an environment that turned it on has it (E07/F06/US01/T01).</summary>
+    private static IFeatureFlags ModuleOn() => new TestFeatureFlags(FeatureFlags.CrmMarketing);
 
     /// <summary>One guest with marketing consent, a segment that takes everybody and an approved campaign to it.</summary>
     private static async Task<(DbContextOptions<AppDbContext> Options, Guid OrgId, Guid CampaignId)> SeedApprovedCampaignAsync(string guestEmail)
@@ -237,6 +296,7 @@ public class CampaignServiceTests
                 Mock.Of<Casazen.Infrastructure.External.IEmailService>(),
                 Links(),
                 backgroundJobClient,
+                ModuleOn(),
                 timeProvider,
                 logger);
 
@@ -331,6 +391,7 @@ public class CampaignServiceTests
                 Mock.Of<Casazen.Infrastructure.External.IEmailService>(),
                 Links(),
                 backgroundJobClient,
+                ModuleOn(),
                 timeProvider,
                 logger);
 
@@ -387,6 +448,7 @@ public class CampaignServiceTests
                 Mock.Of<Casazen.Infrastructure.External.IEmailService>(),
                 Links(),
                 backgroundJobClient,
+                ModuleOn(),
                 timeProvider,
                 logger);
 

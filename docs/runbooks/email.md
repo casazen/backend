@@ -244,12 +244,16 @@ guest's address in the query, on a hard-coded host (`https://app.casazen.com/uns
   `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 2369, RFC 8058): Gmail, Yahoo and the others show their own «Unsubscribe» and post to the API
   themselves. Left out when `App__ApiBaseUrl` is not an https URL; the link in the body is still there.
 - **Variables**: `SIGNED_LINK_SECRET` (a long random secret, shared by the signed links of ADR-007-R20; the unsubscribe endpoint already needed it) and
-  `App__PublicSiteBaseUrl` on every environment that sends campaigns. Without them **no campaign e-mail leaves**: the job fails with
+  `App__PublicSiteBaseUrl` on every environment that sends campaigns. Without them (and with the module on) **no campaign e-mail leaves**: the job fails with
   `EmailConfigurationException` and Hangfire retries it. Rotating the secret invalidates the links already sent.
 - **Logs**: `CampaignService`, `PublicMarketingController` and `SuppressionService` never log an address **nor the hash that stands for it** (the unsubscribe
   logs carry the org and the source only, E07/F06/US01/T02, AC-NF95-5).
-- **Key**: the link of a campaign needs `Crm__ContactIndexKey` too (it is the key of the hash in the link); without it outside Development and Testing the
-  job fails with `InvalidOperationException` and nothing is sent ([`crm-marketing.md`](crm-marketing.md)).
+- **Key**: the link of a campaign needs `Crm__ContactIndexKey` too (it is the key of the hash in the link, and of the check of the suppression list).
+  A campaign goes out only with `Features__CrmMarketing` on, and then the key is required at startup outside Development and Testing
+  ([`crm-marketing.md`](crm-marketing.md) § 3).
+- **Flag off**: the job is closed with the module. While `Features__CrmMarketing` is off the send of a campaign scheduled before does nothing: one
+  warning in the log, the job ends without failing (no retry, whatever the key and the secret say) and the campaign goes back to Approved, to be scheduled
+  again once the module is on ([`crm-marketing.md`](crm-marketing.md) § 7).
 
 ## Adding a new email
 
