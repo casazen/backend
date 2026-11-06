@@ -6,6 +6,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
 using Casazen.Web.DTOs.Crm;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -249,6 +250,115 @@ public class CrmProfileApiProofTests
         Assert.Contains("greta.bianchi@example.com", json, StringComparison.Ordinal);
         foreach (var secret in new[] { "DOC-SEGRETO-4711", "Reykjavik", "Islandese", "Atlantide", "NOTA-PRIVATA", "1971-03-09", "Passport", "333 1112223" })
             Assert.DoesNotContain(secret, json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Privacy rule: what a guest asked to be forgotten does not come back through the CRM. A guest whose data were anonymized, that was deleted
+    /// or that asked for the erasure gives no name and none of its contacts is shown (the erasure does not reach the contacts yet); and the
+    /// filter «reachable by e-mail» and the search by an exact e-mail address or phone number read the same contacts as the screen: the profile is
+    /// not kept by an address its item does not show, and the address and the number are not found. A guest that is not erased is, as the control.
+    /// </summary>
+    [Fact]
+    public async Task CrmProfiles_ContactsOfAnErasedGuest_AreNeitherShownNorFoundNorCounted_Test()
+    {
+        const string controlEmail = "carla.controllo@example.com";
+        const string controlPhone = "+39 333 1112299";
+        var store = CrmTestWorld.NewStore();
+        var clock = CrmTestWorld.Clock();
+        var index = CrmTestIndex.Create();
+        var orgId = Guid.NewGuid();
+        var erasedProfiles = new List<Guid>();
+        var erasedContacts = new List<(string Email, string Phone)>();
+        Guid controlId;
+        await using (var seed = CrmTestWorld.Open(store))
+        {
+            // Three people whose only guest is erased, one way each (anonymized, deleted, asked for the erasure), and one who is not.
+            var people = new[] { ("Elena", "Anonimizzata"), ("Dario", "Eliminato"), ("Alba", "Richiesta") };
+            for (var n = 0; n < people.Length; n++)
+            {
+                var (first, last) = people[n];
+                var (profile, _, guest) = CrmProfileApiWorld.AddPerson(seed, orgId, first, last);
+                switch (n)
+                {
+                    case 0:
+                        guest.DataAnonymizedDate = CrmTestWorld.Day(-3);
+                        break;
+                    case 1:
+                        guest.IsDeleted = true;
+                        break;
+                    default:
+                        guest.ErasureRequested = true;
+                        break;
+                }
+
+                var email = $"{first}.{last}@example.com".ToLowerInvariant();
+                var phone = $"+39 333 11122{n:00}";
+                AddMarketableContacts(seed, index, orgId, profile, guest, email, phone);
+                erasedProfiles.Add(profile.Id);
+                erasedContacts.Add((email, phone));
+            }
+
+            var (control, _, controlGuest) = CrmProfileApiWorld.AddPerson(seed, orgId, "Carla", "Controllo");
+            AddMarketableContacts(seed, index, orgId, control, controlGuest, controlEmail, controlPhone);
+            await seed.SaveChangesAsync(Ct);
+            controlId = control.Id;
+        }
+
+        var scope = new HostScope(orgId);
+        await using var db = CrmTestWorld.Open(store);
+        var service = CrmProfileApiWorld.ReadService(db, clock);
+
+        // The filter says what the item says: only the control can be written to by e-mail; the erased ones show no address and are not reachable.
+        var reachable = await service.ListAsync(scope, new CrmProfileFilter(ReachableByEmail: true), 1, 50, Ct);
+        var listed = Assert.Single(reachable.Items);
+        Assert.Equal(controlId, listed.Id);
+        Assert.True(listed.EmailReachable);
+        var unreachable = await service.ListAsync(scope, new CrmProfileFilter(ReachableByEmail: false), 1, 50, Ct);
+        Assert.True(unreachable.Items.Select(item => item.Id).ToHashSet().SetEquals(erasedProfiles));
+        Assert.All(unreachable.Items, item =>
+        {
+            Assert.False(item.EmailReachable);
+            Assert.Equal(string.Empty, item.EmailMasked);
+            Assert.Equal(string.Empty, item.DisplayName);
+        });
+
+        // The search finds the address and the number of the control, and nothing of the erased guests: not the address, not the number, not the name.
+        Assert.Equal(controlId, Assert.Single((await service.ListAsync(scope, new CrmProfileFilter(Search: controlEmail), 1, 50, Ct)).Items).Id);
+        Assert.Equal(controlId, Assert.Single((await service.ListAsync(scope, new CrmProfileFilter(Search: controlPhone), 1, 50, Ct)).Items).Id);
+        foreach (var (email, phone) in erasedContacts)
+        {
+            Assert.Empty((await service.ListAsync(scope, new CrmProfileFilter(Search: email), 1, 50, Ct)).Items);
+            Assert.Empty((await service.ListAsync(scope, new CrmProfileFilter(Search: phone), 1, 50, Ct)).Items);
+        }
+
+        Assert.Empty((await service.ListAsync(scope, new CrmProfileFilter(Search: "Richiesta"), 1, 50, Ct)).Items);
+
+        // The detail shows the contacts of the control and none of the erased guests.
+        Assert.Equal(2, (await service.GetAsync(scope, controlId, Ct)).Contacts.Count);
+        foreach (var profileId in erasedProfiles)
+            Assert.Empty((await service.GetAsync(scope, profileId, Ct)).Contacts);
+    }
+
+    /// <summary>
+    /// An address that may receive marketing (soft opt-in) and a number, both given by the guest and found by their keyed hash, as the contact
+    /// service writes them.
+    /// </summary>
+    private static void AddMarketableContacts(
+        AppDbContext db,
+        ICrmContactIndex index,
+        Guid orgId,
+        GuestCrmProfile profile,
+        Guest guest,
+        string email,
+        string phone)
+    {
+        var address = CrmProfileApiWorld.NewContact(
+            orgId, profile.Id, GuestContactChannel.Email, email, GuestContactOrigin.DirectBooking, GuestContactLegalBasis.SoftOptIn, guestId: guest.Id);
+        address.ValueHash = index.Hash(CrmNormalizer.NormalizeEmail(email));
+        var number = CrmProfileApiWorld.NewContact(
+            orgId, profile.Id, GuestContactChannel.Phone, phone, GuestContactOrigin.Manual, GuestContactLegalBasis.ServiceOnly, guestId: guest.Id);
+        number.ValueHash = index.Hash(CrmNormalizer.NormalizePhone(phone)!);
+        db.GuestContacts.AddRange(address, number);
     }
 
     /// <summary>

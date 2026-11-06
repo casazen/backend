@@ -275,7 +275,8 @@ public sealed class CrmProfileReadService(
 
         if (filter.ReachableByEmail is { } reachable)
         {
-            var marketable = db.GuestContacts.Where(contact => contact.OrgId == orgId).Where(CrmContactRules.MarketableEmail);
+            // The contacts a screen may show (not those given by an erased guest): the filter and the item of the list say the same thing.
+            var marketable = CrmProfileContactReader.Visible(db, orgId).Where(CrmContactRules.MarketableEmail);
             query = reachable
                 ? query.Where(profile => marketable.Any(contact => contact.GuestCrmProfileId == profile.Id))
                 : query.Where(profile => !marketable.Any(contact => contact.GuestCrmProfileId == profile.Id));
@@ -311,8 +312,11 @@ public sealed class CrmProfileReadService(
     }
 
     /// <summary>
-    /// The profiles of the org that have a contact with this exact e-mail address or phone number (or this phone as their own key). Empty when
-    /// the text is neither, or when the keyed index has no key (outside Development and Testing, with the module closed).
+    /// The profiles of the org that have a contact with this exact e-mail address or phone number (or this phone as their own key). The contacts
+    /// are those a screen may show (<see cref="CrmProfileContactReader.Visible"/>): the address or the number of an erased guest finds nothing.
+    /// The phone key of the profile itself is a hash on the profile, not a contact, and cannot be told from whom it came: it stays as it was, until
+    /// the erasure reaches the CRM (task E07/F06/US02/T01). Empty when the text is neither, or when the keyed index has no key (outside
+    /// Development and Testing, with the module closed).
     /// </summary>
     private async Task<List<Guid>> ProfilesOfExactContactAsync(Guid orgId, string search, CancellationToken cancellationToken)
     {
@@ -326,12 +330,9 @@ public sealed class CrmProfileReadService(
 
         if (emailKey is not null)
         {
-            var byEmail = await db.GuestContacts
+            var byEmail = await CrmProfileContactReader.Visible(db, orgId)
                 .AsNoTracking()
-                .Where(contact => contact.OrgId == orgId
-                    && contact.Channel == GuestContactChannel.Email
-                    && contact.ValueHash == emailKey
-                    && contact.GuestCrmProfileId != null)
+                .Where(contact => contact.Channel == GuestContactChannel.Email && contact.ValueHash == emailKey && contact.GuestCrmProfileId != null)
                 .Select(contact => contact.GuestCrmProfileId)
                 .ToListAsync(cancellationToken);
             ids.AddRange(byEmail.OfType<Guid>());
@@ -339,10 +340,9 @@ public sealed class CrmProfileReadService(
 
         if (phoneKey is not null)
         {
-            var byPhone = await db.GuestContacts
+            var byPhone = await CrmProfileContactReader.Visible(db, orgId)
                 .AsNoTracking()
-                .Where(contact => contact.OrgId == orgId
-                    && (contact.Channel == GuestContactChannel.Phone || contact.Channel == GuestContactChannel.WhatsApp)
+                .Where(contact => (contact.Channel == GuestContactChannel.Phone || contact.Channel == GuestContactChannel.WhatsApp)
                     && contact.ValueHash == phoneKey
                     && contact.GuestCrmProfileId != null)
                 .Select(contact => contact.GuestCrmProfileId)

@@ -92,13 +92,13 @@ public enum CrmProfileSort
 /// <summary>
 /// What narrows the list of profiles. Every field is optional and they all apply together (and).
 /// </summary>
-/// <param name="Search">A part of the name of the guest (each word must be in the first or the last name), or an exact e-mail address or phone number: those are found by the keyed hash of the normalized value, because the values are encrypted.</param>
+/// <param name="Search">A part of the name of the guest (each word must be in the first or the last name), or an exact e-mail address or phone number: those are found by the keyed hash of the normalized value, because the values are encrypted, among the contacts a screen may show (never one given by an erased guest).</param>
 /// <param name="Country">The country of the profile, as stored, in any case.</param>
 /// <param name="Language">The language of the profile (<c>it</c>, <c>en</c>), in any case.</param>
 /// <param name="Channel">The channel the guest booked on: the name of a booking source (<c>Direct</c>, <c>Airbnb</c>, <c>BookingCom</c>...), with a booking not cancelled at a property the caller reaches.</param>
 /// <param name="Tag">A tag of the profile, in any case.</param>
 /// <param name="MinStays">At least this many stays (over the bookings the caller reaches).</param>
-/// <param name="ReachableByEmail"><c>true</c>: the profile has an e-mail contact that may receive marketing (<see cref="CrmContactRules.CanReceiveMarketing"/>); <c>false</c>: it has none.</param>
+/// <param name="ReachableByEmail"><c>true</c>: the profile has an e-mail contact that may receive marketing (<see cref="CrmContactRules.CanReceiveMarketing"/>); <c>false</c>: it has none. Only the contacts a screen may show count (never one given by an erased guest), so the filter says what <c>EmailReachable</c> of the item says.</param>
 /// <param name="Sort">The order.</param>
 public sealed record CrmProfileFilter(
     string? Search = null,

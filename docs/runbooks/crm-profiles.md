@@ -295,7 +295,8 @@ pieces: `ICrmProfileReadService` (`CrmProfileReadService`: the scope, the list, 
   a guest that is erased is not shown, because the erasure does not reach the CRM yet (§ 1). No document, birth date, place of birth, `StayGuest` or
   Alloggiati field is read or returned (`CrmProfileApiProofTests` reads the types and the JSON).
 - The search finds a name in the guests the caller reaches; an exact e-mail address or phone number is found by the keyed hash
-  ([`crm-marketing.md`](crm-marketing.md) § 3), so without `Crm__ContactIndexKey` only names are searched.
+  ([`crm-marketing.md`](crm-marketing.md) § 3), so without `Crm__ContactIndexKey` only names are searched. The contacts the search and the filter
+  `reachableByEmail` look at are the ones the screen shows (`CrmProfileContactReader.Visible`): never one given by an erased guest.
 
 ### 6.2 Deciding a merge
 
