@@ -354,6 +354,13 @@ public class AppDbContext(
     // The tourist tax a host paid to a comune and the receipt of the payment: the «paid» half of the summary per comune (NF-100, REP-05)
     public DbSet<TouristTaxRemittance> TouristTaxRemittances { get; set; } = null!;
 
+    // The marketplace (E09/F01, NF-54): the portal catalog cached from Octorate, the partners the platform admin curates with their texts
+    // (platform data, no tenant), and what each org has activated (tenant-owned)
+    public DbSet<MarketplacePortal> MarketplacePortals { get; set; } = null!;
+    public DbSet<MarketplacePartner> MarketplacePartners { get; set; } = null!;
+    public DbSet<MarketplacePartnerText> MarketplacePartnerTexts { get; set; } = null!;
+    public DbSet<MarketplaceActivation> MarketplaceActivations { get; set; } = null!;
+
     // The activation of CasaZen with Octorate: what the host chose to do later for each part of the plan, the flows activated on each property, the
     // guided steps of the Octorate panel, the «Do it for me» requests, the pilot group of an agency and the per-property data (E10/F01/US01/T01, NF-104..NF-107)
     public DbSet<OnboardingPartState> OnboardingPartStates { get; set; } = null!;
@@ -513,6 +520,14 @@ public class AppDbContext(
         modelBuilder.Entity<Booking>()
             .HasIndex(b => new { b.OrgId, b.BookingCode })
             .IsUnique();
+
+        // A reservation of Octorate is one booking in an org (E02/F02/US01/T01, ADR-033-R1): the key of the import, whoever imports it and
+        // however many times. Only the rows that have an Octorate id are in it; the others (null) are as many as there are bookings.
+        modelBuilder.Entity<Booking>()
+            .HasIndex(b => new { b.OrgId, b.OctorateReservationId })
+            .IsUnique()
+            .HasFilter("\"OctorateReservationId\" IS NOT NULL")
+            .HasDatabaseName(Booking.OctorateReservationIndexName);
 
         // GPS coordinates (PC-06, A2-33): 6 decimals are about 0.1 m, the old 2 decimals placed a house up to a kilometre
         // away on the map. numeric(9,6) holds -999.999999..999.999999: the API accepts only -90..90 and -180..180.
@@ -1409,6 +1424,21 @@ public class AppDbContext(
             .HasIndex(b => new { b.FeedId, b.ExternalUid })
             .IsUnique();
 
+        // The index of the foreign key to the property, declared here so that it stays: EF drops the index of a foreign key when another index
+        // starts with the same column, filtered or not, and the filtered index below holds the Octorate blocks only. Every read of the blocks
+        // of a property (availability, calendar, export) goes through this one.
+        modelBuilder.Entity<CalendarBlock>()
+            .HasIndex(b => b.PropertyId);
+
+        // The blocks read from the Octorate calendar have no feed (E02/F02/US01/T03): the unique index on (FeedId, ExternalUid) does not cover
+        // them (a null feed is never equal to another), so their key is the property and the UID, for that source only
+        // (CalendarBlockSource.Octorate = 2).
+        modelBuilder.Entity<CalendarBlock>()
+            .HasIndex(b => new { b.PropertyId, b.ExternalUid })
+            .IsUnique()
+            .HasFilter("\"Source\" = 2")
+            .HasDatabaseName(CalendarBlock.OctorateUidIndexName);
+
         // OTA stay created from an imported block (CO-21, D7): one stay per block. Deleting the booking keeps the block,
         // which takes its nights again on its own.
         modelBuilder.Entity<CalendarBlock>()
@@ -1697,6 +1727,67 @@ public class AppDbContext(
                 t.HasCheckConstraint("CK_TouristTaxRemittances_PaidAmountPositive", "\"PaidAmount\" > 0");
                 t.HasCheckConstraint("CK_TouristTaxRemittances_PeriodOrder", "\"PeriodFrom\" <= \"PeriodTo\"");
             });
+        });
+
+        // ─── Marketplace (E09/F01, NF-54, NF-56, NF-57, NF-59) ───────────────────
+        // The portals of the channel manager are platform data refreshed once a day, unique by the code Octorate gives them.
+        modelBuilder.Entity<MarketplacePortal>(entity =>
+        {
+            entity.HasIndex(p => p.PortalCode)
+                .IsUnique()
+                .HasDatabaseName(MarketplacePortal.PortalCodeIndexName);
+        });
+
+        // A partner is a row the platform admin enters: unique by its slug, read in the order of its work. Its texts go with it. The checks
+        // keep a code that is not a lowercase slug and a site that is not https out of the table, whoever writes the row.
+        modelBuilder.Entity<MarketplacePartner>(entity =>
+        {
+            entity.HasIndex(p => p.Code)
+                .IsUnique()
+                .HasDatabaseName(MarketplacePartner.CodeIndexName);
+            entity.HasIndex(p => new { p.Job, p.SortOrder });
+            entity.HasMany(p => p.Texts)
+                .WithOne()
+                .HasForeignKey(t => t.PartnerId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(MarketplacePartner.CodeSlugCheckName, "\"Code\" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'");
+                t.HasCheckConstraint(MarketplacePartner.WebsiteHttpsCheckName, "\"WebsiteUrl\" LIKE 'https://%'");
+            });
+        });
+
+        // One row of texts per partner and language (it or en).
+        modelBuilder.Entity<MarketplacePartnerText>(entity =>
+        {
+            entity.Property(t => t.FaqJson).HasColumnType("jsonb");
+            entity.HasIndex(t => new { t.PartnerId, t.Language })
+                .IsUnique()
+                .HasDatabaseName(MarketplacePartnerText.PartnerLanguageIndexName);
+            entity.ToTable(t => t.HasCheckConstraint(MarketplacePartnerText.LanguageCheckName, "\"Language\" IN ('it', 'en')"));
+        });
+
+        // What an org activated. A channel or a tool is per property, a licensed function and a partner per org: two partial unique indexes
+        // (the database takes two NULLs for different values, so one index would let a second org-level row in). An activation goes with its
+        // property (CASCADE; a property is soft-deleted, so in practice it stays). xmin is the concurrency token. The tenant query filter
+        // is applied below, to every ITenantOwned entity.
+        modelBuilder.Entity<MarketplaceActivation>(entity =>
+        {
+            entity.Property(a => a.RowVersion).IsRowVersion();
+            entity.HasOne<Property>()
+                .WithMany()
+                .HasForeignKey(a => a.PropertyId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(a => new { a.OrgId, a.Kind, a.TargetCode })
+                .IsUnique()
+                .HasFilter("\"PropertyId\" IS NULL")
+                .HasDatabaseName(MarketplaceActivation.OrgLevelIndexName);
+            entity.HasIndex(a => new { a.OrgId, a.PropertyId, a.Kind, a.TargetCode })
+                .IsUnique()
+                .HasFilter("\"PropertyId\" IS NOT NULL")
+                .HasDatabaseName(MarketplaceActivation.PropertyLevelIndexName);
+            entity.HasIndex(a => new { a.OrgId, a.Status });
         });
 
         // ─── Activation of CasaZen with Octorate (NF-104..NF-107, E10/F01/US01/T01) ─────────────────────────────

@@ -329,6 +329,14 @@ internal static class PostgresAdvisoryLocks
         /// saves the new token before releasing it. The values 20_100 to 20_199 are the Octorate connector (epic E02).
         /// </summary>
         OctorateTokenRefresh = 20_111,
+
+        /// <summary>
+        /// One reservation of Octorate in one org (key: org id and reservation id, <c>orgId.ToString("N") + ":" + reservationId</c>, E02/F02/US01/T01):
+        /// the daily import, the reconciliation and the webhook handlers apply a reservation one at a time, so it is one booking and the
+        /// events of its changes are recorded once each. The import takes no other lock: a channel's reservation is a fact, it is never
+        /// refused for dates another booking holds.
+        /// </summary>
+        OctorateReservation = 20_121,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

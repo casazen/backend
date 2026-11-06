@@ -16,7 +16,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// <remarks>
 /// <para><b>Tenant.</b> Every call reads the org from <see cref="IOctorateOrgScope"/> first (no org: it throws before anything else),
 /// then that org's token from <see cref="IOctorateTokenService"/> and a call from that org's bucket of <see cref="OctorateRateLimiter"/>.
-/// No method takes an org, so a call never uses another org's connection (ADR-023-R4).</para>
+/// No method takes an org, so a call never uses another org's connection (ADR-023-R4). The partner-level calls (<see cref="GetPortalsAsync"/>)
+/// are the one exception to "an org first": they carry no property data and act for the application, so they use the partner token and the
+/// bucket <see cref="OctorateRateLimiter.PlatformKey"/>, and need no org.</para>
 /// <para><b>HTTP.</b> The typed client of <c>AddCasazenOctorate</c>: 30-second timeout, https base address from
 /// <c>Octorate:ApiBaseUrl</c> (each call carries its <c>/rest/v1/...</c> or <c>/rest/v2/...</c> path), User-Agent <c>CasaZen/{version}</c>,
 /// the token as <c>Authorization: Bearer</c> (ADR-023-R5).</para>
@@ -41,6 +43,9 @@ public sealed class OctorateApiClient(
 
     /// <summary>The pages of accommodations read at most in one listing (pages are numbered from 0).</summary>
     private const int MaxAccommodationPages = 50;
+
+    /// <summary>The most products one call of the calendar read names (Octorate answers at most 20 products a call).</summary>
+    internal const int MaxCalendarProducts = 20;
 
     /// <summary>The <c>type</c> of Octorate's 403 for an access token that is not valid (any more): refresh and retry once.</summary>
     private const string ApiLoginInvalidType = "ApiLoginInvalid";
@@ -156,6 +161,109 @@ public sealed class OctorateApiClient(
         return [.. items.Select(ReadConnection).OfType<OctorateChannelConnection>()];
     }
 
+    public async Task<OctorateReservationPage> GetReservationsAsync(string accommodationId, OctorateReservationQuery query, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        var id = CheckedAccommodationId(accommodationId);
+        if (query.Page is < 0 or > OctorateReservationQuery.MaxPage)
+            throw new ArgumentOutOfRangeException(nameof(query), query.Page, $"The page is 0 to {OctorateReservationQuery.MaxPage}.");
+        if (query.PageSize is < 1 or > OctorateReservationQuery.MaxPageSize)
+            throw new ArgumentOutOfRangeException(nameof(query), query.PageSize, $"A page has 1 to {OctorateReservationQuery.MaxPageSize} reservations.");
+        if (query.To < query.From)
+            throw new ArgumentException("The last day of the list is not before its first day.", nameof(query));
+
+        var path = string.Create(
+            CultureInfo.InvariantCulture,
+            $"/rest/v1/reservation/{Uri.EscapeDataString(id)}?type={ReservationListTypeName(query.Type)}&startDate={query.From:yyyy-MM-dd}&endDate={query.To:yyyy-MM-dd}&size={query.PageSize}&page={query.Page}");
+        using var document = await GetJsonAsync(path, "reservations", ct);
+
+        // An answer that is not a list is an answer CasaZen cannot read, not a list with nothing in it: the caller must not read "no
+        // reservation" into it and mark a listing as read. An item that cannot be read is left out of the page but counted in it.
+        return OctorateReservationReader.ReadPage(document.RootElement) ?? throw new OctorateServerException(null);
+    }
+
+    public async Task<OctorateReservation> GetReservationAsync(string accommodationId, string reservationId, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+        using var document = await GetJsonAsync(
+            $"/rest/v1/reservation/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}", "reservation", ct);
+        return OctorateReservationReader.Read(Unwrap(document.RootElement), reservation) ?? throw new OctorateServerException(null);
+    }
+
+    public async Task<OctorateCalendarDay[]> GetCalendarAsync(
+        string accommodationId,
+        IReadOnlyCollection<string> productIds,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(productIds);
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var products = productIds.Select(p => CheckedId(p, nameof(productIds))).Distinct(StringComparer.Ordinal).ToList();
+        if (products.Count == 0)
+            throw new ArgumentException("A calendar read names at least one product.", nameof(productIds));
+        if (to < from)
+            throw new ArgumentException("The last day of the calendar is before its first day.", nameof(to));
+
+        var days = new List<OctorateCalendarDay>();
+        foreach (var chunk in products.Chunk(MaxCalendarProducts))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // `dateTo` is included, as Octorate documents it.
+            var path = string.Create(
+                CultureInfo.InvariantCulture,
+                $"/rest/v1/calendar/{Uri.EscapeDataString(accommodation)}?dateFrom={from:yyyy-MM-dd}&dateTo={to:yyyy-MM-dd}&products={Uri.EscapeDataString(string.Join(',', chunk))}");
+            using var document = await GetJsonAsync(path, "calendar", ct);
+
+            var read = OctorateCalendarReader.Read(document.RootElement, chunk);
+            if (read.Count == 0)
+            {
+                // A calendar with no day for a range that is not empty is an answer that was not understood: never an empty calendar.
+                logger.LogWarning(
+                    "Octorate calendar of org {OrgId}: no day could be read from the answer for {Products} products", orgScope.OrgId, chunk.Length);
+                throw new OctorateServerException(null);
+            }
+
+            days.AddRange(read);
+        }
+
+        return [.. days];
+    }
+
+    public async Task CancelReservationAsync(string accommodationId, string reservationId, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+        await SendAsync(
+            () => new HttpRequestMessage(
+                HttpMethod.Delete,
+                Address($"/rest/v1/reservation/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}")),
+            "reservation-cancel",
+            ct);
+    }
+
+    public async Task SetCheckInStatusAsync(string accommodationId, string reservationId, OctorateCheckInStatus status, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+        var name = CheckInStatusName(status);
+        await SendAsync(
+            () => new HttpRequestMessage(
+                HttpMethod.Put,
+                Address($"/rest/v1/checkin/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}?status={name}")),
+            "checkin-status",
+            ct);
+    }
+
+    public async Task<OctoratePortal[]> GetPortalsAsync(CancellationToken ct)
+    {
+        // A partner-level call: no org, the partner token, the bucket "platform". The answer is a bare array (v1) or {data: [...]}.
+        using var document = await GetPlatformJsonAsync("/rest/v1/meta/portals", "portals", ct);
+        return [.. Items(document.RootElement).Select(ReadPortal).OfType<OctoratePortal>()];
+    }
+
     /// <summary>
     /// One call for the org of the scope: the org first (none: it throws and nothing leaves), then its token and a call from its bucket,
     /// the answer of a success, or the typed error. Retries a 429 after the backoff delays and a refused token once after a refresh.
@@ -163,17 +271,42 @@ public sealed class OctorateApiClient(
     private async Task<OctorateAnswer> SendAsync(Func<HttpRequestMessage> createRequest, string operation, CancellationToken ct)
     {
         var orgId = orgScope.OrgId;
-        var token = await tokenService.GetAccessTokenAsync(orgId, ct);
+        var caller = new Caller(
+            $"org {orgId}",
+            token => tokenService.GetAccessTokenAsync(orgId, token),
+            (rejected, token) => tokenService.RefreshRejectedTokenAsync(orgId, rejected, token),
+            () => rateLimiter.TryAcquireAsync(orgId));
+        return await SendAsync(createRequest, operation, caller, ct);
+    }
+
+    /// <summary>
+    /// One partner-level call (the application's own, no org): the partner token, a refused partner token renewed once, and a call from the
+    /// bucket <see cref="OctorateRateLimiter.PlatformKey"/>. Otherwise the same as <see cref="SendAsync(Func{HttpRequestMessage}, string, CancellationToken)"/>.
+    /// </summary>
+    private Task<OctorateAnswer> SendAsPlatformAsync(Func<HttpRequestMessage> createRequest, string operation, CancellationToken ct)
+    {
+        var caller = new Caller(
+            OctorateRateLimiter.PlatformKey,
+            tokenService.GetPartnerAccessTokenAsync,
+            tokenService.RefreshRejectedPartnerTokenAsync,
+            rateLimiter.TryAcquirePlatformAsync);
+        return SendAsync(createRequest, operation, caller, ct);
+    }
+
+    /// <summary>The call itself, for whoever <paramref name="caller"/> is: its token, its bucket, its refresh of a refused token.</summary>
+    private async Task<OctorateAnswer> SendAsync(Func<HttpRequestMessage> createRequest, string operation, Caller caller, CancellationToken ct)
+    {
+        var token = await caller.GetTokenAsync(ct);
         var tokenRefreshed = false;
         var rateLimitRetries = 0;
 
         while (true)
         {
-            if (!await rateLimiter.TryAcquireAsync(orgId))
+            if (!await caller.TryAcquireAsync())
             {
                 logger.LogWarning(
-                    "Octorate {Operation} for org {OrgId} not sent: the org used its {Limit} calls a minute",
-                    operation, orgId, OctorateRateLimiter.RequestsPerMinute);
+                    "Octorate {Operation} for {Caller} not sent: it used its {Limit} calls a minute",
+                    operation, caller.Label, OctorateRateLimiter.RequestsPerMinute);
                 throw new OctorateRateLimitException(null);
             }
 
@@ -188,12 +321,12 @@ public sealed class OctorateApiClient(
             }
             catch (HttpRequestException ex)
             {
-                logger.LogWarning("Octorate {Operation} for org {OrgId}: no answer ({Error})", operation, orgId, ex.GetType().Name);
+                logger.LogWarning("Octorate {Operation} for {Caller}: no answer ({Error})", operation, caller.Label, ex.GetType().Name);
                 throw new OctorateServerException(null, ex);
             }
             catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
             {
-                logger.LogWarning("Octorate {Operation} for org {OrgId}: no answer within {Timeout}", operation, orgId, OctorateHttp.Timeout);
+                logger.LogWarning("Octorate {Operation} for {Caller}: no answer within {Timeout}", operation, caller.Label, OctorateHttp.Timeout);
                 throw new OctorateServerException(null, ex);
             }
 
@@ -202,17 +335,18 @@ public sealed class OctorateApiClient(
                 var status = (int)response.StatusCode;
                 var body = await OctorateHttp.ReadBodyAsync(response, ct);
                 var elapsedMs = (long)timeProvider.GetElapsedTime(started).TotalMilliseconds;
-                if (response.IsSuccessStatusCode)
+                // 304: a PATCH or a PUT whose content is identical to what Octorate holds answers "not modified" (S25, D13): it is done.
+                if (response.IsSuccessStatusCode || status == 304)
                 {
                     logger.LogDebug(
-                        "Octorate {Operation} for org {OrgId}: HTTP {StatusCode} in {ElapsedMs} ms", operation, orgId, status, elapsedMs);
+                        "Octorate {Operation} for {Caller}: HTTP {StatusCode} in {ElapsedMs} ms", operation, caller.Label, status, elapsedMs);
                     return new OctorateAnswer(status, body);
                 }
 
                 var errorType = OctorateHttp.ReadError(body).Type;
                 logger.LogWarning(
-                    "Octorate {Operation} for org {OrgId}: HTTP {StatusCode} ({ErrorType}) in {ElapsedMs} ms",
-                    operation, orgId, status, errorType ?? "no type", elapsedMs);
+                    "Octorate {Operation} for {Caller}: HTTP {StatusCode} ({ErrorType}) in {ElapsedMs} ms",
+                    operation, caller.Label, status, errorType ?? "no type", elapsedMs);
 
                 if (status == 429 && rateLimitRetries < OctorateRateLimiter.BackoffDelays.Count)
                 {
@@ -222,7 +356,7 @@ public sealed class OctorateApiClient(
 
                 if (status is 401 or 403 && !tokenRefreshed && string.Equals(errorType, ApiLoginInvalidType, StringComparison.OrdinalIgnoreCase))
                 {
-                    token = await tokenService.RefreshRejectedTokenAsync(orgId, token, ct);
+                    token = await caller.RefreshRejectedAsync(token, ct);
                     tokenRefreshed = true;
                     continue;
                 }
@@ -235,6 +369,18 @@ public sealed class OctorateApiClient(
     private async Task<JsonDocument> GetJsonAsync(string pathAndQuery, string operation, CancellationToken ct)
     {
         var answer = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, Address(pathAndQuery)), operation, ct);
+        return ParseJson(answer);
+    }
+
+    /// <summary>A read for the application itself (the partner-level calls): see <see cref="SendAsPlatformAsync"/>.</summary>
+    private async Task<JsonDocument> GetPlatformJsonAsync(string pathAndQuery, string operation, CancellationToken ct)
+    {
+        var answer = await SendAsPlatformAsync(() => new HttpRequestMessage(HttpMethod.Get, Address(pathAndQuery)), operation, ct);
+        return ParseJson(answer);
+    }
+
+    private static JsonDocument ParseJson(OctorateAnswer answer)
+    {
         try
         {
             return JsonDocument.Parse(answer.Body);
@@ -272,6 +418,35 @@ public sealed class OctorateApiClient(
 
         return id;
     }
+
+    /// <summary>The id of a reservation or of a product, trimmed: never empty, never longer than <see cref="MaxAccommodationIdLength"/>.</summary>
+    internal static string CheckedId(string value, string parameterName)
+    {
+        var id = value?.Trim();
+        if (string.IsNullOrEmpty(id) || id.Length > MaxAccommodationIdLength)
+            throw new ArgumentException($"An id has 1 to {MaxAccommodationIdLength} characters.", parameterName);
+
+        return id;
+    }
+
+    /// <summary>The <c>type</c> of the list of reservations, as Octorate spells it.</summary>
+    internal static string ReservationListTypeName(OctorateReservationListType type) => type switch
+    {
+        OctorateReservationListType.ModifiedBetween => "MODIFIED_BETWEEN",
+        OctorateReservationListType.CreateTime => "CREATETIME",
+        OctorateReservationListType.Cancellation => "CANCELLATION",
+        OctorateReservationListType.Stay => "STAY",
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Not a kind of list of reservations."),
+    };
+
+    /// <summary>The <c>status</c> of the check-in status operation, as Octorate spells it.</summary>
+    internal static string CheckInStatusName(OctorateCheckInStatus status) => status switch
+    {
+        OctorateCheckInStatus.CheckInEnd => "CHECKIN_END",
+        OctorateCheckInStatus.CheckOutEnd => "CHECKOUT_END",
+        OctorateCheckInStatus.NoShow => "NO_SHOW",
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Not a check-in status."),
+    };
 
     /// <summary>An accommodation of an answer, or <c>null</c> when the item has no usable id.</summary>
     internal static OctorateProperty? ReadProperty(JsonElement item)
@@ -343,6 +518,87 @@ public sealed class OctorateApiClient(
                 OctorateHttp.StringOf(item, "hotelId"),
                 OctorateHttp.StringOf(item, "status"));
 
+    /// <summary>The names under which a portal's identifier may come, most specific first; a number is read as its text.</summary>
+    private static readonly string[] PortalCodeMembers = ["portalCode", "channelId", "portalId", "id", "code"];
+
+    private static readonly string[] PortalNameMembers = ["name", "portalName", "title"];
+
+    private static readonly string[] PortalCategoryMembers = ["portalCategory", "category"];
+
+    /// <summary>
+    /// A portal of an answer of <c>meta/portals</c>, or <c>null</c> when the item has no usable identifier (none, or longer than
+    /// <see cref="OctoratePortal.CodeMaxLength"/>). The flags are read as <c>true</c> only when Octorate says so (a JSON boolean, a
+    /// <c>"true"</c> text or a non-zero number): a flag it does not send is <c>false</c>. The site and the logo are kept only when they are
+    /// absolute https addresses.
+    /// </summary>
+    internal static OctoratePortal? ReadPortal(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var code = FirstStringOf(item, PortalCodeMembers);
+        if (code is null || code.Length > OctoratePortal.CodeMaxLength)
+            return null;
+
+        return new OctoratePortal
+        {
+            PortalCode = code,
+            Name = FirstStringOf(item, PortalNameMembers) ?? code,
+            PortalCategory = FirstStringOf(item, PortalCategoryMembers),
+            Creatable = FlagOf(item, "creatable") ?? false,
+            Enabled = FlagOf(item, "enabled") ?? false,
+            Preferred = FlagOf(item, "preferred") ?? false,
+            Website = HttpsUrlOf(item, "website"),
+            Logo = HttpsUrlOf(item, "logo") ?? HttpsUrlOf(item, "logoUrl"),
+            RequiresHotelId = FlagOf(item, "requiresHotelId") ?? false,
+            RequiresPassword = FlagOf(item, "requiresPassword") ?? false,
+            RequiresTokenAuthentication = FlagOf(item, "requiresTokenAuthentication") ?? false,
+            FeatureContent = FlagOf(item, "featureContent") ?? false,
+            OctorateManageable = FlagOf(item, "octorateManageable") ?? false,
+            CommissionIncludedInPayments = FlagOf(item, "commissionIncludedInPayments") ?? false,
+            CommissionsInvoiced = FlagOf(item, "commissionsInvoiced"),
+        };
+    }
+
+    /// <summary>The first of <paramref name="names"/> that <paramref name="element"/> has with a text (or a number), trimmed.</summary>
+    private static string? FirstStringOf(JsonElement element, string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (OctorateHttp.StringOf(element, name) is { } text)
+                return text;
+        }
+
+        return null;
+    }
+
+    /// <summary>A flag Octorate sends as a JSON boolean, as <c>"true"</c>/<c>"false"</c> text or as a number; <c>null</c> when absent or unclear.</summary>
+    private static bool? FlagOf(JsonElement element, string name)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var value))
+            return null;
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number when value.TryGetInt64(out var number) => number != 0,
+            JsonValueKind.String when bool.TryParse(value.GetString(), out var parsed) => parsed,
+            _ => null,
+        };
+    }
+
+    /// <summary>An address Octorate gives, only when it is an absolute https one of at most 500 characters (never <c>javascript:</c>, <c>data:</c> or a relative path).</summary>
+    private static string? HttpsUrlOf(JsonElement element, string name)
+    {
+        var text = OctorateHttp.StringOf(element, name);
+        return text is { Length: <= 500 }
+               && Uri.TryCreate(text, UriKind.Absolute, out var uri)
+               && uri.Scheme == Uri.UriSchemeHttps
+            ? text
+            : null;
+    }
+
     /// <summary>The items of a list answer: a bare array (v1) or the <c>data</c> array of a <c>{data, page}</c> answer (v2, v3).</summary>
     internal static IEnumerable<JsonElement> Items(JsonElement root)
     {
@@ -397,4 +653,14 @@ public sealed class OctorateApiClient(
 
     /// <summary>A successful answer: Octorate's status and its text.</summary>
     private sealed record OctorateAnswer(int StatusCode, string Body);
+
+    /// <summary>
+    /// Who a call is made for: an org (its token, its bucket) or the platform (the partner token, the bucket <c>platform</c>). The label is
+    /// what the log says; it is an id or a fixed word, never a name.
+    /// </summary>
+    private sealed record Caller(
+        string Label,
+        Func<CancellationToken, Task<string>> GetTokenAsync,
+        Func<string, CancellationToken, Task<string>> RefreshRejectedAsync,
+        Func<Task<bool>> TryAcquireAsync);
 }

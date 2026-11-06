@@ -154,7 +154,8 @@ public sealed partial class HostDashboardService(
                 f.Label,
                 f.LastImportAt,
                 f.LastImportStatus,
-                f.LastError))
+                f.LastError,
+                f.Deprecated))
             .ToListAsync(cancellationToken);
     }
 

@@ -36,14 +36,15 @@ namespace Casazen.Infrastructure.Octorate;
 /// <para><b>Audit.</b> Every token handed out writes the structured line <c>OctorateTokenAccessed</c> with the org and the connection id,
 /// never the token nor an answer of Octorate.</para>
 /// </remarks>
-public sealed class OctorateTokenService(
+public sealed partial class OctorateTokenService(
     AppDbContext db,
     ITenantContext tenantContext,
     IHttpClientFactory httpClientFactory,
     IConfiguration configuration,
     IHostEnvironment hostEnvironment,
     TimeProvider timeProvider,
-    ILogger<OctorateTokenService> logger) : IOctorateTokenService
+    ILogger<OctorateTokenService> logger,
+    OctoratePartnerTokenCache? partnerTokens = null) : IOctorateTokenService
 {
     /// <summary>Name of the <see cref="HttpClient"/> of the refresh call.</summary>
     public const string HttpClientName = "Octorate.Identity";

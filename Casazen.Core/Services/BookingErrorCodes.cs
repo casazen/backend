@@ -120,4 +120,16 @@ public static class BookingErrorCodes
 
     /// <summary>422: the dates of a booking that completes a portal's block are not the dates of that block (SR-06a).</summary>
     public const string BlockDatesMismatch = "booking_block_dates_mismatch";
+
+    /// <summary>
+    /// 422: a change of a booking carries a commission, net, paid or balance amount of the channel that differs from the one stored
+    /// (E02/F02/US01/T01, ADR-033-R3): those figures come from the channel manager and are never edited in CasaZen.
+    /// </summary>
+    public const string OtaAmountsReadonly = "ota_amounts_readonly";
+
+    /// <summary>
+    /// 422: the cancellation of a reservation that came from a portal is asked of the channel manager from CasaZen (E02/F02/US01/T01): the
+    /// portal owns its cancellation, and a delete from here is not proven to be accepted.
+    /// </summary>
+    public const string ChannelCancelNotAllowed = "octorate_channel_cancel_not_allowed";
 }

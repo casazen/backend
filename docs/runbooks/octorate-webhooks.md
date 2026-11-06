@@ -74,6 +74,36 @@ address and secret. Who does it: the operator with the partner credentials (it i
 
 The log line of a recorded call is `Octorate webhook recorded: event {EventId}, type {EventType}, processed True`.
 
+### 4b. The handlers of the reservation events (E02/F02/US01/T02)
+
+`BookingCreatedHandler` (`RESERVATION_CREATED`, `RESERVATION_CONFIRMED`), `BookingModifiedHandler` (`RESERVATION_CHANGE`) and
+`BookingCancelledHandler` (`RESERVATION_CANCELLED`) share one flow (`OctorateBookingWebhookHandler`); every other event
+(`CHAT_MESSAGE_RECEIVED`, `CONTENT_PUSH`, ...) is theirs to ignore. Each runs in its own scope under the org of the event.
+
+1. Off with `Features:OctorateConnector`: nothing is done. The mapping the event names (`EntityId`) must still be confirmed, in the
+   event's org, and still be that accommodation's; otherwise the event is dropped quietly.
+2. The org is opened for the client (`IOctorateOrgScope.Use`) and `IBookingImportService.ImportIncrementalAsync` reads the
+   reservations of the property changed since **two days before the notification arrived** (Rome dates), the retry window of
+   Octorate. The ids in the body are not relied on: the content of `ping` is not recorded, and the notification may be the echo of
+   CasaZen's own write, a late one or a repeated one.
+3. The service applies a reservation only if its `updateTime` is newer than the one held (`Booking.OctorateUpdatedAt`), under the
+   advisory lock `OctorateReservation`, with the booking events (`Origin = Octorate`) in the same save. A repeated or out-of-order
+   notification therefore changes nothing and makes no second booking; there is no table of received events (Octorate gives no event
+   id). A change that came from Octorate never calls `SyncBookingStateAsync`, so nothing is echoed back.
+4. An org that disconnected meanwhile ends the handler quietly; a run that stopped before the end (the rate limit of the org, or an item
+   of the list that cannot be read: the list is read until a page with no item) or an error of Octorate makes the handler throw, and
+   the dispatcher delivers the event again (up to five attempts, then dead letter). The reconciliation (`octorate-booking-sync`, every
+   six hours) reads what is still missing.
+
+The log line of a handled event is `Octorate webhook handled: event {EventId}, type {EventType}, processed True`: the body is never
+logged.
+
+**Arrival and departure.** Octorate sends no event for them. When the host registers an arrival or checks a stay out
+(`CheckInCompleted`, `CheckOutCompleted`, written to the outbox by the stay itself, through the wizard or not),
+`OctorateBookingStatePushHandler` queues `OctorateBookingStatePushJob`, which opens the org and calls
+`SyncBookingStateAsync` (`CHECKIN_END` / `CHECKOUT_END`); a booking with no Octorate reservation queues nothing. The job is tried three
+times (after 1, 5 and 15 minutes) and then stays failed in the Hangfire dashboard; the check-out itself is already saved.
+
 ## 5. Rotating the secret
 
 1. Generate a new secret (§ 2) and set `Octorate__WebhookSecret` on the environment (the service redeploys).

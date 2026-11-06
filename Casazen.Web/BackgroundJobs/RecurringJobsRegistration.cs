@@ -1,6 +1,7 @@
 using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Jobs;
 using Hangfire;
 
@@ -23,6 +24,9 @@ public static class RecurringJobsRegistration
     public static void Configure(IRecurringJobManager recurringJobManager, IFeatureFlags featureFlags, RoutineOptions? routineOptions = null)
     {
         ConfigureOtaPartnerJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OtaPartnerApi));
+
+        // E02/F02: the jobs of the Octorate connector (bookings and calendar), only while the connector is on.
+        ConfigureOctorateJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
 
         // ADR-022-R8: the time triggers of the stays ("2 days before check-in") are written to the outbox every
         // Routine:EvaluationIntervalMinutes (default 5), whatever the flags say; an org without a time routine gets nothing.
@@ -55,6 +59,9 @@ public static class RecurringJobsRegistration
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         ConfigureServiceRequestAutoCancel(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel));
+
+        // E09/F01/US01/T02 (ADR-023): the cache of the portal catalog of the marketplace is refreshed every day, only while the Octorate connector is on.
+        ConfigureMarketplacePortalRefresh(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
 
         // SP-BKP: the groups of backup suppliers are followed whatever the flag SupplierRequestBackups says (it only gates their creation): a
         // group that exists has its windows, and turning the flag off must not leave its requests hanging. With no group a run finds nothing.
@@ -286,6 +293,45 @@ public static class RecurringJobsRegistration
     }
 
     /// <summary>
+    /// The jobs of the Octorate connector (epic E02): only with <see cref="FeatureFlags.OctorateConnector"/> on. With the flag off no booking is
+    /// read and no calendar is synced, and the schedule of an earlier deploy is removed (<c>RemoveIfExists</c>), as for the OTA partner jobs.
+    /// <list type="bullet">
+    /// <item>the daily import of the bookings, at 02:00 Europe/Rome (E02/F02/US01/T01, ADR-033-R4);</item>
+    /// <item>the reconciliation of the bookings every six hours (E02/F02/US01/T02, ADR-031-R8);</item>
+    /// <item>the sync of the calendar every 15 minutes (E02/F02/US01/T03, ADR-002-R2, NF-36), next to the iCal sync of the feeds
+    /// (<c>property-ical-sync</c>), which stays registered as it is.</item>
+    /// </list>
+    /// </summary>
+    private static void ConfigureOctorateJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(OctorateBookingImportJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(OctorateBookingSyncJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(CalendarSyncJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<OctorateBookingImportJob>(
+            OctorateBookingImportJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OctorateBookingImportJob.Cron,
+            new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
+
+        recurringJobManager.AddOrUpdate<OctorateBookingSyncJob>(
+            OctorateBookingSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OctorateBookingSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<CalendarSyncJob>(
+            CalendarSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            CalendarSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
     /// Automatic cancellation of the service requests nobody answered (SP-04, D8): only with
     /// <see cref="FeatureFlags.SupplierRequestAutoCancel"/> on. With the flag off no request is ever cancelled by time, and the
     /// schedule of an earlier deploy is removed.
@@ -302,6 +348,26 @@ public static class RecurringJobsRegistration
             ServiceRequestAutoCancelJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             ServiceRequestAutoCancelJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The daily refresh of the portal catalog cached for the marketplace (E09/F01/US01/T02): only with
+    /// <see cref="FeatureFlags.OctorateConnector"/> on. With the flag off nothing calls Octorate, and the schedule of an earlier deploy is
+    /// removed; the cache keeps what it had, and the marketplace goes on reading it.
+    /// </summary>
+    private static void ConfigureMarketplacePortalRefresh(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(MarketplacePortalRefreshJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<MarketplacePortalRefreshJob>(
+            MarketplacePortalRefreshJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            MarketplacePortalRefreshJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

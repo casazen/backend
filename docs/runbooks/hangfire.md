@@ -47,6 +47,7 @@ and production never block each other.
 | `rli-deadline-reminder` (LT-04, see [§8](#8-rli-deadline-reminder-lt-04)) | 08:00 | `RliDeadlineReminderJob.ExecuteAsync` | 120 s |
 | `seo-content-refresh` | 04:00 on day 1 | `SeoContentRefreshJob.ExecuteAsync` | 300 s |
 | `seo-event-retention` (SE-04: deletes SEO funnel events older than `Seo__Events__RetentionDays`, see [seo-funnel.md](seo-funnel.md)) | 03:30 | `SeoEventRetentionJob.ExecuteAsync` | 300 s |
+| `marketplace-portal-refresh` (E09/F01/US01/T02, NF-54: reads Octorate's portal catalog (`GET /rest/v1/meta/portals`, a partner-level call with the application's login) and brings the cache the marketplace reads in line with it, in one transaction; an error of Octorate or an answer with no known portal leaves the cache as it was, three retries; counts only in the log, never a portal name; only with `Features:OctorateConnector=true`, otherwise removed at startup) | 03:30 | `MarketplacePortalRefreshJob.ExecuteAsync` | 300 s |
 | `direct-booking-charge` | 06:00 | `DirectBookingChargeJob.ExecuteAsync` | 300 s |
 | `rent-collection` (LT-06: payment links of the rent installments coming due, payments in flight read again, see [§12](#12-rent-collection-lt-06)) | 07:00 | `RentCollectionJob.ExecuteAsync` (plus a PostgreSQL advisory lock per lease) | 300 s |
 | `checkout-hold-expiry` (BK-21 and BK-06, see [§7](#7-checkout-hold-expiry-bk-21)) | `*/5` | `CheckoutHoldExpiryJob.ExecuteAsync` (plus a row lock per hold) | 60 s |
@@ -59,6 +60,9 @@ and production never block each other.
 | `service-funds` (SP-15c-a: releases to the suppliers the money CasaZen holds, retries the failed transfers, settles the money of closed requests, drops the lapsed card blocks, warns about money held too long and, since SP-15c-c, follows the disputes (the supplier's reply time, the admins' target, a refund that did not go through, the no-show); always scheduled, see [§14.1](#141-the-money-casazen-holds-service-funds-sp-15c-a)) | `*/5` | `ServiceFundsJob.ExecuteAsync` (plus the payment lock of each request) | 60 s |
 | `ical-supplier-sync` (SU-15: active **and pending** suppliers with an iCal URL, see [ical.md](ical.md#supplier-calendars-su-15); SP-05: the events by the hour become windows of hours, see [ical.md](ical.md#events-by-the-hour-sp-05)) | `*/15` | `IcalSupplierSyncJob.ExecuteAsync` (plus a PostgreSQL advisory lock per supplier while its days and windows are written) | 60 s |
 | `property-ical-sync` | `*/15` | `PropertyICalSyncJob.ExecuteAsync` | 60 s |
+| `octorate-booking-import` (E02/F02/US01/T01, ADR-033-R4: reads the bookings of every confirmed Octorate listing, the whole history the first time and then from the last complete read minus two days; **only with `Features:OctorateConnector`**, otherwise removed at startup, see [TECHNICAL.md](../TECHNICAL.md)) | 02:00 Europe/Rome | `OctorateBookingImportJob.ExecuteAsync` (plus the advisory lock `OctorateReservation` for each reservation) | 300 s |
+| `octorate-booking-sync` (E02/F02/US01/T02, ADR-031-R8: the reconciliation of the bookings with Octorate, it leaves alone what CasaZen changed in the last 5 minutes; **only with the flag**, see [octorate-webhooks.md](octorate-webhooks.md) § 4b) | `0 */6` | `OctorateBookingSyncJob.ExecuteAsync` (plus the advisory lock `OctorateReservation` for each reservation) | 300 s |
+| `CalendarSync` (E02/F02/US01/T03, ADR-002-R2, NF-36: reads the calendar of every confirmed Octorate listing into blocks of the property and hands the iCal feeds of its channels over to Octorate; **only with the flag**, see [ical.md](ical.md#the-octorate-calendar-replaces-the-import-of-a-channel-e02f02us01t03)) | `*/15` | `CalendarSyncJob.ExecuteAsync` (plus the iCal lock of the property when it writes) | 60 s |
 | `guest-checkin-send` (CO-09: expires stale links, queues `GuestCheckInLinkEmailJob`, see [alloggiati.md](alloggiati.md#guest-check-in-link-and-host-fallback-co-09)) | 08:00 | `GuestCheckInSendJob.ExecuteAsync` | 300 s |
 | `property-compliance-check` (CO-06, see [§10](#10-property-compliance-check-co-06)) | 04:00 | `PropertyComplianceCheckJob.ExecuteAsync` (plus a PostgreSQL advisory lock per run) | 300 s |
 | `push-receipts` (MO-04, see [§11](#11-push-notifications-mo-04)) | `*/15` | `PushReceiptsJob.ExecuteAsync` | 60 s |
@@ -275,7 +279,8 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   -- Features:SupplierRequestBackups says), org-invitation-maintenance, org-activity-retention,
   -- service-payment-sync, service-payment-reminders, in-app-notification-retention (UI-12a), supplier-showcase-media-cleanup (SP-13b),
   -- property-mode-change (PM-02), lease-draft-retention (LR-12), lease-term-renewal (LR-14) and
-  -- lease-notice-reminder (LR-11c-a), is in both counts)
+  -- lease-notice-reminder (LR-11c-a), is in both counts; marketplace-portal-refresh (E09/F01/US01/T02) is a sixth that appears
+  -- only with Features:OctorateConnector on, so add one to the first count when that flag is on too)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
   UNION ALL
   SELECT 'prod', count(*) FROM hangfire_casazen_prod.set WHERE key = 'recurring-jobs';
