@@ -134,6 +134,7 @@ public class DemoEnvironmentService(
         await RemoveShowcaseTouristTaxRemittancesAsync(orgId, cancellationToken);
         await RemoveShowcaseMarketplaceAsync(orgId, cancellationToken);
         await RemoveShowcaseTouristTaxRulesAsync(orgId, cancellationToken);
+        await RemoveShowcaseMessageThreadsAsync(orgId, cancellationToken);
         await RemoveShowcaseCrmAsync(orgId, cancellationToken);
         await RemoveShowcaseFiscalIssuerProfilesAsync(orgId, cancellationToken);
         var removed = await RemoveShowcaseAsync(orgId, cancellationToken);
@@ -149,6 +150,10 @@ public class DemoEnvironmentService(
 
         // NF-88, NF-89: the CRM profiles, contacts and proposed merges of the showcase guests come from the bookings just created.
         await SeedCrmProfilesAsync(orgId, cancellationToken);
+
+        // NF-61, NF-64: the conversations of the hub of messages are about the houses and stays just created, so they come after them.
+        foreach (var thread in DemoShowcaseCatalog.MessageThreads)
+            await CreateMessageThreadAsync(orgId, ownerId, thread, cancellationToken);
 
         // NF-90: the welcome link (the QR code) of the demo house, which the houses just created make possible.
         foreach (var welcomeLink in DemoShowcaseCatalog.WelcomeLinks)
@@ -785,6 +790,143 @@ public class DemoEnvironmentService(
         db.PropertyWelcomeLinks.Add(link);
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.WelcomeLink, link.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes the conversations of the channels the showcase wrote for the org, found by their markers (E05/F02/US01/T01): a conversation points at
+    /// its house and its stay with a foreign key that lets go (SET NULL), so left to the removal of the houses it would stay behind as an unassigned
+    /// conversation; its messages go with it (cascade). The conversations with the guests of the direct stays go with their bookings (cascade), and
+    /// their markers with the other showcase markers. Runs before the showcase houses go: it finds its rows by the markers they drop.
+    /// </summary>
+    internal async Task RemoveShowcaseMessageThreadsAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var threadIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.OtaMessageThread)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (threadIds.Count == 0)
+            return;
+
+        await db.OtaMessageThreads.IgnoreQueryFilters([Tenant])
+            .Where(t => t.OrgId == orgId && threadIds.Contains(t.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.OtaMessageThread)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// One conversation of the hub of messages of the showcase (E05/F02/US01/T01): the conversation with the guest of a direct stay, or a conversation
+    /// of a channel, written as the real flows leave them (the counters of the thread agree with its messages: the last message, the unread ones, the
+    /// time the host read up to). Invented words that say TEST, no channel manager behind them. Skipped, with a log, when the house or the stay it names
+    /// was not created.
+    /// </summary>
+    internal async Task CreateMessageThreadAsync(
+        Guid orgId, string ownerId, DemoMessageThreadTemplate template, CancellationToken cancellationToken)
+    {
+        var propertyId = await ShowcaseIdAsync(orgId, TestDataEntities.Property, template.PropertyKey, cancellationToken);
+        var bookingId = template.BookingKey is null
+            ? null
+            : await ShowcaseIdAsync(orgId, TestDataEntities.Booking, template.BookingKey, cancellationToken);
+        if (propertyId is null || (template.BookingKey is not null && bookingId is null) || template.Messages.Count == 0)
+        {
+            logger.LogWarning(
+                "Demo conversation {Key} of org {OrgId} was skipped: the house or the stay it names was not created", template.Key, orgId);
+            return;
+        }
+
+        var now = UtcNow();
+        var messages = template.Messages
+            .OrderByDescending(m => m.MinutesAgo)
+            .Select(m => (Message: m, At: now.AddMinutes(-m.MinutesAgo)))
+            .ToList();
+        var last = messages[^1];
+
+        if (template.Kind == DemoMessageThreadKind.Direct)
+        {
+            var thread = new GuestThread
+            {
+                OrgId = orgId,
+                PropertyId = propertyId.Value,
+                BookingId = bookingId!.Value,
+                CreatedAt = messages[0].At,
+                LastMessageAt = last.At,
+                LastGuestMessageAt = messages.Where(m => m.Message.FromGuest).Select(m => (DateTime?)m.At).Max(),
+                LastHostMessageAt = messages.Where(m => !m.Message.FromGuest).Select(m => (DateTime?)m.At).Max(),
+                HostReadAt = messages.Where(m => m.Message.FromGuest && m.Message.Read).Select(m => (DateTime?)m.At).Max(),
+            };
+            db.GuestThreads.Add(thread);
+            foreach (var (message, at) in messages)
+            {
+                db.GuestMessages.Add(new GuestMessage
+                {
+                    OrgId = orgId,
+                    ThreadId = thread.Id,
+                    Sender = message.FromGuest ? GuestMessageSender.Guest : GuestMessageSender.Host,
+                    Text = message.Text,
+                    CreatedAt = at,
+                    AuthorUserId = message.FromGuest ? null : ownerId,
+                });
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+            await MarkAsync(orgId, TestDataEntities.GuestThread, thread.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+            return;
+        }
+
+        var otaThread = new OtaMessageThread
+        {
+            OrgId = orgId,
+            PropertyId = propertyId,
+            BookingId = bookingId,
+            OctorateThreadId = $"TEST-{template.Key}",
+            OctorateAccommodationId = "TEST-accommodation",
+            ChannelSource = template.Channel ?? OtaChannel.Airbnb,
+            Kind = bookingId is null ? OtaThreadKind.Request : OtaThreadKind.Reservation,
+            GuestDisplayName = template.GuestName,
+            LastMessageAt = last.At,
+            LastMessageDirection = last.Message.FromGuest ? OtaMessageDirection.Inbound : OtaMessageDirection.Outbound,
+            UnreadCount = messages.Count(m => m.Message.FromGuest && !m.Message.Read),
+            DefaultProcessor = "CHANNEL",
+            AiAssistantOn = false,
+            CreatedAt = messages[0].At,
+            UpdatedAt = now,
+        };
+        db.OtaMessageThreads.Add(otaThread);
+        for (var index = 0; index < messages.Count; index++)
+        {
+            var (message, at) = messages[index];
+            db.OtaMessages.Add(new OtaMessage
+            {
+                OrgId = orgId,
+                ThreadId = otaThread.Id,
+                OctorateMessageId = $"TEST-{template.Key}-{index + 1}",
+                Direction = message.FromGuest ? OtaMessageDirection.Inbound : OtaMessageDirection.Outbound,
+                SenderName = message.FromGuest ? template.GuestName ?? string.Empty : "Host (TEST)",
+                Text = message.Text,
+                SentAt = at,
+                ReadAt = message.FromGuest && message.Read ? at.AddMinutes(1) : null,
+                DeliveryState = OtaMessageDeliveryState.Sent,
+                Origin = message.FromGuest ? MessageOrigin.Guest : MessageOrigin.Person,
+                CreatedAt = at,
+            });
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.OtaMessageThread, otaThread.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
+    /// <summary>The id of the showcase row of <paramref name="entityType"/> that came from the template <paramref name="templateKey"/>, or <c>null</c> when there is none.</summary>
+    private async Task<Guid?> ShowcaseIdAsync(Guid orgId, string entityType, string templateKey, CancellationToken cancellationToken)
+    {
+        var id = await Markers()
+            .Where(m => m.OrgId == orgId
+                && m.Origin == TestDataOrigins.Showcase
+                && m.EntityType == entityType
+                && m.TemplateKey == templateKey)
+            .Select(m => m.EntityId)
+            .FirstOrDefaultAsync(cancellationToken);
+        return id == Guid.Empty ? null : id;
     }
 
     /// <summary>

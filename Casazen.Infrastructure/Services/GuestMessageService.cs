@@ -184,11 +184,8 @@ public sealed class GuestMessageService(
 
         var threads = db.GuestThreads
             .AsNoTracking()
-            .Where(t => t.OrgId == scope.OrgId
-                && t.Booking.Source == BookingSource.Direct
-                && (t.Booking.Status == BookingStatus.Confirmed
-                    || t.Booking.Status == BookingStatus.CheckedIn
-                    || t.Booking.Status == BookingStatus.CheckedOut))
+            .Where(t => t.OrgId == scope.OrgId)
+            .Where(GuestMessageRules.IsThreadOfADirectBooking)
             .InScope(scope);
         if (propertyId is { } id)
             threads = threads.Where(t => t.PropertyId == id);
@@ -267,13 +264,8 @@ public sealed class GuestMessageService(
         // Same threads as the list (direct, confirmed, in the caller's scope), only the open ones, only those with something unread.
         var rows = await db.GuestThreads
             .AsNoTracking()
-            .Where(t => t.OrgId == scope.OrgId
-                && t.LastGuestMessageAt != null
-                && t.Booking.Source == BookingSource.Direct
-                && (t.Booking.Status == BookingStatus.Confirmed
-                    || t.Booking.Status == BookingStatus.CheckedIn
-                    || t.Booking.Status == BookingStatus.CheckedOut)
-                && t.Booking.CheckOutDate >= openFrom)
+            .Where(t => t.OrgId == scope.OrgId && t.LastGuestMessageAt != null && t.Booking.CheckOutDate >= openFrom)
+            .Where(GuestMessageRules.IsThreadOfADirectBooking)
             .InScope(scope)
             .Select(t => new
             {
