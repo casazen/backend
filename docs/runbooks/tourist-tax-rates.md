@@ -66,6 +66,26 @@ deploy and what the admin still has to do.
 - PDF in Italian (A4, tables with repeated headers, notes) and CSV for an Italian spreadsheet (`;`, decimal comma, UTF-8
   with BOM). It is a basis for the payment and the comune's statement (e.g. Modello 21), not the statement itself.
 
+### Dovuto, versato e ricevute per comune (NF-100)
+
+- `GET /api/tourist-tax/summary?from=YYYY-MM-DD&to=YYYY-MM-DD&format=json|csv` sets the report above against what the host
+  paid: per comune, the tax **owed** (the amounts recorded on the stays, exactly the report's, with the stays that have none
+  counted apart and never taken as zero), the tax **paid** (the payments recorded with `POST /api/tourist-tax/remittances`
+  whose own period lies inside the period asked), the balance (negative when overpaid) and the status
+  (`NothingOwed`, `ToPay`, `Paid`, `Overpaid`). Cents, not floats; the same org and property reach as the report, with one
+  difference: a payment belongs to the org and to no property, so a caller who reaches only some of the properties gets the owed side
+  of those properties and no payment (`paymentsHidden: true`, paid, balance and status `null`) and cannot record, delete or open
+  one (403 `tourist_tax_payments_need_whole_org`). Only the properties in Italy count (the rates are those of the Italian comuni and
+  the amounts are in euros): a house in another country, such as a Swiss one, is left out of the summary and its comune cannot be
+  paid, even when an Italian comune has the same name. `NothingOwed`
+  means that no amount is recorded, not that nothing is due: the CSV says `Nessun importo registrato` for it and writes
+  `Importo incompleto` in the note column of every row that counts stays with no amount.
+- A payment is the host's declaration, not a bank record: comune (one of the comuni of its properties), period, amount, day,
+  reference and an optional receipt (PDF, JPEG or PNG of at most 10 MB, in the private bucket). Several payments for the same
+  comune and period are instalments. A wrong entry is deleted (`DELETE /api/tourist-tax/remittances/{id}`) with its receipt.
+  Reading needs `payment.read`, recording and deleting `payment.write` (the accountant reads, the collaborator has neither).
+- Details, errors and the CSV are in `docs/TECHNICAL.md` ("Tourist tax summary").
+
 ## What changes
 
 | Area | Behaviour | Code |

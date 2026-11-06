@@ -42,7 +42,8 @@ moment, to up to three backups, declared as such; the chosen supplier has one ho
 Task DEB-01 (2026-10-31, security and privacy debts of phase 1) adds `CheckInIdentityVerification`: the document reading and the selfie check of the guest's
 check-in page answered with made-up results (MRZ and OCR never read anything, the liveness always true, the face similarity a fixed 0.75) on public endpoints.
 Task E02/F01/US02/T01 (Octorate connector, ADR-023) adds `OctorateConnector`: the connection of an org to its Octorate account, the mapping of the listings
-and the Octorate webhook, off until the sandbox is validated (the other Octorate tasks only read it; `docs/runbooks/octorate-webhooks.md`).
+and the Octorate webhook, off until the sandbox is validated (the other Octorate tasks only read it; `docs/runbooks/octorate-webhooks.md`). Task E03/F05/US01/T01
+(CHK-15) reads it too: `POST api/compliance/octorate-handoffs`, the guided passage to the Octorate «Cassetto Compliance», answers 404 while it is off.
 Task E07/F06/US01/T01 (marketing module of epic E07, NF-95) adds `CrmMarketing`: the CRM profiles, the segments and the campaigns, off until the module is safe
 to send (the other tasks of the epic only read it; `docs/runbooks/crm-marketing.md`).
 

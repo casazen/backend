@@ -4190,6 +4190,39 @@
   <data name="WizardDraftClientVersionInvalid" xml:space="preserve">
     <value>La versione della bozza non è valida.</value>
   </data>
+  <data name="TouristTaxComuneUnknown" xml:space="preserve">
+    <value>Il comune indicato non è uno dei comuni dei tuoi immobili in Italia: scegli un comune italiano in cui hai almeno un immobile.</value>
+  </data>
+  <data name="TouristTaxAmountInvalid" xml:space="preserve">
+    <value>L'importo deve essere maggiore di zero, in euro, con al massimo due decimali.</value>
+  </data>
+  <data name="TouristTaxDateInFuture" xml:space="preserve">
+    <value>La data del versamento non può essere successiva a oggi.</value>
+  </data>
+  <data name="TouristTaxPeriodInvalid" xml:space="preserve">
+    <value>Il periodo del versamento non è valido: la data di inizio non può essere successiva a quella di fine e il periodo dura al massimo un anno.</value>
+  </data>
+  <data name="TouristTaxReceiptInvalid" xml:space="preserve">
+    <value>La ricevuta deve essere un PDF, oppure una foto JPEG o PNG, di al massimo {0} MB.</value>
+  </data>
+  <data name="TouristTaxTextTooLong" xml:space="preserve">
+    <value>Il riferimento può avere al massimo {0} caratteri e la nota al massimo {1}.</value>
+  </data>
+  <data name="TouristTaxRemittanceNotFound" xml:space="preserve">
+    <value>Versamento non trovato.</value>
+  </data>
+  <data name="TouristTaxReceiptNotFound" xml:space="preserve">
+    <value>Questo versamento non ha una ricevuta disponibile.</value>
+  </data>
+  <data name="TouristTaxStatusNothingRecorded" xml:space="preserve">
+    <value>Nessun importo registrato</value>
+  </data>
+  <data name="TouristTaxOwedIncomplete" xml:space="preserve">
+    <value>Importo incompleto</value>
+  </data>
+  <data name="TouristTaxPaymentsNeedWholeOrg" xml:space="preserve">
+    <value>Registrare un versamento della tassa di soggiorno, eliminarlo o aprirne la ricevuta richiede l'accesso a tutti gli immobili: il tuo accesso è limitato ad alcuni.</value>
+  </data>
   <data name="OctorateNotConnected" xml:space="preserve">
     <value>Il collegamento con il channel manager non è attivo: collegalo di nuovo dalle impostazioni dei canali.</value>
   </data>
@@ -4264,5 +4297,53 @@
   </data>
   <data name="OctorateRoomRequired" xml:space="preserve">
     <value>Indica la camera dell'annuncio.</value>
+  </data>
+  <data name="OctorateHandoffTopicRequired" xml:space="preserve">
+    <value>Indica cosa vuoi verificare: Alloggiati o ISTAT.</value>
+  </data>
+  <data name="OctorateHandoffPropertyRequired" xml:space="preserve">
+    <value>Indica l'immobile da verificare.</value>
+  </data>
+  <data name="OctorateHandoffReturnPathRequired" xml:space="preserve">
+    <value>Manca la pagina di CasaZen a cui tornare.</value>
+  </data>
+  <data name="OctorateHandoffReturnPathInvalid" xml:space="preserve">
+    <value>La pagina a cui tornare deve essere un percorso di CasaZen, che inizia con una barra (/).</value>
+  </data>
+  <data name="OctorateHandoffPeriodInvalid" xml:space="preserve">
+    <value>Il periodo deve essere un mese (aaaa-mm) o un giorno (aaaa-mm-gg).</value>
+  </data>
+  <data name="OctorateHandoffTargetNotFound" xml:space="preserve">
+    <value>Immobile o prenotazione non trovati tra quelli della tua organizzazione.</value>
+  </data>
+  <data name="OctorateHandoffPropertyNotMapped" xml:space="preserve">
+    <value>Questo immobile non è collegato al channel manager: collegalo prima di verificare lì gli adempimenti.</value>
+  </data>
+  <data name="OctorateHandoffDestinationUnavailable" xml:space="preserve">
+    <value>Il passaggio al Cassetto Compliance non è disponibile in questo momento. Riprova tra qualche minuto.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiDailyMenu" xml:space="preserve">
+    <value>Accedi a Octorate se richiesto, poi apri il menu PMS e vai alla sezione Alloggiati.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiDailyCheck" xml:space="preserve">
+    <value>Controlla che gli ospiti del soggiorno risultino inviati e non in «invio sospeso»: se lo sono, usa il pulsante per rimandarli. Se il collegamento non risulta «Attivata», completa i dati del portale Alloggiati nel pannello. Octorate invia una volta al giorno.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiShortStayMenu" xml:space="preserve">
+    <value>Accedi a Octorate se richiesto, poi apri il menu PMS e vai alla sezione Alloggiati, dove trovi l'invio manuale immediato.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiShortStayCheck" xml:space="preserve">
+    <value>Il soggiorno dura al massimo 24 ore: la comunicazione va fatta entro 6 ore dall'arrivo e l'invio giornaliero di Octorate può arrivare dopo. Fai subito l'invio manuale e controlla che l'esito risulti inviato.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiLongStayMenu" xml:space="preserve">
+    <value>Accedi a Octorate se richiesto, poi apri il menu PMS e vai alla sezione Alloggiati per il file dell'invio manuale; il file si invia poi dal portale Alloggiati Web.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiLongStayCheck" xml:space="preserve">
+    <value>Il soggiorno supera le 30 notti: l'invio giornaliero di Octorate non lo copre e va fatto a mano. Controlla che sia stato inviato dal portale Alloggiati Web e che l'esito risulti inviato.</value>
+  </data>
+  <data name="OctorateHandoffGuideIstatPeriodMenu" xml:space="preserve">
+    <value>Accedi a Octorate se richiesto, poi apri il menu PMS e vai alla sezione ISTAT.</value>
+  </data>
+  <data name="OctorateHandoffGuideIstatPeriodCheck" xml:space="preserve">
+    <value>Controlla che il periodo risulti inviato per la regione della struttura. Un avviso rosso significa che la regione non consente l'invio diretto: in quel caso il file va caricato a mano sul portale regionale.</value>
   </data>
 </root>
