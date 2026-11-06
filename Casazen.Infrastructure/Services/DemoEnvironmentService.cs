@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
@@ -10,6 +11,7 @@ using Casazen.Core.SiteProfile;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -20,6 +22,12 @@ namespace Casazen.Infrastructure.Services;
 /// and checklists are valid for the activation rules and marked <see cref="Property.IsTestData"/>. The reset deletes
 /// only rows marked <see cref="TestDataOrigins.Showcase"/>.
 /// </summary>
+/// <remarks>
+/// <paramref name="scopeFactory"/>, <paramref name="contactIndex"/> and <paramref name="featureFlags"/> serve the CRM profiles of the showcase
+/// (E07/F01/US02/T03): the profiles, contacts and proposed merges are made by the CRM sync itself, in a scope under the demo org, from the
+/// bookings the reset has just created, and only when the sync is open (<see cref="CrmProfileSyncGate"/>: <c>Features:CrmMarketing</c> on and the
+/// key of the index set).
+/// </remarks>
 public class DemoEnvironmentService(
     AppDbContext db,
     IFileStorage storage,
@@ -27,7 +35,10 @@ public class DemoEnvironmentService(
     IOptions<ComplianceOptions> complianceOptions,
     IDemoEnvironmentGate gate,
     ILogger<DemoEnvironmentService> logger,
-    TimeProvider clock) : IDemoEnvironmentService
+    TimeProvider clock,
+    IServiceScopeFactory scopeFactory,
+    ICrmContactIndex contactIndex,
+    IFeatureFlags featureFlags) : IDemoEnvironmentService
 {
     private const string Tenant = AppDbContext.TenantQueryFilter;
 
@@ -116,12 +127,13 @@ public class DemoEnvironmentService(
         if (!string.Equals(confirmation, DemoShowcaseCatalog.ResetConfirmation, StringComparison.Ordinal))
             throw new DomainRuleException("demo_reset_confirmation", "DemoResetConfirmation");
 
-        // The drafts, the popup alerts, the tourist tax payments and the marketplace rows first: removing the showcase properties drops
-        // every showcase marker of the org, and these are found by theirs.
+        // The drafts, the popup alerts, the tourist tax payments, the marketplace rows and the CRM profiles first: removing the showcase
+        // properties drops every showcase marker of the org, and these are found by theirs.
         await RemoveShowcaseWizardDraftsAsync(orgId, cancellationToken);
         await RemoveShowcasePopupAlertsAsync(orgId, cancellationToken);
         await RemoveShowcaseTouristTaxRemittancesAsync(orgId, cancellationToken);
         await RemoveShowcaseMarketplaceAsync(orgId, cancellationToken);
+        await RemoveShowcaseCrmAsync(orgId, cancellationToken);
         var removed = await RemoveShowcaseAsync(orgId, cancellationToken);
         await RemoveShowcaseHostInvitesAsync(orgId, cancellationToken);
         var unpublished = removeUnpublished ? await RemoveUnpublishedAsync(orgId, cancellationToken) : 0;
@@ -132,6 +144,9 @@ public class DemoEnvironmentService(
             await CreateShowcasePropertyAsync(orgId, ownerId, template, cancellationToken);
             created++;
         }
+
+        // NF-88, NF-89: the CRM profiles, contacts and proposed merges of the showcase guests come from the bookings just created.
+        await SeedCrmProfilesAsync(orgId, cancellationToken);
 
         foreach (var invite in DemoShowcaseCatalog.HostInvites)
             await CreateHostInviteAsync(orgId, ownerId, invite, cancellationToken);
@@ -628,6 +643,134 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.MarketplaceActivation, activation.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
+    /// <summary>
+    /// Deletes the CRM profiles the showcase wrote for the org, found by their markers (E07/F01/US02/T03): the contacts and the proposed merges
+    /// follow their profile (cascade). The guests of the showcase are deleted afterwards by <see cref="RemoveShowcaseAsync"/>; a guest that is not
+    /// one of them (a real one the sync linked to a showcase profile) is let go of the profile first. A profile of a real guest has no marker and
+    /// is never touched. Runs before the showcase guests and properties go: it finds its rows by the markers they drop.
+    /// </summary>
+    private async Task RemoveShowcaseCrmAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var profileIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.CrmProfile)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (profileIds.Count > 0)
+        {
+            await db.Guests.IgnoreQueryFilters([Tenant])
+                .Where(g => g.OrgId == orgId && g.GuestCrmProfileId != null && profileIds.Contains(g.GuestCrmProfileId.Value))
+                .ExecuteUpdateAsync(set => set.SetProperty(g => g.GuestCrmProfileId, (Guid?)null), cancellationToken);
+            await db.GuestCrmProfiles.IgnoreQueryFilters([Tenant])
+                .Where(p => p.OrgId == orgId && profileIds.Contains(p.Id))
+                .ExecuteDeleteAsync(cancellationToken);
+        }
+
+        await Markers()
+            .Where(m => m.OrgId == orgId
+                && m.Origin == TestDataOrigins.Showcase
+                && (m.EntityType == TestDataEntities.CrmProfile
+                    || m.EntityType == TestDataEntities.CrmContact
+                    || m.EntityType == TestDataEntities.CrmMergeCandidate
+                    || m.EntityType == TestDataEntities.GuestConsent
+                    || m.EntityType == TestDataEntities.MarketingConsent))
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Builds the CRM of the showcase guests (NF-88, NF-89): runs the CRM sync, as the job and the event handler do, on every showcase booking
+    /// just created, each in a scope under the demo org; then marks the profiles, the contacts and the proposed merges that came out of it. The
+    /// profile of a returning guest, the OTA forward address, the soft opt-in customer, the confirmed consent and the two guests who share a phone
+    /// (a merge to decide) are all made by the real rules, not written by hand. Skipped, with a log, while the CRM sync is closed (the flag
+    /// <c>Features:CrmMarketing</c> is off or the CRM index has no key: <see cref="CrmProfileSyncGate"/>); a booking that fails is logged and
+    /// the reset goes on (the job would make its profile later).
+    /// </summary>
+    private async Task SeedCrmProfilesAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        if (!CrmProfileSyncGate.IsOpen(featureFlags, contactIndex))
+        {
+            logger.LogInformation(
+                "Demo CRM profiles of org {OrgId} were skipped: Features:CrmMarketing is off or Crm:ContactIndexKey is not configured", orgId);
+            return;
+        }
+
+        var before = await db.GuestCrmProfiles.IgnoreQueryFilters([Tenant])
+            .AsNoTracking()
+            .Where(p => p.OrgId == orgId)
+            .Select(p => p.Id)
+            .ToListAsync(cancellationToken);
+        var bookingIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.Booking)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+
+        foreach (var bookingId in bookingIds)
+        {
+            try
+            {
+                await CrmSyncScopes.SyncBookingAsync(scopeFactory, orgId, bookingId, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(
+                    "Demo CRM sync of booking {BookingId} of org {OrgId} failed: {Error}", bookingId, orgId, CrmDatabaseErrors.Describe(ex));
+            }
+        }
+
+        var made = (await db.GuestCrmProfiles.IgnoreQueryFilters([Tenant])
+                .AsNoTracking()
+                .Where(p => p.OrgId == orgId)
+                .Select(p => p.Id)
+                .ToListAsync(cancellationToken))
+            .Except(before)
+            .ToList();
+        if (made.Count == 0)
+            return;
+
+        var contactIds = await db.GuestContacts.IgnoreQueryFilters([Tenant])
+            .AsNoTracking()
+            .Where(c => c.OrgId == orgId && c.GuestCrmProfileId != null && made.Contains(c.GuestCrmProfileId.Value))
+            .Select(c => c.Id)
+            .ToListAsync(cancellationToken);
+        var proposalIds = await db.GuestMergeCandidates.IgnoreQueryFilters([Tenant])
+            .AsNoTracking()
+            .Where(c => c.OrgId == orgId && (made.Contains(c.ProfileAId) || made.Contains(c.ProfileBId)))
+            .Select(c => c.Id)
+            .ToListAsync(cancellationToken);
+
+        const string key = DemoShowcaseCatalog.Scenario.CrmProfiles;
+        await MarkManyAsync(orgId, TestDataEntities.CrmProfile, made, key, cancellationToken);
+        await MarkManyAsync(orgId, TestDataEntities.CrmContact, contactIds, key, cancellationToken);
+        await MarkManyAsync(orgId, TestDataEntities.CrmMergeCandidate, proposalIds, key, cancellationToken);
+    }
+
+    /// <summary>Marks the rows that have no marker yet as showcase data, in one save.</summary>
+    private async Task MarkManyAsync(
+        Guid orgId, string entityType, IReadOnlyCollection<Guid> entityIds, string templateKey, CancellationToken cancellationToken)
+    {
+        if (entityIds.Count == 0)
+            return;
+
+        var marked = await Markers()
+            .Where(m => m.EntityType == entityType && entityIds.Contains(m.EntityId))
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        var now = UtcNow();
+        foreach (var entityId in entityIds.Except(marked))
+        {
+            db.TestDataMarkers.Add(new TestDataMarker
+            {
+                OrgId = orgId,
+                EntityType = entityType,
+                EntityId = entityId,
+                Origin = TestDataOrigins.Showcase,
+                TemplateKey = templateKey,
+                CreatedAt = now,
+            });
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     private async Task<int> RemoveUnpublishedAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var bookings = db.Bookings.IgnoreQueryFilters([Tenant]);
@@ -812,7 +955,9 @@ public class DemoEnvironmentService(
             FirstName = template.FirstName,
             LastName = template.LastName,
             Email = template.Email,
-            PhoneNumber = "+390000000000",
+            // The placeholder every demo guest has unless the template gives a number: the CRM does not take it for a phone, so no two demo guests
+            // look as if they shared one (only the guests of the CRM scenario that say so do).
+            PhoneNumber = template.Phone ?? "+390000000000",
             Country = "Italia",
             City = "Roma",
         };
@@ -867,6 +1012,72 @@ public class DemoEnvironmentService(
         db.Bookings.Add(booking);
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.Booking, booking.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+        await CreateCrmConsentsAsync(orgId, guest.Id, booking.Id, template, madeAt, cancellationToken);
+    }
+
+    /// <summary>
+    /// What the CRM guests of the showcase were shown and agreed to (NF-89, NF-90), invented and marked: the soft opt-in notice of a direct customer,
+    /// and the marketing consent of the online check-in with the address confirmed (double opt-in), in the rows the real flows write. They go with
+    /// their guest and their booking when the reset deletes them. The CRM sync reads them to build the contacts.
+    /// </summary>
+    private async Task CreateCrmConsentsAsync(
+        Guid orgId, Guid guestId, Guid bookingId, DemoBookingTemplate template, DateTime madeAt, CancellationToken cancellationToken)
+    {
+        if (!template.SoftOptInNotice && !template.CheckInMarketingConsent)
+            return;
+
+        var history = new List<(string EntityType, GuestConsentRecord Row)>();
+        if (template.SoftOptInNotice)
+        {
+            history.Add((TestDataEntities.GuestConsent, new GuestConsentRecord
+            {
+                OrgId = orgId,
+                GuestId = guestId,
+                Purpose = GuestConsentPurpose.SoftOptInNotice,
+                Action = GuestConsentAction.NoticePresented,
+                Version = DemoShowcaseCatalog.CrmTextVersion,
+                Source = GuestConsentSource.BookingCheckout,
+                RecordedAt = madeAt,
+            }));
+        }
+
+        MarketingConsentRecord? consent = null;
+        if (template.CheckInMarketingConsent)
+        {
+            history.Add((TestDataEntities.GuestConsent, new GuestConsentRecord
+            {
+                OrgId = orgId,
+                GuestId = guestId,
+                Purpose = GuestConsentPurpose.Marketing,
+                Action = GuestConsentAction.Granted,
+                Version = DemoShowcaseCatalog.CrmTextVersion,
+                Source = GuestConsentSource.GuestPortal,
+                RecordedAt = madeAt,
+            }));
+            consent = new MarketingConsentRecord
+            {
+                OrgId = orgId,
+                BookingId = bookingId,
+                GuestId = guestId,
+                MarketingEmail = template.Email,
+                ConsentEmail = true,
+                ConsentWhatsApp = false,
+                EmailConfirmed = true,
+                ConsentTimestamp = madeAt,
+                ConsentTextVersion = DemoShowcaseCatalog.CrmTextVersion,
+            };
+            db.MarketingConsentRecords.Add(consent);
+        }
+
+        foreach (var (_, row) in history)
+            db.GuestConsentRecords.Add(row);
+
+        await db.SaveChangesAsync(cancellationToken);
+        foreach (var (entityType, row) in history)
+            await MarkAsync(orgId, entityType, row.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+
+        if (consent is not null)
+            await MarkAsync(orgId, TestDataEntities.MarketingConsent, consent.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
     private async Task<bool> FillComplianceAsync(

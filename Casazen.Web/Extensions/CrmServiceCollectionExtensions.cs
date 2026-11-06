@@ -1,5 +1,8 @@
+using Casazen.Core.Events;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Events;
+using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Options;
 
@@ -26,6 +29,20 @@ public static class CrmServiceCollectionExtensions
 
         // The keyed index of the contacts and of the suppression list: HMAC-SHA256 keyed by Crm:ContactIndexKey.
         services.AddSingleton<ICrmContactIndex, CrmContactIndex>();
+
+        // E07/F01/US02 (NF-88, NF-89, NF-20): the matching of a guest to a CRM profile, finally registered (the profiles were never created while it
+        // was not); the one writer of the contacts, with the rules of who may be written to (CrmContactRules); and the sync that keeps both in
+        // step with the bookings of every source. The sync does nothing unless Features:CrmMarketing is on and the key of the index is set
+        // (ICrmProfileSyncService.IsAvailable, CrmProfileSyncGate): it copies contact data into tables the erasure does not reach yet.
+        services.AddScoped<IGuestMatchingService, GuestMatchingService>();
+        services.AddScoped<ICrmContactService, CrmContactService>();
+        services.AddScoped<ICrmProfileSyncService, CrmProfileSyncService>();
+
+        // The sync on the event bus (a handler of every event, it filters on the booking ones): it only shortens the delay, and a failure never
+        // fails the event. The recurring job crm-profile-sync (RecurringJobsRegistration) guarantees the result and backfills the guests with no
+        // profile.
+        services.AddScoped<IEventHandler<DomainEvent>, CrmBookingEventHandler>();
+        services.AddScoped<CrmProfileSyncJob>();
 
         return services;
     }

@@ -373,4 +373,44 @@ public class DemoShowcaseTests
         Assert.Contains(states, s => s.Status == ChannelPublishStatus.ManagedOnChannel);
         Assert.All(states.Where(s => s.Status != ChannelPublishStatus.ToFix), s => Assert.Null(s.ErrorCode));
     }
+
+    [Fact]
+    public void CrmProfiles_TheDemoHasAReturningGuestAnOtaGuestADirectCustomerACheckInConsentAndTwoGuestsSharingAPhone_AllInvented()
+    {
+        var stays = DemoShowcaseCatalog.Properties
+            .SelectMany(p => p.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.CrmProfiles).Select(b => (House: p.Key, Booking: b)))
+            .ToList();
+
+        // NF-88, NF-89: the CRM sync builds the profiles from these bookings, so the scenario has template data and every case it shows is in it.
+        Assert.Contains(DemoShowcaseCatalog.Scenario.CrmProfiles, DemoShowcaseCatalog.Scenarios);
+        Assert.NotEmpty(stays);
+        Assert.Equal(stays.Count, stays.Select(s => s.Booking.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(stays, s => Assert.EndsWith("@example.com", s.Booking.Email, StringComparison.Ordinal));
+        Assert.All(stays, s => Assert.NotEqual(BookingStatus.Cancelled, s.Booking.Status));
+        Assert.Contains("TEST", DemoShowcaseCatalog.CrmTextVersion, StringComparison.Ordinal);
+
+        // A returning guest: the same address on two records, a stay that is over and one to come, at two houses.
+        var returning = Assert.Single(
+            stays.GroupBy(s => s.Booking.Email, StringComparer.Ordinal),
+            group => group.Count() == 2 && group.Select(s => s.House).Distinct(StringComparer.Ordinal).Count() == 2);
+        Assert.Contains(returning, s => s.Booking.Status == BookingStatus.CheckedOut && s.Booking.CheckInOffsetDays + s.Booking.Nights <= 0);
+        Assert.Contains(returning, s => s.Booking.Status == BookingStatus.Confirmed && s.Booking.CheckInOffsetDays > 0);
+
+        // A booking that comes from an OTA (its address is a forward), a direct customer who saw the soft opt-in notice and whose booking is
+        // confirmed, and a guest who ticked the marketing consent of the online check-in.
+        Assert.Contains(stays, s => OtaForwardAddress.IsOtaSource(s.Booking.Source));
+        Assert.Contains(
+            stays,
+            s => s.Booking.Source == BookingSource.Direct && s.Booking.SoftOptInNotice && CrmContactRules.IsPurchase(s.Booking.Status));
+        Assert.Contains(stays, s => s.Booking.CheckInMarketingConsent);
+
+        // Two different guests who share a phone: the matching proposes the merge, a person decides. The number is a number for the CRM, and
+        // the placeholder every other demo guest has is not, so no other two guests share one.
+        var sharing = stays.Where(s => s.Booking.Phone == DemoShowcaseCatalog.CrmSharedPhone).ToList();
+        Assert.Equal(2, sharing.Count);
+        Assert.Equal(2, sharing.Select(s => s.Booking.Email).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(2, sharing.Select(s => CrmNormalizer.NormalizeName(s.Booking.FirstName, s.Booking.LastName)).Distinct(StringComparer.Ordinal).Count());
+        Assert.NotNull(CrmNormalizer.NormalizePhone(DemoShowcaseCatalog.CrmSharedPhone));
+        Assert.Null(CrmNormalizer.NormalizePhone("+390000000000"));
+    }
 }
