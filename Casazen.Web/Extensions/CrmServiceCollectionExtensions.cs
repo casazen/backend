@@ -59,6 +59,13 @@ public static class CrmServiceCollectionExtensions
         // E07/F04/US01/T04 (NF-90): the marketing choices of the guest of a booking, on the guest page (policy GuestSession, not behind the flag).
         services.AddScoped<IGuestMarketingPreferencesService, GuestMarketingPreferencesService>();
 
+        // E07/F01/US03 (NF-88): the profile API of the host screens. The read model decides the scope of the CRM (the profiles a caller reaches), the
+        // list, the detail and the tags; the controller behind Features:CrmMarketing is a thin layer over it.
+        services.AddScoped<ICrmProfileReadService, CrmProfileReadService>();
+
+        // E07/F01/US03/T02 (NF-88): the decisions on the merges the matching proposes (list, dismiss, merge), one lock of the org for each decision.
+        services.AddScoped<ICrmProfileMergeService, CrmProfileMergeService>();
+
         return services;
     }
 }
