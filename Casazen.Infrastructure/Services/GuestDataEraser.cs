@@ -343,29 +343,64 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
             return new OtaAnonymizationOutcome(0, 0);
 
         var threads = await db.OtaMessageThreads
-            .Where(t => threadIds.Contains(t.Id) && t.AnonymizedAt == null)
+            .Where(t => threadIds.Contains(t.Id))
             .ToListAsync(cancellationToken);
         if (threads.Count == 0)
             return new OtaAnonymizationOutcome(0, 0);
 
         var ids = threads.Select(t => t.Id).ToList();
-        var messages = await db.OtaMessages.Where(m => ids.Contains(m.ThreadId)).ToListAsync(cancellationToken);
+        var messages = (await db.OtaMessages.Where(m => ids.Contains(m.ThreadId)).ToListAsync(cancellationToken)).ToLookup(m => m.ThreadId);
+        int changed = 0, cleared = 0;
+        foreach (var thread in threads)
+        {
+            var marked = thread.AnonymizedAt is not null;
+            var lost = AnonymizeOtaThread(thread, messages[thread.Id], now);
+            if (!marked || lost > 0)
+            {
+                changed++;
+                cleared += lost;
+            }
+        }
+
+        return new OtaAnonymizationOutcome(changed, cleared);
+    }
+
+    /// <summary>
+    /// Takes the personal data out of one OTA thread that is loaded with its messages (<see cref="AnonymizeOtaThreadsAsync"/> says what goes). The one
+    /// place that knows which fields are personal: the erasure and the retention call it for the threads they find, and the sync of the channel manager
+    /// calls it for a thread of an erased guest that was not there to be erased when the guest was. A message that holds nothing of a person is left as it is.
+    /// Stages the changes without saving. Returns the messages that lost something.
+    /// </summary>
+    internal static int AnonymizeOtaThread(OtaMessageThread thread, IEnumerable<OtaMessage> messages, DateTime now)
+    {
+        ArgumentNullException.ThrowIfNull(thread);
+        ArgumentNullException.ThrowIfNull(messages);
+
+        var lost = 0;
         foreach (var message in messages)
         {
+            if (message.Text.Length == 0 && message.SenderName == AnonymizedName && message.AttachmentUrl is null && message.AttachmentContentType is null)
+                continue;
+
             message.Text = string.Empty;
             message.SenderName = AnonymizedName;
             message.AttachmentUrl = null;
             message.AttachmentContentType = null;
+            lost++;
         }
 
-        foreach (var thread in threads)
+        if (thread.AnonymizedAt is null)
         {
             thread.GuestDisplayName = AnonymizedName;
             thread.AnonymizedAt = now;
             thread.UpdatedAt = now;
         }
+        else if (lost > 0)
+        {
+            thread.UpdatedAt = now;
+        }
 
-        return new OtaAnonymizationOutcome(threads.Count, messages.Count);
+        return lost;
     }
 
     /// <summary>An open check-in link would let someone enter personal data again for an anonymized guest.</summary>

@@ -215,6 +215,148 @@ public class OtaMessageAnonymizationTests
         Assert.Equal(new OtaMessageRetentionResult(true, 0, 0), second);
     }
 
+    /// <summary>
+    /// PROOF TEST: privacy rule (ADR-032-R13). The erasure of a guest only finds the threads that are copied and linked to its booking when it runs. A
+    /// thread of that booking copied afterwards (the initial import of the listing, a late pass) is stored already anonymous: marked, with the name of the
+    /// guest replaced, and its messages without words, sender name and attachment, though the channel manager still holds them.
+    /// </summary>
+    [Fact]
+    public async Task AThreadCopiedAfterTheErasureOfItsGuest_IsStoredAnonymous_Test()
+    {
+        var h = new MessageSyncHarness();
+        var acc = MessageSyncHarness.Accommodation;
+        var booking = await SeedBookingAsync(h, "R-4711", erased: true);
+        h.Client.Setup(c => c.GetChatThreadAsync(acc, "9001", It.IsAny<CancellationToken>())).ReturnsAsync(MessageSyncHarness.Thread("9001"));
+        h.Client.Setup(c => c.GetChatMessagesAsync(acc, "9001", It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([WithWords("70001", "9001", "Il mio telefono e 333 1234567")]);
+
+        SyncResult result;
+        await using (var db = h.NewDb())
+            result = await h.Service(db).SyncThreadAsync(MessageSyncHarness.OrgA, acc, "9001", null, CancellationToken.None);
+
+        Assert.Equal(new SyncResult(1, 1, 0, 0), result);
+        var thread = await h.ReadAsync(db => db.OtaMessageThreads.SingleAsync());
+        var message = await h.ReadAsync(db => db.OtaMessages.SingleAsync());
+        Assert.Equal(booking.Id, thread.BookingId);
+        Assert.NotNull(thread.AnonymizedAt);
+        Assert.Equal(GuestDataEraser.AnonymizedName, thread.GuestDisplayName);
+        AssertAnonymous(message);
+
+        // The shape of the conversation is there, as after an erasure: who spoke, when, and that a message is unread.
+        Assert.Equal(OtaMessageDirection.Inbound, message.Direction);
+        Assert.Equal(1, thread.UnreadCount);
+        Assert.Equal(OtaMessageDirection.Inbound, thread.LastMessageDirection);
+    }
+
+    /// <summary>
+    /// PROOF TEST: privacy rule (ADR-032-R13). A thread copied before the booking of its reservation was known is linked to it later. When the guest of
+    /// that booking was erased in the meantime, the erasure could not reach the conversation: the link anonymizes it with what it already holds, while the
+    /// thread of a guest who was not erased keeps its words.
+    /// </summary>
+    [Fact]
+    public async Task AThreadLinkedAfterTheErasureOfItsGuest_LosesWhatItHolds_Test()
+    {
+        var h = new MessageSyncHarness();
+        var acc = MessageSyncHarness.Accommodation;
+        foreach (var (threadId, reservation) in new[] { ("9200", "R-9200"), ("9300", "R-9300") })
+        {
+            var id = threadId;
+            h.Client.Setup(c => c.GetChatThreadAsync(acc, id, It.IsAny<CancellationToken>())).ReturnsAsync(MessageSyncHarness.Thread(id, reservationId: reservation));
+            h.Client.Setup(c => c.GetChatMessagesAsync(acc, id, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync([WithWords($"7{id}", id, "Arriviamo alle 22, il mio numero e 333 1234567")]);
+            await using var db = h.NewDb();
+            await h.Service(db).SyncThreadAsync(MessageSyncHarness.OrgA, acc, id, null, CancellationToken.None);
+        }
+
+        // Copied with their words, before CasaZen holds any booking.
+        var copied = await h.ReadAsync(db => db.OtaMessageThreads.ToListAsync());
+        Assert.All(copied, thread => Assert.Null(thread.BookingId));
+        Assert.All(copied, thread => Assert.Null(thread.AnonymizedAt));
+        Assert.All(await h.ReadAsync(db => db.OtaMessages.ToListAsync()), message => Assert.StartsWith("Arriviamo", message.Text, StringComparison.Ordinal));
+
+        // The two bookings arrive from the channel manager, one of a guest who was erased, and the next pass links the threads.
+        var erasedBooking = await SeedBookingAsync(h, "R-9200", erased: true);
+        var keptBooking = await SeedBookingAsync(h, "R-9300", erased: false);
+        h.Client.Setup(c => c.GetRecentChatMessagesAsync(acc, It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        await using (var db = h.NewDb())
+            await h.Service(db).ReconcileRecentAsync(MessageSyncHarness.OrgA, CancellationToken.None);
+
+        var threads = await h.ReadAsync(db => db.OtaMessageThreads.ToDictionaryAsync(t => t.OctorateThreadId));
+        var messages = await h.ReadAsync(db => db.OtaMessages.ToDictionaryAsync(m => m.OctorateMessageId!));
+        Assert.Equal(erasedBooking.Id, threads["9200"].BookingId);
+        Assert.NotNull(threads["9200"].AnonymizedAt);
+        Assert.Equal(GuestDataEraser.AnonymizedName, threads["9200"].GuestDisplayName);
+        AssertAnonymous(messages["79200"]);
+
+        Assert.Equal(keptBooking.Id, threads["9300"].BookingId);
+        Assert.Null(threads["9300"].AnonymizedAt);
+        Assert.Equal("Giulietta Verdi", threads["9300"].GuestDisplayName);
+        Assert.StartsWith("Arriviamo", messages["79300"].Text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// PROOF TEST: privacy rule (ADR-032-R13). The other way a thread meets the booking of an erased guest: it is read again, and by then its booking is
+    /// in CasaZen. What it held is emptied, and the message that arrives with this read is stored without its words.
+    /// </summary>
+    [Fact]
+    public async Task AThreadReadAgainWhenItsBookingIsThere_AndTheGuestWasErased_LosesWhatItHolds_Test()
+    {
+        var h = new MessageSyncHarness();
+        var acc = MessageSyncHarness.Accommodation;
+        h.Client.Setup(c => c.GetChatThreadAsync(acc, "9200", It.IsAny<CancellationToken>())).ReturnsAsync(MessageSyncHarness.Thread("9200", reservationId: "R-9200"));
+        h.Client.Setup(c => c.GetChatMessagesAsync(acc, "9200", It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([WithWords("79200", "9200", "Prima della prenotazione")]);
+        await using (var db = h.NewDb())
+            await h.Service(db).SyncThreadAsync(MessageSyncHarness.OrgA, acc, "9200", null, CancellationToken.None);
+        Assert.Equal("Prima della prenotazione", (await h.ReadAsync(db => db.OtaMessages.SingleAsync())).Text);
+
+        var booking = await SeedBookingAsync(h, "R-9200", erased: true);
+        h.Client.Setup(c => c.GetChatMessagesAsync(acc, "9200", It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([WithWords("79200", "9200", "Prima della prenotazione"), WithWords("79201", "9200", "Dopo la prenotazione")]);
+        await using (var db = h.NewDb())
+            await h.Service(db).SyncThreadAsync(MessageSyncHarness.OrgA, acc, "9200", null, CancellationToken.None);
+
+        var thread = await h.ReadAsync(db => db.OtaMessageThreads.SingleAsync());
+        var messages = await h.ReadAsync(db => db.OtaMessages.OrderBy(m => m.OctorateMessageId).ToListAsync());
+        Assert.Equal(booking.Id, thread.BookingId);
+        Assert.NotNull(thread.AnonymizedAt);
+        Assert.Equal(GuestDataEraser.AnonymizedName, thread.GuestDisplayName);
+        Assert.Equal(["79200", "79201"], messages.Select(m => m.OctorateMessageId));
+        Assert.All(messages, AssertAnonymous);
+    }
+
+    /// <summary>A guest with a booking of the property of the harness for the reservation, erased (anonymized and deleted, as the erasure leaves it) or not.</summary>
+    private static async Task<Booking> SeedBookingAsync(MessageSyncHarness h, string reservationId, bool erased)
+    {
+        var guest = new Guest
+        {
+            OrgId = MessageSyncHarness.OrgA,
+            FirstName = "Giulietta",
+            LastName = "Verdi",
+            Email = "giulietta@example.com",
+            DataAnonymizedDate = erased ? Now : null,
+            IsDeleted = erased,
+        };
+        var booking = NewBooking(MessageSyncHarness.OrgA, h.PropertyId, guest.Id, reservationId);
+        await using var seed = h.NewDb();
+        seed.Guests.Add(guest);
+        seed.Bookings.Add(booking);
+        await seed.SaveChangesAsync();
+        return booking;
+    }
+
+    /// <summary>A message of the guest with words, a name and an attachment, as the channel manager gives it.</summary>
+    private static OctorateChatMessage WithWords(string id, string threadId, string text) =>
+        MessageSyncHarness.Inbound(id, threadId, text) with { AttachmentUrl = "https://resx.example.test/doc-1.jpg", AttachmentContentType = "image/jpeg" };
+
+    private static void AssertAnonymous(OtaMessage message)
+    {
+        Assert.Equal(string.Empty, message.Text);
+        Assert.Equal(GuestDataEraser.AnonymizedName, message.SenderName);
+        Assert.Null(message.AttachmentUrl);
+        Assert.Null(message.AttachmentContentType);
+    }
+
     private static AppDbContext NewDb(string databaseName) =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(databaseName).Options, NullTenantContext.Instance);
 

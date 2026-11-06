@@ -44,7 +44,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>Rate limit.</b> The calls leave <see cref="RateReserve"/> of the org's bucket to the people who use CasaZen; a run waits for the bucket
 /// at most <see cref="MaxRateWait"/> and then ends with <see cref="OctorateRateLimitException"/>, the checkpoints saved.</item>
 /// <item><b>Erased guests.</b> A thread anonymized with its guest (<see cref="OtaMessageThread.AnonymizedAt"/>) is read for its structure only:
-/// no name, no text and no attachment of it comes back.</item>
+/// no name, no text and no attachment of it comes back. The erasure only finds the threads that are there and linked to the booking of the guest when
+/// it runs, so the sync looks at the guest of the booking of every thread it applies: a thread copied for the first time, or linked to its booking,
+/// after the guest was erased or anonymized (<c>Guest.DataAnonymizedDate</c>, or deleted) is marked at once and what it holds goes.</item>
 /// <item><b>Privacy.</b> The logs carry ids, codes and counts, never a text, a name or an address.</item>
 /// </list>
 /// </remarks>
@@ -600,7 +602,6 @@ public sealed class MessageSyncService(
             db.OtaMessageThreads.Add(thread);
         }
 
-        var anonymized = thread.AnonymizedAt is not null;
         var previousReservation = thread.OctorateReservationId;
         thread.OctorateAccommodationId = listing.AccommodationId;
         thread.PropertyId = listing.PropertyId;
@@ -608,8 +609,6 @@ public sealed class MessageSyncService(
         thread.DefaultProcessor = Clip(remote.DefaultProcessor, OtaMessageThread.DefaultProcessorMaxLength);
         thread.AiAssistantOn = remote.AiDriven;
         thread.IsArchived = remote.ArchivedAt is not null;
-        if (!anonymized && Clip(remote.GuestName, OtaMessageThread.GuestDisplayNameMaxLength) is { } guestName)
-            thread.GuestDisplayName = guestName;
 
         if (remote.ReservationId is { Length: > 0 and <= OtaMessageThread.OctorateReservationIdMaxLength } reservationId)
         {
@@ -624,6 +623,20 @@ public sealed class MessageSyncService(
         {
             thread.Kind = OtaThreadKind.Request;
         }
+
+        // The guest of the booking may have been erased before this thread was copied or linked to it, when there was nothing of it to erase: the
+        // thread is then kept anonymous from its first copy, as if the erasure had met it, and what it holds already goes (ADR-032-R13).
+        if (thread.AnonymizedAt is null
+            && thread.BookingId is { } linkedBooking
+            && (await ErasedGuestBookingsAsync(orgId, [linkedBooking], ct)).Contains(linkedBooking))
+        {
+            await AnonymizeThreadAsync(thread, now, ct);
+            logger.LogInformation("Octorate chat thread {OctorateThreadId} of org {OrgId}: the guest of its booking was erased, the thread is kept anonymous", remote.Id, orgId);
+        }
+
+        var anonymized = thread.AnonymizedAt is not null;
+        if (!anonymized && Clip(remote.GuestName, OtaMessageThread.GuestDisplayNameMaxLength) is { } guestName)
+            thread.GuestDisplayName = guestName;
 
         var (added, newInbound) = await StoreMessagesAsync(orgId, thread, anonymized, remoteMessages, now, ct);
 
@@ -839,25 +852,71 @@ public sealed class MessageSyncService(
             .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal);
 
         var now = Now();
-        var linked = 0;
+        var erased = await ErasedGuestBookingsAsync(orgId, [.. bookingByReservation.Values], ct);
+        int linked = 0, anonymized = 0;
         foreach (var thread in unlinked)
         {
-            if (bookingByReservation.TryGetValue(thread.OctorateReservationId!, out var bookingId))
+            if (!bookingByReservation.TryGetValue(thread.OctorateReservationId!, out var bookingId))
+                continue;
+
+            thread.BookingId = bookingId;
+            thread.Kind = OtaThreadKind.Reservation;
+            thread.UpdatedAt = now;
+            linked++;
+
+            // The guest of that booking may have been erased before the thread was linked to it, when the erasure could not find the thread: what
+            // the thread holds goes now, as the erasure would have done it (ADR-032-R13).
+            if (thread.AnonymizedAt is null && erased.Contains(bookingId))
             {
-                thread.BookingId = bookingId;
-                thread.Kind = OtaThreadKind.Reservation;
-                thread.UpdatedAt = now;
-                linked++;
+                await AnonymizeThreadAsync(thread, now, ct);
+                anonymized++;
             }
         }
 
         if (linked > 0)
         {
             await db.SaveChangesAsync(ct);
-            logger.LogInformation("Octorate chat of org {OrgId}: {Threads} threads linked to the booking of their reservation", orgId, linked);
+            logger.LogInformation(
+                "Octorate chat of org {OrgId}: {Threads} threads linked to the booking of their reservation, {Anonymized} of them kept anonymous",
+                orgId,
+                linked,
+                anonymized);
         }
 
         db.ChangeTracker.Clear();
+    }
+
+    /// <summary>The bookings among <paramref name="bookingIds"/> whose guest was erased or anonymized: the guest has no conversation left to copy (ADR-032-R13).</summary>
+    private async Task<HashSet<Guid>> ErasedGuestBookingsAsync(Guid orgId, IReadOnlyCollection<Guid> bookingIds, CancellationToken ct)
+    {
+        if (bookingIds.Count == 0)
+            return [];
+
+        var erased = await db.Bookings
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(b => b.OrgId == orgId && bookingIds.Contains(b.Id) && (b.Guest.DataAnonymizedDate != null || b.Guest.IsDeleted))
+            .Select(b => b.Id)
+            .ToListAsync(ct);
+        return [.. erased];
+    }
+
+    /// <summary>
+    /// Anonymizes a thread of an erased guest the way the erasure does (<see cref="GuestDataEraser.AnonymizeOtaThread"/>): the thread is marked and what
+    /// the messages already stored hold of a person goes. Stages the changes; the unit of work of the caller saves them.
+    /// </summary>
+    private async Task AnonymizeThreadAsync(OtaMessageThread thread, DateTime now, CancellationToken ct)
+    {
+        List<OtaMessage> stored = [];
+        if (db.Entry(thread).State != EntityState.Added)
+        {
+            stored = await db.OtaMessages
+                .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                .Where(m => m.OrgId == thread.OrgId && m.ThreadId == thread.Id)
+                .ToListAsync(ct);
+        }
+
+        GuestDataEraser.AnonymizeOtaThread(thread, stored, now);
     }
 
     /// <summary>Sets <c>UpdatedAt</c> when the thread is new or changed: a read that finds nothing new leaves the row as it was.</summary>
