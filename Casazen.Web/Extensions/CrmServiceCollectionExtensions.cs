@@ -4,6 +4,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Jobs;
+using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Options;
 
@@ -44,6 +45,14 @@ public static class CrmServiceCollectionExtensions
         // profile.
         services.AddScoped<IEventHandler<DomainEvent>, CrmBookingEventHandler>();
         services.AddScoped<CrmProfileSyncJob>();
+
+        // E07/F06/US02/T02 (NF-94, CRM-07): the contact of the guest of ONE Octorate booking, read when someone needs it and stored as contacts of
+        // the CRM. Registered whatever the flags say; it reads nothing unless Crm:OctorateContactsEnabled (and the connector) is on, which the
+        // product owner turns on once the static IP addresses are registered with Octorate. The ledger is the memory of the cap per hour and of
+        // the bookings read or refused (one for the application, in memory); the handler only shortens the wait after a booking is imported.
+        services.AddSingleton<OctorateContactReadLedger>();
+        services.AddScoped<IOctorateContactsService, OctorateContactsService>();
+        services.AddScoped<IEventHandler<DomainEvent>, OctorateContactsEventHandler>();
 
         // E07/F04/US01 (NF-90, CRM-03): the collection of the marketing consents. The double opt-in: the signed link of the confirmation e-mail
         // (the secret of the signed links, no address in it) and the service that sends the e-mail and records the click. Not behind

@@ -61,6 +61,15 @@ public class GuestCheckInSession : ITenantOwned
     /// </summary>
     public BiometricOutcome? BiometricOutcome { get; set; }
 
+    /// <summary>
+    /// The language the guest chose on the check-in page (two letters, one of <c>GuestLanguages.Supported</c>); null until the guest
+    /// chooses. The emails of the session use it (NF-40).
+    /// </summary>
+    public string? Language { get; set; }
+
+    /// <summary>When the reminder for the data still missing before arrival was queued with this session's link (UTC); null when none.</summary>
+    public DateTime? ReminderSentAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

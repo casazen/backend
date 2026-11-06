@@ -543,6 +543,22 @@ public class BookingListSearchTests
     }
 
     [Fact]
+    public async Task Rows_ANoShowHasNoAlloggiatiCommunication()
+    {
+        // NF-45: b2 arrives today and would be "to send on the portal"; marked as a no-show, its guests never came, so the row says nothing.
+        var world = await SeedAsync();
+        var b2 = Id(world, "b2");
+        var arrivesToday = await world.Db.Bookings.IgnoreQueryFilters().SingleAsync(b => b.Id == b2);
+        arrivesToday.NoShowAt = At(10, 9, 15);
+        await world.Db.SaveChangesAsync();
+
+        var page = await Search(world.Db).SearchAsync(world.OrgWide, new BookingSearchCriteria(PageSize: 100));
+
+        Assert.Null(page.Details[b2].AlloggiatiStatus);
+        Assert.Equal(AlloggiatiWebStatus.DaInviareManualmente, page.Details[Id(world, "b4")].AlloggiatiStatus);
+    }
+
+    [Fact]
     public async Task Rows_WithoutTheRightToReadPayments_TheStateIsThere_TheAmountIsNot()
     {
         var world = await SeedAsync();

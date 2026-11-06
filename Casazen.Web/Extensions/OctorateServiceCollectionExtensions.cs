@@ -102,6 +102,13 @@ public static class OctorateServiceCollectionExtensions
         services.AddScoped<ListingChannelHealthJob>();
         services.AddScoped<ListingOutsideChangeJob>();
 
+        // The check-in of a stay (E03/F01/US01/T03): the guests sent to Octorate, the NO_SHOW (queued by the check-in endpoints; the arrival and
+        // the departure are pushed by the one handler above, never by a second one) and the retry every 15 minutes (scheduled only while
+        // Features:OctorateConnector is on). Keys Octorate:WriteCityTaxValues, CheckInMaxAttempts and SendGuestsWhenSenderIsNotChannelManager.
+        services.AddScoped<ICheckInOctorateSyncService, CheckInOctorateSyncService>();
+        services.AddScoped<OctorateStayStateJob>();
+        services.AddScoped<OctorateCheckInRetryJob>();
+
         return services;
     }
 }

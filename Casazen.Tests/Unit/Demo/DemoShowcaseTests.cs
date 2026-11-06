@@ -90,6 +90,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.TouristTaxRemittances.Select(tt => tt.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplacePartners.Select(partner => partner.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplaceActivations.Select(activation => activation.Scenario))
+            .Concat(DemoShowcaseCatalog.TouristTaxChannelRules.Select(rule => rule.Scenario))
             .Concat(DemoShowcaseCatalog.WelcomeLinks.Select(link => link.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
@@ -97,6 +98,74 @@ public class DemoShowcaseTests
         Assert.Contains(DemoShowcaseCatalog.Properties, p => p.Publish);
         Assert.Contains(DemoShowcaseCatalog.Properties, p => p.Key == DemoShowcaseCatalog.DraftKey && !p.Publish);
         Assert.All(DemoShowcaseCatalog.Properties, p => Assert.Equal(6, p.Place.IstatCode.Length));
+    }
+
+    /// <summary>
+    /// NF-46: the demo shows a stay taxed guest by guest (a minor exempt by age, an adult the host exempted as resident, one who pays) and a channel
+    /// stay in a comune whose demo channel rule makes the channel collect; the rule is for an invented comune only, with an example source.
+    /// </summary>
+    [Fact]
+    public void TouristTax_TheDemoStays_ShowEveryCase_AndTheChannelRuleTouchesNoRealComune()
+    {
+        var bookings = DemoShowcaseCatalog.Properties.SelectMany(p => p.Bookings.Select(b => (Property: p, Booking: b))).ToList();
+
+        var perGuest = Assert.Single(bookings, b => b.Booking.Scenario == DemoShowcaseCatalog.Scenario.TouristTaxPerGuest);
+        var guests = perGuest.Booking.Guests!;
+        Assert.Contains(guests, g => g.AgeAtCheckIn < 14 && g.TaxExemptionCode is null);
+        Assert.Contains(guests, g => g.AgeAtCheckIn >= 18 && g.TaxExemptionCode == TouristTaxExemptionReason.ResidentCode);
+        Assert.Contains(guests, g => g.AgeAtCheckIn >= 18 && g.TaxExemptionCode is null);
+        Assert.Empty(AlloggiatiRecordRules.CompositionErrors(guests.Select(g => g.Type).ToList()));
+
+        var channelStay = Assert.Single(bookings, b => b.Booking.Scenario == DemoShowcaseCatalog.Scenario.TouristTaxChannelCollected);
+        var rule = Assert.Single(DemoShowcaseCatalog.TouristTaxChannelRules);
+        Assert.Equal(channelStay.Property.Key, rule.PropertyKey);
+        Assert.Equal(channelStay.Booking.Source, rule.Channel);
+        Assert.Equal(TouristTaxCollector.Channel, rule.Collector);
+        Assert.StartsWith("https://example.com/", rule.SourceUrl, StringComparison.Ordinal);
+        Assert.Contains("TEST", rule.Notes, StringComparison.Ordinal);
+        Assert.StartsWith("999", channelStay.Property.Place.IstatCode, StringComparison.Ordinal);
+        Assert.NotNull(channelStay.Property.DeclaredTouristTaxRate);
+        Assert.Contains("TEST", channelStay.Property.DeclaredTouristTaxRate!.SourceNote, StringComparison.Ordinal);
+        Assert.All(bookings.Where(b => b.Booking.Guests is not null), b =>
+            Assert.EndsWith("@example.com", b.Booking.Email, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// NF-40, NF-45 (E03/F01/US01/T04): the check-in wizard has a demo stay in each of the four states (expected, arrived, departed, no-show), all
+    /// with registered guests of a valid composition, and one stay with data to complete (a birth place missing) and a document expired before
+    /// the arrival. Invented guests, @example.com addresses.
+    /// </summary>
+    [Fact]
+    public void CheckInWizard_TheDemoHasStaysInTheFourStates_AndOneWithDataToComplete()
+    {
+        var bookings = DemoShowcaseCatalog.Properties.SelectMany(p => p.Bookings).ToList();
+        DemoBookingTemplate Of(string scenario) => Assert.Single(bookings, b => b.Scenario == scenario);
+
+        var expected = Of(DemoShowcaseCatalog.Scenario.CheckInWizardExpected);
+        var arrived = Of(DemoShowcaseCatalog.Scenario.CheckInWizardArrived);
+        var departed = Of(DemoShowcaseCatalog.Scenario.CheckInWizardDeparted);
+        var noShow = Of(DemoShowcaseCatalog.Scenario.CheckInWizardNoShow);
+        var incomplete = Of(DemoShowcaseCatalog.Scenario.CheckInWizardIncomplete);
+
+        Assert.True(expected is { Status: BookingStatus.Confirmed, NoShow: false } && expected.CheckInOffsetDays > 0);
+        Assert.True(arrived.Status == BookingStatus.CheckedIn && arrived.CheckInOffsetDays <= 0);
+        Assert.Equal(BookingStatus.CheckedOut, departed.Status);
+        // A no-show is a confirmed stay whose check-in day has come (the rule of the no-show).
+        Assert.True(noShow is { Status: BookingStatus.Confirmed, NoShow: true } && noShow.CheckInOffsetDays < 0);
+        Assert.All(bookings.Where(b => b.NoShow), b => Assert.Equal(BookingStatus.Confirmed, b.Status));
+
+        foreach (var stay in new[] { expected, arrived, departed, noShow, incomplete })
+        {
+            Assert.NotNull(stay.Guests);
+            Assert.NotEmpty(stay.Guests!);
+            Assert.Empty(AlloggiatiRecordRules.CompositionErrors(stay.Guests!.Select(g => g.Type).ToList()));
+            Assert.EndsWith("@example.com", stay.Email, StringComparison.Ordinal);
+        }
+
+        Assert.Contains(incomplete.Guests!, g => g.BirthPlaceMissing);
+        Assert.Contains(incomplete.Guests!, g => g.DocumentExpired && AlloggiatiRecordRules.RequiresDocument(g.Type));
+        Assert.All(new[] { expected, arrived, departed, noShow }, stay =>
+            Assert.DoesNotContain(stay.Guests!, g => g.BirthPlaceMissing || g.DocumentExpired));
     }
 
     [Fact]

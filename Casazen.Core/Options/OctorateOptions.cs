@@ -17,6 +17,9 @@ public sealed class OctorateOptions
     /// <summary>The longest life a consent state may be given.</summary>
     public const int MaxStateLifetimeMinutes = 60;
 
+    /// <summary>The attempts of a check-in write (a guest, a state of the stay) before one "To do" is raised (E03/F01/US01/T03).</summary>
+    public const int DefaultCheckInMaxAttempts = 5;
+
     /// <summary>The application's client id (<c>Octorate__ClientId</c>): the code exchange, the refresh, the partner login.</summary>
     public string? ClientId { get; set; }
 
@@ -55,6 +58,27 @@ public sealed class OctorateOptions
 
     /// <summary>The import of the listings that already exist on OTAs (<c>Octorate:ExistingInventory</c>, E02/F01/US03): the evidence of the pilot, channel by channel.</summary>
     public OctorateExistingInventoryOptions ExistingInventory { get; set; } = new();
+
+    /// <summary>
+    /// Whether the tourist tax of each guest (<c>cityTaxPrice</c>, <c>cityTaxExemption</c>, <c>excludeCityTax</c>) is written to Octorate with
+    /// the check-in (<c>Octorate__WriteCityTaxValues</c>, E03/F01/US01/T03, AC-NF46-5). Off by default: CasaZen manages the tax (S18), and the
+    /// write is justified only when Octorate issues the documents (PO-05) and uses the values (D20, Q-004). Even on, only a confirmed record
+    /// that is not stale travels.
+    /// </summary>
+    public bool WriteCityTaxValues { get; set; }
+
+    /// <summary>
+    /// The attempts of a check-in write before the retry job stops and one "To do" is raised (<c>Octorate__CheckInMaxAttempts</c>, 1 to 20;
+    /// default <see cref="DefaultCheckInMaxAttempts"/>).
+    /// </summary>
+    public int CheckInMaxAttempts { get; set; } = DefaultCheckInMaxAttempts;
+
+    /// <summary>
+    /// Whether the guests of a property whose sender is CasaZen or the host (not the channel manager) are sent to Octorate as drafts
+    /// (<c>Octorate__SendGuestsWhenSenderIsNotChannelManager</c>, E03/F01/US01/T03). Off by default and until the product owner confirms how
+    /// <c>draft</c> behaves on a real property (PO-22, D31): the sandbox ignores it, so a draft could still be transmitted to the police.
+    /// </summary>
+    public bool SendGuestsWhenSenderIsNotChannelManager { get; set; }
 
     /// <summary>The life of a consent state, brought into 1 to <see cref="MaxStateLifetimeMinutes"/> minutes.</summary>
     public TimeSpan StateLifetime =>

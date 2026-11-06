@@ -109,6 +109,57 @@ public class StayGuest : ITenantOwned
     /// </summary>
     public string DocumentIssuePlaceName { get; set; } = string.Empty;
 
+    /// <summary>Day the document was issued (date only); null when not entered. Optional at entry (NF-40).</summary>
+    public DateOnly? DocumentIssuedOn { get; set; }
+
+    /// <summary>
+    /// Day the document expires (date only); null when not entered. An expired document is stored as it is: the host records what the
+    /// guest showed, and the check-in only warns about it.
+    /// </summary>
+    public DateOnly? DocumentExpiresOn { get; set; }
+
+    /// <summary>
+    /// True when the guest lives in Italy (residence comune and province), false when abroad (residence state); null when not entered.
+    /// Octorate accepts a complete check-in guest only with the residence as a place name it recognizes (NF-41). Same shape rules as the
+    /// birth place; optional at entry.
+    /// </summary>
+    public bool? ResidenceInItaly { get; set; }
+
+    /// <summary>Code of the comune of residence in the Alloggiati "Comuni" table; Italy only.</summary>
+    public string? ResidenceComuneCode { get; set; }
+
+    /// <summary>Comune of residence as entered (Italy).</summary>
+    public string? ResidenceComuneName { get; set; }
+
+    /// <summary>Province of residence: two-letter car plate code; Italy only.</summary>
+    public string? ResidenceProvince { get; set; }
+
+    /// <summary>Code of the state of residence in the Alloggiati "Stati" table (living abroad).</summary>
+    public string? ResidenceCountryCode { get; set; }
+
+    /// <summary>State of residence as entered (living abroad).</summary>
+    public string? ResidenceCountryName { get; set; }
+
+    /// <summary>
+    /// Type of tourism, a code of <c>IstatGuestFieldLists.TourismTypes</c>: a statistical field some regions ask for (NF-40); optional at
+    /// entry, required only where the readiness rules of the check-in say so.
+    /// </summary>
+    public string? TourismType { get; set; }
+
+    /// <summary>Way of travelling, a code of <c>IstatGuestFieldLists.TravelWays</c> (statistical field, optional at entry).</summary>
+    public string? TravelWay { get; set; }
+
+    /// <summary>Education level, a code of <c>IstatGuestFieldLists.EducationLevels</c> (statistical field, optional at entry).</summary>
+    public string? EducationLevel { get; set; }
+
+    /// <summary>
+    /// The tourist tax exemption the host chose for the guest (a non-automatic <see cref="TouristTaxExemptionReason.Code"/>, NF-46); null
+    /// when none. The host's decision only: a save of the guest portal never changes it. Encrypted at rest with the document (CO-14,
+    /// <c>EncryptedColumns</c>): the reason of an exemption can reveal a health condition, so the column is <c>text</c> and the length
+    /// is checked at entry.
+    /// </summary>
+    public string? TaxExemptionCode { get; set; }
+
     /// <summary>Who entered the data of this row last (CO-09 audit): the guest portal or the host; not recorded before CO-09.</summary>
     public StayGuestDataSource DataSource { get; set; } = StayGuestDataSource.NotRecorded;
 

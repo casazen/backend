@@ -88,6 +88,7 @@ public class ComplianceWizardService(
             .Where(b => b.OrgId == orgId)
             .InScope(scope)
             .Where(b => b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn)
+            .Where(b => b.NoShowAt == null) // NF-45: the guests of a no-show never came, there is no data to complete
             .Where(b => b.CheckInDate.Date <= today.AddDays(1))
             .ToListAsync(cancellationToken);
 
@@ -188,7 +189,8 @@ public class ComplianceWizardService(
     /// <summary>
     /// Alloggiati sections of the cockpit (CO-11): errors/rejections, and communications the host must send on the
     /// portal. Every stay whose arrival day has come is counted until it is sent with a receipt or declared sent by
-    /// the host, with or without a report row: CasaZen does not transmit, so nothing turns "done" on its own.
+    /// the host, with or without a report row: CasaZen does not transmit, so nothing turns "done" on its own. A no-show (NF-45)
+    /// owes no communication and is never listed.
     /// </summary>
     private async Task<(ComplianceSummarySection Failures, ComplianceSummarySection ManualRequired)> GetAlloggiatiSectionsAsync(
         HostScope scope,
@@ -199,9 +201,7 @@ public class ComplianceWizardService(
             .AsNoTracking()
             .Where(b => b.OrgId == scope.OrgId)
             .InScope(scope)
-            .Where(b => b.Status == BookingStatus.Confirmed
-                || b.Status == BookingStatus.CheckedIn
-                || b.Status == BookingStatus.CheckedOut)
+            .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
             .Where(b => b.CheckInDate <= today)
             .Select(b => new
             {

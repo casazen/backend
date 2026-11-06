@@ -232,6 +232,17 @@ public class CrmContactService(
             .Select(r => new { r.MarketingEmail, r.ConsentEmail, r.ConsentWhatsApp, r.EmailConfirmed, r.ConsentTimestamp, r.ConsentTextVersion, r.IpAddress })
             .ToListAsync(cancellationToken);
 
+        // When the marketing consent of the guest last ended, by the retention (Expired) or by a withdrawal (Withdrawn): the per-channel consents of the
+        // check-in stay on record as proof, and a consent given before that moment is not read again, or the sync that follows any booking event would give
+        // back what the end took away (E07/F06/US02/T01, AC-NF95-7). A consent given after it is a new act of the guest and counts.
+        var consentEndedAt = await db.GuestConsentRecords
+            .AsNoTracking()
+            .Where(r => r.OrgId == orgId
+                && r.GuestId == guestId
+                && r.Purpose == GuestConsentPurpose.Marketing
+                && (r.Action == GuestConsentAction.Expired || r.Action == GuestConsentAction.Withdrawn))
+            .MaxAsync(r => (DateTime?)r.RecordedAt, cancellationToken);
+
         return await StageAndSaveAsync(
             async () =>
             {
@@ -292,6 +303,9 @@ public class CrmContactService(
                 // The marketing e-mail is typed at the check-in, so it does not arrive with the booking: only the domain can make it a forward.
                 foreach (var record in consentRecords)
                 {
+                    if (consentEndedAt is { } ended && record.ConsentTimestamp <= ended)
+                        continue;
+
                     var evidence = new CrmBasisEvidence(record.ConsentTextVersion, record.ConsentTimestamp, GuestConsentSource.GuestPortal, record.IpAddress);
                     if (record.ConsentEmail && CrmNormalizer.TryNormalizeEmail(record.MarketingEmail, out var marketingEmail))
                     {
@@ -398,6 +412,14 @@ public class CrmContactService(
         }
 
         var changed = FillIn(contact, input);
+
+        // The row an erasure left as an opt-out marker (E07/F06/US02/T01) has its keyed hash and its flag but no value: the same address has come
+        // back, so the value is known again. It stays suppressed (below), whatever the new booking is.
+        if (!created && string.IsNullOrEmpty(contact.Value))
+        {
+            contact.Value = value;
+            changed = true;
+        }
 
         // An address seen later as a forward (its domain was added to the list) is one, unless somebody already stands behind it.
         if (isForward && contact.Origin != GuestContactOrigin.OtaForward && contact.LegalBasis <= GuestContactLegalBasis.ServiceOnly)

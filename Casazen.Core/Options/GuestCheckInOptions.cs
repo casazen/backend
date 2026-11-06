@@ -23,4 +23,10 @@ public class GuestCheckInOptions
     /// <summary>Validity of a new link.</summary>
     public TimeSpan SessionLifetime =>
         TimeSpan.FromDays(Math.Clamp(SessionLifetimeDays, MinSessionLifetimeDays, MaxSessionLifetimeDays));
+
+    /// <summary>
+    /// The send job reminds, once per stay, the guest of a confirmed stay arriving within this many days (today included) whose data are
+    /// still missing (NF-40, <c>CheckIn__ReminderDaysBefore</c>). Default 1; 0 or less turns the reminder off.
+    /// </summary>
+    public int ReminderDaysBefore { get; set; } = 1;
 }

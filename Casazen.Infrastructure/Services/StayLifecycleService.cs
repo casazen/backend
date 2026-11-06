@@ -2,11 +2,14 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Events;
+using Casazen.Infrastructure.Jobs;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
@@ -30,9 +33,51 @@ public sealed class StayLifecycleService(
     IServiceRequestService serviceRequestService,
     ILogger<StayLifecycleService> logger,
     TimeProvider? timeProvider = null,
-    IDomainEventRecorder? domainEvents = null) : IStayLifecycleService
+    IDomainEventRecorder? domainEvents = null,
+    IBackgroundJobClient? backgroundJobs = null) : IStayLifecycleService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    /// <summary>
+    /// True when the police communication of the booking went or is going (NF-45): an Alloggiati attempt sending, accepted or partly accepted,
+    /// or a report sent with a receipt or declared sent by the host. The no-show is refused then, and the wizard does not offer it.
+    /// </summary>
+    internal static async Task<bool> IsAlloggiatiSentAsync(AppDbContext db, Guid bookingId, CancellationToken cancellationToken) =>
+        await db.AlloggiatiSendAttempts.AnyAsync(
+            a => a.BookingId == bookingId
+                 && (a.Status == AlloggiatiAttemptStatus.Sending
+                     || a.Status == AlloggiatiAttemptStatus.Accepted
+                     || a.Status == AlloggiatiAttemptStatus.PartiallyAccepted),
+            cancellationToken)
+        || await db.AlloggiatiWebReports.AnyAsync(
+            r => r.BookingId == bookingId
+                 && (r.Status == AlloggiatiWebStatus.Inviato || r.Status == AlloggiatiWebStatus.InviatoManualmente),
+            cancellationToken);
+
+    public async Task<Booking> MarkNoShowAsync(Guid bookingId, CancellationToken cancellationToken = default)
+    {
+        Booking booking;
+        await using (var transaction = await LockBookingAsync(bookingId, cancellationToken))
+        {
+            booking = await LoadAsync(bookingId, cancellationToken);
+
+            // Idempotent: a stay already marked keeps its first mark, and NO_SHOW is not queued again.
+            if (booking.Status == BookingStatus.Confirmed && booking.NoShowAt is not null)
+                return booking;
+
+            var alloggiatiSent = await IsAlloggiatiSentAsync(db, booking.Id, cancellationToken);
+            if (CheckInReadinessRules.NoShowError(booking, _clock.TodayInRome(), alloggiatiSent) is { } error)
+                throw error;
+
+            booking.NoShowAt = UtcNow();
+            booking.UpdatedAt = UtcNow();
+            await SaveAsync(transaction, cancellationToken);
+        }
+
+        QueueOctorateNoShow(booking);
+        logger.LogInformation("Booking {BookingId} marked as a no-show by the host", booking.Id);
+        return booking;
+    }
 
     public async Task<StayArrivalResult> RegisterArrivalAsync(Guid bookingId, CancellationToken cancellationToken = default)
     {
@@ -284,6 +329,9 @@ public sealed class StayLifecycleService(
     private async Task MarkArrivedAsync(Booking booking, DateTime todayInRome, CancellationToken cancellationToken)
     {
         booking.Status = BookingStatus.CheckedIn;
+
+        // A late arrival after a no-show (NF-45): the guests did come, the mark goes.
+        booking.NoShowAt = null;
         if (booking.ArrivedAt is null && booking.CheckInDate.Date == todayInRome.Date)
             booking.ArrivedAt = UtcNow();
         booking.UpdatedAt = UtcNow();
@@ -345,6 +393,27 @@ public sealed class StayLifecycleService(
                 booking.Id,
                 turnover.SupplierOrgId);
             throw new DomainRuleException(BookingErrorCodes.TurnoverRequestInvalid, "CheckoutServiceRequestInvalid");
+        }
+    }
+
+    /// <summary>
+    /// After the commit, a booking on Octorate gets <c>NO_SHOW</c> through <see cref="OctorateStayStateJob"/> (which writes nothing for a booking
+    /// that is not mirrored). The no-show is saved: a failure to queue is logged and never undoes it.
+    /// </summary>
+    private void QueueOctorateNoShow(Booking booking)
+    {
+        if (backgroundJobs is null || string.IsNullOrWhiteSpace(booking.OctorateReservationId))
+            return;
+
+        var orgId = booking.OrgId;
+        var id = booking.Id;
+        try
+        {
+            backgroundJobs.Enqueue<OctorateStayStateJob>(job => job.RunAsync(orgId, id, OctorateStayState.NoShow, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "The no-show of booking {BookingId} could not be queued for Octorate", id);
         }
     }
 
