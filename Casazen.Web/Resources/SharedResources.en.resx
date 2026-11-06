@@ -4265,4 +4265,10 @@
   <data name="OctorateRoomRequired" xml:space="preserve">
     <value>Say which room of the listing it is.</value>
   </data>
+  <data name="BookingOtaAmountsReadonly" xml:space="preserve">
+    <value>The channel amounts (commission, net, paid and balance) come from the channel manager and cannot be changed.</value>
+  </data>
+  <data name="OctorateChannelCancelNotAllowed" xml:space="preserve">
+    <value>A booking that comes from a portal is cancelled on the portal: CasaZen cannot cancel it on its behalf.</value>
+  </data>
 </root>

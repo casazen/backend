@@ -481,6 +481,14 @@ public class AppDbContext(
             .HasIndex(b => new { b.OrgId, b.BookingCode })
             .IsUnique();
 
+        // A reservation of Octorate is one booking in an org (E02/F02/US01/T01, ADR-033-R1): the key of the import, whoever imports it and
+        // however many times. Only the rows that have an Octorate id are in it; the others (null) are as many as there are bookings.
+        modelBuilder.Entity<Booking>()
+            .HasIndex(b => new { b.OrgId, b.OctorateReservationId })
+            .IsUnique()
+            .HasFilter("\"OctorateReservationId\" IS NOT NULL")
+            .HasDatabaseName(Booking.OctorateReservationIndexName);
+
         // GPS coordinates (PC-06, A2-33): 6 decimals are about 0.1 m, the old 2 decimals placed a house up to a kilometre
         // away on the map. numeric(9,6) holds -999.999999..999.999999: the API accepts only -90..90 and -180..180.
         modelBuilder.Entity<Property>()

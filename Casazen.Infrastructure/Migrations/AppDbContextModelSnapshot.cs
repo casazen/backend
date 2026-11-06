@@ -567,8 +567,31 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("NumberOfGuests")
                         .HasColumnType("integer");
 
+                    b.Property<string>("OctorateReservationId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("OctorateUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
+
+                    b.Property<decimal?>("OtaBalanceAmount")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("OtaCommission")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("OtaNetAmount")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("OtaPaidAmount")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
 
                     b.Property<DateTime?>("OtaReviewRaisedAt")
                         .HasColumnType("timestamp with time zone");
@@ -651,6 +674,11 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("OrgId", "BookingCode")
                         .IsUnique();
+
+                    b.HasIndex("OrgId", "OctorateReservationId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_Bookings_OrgId_OctorateReservationId")
+                        .HasFilter("\"OctorateReservationId\" IS NOT NULL");
 
                     b.ToTable("Bookings");
                 });
@@ -3112,6 +3140,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("BookingsImportedThrough")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("CandidatePropertyIdsJson")
                         .IsRequired()

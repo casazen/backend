@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Casazen.Core.Entities.Enums;
 
 namespace Casazen.Core.Services;
 
@@ -130,4 +131,171 @@ public sealed record OctoratePropertyUpdate
     public bool IsEmpty =>
         Name is null && Address is null && City is null && ZipCode is null && Latitude is null && Longitude is null
         && CheckinStart is null && CheckinEnd is null && Checkout is null;
+}
+
+/// <summary>
+/// The kinds of list of <c>GET /rest/v1/reservation/{acc}</c> (<c>type</c>). The import and the reconciliation read only
+/// <see cref="ModifiedBetween"/>; what each of the others selects is not settled by the sandbox yet.
+/// </summary>
+public enum OctorateReservationListType
+{
+    /// <summary><c>MODIFIED_BETWEEN</c>: the reservations changed between the two dates.</summary>
+    ModifiedBetween = 1,
+
+    /// <summary><c>CREATETIME</c>.</summary>
+    CreateTime = 2,
+
+    /// <summary><c>CANCELLATION</c>.</summary>
+    Cancellation = 3,
+
+    /// <summary><c>STAY</c>.</summary>
+    Stay = 4,
+}
+
+/// <summary>
+/// One page of the list of reservations of an accommodation (<c>GET /rest/v1/reservation/{acc}</c>, E02/F02/US01/T01): the dates are
+/// Rome dates, the page starts at 0 and has at most <see cref="MaxPageSize"/> reservations, there are at most <see cref="MaxPage"/> + 1 pages.
+/// </summary>
+/// <param name="Type">What the dates select.</param>
+/// <param name="From">First day (Europe/Rome), included.</param>
+/// <param name="To">Last day (Europe/Rome).</param>
+/// <param name="Page">The page, from 0.</param>
+/// <param name="PageSize">Reservations in a page, 1 to <see cref="MaxPageSize"/>.</param>
+public sealed record OctorateReservationQuery(
+    OctorateReservationListType Type,
+    DateOnly From,
+    DateOnly To,
+    int Page = 0,
+    int PageSize = OctorateReservationQuery.MaxPageSize)
+{
+    /// <summary>The most reservations Octorate puts in a page.</summary>
+    public const int MaxPageSize = 200;
+
+    /// <summary>The last page Octorate serves.</summary>
+    public const int MaxPage = 1000;
+}
+
+/// <summary>
+/// A line of the price breakdown of a reservation (<c>priceBreakdown</c> of the single read): its <c>type</c> (<c>ROOM_NET</c>, <c>VAT</c>,
+/// <c>COMMISSION</c>, <c>TOURIST_TAX</c>, ...) and the amount when the line has one.
+/// </summary>
+public sealed record OctoratePriceComponent(string Type, decimal? Amount);
+
+/// <summary>
+/// A reservation as Octorate describes it (<c>GET /rest/v1/reservation/{acc}</c> and <c>.../{id}</c>, <c>ApiReservationRespDTO</c>, E02/F02/US01/T01):
+/// only the members the import uses. The list gives the identification, the dates, the state and <see cref="UpdatedAt"/>; the single
+/// read adds <see cref="TotalPaid"/> and <see cref="PriceBreakdown"/>. The contact values of the guest are not in the answer (only flags),
+/// so <see cref="GuestEmail"/> and <see cref="GuestPhone"/> are empty unless the answer carries them. Never logged.
+/// </summary>
+public sealed record OctorateReservation
+{
+    /// <summary>The type of the lines of the price breakdown that are the commission of the channel.</summary>
+    public const string CommissionType = "COMMISSION";
+
+    /// <summary>The reservation id (<c>id</c>), the key of the import.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The group of reservations it belongs to (<c>refer</c>: several rooms of one booking).</summary>
+    public string? Refer { get; init; }
+
+    /// <summary>The channel (portal) code (<c>channelId</c>): 142 Booking.com, 274 Airbnb, 235 Vrbo, 4 Expedia, 270 the booking engine of the agency.</summary>
+    public string? ChannelId { get; init; }
+
+    /// <summary>The name Octorate gives the channel (<c>channelName</c>).</summary>
+    public string? ChannelName { get; init; }
+
+    /// <summary>The reference of the booking on the channel (<c>channelRefer</c>).</summary>
+    public string? ChannelRefer { get; init; }
+
+    /// <summary>The id of the booking on the OTA (<c>otaId</c>).</summary>
+    public string? OtaId { get; init; }
+
+    /// <summary><c>WAITING</c>, <c>CONFIRMED</c> or <c>CANCELLED</c>; <c>null</c> for a value that is none of them.</summary>
+    public OctorateBookingStatus? Status { get; init; }
+
+    /// <summary>The unit (room) the reservation is on (<c>product</c>).</summary>
+    public string? Product { get; init; }
+
+    /// <summary>The PMS room of the unit (<c>pmsProduct</c>).</summary>
+    public string? PmsProduct { get; init; }
+
+    /// <summary>Check-in as Octorate wrote it (<c>checkin</c>): an instant in UTC, or a date.</summary>
+    public string? CheckIn { get; init; }
+
+    /// <summary>Check-out as Octorate wrote it (<c>checkout</c>): an instant in UTC, or a date.</summary>
+    public string? CheckOut { get; init; }
+
+    /// <summary>When the reservation last changed on Octorate (<c>updateTime</c>, UTC); the order of the versions of a reservation.</summary>
+    public DateTime? UpdatedAt { get; init; }
+
+    /// <summary>When the reservation was cancelled (<c>cancelledTime</c>, UTC), when it was.</summary>
+    public DateTime? CancelledAt { get; init; }
+
+    /// <summary>All the guests (<c>totalGuest</c>).</summary>
+    public int? TotalGuests { get; init; }
+
+    public int? Adults { get; init; }
+
+    public int? Children { get; init; }
+
+    public int? Infants { get; init; }
+
+    public string? FirstName { get; init; }
+
+    public string? LastName { get; init; }
+
+    /// <summary>The e-mail of the guest, only when the answer carries one (it normally does not).</summary>
+    public string? GuestEmail { get; init; }
+
+    /// <summary>The phone of the guest, only when the answer carries one (it normally does not).</summary>
+    public string? GuestPhone { get; init; }
+
+    /// <summary>What the guest wrote with the booking, when Octorate gives it. Never the private notes of the host.</summary>
+    public string? Notes { get; init; }
+
+    /// <summary>The currency of the reservation (<c>currency</c>), when Octorate says it.</summary>
+    public string? Currency { get; init; }
+
+    public decimal? RoomGross { get; init; }
+
+    public decimal? TotalGross { get; init; }
+
+    public decimal? TouristTax { get; init; }
+
+    /// <summary>What was paid (<c>totalPaid</c>, single read only).</summary>
+    public decimal? TotalPaid { get; init; }
+
+    /// <summary><c>UNPAID</c>, <c>PARTIALLY_PAID</c>, <c>PAID_DEPOSIT</c> or <c>PAID</c>.</summary>
+    public string? PaymentStatus { get; init; }
+
+    /// <summary>The price breakdown (single read only).</summary>
+    public IReadOnlyList<OctoratePriceComponent> PriceBreakdown { get; init; } = [];
+
+    /// <summary>
+    /// The sum of the <see cref="CommissionType"/> lines that have an amount; <c>null</c> when there is none. The only source of the
+    /// commission: the reservation has no top-level commission, net or balance (sandbox and OpenAPI, 2026-11-04).
+    /// </summary>
+    public decimal? Commission
+    {
+        get
+        {
+            var lines = PriceBreakdown
+                .Where(l => l.Amount is not null && string.Equals(l.Type, CommissionType, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            return lines.Count == 0 ? null : lines.Sum(l => l.Amount!.Value);
+        }
+    }
+}
+
+/// <summary>The states CasaZen sends with the check-in status operation (<c>PUT /rest/v1/checkin/{acc}/{id}?status=</c>).</summary>
+public enum OctorateCheckInStatus
+{
+    /// <summary><c>CHECKIN_END</c>: the guest arrived.</summary>
+    CheckInEnd = 1,
+
+    /// <summary><c>CHECKOUT_END</c>: the guest left.</summary>
+    CheckOutEnd = 2,
+
+    /// <summary><c>NO_SHOW</c>: the guest never came.</summary>
+    NoShow = 3,
 }

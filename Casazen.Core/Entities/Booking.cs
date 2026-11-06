@@ -9,6 +9,15 @@ namespace Casazen.Core.Entities;
 [Table("Bookings")]
 public class Booking : ITenantOwned
 {
+    /// <summary>Longest <see cref="OctorateReservationId"/>: the column is varchar(50) (E02/F02/US01/T01, ADR-033-R1).</summary>
+    public const int OctorateReservationIdMaxLength = 50;
+
+    /// <summary>
+    /// Name of the unique index on (<see cref="OrgId"/>, <see cref="OctorateReservationId"/>), filtered to the rows that have an
+    /// Octorate id: a reservation is one booking in an org, whoever imports it and however many times.
+    /// </summary>
+    public const string OctorateReservationIndexName = "UIX_Bookings_OrgId_OctorateReservationId";
+
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -79,7 +88,10 @@ public class Booking : ITenantOwned
     /// </summary>
     public Guid? ICalFeedId { get; set; }
 
-    /// <summary>Label of that feed when the stay was created (e.g. "Booking.com - camera 2"), shown next to the source.</summary>
+    /// <summary>
+    /// Label of that feed when the stay was created (e.g. "Booking.com - camera 2"), shown next to the source; for a booking imported from the
+    /// channel manager from a portal that has no <see cref="BookingSource"/> of its own (<see cref="BookingSource.OtherChannel"/>), the name Octorate gives it.
+    /// </summary>
     [MaxLength(PropertyICalFeed.LabelMaxLength)]
     public string? ChannelLabel { get; set; }
 
@@ -91,6 +103,41 @@ public class Booking : ITenantOwned
 
     /// <summary>When the sync raised <see cref="OtaReviewReason"/> (UTC).</summary>
     public DateTime? OtaReviewRaisedAt { get; set; }
+
+    /// <summary>
+    /// The id of the reservation on Octorate (E02/F02/US01/T01, ADR-033-R1): the key of the import, unique within the org
+    /// (<see cref="OctorateReservationIndexName"/>). <c>null</c> for every booking that does not come from the channel manager and was
+    /// not sent to it. <see cref="ExternalId"/> keeps its own meaning (the reference on the channel) and is never used for it.
+    /// </summary>
+    [MaxLength(OctorateReservationIdMaxLength)]
+    public string? OctorateReservationId { get; set; }
+
+    /// <summary>
+    /// The <c>updateTime</c> of the Octorate reservation last applied to this booking (UTC). A read of the same reservation with an older
+    /// or equal time changes nothing, so two reads that reach the database in swapped order never undo the newer one. <c>null</c> while
+    /// the booking has no Octorate reservation, or Octorate gave no time.
+    /// </summary>
+    public DateTime? OctorateUpdatedAt { get; set; }
+
+    /// <summary>
+    /// What the channel kept as commission on an imported booking: the sum of the <c>COMMISSION</c> lines of the price breakdown of the
+    /// reservation; <c>null</c> when it has none (never derived from another figure, ADR-033-R2: a screen says "not available", not zero).
+    /// Read-only after the import (ADR-033-R3).
+    /// </summary>
+    [Precision(10, 2)]
+    public decimal? OtaCommission { get; set; }
+
+    /// <summary>The net the host receives; <c>null</c> until Octorate documents a field for it (never computed here). Read-only after the import.</summary>
+    [Precision(10, 2)]
+    public decimal? OtaNetAmount { get; set; }
+
+    /// <summary>What the guest paid (<c>totalPaid</c> of the reservation); <c>null</c> when Octorate does not say. Read-only after the import.</summary>
+    [Precision(10, 2)]
+    public decimal? OtaPaidAmount { get; set; }
+
+    /// <summary>What is still to pay; <c>null</c> until Octorate documents a field for it (never computed here). Read-only after the import.</summary>
+    [Precision(10, 2)]
+    public decimal? OtaBalanceAmount { get; set; }
 
     /// <summary>Lodging (nightly rate x nights) plus <see cref="CleaningFee"/>; tourist tax excluded.</summary>
     [Precision(18, 2)]
@@ -290,7 +337,13 @@ public enum BookingSource
     /// public checkout of the booking site. Created <see cref="BookingStatus.Confirmed"/>, it occupies its dates at
     /// once and is never touched by the expiry of abandoned checkout holds (PC-01, A2-01). Stored as 8.
     /// </summary>
-    Manual
+    Manual,
+
+    /// <summary>
+    /// A portal of the channel manager that has no value of its own here (E02/F02/US01/T01): the name Octorate gives it is kept in
+    /// <see cref="Booking.ChannelLabel"/>. An OTA like the others for the fiscal rules. Appended after <see cref="Manual"/>: stored as 9.
+    /// </summary>
+    OtherChannel = 9,
 }
 
 /// <summary>Reason of a cancellation made by the system (<see cref="Booking.CancellationReason"/>). Stored as an integer.</summary>

@@ -1,6 +1,7 @@
 using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Jobs;
 using Hangfire;
 
@@ -23,6 +24,9 @@ public static class RecurringJobsRegistration
     public static void Configure(IRecurringJobManager recurringJobManager, IFeatureFlags featureFlags, RoutineOptions? routineOptions = null)
     {
         ConfigureOtaPartnerJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OtaPartnerApi));
+
+        // E02/F02: the jobs of the Octorate connector (bookings and calendar), only while the connector is on.
+        ConfigureOctorateJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
 
         // ADR-022-R8: the time triggers of the stays ("2 days before check-in") are written to the outbox every
         // Routine:EvaluationIntervalMinutes (default 5), whatever the flags say; an org without a time routine gets nothing.
@@ -283,6 +287,28 @@ public static class RecurringJobsRegistration
             job => job.ExecuteAsync(),
             ComuneOfficialProfileRefreshJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The jobs of the Octorate connector (epic E02): only with <see cref="FeatureFlags.OctorateConnector"/> on. With the flag off no booking is
+    /// read and no calendar is synced, and the schedule of an earlier deploy is removed (<c>RemoveIfExists</c>), as for the OTA partner jobs.
+    /// <list type="bullet">
+    /// <item>the daily import of the bookings, at 02:00 Europe/Rome (E02/F02/US01/T01, ADR-033-R4);</item>
+    /// </list>
+    /// </summary>
+    private static void ConfigureOctorateJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(OctorateBookingImportJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<OctorateBookingImportJob>(
+            OctorateBookingImportJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OctorateBookingImportJob.Cron,
+            new RecurringJobOptions { TimeZone = RomeCalendar.TimeZone });
     }
 
     /// <summary>

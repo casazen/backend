@@ -1,5 +1,6 @@
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Web.Configuration;
 using Microsoft.Extensions.Options;
@@ -41,6 +42,12 @@ public static class OctorateServiceCollectionExtensions
 
         // The mapping of the listings to the CasaZen properties and the import (E02/F01/US02/T03); thresholds in Octorate:Mapping.
         services.AddScoped<IChannelMappingService, ChannelMappingService>();
+
+        // The bookings of the channel manager (E02/F02/US01/T01): the state mapper (no state, shared), the import service and the daily job.
+        // The job is only scheduled while Features:OctorateConnector is on (RecurringJobsRegistration).
+        services.AddSingleton<BookingStateMapper>();
+        services.AddScoped<IBookingImportService, BookingImportService>();
+        services.AddScoped<OctorateBookingImportJob>();
 
         return services;
     }

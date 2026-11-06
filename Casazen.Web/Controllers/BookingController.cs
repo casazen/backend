@@ -384,7 +384,19 @@ public class BookingsController(
         // What came in: the state for everyone, the money only for a caller who may read payments (SR-D7). The payments came with the booking.
         var payments = booking.Payments.Select(p => new BookingPaymentFact(p.Status, p.Amount, p.RefundedAmount)).ToList();
         response.PaymentState = BookingListRules.PaymentStateOf(booking.TotalPrice, payments).ToString();
-        response.PaidAmount = await CanReadPaymentsAsync(hostAuthorization) ? BookingListRules.PaidAmount(payments) : null;
+        var canReadPayments = await CanReadPaymentsAsync(hostAuthorization);
+        response.PaidAmount = canReadPayments ? BookingListRules.PaidAmount(payments) : null;
+        // The amounts of the channel (E02/F02/US01/T01, ADR-033-R8): money too, so the same reach as the paid amount; read-only, as stored.
+        response.OtaAmounts = canReadPayments && booking.OctorateReservationId is not null
+            ? new OtaAmountsDto
+            {
+                Commission = booking.OtaCommission,
+                Net = booking.OtaNetAmount,
+                Paid = booking.OtaPaidAmount,
+                Balance = booking.OtaBalanceAmount,
+                Currency = response.Currency,
+            }
+            : null;
         // A communication exists for a stay that is confirmed or later: a request, a hold or a cancelled booking has none.
         response.GuestDataComplete = booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut
             ? await alloggiatiWebService.IsStayDataCompleteAsync(id)

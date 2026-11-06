@@ -44,6 +44,10 @@ public interface IHostBookingService
 /// <param name="NumberOfChildren">Minors among <paramref name="NumberOfGuests"/> (under 18).</param>
 /// <param name="ChildrenAges">Age of each minor at check-in, when the tourist tax of the comune depends on it.</param>
 /// <param name="SpecialRequests">Notes of the booking.</param>
+/// <param name="OtaAmounts">
+/// The channel amounts the request carried, if any. They are never applied: a figure that differs from the stored one is refused with 422
+/// <see cref="BookingErrorCodes.OtaAmountsReadonly"/> (E02/F02/US01/T01, ADR-033-R3).
+/// </param>
 public sealed record HostBookingUpdate(
     Guid BookingId,
     DateTime CheckInDate,
@@ -51,4 +55,23 @@ public sealed record HostBookingUpdate(
     int NumberOfGuests,
     int NumberOfChildren,
     IReadOnlyList<int>? ChildrenAges,
-    string? SpecialRequests);
+    string? SpecialRequests,
+    OtaAmountsInput? OtaAmounts = null);
+
+/// <summary>
+/// The commission, net, paid and balance amounts of the channel as a request to change a booking carried them (each <c>null</c> when it did
+/// not). Read-only after the import: they come from the channel manager.
+/// </summary>
+public sealed record OtaAmountsInput(decimal? Commission, decimal? Net, decimal? Paid, decimal? Balance)
+{
+    /// <summary>True when a figure was given that is not the one in <paramref name="stored"/> (the four figures the booking holds): that would be an edit.</summary>
+    public bool Edits(OtaAmountsInput stored)
+    {
+        ArgumentNullException.ThrowIfNull(stored);
+
+        return (Commission is not null && Commission != stored.Commission)
+               || (Net is not null && Net != stored.Net)
+               || (Paid is not null && Paid != stored.Paid)
+               || (Balance is not null && Balance != stored.Balance);
+    }
+}
