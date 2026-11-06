@@ -229,6 +229,13 @@ public sealed class IdentityVerificationFlowService(
         if (stored is null)
             return Refused(SelfieStepStatus.DocumentRequired, session, policy);
 
+        // The document says the holder is a minor: no biometric processing (ADR-013-R9).
+        if (stored.Check.HolderIsMinor)
+        {
+            await DeleteStoredDocumentAsync(session, ct);
+            return await OperatorAsync(session, VerificationAlertReasons.MinorExcluded, policy, ct);
+        }
+
         if (session.BiometricAttempts >= policy.MaxAttempts)
             return await OperatorAsync(session, VerificationAlertReasons.AttemptsExhausted, policy, ct);
 
