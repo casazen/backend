@@ -3,7 +3,7 @@ namespace Casazen.Core.Entities.Enums;
 /// <summary>
 /// The stable code of what happened (<see cref="OrgActivityEntry.Type"/>, AM-02b). The list is the whole perimeter of the
 /// activity log: an event is added here, in <c>OrgActivityCatalog</c> and in the runbook <c>docs/runbooks/org-team.md</c>, never
-/// without (about 25 in the end, decision AM-D18: the catalog is closed and grows one row at a time, each written by the task that
+/// without (about 30 in the end, decision AM-D18 raised from 25: the catalog is closed and grows one row at a time, each written by the task that
 /// introduces the action). The client composes the sentence from the type and the ids; nothing here carries a name, an email,
 /// an amount or a free text. Persisted as int, explicit values in groups of ten: append-only, never reorder or reuse a
 /// value. The ones marked <i>reserved</i> have their code fixed now and are written by the task that builds the feature.
@@ -109,6 +109,27 @@ public enum OrgActivityType
 
     /// <summary>An admin manually granted a ConcordatoFacile gift to an org. Subject: the org. No details.</summary>
     AdminGrantedConcordatoFacileGift = 70,
+
+    // ─── Police and ISTAT communications (short rent, E03/F01/US05/T02) ───────────────────────────────
+
+    /// <summary>
+    /// Who sends the police (Alloggiati Web) and ISTAT communications of a property changed (ADR-029-R4: the audit of the switch),
+    /// written by <c>PropertySenderStore.SetAsync</c>, the one write path. Subject: the property. Details: the sender before and after
+    /// (<c>ChannelManager</c>, <c>CasaZen</c>, <c>Manual</c>); before a first choice, the sender before is the default the property had.
+    /// </summary>
+    PropertySenderChanged = 80,
+
+    /// <summary>
+    /// The org delegated the Alloggiati transmission to CasaZen, its tool (AW-R02, ADR-015-R10), written by
+    /// <c>AlloggiatiDelegationService.GrantAsync</c>. Subject: the org. Details: the version of the delegation text, never the text.
+    /// </summary>
+    AlloggiatiDelegationGranted = 81,
+
+    /// <summary>
+    /// The org revoked the delegation: no new send, the receipts already acquired stay retrievable. Written by
+    /// <c>AlloggiatiDelegationService.RevokeAsync</c>. Subject: the org. No details.
+    /// </summary>
+    AlloggiatiDelegationRevoked = 82,
 
     // ─── Compliance handoff to the channel manager (E03/F05/US01/T01, CHK-15) ────────────────────────────
 

@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -16,9 +17,11 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// Marketing campaigns and guest segments (NF-24, ADR-014).
 /// Supports segment creation, campaign drafting with AI option, approval workflow, scheduling, and sending.
+/// Behind <c>Features:CrmMarketing</c> (E07/F06/US01/T01): 404 while it is off, before authentication.
 /// </summary>
 [ApiController]
 [Route("api/campaigns")]
+[FeatureGate(FeatureFlags.CrmMarketing)]
 [Authorize(Policy = CasazenPolicies.GuestRead)]
 public class CampaignsController(
     ICampaignService campaignService,

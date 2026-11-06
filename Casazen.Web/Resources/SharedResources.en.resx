@@ -4304,6 +4304,15 @@
   <data name="OctorateChannelCancelNotAllowed" xml:space="preserve">
     <value>A booking that comes from a portal is cancelled on the portal: CasaZen cannot cancel it on its behalf.</value>
   </data>
+  <data name="SenderNotApplicable" xml:space="preserve">
+    <value>This property is not in Italy: there is no sender of the Alloggiati Web and ISTAT communications to choose. The communications of its country stay in your hands.</value>
+  </data>
+  <data name="SenderChangedConcurrently" xml:space="preserve">
+    <value>Someone else has just changed who sends the communications of this property: reload the page and check before changing it again.</value>
+  </data>
+  <data name="AlloggiatiDelegationVersionInvalid" xml:space="preserve">
+    <value>The version of the delegation text is not valid: it must be the code of the version (letters, digits, dot, hyphen), at most 40 characters.</value>
+  </data>
   <data name="OctorateHandoffTopicRequired" xml:space="preserve">
     <value>Say what you want to check: Alloggiati or ISTAT.</value>
   </data>

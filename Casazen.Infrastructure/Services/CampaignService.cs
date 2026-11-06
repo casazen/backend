@@ -2,6 +2,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -22,6 +23,7 @@ public class CampaignService(
     Infrastructure.External.IEmailService emailService,
     MarketingUnsubscribeLinks unsubscribeLinks,
     IBackgroundJobClient backgroundJobClient,
+    IFeatureFlags featureFlags,
     TimeProvider timeProvider,
     ILogger<CampaignService> logger) : ICampaignService
 {
@@ -198,6 +200,25 @@ public class CampaignService(
             logger.LogWarning(
                 "Campaign {CampaignId} status is {Status}, expected Scheduled or Approved",
                 campaignId, campaign.Status);
+            return;
+        }
+
+        // E07/F06/US01/T01: the endpoints are closed by Features:CrmMarketing, but this job is the way a campaign leaves and a send scheduled
+        // before the module was closed is still in Hangfire. With the flag off nothing is sent, whatever the key and the secret say: the job
+        // ends here (it does not fail, so Hangfire does not retry it) and a campaign that was scheduled goes back to Approved, an explicit state
+        // the host can schedule again once the module is on, instead of staying Scheduled for a send that will not happen.
+        if (!featureFlags.IsEnabled(FeatureFlags.CrmMarketing))
+        {
+            logger.LogWarning(
+                "Campaign {CampaignId} of org {OrgId} not sent: Features:CrmMarketing is off (status was {Status}; a scheduled campaign goes back to Approved)",
+                campaignId, campaign.OrgId, campaign.Status);
+            if (campaign.Status == CampaignStatus.Scheduled)
+            {
+                campaign.Status = CampaignStatus.Approved;
+                campaign.ScheduledAt = null;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
             return;
         }
 

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Web.Infrastructure;
@@ -13,7 +14,8 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// Public (no-auth) marketing consent double opt-in and unsubscribe endpoints (NF-05, ADR-007-R17, R18, R21, R22).
-/// Verifies HMAC-signed confirmation and unsubscribe links. The logs never carry the e-mail address (DEB-01).
+/// Verifies HMAC-signed confirmation and unsubscribe links. The logs never carry the e-mail address (DEB-01) nor the hash that stands for it
+/// (E07/F06/US01/T02). <b>Not behind <c>Features:CrmMarketing</c></b>: a link already sent has to keep working whatever the flag says.
 /// </summary>
 [ApiController]
 [Route("api/public/marketing")]
@@ -21,6 +23,7 @@ namespace Casazen.Web.Controllers;
 public class PublicMarketingController(
     AppDbContext db,
     MarketingUnsubscribeLinks unsubscribeLinks,
+    ISuppressionService suppressionService,
     ILogger<PublicMarketingController> logger) : ControllerBase
 {
     /// <summary>
@@ -115,9 +118,10 @@ public class PublicMarketingController(
     /// ADR-007-R18: HMAC-SHA256 of emailHash + "." + expiresAt, 30-day expiration, checked by <see cref="MarketingUnsubscribeLinks"/>,
     /// which also builds the links of the campaigns (DEB-01). It is the target of their <c>List-Unsubscribe</c> header too: a mail client
     /// posts <c>List-Unsubscribe=One-Click</c> here (RFC 8058), a body this action does not read.
-    /// ADR-007-R22: Adds to SuppressionListEntry on valid signature.
+    /// ADR-007-R22: Adds to SuppressionListEntry on valid signature, through <see cref="ISuppressionService.AddByHashAsync"/> (idempotent; it also
+    /// flags the CRM contacts with the same hash).
     /// </summary>
-    /// <param name="emailHash">SHA-256 hash of the normalized email address</param>
+    /// <param name="emailHash">Keyed hash (HMAC-SHA256) of the normalized email address; the plain SHA-256 for a link issued before E07/F06/US01/T02</param>
     /// <param name="expiresAt">Link expiration timestamp in format yyyy-MM-ddTHH:mm:ssZ</param>
     /// <param name="signature">HMAC-SHA256 signature (hex lowercase)</param>
     /// <param name="orgId">Organization ID (required to identify the tenant)</param>
@@ -155,44 +159,14 @@ public class PublicMarketingController(
                 logger.LogError("{Variable} is not configured: unsubscribe links cannot be checked", MarketingUnsubscribeLinks.SecretVariable);
                 return this.ApiProblem(StatusCodes.Status500InternalServerError, "configuration_error", "ConfigurationError");
             case MarketingUnsubscribeCheck.InvalidSignature:
-                logger.LogWarning(
-                    "Invalid HMAC signature for unsubscribe: orgId={OrgId}, emailHash={EmailHash}",
-                    orgId, emailHash);
+                logger.LogWarning("Invalid HMAC signature for unsubscribe: orgId={OrgId}", orgId);
                 return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "invalid_signature", "InvalidSignature");
         }
 
-        // ADR-007-R22: Add to suppression list
-        // Note: We cannot reconstruct the original email from the hash, so we store the hash directly.
-        // The suppression service expects an email, but in this case we're working with a pre-computed hash.
-        // We'll add the hash directly to the suppression list.
-        var entry = new Core.Entities.SuppressionListEntry
-        {
-            OrgId = orgId,
-            EmailHash = emailHash,
-            Source = "unsubscribe",
-            AddedAt = DateTime.UtcNow
-        };
-
-        // Check if already suppressed (idempotent)
-        var existing = await db.SuppressionListEntries
-            .Where(e => e.OrgId == orgId && e.EmailHash == emailHash)
-            .FirstOrDefaultAsync(HttpContext.RequestAborted);
-
-        if (existing is null)
-        {
-            db.SuppressionListEntries.Add(entry);
-            await db.SaveChangesAsync(HttpContext.RequestAborted);
-
-            logger.LogInformation(
-                "Email hash added to suppression list via one-click unsubscribe: orgId={OrgId}, emailHash={EmailHash}",
-                orgId, emailHash);
-        }
-        else
-        {
-            logger.LogInformation(
-                "Email hash already suppressed: orgId={OrgId}, emailHash={EmailHash}",
-                orgId, emailHash);
-        }
+        // ADR-007-R22: Add to suppression list. The address cannot be rebuilt from the hash, so the service stores the hash the link carries
+        // (keyed for a link issued since E07/F06/US01/T02, the plain SHA-256 for an older one), once, and flags the contacts with the same hash.
+        // It logs the org and the source only.
+        await suppressionService.AddByHashAsync(orgId, emailHash, "unsubscribe", HttpContext.RequestAborted);
 
         return Ok(new { unsubscribed = true });
     }
