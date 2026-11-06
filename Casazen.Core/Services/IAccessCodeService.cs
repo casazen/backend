@@ -21,13 +21,16 @@ public interface IAccessCodeService
     /// Gets the access code for a booking (permission and verification required).
     /// Logs the access and BLOCKS if verification not passed. <b>The verification gate</b> (shared with <see cref="ReleaseToGuestAsync"/>):
     /// the latest <c>BiometricVerificationLog</c> of the booking is an <c>Accept</c>, of the agent or of an operator's approval; a review, a
-    /// failed attempt, an operator's rejection or no row at all release nothing (AC-NF50-4, AC-NF24-4).
+    /// failed attempt, an operator's rejection or no row at all release nothing (AC-NF50-4, AC-NF24-4). <b>The booking must be one the caller
+    /// reaches</b> (<paramref name="scope"/>, AM-03): a collaborator «Solo alcuni» reads the code of the properties it was given only, and a
+    /// booking of another property or org is as absent as one that does not exist.
     /// </summary>
     /// <param name="bookingId">Booking to get code for</param>
     /// <param name="userId">User requesting the code</param>
+    /// <param name="scope">What the caller reaches on host data</param>
     /// <param name="ct">Cancellation token</param>
-    /// <returns>Plain text code, or null if not set or verification failed</returns>
-    Task<string?> GetAccessCodeAsync(Guid bookingId, string userId, CancellationToken ct = default);
+    /// <returns>Plain text code, or null if not set, out of scope or verification failed</returns>
+    Task<string?> GetAccessCodeAsync(Guid bookingId, string userId, HostScope scope, CancellationToken ct = default);
 
     /// <summary>
     /// Releases the access code to a guest (verification required, logged).

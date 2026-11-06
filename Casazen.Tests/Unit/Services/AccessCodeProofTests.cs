@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
@@ -211,7 +212,7 @@ public class AccessCodeProofTests
             var service = new AccessCodeService(db, NullLogger<AccessCodeService>.Instance);
 
             Assert.Null(await service.ReleaseToGuestAsync(bookingId, "email"));
-            Assert.Null(await service.GetAccessCodeAsync(bookingId, "host-user"));
+            Assert.Null(await service.GetAccessCodeAsync(bookingId, "host-user", new HostScope(orgId)));
         }
 
         // Test 5: the operator's approval (an Accept of the operator) -> release MUST succeed

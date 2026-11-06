@@ -68,7 +68,7 @@ public class VerificationOperatorDecisionProofTests
         Assert.Equal(BiometricOutcome.Reject, rejection.Outcome);
         Assert.Equal(Operator, rejection.OperatorUserId);
         Assert.Null(await accessCodes.ReleaseToGuestAsync(rejected, AccessCodeReleaseChannels.Email));
-        Assert.Null(await accessCodes.GetAccessCodeAsync(rejected, Operator));
+        Assert.Null(await accessCodes.GetAccessCodeAsync(rejected, Operator, scope));
         Assert.Empty(emails);
         Assert.False(await db.AccessCodeReleaseLogs.AnyAsync());
 

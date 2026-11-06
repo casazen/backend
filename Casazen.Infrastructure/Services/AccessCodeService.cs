@@ -62,8 +62,25 @@ public class AccessCodeService : IAccessCodeService
             propertyId, userId);
     }
 
-    public async Task<string?> GetAccessCodeAsync(Guid bookingId, string userId, CancellationToken ct = default)
+    public async Task<string?> GetAccessCodeAsync(Guid bookingId, string userId, HostScope scope, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        // The booking is one the caller reaches (AM-03): the org first, then the properties it was given. The same rule as the status of the
+        // codes (ReachableProperties): a booking of another property of the org is as absent as one that does not exist.
+        var reaches = await _db.Bookings
+            .AsNoTracking()
+            .Where(b => b.OrgId == scope.OrgId && b.Id == bookingId)
+            .InScope(scope)
+            .AnyAsync(ct);
+        if (!reaches)
+        {
+            _logger.LogWarning(
+                "Access code request denied for booking {BookingId} by user {UserId}: the booking is outside the caller scope",
+                bookingId, userId);
+            return null;
+        }
+
         // Check verification passed before allowing access
         if (!await IsVerificationPassedAsync(bookingId, ct))
         {
