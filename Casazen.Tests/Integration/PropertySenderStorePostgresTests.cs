@@ -32,10 +32,10 @@ public class PropertySenderStorePostgresTests
         await using var database = PostgresTestDatabase.CreateMigrated("sendstore");
         var orgA = await SeedOrgAsync(database);
         var orgB = await SeedOrgAsync(database);
-        var first = await SeedPropertyAsync(database, orgA, "IT");
-        var raced = await SeedPropertyAsync(database, orgA, "IT");
-        var swiss = await SeedPropertyAsync(database, orgA, "CH");
-        var foreign = await SeedPropertyAsync(database, orgB, "IT");
+        var first = await SeedPropertyAsync(database, orgA, "IT", 1);
+        var raced = await SeedPropertyAsync(database, orgA, "IT", 2);
+        var swiss = await SeedPropertyAsync(database, orgA, "CH", 3);
+        var foreign = await SeedPropertyAsync(database, orgB, "IT", 4);
 
         // One value for both senders, from the default (manual: no confirmed listing) to the one chosen, with its line.
         await using (var db = TenantContext(database, orgA))
@@ -175,7 +175,11 @@ public class PropertySenderStorePostgresTests
         return org.Id;
     }
 
-    private static async Task<Guid> SeedPropertyAsync(PostgresTestDatabase database, Guid orgId, string country)
+    /// <summary>
+    /// A property of <paramref name="orgId"/>. The address is unique per org (<c>UIX_Properties_OrgId_AddressKey</c>), so every property
+    /// of one org gets its own <paramref name="streetNumber"/>.
+    /// </summary>
+    private static async Task<Guid> SeedPropertyAsync(PostgresTestDatabase database, Guid orgId, string country, int streetNumber)
     {
         await using var db = database.CreateContext();
         var property = new Property
@@ -184,7 +188,7 @@ public class PropertySenderStorePostgresTests
             OrgId = orgId,
             Name = "Casa TEST",
             Description = "Casa",
-            Address = "Via Roma 1",
+            Address = $"Via Roma {streetNumber}",
             City = country == "CH" ? "Lugano" : "Firenze",
             PostalCode = country == "CH" ? "6900" : "50100",
             Country = country,
