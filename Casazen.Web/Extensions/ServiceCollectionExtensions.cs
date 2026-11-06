@@ -436,8 +436,17 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFaceEmbedder, FaceEmbedder>();
         services.AddScoped<IAntiSpoofingService, AntiSpoofingService>();
         services.AddScoped<IBiometricVerificationService, BiometricVerificationService>();
+        // E03/F04/US02/T02: the identity verification agent on top of that pipeline: the capture checks and one rule-based decision with
+        // versioned thresholds. No AI provider, no logger, no storage among its dependencies (PO-09).
+        services.AddSingleton<CaptureQualityAssessor>();
+        services.AddScoped<IIdentityVerificationAgent, IdentityVerificationAgent>();
+        // E03/F04/US02/T04: the verification of one check-in session (consent, document, selfie, operator, lock code release), behind
+        // Features:CheckInIdentityVerification like the public endpoints that call it.
+        services.AddScoped<IIdentityVerificationFlowService, IdentityVerificationFlowService>();
         // NF-12: Operator verification queue for manual biometric decisions (ADR-013).
         services.AddScoped<IVerificationQueueService, VerificationQueueService>();
+        // E03/F04/US02/T03: the immediate alert to the operators (push, e-mail, urgent "To do") when a verification needs a person.
+        services.AddScoped<IVerificationOperatorAlerts, VerificationOperatorAlerts>();
         // NF-13: Property access codes with encryption and verification gating (E06/F03/US01/T01).
         services.AddScoped<IAccessCodeService, AccessCodeService>();
         // NF-15: Swiss compliance files of the Ticino properties (ADR-016, E08): police notification XML, OTR overnight CSV and the

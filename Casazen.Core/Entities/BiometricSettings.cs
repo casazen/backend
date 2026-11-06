@@ -43,6 +43,12 @@ public class BiometricSettings : ITenantOwned
     /// <summary>Maximum biometric verification attempts before auto-escalation (ADR-013-R5).</summary>
     public int MaxAttempts { get; set; } = 3;
 
+    /// <summary>
+    /// When the thresholds were calibrated on real data (E03/F04/US02/T01). Null means they are provisional: every outcome says so and the
+    /// operator console shows it (AC-NF51 point 7).
+    /// </summary>
+    public DateTime? CalibratedAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

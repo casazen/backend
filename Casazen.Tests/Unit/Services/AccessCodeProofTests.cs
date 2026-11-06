@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
@@ -194,29 +195,30 @@ public class AccessCodeProofTests
             Assert.Null(codeProperty);
         }
 
-        // Test 4: Verification log with operator verification (OperatorUserId set) -> release MUST succeed
+        // Test 4 (E03/F04/US02/T03): an operator decision writes a row of its own. A rejection names the operator too, and still releases
+        // nothing: who decided does not open the gate, only an accepted outcome does.
         await using (var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection))
         {
             // Clear previous logs
             var logsToRemove = db.BiometricVerificationLogs.Where(l => l.BookingId == bookingId);
             db.BiometricVerificationLogs.RemoveRange(logsToRemove);
 
-            var operatorLog = new BiometricVerificationLog
-            {
-                Id = Guid.NewGuid(),
-                OrgId = orgId,
-                BookingId = bookingId,
-                GuestId = guestId,
-                Outcome = BiometricOutcome.Escalate, // Even if escalated...
-                Attempts = 1,
-                ModelName = "AuraFace-v1",
-                ModelVersion = "1.0.0",
-                ThresholdsJson = "{\"AcceptThreshold\": 0.85}",
-                OperatorUserId = "operator-123", // ...operator approved it
-                OperatorNote = "Manually verified",
-                CreatedAt = DateTime.UtcNow
-            };
-            db.BiometricVerificationLogs.Add(operatorLog);
+            db.BiometricVerificationLogs.Add(OperatorLog(orgId, bookingId, guestId, BiometricOutcome.Reject, DateTime.UtcNow));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection))
+        {
+            var service = new AccessCodeService(db, NullLogger<AccessCodeService>.Instance);
+
+            Assert.Null(await service.ReleaseToGuestAsync(bookingId, "email"));
+            Assert.Null(await service.GetAccessCodeAsync(bookingId, "host-user", new HostScope(orgId)));
+        }
+
+        // Test 5: the operator's approval (an Accept of the operator) -> release MUST succeed
+        await using (var db = new AppDbContext(options, new FixedTenantContext(orgId), dataProtection))
+        {
+            db.BiometricVerificationLogs.Add(OperatorLog(orgId, bookingId, guestId, BiometricOutcome.Accept, DateTime.UtcNow.AddSeconds(1)));
             await db.SaveChangesAsync();
         }
 
@@ -231,6 +233,23 @@ public class AccessCodeProofTests
             Assert.Equal(TestCode, code);
         }
     }
+
+    private static BiometricVerificationLog OperatorLog(Guid orgId, Guid bookingId, Guid guestId, BiometricOutcome outcome, DateTime createdAt) => new()
+    {
+        Id = Guid.NewGuid(),
+        OrgId = orgId,
+        BookingId = bookingId,
+        GuestId = guestId,
+        Outcome = outcome,
+        Method = VerificationMethod.Operator,
+        Attempts = 3,
+        ModelName = "AuraFace-v1",
+        ModelVersion = "1.0.0",
+        ThresholdsJson = "{\"AcceptThreshold\": 0.85}",
+        OperatorUserId = "operator-123",
+        OperatorNote = "Manually verified",
+        CreatedAt = createdAt,
+    };
 
     /// <summary>
     /// AC-NF13-1 / AC-NF13-5 proof: Access codes MUST be encrypted at rest and NEVER appear in plain text logs.

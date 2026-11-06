@@ -89,7 +89,13 @@ public static class OrgCapabilityCatalog
         new("guests", OrgCapabilityGroups.ShortRent,
             Full: [P(Short, "guest.write")],
             ReadOnly: [P(Short, "guest.read")],
-            Related: [P(Short, HostPermissions.GuestManage), P(Short, HostPermissions.AlloggiatiSubmit)]),
+            Related:
+            [
+                P(Short, HostPermissions.GuestManage),
+                P(Short, HostPermissions.AlloggiatiSubmit),
+                // E03/F04/US02/T01: the decision on the identity verification of a guest (owner, administrators, property managers).
+                P(Short, HostPermissions.VerificationDecision),
+            ]),
         new("money", OrgCapabilityGroups.ShortRent,
             Full: [P(Short, "payment.write")],
             ReadOnly: [P(Short, "payment.read")],
