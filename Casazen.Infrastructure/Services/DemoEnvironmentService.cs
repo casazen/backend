@@ -798,7 +798,7 @@ public class DemoEnvironmentService(
     /// conversation; its messages go with it (cascade). The conversations with the guests of the direct stays go with their bookings (cascade), and
     /// their markers with the other showcase markers. Runs before the showcase houses go: it finds its rows by the markers they drop.
     /// </summary>
-    private async Task RemoveShowcaseMessageThreadsAsync(Guid orgId, CancellationToken cancellationToken)
+    internal async Task RemoveShowcaseMessageThreadsAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var threadIds = await Markers()
             .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.OtaMessageThread)
