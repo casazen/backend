@@ -1514,7 +1514,7 @@
     <value>The stay has already started or ended: dates and guests can no longer be changed.</value>
   </data>
   <data name="BookingUpdateSourceLocked" xml:space="preserve">
-    <value>Dates and guests can be changed only on bookings you entered: this one comes from the booking site or a channel, with its price and payment already set. You can edit the notes.</value>
+    <value>Dates and guests can be changed on bookings you entered and on confirmed bookings of the booking site: this one is a request still waiting, or comes from a channel, with its price and payment already set. You can edit the notes.</value>
   </data>
   <data name="BookingCheckInInPast" xml:space="preserve">
     <value>The check-in cannot be moved to a day already past.</value>
@@ -5129,6 +5129,18 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="ArchiveInvalidPage" xml:space="preserve">
     <value>Invalid page: pages start at 1 and hold from 1 to {0} documents.</value>
+  </data>
+  <data name="BookingSettlementFailed" xml:space="preserve">
+    <value>The payment of the price difference did not go through: the booking was not changed. You can try again, the same refund is never made twice.</value>
+  </data>
+  <data name="BookingEditPaymentInProgress" xml:space="preserve">
+    <value>A payment of this booking is still being processed, or is waiting for the guest to complete it: wait until it is settled before changing dates or guests.</value>
+  </data>
+  <data name="BookingEditPaymentPermissionRequired" xml:space="preserve">
+    <value>This change moves money (a refund, a charge to the saved card or a payment link): you need the permission to handle the payments of the property. The booking was not changed.</value>
+  </data>
+  <data name="BookingTouristTaxUnavailable" xml:space="preserve">
+    <value>The tourist tax cannot be worked out for the new dates: the price would drop by the tax the guest already paid and the refund would go out by itself. The booking was not changed: choose other dates or ask for support.</value>
   </data>
   <data name="PanelStepKindInvalid" xml:space="preserve">
     <value>This kind of guided step does not exist.</value>

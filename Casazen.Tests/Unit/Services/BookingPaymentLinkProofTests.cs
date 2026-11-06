@@ -119,6 +119,76 @@ public class BookingPaymentLinkProofTests
         Assert.Single(h.CancelledIntents);
     }
 
+    /// <summary>
+    /// PROOF TEST: money rule (E08/F02/US01/T01). A confirmed booking of the booking site paid at its deadline ("Paga alla scadenza") whose card has not been
+    /// charged yet is collected by the deadline charge, on the whole total, and that charge knows nothing of a link: a link paid next to it would be a double
+    /// payment. The link is refused (<c>payment_link_unavailable</c>) while the deadline charge is waiting or failed, and nothing is made on Stripe; once it is
+    /// collected, the balance a raised price leaves can have its link.
+    /// </summary>
+    [Fact]
+    public async Task BookingPaymentLink_OnADirectBookingPaidAtItsDeadline_IsRefusedUntilTheDeadlineChargeIsCollected_Test()
+    {
+        var h = new Harness();
+
+        // The card is saved, nothing is charged yet: the setup row is pending.
+        var waiting = await h.SeedBookingAsync(
+            total: 300.00m,
+            configure: AtItsDeadline,
+            payments: [DeferredRow("seti_1", PaymentStatus.Pending, intentId: null)]);
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => h.LinkAsync(waiting));
+        Assert.Equal(BookingPaymentLinkErrorCodes.Unavailable, refused.Code);
+
+        // The charge at the deadline failed: the guest is asked to pay that PaymentIntent, not a second one.
+        var failed = await h.SeedBookingAsync(
+            total: 300.00m,
+            configure: AtItsDeadline,
+            payments: [DeferredRow("seti_2", PaymentStatus.Failed, intentId: "pi_failed")]);
+        refused = await Assert.ThrowsAsync<DomainRuleException>(() => h.LinkAsync(failed));
+        Assert.Equal(BookingPaymentLinkErrorCodes.Unavailable, refused.Code);
+
+        // No PaymentIntent was made for either, and nothing was written.
+        Assert.Equal(string.Empty, h.LastIntentId);
+        await using (var read = h.NewDb(null))
+        {
+            var rows = await read.Payments.AsNoTracking().ToListAsync();
+            Assert.DoesNotContain(rows, p => p.Description == BookingPaymentLinkService.PaymentDescription);
+            Assert.All(await read.Bookings.AsNoTracking().ToListAsync(), b => Assert.Null(b.PaymentLinkSentAt));
+        }
+
+        // The deadline charge is collected and the price was raised afterwards (the total is 380, 300 are in): the balance of 80 has its link.
+        var collected = await h.SeedBookingAsync(
+            total: 380.00m,
+            configure: AtItsDeadline,
+            payments: [DeferredRow("seti_3", PaymentStatus.Completed, intentId: "pi_collected")]);
+        var link = await h.LinkAsync(collected);
+        Assert.Equal(80.00m, link.Amount);
+    }
+
+    private static void AtItsDeadline(Booking booking)
+    {
+        booking.Source = BookingSource.Direct;
+        booking.PaymentOption = PaymentOption.OnCancellationDeadline;
+        booking.HostPaymentArrangement = null;
+        booking.StripeCustomerId = "cus_1";
+        booking.StripePaymentMethodId = "pm_1";
+    }
+
+    /// <summary>The payment row of the deferred charge of a booking "Paga alla scadenza": the setup of the card, then the PaymentIntent of the charge.</summary>
+    private static Payment DeferredRow(string setupIntentId, PaymentStatus status, string? intentId) => new()
+    {
+        OrgId = OrgA,
+        Amount = 300.00m,
+        Status = status,
+        Method = Casazen.Core.Entities.PaymentMethod.CreditCard,
+        TransactionId = intentId ?? setupIntentId,
+        StripePaymentIntentId = intentId,
+        StripeAccountId = Account,
+        Description = DeferredCharges.PaymentDescription,
+        ProcessedAt = status == PaymentStatus.Completed ? new DateTime(2026, 11, 5, 6, 0, 0, DateTimeKind.Utc) : null,
+        CreatedAt = new DateTime(2026, 11, 1, 6, 0, 0, DateTimeKind.Utc),
+        UpdatedAt = new DateTime(2026, 11, 1, 6, 0, 0, DateTimeKind.Utc),
+    };
+
     private static string TokenOf(string url)
     {
         var query = new Uri(url).Query;
@@ -223,7 +293,10 @@ public class BookingPaymentLinkProofTests
         public AppDbContext NewDb(ITenantContext? tenant) =>
             new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, tenant ?? NullTenantContext.Instance);
 
-        public async Task<Guid> SeedHostBookingAsync(decimal total)
+        public Task<Guid> SeedHostBookingAsync(decimal total) => SeedBookingAsync(total);
+
+        /// <summary>A confirmed booking the host entered (with the arrangement of a link) unless <paramref name="configure"/> says otherwise, with its payments.</summary>
+        public async Task<Guid> SeedBookingAsync(decimal total, Action<Booking>? configure = null, params Payment[] payments)
         {
             await using var db = NewDb(null);
             var guest = new Guest { OrgId = OrgA, FirstName = "Giulia", LastName = "Rossi", Email = $"{Guid.NewGuid():N}@example.com" };
@@ -242,8 +315,15 @@ public class BookingPaymentLinkProofTests
                 BasePrice = total,
                 TotalPrice = total,
             };
+            configure?.Invoke(booking);
             db.Guests.Add(guest);
             db.Bookings.Add(booking);
+            foreach (var payment in payments)
+            {
+                payment.BookingId = booking.Id;
+                db.Payments.Add(payment);
+            }
+
             await db.SaveChangesAsync();
             return booking.Id;
         }

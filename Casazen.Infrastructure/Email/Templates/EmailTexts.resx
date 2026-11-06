@@ -2403,4 +2403,25 @@
   <data name="TodoReason_OctorateDatesTaken" xml:space="preserve">
     <value>La prenotazione non è stata creata nel channel manager: le date sono già occupate</value>
   </data>
+  <data name="GuestBookingModified_Subject" xml:space="preserve">
+    <value>Prenotazione modificata - {0}</value>
+  </data>
+  <data name="GuestBookingModified_Body" xml:space="preserve">
+    <value>il tuo host ha modificato la prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt;: ora il soggiorno è dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;, per &lt;strong&gt;{3}&lt;/strong&gt; ospiti.</value>
+  </data>
+  <data name="GuestBookingModified_Total" xml:space="preserve">
+    <value>Nuovo totale del soggiorno: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="GuestBookingModified_Refund" xml:space="preserve">
+    <value>Il nuovo prezzo è più basso: ti rimborsiamo &lt;strong&gt;{0}&lt;/strong&gt; sul metodo di pagamento che hai usato.</value>
+  </data>
+  <data name="GuestBookingModified_Charged" xml:space="preserve">
+    <value>Il nuovo prezzo è più alto: la differenza di &lt;strong&gt;{0}&lt;/strong&gt; è stata addebitata sulla carta che hai salvato.</value>
+  </data>
+  <data name="GuestBookingModified_PaymentLink" xml:space="preserve">
+    <value>Il nuovo prezzo è più alto: per pagare la differenza ti arriva a parte un'email con il link di pagamento.</value>
+  </data>
+  <data name="TodoReason_BookingSyncConflict" xml:space="preserve">
+    <value>La prenotazione è stata modificata nel tuo channel manager: scegli quale versione tenere</value>
+  </data>
 </root>

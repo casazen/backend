@@ -684,6 +684,97 @@ public sealed partial class OctorateApiClient(
         return OctorateReservationReader.Read(item) ?? throw new OctorateServerException(answer.StatusCode);
     }
 
+    public Task<OctorateReservation> GetReservationAsync(OctorateBookingTarget target, string reservationId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        return GetReservationAsync(target.AccommodationId, reservationId, ct);
+    }
+
+    public async Task<OctorateReservation> UpdateReservationAsync(
+        OctorateBookingTarget target,
+        string reservationId,
+        OctorateReservationUpdate update,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(update);
+        var accommodation = CheckedAccommodationId(target.AccommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+
+        // A change Octorate could not take leaves nothing: the body is built before any call.
+        var json = OctorateReservationRequests.UpdateBody(target, update);
+        var path = $"/rest/v1/reservation/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}";
+
+        // Never over a reservation that changed on Octorate since the version the change is based on: Octorate has no ETag (D13), so the version CasaZen
+        // saw is compared with the one Octorate holds now, and a difference is a conflict, as if Octorate had answered 409 (its own 409 is mapped alike).
+        if (update.BasedOnUpdateTime is { } basedOn)
+        {
+            var held = await GetReservationAsync(accommodation, reservation, ct);
+            if (held.UpdatedAt is { } heldAt && heldAt != basedOn)
+            {
+                // Another version, but one that already holds exactly the stay and the guests this change writes: the change was made already, by an
+                // earlier attempt whose answer was lost (a timeout, a 5xx on the read that checks it), which moved the updateTime itself. It is done: the
+                // version is returned and nothing is written over it (a second PATCH would only move the updateTime again).
+                if (HoldsTheStayOf(held, update))
+                {
+                    logger.LogInformation(
+                        "Octorate reservation-update for org {OrgId}: the reservation already holds the stay and the guests of the change, nothing is written", orgScope.OrgId);
+                    return held;
+                }
+
+                logger.LogInformation(
+                    "Octorate reservation-update for org {OrgId}: the reservation changed on Octorate since the version of the change, nothing is written", orgScope.OrgId);
+                throw new OctorateConflictException();
+            }
+        }
+
+        await SendAsync(
+            () => new HttpRequestMessage(HttpMethod.Patch, Address(path))
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            },
+            "reservation-update",
+            ct);
+
+        // A 2xx is not the proof: Octorate leaves out, without saying so, what it does not write. The reservation is read again, and the stay and the
+        // guests are what was sent or the change is a refusal, never a success. The price is Octorate's to work out (a rule of its own may differ): logged.
+        var after = await GetReservationAsync(accommodation, reservation, ct);
+        var mapper = new BookingStateMapper();
+        var arrival = mapper.ToStayDate(after.CheckIn, null) is { } checkIn ? DateOnly.FromDateTime(checkIn) : (DateOnly?)null;
+        var departure = mapper.ToStayDate(after.CheckOut, null) is { } checkOut ? DateOnly.FromDateTime(checkOut) : (DateOnly?)null;
+        if ((arrival is { } a && a != update.CheckIn)
+            || (departure is { } d && d != update.CheckOut)
+            || (after.TotalGuests is { } guests && guests != update.Guests))
+        {
+            logger.LogWarning(
+                "Octorate reservation-update for org {OrgId}: the change was accepted but the reservation does not hold the stay or the guests that were sent", orgScope.OrgId);
+            throw new OctorateRequestRejectedException(200);
+        }
+
+        if (after.RoomGross is { } gross && Math.Abs(gross - update.RoomGross) >= 0.005m)
+        {
+            logger.LogWarning(
+                "Octorate reservation-update for org {OrgId}: the price of the stay Octorate holds is not the one that was sent", orgScope.OrgId);
+        }
+
+        return after;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="reservation"/> already holds what <paramref name="update"/> writes: the arrival, the departure and the guests are all
+    /// known and the same, and the price of the stay, when Octorate gives one, is the same to the cent. A member Octorate leaves out is not a match.
+    /// </summary>
+    internal static bool HoldsTheStayOf(OctorateReservation reservation, OctorateReservationUpdate update)
+    {
+        var mapper = new BookingStateMapper();
+        var arrival = mapper.ToStayDate(reservation.CheckIn, null) is { } checkIn ? DateOnly.FromDateTime(checkIn) : (DateOnly?)null;
+        var departure = mapper.ToStayDate(reservation.CheckOut, null) is { } checkOut ? DateOnly.FromDateTime(checkOut) : (DateOnly?)null;
+        if (arrival != update.CheckIn || departure != update.CheckOut || reservation.TotalGuests != update.Guests)
+            return false;
+
+        return reservation.RoomGross is not { } gross || Math.Abs(gross - update.RoomGross) < 0.005m;
+    }
+
     public async Task<OctoratePaymentResult> RegisterPaymentAsync(
         string accommodationId,
         string reservationId,
