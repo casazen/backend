@@ -40,7 +40,9 @@ public interface IGdprService
     /// <paramref name="note"/> (<c>gdpr_marketing_withdrawal_note_required</c>); withdrawing a consent that is not in
     /// force changes nothing. A withdrawal that is recorded also puts the e-mail of the guest and every marketing e-mail of its per-channel
     /// consents in the suppression list (<see cref="ISuppressionService"/>, source <c>manual</c>), and flags the CRM contacts with the same
-    /// keyed hash, in the same unit of work (E07/F06/US01/T02, AC-NF95-6).
+    /// keyed hash, in the same unit of work (E07/F06/US01/T02, AC-NF95-6). <b>The withdrawal never depends on the key of that index</b>: without
+    /// <c>Crm:ContactIndexKey</c> (allowed while <c>Features:CrmMarketing</c> is off) the consent record, the audit entry and the flag are saved
+    /// all the same, the suppression is skipped and an error in the log names the withdrawal and the variable.
     /// </summary>
     Task UpdateMarketingConsentAsync(
         Guid orgId,

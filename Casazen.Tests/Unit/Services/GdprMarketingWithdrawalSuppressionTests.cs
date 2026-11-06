@@ -5,7 +5,9 @@ using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Logging;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -24,14 +26,14 @@ public class GdprMarketingWithdrawalSuppressionTests
     private static DbContextOptions<AppDbContext> NewOptions() =>
         new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"gdpr-withdrawal-suppression-{Guid.NewGuid()}").Options;
 
-    private static GdprService NewService(AppDbContext db, ISuppressionService? suppression) =>
+    private static GdprService NewService(AppDbContext db, ISuppressionService? suppression, ILogger<GdprService>? logger = null) =>
         new(
             db,
             Mock.Of<IGuestRepository>(),
             new GuestDataEraser(db, Mock.Of<IFileStorage>(), NullLogger<GuestDataEraser>.Instance),
             Options.Create(new GdprOptions()),
             TimeProvider.System,
-            NullLogger<GdprService>.Instance,
+            logger ?? NullLogger<GdprService>.Instance,
             suppression);
 
     private static MarketingConsentRecord Consent(Guid orgId, Guid guestId, string marketingEmail) => new()
@@ -106,12 +108,68 @@ public class GdprMarketingWithdrawalSuppressionTests
     }
 
     /// <summary>
-    /// The withdrawal and its suppression are one unit of work: when the suppression cannot be computed (no key outside Development and
-    /// Testing) the call fails and the consent stays in force, so the host sees the error and nothing is half recorded. A consent that is not in
-    /// force changes nothing, as the interface says, and the service refuses to withdraw without the suppression service.
+    /// Proof test (legal record, a regression on an existing flow): the withdrawal the host records never depends on the key of the index. On an
+    /// environment that starts without <c>Crm:ContactIndexKey</c> (<c>Features:CrmMarketing</c> off, as production is today) the call ends without
+    /// an error (the endpoint answers 204, as before this task), the consent record, the audit entry and the flag are saved, nothing enters the
+    /// suppression list or flags a contact, and an error in the log names the withdrawal, the guest and the variable, and nothing that identifies
+    /// the guest. The campaigns still skip the guest: their recipients are read from the flag the withdrawal has cleared.
     /// </summary>
     [Fact]
-    public async Task GdprWithdrawalByHost_WhenTheSuppressionFails_RecordsNothing()
+    public async Task GdprWithdrawalByHost_WithoutTheKey_IsRecordedAndTheSuppressionIsSkipped_Test()
+    {
+        var options = NewOptions();
+        var orgId = Guid.NewGuid();
+        var guest = new Guest { OrgId = orgId, FirstName = "Mario", LastName = "Rossi", Email = "mario.rossi@example.com", MarketingConsent = true };
+        await using (var seed = new AppDbContext(options))
+        {
+            seed.Guests.Add(guest);
+            seed.MarketingConsentRecords.Add(Consent(orgId, guest.Id, "mario.marketing@example.it"));
+            seed.GuestContacts.Add(new GuestContact
+            {
+                OrgId = orgId,
+                Channel = GuestContactChannel.Email,
+                Value = "mario.rossi@example.com",
+                ValueHash = Index.Hash("mario.rossi@example.com"),
+                Origin = GuestContactOrigin.CheckIn,
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        var log = new CapturingLogger<GdprService>();
+        await using (var db = new AppDbContext(options))
+        {
+            var keyless = new SuppressionService(db, CrmTestIndex.Create(key: null), NullLogger<SuppressionService>.Instance);
+            await NewService(db, keyless, log).UpdateMarketingConsentAsync(orgId, guest.Id, false, "Email dell'ospite del 02/11", "auth0|host");
+        }
+
+        await using var verify = new AppDbContext(options);
+        Assert.False((await verify.Guests.SingleAsync(g => g.Id == guest.Id)).MarketingConsent);
+        var withdrawal = await verify.GuestConsentRecords.SingleAsync(r => r.GuestId == guest.Id);
+        Assert.Equal(
+            (GuestConsentPurpose.Marketing, GuestConsentAction.Withdrawn, GuestConsentSource.HostOnGuestRequest, "auth0|host"),
+            (withdrawal.Purpose, withdrawal.Action, withdrawal.Source, withdrawal.RecordedByUserId));
+        Assert.Equal(GuestPrivacyAuditAction.MarketingConsentWithdrawn, (await verify.GuestPrivacyAuditEntries.SingleAsync(a => a.GuestId == guest.Id)).Action);
+
+        // The suppression is skipped, nothing of it is half done.
+        Assert.False(await verify.SuppressionListEntries.AnyAsync());
+        Assert.False((await verify.GuestContacts.SingleAsync()).IsSuppressed);
+
+        // The error says what to fix and which withdrawal it is about, with no personal data.
+        var error = Assert.Single(log.Entries, entry => entry.Level == LogLevel.Error);
+        Assert.Contains("Crm__ContactIndexKey", error.Message);
+        Assert.Equal(withdrawal.Id, Assert.IsType<Guid>(error.Values["ConsentRecordId"]));
+        Assert.Equal(guest.Id, Assert.IsType<Guid>(error.Values["GuestId"]));
+        Assert.DoesNotContain("example", log.AllOutput, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Mario", log.AllOutput, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Rossi", log.AllOutput, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// What a withdrawal does not do: a consent that is not in force changes nothing, as the interface says, and the service refuses to withdraw
+    /// without the suppression service (a wiring error that cannot happen in the running application: the container always supplies it).
+    /// </summary>
+    [Fact]
+    public async Task GdprWithdrawalByHost_WithNothingToWithdrawOrNoSuppressionService_RecordsNothing()
     {
         var options = NewOptions();
         var orgId = Guid.NewGuid();
@@ -124,13 +182,6 @@ public class GdprMarketingWithdrawalSuppressionTests
         }
 
         // One context per call, as one request has its own scope: a context that failed is thrown away with what it had tracked.
-        await using (var db = new AppDbContext(options))
-        {
-            var keyless = new SuppressionService(db, CrmTestIndex.Create(key: null), NullLogger<SuppressionService>.Instance);
-            await Assert.ThrowsAsync<InvalidOperationException>(
-                () => NewService(db, keyless).UpdateMarketingConsentAsync(orgId, guest.Id, false, "Richiesta via email", "auth0|host"));
-        }
-
         await using (var db = new AppDbContext(options))
         {
             await Assert.ThrowsAsync<InvalidOperationException>(

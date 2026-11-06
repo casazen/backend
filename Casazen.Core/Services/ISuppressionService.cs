@@ -9,6 +9,15 @@ namespace Casazen.Core.Services;
 public interface ISuppressionService
 {
     /// <summary>
+    /// Whether an address can be indexed now, that is whether the keyed index has its key (<c>Crm:ContactIndexKey</c>, or the fixed key of
+    /// Development and Testing). False outside them without the key, which the application allows while <c>Features:CrmMarketing</c> is off:
+    /// <see cref="IsSuppressedAsync"/>, <see cref="AddToSuppressionListAsync"/> and <see cref="StageSuppressionAsync"/> then throw
+    /// <see cref="InvalidOperationException"/> (<see cref="AddByHashAsync"/> works either way: it computes nothing). A caller whose own legal
+    /// record must not depend on the list (the withdrawal the host records, <c>IGdprService</c>) asks first and skips the suppression.
+    /// </summary>
+    bool CanIndexAddresses { get; }
+
+    /// <summary>
     /// Checks if an email address is suppressed for the given organization: true when the list holds its keyed hash <b>or</b> the legacy
     /// plain SHA-256 of the address (an opt-out made before the index had a key keeps blocking the send).
     /// </summary>

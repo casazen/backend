@@ -262,6 +262,7 @@ public class SuppressionServiceTests
         await using (var context = new AppDbContext(options))
         {
             var service = Service(context, CrmTestIndex.Create(key: null));
+            Assert.False(service.CanIndexAddresses);
             await Assert.ThrowsAsync<InvalidOperationException>(() => service.AddToSuppressionListAsync(orgId, "ospite@example.com", "manual"));
             await Assert.ThrowsAsync<InvalidOperationException>(() => service.IsSuppressedAsync(orgId, "ospite@example.com"));
         }

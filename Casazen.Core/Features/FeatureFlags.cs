@@ -147,8 +147,9 @@ public static class FeatureFlags
     /// them (the frontend reads the key <c>crmMarketing</c>). Off, every endpoint of <c>CrmController</c> and <c>CampaignsController</c> answers
     /// 404 like a route that does not exist, before authentication. <b>Not behind it, on purpose</b>: the public consent, confirmation,
     /// unsubscribe and welcome endpoints, the GDPR endpoints, and the collection of contacts and consents at the check-in and at the checkout:
-    /// a legal record is made whatever the flag says. On, outside Development and Testing, <c>Crm:ContactIndexKey</c> is required at startup
-    /// (<c>CrmOptionsValidator</c>). Runbook <c>docs/runbooks/crm-marketing.md</c>.
+    /// a legal record is made whatever the flag says, also without the key (the withdrawal the host records is saved and its suppression is
+    /// skipped, with an error in the log). On, outside Development and Testing, <c>Crm:ContactIndexKey</c> is required at startup
+    /// (<c>CrmOptionsValidator</c>), and only then. Runbook <c>docs/runbooks/crm-marketing.md</c>.
     /// </summary>
     public const string CrmMarketing = "CrmMarketing";
 

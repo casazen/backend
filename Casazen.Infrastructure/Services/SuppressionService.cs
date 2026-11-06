@@ -28,6 +28,8 @@ public sealed class SuppressionService(
     /// <summary>Length of an <c>EmailHash</c>: a SHA-256 or an HMAC-SHA256 in lowercase hex.</summary>
     private const int HashLength = 64;
 
+    public bool CanIndexAddresses => contactIndex.IsConfigured;
+
     public async Task<bool> IsSuppressedAsync(Guid orgId, string email, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(email);

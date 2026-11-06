@@ -9,10 +9,18 @@ namespace Casazen.Core.Services;
 public interface ICrmContactIndex
 {
     /// <summary>
+    /// True when <see cref="Hash"/> can be computed: <c>Crm:ContactIndexKey</c> is configured, or the fixed key of Development and Testing
+    /// stands in. False outside them without the key, which the application allows while <c>Features:CrmMarketing</c> is off (the startup
+    /// asks for the key only with the flag on). A caller whose own record must not depend on the index (the withdrawal of a marketing
+    /// consent the host records, <c>IGdprService</c>) asks before it hashes; the others get the exception of <see cref="Hash"/>.
+    /// </summary>
+    bool IsConfigured { get; }
+
+    /// <summary>
     /// The index of <paramref name="normalizedValue"/>: 64 lowercase hex characters, the same for the same value and key. <b>The value is
     /// normalized by the caller</b> (an address with <c>ShowcaseBookingRules.NormalizeEmail</c>, a phone number with the CRM normalizer): the
     /// index is only as stable as the form it is given. A key that changes makes every earlier value unfindable (runbook: do not rotate it).
     /// </summary>
-    /// <exception cref="InvalidOperationException">The key is not configured outside Development and Testing: never an HMAC with an empty key.</exception>
+    /// <exception cref="InvalidOperationException">The key is not configured outside Development and Testing (<see cref="IsConfigured"/> is false): never an HMAC with an empty key.</exception>
     string Hash(string normalizedValue);
 }

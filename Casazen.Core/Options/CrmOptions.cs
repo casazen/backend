@@ -33,8 +33,9 @@ public class CrmOptions
     /// The secret of the keyed index (<c>Crm:ContactIndexKey</c>, env var <c>Crm__ContactIndexKey</c>): at least
     /// <see cref="MinContactIndexKeyLength"/> random characters, never in the database and never in the repository. <b>It must never change
     /// once contacts exist</b>: every hash already stored would stop matching and the suppression list would stop honoring the opt-outs
-    /// it holds. Outside Development and Testing, with <c>Features:CrmMarketing</c> on, the application does not start without it; in
-    /// Development and Testing a fixed public key stands in (<c>ICrmContactIndex</c>).
+    /// it holds. Outside Development and Testing, with <c>Features:CrmMarketing</c> on, the application does not start without it; with the
+    /// flag off it starts, and what needs the key degrades without failing a legal record (the withdrawal the host records is saved and its
+    /// suppression is skipped, with an error in the log). In Development and Testing a fixed public key stands in (<c>ICrmContactIndex</c>).
     /// </summary>
     public string? ContactIndexKey { get; set; }
 

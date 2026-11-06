@@ -16,7 +16,9 @@ namespace Casazen.Infrastructure.Services;
 /// required where the application starts (<see cref="CrmOptionsValidator"/>); in Development and Testing a fixed key that protects nothing
 /// stands in, and the log says so once (the index is a singleton).</para>
 /// <para>Without a key outside Development and Testing the index never hashes with an empty key (that would be an unkeyed hash of the value):
-/// <see cref="Hash"/> throws and names the variable. Nothing here writes the key or a hash to a log.</para>
+/// <see cref="Hash"/> throws and names the variable, and <see cref="IsConfigured"/> is false so that a caller whose own record must not
+/// depend on the index can skip it. The application starts in that state while <c>Features:CrmMarketing</c> is off. Nothing here writes the
+/// key or a hash to a log.</para>
 /// <para><b>The key must not change</b> while contacts or suppression entries exist: every hash made with the old key would stop matching
 /// (the same person would become a new contact and an opt-out would stop being honored). Runbook <c>docs/runbooks/crm-marketing.md</c>.</para>
 /// </remarks>
@@ -49,6 +51,8 @@ public sealed class CrmContactIndex : ICrmContactIndex
 
         _key = Encoding.UTF8.GetBytes(configured);
     }
+
+    public bool IsConfigured => _key.Length > 0;
 
     public string Hash(string normalizedValue)
     {

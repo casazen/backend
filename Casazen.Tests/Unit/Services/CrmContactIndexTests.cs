@@ -46,8 +46,10 @@ public class CrmContactIndexTests
     [InlineData("Testing")]
     public void WithoutAKey_DevelopmentAndTesting_UseTheFixedDevelopmentKey(string environment)
     {
-        var withoutKey = CrmTestIndex.Create(null, environment).Hash("mario@example.com");
+        var index = CrmTestIndex.Create(null, environment);
+        var withoutKey = index.Hash("mario@example.com");
 
+        Assert.True(index.IsConfigured);
         Assert.Equal(CrmTestIndex.Create(CrmContactIndex.DevelopmentKey, environment).Hash("mario@example.com"), withoutKey);
         Assert.Matches("^[0-9a-f]{64}$", withoutKey);
     }
@@ -59,8 +61,10 @@ public class CrmContactIndexTests
     {
         var index = CrmTestIndex.Create(key);
 
+        Assert.False(index.IsConfigured);
         var failure = Assert.Throws<InvalidOperationException>(() => index.Hash("mario@example.com"));
         Assert.Contains("Crm__ContactIndexKey", failure.Message);
+        Assert.True(CrmTestIndex.Create(Key).IsConfigured);
     }
 
     // ─── Startup validation ──────────────────────────────────────────────────────
