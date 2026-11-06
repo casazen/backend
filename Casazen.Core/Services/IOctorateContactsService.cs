@@ -45,7 +45,10 @@ public enum OctorateContactReadOutcome
     /// </summary>
     Disabled = 3,
 
-    /// <summary>Nothing was read: there is no such booking in the org, or it is not a booking of Octorate.</summary>
+    /// <summary>
+    /// Nothing was read: there is no such booking in the org, or it is not a booking that came from Octorate (one made in CasaZen has none, or was
+    /// sent there by CasaZen: its guest's contact is CasaZen's own).
+    /// </summary>
     NotAnOctorateBooking = 4,
 
     /// <summary>Nothing was read: the check-out of the stay is in the past (no history is read).</summary>

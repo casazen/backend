@@ -21,7 +21,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>Gates, in this order</b>: <c>Crm:OctorateContactsEnabled</c> and the connector flag (nothing is queried when they are off); the CRM
 /// module open (<see cref="CrmProfileSyncGate"/>: <c>Features:CrmMarketing</c> on and <c>Crm:ContactIndexKey</c> set, else nothing could be
 /// stored and nothing is asked of Octorate); a booking of
-/// the org with an Octorate reservation id; a check-out that is not in the past; a guest that was not erased; what the memory of
+/// the org with an Octorate reservation id that came from Octorate (not one CasaZen made and sent there, which has a row of the mirror);
+/// a check-out that is not in the past; a guest that was not erased; what the memory of
 /// <see cref="OctorateContactReadLedger"/> says (read lately, or refused lately: no call); a confirmed listing of the property; and at most
 /// <c>Crm:OctorateContactReadsPerHour</c> reads an hour for the org. Only then Octorate is called: the reservation (for the guest id) and the
 /// contact of that guest, two calls for one booking, never a list.</item>
@@ -76,6 +77,16 @@ public sealed class OctorateContactsService(
             .Select(b => new BookingFacts(b.PropertyId, b.GuestId, b.OctorateReservationId, b.Source, b.Status, b.CheckOutDate, b.CreatedAt))
             .FirstOrDefaultAsync(ct);
         if (booking is null || string.IsNullOrEmpty(booking.OctorateReservationId))
+            return new OctorateContactReadResult(OctorateContactReadOutcome.NotAnOctorateBooking);
+
+        // A booking made in CasaZen and sent to Octorate has a reservation id too, and a row of the mirror (E08/F01): the row is made when CasaZen creates the
+        // reservation, never by the import. Its guest's contact is CasaZen's own, and the channel it is written on (the direct one, 270,
+        // Octorate__DirectChannelId) is also the one of the booking engine of the agency: it must not pass for a customer of that engine and be given its soft opt-in.
+        var sentByCasaZen = await db.OctorateBookingSyncs
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .AnyAsync(s => s.OrgId == orgId && s.BookingId == bookingId, ct);
+        if (sentByCasaZen)
             return new OctorateContactReadResult(OctorateContactReadOutcome.NotAnOctorateBooking);
 
         // No history: a stay that is over has no use for the contact of its guest.

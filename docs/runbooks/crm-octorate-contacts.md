@@ -39,7 +39,7 @@ Prerequisites outside the code, none of which CasaZen can check: (1) the outboun
 For `ReadForBookingAsync` the first rule that does not hold ends the call, and no Octorate call is made until all of them hold:
 
 1. `Crm__OctorateContactsEnabled` and the connector are on, and the CRM module is open: `Features__CrmMarketing` on and `Crm__ContactIndexKey` set (else `Disabled`, and not even a query).
-2. The booking is a booking of the org with an Octorate reservation id (else `NotAnOctorateBooking`).
+2. The booking is a booking of the org with an Octorate reservation id **that came from Octorate** (else `NotAnOctorateBooking`). A booking made in CasaZen and sent to Octorate has a reservation id too, and a row of the mirror (`OctorateBookingSyncs`, made when CasaZen creates the reservation, never by the import): it is CasaZen's own, its guest's contact is already here, and it is written on channel `270` (`Octorate__DirectChannelId`), the same channel as the booking engine of the agency, so it must not be taken for a customer of that engine and given its soft opt-in.
 3. Its **check-out is not in the past** in Rome (else `StayOver`: no history is read).
 4. Its guest was not erased or anonymized (else `GuestErased`: the contacts erased by [`gdpr.md`](gdpr.md) § 13 do not come back).
 5. The ledger does not remember it: a booking read in the last 24 hours is `AlreadyRead` (or `NothingToStore`), one Octorate refused in the last 6 hours is `NotAvailable`: no call.

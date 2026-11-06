@@ -273,6 +273,39 @@ public class OctorateContactsProofTests
     }
 
     /// <summary>
+    /// Proof test (privacy rule, AC-NF94-2): a booking made in CasaZen and sent to Octorate has an Octorate reservation id too, and it is written on the
+    /// same channel (270) as the customers of the booking engine of the agency. It is not one of them: it is not read, nothing of its guest is stored from
+    /// Octorate, and the soft opt-in of the booking engine, declared on, is not given to its guest. A booking that came from Octorate on the same
+    /// channel still gets it.
+    /// </summary>
+    [Fact]
+    public async Task OctorateContacts_BookingMadeInCasaZenAndSentToOctorate_IsNotReadNorGivenTheBookingEngineSoftOptIn_Test()
+    {
+        var h = new BookingImportHarness();
+        var channel = BookingStateMapper.BookingEngineChannelId;
+        var mine = await h.SeedBookingAsync("res-casazen", source: BookingSource.Direct, status: BookingStatus.Confirmed);
+        var theirs = await h.SeedBookingAsync("res-engine", source: BookingSource.Direct, status: BookingStatus.Confirmed);
+        await MirrorAsync(h, mine);
+        Serve(h, "res-casazen", "guest-casazen", "ospite@customer.example.org", "+393331111111", channel);
+        Serve(h, "res-engine", "guest-engine", "cliente@customer.example.org", phone: null, channelId: channel);
+        var options = new CrmOptions { OctorateContactsEnabled = true, BookingEngineSoftOptIn = true };
+
+        await using var db = h.NewDb();
+        var service = Service(h, db, options);
+        var mineGuest = await db.Bookings.AsNoTracking().Where(b => b.Id == mine).Select(b => b.GuestId).SingleAsync(Ct);
+
+        Assert.Equal(OctorateContactReadOutcome.NotAnOctorateBooking, (await service.ReadForBookingAsync(OrgA, mine, Ct)).Outcome);
+        h.Client.Verify(c => c.GetReservationAsync(It.IsAny<string>(), "res-casazen", It.IsAny<CancellationToken>()), Times.Never);
+        h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), "guest-casazen", It.IsAny<CancellationToken>()), Times.Never);
+        Assert.DoesNotContain(await db.GuestContacts.AsNoTracking().ToListAsync(Ct), c => c.GuestId == mineGuest);
+
+        // The one that came from Octorate on the same channel is read, and is soft opt-in while the declaration is on.
+        Assert.Equal(OctorateContactReadOutcome.Stored, (await service.ReadForBookingAsync(OrgA, theirs, Ct)).Outcome);
+        var engineCustomer = Assert.Single(await db.GuestContacts.AsNoTracking().ToListAsync(Ct));
+        Assert.Equal(GuestContactLegalBasis.SoftOptIn, engineCustomer.LegalBasis);
+    }
+
+    /// <summary>
     /// Proof test (permission rule, AC-NF94-6): a refusal of the sensitive data (no static IP, no permission) is recorded as not available for the
     /// booking and is not asked again in a loop: the second call, and the calls of the next hours, do not reach Octorate; an outage is not recorded
     /// (a later call tries again) and nothing is stored in either case.
@@ -416,6 +449,16 @@ public class OctorateContactsProofTests
         h.Client
             .Setup(c => c.GetGuestContactInfoAsync(BookingImportTestKit.Accommodation, guestId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new OctorateGuestContactInfo(email, phone));
+    }
+
+    /// <summary>The row of the mirror CasaZen makes when it creates the reservation of a booking on Octorate: the booking is CasaZen's own.</summary>
+    private static async Task MirrorAsync(BookingImportHarness h, Guid bookingId)
+    {
+        await using var db = h.NewDb();
+        var booking = await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == bookingId);
+        db.OctorateBookingSyncs.Add(
+            new OctorateBookingSync { OrgId = booking.OrgId, BookingId = booking.Id, PropertyId = booking.PropertyId, State = OctorateSyncState.Synced });
+        await db.SaveChangesAsync();
     }
 
     private static async Task MoveStayAsync(BookingImportHarness h, Guid bookingId, DateTime checkIn, DateTime checkOut)
