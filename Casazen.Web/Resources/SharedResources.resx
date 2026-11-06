@@ -4325,6 +4325,72 @@
   <data name="OctoratePropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato.</value>
   </data>
+  <data name="OctoratePropertyExists" xml:space="preserve">
+    <value>L'immobile è già collegato a un annuncio sul channel manager.</value>
+  </data>
+  <data name="OctorateMappingUnconfirmed" xml:space="preserve">
+    <value>Conferma o rifiuta prima l'abbinamento di questo immobile a un annuncio già presente sul channel manager, poi riprova.</value>
+  </data>
+  <data name="OctoratePropertyInvalid" xml:space="preserve">
+    <value>I dati dell'immobile non bastano per crearlo sul channel manager: completa i campi indicati.</value>
+  </data>
+  <data name="OctorateNetworkUnknown" xml:space="preserve">
+    <value>Il channel manager non riconosce la rete del tuo account: collega di nuovo l'account dalle impostazioni dei canali.</value>
+  </data>
+  <data name="OctorateOwnerEmailNotConfigured" xml:space="preserve">
+    <value>La creazione dell'immobile sul channel manager non è ancora attiva perché manca l'indirizzo di servizio: contatta l'assistenza.</value>
+  </data>
+  <data name="ListingChannelsRequired" xml:space="preserve">
+    <value>Scegli almeno un canale su cui pubblicare.</value>
+  </data>
+  <data name="ListingChannelUnknown" xml:space="preserve">
+    <value>Uno dei canali scelti non riceve i contenuti da CasaZen.</value>
+  </data>
+  <data name="ListingContentIncomplete" xml:space="preserve">
+    <value>Per pubblicare servono il titolo e la descrizione in italiano e in inglese.</value>
+  </data>
+  <data name="ListingModifiedOutside" xml:space="preserve">
+    <value>L'annuncio è stato modificato fuori da CasaZen su uno dei canali scelti: scegli se mantenere la versione di CasaZen o prendere quella del channel manager.</value>
+  </data>
+  <data name="ListingChannelNotFound" xml:space="preserve">
+    <value>Canale non trovato per questo immobile.</value>
+  </data>
+  <data name="ListingChannelErrorCinMissing" xml:space="preserve">
+    <value>Per questo canale serve un CIN valido: inseriscilo nei dati dell'immobile.</value>
+  </data>
+  <data name="ListingChannelErrorPhotosBelowMinimum" xml:space="preserve">
+    <value>Servono almeno {0} foto per questo canale: aggiungile nel passaggio delle foto.</value>
+  </data>
+  <data name="ListingChannelErrorContentRejected" xml:space="preserve">
+    <value>Il channel manager ha rifiutato una parte dei contenuti: controlla i dati dell'annuncio e riprova.</value>
+  </data>
+  <data name="ListingChannelErrorChannelRefused" xml:space="preserve">
+    <value>Il canale non ha accettato i contenuti: correggi quanto indicato e pubblica di nuovo.</value>
+  </data>
+  <data name="ListingChannelErrorChannelPushFailed" xml:space="preserve">
+    <value>L'invio dei contenuti al canale non è riuscito: riprova tra poco.</value>
+  </data>
+  <data name="ListingChannelErrorChannelNotConnected" xml:space="preserve">
+    <value>L'immobile non è collegato a questo canale: collegalo dalle impostazioni dei canali.</value>
+  </data>
+  <data name="ListingChannelErrorRoomRequired" xml:space="preserve">
+    <value>Scegli la camera dell'annuncio nel channel manager prima di pubblicare.</value>
+  </data>
+  <data name="ListingChannelErrorGeneric" xml:space="preserve">
+    <value>Qualcosa non ha funzionato con questo canale: controlla i dettagli e riprova.</value>
+  </data>
+  <data name="OutsideChangeNotFound" xml:space="preserve">
+    <value>Questo canale non ha modifiche esterne da risolvere.</value>
+  </data>
+  <data name="OutsideChangeTakeNotSupported" xml:space="preserve">
+    <value>Si possono prendere solo le descrizioni del channel manager: per gli altri dati cambiati mantieni la versione di CasaZen.</value>
+  </data>
+  <data name="OutsideChangeTextTooLong" xml:space="preserve">
+    <value>Un testo del channel manager è più lungo di quanto CasaZen possa accettare: mantieni la versione di CasaZen o accorcialo sul channel manager.</value>
+  </data>
+  <data name="OutsideChangeChoiceInvalid" xml:space="preserve">
+    <value>Scegli se mantenere la versione di CasaZen o prendere quella del channel manager.</value>
+  </data>
   <data name="OctorateMappingPropertyTaken" xml:space="preserve">
     <value>Questo immobile è già collegato a un altro annuncio del channel manager.</value>
   </data>
@@ -4904,6 +4970,45 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="OctorateSyncLinkedElsewhere" xml:space="preserve">
     <value>La prenotazione esiste nel channel manager, ma in CasaZen è già collegata a un'altra prenotazione: controlla se è un duplicato.</value>
+  </data>
+  <data name="InvoiceDataFiscalCodeInvalid" xml:space="preserve">
+    <value>Il codice fiscale non è valido: controllalo e riprova.</value>
+  </data>
+  <data name="InvoiceDataVatNumberInvalid" xml:space="preserve">
+    <value>La partita IVA non è valida: sono 11 cifre, con il prefisso IT davanti, e l'ultima è di controllo.</value>
+  </data>
+  <data name="InvoiceDataRecipientCodeInvalid" xml:space="preserve">
+    <value>Il codice destinatario non è valido: sono 7 tra lettere maiuscole e cifre.</value>
+  </data>
+  <data name="InvoiceDataPecInvalid" xml:space="preserve">
+    <value>La PEC non è un indirizzo email valido.</value>
+  </data>
+  <data name="InvoiceDataRecipientRequired" xml:space="preserve">
+    <value>Per la fattura servono il codice fiscale o la partita IVA di chi la riceve.</value>
+  </data>
+  <data name="InvoiceDataFieldInvalid" xml:space="preserve">
+    <value>Un dato della fattura non è valido o è troppo lungo: controllalo e riprova.</value>
+  </data>
+  <data name="DocumentIssuanceNotAvailable" xml:space="preserve">
+    <value>L'emissione dei documenti da parte di CasaZen non è ancora disponibile: scegli un altro modo.</value>
+  </data>
+  <data name="IssuerProfileIncomplete" xml:space="preserve">
+    <value>Mancano dei dati dell'emittente per emettere con CasaZen: completali e riprova.</value>
+  </data>
+  <data name="DocumentBookingNotDirect" xml:space="preserve">
+    <value>CasaZen non emette documenti per le prenotazioni che arrivano da un portale, solo per quelle dirette.</value>
+  </data>
+  <data name="DocumentIssuerConflict" xml:space="preserve">
+    <value>I documenti di questa prenotazione sono già di un altro emittente: una prenotazione ha un solo emittente.</value>
+  </data>
+  <data name="DocumentRuleNotConfigured" xml:space="preserve">
+    <value>Le regole del documento per il tuo regime non sono ancora state approvate: finché non lo sono, non si può emettere.</value>
+  </data>
+  <data name="IssuerFieldInvalid" xml:space="preserve">
+    <value>Un dato dell'emittente non è valido o è troppo lungo: controllalo e riprova.</value>
+  </data>
+  <data name="FiscalSettingsNeedWholeOrg" xml:space="preserve">
+    <value>Solo chi gestisce tutti gli immobili dell'organizzazione può cambiare chi emette i documenti.</value>
   </data>
   <data name="OctorateSyncNotMirrored" xml:space="preserve">
     <value>La struttura non è collegata al channel manager in questo momento (connessione interrotta o mappatura da confermare): l'annullamento non è stato inviato. Ricollega o conferma la mappatura, poi riprova.</value>

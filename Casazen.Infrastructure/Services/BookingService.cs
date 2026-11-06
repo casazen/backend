@@ -31,6 +31,7 @@ public class BookingService(
     ICheckoutHoldExpiryService checkoutHoldExpiry,
     OnSiteRequestNotifier onSiteNotifier,
     IPricingAdapterService pricingAdapterService,
+    IChannelManagerAvailability channelManager,
     TimeProvider? timeProvider = null,
     IStayDiscountService? stayDiscountService = null,
     IDomainEventRecorder? domainEvents = null,
@@ -90,6 +91,9 @@ public class BookingService(
                 booking.PropertyId, booking.CheckInDate, booking.CheckOutDate);
             throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
+
+        // E08/F01/US02/T01 (NF-80): the channel manager is asked too, before anything is written (it may save the room of the mapping).
+        await EnsureChannelManagerAcceptsAsync(booking.OrgId, booking.PropertyId, booking.CheckInDate, booking.CheckOutDate, booking.NumberOfGuests);
 
         // The guest snapshot is written only once the dates are known to be free, and removed again if a concurrent
         // booking takes them before the insert (the repository re-checks under the property lock).
@@ -260,6 +264,10 @@ public class BookingService(
         {
             throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
         }
+
+        // E08/F01/US02/T01 (NF-80): the channel manager is asked too, before the hold is written and its event recorded (the lookup may save
+        // the room of the mapping, which must not carry the pending rows of the checkout with it).
+        await EnsureChannelManagerAcceptsAsync(property.OrgId, input.PropertyId, checkIn, checkOut, totalGuests);
 
         Booking createdBooking;
         try
@@ -708,6 +716,34 @@ public class BookingService(
     }
 
     private int GetPendingDirectTtlMinutes() => CheckoutHolds.GetTtlMinutes(configuration);
+
+    /// <summary>
+    /// The second half of the final check on the dates (E08/F01/US02/T01, NF-74, NF-80): the channel manager is asked besides CasaZen's own
+    /// occupancy, and an Octorate that answers "not available" refuses the booking with the same 409 as a night CasaZen has taken
+    /// (<see cref="BookingErrorCodes.DatesUnavailable"/>, the same text: the guest is not told about the channel manager). A property that is
+    /// not mirrored, an Octorate that cannot be asked (timeout, 429, 5xx, a room not chosen) or the connector being off never refuses: the create
+    /// push of the booking (E08/F01/US01/T03) reports a conflict if Octorate refuses later. Called before anything of the booking is written or
+    /// recorded, because the lookup of the target may save the room of the mapping.
+    /// </summary>
+    private async Task EnsureChannelManagerAcceptsAsync(Guid orgId, Guid propertyId, DateTime checkIn, DateTime checkOut, int guests)
+    {
+        var answer = await channelManager.CheckAsync(
+            propertyId,
+            orgId,
+            DateOnly.FromDateTime(checkIn),
+            DateOnly.FromDateTime(checkOut),
+            Math.Max(1, guests),
+            CancellationToken.None);
+        if (!answer.IsNotAvailable)
+            return;
+
+        logger.LogInformation(
+            "Booking rejected: property {PropertyId} is not available on the channel manager from {CheckIn:yyyy-MM-dd} to {CheckOut:yyyy-MM-dd}",
+            propertyId,
+            checkIn,
+            checkOut);
+        throw new DomainConflictException(BookingErrorCodes.DatesUnavailable, "BookingDatesUnavailable");
+    }
 
     /// <summary>
     /// Removes a checkout whose payment could not be started (BK-18). Best effort: when the removal fails too, the attempt

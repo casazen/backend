@@ -77,4 +77,11 @@ public enum ActivityType
     /// too). About the booking, urgent: the host checks the booking and the calendars of the channels before a second guest arrives.
     /// </summary>
     BookingOverlap = 22,
+
+    /// <summary>
+    /// The content of a listing was changed on the channel manager after CasaZen's last push (E02/F03/US01/T07, NF-27): the host chooses between
+    /// keeping the CasaZen version (republished over it) and taking the descriptions Octorate holds. About the property on one channel, so the item
+    /// is one for each property and channel; it closes when the choice is made. The number leaves room for the values other tasks append after 22.
+    /// </summary>
+    ListingChangedOutside = 30,
 }

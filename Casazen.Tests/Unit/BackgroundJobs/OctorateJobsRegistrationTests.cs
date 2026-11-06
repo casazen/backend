@@ -29,6 +29,9 @@ public class OctorateJobsRegistrationTests
         OctorateBookingImportJob.RecurringJobId,
         OctorateBookingSyncJob.RecurringJobId,
         CalendarSyncJob.RecurringJobId,
+        ListingStatusSyncJob.RecurringJobId,
+        ListingChannelHealthJob.RecurringJobId,
+        ListingOutsideChangeJob.RecurringJobId,
         OctorateCheckInRetryJob.RecurringJobId,
     ];
 
@@ -129,6 +132,13 @@ public class OctorateJobsRegistrationTests
         Assert.Equal(JobLockTimeouts.FrequentSeconds, CalendarSyncJob.LockTimeoutSeconds);
         Assert.True(CalendarSyncJob.LockTimeoutSeconds < 5 * 60);
 
+        // The follow-up of the publications is as frequent; the check of the changes made outside CasaZen, the daily health check and the
+        // publication of a listing, run on demand, wait as the other hourly, daily and on-demand jobs do.
+        Assert.Equal(JobLockTimeouts.FrequentSeconds, ListingStatusSyncJob.LockTimeoutSeconds);
+        Assert.Equal(JobLockTimeouts.DefaultSeconds, ListingOutsideChangeJob.LockTimeoutSeconds);
+        Assert.Equal(JobLockTimeouts.DefaultSeconds, ListingChannelHealthJob.LockTimeoutSeconds);
+        Assert.Equal(JobLockTimeouts.DefaultSeconds, ListingPublishJob.LockTimeoutSeconds);
+
         // The retry of the check-in writes runs every 15 minutes too (E03/F01/US01/T03).
         Assert.Equal("*/15 * * * *", OctorateCheckInRetryJob.Cron);
         Assert.Equal(JobLockTimeouts.FrequentSeconds, OctorateCheckInRetryJob.LockTimeoutSeconds);
@@ -148,6 +158,10 @@ public class OctorateJobsRegistrationTests
                      typeof(OctorateBookingStatePushJob),
                      typeof(CalendarSyncJob),
                      typeof(ICalMigrationService),
+                     typeof(ListingPublishJob),
+                     typeof(ListingStatusSyncJob),
+                     typeof(ListingChannelHealthJob),
+                     typeof(ListingOutsideChangeJob),
                  })
         {
             Assert.Contains(services, d => d.ServiceType == type && d.Lifetime == ServiceLifetime.Scoped);
@@ -166,7 +180,7 @@ public class OctorateJobsRegistrationTests
             .Select(d => d.ImplementationType)
             .ToList();
         Assert.Equal(
-            [typeof(BookingCancelledHandler), typeof(BookingCreatedHandler), typeof(BookingModifiedHandler)],
+            [typeof(BookingCancelledHandler), typeof(BookingCreatedHandler), typeof(BookingModifiedHandler), typeof(ContentNotificationHandler)],
             notifications.OrderBy(t => t!.Name, StringComparer.Ordinal));
 
         // ...and the one that queues the push of the arrival and the departure.

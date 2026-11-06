@@ -324,6 +324,9 @@ public static class RecurringJobsRegistration
             recurringJobManager.RemoveIfExists(OctorateCheckInRetryJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(OtaMessageReconcileJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(OtaMessageDeepReconcileJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(ListingStatusSyncJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(ListingChannelHealthJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(ListingOutsideChangeJob.RecurringJobId);
             return;
         }
 
@@ -362,6 +365,26 @@ public static class RecurringJobsRegistration
             OtaMessageDeepReconcileJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             OtaMessageDeepReconcileJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E02/F03/US01/T07: the follow-up of the publications of the listings (every 15 minutes), the channels that went silent (daily) and the
+        // changes made on Octorate outside CasaZen (hourly). None of them writes to Octorate but the sending of the photos a run left unsent and the removal of a photo that left the gallery.
+        recurringJobManager.AddOrUpdate<ListingStatusSyncJob>(
+            ListingStatusSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ListingStatusSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<ListingChannelHealthJob>(
+            ListingChannelHealthJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ListingChannelHealthJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<ListingOutsideChangeJob>(
+            ListingOutsideChangeJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            ListingOutsideChangeJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

@@ -18,11 +18,21 @@ namespace Casazen.Infrastructure.Services;
 /// id of the property the caller was authorized on; the encrypted import URL of a feed is never read. The only difference with the
 /// final check that refuses a booking on taken dates is timing: an expired checkout hold is shown free here and released (or kept, if
 /// its guest paid meanwhile) by that check (BK-21).
+/// <para>
+/// <b>The channel manager (E08/F01/US02/T01).</b> For a stay that can be asked (not invalid, not the reservation of a portal that the host is
+/// about to complete) on a property mirrored on Octorate, <see cref="IChannelManagerAvailability"/> is asked too, after CasaZen's own read
+/// (so a long-term property and an impossible stay never reach Octorate). "Not available" there makes the answer
+/// <see cref="HostAvailabilityState.Occupied"/> with a <see cref="HostAvailabilityConflictType.ChannelManager"/> conflict for the dates asked,
+/// whatever CasaZen's calendar says; the nearest free window is still CasaZen's own and is advice. An Octorate that cannot be asked is
+/// <c>ChannelManagerChecked = false</c> and changes nothing else. The answer is remembered by the service for 60 seconds, and the public
+/// availability never asks it.
+/// </para>
 /// </remarks>
 public sealed class HostAvailabilityService(
     AppDbContext db,
     IConfiguration configuration,
-    TimeProvider? timeProvider = null) : IHostAvailabilityService
+    TimeProvider? timeProvider = null,
+    IChannelManagerAvailability? channelManager = null) : IHostAvailabilityService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -35,6 +45,26 @@ public sealed class HostAvailabilityService(
     {
         ArgumentNullException.ThrowIfNull(property);
 
+        var own = await CheckOwnNightsAsync(property, from, to, channel, cancellationToken);
+
+        // Nothing to ask for dates that cannot be a stay, nor for a portal's reservation the host completes with the guest's name: that
+        // reservation is what Octorate would answer with, and the host is not creating a second booking.
+        if (channelManager is null || own.State is HostAvailabilityState.Invalid or HostAvailabilityState.LinkableBlock)
+            return own;
+
+        // The capacity stays CasaZen's own check: the question of Octorate takes no occupancy, one guest asks it.
+        var answer = await channelManager.CheckAsync(property.Id, property.OrgId, from, to, 1, cancellationToken);
+        return WithChannelManager(own, answer, from, to);
+    }
+
+    // CasaZen's own read of the stay: the bookings and the blocks that take its nights.
+    private async Task<HostStayAvailability> CheckOwnNightsAsync(
+        Property property,
+        DateOnly from,
+        DateOnly to,
+        BookingChannel? channel,
+        CancellationToken cancellationToken)
+    {
         // PM-01: a property in long-term mode takes no stay, the same answer as the quote of the host.
         PropertyRentalModeRules.EnsureShortRent(property);
 
@@ -128,6 +158,28 @@ public sealed class HostAvailabilityService(
 
     private static HostStayAvailability Invalid(HostAvailabilityInvalidReason reason, int nights, int? minNights) =>
         new(HostAvailabilityState.Invalid, reason, nights, minNights, [], null, null);
+
+    // What Octorate said, added to CasaZen's own answer. Not mirrored: nothing was asked and nothing is said. Could not be asked: said, and
+    // nothing else changes. "Not available": the stay is occupied whatever CasaZen's calendar says, with one more conflict for the dates asked
+    // (Octorate does not say which night); the nearest free window stays CasaZen's own, or none when CasaZen's calendar was free.
+    private static HostStayAvailability WithChannelManager(
+        HostStayAvailability own,
+        ChannelManagerAvailability answer,
+        DateOnly from,
+        DateOnly to)
+    {
+        if (answer.Checked is not { } asked)
+            return own;
+
+        if (!answer.IsNotAvailable)
+            return own with { ChannelManagerChecked = asked };
+
+        var conflicts = own.Conflicts
+            .Append(new HostAvailabilityConflict(Guid.Empty, HostAvailabilityConflictType.ChannelManager, null, null, from, to))
+            .OrderBy(c => c.From).ThenBy(c => c.Type).ThenBy(c => c.Id)
+            .ToList();
+        return own with { State = HostAvailabilityState.Occupied, Conflicts = conflicts, ChannelManagerChecked = true };
+    }
 
     // The block of a portal's calendar that the host can turn into the stay: exactly these dates, not yet a stay (OtaStays.IsConvertible),
     // and, when the host says which portal, the calendar of that portal.

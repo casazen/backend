@@ -85,6 +85,9 @@ public class PublicGuestCheckInController(
             AvailableCodeTables = view.AvailableCodeTables,
             PrivacyNoticeVersion = view.PrivacyNoticeVersion,
             MarketingConsentVersion = view.MarketingConsentVersion,
+            // Two booleans, never the data (E06/F02/US01/T03): the link is anonymous.
+            InvoiceRequested = view.InvoiceRequested,
+            HasInvoiceData = view.HasInvoiceData,
             RequiredGuestFields = view.RequiredGuestFields ?? [],
             Language = GuestLanguages.Resolve(view.Language, Request.Headers.AcceptLanguage.ToString()),
             SupportedLanguages = GuestLanguages.Supported,
@@ -146,7 +149,9 @@ public class PublicGuestCheckInController(
     /// recorded with its version (CO-15), no consent is asked for the Alloggiati registration. On success schedules the Alloggiati job for
     /// the arrival day. Invalid data → 400 ValidationProblem with the errors keyed by request property
     /// (<c>Guests[1].DocumentNumber</c>, <c>MarketingEmail</c>) and the extension <c>codes</c> (the message key of each field, NF-40);
-    /// duplicate submission → 409 <c>checkin_already_submitted</c>.
+    /// duplicate submission → 409 <c>checkin_already_submitted</c>. The optional <c>invoice</c> block («Ti serve la fattura?», FIS-01) is saved as the
+    /// invoice data of the booking in the same unit of work; one that is not valid → 422 <c>invoice_data_*</c> with the <c>field</c>, and nothing is
+    /// saved, the check-in included.
     /// </summary>
     [HttpPost("{token}")]
     [EnableRateLimiting(RateLimitPolicies.GuestCheckInSubmit)]
@@ -165,6 +170,7 @@ public class PublicGuestCheckInController(
             MarketingConsentWhatsApp = request.MarketingConsentWhatsApp,
             MarketingEmail = request.MarketingEmail,
             ConsentIpAddress = ip,
+            Invoice = request.Invoice?.ToInput(),
         };
 
         var result = await checkInService.SubmitAsync(token, submitRequest);

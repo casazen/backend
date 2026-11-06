@@ -38,6 +38,13 @@ public sealed class HostAvailabilityDto
     /// <summary>With <c>linkableBlock</c>: the block of the portal's calendar to complete with <c>POST /api/bookings/manual</c> (<c>blockId</c>).</summary>
     public Guid? LinkableBlockId { get; set; }
 
+    /// <summary>
+    /// Whether the channel manager (Octorate) was asked (E08/F01/US02/T01): <c>null</c> for a property that is not mirrored there (nothing to ask),
+    /// <c>true</c> when Octorate answered (its "not available" is an <c>occupied</c> state with a <c>channelManager</c> conflict), <c>false</c>
+    /// when it could not be asked (timeout, 429, 5xx, a room not chosen). <c>false</c> is advice only: it never blocks the host.
+    /// </summary>
+    public bool? ChannelManagerChecked { get; set; }
+
     public static HostAvailabilityDto Of(Guid propertyId, DateOnly from, DateOnly to, HostStayAvailability availability) => new()
     {
         PropertyId = propertyId,
@@ -50,6 +57,7 @@ public sealed class HostAvailabilityDto
         Conflicts = availability.Conflicts.Select(HostAvailabilityConflictDto.Of).ToList(),
         NearestFreeWindow = availability.NearestFreeWindow is { } window ? new HostAvailabilityWindowDto(window.From, window.To) : null,
         LinkableBlockId = availability.LinkableBlockId,
+        ChannelManagerChecked = availability.ChannelManagerChecked,
     };
 
     // The names the contract uses (lowerCamelCase): the enum member names, whatever the JSON options say about enums.
@@ -63,13 +71,16 @@ public sealed class HostAvailabilityConflictDto
 {
     public Guid Id { get; set; }
 
-    /// <summary><c>booking</c> (a stay of CasaZen), <c>ical</c> (a reservation a portal sent as a block of its calendar) or <c>block</c> (the host's own).</summary>
+    /// <summary>
+    /// <c>booking</c> (a stay of CasaZen), <c>ical</c> (a reservation a portal sent as a block of its calendar), <c>block</c> (the host's own) or
+    /// <c>channelManager</c> (Octorate says the nights cannot be booked: <c>id</c> is the empty id and the dates are the ones asked for).
+    /// </summary>
     public string Type { get; set; } = string.Empty;
 
-    /// <summary>The guest's name for a booking (the host sees it), the name of the calendar for a portal, the host's note for a block; <c>null</c> when there is none.</summary>
+    /// <summary>The guest's name for a booking (the host sees it), the name of the calendar for a portal, the host's note for a block, the channel Octorate names for <c>channelManager</c>; <c>null</c> when there is none.</summary>
     public string? Title { get; set; }
 
-    /// <summary>Where a booking came from or whose calendar the block is: <c>Direct</c>, <c>Manual</c>, <c>Airbnb</c>, <c>BookingCom</c> or <c>Other</c>; <c>null</c> for the host's own block.</summary>
+    /// <summary>Where a booking came from or whose calendar the block is: <c>Direct</c>, <c>Manual</c>, <c>Airbnb</c>, <c>BookingCom</c> or <c>Other</c>; <c>null</c> for the host's own block and for the channel manager.</summary>
     public string? Channel { get; set; }
 
     /// <summary>Arrival day.</summary>

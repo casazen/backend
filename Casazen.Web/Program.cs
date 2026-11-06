@@ -94,6 +94,8 @@ builder.Services.AddScoped<IWireTransferService, WireTransferService>();
 builder.Services.AddScoped<IWithholdingService, WithholdingService>();
 builder.Services.AddScoped<IOtaManager, OtaManager>();
 builder.Services.AddCasazenEmail(builder.Configuration, builder.Environment);
+// Fiscal documents of epic E06 (NF-81, NF-82): the invoice data of a booking and the issuer of the documents; every task of the epic registers in AddCasazenFiscalDocuments.
+builder.Services.AddCasazenFiscalDocuments(builder.Configuration);
 // Push notifications queued on Hangfire, sent to Expo in batches, receipts read later: MO-04.
 builder.Services.AddCasazenPush(builder.Configuration);
 // Object storage (Supabase Storage via S3; filesystem only in Development/Testing): FD-07.
