@@ -45,6 +45,9 @@ public sealed class OctorateApiClient(
     /// <summary>The <c>type</c> of Octorate's 403 for an access token that is not valid (any more): refresh and retry once.</summary>
     private const string ApiLoginInvalidType = "ApiLoginInvalid";
 
+    /// <summary>A number at or above this is a count of milliseconds since 1970 (as seconds it would be the year 5138).</summary>
+    private const long EpochMillisecondsThreshold = 100_000_000_000;
+
     /// <summary>The members of a product read by <see cref="GetRoomsAsync"/> (the v3 read answers 400 without <c>fields</c>).</summary>
     private const string RoomFields =
         "id,name,adults,children,bedroomQuantity,bathroomQuantity,bedQuantity,squareMetersSize,derivedRule";
@@ -290,6 +293,10 @@ public sealed class OctorateApiClient(
             (latitude, longitude) = (null, null);
 
         item.TryGetProperty("networkInfo", out var network);
+
+        // The police account the host connected on the Octorate panel. Not every answer has it (an accommodation created through the API
+        // has none): a member that is missing stays null, and nothing is assumed about it.
+        item.TryGetProperty("policeAccount", out var police);
         return new OctorateProperty
         {
             Id = id,
@@ -303,6 +310,9 @@ public sealed class OctorateApiClient(
             Category = OctorateHttp.StringOf(item, "propertyCategory"),
             NetworkId = OctorateHttp.StringOf(network, "accessNetwork"),
             SandboxProperty = BoolOf(item, "sandboxProperty"),
+            PoliceAccountValid = BoolOf(police, "valid"),
+            PoliceAutorun = BoolOf(police, "autorun"),
+            PoliceLastCron = DateTimeOf(police, "lastCron"),
         };
     }
 
@@ -393,6 +403,38 @@ public sealed class OctorateApiClient(
             JsonValueKind.False => false,
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// A moment of an answer, in UTC: an ISO text (a text without a zone is taken as UTC) or a number of epoch milliseconds (of seconds,
+    /// when it is too small to be milliseconds). <c>null</c> when the member is missing or is none of these: never a guess.
+    /// </summary>
+    internal static DateTime? DateTimeOf(JsonElement element, string name)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(name, out var value))
+            return null;
+
+        if (value.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(value.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed))
+        {
+            return parsed.UtcDateTime;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var epoch) && epoch > 0)
+        {
+            try
+            {
+                return (epoch >= EpochMillisecondsThreshold
+                    ? DateTimeOffset.FromUnixTimeMilliseconds(epoch)
+                    : DateTimeOffset.FromUnixTimeSeconds(epoch)).UtcDateTime;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return null;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>A successful answer: Octorate's status and its text.</summary>

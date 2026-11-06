@@ -46,6 +46,19 @@ public sealed record OctorateProperty
 
     /// <summary>The <c>sandboxProperty</c> flag of a test accommodation, when Octorate sends it.</summary>
     public bool? SandboxProperty { get; init; }
+
+    /// <summary>
+    /// Whether the connection to the police portal (Alloggiati Web) that the host set on the Octorate panel is valid
+    /// (<c>policeAccount.valid</c>). <c>null</c> when the answer does not carry it: Octorate does not expose it for every accommodation (an
+    /// accommodation created through the API has no <c>policeAccount</c>, decisions D17 and D31), and then nothing is assumed.
+    /// </summary>
+    public bool? PoliceAccountValid { get; init; }
+
+    /// <summary>Whether Octorate sends the daily automatic communication for the accommodation (<c>policeAccount.autorun</c>); <c>null</c> when not exposed.</summary>
+    public bool? PoliceAutorun { get; init; }
+
+    /// <summary>When Octorate's daily job last ran for the accommodation (<c>policeAccount.lastCron</c>), in UTC; <c>null</c> when not exposed.</summary>
+    public DateTime? PoliceLastCron { get; init; }
 }
 
 /// <summary>

@@ -4355,4 +4355,43 @@
   <data name="OctorateHandoffGuideIstatPeriodCheck" xml:space="preserve">
     <value>Controlla che il periodo risulti inviato per la regione della struttura. Un avviso rosso significa che la regione non consente l'invio diretto: in quel caso il file va caricato a mano sul portale regionale.</value>
   </data>
+  <data name="SenderRequired" xml:space="preserve">
+    <value>Indica chi invia i dati alla Polizia: il channel manager oppure tu, con il file.</value>
+  </data>
+  <data name="SenderSwitchConfirmationRequired" xml:space="preserve">
+    <value>Stai cambiando chi invia i dati degli ospiti alla Polizia per questo immobile: l'invio attuale verrà spento e nessun altro invio automatico può restare acceso. Se oggi invia il channel manager, spegni l'invio automatico anche nel suo pannello, altrimenti i dati partirebbero due volte. Conferma per continuare.</value>
+  </data>
+  <data name="SenderIstatMismatch" xml:space="preserve">
+    <value>L'invio all'ISTAT segue sempre quello ad Alloggiati Web: non si può scegliere un mittente diverso per i due.</value>
+  </data>
+  <data name="SenderCasaZenNotAvailable" xml:space="preserve">
+    <value>L'invio da parte di CasaZen non è ancora disponibile. Per ora i dati partono dal channel manager, se l'immobile è collegato, oppure li invii tu con il file.</value>
+  </data>
+  <data name="SenderChannelManagerNotAvailable" xml:space="preserve">
+    <value>Il channel manager non può inviare per questo immobile: collega l'immobile al channel manager e conferma l'abbinamento, poi riprova.</value>
+  </data>
+  <data name="SenderDeclarationNotApplicable" xml:space="preserve">
+    <value>La conferma «Attivato» vale solo quando a inviare è il channel manager.</value>
+  </data>
+  <data name="AlloggiatiDelegationRequired" xml:space="preserve">
+    <value>Prima di attivare un invio automatico devi accettare la delega della trasmissione: il responsabile delle comunicazioni resti tu (o la tua agenzia), CasaZen è lo strumento a cui affidi l'invio. Accettala e riprova.</value>
+  </data>
+  <data name="SenderGuidancePoliceAccountInvalid" xml:space="preserve">
+    <value>Il channel manager dice che il collegamento con Alloggiati Web non è attivo. Nel suo pannello controlla le credenziali, la chiave del web service e il numero della struttura per camera, fai il «Test di connessione» e attiva l'invio automatico giornaliero; poi rifai la prova qui.</value>
+  </data>
+  <data name="SenderGuidancePoliceAutorunOff" xml:space="preserve">
+    <value>Il collegamento con Alloggiati Web risulta valido, ma l'invio automatico giornaliero è spento. Accendilo nel pannello del channel manager e rifai la prova qui.</value>
+  </data>
+  <data name="SenderGuidancePoliceNotExposed" xml:space="preserve">
+    <value>Il channel manager non ci lascia leggere lo stato dell'invio. Aprilo nel suo pannello: se vedi «Attivata», confermalo qui e lo segniamo come dichiarato da te, non come verificato.</value>
+  </data>
+  <data name="SenderGuidanceNotConnected" xml:space="preserve">
+    <value>L'immobile non è collegato al channel manager: collegalo e conferma l'abbinamento prima di provare l'invio automatico.</value>
+  </data>
+  <data name="SenderGuidanceUnavailable" xml:space="preserve">
+    <value>Il channel manager non risponde in questo momento, quindi non possiamo controllare l'invio. Riprova tra qualche minuto.</value>
+  </data>
+  <data name="SenderGuidanceCasaZenNotAvailable" xml:space="preserve">
+    <value>L'invio da parte di CasaZen non è disponibile in questa versione: non c'è nulla da provare.</value>
+  </data>
 </root>

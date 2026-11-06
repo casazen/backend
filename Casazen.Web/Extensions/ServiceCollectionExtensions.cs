@@ -495,6 +495,9 @@ public static class ServiceCollectionExtensions
         // and the endpoints sit on top of them (E03/F01/US02/T01).
         services.AddScoped<IPropertySenderStore, PropertySenderStore>();
         services.AddScoped<IAlloggiatiDelegationService, AlloggiatiDelegationService>();
+        // The sender of a property for the host (E03/F01/US02/T01): its state, the switch with the confirmation and the delegation, the connection
+        // test against Octorate and the declaration «Activated». The sender «CasaZen sends» is not offered in this release (Questura accounts postponed).
+        services.AddScoped<IPropertySenderService, PropertySenderService>();
 
         // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
         // One instance per request: the EF filter reads it, the middleware and the org resolver write it (A1-20).

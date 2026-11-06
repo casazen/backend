@@ -5407,6 +5407,13 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ActivationDeclaredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ActivationDeclaredByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
                     b.Property<int>("AlloggiatiSender")
                         .IsConcurrencyToken()
                         .HasColumnType("integer");

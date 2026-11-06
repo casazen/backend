@@ -4355,4 +4355,43 @@
   <data name="OctorateHandoffGuideIstatPeriodCheck" xml:space="preserve">
     <value>Check that the period shows as sent for the region of the structure. A red warning means the region does not allow direct sending: in that case the file has to be uploaded by hand on the regional portal.</value>
   </data>
+  <data name="SenderRequired" xml:space="preserve">
+    <value>Say who sends the data to the police: the channel manager, or you with the file.</value>
+  </data>
+  <data name="SenderSwitchConfirmationRequired" xml:space="preserve">
+    <value>You are changing who sends the guest data to the police for this property: the current sender will be switched off and no other automatic sender can stay on. If the channel manager sends today, also switch off its automatic sending in its panel, otherwise the data would go out twice. Confirm to continue.</value>
+  </data>
+  <data name="SenderIstatMismatch" xml:space="preserve">
+    <value>ISTAT sending always follows Alloggiati Web sending: you cannot choose a different sender for each.</value>
+  </data>
+  <data name="SenderCasaZenNotAvailable" xml:space="preserve">
+    <value>Sending by CasaZen is not available yet. For now the data goes out through the channel manager, if the property is connected, or you send it yourself with the file.</value>
+  </data>
+  <data name="SenderChannelManagerNotAvailable" xml:space="preserve">
+    <value>The channel manager cannot send for this property: connect the property to the channel manager and confirm the match, then try again.</value>
+  </data>
+  <data name="SenderDeclarationNotApplicable" xml:space="preserve">
+    <value>The «Activated» confirmation only applies when the channel manager sends.</value>
+  </data>
+  <data name="AlloggiatiDelegationRequired" xml:space="preserve">
+    <value>Before you turn on an automatic sender you must accept the delegation of the transmission: you (or your agency) stay responsible for the communications, and CasaZen is the tool you entrust the sending to. Accept it and try again.</value>
+  </data>
+  <data name="SenderGuidancePoliceAccountInvalid" xml:space="preserve">
+    <value>The channel manager says the link with Alloggiati Web is not active. In its panel check the credentials, the web service key and the room number of the property, run the «Connection test» and turn on the daily automatic send; then run the test again here.</value>
+  </data>
+  <data name="SenderGuidancePoliceAutorunOff" xml:space="preserve">
+    <value>The link with Alloggiati Web looks valid, but the daily automatic send is off. Turn it on in the channel manager's panel and run the test again here.</value>
+  </data>
+  <data name="SenderGuidancePoliceNotExposed" xml:space="preserve">
+    <value>The channel manager does not let us read the sending status. Open it in its panel: if you see «Activated», confirm it here and we record it as declared by you, not as verified.</value>
+  </data>
+  <data name="SenderGuidanceNotConnected" xml:space="preserve">
+    <value>The property is not connected to the channel manager: connect it and confirm the match before trying automatic sending.</value>
+  </data>
+  <data name="SenderGuidanceUnavailable" xml:space="preserve">
+    <value>The channel manager is not answering right now, so we cannot check the sending. Try again in a few minutes.</value>
+  </data>
+  <data name="SenderGuidanceCasaZenNotAvailable" xml:space="preserve">
+    <value>Sending by CasaZen is not available in this version: there is nothing to test.</value>
+  </data>
 </root>
