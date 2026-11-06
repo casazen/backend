@@ -49,7 +49,9 @@ public class GuestMarketingPreferencesController(IGuestMarketingPreferencesServi
     /// as it is. Turning a channel on records a consent contact (origin and source <c>GuestPage</c>, the version, the IP, the time) and, for e-mail,
     /// queues the double opt-in message; the address is the one of the booking when it is a real address, and must be typed when the booking
     /// has an OTA forward or none. Turning a channel off withdraws it: the contact is suppressed and the guest is never written to again, and
-    /// turning it on afterwards lifts nothing. The answer is the choices as they are then. 401; 404 <c>guest_booking_not_found</c>; 409
+    /// turning it on afterwards lifts nothing. A channel that is named must say <c>enabled</c>: without it the body is a 400 <c>validation_error</c>
+    /// and nothing changes (a forgotten member must never be taken for an opt-out, which is final). The answer is the choices as they are
+    /// then. 400; 401; 404 <c>guest_booking_not_found</c>; 409
     /// <c>guest_marketing_consent_outdated</c> (the version sent is not the current one); 422 <c>guest_marketing_consent_unavailable</c> (the
     /// consent text has no configured version, or the CRM cannot store the choice here), <c>guest_marketing_email_invalid</c>,
     /// <c>guest_marketing_phone_invalid</c>; 429.
@@ -58,6 +60,7 @@ public class GuestMarketingPreferencesController(IGuestMarketingPreferencesServi
     [EnableRateLimiting(RateLimitPolicies.PublicMarketingConsent)]
     [RequestSizeLimit(4096)]
     [ProducesResponseType(typeof(GuestMarketingDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]

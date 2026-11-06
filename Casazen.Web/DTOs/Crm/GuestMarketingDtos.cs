@@ -52,10 +52,14 @@ public sealed class UpdateGuestMarketingRequest
     [MaxLength(10)]
     public string? Language { get; set; }
 
+    /// <summary>
+    /// The change the service applies. A channel whose <c>enabled</c> is missing is left as it is, never read as a withdrawal (the validation
+    /// refuses such a body before it gets here: <see cref="GuestMarketingEmailRequest.Enabled"/>).
+    /// </summary>
     public GuestMarketingChange ToChange() =>
         new(
-            Email is null ? null : new GuestMarketingEmailChange(Email.Enabled, Email.Address),
-            Whatsapp is null ? null : new GuestMarketingWhatsAppChange(Whatsapp.Enabled, Whatsapp.Phone),
+            Email is { Enabled: { } emailEnabled } ? new GuestMarketingEmailChange(emailEnabled, Email.Address) : null,
+            Whatsapp is { Enabled: { } whatsappEnabled } ? new GuestMarketingWhatsAppChange(whatsappEnabled, Whatsapp.Phone) : null,
             ConsentVersion,
             Language);
 }
@@ -63,8 +67,12 @@ public sealed class UpdateGuestMarketingRequest
 /// <summary>The e-mail part of a change.</summary>
 public sealed class GuestMarketingEmailRequest
 {
-    /// <summary><c>true</c> to consent, <c>false</c> to withdraw. A missing member is <c>false</c>: nothing is ever consented by default.</summary>
-    public bool Enabled { get; set; }
+    /// <summary>
+    /// <c>true</c> to consent, <c>false</c> to withdraw. <b>Required</b>: a body without it is a 400, because the opt-out it would be taken for is
+    /// final (a suppression is never lifted) and a forgotten member must not cause one.
+    /// </summary>
+    [Required(ErrorMessage = "GuestMarketingEnabledRequired")]
+    public bool? Enabled { get; set; }
 
     /// <summary>The address to consent with; needed when the booking has an OTA forward address or none, else the address of the booking is used.</summary>
     [MaxLength(255)]
@@ -74,8 +82,9 @@ public sealed class GuestMarketingEmailRequest
 /// <summary>The WhatsApp part of a change.</summary>
 public sealed class GuestMarketingWhatsappRequest
 {
-    /// <summary><c>true</c> to consent, <c>false</c> to withdraw.</summary>
-    public bool Enabled { get; set; }
+    /// <summary><c>true</c> to consent, <c>false</c> to withdraw. <b>Required</b>, like <see cref="GuestMarketingEmailRequest.Enabled"/>.</summary>
+    [Required(ErrorMessage = "GuestMarketingEnabledRequired")]
+    public bool? Enabled { get; set; }
 
     /// <summary>The number to consent with; the phone of the booking is used when it is left out.</summary>
     [MaxLength(40)]

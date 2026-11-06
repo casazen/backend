@@ -4707,6 +4707,9 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="GuestMarketingPhoneInvalid" xml:space="preserve">
     <value>Enter a valid phone number to receive messages on WhatsApp.</value>
   </data>
+  <data name="GuestMarketingEnabledRequired" xml:space="preserve">
+    <value>Say whether you want to turn this channel on or off: without a choice we change nothing.</value>
+  </data>
   <data name="PaymentLinkUnavailable" xml:space="preserve">
     <value>The payment link cannot be created: it needs a Stripe account ready to take payments, a balance to pay and a booking you entered that is not cancelled. If a payment is already in progress, wait for its outcome.</value>
   </data>
