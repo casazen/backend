@@ -60,7 +60,8 @@ public class BookingServiceTests
             _mockHoldExpiry.Object,
             new OnSiteRequestNotifier(
                 _db, _emails, EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()),
-            _mockPricing.Object);
+            _mockPricing.Object,
+            NoChannelManager.Instance);
         _mockPricing
             .Setup(s => s.GetAppliedNightlyPricesAsync(It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<DateOnly, decimal>());
@@ -799,7 +800,8 @@ public class BookingServiceTests
             _mockHoldExpiry.Object,
             new OnSiteRequestNotifier(
                 _db, _emails, EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()),
-            _mockPricing.Object);
+            _mockPricing.Object,
+            NoChannelManager.Instance);
     }
 
     private Property ConnectReadyProperty()

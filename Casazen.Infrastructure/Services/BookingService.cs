@@ -31,13 +31,13 @@ public class BookingService(
     ICheckoutHoldExpiryService checkoutHoldExpiry,
     OnSiteRequestNotifier onSiteNotifier,
     IPricingAdapterService pricingAdapterService,
+    IChannelManagerAvailability channelManager,
     TimeProvider? timeProvider = null,
     IStayDiscountService? stayDiscountService = null,
     IDomainEventRecorder? domainEvents = null,
     ICrmContactService? crmContacts = null,
     IMarketingConfirmationService? marketingConfirmation = null,
-    ICrmContactIndex? contactIndex = null,
-    IChannelManagerAvailability? channelManager = null) : IBookingService
+    ICrmContactIndex? contactIndex = null) : IBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -727,9 +727,6 @@ public class BookingService(
     /// </summary>
     private async Task EnsureChannelManagerAcceptsAsync(Guid orgId, Guid propertyId, DateTime checkIn, DateTime checkOut, int guests)
     {
-        if (channelManager is null)
-            return;
-
         var answer = await channelManager.CheckAsync(
             propertyId,
             orgId,

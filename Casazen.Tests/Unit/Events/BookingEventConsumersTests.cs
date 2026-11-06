@@ -421,6 +421,20 @@ public class BookingEventConsumersTests : IAsyncLifetime
     }
 
     [Fact]
+    public void AddCasazenBookingOperations_RegistersTheAvailabilityOfTheChannelManager()
+    {
+        var services = new ServiceCollection();
+
+        services.AddCasazenBookingOperations();
+
+        // BookingService needs it to write a booking (E08/F01/US02/T01, NF-80): the check that no booking takes nights the channel manager
+        // refuses is the service's, and the container cannot build the service without this registration.
+        var descriptor = Assert.Single(services, d => d.ServiceType == typeof(IChannelManagerAvailability));
+        Assert.Equal(typeof(ChannelManagerAvailabilityService), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+    }
+
+    [Fact]
     public void TheClosingRulesOfTheNewItems_AreInTheAutoCloseHandler()
     {
         Assert.Contains(ActivityType.BookingSpecialRequest, ActivityAutoCloseHandler.Rules[DomainEventType.CheckInCompleted]);
