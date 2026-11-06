@@ -1047,6 +1047,118 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("CalendarBlocks");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.CalendarChangeChunk", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateOnly>("FromDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OctorateProcessId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProcessId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("ToDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProcessId");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("OrgId", "PropertyId", "State");
+
+                    b.ToTable("CalendarChangeChunks");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CalendarChangeProcess", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DayCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("PropertyCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("QuotaUnitsEstimated")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RequestedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SummaryJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "CreatedAt");
+
+                    b.HasIndex("State", "NextAttemptAt");
+
+                    b.ToTable("CalendarChangeProcesses");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.Campaign", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7196,6 +7308,67 @@ namespace Casazen.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyDayRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("ClosedToArrival")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ClosedToDeparture")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("MaxAdvanceDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MaxNights")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MinAdvanceDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MinNights")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("Price")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("StayDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId", "StayDate")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_PropertyDayRules_PropertyId_StayDate");
+
+                    b.HasIndex("OrgId", "PropertyId", "StayDate");
+
+                    b.ToTable("PropertyDayRules", t =>
+                        {
+                            t.HasCheckConstraint("CK_PropertyDayRules_Values", "(\"Price\" IS NULL OR (\"Price\" >= 0.01 AND \"Price\" <= 100000)) AND (\"MinNights\" IS NULL OR (\"MinNights\" >= 1 AND \"MinNights\" <= 365)) AND (\"MaxNights\" IS NULL OR (\"MaxNights\" >= 1 AND \"MaxNights\" <= 365)) AND (\"MinNights\" IS NULL OR \"MaxNights\" IS NULL OR \"MaxNights\" >= \"MinNights\") AND (\"MinAdvanceDays\" IS NULL OR (\"MinAdvanceDays\" >= 0 AND \"MinAdvanceDays\" <= 730)) AND (\"MaxAdvanceDays\" IS NULL OR (\"MaxAdvanceDays\" >= 0 AND \"MaxAdvanceDays\" <= 730)) AND (\"MinAdvanceDays\" IS NULL OR \"MaxAdvanceDays\" IS NULL OR \"MaxAdvanceDays\" >= \"MinAdvanceDays\")");
+                        });
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.PropertyDocument", b =>
                 {
                     b.Property<Guid>("Id")
@@ -13109,6 +13282,36 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Property");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.CalendarChangeChunk", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.CalendarChangeProcess", null)
+                        .WithMany()
+                        .HasForeignKey("ProcessId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.CalendarChangeProcess", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.Campaign", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.GuestSegment", "Segment")
@@ -14316,6 +14519,21 @@ namespace Casazen.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyComplianceSender", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyDayRule", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", null)
                         .WithMany()

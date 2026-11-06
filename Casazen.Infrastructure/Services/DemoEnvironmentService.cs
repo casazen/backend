@@ -1602,6 +1602,31 @@ public class DemoEnvironmentService(
             listingRows.Add((TestDataEntities.PropertyStayDiscount, tier.Id, template.Key + "/discount-" + demoDiscount.MinNights));
         }
 
+        // NF-36: the price and the rules of single nights of the house (invented). Like the rows above they go with their property (cascade) at the
+        // next reset and carry a marker of their own; the nights are counted from the day of the reset, on the calendar of the property.
+        var firstNight = DayRuleRules.TodayOf(property.Timezone, clock.GetUtcNow());
+        foreach (var demoRule in template.DayRules ?? [])
+        {
+            var rule = new PropertyDayRule
+            {
+                OrgId = orgId,
+                PropertyId = property.Id,
+                StayDate = firstNight.AddDays(demoRule.OffsetDays),
+                Price = demoRule.Price,
+                MinNights = demoRule.MinNights,
+                MaxNights = demoRule.MaxNights,
+                ClosedToArrival = demoRule.ClosedToArrival,
+                ClosedToDeparture = demoRule.ClosedToDeparture,
+                MinAdvanceDays = demoRule.MinAdvanceDays,
+                MaxAdvanceDays = demoRule.MaxAdvanceDays,
+                CreatedAt = now,
+                UpdatedAt = now,
+                UpdatedByUserId = ownerId,
+            };
+            db.PropertyDayRules.Add(rule);
+            listingRows.Add((TestDataEntities.PropertyDayRule, rule.Id, template.Key + "/day-rule-" + demoRule.OffsetDays));
+        }
+
         await db.SaveChangesAsync(cancellationToken);
         foreach (var (entityType, id, key) in listingRows)
             await MarkAsync(orgId, entityType, id, TestDataOrigins.Showcase, key, cancellationToken);

@@ -182,6 +182,13 @@ public static class TestDataEntities
     public const string OctorateBookingSync = "OctorateBookingSync";
 
     /// <summary>
+    /// The price and the rules of one night of a showcase house (<see cref="Entities.PropertyDayRule"/>, E08/F05/US01/T01, NF-36): the nights of the demo house
+    /// that have their own price, a minimum stay or a closed arrival. The rows go with their house (cascade) and the reset deletes their markers
+    /// with the other showcase markers; a rule the host wrote has no marker and is never touched.
+    /// </summary>
+    public const string PropertyDayRule = "PropertyDayRule";
+
+    /// <summary>
     /// Who sends the police and ISTAT communications of a showcase house (<see cref="Entities.PropertyComplianceSender"/>, E03/F02/US01/T03, NF-52):
     /// the choice the demo host stored, so the traffic light reads the stay of that house as entrusted to the channel manager. It follows its house
     /// (cascade) and the reset deletes its marker with the other showcase markers; a real choice has no marker and is never touched.

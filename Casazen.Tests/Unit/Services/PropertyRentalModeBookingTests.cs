@@ -66,7 +66,8 @@ public class PropertyRentalModeBookingTests
             new OnSiteRequestNotifier(
                 _db, new RecordingEmailQueue(), EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()),
             _pricing.Object,
-            NoChannelManager.Instance);
+            NoChannelManager.Instance,
+            NoDayRules.Instance);
         _pricing
             .Setup(s => s.GetAppliedNightlyPricesAsync(It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Dictionary<DateOnly, decimal>());

@@ -122,7 +122,7 @@ public class BookingsController(
     /// <i>arrive</i> in the range (the check-in date: not the stays that have a day in it, which <c>from</c>/<c>to</c> do);
     /// <c>view</c> is a chip, <c>all</c> (default), <c>toConfirm</c>, <c>upcoming</c>, <c>inProgress</c>, <c>completed</c> or
     /// <c>cancelled</c> (<see cref="BookingListRules.InView"/>); <c>channel</c> one or more of <c>Direct</c>, <c>Manual</c>,
-    /// <c>Airbnb</c>, <c>BookingCom</c>, <c>Other</c>; <c>checkInStatus</c> one or more of <c>NotSent</c>, <c>Sent</c>,
+    /// <c>Airbnb</c>, <c>BookingCom</c>, <c>Expedia</c>, <c>Vrbo</c>, <c>TripAdvisor</c>, <c>Agoda</c>, <c>Other</c> (every other source: <c>Other</c> no longer returns the four portals, ask for them by name); <c>checkInStatus</c> one or more of <c>NotSent</c>, <c>Sent</c>,
     /// <c>InProgress</c>, <c>Completed</c>, <c>Expired</c> (the state of the online check-in link, as in
     /// <c>GET /api/dashboard/today</c>); <c>sort</c> is <c>checkIn</c>, <c>createdAt</c>, <c>total</c>, <c>status</c> or
     /// <c>guest</c>, then <c>:asc</c> (default) or <c>:desc</c>. Each row also says <c>channel</c>, <c>paymentState</c>,
