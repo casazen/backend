@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.3";
+    public const string Version = "2026-11-06.4";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -42,6 +42,13 @@ public static class DemoShowcaseCatalog
     /// share one.
     /// </summary>
     public const string CrmSharedPhone = "+39 333 0000777";
+
+    /// <summary>
+    /// The token of the welcome link of <see cref="Scenario.CrmWelcomeLink"/>: fixed, so a client can open <c>/benvenuto/{token}</c> after every
+    /// reset. It says TEST, uses only the characters of a base64url token and is not random: a real link is 32 random characters. The token is unique
+    /// among all the links of the installation, so the link is made only when no other org holds it.
+    /// </summary>
+    public const string CrmWelcomeToken = "TEST-benvenuto-villa-lago-demo-01";
 
     public static class Scenario
     {
@@ -97,6 +104,13 @@ public static class DemoShowcaseCatalog
         /// contacts and the proposed merges are written by the CRM sync of the showcase bookings.
         /// </summary>
         public const string CrmProfiles = "crm-profiles";
+
+        /// <summary>
+        /// The welcome link of a house (E07/F04/US01/T03, NF-90): the address behind the QR code printed in the house, where a guest leaves a contact
+        /// and a per-channel consent. The demo house has an active link with a fixed test token (<see cref="CrmWelcomeToken"/>), so the public
+        /// welcome page can be opened after every reset.
+        /// </summary>
+        public const string CrmWelcomeLink = "crm-welcome-link";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -147,6 +161,7 @@ public static class DemoShowcaseCatalog
         Scenario.MarketplacePartnersVisible,
         Scenario.MarketplaceActivationDeclared,
         Scenario.CrmProfiles,
+        Scenario.CrmWelcomeLink,
     ];
 
     /// <summary>
@@ -831,6 +846,16 @@ public static class DemoShowcaseCatalog
     [
         new("attivazione-dichiarata", "partner-di-prova", -3, Scenario.MarketplaceActivationDeclared),
     ];
+
+    /// <summary>
+    /// The welcome link of the demo house (E07/F04/US01/T03, NF-90): the lake villa has an active link with the fixed test token
+    /// <see cref="CrmWelcomeToken"/>, so the host sees the QR code of a house that has one and a client can open the public welcome page. Written
+    /// for the org at reset, marked as showcase data (<c>TestDataEntities.WelcomeLink</c>), deleted with its house by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoWelcomeLinkTemplate> WelcomeLinks { get; } =
+    [
+        new("benvenuto-villa-lago", "villa-lago", CrmWelcomeToken, Scenario.CrmWelcomeLink),
+    ];
 }
 
 public sealed record DemoPlace(string City, string IstatCode, string RegionCode, string PostalCode, string Address);
@@ -1212,3 +1237,9 @@ public sealed record DemoMarketplaceFaq(string Question, string Answer);
 /// declared (not proven by Octorate), declared <paramref name="DeclaredOffsetDays"/> days from the reset (negative: in the past).
 /// </summary>
 public sealed record DemoMarketplaceActivationTemplate(string Key, string PartnerKey, int DeclaredOffsetDays, string Scenario);
+
+/// <summary>
+/// The active welcome link of a demo house (E07/F04/US01/T03, NF-90): the house is <paramref name="PropertyKey"/> (a
+/// <see cref="DemoPropertyTemplate.Key"/>) and the token is the fixed test token <paramref name="Token"/>, in the alphabet of a base64url token.
+/// </summary>
+public sealed record DemoWelcomeLinkTemplate(string Key, string PropertyKey, string Token, string Scenario);

@@ -41,6 +41,8 @@ public class PublicOrgController(
         dto.CanonicalUrl = siteUrls.TryLandingUrl(org);
         // DB-03: the checkout offers the "send me offers" box only when its text has a version (CO-15), like the check-in portal.
         dto.MarketingConsentVersion = GdprOptions.Normalize(gdprOptions.Value.MarketingConsentVersion);
+        // E07/F04/US01/T02: the soft opt-in notice (art. 130 c. 4), shown only when its text has a version; null while the product owner has not set one.
+        dto.SoftOptInNoticeVersion = GdprOptions.Normalize(gdprOptions.Value.SoftOptInNoticeVersion);
         return Ok(dto);
     }
 
