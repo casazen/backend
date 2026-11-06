@@ -332,6 +332,9 @@ public class AppDbContext(
     public DbSet<GuestThread> GuestThreads { get; set; } = null!;
     public DbSet<GuestMessage> GuestMessages { get; set; } = null!;
 
+    // The tourist tax a host paid to a comune and the receipt of the payment: the «paid» half of the summary per comune (NF-100, REP-05)
+    public DbSet<TouristTaxRemittance> TouristTaxRemittances { get; set; } = null!;
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
@@ -1576,6 +1579,25 @@ public class AppDbContext(
                 .HasDatabaseName(WizardDraft.NewEntityIndexName);
             entity.HasIndex(d => d.ExpiresAt)
                 .HasFilter("\"UserId\" <> ''");
+        });
+
+        // ─── Tourist tax paid to the comuni (NF-100, REP-05) ───────────────────────
+        // The «paid» half of the summary per comune. A comune can be paid in instalments, so the payments of the same comune and period are
+        // not unique: the index only serves the summary, which reads the payments of an org by comune and by the period they lie in. A
+        // fiscal proof must not disappear with a row of the org (RESTRICT), and the amount and the period are checked by the database too:
+        // a payment is above zero and starts no later than it ends.
+        modelBuilder.Entity<TouristTaxRemittance>(entity =>
+        {
+            entity.HasOne<Org>()
+                .WithMany()
+                .HasForeignKey(r => r.OrgId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(r => new { r.OrgId, r.ComuneKey, r.PeriodFrom, r.PeriodTo });
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_TouristTaxRemittances_PaidAmountPositive", "\"PaidAmount\" > 0");
+                t.HasCheckConstraint("CK_TouristTaxRemittances_PeriodOrder", "\"PeriodFrom\" <= \"PeriodTo\"");
+            });
         });
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
