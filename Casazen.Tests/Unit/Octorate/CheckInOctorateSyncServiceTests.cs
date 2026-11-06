@@ -192,6 +192,188 @@ public class CheckInOctorateSyncServiceTests
     }
 
     [Fact]
+    public async Task OctorateCheckIn_ChangeAfterAGuestWasSentToThePolice_UpdatesOctorateAndWarnsTheHost_Test()
+    {
+        // The channel manager is the sender: the guests go with draft = false, that is Octorate transmits them to the police.
+        var h = await Harness.CreateAsync(ComplianceSenderType.ChannelManager);
+        var first = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
+        var unchanged = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
+        Assert.False(first.CorrectionAfterSend);
+        Assert.Equal(OctorateCheckInSendState.NothingToSend, unchanged.State);
+        Assert.False(unchanged.CorrectionAfterSend);
+        Assert.Equal(2, h.Sent.Count);
+
+        // A guest changes after the send: Octorate gets the update, with the id it gave, and the host is told that what was transmitted may need
+        // a correction on the Alloggiati portal (AC-NF41-3). The other guest is not sent again.
+        await h.ChangeGuestAsync(1, "Verdi");
+        var corrected = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
+
+        Assert.Equal(OctorateCheckInSendState.Sent, corrected.State);
+        Assert.True(corrected.CorrectionAfterSend);
+        Assert.Contains(corrected.Guests, g => g.Position == 1 && g.Outcome == OctorateGuestSendOutcome.Updated);
+        Assert.Contains(corrected.Guests, g => g.Position == 0 && g.Outcome == OctorateGuestSendOutcome.Unchanged);
+        var update = h.Sent[^1];
+        Assert.Equal(3, h.Sent.Count);
+        Assert.Equal(1, update.Position);
+        Assert.Equal("guest-1", update.OctorateGuestId);
+        Assert.Equal("Verdi", update.FamilyName);
+
+        // A guest sent as a draft (another sender, with the switch on) was not transmitted: changing it warns nobody.
+        var draft = await Harness.CreateAsync(ComplianceSenderType.Manual, sendWhenNotChannelManager: true);
+        await draft.Service().SendGuestsAsync(draft.BookingId, CancellationToken.None);
+        await draft.ChangeGuestAsync(1, "Verdi");
+
+        var changed = await draft.Service().SendGuestsAsync(draft.BookingId, CancellationToken.None);
+
+        Assert.Equal(OctorateCheckInSendState.Sent, changed.State);
+        Assert.False(changed.CorrectionAfterSend);
+    }
+
+    [Fact]
+    public async Task OctorateCheckIn_AttemptIsOnRecordBeforeTheCall_AndASendCutShortIsRetried_Test()
+    {
+        var h = await Harness.CreateAsync(ComplianceSenderType.ChannelManager);
+        var during = new List<(int Position, OctorateSyncStatus Status, int Attempts)>();
+        h.Client
+            .Setup(c => c.UpsertCheckInGuestsAsync(
+                Accommodation, Reservation, It.IsAny<IReadOnlyList<OctorateCheckInGuestUpsert>>(), It.IsAny<CancellationToken>()))
+            .Callback(() =>
+            {
+                using var inside = h.NewDb();
+                var links = inside.StayGuestOctorateLinks.OrderBy(l => l.Position).ToList();
+                during.AddRange(links.Select(l => (l.Position, l.Status, l.Attempts)));
+            })
+            .Throws(new InvalidOperationException("the process was cut short"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None));
+
+        // When the call was made both guests were already on record as pending, first attempt: nothing is lost if the call never comes back.
+        Assert.Equal(new[] { (0, OctorateSyncStatus.Pending, 1), (1, OctorateSyncStatus.Pending, 1) }, during);
+
+        // The retry job takes them up, and they go through.
+        h.ClientSucceeds();
+        var retried = await h.Service().RetryGuestsAsync(h.BookingId, CancellationToken.None);
+
+        Assert.Equal(OctorateCheckInSendState.Sent, retried.State);
+        await using var db = h.NewDb();
+        Assert.All(await db.StayGuestOctorateLinks.ToListAsync(), link => Assert.Equal(OctorateSyncStatus.Sent, link.Status));
+    }
+
+    [Fact]
+    public async Task OctorateCheckIn_AStateIsSentOnce_Test()
+    {
+        // NF-45, AC-NF45-1: a state of the stay goes to Octorate once; asked again, it answers that it was sent and calls nothing.
+        var h = await Harness.CreateAsync(ComplianceSenderType.ChannelManager, noShow: true);
+
+        var first = await h.Service().SetStayStateAsync(h.BookingId, OctorateStayState.NoShow, CancellationToken.None);
+        var second = await h.Service().SetStayStateAsync(h.BookingId, OctorateStayState.NoShow, CancellationToken.None);
+
+        Assert.Equal(OctorateStayStateOutcome.Sent, first.Outcome);
+        Assert.Equal(OctorateStayStateOutcome.AlreadySent, second.Outcome);
+        h.Client.Verify(
+            c => c.SetCheckInStatusAsync(Accommodation, Reservation, OctorateCheckInStatus.NoShow, It.IsAny<CancellationToken>()), Times.Once);
+        await using var db = h.NewDb();
+        var row = await db.OctorateStayStateSyncs.SingleAsync();
+        Assert.Equal(OctorateSyncStatus.Sent, row.Status);
+        Assert.Equal(1, row.Attempts);
+    }
+
+    [Fact]
+    public async Task OctorateCheckIn_FailedGuestsAreRetried_OneTodoAtTheLastAttempt_ClosedWhenTheyGoThrough_Test()
+    {
+        var h = (await Harness.CreateAsync(ComplianceSenderType.ChannelManager)).MaxAttempts(3);
+        h.ClientFails(CheckInErrorCodes.Server);
+
+        // The confirmation of the wizard is the first attempt, the retry job the next ones: the code is on the links, and no "To do" yet.
+        var first = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
+        var second = await h.Service().RetryGuestsAsync(h.BookingId, CancellationToken.None);
+        Assert.Equal(OctorateCheckInSendState.Failed, first.State);
+        Assert.Equal(OctorateCheckInSendState.Failed, second.State);
+        Assert.All(first.Guests.Concat(second.Guests), g => Assert.Equal(CheckInErrorCodes.Server, g.ErrorCode));
+        h.Activities.Verify(a => a.CreateAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+
+        // The third attempt is the last: one "To do" for the booking (no guest data in it), and its id is kept on the links.
+        await h.Service().RetryGuestsAsync(h.BookingId, CancellationToken.None);
+        h.Activities.Verify(
+            a => a.CreateAsync(
+                It.Is<CreateTodoRequest>(r => r.Reason == CheckInOctorateSyncService.TodoReason && r.EntityId == h.BookingId),
+                It.IsAny<CancellationToken>()),
+            Times.AtLeastOnce);
+        await using (var db = h.NewDb())
+        {
+            Assert.All(
+                await db.StayGuestOctorateLinks.ToListAsync(),
+                link =>
+                {
+                    Assert.Equal(OctorateSyncStatus.Failed, link.Status);
+                    Assert.Equal(3, link.Attempts);
+                    Assert.Equal(Harness.TodoId, link.TodoActivityId);
+                });
+        }
+
+        // The attempts are used up: the retry job leaves them alone (the host fixes the data and confirms again).
+        var exhausted = await h.Service().RetryGuestsAsync(h.BookingId, CancellationToken.None);
+        Assert.Equal(OctorateCheckInSendState.NothingToSend, exhausted.State);
+
+        // The confirmation goes through at last: the guests are sent and the "To do" is closed.
+        h.ClientSucceeds();
+        var done = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
+
+        Assert.Equal(OctorateCheckInSendState.Sent, done.State);
+        h.Activities.Verify(
+            a => a.CloseAsync(Harness.TodoId, InternalActivity.ClosedBySystem, It.IsAny<CancellationToken>()), Times.AtLeastOnce);
+        await using var after = h.NewDb();
+        Assert.All(
+            await after.StayGuestOctorateLinks.ToListAsync(),
+            link =>
+            {
+                Assert.Equal(OctorateSyncStatus.Sent, link.Status);
+                Assert.Null(link.TodoActivityId);
+            });
+    }
+
+    [Fact]
+    public async Task OctorateCheckIn_FailedStatePushIsRetried_OneTodoAtTheLastAttempt_ClosedWhenItGoesThrough_Test()
+    {
+        var h = (await Harness.CreateAsync(ComplianceSenderType.ChannelManager, noShow: true)).MaxAttempts(2);
+        h.Client
+            .Setup(c => c.SetCheckInStatusAsync(Accommodation, Reservation, OctorateCheckInStatus.NoShow, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateServerException(503));
+
+        var first = await h.Service().SetStayStateAsync(h.BookingId, OctorateStayState.NoShow, CancellationToken.None);
+        h.Activities.Verify(a => a.CreateAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        var second = await h.Service().SetStayStateAsync(h.BookingId, OctorateStayState.NoShow, CancellationToken.None);
+
+        // Kept as failed with the code; the second attempt is the last, and raises the one "To do".
+        Assert.Equal(OctorateStayStateOutcome.Failed, first.Outcome);
+        Assert.Equal(CheckInErrorCodes.Server, first.ErrorCode);
+        Assert.Equal(OctorateStayStateOutcome.Failed, second.Outcome);
+        h.Activities.Verify(
+            a => a.CreateAsync(It.Is<CreateTodoRequest>(r => r.Reason == CheckInOctorateSyncService.TodoReason), It.IsAny<CancellationToken>()),
+            Times.Once);
+        await using (var db = h.NewDb())
+        {
+            var failed = await db.OctorateStayStateSyncs.SingleAsync();
+            Assert.Equal(OctorateSyncStatus.Failed, failed.Status);
+            Assert.Equal(2, failed.Attempts);
+            Assert.Equal(Harness.TodoId, failed.TodoActivityId);
+        }
+
+        // It goes through at last: sent, and the "To do" is closed.
+        h.Client
+            .Setup(c => c.SetCheckInStatusAsync(Accommodation, Reservation, OctorateCheckInStatus.NoShow, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var third = await h.Service().SetStayStateAsync(h.BookingId, OctorateStayState.NoShow, CancellationToken.None);
+
+        Assert.Equal(OctorateStayStateOutcome.Sent, third.Outcome);
+        h.Activities.Verify(a => a.CloseAsync(Harness.TodoId, InternalActivity.ClosedBySystem, It.IsAny<CancellationToken>()), Times.Once);
+        await using var after = h.NewDb();
+        var sent = await after.OctorateStayStateSyncs.SingleAsync();
+        Assert.Equal(OctorateSyncStatus.Sent, sent.Status);
+        Assert.Null(sent.TodoActivityId);
+    }
+
+    [Fact]
     public async Task OctorateCheckIn_NoWriteWithoutConfirmedMapping_Test()
     {
         // A listing only proposed, ambiguous or rejected: not mirrored.
