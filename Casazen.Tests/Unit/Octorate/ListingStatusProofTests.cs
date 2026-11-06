@@ -84,6 +84,58 @@ public class ListingStatusProofTests
     }
 
     [Fact]
+    public async Task ListingStatus_Summary_ForACollaboratorGivenSomeProperties_ListsOnlyThoseItWasGiven_Test()
+    {
+        // The collaborator «Solo alcuni» (AM-03): the list of the properties carries the state of the channels of the properties it reaches, and of no
+        // other property of the org; one given nothing sees nothing; the whole org sees both.
+        var granted = await SeedPropertyAsync(OrgA);
+        var hidden = await SeedPropertyAsync(OrgA);
+        await SeedRowAsync(granted, "homeaway", ChannelPublishStatus.Published);
+        await SeedRowAsync(hidden, "homeaway", ChannelPublishStatus.ToFix);
+        await using (var seed = NewDb())
+        {
+            seed.PropertyMemberAccesses.Add(new PropertyMemberAccess { OrgId = OrgA, UserId = "auth0|only-some", PropertyId = granted });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = NewDb(new FixedTenant(OrgA));
+        var restricted = await Status(db).GetSummaryAsync(new HostScope(OrgA, GrantedToUserId: "auth0|only-some"), CancellationToken.None);
+        var givenNothing = await Status(db).GetSummaryAsync(new HostScope(OrgA, GrantedToUserId: "auth0|given-nothing"), CancellationToken.None);
+        var everyone = await Status(db).GetSummaryAsync(new HostScope(OrgA), CancellationToken.None);
+
+        Assert.Equal([granted], restricted.Select(summary => summary.PropertyId));
+        Assert.Equal(ChannelPublishStatus.Published, Assert.Single(restricted).WorstStatus);
+        Assert.Empty(givenNothing);
+        Assert.Equal(new[] { granted, hidden }.Order(), everyone.Select(summary => summary.PropertyId).Order());
+    }
+
+    [Theory]
+    [InlineData(OutsideChangeChoice.Keep)]
+    [InlineData(OutsideChangeChoice.Take)]
+    public async Task ListingOutsideChange_PropertyOfTheOrgOutOfTheReachOfThePerson_NotFound_Test(OutsideChangeChoice choice)
+    {
+        // A property of its own org that the person does not reach («Solo alcuni») is as absent as another org's: no republication, no text adopted,
+        // nothing read from Octorate, and the change stays flagged for somebody who reaches the property.
+        var propertyId = await SeedPropertyAsync(OrgA);
+        await SeedRowAsync(propertyId, "homeaway", ChannelPublishStatus.Published, externalChange: true, changedGroups: ["descriptions"]);
+        _scope
+            .Setup(s => s.CanReachPropertyAsync("auth0|only-some", It.IsAny<IReadOnlySet<string>>(), OrgA, It.IsAny<Guid?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        await using var db = NewDb(new FixedTenant(OrgA));
+
+        await Assert.ThrowsAsync<NotFoundException>(
+            () => Outside(db).ResolveAsync(propertyId, "homeaway", choice, "auth0|only-some", CancellationToken.None));
+
+        _push.Verify(
+            p => p.PublishAsync(It.IsAny<Guid>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<bool>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<IReadOnlySet<string>?>()),
+            Times.Never);
+        _profiles.Verify(p => p.SaveAsync(It.IsAny<Guid>(), It.IsAny<Casazen.Core.SiteProfile.SitePropertyProfileInput>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Empty(_client.Invocations);
+        await using var check = NewDb();
+        Assert.NotNull((await check.ListingChannelStates.AsNoTracking().SingleAsync()).ExternalChangeAt);
+    }
+
+    [Fact]
     public async Task ListingOutsideChange_NotOverwrittenWithoutChoice_Test()
     {
         // The content changed on Octorate: it is found and flagged with the groups, reading only; what CasaZen holds is not written over it.
