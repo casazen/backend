@@ -26,6 +26,11 @@ public class CrmMarketingFeatureFlagTests(CasazenWebApplicationFactory factory) 
     [InlineData("POST", "/api/campaigns/00000000-0000-0000-0000-000000000001/submit")]
     [InlineData("POST", "/api/campaigns/00000000-0000-0000-0000-000000000001/schedule")]
     [InlineData("GET", "/api/crm/guests")]
+    [InlineData("GET", "/api/crm/guests/00000000-0000-0000-0000-000000000001")]
+    [InlineData("PUT", "/api/crm/guests/00000000-0000-0000-0000-000000000001/tags")]
+    [InlineData("GET", "/api/crm/merge-candidates")]
+    [InlineData("POST", "/api/crm/merge-candidates/00000000-0000-0000-0000-000000000001/dismiss")]
+    [InlineData("POST", "/api/crm/merge-candidates/00000000-0000-0000-0000-000000000001/merge")]
     public async Task FeatureGate_CrmMarketingOff_CampaignsAnswer404_Test(string method, string path)
     {
         using var client = factory.CreateClient();

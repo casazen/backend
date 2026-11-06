@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq.Expressions;
 using System.Text.Json;
 using Casazen.Core.Entities;
 
@@ -148,4 +149,14 @@ public static class GuestMatchRules
 
         return status == BookingStatus.CheckedOut || checkOutDate < today;
     }
+
+    /// <summary>
+    /// <see cref="IsStay"/> as a condition on a booking, for a query that counts or adds up the stays in SQL (the profile list of a caller who
+    /// reaches only some properties, E07/F01/US03/T01). The same rule: not cancelled, not pending, and either checked out or with a check-out
+    /// before <paramref name="today"/>.
+    /// </summary>
+    public static Expression<Func<Booking, bool>> StayOf(DateTime today) =>
+        booking => booking.Status != BookingStatus.Cancelled
+            && booking.Status != BookingStatus.Pending
+            && (booking.Status == BookingStatus.CheckedOut || booking.CheckOutDate < today);
 }

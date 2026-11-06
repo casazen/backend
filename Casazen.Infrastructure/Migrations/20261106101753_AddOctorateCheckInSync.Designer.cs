@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261106100125_AddOctorateCheckInSync")]
+    [Migration("20261106101753_AddOctorateCheckInSync")]
     partial class AddOctorateCheckInSync
     {
         /// <inheritdoc />
@@ -3655,6 +3655,233 @@ namespace Casazen.Infrastructure.Migrations
                         .HasDatabaseName("UIX_OctorateConnections_OrgId_Environment");
 
                     b.ToTable("OctorateConnections");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateInventoryImportBatch", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ScopeGroup")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("ScopeKind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ScopePropertyIdsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "CreatedAt");
+
+                    b.ToTable("OctorateInventoryImportBatches");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateInventoryImportChannel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AccessCompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AccessConfirmedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime?>("AccessStartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("AccessState")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ChannelCode")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PanelStepId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RoomsImportedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId", "ChannelCode")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OctorateInventoryImportChannels_BatchId_ChannelCode");
+
+                    b.HasIndex("OrgId", "ChannelCode");
+
+                    b.ToTable("OctorateInventoryImportChannels");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateInventoryImportItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("CalendarImportedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ChannelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ConnectedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<DateTime?>("LeftForLaterAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LeftForLaterByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("OctorateAccommodationId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("OctorateConnectionId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("OctorateReservationsImportedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReservationsImportedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("RoomCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("RoomsImportedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChannelId", "OctorateConnectionId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OctorateInventoryImportItems_ChannelId_ConnectionId");
+
+                    b.HasIndex("OrgId", "OctorateConnectionId")
+                        .HasDatabaseName("IX_OctorateInventoryImportItems_OrgId_ConnectionId");
+
+                    b.ToTable("OctorateInventoryImportItems");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateInventoryIntent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActorUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Scenario")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("WizardBatch")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("OrgId", "PropertyId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OctorateInventoryIntents_OrgId_PropertyId")
+                        .HasFilter("\"PropertyId\" IS NOT NULL");
+
+                    b.HasIndex("OrgId", "WizardBatch")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OctorateInventoryIntents_OrgId_Group_OrgLevel")
+                        .HasFilter("\"PropertyId\" IS NULL");
+
+                    b.ToTable("OctorateInventoryIntents");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OctorateListingMapping", b =>
@@ -12681,6 +12908,59 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateInventoryImportBatch", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateInventoryImportChannel", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.OctorateInventoryImportBatch", null)
+                        .WithMany("Channels")
+                        .HasForeignKey("BatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateInventoryImportItem", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.OctorateInventoryImportChannel", null)
+                        .WithMany("Items")
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateInventoryIntent", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OctorateListingMapping", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.OctorateConnection", null)
@@ -14327,6 +14607,16 @@ namespace Casazen.Infrastructure.Migrations
             modelBuilder.Entity("Casazen.Core.Entities.MarketplacePartner", b =>
                 {
                     b.Navigation("Texts");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateInventoryImportBatch", b =>
+                {
+                    b.Navigation("Channels");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateInventoryImportChannel", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OwnerStatement", b =>

@@ -360,6 +360,21 @@
   <data name="GuestNotFound" xml:space="preserve">
     <value>Ospite non trovato</value>
   </data>
+  <data name="CrmProfileNotFound" xml:space="preserve">
+    <value>Profilo ospite non trovato.</value>
+  </data>
+  <data name="CrmTagsInvalid" xml:space="preserve">
+    <value>Etichette non valide: al massimo 50, da 1 a 40 caratteri ciascuna, senza doppioni e non oltre 2.000 caratteri in tutto.</value>
+  </data>
+  <data name="CrmMergeCandidateNotFound" xml:space="preserve">
+    <value>Proposta di unione non trovata.</value>
+  </data>
+  <data name="CrmMergeNotProposed" xml:space="preserve">
+    <value>Questa proposta di unione è già stata decisa: non c'è più nulla da fare.</value>
+  </data>
+  <data name="CrmMergeSurvivorInvalid" xml:space="preserve">
+    <value>Il profilo da mantenere deve essere uno dei due profili della proposta.</value>
+  </data>
   <data name="GuestEmailAlreadyExists" xml:space="preserve">
     <value>Esiste già un ospite con questa email.</value>
   </data>
@@ -4315,6 +4330,72 @@
   </data>
   <data name="OctorateRoomRequired" xml:space="preserve">
     <value>Indica la camera dell'annuncio.</value>
+  </data>
+  <data name="ExistingInventoryChannelsRequired" xml:space="preserve">
+    <value>Scegli almeno un canale da collegare.</value>
+  </data>
+  <data name="ExistingInventoryTooManyChannels" xml:space="preserve">
+    <value>Hai scelto troppi canali in una volta: al massimo {0}.</value>
+  </data>
+  <data name="ExistingInventoryChannelNotSupported" xml:space="preserve">
+    <value>Uno dei canali scelti non si può collegare: scegli tra quelli dell'elenco.</value>
+  </data>
+  <data name="ExistingInventoryScopeInvalid" xml:space="preserve">
+    <value>Indica quali immobili collegare: tutti, alcuni oppure un gruppo.</value>
+  </data>
+  <data name="ExistingInventoryNeedsWholeOrg" xml:space="preserve">
+    <value>Per collegare tutti gli annunci serve l'accesso a tutti gli immobili dell'organizzazione.</value>
+  </data>
+  <data name="ExistingInventoryGroupNotFound" xml:space="preserve">
+    <value>Gruppo di immobili non trovato.</value>
+  </data>
+  <data name="ExistingInventoryGroupScenarioMismatch" xml:space="preserve">
+    <value>Questo gruppo non è tra quelli con gli annunci già sulle OTA.</value>
+  </data>
+  <data name="ExistingInventoryBatchNotFound" xml:space="preserve">
+    <value>Collegamento dei canali non trovato.</value>
+  </data>
+  <data name="ExistingInventoryChannelNotFound" xml:space="preserve">
+    <value>Questo canale non fa parte del collegamento.</value>
+  </data>
+  <data name="ExistingInventoryAccessPending" xml:space="preserve">
+    <value>Prima completa l'accesso ai canali nel pannello del channel manager.</value>
+  </data>
+  <data name="ExistingInventoryMappingPending" xml:space="preserve">
+    <value>Prima conferma, importa o rimanda ogni annuncio trovato: ne restano {0} da decidere.</value>
+  </data>
+  <data name="ExistingInventoryNotReady" xml:space="preserve">
+    <value>Nessun canale è ancora pronto: prima si importano le camere.</value>
+  </data>
+  <data name="ChannelAccessVerificationRequired" xml:space="preserve">
+    <value>CasaZen deve prima provare a verificare l'accesso: conferma solo se non riesce.</value>
+  </data>
+  <data name="ChannelAccessNotValid" xml:space="preserve">
+    <value>L'accesso al canale non risulta valido: ripeti il collegamento nel pannello del channel manager.</value>
+  </data>
+  <data name="OctoratePanelUrlMissing" xml:space="preserve">
+    <value>L'indirizzo del pannello del channel manager non è configurato: contatta l'assistenza.</value>
+  </data>
+  <data name="InventoryScenarioInvalid" xml:space="preserve">
+    <value>Scegli dove si trovano gli annunci: già sul channel manager, già sulle OTA o non ancora pubblicati.</value>
+  </data>
+  <data name="InventoryIntentAssignmentsInvalid" xml:space="preserve">
+    <value>Indica da 1 a {0} immobili o gruppi.</value>
+  </data>
+  <data name="InventoryGroupRequired" xml:space="preserve">
+    <value>Indica il nome del gruppo (al massimo 100 caratteri).</value>
+  </data>
+  <data name="InventoryIntentDuplicate" xml:space="preserve">
+    <value>Lo stesso immobile o gruppo è indicato due volte.</value>
+  </data>
+  <data name="InventoryIntentChangeRefused" xml:space="preserve">
+    <value>Per questo immobile c'è già un collegamento o un abbinamento in corso: non si può dichiarare non ancora pubblicato.</value>
+  </data>
+  <data name="InventoryIntentConflict" xml:space="preserve">
+    <value>Un'altra persona ha appena indicato dove si trovano gli annunci: ricarica la pagina e controlla.</value>
+  </data>
+  <data name="OctorateExistingInventoryMustImport" xml:space="preserve">
+    <value>Gli annunci di questo immobile esistono già sul channel manager o sulle OTA: si importano e si abbinano, non si creano di nuovo.</value>
   </data>
   <data name="BookingOtaAmountsReadonly" xml:space="preserve">
     <value>Gli importi del canale (commissione, netto, pagato e saldo) arrivano dal channel manager e non si possono modificare.</value>

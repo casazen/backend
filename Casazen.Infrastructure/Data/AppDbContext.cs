@@ -326,6 +326,13 @@ public class AppDbContext(
     public DbSet<OctorateListingMapping> OctorateListingMappings { get; set; } = null!;
     public DbSet<OctorateOAuthState> OctorateOAuthStates { get; set; } = null!;
 
+    // The import of the listings that already exist on OTAs or in another channel manager (D6, E02/F01/US03): what a person declared about where the
+    // listings of a property are, the import batches, their channels and the external items done for each
+    public DbSet<OctorateInventoryIntent> OctorateInventoryIntents { get; set; } = null!;
+    public DbSet<OctorateInventoryImportBatch> OctorateInventoryImportBatches { get; set; } = null!;
+    public DbSet<OctorateInventoryImportChannel> OctorateInventoryImportChannels { get; set; } = null!;
+    public DbSet<OctorateInventoryImportItem> OctorateInventoryImportItems { get; set; } = null!;
+
     // The mirror of the CasaZen bookings on Octorate: the state of the last operation sent for each booking (E08/F01/US01/T01, ADR-031)
     public DbSet<OctorateBookingSync> OctorateBookingSyncs { get; set; } = null!;
 
@@ -1665,6 +1672,13 @@ public class AppDbContext(
             entity.HasIndex(m => new { m.OrgId, m.Status });
             entity.HasIndex(m => m.OctorateAccommodationId);
         });
+
+        // The import of existing OTA inventory (D6, E02/F01/US03): one current intent for each property (partial unique indexes), batches with their
+        // channels and the external items done for each connection; every row carries its org (restrict) and the tenant filter applies to all.
+        modelBuilder.ApplyConfiguration(new OctorateInventoryIntentConfiguration());
+        modelBuilder.ApplyConfiguration(new OctorateInventoryImportBatchConfiguration());
+        modelBuilder.ApplyConfiguration(new OctorateInventoryImportChannelConfiguration());
+        modelBuilder.ApplyConfiguration(new OctorateInventoryImportItemConfiguration());
 
         // The OAuth state of a consent: only its SHA-256 is stored (char 64, unique); the expired rows are deleted by ExpiresAt.
         modelBuilder.Entity<OctorateOAuthState>(entity =>

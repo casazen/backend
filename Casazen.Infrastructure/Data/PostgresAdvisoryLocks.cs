@@ -347,6 +347,15 @@ internal static class PostgresAdvisoryLocks
         OctorateBookingSync = 20_131,
 
         /// <summary>
+        /// The import of the existing inventory of one OTA channel of one org (key: org id and channel code, <c>orgId.ToString("N") + ":" + code</c>,
+        /// E02/F01/US03, session lock held for the whole step): two commands of the same channel, from two batches or two requests, never ask
+        /// Octorate for the same room import, reservation import, calendar import or «mark connected» at once. A command that does not get the
+        /// lock leaves the channel as it is: the one that holds it is doing the work, and the next command resumes from the stamps. The number is
+        /// 20_132 because 20_131 is <see cref="OctorateBookingSync"/>, and a number belongs to one scope only.
+        /// </summary>
+        OctorateInventoryImport = 20_132,
+
+        /// <summary>
         /// The check-in of one booking to Octorate (E03/F01/US01/T03; key: <c>{bookingId:N}:guests</c> for the send of its guests,
         /// <c>{bookingId:N}:state:{state}</c> for the push of one state): each runs one at a time (session lock, held for the whole send), so two
         /// runs never create the same guest twice nor push the same state twice. The values 20_131 and 20_132 belong to other scopes of the
@@ -361,6 +370,13 @@ internal static class PostgresAdvisoryLocks
         /// left with no guest. Held only while the profile is made. The values 20_600 to 20_699 are the marketing module (epic E07).
         /// </summary>
         CrmGuestProfile = 20_612,
+
+        /// <summary>
+        /// The CRM profiles of one org (key: org id, <c>orgId.ToString("N")</c>, E07/F01/US03): the dismissal and the merge of a proposal, and the
+        /// tags a host gives to a profile, run one at a time, so a double click merges once, two people on the same pair decide it once, and a tag
+        /// is never lost to a merge that moves the tags of the profile at the same moment. Held for the whole change, which is saved in one go.
+        /// </summary>
+        CrmProfileMerge = 20_613,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

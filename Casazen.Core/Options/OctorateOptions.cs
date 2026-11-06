@@ -56,6 +56,9 @@ public sealed class OctorateOptions
     /// <summary>The thresholds of the matcher of the listings (<c>Octorate:Mapping</c>, E02/F01/US02/T03).</summary>
     public OctorateMappingOptions Mapping { get; set; } = new();
 
+    /// <summary>The import of the listings that already exist on OTAs (<c>Octorate:ExistingInventory</c>, E02/F01/US03): the evidence of the pilot, channel by channel.</summary>
+    public OctorateExistingInventoryOptions ExistingInventory { get; set; } = new();
+
     /// <summary>
     /// Whether the tourist tax of each guest (<c>cityTaxPrice</c>, <c>cityTaxExemption</c>, <c>excludeCityTax</c>) is written to Octorate with
     /// the check-in (<c>Octorate__WriteCityTaxValues</c>, E03/F01/US01/T03, AC-NF46-5). Off by default: CasaZen manages the tax (S18), and the
