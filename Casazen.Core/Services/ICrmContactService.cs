@@ -30,10 +30,12 @@ public interface ICrmContactService
 
     /// <summary>
     /// Records a person's consent on a contact (art. 6.1.a GDPR): the basis becomes <see cref="GuestContactLegalBasis.Consent"/> and the
-    /// confirmation <see cref="GuestContactConfirmation.Unconfirmed"/> (a consent already confirmed that is renewed stays confirmed), with the
-    /// version of the text, the source, the address of the person's connection, the time and the language. With a guest known it also appends one
-    /// <see cref="GuestConsentRecord"/> (marketing, granted), so the privacy history stays complete (unless <see cref="CrmConsentInput.RecordHistory"/>
-    /// says the caller wrote that row already). An OTA forward address keeps its origin and
+    /// confirmation <see cref="GuestContactConfirmation.Unconfirmed"/> (a consent already confirmed that is renewed stays confirmed <b>and keeps its
+    /// evidence</b>: the version of the text, the source, the time and the connection of the act the person confirmed are not replaced by a later
+    /// consent nobody confirmed), with the version of the text, the source, the address of the person's connection, the time and the language.
+    /// With a guest known it also appends one <see cref="GuestConsentRecord"/> (marketing, granted, naming its channel in the note), so the privacy
+    /// history stays complete (unless <see cref="CrmConsentInput.RecordHistory"/> says the caller wrote that row already). An OTA forward
+    /// address keeps its origin and
     /// its service-only basis (the consent is in the history, the address is not marketable), and a suppressed contact stays suppressed.
     /// Returns <c>null</c> when the value cannot be stored.
     /// </summary>
