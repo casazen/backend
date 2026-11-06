@@ -408,7 +408,7 @@ public sealed class OctorateApiClient(
             ["documentCode"] = guest.DocumentCode,
             ["documentIssuePlace"] = guest.DocumentIssuePlace,
             ["documentIssueDate"] = DateText(guest.DocumentIssueDate),
-            ["documentExpire"] = guest.DocumentExpire?.ToString("yyyy-MM-dd'T'00:00:00", CultureInfo.InvariantCulture),
+            ["documentExpire"] = MidnightText(guest.DocumentExpire),
             ["checkin"] = DateText(guest.CheckIn),
             ["checkout"] = DateText(guest.CheckOut),
             ["draft"] = guest.Draft,
@@ -463,6 +463,13 @@ public sealed class OctorateApiClient(
     }
 
     private static string? DateText(DateOnly? date) => date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The midnight of a day as a date-time (<c>2030-01-01T00:00:00</c>): <c>documentExpire</c> is a <c>date-time</c> in the OpenAPI and the
+    /// sandbox read it back as written. Built from a <see cref="DateTime"/>, because a <see cref="DateOnly"/> refuses a format with a time part.
+    /// </summary>
+    private static string? MidnightText(DateOnly? date) =>
+        date?.ToDateTime(TimeOnly.MinValue).ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
 
     public async Task<OctorateAvailabilityResult> CheckAvailabilityAsync(
         OctorateBookingTarget target,

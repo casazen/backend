@@ -123,6 +123,11 @@ public class OctorateApiClientTests
         var body = Assert.Single(h.Handler.Bodies);
         Assert.Contains("\"documentCode\":\"YA0000001\"", body, StringComparison.Ordinal);
         Assert.Contains("\"documentType\":\"PASOR\"", body, StringComparison.Ordinal);
+
+        // The dates travel in the forms of the Octorate schema: a day as yyyy-MM-dd, the expiry of the document (a date-time there) at midnight.
+        Assert.Contains("\"birthDate\":\"1980-07-01\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"documentExpire\":\"2031-03-01T00:00:00\"", body, StringComparison.Ordinal);
+
         Assert.DoesNotContain(photos.FrontImageUrl, body, StringComparison.Ordinal);
         Assert.DoesNotContain(photos.BackImageUrl!, body, StringComparison.Ordinal);
         Assert.DoesNotMatch("(?i)image|photo|base64|data:", body);
