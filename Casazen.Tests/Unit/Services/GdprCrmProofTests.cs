@@ -1,0 +1,569 @@
+using System.Text.Json;
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Models;
+using Casazen.Core.Options;
+using Casazen.Core.Repositories;
+using Casazen.Core.Services;
+using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Services;
+using Casazen.Tests.Unit.Logging;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Moq;
+using Xunit;
+
+namespace Casazen.Tests.Unit.Services;
+
+/// <summary>
+/// E07/F06/US02/T01 (NF-95, NF-20, art. 15, 17 and 20 GDPR): the rights of the guest cover what the CRM holds. The export has the per-channel
+/// consents, the profile, the contacts and the messages and nothing of anybody else; the erasure deletes the person and keeps the opt-out as a row
+/// with no personal data; a profile of several guests survives the erasure of one; the end of the marketing consent leaves the contacts reachable
+/// for the stay and not suppressed. On EF InMemory, the real services over the real keyed index.
+/// </summary>
+public class GdprCrmProofTests
+{
+    private static readonly CancellationToken Ct = CancellationToken.None;
+    private static readonly ICrmContactIndex Index = CrmTestIndex.Create();
+    private static readonly DateTime ConsentAt = new(2026, 10, 1, 9, 30, 0, DateTimeKind.Utc);
+    private static readonly DateTime OptOutAt = new(2026, 10, 15, 18, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>
+    /// Proof test (privacy rule, art. 15 and 20): the export of a guest is complete. It holds the per-channel marketing consent (channels, address,
+    /// confirmation, version, time, IP), the CRM profile with its aggregates, tags, language and country, the contacts with origin, confirmation,
+    /// basis, version and suppression, and the messages exchanged with the host; and nothing of the keyed hashes, of the proposals of merge or of
+    /// another guest.
+    /// </summary>
+    [Fact]
+    public async Task GdprExport_IncludesCrmProfileContactsConsentsAndMessages_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        var world = await SeedMarioAndAnnaAsync(store, orgId);
+
+        GuestDataExport export;
+        await using (var db = CrmTestWorld.Open(store))
+            export = await Service(db).ExportGuestDataAsync(orgId, world.MarioId, "auth0|host", Ct);
+
+        // The per-channel consent of the check-in, with everything that proves it.
+        var channel = Assert.Single(export.MarketingChannels);
+        Assert.Equal(world.MarioBookingId, channel.BookingId);
+        Assert.True(channel.ConsentEmail);
+        Assert.True(channel.ConsentWhatsApp);
+        Assert.True(channel.EmailConfirmed);
+        Assert.Equal("mario.marketing@example.it", channel.MarketingEmail);
+        Assert.Equal("marketing-v2", channel.ConsentTextVersion);
+        Assert.Equal(ConsentAt, channel.ConsentTimestamp);
+        Assert.Equal("203.0.113.7", channel.IpAddress);
+
+        // The profile of the guest alone: language, country, tags and the aggregates of its stays.
+        var profile = export.CrmProfile;
+        Assert.NotNull(profile);
+        Assert.Equal(world.MarioProfileId, profile.Id);
+        Assert.Equal("it", profile.Language);
+        Assert.Equal("Italia", profile.Country);
+        Assert.Equal(new[] { "vip", "famiglia" }, profile.Tags);
+        Assert.False(profile.SharedWithOtherGuests);
+        Assert.Equal<int?>(2, profile.TotalStays);
+        Assert.Equal<decimal?>(450m, profile.TotalSpend);
+
+        // The contacts of the guest with origin, confirmation, basis, version and suppression: the three he gave and the lead on his profile (the
+        // profile is his alone, so its contacts are his). Not Anna's.
+        Assert.Equal(4, export.Contacts.Count);
+        Assert.Single(export.Contacts, c => c.Value == "lead@example.com");
+        var email = Assert.Single(export.Contacts, c => c.Value == "mario.rossi@example.com");
+        Assert.Equal("mario.rossi@example.com", email.Value);
+        Assert.Equal("Mario Rossi", email.DisplayName);
+        Assert.Equal(GuestContactOrigin.CheckIn, email.Origin);
+        Assert.Equal(GuestContactConfirmation.Confirmed, email.Confirmation);
+        Assert.Equal(GuestContactLegalBasis.Consent, email.LegalBasis);
+        Assert.Equal("marketing-v2", email.BasisVersion);
+        Assert.Equal(ConsentAt, email.BasisRecordedAt);
+        Assert.Equal(GuestConsentSource.GuestPortal, email.ConsentSource);
+        var optedOut = Assert.Single(export.Contacts, c => c.IsSuppressed);
+        Assert.Equal("mario.old@example.com", optedOut.Value);
+        Assert.Equal(OptOutAt, optedOut.SuppressedAt);
+        Assert.Equal("unsubscribe", optedOut.SuppressedSource);
+        var phone = Assert.Single(export.Contacts, c => c.Channel == GuestContactChannel.Phone);
+        Assert.Equal("+393331234567", phone.Value);
+        Assert.Equal(GuestContactLegalBasis.ServiceOnly, phone.LegalBasis);
+        Assert.DoesNotContain(export.Contacts, c => c.Value.Contains("anna", StringComparison.OrdinalIgnoreCase));
+
+        // The messages of the conversation with the host, oldest first, on the booking they belong to; not Anna's.
+        Assert.Equal(2, export.Messages.Count);
+        Assert.Equal(
+            new[] { GuestMessageSender.Guest, GuestMessageSender.Host },
+            export.Messages.Select(m => m.Sender).ToArray());
+        Assert.All(export.Messages, m => Assert.Equal(world.MarioBookingId, m.BookingId));
+        Assert.Equal("Arriveremo verso le 18.", export.Messages[0].Text);
+        Assert.Equal("Perfetto, vi aspettiamo.", export.Messages[1].Text);
+
+        // Never the keyed hashes of the profile, nor a proposal of merge, nor the data of another guest.
+        var json = JsonSerializer.Serialize(export);
+        Assert.DoesNotContain(world.PhoneKeyHash, json, StringComparison.Ordinal);
+        Assert.DoesNotContain(world.NameBirthKeyHash, json, StringComparison.Ordinal);
+        Assert.DoesNotContain(world.CompositeKeyHash, json, StringComparison.Ordinal);
+        Assert.DoesNotContain("anna.neri", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Siamo in due.", json, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Proof test (privacy rule): a profile that other guests are linked to adds their stays to its aggregates, so the export of one of them leaves
+    /// the aggregates out and says the profile is shared; the contacts of the profile that other guests gave are not in it.
+    /// </summary>
+    [Fact]
+    public async Task GdprExport_ProfileSharedWithOtherGuests_LeavesOutTheirAggregatesAndContacts_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        var world = await SeedSharedProfileAsync(store, orgId);
+
+        GuestDataExport export;
+        await using (var db = CrmTestWorld.Open(store))
+            export = await Service(db).ExportGuestDataAsync(orgId, world.FirstGuestId, "auth0|host", Ct);
+
+        var profile = export.CrmProfile;
+        Assert.NotNull(profile);
+        Assert.True(profile.SharedWithOtherGuests);
+        Assert.Null(profile.TotalStays);
+        Assert.Null(profile.TotalSpend);
+        Assert.Null(profile.FirstStayAt);
+        Assert.Null(profile.LastStayAt);
+
+        // Only the two contacts the guest gave: not the contact of the other guest, not the lead of the profile.
+        Assert.Equal(2, export.Contacts.Count);
+        Assert.Contains(export.Contacts, c => c.Value == "mario.rossi@example.com");
+        Assert.Contains(export.Contacts, c => c.Value == "mario.old@example.com");
+        Assert.DoesNotContain(export.Contacts, c => c.Value is "luisa.verdi@example.com" or "lead@example.com");
+    }
+
+    /// <summary>
+    /// Proof test (privacy rule): the erasure of a guest takes the person out of the CRM and keeps the opt-out. The contacts the guest gave and
+    /// the other contacts of its profile are deleted, the profile and the proposals of merge that involve it go with it, and the guest is
+    /// unlinked; the contact that carries a suppression stays as a row with no value, no name, no IP, no guest and no profile (only its keyed hash,
+    /// the flag and its date), so the suppression list and the contact still say the same thing. Nobody else is touched, a second erasure changes
+    /// nothing, and nothing the erasure writes to a log holds an address or a hash.
+    /// </summary>
+    [Fact]
+    public async Task GdprErasure_RemovesContactsButKeepsTheOptOut_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        var world = await SeedMarioAndAnnaAsync(store, orgId);
+        var serviceLog = new CapturingLogger<GdprService>();
+        var eraserLog = new CapturingLogger<GuestDataEraser>();
+
+        await using (var db = CrmTestWorld.Open(store))
+            await Service(db, serviceLog, eraserLog).EraseGuestDataAsync(orgId, world.MarioId, "Richiesta dell'ospite", "auth0|host", Ct);
+
+        await using var verify = CrmTestWorld.Open(store);
+
+        // Mario's contacts are gone but the opt-out; Anna's two are as they were.
+        var contacts = await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync(Ct);
+        Assert.Equal(3, contacts.Count);
+        Assert.Equal(2, contacts.Count(c => c.GuestId == world.AnnaId));
+        var marker = Assert.Single(contacts, c => c.GuestId != world.AnnaId);
+        Assert.Equal(Index.Hash("mario.old@example.com"), marker.ValueHash);
+        Assert.Equal(GuestContactChannel.Email, marker.Channel);
+        Assert.True(marker.IsSuppressed);
+        Assert.Equal(OptOutAt, marker.SuppressedAt);
+        Assert.Equal("unsubscribe", marker.SuppressedSource);
+        Assert.Equal(string.Empty, marker.Value);
+        Assert.Null(marker.DisplayName);
+        Assert.Null(marker.ConsentIpAddress);
+        Assert.Null(marker.GuestId);
+        Assert.Null(marker.GuestCrmProfileId);
+        Assert.Equal(string.Empty, marker.Language);
+        Assert.Equal(GuestContactLegalBasis.None, marker.LegalBasis);
+        Assert.Equal(string.Empty, marker.BasisVersion);
+        Assert.Null(marker.BasisRecordedAt);
+        Assert.Null(marker.ConsentSource);
+        Assert.DoesNotContain(contacts, c => c.Value.Contains("mario", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(contacts, c => c.Value.Contains("lead", StringComparison.OrdinalIgnoreCase));
+
+        // The entry of the suppression list is where it was: the opt-out says the same in both places.
+        var suppression = new SuppressionService(verify, Index, NullLogger<SuppressionService>.Instance);
+        Assert.True(await suppression.IsSuppressedAsync(orgId, "mario.old@example.com", Ct));
+        Assert.True(await verify.GuestContacts.AnyAsync(c => c.OrgId == orgId && c.ValueHash == Index.Hash("mario.old@example.com") && c.IsSuppressed, Ct));
+
+        // The profile of Mario is deleted with the proposal that involved it; Anna's profile and the proposal that does not involve him stay.
+        var profiles = await verify.GuestCrmProfiles.AsNoTracking().Where(p => p.OrgId == orgId).ToListAsync(Ct);
+        Assert.DoesNotContain(profiles, p => p.Id == world.MarioProfileId);
+        Assert.Contains(profiles, p => p.Id == world.AnnaProfileId);
+        var proposals = await verify.GuestMergeCandidates.AsNoTracking().Where(m => m.OrgId == orgId).ToListAsync(Ct);
+        var left = Assert.Single(proposals);
+        Assert.Equal(world.UnrelatedProposalId, left.Id);
+
+        // The guest is unlinked and erased; the erasure is audited once.
+        var mario = await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.MarioId, Ct);
+        Assert.Null(mario.GuestCrmProfileId);
+        Assert.True(mario.IsDeleted);
+        Assert.Equal(1, await verify.GuestPrivacyAuditEntries.CountAsync(a => a.GuestId == world.MarioId && a.Action == GuestPrivacyAuditAction.Erased, Ct));
+
+        // Anna is as she was.
+        var anna = await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.AnnaId, Ct);
+        Assert.Equal(world.AnnaProfileId, anna.GuestCrmProfileId);
+        Assert.False(anna.IsDeleted);
+
+        // A second erasure finds nothing left: no new audit entry, the same rows.
+        await using (var again = CrmTestWorld.Open(store))
+            await Service(again).EraseGuestDataAsync(orgId, world.MarioId, "Richiesta dell'ospite", "auth0|host", Ct);
+        await using var last = CrmTestWorld.Open(store);
+        Assert.Equal(1, await last.GuestPrivacyAuditEntries.CountAsync(a => a.GuestId == world.MarioId, Ct));
+        Assert.Equal(3, await last.GuestContacts.CountAsync(c => c.OrgId == orgId, Ct));
+
+        // The logs say what was done in numbers: no address, no hash, no name.
+        var output = serviceLog.AllOutput + Environment.NewLine + eraserLog.AllOutput;
+        Assert.Contains(world.MarioId.ToString(), output, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("example", output, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Mario", output, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(Index.Hash("mario.old@example.com"), output, StringComparison.Ordinal);
+        Assert.DoesNotContain(world.PhoneKeyHash, output, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Proof test (data rule): the erasure of one guest never deletes the data of another. A profile that other guests are linked to is kept
+    /// when one of them is erased: only the guest's link and contacts go (the contact that carries a suppression stays as a bare marker, off the
+    /// profile), and the profile loses its keyed hashes, its tags and its country, which may be the erased guest's. The other guest, its contact,
+    /// the contact of the profile nobody is named for and the proposal of merge that involves the profile are as they were.
+    /// </summary>
+    [Fact]
+    public async Task GdprErasure_ProfileOfOtherGuests_Survives_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        var world = await SeedSharedProfileAsync(store, orgId);
+
+        await using (var db = CrmTestWorld.Open(store))
+            await Service(db).EraseGuestDataAsync(orgId, world.FirstGuestId, "Richiesta dell'ospite", "auth0|host", Ct);
+
+        await using var verify = CrmTestWorld.Open(store);
+
+        // The profile is there, linked to the other guest, without what may be the erased guest's.
+        var profile = await verify.GuestCrmProfiles.AsNoTracking().SingleAsync(p => p.Id == world.ProfileId, Ct);
+        Assert.Null(profile.PhoneKeyHash);
+        Assert.Null(profile.NameBirthKeyHash);
+        Assert.Equal(string.Empty, profile.CompositeKeyHash);
+        Assert.Equal("[]", profile.TagsJson);
+        Assert.Equal(string.Empty, profile.Country);
+        Assert.Null(profile.PrimaryGuestId);
+        var second = await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.SecondGuestId, Ct);
+        Assert.Equal(world.ProfileId, second.GuestCrmProfileId);
+        var first = await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.FirstGuestId, Ct);
+        Assert.Null(first.GuestCrmProfileId);
+
+        // The erased guest's contact is gone, its opt-out is a bare marker off the profile; the other guest's contact and the lead stay.
+        var contacts = await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync(Ct);
+        Assert.Equal(3, contacts.Count);
+        Assert.DoesNotContain(contacts, c => c.Value == "mario.rossi@example.com");
+        var marker = Assert.Single(contacts, c => c.ValueHash == Index.Hash("mario.old@example.com"));
+        Assert.Equal(string.Empty, marker.Value);
+        Assert.True(marker.IsSuppressed);
+        Assert.Null(marker.GuestId);
+        Assert.Null(marker.GuestCrmProfileId);
+        var kept = Assert.Single(contacts, c => c.GuestId == world.SecondGuestId);
+        Assert.Equal("luisa.verdi@example.com", kept.Value);
+        Assert.Equal(world.ProfileId, kept.GuestCrmProfileId);
+        Assert.Equal(GuestContactLegalBasis.Consent, kept.LegalBasis);
+        var lead = Assert.Single(contacts, c => c.Value == "lead@example.com");
+        Assert.Equal(world.ProfileId, lead.GuestCrmProfileId);
+
+        // The proposal of merge that involves the surviving profile is still there.
+        Assert.Equal(1, await verify.GuestMergeCandidates.CountAsync(m => m.OrgId == orgId && (m.ProfileAId == world.ProfileId || m.ProfileBId == world.ProfileId), Ct));
+    }
+
+    /// <summary>
+    /// Proof test (privacy rule, AC-NF95-7): when the retention ends the marketing consent of a guest, its contacts on consent go back to service
+    /// only, and are not suppressed (an expiry is not an opt-out: the guest can consent again). A soft opt-in and a suppression stay as they were,
+    /// and a guest whose consent has not ended keeps its contacts.
+    /// </summary>
+    [Fact]
+    public async Task GdprRetention_EndOfMarketingConsent_MovesConsentContactsToServiceOnlyWithoutSuppressing_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var clock = CrmTestWorld.Clock();
+        var orgId = Guid.NewGuid();
+        Guid dueId, freshId;
+        await using (var seed = CrmTestWorld.Open(store))
+        {
+            var due = CrmTestWorld.AddGuest(seed, orgId, "Mario", "Rossi", "mario.rossi@example.com");
+            due.MarketingConsent = true;
+            due.MarketingConsentDate = CrmTestWorld.Day(-400);
+            var fresh = CrmTestWorld.AddGuest(seed, orgId, "Anna", "Neri", "anna.neri@example.com");
+            fresh.MarketingConsent = true;
+            fresh.MarketingConsentDate = CrmTestWorld.Day(-30);
+            dueId = due.Id;
+            freshId = fresh.Id;
+            seed.GuestContacts.AddRange(
+                Contact(orgId, due.Id, null, GuestContactChannel.Email, "mario.rossi@example.com", "Mario Rossi", GuestContactLegalBasis.Consent),
+                Contact(orgId, due.Id, null, GuestContactChannel.Email, "mario.soft@example.com", "Mario Rossi", GuestContactLegalBasis.SoftOptIn),
+                Contact(orgId, due.Id, null, GuestContactChannel.Phone, "+393331234567", "Mario Rossi", GuestContactLegalBasis.Consent, suppressed: true),
+                Contact(orgId, fresh.Id, null, GuestContactChannel.Email, "anna.neri@example.com", "Anna Neri", GuestContactLegalBasis.Consent));
+            await seed.SaveChangesAsync(Ct);
+        }
+
+        await using (var db = CrmTestWorld.Open(store))
+        {
+            var options = new GdprOptions
+            {
+                Retention = new GdprRetentionOptions { Marketing = new RetentionPeriodOptions { Years = 1, Source = "Decisione del titolare del 2026-11" } },
+            };
+            var retention = new GuestDataRetentionService(
+                db,
+                new GuestDataEraser(db, Mock.Of<IFileStorage>(), NullLogger<GuestDataEraser>.Instance),
+                Options.Create(options),
+                clock,
+                NullLogger<GuestDataRetentionService>.Instance);
+
+            var result = await retention.ApplyAsync(Ct);
+
+            var marketing = Assert.Single(result.Categories, c => c.Category == GuestDataCategory.Marketing);
+            Assert.Equal(1, marketing.Guests);
+        }
+
+        await using var verify = CrmTestWorld.Open(store);
+        Assert.False((await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == dueId, Ct)).MarketingConsent);
+        Assert.Equal(1, await verify.GuestConsentRecords.CountAsync(r => r.GuestId == dueId && r.Action == GuestConsentAction.Expired, Ct));
+
+        var email = await verify.GuestContacts.AsNoTracking().SingleAsync(c => c.GuestId == dueId && c.Value == "mario.rossi@example.com", Ct);
+        Assert.Equal(GuestContactLegalBasis.ServiceOnly, email.LegalBasis);
+        Assert.False(email.IsSuppressed);
+        Assert.Null(email.SuppressedAt);
+        Assert.True(CrmContactRules.CanReceiveService(email));
+        Assert.False(CrmContactRules.CanReceiveMarketing(email));
+
+        var soft = await verify.GuestContacts.AsNoTracking().SingleAsync(c => c.GuestId == dueId && c.Value == "mario.soft@example.com", Ct);
+        Assert.Equal(GuestContactLegalBasis.SoftOptIn, soft.LegalBasis);
+
+        var suppressed = await verify.GuestContacts.AsNoTracking().SingleAsync(c => c.GuestId == dueId && c.Channel == GuestContactChannel.Phone, Ct);
+        Assert.True(suppressed.IsSuppressed);
+        Assert.Equal(OptOutAt, suppressed.SuppressedAt);
+
+        var untouched = await verify.GuestContacts.AsNoTracking().SingleAsync(c => c.GuestId == freshId, Ct);
+        Assert.Equal(GuestContactLegalBasis.Consent, untouched.LegalBasis);
+    }
+
+    // ---- the world of the proofs --------------------------------------------------------------------------------------------------
+
+    /// <summary>The ids and the hashes of <see cref="SeedMarioAndAnnaAsync"/>.</summary>
+    private sealed record MarioAndAnna(
+        Guid MarioId,
+        Guid AnnaId,
+        Guid MarioProfileId,
+        Guid AnnaProfileId,
+        Guid MarioBookingId,
+        Guid UnrelatedProposalId,
+        string PhoneKeyHash,
+        string NameBirthKeyHash,
+        string CompositeKeyHash);
+
+    /// <summary>The ids of <see cref="SeedSharedProfileAsync"/>.</summary>
+    private sealed record SharedProfile(Guid FirstGuestId, Guid SecondGuestId, Guid ProfileId);
+
+    /// <summary>
+    /// Mario Rossi, with a profile of his own (two stays, tags, keyed hashes), three contacts he gave (an e-mail on consent, a phone number, an old
+    /// address that carries an unsubscribe), a contact of no guest on his profile (a lead), the per-channel consent of his booking, and a
+    /// conversation with the host; Anna Neri, with a profile, two contacts and a conversation of her own; one proposal of merge that involves Mario's
+    /// profile and one that does not.
+    /// </summary>
+    private static async Task<MarioAndAnna> SeedMarioAndAnnaAsync(DbContextOptions<AppDbContext> store, Guid orgId)
+    {
+        await using var seed = CrmTestWorld.Open(store);
+        var property = NewProperty(orgId);
+        seed.Properties.Add(property);
+
+        var mario = CrmTestWorld.AddGuest(seed, orgId, "Mario", "Rossi", "mario.rossi@example.com", "+393331234567");
+        var anna = CrmTestWorld.AddGuest(seed, orgId, "Anna", "Neri", "anna.neri@example.com");
+        var marioProfile = NewProfile(orgId, mario.Id, "+393331234567", "rossi mario|1980-01-01", "mario.rossi@example.com|rossi|mario");
+        var annaProfile = NewProfile(orgId, anna.Id, "+393339999999", "neri anna|1985-05-05", "anna.neri@example.com|neri|anna");
+        var otherProfile = NewProfile(orgId, null, "+393338888888", "bianchi luca|1990-02-02", "luca.bianchi@example.com|bianchi|luca");
+        mario.GuestCrmProfileId = marioProfile.Id;
+        anna.GuestCrmProfileId = annaProfile.Id;
+        seed.GuestCrmProfiles.AddRange(marioProfile, annaProfile, otherProfile);
+
+        var marioBooking = CrmTestWorld.AddBooking(seed, mario, property.Id, BookingStatus.CheckedOut, BookingSource.Direct, -20, 3, 300m);
+        var annaBooking = CrmTestWorld.AddBooking(seed, anna, property.Id, BookingStatus.CheckedOut, BookingSource.Direct, -15, 2, 150m);
+        seed.MarketingConsentRecords.Add(new MarketingConsentRecord
+        {
+            OrgId = orgId,
+            BookingId = marioBooking.Id,
+            GuestId = mario.Id,
+            MarketingEmail = "mario.marketing@example.it",
+            ConsentEmail = true,
+            ConsentWhatsApp = true,
+            EmailConfirmed = true,
+            ConsentTimestamp = ConsentAt,
+            ConsentTextVersion = "marketing-v2",
+            IpAddress = "203.0.113.7",
+        });
+
+        seed.GuestContacts.AddRange(
+            Contact(orgId, mario.Id, marioProfile.Id, GuestContactChannel.Email, "mario.rossi@example.com", "Mario Rossi", GuestContactLegalBasis.Consent),
+            Contact(orgId, mario.Id, marioProfile.Id, GuestContactChannel.Phone, "+393331234567", "Mario Rossi", GuestContactLegalBasis.ServiceOnly),
+            Contact(orgId, mario.Id, marioProfile.Id, GuestContactChannel.Email, "mario.old@example.com", "Mario Rossi", GuestContactLegalBasis.ServiceOnly, suppressed: true),
+            Contact(orgId, null, marioProfile.Id, GuestContactChannel.Email, "lead@example.com", "Lead", GuestContactLegalBasis.ServiceOnly),
+            Contact(orgId, anna.Id, annaProfile.Id, GuestContactChannel.Email, "anna.neri@example.com", "Anna Neri", GuestContactLegalBasis.Consent),
+            Contact(orgId, anna.Id, annaProfile.Id, GuestContactChannel.Phone, "+393339999999", "Anna Neri", GuestContactLegalBasis.ServiceOnly));
+
+        var withMario = NewProposal(orgId, marioProfile.Id, annaProfile.Id);
+        var unrelated = NewProposal(orgId, annaProfile.Id, otherProfile.Id);
+        seed.GuestMergeCandidates.AddRange(withMario, unrelated);
+
+        AddConversation(seed, orgId, property.Id, marioBooking.Id, "Arriveremo verso le 18.", "Perfetto, vi aspettiamo.");
+        AddConversation(seed, orgId, property.Id, annaBooking.Id, "Siamo in due.", "Benvenuti.");
+
+        await seed.SaveChangesAsync(Ct);
+        return new MarioAndAnna(
+            mario.Id,
+            anna.Id,
+            marioProfile.Id,
+            annaProfile.Id,
+            marioBooking.Id,
+            unrelated.Id,
+            marioProfile.PhoneKeyHash!,
+            marioProfile.NameBirthKeyHash!,
+            marioProfile.CompositeKeyHash);
+    }
+
+    /// <summary>
+    /// One profile that two guests are linked to (a merge of two records of a family), with tags, a country and keyed hashes: an e-mail contact on
+    /// consent for each guest, an old address of the first guest that carries an unsubscribe, a lead on the profile that is nobody's, and a proposal
+    /// of merge that involves the profile.
+    /// </summary>
+    private static async Task<SharedProfile> SeedSharedProfileAsync(DbContextOptions<AppDbContext> store, Guid orgId)
+    {
+        await using var seed = CrmTestWorld.Open(store);
+        var first = CrmTestWorld.AddGuest(seed, orgId, "Mario", "Rossi", "mario.rossi@example.com", "+393331234567");
+        var second = CrmTestWorld.AddGuest(seed, orgId, "Luisa", "Verdi", "luisa.verdi@example.com", "+393331234567");
+        var profile = NewProfile(orgId, first.Id, "+393331234567", "rossi mario|1980-01-01", "mario.rossi@example.com|rossi|mario");
+        var other = NewProfile(orgId, null, "+393338888888", "bianchi luca|1990-02-02", "luca.bianchi@example.com|bianchi|luca");
+        first.GuestCrmProfileId = profile.Id;
+        second.GuestCrmProfileId = profile.Id;
+        seed.GuestCrmProfiles.AddRange(profile, other);
+
+        seed.GuestContacts.AddRange(
+            Contact(orgId, first.Id, profile.Id, GuestContactChannel.Email, "mario.rossi@example.com", "Mario Rossi", GuestContactLegalBasis.Consent),
+            Contact(orgId, first.Id, profile.Id, GuestContactChannel.Email, "mario.old@example.com", "Mario Rossi", GuestContactLegalBasis.ServiceOnly, suppressed: true),
+            Contact(orgId, second.Id, profile.Id, GuestContactChannel.Email, "luisa.verdi@example.com", "Luisa Verdi", GuestContactLegalBasis.Consent),
+            Contact(orgId, null, profile.Id, GuestContactChannel.Email, "lead@example.com", "Lead", GuestContactLegalBasis.ServiceOnly));
+        seed.GuestMergeCandidates.Add(NewProposal(orgId, profile.Id, other.Id));
+
+        await seed.SaveChangesAsync(Ct);
+        return new SharedProfile(first.Id, second.Id, profile.Id);
+    }
+
+    private static GdprService Service(
+        AppDbContext db,
+        CapturingLogger<GdprService>? serviceLog = null,
+        CapturingLogger<GuestDataEraser>? eraserLog = null)
+    {
+        // No stay is open: the erasure is not refused (art. 17.3.b).
+        var repository = new Mock<IGuestRepository>();
+        repository
+            .Setup(r => r.GetUsageAsync(It.IsAny<Guid>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new GuestUsage(HasReferences: true, HasOpenBookings: false));
+
+        return new GdprService(
+            db,
+            repository.Object,
+            new GuestDataEraser(db, Mock.Of<IFileStorage>(), eraserLog ?? (ILogger<GuestDataEraser>)NullLogger<GuestDataEraser>.Instance),
+            Options.Create(new GdprOptions()),
+            CrmTestWorld.Clock(),
+            serviceLog ?? (ILogger<GdprService>)NullLogger<GdprService>.Instance);
+    }
+
+    private static Property NewProperty(Guid orgId) => new()
+    {
+        OrgId = orgId,
+        OwnerId = "auth0|owner",
+        Name = "Casa del Lago",
+        Address = "Via del Lago 1",
+        City = "Como",
+        MaxGuests = 4,
+        Timezone = "Europe/Rome",
+        Currency = "EUR",
+    };
+
+    private static GuestCrmProfile NewProfile(Guid orgId, Guid? primaryGuestId, string phone, string nameBirth, string composite) => new()
+    {
+        OrgId = orgId,
+        CompositeKeyHash = Index.Hash(composite),
+        Language = "it",
+        Country = "Italia",
+        TotalStays = 2,
+        TotalSpend = 450m,
+        TagsJson = """["vip","famiglia"]""",
+        PropertyIdsJson = "[]",
+        FirstStayAt = CrmTestWorld.Day(-40),
+        LastStayAt = CrmTestWorld.Day(-10),
+        PhoneKeyHash = Index.Hash(phone),
+        NameBirthKeyHash = Index.Hash(nameBirth),
+        PrimaryGuestId = primaryGuestId,
+    };
+
+    private static GuestContact Contact(
+        Guid orgId,
+        Guid? guestId,
+        Guid? profileId,
+        GuestContactChannel channel,
+        string value,
+        string name,
+        GuestContactLegalBasis basis,
+        bool suppressed = false) => new()
+        {
+            OrgId = orgId,
+            GuestId = guestId,
+            GuestCrmProfileId = profileId,
+            Channel = channel,
+            Value = value,
+            ValueHash = Index.Hash(value),
+            DisplayName = name,
+            Language = "it",
+            Origin = GuestContactOrigin.CheckIn,
+            Confirmation = GuestContactConfirmation.Confirmed,
+            ConfirmedAt = ConsentAt.AddMinutes(5),
+            LegalBasis = basis,
+            BasisVersion = "marketing-v2",
+            BasisRecordedAt = ConsentAt,
+            ConsentSource = GuestConsentSource.GuestPortal,
+            ConsentIpAddress = "203.0.113.7",
+            IsSuppressed = suppressed,
+            SuppressedAt = suppressed ? OptOutAt : null,
+            SuppressedSource = suppressed ? "unsubscribe" : null,
+            CreatedAt = ConsentAt,
+            UpdatedAt = ConsentAt,
+        };
+
+    /// <summary>A proposal of merge of two profiles, stored the way the database wants it: the smaller id first.</summary>
+    private static GuestMergeCandidate NewProposal(Guid orgId, Guid profileId, Guid otherProfileId)
+    {
+        var first = profileId.CompareTo(otherProfileId) < 0 ? profileId : otherProfileId;
+        var second = first == profileId ? otherProfileId : profileId;
+        return new GuestMergeCandidate
+        {
+            OrgId = orgId,
+            ProfileAId = first,
+            ProfileBId = second,
+            Score = 90,
+            ReasonsJson = """["same_phone"]""",
+        };
+    }
+
+    private static void AddConversation(AppDbContext db, Guid orgId, Guid propertyId, Guid bookingId, string guestText, string hostText)
+    {
+        var thread = new GuestThread
+        {
+            OrgId = orgId,
+            PropertyId = propertyId,
+            BookingId = bookingId,
+            CreatedAt = ConsentAt,
+            LastMessageAt = ConsentAt.AddHours(2),
+        };
+        db.GuestThreads.Add(thread);
+        db.GuestMessages.AddRange(
+            new GuestMessage { OrgId = orgId, ThreadId = thread.Id, Sender = GuestMessageSender.Guest, Text = guestText, CreatedAt = ConsentAt.AddHours(1) },
+            new GuestMessage { OrgId = orgId, ThreadId = thread.Id, Sender = GuestMessageSender.Host, Text = hostText, CreatedAt = ConsentAt.AddHours(2), AuthorUserId = "auth0|host" });
+    }
+}

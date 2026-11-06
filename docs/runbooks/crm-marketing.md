@@ -47,9 +47,9 @@ with `Suppliers__CustomerIndexKey`, [`suppliers.md`](suppliers.md) § 23).
 - **Never change it once a contact or a suppression entry exists.** Every hash already stored would stop matching: the same person would become a
   new contact, and **a person who opted out would stop being found by the suppression list and could be written to again**. There is no rotation;
   losing the key is losing the index (the legacy plain SHA-256 entries of the suppression list keep working, the keyed ones do not).
-- **Set it on every environment before turning the module on, and as soon as you can — except production, until E07/F06/US02/T01 (erasure and
-  anonymization of the CRM contacts) is delivered**: there neither the key nor the flag is set ([`crm-profiles.md`](crm-profiles.md) § 4.4,
-  [`deploy-checklist.md`](deploy-checklist.md)), and the known risk below stays open. The startup asks for it only with the flag on: a missing
+- **Set it on every environment before turning the module on, and as soon as you can — except production, until the product owner decides**
+  (the erasure and the anonymization of the CRM contacts, E07/F06/US02/T01, are delivered: [`gdpr.md`](gdpr.md) § 13): there neither the key nor
+  the flag is set for now ([`crm-profiles.md`](crm-profiles.md) § 4.4, [`deploy-checklist.md`](deploy-checklist.md)), and the known risk below stays open. The startup asks for it only with the flag on: a missing
   key must not stop production, where the module is off, and the legal record of a withdrawal is made whatever the flag and the key say. Without
   the key (flag off, outside Development and Testing):
   - **the withdrawal that the host records on a guest's request is saved as before**: `PUT api/gdpr/guests/{id}/consent` answers 204, with the
@@ -78,9 +78,9 @@ with `Suppliers__CustomerIndexKey`, [`suppliers.md`](suppliers.md) § 23).
 Production: leave `Features__CrmMarketing` unset until the product owner decides, after the checks of NF-95 on the test environment (the keyed
 suppression list, the signed link with its page, the GDPR export and erasure, the recipients from the per-channel consents). **Set
 `Crm__ContactIndexKey` in test and in production before turning `CrmMarketing` on** (with the flag on and no key the service does not start), and
-before that if you want the withdrawals the hosts record to enter the suppression list (§ 3). **Both rules wait for E07/F06/US02/T01** (erasure and
-anonymization of the CRM contacts): the CRM sync copies e-mail, phone, name and a keyed hash of the birth date of the bookers into tables that the
-erasure of the guests does not reach yet, so until that task is delivered production gets **neither the key nor the flag**.
+before that if you want the withdrawals the hosts record to enter the suppression list (§ 3). **Both rules wait for the product owner's decision**: the CRM
+sync copies e-mail, phone, name and a keyed hash of the birth date of the bookers into tables that the erasure of the guests reaches since
+E07/F06/US02/T01 ([`gdpr.md`](gdpr.md) § 13), and until he decides production gets **neither the key nor the flag**.
 
 ## 5. Suppression (E07/F06/US01/T02)
 

@@ -9,17 +9,17 @@ Nothing below invents a retention period or a legal text: the periods and the te
 
 | Concern | Behaviour | Code |
 |---|---|---|
-| Erasure (art. 17) | `DELETE /api/gdpr/guests/{id}` and `DELETE /api/guests/{id}` of a guest with past bookings: every personal field of the guest and of the guests of its stays, the IP and note of its consent events, the marketing e-mail and IP of its per-channel marketing consents (the consent ends, time and text version stay as proof), the special requests of its bookings, the **document scan object** in the private storage; open check-in links expire; the record is marked deleted and kept for its bookings. 409 `guest_has_open_bookings` while a stay is open (its Alloggiati communication is still a legal obligation, art. 17.3.b). Idempotent: a second call changes and audits nothing | `GdprService.EraseGuestDataAsync`, `GuestDataEraser` |
+| Erasure (art. 17) | `DELETE /api/gdpr/guests/{id}` and `DELETE /api/guests/{id}` of a guest with past bookings: every personal field of the guest and of the guests of its stays, the IP and note of its consent events, the marketing e-mail and IP of its per-channel marketing consents (the consent ends, time and text version stay as proof), the special requests of its bookings, the **document scan object** in the private storage; open check-in links expire; **the CRM data of the guest** (contacts, profile, proposals of merge: § 13) goes in the same save; the record is marked deleted and kept for its bookings. 409 `guest_has_open_bookings` while a stay is open (its Alloggiati communication is still a legal obligation, art. 17.3.b). Idempotent: a second call changes and audits nothing | `GdprService.EraseGuestDataAsync`, `GuestDataEraser` |
 | Guest without bookings | `DELETE /api/guests/{id}` removes the row after deleting its scan object (TN-1 rule) | `GuestService.DeleteGuestAsync`, `GdprService.EraseStoredFilesBeforeRemovalAsync` |
 | Anonymization | `POST /api/gdpr/guests/{id}/anonymize`: same as the erasure, the record is not marked deleted | `GdprService.AnonymizeGuestDataAsync` |
-| Export (art. 15, 20) | `GET /api/gdpr/guests/{id}/export`: versioned JSON (`schemaVersion` = `casazen.guest-data-export/2`) with identity and contacts, birth, **document in clear** (only here), bookings with payments, guests of the stays, check-in links, Alloggiati communications, consent history with versions and IPs, processing status and retention per category. `guest.read` on the guest's org, `Cache-Control: no-store`, audited | `GdprService.ExportGuestDataAsync`, `GuestDataExport` |
+| Export (art. 15, 20) | `GET /api/gdpr/guests/{id}/export`: versioned JSON (`schemaVersion` = `casazen.guest-data-export/2`) with identity and contacts, birth, **document in clear** (only here), bookings with payments, guests of the stays, check-in links, Alloggiati communications, consent history with versions and IPs, processing status and retention per category, and since E07/F06/US02/T01 the **per-channel marketing consents** (`marketingChannels`), the **CRM profile** (`crmProfile`), the **CRM contacts** (`contacts`) and the **messages with the host** (`messages`), see § 13. `guest.read` on the guest's org, `Cache-Control: no-store`, audited | `GdprService.ExportGuestDataAsync`, `GuestDataExport` |
 | GDPR tab | `GET /api/gdpr/guests/{id}`: current consents with their version, history (no IP), retention per category, status | `GdprService.GetGuestPrivacySummaryAsync` |
 | Marketing consent (A5-14) | The host can **never** grant it: `PUT /api/gdpr/guests/{id}/consent` with `marketingConsent: true` answers 422 `gdpr_marketing_consent_host_grant_forbidden`. A withdrawal needs the guest's documented request in `note` (date, channel; 422 `gdpr_marketing_withdrawal_note_required` without it) and is recorded with the host's user id. Since E07/F06/US01/T02 a withdrawal that is recorded also puts the e-mail of the guest and every marketing e-mail of its per-channel consents in the marketing suppression list (source `manual`, keyed hash) and flags the CRM contacts with the same hash, **in the same unit of work** as the withdrawal. **The withdrawal never depends on the key of that index** (`Crm__ContactIndexKey`, which the application may lack while the flag `CrmMarketing` is off): without it the consent record, the audit entry and the flag are saved all the same and the call answers 204, the suppression is skipped, and an error in the log names the withdrawal, the guest and the variable (nothing else about the guest; known risk and remedy in [`crm-marketing.md`](crm-marketing.md) § 3 and § 5) | `GdprService.UpdateMarketingConsentAsync` |
 | Check-in portal (A5-15) | The Alloggiati registration is a legal obligation (art. 109 TULPS, art. 6.1.c GDPR): **no consent checkbox**. The portal shows the privacy notice; on submit the notice version is recorded. The marketing consent is optional, offered only when its text has a version, recorded with version, time and IP. An unticked box leaves an earlier consent as it is (it is not a withdrawal). **Per-channel consent (NF-05):** the request may also carry `marketingConsentEmail`, `marketingConsentWhatsApp` and `marketingEmail` (contract in the XML docs of `PublicCheckInSubmitRequest`). Each ticked channel is recorded on its own in one `MarketingConsentRecords` row with the real marketing e-mail (required with any channel: 400 on `MarketingEmail`), the time, the text version, the IP and the booking. The e-mail is **not confirmed** (`EmailConfirmed = false`, double opt-in) and `Guest.MarketingConsent` is not set, so nothing is sent before the confirmation. A minor booker cannot tick a channel (400 on that channel). The legacy `marketingConsent` box keeps its behavior and names no channel | `GuestCheckInService.RecordPrivacyChoices`, `GuestCheckInService.ValidateMarketingConsent`, frontend `checkin-page.tsx` |
 | Checkout of the booking site (DB-03) | The optional "send me offers" box of `POST /api/public/bookings` (`marketingConsent`, never preselected, never a condition of the booking) follows the same rule as the portal: offered only when the text has a version (`marketingConsentVersion` of `GET /api/public/orgs/{slug}`), recorded with version, time and IP, in the same insert as the booking and the guest ([direct-booking.md](direct-booking.md) § 11.6). `marketingConsent: true` without a version answers 422 `direct_booking_marketing_consent_unavailable` | `BookingService.CreateDirectBookingAsync`, `BookingRepository.AddWithGuestConsentAsync` |
 | History | Append-only `GuestConsentRecords`: purpose (`PrivacyNotice`, `Marketing`, `SoftOptInNotice`), action (`NoticePresented`, `Granted`, `Withdrawn`, `Expired`), version, source (`GuestPortal`, `HostOnGuestRequest`, `RetentionPolicy`, `BookingCheckout`, `WelcomePage`, `GuestPage`), IP, note, time | `GuestConsentRecord` |
 | Audit | `GuestPrivacyAuditEntries`: export, anonymization, erasure, retention applied (with category), marketing withdrawal; host user id (null for the job), counters of guests of the stays anonymized and files deleted. **No personal data of the guest**, no foreign key (it survives the removal of a guest) | `GuestPrivacyAuditEntry` |
-| Retention | Nightly job `gdpr-data-retention` (03:00 UTC, FD-11) applies each configured category (§ 3) to every org. Idempotent: processed rows carry a marker and are not selected again | `GdprDataRetentionJob`, `GuestDataRetentionService` |
+| Retention | Nightly job `gdpr-data-retention` (03:00 UTC, FD-11) applies each configured category (§ 3) to every org. The end of the `Marketing` consent of a guest also moves its CRM contacts on consent to service only, without suppressing them (§ 13). Idempotent: processed rows carry a marker and are not selected again | `GdprDataRetentionJob`, `GuestDataRetentionService` |
 
 The invented 7-year retention (`Compliance:GdprRetentionYears`, `Guest.DataRetentionUntil = now + 7y` at booking,
 check-in and check-out) is gone: the column `Guests.DataRetentionUntil` is dropped by the migration
@@ -97,6 +97,8 @@ the booker's stay data (there is no separate record to erase).
 | Alloggiati communication status and receipt reference | Proof of the legal communication; the receipt itself is kept by the host (alloggiati.md § 4) |
 | Audit entries | Accountability (art. 5.2), no personal data |
 | `DeletionReason` | Written by the host; the web app always sends a fixed text. Never put personal data in it |
+| The keyed hash of a CRM contact that carries a suppression, with its flag, its date and its source: a row with no value, no name, no IP, no guest, no profile (§ 13) | The opt-out must outlive the person, as the entry of the marketing suppression list does (art. 21 GDPR, art. 130 Codice privacy): the same address that comes back is flagged again. The hash is keyed by `Crm__ContactIndexKey`, which is not in the database |
+| A CRM profile that other guests are still linked to, without its keyed hashes, tags and country (§ 13) | An erasure is the erasure of one guest: the profile of several guests is also the others' |
 
 Not removed by CasaZen: data held by Stripe for the payments (the processor's own retention), copies in database or
 storage backups (they expire with the backup retention of Supabase), a scan object still referenced by another record
@@ -289,3 +291,57 @@ Verification after deploy: Railway logs at 03:00 UTC show `GDPR retention: wizar
 Database: `select count(*) from "WizardDrafts" where "ExpiresAt" < now() and "UserId" <> '';` is 0 once the job has run. The logs carry counts only, never the content of a draft.
 
 Not part of the erasure of a guest (art. 17): a draft belongs to the host user who typed it, not to a guest record; the guest data typed in it is anonymized with the draft, within 30 days of the last save at most.
+
+## 13. The CRM: export, erasure and retention (E07/F06/US02/T01, NF-95, NF-20)
+
+The marketing module ([`crm-marketing.md`](crm-marketing.md), [`crm-profiles.md`](crm-profiles.md)) keeps for a guest a **profile**
+(`GuestCrmProfiles`), its **contacts** (`GuestContacts`: e-mail, phone, WhatsApp, each with its origin, confirmation, legal basis, version of
+the text and suppression), the **proposals of merge** of duplicate profiles (`GuestMergeCandidates`) and, from the check-in, the per-channel
+consents (`MarketingConsentRecords`). The rights of the guest cover all of it.
+
+### Export (art. 15, 20)
+
+`GET /api/gdpr/guests/{id}/export` has four more sections. The schema version stays `casazen.guest-data-export/2`: sections were added, none was
+renamed or removed.
+
+| Section | What it holds |
+|---|---|
+| `marketingChannels` | Each per-channel consent of the check-in: the booking, the channels ticked, the marketing e-mail, whether it was confirmed (double opt-in), the version of the text, the time and the IP |
+| `crmProfile` | Language, country and tags; the aggregates (stays, spend, first and last stay) **only when the profile is the guest's alone**, with `sharedWithOtherGuests`; `null` when the guest has no profile. Never the keyed hashes, the proposals of merge, the confirmed marketing address or the data of another guest |
+| `contacts` | Channel, value, display name, language, origin, confirmation (and when), legal basis, version of the text and time of the basis, source and IP of the consent, suppression (flag, date, source). The contacts the guest gave and, when the profile is the guest's alone, every contact of the profile: the same set the erasure removes |
+| `messages` | The messages the guest exchanged with the host: booking, sender (`Guest` or `Host`), text, time. The messages of the OTA hub that E05 persists are added by E05 |
+
+A profile that other guests are linked to (the merge of duplicates) adds their stays to its aggregates, so the aggregates are left out of the
+export of each of them; the stays of the guest are in `bookings`.
+
+### Erasure and anonymization (art. 17)
+
+`GuestDataEraser.EraseCrmDataAsync`, in the same unit of work as the rest of the erasure (and in the removal of a guest that has no bookings, which
+otherwise would leave the profile and the contacts behind):
+
+| What | Rule |
+|---|---|
+| Contacts | The contacts the guest gave are deleted. When the profile is the guest's alone, so are all the contacts of the profile (a lead with no guest included) |
+| A contact that carries a suppression | **Not deleted**: it stays as a row with no value, no display name, no IP, no guest, no profile, no language and no basis; only the org, the channel, the keyed hash of the value, the flag, its date and its source remain. The suppression list is not touched, so the opt-out says the same in both places. If the same address comes back, `CrmContactService` finds the row by the hash and gives it its value again; it stays suppressed |
+| Profile | The guest is unlinked from it. The profile is deleted when no other guest of the org is linked to it, with the proposals of merge that involve it. **A profile of several guests is never deleted by the erasure of one**: it loses its keyed hashes (`PhoneKeyHash`, `NameBirthKeyHash`, `CompositeKeyHash`), its tags and its country, and the erased guest is no longer its primary guest. The other guests, their contacts, the contacts of no guest and the proposals that involve the profile stay; its aggregates are recalculated by the next sync of a guest of the profile |
+| Rows of campaigns | The campaign module (recipients of a campaign) is not built in this plan: when it is, a recipient keeps its row and loses the references to the contact and to the profile |
+
+The erasure is idempotent (the guest has no profile and no contact of its own to find the second time) and writes only counts to the log: no
+address, no phone number, no name, no hash.
+
+### Retention (`Marketing`)
+
+When the job ends the marketing consent of a guest (event `Expired`, § 3), the contacts of the guest on `Consent` go back to `ServiceOnly`: what a
+stay needs (check-in, instructions, invoice) is still allowed and marketing is not. **They are not suppressed**: an expiry is not an opt-out and the
+guest can consent again. A contact on soft opt-in, a contact that is suppressed and the evidence of the consent that ended are left as they are.
+
+### Verification after deploy
+
+1. Erase a test guest that has a contact and a profile (`DELETE /api/gdpr/guests/{id}`), then:
+   `select count(*) from "GuestContacts" where "GuestId" = '<guest id>';` is 0;
+   `select "GuestCrmProfileId" from "Guests" where "Id" = '<guest id>';` is empty;
+   `select count(*) from "GuestCrmProfiles" where "Id" = '<profile id>';` is 0 when the guest was the only one linked.
+2. An unsubscribed contact of that guest is still there as a marker: `select "Channel", "IsSuppressed", "SuppressedAt" from "GuestContacts" where "Value" = '' and "IsSuppressed";`
+   (no value, no name, no IP: the columns `Value` and `DisplayName` are empty or null).
+3. The export of a guest with a profile and contacts has `marketingChannels`, `crmProfile`, `contacts` and `messages`.
+4. The logs of the erasure say `CRM data of guest {GuestId}: N contacts removed, M opt-outs kept without personal data`, and nothing else about them.

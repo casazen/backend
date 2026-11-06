@@ -398,6 +398,14 @@ public class CrmContactService(
 
         var changed = FillIn(contact, input);
 
+        // The row an erasure left as an opt-out marker (E07/F06/US02/T01) has its keyed hash and its flag but no value: the same address has come
+        // back, so the value is known again. It stays suppressed (below), whatever the new booking is.
+        if (!created && string.IsNullOrEmpty(contact.Value))
+        {
+            contact.Value = value;
+            changed = true;
+        }
+
         // An address seen later as a forward (its domain was added to the list) is one, unless somebody already stands behind it.
         if (isForward && contact.Origin != GuestContactOrigin.OtaForward && contact.LegalBasis <= GuestContactLegalBasis.ServiceOnly)
         {

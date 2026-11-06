@@ -24,8 +24,8 @@ event handler, the job and the demo seed run only with `Features__CrmMarketing` 
 ([`crm-marketing.md`](crm-marketing.md) § 3), set (`CrmProfileSyncGate`); with either missing they do nothing and say so in the log (§ 4.4). The
 reason is privacy: the sync copies the e-mail, the phone and the name of the bookers, and a keyed hash of the birth date, into `GuestContacts`,
 `GuestCrmProfiles` and `GuestMergeCandidates`, which the erasure, the anonymization and the retention of the guests (`GdprService`,
-`GuestDataEraser`, `GuestDataRetentionService`) do not reach yet: that is task E07/F06/US02/T01. **Until it is delivered, neither the key nor the
-flag is set in production** ([`deploy-checklist.md`](deploy-checklist.md)).
+`GuestDataEraser`, `GuestDataRetentionService`) reach since task E07/F06/US02/T01 ([`gdpr.md`](gdpr.md) § 13). **Neither the key nor the flag is set
+in production until the product owner decides** ([`deploy-checklist.md`](deploy-checklist.md)).
 
 ## 2. Matching: who is the same guest (T01)
 
@@ -246,8 +246,9 @@ With `Features__CrmMarketing` off, or `Crm__ContactIndexKey` not configured (`Cr
 [`crm-marketing.md`](crm-marketing.md) § 3), the sync is closed: the job ends at once with one line (`CRM profile sync skipped: Features:CrmMarketing is
 off or Crm:ContactIndexKey is not configured`) and does not fail, the event handler does nothing, and the demo reset skips the CRM profiles. The gate is asked
 at every run and at every event. **No profile and no contact is created in an environment until its flag is on and its key is set**; neither alone opens it
-(the keyed index also serves the suppression list of a withdrawal, so a key can exist for that). **Production stays closed until E07/F06/US02/T01 (erasure
-and anonymization of the CRM contacts) is delivered**: no key and no flag there ([`deploy-checklist.md`](deploy-checklist.md)).
+(the keyed index also serves the suppression list of a withdrawal, so a key can exist for that). **Production stays closed until the product owner decides**
+(the erasure and the anonymization of the CRM contacts, E07/F06/US02/T01, are delivered: [`gdpr.md`](gdpr.md) § 13): no key and no flag there
+([`deploy-checklist.md`](deploy-checklist.md)).
 
 ### 4.5 The demo showcase
 
