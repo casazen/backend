@@ -1191,8 +1191,9 @@ public class DemoEnvironmentService(
 
     /// <summary>
     /// The mirror of a showcase booking on Octorate (E08/F03/US03/T02, NF-74): the row the push would have left for the invented reservation, in the
-    /// state the template says. A synced one was confirmed when the booking was made; a conflict keeps the stay Octorate holds (the booking's own with
-    /// the arrival moved), so the booking page shows both versions. It goes with its booking at the next reset (cascade) and is marked like the rest.
+    /// state the template says. A synced one was confirmed when the booking was made, and so was the create that precedes a refused change; a
+    /// conflict keeps the stay Octorate holds (the booking's own with the arrival moved), so the booking page shows both versions. It goes with its
+    /// booking at the next reset (cascade) and is marked like the rest.
     /// </summary>
     private async Task CreateOctorateSyncAsync(
         Guid orgId,
@@ -1203,7 +1204,8 @@ public class DemoEnvironmentService(
         string templateKey,
         CancellationToken cancellationToken)
     {
-        var synced = template.State == OctorateSyncState.Synced;
+        // The create is the first operation: a later one (a change that was refused) follows a reservation Octorate had already confirmed.
+        var confirmed = template.State == OctorateSyncState.Synced || template.LastOperation != OctorateSyncOperation.Create;
         var sync = new OctorateBookingSync
         {
             OrgId = orgId,
@@ -1213,9 +1215,9 @@ public class DemoEnvironmentService(
             LastOperation = template.LastOperation,
             Attempts = 1,
             LastAttemptAt = madeAt,
-            LastSyncedAt = synced ? madeAt : null,
+            LastSyncedAt = confirmed ? madeAt : null,
             ErrorCode = template.ErrorCode,
-            OctorateUpdateTime = synced ? madeAt : null,
+            OctorateUpdateTime = confirmed ? madeAt : null,
             OctorateVersionJson = template.State == OctorateSyncState.Conflict ? ConflictVersionJson(booking, template) : null,
             CreatedAt = madeAt,
             UpdatedAt = madeAt,
