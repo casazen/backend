@@ -511,7 +511,7 @@ public class MessageHubServiceTests : IAsyncLifetime
             Assert.Null(m.AttachmentContentType);
         });
         Assert.Equal(_world.GrantedDirectBooking.GuestId, view.CustomerGuestId);
-        Assert.Equal(new MessageThreadActions(true, true, false, true, null), view.Actions);
+        Assert.Equal(new MessageThreadActions(true, true, false, false, null), view.Actions);
 
         // A direct booking: the total and what came in, from its payments.
         Assert.Equal(new MessageBookingAmounts(300m, 120m, null, null, null), view.Booking!.Amounts);

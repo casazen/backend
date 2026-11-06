@@ -51,6 +51,17 @@ public static class OtaChannelCapabilities
     public static OtaChannelCapability For(OtaChannel channel, OtaThreadKind kind) =>
         Table.TryGetValue((channel, kind), out var capability) ? capability : OtaChannelCapability.None;
 
+    /// <summary>
+    /// What the host may do in the conversation with the guest of a direct booking while it is open. It is not a channel, so it has no row of its own
+    /// in the table above, but it is answered by the same screens and read by the same gates: contact details are fine (it is CasaZen's own chat), and
+    /// the attachment (D3) and the automatic answer (D4) are the two policies that are not confirmed, so they are false here too, from the same two switches.
+    /// </summary>
+    public static OtaChannelCapability Direct { get; } = new(
+        CanReply: true,
+        ContactDetailsAllowed: true,
+        AttachmentsConfirmed: AttachmentsPolicyConfirmed,
+        AutoReplyConfirmed: AutoReplyPolicyConfirmed);
+
     private static Dictionary<(OtaChannel, OtaThreadKind), OtaChannelCapability> Build()
     {
         var table = new Dictionary<(OtaChannel, OtaThreadKind), OtaChannelCapability>();

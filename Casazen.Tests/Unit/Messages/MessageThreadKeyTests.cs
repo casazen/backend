@@ -126,4 +126,15 @@ public class OtaChannelCapabilitiesTests
         Assert.False(OtaChannelCapabilities.AttachmentsPolicyConfirmed);
         Assert.False(OtaChannelCapabilities.AutoReplyPolicyConfirmed);
     }
+
+    [Fact]
+    public void TheConversationWithTheGuestOfADirectBooking_IsAnsweredWithContactDetails_AndFollowsTheSameTwoSwitches()
+    {
+        var direct = OtaChannelCapabilities.Direct;
+
+        Assert.True(direct.CanReply);
+        Assert.True(direct.ContactDetailsAllowed);
+        Assert.False(direct.AttachmentsConfirmed);
+        Assert.False(direct.AutoReplyConfirmed);
+    }
 }

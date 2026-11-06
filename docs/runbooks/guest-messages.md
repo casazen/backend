@@ -136,7 +136,8 @@ property sits in a row of the mapping that nobody decided (`IChannelMappingServi
 `OtaChannelCapabilities` for a conversation of a channel, by channel and kind. All four channels can be answered; `contactDetailsAllowed` is false for an
 Airbnb request (no link, address or number before the booking, OCT-11); `attachmentsAllowed` and `autoReplyAllowed` are false for every channel until the
 product owner confirms the policy (D3, D4: `OtaChannelCapabilities.AttachmentsPolicyConfirmed` / `AutoReplyPolicyConfirmed`, the one place to change).
-A direct thread can be answered while it is open (`reason: "thread_closed"` after).
+A direct thread can be answered while it is open (`reason: "thread_closed"` after), with contact details, and `attachmentsAllowed` and `autoReplyAllowed` are
+false there too, from the same two switches (`OtaChannelCapabilities.Direct`).
 
 **The attachment proxy (ADR-032-R5).** The file of a message is not copied: the address the channel manager gave is stored with the message and used by the
 server only. `GET api/messages/{messageId}/attachment` checks the message against the caller's org and scope (**404** `message_not_found` for a message of

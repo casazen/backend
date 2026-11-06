@@ -538,14 +538,12 @@ public sealed class MessageHubService(
         if (propertyId is not { } id || await channelMapping.IsWriteBlockedAsync(id, cancellationToken))
             return MessageThreadActions.Blocked(MessageThreadActions.MappingNotConfirmedReason);
 
-        var capability = OtaChannelCapabilities.For(channel, kind);
-        return new MessageThreadActions(
-            capability.CanReply,
-            capability.ContactDetailsAllowed,
-            capability.AttachmentsConfirmed,
-            capability.AutoReplyConfirmed,
-            null);
+        return ActionsOf(OtaChannelCapabilities.For(channel, kind));
     }
+
+    /// <summary>The actions of a conversation as the table of capabilities says them: the one place that turns a row of it into what the screens read.</summary>
+    private static MessageThreadActions ActionsOf(OtaChannelCapability capability) =>
+        new(capability.CanReply, capability.ContactDetailsAllowed, capability.AttachmentsConfirmed, capability.AutoReplyConfirmed, null);
 
     // ------------------------------------------------------------------------------------------------------------------------------------
     // The conversation with the guest of a direct booking
@@ -561,7 +559,7 @@ public sealed class MessageHubService(
         var card = await BookingCardAsync(scope, key.Id, booking.PropertyId, null, includeAmounts, cancellationToken);
         var open = view.State == GuestThreadState.Open;
         var actions = open
-            ? new MessageThreadActions(true, true, false, true, null)
+            ? ActionsOf(OtaChannelCapabilities.Direct)
             : MessageThreadActions.Blocked(MessageThreadActions.ThreadClosedReason);
         var messages = view.Messages
             .Select(m => new MessageHubMessage(
