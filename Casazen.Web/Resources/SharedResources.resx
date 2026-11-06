@@ -360,6 +360,12 @@
   <data name="GuestNotFound" xml:space="preserve">
     <value>Ospite non trovato</value>
   </data>
+  <data name="CrmProfileNotFound" xml:space="preserve">
+    <value>Profilo ospite non trovato.</value>
+  </data>
+  <data name="CrmTagsInvalid" xml:space="preserve">
+    <value>Etichette non valide: al massimo 50, da 1 a 40 caratteri ciascuna, senza doppioni e non oltre 2.000 caratteri in tutto.</value>
+  </data>
   <data name="GuestEmailAlreadyExists" xml:space="preserve">
     <value>Esiste già un ospite con questa email.</value>
   </data>

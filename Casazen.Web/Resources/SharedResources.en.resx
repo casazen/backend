@@ -360,6 +360,12 @@
   <data name="GuestNotFound" xml:space="preserve">
     <value>Guest not found</value>
   </data>
+  <data name="CrmProfileNotFound" xml:space="preserve">
+    <value>Guest profile not found.</value>
+  </data>
+  <data name="CrmTagsInvalid" xml:space="preserve">
+    <value>Invalid tags: at most 50, 1 to 40 characters each, no duplicates, and no more than 2,000 characters in all.</value>
+  </data>
   <data name="GuestEmailAlreadyExists" xml:space="preserve">
     <value>A guest with this email already exists.</value>
   </data>

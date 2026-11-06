@@ -44,6 +44,10 @@ public static class CrmServiceCollectionExtensions
         services.AddScoped<IEventHandler<DomainEvent>, CrmBookingEventHandler>();
         services.AddScoped<CrmProfileSyncJob>();
 
+        // E07/F01/US03 (NF-88): the profile API of the host screens. The read model decides the scope of the CRM (the profiles a caller reaches), the
+        // list, the detail and the tags; the controller behind Features:CrmMarketing is a thin layer over it.
+        services.AddScoped<ICrmProfileReadService, CrmProfileReadService>();
+
         return services;
     }
 }
