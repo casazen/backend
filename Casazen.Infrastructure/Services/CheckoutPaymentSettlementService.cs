@@ -160,7 +160,19 @@ public sealed class CheckoutPaymentSettlementService(
                 .Where(b => b.Id == booking.Id)
                 .Where(CheckoutHolds.IsExpired(expiredHoldCutoff))
                 .AnyAsync(cancellationToken);
-        var datesFree = await AreDatesFreeAsync(booking, expiredHoldCutoff, checkCalendarBlocks: !validHold, cancellationToken);
+        // A booking the host entered (its payment link, E08/F01/US01/T05) is confirmed from the start: a payment that succeeds once the host
+        // cancelled it never brings it back, whatever the dates, and is refunded in full like a payment on dates that are taken.
+        var hostBooking = booking.Source == BookingSource.Manual;
+        var datesFree = !hostBooking
+                        && await AreDatesFreeAsync(booking, expiredHoldCutoff, checkCalendarBlocks: !validHold, cancellationToken);
+        if (hostBooking)
+        {
+            logger.LogWarning(
+                "Payment intent {PaymentIntentId} succeeded on host booking {BookingId} in status {Status}: refunded, the booking stays as it is",
+                paymentIntentId,
+                booking.Id,
+                booking.Status);
+        }
 
         MarkCompleted(payment, paymentIntentId, eventAccountId, onPlatform);
         await paymentRepository.UpdateAsync(payment);

@@ -4596,4 +4596,10 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OnboardingFlowStateUnknown" xml:space="preserve">
     <value>Stato del flusso sconosciuto.</value>
   </data>
+  <data name="PaymentLinkUnavailable" xml:space="preserve">
+    <value>Non è possibile creare il link di pagamento: servono un account Stripe pronto a ricevere pagamenti, un saldo da pagare e una prenotazione inserita da te e non cancellata. Se un pagamento è già in corso, attendi il suo esito.</value>
+  </data>
+  <data name="PaymentLinkPermissionRequired" xml:space="preserve">
+    <value>Per inviare un link di pagamento serve il permesso di gestire i pagamenti di questo immobile.</value>
+  </data>
 </root>

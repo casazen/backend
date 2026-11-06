@@ -2,6 +2,7 @@ using Casazen.Core.Events;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Octorate;
+using Casazen.Infrastructure.Services;
 
 namespace Casazen.Web.Extensions;
 
@@ -24,6 +25,9 @@ public static class BookingOperationsServiceCollectionExtensions
 
         // E08/F01/US01/T02 (NF-74): where in Octorate a property books; every writer of a booking to Octorate asks it first.
         services.AddScoped<IOctorateBookingTargets, OctorateBookingTargets>();
+
+        // E08/F01/US01/T05 (NF-74): the payment link of a booking the host entered (the checkout page and the webhook are the checkout's).
+        services.AddScoped<IBookingPaymentLinkService, BookingPaymentLinkService>();
         return services;
     }
 }

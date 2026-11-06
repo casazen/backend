@@ -2250,4 +2250,28 @@
   <data name="SupplierAlternative_Unit_PerSquareMeter" xml:space="preserve">
     <value>al m²</value>
   </data>
+  <data name="BookingPaymentLink_Subject" xml:space="preserve">
+    <value>Pagamento del tuo soggiorno - {0}</value>
+  </data>
+  <data name="BookingPaymentLink_Greeting" xml:space="preserve">
+    <value>Caro/a {0},</value>
+  </data>
+  <data name="BookingPaymentLink_Body" xml:space="preserve">
+    <value>ecco il link per pagare il tuo soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt; dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="BookingPaymentLink_Amount" xml:space="preserve">
+    <value>Importo da pagare: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="BookingPaymentLink_Cta" xml:space="preserve">
+    <value>Paga ora</value>
+  </data>
+  <data name="BookingPaymentLink_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="BookingPaymentLink_Secure" xml:space="preserve">
+    <value>Il pagamento avviene su una pagina sicura di Stripe e va direttamente al tuo host. Se ricevi un nuovo link, usa sempre l'ultimo: quello precedente non funziona più.</value>
+  </data>
+  <data name="BookingPaymentLink_NotYou" xml:space="preserve">
+    <value>Se non riconosci questa prenotazione, ignora questa email e non pagare.</value>
+  </data>
 </root>
