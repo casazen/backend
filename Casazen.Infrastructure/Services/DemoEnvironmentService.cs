@@ -922,6 +922,9 @@ public class DemoEnvironmentService(
         var madeAt = DateTime.SpecifyKind(checkIn.AddDays(-30), DateTimeKind.Utc);
         if (madeAt > UtcNow())
             madeAt = UtcNow();
+
+        // A stay with registered guests declares as many (NF-40: the check-in wizard compares the two); the others keep two adults.
+        var registered = template.Guests ?? [];
         var booking = new Booking
         {
             OrgId = orgId,
@@ -929,8 +932,9 @@ public class DemoEnvironmentService(
             GuestId = guest.Id,
             CheckInDate = checkIn,
             CheckOutDate = checkIn.AddDays(template.Nights),
-            NumberOfGuests = 2,
-            NumberOfAdults = 2,
+            NumberOfGuests = registered.Count > 0 ? registered.Count : 2,
+            NumberOfAdults = registered.Count > 0 ? registered.Count(g => g.AgeAtCheckIn >= AlloggiatiRecordRules.AdultAge) : 2,
+            NumberOfChildren = registered.Count(g => g.AgeAtCheckIn < AlloggiatiRecordRules.AdultAge),
             Status = template.Status,
             Source = template.Source,
             PaymentOption = template.PaymentOption,
@@ -951,6 +955,10 @@ public class DemoEnvironmentService(
             GuestEmailVerifiedAt = template.PaymentOption == PaymentOption.OnSite && template.Status != BookingStatus.Pending ? madeAt : null,
             CheckedOutAt = template.Status == BookingStatus.CheckedOut
                 ? DateTime.SpecifyKind(checkIn.AddDays(template.Nights).AddHours(9), DateTimeKind.Utc)
+                : null,
+            // NF-45: a no-show the host marked in the evening of the arrival day (the status stays Confirmed).
+            NoShowAt = template.NoShow && template.Status == BookingStatus.Confirmed
+                ? DateTime.SpecifyKind(checkIn.AddHours(20), DateTimeKind.Utc)
                 : null,
         };
         db.Bookings.Add(booking);
@@ -1008,8 +1016,16 @@ public class DemoEnvironmentService(
             row.DocumentType = GuestDocumentType.IdentityCard;
             row.DocumentNumber = $"CATEST{position + 1:D3}";
             row.DocumentIssuePlaceName = "Roma";
-            row.DocumentIssuedOn = arrival.AddYears(-3);
-            row.DocumentExpiresOn = arrival.AddYears(7);
+            // NF-40: an expired document is a warning of the check-in wizard (the host records what the guest showed).
+            row.DocumentIssuedOn = demo.DocumentExpired ? arrival.AddYears(-10).AddDays(-20) : arrival.AddYears(-3);
+            row.DocumentExpiresOn = demo.DocumentExpired ? arrival.AddDays(-20) : arrival.AddYears(7);
+        }
+
+        // NF-40: data still to complete, which the check-in wizard asks for.
+        if (demo.BirthPlaceMissing)
+        {
+            row.BirthComuneName = string.Empty;
+            row.BirthProvince = null;
         }
 
         return row;

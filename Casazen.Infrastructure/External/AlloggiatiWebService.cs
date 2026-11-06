@@ -91,7 +91,8 @@ public class AlloggiatiWebService(
             .AsNoTracking()
             .Include(b => b.Guest)
             .Include(b => b.Property)
-            .Where(b => b.OrgId == scope.OrgId && ActiveBookingStatuses.Contains(b.Status))
+            // A no-show (NF-45) has nothing to send: it leaves the list of the communications.
+            .Where(b => b.OrgId == scope.OrgId && ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
             .InScope(scope);
 
         if (propertyId.HasValue)
@@ -327,7 +328,8 @@ public class AlloggiatiWebService(
         if (report.Status is not (AlloggiatiWebStatus.DaInviare or AlloggiatiWebStatus.Errore))
             return AlloggiatiProcessOutcome.AlreadyHandled;
 
-        if (!ActiveBookingStatuses.Contains(booking.Status))
+        // A no-show (NF-45) has nobody to communicate: it never reads "to send manually".
+        if (!ActiveBookingStatuses.Contains(booking.Status) || booking.NoShowAt is not null)
             return AlloggiatiProcessOutcome.BookingInactive;
 
         if (!AlloggiatiTerms.IsArrivalDayReached(booking.CheckInDate, _clock.TodayInRome()))

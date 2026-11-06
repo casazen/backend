@@ -653,6 +653,25 @@ org); an official rate in force always wins. No answer carries a name, an age or
 | `PUT` | `/api/admin/tourist-tax/channel-rules` | Admin | `{ channel, istatCode, collector, sourceUrl, isActive, verifiedAt, notes }` adds or changes the rule of a channel in a comune; the source must be an absolute https address (422 `tax_rule_source_invalid`); stamps the time and the admin |
 | `PUT` | `/api/admin/tourist-tax/exemption-reasons/{code}` | Admin | `{ octorateExemptionCode, isActive }` sets the Octorate code of a reason (null: no known match); 404 `tax_exemption_reason_not_found` |
 
+#### Guest check-in wizard and no-show (NF-40, NF-45, E03/F01/US01/T04)
+
+`ICheckInWizardService` composes the host wizard "Guest check-in" (guests, documents, checks, tax, send, result) from the services that own each
+rule: the guests and the record rules (`IStayGuestService`, `AlloggiatiRecordRules` through `CheckInReadinessRules`), the tax
+(`IStayTouristTaxService`), the sender (`IPropertySenderStore`) and the check-in on Octorate (`ICheckInOctorateSyncService`). It records no
+`CheckInCompleted`/`CheckOutCompleted`, changes no booking status and sends nothing to the police (the arrival and the check-out keep their
+endpoints; CasaZen as sender and the regional ISTAT fields are deferred, so `requiredGuestFields` is empty). Another org's booking, and one the caller
+may not act on, is 404. The document photo is read in memory only (`IDocumentReadingService`: MRZ, then OCR; ADR-013-R6) and never stored or logged.
+A no-show sets `Bookings.NoShowAt` (the status stays `Confirmed`), sends `NO_SHOW` to Octorate for a mirrored booking, is cleared by a late arrival,
+and takes the stay out of the Alloggiati list and job.
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/bookings/{bookingId}/checkin-wizard` | short-rent booking.read + row check | `{ booking { bookingId, propertyId, propertyName, checkIn, checkOut, nights, source, declaredGuests, status, noShowAt }, attendance (Expected\|Arrived\|Departed\|NoShow\|Inactive), guests [the host summary: names, birth, citizenship, residence, document type, `documentNumberMasked`, issue and expiry dates, statistical fields, `taxExemptionCode`, `saved`, `dataSource`], requiredGuestFields, issues [{ position, code, field, blocking }], tax (as `GET …/tourist-tax`, null when not available), sender { alloggiatiSender, source, applies }, octorate { mirrored, guests, states }, alloggiati { status, dataComplete, deadlineAt, isOverdue, reportedAt }, capabilities { documentReading, canRegisterArrival, canMarkNoShow, octorateTaxValues }, suggestedStep (guests\|documents\|checks\|tax\|send\|result) }`. Issue codes: `guest_field_missing`, `octorate_field_missing`, `guest_field_required` (blocking), `guest_code_missing`, `document_expired`, `guests_count_mismatch` (warnings). Full document numbers stay on `GET /api/alloggiati/{bookingId}/stay-guests/document-numbers` |
+| `PUT` | `/api/bookings/{bookingId}/checkin-wizard/guests` | short-rent alloggiati.submit + row check | `{ guests: [...] }` as `PUT /api/alloggiati/{bookingId}/stay-guests` (the exemption code of the tourist tax with each guest): the host is the author; 400 keyed `Guests[i].Field`; answers the new state. Complete data schedules the Alloggiati communication like the host entry |
+| `POST` | `/api/bookings/{bookingId}/checkin-wizard/document-reading` | short-rent alloggiati.submit + row check, `Features:CheckInIdentityVerification` (404 while off) | Multipart `document` (JPEG or PNG, at most 10 MB): `{ method (Mrz\|Ocr\|None), confidence, checkDigitsValid, requiresManualReview, fields }`; 400 `document_required`, `document_type_unsupported` |
+| `POST` | `/api/bookings/{bookingId}/checkin-wizard/confirm` | short-rent alloggiati.submit + row check | 422 `checkin_not_ready` with the blocking issues (`issues`); otherwise `{ tax { saved, reason }, octorate { state, reason, draft, correctionAfterSend, guests }, alloggiati { step (ChannelManagerSends\|Manual\|AlreadySent\|NotApplicable), sender }, state }`. The tax is confirmed only when calculable (never blocking: `tax_not_calculable`); the guests go to Octorate by the rules of the sender |
+| `POST` | `/api/bookings/{bookingId}/no-show` | short-rent booking.write + row check | `{ bookingId, status, noShowAt }`; idempotent; 409 `booking_not_confirmed`, 422 `no_show_too_early` (before the check-in day in Rome), 409 `no_show_alloggiati_sent` (an attempt sending or accepted, or a report sent or declared sent) |
+
 #### Tourist tax summary (NF-100, REP-05)
 
 | Method | Path | Auth | Description |

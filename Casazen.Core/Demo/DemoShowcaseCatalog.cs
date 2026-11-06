@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.3";
+    public const string Version = "2026-11-06.4";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -78,6 +78,13 @@ public static class DemoShowcaseCatalog
         public const string MarketplaceActivationDeclared = "marketplace-activation-declared";
         public const string TouristTaxPerGuest = "tourist-tax-per-guest";
         public const string TouristTaxChannelCollected = "tourist-tax-channel-collected";
+
+        // NF-40, NF-45 (E03/F01/US01/T04): the host wizard "Guest check-in" in the four states of a stay, and a stay with data to complete.
+        public const string CheckInWizardExpected = "checkin-wizard-expected";
+        public const string CheckInWizardArrived = "checkin-wizard-arrived";
+        public const string CheckInWizardDeparted = "checkin-wizard-departed";
+        public const string CheckInWizardNoShow = "checkin-wizard-no-show";
+        public const string CheckInWizardIncomplete = "checkin-wizard-incomplete";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -129,6 +136,11 @@ public static class DemoShowcaseCatalog
         Scenario.MarketplaceActivationDeclared,
         Scenario.TouristTaxPerGuest,
         Scenario.TouristTaxChannelCollected,
+        Scenario.CheckInWizardExpected,
+        Scenario.CheckInWizardArrived,
+        Scenario.CheckInWizardDeparted,
+        Scenario.CheckInWizardNoShow,
+        Scenario.CheckInWizardIncomplete,
     ];
 
     /// <summary>
@@ -417,6 +429,41 @@ public static class DemoShowcaseCatalog
                 new("past-guest-roma", "Francesca", "Romano", "francesca.demo@example.com", -15, 5, BookingStatus.CheckedOut, Scenario.AlloggiatiRegistered),
                 // NF-96: the same months one year earlier (see the villa).
                 new("anno-prima-roma", "Elisa", "Fontana", "ospite.demo.anno-prima-4@example.com", -380, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Direct),
+                // NF-40, NF-45: the check-in wizard in the four states of a stay (departed, no-show, arrived, expected) and one stay whose data
+                // the host still has to complete (a birth place missing, a document expired before the arrival: a warning, never a block).
+                new(
+                    "checkin-partito", "Sara", "Galli", "ospite.demo.checkin-1@example.com", -7, 2, BookingStatus.CheckedOut,
+                    Scenario.CheckInWizardDeparted, BookingSource.Direct,
+                    Guests: [new("Sara", "Galli", StayGuestType.SingleGuest, 41)]),
+                new(
+                    "checkin-mancato-arrivo", "Tomas", "Lind", "ospite.demo.checkin-2@example.com", -4, 1, BookingStatus.Confirmed,
+                    Scenario.CheckInWizardNoShow, BookingSource.Direct,
+                    Guests: [new("Tomas", "Lind", StayGuestType.SingleGuest, 29)],
+                    NoShow: true),
+                new(
+                    "checkin-arrivato", "Bianca", "Ferri", "ospite.demo.checkin-3@example.com", -1, 3, BookingStatus.CheckedIn,
+                    Scenario.CheckInWizardArrived, BookingSource.Direct,
+                    Guests:
+                    [
+                        new("Bianca", "Ferri", StayGuestType.HeadOfFamily, 38),
+                        new("Leo", "Ferri", StayGuestType.FamilyMember, 9),
+                    ]),
+                new(
+                    "checkin-atteso", "Nina", "Russo", "ospite.demo.checkin-4@example.com", 4, 2, BookingStatus.Confirmed,
+                    Scenario.CheckInWizardExpected, BookingSource.Direct,
+                    Guests:
+                    [
+                        new("Nina", "Russo", StayGuestType.HeadOfGroup, 45),
+                        new("Ada", "Conti", StayGuestType.GroupMember, 44),
+                    ]),
+                new(
+                    "checkin-da-completare", "Piet", "Jansen", "ospite.demo.checkin-5@example.com", 9, 2, BookingStatus.Confirmed,
+                    Scenario.CheckInWizardIncomplete, BookingSource.Direct,
+                    Guests:
+                    [
+                        new("Piet", "Jansen", StayGuestType.HeadOfFamily, 52, DocumentExpired: true),
+                        new("Mila", "Jansen", StayGuestType.FamilyMember, 50, BirthPlaceMissing: true),
+                    ]),
             ]),
         new(
             Key: "bilocale-navigli",
@@ -820,7 +867,8 @@ public sealed record DemoBookingTemplate(
     PaymentOption PaymentOption = PaymentOption.Immediate,
     BookingCancellationReason? CancellationReason = null,
     decimal? TouristTax = null,
-    IReadOnlyList<DemoStayGuestTemplate>? Guests = null);
+    IReadOnlyList<DemoStayGuestTemplate>? Guests = null,
+    bool NoShow = false);
 
 /// <summary>
 /// A registered guest of a demo stay (NF-40, NF-46): invented like the rest of the demo, with complete Alloggiati data of the right shape (an
@@ -832,12 +880,16 @@ public sealed record DemoBookingTemplate(
 /// <param name="Type">Kind of guest of the Alloggiati record.</param>
 /// <param name="AgeAtCheckIn">Age on the check-in day.</param>
 /// <param name="TaxExemptionCode">The tourist tax exemption the host chose (a non-automatic reason), if any.</param>
+/// <param name="DocumentExpired">The document of the guest expired before the arrival (the check-in wizard warns, never blocks).</param>
+/// <param name="BirthPlaceMissing">The comune of birth is not entered yet (the check-in wizard asks for it).</param>
 public sealed record DemoStayGuestTemplate(
     string FirstName,
     string LastName,
     StayGuestType Type,
     int AgeAtCheckIn,
-    string? TaxExemptionCode = null);
+    string? TaxExemptionCode = null,
+    bool DocumentExpired = false,
+    bool BirthPlaceMissing = false);
 
 /// <summary>
 /// The rate the demo host declared for the comune of a demo house with no official one (NF-46, AC-NF46-6): a fixed amount per person per night,

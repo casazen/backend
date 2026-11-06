@@ -4644,4 +4644,16 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="TouristTaxFieldInvalid" xml:space="preserve">
     <value>Valore non valido.</value>
   </data>
+  <data name="CheckInNotReady" xml:space="preserve">
+    <value>Il check-in non si può ancora confermare: completa i dati indicati.</value>
+  </data>
+  <data name="BookingNoShowNotConfirmed" xml:space="preserve">
+    <value>Il mancato arrivo si segna solo per una prenotazione confermata il cui arrivo non è stato registrato.</value>
+  </data>
+  <data name="BookingNoShowTooEarly" xml:space="preserve">
+    <value>Il mancato arrivo si segna dal giorno del check-in.</value>
+  </data>
+  <data name="BookingNoShowAlloggiatiSent" xml:space="preserve">
+    <value>La comunicazione alla Questura di questo soggiorno è già stata inviata: correggila sul portale Alloggiati Web.</value>
+  </data>
 </root>

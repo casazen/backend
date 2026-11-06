@@ -4644,4 +4644,16 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="TouristTaxFieldInvalid" xml:space="preserve">
     <value>Invalid value.</value>
   </data>
+  <data name="CheckInNotReady" xml:space="preserve">
+    <value>The check-in cannot be confirmed yet: complete the data shown.</value>
+  </data>
+  <data name="BookingNoShowNotConfirmed" xml:space="preserve">
+    <value>A no-show can be marked only for a confirmed booking whose arrival was not registered.</value>
+  </data>
+  <data name="BookingNoShowTooEarly" xml:space="preserve">
+    <value>A no-show can be marked from the check-in day.</value>
+  </data>
+  <data name="BookingNoShowAlloggiatiSent" xml:space="preserve">
+    <value>The police communication of this stay was already sent: correct it on the Alloggiati Web portal.</value>
+  </data>
 </root>
