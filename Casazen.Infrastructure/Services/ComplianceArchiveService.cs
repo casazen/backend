@@ -266,11 +266,14 @@ public sealed class ComplianceArchiveService(
         // The stays that owe nothing: a no-show has nobody to communicate, and every reader of the status says so (AlloggiatiStatusRules).
         var from = query.From.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var to = query.To.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        var propertyFilter = query.PropertyId;
-        var noShows = await db.Bookings
+        var noShowQuery = db.Bookings
             .AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
-            .Where(b => b.OrgId == orgId && (propertyFilter == null || b.PropertyId == propertyFilter))
+            .Where(b => b.OrgId == orgId);
+        if (query.PropertyId is { } onlyProperty)
+            noShowQuery = noShowQuery.Where(b => b.PropertyId == onlyProperty);
+
+        var noShows = await noShowQuery
             .InScope(scope)
             .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt != null)
             .Where(b => b.CheckInDate >= from && b.CheckInDate <= to)

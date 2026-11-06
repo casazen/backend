@@ -78,11 +78,12 @@ public sealed class ComplianceStatusService(
         var propertyQuery = db.Properties.AsNoTracking();
         if (forReport)
             propertyQuery = propertyQuery.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]);
+        if (propertyFilter is { } onlyProperty)
+            propertyQuery = propertyQuery.Where(p => p.Id == onlyProperty);
 
         var properties = await propertyQuery
             .Where(PropertyRentalModeRules.IsShortRent)
             .Where(p => p.OrgId == orgId)
-            .Where(p => propertyFilter == null || p.Id == propertyFilter)
             .InScope(scope)
             .Select(p => new PropertyRow(p.Id, p.Name, p.Country, p.City, p.ComuneIstatCode, p.CinCode))
             .ToListAsync(ct);
@@ -94,10 +95,11 @@ public sealed class ComplianceStatusService(
         var stayQuery = db.Bookings.AsNoTracking();
         if (forReport)
             stayQuery = stayQuery.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]);
+        if (propertyFilter is { } onlyStayProperty)
+            stayQuery = stayQuery.Where(b => b.PropertyId == onlyStayProperty);
 
         var stays = await stayQuery
             .Where(b => b.OrgId == orgId)
-            .Where(b => propertyFilter == null || b.PropertyId == propertyFilter)
             .InScope(scope)
             .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
             .Where(b => b.CheckInDate >= windowStart && b.CheckInDate <= arrivalHorizon)
