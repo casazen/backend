@@ -634,6 +634,63 @@ and `trend` compare, and only with the same days one year earlier.
   only when the report compared. File names: `casazen-prestazioni-per-immobile-competenza-20261001-20261031.csv`,
   `casazen-andamento-competenza-...`.
 
+#### Tourist tax summary (NF-100, REP-05)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/tourist-tax/summary` | short-rent payment.read | The tourist tax per comune for `from`..`to` (`yyyy-MM-dd`, Europe/Rome days, both included): `{ title, basis, currency, paymentsHidden, period, comuni, total }`. A comune is `{ comune, stays, nights, guests, owed, owedCents, staysWithoutAmount, paid, paidCents, balance, balanceCents, status, remittances }` with `status` `NothingOwed`\|`ToPay`\|`Paid`\|`Overpaid`, a payment `{ id, comune, periodFrom, periodTo, amount, amountCents, paidOn, reference, notes, hasReceipt }`, and `total` `{ stays, nights, guests, owed, owedCents, staysWithoutAmount, paid, paidCents, balance, balanceCents }`. A caller who reaches only some of the properties of the org gets `paymentsHidden: true` and only what is owed on those properties: `paid`, `paidCents`, `balance`, `balanceCents`, `status` and `remittances` are `null` (in the total too: `paid`, `paidCents`, `balance`, `balanceCents`) and `title` says that the payments are not shown, because the payments belong to the org and to no property. Only the properties in Italy count (a house abroad is neither summed nor payable). Extra query `format` `json` (default) or `csv` (400 `report_invalid_format`). 400 `fiscal_report_period_invalid` when a day is missing, `to` is before `from`, the period is longer than 366 days (as `GET /api/fiscal/reports/tourist-tax`) or a year is outside 2000-2100; 403 without an org |
+| `POST` | `/api/tourist-tax/remittances` | short-rent payment.write | Records a payment (`multipart/form-data`): `comune`, `periodFrom`, `periodTo` and `paidOn` (`yyyy-MM-dd`), `paidAmount` (text with a dot and at most two decimals: `12.50`), `reference` (200), `notes` (500) and an optional file `receipt`. 201 with the payment. 422 `tourist_tax_comune_unknown` (not a comune of the org's properties in Italy), `tourist_tax_amount_invalid` (not above zero, more than two decimals, above 1,000,000,000), `tourist_tax_date_in_future` (`paidOn` after today in Rome), `tourist_tax_period_invalid` (backwards, longer than 366 days), `tourist_tax_receipt_invalid` (not a PDF, JPEG or PNG by its content, empty, over 10 MB), `tourist_tax_text_too_long`; 400 `validation_error` for a missing or malformed date; 403 `tourist_tax_payments_need_whole_org` for a caller who reaches only some of the properties |
+| `GET` | `/api/tourist-tax/remittances/{id}/receipt` | short-rent payment.read | The receipt from the private bucket, `Cache-Control: private, no-store`, downloaded under the name the host sent with the extension of what the file really is. 404 `tourist_tax_remittance_not_found` (also another org's), `tourist_tax_receipt_not_found` (no receipt, or the file is gone); 403 `tourist_tax_payments_need_whole_org` for a caller who reaches only some of the properties |
+| `DELETE` | `/api/tourist-tax/remittances/{id}` | short-rent payment.write | Deletes a wrong entry: the row and its receipt. 204; 404 `tourist_tax_remittance_not_found` (also another org's); 403 `tourist_tax_payments_need_whole_org` for a caller who reaches only some of the properties |
+
+`TouristTaxSummaryController` carries `payment.read` on the class and `payment.write` on the two writes, so the accountant reads and cannot
+record or delete, and the collaborator has neither. It works in the org and the `HostScope` of the caller, as `FiscalController` does.
+- **A scope limited to some properties sees what is owed and no payment.** A payment belongs to the org and to no property (the comune it
+  pays is the comune of several properties, and a payment for a quarter covers stays of all of them). For a caller whose `HostScope` is not
+  org-wide (`IsOrgWide` false: the legacy account that created its properties, the collaborator «Solo alcuni») the summary is the owed side
+  of the properties it reaches and nothing else (`paymentsHidden: true`; paid, balance, status and payments `null`), because a balance of the
+  payments of the whole org against the tax of some of its properties is false, and the amounts would cover properties it does not reach.
+  Recording a payment, deleting one and opening a receipt need a scope that reaches the whole org: 403
+  `tourist_tax_payments_need_whole_org`, answered by the service (`DomainForbiddenException`) before anything is read, stored or deleted.
+- **Owed is the report, not a new calculation.** `ITouristTaxSummaryService.GetSummaryAsync` adds up the stay lines of
+  `IFiscalReportingService.GetTouristTaxReportAsync` per comune, the amounts as they are: the ones the engine recorded on the confirmed
+  stays with check-in in the period (BK-03). A stay with no recorded amount (rate not available, exempt guests, a booking from a channel) is counted in
+  `staysWithoutAmount` and never taken as zero: when it is above zero `owed` may be incomplete, and `NothingOwed` only means that nothing
+  is recorded. Every label made from it says so: the CSV writes `Nessun importo registrato` for `NothingOwed` (never «niente da versare»)
+  and `Importo incompleto` next to every row and total with `staysWithoutAmount` above zero; the page has to do the same, with the same two
+  texts, and to show the note next to `owed` and `status` whenever `staysWithoutAmount` is above zero, also for `Paid`.
+- **Paid is the payments inside the period.** A payment counts for a summary when its own period (`periodFrom`..`periodTo`) lies inside the
+  period asked, whatever the day it was made, so the figures of a period do not change with the day they are read. Several payments of the
+  same comune and period (instalments) are all counted. A comune with payments and no stays in the period is a row of its own.
+- **Cents.** Owed and every payment are turned into whole cents once and the balance is worked out on the cents (`owed - paid`, negative when
+  overpaid), so it is exactly the difference of the two. `status`: more paid than owed is `Overpaid` (also with nothing owed); nothing owed
+  and nothing paid is `NothingOwed`; the same amount is `Paid`; the rest is `ToPay`. `total.balance` is the difference of the two totals: an
+  overpayment to one comune offsets what is owed to another in that one figure, the rows say what is due to each.
+- **The comune.** The payment is stored with the comune as typed and with its key (`TouristTaxComune.NormalizeName`: case, accents and
+  punctuation do not count), the same key the tourist tax report groups the stays by, so "forli" meets "Forlì". It has to be a comune of a
+  property of the org in Italy (the deleted ones too, as the report); only a caller who reaches the whole org records, opens or deletes a
+  payment.
+- **Only the properties in Italy.** The rates are those of the Italian comuni and every amount is in euros, so a property whose `Country`
+  is not Italy (`TouristTaxComune.IsItalianCountry`: no country, or `IT` in any case, the rule of `TouristTaxComune.ForProperty`) is left out
+  of the summary and its comune cannot be paid (422 `tourist_tax_comune_unknown`). The tourist tax report of the fiscal area groups the stays
+  by the name of the comune alone and does not look at the country: without this a house in Switzerland (CHF-MONEY) would fall in the row of an
+  Italian comune of the same name, or in a row of its own with an owed amount of zero, and euros could be paid for it. The summary therefore
+  groups the stay lines of the report itself (the same sums) and skips those of the properties abroad.
+- **The receipt** is read to the end and judged on its first bytes (`%PDF-`, a JPEG or a PNG; not on the name and not on the type the client
+  declared), at most 10 MB, and stored in the private bucket under `tourist-tax/{orgId}/{remittanceId}/{guid}.{pdf|jpg|png}`
+  (`StorageKeys.TouristTaxReceipt`). The file is stored first and removed if the save fails; deleting a payment removes the row first and
+  then the file.
+- **The CSV** is written by `CsvWriter`: the title with its base and the days on the first row
+  (`Tassa di soggiorno per comune: dovuta sui soggiorni con check-in nel periodo, versata con periodo compreso nel periodo, dal 01/01/2026 al
+  31/12/2026`), the header, a row for each comune (owed, stays without an amount, paid, balance, status in words, note) and a `Totale` row;
+  then, after an empty row, the payments (comune, period, amount, day, reference, note, whether it has a receipt). The last column, `Nota`,
+  says `Importo incompleto` on every row (and on the `Totale` row) that counts stays with no amount recorded, and the status of a comune
+  with nothing recorded and nothing paid is `Nessun importo registrato`. The two texts are in `SharedResources`
+  (`TouristTaxStatusNothingRecorded`, `TouristTaxOwedIncomplete`, Italian and English) and are read in Italian whatever the language of the
+  caller, because the rest of the file is Italian. For a caller who reaches only some of the properties (`paymentsHidden`) the file has the
+  owed side only: a title that says the payments are not shown, no paid, balance and status columns and no list of payments. The file is
+  `casazen-tassa-soggiorno-riepilogo-20260101-20261231.csv`.
+
 #### Owner portal (ADR-011, NF-96)
 
 Policy `OwnerPortal` on the class (JWT claim `context=owner_portal` and a valid `owner_id`; never a host role); 401 without a valid owner
@@ -1430,6 +1487,22 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | `LastSavedAt`, `ExpiresAt` | `DateTime` | — | UTC, microseconds; `ExpiresAt` = `LastSavedAt` + 30 days |
 | `RowVersion` | `uint` | `xmin` (no column of its own) | Concurrency token: two parallel saves of the same `Version` cannot both win |
 | | | **unique** `(OrgId, UserId, WizardType, EntityId)` where `EntityId IS NOT NULL AND UserId <> ''` (`UIX_WizardDrafts_OrgId_UserId_WizardType_EntityId`) and `(OrgId, UserId, WizardType)` where `EntityId IS NULL AND UserId <> ''` (`UIX_WizardDrafts_OrgId_UserId_WizardType`); index on `ExpiresAt` where `UserId <> ''` | The anonymized rows (empty `UserId`) are left out of the unique indexes. The nightly `gdpr-data-retention` job anonymizes the drafts past `ExpiresAt` and never deletes a row |
+
+#### `TouristTaxRemittance` (NF-100, REP-05)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (RESTRICT), tenant key (`ITenantOwned`) | The org of the caller, set by the server |
+| `Comune`, `ComuneKey` | `string` (200) ×2 | required | The comune as the host typed it, and its comparable form (`TouristTaxComune.NormalizeName`), the key the tourist tax report groups the stays by |
+| `PeriodFrom`, `PeriodTo` | `DateOnly` ×2 | `PeriodFrom <= PeriodTo` (check constraint) | The period the payment declares and pays, both days included (Europe/Rome) |
+| `PaidAmount` | `decimal(18,2)` | `> 0` (check constraint) | What was paid, in euros |
+| `PaidOn` | `DateOnly` | not after the day it was recorded | The day of the payment (Europe/Rome) |
+| `PaymentReference`, `Notes` | `string?` (200, 500) | — | The reference and the note of the host |
+| `ReceiptStorageKey`, `ReceiptFileName`, `ReceiptContentType`, `ReceiptSizeBytes` | `string?` (500, 240, 100), `long?` | all or none | The receipt in the private bucket (`tourist-tax/{orgId}/{id}/{file}`), the name it is downloaded under, what the file really is (`application/pdf`, `image/jpeg`, `image/png`) and its size |
+| `RecordedByUserId` | `string` (255) | required, not a foreign key | The Auth0 subject who recorded it |
+| `CreatedAt`, `UpdatedAt` | `DateTime` | UTC | — |
+| | | index `(OrgId, ComuneKey, PeriodFrom, PeriodTo)`, **not unique** | A comune can be paid in instalments, so payments of the same comune and period are all kept |
 
 ---
 

@@ -14,6 +14,7 @@ namespace Casazen.Core.Services;
 /// <item><c>guest-documents/{orgId}/{guestId}/{file}</c> — private bucket</item>
 /// <item><c>orgs/{orgId}/branding/{logo|hero}/{file}</c> — public bucket (BK-12)</item>
 /// <item><c>service-requests/{requestId}/photos/{file}</c> — private bucket (photos of a supplier's work, SP-04)</item>
+/// <item><c>tourist-tax/{orgId}/{remittanceId}/{file}</c> — private bucket (the receipt of a tourist tax payment, NF-100)</item>
 /// </list>
 /// Private keys are what the database stores for private files (<c>PropertyDocument.StorageUrl</c>,
 /// <c>Guest.DocumentScanUrl</c>); public files are stored as their absolute public URL.
@@ -80,6 +81,13 @@ public static partial class StorageKeys
     /// </summary>
     public static string ServiceRequestPhoto(Guid serviceRequestId, string fileName) =>
         $"service-requests/{serviceRequestId}/photos/{fileName}";
+
+    /// <summary>
+    /// The receipt of a tourist tax payment (private bucket, NF-100): shown to the people of the org that made the payment through an
+    /// authenticated endpoint, never by a public URL. <paramref name="fileName"/> is made by the server, never the one the host sent.
+    /// </summary>
+    public static string TouristTaxReceipt(Guid orgId, Guid remittanceId, string fileName) =>
+        $"tourist-tax/{orgId}/{remittanceId}/{fileName}";
 
     /// <summary>A new random file name that keeps only the (lower-cased) extension of the upload.</summary>
     public static string NewFileName(string? originalFileName) =>

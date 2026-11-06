@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-05.3";
+    public const string Version = "2026-11-06.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -73,6 +73,7 @@ public static class DemoShowcaseCatalog
         public const string PropertyRoomsAndDiscounts = "property-rooms-and-discounts";
         public const string PopupAlerts = "popup-alerts";
         public const string WizardDrafts = "wizard-drafts";
+        public const string TouristTaxPaid = "tourist-tax-paid";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -119,6 +120,7 @@ public static class DemoShowcaseCatalog
         Scenario.PropertyRoomsAndDiscounts,
         Scenario.PopupAlerts,
         Scenario.WizardDrafts,
+        Scenario.TouristTaxPaid,
     ];
 
     /// <summary>
@@ -352,12 +354,20 @@ public static class DemoShowcaseCatalog
             NightlyRate: 140m,
             CleaningFee: 30m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLombardia],
+            Scenarios: [Scenario.PublishedLombardia, Scenario.TouristTaxPaid],
             Profile: new DemoPropertyProfile(
                 AccommodationType.Apartment, 2, 55, null,
                 new TimeOnly(14, 0), new TimeOnly(11, 0), SmokingPolicy.OutdoorsOnly, PetsPolicy.No, PartiesPolicy.No,
                 new TimeOnly(22, 0), new TimeOnly(8, 0), null),
-            Bookings: []),
+            // NF-100: three finished stays of Milano. Two carry the tourist tax the engine records (3 EUR a person a night: invented, like the rest
+            // of the demo) and the third comes from a channel with none, so the summary of the comune shows an amount owed, a part of it paid
+            // (TouristTaxRemittances) and a stay counted apart, never taken as a tax of zero.
+            Bookings:
+            [
+                new("tassa-versata", "Irene", "Valli", "ospite.demo.tassa-1@example.com", -75, 3, BookingStatus.CheckedOut, Scenario.TouristTaxPaid, BookingSource.Direct, TouristTax: 18.00m),
+                new("tassa-da-versare", "Omar", "Haddad", "ospite.demo.tassa-2@example.com", -50, 2, BookingStatus.CheckedOut, Scenario.TouristTaxPaid, BookingSource.Direct, TouristTax: 12.00m),
+                new("tassa-senza-importo", "Katja", "Novak", "ospite.demo.tassa-3@example.com", -30, 2, BookingStatus.CheckedOut, Scenario.TouristTaxPaid, BookingSource.Airbnb),
+            ]),
         new(
             Key: "casa-trastevere",
             Name: "Casa Trastevere (demo)",
@@ -630,6 +640,26 @@ public static class DemoShowcaseCatalog
             -2,
             Scenario.WizardDrafts),
     ];
+
+    /// <summary>
+    /// Tourist tax payments of the demo host (NF-100): one payment to Milano, with a receipt (an invented one-page PDF that says it is test
+    /// data), for the first of the three stays of <see cref="Scenario.TouristTaxPaid"/> in Appartamento Brera: 18.00 EUR, the tax recorded on it,
+    /// for the days from 90 to 60 before the reset, made 55 days before it. The second stay (12.00 EUR) is not paid, so the summary of the
+    /// comune over the last three months shows 30.00 owed, 18.00 paid, 12.00 to pay, a payment with its receipt and one stay with no amount.
+    /// </summary>
+    public static IReadOnlyList<DemoTouristTaxRemittanceTemplate> TouristTaxRemittances { get; } =
+    [
+        new(
+            "versamento-milano",
+            "appartamento-brera",
+            -90,
+            -60,
+            18.00m,
+            -55,
+            "Bonifico di prova (TEST)",
+            "Versamento di dimostrazione con ricevuta inventata (TEST).",
+            Scenario.TouristTaxPaid),
+    ];
 }
 
 public sealed record DemoPlace(string City, string IstatCode, string RegionCode, string PostalCode, string Address);
@@ -654,7 +684,8 @@ public sealed record DemoBookingTemplate(
     decimal? AgreedTotal = null,
     string? PriceNote = null,
     PaymentOption PaymentOption = PaymentOption.Immediate,
-    BookingCancellationReason? CancellationReason = null);
+    BookingCancellationReason? CancellationReason = null,
+    decimal? TouristTax = null);
 
 public sealed record DemoPropertyTemplate(
     string Key,
@@ -930,4 +961,31 @@ public sealed record DemoWizardDraftTemplate(
     WizardType Type,
     string DataJson,
     int SavedOffsetDays,
+    string Scenario);
+
+/// <summary>
+/// A payment of the tourist tax of the demo host (NF-100): invented like the rest of the demo. It pays the comune of the demo house
+/// <paramref name="PropertyKey"/> for the days from <paramref name="PeriodFromOffsetDays"/> to <paramref name="PeriodToOffsetDays"/> from the
+/// reset (negative: in the past), was made <paramref name="PaidOnOffsetDays"/> days from it (never after today) and comes with a receipt,
+/// an invented one-page PDF that says it is test data. Written for the org at reset and marked as showcase data
+/// (<c>TestDataEntities.TouristTaxRemittance</c>), so the next reset deletes it and its file.
+/// </summary>
+/// <param name="Key">Stable key of the payment inside the template.</param>
+/// <param name="PropertyKey">The demo property (<see cref="DemoPropertyTemplate.Key"/>) whose comune is paid.</param>
+/// <param name="PeriodFromOffsetDays">First day of the period the payment pays, in days from the reset.</param>
+/// <param name="PeriodToOffsetDays">Last day of that period, included, in days from the reset.</param>
+/// <param name="PaidAmount">Euros, above zero, to the cent.</param>
+/// <param name="PaidOnOffsetDays">The day it was paid, in days from the reset: today or earlier.</param>
+/// <param name="Reference">The reference the host wrote.</param>
+/// <param name="Notes">The note of the host.</param>
+/// <param name="Scenario">The scenario it exercises.</param>
+public sealed record DemoTouristTaxRemittanceTemplate(
+    string Key,
+    string PropertyKey,
+    int PeriodFromOffsetDays,
+    int PeriodToOffsetDays,
+    decimal PaidAmount,
+    int PaidOnOffsetDays,
+    string Reference,
+    string Notes,
     string Scenario);

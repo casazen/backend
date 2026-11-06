@@ -23,6 +23,7 @@ Object keys:
 | private | `guest-documents/{orgId}/{guestId}/{random}.{ext}` |
 | private | `leases/{orgId}/{leaseId}/registration/{random}.pdf` (RLI receipts, LT-01: only through `GET /api/leases/{id}/registration/receipt`) |
 | private | `leases/{orgId}/{leaseId}/signed-contract/{random}.pdf` (contract signed by every party, LT-02: uploaded by the landlord or copied from the e-sign provider; only through `GET /api/leases/{id}/signed-document`) |
+| private | `tourist-tax/{orgId}/{remittanceId}/{random}.{pdf\|jpg\|png}` (the receipt of a tourist tax payment, NF-100: type read from the bytes, at most 10 MB; only through `GET /api/tourist-tax/remittances/{id}/receipt`, removed with the payment) |
 
 Lease contract PDFs (offline signing flow, D15) use the private bucket through `IFileStorage`: the landlord uploads the signed contract (`POST /api/leases/{id}/signed-document`, PDF of at most 20 MB, `docs/runbooks/rli.md` § Contract signature). A path left by the old e-sign stub (`/signed/…`) is not a storage key and is never served.
 
