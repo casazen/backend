@@ -147,7 +147,7 @@ public class DemoMessageHubSeedTests : IAsyncLifetime
         // The reset finds them by their markers: the two threads of the channels and the direct one.
         var markers = await _db.TestDataMarkers.AsNoTracking().Where(m => m.Origin == TestDataOrigins.Showcase).ToListAsync();
         Assert.Equal(
-            [reservation.Id, request.Id],
+            new[] { reservation.Id, request.Id }.Order(),
             markers.Where(m => m.EntityType == TestDataEntities.OtaMessageThread).Select(m => m.EntityId).Order());
         Assert.Equal([direct.Id], markers.Where(m => m.EntityType == TestDataEntities.GuestThread).Select(m => m.EntityId));
     }
