@@ -3697,6 +3697,18 @@
   <data name="IdempotencyKeyInvalid" xml:space="preserve">
     <value>The request has no valid send key (Idempotency-Key header, 8 to 64 letters, digits or dashes).</value>
   </data>
+  <data name="ThreadKeyInvalid" xml:space="preserve">
+    <value>The conversation key is not valid.</value>
+  </data>
+  <data name="MessageThreadNotFound" xml:space="preserve">
+    <value>Conversation not found.</value>
+  </data>
+  <data name="MessageNotFound" xml:space="preserve">
+    <value>Message not found.</value>
+  </data>
+  <data name="AttachmentUnavailable" xml:space="preserve">
+    <value>The attachment is no longer available.</value>
+  </data>
   <data name="LeaseDocumentInvalid" xml:space="preserve"><value>Upload a valid PDF up to 20 MB.</value></data>
   <data name="ApeIncomplete" xml:space="preserve">
     <value>Missing or unreadable certificate data: {0}. Add all pages or replace unclear photos.</value>
