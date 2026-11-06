@@ -4671,4 +4671,25 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="DirectBookingSoftOptInNoticeOutdated" xml:space="preserve">
     <value>L'informativa che hai letto è stata aggiornata: ricarica la pagina, leggi la nuova versione e riprova.</value>
   </data>
+  <data name="WelcomeLinkInvalid" xml:space="preserve">
+    <value>Questo link non è valido o è stato sostituito: chiedi all'host il codice QR aggiornato.</value>
+  </data>
+  <data name="WelcomeAdultRequired" xml:space="preserve">
+    <value>Per lasciare un consenso devi dichiarare di essere maggiorenne.</value>
+  </data>
+  <data name="WelcomeChannelRequired" xml:space="preserve">
+    <value>Scegli almeno un canale su cui vuoi ricevere le comunicazioni.</value>
+  </data>
+  <data name="WelcomeEmailInvalid" xml:space="preserve">
+    <value>Indica un indirizzo email valido a cui vuoi ricevere le comunicazioni.</value>
+  </data>
+  <data name="WelcomePhoneInvalid" xml:space="preserve">
+    <value>Indica un numero di telefono valido per ricevere i messaggi su WhatsApp.</value>
+  </data>
+  <data name="WelcomeConsentUnavailable" xml:space="preserve">
+    <value>Al momento non è possibile lasciare il consenso da questa pagina.</value>
+  </data>
+  <data name="WelcomeConsentOutdated" xml:space="preserve">
+    <value>Il testo del consenso è stato aggiornato: ricarica la pagina, leggilo e riprova.</value>
+  </data>
 </root>

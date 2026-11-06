@@ -90,7 +90,7 @@ public static class RateLimitingServiceCollectionExtensions
 
         // The anonymous marketing consent calls (E07/F04/US01): the confirmation link, the welcome page and the guest page. Per client IP;
         // each can queue an e-mail to an address somebody typed.
-        new(RateLimitPolicies.PublicMarketingConsent, 30, TimeSpan.FromMinutes(10)),
+        new(RateLimitPolicies.PublicMarketingConsent, 60, TimeSpan.FromMinutes(10)),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

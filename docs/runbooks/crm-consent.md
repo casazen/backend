@@ -29,7 +29,7 @@ screens of the host are frontend tasks; this page is about the API.
 | `Crm__ConfirmationLinkValidityHours` | no (72) | How long the link of the e-mail works, 1 to 720. |
 | `Crm__ConfirmationMaxSends` | no (3) | How many confirmation e-mails one contact gets, ever, 1 to 10. |
 | `Crm__ContactIndexKey` | to store the contacts | The keyed index of the contacts ([`crm-marketing.md`](crm-marketing.md) § 3). Without it the checkout and the check-in still record the consent in the privacy history and never fail, but no contact is made and no e-mail is sent; the sync of the CRM makes the contacts later, when the key is there. |
-| `RateLimiting__PublicMarketingConsent__PermitLimit`, `__WindowSeconds` | no (30 per 10 minutes per client IP) | The limit of the anonymous consent calls ([`proxy-ip.md`](proxy-ip.md)). |
+| `RateLimiting__PublicMarketingConsent__PermitLimit`, `__WindowSeconds` | no (60 per 10 minutes per client IP) | The limit of the anonymous consent calls ([`proxy-ip.md`](proxy-ip.md)). |
 
 ## 3. The double opt-in (T01)
 
@@ -127,3 +127,43 @@ is saved:
 - the legacy box (`marketingConsent`) still writes `Guest.MarketingConsent` for the privacy history; no campaign reads it any more.
 
 The contacts are made after the check-in is saved and never fail it, with the same rules as the checkout (§ 4.1).
+
+### 4.3 The welcome page of a property (T03)
+
+A guest who scans the QR code in the apartment lands on `/benvenuto/{token}` of the web app and, if they want, leaves an e-mail address and/or a
+phone number with a per-channel consent. The host makes the code; the guest uses it without an account.
+
+**The link of a property** (`IPropertyWelcomeLinkService`, `PropertyWelcomeLinksController`, `api/properties/{propertyId}/welcome-link`, flag
+`CrmMarketing`, policy `property.write`; a property of another org is 404, a visible one the caller may not edit is 403):
+
+| Call | Effect |
+|---|---|
+| `GET` | `{ active, url, createdAt }`; `active: false` and nothing else when the property has no link. `url` is `<App__PublicSiteBaseUrl>/benvenuto/{token}`. |
+| `POST` | Makes the link: 201 with the new one, 200 with the one that exists. Never changes the code of a link that exists. |
+| `POST rotate` | Revokes the active link and makes a new one in the same transaction, 201. The printed code of the old one stops working **at once**. |
+
+The token is 192 random bits in base64url (32 characters), unique among all the links, **revoked ones included**, so a printed code that was replaced
+never reaches another property: the revoked row stays. A property has one active link (a partial unique index, not a check of the code: two
+requests that race end with one link).
+
+**The public page** (`PublicWelcomeController`, `api/public/welcome/{token}`, anonymous, **not behind the flag**: a code already printed keeps
+working; limit `PublicMarketingConsent`; never indexable and never cached):
+
+- `GET` answers `{ orgName, propertyName, marketingConsentVersion }`, no personal data. `marketingConsentVersion` is `null` while the consent text
+  has no version: the page then offers no consent. An unknown token and a revoked one are the same 404 `welcome_link_invalid`; so is a deleted
+  property and an org that is not active.
+- `POST consent` takes `{ email, phone, consentEmail, consentWhatsApp, adultConfirmed, consentVersion, language }`. In this order: 404 for the
+  link; 422 `welcome_adult_required` (**adults only**: the guest declares it, as minors are excluded at the check-in); 422
+  `welcome_channel_required` (**nothing preselected**, at least one box); 422 `welcome_email_invalid` / `welcome_phone_invalid` (an address for each
+  ticked box, and **only what is ticked is used**: an address typed and not consented to is neither stored nor hashed); 422
+  `welcome_consent_unavailable` (the text has no configured version, or the CRM has no key to store a contact); 409 `welcome_consent_outdated`
+  (the version sent is not the current one).
+- Then a **lead profile** is found (through the keyed e-mail contact, or the phone key) or made empty, the property of the link is added to its
+  properties (so the host of that property sees the lead; a later booking recomputes them), each ticked channel becomes a consent contact (origin
+  and source `WelcomePage`, the version, the IP, the time) and the double opt-in e-mail goes out (§ 3). No guest is created.
+- **The answer is always `202 { confirmationSent: true }`** when the call is valid, whether the address is new, known, already confirmed or
+  suppressed: the page cannot be used to learn who is a customer, and it **never lifts a suppression** (a consent given by a suppressed address is
+  stored, the contact stays suppressed, no message is sent). The `true` is a constant, not a report of what was sent.
+
+**The demo** (scenario `crm-welcome-link`, [`demo-environment.md`](demo-environment.md)): the lake villa has an active link with the fixed test
+token `TEST-benvenuto-villa-lago-demo-01`.

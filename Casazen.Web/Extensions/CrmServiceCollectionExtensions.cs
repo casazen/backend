@@ -51,6 +51,11 @@ public static class CrmServiceCollectionExtensions
         services.AddSingleton<MarketingConfirmationLinks>();
         services.AddScoped<IMarketingConfirmationService, MarketingConfirmationService>();
 
+        // E07/F04/US01/T03 (NF-90): the welcome link of a property (the QR code in the house) and the public page behind it, where a guest leaves a
+        // contact with a per-channel consent. The host's endpoints are behind the flag; the public ones are not (a printed code keeps working).
+        services.AddScoped<IPropertyWelcomeLinkService, PropertyWelcomeLinkService>();
+        services.AddScoped<IWelcomeConsentService, WelcomeConsentService>();
+
         return services;
     }
 }
