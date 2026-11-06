@@ -99,4 +99,17 @@ public enum ActivityType
     /// verification (<see cref="ActivityAction.VerifyIdentity"/>); closed by the operator's decision.
     /// </summary>
     IdentityVerification = 40,
+
+    /// <summary>
+    /// The tourist tax of a closed month is not declared and paid with its receipts archived (E03/F02/US01/T03, NF-52). About the property and the
+    /// month (the entity type names the month, <c>PropertyPeriod:yyyy-MM</c>); closes when both receipts are archived. The numbers 50 and 51 keep
+    /// clear of the values the tasks that run in parallel append after 30.
+    /// </summary>
+    TouristTaxDeadline = 50,
+
+    /// <summary>
+    /// The tourist tax rate of a property's comune is not known (E03/F02/US01/T03, NF-52): never taken as zero, the host enters it. About the
+    /// property; closes when a rate is known.
+    /// </summary>
+    MunicipalityTaxRateMissing = 51,
 }
