@@ -3,8 +3,10 @@ using Casazen.Core.Entities;
 namespace Casazen.Core.Services;
 
 /// <summary>
-/// The check-in of a stay from CasaZen to the channel manager (E03/F01/US01/T03, NF-41, NF-45, NF-46): the guests of a booking sent to Octorate,
-/// the states of the stay (arrival, departure, no-show) pushed once each, and the arrival read back. Everything goes through
+/// The check-in of a stay from CasaZen to the channel manager (E03/F01/US01/T03, NF-41, NF-45, NF-46): the guests of a booking sent to Octorate
+/// and the NO_SHOW of the stay pushed once. The arrival and the departure (CHECKIN_END, CHECKOUT_END) are pushed by the booking-state push of
+/// E02 (<c>OctorateBookingStatePushHandler</c>), the one handler that reacts to them, so they are never sent twice for one event; this service
+/// still knows those two states (a row each, the arrival read back) but no code asks it for them. Everything goes through
 /// <see cref="IOctorateApiClient"/>, for the org of the booking (<see cref="IOctorateOrgScope.Use"/>). Only a mirrored booking is touched: a
 /// reservation id on the booking, a connected Octorate connection of the org, a confirmed mapping of the property and writes not blocked;
 /// otherwise nothing is written and no row is created (absence means not mirrored, ADR-023-R4). An Octorate error never reaches the caller: it
@@ -30,7 +32,9 @@ public interface ICheckInOctorateSyncService
 
     /// <summary>
     /// Sends a state of the stay once (<see cref="OctorateStayStateOutcome.AlreadySent"/> when it was); after
-    /// <see cref="OctorateStayState.CheckInEnd"/> reads the arrival back (a failed read never fails the push).
+    /// <see cref="OctorateStayState.CheckInEnd"/> reads the arrival back (a failed read never fails the push). The caller today is the
+    /// NO_SHOW job: the arrival and the departure are pushed by E02, so nobody asks for those two states here. A NO_SHOW is called only while the
+    /// stay is still a no-show (<see cref="OctorateStayStateOutcome.NotApplicable"/> otherwise).
     /// </summary>
     Task<OctorateStayStateResult> SetStayStateAsync(Guid bookingId, OctorateStayState state, CancellationToken cancellationToken);
 

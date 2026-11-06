@@ -4,7 +4,10 @@ using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
 
-/// <summary>A state of a stay CasaZen sends to Octorate (NF-45). Stored as an integer, append only.</summary>
+/// <summary>
+/// A state of a stay CasaZen sends to Octorate (NF-45). Stored as an integer, append only. The check-in sync pushes only <see cref="NoShow"/>
+/// today: the arrival and the departure are pushed by the booking-state push of E02, so they are not sent twice for one event.
+/// </summary>
 public enum OctorateStayState
 {
     /// <summary><c>CHECKIN_END</c>: the guest arrived.</summary>

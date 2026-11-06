@@ -177,6 +177,22 @@ public class OctorateJobsRegistrationTests
         Assert.Contains(services, d => d.ServiceType == typeof(BookingStateMapper));
     }
 
+    [Fact]
+    public void TheArrivalAndTheDeparture_ReachOctorateThroughOneHandlerOnly()
+    {
+        var services = new ServiceCollection();
+        services.AddCasazenOctorate(new ConfigurationBuilder().Build());
+
+        // E02 sends CHECKIN_END and CHECKOUT_END when the host registers the arrival or the departure. The check-in sync of E03 sends only the
+        // NO_SHOW, which the check-in endpoints queue: no second handler reacts to the same events, so the two states are not sent twice.
+        var handlers = services
+            .Where(d => d.ServiceType == typeof(IEventHandler<DomainEvent>))
+            .Select(d => d.ImplementationType)
+            .ToList();
+
+        Assert.Equal(typeof(OctorateBookingStatePushHandler), Assert.Single(handlers));
+    }
+
     private static IFeatureFlags Flags(bool octorateConnector)
     {
         var flags = new Mock<IFeatureFlags>();

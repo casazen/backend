@@ -662,8 +662,9 @@ rule: the guests and the record rules (`IStayGuestService`, `AlloggiatiRecordRul
 `CheckInCompleted`/`CheckOutCompleted`, changes no booking status and sends nothing to the police (the arrival and the check-out keep their
 endpoints; CasaZen as sender and the regional ISTAT fields are deferred, so `requiredGuestFields` is empty). Another org's booking, and one the caller
 may not act on, is 404. The document photo is read in memory only (`IDocumentReadingService`: MRZ, then OCR; ADR-013-R6) and never stored or logged.
-A no-show sets `Bookings.NoShowAt` (the status stays `Confirmed`), sends `NO_SHOW` to Octorate for a mirrored booking and is cleared by a late arrival.
-The guests never came, so the stay owes no police communication anywhere: it leaves the Alloggiati list and job, the hourly stay alerts (no
+A no-show sets `Bookings.NoShowAt` (the status stays `Confirmed`), sends `NO_SHOW` to Octorate for a mirrored booking (the job reads the stay again
+before the call: a retry after a late arrival is dropped and its row closed) and is cleared by a late arrival. The arrival and the departure reach
+Octorate only through the booking-state push of E02 (`CHECKIN_END`, `CHECKOUT_END`), never a second time from the check-in sync. The guests never came, so the stay owes no police communication anywhere: it leaves the Alloggiati list and job, the hourly stay alerts (no
 Alloggiati alert, no check-out reminder), the cockpit and the Home (`alloggiati` is `null` on its row), the booking list (`alloggiatiStatus`
 `null`) and the booking timeline; `GET /api/bookings/{id}/alloggiati-status` and the Alloggiati guest summary read `NotDue` (derived by
 `AlloggiatiStatusRules.Effective`, never stored, not overdue), unless the communication was sent or declared sent anyway; and the wizard says
