@@ -1554,6 +1554,8 @@ public class AppDbContext(
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.ServiceRequestWrite },
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.GuestManage },
             new RolePermission { RoleId = 1, PermissionKey = HostPermissions.AlloggiatiSubmit },
+            // E03/F04/US02/T01: the owner decides the identity verifications of its guests (AddIdentityVerificationFields).
+            new RolePermission { RoleId = 1, PermissionKey = HostPermissions.VerificationDecision },
             new RolePermission { RoleId = 2, PermissionKey = "property.read" },
             new RolePermission { RoleId = 2, PermissionKey = "property.write" },
             new RolePermission { RoleId = 2, PermissionKey = "lease.read" },
@@ -1584,6 +1586,16 @@ public class AppDbContext(
 
         // Guest check-in session (US-020 / #296)
         modelBuilder.ApplyConfiguration(new GuestCheckInSessionConfiguration());
+
+        // E03/F04/US02/T01: who decided a verification and why. The rows written before the columns are the agent's (Biometric = 1) with no
+        // reasons; the sentinel makes EF always write the value of the entity, so a new row is never left to the default by mistake.
+        modelBuilder.Entity<BiometricVerificationLog>()
+            .Property(l => l.Method)
+            .HasDefaultValue(VerificationMethod.Biometric)
+            .HasSentinel((VerificationMethod)(-1));
+        modelBuilder.Entity<BiometricVerificationLog>()
+            .Property(l => l.ReasonsJson)
+            .HasDefaultValueSql("'[]'::jsonb");
 
         modelBuilder.ApplyConfiguration(new TerritorialRentAgreementConfiguration());
 

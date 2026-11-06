@@ -73,6 +73,30 @@ public class BiometricVerificationLog : ITenantOwned
     /// </summary>
     public string? OperatorNote { get; set; }
 
+    /// <summary>
+    /// Who decided (E03/F04/US02/T01): the verification agent (<see cref="VerificationMethod.Biometric"/>, the default of the rows written before
+    /// the column) or an operator from the queue (<see cref="VerificationMethod.Operator"/>, with <see cref="OperatorUserId"/> and <see cref="OperatorNote"/>).
+    /// </summary>
+    public VerificationMethod Method { get; set; } = VerificationMethod.Biometric;
+
+    /// <summary>
+    /// The checks of the decision, a JSON array of <c>{ check, result, value?, threshold? }</c> (<c>VerificationReasons</c>, AC-NF51-8): codes,
+    /// numbers and thresholds only, never an image, a vector, a name or a document number. <c>[]</c> for the rows written before the column. An
+    /// operator row repeats the reasons of the automatic outcome it replaces.
+    /// </summary>
+    [Required]
+    [Column(TypeName = "jsonb")]
+    public string ReasonsJson { get; set; } = "[]";
+
+    /// <summary>
+    /// The thresholds in force were not calibrated when the decision was taken (<c>BiometricSettings.CalibratedAt</c> was null): the operator
+    /// console says the outcome rests on provisional thresholds (AC-NF51 point 7).
+    /// </summary>
+    public bool Provisional { get; set; }
+
+    /// <summary>How long the automatic verification took, in milliseconds; null for an operator decision and for the rows written before the column.</summary>
+    public int? DurationMs { get; set; }
+
     /// <summary>When this log entry was created (UTC).</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

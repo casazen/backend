@@ -511,6 +511,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<decimal>("AcceptThreshold")
                         .HasColumnType("decimal(5,4)");
 
+                    b.Property<DateTime?>("CalibratedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -551,8 +554,16 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("DurationMs")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("GuestId")
                         .HasColumnType("uuid");
+
+                    b.Property<int>("Method")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
 
                     b.Property<string>("ModelName")
                         .IsRequired()
@@ -576,6 +587,15 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("Outcome")
                         .HasColumnType("integer");
+
+                    b.Property<bool>("Provisional")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ReasonsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValueSql("'[]'::jsonb");
 
                     b.Property<string>("ThresholdsJson")
                         .IsRequired()
@@ -2088,6 +2108,16 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("BiometricAttempts")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("BiometricConsentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("BiometricConsentRefusedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("BiometricConsentVersion")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<int?>("BiometricOutcome")
                         .HasColumnType("integer");
 
@@ -2099,6 +2129,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DocumentCheckJson")
+                        .HasColumnType("jsonb");
 
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
@@ -2113,6 +2146,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int?>("LinkEmailStatus")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("OperatorRequestedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
@@ -8518,6 +8554,11 @@ namespace Casazen.Infrastructure.Migrations
                         },
                         new
                         {
+                            RoleId = 1,
+                            PermissionKey = "verification.decision"
+                        },
+                        new
+                        {
                             RoleId = 2,
                             PermissionKey = "property.read"
                         },
@@ -8720,6 +8761,11 @@ namespace Casazen.Infrastructure.Migrations
                         {
                             RoleId = 7,
                             PermissionKey = "alloggiati.submit"
+                        },
+                        new
+                        {
+                            RoleId = 7,
+                            PermissionKey = "verification.decision"
                         },
                         new
                         {

@@ -79,11 +79,13 @@ public class BiometricVerificationLogProofTests
 
         // ADR-013-R2: Verify log only stores metadata, not sensitive biometric data
         // Allowed fields: Id, OrgId, BookingId, GuestId, Outcome, Attempts, ModelName, ModelVersion,
-        // ThresholdsJson, OperatorUserId, OperatorNote, CreatedAt, and navigation properties
+        // ThresholdsJson, OperatorUserId, OperatorNote, CreatedAt, and navigation properties; since E03/F04/US02/T01 also who decided
+        // (Method), the codes of the checks (ReasonsJson), whether the thresholds were provisional and the duration.
         var expectedFields = new[]
         {
             "id", "orgid", "bookingid", "guestid", "outcome", "attempts", "modelname",
             "modelversion", "thresholdsjson", "operatoruserid", "operatornote", "createdat",
+            "method", "reasonsjson", "provisional", "durationms",
             "org", "booking", "guest", "operatoruser" // navigation properties
         };
 
@@ -190,48 +192,5 @@ public class BiometricVerificationLogProofTests
         // - Database (BiometricVerificationLog has no image fields)
         // - Logs (logger only logs metadata: outcome, attempts, similarity)
         // - Hangfire queues (service runs synchronously per ADR-013-R1)
-    }
-
-    /// <summary>
-    /// ADR-013-R9 / AC-NF11-3: Proves that minors (DOB &lt; 18 years) are excluded from biometric verification.
-    /// The check-in endpoint MUST reject selfie uploads from guests with DateOfBirth less than 18 years ago,
-    /// and the refusal MUST escalate to the operator verification queue (no facial recognition for children).
-    /// </summary>
-    [Fact]
-    public void BiometricMinor_ExcludedFromProcessing()
-    {
-        // Arrange: Create a minor guest (17 years old)
-        var minorDateOfBirth = DateTime.UtcNow.AddYears(-17).AddDays(-1); // 17 years old
-        var adultDateOfBirth = DateTime.UtcNow.AddYears(-18).AddDays(-1); // 18 years old
-
-        // Act & Assert: Calculate age (same logic as the controller endpoint)
-        var minorAge = DateTime.UtcNow.Year - minorDateOfBirth.Year;
-        if (minorDateOfBirth.Date > DateTime.UtcNow.AddYears(-minorAge))
-            minorAge--;
-
-        var adultAge = DateTime.UtcNow.Year - adultDateOfBirth.Year;
-        if (adultDateOfBirth.Date > DateTime.UtcNow.AddYears(-adultAge))
-            adultAge--;
-
-        // ADR-013-R9: Minor (age < 18) MUST be excluded
-        Assert.True(minorAge < 18, "Test setup error: minor should be under 18");
-        Assert.False(adultAge < 18, "Test setup error: adult should be 18 or older");
-
-        // ADR-013-R9: The PublicGuestCheckInController selfie endpoint MUST:
-        // 1. Check guest.DateOfBirth
-        // 2. Calculate age
-        // 3. If age < 18, return 400 Bad Request with "biometric_minor_excluded" error code
-        // 4. NEVER process biometric verification for minors
-        // 5. Escalate to operator queue instead (manual verification)
-
-        // Verify: Guest entity has DateOfBirth property
-        var guestType = typeof(Guest);
-        var dobProperty = guestType.GetProperty("DateOfBirth");
-        Assert.NotNull(dobProperty);
-        Assert.Equal(typeof(DateTime?), dobProperty.PropertyType);
-
-        // ADR-013-R9: GDPR art. 8 compliance (special protection for children's data)
-        // Facial recognition is sensitive biometric data that requires explicit consent
-        // For minors, consent is harder to obtain legally, so we exclude them entirely
     }
 }

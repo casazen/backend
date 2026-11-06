@@ -1378,6 +1378,21 @@
   <data name="CheckInBiometricMinorExcluded" xml:space="preserve">
     <value>La verifica biometrica non è disponibile per i minorenni.</value>
   </data>
+  <data name="CheckInBiometricConsentAnswerRequired" xml:space="preserve">
+    <value>Indica se acconsenti alla verifica biometrica.</value>
+  </data>
+  <data name="CheckInBiometricConsentVersionRequired" xml:space="preserve">
+    <value>Manca la versione del testo del consenso biometrico (al massimo 50 caratteri).</value>
+  </data>
+  <data name="CheckInBiometricConsentRequired" xml:space="preserve">
+    <value>Prima del selfie serve il tuo consenso alla verifica biometrica. Puoi anche chiedere la verifica a una persona.</value>
+  </data>
+  <data name="CheckInDocumentCheckRequired" xml:space="preserve">
+    <value>Prima del selfie fotografa il documento d'identità.</value>
+  </data>
+  <data name="CheckInDocumentPhotoMismatch" xml:space="preserve">
+    <value>La foto del documento non è quella letta prima: fotografa di nuovo lo stesso documento.</value>
+  </data>
   <data name="CheckInProvinceInvalid" xml:space="preserve">
     <value>Inserisci la sigla della provincia di due lettere (es. RM).</value>
   </data>
@@ -3835,6 +3850,9 @@
   </data>
   <data name="VerificationReasonRequired" xml:space="preserve">
     <value>Il motivo del rifiuto è obbligatorio</value>
+  </data>
+  <data name="VerificationMetricsPeriodInvalid" xml:space="preserve">
+    <value>Il periodo non è valido: la data di inizio deve precedere quella di fine e il periodo non può superare 366 giorni.</value>
   </data>
   <data name="BatchAlreadyDownloadedOrPaid" xml:space="preserve">
     <value>Il batch è già stato scaricato o pagato</value>

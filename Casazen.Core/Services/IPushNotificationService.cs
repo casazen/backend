@@ -26,6 +26,12 @@ public enum PushAudienceKind
 
     /// <summary>Active users of the supplier org (linked by <c>User.SupplierOrgId</c> or <c>User.OrgId</c>).</summary>
     SupplierOrg = 3,
+
+    /// <summary>
+    /// The users who decide the identity verification of the booking's guest (E03/F04/US02/T03): they hold <c>verification.decision</c> and
+    /// reach the booking's property. The id is the booking. An explicit value, never renumbered.
+    /// </summary>
+    VerificationOperators = 10,
 }
 
 /// <summary>Recipients of a push: <see cref="Kind"/> and the id of the booking, property or supplier org.</summary>
@@ -36,6 +42,8 @@ public sealed record PushAudience(PushAudienceKind Kind, Guid Id)
     public static PushAudience PropertyHosts(Guid propertyId) => new(PushAudienceKind.PropertyHosts, propertyId);
 
     public static PushAudience SupplierOrg(Guid supplierOrgId) => new(PushAudienceKind.SupplierOrg, supplierOrgId);
+
+    public static PushAudience VerificationOperators(Guid bookingId) => new(PushAudienceKind.VerificationOperators, bookingId);
 }
 
 /// <summary>
@@ -151,6 +159,12 @@ public static class PushDeliveryKeys
     /// attempts. One per booking, stable across retries.
     /// </summary>
     public static string VerificationRequired(Guid bookingId) => $"verification-required:{bookingId:N}";
+
+    /// <summary>
+    /// The identity of a guest went to the operators (E03/F04/US02/T03) for <paramref name="reasonCode"/>: one per check-in session and reason, so
+    /// a repeated request of the guest is one push, and a new link of the same booking is another event.
+    /// </summary>
+    public static string VerificationOperatorAlert(Guid sessionId, string reasonCode) => $"verification-operator:{sessionId:N}:{reasonCode}";
 }
 
 /// <summary><c>data.type</c> of each push, one per kind of event (the app opens <c>data.route</c>).</summary>
