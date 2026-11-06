@@ -591,6 +591,12 @@ public static class ServiceCollectionExtensions
         // host sends, written by the AI when one is in effect) and closes the departures that are over; the rest stays the host's.
         services.AddScoped<IAutopilotMessageWriter, AutopilotMessageWriter>();
         services.AddScoped<IComplianceAutopilotService, ComplianceAutopilotService>();
+        // CHK-15 (E03/F05/US01/T01): the controlled passage of a host to the Octorate Cassetto Compliance. It prepares the allowlisted address
+        // and the guide and writes one line of the activity log; it never signs in to Octorate, reads an outcome or changes a compliance state.
+        // Addresses come from Octorate:FrontendBaseUrl and Octorate:ComplianceHandoff, nothing is required (the home of the panel is the default).
+        services.AddOptions<OctorateComplianceHandoffOptions>()
+            .BindConfiguration(OctorateComplianceHandoffOptions.SectionName);
+        services.AddScoped<IOctorateComplianceHandoffService, OctorateComplianceHandoffService>();
         // D.L. 145/2023 safety checklist of a short-stay property (CO-07).
         services.AddScoped<IPropertySafetyChecklistService, PropertySafetyChecklistService>();
         // Single evaluation of the activation blockers, suspension and nightly check of the published properties (CO-06).
