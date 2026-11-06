@@ -21,6 +21,14 @@ public interface ICheckInOctorateSyncService
     Task<OctorateCheckInSendResult> SendGuestsAsync(Guid bookingId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// The retry job's send: the same rules and guards as <see cref="SendGuestsAsync"/>, but only the guests whose link a send already tried and
+    /// did not complete (<see cref="OctorateSyncStatus.Pending"/> or <see cref="OctorateSyncStatus.Failed"/>, with attempts left) are sent again,
+    /// and the deletes that failed. A guest changed or added since the host confirmed is not sent here, and no link is created: it travels with
+    /// the next confirmation of the wizard, which has run its checks and warns the host when data already transmitted changes (AC-NF41-3).
+    /// </summary>
+    Task<OctorateCheckInSendResult> RetryGuestsAsync(Guid bookingId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Sends a state of the stay once (<see cref="OctorateStayStateOutcome.AlreadySent"/> when it was); after
     /// <see cref="OctorateStayState.CheckInEnd"/> reads the arrival back (a failed read never fails the push).
     /// </summary>

@@ -18,7 +18,8 @@ namespace Casazen.Infrastructure.Jobs;
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-/// <item>The service does the work (<see cref="ICheckInOctorateSyncService.SendGuestsAsync"/>,
+/// <item>The service does the work (<see cref="ICheckInOctorateSyncService.RetryGuestsAsync"/>, which takes up only the guests whose link is
+/// Pending or Failed and creates no link, never a guest changed or added since the host confirmed;
 /// <see cref="ICheckInOctorateSyncService.SetStayStateAsync"/>): it counts the attempt, keeps the code of a failure and raises the one "To do" at
 /// the last failed attempt; a later success closes it.</item>
 /// <item>A system read over every org; each booking is retried for its own org under <see cref="IOctorateOrgScope.Use"/>. A booking that fails
@@ -99,7 +100,7 @@ public class OctorateCheckInRetryJob(
             {
                 foreach (var (_, bookingId) in guestTargets.Where(t => t.OrgId == org && bookings.Contains(t.BookingId)))
                 {
-                    if (await TryAsync(bookingId, () => sync.SendGuestsAsync(bookingId, cancellationToken), cancellationToken))
+                    if (await TryAsync(bookingId, () => sync.RetryGuestsAsync(bookingId, cancellationToken), cancellationToken))
                         retried++;
                     else
                         failed++;

@@ -96,6 +96,11 @@ public class CheckInOctorateSyncServiceTests
             Assert.Equal(OctorateCheckInSendState.NotApplicable, result.State);
             Assert.Equal(CheckInOctorateSyncService.ReasonBookingNotActive, result.Reason);
             Assert.Empty(result.Guests);
+
+            // The retry job goes through the same guard.
+            var retried = await h.Service().RetryGuestsAsync(h.BookingId, CancellationToken.None);
+            Assert.Equal(OctorateCheckInSendState.NotApplicable, retried.State);
+            Assert.Equal(CheckInOctorateSyncService.ReasonBookingNotActive, retried.Reason);
             h.Client.VerifyNoOtherCalls();
             await using var db = h.NewDb();
             Assert.Empty(await db.StayGuestOctorateLinks.ToListAsync());
@@ -111,6 +116,43 @@ public class CheckInOctorateSyncServiceTests
             Assert.Equal(OctorateCheckInSendState.Sent, result.State);
             Assert.Equal(2, h.Sent.Count);
         }
+    }
+
+    [Fact]
+    public async Task OctorateCheckIn_RetrySendsOnlyGuestsWhoseLinkIsPendingOrFailed_Test()
+    {
+        var h = await Harness.CreateAsync(ComplianceSenderType.ChannelManager);
+        await h.AddGuestAsync(2);
+        var oldHash = new string('a', StayGuestOctorateLink.PayloadHashLength);
+        // Position 0 was sent and changed since (its payload is no longer the one sent); position 1 failed the last time; position 2 was
+        // added after the confirmation and has no link at all.
+        await h.AddLinkAsync(0, OctorateSyncStatus.Sent, attempts: 1, oldHash, "guest-0");
+        await h.AddLinkAsync(1, OctorateSyncStatus.Failed, attempts: 2, oldHash, null);
+
+        var retried = await h.Service().RetryGuestsAsync(h.BookingId, CancellationToken.None);
+
+        // Only the failed position travels (created: it had no id); the changed guest and the added one are not pushed by the job.
+        Assert.Equal(OctorateCheckInSendState.Sent, retried.State);
+        Assert.False(retried.CorrectionAfterSend);
+        Assert.Equal(1, Assert.Single(h.Sent).Position);
+        await using (var db = h.NewDb())
+        {
+            var links = await db.StayGuestOctorateLinks.OrderBy(l => l.Position).ToListAsync();
+            Assert.Equal(new[] { 0, 1 }, links.Select(l => l.Position));
+            Assert.Equal(oldHash, links[0].PayloadHash);
+            Assert.Equal(OctorateSyncStatus.Sent, links[1].Status);
+            Assert.Equal("guest-1", links[1].OctorateGuestId);
+        }
+
+        // Nothing left to retry: the job sends nothing, whatever changed in the meantime.
+        var again = await h.Service().RetryGuestsAsync(h.BookingId, CancellationToken.None);
+        Assert.Equal(OctorateCheckInSendState.NothingToSend, again.State);
+        Assert.Single(h.Sent);
+
+        // The confirmation of the wizard (the full send) is what sends the guest that changed and the one that was added.
+        var confirmed = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
+        Assert.Equal(OctorateCheckInSendState.Sent, confirmed.State);
+        Assert.Equal(new[] { 0, 2 }, h.Sent.Skip(1).Select(u => u.Position).Order());
     }
 
     [Fact]
@@ -153,13 +195,43 @@ public class CheckInOctorateSyncServiceTests
     /// </summary>
     private sealed class Harness
     {
+        /// <summary>The "To do" the activity service answers for the booking (the open one is returned each time, as the real service does).</summary>
+        public static readonly Guid TodoId = Guid.Parse("7c1d9e20-3a4b-4c5d-8e6f-a1b2c3d4e5f6");
+
         private readonly string _database = $"octorate-checkin-{Guid.NewGuid():N}";
         private ComplianceSenderType _sender;
         private bool _sendWhenNotChannelManager;
         private bool _writesBlocked;
+        private int _maxAttempts = OctorateOptions.DefaultCheckInMaxAttempts;
 
         private Harness()
         {
+            ClientSucceeds();
+            Activities
+                .Setup(a => a.CreateAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(TodoId);
+        }
+
+        public Guid BookingId { get; private set; }
+
+        public Guid PropertyId { get; private set; }
+
+        public Mock<IOctorateApiClient> Client { get; } = new();
+
+        public Mock<IInternalActivityService> Activities { get; } = new();
+
+        /// <summary>Every guest payload the client received, in order of the calls.</summary>
+        public List<OctorateCheckInGuestUpsert> Sent { get; } = [];
+
+        /// <summary>The attempts of a write before the "To do" is raised (<c>Octorate:CheckInMaxAttempts</c>).</summary>
+        public Harness MaxAttempts(int attempts)
+        {
+            _maxAttempts = attempts;
+            return this;
+        }
+
+        /// <summary>The Octorate client accepts every guest: it creates the ones with no id and updates the others, and keeps what it was sent.</summary>
+        public void ClientSucceeds() =>
             Client
                 .Setup(c => c.UpsertCheckInGuestsAsync(
                     Accommodation, Reservation, It.IsAny<IReadOnlyList<OctorateCheckInGuestUpsert>>(), It.IsAny<CancellationToken>()))
@@ -170,15 +242,70 @@ public class CheckInOctorateSyncServiceTests
                         .Select(g => new OctorateCheckInGuestResult(g.Position, g.OctorateGuestId ?? "guest-" + g.Position, g.OctorateGuestId is null, true, null))
                         .ToArray();
                 });
+
+        /// <summary>The Octorate client refuses every guest with <paramref name="errorCode"/> (a typed Octorate error as the client reports it).</summary>
+        public void ClientFails(string errorCode) =>
+            Client
+                .Setup(c => c.UpsertCheckInGuestsAsync(
+                    Accommodation, Reservation, It.IsAny<IReadOnlyList<OctorateCheckInGuestUpsert>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string _, string _, IReadOnlyList<OctorateCheckInGuestUpsert> guests, CancellationToken _) =>
+                {
+                    Sent.AddRange(guests);
+                    return guests.Select(g => new OctorateCheckInGuestResult(g.Position, null, false, null, errorCode)).ToArray();
+                });
+
+        /// <summary>A guest of the stay added after the first registration.</summary>
+        public async Task AddGuestAsync(int position)
+        {
+            await using var db = NewDb();
+            db.StayGuests.Add(StayGuestOf(BookingId, position, StayGuestType.FamilyMember, "Marta"));
+            await db.SaveChangesAsync();
         }
 
-        public Guid BookingId { get; private set; }
+        /// <summary>The surname of a registered guest changed after it was sent.</summary>
+        public async Task ChangeGuestAsync(int position, string lastName)
+        {
+            await using var db = NewDb();
+            var row = await db.StayGuests.SingleAsync(g => g.BookingId == BookingId && g.Position == position);
+            row.LastName = lastName;
+            await db.SaveChangesAsync();
+        }
 
-        public Guid PropertyId { get; private set; }
+        /// <summary>The link of a guest as an earlier send left it.</summary>
+        public async Task AddLinkAsync(int position, OctorateSyncStatus status, int attempts, string payloadHash, string? octorateGuestId)
+        {
+            await using var db = NewDb();
+            db.StayGuestOctorateLinks.Add(new StayGuestOctorateLink
+            {
+                OrgId = OrgA,
+                BookingId = BookingId,
+                Position = position,
+                OctorateGuestId = octorateGuestId,
+                PayloadHash = payloadHash,
+                Status = status,
+                Attempts = attempts,
+                SentAt = status == OctorateSyncStatus.Sent ? Now.UtcDateTime : null,
+                UpdatedAt = Now.UtcDateTime.AddHours(-1),
+            });
+            await db.SaveChangesAsync();
+        }
 
-        public Mock<IOctorateApiClient> Client { get; } = new();
-
-        public List<OctorateCheckInGuestUpsert> Sent { get; } = [];
+        /// <summary>The row of a state of the stay as an earlier push left it.</summary>
+        public async Task AddStateRowAsync(OctorateStayState state, OctorateSyncStatus status, int attempts)
+        {
+            await using var db = NewDb();
+            db.OctorateStayStateSyncs.Add(new OctorateStayStateSync
+            {
+                OrgId = OrgA,
+                BookingId = BookingId,
+                State = state,
+                Status = status,
+                Attempts = attempts,
+                LastAttemptAt = Now.UtcDateTime.AddHours(-1),
+                ErrorCode = status == OctorateSyncStatus.Failed ? CheckInErrorCodes.Server : null,
+            });
+            await db.SaveChangesAsync();
+        }
 
         public static async Task<Harness> CreateAsync(
             ComplianceSenderType sender,
@@ -223,12 +350,13 @@ public class CheckInOctorateSyncServiceTests
                 senders.Object,
                 mapping.Object,
                 Mock.Of<IStayTouristTaxService>(),
-                Mock.Of<IInternalActivityService>(),
+                Activities.Object,
                 flags.Object,
                 host.Object,
                 Microsoft.Extensions.Options.Options.Create(new OctorateOptions
                 {
                     SendGuestsWhenSenderIsNotChannelManager = _sendWhenNotChannelManager,
+                    CheckInMaxAttempts = _maxAttempts,
                 }),
                 NullLogger<CheckInOctorateSyncService>.Instance,
                 new FixedTimeProvider(Now));

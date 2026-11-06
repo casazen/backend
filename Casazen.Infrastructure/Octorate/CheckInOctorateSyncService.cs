@@ -52,6 +52,9 @@ public static class CheckInErrorCodes
 /// <para><b>Stays that owe no communication.</b> Only a confirmed, checked-in or checked-out stay that is not a no-show sends its guests
 /// (<see cref="AlloggiatiStatusRules.IsDue"/>, the set of the Alloggiati job); a request still waiting, a cancelled booking and a no-show send
 /// none (<c>booking_not_active</c>), a retry included.</para>
+/// <para><b>The retry.</b> <see cref="RetryGuestsAsync"/> (the retry job) sends again only the guests whose link is Pending or Failed, with attempts
+/// left. It creates no link and sends no guest changed or added since the host confirmed: those travel with the next confirmation of the wizard,
+/// after its checks and with the warning that data already transmitted changes (AC-NF41-3), never by themselves.</para>
 /// <para><b>Failures.</b> A typed Octorate error is a stable code on the row; the attempts are counted per payload and, at
 /// <c>Octorate:CheckInMaxAttempts</c>, one "To do" is raised for the booking (closed when a later attempt succeeds). Logs carry ids and codes,
 /// never a name or a document.</para>
@@ -90,7 +93,19 @@ public sealed class CheckInOctorateSyncService(
     /// <summary>The attempts of a payload or a state before a "To do" is raised (1 to 20; default 5).</summary>
     public int MaxAttempts => Math.Clamp(options.Value.CheckInMaxAttempts, 1, 20);
 
-    public async Task<OctorateCheckInSendResult> SendGuestsAsync(Guid bookingId, CancellationToken cancellationToken)
+    public Task<OctorateCheckInSendResult> SendGuestsAsync(Guid bookingId, CancellationToken cancellationToken) =>
+        SendGuestsCoreAsync(bookingId, retryOnly: false, cancellationToken);
+
+    public Task<OctorateCheckInSendResult> RetryGuestsAsync(Guid bookingId, CancellationToken cancellationToken) =>
+        SendGuestsCoreAsync(bookingId, retryOnly: true, cancellationToken);
+
+    /// <summary>
+    /// The send of the guests of a booking. <paramref name="retryOnly"/> (the retry job) takes up only the guests whose link a send already tried
+    /// and did not complete (Pending or Failed, with attempts left) and the deletes that failed: never a guest changed or added since the host
+    /// confirmed, which travels with the next confirmation (after the checks of the wizard, with the warning of a correction after send), and
+    /// no link is created.
+    /// </summary>
+    private async Task<OctorateCheckInSendResult> SendGuestsCoreAsync(Guid bookingId, bool retryOnly, CancellationToken cancellationToken)
     {
         var booking = await LoadBookingAsync(bookingId, cancellationToken);
         var target = await ResolveTargetAsync(booking, cancellationToken);
@@ -132,6 +147,8 @@ public sealed class CheckInOctorateSyncService(
             .ToListAsync(cancellationToken);
         if (guests.Count == 0 && links.Count == 0)
             return new OctorateCheckInSendResult(OctorateCheckInSendState.NothingToSend, ReasonNoGuests, draft, [], false);
+        if (retryOnly && !links.Any(IsToRetry))
+            return new OctorateCheckInSendResult(OctorateCheckInSendState.NothingToSend, null, draft, [], false);
 
         var tax = await TaxValuesAsync(booking, cancellationToken);
         var checkIn = RomeCalendar.DateInRome(booking.CheckInDate);
@@ -144,6 +161,9 @@ public sealed class CheckInOctorateSyncService(
         foreach (var guest in guests)
         {
             var link = links.FirstOrDefault(l => l.Position == guest.Position);
+            if (retryOnly && !IsToRetry(link))
+                continue;
+
             var upsert = OctorateCheckInMapper.Map(
                 guest, checkIn, checkOut, draft, link?.OctorateGuestId, tax.GetValueOrDefault(guest.Position));
             var hash = OctorateCheckInMapper.Hash(upsert);
@@ -163,7 +183,9 @@ public sealed class CheckInOctorateSyncService(
         if (toSend.Count > 0)
             await db.SaveChangesAsync(cancellationToken);
 
-        var removedPositions = links.Where(l => guests.All(g => g.Position != l.Position)).ToList();
+        var removedPositions = links
+            .Where(l => guests.All(g => g.Position != l.Position) && (!retryOnly || IsToRetry(l)))
+            .ToList();
         var failures = 0;
         var successes = 0;
         using (orgScope.Use(booking.OrgId))
@@ -307,6 +329,10 @@ public sealed class CheckInOctorateSyncService(
         OctorateStayState.NoShow => OctorateCheckInStatus.NoShow,
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Not a state of a stay."),
     };
+
+    /// <summary>A link a send tried and did not complete: Pending or Failed, with fewer than <see cref="MaxAttempts"/> attempts.</summary>
+    private bool IsToRetry(StayGuestOctorateLink? link) =>
+        link is { Status: OctorateSyncStatus.Pending or OctorateSyncStatus.Failed } && link.Attempts < MaxAttempts;
 
     /// <summary>
     /// The link of a guest about to be sent (created when missing), Pending with one more attempt. The attempts are counted per payload: a
