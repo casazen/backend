@@ -27,13 +27,19 @@ creates a duplicate on the OTA.
 | 1 | The host chooses the OTAs and the properties (all, some, or a group of the mixed portfolio) and the batch is created | host | `Draft` |
 | 2 | `access/start`: the step, the hand-over and the resume point are saved, then the address of the Octorate panel is returned; the host gives the access on the panel | host, in the panel | `AwaitingChannelAccess` |
 | 3 | CasaZen reads the connections of the org (at most once for each backoff window) and finds an authorized connection of the channel: the access is **verified** and the channel moves on by itself. Only if the checks run out (`AccessCheckMaxAttempts`) the host may **confirm** it (`access/confirm`), never before | CasaZen | `ImportingRooms` |
-| 4 | `run`: `IMPORT_ROOMS` on each connection of the channel, then the listings of the org are read again and the matcher proposes a property for each | CasaZen | `AwaitingMapping` |
+| 4 | `run`: `IMPORT_ROOMS` on each connection of the channel that Octorate shows as authorized, then the listings of the org are read again and the matcher proposes a property for each | CasaZen | `AwaitingMapping` |
 | 5 | The host confirms each listing to a property, chooses another, imports it as a CasaZen property (the local record only, inactive and «to check»; nothing is created on the OTA), rejects it, or leaves it for later | host | `AwaitingMapping` |
 | 6 | `continue`: for the confirmed listings, `IMPORT_RESERVATIONS` and the import of the reservations into CasaZen, then `IMPORT_CALENDAR`, then `MARK_CONNECTED`. A listing left for later stays write-blocked and is not marked connected; the others go on | CasaZen | `ImportingReservations`, `ImportingCalendar`, `MarkingConnected`, `Completed` |
 
 A channel is `Completed` when every listing found is connected, left for later, rejected or out of the scope of the batch. `NeedsAttention`
 means a person or time is needed (a stable code says what); `Failed` means Octorate refused the operation or the channel failed on its side.
 Both are resumed by repeating the command: nothing already done is done again.
+
+**One listing never holds the others back.** `run` asks the rooms only of the connections Octorate shows as authorized (a listing whose access
+was not given is not part of the import), and the channel goes to `AwaitingMapping` as soon as the rooms of one connection are in. A connection
+whose import failed keeps its code (it counts in `failed`), is not asked again by `continue`, is neither decided nor blocking, and `continue`
+leaves the channel in `NeedsAttention` with its code, never `Completed`, while one waits; repeating `run` asks it again (a result nobody knows
+only when it is named in `retryUnknown`). Rejecting the mapping of such a listing takes it out of the import.
 
 The calendar of a connected listing is read into CasaZen by the 15-minute `CalendarSyncJob`, as for every confirmed listing; the import does
 not read it itself.
@@ -112,7 +118,7 @@ access (doubling up to 600 seconds); see the checklist.
 | `d6_operation_unverified` | The operation is not verified for this channel (flag off). Nothing was called | Complete the step in the panel with the host, or verify the operation in the pilot and turn the flag on (§ 4) |
 | `d6_result_unknown` | No answer in time, a failure of Octorate, an answer that cannot be read, or a request closed after the call left. The item is marked BEFORE each call and the answer replaces the mark, so it is never asked again by itself, not even after a crash | Check on the panel whether the step was done. If it was not, repeat the command naming the listing (its accommodation id) in `retryUnknown` of `run` or `continue`: that asks the operation a second time, so only after checking |
 | `d6_channel_failed` | Octorate answered 550: the channel (the OTA) failed, not CasaZen | Check the channel in the panel with the host, then repeat |
-| `channel_connection_not_found` | The access is given but Octorate shows no connection of the channel | See § 3 point 1; never create a listing to make one |
+| `channel_connection_not_found` | The access is given but Octorate shows no authorized connection of the channel (or, in a batch of named properties, none of the ones the batch covers) | See § 3 point 1; never create a listing to make one |
 | `channel_access_not_valid` | The check found the access refused or not valid | The host gives the access again (`access/start`) |
 | `mapping_refresh_conflict` | Another read of the listings of the org was running | Repeat `run` |
 | `reservation_import_incomplete` | The reservations were not all read into CasaZen (the run stopped before the end) | Repeat `continue`: the stamps keep what is done |

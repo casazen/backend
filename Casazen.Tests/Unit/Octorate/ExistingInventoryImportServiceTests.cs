@@ -646,6 +646,99 @@ public class ExistingInventoryImportServiceTests
         Assert.Equal(OctorateInventoryImportStatus.Completed, batch.Status);
     }
 
+    [Fact]
+    public async Task ExistingInventoryImport_OneListingThatFailsNeverHoldsTheOthersBack_Test()
+    {
+        // Three connections of the channel: two authorized and one whose access was not given. The rooms of one authorized connection fail
+        // with an unknown result. That must not keep the other from being imported, mapped and marked.
+        var h = new Harness();
+        await h.SeedAsync(verified: true);
+        h.Connections.Add(new OctorateConnectionSummary("505", "142", "1005", "H505", "WAITING", null));
+        h.Failures[(OctorateD6Operation.ImportRooms, "502")] = new OctorateServerException(504);
+
+        var batch = await h.RunToRoomsAsync();
+
+        // The channel waits for the mapping with the listing that got through; the other shows its code. The connection without access
+        // is not asked at all.
+        var channel = batch.Channels[0];
+        Assert.Equal(OctorateInventoryImportStatus.AwaitingMapping, channel.Status);
+        Assert.Null(channel.ErrorCode);
+        Assert.NotNull(channel.RoomsImportedAt);
+        Assert.Equal(2, channel.Counts.Found);
+        Assert.Equal(1, channel.Counts.RoomsImported);
+        Assert.Equal(1, channel.Counts.Failed);
+        Assert.Equal(OctorateInventoryErrorCodes.D6ResultUnknown, channel.Items.Single(i => i.OctorateAccommodationId == "1002").ErrorCode);
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.ImportRoomsAsync), "501"));
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.ImportRoomsAsync), "502"));
+        Assert.Equal(0, h.Calls(nameof(IOctorateApiClient.ImportRoomsAsync), "505"));
+        Assert.Equal(1, h.Mappings.Invocations.Count(i => i.Method.Name == nameof(IChannelMappingService.RefreshAsync)));
+
+        // A plain run does not ask the listing of the unknown result again by itself.
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).RunAsync(CallerA, batch.Id, CancellationToken.None);
+
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.ImportRoomsAsync), "502"));
+
+        // The person confirms the listing that got through; the other one is only proposed, but its rooms are not in, so it does not wait
+        // for a decision and does not block the first. The channel does not say it is done while the other one waits with its code.
+        h.Rows.AddRange([Harness.Row("1001", OctorateMappingStatus.Confirmed, h.Properties[0]), Harness.Row("1002", OctorateMappingStatus.Proposed, h.Properties[1])]);
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None);
+
+        channel = batch.Channels[0];
+        Assert.Equal(OctorateInventoryImportStatus.NeedsAttention, channel.Status);
+        Assert.Equal(OctorateInventoryErrorCodes.D6ResultUnknown, channel.ErrorCode);
+        Assert.Equal(1, channel.Counts.Connected);
+        Assert.Equal(0, channel.Counts.Pending);
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "501"));
+        Assert.Equal(0, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync), "502"));
+
+        // The person checked the panel and asks the rooms of that listing again: they come in, the listings are read again, and once the
+        // listing is confirmed the sequence ends for it.
+        h.Failures.Clear();
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).RunAsync(CallerA, batch.Id, CancellationToken.None, ["1002"]);
+
+        Assert.Equal(2, batch.Channels[0].Counts.RoomsImported);
+        Assert.Equal(2, h.Calls(nameof(IOctorateApiClient.ImportRoomsAsync), "502"));
+        Assert.Equal(2, h.Mappings.Invocations.Count(i => i.Method.Name == nameof(IChannelMappingService.RefreshAsync)));
+
+        h.Rows[1] = Harness.Row("1002", OctorateMappingStatus.Confirmed, h.Properties[1]);
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None);
+
+        Assert.Equal(OctorateInventoryImportStatus.Completed, batch.Status);
+        Assert.Equal(2, batch.Channels[0].Counts.Connected);
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "501"));
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "502"));
+    }
+
+    [Fact]
+    public async Task ExistingInventoryImport_RejectingTheListingThatFailedTakesItOutOfTheImport_Test()
+    {
+        // The rooms of one listing fail for good. The person says it is not one of its properties: it is no longer asked for its rooms and
+        // the channel can end with the other listing.
+        var h = new Harness();
+        await h.SeedAsync(verified: true);
+        h.Failures[(OctorateD6Operation.ImportRooms, "502")] = new OctorateServerException(550);
+        var batch = await h.RunToRoomsAsync();
+        Assert.Equal(OctorateInventoryImportStatus.AwaitingMapping, batch.Channels[0].Status);
+        Assert.Equal(OctorateInventoryErrorCodes.D6ChannelFailed, batch.Channels[0].Items.Single(i => i.OctorateAccommodationId == "1002").ErrorCode);
+
+        h.Rows.AddRange([Harness.Row("1001", OctorateMappingStatus.Confirmed, h.Properties[0]), Harness.Row("1002", OctorateMappingStatus.Rejected)]);
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).RunAsync(CallerA, batch.Id, CancellationToken.None);
+
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.ImportRoomsAsync), "502"));
+
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None);
+
+        Assert.Equal(OctorateInventoryImportStatus.Completed, batch.Status);
+        Assert.Equal(1, batch.Channels[0].Counts.Connected);
+        Assert.Equal(1, batch.Channels[0].Counts.Rejected);
+    }
+
     // ─── The rules around them ────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

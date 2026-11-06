@@ -226,10 +226,7 @@ public sealed class ExistingInventoryImportService(
         ApplyBatchStatus(batch);
         await db.SaveChangesAsync(ct);
 
-        var ready = Ordered(batch)
-            .Where(c => c.AccessCompletedAt is not null && c.RoomsImportedAt is null && c.Status != OctorateInventoryImportStatus.Completed)
-            .Select(c => c.Id)
-            .ToList();
+        var ready = Ordered(batch).Where(NeedsRoomImport).Select(c => c.Id).ToList();
         if (ready.Count == 0 && !batch.Channels.Any(c => c.RoomsImportedAt is not null))
             throw new DomainConflictException("existing_inventory_access_pending", "ExistingInventoryAccessPending");
 
@@ -250,10 +247,18 @@ public sealed class ExistingInventoryImportService(
         return await ViewAsync(caller, batch.Id, ct);
     }
 
+    /// <summary>A channel whose access is given still has rooms to import: none yet, or a connection that has no stamp (it failed, or it was not authorized).</summary>
+    private static bool NeedsRoomImport(OctorateInventoryImportChannel channel) =>
+        channel.AccessCompletedAt is not null
+        && channel.Status != OctorateInventoryImportStatus.Completed
+        && (channel.RoomsImportedAt is null || channel.Items.Any(i => i.RoomsImportedAt is null));
+
     /// <summary>
-    /// The rooms of one channel: the connections of the channel are read (the items are created from them), <c>IMPORT_ROOMS</c> is asked for each
-    /// connection that has no stamp, and, with every room imported, the listings of the org are read again so the mapping can start. Nothing is
-    /// created on Octorate. Every step is saved before the next one; any failure leaves the channel at the step that failed.
+    /// The rooms of one channel: the connections of the channel that Octorate shows as authorized are read (the items are created from them),
+    /// <c>IMPORT_ROOMS</c> is asked for each one that has no stamp, and, once the rooms of at least one are in, the listings of the org are read
+    /// again so the mapping can start. A connection that fails, or whose access is not given, never holds the others back: it keeps its code and
+    /// a later <c>run</c> asks it again. Nothing is created on Octorate. Every step is saved before the next one; a failure that stops the whole
+    /// channel leaves it at the step that failed.
     /// </summary>
     private async Task RunChannelRoomsAsync(ExistingInventoryCaller caller, Guid batchId, Guid channelId, IReadOnlySet<string> retry, CancellationToken ct)
     {
@@ -261,10 +266,16 @@ public sealed class ExistingInventoryImportService(
         var channel = await LoadChannelAsync(orgId, channelId, ct);
         var batch = await db.OctorateInventoryImportBatches.AsNoTracking().FirstAsync(b => b.OrgId == orgId && b.Id == batchId, ct);
 
-        SetStatus(channel, OctorateInventoryImportStatus.ImportingRooms, null);
-        await db.SaveChangesAsync(ct);
+        // The first pass takes the channel to ImportingRooms; a later one, which only asks again for the connections that have no stamp,
+        // does not move it back.
+        var firstPass = channel.RoomsImportedAt is null;
+        if (firstPass)
+        {
+            SetStatus(channel, OctorateInventoryImportStatus.ImportingRooms, null);
+            await db.SaveChangesAsync(ct);
+        }
 
-        // The connections of the channel, read every time while the rooms are not all in (a listing connected meanwhile joins the others).
+        // The connections of the channel, read every time (a listing connected meanwhile joins the others).
         OctorateConnectionSummary[] connections;
         try
         {
@@ -277,29 +288,33 @@ public sealed class ExistingInventoryImportService(
             return;
         }
 
-        var found = connections
-            .Where(c => string.Equals(c.ChannelId, channel.ChannelCode, StringComparison.Ordinal))
+        // Only a connection Octorate shows as authorized is asked for its rooms: a listing whose access was not given is not part of the import.
+        var authorized = connections
+            .Where(c => string.Equals(c.ChannelId, channel.ChannelCode, StringComparison.Ordinal) && c.IsAuthorized)
             .GroupBy(c => c.Id, StringComparer.Ordinal)
             .Select(g => g.First())
             .ToList();
         var rows = await RowsAsync(orgId, ct);
         var scope = new BatchScope(await IntentsAsync(orgId, ct), ScopeIds(batch), batch.CreatedAt);
         var audience = await AudienceAsync(caller, rows, ct);
-        await AddItemsAsync(batch, channel, found, rows, scope, audience, ct);
-        if (channel.Items.Count == 0)
-        {
-            // The access is given but Octorate shows no connection of this channel: nothing is created to make one.
-            await StopChannelAsync(channel, new Failure(OctorateInventoryErrorCodes.ChannelConnectionNotFound, OctorateInventoryImportStatus.NeedsAttention, false), ct);
-            return;
-        }
+        await AddItemsAsync(batch, channel, authorized, rows, scope, audience, ct);
 
+        var authorizedIds = authorized.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
+        var toImport = channel.Items
+            .Where(i => i.RoomsImportedAt is null && authorizedIds.Contains(i.OctorateConnectionId) && Covers(i.OctorateAccommodationId, rows, scope, audience))
+            .OrderBy(i => i.OctorateConnectionId, StringComparer.Ordinal)
+            .ToList();
         var failures = new List<Failure>();
         Failure? stop = null;
-        foreach (var item in channel.Items.Where(i => i.RoomsImportedAt is null).OrderBy(i => i.OctorateConnectionId, StringComparer.Ordinal).ToList())
+        var imported = 0;
+        foreach (var item in toImport)
         {
             var failure = await DoD6Async(orgId, channel, item, OctorateD6Operation.ImportRooms, retry.Contains(item.OctorateAccommodationId), ct);
             if (failure is null)
+            {
+                imported++;
                 continue;
+            }
 
             failures.Add(failure);
             if (failure.StopsChannel)
@@ -309,32 +324,51 @@ public sealed class ExistingInventoryImportService(
             }
         }
 
-        if (channel.Items.Any(i => i.RoomsImportedAt is null))
+        if (stop is not null)
         {
-            await StopChannelAsync(channel, stop ?? WorstOf(failures), ct);
+            await StopChannelAsync(channel, stop, ct);
             return;
         }
 
-        // Every room is in: the listings of the org are read again and the matcher proposes a property for each. Then a person decides.
-        try
+        if (channel.Items.All(i => i.RoomsImportedAt is null))
         {
-            await mappings.RefreshAsync(orgId, ct);
-        }
-        catch (OctorateException ex)
-        {
-            await StopChannelAsync(channel, Classify(ex), ct);
-            return;
-        }
-        catch (DomainConflictException ex) when (ex.Code == "octorate_mapping_refresh_conflict")
-        {
-            await StopChannelAsync(channel, new Failure(OctorateInventoryErrorCodes.MappingRefreshConflict, OctorateInventoryImportStatus.NeedsAttention, false), ct);
+            // Not one listing got its rooms in: the worst of the failures, or the access is given but Octorate shows no authorized connection of
+            // this channel. Nothing is created to make one.
+            var why = failures.Count > 0 ? WorstOf(failures) : new Failure(OctorateInventoryErrorCodes.ChannelConnectionNotFound, OctorateInventoryImportStatus.NeedsAttention, false);
+            await StopChannelAsync(channel, why, ct);
             return;
         }
 
-        channel.RoomsImportedAt = Now();
-        SetStatus(channel, OctorateInventoryImportStatus.AwaitingMapping, null);
+        // A later pass that brought nothing in has nothing to read again.
+        if (firstPass || imported > 0)
+        {
+            // The rooms of at least one listing are in: the listings of the org are read again and the matcher proposes a property for each.
+            // Then a person decides. A listing that failed is shown with its code and does not wait for the others, nor they for it.
+            try
+            {
+                await mappings.RefreshAsync(orgId, ct);
+            }
+            catch (OctorateException ex)
+            {
+                await StopChannelAsync(channel, Classify(ex), ct);
+                return;
+            }
+            catch (DomainConflictException ex) when (ex.Code == "octorate_mapping_refresh_conflict")
+            {
+                await StopChannelAsync(channel, new Failure(OctorateInventoryErrorCodes.MappingRefreshConflict, OctorateInventoryImportStatus.NeedsAttention, false), ct);
+                return;
+            }
+
+            channel.RoomsImportedAt ??= Now();
+            Audit("rooms-imported", orgId, batchId, channel.ChannelCode, imported, null);
+        }
+
+        // The channel waits for the mapping, unless a command after it has already taken it further: that one owns the state.
+        if (!channel.Items.Any(i => i.OctorateReservationsImportedAt is not null))
+            SetStatus(channel, OctorateInventoryImportStatus.AwaitingMapping, null);
+
+        channel.UpdatedAt = Now();
         await db.SaveChangesAsync(ct);
-        Audit("rooms-imported", orgId, batchId, channel.ChannelCode, channel.Items.Count, null);
     }
 
     // ─── Reservations, calendars, «mark connected» ────────────────────────────────────────────────────────────
@@ -577,8 +611,14 @@ public sealed class ExistingInventoryImportService(
             return;
         }
 
+        // A listing whose rooms failed to come in is not part of this pass, but the channel does not say it is done while one waits with a code.
+        var roomsMissing = channel.Items
+            .Where(i => i.ErrorCode is not null && plan.TryGetValue(i.Id, out var p) && p.Decision == ItemDecision.NotImported)
+            .ToList();
+        failures.AddRange(roomsMissing.Select(i => new Failure(i.ErrorCode!, OctorateInventoryImportStatus.NeedsAttention, false)));
+
         var open = EligibleItems(channel, plan).Where(i => i.ConnectedAt is null).ToList();
-        if (open.Count > 0)
+        if (open.Count > 0 || roomsMissing.Count > 0)
         {
             await StopChannelAsync(channel, WorstOf(failures), ct);
             return;
@@ -843,8 +883,17 @@ public sealed class ExistingInventoryImportService(
         foreach (var item in items)
         {
             rows.TryGetValue(item.OctorateAccommodationId, out var row);
-            if (audience.Sees(row))
-                decided.Add((item, row, Decide(item, row, leaveNow, scope)));
+            if (!audience.Sees(row))
+                continue;
+
+            var decision = Decide(item, row, leaveNow, scope);
+
+            // A listing whose rooms are not in (its import failed, or its access was not given) is neither confirmed nor waiting for a person,
+            // whatever its mapping says: it is held back until its rooms are in, and it holds nobody else back.
+            if (item.RoomsImportedAt is null && decision is (ItemDecision.Eligible or ItemDecision.Pending))
+                decision = ItemDecision.NotImported;
+
+            decided.Add((item, row, decision));
         }
 
         return decided;
@@ -1660,6 +1709,9 @@ public sealed class ExistingInventoryImportService(
 
         /// <summary>Nobody decided yet: the import does not go on until somebody does.</summary>
         Pending,
+
+        /// <summary>The rooms of the listing are not in (the import failed, or its access was not given): it waits, and holds nobody else back.</summary>
+        NotImported,
     }
 
     private sealed record ItemPlan(ItemDecision Decision, Guid? PropertyId);
