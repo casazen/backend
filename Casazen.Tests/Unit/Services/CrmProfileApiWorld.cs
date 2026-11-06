@@ -23,6 +23,9 @@ internal static class CrmProfileApiWorld
     public static CrmProfileReadService ReadService(AppDbContext db, TimeProvider clock) =>
         new(db, CrmTestIndex.Create(), Options.Create(new CrmOptions()), clock, NullLogger<CrmProfileReadService>.Instance);
 
+    public static CrmProfileMergeService MergeService(AppDbContext db, TimeProvider clock) =>
+        new(db, ReadService(db, clock), CrmTestWorld.Matching(db, clock), clock, NullLogger<CrmProfileMergeService>.Instance);
+
     /// <summary>
     /// A profile as the sync leaves it, with the totals of the whole org written on it (stored by hand: a test says what they are when it needs
     /// to prove that a caller who reaches only some properties never reads them).

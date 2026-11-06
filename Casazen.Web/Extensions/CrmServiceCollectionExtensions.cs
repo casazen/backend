@@ -48,6 +48,9 @@ public static class CrmServiceCollectionExtensions
         // list, the detail and the tags; the controller behind Features:CrmMarketing is a thin layer over it.
         services.AddScoped<ICrmProfileReadService, CrmProfileReadService>();
 
+        // E07/F01/US03/T02 (NF-88): the decisions on the merges the matching proposes (list, dismiss, merge), one lock of the org for each decision.
+        services.AddScoped<ICrmProfileMergeService, CrmProfileMergeService>();
+
         return services;
     }
 }

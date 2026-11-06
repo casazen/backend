@@ -12,9 +12,10 @@ namespace Casazen.Web.Controllers;
 
 /// <summary>
 /// CRM guest profiles for the caller's org (NF-23, NF-88, ADR-021): the list with search and filters, the detail of a guest with its history,
-/// totals, reviews and contacts, and the tags (E07/F01/US03). A thin controller over <see cref="ICrmProfileReadService"/>, which decides the
-/// scope: a caller sees the profiles that have a booking at a property it reaches, and the figures it sees are computed over those bookings; a
-/// profile of another org, or one it does not reach, is a 404 like a missing one.
+/// totals, reviews and contacts, and the tags (E07/F01/US03/T01), and the decisions on the merges the matching proposes (T02). A thin controller
+/// over <see cref="ICrmProfileReadService"/>, which decides the scope (a caller sees the profiles that have a booking at a property it reaches,
+/// and the figures it sees are computed over those bookings), and <see cref="ICrmProfileMergeService"/>, which lists, dismisses and merges. A
+/// profile or a proposal of another org, or one the caller does not reach, is a 404 like a missing one.
 /// Behind <c>Features:CrmMarketing</c> (E07/F06/US01/T01): 404 while it is off, before authentication.
 /// </summary>
 [ApiController]
@@ -23,6 +24,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.GuestRead)]
 public class CrmController(
     ICrmProfileReadService profiles,
+    ICrmProfileMergeService merges,
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver,
     ILogger<CrmController> logger) : ControllerBase
@@ -33,6 +35,9 @@ public class CrmController(
 
     /// <summary>404: the profile does not exist, is of another org, is not reached by the caller or was merged into another.</summary>
     public const string ProfileNotFoundCode = "crm_profile_not_found";
+
+    /// <summary>404: the merge proposal does not exist, is of another org, or has a profile the caller does not reach.</summary>
+    public const string MergeCandidateNotFoundCode = "crm_merge_candidate_not_found";
 
     /// <summary>
     /// The profiles of the caller's org that have a booking at a property the caller reaches, filtered and sorted (ADR-021-R8, AC-NF88-5). A
@@ -127,6 +132,92 @@ public class CrmController(
     }
 
     /// <summary>
+    /// The merge proposals the caller can decide: both profiles in its scope, the surest first, each with the score, the reasons and a
+    /// side-by-side summary of the two profiles (the values of the contacts masked) (AC-NF88-3). Nothing merges by itself; a person decides.
+    /// A caller with no reach gets 403 and is never widened to the whole org.
+    /// </summary>
+    /// <param name="page">From 1.</param>
+    /// <param name="pageSize">At most 100.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpGet("merge-candidates")]
+    [ProducesResponseType(typeof(PagedResultDto<CrmMergeCandidateDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<PagedResultDto<CrmMergeCandidateDto>>> GetMergeCandidates(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultPageSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveScopeAsync(cancellationToken) is not { } scope)
+            return Forbid();
+
+        var result = await merges.ListProposedAsync(scope, page, pageSize, cancellationToken);
+
+        return Ok(new PagedResultDto<CrmMergeCandidateDto>
+        {
+            Items = result.Items.Select(CrmMergeCandidateDto.From).ToList(),
+            TotalCount = result.TotalCount,
+            Page = result.Page,
+            PageSize = result.PageSize,
+        });
+    }
+
+    /// <summary>
+    /// The two profiles are two people: the proposal is dismissed with the time and the user, and the pair is never proposed again.
+    /// 404 <c>crm_merge_candidate_not_found</c> (another org's, or a pair with a profile the caller does not reach); 409
+    /// <c>crm_merge_not_proposed</c> when it was already decided, and nothing changes.
+    /// </summary>
+    /// <param name="id">The proposal.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpPost("merge-candidates/{id:guid}/dismiss")]
+    [Authorize(Policy = CasazenPolicies.GuestWrite)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> DismissMergeCandidate(Guid id, CancellationToken cancellationToken = default)
+    {
+        if (await ResolveScopeAsync(cancellationToken) is not { } scope)
+            return MergeCandidateNotFound();
+
+        await merges.DismissAsync(scope, id, User.GetUserId(), cancellationToken);
+
+        logger.LogInformation("User {UserId} dismissed merge proposal {CandidateId}", User.GetUserId(), id);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// The two profiles are one person: the guests and the contacts of the other profile move to the survivor (a contact is never edited: basis,
+    /// confirmation and suppression move as they are), the tags are joined, the aggregates are computed again and the other profile stays as a
+    /// tombstone. Answers the survivor as the list shows it. 404 <c>crm_merge_candidate_not_found</c>; 409 <c>crm_merge_not_proposed</c> (already
+    /// decided, nothing changes); 422 <c>crm_merge_survivor_invalid</c> (the survivor is not one of the two profiles).
+    /// </summary>
+    /// <param name="id">The proposal.</param>
+    /// <param name="request">The profile that stays.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    [HttpPost("merge-candidates/{id:guid}/merge")]
+    [Authorize(Policy = CasazenPolicies.GuestWrite)]
+    [ProducesResponseType(typeof(CrmProfileListItemDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<CrmProfileListItemDto>> MergeProfiles(
+        Guid id,
+        [FromBody] MergeCrmProfilesRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (await ResolveScopeAsync(cancellationToken) is not { } scope)
+            return MergeCandidateNotFound();
+
+        var survivor = await merges.MergeAsync(scope, id, request.SurvivorProfileId, User.GetUserId(), cancellationToken);
+
+        logger.LogInformation(
+            "User {UserId} merged the profiles of merge proposal {CandidateId} into {ProfileId}",
+            User.GetUserId(),
+            id,
+            survivor.Id);
+        return Ok(CrmProfileListItemDto.From(survivor));
+    }
+
+    /// <summary>
     /// What the caller reaches in its org (AM-03): the whole org, or the properties it was given. <c>null</c> when it has no org yet or no
     /// reach on it; that is never widened to the whole org.
     /// </summary>
@@ -140,4 +231,7 @@ public class CrmController(
 
     private ObjectResult ProfileNotFound() =>
         this.ApiProblem(StatusCodes.Status404NotFound, ProfileNotFoundCode, "CrmProfileNotFound");
+
+    private ObjectResult MergeCandidateNotFound() =>
+        this.ApiProblem(StatusCodes.Status404NotFound, MergeCandidateNotFoundCode, "CrmMergeCandidateNotFound");
 }

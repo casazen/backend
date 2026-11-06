@@ -366,6 +366,15 @@
   <data name="CrmTagsInvalid" xml:space="preserve">
     <value>Invalid tags: at most 50, 1 to 40 characters each, no duplicates, and no more than 2,000 characters in all.</value>
   </data>
+  <data name="CrmMergeCandidateNotFound" xml:space="preserve">
+    <value>Merge proposal not found.</value>
+  </data>
+  <data name="CrmMergeNotProposed" xml:space="preserve">
+    <value>This merge proposal has already been decided: there is nothing left to do.</value>
+  </data>
+  <data name="CrmMergeSurvivorInvalid" xml:space="preserve">
+    <value>The profile to keep must be one of the two profiles of the proposal.</value>
+  </data>
   <data name="GuestEmailAlreadyExists" xml:space="preserve">
     <value>A guest with this email already exists.</value>
   </data>

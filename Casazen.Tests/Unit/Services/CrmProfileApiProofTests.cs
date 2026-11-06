@@ -196,9 +196,12 @@ public class CrmProfileApiProofTests
                 typeof(CrmProfileTotals),
                 typeof(CrmContactView),
                 typeof(CrmReviewSummary),
+                typeof(CrmMergeCandidateView),
+                typeof(CrmMergeProfileSummary),
+                typeof(CrmMergeContactSummary),
             ])
             .ToList();
-        Assert.True(types.Count >= 12, "The scan of the types of the profile API found almost nothing: it proves nothing.");
+        Assert.True(types.Count >= 20, "The scan of the types of the profile API found almost nothing: it proves nothing.");
         var forbidden = new Regex("document|birth|place|nationality|citizenship|passport|stayguest|alloggiati", RegexOptions.IgnoreCase);
         var offending = types
             .SelectMany(type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(property => $"{type.Name}.{property.Name}"))
