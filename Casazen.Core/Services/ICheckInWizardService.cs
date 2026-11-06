@@ -136,7 +136,10 @@ public enum CheckInAlloggiatiNextStep
     /// <summary>It was already sent (receipt or the host's declaration).</summary>
     AlreadySent = 2,
 
-    /// <summary>The property is outside Italy: there is no police communication.</summary>
+    /// <summary>
+    /// There is no police communication: the property is outside Italy, or the stay owes none (a no-show, a request still waiting or a cancelled
+    /// booking: the guests never came).
+    /// </summary>
     NotApplicable = 3,
 }
 

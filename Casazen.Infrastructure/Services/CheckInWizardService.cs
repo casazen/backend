@@ -90,7 +90,7 @@ public sealed class CheckInWizardService(
 
         var tax = await ConfirmTaxAsync(booking.Id, state, userId, cancellationToken);
         var sent = await octorate.SendGuestsAsync(booking.Id, cancellationToken);
-        var next = AlloggiatiNext(state.Sender, state.Alloggiati);
+        var next = AlloggiatiNext(state.Sender, state.Alloggiati, state.Attendance);
         logger.LogInformation(
             "Check-in of booking {BookingId} confirmed by {UserId}: tax saved {TaxSaved} ({TaxReason}), Octorate {OctorateState} ({OctorateReason}), police {AlloggiatiNext}",
             booking.Id, userId, tax.Saved, tax.Reason, sent.State, sent.Reason, next.Step);
@@ -227,11 +227,12 @@ public sealed class CheckInWizardService(
 
     /// <summary>
     /// What the police communication does next (the scope of this release): the channel manager sends, or the host sends on the portal with the
-    /// guide; nothing when it was already sent or the property is outside Italy.
+    /// guide; nothing when it was already sent, the property is outside Italy, or the stay owes none (a no-show, a request still waiting or a
+    /// cancelled booking: the guests never came, so the host is not sent to the portal).
     /// </summary>
-    private static CheckInAlloggiatiNext AlloggiatiNext(PropertySenderInfo sender, AlloggiatiStatusInfo status)
+    internal static CheckInAlloggiatiNext AlloggiatiNext(PropertySenderInfo sender, AlloggiatiStatusInfo status, StayAttendance attendance)
     {
-        if (!sender.Applies)
+        if (!sender.Applies || attendance is StayAttendance.NoShow or StayAttendance.Inactive || AlloggiatiStatusRules.IsNotDue(status.Status))
             return new CheckInAlloggiatiNext(CheckInAlloggiatiNextStep.NotApplicable, sender.AlloggiatiSender);
         if (AlloggiatiStatusRules.IsSent(status.Status))
             return new CheckInAlloggiatiNext(CheckInAlloggiatiNextStep.AlreadySent, sender.AlloggiatiSender);

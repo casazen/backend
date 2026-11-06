@@ -520,6 +520,12 @@ public class ComplianceWizardServiceTests
         });
 
         var noReport = Stay("NoReport", today);
+        // A no-show (NF-45) owes no communication: neither "to send manually" nor a failure, whatever its report says.
+        var noShow = Stay("NoShow", today);
+        noShow.NoShowAt = clock.GetUtcNow().UtcDateTime;
+        var noShowRejected = Stay("NoShowRejected", today);
+        noShowRejected.NoShowAt = clock.GetUtcNow().UtcDateTime;
+        Report(noShowRejected, AlloggiatiWebStatus.Rifiutato);
         var jobNotRunYet = Stay("JobPending", today);
         Report(jobNotRunYet, AlloggiatiWebStatus.DaInviare);
         var manual = Stay("Manual", today.AddDays(-1), BookingStatus.CheckedIn);
@@ -544,6 +550,31 @@ public class ComplianceWizardServiceTests
         Assert.Equal(ComplianceCockpitAction.SendAlloggiati, manualItem.Action);
         Assert.Equal(manual.Id, manualItem.BookingId);
         Assert.Equal(ComplianceCockpitAction.ResolveAlloggiatiFailure, summary.AlloggiatiFailures.Items.Single().Action);
+    }
+
+    [Fact]
+    public async Task Summary_ANoShowStay_IsInNoSectionOfTheCockpit()
+    {
+        // NF-45: the guests never came, so nothing is due: no guest data to complete, no departure to close, no communication to send.
+        await using var db = CreateDb(nameof(Summary_ANoShowStay_IsInNoSectionOfTheCockpit));
+        var property = await SeedPropertyAsync(db, complianceStatus: PropertyComplianceStatus.Active);
+        var todayInRome = new DateTime(2026, 9, 24, 0, 0, 0, DateTimeKind.Utc);
+        var guest = new Guest { FirstName = "Anna", LastName = "Test", Email = $"{Guid.NewGuid():N}@test.com", OrgId = property.OrgId };
+        db.Guests.Add(guest);
+        // Both are confirmed, arrived on the 22nd and leave today (Rome 24/09), with no guest data and no report: the one not marked is in
+        // three sections of the cockpit; the no-show is in none.
+        var expected = BuildBooking(property, guest, todayInRome, BookingStatus.Confirmed);
+        var noShow = BuildBooking(property, guest, todayInRome, BookingStatus.Confirmed);
+        noShow.NoShowAt = todayInRome.AddHours(-30);
+        db.Bookings.AddRange(expected, noShow);
+        await db.SaveChangesAsync();
+
+        var summary = await CreateService(db, RomeJustAfterMidnight).GetSummaryAsync(new HostScope(property.OrgId));
+
+        Assert.Equal(expected.Id, Assert.Single(summary.GuestCheckInsIncomplete.Items).Id);
+        Assert.Equal(expected.Id, Assert.Single(summary.CheckoutsDue.Items).Id);
+        Assert.Equal(expected.Id, Assert.Single(summary.AlloggiatiManualRequired.Items).Id);
+        Assert.Empty(summary.AlloggiatiFailures.Items);
     }
 
     [Fact]

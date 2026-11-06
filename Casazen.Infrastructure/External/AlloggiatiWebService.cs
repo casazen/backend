@@ -130,7 +130,7 @@ public class AlloggiatiWebService(
     {
         var booking = await LoadBookingAsync(bookingId, tracking: false);
         var report = SlotReport(await ReportsOfAsync(bookingId, tracking: false), booking.GuestId);
-        var status = AlloggiatiStatusRules.Effective(report?.Status, booking.CheckInDate, _clock.TodayInRome());
+        var status = AlloggiatiStatusRules.Effective(report?.Status, booking.CheckInDate, _clock.TodayInRome(), booking.NoShowAt is not null);
         var stayDays = AlloggiatiTerms.StayDays(booking.CheckInDate, booking.CheckOutDate);
 
         // One line per guest of the stay, in record order: a head of family or group before its members (CO-12).
@@ -321,7 +321,8 @@ public class AlloggiatiWebService(
         if (report.Status is not (AlloggiatiWebStatus.DaInviare or AlloggiatiWebStatus.Errore))
             return AlloggiatiProcessOutcome.AlreadyHandled;
 
-        // A no-show (NF-45) has nobody to communicate: it never reads "to send manually".
+        // A no-show (NF-45) has nobody to communicate: the job leaves its report alone, and every reader derives "not due" from the no-show mark
+        // (AlloggiatiStatusRules.Effective), so it is never "to send manually" nor overdue.
         if (!AlloggiatiStatusRules.IsDue(booking))
             return AlloggiatiProcessOutcome.BookingInactive;
 
@@ -381,7 +382,8 @@ public class AlloggiatiWebService(
     }
 
     public bool IsOverdue(Booking booking, AlloggiatiWebStatus? reportStatus) =>
-        IsOverdue(AlloggiatiTerms.DeadlineUtc(booking), reportStatus ?? AlloggiatiWebStatus.DaInviare, UtcNow());
+        booking.NoShowAt is null
+        && IsOverdue(AlloggiatiTerms.DeadlineUtc(booking), reportStatus ?? AlloggiatiWebStatus.DaInviare, UtcNow());
 
     private async Task<AlloggiatiReportReservation?> MoveSlotToGuestAsync(
         AlloggiatiWebReport previous,
@@ -442,7 +444,7 @@ public class AlloggiatiWebService(
     private AlloggiatiStatusInfo BuildStatusInfo(Booking booking, AlloggiatiWebReport? report, bool dataComplete)
     {
         var now = UtcNow();
-        var status = AlloggiatiStatusRules.Effective(report?.Status, booking.CheckInDate, _clock.TodayInRome());
+        var status = AlloggiatiStatusRules.Effective(report?.Status, booking.CheckInDate, _clock.TodayInRome(), booking.NoShowAt is not null);
         var deadline = AlloggiatiTerms.DeadlineUtc(booking);
         return new AlloggiatiStatusInfo(
             booking.Id,
@@ -458,7 +460,7 @@ public class AlloggiatiWebService(
     }
 
     private static bool IsOverdue(DateTime deadline, AlloggiatiWebStatus status, DateTime now) =>
-        now > deadline && !AlloggiatiStatusRules.IsSent(status);
+        now > deadline && !AlloggiatiStatusRules.IsSent(status) && !AlloggiatiStatusRules.IsNotDue(status);
 
     private static double HoursUntil(DateTime deadline, DateTime now) =>
         Math.Max(0, (deadline - now).TotalHours);

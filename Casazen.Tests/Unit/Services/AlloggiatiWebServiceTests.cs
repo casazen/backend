@@ -363,6 +363,51 @@ public class AlloggiatiWebServiceTests
             CreateService(db, CheckIn).GetStatusAsync(Guid.NewGuid()));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(AlloggiatiWebStatus.DaInviare)]
+    [InlineData(AlloggiatiWebStatus.DaInviareManualmente)]
+    [InlineData(AlloggiatiWebStatus.Errore)]
+    public async Task GetStatus_NoShowPastTheLegalTerm_IsNotDueNeverToSendManuallyNorOverdue(AlloggiatiWebStatus? stored)
+    {
+        // NF-45: the guests never came. Whatever the report says (none, waiting, already marked "to send manually" by the job before the host
+        // marked the no-show, or failed), the status and the guest summary read "not due", and a stay past its term is not overdue.
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db);
+        if (stored is { } status)
+            await AddReportAsync(db, booking, status);
+        booking.NoShowAt = RomeMidnightOfCheckIn.AddHours(14);
+        await db.SaveChangesAsync();
+        var service = CreateService(db, RomeMidnightOfCheckIn.AddHours(48));
+
+        var info = await service.GetStatusAsync(booking.Id);
+        var summary = await service.GetGuestSummaryAsync(booking.Id);
+
+        Assert.Equal(AlloggiatiWebStatus.NotDue, info.Status);
+        Assert.False(info.IsOverdue);
+        Assert.Null(info.ReportedAt);
+        Assert.Equal(AlloggiatiWebStatus.NotDue, summary.Status);
+        Assert.False(service.IsOverdue(booking, stored));
+    }
+
+    [Fact]
+    public async Task GetStatus_NoShowWhoseCommunicationWasDeclaredSent_StillReadsSent()
+    {
+        // A communication sent or declared sent is never hidden by the no-show mark.
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db);
+        await AddReportAsync(db, booking, AlloggiatiWebStatus.InviatoManualmente, reportedAt: CheckIn);
+        booking.NoShowAt = RomeMidnightOfCheckIn.AddHours(14);
+        await db.SaveChangesAsync();
+        var service = CreateService(db, RomeMidnightOfCheckIn.AddHours(48));
+
+        var info = await service.GetStatusAsync(booking.Id);
+
+        Assert.Equal(AlloggiatiWebStatus.InviatoManualmente, info.Status);
+        Assert.Equal(CheckIn, info.ReportedAt);
+        Assert.Equal(AlloggiatiWebStatus.InviatoManualmente, (await service.GetGuestSummaryAsync(booking.Id)).Status);
+    }
+
     [Fact]
     public async Task MarkSentManually_DateOnArrivalDay_RecordsDeclarationNotReceipt()
     {

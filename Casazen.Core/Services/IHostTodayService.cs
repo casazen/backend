@@ -58,9 +58,10 @@ public sealed record HostToday(
 
 /// <summary>
 /// A stay of the day. <paramref name="CheckIn"/> and <paramref name="Alloggiati"/> are null for a departure, which has no check-in to
-/// follow; <paramref name="Cleaning"/> is null for an arrival (SR-03b).
+/// follow; <paramref name="Alloggiati"/> is also null for a no-show, which owes no communication (NF-45); <paramref name="Cleaning"/> is
+/// null for an arrival (SR-03b).
 /// </summary>
-/// <param name="Alloggiati">Where the Alloggiati Web communication of an arriving stay stands, with its term.</param>
+/// <param name="Alloggiati">Where the Alloggiati Web communication of an arriving stay stands, with its term; null for a no-show.</param>
 /// <param name="Cleaning">The latest cleaning request tied to a leaving stay; null when it has none.</param>
 public sealed record HostTodayStay(
     HostDashboardStay Stay,

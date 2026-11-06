@@ -109,7 +109,7 @@ public sealed record BookingSearchPage(IReadOnlyList<Booking> Items, int TotalCo
 /// <param name="PaidAmount">The money that came in, in euros (<see cref="BookingListRules.PaidAmount"/>); null when the caller may not read payments.</param>
 /// <param name="AlloggiatiStatus">
 /// Where the Alloggiati Web communication of a stay stands, as the host reads it (<see cref="Casazen.Core.Regulatory.AlloggiatiStatusRules.Effective"/>);
-/// null for a booking that has none (pending or cancelled).
+/// null for a booking that has none (pending, cancelled or a no-show).
 /// </param>
 public sealed record BookingRowDetails(BookingPaymentState PaymentState, decimal? PaidAmount, AlloggiatiWebStatus? AlloggiatiStatus);
 

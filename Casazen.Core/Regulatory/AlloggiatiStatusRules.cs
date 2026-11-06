@@ -47,13 +47,21 @@ public static class AlloggiatiStatusRules
     public static bool IsFailure(AlloggiatiWebStatus status) =>
         status is AlloggiatiWebStatus.Errore or AlloggiatiWebStatus.Rifiutato;
 
+    /// <summary>Nothing is due: the stay is a no-show (<see cref="Effective"/> derives it, no report holds it).</summary>
+    public static bool IsNotDue(AlloggiatiWebStatus status) => status == AlloggiatiWebStatus.NotDue;
+
     /// <summary>
     /// Status shown for a booking: the stored one once past <see cref="AlloggiatiWebStatus.DaInviare"/>; otherwise
     /// (no report yet, or job not run yet) <see cref="AlloggiatiWebStatus.DaInviare"/> before the arrival day and
-    /// <see cref="AlloggiatiWebStatus.DaInviareManualmente"/> from the arrival day in Europe/Rome.
+    /// <see cref="AlloggiatiWebStatus.DaInviareManualmente"/> from the arrival day in Europe/Rome. A no-show
+    /// (<paramref name="noShow"/>, NF-45) owes no communication: <see cref="AlloggiatiWebStatus.NotDue"/>, whatever the stored report says,
+    /// unless the communication was sent or declared sent anyway (that stays visible).
     /// </summary>
-    public static AlloggiatiWebStatus Effective(AlloggiatiWebStatus? stored, DateTime checkInDate, DateTime todayInRome)
+    public static AlloggiatiWebStatus Effective(AlloggiatiWebStatus? stored, DateTime checkInDate, DateTime todayInRome, bool noShow = false)
     {
+        if (noShow && !(stored is { } declared && IsSent(declared)))
+            return AlloggiatiWebStatus.NotDue;
+
         if (stored is { } status && status != AlloggiatiWebStatus.DaInviare)
             return status;
 

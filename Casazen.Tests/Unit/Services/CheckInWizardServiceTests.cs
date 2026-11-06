@@ -129,6 +129,55 @@ public class CheckInWizardServiceTests
         Assert.Equal(BookingStatus.Confirmed, again.Status);
     }
 
+    [Fact]
+    public void CheckInWizard_AlloggiatiNext_NoShowOrInactiveStay_SendsNobodyToThePortal_Test()
+    {
+        var sender = new PropertySenderInfo(
+            Guid.NewGuid(), OrgA, ComplianceSenderType.Manual, ComplianceSenderType.Manual, SenderSource.DefaultNotConnected, true, null, null);
+
+        AlloggiatiStatusInfo Status(AlloggiatiWebStatus status) =>
+            new(Guid.NewGuid(), status, null, null, null, CheckIn.AddDays(1), false, 24, false, false);
+
+        // The control: an expected stay whose communication is still to send is sent by the host on the portal, with the guide.
+        Assert.Equal(
+            CheckInAlloggiatiNextStep.Manual,
+            CheckInWizardService.AlloggiatiNext(sender, Status(AlloggiatiWebStatus.DaInviareManualmente), StayAttendance.Expected).Step);
+
+        // A no-show, a request still waiting and a cancelled booking owe no communication: nothing to do on the portal, whatever the status.
+        foreach (var attendance in new[] { StayAttendance.NoShow, StayAttendance.Inactive })
+        {
+            Assert.Equal(
+                CheckInAlloggiatiNextStep.NotApplicable,
+                CheckInWizardService.AlloggiatiNext(sender, Status(AlloggiatiWebStatus.DaInviareManualmente), attendance).Step);
+        }
+
+        Assert.Equal(
+            CheckInAlloggiatiNextStep.NotApplicable,
+            CheckInWizardService.AlloggiatiNext(sender, Status(AlloggiatiWebStatus.NotDue), StayAttendance.Expected).Step);
+    }
+
+    [Fact]
+    public async Task StayLifecycle_LateArrivalAfterANoShow_ClearsTheMark_AndTheStayOwesItsCommunicationAgain_Test()
+    {
+        await using var db = NewDb($"late-arrival-{Guid.NewGuid():N}", null);
+        var booking = await SeedStayAsync(db, OrgA);
+        var lifecycle = Lifecycle(db);
+
+        var marked = await lifecycle.MarkNoShowAsync(booking.Id, CancellationToken.None);
+        Assert.NotNull(marked.NoShowAt);
+        Assert.Equal(StayAttendance.NoShow, CheckInAttendance.Of(marked));
+        Assert.False(AlloggiatiStatusRules.IsDue(marked));
+
+        var arrival = await lifecycle.RegisterArrivalAsync(booking.Id, CancellationToken.None);
+
+        // The guests did come: the mark goes, the stay is checked in and owes its communication like any other.
+        Assert.Null(arrival.Booking.NoShowAt);
+        Assert.Equal(BookingStatus.CheckedIn, arrival.Booking.Status);
+        Assert.Equal(StayAttendance.Arrived, CheckInAttendance.Of(arrival.Booking));
+        Assert.True(AlloggiatiStatusRules.IsDue(arrival.Booking));
+        Assert.Null((await db.Bookings.AsNoTracking().SingleAsync(b => b.Id == booking.Id)).NoShowAt);
+    }
+
     private static IReadOnlyList<CheckInIssue> Issues(StayGuest guest, IReadOnlyCollection<string> requiredFields) =>
         CheckInReadinessRules.Evaluate(new CheckInReadinessInput(
             [guest], null, DateOnly.FromDateTime(CheckIn), DeclaredGuests: 1, OctorateReceivesGuests: false, requiredFields));
