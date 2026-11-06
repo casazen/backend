@@ -27,7 +27,8 @@ namespace Casazen.Infrastructure.Services;
 /// at once. The previous check is <c>NextVerificationAt</c> minus the wait that followed it, which is how the explicit trigger knows how long ago it
 /// was.</para>
 /// <para><b>A failed check decides nothing.</b> A verifier that throws (Octorate down, the quota used) is logged with its code, counts as an attempt
-/// and stores no outcome: it never unlocks the confirmation, and the next check comes at the next time of the schedule.</para>
+/// and stores no outcome: it never unlocks the confirmation, and the next check comes at the next time of the schedule. A throw that is not an answer
+/// of Octorate (a fault of the verifier) decides nothing either, but its exception is logged with the trace.</para>
 /// </remarks>
 public sealed class OnboardingPanelStepService(
     AppDbContext db,
@@ -225,12 +226,23 @@ public sealed class OnboardingPanelStepService(
         {
             throw;
         }
-        catch (Exception ex)
+        catch (OctorateException ex)
         {
-            // Worth a later check, never a verdict: the attempt is counted and the schedule has moved on. Codes only, never a body.
+            // Octorate is down, refused or the quota is used: worth a later check, never a verdict. The attempt is counted and the schedule has moved
+            // on. The code only: the typed errors of the client carry no body.
             logger.LogWarning(
                 "Verification {Attempt} of panel step {StepId} ({Kind}) of org {OrgId} could not be completed ({Error})",
-                attempt, step.Id, step.Kind, step.OrgId, ex is OctorateException octorate ? octorate.Code : ex.GetType().Name);
+                attempt, step.Id, step.Kind, step.OrgId, ex.Code);
+            return;
+        }
+        catch (Exception ex)
+        {
+            // Not an answer of Octorate but a fault (a bug of a verifier, the database): still no verdict and no outcome, but the exception goes to
+            // the log with its trace, so that a check that fails every time is found and not retried in silence.
+            logger.LogError(
+                ex,
+                "Verification {Attempt} of panel step {StepId} ({Kind}) of org {OrgId} failed unexpectedly",
+                attempt, step.Id, step.Kind, step.OrgId);
             return;
         }
 

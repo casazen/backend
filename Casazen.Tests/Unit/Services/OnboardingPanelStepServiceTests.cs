@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -388,6 +389,46 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         await Assert.ThrowsAsync<OperationCanceledException>(() => service.GetStatusAsync(_world.OrgWide, step.Id, Ct));
     }
 
+    /// <summary>
+    /// A check that fails for a reason that is not an answer of Octorate (a fault of the verifier) decides nothing, as before, but is not lost: the
+    /// exception goes to the log as an error with its trace, while an answer of Octorate is logged as a warning by its code only. A check that fails
+    /// every time is found, and the confirmation stays locked.
+    /// </summary>
+    [Fact]
+    public async Task Status_AVerifierThatFailsWithAFault_LogsTheException_AndDecidesNothing()
+    {
+        var logger = new CapturingLogger<OnboardingPanelStepService>();
+        var police = new ScriptedVerifier(PanelStepKind.PoliceConnection)
+            .ThenThrow(new OctorateServerException(503))
+            .ThenThrow(new InvalidOperationException("boom"));
+        var service = new OnboardingPanelStepService(
+            _db,
+            [police],
+            new InternalActivityService(_db, NullLogger<InternalActivityService>.Instance, _clock),
+            Options.Create(_octorate),
+            _clock,
+            logger);
+        var step = (await service.StartAsync(_world.OrgWide, _world.OwnerUserId, new PanelStepStartRequest(PanelStepKind.PoliceConnection, _world.Granted.Id), Ct)).Step;
+
+        // Octorate answered 503: a warning with the code, and no exception object.
+        _clock.Advance(TimeSpan.FromSeconds(31));
+        await service.GetStatusAsync(_world.OrgWide, step.Id, Ct);
+        var answer = Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Warning);
+        Assert.Null(answer.Error);
+        Assert.Contains("octorate_unavailable", answer.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(logger.Entries, entry => entry.Level == LogLevel.Error);
+
+        // A fault of the verifier: an error with the exception itself.
+        _clock.Advance(TimeSpan.FromSeconds(61));
+        var failed = await service.GetStatusAsync(_world.OrgWide, step.Id, Ct);
+        var fault = Assert.Single(logger.Entries, entry => entry.Level == LogLevel.Error);
+        Assert.IsType<InvalidOperationException>(fault.Error);
+        Assert.Equal(2, police.Calls);
+        Assert.Null(failed.LastVerificationOutcome);
+        Assert.False(failed.CanConfirm);
+        Assert.Equal(2, (await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync()).VerificationAttempts);
+    }
+
     /// <summary>The explicit trigger (the panel window closed, the tab focused again) runs a check at once, but not twice within ten seconds.</summary>
     [Fact]
     public async Task Verify_TheExplicitTrigger_IsHeldToAMinimumGapFromThePreviousCheck()
@@ -741,6 +782,20 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
             Contexts.Add(context);
             return Task.FromResult(_script.Count > 0 ? _script.Dequeue()() : _default);
         }
+    }
+
+    /// <summary>A logger that keeps what it was asked to write: the level, the exception and the formatted message.</summary>
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, Exception? Error, string Message)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Entries.Add((logLevel, exception, formatter(state, exception)));
     }
 
     /// <summary>The mapping of the properties to the accommodations, as the verifier asks for it; it records who asked.</summary>
