@@ -3,6 +3,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Octorate;
+using Casazen.Infrastructure.Photos;
 using Casazen.Web.Configuration;
 using Microsoft.Extensions.Options;
 
@@ -75,6 +76,31 @@ public static class OctorateServiceCollectionExtensions
         services.AddScoped<IChannelAccessHandoff, OnboardingChannelAccessHandoff>();
         services.AddScoped<IExistingInventoryImportService, ExistingInventoryImportService>();
         services.AddScoped<IInventoryScenarioGuard, InventoryScenarioGuard>();
+
+        // The creation of a property on Octorate (E02/F03/US01/T06, PO-19): only for a property declared never published; it saves the refresh
+        // token Octorate gives once and confirms the new accommodation as the mapping of the property.
+        services.AddScoped<IOctoratePropertyCreator, OctoratePropertyCreator>();
+
+        // The publication of a listing (E02/F03/US01/T02, NF-27): the content channels and their rules (ListingChannels), the public photos, the
+        // reader of the groups of the content (the baseline of the changes made outside CasaZen), the «To do» of the channels, the service and its
+        // job. The job runs only while Features:OctorateConnector is on (the service does nothing otherwise).
+        services.AddOptions<ListingChannelOptions>().BindConfiguration(ListingChannelOptions.SectionName);
+        services.AddScoped<PublicPhotoUrlService>();
+        services.AddScoped<ListingPhotoSync>();
+        services.AddScoped<OctorateContentReader>();
+        services.AddScoped<ListingTodos>();
+        services.AddScoped<IContentPushService, ContentPushService>();
+        services.AddScoped<ListingPublishJob>();
+
+        // The status of the listings, the changes made outside CasaZen and the notification of the channel manager about the content
+        // (E02/F03/US01/T07): the services, the handler of CONTENT_NOTIFICATION (each handler runs in its own scope under the org of the event)
+        // and the three jobs, scheduled only while Features:OctorateConnector is on (RecurringJobsRegistration).
+        services.AddScoped<IListingStatusService, ListingStatusService>();
+        services.AddScoped<IOutsideChangeService, OutsideChangeService>();
+        services.AddScoped<IEventHandler<OctorateWebhookReceivedEvent>, ContentNotificationHandler>();
+        services.AddScoped<ListingStatusSyncJob>();
+        services.AddScoped<ListingChannelHealthJob>();
+        services.AddScoped<ListingOutsideChangeJob>();
 
         return services;
     }

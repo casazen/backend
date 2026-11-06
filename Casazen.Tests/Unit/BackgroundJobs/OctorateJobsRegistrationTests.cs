@@ -29,6 +29,9 @@ public class OctorateJobsRegistrationTests
         OctorateBookingImportJob.RecurringJobId,
         OctorateBookingSyncJob.RecurringJobId,
         CalendarSyncJob.RecurringJobId,
+        ListingStatusSyncJob.RecurringJobId,
+        ListingChannelHealthJob.RecurringJobId,
+        ListingOutsideChangeJob.RecurringJobId,
     ];
 
     [Fact]
@@ -143,6 +146,10 @@ public class OctorateJobsRegistrationTests
                      typeof(OctorateBookingStatePushJob),
                      typeof(CalendarSyncJob),
                      typeof(ICalMigrationService),
+                     typeof(ListingPublishJob),
+                     typeof(ListingStatusSyncJob),
+                     typeof(ListingChannelHealthJob),
+                     typeof(ListingOutsideChangeJob),
                  })
         {
             Assert.Contains(services, d => d.ServiceType == type && d.Lifetime == ServiceLifetime.Scoped);
@@ -161,7 +168,7 @@ public class OctorateJobsRegistrationTests
             .Select(d => d.ImplementationType)
             .ToList();
         Assert.Equal(
-            [typeof(BookingCancelledHandler), typeof(BookingCreatedHandler), typeof(BookingModifiedHandler)],
+            [typeof(BookingCancelledHandler), typeof(BookingCreatedHandler), typeof(BookingModifiedHandler), typeof(ContentNotificationHandler)],
             notifications.OrderBy(t => t!.Name, StringComparer.Ordinal));
 
         // ...and the one that queues the push of the arrival and the departure.
