@@ -4692,4 +4692,16 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="WelcomeConsentOutdated" xml:space="preserve">
     <value>Il testo del consenso è stato aggiornato: ricarica la pagina, leggilo e riprova.</value>
   </data>
+  <data name="GuestMarketingConsentUnavailable" xml:space="preserve">
+    <value>Al momento non è possibile modificare le preferenze sulle comunicazioni promozionali.</value>
+  </data>
+  <data name="GuestMarketingConsentOutdated" xml:space="preserve">
+    <value>Il testo del consenso è stato aggiornato: ricarica la pagina, leggilo e riprova a salvare le tue preferenze.</value>
+  </data>
+  <data name="GuestMarketingEmailInvalid" xml:space="preserve">
+    <value>Indica un indirizzo email valido a cui vuoi ricevere le comunicazioni.</value>
+  </data>
+  <data name="GuestMarketingPhoneInvalid" xml:space="preserve">
+    <value>Indica un numero di telefono valido per ricevere i messaggi su WhatsApp.</value>
+  </data>
 </root>

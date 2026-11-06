@@ -56,6 +56,9 @@ public static class CrmServiceCollectionExtensions
         services.AddScoped<IPropertyWelcomeLinkService, PropertyWelcomeLinkService>();
         services.AddScoped<IWelcomeConsentService, WelcomeConsentService>();
 
+        // E07/F04/US01/T04 (NF-90): the marketing choices of the guest of a booking, on the guest page (policy GuestSession, not behind the flag).
+        services.AddScoped<IGuestMarketingPreferencesService, GuestMarketingPreferencesService>();
+
         return services;
     }
 }

@@ -167,3 +167,25 @@ working; limit `PublicMarketingConsent`; never indexable and never cached):
 
 **The demo** (scenario `crm-welcome-link`, [`demo-environment.md`](demo-environment.md)): the lake villa has an active link with the fixed test
 token `TEST-benvenuto-villa-lago-demo-01`.
+
+### 4.4 The guest page of a booking (T04)
+
+The guest who opened the guest area of a booking site (`POST /api/public/guest/session` with the booking code and the e-mail of the booking)
+reads and changes the marketing choices of **their own booking**. Policy `GuestSession`, `api/public/guest/bookings/{code}/marketing`, not behind
+the flag, never cached. A booking of another guest, of another site or that does not exist is the same 404 `guest_booking_not_found` as everywhere
+in the area, for the read, the change and the resend, and nothing is read or written for it.
+
+| Call | Effect |
+|---|---|
+| `GET` (limit `PublicBookingLookup`) | `{ marketingConsentVersion, softOptInNoticeVersion, email: { state, maskedAddress, canResend }, whatsapp: { state, maskedPhone } }`. **`state`**: `none` (no contact of the guest on the channel), `pending` (an e-mail consent waits for the click), `confirmed` (the guest consented, and for e-mail confirmed), `soft_opt_in` (the guest was told, not asked: the address of a confirmed direct booking with a recorded notice), `service_only` (used for the stay only), `withdrawn` (the guest opted out). Nothing is shown as ticked unless the guest ticked it: the page reads `state`, it does not guess. The values are masked (`m***@e***.com`, `+39******567`). `canResend` is true when the consent is pending and the limits of § 3 allow another message. |
+| `PUT` (limit `PublicMarketingConsent`) | `{ email: { enabled, address }, whatsapp: { enabled, phone }, consentVersion, language }`; a channel left out stays as it is. **On**: a consent contact (origin and source `GuestPage`, the version, the IP, the time, the guest) and, for e-mail, the double opt-in message; the address is the one of the booking when it is a real address (not an OTA forward), else it must be typed; WhatsApp needs a phone number (the booking's or a typed one). The same consent again on the same text adds nothing to the history and sends no second message. **Off**: every open contact of the guest on the channel is suppressed (source `unsubscribe`, consent source `GuestPage`, the address goes on the suppression list) and the withdrawal is written in the privacy history; an e-mail address that is no contact yet is made one and suppressed, so a notice or a booking that comes later cannot make it reachable. The answer is the choices as they are. |
+| `POST resend-confirmation` (limit `PublicMarketingConsent`) | The double opt-in message of the pending e-mail consent again, with the limits of § 3. `202 { sent }` (`false`: nothing was waiting, or the limits did not allow another). |
+
+- **An opt-out is final.** Turning the channel on again after it was turned off stores the new consent and lifts nothing: the state stays
+  `withdrawn`, no message is sent, the address is never marketable.
+- **The version** of the consent text must be the current one to turn a channel on: 409 `guest_marketing_consent_outdated`; 422
+  `guest_marketing_consent_unavailable` when the text has no configured version, or when the CRM has no key to store the choice here
+  (`Crm__ContactIndexKey`: the page cannot record an opt-out it cannot suppress, so it says so). Turning a channel **off** needs no version.
+- 422 `guest_marketing_email_invalid` (the booking has an OTA forward or no address and none was typed, or the typed one is not a plain address
+  or is a relay of an OTA) and `guest_marketing_phone_invalid`.
+- The request is validated as a whole before anything is written: a request that fails changes nothing.
