@@ -89,7 +89,7 @@ public class VerificationController(
         if (scope == null)
             return Unauthorized();
 
-        var success = await verificationService.RequestNewPhotoAsync(bookingId, scope);
+        var success = await verificationService.RequestNewPhotoAsync(bookingId, scope, userId);
 
         if (!success)
             return this.ApiProblem(StatusCodes.Status404NotFound, "no_session_or_email", "VerificationNoSessionOrEmail");

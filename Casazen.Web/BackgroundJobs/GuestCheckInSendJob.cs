@@ -5,6 +5,7 @@ using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Services;
 using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -116,6 +117,13 @@ public class GuestCheckInSendJob(
         if (candidates.Count == 0)
             return;
 
+        // E03/F04/US02: a stay whose identity verification is with an operator (rejected by one, or a hand-off still open) gets no new link: a new
+        // session would start the verification again and could open the lock code against the decision of a person.
+        var withOperator = await VerificationHandOff.BookingsWithOperatorAsync(db, candidates.Select(b => b.Id).ToList(), CancellationToken.None);
+        candidates = candidates.Where(b => !withOperator.Contains(b.Id)).ToList();
+        if (candidates.Count == 0)
+            return;
+
         // Guest data already complete (entered by the host, CO-09): the stay no longer needs the guest's link.
         var guestsByBooking = await stayGuests.GetForBookingsAsync(candidates);
 
@@ -142,7 +150,9 @@ public class GuestCheckInSendJob(
     /// Second stage (NF-40, AC-NF40-3): the one reminder of a stay whose guest data are still missing just before arrival. A confirmed booking
     /// arriving within <c>CheckIn:ReminderDaysBefore</c> days (today included; 0 turns the stage off), with incomplete data, no communication
     /// sent or declared sent, no completed check-in and no session that already carried a reminder, gets a new link (the old one expires: the
-    /// answers are not kept on the server before the submit, so nothing is lost) and the reminder email in the language of its latest session.
+    /// answers of the form are not kept on the server before the submit, so nothing is lost there; the identity verification is another matter,
+    /// its consent, attempts and hand-off sit on the session, so a stay whose verification is with an operator is not reminded at all,
+    /// <see cref="VerificationHandOff"/>) and the reminder email in the language of its latest session.
     /// A reminder follows a link the guest already received: a stay with no link yet, or whose latest link was issued today (Europe/Rome), by
     /// the first stage or by the host, is not reminded that day. Transactional: the booker's contact email only, no promotion. One booking's
     /// failure never stops the others.
@@ -195,6 +205,13 @@ public class GuestCheckInSendJob(
             .ToListAsync();
 
         var candidates = bookings.Where(b => !notToRemind.Contains(b.Id) && !reported.Contains(b.Id)).ToList();
+        if (candidates.Count == 0)
+            return;
+
+        // E03/F04/US02: nor is a stay whose identity verification is with an operator reminded: the new link replaces the session that holds the
+        // consent, the attempts and the hand-off, and the guest would start the verification again.
+        var withOperator = await VerificationHandOff.BookingsWithOperatorAsync(db, candidates.Select(b => b.Id).ToList(), CancellationToken.None);
+        candidates = candidates.Where(b => !withOperator.Contains(b.Id)).ToList();
         if (candidates.Count == 0)
             return;
 

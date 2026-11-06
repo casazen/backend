@@ -70,12 +70,20 @@ public class VerificationQueueService(
                         session.BiometricOutcome,
                         session.BiometricAttempts,
                         session.UpdatedAt,
+                        SessionCreatedAt = session.CreatedAt,
                     };
 
         // AC-NF12-3: the sessions are the ones of the bookings of the caller scope (InScope handles the scope shapes)
-        var results = await query
+        var found = await query
             .OrderBy(v => v.CheckInDate)
             .ToListAsync(cancellationToken);
+
+        // One entry for each booking: when a new link replaced the session that handed the verification over, the latest session says it.
+        var results = found
+            .GroupBy(v => v.Id)
+            .Select(g => g.OrderByDescending(v => v.SessionCreatedAt).First())
+            .OrderBy(v => v.CheckInDate)
+            .ToList();
 
         var bookingIds = results.Select(r => r.Id).Distinct().ToList();
         var automatic = (await db.BiometricVerificationLogs
@@ -109,7 +117,11 @@ public class VerificationQueueService(
     /// Request a new selfie from the guest by sending an email with a check-in link (AC-NF12-5).
     /// Returns false when the booking has no active session or the guest has no email.
     /// </summary>
-    public async Task<bool> RequestNewPhotoAsync(Guid bookingId, HostScope scope, CancellationToken cancellationToken = default)
+    public async Task<bool> RequestNewPhotoAsync(
+        Guid bookingId,
+        HostScope scope,
+        string? operatorUserId = null,
+        CancellationToken cancellationToken = default)
     {
         var session = await SessionsInScope(scope)
             .Include(s => s.Booking)
@@ -134,8 +146,14 @@ public class VerificationQueueService(
             return false;
         }
 
+        // A booking with the operator (rejected, or a hand-off still open) answers «operator» in any session, a new link included: asking the guest
+        // for a new photo is the operator opening the way again, and it is written down before the link exists.
+        var withOperator = await VerificationHandOff.IsWithOperatorAsync(db, bookingId, cancellationToken);
+
         // Generate a new check-in link by issuing a new session (invalidates the old one)
         var newLink = await guestCheckInService.IssueLinkAsync(bookingId, booking.OrgId);
+        if (withOperator)
+            await AddReopenAsync(session, operatorUserId, cancellationToken);
 
         // Send email to guest with the new check-in link (AC-NF12-5)
         if (!links.IsConfigured)
@@ -296,7 +314,8 @@ public class VerificationQueueService(
         var review = Count(VerificationMethod.Biometric, BiometricOutcome.Escalate);
         var notOk = Count(VerificationMethod.Biometric, BiometricOutcome.Reject);
         var approved = Count(VerificationMethod.Operator, BiometricOutcome.Accept);
-        var rejected = counts.Where(c => c.Method == VerificationMethod.Operator && c.Outcome != BiometricOutcome.Accept).Sum(c => c.Count);
+        // Only a rejection is a decision: the operator row that asks the guest for a new photo (Escalate) is not one.
+        var rejected = Count(VerificationMethod.Operator, BiometricOutcome.Reject);
         var concluded = ok + approved + rejected;
         var share = concluded == 0 ? 0 : Math.Round((double)(approved + rejected) / concluded, 4);
 
@@ -318,21 +337,48 @@ public class VerificationQueueService(
 
     /// <summary>
     /// The sessions of the scope that wait for an operator: of an active stay (the one definition of <see cref="AlloggiatiStatusRules"/>: a
-    /// request, a hold, a cancelled stay or a no-show is never decided), still usable (not expired by a rejection or a new link), not accepted,
-    /// sent to the operator (a request of the guest or the flow, a refused consent, a review, the legacy three attempts), and with no decision of
-    /// an operator since they were created.
+    /// request, a hold, a cancelled stay or a no-show is never decided), not accepted, sent to the operator (a request of the guest or the flow, a
+    /// refused consent, a review: <b>whether or not a new link has replaced the session since</b>, the hand-off is the booking's, see
+    /// <see cref="VerificationHandOff"/>) and with no row of an operator since the hand-off (a decision, or a new photo asked by the operator). The
+    /// sessions of before E03/F04/US02 (no consent, no request recorded) keep their rule: a usable session that escalated or used three attempts.
     /// </summary>
     private IQueryable<GuestCheckInSession> PendingSessions(HostScope scope) =>
         SessionsInScope(scope).Where(s =>
             db.Bookings.Any(b => b.Id == s.BookingId && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
-            && s.Status != GuestCheckInSessionStatus.Scaduto
             && s.BiometricOutcome != BiometricOutcome.Accept
             && (s.OperatorRequestedAt != null
                 || s.BiometricConsentRefusedAt != null
-                || s.BiometricOutcome == BiometricOutcome.Escalate
-                || s.BiometricAttempts >= LegacyMaxAttempts)
+                || (s.Status != GuestCheckInSessionStatus.Scaduto
+                    && (s.BiometricOutcome == BiometricOutcome.Escalate
+                        || (s.BiometricAttempts >= LegacyMaxAttempts && s.BiometricConsentAt == null))))
             && !db.BiometricVerificationLogs.Any(l =>
-                l.BookingId == s.BookingId && l.Method == VerificationMethod.Operator && l.CreatedAt >= s.CreatedAt));
+                l.BookingId == s.BookingId && l.Method == VerificationMethod.Operator && l.CreatedAt >= (s.OperatorRequestedAt ?? s.CreatedAt)));
+
+    /// <summary>
+    /// Stages the operator row that opens the way again (the operator asked the guest for a new photo while the booking was with the operator): it
+    /// is the latest row, so a rejection no longer holds, it settles the hand-off it answers, and it is <b>not a decision</b> (<c>Escalate</c>: the
+    /// gate of the code stays shut, the metrics do not count it). Saved at once, before the guest has a link to use.
+    /// </summary>
+    private async Task AddReopenAsync(GuestCheckInSession session, string? operatorUserId, CancellationToken cancellationToken)
+    {
+        db.BiometricVerificationLogs.Add(new BiometricVerificationLog
+        {
+            OrgId = session.OrgId,
+            BookingId = session.BookingId,
+            GuestId = session.Booking.GuestId,
+            Outcome = BiometricOutcome.Escalate,
+            Method = VerificationMethod.Operator,
+            Attempts = session.BiometricAttempts,
+            ModelName = OperatorModelName,
+            ModelVersion = OperatorModelVersion,
+            ThresholdsJson = "{}",
+            ReasonsJson = "[]",
+            Provisional = false,
+            OperatorUserId = string.IsNullOrWhiteSpace(operatorUserId) ? null : operatorUserId,
+            CreatedAt = UtcNow(),
+        });
+        await db.SaveChangesAsync(cancellationToken);
+    }
 
     /// <summary>
     /// Stages the row of an operator's decision: who, the note, and the model, thresholds, reasons and provisional flag of the automatic outcome

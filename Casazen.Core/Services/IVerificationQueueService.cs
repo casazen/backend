@@ -21,9 +21,15 @@ public interface IVerificationQueueService
     /// <summary>
     /// Request a new selfie photo from the guest (AC-NF12-5): generates a signed link and queues an email with
     /// <see cref="IEmailService"/>. False when the booking is outside <paramref name="scope"/>, has no active check-in
-    /// session or the guest has no email.
+    /// session or the guest has no email. E03/F04/US02: when the verification of the booking is with the operator (rejected, or a hand-off still
+    /// open) the request also writes the operator row that opens the way again (<c>Escalate</c>, with <paramref name="operatorUserId"/>: not a
+    /// decision), or the new session would answer «operator» like the old one.
     /// </summary>
-    Task<bool> RequestNewPhotoAsync(Guid bookingId, Authorization.HostScope scope, CancellationToken cancellationToken = default);
+    Task<bool> RequestNewPhotoAsync(
+        Guid bookingId,
+        Authorization.HostScope scope,
+        string? operatorUserId = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Record the operator's manual verification decision (AC-NF12-6): <paramref name="outcome"/> is true for

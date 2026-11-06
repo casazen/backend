@@ -28,6 +28,9 @@ namespace Casazen.Infrastructure.Services;
 /// is kept (ADR-013-R6) and the photo comes again with the selfie, recognised by its hash.</para>
 /// <para><b>Lock code</b>: only on <c>ok</c>, through the gate of <see cref="IAccessCodeService"/> (channels <c>checkin-screen</c> and
 /// <c>email</c>); a retry, a review, a refusal, a request for the operator or an error release and send nothing.</para>
+/// <para><b>Booking, not only session</b>: a booking whose verification is with an operator (rejected by one, or a hand-off still open,
+/// <see cref="VerificationHandOff"/>) answers <c>operator</c> in <b>any</b> session of it, a new link included: the daily jobs and the host replace
+/// the session, never the decision of a person. The operator opens the way again by asking for a new photo from the queue.</para>
 /// <para><b>Privacy</b>: the logs say the session, the step and the codes; never a picture, a value of the document or a name.</para>
 /// </remarks>
 public sealed class IdentityVerificationFlowService(
@@ -107,7 +110,7 @@ public sealed class IdentityVerificationFlowService(
         }
 
         // Already with the operator (a refusal, a request, a review): the person decides, the biometric path is not opened again.
-        if (InOperatorPath(session, context.Policy))
+        if (InOperatorPath(session, context))
             return new BiometricConsentResult(BiometricConsentStatus.Operator, State(session, context));
 
         session.BiometricConsentAt = now;
@@ -173,7 +176,7 @@ public sealed class IdentityVerificationFlowService(
                 && consented
                 && !check.HolderIsMinor
                 && session.BiometricOutcome != BiometricOutcome.Accept
-                && !InOperatorPath(session, context.Policy))
+                && !InOperatorPath(session, context))
             {
                 await StoreDocumentAsync(session, bytes, now, ct);
                 stored = true;
@@ -213,7 +216,8 @@ public sealed class IdentityVerificationFlowService(
             return Done(IdentityVerificationGuestResults.Ok, [], Remaining(session, policy), code);
         }
 
-        if (InOperatorPath(session, policy))
+        // Also a new link of a booking that is with an operator (rejected, or a hand-off still open): the session is new, the decision is not.
+        if (InOperatorPath(session, context))
             return Done(IdentityVerificationGuestResults.Operator, [], Remaining(session, policy), null);
 
         if (!context.Enabled)
@@ -256,21 +260,26 @@ public sealed class IdentityVerificationFlowService(
             }
             else
             {
+                // The storage and Data Protection errors of this read propagate (500, the guest tries again): they say nothing about the guest
+                // and must not hand the verification to a person for good.
                 documentBytes = await LoadStoredDocumentAsync(session, ct);
                 if (documentBytes is null)
                     return Refused(SelfieStepStatus.DocumentRequired, session, policy);
             }
 
             using var documentStream = new MemoryStream(documentBytes, writable: false);
-            outcome = await agent.VerifyAsync(new IdentityVerificationRequest(selfie, documentStream, stored.Check, policy, attempt), ct);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // The document could not be loaded or the verification failed unexpectedly. The safe default is a person: the session says why,
-            // the operators are alerted, the log keeps the type only (a message could carry what was being read).
-            logger.LogError("Identity verification of session {SessionId} failed ({ErrorType}); it goes to the operator", session.Id, ex.GetType().Name);
-            await DeleteStoredDocumentAsync(session, ct);
-            return await OperatorAsync(session, VerificationAlertReasons.TechnicalError, policy, ct);
+            try
+            {
+                outcome = await agent.VerifyAsync(new IdentityVerificationRequest(selfie, documentStream, stored.Check, policy, attempt), ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // The verification itself failed unexpectedly. The safe default is a person: the session says why, the operators are alerted, the
+                // log keeps the type only (a message could carry what was being read).
+                logger.LogError("Identity verification of session {SessionId} failed ({ErrorType}); it goes to the operator", session.Id, ex.GetType().Name);
+                await DeleteStoredDocumentAsync(session, ct);
+                return await OperatorAsync(session, VerificationAlertReasons.TechnicalError, policy, ct);
+            }
         }
         finally
         {
@@ -335,6 +344,10 @@ public sealed class IdentityVerificationFlowService(
             case IdentityVerificationResult.Ok:
                 await DeleteStoredDocumentAsync(session, ct);
                 await db.SaveChangesAsync(ct);
+
+                // The verification is over: the "To do" of an earlier hand-off of the booking (the operator asked for a new photo, and it passed
+                // on its own) has nothing left to wait for.
+                await alerts.ResolveAsync(session.OrgId, session.BookingId, ct);
                 return Done(IdentityVerificationGuestResults.Ok, [], Remaining(session, policy), await ReleaseCodeAsync(session, ct));
 
             case IdentityVerificationResult.Review:
@@ -393,17 +406,24 @@ public sealed class IdentityVerificationFlowService(
 
     /// <summary>
     /// Hands the verification to an operator: the time of the request on the session and, the first time only, the alert (the "To do" is saved
-    /// with the session). A later reason does not alert again.
+    /// with the session). A later reason does not alert again, and neither does a new session of a booking whose hand-off is still open: the
+    /// operators were told and nobody decided yet, and the booking has one "To do". After a decision a new request alerts again.
     /// </summary>
     private async Task ToOperatorAsync(GuestCheckInSession session, string reason, CancellationToken ct)
     {
         if (session.OperatorRequestedAt is null)
         {
+            // Read before the request of this session is saved: it says what the other sessions and the log already hold.
+            var alreadyTold = await VerificationHandOff.HasOpenHandOffAsync(db, session.BookingId, ct);
             var now = UtcNow();
             session.OperatorRequestedAt = now;
             session.UpdatedAt = now;
-            await alerts.RaiseAsync(session.Id, reason, ct);
-            logger.LogInformation("Identity verification of session {SessionId} handed to the operator ({Reason})", session.Id, reason);
+            if (!alreadyTold)
+                await alerts.RaiseAsync(session.Id, reason, ct);
+
+            logger.LogInformation(
+                "Identity verification of session {SessionId} handed to the operator ({Reason}, alerted={Alerted})",
+                session.Id, reason, !alreadyTold);
         }
 
         await db.SaveChangesAsync(ct);
@@ -424,19 +444,24 @@ public sealed class IdentityVerificationFlowService(
     private static int Remaining(GuestCheckInSession session, VerificationPolicy policy) =>
         Math.Max(0, policy.MaxAttempts - session.BiometricAttempts);
 
-    /// <summary>The session is with the operator: a request, a refusal, a review, or the attempts used without a pass.</summary>
-    private static bool InOperatorPath(GuestCheckInSession session, VerificationPolicy policy) =>
-        session.OperatorRequestedAt is not null
+    /// <summary>
+    /// The verification is with the operator: this session asked for a person, refused the consent, was reviewed, or used its attempts without a
+    /// pass; or the <b>booking</b> is with an operator through another session (rejected by one, or a hand-off still open: a new link does not
+    /// start the verification again).
+    /// </summary>
+    private static bool InOperatorPath(GuestCheckInSession session, FlowContext context) =>
+        context.BookingWithOperator
+        || session.OperatorRequestedAt is not null
         || session.BiometricConsentRefusedAt is not null
         || session.BiometricOutcome == BiometricOutcome.Escalate
-        || (session.BiometricAttempts >= policy.MaxAttempts && session.BiometricOutcome != BiometricOutcome.Accept);
+        || (session.BiometricAttempts >= context.Policy.MaxAttempts && session.BiometricOutcome != BiometricOutcome.Accept);
 
     private IdentityVerificationState State(GuestCheckInSession session, FlowContext context)
     {
         var check = ReadCheck(session);
         var minor = context.IsMinor || check?.Check.HolderIsMinor == true;
         var offered = context.Enabled && !minor && session.BiometricConsentRefusedAt is null;
-        var operatorPath = InOperatorPath(session, context.Policy);
+        var operatorPath = InOperatorPath(session, context);
         var passed = session.BiometricOutcome == BiometricOutcome.Accept;
 
         string? result = passed
@@ -460,7 +485,7 @@ public sealed class IdentityVerificationFlowService(
             session.BiometricConsentRefusedAt is not null,
             check is not null,
             Remaining(session, context.Policy),
-            session.OperatorRequestedAt is not null,
+            session.OperatorRequestedAt is not null || context.BookingWithOperator,
             context.DocumentNotArchived,
             context.VerifyingGuestPosition);
     }
@@ -483,7 +508,8 @@ public sealed class IdentityVerificationFlowService(
             identity,
             verifying?.Position ?? 0,
             IsMinor(identity.DateOfBirth),
-            await DocumentNotArchivedAsync(booking.Property, ct));
+            await DocumentNotArchivedAsync(booking.Property, ct),
+            await VerificationHandOff.IsWithOperatorAsync(db, booking.Id, ct));
     }
 
     /// <summary>The settings of the org, or the default of ADR-013-R13 when it has none: enabled on the Agency plan only.</summary>
@@ -699,7 +725,8 @@ public sealed class IdentityVerificationFlowService(
         CheckInIdentity Identity,
         int VerifyingGuestPosition,
         bool IsMinor,
-        bool DocumentNotArchived);
+        bool DocumentNotArchived,
+        bool BookingWithOperator);
 }
 
 /// <summary>
