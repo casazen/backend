@@ -12,6 +12,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.CheckIn;
 using Casazen.Web.Resources;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
@@ -253,5 +254,9 @@ public class PublicCheckInInvoiceProofTests
             db,
             TimeProvider.System,
             Mock.Of<IStringLocalizer<SharedResources>>(),
-            NullLogger<PublicGuestCheckInController>.Instance);
+            NullLogger<PublicGuestCheckInController>.Instance)
+        {
+            // The page reads the Accept-Language of the request to open in the guest's language (NF-40): a controller built by hand needs a request.
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
+        };
 }

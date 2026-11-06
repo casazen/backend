@@ -522,9 +522,9 @@ public class DemoShowcaseTests
         Assert.Equal(BookingStatus.CheckedOut, stay.Status);
         Assert.EndsWith("@example.com", stay.Email, StringComparison.Ordinal);
 
-        // Invented and obviously so: TEST in the name, an address at example.com.
+        // Invented and obviously so: TEST in the name, an address at example.com (the PEC is at a subdomain of it, pec.example.com).
         Assert.Contains("TEST", data.Name, StringComparison.Ordinal);
-        Assert.EndsWith("@example.com", data.Pec!, StringComparison.Ordinal);
+        Assert.EndsWith(".example.com", data.Pec!, StringComparison.Ordinal);
         Assert.Equal(InvoiceDataSource.Host, data.Source);
 
         // Valid for the rules a recipient saved through the service obeys: no failure, and the recipient is identified.
