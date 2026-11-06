@@ -385,6 +385,15 @@ internal static class PostgresAdvisoryLocks
         /// is never lost to a merge that moves the tags of the profile at the same moment. Held for the whole change, which is saved in one go.
         /// </summary>
         CrmProfileMerge = 20_613,
+
+        /// <summary>
+        /// One guided panel step of the Octorate activation (key: <c>step:{id:N}</c>, E10/F01/US03/T01) or one «Do it for me» request
+        /// (key: <c>assist:{id:N}</c>): the verification of a step is run by one request at a time (a session lock, held across the call to
+        /// Octorate: a holder that finds it taken returns the stored state), and a staff update of a request reads it, changes it and saves it
+        /// as one unit (a transaction lock), so two people never close the same request in two ways. The values 21_000 to 21_099 are the
+        /// activation (epic E10).
+        /// </summary>
+        OnboardingPanelAssist = 21_011,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

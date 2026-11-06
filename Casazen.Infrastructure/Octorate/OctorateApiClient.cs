@@ -170,6 +170,27 @@ public sealed partial class OctorateApiClient(
         return accommodation.ValueKind == JsonValueKind.Object ? ReadPoliceAccount(accommodation) : throw new OctorateServerException(null);
     }
 
+    public async Task<OctoratePoliceAccountStatus> GetPoliceAccountStatusAsync(string octorateAccommodationId, CancellationToken ct)
+    {
+        try
+        {
+            var account = await GetPoliceAccountAsync(octorateAccommodationId, ct);
+
+            // The verdict hangs on `valid`: without it the account is not readable, whatever else the object holds.
+            return account.Valid is null
+                ? OctoratePoliceAccountStatus.NotReadable
+                : new OctoratePoliceAccountStatus(true, account.Valid, account.Autorun, account.LastCron);
+        }
+        catch (OctorateException ex) when (ex is not (OctorateRateLimitException or OctorateServerException))
+        {
+            // A refusal, an unknown accommodation or an org with no connection mean «cannot tell», never «not valid». What is worth a
+            // retry (429, 5xx, no answer, an answer that cannot be read) keeps its typed error. Codes only: never a body.
+            logger.LogInformation(
+                "Police account of an accommodation of org {OrgId} is not readable ({Error})", orgScope.OrgId, ex.Code);
+            return OctoratePoliceAccountStatus.NotReadable;
+        }
+    }
+
     public async Task UpdatePropertyAsync(string accommodationId, OctoratePropertyUpdate update, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(update);
