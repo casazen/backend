@@ -327,7 +327,7 @@ public sealed class ComplianceStatusService(
         var logs = (await db.BiometricVerificationLogs
                 .AsNoTracking()
                 .Where(l => bookingIds.Contains(l.BookingId))
-                .Select(l => new LogRow(l.Id, l.BookingId, l.Outcome, l.OperatorUserId != null, l.CreatedAt))
+                .Select(l => new LogRow(l.Id, l.BookingId, l.Outcome, l.Method == VerificationMethod.Operator, l.CreatedAt))
                 .ToListAsync(ct))
             .GroupBy(l => l.BookingId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(l => l.CreatedAt).First());
@@ -337,18 +337,16 @@ public sealed class ComplianceStatusService(
             if (!sessions.TryGetValue(stay.Id, out var session))
                 continue;
 
+            // The one rule of the gate of the access code (AccessCodeService): the verification passed when the LATEST row of its log is an
+            // Accept, written by the agent or by an operator's approval. Who decided only names the source: an operator's rejection (Reject) and
+            // the row that asks the guest for a new photo (Escalate) are rows of an operator too, and neither is a pass.
             ComplianceProof? proof = null;
-            if (logs.TryGetValue(stay.Id, out var log) && (log.Outcome == BiometricOutcome.Accept || log.ByOperator))
+            if (logs.TryGetValue(stay.Id, out var log) && log.Outcome == BiometricOutcome.Accept)
             {
                 proof = new ComplianceProof(
                     $"biometric-log:{log.Id:N}",
                     log.ByOperator ? ComplianceEvidenceSources.OperatorDecision : ComplianceEvidenceSources.BiometricLog,
                     log.CreatedAt);
-            }
-            else if (session.Outcome == BiometricOutcome.Accept)
-            {
-                // The operator accepted on the session (the decision is kept there); an automatic comparison is recorded with its log.
-                proof = new ComplianceProof($"check-in-session:{session.Id:N}", ComplianceEvidenceSources.OperatorDecision, session.CreatedAt);
             }
 
             var arrivalStart = RomeCalendar.StartOfDayUtc(stay.CheckInDate);

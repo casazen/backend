@@ -270,9 +270,62 @@ public class ComplianceStatusServiceTests
         var passed = IdentityOf(status, verified);
         Assert.Equal((ComplianceLight.Green, ComplianceEvidenceSources.BiometricLog), (passed.Light, passed.EvidenceSource));
         Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.OperatorDecisionRequired), (IdentityOf(status, escalated).Light, IdentityOf(status, escalated).Reason));
-        Assert.Equal((ComplianceLight.Green, ComplianceEvidenceSources.OperatorDecision), (IdentityOf(status, decided).Light, IdentityOf(status, decided).EvidenceSource));
+        // An operator's row that is not an approval (here the one that asks the guest for a new photo) is no pass.
+        Assert.NotEqual(ComplianceLight.Green, IdentityOf(status, decided).Light);
+        Assert.Null(IdentityOf(status, decided).ProofReference);
         Assert.DoesNotContain(status.Items, i => i.Kind == ComplianceItemKind.Identity && i.BookingId == noSession.Id);
         Assert.Contains(noSession.Id, status.Evaluated.IdentityBookingIds);
+    }
+
+    [Fact]
+    public async Task ComplianceStatus_IdentityIsGreenOnlyWhenTheLatestRowOfTheLogIsAnAccept_Test()
+    {
+        var world = await World.SeedAsync();
+        world.IdentityOn = true;
+        var (operatorRejected, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0);
+        var (operatorReopened, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0);
+        var (automaticRejected, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0);
+        var (automaticReview, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0);
+        var (operatorApproved, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0);
+        var (automaticAccepted, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0);
+        var (acceptedThenReopened, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0);
+        var (noRow, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0);
+        await world.AddSessionAsync(operatorRejected, outcome: BiometricOutcome.Reject);
+        await world.AddSessionAsync(operatorReopened, outcome: BiometricOutcome.Escalate);
+        await world.AddSessionAsync(automaticRejected, outcome: BiometricOutcome.Reject);
+        await world.AddSessionAsync(automaticReview, outcome: BiometricOutcome.Escalate);
+        await world.AddSessionAsync(operatorApproved, outcome: BiometricOutcome.Accept);
+        await world.AddSessionAsync(automaticAccepted, outcome: BiometricOutcome.Accept);
+        await world.AddSessionAsync(acceptedThenReopened, outcome: BiometricOutcome.Escalate);
+        await world.AddSessionAsync(noRow, outcome: BiometricOutcome.Accept);
+
+        // The rows an operator writes name who decided, not what: a rejection and the request for a new photo are rows of an operator too.
+        await world.AddVerificationLogAsync(operatorRejected, BiometricOutcome.Reject, byOperator: true);
+        await world.AddVerificationLogAsync(operatorReopened, BiometricOutcome.Escalate, byOperator: true);
+        await world.AddVerificationLogAsync(automaticRejected, BiometricOutcome.Reject, byOperator: false);
+        await world.AddVerificationLogAsync(automaticReview, BiometricOutcome.Escalate, byOperator: false);
+        await world.AddVerificationLogAsync(operatorApproved, BiometricOutcome.Accept, byOperator: true);
+        await world.AddVerificationLogAsync(automaticAccepted, BiometricOutcome.Accept, byOperator: false);
+        await world.AddVerificationLogAsync(acceptedThenReopened, BiometricOutcome.Accept, byOperator: false, createdAt: Start.UtcDateTime.AddHours(-2));
+        await world.AddVerificationLogAsync(acceptedThenReopened, BiometricOutcome.Escalate, byOperator: true, createdAt: Start.UtcDateTime.AddHours(-1));
+
+        await using var db = world.Db();
+        var status = await world.StatusService(db).EvaluateAsync(world.OrgWide, CancellationToken.None);
+
+        foreach (var stay in new[] { operatorRejected, operatorReopened, automaticRejected, automaticReview, acceptedThenReopened, noRow })
+        {
+            var verdict = IdentityOf(status, stay);
+            Assert.NotEqual(ComplianceLight.Green, verdict.Light);
+            Assert.Null(verdict.ProofReference);
+            Assert.Null(verdict.LastVerifiedAt);
+        }
+
+        // Only an Accept is a pass; who wrote it names the source.
+        var approved = IdentityOf(status, operatorApproved);
+        Assert.Equal((ComplianceLight.Green, ComplianceEvidenceSources.OperatorDecision, ComplianceReasonCodes.IdentityVerified), (approved.Light, approved.EvidenceSource, approved.Reason));
+        var accepted = IdentityOf(status, automaticAccepted);
+        Assert.Equal((ComplianceLight.Green, ComplianceEvidenceSources.BiometricLog), (accepted.Light, accepted.EvidenceSource));
+        Assert.StartsWith("biometric-log:", accepted.ProofReference, StringComparison.Ordinal);
     }
 
     // ─── Properties: connection, credentials, CIN, rate, periods ────────────────────────────────────────
@@ -650,7 +703,17 @@ public class ComplianceStatusServiceTests
             await db.SaveChangesAsync();
         }
 
-        public async Task AddSessionAsync(Booking stay, BiometricOutcome? outcome = null)
+        /// <summary>
+        /// A check-in session of the stay, created five hours before the clock of the test. <paramref name="outcome"/> is the last comparison;
+        /// the other members are what makes the session wait for an operator (the guest asked for one or refused the consent) or end (expired).
+        /// </summary>
+        public async Task AddSessionAsync(
+            Booking stay,
+            BiometricOutcome? outcome = null,
+            int? attempts = null,
+            bool consentRefused = false,
+            bool operatorRequested = false,
+            bool expired = false)
         {
             await using var db = Db();
             db.GuestCheckInSessions.Add(new GuestCheckInSession
@@ -660,15 +723,19 @@ public class ComplianceStatusServiceTests
                 TokenHash = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"),
                 ExpiresAt = Start.UtcDateTime.AddDays(10),
                 BiometricOutcome = outcome,
-                BiometricAttempts = outcome is null ? 0 : 1,
+                BiometricAttempts = attempts ?? (outcome is null ? 0 : 1),
+                BiometricConsentRefusedAt = consentRefused ? Start.UtcDateTime.AddHours(-4) : null,
+                OperatorRequestedAt = operatorRequested ? Start.UtcDateTime.AddHours(-3) : null,
+                Status = expired ? GuestCheckInSessionStatus.Scaduto : GuestCheckInSessionStatus.Inviato,
+                CreatedAt = Start.UtcDateTime.AddHours(-5),
             });
             await db.SaveChangesAsync();
         }
 
-        public async Task AddVerificationLogAsync(Booking stay, BiometricOutcome outcome, bool byOperator)
+        public async Task AddVerificationLogAsync(Booking stay, BiometricOutcome outcome, bool byOperator, DateTime? createdAt = null)
         {
             await using var db = Db();
-            if (byOperator)
+            if (byOperator && !await db.Users.AnyAsync(u => u.Id == "auth0|operatore"))
                 db.Users.Add(HostScopeScenario.NewUser("auth0|operatore", Org.Id, UserRole.None));
 
             db.BiometricVerificationLogs.Add(new BiometricVerificationLog
@@ -677,10 +744,12 @@ public class ComplianceStatusServiceTests
                 BookingId = stay.Id,
                 GuestId = stay.GuestId,
                 Outcome = outcome,
+                Method = byOperator ? VerificationMethod.Operator : VerificationMethod.Biometric,
                 Attempts = 1,
                 ModelName = "TEST",
                 ModelVersion = "1",
                 OperatorUserId = byOperator ? "auth0|operatore" : null,
+                CreatedAt = createdAt ?? Start.UtcDateTime.AddHours(1),
             });
             await db.SaveChangesAsync();
         }
