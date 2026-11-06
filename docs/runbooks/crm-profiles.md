@@ -314,4 +314,6 @@ else: basis, confirmation, suppression, version and times are untouched, no cont
 computes the aggregates of the survivor again, leaves the other profile as a tombstone (`MergedIntoProfileId`; the lists, the scope and the segments
 skip it, the matching follows it) and moves the other open proposals of that profile to the survivor, or drops those that would repeat a pair. Both
 run under the advisory lock of the org, so a double click decides once; the second one is 409 `crm_merge_not_proposed` and changes nothing
-(`CrmMergeProofTests`). There is no undo: a wrong merge is fixed by hand in the database.
+(`CrmMergeProofTests`). There is no undo: a wrong merge is fixed by hand in the database. The tombstone keeps what the profile held, so **the
+erasure and the export of a guest follow it**, chains of merges included: it is deleted with the survivor, or emptied down to its pointer when other
+guests keep the survivor ([`gdpr.md`](gdpr.md) § 13).

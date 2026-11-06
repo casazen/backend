@@ -26,6 +26,10 @@ public class GuestErasureCrmPostgresTests
     private static readonly Guid ErasedProfileId = Guid.Parse("c0de0000-0000-4000-8000-00000000a001");
     private static readonly Guid OtherProfileId = Guid.Parse("c0de0000-0000-4000-8000-00000000a002");
 
+    // The two profiles merged into the first one (E07/F01/US03/T02), a chain: the first tombstone points to the profile, the second to the first.
+    private static readonly Guid FirstTombstoneId = Guid.Parse("c0de0000-0000-4000-8000-00000000a003");
+    private static readonly Guid SecondTombstoneId = Guid.Parse("c0de0000-0000-4000-8000-00000000a004");
+
     private static readonly DateTime ConsentAt = new(2026, 10, 1, 9, 30, 0, DateTimeKind.Utc);
     private static readonly DateTime OptOutAt = new(2026, 10, 15, 18, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime ErasedAt = new(2026, 11, 6, 9, 0, 0, DateTimeKind.Utc);
@@ -144,6 +148,81 @@ public class GuestErasureCrmPostgresTests
         AssertBareOptOut(Assert.Single(await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == seeded.OrgId).ToListAsync()));
     }
 
+    /// <summary>
+    /// A profile that only the first guest is linked to, with two profiles merged into it (a chain of tombstones) and the opt-out of the guest left by the
+    /// merge on the second tombstone: the foreign key from the contacts to that tombstone cascades too, so the opt-out survives only because the erasure
+    /// took it off the tombstone before the tombstone goes. The survivor, both tombstones and the proposals that decided the merges are deleted, and the
+    /// profile that has nothing to do with them stays.
+    /// </summary>
+    [PostgresFact]
+    public async Task GdprErasure_OnPostgres_ProfileWithMergedProfiles_TakesTheTombstonesAndKeepsTheOptOutLeftOnOne_Test()
+    {
+        await using var database = PostgresTestDatabase.CreateMigrated("crmerase");
+        var provider = new EphemeralDataProtectionProvider();
+        var seeded = await SeedAsync(database, provider, withSecondGuest: false, withMergedProfiles: true);
+
+        await using (var db = Open(database, provider))
+        {
+            var guest = await db.Guests.SingleAsync(g => g.Id == seeded.FirstGuestId);
+            var outcome = await NewEraser(db).AnonymizeAsync(guest, ErasedAt, CancellationToken.None);
+            await db.SaveChangesAsync();
+            Assert.True(outcome.CrmProfileRemoved);
+        }
+
+        await using var verify = Open(database, provider);
+        Assert.Equal(OtherProfileId, Assert.Single(await verify.GuestCrmProfiles.AsNoTracking().Where(p => p.OrgId == seeded.OrgId).ToListAsync()).Id);
+        Assert.Equal(0, await verify.GuestMergeCandidates.CountAsync(m => m.OrgId == seeded.OrgId));
+        Assert.Null((await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == seeded.FirstGuestId)).GuestCrmProfileId);
+        AssertBareOptOut(Assert.Single(await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == seeded.OrgId).ToListAsync()));
+    }
+
+    /// <summary>
+    /// The same profile with two guests, and the tombstones of its chain: the erasure of the first guest leaves the profile, and the tombstones, which hold
+    /// what cannot be told from the other guest's data, are emptied row by row (tags, country, language, every keyed hash, the primary guest, the aggregates)
+    /// with the pointer of the chain intact; the opt-out leaves its tombstone and the other guest keeps its link and its contact.
+    /// </summary>
+    [PostgresFact]
+    public async Task GdprErasure_OnPostgres_ProfileOfOtherGuestsWithMergedProfiles_EmptiesTheTombstonesAndKeepsThePointer_Test()
+    {
+        await using var database = PostgresTestDatabase.CreateMigrated("crmerase");
+        var provider = new EphemeralDataProtectionProvider();
+        var seeded = await SeedAsync(database, provider, withSecondGuest: true, withMergedProfiles: true);
+
+        await using (var db = Open(database, provider))
+        {
+            var guest = await db.Guests.SingleAsync(g => g.Id == seeded.FirstGuestId);
+            var outcome = await NewEraser(db).AnonymizeAsync(guest, ErasedAt, CancellationToken.None);
+            await db.SaveChangesAsync();
+            Assert.False(outcome.CrmProfileRemoved);
+        }
+
+        await using var verify = Open(database, provider);
+        var profiles = await verify.GuestCrmProfiles.AsNoTracking().Where(p => p.OrgId == seeded.OrgId).ToListAsync();
+        Assert.Equal(4, profiles.Count);
+        Assert.Null(Assert.Single(profiles, p => p.Id == ErasedProfileId).MergedIntoProfileId);
+
+        foreach (var (id, pointsTo) in new[] { (FirstTombstoneId, ErasedProfileId), (SecondTombstoneId, FirstTombstoneId) })
+        {
+            var tombstone = Assert.Single(profiles, p => p.Id == id);
+            Assert.Equal(pointsTo, tombstone.MergedIntoProfileId);
+            Assert.Equal("[]", tombstone.TagsJson);
+            Assert.Equal(string.Empty, tombstone.Country);
+            Assert.Equal(string.Empty, tombstone.Language);
+            Assert.Null(tombstone.PhoneKeyHash);
+            Assert.Null(tombstone.NameBirthKeyHash);
+            Assert.Equal(string.Empty, tombstone.CompositeKeyHash);
+            Assert.Null(tombstone.PrimaryGuestId);
+            Assert.Equal(0, tombstone.TotalStays);
+            Assert.Equal(0m, tombstone.TotalSpend);
+        }
+
+        Assert.Equal(3, await verify.GuestMergeCandidates.CountAsync(m => m.OrgId == seeded.OrgId));
+        Assert.Equal(ErasedProfileId, (await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == seeded.SecondGuestId)).GuestCrmProfileId);
+        var contacts = await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == seeded.OrgId).ToListAsync();
+        Assert.Equal(3, contacts.Count);
+        AssertBareOptOut(Assert.Single(contacts, c => c.ValueHash == OptOutHash));
+    }
+
     private sealed record Seeded(Guid OrgId, Guid FirstGuestId, Guid SecondGuestId);
 
     private static AppDbContext Open(PostgresTestDatabase database, IDataProtectionProvider provider) =>
@@ -170,9 +249,10 @@ public class GuestErasureCrmPostgresTests
     /// <summary>
     /// One org, a profile (with a proposal of merge to another profile) that the first guest is linked to and, with <paramref name="withSecondGuest"/>,
     /// a second one too. The first guest gave an e-mail address on consent and an old one that unsubscribed; the profile has a lead nobody owns; the
-    /// second guest gave an address of its own.
+    /// second guest gave an address of its own. With <paramref name="withMergedProfiles"/> two profiles were merged into the profile (a chain of
+    /// tombstones, with the proposals that decided the merges) and the old address that unsubscribed stayed on the second tombstone.
     /// </summary>
-    private static async Task<Seeded> SeedAsync(PostgresTestDatabase database, IDataProtectionProvider provider, bool withSecondGuest)
+    private static async Task<Seeded> SeedAsync(PostgresTestDatabase database, IDataProtectionProvider provider, bool withSecondGuest, bool withMergedProfiles = false)
     {
         await using var db = Open(database, provider);
         var org = new OrgEntity
@@ -197,24 +277,52 @@ public class GuestErasureCrmPostgresTests
         if (withSecondGuest)
             db.Guests.Add(second);
 
+        // The profiles merged into the first one: two tombstones in a chain, each still holding what it held, and the proposals that decided the merges.
+        var optOutProfileId = profile.Id;
+        if (withMergedProfiles)
+        {
+            var firstTombstone = NewProfile(org.Id, FirstTombstoneId, 'c');
+            firstTombstone.MergedIntoProfileId = profile.Id;
+            firstTombstone.TagsJson = """["tag-del-primo"]""";
+            firstTombstone.Country = "Francia";
+            firstTombstone.Language = "fr";
+            var secondTombstone = NewProfile(org.Id, SecondTombstoneId, 'd');
+            secondTombstone.MergedIntoProfileId = firstTombstone.Id;
+            secondTombstone.TagsJson = """["tag-del-secondo"]""";
+            secondTombstone.Country = "Spagna";
+            secondTombstone.Language = "es";
+            secondTombstone.PrimaryGuestId = first.Id;
+            db.GuestCrmProfiles.AddRange(firstTombstone, secondTombstone);
+            db.GuestMergeCandidates.AddRange(
+                NewProposal(org.Id, profile.Id, firstTombstone.Id, GuestMergeStatus.Merged),
+                NewProposal(org.Id, firstTombstone.Id, secondTombstone.Id, GuestMergeStatus.Merged));
+
+            // What a merge leaves behind when it moves the contacts of a profile and one stays: the opt-out on the second tombstone.
+            optOutProfileId = secondTombstone.Id;
+        }
+
         db.GuestContacts.AddRange(
             NewContact(org.Id, first.Id, profile.Id, "mario.rossi@example.com", '1', suppressed: false),
-            NewContact(org.Id, first.Id, profile.Id, "mario.old@example.com", 'f', suppressed: true),
+            NewContact(org.Id, first.Id, optOutProfileId, "mario.old@example.com", 'f', suppressed: true),
             NewContact(org.Id, null, profile.Id, "lead@example.com", '3', suppressed: false));
         if (withSecondGuest)
             db.GuestContacts.Add(NewContact(org.Id, second.Id, profile.Id, "luisa.verdi@example.com", '2', suppressed: false));
 
-        db.GuestMergeCandidates.Add(new GuestMergeCandidate
-        {
-            OrgId = org.Id,
-            ProfileAId = profile.Id,
-            ProfileBId = other.Id,
-            Score = 90,
-            ReasonsJson = """["same_phone"]""",
-        });
+        db.GuestMergeCandidates.Add(NewProposal(org.Id, profile.Id, other.Id, GuestMergeStatus.Proposed));
         await db.SaveChangesAsync();
         return new Seeded(org.Id, first.Id, second.Id);
     }
+
+    /// <summary>A proposal of merge of two profiles whose ids are in the order the check of the table wants (the smaller first).</summary>
+    private static GuestMergeCandidate NewProposal(Guid orgId, Guid smallerProfileId, Guid largerProfileId, GuestMergeStatus status) => new()
+    {
+        OrgId = orgId,
+        ProfileAId = smallerProfileId,
+        ProfileBId = largerProfileId,
+        Score = 90,
+        ReasonsJson = """["same_phone"]""",
+        Status = status,
+    };
 
     private static Guest NewGuest(Guid orgId, string firstName, string lastName, string email) => new()
     {

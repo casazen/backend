@@ -19,8 +19,9 @@ namespace Casazen.Infrastructure.Services;
 /// <c>.claude/context/regulations/gdpr.md</c> § 5); the kind and position of the guests of each stay; the consent events
 /// without IP and note, and the per-channel marketing consents without e-mail and IP (proof of consent, art. 7.1 GDPR); the
 /// Alloggiati communication status and receipt reference; of the CRM (E07/F06/US02/T01), only the keyed hash of a contact that
-/// carries a suppression, with the flag and its date (the opt-out survives like the entry of the suppression list), and the
-/// profile that other guests are still linked to, without its keyed hashes, tags and country.
+/// carries a suppression, with the flag and its date (the opt-out survives like the entry of the suppression list), the
+/// profile that other guests are still linked to, without its keyed hashes, tags and country, and the tombstones of the profiles
+/// merged into it, emptied but for the pointer to the profile that took their place.
 /// </remarks>
 public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, ILogger<GuestDataEraser> logger)
 {
@@ -84,6 +85,11 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     /// merge that involve it; otherwise it is <b>never deleted</b> (a profile of several guests is not the erasure of one) and loses its keyed
     /// hashes, its tags and its country, which may be the erased guest's. Guests of one profile erased in the same unit of work (the retention erases
     /// a chunk of guests before one save) do not count for each other: the last of them takes the profile, and nothing is left with no guest;</item>
+    /// <item><b>the profiles merged into it follow it</b> (<see cref="GuestCrmProfile.MergedIntoProfileId"/>, chains included, and a link of the guest
+    /// that still points to a tombstone is followed to the survivor): when the survivor is deleted its tombstones are deleted with it; when it stays
+    /// (other guests are linked to it or to its tombstones) the tombstones are emptied, because what they held cannot be attributed to one guest: tags,
+    /// country, language, every keyed hash, the primary guest, the consent flags and the aggregates of the stays go, and only the pointer to the profile
+    /// that took their place stays;</item>
     /// <item>the recipients of a campaign would keep their row and lose their references to the contact and to the profile (null, through their own
     /// <c>SetNull</c> foreign keys): the campaign model is deferred (<c>kb/plan/deferred</c>, B05) and does not exist yet, so there is nothing to do
     /// here until it does.</item>
@@ -97,26 +103,34 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         var orgId = guest.OrgId;
         var profileId = guest.GuestCrmProfileId;
 
-        // The profile is the guest's alone when no other guest of the org is linked to it. Read before the guest is unlinked. A guest that this unit of work
-        // has already unlinked no longer counts: an erasure run erases several guests before one save (the retention does), the database still has the first
-        // one linked when the second is read, and without this a profile whose guests all go in the same run would never be deleted and would be left with
-        // no guest, its aggregates and the contacts of no guest.
-        var alone = false;
+        // The profile of the guest is not alone in the CRM: the merges of duplicates (E07/F01/US03/T02) keep the profile that goes as a tombstone, with all
+        // it held, and move its guests and contacts to the survivor. The profiles of the guest are the survivor and every tombstone that leads to it, chains
+        // included (a link kept from before a merge may still point to a tombstone): the erasure covers all of them, or a tombstone would keep the tags, the
+        // country, the language and the keyed hashes of the guest.
+        var family = new List<Guid>();
         if (profileId is { } linkedId)
+            family = (await CrmProfileFamily.OfAsync(db, orgId, linkedId, cancellationToken)).ProfileIds;
+
+        // The profiles are the guest's alone when no other guest of the org is linked to any of them. Read before the guest is unlinked. A guest that this
+        // unit of work has already unlinked no longer counts: an erasure run erases several guests before one save (the retention does), the database still
+        // has the first one linked when the second is read, and without this a profile whose guests all go in the same run would never be deleted and would
+        // be left with no guest, its aggregates and the contacts of no guest.
+        var alone = false;
+        if (family.Count > 0)
         {
             var others = await db.Guests
                 .AsNoTracking()
-                .Where(g => g.OrgId == orgId && g.GuestCrmProfileId == linkedId && g.Id != guest.Id)
+                .Where(g => g.OrgId == orgId && g.GuestCrmProfileId != null && family.Contains(g.GuestCrmProfileId.Value) && g.Id != guest.Id)
                 .Select(g => g.Id)
                 .ToListAsync(cancellationToken);
-            alone = others.All(otherId => db.Guests.Local.Any(g => g.Id == otherId && g.GuestCrmProfileId != linkedId));
+            alone = others.All(otherId => db.Guests.Local.Any(g => g.Id == otherId && (g.GuestCrmProfileId == null || !family.Contains(g.GuestCrmProfileId.Value))));
         }
 
         List<GuestContact> contacts;
-        if (alone && profileId is { } ownProfileId)
+        if (alone)
         {
             contacts = await db.GuestContacts
-                .Where(c => c.OrgId == orgId && (c.GuestId == guest.Id || c.GuestCrmProfileId == ownProfileId))
+                .Where(c => c.OrgId == orgId && (c.GuestId == guest.Id || (c.GuestCrmProfileId != null && family.Contains(c.GuestCrmProfileId.Value))))
                 .ToListAsync(cancellationToken);
         }
         else
@@ -147,46 +161,92 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
 
         var profileRemoved = false;
         var profileTouched = false;
-        if (profileId is { } id)
+        var mergedProfiles = 0;
+        if (profileId is not null)
         {
             // Unlinked first: the foreign key of the guest must not point at a profile that goes in the same save.
             guest.GuestCrmProfileId = null;
             profileTouched = true;
 
-            var profile = await db.GuestCrmProfiles.FirstOrDefaultAsync(p => p.OrgId == orgId && p.Id == id, cancellationToken);
-            if (profile is not null && alone)
+            var profiles = await db.GuestCrmProfiles
+                .Where(p => p.OrgId == orgId && family.Contains(p.Id))
+                .ToListAsync(cancellationToken);
+            mergedProfiles = profiles.Count(p => p.MergedIntoProfileId is not null);
+            if (alone)
             {
+                // The survivor goes, and with it every tombstone that leads to it and every proposal of merge that involves one of them.
                 var proposals = await db.GuestMergeCandidates
-                    .Where(m => m.OrgId == orgId && (m.ProfileAId == id || m.ProfileBId == id))
+                    .Where(m => m.OrgId == orgId && (family.Contains(m.ProfileAId) || family.Contains(m.ProfileBId)))
                     .ToListAsync(cancellationToken);
                 db.GuestMergeCandidates.RemoveRange(proposals);
-                db.GuestCrmProfiles.Remove(profile);
-                profileRemoved = true;
+                db.GuestCrmProfiles.RemoveRange(profiles);
+                profileRemoved = profiles.Count > 0;
             }
-            else if (profile is not null)
+            else
             {
-                profile.PhoneKeyHash = null;
-                profile.NameBirthKeyHash = null;
-                profile.CompositeKeyHash = string.Empty;
-                profile.TagsJson = "[]";
-                profile.Country = string.Empty;
-                if (profile.PrimaryGuestId == guest.Id)
-                    profile.PrimaryGuestId = null;
-                profile.UpdatedAt = now;
+                foreach (var profile in profiles)
+                {
+                    if (profile.MergedIntoProfileId is null)
+                        ClearSharedProfile(profile, guest.Id, now);
+                    else
+                        ClearTombstone(profile, now);
+                }
             }
         }
 
         if (removed > 0 || kept > 0 || profileTouched)
         {
             logger.LogInformation(
-                "CRM data of guest {GuestId}: {Contacts} contacts removed, {OptOuts} opt-outs kept without personal data, profile {Profile}",
+                "CRM data of guest {GuestId}: {Contacts} contacts removed, {OptOuts} opt-outs kept without personal data, profile {Profile}, {Merged} merged profiles",
                 guest.Id,
                 removed,
                 kept,
-                profileRemoved ? "removed" : profileTouched ? "cleared" : "none");
+                profileRemoved ? "removed" : profileTouched ? "cleared" : "none",
+                mergedProfiles);
         }
 
         return new CrmErasureOutcome(removed, kept, profileRemoved, removed > 0 || kept > 0 || profileTouched);
+    }
+
+    /// <summary>
+    /// The profile that other guests are still linked to loses what may be the erased guest's: the keyed hashes, the tags, the country and, when it was
+    /// the erased guest, its primary guest. The language and the aggregates stay (the next sync of a guest of the profile calculates the aggregates again).
+    /// </summary>
+    private static void ClearSharedProfile(GuestCrmProfile profile, Guid guestId, DateTime now)
+    {
+        profile.PhoneKeyHash = null;
+        profile.NameBirthKeyHash = null;
+        profile.CompositeKeyHash = string.Empty;
+        profile.TagsJson = "[]";
+        profile.Country = string.Empty;
+        if (profile.PrimaryGuestId == guestId)
+            profile.PrimaryGuestId = null;
+        profile.UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// A tombstone of a merged profile (<see cref="GuestCrmProfile.MergedIntoProfileId"/>) of a survivor that stays: whatever it held cannot be told
+    /// from the data of the other guests of the survivor, so it is emptied (tags, country, language, every keyed hash, the primary guest, the consent
+    /// flags and the aggregates of its stays). What stays is the technical pointer to the profile that took its place, and the ids and times of the row.
+    /// </summary>
+    private static void ClearTombstone(GuestCrmProfile profile, DateTime now)
+    {
+        profile.CompositeKeyHash = string.Empty;
+        profile.PhoneKeyHash = null;
+        profile.NameBirthKeyHash = null;
+        profile.TagsJson = "[]";
+        profile.Country = string.Empty;
+        profile.Language = string.Empty;
+        profile.PrimaryGuestId = null;
+        profile.ConfirmedMarketingEmail = string.Empty;
+        profile.MarketingConsentEmail = false;
+        profile.MarketingConsentWhatsApp = false;
+        profile.TotalStays = 0;
+        profile.TotalSpend = 0m;
+        profile.PropertyIdsJson = "[]";
+        profile.FirstStayAt = now;
+        profile.LastStayAt = now;
+        profile.UpdatedAt = now;
     }
 
     /// <summary>

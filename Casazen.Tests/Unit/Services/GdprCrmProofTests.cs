@@ -371,6 +371,234 @@ public class GdprCrmProofTests
     }
 
     /// <summary>
+    /// Proof test (data and privacy rule, E07/F01/US03/T02): the profiles merged into a profile follow it. A merge keeps the profile that goes as a tombstone
+    /// with all it held, so the erasure of the only guest of the survivor deletes the survivor and both tombstones of its chain, with the proposals that
+    /// decided the merges and the lead left on a tombstone; the opt-out a merge left on the second tombstone is taken off it first and stays as a bare
+    /// marker; a profile that has nothing to do with the survivor is as it was.
+    /// </summary>
+    [Fact]
+    public async Task GdprErasure_ProfileWithMergedProfiles_TakesTheTombstonesWithIt_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        var world = await SeedMergedProfilesAsync(store, orgId, withSecondGuest: false, firstGuestOnATombstone: false);
+
+        await using (var db = CrmTestWorld.Open(store))
+            await Service(db).EraseGuestDataAsync(orgId, world.FirstGuestId, "Richiesta dell'ospite", "auth0|host", Ct);
+
+        await using var verify = CrmTestWorld.Open(store);
+        AssertOnlyTheUnrelatedProfileIsLeft(await verify.GuestCrmProfiles.AsNoTracking().Where(p => p.OrgId == orgId).ToListAsync(Ct), world);
+        Assert.Empty(await verify.GuestMergeCandidates.AsNoTracking().Where(m => m.OrgId == orgId).ToListAsync(Ct));
+        Assert.Null((await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.FirstGuestId, Ct)).GuestCrmProfileId);
+
+        // The consent address, the lead of the survivor and the lead of the tombstone are gone; the opt-out is the row left, bare and off every profile.
+        var marker = Assert.Single(await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync(Ct));
+        Assert.Equal(Index.Hash("mario.old@example.com"), marker.ValueHash);
+        Assert.True(marker.IsSuppressed);
+        Assert.Equal(string.Empty, marker.Value);
+        Assert.Null(marker.GuestId);
+        Assert.Null(marker.GuestCrmProfileId);
+    }
+
+    /// <summary>
+    /// Proof test (data and privacy rule, E07/F01/US03/T02): when the survivor stays because other guests are linked to it, what its tombstones hold
+    /// cannot be told from their data, so the tombstones are emptied: tags, country, language, every keyed hash, the primary guest and the aggregates of
+    /// their stays go, and only the pointer to the profile that took their place stays (the chain is intact). The survivor loses what it lost before; the
+    /// other guest, its contact and the proposals are as they were, and the opt-out is a bare marker off the tombstone it was on.
+    /// </summary>
+    [Fact]
+    public async Task GdprErasure_ProfileOfOtherGuestsWithMergedProfiles_EmptiesTheTombstonesAndKeepsThePointer_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        var world = await SeedMergedProfilesAsync(store, orgId, withSecondGuest: true, firstGuestOnATombstone: false);
+
+        await using (var db = CrmTestWorld.Open(store))
+            await Service(db).EraseGuestDataAsync(orgId, world.FirstGuestId, "Richiesta dell'ospite", "auth0|host", Ct);
+
+        await using var verify = CrmTestWorld.Open(store);
+        await AssertTheSurvivorStaysAndTheTombstonesAreEmptyAsync(verify, orgId, world);
+    }
+
+    /// <summary>
+    /// Proof test (data and privacy rule): a guest whose link is still on a tombstone (kept from before a merge) is erased through the survivor at the
+    /// end of the chain. Alone, the survivor and both tombstones go; with another guest on the survivor, the survivor stays and the tombstones are emptied.
+    /// Erasing the tombstone alone would have left the survivor, with everything it took over, untouched.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GdprErasure_GuestLinkedToAMergedProfile_IsErasedThroughItsSurvivor_Test(bool otherGuestOnTheSurvivor)
+    {
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        var world = await SeedMergedProfilesAsync(store, orgId, withSecondGuest: otherGuestOnTheSurvivor, firstGuestOnATombstone: true);
+
+        await using (var db = CrmTestWorld.Open(store))
+            await Service(db).EraseGuestDataAsync(orgId, world.FirstGuestId, "Richiesta dell'ospite", "auth0|host", Ct);
+
+        await using var verify = CrmTestWorld.Open(store);
+        if (otherGuestOnTheSurvivor)
+        {
+            await AssertTheSurvivorStaysAndTheTombstonesAreEmptyAsync(verify, orgId, world);
+        }
+        else
+        {
+            AssertOnlyTheUnrelatedProfileIsLeft(await verify.GuestCrmProfiles.AsNoTracking().Where(p => p.OrgId == orgId).ToListAsync(Ct), world);
+            Assert.Null((await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.FirstGuestId, Ct)).GuestCrmProfileId);
+        }
+    }
+
+    /// <summary>
+    /// Proof test (data and privacy rule, the retention): the guests of one survivor erased in the same run and saved once (the retention erases a chunk
+    /// of guests before one save) take the survivor and its tombstones with them. The first leaves the survivor and empties the tombstones, the last
+    /// deletes them all, and nothing is left with no guest.
+    /// </summary>
+    [Fact]
+    public async Task GdprErasure_GuestsOfAProfileWithMergedProfilesErasedInTheSameRun_TakeAllOfItWithThem_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        var world = await SeedMergedProfilesAsync(store, orgId, withSecondGuest: true, firstGuestOnATombstone: false);
+
+        await using (var db = CrmTestWorld.Open(store))
+        {
+            var eraser = new GuestDataEraser(db, Mock.Of<IFileStorage>(), NullLogger<GuestDataEraser>.Instance);
+            var first = await db.Guests.SingleAsync(g => g.Id == world.FirstGuestId, Ct);
+            var second = await db.Guests.SingleAsync(g => g.Id == world.SecondGuestId, Ct);
+
+            var afterFirst = await eraser.AnonymizeAsync(first, CrmTestWorld.Now.UtcDateTime, Ct);
+            var afterSecond = await eraser.AnonymizeAsync(second, CrmTestWorld.Now.UtcDateTime, Ct);
+            await db.SaveChangesAsync(Ct);
+
+            Assert.False(afterFirst.CrmProfileRemoved);
+            Assert.True(afterSecond.CrmProfileRemoved);
+        }
+
+        await using var verify = CrmTestWorld.Open(store);
+        AssertOnlyTheUnrelatedProfileIsLeft(await verify.GuestCrmProfiles.AsNoTracking().Where(p => p.OrgId == orgId).ToListAsync(Ct), world);
+        Assert.Empty(await verify.GuestMergeCandidates.AsNoTracking().Where(m => m.OrgId == orgId).ToListAsync(Ct));
+        Assert.All(await verify.Guests.AsNoTracking().Where(g => g.OrgId == orgId).ToListAsync(Ct), g => Assert.Null(g.GuestCrmProfileId));
+        Assert.Equal(Index.Hash("mario.old@example.com"), Assert.Single(await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync(Ct)).ValueHash);
+    }
+
+    /// <summary>
+    /// Proof test (privacy rule, art. 15 and 20, E07/F01/US03/T02): the export follows the same rule as the erasure. Of a profile that is the guest's
+    /// alone the file has the profile at the end of the merges and, as <c>mergedProfiles</c>, what the profiles merged into it still hold (they go with
+    /// it), and the contacts the merge left on them; of a profile other guests are linked to it has none of that: what a tombstone holds cannot be told
+    /// from the others' data. Whichever profile of the chain the guest is linked to, the file speaks of the survivor.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task GdprExport_ProfileWithMergedProfiles_HoldsThemOnlyWhenTheProfileIsTheGuestsAlone_Test(bool otherGuestOnTheSurvivor, bool guestOnATombstone)
+    {
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        var world = await SeedMergedProfilesAsync(store, orgId, withSecondGuest: otherGuestOnTheSurvivor, firstGuestOnATombstone: guestOnATombstone);
+
+        GuestDataExport export;
+        await using (var db = CrmTestWorld.Open(store))
+            export = await Service(db).ExportGuestDataAsync(orgId, world.FirstGuestId, new HostScope(orgId), true, "auth0|host", Ct);
+
+        var profile = export.CrmProfile;
+        Assert.NotNull(profile);
+        Assert.Equal(world.SurvivorId, profile.Id);
+        Assert.Equal(otherGuestOnTheSurvivor, profile.SharedWithOtherGuests);
+        var json = JsonSerializer.Serialize(export);
+        if (otherGuestOnTheSurvivor)
+        {
+            Assert.Empty(profile.MergedProfiles);
+            foreach (var theirs in new[] { "tag-del-primo", "tag-del-secondo", "Francia", "Spagna" })
+                Assert.DoesNotContain(theirs, json, StringComparison.Ordinal);
+
+            // Only what the guest gave: the consent address and the old one. Not the leads, not the other guest's address.
+            Assert.Equal(2, export.Contacts.Count);
+            Assert.DoesNotContain(export.Contacts, c => c.Value is "lead@example.com" or "lead.vecchio@example.com" or "luisa.verdi@example.com");
+        }
+        else
+        {
+            Assert.Equal(2, profile.MergedProfiles.Count);
+            var first = Assert.Single(profile.MergedProfiles, m => m.Country == "Francia");
+            Assert.Equal("fr", first.Language);
+            Assert.Equal(new[] { "tag-del-primo" }, first.Tags);
+            var second = Assert.Single(profile.MergedProfiles, m => m.Country == "Spagna");
+            Assert.Equal("es", second.Language);
+            Assert.Equal(new[] { "tag-del-secondo" }, second.Tags);
+
+            // The contacts of the survivor and of its tombstones: the same set the erasure removes.
+            Assert.Equal(4, export.Contacts.Count);
+            Assert.Contains(export.Contacts, c => c.Value == "lead.vecchio@example.com");
+            Assert.Contains(export.Contacts, c => c.Value == "mario.old@example.com");
+        }
+
+        // Never a keyed hash of any of the profiles.
+        Assert.DoesNotContain(Index.Hash("m.rossi@example.com|rossi|m"), json, StringComparison.Ordinal);
+        Assert.DoesNotContain(Index.Hash("+393332000001"), json, StringComparison.Ordinal);
+    }
+
+    private static void AssertOnlyTheUnrelatedProfileIsLeft(List<GuestCrmProfile> profiles, MergedWorld world) =>
+        Assert.Equal(world.UnrelatedProfileId, Assert.Single(profiles).Id);
+
+    /// <summary>
+    /// The survivor stays with its other guest and loses what may be the erased guest's; both tombstones stay with the pointer of their chain and nothing
+    /// else; the other guest, its contact, the leads and the three proposals are as they were; the opt-out is bare and on no profile.
+    /// </summary>
+    private static async Task AssertTheSurvivorStaysAndTheTombstonesAreEmptyAsync(AppDbContext verify, Guid orgId, MergedWorld world)
+    {
+        var profiles = await verify.GuestCrmProfiles.AsNoTracking().Where(p => p.OrgId == orgId).ToListAsync(Ct);
+        Assert.Equal(4, profiles.Count);
+
+        var survivor = Assert.Single(profiles, p => p.Id == world.SurvivorId);
+        Assert.Null(survivor.MergedIntoProfileId);
+        Assert.Null(survivor.PhoneKeyHash);
+        Assert.Null(survivor.NameBirthKeyHash);
+        Assert.Equal(string.Empty, survivor.CompositeKeyHash);
+        Assert.Equal("[]", survivor.TagsJson);
+        Assert.Equal(string.Empty, survivor.Country);
+
+        foreach (var (id, pointsTo) in new[] { (world.FirstTombstoneId, world.SurvivorId), (world.SecondTombstoneId, world.FirstTombstoneId) })
+        {
+            var tombstone = Assert.Single(profiles, p => p.Id == id);
+            Assert.Equal(pointsTo, tombstone.MergedIntoProfileId);
+            Assert.Equal("[]", tombstone.TagsJson);
+            Assert.Equal(string.Empty, tombstone.Country);
+            Assert.Equal(string.Empty, tombstone.Language);
+            Assert.Null(tombstone.PhoneKeyHash);
+            Assert.Null(tombstone.NameBirthKeyHash);
+            Assert.Equal(string.Empty, tombstone.CompositeKeyHash);
+            Assert.Null(tombstone.PrimaryGuestId);
+            Assert.Equal(0, tombstone.TotalStays);
+            Assert.Equal(0m, tombstone.TotalSpend);
+            Assert.Equal("[]", tombstone.PropertyIdsJson);
+        }
+
+        // The unrelated profile is untouched.
+        var unrelated = Assert.Single(profiles, p => p.Id == world.UnrelatedProfileId);
+        Assert.Equal("[\"vip\",\"famiglia\"]", unrelated.TagsJson);
+        Assert.NotNull(unrelated.PhoneKeyHash);
+
+        // The guests: the erased one is unlinked, the other one is still on the survivor; the three proposals (two of history, one waiting) are there.
+        Assert.Null((await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.FirstGuestId, Ct)).GuestCrmProfileId);
+        Assert.Equal(world.SurvivorId, (await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == world.SecondGuestId, Ct)).GuestCrmProfileId);
+        Assert.Equal(3, await verify.GuestMergeCandidates.CountAsync(m => m.OrgId == orgId, Ct));
+
+        // The contacts: the other guest's address and the two leads stay where they were; the opt-out is bare and on no profile.
+        var contacts = await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync(Ct);
+        Assert.Equal(4, contacts.Count);
+        Assert.Equal(world.SurvivorId, Assert.Single(contacts, c => c.Value == "luisa.verdi@example.com").GuestCrmProfileId);
+        Assert.Equal(world.SurvivorId, Assert.Single(contacts, c => c.Value == "lead@example.com").GuestCrmProfileId);
+        Assert.Equal(world.FirstTombstoneId, Assert.Single(contacts, c => c.Value == "lead.vecchio@example.com").GuestCrmProfileId);
+        var marker = Assert.Single(contacts, c => c.ValueHash == Index.Hash("mario.old@example.com"));
+        Assert.True(marker.IsSuppressed);
+        Assert.Equal(string.Empty, marker.Value);
+        Assert.Null(marker.GuestId);
+        Assert.Null(marker.GuestCrmProfileId);
+    }
+
+    /// <summary>
     /// Proof test (privacy rule): removing a guest who has no bookings takes its CRM data with it. The CRM backfill gives a profile and contacts to every
     /// guest, bookings or not, so the row would otherwise leave them behind. What <c>GuestService.DeleteGuestAsync</c> does for a guest nothing
     /// references: the files and the CRM data go, audited once, then the row. The contacts it gave and the lead of its profile are deleted, the profile
@@ -757,6 +985,61 @@ public class GdprCrmProofTests
 
         await seed.SaveChangesAsync(Ct);
         return (guest.Id, profile.Id);
+    }
+
+    /// <summary>The ids of <see cref="SeedMergedProfilesAsync"/>.</summary>
+    private sealed record MergedWorld(Guid FirstGuestId, Guid SecondGuestId, Guid SurvivorId, Guid FirstTombstoneId, Guid SecondTombstoneId, Guid UnrelatedProfileId);
+
+    /// <summary>
+    /// A profile (the survivor) that two merges of duplicates led to (E07/F01/US03/T02): the first tombstone points to it and the second to the first, a
+    /// chain. Each tombstone still holds what it held when it went: tags, country, language, keyed hashes, a primary guest and the aggregates of its stays.
+    /// The first guest is linked to the survivor, or with <paramref name="firstGuestOnATombstone"/> still to the second tombstone (a link kept from before
+    /// the merge); the second guest, when there is one, to the survivor. The first guest gave an address on consent and an old one that unsubscribed,
+    /// which the merge left on the second tombstone; a lead nobody owns is on the survivor and another on the first tombstone; the proposals that decided
+    /// the merges are kept as history, and another one pairs the survivor with an unrelated profile.
+    /// </summary>
+    private static async Task<MergedWorld> SeedMergedProfilesAsync(DbContextOptions<AppDbContext> store, Guid orgId, bool withSecondGuest, bool firstGuestOnATombstone)
+    {
+        await using var seed = CrmTestWorld.Open(store);
+        var first = CrmTestWorld.AddGuest(seed, orgId, "Mario", "Rossi", "mario.rossi@example.com", "+393331234567");
+        var second = CrmTestWorld.AddGuest(seed, orgId, "Luisa", "Verdi", "luisa.verdi@example.com");
+        if (!withSecondGuest)
+            seed.Guests.Remove(second);
+
+        var survivor = NewProfile(orgId, first.Id, "+393331234567", "rossi mario|1980-01-01", "mario.rossi@example.com|rossi|mario");
+        var firstTombstone = NewProfile(orgId, null, "+393332000001", "rossi m|1980-01-01", "m.rossi@example.com|rossi|m");
+        var secondTombstone = NewProfile(orgId, first.Id, "+393332000002", "rossi mario f|1980-01-01", "mario.f@example.com|rossi|mario");
+        var unrelated = NewProfile(orgId, null, "+393338888888", "bianchi luca|1990-02-02", "luca.bianchi@example.com|bianchi|luca");
+        firstTombstone.MergedIntoProfileId = survivor.Id;
+        firstTombstone.TagsJson = """["tag-del-primo"]""";
+        firstTombstone.Country = "Francia";
+        firstTombstone.Language = "fr";
+        secondTombstone.MergedIntoProfileId = firstTombstone.Id;
+        secondTombstone.TagsJson = """["tag-del-secondo"]""";
+        secondTombstone.Country = "Spagna";
+        secondTombstone.Language = "es";
+        first.GuestCrmProfileId = firstGuestOnATombstone ? secondTombstone.Id : survivor.Id;
+        second.GuestCrmProfileId = survivor.Id;
+        seed.GuestCrmProfiles.AddRange(survivor, firstTombstone, secondTombstone, unrelated);
+
+        seed.GuestContacts.AddRange(
+            Contact(orgId, first.Id, survivor.Id, GuestContactChannel.Email, "mario.rossi@example.com", "Mario Rossi", GuestContactLegalBasis.Consent),
+            Contact(orgId, first.Id, secondTombstone.Id, GuestContactChannel.Email, "mario.old@example.com", "Mario Rossi", GuestContactLegalBasis.ServiceOnly, suppressed: true),
+            Contact(orgId, null, survivor.Id, GuestContactChannel.Email, "lead@example.com", "Lead", GuestContactLegalBasis.ServiceOnly),
+            Contact(orgId, null, firstTombstone.Id, GuestContactChannel.Email, "lead.vecchio@example.com", "Lead", GuestContactLegalBasis.ServiceOnly));
+        if (withSecondGuest)
+            seed.GuestContacts.Add(Contact(orgId, second.Id, survivor.Id, GuestContactChannel.Email, "luisa.verdi@example.com", "Luisa Verdi", GuestContactLegalBasis.Consent));
+
+        seed.SuppressionListEntries.Add(new SuppressionListEntry { OrgId = orgId, EmailHash = Index.Hash("mario.old@example.com"), Source = "unsubscribe", AddedAt = OptOutAt });
+
+        var firstMerge = NewProposal(orgId, survivor.Id, firstTombstone.Id);
+        firstMerge.Status = GuestMergeStatus.Merged;
+        var secondMerge = NewProposal(orgId, firstTombstone.Id, secondTombstone.Id);
+        secondMerge.Status = GuestMergeStatus.Merged;
+        seed.GuestMergeCandidates.AddRange(firstMerge, secondMerge, NewProposal(orgId, survivor.Id, unrelated.Id));
+
+        await seed.SaveChangesAsync(Ct);
+        return new MergedWorld(first.Id, second.Id, survivor.Id, firstTombstone.Id, secondTombstone.Id, unrelated.Id);
     }
 
     private static GdprService Service(

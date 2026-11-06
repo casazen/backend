@@ -146,8 +146,8 @@ public class GdprService(
             .Select(r => new GuestExportMarketingChannel(
                 r.BookingId, r.ConsentEmail, r.ConsentWhatsApp, r.MarketingEmail, r.EmailConfirmed, r.ConsentTextVersion, r.ConsentTimestamp, r.IpAddress))
             .ToListAsync(cancellationToken);
-        var (crmProfile, profileIsGuestsAlone) = await ReadCrmProfileAsync(guest, cancellationToken);
-        var contacts = await ReadCrmContactsAsync(guest, profileIsGuestsAlone, cancellationToken);
+        var (crmProfile, profileIsGuestsAlone, crmProfileIds) = await ReadCrmProfileAsync(guest, cancellationToken);
+        var contacts = await ReadCrmContactsAsync(guest, profileIsGuestsAlone, crmProfileIds, cancellationToken);
 
         // The messages are not the guest's data alone: they follow the rules of the message screens of the host (BookingMessagesController), that is
         // booking.read and the properties the caller reaches. guest.read opens the rest of the export, not the conversations on stays out of reach.
@@ -208,23 +208,43 @@ public class GdprService(
     }
 
     /// <summary>
-    /// The CRM profile of the guest for the export, and whether it is the guest's alone (no other guest of the org is linked to it). A profile
-    /// that others share adds their stays to its aggregates, so those are left out; its language, country and tags stay, because the
-    /// erasure treats them as the guest's too. Never the keyed hashes, the proposals of merge or the confirmed marketing address (the
-    /// per-channel consents hold the addresses). <c>null</c> when the guest has no profile.
+    /// The CRM profile of the guest for the export, whether it is the guest's alone (no other guest of the org is linked to it, or to a profile that
+    /// was merged into it), and the ids of the profiles the erasure would take with the guest's (the survivor of the merges and every tombstone that
+    /// leads to it, E07/F01/US03/T02). A profile that others share adds their stays to its aggregates, so those are left out; its language, country
+    /// and tags stay, because the erasure treats them as the guest's too. The profiles merged into it are in the file only when it is the guest's
+    /// alone (<see cref="GuestExportCrmProfile.MergedProfiles"/>): shared, what they hold cannot be told from the others' data. Never the keyed
+    /// hashes, the proposals of merge or the confirmed marketing address (the per-channel consents hold the addresses). <c>null</c> when the guest
+    /// has no profile.
     /// </summary>
-    private async Task<(GuestExportCrmProfile? Profile, bool Alone)> ReadCrmProfileAsync(Guest guest, CancellationToken cancellationToken)
+    private async Task<(GuestExportCrmProfile? Profile, bool Alone, List<Guid> ProfileIds)> ReadCrmProfileAsync(Guest guest, CancellationToken cancellationToken)
     {
-        if (guest.GuestCrmProfileId is not { } profileId)
-            return (null, false);
+        if (guest.GuestCrmProfileId is not { } linkedId)
+            return (null, false, []);
 
-        var profile = await db.GuestCrmProfiles.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.OrgId == guest.OrgId && p.Id == profileId, cancellationToken);
+        var (survivorId, profileIds) = await CrmProfileFamily.OfAsync(db, guest.OrgId, linkedId, cancellationToken);
+        var profiles = await db.GuestCrmProfiles.AsNoTracking()
+            .Where(p => p.OrgId == guest.OrgId && profileIds.Contains(p.Id))
+            .ToListAsync(cancellationToken);
+        var profile = profiles.FirstOrDefault(p => p.Id == survivorId)
+            ?? profiles.FirstOrDefault(p => p.MergedIntoProfileId == null)
+            ?? profiles.FirstOrDefault(p => p.Id == linkedId);
         if (profile is null)
-            return (null, false);
+            return (null, false, []);
 
         var shared = await db.Guests.AsNoTracking()
-            .AnyAsync(g => g.OrgId == guest.OrgId && g.GuestCrmProfileId == profileId && g.Id != guest.Id, cancellationToken);
+            .AnyAsync(
+                g => g.OrgId == guest.OrgId && g.GuestCrmProfileId != null && profileIds.Contains(g.GuestCrmProfileId.Value) && g.Id != guest.Id,
+                cancellationToken);
+        var merged = new List<GuestExportMergedProfile>();
+        if (!shared)
+        {
+            merged.AddRange(profiles
+                .Where(p => p.Id != profile.Id)
+                .OrderBy(p => p.CreatedAt)
+                .ThenBy(p => p.Id)
+                .Select(p => new GuestExportMergedProfile(p.Language, p.Country, TagsOf(p.TagsJson))));
+        }
+
         var export = new GuestExportCrmProfile(
             profile.Id,
             profile.Language,
@@ -234,23 +254,30 @@ public class GdprService(
             shared ? null : profile.TotalStays,
             shared ? null : profile.TotalSpend,
             shared ? null : profile.FirstStayAt,
-            shared ? null : profile.LastStayAt);
-        return (export, !shared);
+            shared ? null : profile.LastStayAt)
+        {
+            MergedProfiles = merged,
+        };
+        return (export, !shared, profileIds);
     }
 
     /// <summary>
     /// The contacts of the guest in the CRM, decrypted: the ones the guest gave and, when the profile is the guest's alone, every contact of
-    /// that profile: the same set the erasure removes (<see cref="GuestDataEraser.EraseCrmDataAsync"/>). An opt-out marker left by an earlier
-    /// erasure holds no person and is not the guest's.
+    /// that profile and of the profiles merged into it (<paramref name="profileIds"/>): the same set the erasure removes
+    /// (<see cref="GuestDataEraser.EraseCrmDataAsync"/>). An opt-out marker left by an earlier erasure holds no person and is not the guest's.
     /// </summary>
-    private async Task<IReadOnlyList<GuestExportContact>> ReadCrmContactsAsync(Guest guest, bool profileIsGuestsAlone, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<GuestExportContact>> ReadCrmContactsAsync(
+        Guest guest,
+        bool profileIsGuestsAlone,
+        List<Guid> profileIds,
+        CancellationToken cancellationToken)
     {
         var orgId = guest.OrgId;
         List<GuestContact> rows;
-        if (profileIsGuestsAlone && guest.GuestCrmProfileId is { } ownProfileId)
+        if (profileIsGuestsAlone)
         {
             rows = await db.GuestContacts.AsNoTracking()
-                .Where(c => c.OrgId == orgId && (c.GuestId == guest.Id || c.GuestCrmProfileId == ownProfileId))
+                .Where(c => c.OrgId == orgId && (c.GuestId == guest.Id || (c.GuestCrmProfileId != null && profileIds.Contains(c.GuestCrmProfileId.Value))))
                 .OrderBy(c => c.CreatedAt).ThenBy(c => c.Id)
                 .ToListAsync(cancellationToken);
         }

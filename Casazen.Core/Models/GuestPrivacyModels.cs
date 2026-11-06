@@ -209,7 +209,21 @@ public sealed record GuestExportCrmProfile(
     int? TotalStays,
     decimal? TotalSpend,
     DateTime? FirstStayAt,
-    DateTime? LastStayAt);
+    DateTime? LastStayAt)
+{
+    /// <summary>
+    /// What the CRM still holds in the profiles that were merged into this one (the tombstones of a merge of duplicates, chains included): the same
+    /// set the erasure deletes with the profile. <b>Only when the profile is the guest's alone</b>: when other guests share it, what a tombstone holds
+    /// cannot be told from their data (the erasure empties it for the same reason), so it is not in the file. Never the keyed hashes.
+    /// </summary>
+    public IReadOnlyList<GuestExportMergedProfile> MergedProfiles { get; init; } = [];
+}
+
+/// <summary>What the CRM still holds in a profile that was merged into the guest's profile (a tombstone): language, country and tags.</summary>
+/// <param name="Language">The language the profile had.</param>
+/// <param name="Country">The country the profile had.</param>
+/// <param name="Tags">The tags the hosts gave the profile.</param>
+public sealed record GuestExportMergedProfile(string Language, string Country, IReadOnlyList<string> Tags);
 
 /// <summary>One contact of the guest in the CRM (<see cref="GuestContact"/>), decrypted: the guest's own address or number.</summary>
 public sealed record GuestExportContact(
