@@ -159,6 +159,12 @@ public class OrgRoleActionMatrixTests
         { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.GetAccess), WithMoney },
         { typeof(ConcordatoFacileController), nameof(ConcordatoFacileController.GetStatus), WithMoney },
 
+        // ADR-026: every signed-in caller reads the To do list and its count (the policy Authenticated, which this table does not
+        // list); closing an item is a change, so it asks for property.write of the short-rent context like the other edits of the
+        // short-stay side. The accountant and the collaborator, who only read, are refused (403) instead of closing, for the whole
+        // org, an item (a deadline of law too) that would then vanish for the owner as well.
+        { typeof(ActivitiesController), nameof(ActivitiesController.Close), Operators },
+
         // The people of the org, and the properties each of them reaches.
         { typeof(OrgMembersController), nameof(OrgMembersController.List), Team },
         { typeof(OrgMembersController), nameof(OrgMembersController.GetProperties), Team },
