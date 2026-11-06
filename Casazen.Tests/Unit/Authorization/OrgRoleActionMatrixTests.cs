@@ -165,6 +165,13 @@ public class OrgRoleActionMatrixTests
         // org, an item (a deadline of law too) that would then vanish for the owner as well.
         { typeof(ActivitiesController), nameof(ActivitiesController.Close), Operators },
 
+        // E03/F04/US02/T01 (AC-NF24-3): the identity verification queue, its decisions and its figures are for who decides (verification.decision):
+        // the owner, the administrators and the property managers; never the collaborator nor the accountant.
+        { typeof(VerificationController), nameof(VerificationController.GetPending), Operators },
+        { typeof(VerificationController), nameof(VerificationController.RequestNewPhoto), Operators },
+        { typeof(VerificationController), nameof(VerificationController.RecordVerification), Operators },
+        { typeof(VerificationController), nameof(VerificationController.RejectVerification), Operators },
+
         // The people of the org, and the properties each of them reaches.
         { typeof(OrgMembersController), nameof(OrgMembersController.List), Team },
         { typeof(OrgMembersController), nameof(OrgMembersController.GetProperties), Team },
