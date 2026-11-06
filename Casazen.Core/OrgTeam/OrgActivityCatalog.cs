@@ -75,10 +75,23 @@ public static class OrgActivityDetailKeys
     /// </summary>
     public const string DelegationVersion = "delegationVersion";
 
+    /// <summary>The compliance topic a verification handed to the channel manager is about: <c>Alloggiati</c> or <c>Istat</c> (E03/F05/US01/T01).</summary>
+    public const string Topic = "topic";
+
+    /// <summary>The id of the booking a verification was started from: a GUID, an opaque id like the subject (E03/F05/US01/T01).</summary>
+    public const string Booking = "booking";
+
+    /// <summary>The period a verification is about, a month <c>yyyy-MM</c> or a day <c>yyyy-MM-dd</c> (E03/F05/US01/T01).</summary>
+    public const string Period = "period";
+
+    /// <summary>The random id of a handoff, returned to the client and kept with the line so the two can be matched (E03/F05/US01/T01).</summary>
+    public const string Handoff = "handoff";
+
     public static IReadOnlyList<string> All { get; } =
     [
         Role, FromRole, ToRole, Scope, Granted, Revoked, Released, FromTier, ToTier, Source, RequestedArea, FromMode, ToMode, EffectiveOn,
         FromAreas, ToAreas, Reminders, FromSender, ToSender, DelegationVersion,
+        Topic, Booking, Period, Handoff,
     ];
 }
 
@@ -190,6 +203,11 @@ public static partial class OrgActivityCatalog
         new(OrgActivityType.AlloggiatiDelegationGranted, OrgActivityArea.ShortRent, OrgActivitySubjectType.Org,
             [OrgActivityDetailKeys.DelegationVersion]),
         new(OrgActivityType.AlloggiatiDelegationRevoked, OrgActivityArea.ShortRent, OrgActivitySubjectType.Org, []),
+
+        // The guided passage to the Octorate Cassetto Compliance (E03/F05/US01/T01, CHK-15): the line says that it started, with the
+        // topic, the opaque handoff id and, when the request had them, the booking id and the period. Never a guest, never an outcome.
+        new(OrgActivityType.OctorateComplianceHandoffStarted, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
+            [OrgActivityDetailKeys.Topic, OrgActivityDetailKeys.Handoff, OrgActivityDetailKeys.Booking, OrgActivityDetailKeys.Period]),
     ];
 
     /// <summary>Every event the log can record, in the order of the runbook.</summary>

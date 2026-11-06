@@ -45,6 +45,7 @@ public class OrgActivityCatalogTests
     [InlineData(OrgActivityType.PropertySenderChanged, 80)]
     [InlineData(OrgActivityType.AlloggiatiDelegationGranted, 81)]
     [InlineData(OrgActivityType.AlloggiatiDelegationRevoked, 82)]
+    [InlineData(OrgActivityType.OctorateComplianceHandoffStarted, 100)]
     public void Type_TheIntegerOfEveryEvent_IsPinned(OrgActivityType type, int value)
     {
         // The value is what the database holds: reordering or reusing it would rewrite history.
@@ -54,7 +55,7 @@ public class OrgActivityCatalogTests
     [Fact]
     public void Type_EveryEventOfTheEnum_IsPinnedAbove()
     {
-        Assert.Equal(25, Enum.GetValues<OrgActivityType>().Length);
+        Assert.Equal(26, Enum.GetValues<OrgActivityType>().Length);
     }
 
     [Fact]

@@ -130,4 +130,14 @@ public enum OrgActivityType
     /// <c>AlloggiatiDelegationService.RevokeAsync</c>. Subject: the org. No details.
     /// </summary>
     AlloggiatiDelegationRevoked = 82,
+
+    // ─── Compliance handoff to the channel manager (E03/F05/US01/T01, CHK-15) ────────────────────────────
+
+    /// <summary>
+    /// A host started the guided check of an Alloggiati or ISTAT outcome in the connected area of Octorate (the «Cassetto Compliance»):
+    /// CasaZen prepared the allowlisted address and the guide. Written by <c>OctorateComplianceHandoffService</c>, in the only save of the
+    /// call; the handoff changes nothing else and records no outcome. Subject: the property. Details: the topic (<c>Alloggiati</c> or
+    /// <c>Istat</c>), the opaque handoff id, and, when the request had them, the booking id and the period. The area is short-rent.
+    /// </summary>
+    OctorateComplianceHandoffStarted = 100,
 }
