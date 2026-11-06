@@ -83,8 +83,9 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     /// <item>the guest is unlinked from its profile; the profile is deleted when no other guest of the org is linked to it, with the proposals of
     /// merge that involve it; otherwise it is <b>never deleted</b> (a profile of several guests is not the erasure of one) and loses its keyed
     /// hashes, its tags and its country, which may be the erased guest's;</item>
-    /// <item>the rows of the campaigns that name a contact or a profile keep the row and lose the person (their references become null by the
-    /// foreign keys of the campaign model, which no feature of this plan has yet).</item>
+    /// <item>the recipients of a campaign would keep their row and lose their references to the contact and to the profile (null, through their own
+    /// <c>SetNull</c> foreign keys): the campaign model is deferred (<c>kb/plan/deferred</c>, B05) and does not exist yet, so there is nothing to do
+    /// here until it does.</item>
     /// </list>
     /// Idempotent: once the guest is unlinked and its contacts are gone or stripped, a second run finds nothing. Nothing is logged but counts.
     /// </summary>
