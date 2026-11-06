@@ -47,6 +47,19 @@ public interface IOnboardingFlowStatusService
         int page,
         int pageSize,
         CancellationToken ct);
+
+    /// <summary>
+    /// The status of each of <paramref name="flows"/> on the properties of <paramref name="scope"/> (E10/F01/US01/T03, T04): every property the
+    /// scope reaches when <paramref name="propertyIds"/> is <c>null</c>, otherwise only the ones among them the scope reaches (an id of another
+    /// org, a deleted property or one outside the reach is left out of the answer, never an error that reveals it). Property by property in the
+    /// order of the list (by name, the id as the tie-break), each with its flows in the order given. The activation, the plan and the "To do"
+    /// sync re-evaluate the prerequisites through it: the client is never trusted.
+    /// </summary>
+    Task<IReadOnlyList<FlowPropertyStatus>> GetStatusesAsync(
+        HostScope scope,
+        IReadOnlyCollection<Guid>? propertyIds,
+        IReadOnlyCollection<OnboardingFlow> flows,
+        CancellationToken ct);
 }
 
 /// <summary>A page of the properties with their status for one flow (NF-106).</summary>

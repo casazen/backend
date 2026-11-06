@@ -46,8 +46,9 @@ and the Octorate webhook, off until the sandbox is validated (the other Octorate
 (CHK-15) reads it too: `POST api/compliance/octorate-handoffs`, the guided passage to the Octorate «Cassetto Compliance», answers 404 while it is off.
 Task E07/F06/US01/T01 (marketing module of epic E07, NF-95) adds `CrmMarketing`: the CRM profiles, the segments and the campaigns, off until the module is safe
 to send (the other tasks of the epic only read it; `docs/runbooks/crm-marketing.md`).
-Task E10/F01/US01/T02 (activation of CasaZen with Octorate, NF-104..NF-107) adds `OctorateOnboarding`: the status of the six flows on each property and, with the
-next tasks of epic E10, the plan, the panel steps and the activation. It is off until the screens that show it exist (the other E10 tasks only read it).
+Task E10/F01/US01/T02 (activation of CasaZen with Octorate, NF-104..NF-107) adds `OctorateOnboarding`: the status of the six flows on each property. Tasks T03 and
+T04 of the same user story put the plan, the path, the deferral of a part, the activation of a flow, the final read-only test and the hourly "To do" sync behind it
+too, and those write (the host's own choices and the "To do" of the sync: see § `Features__OctorateOnboarding` below). It is off until the screens that show it exist.
 Task E06/F02/US02/T02 (fiscal documents, NF-82, PO-05) adds `FiscalDocumentIssuance`: the issuance of fiscal documents by CasaZen and the mode «CasaZen issues» of
 the issuer setting, off until the accountant has approved the rules of the documents (the other tasks of epic E06 only read it).
 Task E06/F02/US01/T04 (billing data and Octorate, NF-81, NF-82) adds `OctorateBillingSync`: the pre-fill of the invoice data of an imported booking from the customer
@@ -205,7 +206,12 @@ their suppression (an error in the log each time; `crm-marketing.md` § 3), a kn
 
 `Features__OctorateOnboarding` (E10/F01/US01/T02) is the switch of the activation of CasaZen with Octorate: leave it **unset in production** and unset on the
 test environment until the screens of epic E10 (E10/F03) are deployed. It needs no other variable. With it on, `GET api/onboarding/status` also computes the
-status of the six flows over every property the caller reaches (a handful of queries for each batch of 200 properties); with it off nothing is read.
+status of the six flows over every property the caller reaches (a handful of queries for each batch of 200 properties). It also opens the endpoints of the plan and of
+the activation (`GET api/onboarding/plan|path`, `POST api/onboarding/parts/{key}/defer|exit|resume`, `POST api/onboarding/flows/{flow}/activate|deactivate`,
+`POST api/onboarding/test-run`) and schedules the hourly job `onboarding-flow-todo-sync` (E10/F01/US01/T03, T04), so with the flag on **something is written**: the host's
+own choices (a part put off with its "To do", a flow activated on a property with its outbox event) and, for every org that has an Octorate connection in the
+environment, the "To do" of the flows still to complete and of a lost connection (high urgency), and the closing of the "To do" of a part put off that is done by now.
+Nothing calls Octorate. With the flag off nothing is read or written, the endpoints answer 404 and the job is removed from the schedule at the next start.
 
 What the functions without a flag ask of an operator is in their runbooks: [org-team.md](org-team.md) (§ 42: the authorization cache with
 several instances; § 35: the privacy notice), [property-rental-mode.md](property-rental-mode.md) § 8 (the calendar block, the draft leases

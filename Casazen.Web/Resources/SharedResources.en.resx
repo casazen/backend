@@ -4908,6 +4908,27 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OnboardingFlowStateUnknown" xml:space="preserve">
     <value>Unknown flow state.</value>
   </data>
+  <data name="OnboardingPartUnknown" xml:space="preserve">
+    <value>This part of the activation plan does not exist.</value>
+  </data>
+  <data name="OnboardingPartPrerequisite" xml:space="preserve">
+    <value>The parts after this one need it: it cannot be put off, complete it first.</value>
+  </data>
+  <data name="OnboardingPartNotOpen" xml:space="preserve">
+    <value>This part is already complete or not available: there is nothing to put off.</value>
+  </data>
+  <data name="OnboardingRemindAtInvalid" xml:space="preserve">
+    <value>Choose a reminder in the future, within {0} days.</value>
+  </data>
+  <data name="OnboardingPropertyIdsEmpty" xml:space="preserve">
+    <value>Choose at least one property.</value>
+  </data>
+  <data name="OnboardingPropertyIdsTooMany" xml:space="preserve">
+    <value>You can choose at most {0} properties at a time.</value>
+  </data>
+  <data name="OnboardingTestBookingNotFound" xml:space="preserve">
+    <value>This property has no booking imported from Octorate to run the final test on.</value>
+  </data>
   <data name="ContactIdMissing" xml:space="preserve">
     <value>The contact identifier is required.</value>
   </data>

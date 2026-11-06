@@ -1,6 +1,8 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.BackgroundJobs;
 
 namespace Casazen.Web.Extensions;
 
@@ -31,6 +33,33 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IFlowReadinessProvider>(_ => new NotProvidedFlowProvider(OnboardingFlow.Messages));
         services.AddScoped<IFlowReadinessProvider>(_ => new NotProvidedFlowProvider(OnboardingFlow.Documents));
         services.AddScoped<IFlowReadinessProvider>(_ => new NotProvidedFlowProvider(OnboardingFlow.Reports));
+
+        // The plan of the eleven parts, the path of UX-10 and the deferral (E10/F01/US01/T03). One evaluator for each part that exists; the parts
+        // nobody has built yet (messages and AI, fiscal documents, partners) have the placeholder that answers «not provided» (order 0): E05, E06
+        // and E09 register their own evaluator with a higher order and it stops being asked.
+        services.AddScoped<IOnboardingPlanService, OnboardingPlanService>();
+        services.AddScoped<IOnboardingPartEvaluator, OctorateConnectionPartEvaluator>();
+        services.AddScoped<IOnboardingPartEvaluator, PropertiesPartEvaluator>();
+        services.AddScoped<IOnboardingPartEvaluator, ChannelsPartEvaluator>();
+        services.AddScoped<IOnboardingPartEvaluator, ListingsPartEvaluator>();
+        services.AddScoped<IOnboardingPartEvaluator, PricesRulesPartEvaluator>();
+        services.AddScoped<IOnboardingPartEvaluator, CompliancePartEvaluator>();
+        services.AddScoped<IOnboardingPartEvaluator, IdentificationPartEvaluator>();
+        services.AddScoped<IOnboardingPartEvaluator, ActivationPartEvaluator>();
+        services.AddScoped<IOnboardingPartEvaluator>(_ => new NotProvidedPartEvaluator(OnboardingPartKey.MessagesAi));
+        services.AddScoped<IOnboardingPartEvaluator>(_ => new NotProvidedPartEvaluator(OnboardingPartKey.FiscalDocuments));
+        services.AddScoped<IOnboardingPartEvaluator>(_ => new NotProvidedPartEvaluator(OnboardingPartKey.Partners));
+
+        // The activation of the flows, the reader of the active flows for the consumers, the final read-only test with one check for each flow
+        // that has one (the others are skipped as «not provided»), and the hourly "To do" sync (E10/F01/US01/T04).
+        services.Configure<OnboardingOptions>(configuration.GetSection(OnboardingOptions.SectionName));
+        services.AddScoped<IOnboardingFlowActivationService, OnboardingFlowActivationService>();
+        services.AddScoped<IFlowActivationReader, FlowActivationReader>();
+        services.AddScoped<IOnboardingFlowTestRunService, OnboardingFlowTestRunService>();
+        services.AddScoped<IFlowDryRunCheck, ListingsDryRunCheck>();
+        services.AddScoped<IFlowDryRunCheck, BookingsDryRunCheck>();
+        services.AddScoped<IFlowDryRunCheck, CheckInComplianceDryRunCheck>();
+        services.AddScoped<OnboardingFlowTodoSyncJob>();
 
         return services;
     }
