@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.7";
+    public const string Version = "2026-11-06.8";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -134,6 +134,13 @@ public static class DemoShowcaseCatalog
         /// welcome page can be opened after every reset.
         /// </summary>
         public const string CrmWelcomeLink = "crm-welcome-link";
+
+        /// <summary>
+        /// The activation of CasaZen with Octorate (E10/F01/US01/T04, NF-104, NF-106): the demo org has a connected test connection (no token), three
+        /// short-rent houses in different states of the bookings flow (active, all prerequisites met but not activated, listing not confirmed) and one
+        /// part of the plan deferred with its "To do". Rows marked with the onboarding constants of <c>TestDataEntities</c>.
+        /// </summary>
+        public const string OnboardingActivation = "onboarding-activation";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -194,6 +201,7 @@ public static class DemoShowcaseCatalog
         Scenario.InvoiceData,
         Scenario.FiscalIssuerProfile,
         Scenario.CrmWelcomeLink,
+        Scenario.OnboardingActivation,
     ];
 
     /// <summary>
@@ -817,6 +825,56 @@ public static class DemoShowcaseCatalog
                 MaxNights: 5,
                 MinimumAge: 14,
                 SourceNote: "Delibera di prova del comune (TEST): importo inventato per la dimostrazione.")),
+
+        // E10/F01/US01/T04 (Scenario.OnboardingActivation): three short-rent houses of the activation with Octorate, left unpublished (the
+        // activation is about the channel manager, not the booking site). OnboardingActivations below says which listing is confirmed on the test
+        // connection and which flow is activated: the bookings flow is active on the first, ready to activate on the second, and waits for the
+        // listing to be confirmed on the third.
+        new(
+            Key: "attivazione-attiva",
+            Name: "Casa Attiva (demo)",
+            Place: new DemoPlace("Como", "013075", "LOM", "22100", "Via Volta 10"),
+            Description: "Casa di dimostrazione dell'attivazione con Octorate: il flusso delle prenotazioni è attivo. Tutto è segnato come test.",
+            Mode: RentalMode.Short,
+            Publish: false,
+            Bedrooms: 1,
+            Bathrooms: 1,
+            MaxGuests: 2,
+            NightlyRate: 110m,
+            CleaningFee: 25m,
+            Cadastral: null,
+            Scenarios: [Scenario.OnboardingActivation],
+            Bookings: []),
+        new(
+            Key: "attivazione-da-attivare",
+            Name: "Casa da attivare (demo)",
+            Place: new DemoPlace("Milano", "015146", "LOM", "20121", "Via Solferino 7"),
+            Description: "Casa di dimostrazione dell'attivazione con Octorate: tutto pronto, il flusso delle prenotazioni è da attivare. Tutto è segnato come test.",
+            Mode: RentalMode.Short,
+            Publish: false,
+            Bedrooms: 1,
+            Bathrooms: 1,
+            MaxGuests: 3,
+            NightlyRate: 120m,
+            CleaningFee: 25m,
+            Cadastral: null,
+            Scenarios: [Scenario.OnboardingActivation],
+            Bookings: []),
+        new(
+            Key: "attivazione-da-collegare",
+            Name: "Casa da collegare (demo)",
+            Place: new DemoPlace("Roma", "058091", "LAZ", "00186", "Via del Governo Vecchio 3"),
+            Description: "Casa di dimostrazione dell'attivazione con Octorate: l'annuncio non è ancora confermato sul channel manager. Tutto è segnato come test.",
+            Mode: RentalMode.Short,
+            Publish: false,
+            Bedrooms: 1,
+            Bathrooms: 1,
+            MaxGuests: 2,
+            NightlyRate: 100m,
+            CleaningFee: 20m,
+            Cadastral: null,
+            Scenarios: [Scenario.OnboardingActivation],
+            Bookings: []),
     ];
 
     /// <summary>
@@ -1050,7 +1108,48 @@ public static class DemoShowcaseCatalog
     [
         new("benvenuto-villa-lago", "villa-lago", CrmWelcomeToken, Scenario.CrmWelcomeLink),
     ];
+
+    /// <summary>
+    /// The activation of CasaZen with Octorate of the demo org (E10/F01/US01/T04): a connected test connection (an account that says TEST and no
+    /// token: nothing can be called with it, and a job of the connector that tries finds no token and marks it lost), the confirmed listings of two
+    /// houses on it, the bookings flow activated on the first, and one part of the plan deferred with its "To do". Written at reset only when the
+    /// org has no connection of its own in the environment (the houses and the deferred part are written anyway), marked with the onboarding
+    /// constants of <c>TestDataEntities</c> and deleted by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoOnboardingActivationTemplate> OnboardingActivations { get; } =
+    [
+        new(
+            Key: "attivazione-octorate",
+            AccountId: "TEST-DEMO-OCTORATE",
+            Properties:
+            [
+                new("attivazione-attiva", "TEST-ACC-ATTIVA", [OnboardingFlow.Bookings]),
+                new("attivazione-da-attivare", "TEST-ACC-DA-ATTIVARE", []),
+                new("attivazione-da-collegare", null, []),
+            ],
+            DeferredPart: OnboardingPartKey.Listings,
+            RemindInDays: 3,
+            Scenario: Scenario.OnboardingActivation),
+    ];
 }
+
+/// <summary>
+/// The activation with Octorate of the demo org (E10/F01/US01/T04): the test connection, the houses with their confirmed listing and activated
+/// flows, and the deferred part of the plan with the days to its reminder.
+/// </summary>
+public sealed record DemoOnboardingActivationTemplate(
+    string Key,
+    string AccountId,
+    IReadOnlyList<DemoOnboardingPropertyTemplate> Properties,
+    OnboardingPartKey DeferredPart,
+    int RemindInDays,
+    string Scenario);
+
+/// <summary>
+/// A demo house of the activation: the invented Octorate accommodation its listing is confirmed to (<c>null</c>: not confirmed) and the flows
+/// activated on it.
+/// </summary>
+public sealed record DemoOnboardingPropertyTemplate(string PropertyKey, string? AccommodationId, IReadOnlyList<OnboardingFlow> ActivatedFlows);
 
 /// <summary>
 /// The profile of the issuer of the documents of the demo organization (FIS-02): the answers of the wizard «Come emetti i documenti?», invented.

@@ -5,21 +5,40 @@ using Casazen.Core.Entities;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Tests.Unit.Authorization;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
 
 /// <summary>
+/// The web host with every feature flag an <c>OrgBillingAdmin</c> action is behind turned on (E10: <c>Features:OctorateOnboarding</c>): with
+/// its flag off an action answers 404 before the authorization runs, so the policy could not be proved on it.
+/// </summary>
+public class OrgBillingAdminGatesOpenFactory : CasazenWebApplicationFactory
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(
+            OrgBillingAdminActions.All
+                .SelectMany(action => action.FeatureGates)
+                .Distinct(StringComparer.Ordinal)
+                .ToDictionary(flag => $"Features:{flag}", _ => (string?)"true")));
+    }
+}
+
+/// <summary>
 /// AM-00 (S1, D12) over the real pipeline: every action under the policy <c>OrgBillingAdmin</c> (Orgs, Billing, Connect,
-/// Branding, Domain, SiteDocuments, found by reflection) answers 403 <c>forbidden</c> to a member of the org who has a DB
+/// Branding, Domain, SiteDocuments, the activation of E10, found by reflection) answers 403 <c>forbidden</c> to a member of the org who has a DB
 /// membership and no <c>Staff</c> claim, and to a <c>PropertyManager</c>; the owner of the org is not refused. The member
 /// is as strong as a collaborator can be inside the context (<c>property.write</c>, <c>payment.write</c>…): the org
 /// policy, not the context permissions, decides. The authorization runs before the body is read, so the empty bodies
-/// sent here are never looked at.
+/// sent here are never looked at. The flags the actions are behind are on (<see cref="OrgBillingAdminGatesOpenFactory"/>).
 /// </summary>
-public class OrgBillingAdminMembershipAccessTests(CasazenWebApplicationFactory factory)
-    : IClassFixture<CasazenWebApplicationFactory>
+public class OrgBillingAdminMembershipAccessTests(OrgBillingAdminGatesOpenFactory factory)
+    : IClassFixture<OrgBillingAdminGatesOpenFactory>
 {
     /// <summary>Permissions of the custom role of the members: everything a collaborator could be given in the context.</summary>
     private static readonly string[] MemberPermissions =

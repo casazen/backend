@@ -4872,6 +4872,15 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OnboardingRemindAtInvalid" xml:space="preserve">
     <value>Scegli un promemoria nel futuro, entro {0} giorni.</value>
   </data>
+  <data name="OnboardingPropertyIdsEmpty" xml:space="preserve">
+    <value>Scegli almeno un immobile.</value>
+  </data>
+  <data name="OnboardingPropertyIdsTooMany" xml:space="preserve">
+    <value>Puoi scegliere al massimo {0} immobili alla volta.</value>
+  </data>
+  <data name="OnboardingTestBookingNotFound" xml:space="preserve">
+    <value>Per questo immobile non c'è una prenotazione importata da Octorate su cui fare la prova finale.</value>
+  </data>
   <data name="ContactIdMissing" xml:space="preserve">
     <value>L'identificativo del contatto è obbligatorio.</value>
   </data>

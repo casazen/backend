@@ -10,8 +10,10 @@ using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -38,7 +40,8 @@ public class DemoEnvironmentService(
     TimeProvider clock,
     IServiceScopeFactory scopeFactory,
     ICrmContactIndex contactIndex,
-    IFeatureFlags featureFlags) : IDemoEnvironmentService
+    IFeatureFlags featureFlags,
+    IHostEnvironment hostEnvironment) : IDemoEnvironmentService
 {
     private const string Tenant = AppDbContext.TenantQueryFilter;
 
@@ -136,6 +139,7 @@ public class DemoEnvironmentService(
         await RemoveShowcaseTouristTaxRulesAsync(orgId, cancellationToken);
         await RemoveShowcaseCrmAsync(orgId, cancellationToken);
         await RemoveShowcaseFiscalIssuerProfilesAsync(orgId, cancellationToken);
+        await RemoveShowcaseOnboardingAsync(orgId, cancellationToken);
         var removed = await RemoveShowcaseAsync(orgId, cancellationToken);
         await RemoveShowcaseHostInvitesAsync(orgId, cancellationToken);
         var unpublished = removeUnpublished ? await RemoveUnpublishedAsync(orgId, cancellationToken) : 0;
@@ -153,6 +157,10 @@ public class DemoEnvironmentService(
         // NF-90: the welcome link (the QR code) of the demo house, which the houses just created make possible.
         foreach (var welcomeLink in DemoShowcaseCatalog.WelcomeLinks)
             await CreateWelcomeLinkAsync(orgId, ownerId, welcomeLink, cancellationToken);
+
+        // E10/F01/US01/T04: the activation with Octorate of the demo org names houses just created, so it comes after them.
+        foreach (var activation in DemoShowcaseCatalog.OnboardingActivations)
+            await CreateOnboardingActivationAsync(orgId, ownerId, activation, cancellationToken);
 
         foreach (var invite in DemoShowcaseCatalog.HostInvites)
             await CreateHostInviteAsync(orgId, ownerId, invite, cancellationToken);
@@ -818,6 +826,219 @@ public class DemoEnvironmentService(
                     || m.EntityType == TestDataEntities.GuestConsent
                     || m.EntityType == TestDataEntities.MarketingConsent))
             .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes the rows of the activation with Octorate the showcase wrote for the org (E10/F01/US01/T04), found by their markers, the dependent
+    /// ones first: the "To do" of the deferred part, the rows of the onboarding tables, the test mappings, then the test connection they hang on.
+    /// A real row has no marker and is never touched. Runs before the showcase properties go: it finds its rows by the markers they drop.
+    /// </summary>
+    private async Task RemoveShowcaseOnboardingAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        string[] types =
+        [
+            TestDataEntities.Todo,
+            TestDataEntities.OnboardingPartState,
+            TestDataEntities.PropertyFlowActivation,
+            TestDataEntities.OnboardingPanelStep,
+            TestDataEntities.OnboardingAssistRequest,
+            TestDataEntities.OnboardingPilotMember,
+            TestDataEntities.PropertyOnboardingData,
+            TestDataEntities.OctorateListingMapping,
+            TestDataEntities.OctorateConnection,
+        ];
+        var marked = (await Markers()
+                .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && types.Contains(m.EntityType))
+                .Select(m => new { m.EntityType, m.EntityId })
+                .ToListAsync(cancellationToken))
+            .ToLookup(m => m.EntityType, m => m.EntityId);
+        if (marked.Count == 0)
+            return;
+
+        List<Guid> Ids(string type) => [.. marked[type]];
+        var todos = Ids(TestDataEntities.Todo);
+        var partStates = Ids(TestDataEntities.OnboardingPartState);
+        var activations = Ids(TestDataEntities.PropertyFlowActivation);
+        var panelSteps = Ids(TestDataEntities.OnboardingPanelStep);
+        var assists = Ids(TestDataEntities.OnboardingAssistRequest);
+        var pilots = Ids(TestDataEntities.OnboardingPilotMember);
+        var propertyData = Ids(TestDataEntities.PropertyOnboardingData);
+        var mappings = Ids(TestDataEntities.OctorateListingMapping);
+        var connections = Ids(TestDataEntities.OctorateConnection);
+
+        await db.InternalActivities.IgnoreQueryFilters([Tenant])
+            .Where(a => a.OrgId == orgId && todos.Contains(a.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+
+        // The "To do" the sync raised about the test connection (a job of the connector marked it lost): about a row that goes now.
+        await db.InternalActivities.IgnoreQueryFilters([Tenant])
+            .Where(a => a.OrgId == orgId
+                && a.EntityType == OnboardingActivationCodes.ConnectionTodoEntityType
+                && a.EntityId != null
+                && connections.Contains(a.EntityId.Value))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.OnboardingPartStates.IgnoreQueryFilters([Tenant])
+            .Where(s => s.OrgId == orgId && partStates.Contains(s.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.PropertyFlowActivations.IgnoreQueryFilters([Tenant])
+            .Where(a => a.OrgId == orgId && activations.Contains(a.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.OnboardingPanelSteps.IgnoreQueryFilters([Tenant])
+            .Where(s => s.OrgId == orgId && panelSteps.Contains(s.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.OnboardingAssistRequests.IgnoreQueryFilters([Tenant])
+            .Where(r => r.OrgId == orgId && assists.Contains(r.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.OnboardingPilotMembers.IgnoreQueryFilters([Tenant])
+            .Where(p => p.OrgId == orgId && pilots.Contains(p.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.PropertyOnboardingData.IgnoreQueryFilters([Tenant])
+            .Where(d => d.OrgId == orgId && propertyData.Contains(d.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.OctorateListingMappings.IgnoreQueryFilters([Tenant])
+            .Where(m => m.OrgId == orgId && mappings.Contains(m.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.OctorateConnections.IgnoreQueryFilters([Tenant])
+            .Where(c => c.OrgId == orgId && connections.Contains(c.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+
+        await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && types.Contains(m.EntityType))
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The activation with Octorate of the demo org (E10/F01/US01/T04, NF-104, NF-106): a connected test connection of this environment with no
+    /// token (nothing can be called with it; a job of the connector that tries finds no token and marks it lost, which the next reset undoes), the
+    /// confirmed listings of the houses that have one on it (no product: the booking and calendar jobs never read them), the flows activated on
+    /// them, and the deferred part of the plan with its "To do" (codes and ids only, as the plan raises it). The connection and the mappings are
+    /// skipped when the org has a connection of its own in the environment (a real one is never touched nor mixed with invented listings); the
+    /// deferred part is skipped when the org has its own state for that part. Every row is marked as showcase data.
+    /// </summary>
+    private async Task CreateOnboardingActivationAsync(
+        Guid orgId, string ownerId, DemoOnboardingActivationTemplate template, CancellationToken cancellationToken)
+    {
+        var keys = template.Properties.Select(p => p.PropertyKey).ToList();
+        var houses = await Markers()
+            .Where(m => m.OrgId == orgId
+                && m.Origin == TestDataOrigins.Showcase
+                && m.EntityType == TestDataEntities.Property
+                && m.TemplateKey != null
+                && keys.Contains(m.TemplateKey))
+            .ToDictionaryAsync(m => m.TemplateKey!, m => m.EntityId, cancellationToken);
+        var now = UtcNow();
+        var rows = new List<(string EntityType, Guid Id, string Key)>();
+
+        var environment = OctorateEnvironments.Of(hostEnvironment);
+        var hasOwnConnection = await db.OctorateConnections.IgnoreQueryFilters([Tenant])
+            .AnyAsync(c => c.OrgId == orgId && c.Environment == environment, cancellationToken);
+        if (hasOwnConnection)
+        {
+            logger.LogInformation(
+                "Demo Octorate connection of org {OrgId} was skipped: the org has a connection of its own in this environment", orgId);
+        }
+        else
+        {
+            var connection = new OctorateConnection
+            {
+                OrgId = orgId,
+                Environment = environment,
+                OctorateAccountId = template.AccountId,
+                Status = OctorateConnectionStatus.Connected,
+                LastSyncedAt = now,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            db.OctorateConnections.Add(connection);
+            rows.Add((TestDataEntities.OctorateConnection, connection.Id, template.Key));
+
+            foreach (var house in template.Properties.Where(p => p.AccommodationId is not null))
+            {
+                if (!houses.TryGetValue(house.PropertyKey, out var propertyId))
+                    continue;
+
+                var mapping = new OctorateListingMapping
+                {
+                    OrgId = orgId,
+                    ConnectionId = connection.Id,
+                    OctorateAccommodationId = house.AccommodationId!,
+                    SnapshotName = DemoShowcaseCatalog.Properties.FirstOrDefault(p => p.Key == house.PropertyKey)?.Name,
+                    PropertyId = propertyId,
+                    Status = OctorateMappingStatus.Confirmed,
+                    MatchScore = 100,
+                    ConfirmedByUserId = ownerId,
+                    ConfirmedAt = now,
+                    CreatedAt = now,
+                    UpdatedAt = now,
+                };
+                db.OctorateListingMappings.Add(mapping);
+                rows.Add((TestDataEntities.OctorateListingMapping, mapping.Id, $"{template.Key}/{house.PropertyKey}"));
+            }
+        }
+
+        foreach (var house in template.Properties)
+        {
+            if (!houses.TryGetValue(house.PropertyKey, out var propertyId))
+                continue;
+
+            foreach (var flow in house.ActivatedFlows.Distinct())
+            {
+                var activation = new PropertyFlowActivation
+                {
+                    OrgId = orgId,
+                    PropertyId = propertyId,
+                    Flow = flow,
+                    ActivatedAt = now,
+                    ActivatedByUserId = ownerId,
+                };
+                db.PropertyFlowActivations.Add(activation);
+                rows.Add((TestDataEntities.PropertyFlowActivation, activation.Id, $"{template.Key}/{house.PropertyKey}/{flow}"));
+            }
+        }
+
+        var partTaken = await db.OnboardingPartStates.IgnoreQueryFilters([Tenant])
+            .AnyAsync(s => s.OrgId == orgId && s.PartKey == template.DeferredPart, cancellationToken);
+        if (partTaken)
+        {
+            logger.LogInformation("Demo deferred part {Part} of org {OrgId} was skipped: the org has its own state for it", template.DeferredPart, orgId);
+        }
+        else
+        {
+            var remindAt = now.AddDays(template.RemindInDays);
+            var part = new OnboardingPartState
+            {
+                OrgId = orgId,
+                PartKey = template.DeferredPart,
+                Status = OnboardingPartStatus.Deferred,
+                DeferredAt = now,
+                RemindAt = remindAt,
+                UpdatedAt = now,
+                UpdatedByUserId = ownerId,
+            };
+            var todo = new InternalActivity
+            {
+                OrgId = orgId,
+                ActivityType = nameof(ActivityType.WizardResume),
+                Action = ActivityAction.ResumeWizard,
+                EntityType = OnboardingPlanCodes.TodoEntityType,
+                EntityId = part.Id,
+                Urgency = ActivityUrgency.Medium,
+                Deadline = remindAt,
+                Reason = OnboardingPlanCodes.ReasonDeferred,
+                Status = InternalActivity.StatusPending,
+                ScheduledAt = remindAt,
+                CreatedAt = now,
+            };
+            part.ActivityId = todo.Id;
+            db.OnboardingPartStates.Add(part);
+            db.InternalActivities.Add(todo);
+            rows.Add((TestDataEntities.OnboardingPartState, part.Id, $"{template.Key}/{template.DeferredPart}"));
+            rows.Add((TestDataEntities.Todo, todo.Id, $"{template.Key}/{template.DeferredPart}"));
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        foreach (var (entityType, id, key) in rows)
+            await MarkAsync(orgId, entityType, id, TestDataOrigins.Showcase, key, cancellationToken);
     }
 
     /// <summary>

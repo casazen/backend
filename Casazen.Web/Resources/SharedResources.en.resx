@@ -4872,6 +4872,15 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OnboardingRemindAtInvalid" xml:space="preserve">
     <value>Choose a reminder in the future, within {0} days.</value>
   </data>
+  <data name="OnboardingPropertyIdsEmpty" xml:space="preserve">
+    <value>Choose at least one property.</value>
+  </data>
+  <data name="OnboardingPropertyIdsTooMany" xml:space="preserve">
+    <value>You can choose at most {0} properties at a time.</value>
+  </data>
+  <data name="OnboardingTestBookingNotFound" xml:space="preserve">
+    <value>This property has no booking imported from Octorate to run the final test on.</value>
+  </data>
   <data name="ContactIdMissing" xml:space="preserve">
     <value>The contact identifier is required.</value>
   </data>

@@ -1,6 +1,8 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
+using Casazen.Web.BackgroundJobs;
 
 namespace Casazen.Web.Extensions;
 
@@ -47,6 +49,17 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IOnboardingPartEvaluator>(_ => new NotProvidedPartEvaluator(OnboardingPartKey.MessagesAi));
         services.AddScoped<IOnboardingPartEvaluator>(_ => new NotProvidedPartEvaluator(OnboardingPartKey.FiscalDocuments));
         services.AddScoped<IOnboardingPartEvaluator>(_ => new NotProvidedPartEvaluator(OnboardingPartKey.Partners));
+
+        // The activation of the flows, the reader of the active flows for the consumers, the final read-only test with one check for each flow
+        // that has one (the others are skipped as «not provided»), and the hourly "To do" sync (E10/F01/US01/T04).
+        services.Configure<OnboardingOptions>(configuration.GetSection(OnboardingOptions.SectionName));
+        services.AddScoped<IOnboardingFlowActivationService, OnboardingFlowActivationService>();
+        services.AddScoped<IFlowActivationReader, FlowActivationReader>();
+        services.AddScoped<IOnboardingFlowTestRunService, OnboardingFlowTestRunService>();
+        services.AddScoped<IFlowDryRunCheck, ListingsDryRunCheck>();
+        services.AddScoped<IFlowDryRunCheck, BookingsDryRunCheck>();
+        services.AddScoped<IFlowDryRunCheck, CheckInComplianceDryRunCheck>();
+        services.AddScoped<OnboardingFlowTodoSyncJob>();
 
         return services;
     }

@@ -158,4 +158,37 @@ public static class TestDataEntities
     /// test token. It follows its house (cascade) and the reset deletes its marker with the other showcase markers.
     /// </summary>
     public const string WelcomeLink = "PropertyWelcomeLink";
+
+    // E10/F01/US01/T04: the tables of the activation of CasaZen with Octorate. The reset deletes only the rows of these tables that carry a showcase
+    // marker of the org (before its houses), so a real row has no marker and is never touched.
+
+    /// <summary>The host's intent on a part of the activation plan (<see cref="Entities.OnboardingPartState"/>): the deferred part of the demo.</summary>
+    public const string OnboardingPartState = "OnboardingPartState";
+
+    /// <summary>A flow activated on a property (<see cref="Entities.PropertyFlowActivation"/>); it also goes with its property.</summary>
+    public const string PropertyFlowActivation = "PropertyFlowActivation";
+
+    /// <summary>A step done in the Octorate panel (<see cref="Entities.OnboardingPanelStep"/>).</summary>
+    public const string OnboardingPanelStep = "OnboardingPanelStep";
+
+    /// <summary>A «Do it for me» request (<see cref="Entities.OnboardingAssistRequest"/>).</summary>
+    public const string OnboardingAssistRequest = "OnboardingAssistRequest";
+
+    /// <summary>A member of the pilot of the activation (<see cref="Entities.OnboardingPilotMember"/>).</summary>
+    public const string OnboardingPilotMember = "OnboardingPilotMember";
+
+    /// <summary>The onboarding data of a property (<see cref="Entities.PropertyOnboardingData"/>).</summary>
+    public const string PropertyOnboardingData = "PropertyOnboardingData";
+
+    /// <summary>
+    /// The test connection of the demo org to Octorate (<see cref="Entities.OctorateConnection"/>, no token): written only when the org has no
+    /// connection of its own in the environment, deleted by the next reset. A real connection has no marker and is never touched.
+    /// </summary>
+    public const string OctorateConnection = "OctorateConnection";
+
+    /// <summary>A confirmed test mapping of a demo house to an invented listing (<see cref="Entities.OctorateListingMapping"/>), on the test connection.</summary>
+    public const string OctorateListingMapping = "OctorateListingMapping";
+
+    /// <summary>A "To do" of the demo host (<see cref="Entities.InternalActivity"/>): the reminder of the deferred part. No property: deleted by its marker.</summary>
+    public const string Todo = "InternalActivity";
 }
