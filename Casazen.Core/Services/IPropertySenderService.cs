@@ -53,7 +53,8 @@ public interface IPropertySenderService
         ComplianceSenderType? istatSender = null);
 
     /// <summary>
-    /// Tests the sender. Channel manager: reads the police account of the accommodation on Octorate and answers <see cref="SenderConnectionTestOutcome.Verified"/> only when the
+    /// Tests the sender. Channel manager: reads the police account of the accommodation on Octorate (bounded in time, like the read of the
+    /// sender: a slow Octorate is <see cref="SenderConnectionTestOutcome.Unverifiable"/>, not an error) and answers <see cref="SenderConnectionTestOutcome.Verified"/> only when the
     /// police account is valid and its automatic send is on (both read), <see cref="SenderConnectionTestOutcome.Inactive"/> when it is not, and
     /// <see cref="SenderConnectionTestOutcome.Unverifiable"/> when the API does not expose it or cannot be reached. CasaZen:
     /// <see cref="SenderConnectionTestOutcome.NotAvailable"/>. Manual: <see cref="SenderConnectionTestOutcome.NotApplicable"/>. Nothing is stored or transmitted.

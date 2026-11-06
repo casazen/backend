@@ -37,7 +37,7 @@ public sealed class PropertySenderService(
     ILogger<PropertySenderService> logger,
     TimeProvider? timeProvider = null) : IPropertySenderService
 {
-    /// <summary>How long the read of a sender waits for Octorate before it answers without the police fields.</summary>
+    /// <summary>How long the read of a sender, and its connection test, wait for Octorate before they answer without the police fields.</summary>
     internal static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(8);
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -121,7 +121,7 @@ public sealed class PropertySenderService(
         // The channel manager: only Octorate can prove it, so without a connection to read it from nothing is verified.
         var accommodationId = await ConfirmedAccommodationIdAsync(info.PropertyId, info.OrgId, ct);
         var available = accommodationId is not null && featureFlags.IsEnabled(FeatureFlags.OctorateConnector);
-        var police = available ? await ReadPoliceAsync(info, accommodationId!, timeout: null, ct) : null;
+        var police = available ? await ReadPoliceAsync(info, accommodationId!, ct) : null;
         var (verdict, reason) = Judge(police, available);
         var outcome = verdict switch
         {
@@ -176,7 +176,7 @@ public sealed class PropertySenderService(
 
         PoliceReading? police = null;
         if (info.AlloggiatiSender == ComplianceSenderType.ChannelManager && channelManagerAvailable)
-            police = await ReadPoliceAsync(info, accommodationId!, ReadTimeout, ct);
+            police = await ReadPoliceAsync(info, accommodationId!, ct);
 
         var declaredAt = await StandingDeclarationAsync(info.PropertyId, ct);
         var questura = await credentials.GetStatusAsync(info.PropertyId, ct);
@@ -271,14 +271,16 @@ public sealed class PropertySenderService(
     }
 
     /// <summary>
-    /// Reads the police fields of the accommodation on Octorate for the org of the property. Every failure of Octorate (not connected,
-    /// refused, unreachable, slow) is an unknown reading with its reason: it never fails the call and never proves anything.
+    /// Reads the police fields of the accommodation on Octorate for the org of the property, for the read of the sender and for its
+    /// connection test alike: the wait is capped at <see cref="ReadTimeout"/> whoever asks (the token renewal and the retries of a 429 are
+    /// inside it), never left to the 30 seconds of the HTTP client plus the backoff, which a proxy in front of the API would not wait for.
+    /// Every failure of Octorate (not connected, refused, unreachable, slow) is an unknown reading with its reason: it never fails the call
+    /// and never proves anything.
     /// </summary>
-    private async Task<PoliceReading> ReadPoliceAsync(PropertySenderInfo info, string accommodationId, TimeSpan? timeout, CancellationToken ct)
+    private async Task<PoliceReading> ReadPoliceAsync(PropertySenderInfo info, string accommodationId, CancellationToken ct)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        if (timeout is { } limit)
-            linked.CancelAfter(limit);
+        linked.CancelAfter(ReadTimeout);
 
         try
         {

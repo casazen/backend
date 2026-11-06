@@ -155,6 +155,12 @@ public class PropertySenderServiceTests
         Assert.Equal((SenderConnectionTestOutcome.Unverifiable, SenderReasonCodes.Unavailable), (down.Outcome, down.Reason));
         Assert.Equal(SenderState.Declared, (await service.GetAsync(world.Connected, CancellationToken.None)).State);
 
+        // Octorate does not answer within the cap and the call is cut short: the same for the test as for the read, unknown and not an error.
+        octorate.Setup(o => o.GetPoliceAccountAsync(Accommodation, It.IsAny<CancellationToken>())).ThrowsAsync(new TaskCanceledException());
+        var slow = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
+        Assert.Equal((SenderConnectionTestOutcome.Unverifiable, SenderReasonCodes.Unavailable), (slow.Outcome, slow.Reason));
+        Assert.Equal(SenderState.Declared, (await service.GetAsync(world.Connected, CancellationToken.None)).State);
+
         // Octorate says the account is not valid, or the automatic send is off: inactive, whatever the host declared.
         OctorateExposes(octorate, valid: false, autorun: true);
         var invalid = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
