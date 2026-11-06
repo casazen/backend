@@ -41,8 +41,10 @@ namespace Casazen.Infrastructure.Octorate;
 /// then reaches the caller, so an event is delivered again. The license without the <c>chat</c> module is the state
 /// <see cref="OtaMessageSyncErrorCodes.ChatNotLicensed"/>: it does not stop the other listings, and the listing is probed again after an hour. A
 /// rate limit, an organization that is not connected and the wrong environment end the run with nothing recorded against a listing.</item>
-/// <item><b>Rate limit.</b> The calls leave <see cref="RateReserve"/> of the org's bucket to the people who use CasaZen; a run waits for the bucket
-/// at most <see cref="MaxRateWait"/> and then ends with <see cref="OctorateRateLimitException"/>, the checkpoints saved.</item>
+/// <item><b>Rate limit.</b> The calls leave <see cref="RateReserve"/> of the org's bucket to the people who use CasaZen; a run of a job waits for the
+/// bucket at most <see cref="MaxRateWait"/> and then ends with <see cref="OctorateRateLimitException"/>, the checkpoints saved. The handler of a
+/// notification runs in the outbox dispatcher, which serves every org within a budget of seconds, so it never waits (<see cref="MessageSyncPacing"/>):
+/// with the bucket down to the reserve it ends at once with the same exception, and the dispatcher delivers the event again.</item>
 /// <item><b>Erased guests.</b> A thread anonymized with its guest (<see cref="OtaMessageThread.AnonymizedAt"/>) is read for its structure only:
 /// no name, no text and no attachment of it comes back. The erasure only finds the threads that are there and linked to the booking of the guest when
 /// it runs, so the sync looks at the guest of the booking of every thread it applies: a thread copied for the first time, or linked to its booking,
@@ -58,6 +60,7 @@ public sealed class MessageSyncService(
     IDomainEventRecorder recorder,
     IFeatureFlags featureFlags,
     OctorateRateLimiter rateLimiter,
+    MessageSyncPacing pacing,
     TimeProvider timeProvider,
     ILogger<MessageSyncService> logger) : IMessageSyncService
 {
@@ -1079,10 +1082,21 @@ public sealed class MessageSyncService(
 
     /// <summary>
     /// Waits, at most <see cref="MaxRateWait"/>, until the bucket of the org has more than <see cref="RateReserve"/> calls; the run ends with
-    /// <see cref="OctorateRateLimitException"/> when it did not refill in time (the checkpoints are saved, the next run continues).
+    /// <see cref="OctorateRateLimitException"/> when it did not refill in time (the checkpoints are saved, the next run continues). The handler of a
+    /// notification does not wait (<see cref="MessageSyncPacing"/>): with the bucket down to the reserve it ends at once.
     /// </summary>
     private async Task WaitForCapacityAsync(Guid orgId, CancellationToken ct)
     {
+        if (!pacing.WaitForCapacity)
+        {
+            // The handler of a notification runs in the outbox dispatcher, one event after the other for every org within a budget of seconds: it does
+            // not wait for the bucket, it ends at once and the dispatcher delivers the event again at its next run (ADR-022-R4).
+            if (rateLimiter.AvailableCalls(orgId) <= RateReserve)
+                throw new OctorateRateLimitException(null);
+
+            return;
+        }
+
         var waited = TimeSpan.Zero;
         while (rateLimiter.AvailableCalls(orgId) <= RateReserve)
         {

@@ -19,7 +19,10 @@ public static class MessageSyncServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // E05/F01/US01/T02 (NF-62, NF-64): the threads and messages of the channels, copied from the channel manager and kept up to date.
+        // E05/F01/US01/T02 (NF-62, NF-64): the threads and messages of the channels, copied from the channel manager and kept up to date. The pacing is
+        // one for the scope: the handler of a notification, which runs in the outbox dispatcher, tells the service of its scope not to wait for the calls
+        // of the org to refill; the jobs and the import keep the default and wait.
+        services.AddScoped<MessageSyncPacing>();
         services.AddScoped<IMessageSyncService, MessageSyncService>();
 
         // E05/F01/US01/T03 (NF-62, OCT-08, OCT-09): the chat notification of the webhook re-reads the thread; the pass of every 10 minutes and the

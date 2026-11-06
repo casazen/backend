@@ -117,7 +117,9 @@ be another object), makes `ReconcileRecentAsync` read the org's listings instead
    `ota-thread:{thread}:{last message}:{flag of Octorate's assistant}`) says a thread was read, for the guard that keeps that assistant off.
    A new inbound message older than 48 hours is stored and raises no event: the import of a history must not notify.
 2. **A thread of a listing nobody confirmed** is stored with no property (unassigned) and gets it at the first pass after the confirmation.
-3. **Failures.** An error of Octorate or a rate limit that did not clear makes the handler throw, and the dispatcher delivers the event again;
+3. **Failures.** An error of Octorate, or the calls of the org being used up, makes the handler throw, and the dispatcher delivers the event again
+   at its next run (the handler never waits for the calls to refill: it runs in the outbox dispatcher, which serves every org within a budget of
+   seconds, so it ends at once with the rate limit; the jobs and the import wait for them, up to two minutes);
    an org that disconnected, and a listing without the chat module in its license (`OtaMessageSyncStates.LastError = chat_not_licensed`, shown to
    the host as a state and never as an empty inbox), end the handler quietly.
 4. **The passes.** `ota-message-reconcile` (every 10 minutes) reads `GET /rest/v1/accommodation/recentMessages?property=` for each listing

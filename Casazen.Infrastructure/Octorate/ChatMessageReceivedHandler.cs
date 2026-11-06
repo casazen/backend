@@ -19,8 +19,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>Once, in any order.</b> Octorate retries for up to two days, folds identical sends of five minutes and keeps no order. A notification
 /// delivered again, late or before the one it follows re-reads the thread, which stores what is new and nothing twice (keys of the message and of
 /// the thread in the service, ADR-022-R7): one message and one event however many times it arrives.</item>
-/// <item><b>Failures.</b> An error of Octorate, a rate limit that did not clear and a database error throw, so the dispatcher delivers the event
-/// again (ADR-022-R4) and the reconciliation catches whatever is left. An org that disconnected, and a listing whose license has no chat module (kept
+/// <item><b>Failures.</b> An error of Octorate, a rate limit and a database error throw, so the dispatcher delivers the event again (ADR-022-R4) and the
+/// reconciliation catches whatever is left. The handler never waits for the calls of the org to refill (<see cref="MessageSyncPacing"/>): it runs in the
+/// dispatcher, which serves every org within a budget of seconds, so with the calls down to the reserve it throws the rate limit at once. An org that disconnected, and a listing whose license has no chat module (kept
 /// as the state of the listing, <c>chat_not_licensed</c>), end the handler quietly: a retry would find the same.</item>
 /// <item>Off with <c>Features:OctorateConnector</c>: the connector is switched off, no call is made.</item>
 /// <item><b>Privacy.</b> The log line carries the event id, the kind of notification and how it went: never the body of the call.</item>
@@ -30,6 +31,7 @@ public sealed class ChatMessageReceivedHandler(
     IMessageSyncService sync,
     IOctorateOrgScope orgScope,
     IFeatureFlags featureFlags,
+    MessageSyncPacing pacing,
     ILogger<ChatMessageReceivedHandler> logger) : IEventHandler<OctorateWebhookReceivedEvent>
 {
     public async Task HandleAsync(OctorateWebhookReceivedEvent domainEvent, CancellationToken ct)
@@ -44,6 +46,10 @@ public sealed class ChatMessageReceivedHandler(
             logger.LogInformation("Octorate webhook {EventId} ({EventType}): the connector is off, nothing done", domainEvent.Id, domainEvent.WebhookType);
             return;
         }
+
+        // This runs in the outbox dispatcher, one event after the other for every org within a budget of seconds: the sync of this scope never waits for
+        // the calls of the org to refill, it ends at once with the rate limit and the dispatcher delivers the event again at its next run.
+        pacing.WaitForCapacity = false;
 
         SyncResult result;
         try

@@ -32,6 +32,7 @@ internal sealed class MessageSyncHarness
 
     public MessageSyncHarness()
     {
+        Limiter = new OctorateRateLimiter(Clock);
         using var seed = NewDb();
         var connection = new OctorateConnection { OrgId = OrgA, Environment = OctorateEnvironment.Test, Status = OctorateConnectionStatus.Connected };
         seed.OctorateConnections.Add(connection);
@@ -60,11 +61,17 @@ internal sealed class MessageSyncHarness
 
     public CapturingLogger<MessageSyncService> Log { get; } = new();
 
+    /// <summary>The rate limiter of the application (one instance): a test drains the calls of org A to see what the sync does without them.</summary>
+    public OctorateRateLimiter Limiter { get; }
+
     public AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, NullTenantContext.Instance);
 
-    /// <summary>The service in one scope of the container: its own context, the org scope and the recorder of that context.</summary>
-    public MessageSyncService Service(AppDbContext db) =>
+    /// <summary>
+    /// The service in one scope of the container: its own context, the org scope and the recorder of that context, and the pacing of the scope (the
+    /// default waits for the calls of the org, as a job does; the handler of a notification shares the one of its scope and sets it not to wait).
+    /// </summary>
+    public MessageSyncService Service(AppDbContext db, MessageSyncPacing? pacing = null) =>
         new(
             db,
             Client.Object,
@@ -72,7 +79,8 @@ internal sealed class MessageSyncHarness
             Mappings.Object,
             new DomainEventRecorder(db, NullTenantContext.Instance, Clock),
             Flags.Object,
-            new OctorateRateLimiter(Clock),
+            Limiter,
+            pacing ?? new MessageSyncPacing(),
             Clock,
             Log);
 

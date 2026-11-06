@@ -166,8 +166,43 @@ public class ChatMessageReceivedHandlerTests
         Assert.Equal(0, await h.ReadAsync(db => db.OtaMessageThreads.CountAsync()));
     }
 
-    private static ChatMessageReceivedHandler Handler(MessageSyncHarness h, AppDbContext db) =>
-        new(h.Service(db), new OctorateOrgScope(NullTenantContext.Instance), h.Flags.Object, NullLogger<ChatMessageReceivedHandler>.Instance);
+    /// <summary>
+    /// The handler runs in the outbox dispatcher, one event after the other for every org within a budget of seconds, so it never waits for the calls of
+    /// the org to Octorate to refill: with the bucket down to the calls kept for the people who use CasaZen it ends at once with the rate limit (the
+    /// dispatcher delivers the event again at its next run) and nothing is read, also when the notification names no thread and the recent pass would
+    /// read. A service that waited would wait for a bucket that does not refill here (the clock is fixed): it ends with the rate limit only after the
+    /// two minutes it may wait, and the test, which allows it twenty seconds, fails.
+    /// </summary>
+    [Fact]
+    public async Task ChatMessageReceived_WithTheCallsOfTheOrgUsedUp_EndsAtOnceWithTheRateLimit_AndDoesNotWait()
+    {
+        var h = new MessageSyncHarness();
+        while (h.Limiter.AvailableCalls(MessageSyncHarness.OrgA) > MessageSyncService.RateReserve)
+            await h.Limiter.TryAcquireAsync(MessageSyncHarness.OrgA);
+
+        foreach (var objectId in new[] { ThreadId, null })
+        {
+            await using var db = h.NewDb();
+            var handling = Handler(h, db).HandleAsync(Notification(OctorateWebhookEvents.ChatMessageReceived, MessageSyncHarness.Accommodation, objectId), CancellationToken.None);
+            await Assert.ThrowsAsync<OctorateRateLimitException>(() => handling.WaitAsync(TimeSpan.FromSeconds(20)));
+        }
+
+        h.Client.VerifyNoOtherCalls();
+        Assert.Equal(0, await h.ReadAsync(db => db.OtaMessageThreads.CountAsync()));
+        Assert.Empty(await h.ReadAsync(db => db.OtaMessageSyncStates.ToListAsync()));
+    }
+
+    /// <summary>The handler as the container builds it for one delivery: it and the service of its scope share the pacing of the scope.</summary>
+    private static ChatMessageReceivedHandler Handler(MessageSyncHarness h, AppDbContext db)
+    {
+        var pacing = new MessageSyncPacing();
+        return new ChatMessageReceivedHandler(
+            h.Service(db, pacing),
+            new OctorateOrgScope(NullTenantContext.Instance),
+            h.Flags.Object,
+            pacing,
+            NullLogger<ChatMessageReceivedHandler>.Instance);
+    }
 
     /// <summary>
     /// A notification of the webhook as the event bus hands it to a handler: the same event id on every delivery, the payload of the ids the controller

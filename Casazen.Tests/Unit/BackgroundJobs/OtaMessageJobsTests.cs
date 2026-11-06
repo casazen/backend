@@ -190,6 +190,9 @@ public class OtaMessageJobsTests
         services.AddMessageSync();
 
         Assert.Contains(services, d => d.ServiceType == typeof(IMessageSyncService) && d.ImplementationType == typeof(MessageSyncService));
+
+        // One pacing for the scope: the handler sets it not to wait and the service of the same scope reads it.
+        Assert.Contains(services, d => d.ServiceType == typeof(MessageSyncPacing) && d.Lifetime == ServiceLifetime.Scoped);
         Assert.Contains(
             services,
             d => d.ServiceType == typeof(IEventHandler<OctorateWebhookReceivedEvent>) && d.ImplementationType == typeof(ChatMessageReceivedHandler));
