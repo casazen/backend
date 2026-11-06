@@ -9,9 +9,10 @@ namespace Casazen.Core.Services;
 /// set for dates (<see cref="DayRulePricing.HostPrices"/>), so the calendar, the quote and the checkout agree to the cent.
 /// </summary>
 /// <remarks>
-/// <para><b>Reach.</b> The services never decide on roles: <see cref="GetDaysAsync"/> narrows the properties by the <see cref="HostScope"/> it is given,
-/// in SQL, like every list of the host; <see cref="GetRulesAsync"/> and <see cref="ApplyAsync"/> work on one property of the caller's org (the tenant
-/// filter hides any other) and expect the caller to have settled that its reach covers it (the changes API does, before it calls them).</para>
+/// <para><b>Reach.</b> The services never decide on roles, but every read of the host and every write takes the <see cref="HostScope"/> of the caller and narrows the
+/// properties by it, in SQL, like every list of the host (<c>InScope</c>): <see cref="GetDaysAsync"/> leaves out the properties the caller does not reach,
+/// <see cref="GetRulesAsync"/> and <see cref="ApplyAsync"/> answer a property the caller does not reach (another org's, or one a collaborator limited to some
+/// properties was not given) as one that does not exist. A caller cannot forget the check: there is no way in without a scope.</para>
 /// <para><b>No endpoint writes rules here.</b> The host writes them through the changes API (E08/F05/US02/T03), which calls <see cref="ApplyAsync"/>.</para>
 /// </remarks>
 public interface IPropertyDayRuleService
@@ -31,9 +32,11 @@ public interface IPropertyDayRuleService
 
     /// <summary>
     /// The rules of one property from <paramref name="from"/> (included) to <paramref name="toExclusive"/> (excluded), by night: only the nights that
-    /// have a row. Read through the tenant filter, for the host.
+    /// have a row. For the host: the property is looked up through the tenant filter and the <paramref name="scope"/> of the caller.
     /// </summary>
+    /// <exception cref="Exceptions.NotFoundException">The property does not exist for the caller (another org, outside its reach, or deleted).</exception>
     Task<IReadOnlyDictionary<DateOnly, DayRuleValues>> GetRulesAsync(
+        HostScope scope,
         Guid propertyId,
         DateOnly from,
         DateOnly toExclusive,
@@ -68,8 +71,9 @@ public interface IPropertyDayRuleService
     /// <exception cref="Exceptions.DomainRuleException">
     /// A code of <see cref="DayRuleErrorCodes"/>: the range, the weekdays, the patch or a merged value is not allowed.
     /// </exception>
-    /// <exception cref="Exceptions.NotFoundException">The property does not exist for the caller (another org, or deleted).</exception>
+    /// <exception cref="Exceptions.NotFoundException">The property does not exist for the caller (another org, outside its reach, or deleted).</exception>
     Task<DayRuleApplyResult> ApplyAsync(
+        HostScope scope,
         Guid propertyId,
         DateOnly from,
         DateOnly toInclusive,

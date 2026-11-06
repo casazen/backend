@@ -1,3 +1,4 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
@@ -382,7 +383,7 @@ public class DayRulesBookingSiteTests
 
     private async Task ApplyAsync(DateOnly from, DateOnly to, DayRulePatch patch)
     {
-        await _rules.ApplyAsync(_property.Id, from, to, null, patch, "auth0|host");
+        await _rules.ApplyAsync(new HostScope(_property.OrgId), _property.Id, from, to, null, patch, "auth0|host");
         await _db.SaveChangesAsync();
     }
 

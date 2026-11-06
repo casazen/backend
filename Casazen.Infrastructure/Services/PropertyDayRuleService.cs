@@ -261,18 +261,30 @@ public sealed class PropertyDayRuleService(
 
     // --- The rules ---------------------------------------------------------------------------------------------
 
+    // The properties of the caller's org that its reach covers (InScope, in SQL; the tenant filter also hides a deleted one).
+    private IQueryable<Property> ReachableProperties(HostScope scope) =>
+        db.Properties.AsNoTracking().Where(p => p.OrgId == scope.OrgId).InScope(scope);
+
     public async Task<IReadOnlyDictionary<DateOnly, DayRuleValues>> GetRulesAsync(
+        HostScope scope,
         Guid propertyId,
         DateOnly from,
         DateOnly toExclusive,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        // The property as the caller reaches it: one of another org, one a collaborator limited to some properties was not given and a deleted one
+        // are not found, the same answer as an id that does not exist.
+        if (!await ReachableProperties(scope).AnyAsync(p => p.Id == propertyId, cancellationToken))
+            throw new NotFoundException("Property not found") { MessageKey = "PropertyNotFound" };
+
         if (toExclusive <= from)
             return new Dictionary<DateOnly, DayRuleValues>();
 
         var rows = await db.PropertyDayRules
             .AsNoTracking()
-            .Where(r => r.PropertyId == propertyId && r.StayDate >= from && r.StayDate < toExclusive)
+            .Where(r => r.OrgId == scope.OrgId && r.PropertyId == propertyId && r.StayDate >= from && r.StayDate < toExclusive)
             .Select(r => new RuleRow(
                 r.PropertyId, r.StayDate, r.Price, r.MinNights, r.MaxNights, r.ClosedToArrival, r.ClosedToDeparture, r.MinAdvanceDays, r.MaxAdvanceDays))
             .ToListAsync(cancellationToken);
@@ -307,6 +319,7 @@ public sealed class PropertyDayRuleService(
     }
 
     public async Task<DayRuleApplyResult> ApplyAsync(
+        HostScope scope,
         Guid propertyId,
         DateOnly from,
         DateOnly toInclusive,
@@ -315,6 +328,7 @@ public sealed class PropertyDayRuleService(
         string? userId,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(patch);
 
         // Everything that can be refused is refused before the database is asked, and before anything is staged.
@@ -322,9 +336,9 @@ public sealed class PropertyDayRuleService(
         if (patch.IsEmpty || days is { Count: 0 })
             throw DayRuleRules.ProblemOf(DayRuleErrorCodes.NothingToChange);
 
-        // The property as the caller sees it: the tenant filter hides one of another org, and a deleted one.
-        var property = await db.Properties
-            .AsNoTracking()
+        // The property as the caller reaches it: the tenant filter hides one of another org and a deleted one, the scope one a collaborator limited to
+        // some properties was not given.
+        var property = await ReachableProperties(scope)
             .Where(p => p.Id == propertyId)
             .Select(p => new { p.OrgId, p.Timezone })
             .FirstOrDefaultAsync(cancellationToken)
@@ -333,7 +347,7 @@ public sealed class PropertyDayRuleService(
         var now = _clock.GetUtcNow();
         var today = DayRuleRules.TodayOf(property.Timezone, now);
         var existing = await db.PropertyDayRules
-            .Where(r => r.PropertyId == propertyId && r.StayDate >= from && r.StayDate <= toInclusive)
+            .Where(r => r.OrgId == property.OrgId && r.PropertyId == propertyId && r.StayDate >= from && r.StayDate <= toInclusive)
             .ToDictionaryAsync(r => r.StayDate, cancellationToken);
 
         // Night by night: the days of the weekdays chosen, not before today of the property, the values validated as they end up.

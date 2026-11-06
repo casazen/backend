@@ -144,8 +144,8 @@ public class PublicSiteSearchDayRulesTests
             inner.GetDaysAsync(scope, query, cancellationToken);
 
         public Task<IReadOnlyDictionary<DateOnly, DayRuleValues>> GetRulesAsync(
-            Guid propertyId, DateOnly from, DateOnly toExclusive, CancellationToken cancellationToken = default) =>
-            inner.GetRulesAsync(propertyId, from, toExclusive, cancellationToken);
+            HostScope scope, Guid propertyId, DateOnly from, DateOnly toExclusive, CancellationToken cancellationToken = default) =>
+            inner.GetRulesAsync(scope, propertyId, from, toExclusive, cancellationToken);
 
         public Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>>> GetRulesForSiteAsync(
             IReadOnlyCollection<Guid> propertyIds, DateOnly from, DateOnly toExclusive, CancellationToken cancellationToken = default)
@@ -155,6 +155,7 @@ public class PublicSiteSearchDayRulesTests
         }
 
         public Task<DayRuleApplyResult> ApplyAsync(
+            HostScope scope,
             Guid propertyId,
             DateOnly from,
             DateOnly toInclusive,
@@ -162,7 +163,7 @@ public class PublicSiteSearchDayRulesTests
             DayRulePatch patch,
             string? userId,
             CancellationToken cancellationToken = default) =>
-            inner.ApplyAsync(propertyId, from, toInclusive, days, patch, userId, cancellationToken);
+            inner.ApplyAsync(scope, propertyId, from, toInclusive, days, patch, userId, cancellationToken);
 
         public void DiscardStaged() => inner.DiscardStaged();
 

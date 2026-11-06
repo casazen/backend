@@ -23,6 +23,7 @@ internal sealed class NoDayRules : IPropertyDayRuleService
         throw new NotSupportedException("A test that reads the days of the calendar builds the real service.");
 
     public Task<IReadOnlyDictionary<DateOnly, DayRuleValues>> GetRulesAsync(
+        HostScope scope,
         Guid propertyId,
         DateOnly from,
         DateOnly toExclusive,
@@ -30,6 +31,7 @@ internal sealed class NoDayRules : IPropertyDayRuleService
         Task.FromResult<IReadOnlyDictionary<DateOnly, DayRuleValues>>(new Dictionary<DateOnly, DayRuleValues>());
 
     public Task<DayRuleApplyResult> ApplyAsync(
+        HostScope scope,
         Guid propertyId,
         DateOnly from,
         DateOnly toInclusive,
