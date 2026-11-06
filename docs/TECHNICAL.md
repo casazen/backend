@@ -1676,6 +1676,35 @@ Who an invoice of a booking is made out to. One row for each booking; it goes wi
 | `CreatedAt`, `UpdatedAt`, `UpdatedByUserId` | `DateTime`, `DateTime`, `string?` (255) | — | UTC; the person who saved it last when it was the host |
 | `xmin` | `uint` | concurrency token (`RowVersion`) | PostgreSQL system column; no column of its own |
 
+#### `OrgFiscalIssuerProfile` (NF-82, E06/F02/US02/T01)
+
+Who issues the fiscal documents of an organization and with which data (the wizard «Come emetti i documenti?»). One row for each organization. The VAT number and the fiscal code of the issuer stay on `Orgs` (`PartitaIvaNumber`, `FiscalCode`): the profile never copies them.
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | **unique** (`UIX_OrgFiscalIssuerProfiles_OrgId`), tenant key (`ITenantOwned`) | The organization |
+| `IssuerMode` | `int` (enum) | explicit numbers, never reused | `Octorate` 1 (the channel manager issues, CasaZen reads), `CasaZenDirectOnly` 2 (CasaZen issues, direct bookings only), `Accountant` 3 (nobody issues here) |
+| `DocumentRegime` | `int?` (enum) | explicit numbers, never reused | `PrivatePerson` 1, `VatOrdinary` 2, `VatFlatRate` 3; `null` until the issuer says it |
+| `LegalName` (200), `AddressStreet` (200), `AddressCivic` (20), `PostalCode` (10), `City` (100), `Province` (2), `CountryCode` (2, default `IT`) | `string`, nullable but the country | — | The legal name and the structured address of the issuer |
+| `FatturaPaRegimeCode` | `string?` (4) | — | `RF01`, `RF19`...: the rule of the regime gives it and the accountant can override it here |
+| `IssuerSdiRecipientCode` (7), `IssuerPec` (254), `DefaultSeries` (20) | `string?` | — | The issuer's own SDI code and PEC, and the series documents are numbered in by default |
+| `ConfirmedAt` | `DateTime?` | — | When the wizard was completed (UTC) |
+| `UpdatedAt`, `UpdatedByUserId` | `DateTime`, `string?` (255) | — | UTC; the person who saved it last |
+
+#### `BookingDocumentIssuer` (NF-82, E06/F02/US02/T01)
+
+The single issuer of the documents of a booking, written when the first document is issued by CasaZen or found issued by Octorate, and never changed. The database itself refuses a second issuer.
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | tenant key (`ITenantOwned`) | The org of the booking |
+| `BookingId` | `Guid` | FK `Bookings` (CASCADE), **unique** (`UIX_BookingDocumentIssuers_BookingId`) | The booking; at most one issuer |
+| `Issuer` | `int` (enum) | explicit numbers, never reused | `Octorate` 1, `CasaZen` 2 |
+| `LockedAt` | `DateTime` | — | UTC |
+| `LockedByDocumentId` | `Guid?` | no foreign key | The document that locked it; the table of the documents arrives with E06/F01/US02/T01 |
+
 #### Activation of CasaZen with Octorate (NF-104..NF-107, E10/F01/US01/T01)
 
 Six tables keep what the activation cannot derive: the host's intents and the activation facts. **The state of a part of the plan and of a flow is never stored**: it is derived on every read from the connection, the mapping, the sender... (the principle of the activation checklist of PL-15). Every table is `ITenantOwned` (`OrgId` FK `Orgs` RESTRICT, global tenant query filter); a property-bound row goes with its property (FK `Properties` CASCADE). Ids are `Guid`, users are `string` (255, the Auth0 subject, never a foreign key), enums are stored as their number (explicit values, never renumbered), no row holds a secret or personal data. Nothing writes to them yet except the tasks of E10 that follow; they are not read while `Features:OctorateOnboarding` is off.

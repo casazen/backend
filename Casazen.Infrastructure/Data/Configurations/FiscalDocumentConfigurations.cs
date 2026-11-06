@@ -19,3 +19,29 @@ internal sealed class BookingInvoiceDataConfiguration : IEntityTypeConfiguration
         entity.Property(d => d.RowVersion).IsRowVersion();
     }
 }
+
+/// <summary>
+/// The profile of the issuer of the documents of an organization (FIS-02, NF-82, E06/F02/US02/T01): one row for each organization, so a second
+/// profile of the same org is refused by the database, whoever writes it. The fiscal identity (VAT number, fiscal code) is on <c>Org</c>.
+/// </summary>
+internal sealed class OrgFiscalIssuerProfileConfiguration : IEntityTypeConfiguration<OrgFiscalIssuerProfile>
+{
+    public void Configure(EntityTypeBuilder<OrgFiscalIssuerProfile> entity)
+    {
+        entity.HasIndex(p => p.OrgId).IsUnique().HasDatabaseName(OrgFiscalIssuerProfile.OrgIndexName);
+    }
+}
+
+/// <summary>
+/// The single issuer of the documents of a booking (FIS-02, NF-82, E06/F02/US02/T01): one row for each booking, so a second issuer of the same
+/// booking is refused by the database itself, and the row goes with its booking (cascade). The document that locked it is a plain column: the
+/// table of the documents arrives later (E06/F01/US02/T01).
+/// </summary>
+internal sealed class BookingDocumentIssuerConfiguration : IEntityTypeConfiguration<BookingDocumentIssuer>
+{
+    public void Configure(EntityTypeBuilder<BookingDocumentIssuer> entity)
+    {
+        entity.HasOne<Booking>().WithMany().HasForeignKey(i => i.BookingId).OnDelete(DeleteBehavior.Cascade);
+        entity.HasIndex(i => i.BookingId).IsUnique().HasDatabaseName(BookingDocumentIssuer.BookingIndexName);
+    }
+}
