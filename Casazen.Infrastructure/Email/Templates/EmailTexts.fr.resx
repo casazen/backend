@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- French texts of the two guest check-in emails only (NF-40): every other text falls back to the neutral Italian resource and is never
+       sent to a guest in French. To be reviewed by a native speaker before release. -->
+  <data name="GuestCheckInLink_Subject" xml:space="preserve">
+    <value>Effectuez l'enregistrement pour votre séjour — {0}</value>
+  </data>
+  <data name="GuestCheckInLink_Greeting" xml:space="preserve">
+    <value>Bonjour {0},</value>
+  </data>
+  <data name="GuestCheckInLink_Body" xml:space="preserve">
+    <value>Votre séjour à &lt;strong&gt;{0}&lt;/strong&gt; commence le &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestCheckInLink_Instructions" xml:space="preserve">
+    <value>Effectuez l'enregistrement à l'avance en cliquant sur le lien ci-dessous :</value>
+  </data>
+  <data name="GuestCheckInLink_Cta" xml:space="preserve">
+    <value>Effectuer l'enregistrement</value>
+  </data>
+  <data name="GuestCheckInLink_Validity" xml:space="preserve">
+    <value>Le lien est valable jusqu'au {0}.</value>
+  </data>
+  <data name="GuestCheckInReminder_Subject" xml:space="preserve">
+    <value>Rappel : effectuez l'enregistrement pour votre séjour — {0}</value>
+  </data>
+  <data name="GuestCheckInReminder_Greeting" xml:space="preserve">
+    <value>Bonjour {0},</value>
+  </data>
+  <data name="GuestCheckInReminder_Body" xml:space="preserve">
+    <value>Votre séjour à &lt;strong&gt;{0}&lt;/strong&gt; commence le &lt;strong&gt;{1}&lt;/strong&gt; et les données de l'enregistrement manquent encore. Veuillez les compléter avant votre arrivée avec le lien ci-dessous : il remplace celui que nous vous avons envoyé auparavant, qui n'est plus valable.</value>
+  </data>
+  <data name="GuestCheckInReminder_Cta" xml:space="preserve">
+    <value>Effectuer l'enregistrement</value>
+  </data>
+  <data name="GuestCheckInReminder_Validity" xml:space="preserve">
+    <value>Le lien est valable jusqu'au {0}.</value>
+  </data>
+</root>

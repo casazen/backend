@@ -1390,6 +1390,21 @@
   <data name="CheckInDocumentNumberInvalid" xml:space="preserve">
     <value>Il numero del documento può contenere solo lettere e cifre, al massimo {0}.</value>
   </data>
+  <data name="CheckInDocumentIssuedOnInvalid" xml:space="preserve">
+    <value>La data di rilascio del documento non può essere nel futuro né prima del 1900.</value>
+  </data>
+  <data name="CheckInDocumentExpiresBeforeIssue" xml:space="preserve">
+    <value>La data di scadenza del documento non può essere prima della data di rilascio.</value>
+  </data>
+  <data name="CheckInStatisticalValueInvalid" xml:space="preserve">
+    <value>Il valore scelto non è tra quelli previsti.</value>
+  </data>
+  <data name="CheckInLanguageUnsupported" xml:space="preserve">
+    <value>Questa lingua non è disponibile per il check-in.</value>
+  </data>
+  <data name="CheckInTaxExemptionInvalid" xml:space="preserve">
+    <value>Questo motivo di esenzione dall'imposta di soggiorno non si può scegliere.</value>
+  </data>
   <data name="CheckInDocumentProcessingFailed" xml:space="preserve">
     <value>Elaborazione del documento non riuscita. Riprova o inserisci i dati manualmente.</value>
   </data>
@@ -4721,6 +4736,57 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.rateChecker" xml:space="preserve">
     <value>Controlla che i tuoi prezzi siano allineati su tutti i canali e segnala le differenze.</value>
+  </data>
+  <data name="TouristTaxNotCalculable" xml:space="preserve">
+    <value>L'imposta di soggiorno di questo soggiorno non si può ancora calcolare: mancano la tariffa, l'età di un ospite, la categoria o il prezzo per notte.</value>
+  </data>
+  <data name="TouristTaxExemptionUnknown" xml:space="preserve">
+    <value>Questo motivo di esenzione dall'imposta di soggiorno non si può scegliere.</value>
+  </data>
+  <data name="TouristTaxGuestUnknown" xml:space="preserve">
+    <value>Questo ospite non è tra gli ospiti registrati del soggiorno.</value>
+  </data>
+  <data name="TouristTaxCollectorNotApplicable" xml:space="preserve">
+    <value>Per questo soggiorno chi riscuote l'imposta è già noto: non serve indicarlo.</value>
+  </data>
+  <data name="TouristTaxRateOfficialExists" xml:space="preserve">
+    <value>Per questo comune c'è già una tariffa ufficiale in vigore: si applica quella.</value>
+  </data>
+  <data name="TouristTaxRateSourceRequired" xml:space="preserve">
+    <value>Indica da dove viene l'importo (la delibera, la pagina del comune o l'ufficio tributi).</value>
+  </data>
+  <data name="TouristTaxRateInvalid" xml:space="preserve">
+    <value>La tariffa non è valida: importo tra 0,01 e 50 euro, almeno una notte, età tra 0 e 18 anni e stagione con inizio e fine.</value>
+  </data>
+  <data name="TouristTaxConfirmConflict" xml:space="preserve">
+    <value>L'imposta di soggiorno è stata aggiornata nello stesso momento da un'altra richiesta. Ricarica e riprova.</value>
+  </data>
+  <data name="TouristTaxRuleSourceInvalid" xml:space="preserve">
+    <value>La fonte della regola deve essere un indirizzo https completo.</value>
+  </data>
+  <data name="TouristTaxExemptionReasonNotFound" xml:space="preserve">
+    <value>Motivo di esenzione non trovato.</value>
+  </data>
+  <data name="TouristTaxFieldRequired" xml:space="preserve">
+    <value>Campo obbligatorio.</value>
+  </data>
+  <data name="TouristTaxFieldMaxLength" xml:space="preserve">
+    <value>Inserisci al massimo {1} caratteri.</value>
+  </data>
+  <data name="TouristTaxFieldInvalid" xml:space="preserve">
+    <value>Valore non valido.</value>
+  </data>
+  <data name="CheckInNotReady" xml:space="preserve">
+    <value>Il check-in non si può ancora confermare: completa i dati indicati.</value>
+  </data>
+  <data name="BookingNoShowNotConfirmed" xml:space="preserve">
+    <value>Il mancato arrivo si segna solo per una prenotazione confermata il cui arrivo non è stato registrato.</value>
+  </data>
+  <data name="BookingNoShowTooEarly" xml:space="preserve">
+    <value>Il mancato arrivo si segna dal giorno del check-in.</value>
+  </data>
+  <data name="BookingNoShowAlloggiatiSent" xml:space="preserve">
+    <value>La comunicazione alla Questura di questo soggiorno è già stata inviata: correggila sul portale Alloggiati Web.</value>
   </data>
   <data name="OnboardingFlowUnknown" xml:space="preserve">
     <value>Flusso di attivazione sconosciuto.</value>

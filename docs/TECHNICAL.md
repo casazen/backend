@@ -501,7 +501,7 @@ arrival day, `DaInviareManualmente` from then on, `Inviato`, `InviatoManualmente
 `AlloggiatiStatusRules`) and, until it is sent, its legal term in UTC (`AlloggiatiTerms`). Every `departures` row carries
 `cleaning { serviceRequestId, status }`, the latest cleaning request tied to the stay whoever made it (`null` when there is none).
 `checkIn`, `alloggiati` and `cleaning` are `null` where they make no sense: a departure has no check-in nor Alloggiati, an arrival
-no cleaning. Three reads more, whatever the number of rows: the links, the reports and the guests of all the arrivals listed
+no cleaning, and a no-show (NF-45) no Alloggiati. Three reads more, whatever the number of rows: the links, the reports and the guests of all the arrivals listed
 together, the cleaning of all the departures listed together, and one page for the interventions.
 
 `todo` is in order of priority (`HostTodoPriority`; inside the same priority the nearest `dueAt` first, then the label):
@@ -636,6 +636,50 @@ and `trend` compare, and only with the same days one year earlier.
   and a `Totale` row (the trend: a row for each bucket of each line). The columns of the year before and of the differences are there
   only when the report compared. File names: `casazen-prestazioni-per-immobile-competenza-20261001-20261031.csv`,
   `casazen-andamento-competenza-...`.
+
+#### Tourist tax per guest (NF-46, ADR-037, E03/F01/US07)
+
+`IStayTouristTaxService` serves the tax of a stay guest by guest on the engine `TouristTaxCalculator.CalculatePerGuest` (the same loop as the stay
+total) and the reference data `TouristTaxExemptionReasons` (seeded, Octorate code null until an admin sets it) and `TouristTaxChannelRules` (no seed,
+an official source required). A comune with no official rate is calculated only from the rate the org declared (`OrgTouristTaxRates`, private to the
+org); an official rate in force always wins. No answer carries a name, an age or a document: positions only. Another org's booking or property is
+404, and so is one the caller may not use on its property (the pattern of `BookingLifecycleController`).
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/bookings/{bookingId}/tourist-tax` | short-rent booking.read + row check | The tax of the stay now: `{ bookingId, status, rateSource (Official\|HostDeclared\|None), missingRate, nights, taxableNights, ageRulesApply, categories, total, amountDue, collector (Channel\|Host\|null), collectorSource (ChannelRule\|HostDeclared\|Default), collectorNeeded, guests [{ position, nights, taxableNights, amount, exemptionKind (None\|Age\|Host), exemptionCode }], reasons [{ code, labelKey }], confirmedAt, stale }`. `exemptionCode` (the reason of the exemption, which can reveal a health condition) is `null` for a caller without `guest.read`, on every answer of these endpoints and of the wizard; the kind and the amounts stay. With no rate known `missingRate` is true and the amounts are `null`, never 0; `amountDue` is 0 when the channel collects (the amounts per guest are kept) |
+| `PUT` | `/api/bookings/{bookingId}/tourist-tax/exemptions` | short-rent booking.write + row check | `{ exemptions: [{ position, code }] }` (a null code clears it) writes the host's exemption on the registered guests; 422 `tax_exemption_unknown` (unknown, inactive or automatic reason: `minor_age` is never chosen), `tax_guest_unknown` (a position with no registered guest). A confirmed tax becomes `stale` |
+| `PUT` | `/api/bookings/{bookingId}/tourist-tax/collector` | short-rent booking.write + row check | `{ collector: Channel\|Host\|null }`: who collected the tax of a channel stay whose comune has no channel rule; 422 `tax_collector_not_applicable` for any other stay |
+| `POST` | `/api/bookings/{bookingId}/tourist-tax/confirm` | short-rent booking.write + row check | Confirms the tax (the record `StayTouristTaxes` with a line per guest, kept until the check-out plus 10 years, ADR-037-R4); idempotent; 422 `tax_not_calculable` while the rate, an age, the category or the night price is missing; 409 `tax_confirm_conflict` for two first confirmations at once |
+| `GET` | `/api/properties/{propertyId}/tourist-tax-rate` | short-rent property.read + row check | `{ propertyId, istatCode, city, officialRateInForce, rate }`: the rate the org declared for the comune of the property (`rate` null when none) |
+| `PUT` | `/api/properties/{propertyId}/tourist-tax-rate` | short-rent property.write + row check | `{ ratePerPersonPerNight, maxNights, minimumAge, seasonStart, seasonEnd, effectiveFrom, sourceNote }` declares the org's rate: 409 `tax_rate_official_exists` when an official rate is in force today, 422 `tax_rate_source_required`, 422 `tax_rate_invalid` (amount outside 0.01-50 or with more than two decimals, cap under 1, age outside 0-18, one season bound, no comune) |
+| `PUT` | `/api/admin/tourist-tax/channel-rules` | Admin | `{ channel, istatCode, collector, sourceUrl, isActive, verifiedAt, notes }` adds or changes the rule of a channel in a comune; the source must be an absolute https address (422 `tax_rule_source_invalid`); stamps the time and the admin |
+| `PUT` | `/api/admin/tourist-tax/exemption-reasons/{code}` | Admin | `{ octorateExemptionCode, isActive }` sets the Octorate code of a reason (null: no known match); 404 `tax_exemption_reason_not_found` |
+
+#### Guest check-in wizard and no-show (NF-40, NF-45, E03/F01/US01/T04)
+
+`ICheckInWizardService` composes the host wizard "Guest check-in" (guests, documents, checks, tax, send, result) from the services that own each
+rule: the guests and the record rules (`IStayGuestService`, `AlloggiatiRecordRules` through `CheckInReadinessRules`), the tax
+(`IStayTouristTaxService`), the sender (`IPropertySenderStore`) and the check-in on Octorate (`ICheckInOctorateSyncService`). It records no
+`CheckInCompleted`/`CheckOutCompleted`, changes no booking status and sends nothing to the police (the arrival and the check-out keep their
+endpoints; CasaZen as sender and the regional ISTAT fields are deferred, so `requiredGuestFields` is empty). Another org's booking, and one the caller
+may not act on, is 404. The document photo is read in memory only (`IDocumentReadingService`: MRZ, then OCR; ADR-013-R6) and never stored or logged.
+A no-show sets `Bookings.NoShowAt` (the status stays `Confirmed`), sends `NO_SHOW` to Octorate for a mirrored booking (the job reads the stay again
+before the call: a retry after a late arrival is dropped and its row closed) and is cleared by a late arrival. The arrival and the departure reach
+Octorate only through the booking-state push of E02 (`CHECKIN_END`, `CHECKOUT_END`), never a second time from the check-in sync. The guests never came, so the stay owes no police communication anywhere: it leaves the Alloggiati list and job, the hourly stay alerts (no
+Alloggiati alert, no check-out reminder), the cockpit and the Home (`alloggiati` is `null` on its row), the booking list (`alloggiatiStatus`
+`null`) and the booking timeline; `GET /api/bookings/{id}/alloggiati-status` and the Alloggiati guest summary read `NotDue` (derived by
+`AlloggiatiStatusRules.Effective`, never stored, not overdue), unless the communication was sent or declared sent anyway; and the wizard says
+`NotApplicable` for the police step. The check-in of a stay that does not owe the communication (a no-show, a request still waiting, a cancelled
+booking) is not sent to Octorate either (`booking_not_active`).
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/bookings/{bookingId}/checkin-wizard` | short-rent booking.read + row check | `{ booking { bookingId, propertyId, propertyName, checkIn, checkOut, nights, source, declaredGuests, status, noShowAt }, attendance (Expected\|Arrived\|Departed\|NoShow\|Inactive), guests [the host summary: names, birth, citizenship, residence, document type, `documentNumberMasked`, issue and expiry dates, statistical fields, `taxExemptionCode` (`null` without `guest.read`, like `tax.guests[].exemptionCode`), `saved`, `dataSource`], requiredGuestFields, issues [{ position, code, field, blocking }], tax (as `GET …/tourist-tax`, null when not available), sender { alloggiatiSender, source, applies }, octorate { mirrored, guests, states }, alloggiati { status, dataComplete, deadlineAt, isOverdue, reportedAt }, capabilities { documentReading, canRegisterArrival, canMarkNoShow, octorateTaxValues }, suggestedStep (guests\|documents\|checks\|tax\|send\|result) }`. Issue codes: `guest_field_missing`, `octorate_field_missing`, `guest_field_required` (blocking), `guest_code_missing`, `document_expired`, `guests_count_mismatch` (warnings). Full document numbers stay on `GET /api/alloggiati/{bookingId}/stay-guests/document-numbers` |
+| `PUT` | `/api/bookings/{bookingId}/checkin-wizard/guests` | short-rent alloggiati.submit + row check | `{ guests: [...] }` as `PUT /api/alloggiati/{bookingId}/stay-guests` (the exemption code of the tourist tax with each guest): the host is the author; 400 keyed `Guests[i].Field`; answers the new state. Complete data schedules the Alloggiati communication like the host entry |
+| `POST` | `/api/bookings/{bookingId}/checkin-wizard/document-reading` | short-rent alloggiati.submit + row check, `Features:CheckInIdentityVerification` (404 while off) | Multipart `document` (JPEG or PNG, at most 10 MB): `{ method (Mrz\|Ocr\|None), confidence, checkDigitsValid, requiresManualReview, fields }`; 400 `document_required`, `document_type_unsupported` |
+| `POST` | `/api/bookings/{bookingId}/checkin-wizard/confirm` | short-rent alloggiati.submit + row check | 422 `checkin_not_ready` with the blocking issues (`issues`); otherwise `{ tax { saved, reason }, octorate { state, reason, draft, correctionAfterSend, guests }, alloggiati { step (ChannelManagerSends\|Manual\|AlreadySent\|NotApplicable), sender }, state }`. The tax is confirmed only when calculable (never blocking: `tax_not_calculable`); the guests go to Octorate by the rules of the sender |
+| `POST` | `/api/bookings/{bookingId}/no-show` | short-rent booking.write + row check | `{ bookingId, status, noShowAt }`; idempotent; 409 `booking_not_confirmed`, 422 `no_show_too_early` (before the check-in day in Rome), 409 `no_show_alloggiati_sent` (an attempt sending or accepted, or a report sent or declared sent) |
 
 #### Tourist tax summary (NF-100, REP-05)
 
@@ -1379,8 +1423,11 @@ never a link to the dashboard.
 | `POST` | `/api/public/service-payments/{id}` | Anonymous (link token in the body) | The payment page of a service a supplier completed: who asks, the lines, the state; 404 `service_payment_link_invalid` for anything wrong; no commission shown (SP-15a, rate-limited) |
 | `POST` | `/api/public/service-payments/{id}/payment-session` | Anonymous (link token in the body) | The PaymentIntent on the supplier's connected account to confirm with Stripe.js (SP-15a, rate-limited) |
 | `GET` | `/api/public/ical/{exportToken}` | Anonymous | Property iCal export feed |
-| `GET` | `/api/public/checkin/{token}` | Anonymous | Public guest check-in session |
-| `POST` | `/api/public/checkin/{token}` | Anonymous | Submit public guest check-in; optional marketing consent, legacy `marketingConsent` or per channel (`marketingConsentEmail`, `marketingConsentWhatsApp`, `marketingEmail`, NF-05; `docs/runbooks/gdpr.md`). Since E07/F04/US01/T02 a ticked e-mail channel also makes the consent contact of the CRM (origin `CheckIn`) and queues its double opt-in message, a ticked WhatsApp channel a contact when the booker's phone is known; a booker who is a minor cannot tick a channel; a failure here never fails the check-in ([crm-consent.md](runbooks/crm-consent.md) § 4.2) |
+| `GET` | `/api/public/checkin/{token}` | Anonymous | Public guest check-in session. NF-40: `language` (the one the guest saved on the session, otherwise the first supported language of `Accept-Language`, otherwise `it`), `supportedLanguages` (`it`, `en`, `de`, `fr`, `es`), `requiredGuestFields` (the statistical fields the region requires: empty in this release, the regional coverage is deferred) and the new optional guest fields in the prefill (residence, document issue and expiry dates, `tourismType`, `travelWay`, `educationLevel`; never the tourist tax exemption) |
+| `PUT` | `/api/public/checkin/{token}/language` | Anonymous | NF-40: `{ language }` saves the guest's choice on the session (the page and the emails of the session use it) → `{ language }`; 400 `language_unsupported`, 404 for an unknown or expired link, 409 `checkin_already_completed` once submitted; rate limit `GuestCheckIn` |
+| `POST` | `/api/public/checkin/{token}` | Anonymous | Submit public guest check-in; optional marketing consent, legacy `marketingConsent` or per channel (`marketingConsentEmail`, `marketingConsentWhatsApp`, `marketingEmail`, NF-05; `docs/runbooks/gdpr.md`). Since E07/F04/US01/T02 a ticked e-mail channel also makes the consent contact of the CRM (origin `CheckIn`) and queues its double opt-in message, a ticked WhatsApp channel a contact when the booker's phone is known; a booker who is a minor cannot tick a channel; a failure here never fails the check-in ([crm-consent.md](runbooks/crm-consent.md) § 4.2). The 400 of the guest rules keeps its field keys (`Guests[1].DocumentNumber`) and adds the extension `codes`, a map from each field key to the message key (`CheckInDocumentNumberInvalid`, …) that the page translates in its own language (NF-40). The guests take the optional residence, document dates and statistical fields (shape checks only); a `taxExemptionCode` sent by the guest portal is ignored (the host's decision) |
+
+The daily job `GuestCheckInSendJob` (08:00 UTC) also sends, once per stay, the reminder of the check-in data still missing just before arrival (NF-40): a confirmed stay arriving within `CheckIn:ReminderDaysBefore` days (default 1, today included, 0 turns it off) with incomplete data, no communication sent or declared sent, no completed check-in and a link issued before today gets a new link (the old one expires) and the reminder e-mail in the language of the session, to the booker's contact e-mail only (transactional, no promotion). The link and reminder e-mails are written in Italian, English, German, French or Spanish (`EmailTexts.*.resx`; the German, French and Spanish files hold only these two e-mails).
 
 #### Admin
 

@@ -133,6 +133,7 @@ public class DemoEnvironmentService(
         await RemoveShowcasePopupAlertsAsync(orgId, cancellationToken);
         await RemoveShowcaseTouristTaxRemittancesAsync(orgId, cancellationToken);
         await RemoveShowcaseMarketplaceAsync(orgId, cancellationToken);
+        await RemoveShowcaseTouristTaxRulesAsync(orgId, cancellationToken);
         await RemoveShowcaseCrmAsync(orgId, cancellationToken);
         var removed = await RemoveShowcaseAsync(orgId, cancellationToken);
         await RemoveShowcaseHostInvitesAsync(orgId, cancellationToken);
@@ -172,6 +173,10 @@ public class DemoEnvironmentService(
 
         foreach (var activation in DemoShowcaseCatalog.MarketplaceActivations)
             await CreateMarketplaceActivationAsync(orgId, activation, cancellationToken);
+
+        // NF-46: the channel rule of the invented comune of the demo (platform data, created only when missing).
+        foreach (var rule in DemoShowcaseCatalog.TouristTaxChannelRules)
+            await CreateTouristTaxChannelRuleAsync(orgId, rule, cancellationToken);
 
         settings.LastResetAt = UtcNow();
         settings.LastResetBy = actorUserId;
@@ -648,6 +653,37 @@ public class DemoEnvironmentService(
     }
 
     /// <summary>
+    /// NF-46: the rates the demo host declared (tenant data) and the channel rules the showcase created (platform data, only the invented comune
+    /// of the demo), found by their markers; a real rate or rule has no marker and is never touched.
+    /// </summary>
+    private async Task RemoveShowcaseTouristTaxRulesAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var rateIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.OrgTouristTaxRate)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (rateIds.Count > 0)
+        {
+            await db.OrgTouristTaxRates.IgnoreQueryFilters([Tenant])
+                .Where(r => r.OrgId == orgId && rateIds.Contains(r.Id))
+                .ExecuteDeleteAsync(cancellationToken);
+        }
+
+        var ruleIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.TouristTaxChannelRule)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (ruleIds.Count > 0)
+            await db.TouristTaxChannelRules.Where(r => ruleIds.Contains(r.Id)).ExecuteDeleteAsync(cancellationToken);
+
+        await Markers()
+            .Where(m => m.OrgId == orgId
+                && m.Origin == TestDataOrigins.Showcase
+                && (m.EntityType == TestDataEntities.OrgTouristTaxRate || m.EntityType == TestDataEntities.TouristTaxChannelRule))
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// The active welcome link of a demo house (E07/F04/US01/T03, NF-90): the QR code of the house, with the fixed test token of the template. The
     /// house is found by the template key of its marker; the link follows it (cascade), so the reset needs no step of its own to remove it. Skipped,
     /// with a warning, when the house was not created, when the house already has an active link (a person made it) and when another org holds the
@@ -725,6 +761,37 @@ public class DemoEnvironmentService(
                     || m.EntityType == TestDataEntities.GuestConsent
                     || m.EntityType == TestDataEntities.MarketingConsent))
             .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// NF-46, ADR-037-R3: the channel rule of the invented comune of a demo house, platform data with an example source; written only when no rule
+    /// exists for that channel and comune (another org's demo may have written it), so a real rule is never replaced.
+    /// </summary>
+    private async Task CreateTouristTaxChannelRuleAsync(
+        Guid orgId, DemoTouristTaxChannelRuleTemplate template, CancellationToken cancellationToken)
+    {
+        var istatCode = DemoShowcaseCatalog.Properties.FirstOrDefault(p => p.Key == template.PropertyKey)?.Place.IstatCode;
+        if (istatCode is null
+            || await db.TouristTaxChannelRules.AnyAsync(r => r.Channel == template.Channel && r.IstatCode == istatCode, cancellationToken))
+        {
+            return;
+        }
+
+        var now = UtcNow();
+        var rule = new TouristTaxChannelRule
+        {
+            Channel = template.Channel,
+            IstatCode = istatCode,
+            Collector = template.Collector,
+            SourceUrl = template.SourceUrl,
+            VerifiedAt = now,
+            IsActive = true,
+            Notes = template.Notes,
+            UpdatedAt = now,
+        };
+        db.TouristTaxChannelRules.Add(rule);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.TouristTaxChannelRule, rule.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
     /// <summary>
@@ -982,6 +1049,28 @@ public class DemoEnvironmentService(
         foreach (var (entityType, id, key) in listingRows)
             await MarkAsync(orgId, entityType, id, TestDataOrigins.Showcase, key, cancellationToken);
 
+        // NF-46: the rate the demo host declared for a comune with no official one (an invented amount and source note).
+        if (template.DeclaredTouristTaxRate is { } declared)
+        {
+            var rate = new OrgTouristTaxRate
+            {
+                OrgId = orgId,
+                IstatCode = property.ComuneIstatCode,
+                City = property.City,
+                RatePerPersonPerNight = declared.RatePerPersonPerNight,
+                MaxNights = declared.MaxNights,
+                MinimumAge = declared.MinimumAge,
+                EffectiveFrom = clock.TodayInRomeAsDateOnly().AddYears(-1),
+                SourceNote = declared.SourceNote,
+                EnteredByUserId = ownerId,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            db.OrgTouristTaxRates.Add(rate);
+            await db.SaveChangesAsync(cancellationToken);
+            await MarkAsync(orgId, TestDataEntities.OrgTouristTaxRate, rate.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+        }
+
         if (template.Publish || template.Mode == RentalMode.Long)
         {
             var used = await UsedCinsAsync(orgId, cancellationToken);
@@ -1029,6 +1118,9 @@ public class DemoEnvironmentService(
         var madeAt = DateTime.SpecifyKind(checkIn.AddDays(-30), DateTimeKind.Utc);
         if (madeAt > UtcNow())
             madeAt = UtcNow();
+
+        // A stay with registered guests declares as many (NF-40: the check-in wizard compares the two); the others keep two adults.
+        var registered = template.Guests ?? [];
         var booking = new Booking
         {
             OrgId = orgId,
@@ -1036,8 +1128,9 @@ public class DemoEnvironmentService(
             GuestId = guest.Id,
             CheckInDate = checkIn,
             CheckOutDate = checkIn.AddDays(template.Nights),
-            NumberOfGuests = 2,
-            NumberOfAdults = 2,
+            NumberOfGuests = registered.Count > 0 ? registered.Count : 2,
+            NumberOfAdults = registered.Count > 0 ? registered.Count(g => g.AgeAtCheckIn >= AlloggiatiRecordRules.AdultAge) : 2,
+            NumberOfChildren = registered.Count(g => g.AgeAtCheckIn < AlloggiatiRecordRules.AdultAge),
             Status = template.Status,
             Source = template.Source,
             PaymentOption = template.PaymentOption,
@@ -1059,11 +1152,80 @@ public class DemoEnvironmentService(
             CheckedOutAt = template.Status == BookingStatus.CheckedOut
                 ? DateTime.SpecifyKind(checkIn.AddDays(template.Nights).AddHours(9), DateTimeKind.Utc)
                 : null,
+            // NF-45: a no-show the host marked in the evening of the arrival day (the status stays Confirmed).
+            NoShowAt = template.NoShow && template.Status == BookingStatus.Confirmed
+                ? DateTime.SpecifyKind(checkIn.AddHours(20), DateTimeKind.Utc)
+                : null,
         };
         db.Bookings.Add(booking);
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.Booking, booking.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
         await CreateCrmConsentsAsync(orgId, guest.Id, booking.Id, template, madeAt, cancellationToken);
+
+        // NF-40, NF-46: the registered guests of the stay, with complete data of the right shape (they go with the booking at the next reset).
+        if (template.Guests is { Count: > 0 } guests)
+        {
+            var arrival = DateOnly.FromDateTime(checkIn);
+            var rows = guests.Select((demo, position) => DemoStayGuest(booking, property.OwnerId, demo, position, arrival)).ToList();
+            db.StayGuests.AddRange(rows);
+            await db.SaveChangesAsync(cancellationToken);
+            for (var position = 0; position < rows.Count; position++)
+            {
+                await MarkAsync(
+                    orgId, TestDataEntities.StayGuest, rows[position].Id, TestDataOrigins.Showcase, $"{template.Key}/{position}", cancellationToken);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A registered guest of a demo stay: complete Alloggiati data of the right shape (born in Rome, Italian, an identity card with TEST in its
+    /// number for a single guest or a head), born so that the guest has the template's age on the arrival day.
+    /// </summary>
+    private static StayGuest DemoStayGuest(Booking booking, string ownerId, DemoStayGuestTemplate demo, int position, DateOnly arrival)
+    {
+        var born = arrival.AddYears(-demo.AgeAtCheckIn).AddDays(-30);
+        var row = new StayGuest
+        {
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            GuestId = position == 0 ? booking.GuestId : null,
+            Position = position,
+            Type = demo.Type,
+            FirstName = demo.FirstName,
+            LastName = demo.LastName,
+            Gender = position % 2 == 0 ? Gender.Female : Gender.Male,
+            DateOfBirth = born.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+            BornInItaly = true,
+            BirthComuneName = "Roma",
+            BirthProvince = "RM",
+            CitizenshipName = "Italia",
+            ResidenceInItaly = true,
+            ResidenceComuneName = "Roma",
+            ResidenceProvince = "RM",
+            TaxExemptionCode = demo.TaxExemptionCode,
+            DataSource = StayGuestDataSource.Host,
+            EnteredByUserId = ownerId,
+            CreatedAt = booking.CreatedAt,
+            UpdatedAt = booking.CreatedAt,
+        };
+        if (AlloggiatiRecordRules.RequiresDocument(demo.Type))
+        {
+            row.DocumentType = GuestDocumentType.IdentityCard;
+            row.DocumentNumber = $"CATEST{position + 1:D3}";
+            row.DocumentIssuePlaceName = "Roma";
+            // NF-40: an expired document is a warning of the check-in wizard (the host records what the guest showed).
+            row.DocumentIssuedOn = demo.DocumentExpired ? arrival.AddYears(-10).AddDays(-20) : arrival.AddYears(-3);
+            row.DocumentExpiresOn = demo.DocumentExpired ? arrival.AddDays(-20) : arrival.AddYears(7);
+        }
+
+        // NF-40: data still to complete, which the check-in wizard asks for.
+        if (demo.BirthPlaceMissing)
+        {
+            row.BirthComuneName = string.Empty;
+            row.BirthProvince = null;
+        }
+
+        return row;
     }
 
     /// <summary>

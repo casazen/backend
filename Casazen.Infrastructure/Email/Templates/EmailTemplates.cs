@@ -376,6 +376,29 @@ public static partial class EmailTemplates
     }
 
     /// <summary>
+    /// The one reminder of the check-in data still missing just before arrival, to the booker (NF-40, AC-NF40-3), in the language of the
+    /// guest page (Italian, English, German, French or Spanish). Transactional: the booker's contact e-mail only, no promotion, no marketing
+    /// consent needed. It carries a new link and says that it replaces the one sent before (the answers are not kept on the server before the
+    /// submit, so nothing is lost).
+    /// </summary>
+    public static EmailContent GuestCheckInReminder(
+        CultureInfo culture,
+        string guestName,
+        string propertyName,
+        DateTime checkInDate,
+        string checkInUrl,
+        DateTime expiresAtUtc)
+    {
+        var builder = new EmailHtmlBuilder(culture);
+        return builder
+            .Paragraph("GuestCheckInReminder_Greeting", guestName)
+            .Paragraph("GuestCheckInReminder_Body", propertyName, checkInDate)
+            .Button("GuestCheckInReminder_Cta", checkInUrl)
+            .Muted("GuestCheckInReminder_Validity", builder.FormatInstant(expiresAtUtc))
+            .Build("GuestCheckInReminder_Subject", propertyName);
+    }
+
+    /// <summary>
     /// Guest data for the Alloggiati communication still missing the day before arrival, to the host (first stage of the
     /// stay alerts, CO-10). <paramref name="bookingUrl"/>: the booking in the console, when known.
     /// </summary>

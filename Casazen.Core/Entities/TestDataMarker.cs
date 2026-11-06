@@ -103,6 +103,21 @@ public static class TestDataEntities
     /// </summary>
     public const string MarketplaceActivation = "MarketplaceActivation";
 
+    /// <summary>A registered guest of a demo stay (<see cref="Entities.StayGuest"/>, NF-40); goes with its booking.</summary>
+    public const string StayGuest = "StayGuest";
+
+    /// <summary>
+    /// The rate the demo host declared for a comune with no official one (<see cref="Entities.OrgTouristTaxRate"/>, NF-46): tenant data of the
+    /// demo org, deleted by the reset. A real declared rate has no marker and is never touched.
+    /// </summary>
+    public const string OrgTouristTaxRate = "OrgTouristTaxRate";
+
+    /// <summary>
+    /// A channel rule of the tourist tax (<see cref="Entities.TouristTaxChannelRule"/>, ADR-037-R3): platform data, written by the showcase only for
+    /// the invented comune of the demo (ISTAT 999990) and only when no rule exists for it, deleted by the reset of the org that created it.
+    /// </summary>
+    public const string TouristTaxChannelRule = "TouristTaxChannelRule";
+
     /// <summary>
     /// A CRM profile (<see cref="GuestCrmProfile"/>, E07/F01, NF-88) that the CRM sync wrote from the showcase bookings. The reset deletes it, and its
     /// contacts and proposed merges with it (they follow their profile); a profile the sync made for a real guest has no marker and is never touched.
