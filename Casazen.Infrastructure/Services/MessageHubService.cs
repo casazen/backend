@@ -158,7 +158,12 @@ public sealed class MessageHubService(
             .OrderByDescending(t => t.LastMessageAt)
             .ThenBy(t => t.Id)
             .Take(GuestMessageRules.UnreadThreadsMax)
-            .Select(t => new { t.Id, t.BookingId, t.UnreadCount })
+            .Select(t => new
+            {
+                t.Id,
+                BookingId = t.BookingId != null && (t.PropertyId == null || t.Booking!.PropertyId == t.PropertyId) ? t.BookingId : null,
+                t.UnreadCount,
+            })
             .ToListAsync(cancellationToken);
         items.AddRange(ota.Select(t => new MessageHubUnreadThread(MessageThreadKey.ForOta(t.Id), t.BookingId, t.UnreadCount)));
         return items;
@@ -240,28 +245,33 @@ public sealed class MessageHubService(
                     && t.Booking.CheckOutDate >= openFrom,
             });
 
+        // The stay a conversation of a channel shows is the one at its own house: a conversation moved to another house by a new mapping must not carry
+        // the stay it was linked to at the first one, which the caller may not reach (the detail applies the same rule). A conversation with no house is
+        // listed to a scope that reaches every house, which may see any stay. The booking id, the code, the guest, the dates and the state of the
+        // list, and so the filter by booking, all come from here.
         var ota = db.OtaMessageThreads
             .AsNoTracking()
             .Where(t => t.OrgId == orgId)
             .InScope(scope)
-            .Select(t => new HubRow
+            .Select(t => new { Thread = t, ShowsBooking = t.BookingId != null && (t.PropertyId == null || t.Booking!.PropertyId == t.PropertyId) })
+            .Select(x => new HubRow
             {
                 Source = OtaSource,
-                KeyId = t.Id,
-                Channel = (int)t.ChannelSource,
-                Kind = (int)t.Kind,
-                PropertyId = t.PropertyId,
-                PropertyName = t.Property!.Name,
-                BookingId = t.BookingId,
-                BookingCode = t.Booking!.BookingCode,
-                GuestName = t.GuestDisplayName ?? (t.Booking!.Guest.FirstName + " " + t.Booking!.Guest.LastName),
-                CheckInDate = (DateTime?)t.Booking!.CheckInDate,
-                CheckOutDate = (DateTime?)t.Booking!.CheckOutDate,
-                BookingStatus = (int?)t.Booking!.Status,
-                IsArchived = t.IsArchived,
-                LastMessageAt = t.LastMessageAt,
-                UnreadCount = t.UnreadCount,
-                NeedsReply = !t.IsArchived && t.LastMessageDirection == OtaMessageDirection.Inbound,
+                KeyId = x.Thread.Id,
+                Channel = (int)x.Thread.ChannelSource,
+                Kind = (int)x.Thread.Kind,
+                PropertyId = x.Thread.PropertyId,
+                PropertyName = x.Thread.Property!.Name,
+                BookingId = x.ShowsBooking ? x.Thread.BookingId : null,
+                BookingCode = x.ShowsBooking ? x.Thread.Booking!.BookingCode : null,
+                GuestName = x.Thread.GuestDisplayName ?? (x.ShowsBooking ? x.Thread.Booking!.Guest.FirstName + " " + x.Thread.Booking!.Guest.LastName : null),
+                CheckInDate = x.ShowsBooking ? (DateTime?)x.Thread.Booking!.CheckInDate : null,
+                CheckOutDate = x.ShowsBooking ? (DateTime?)x.Thread.Booking!.CheckOutDate : null,
+                BookingStatus = x.ShowsBooking ? (int?)x.Thread.Booking!.Status : null,
+                IsArchived = x.Thread.IsArchived,
+                LastMessageAt = x.Thread.LastMessageAt,
+                UnreadCount = x.Thread.UnreadCount,
+                NeedsReply = !x.Thread.IsArchived && x.Thread.LastMessageDirection == OtaMessageDirection.Inbound,
             });
 
         return direct.Concat(ota);

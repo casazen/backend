@@ -118,6 +118,46 @@ public class MessageHubProofTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// PROOF TEST: permission rule, after a remap. A conversation moved to a house the collaborator was given (the mapping of its listing changed) may
+    /// still be linked to a stay at the house it came from, which the collaborator was not given: that stay is in no row of the list, in no filter by
+    /// booking, in no search by the name of its guest and in no badge, as it is in no card of the detail. A conversation that was not moved keeps its stay.
+    /// </summary>
+    [Fact]
+    public async Task MessageHub_Collaborator_AfterARemap_SeesNothingOfTheStayOfAHouseItWasNotGiven_Test()
+    {
+        var thread = await _db.OtaMessageThreads.FirstAsync(t => t.Id == _world.GrantedRequest.Id);
+        thread.BookingId = _world.HiddenDirectBooking.Id;
+        thread.GuestDisplayName = null;
+        await _db.SaveChangesAsync();
+        var guestMessages = new Mock<IGuestMessageService>();
+        guestMessages.Setup(g => g.ListUnreadForHostAsync(It.IsAny<HostScope>(), It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        var service = MessageHubTestKit.Service(_db, guestMessages.Object);
+        var collaborator = _world.Scope.Restricted;
+        var key = Ota(_world.GrantedRequest);
+
+        // The list: the conversation is there, at a granted house, and carries nothing of the other stay; the one that was not moved keeps its own.
+        var page = await service.ListAsync(collaborator, new MessageHubFilter(), 1, 50);
+        var moved = Assert.Single(page.Items, i => i.Key == key);
+        Assert.Null(moved.BookingId);
+        Assert.Null(moved.BookingCode);
+        Assert.Null(moved.GuestName);
+        Assert.Null(moved.CheckInDate);
+        Assert.Null(moved.CheckOutDate);
+        Assert.Equal(_world.GrantedChannelBooking.Id, Assert.Single(page.Items, i => i.Key == Ota(_world.GrantedReservation)).BookingId);
+
+        // That stay cannot be found by its booking, nor by the name of its guest.
+        Assert.Empty((await service.ListAsync(collaborator, new MessageHubFilter(BookingId: _world.HiddenDirectBooking.Id), 1, 50)).Items);
+        Assert.Empty((await service.ListAsync(collaborator, new MessageHubFilter(Query: "gallo"), 1, 50)).Items);
+
+        // The badge names no booking, and the detail has no card and no customer.
+        var unread = Assert.Single(await service.ListUnreadAsync(collaborator, includeOta: true), t => t.Key == key);
+        Assert.Null(unread.BookingId);
+        var view = await service.GetThreadAsync(collaborator, key, includeAmounts: true);
+        Assert.Null(view.Booking);
+        Assert.Null(view.CustomerGuestId);
+    }
+
+    /// <summary>
     /// PROOF TEST: privacy and tenant rule. The address the channel manager gave for a file is fetched by the server and appears nowhere in what a
     /// client gets: not in the answer of the attachment endpoint, not in its headers, not in the thread detail nor the list, not in the error of a file
     /// that expired. A message of another org answers 404 and the address is not fetched. The file is served private, not cached, not sniffed, and
