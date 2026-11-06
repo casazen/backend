@@ -92,6 +92,28 @@ public class ChatMessageReceivedHandlerTests
     }
 
     [Fact]
+    public async Task ChatMessageReceived_AThreadOctorateDoesNotKnow_MakesTheRecentPassReadTheListings()
+    {
+        var h = new MessageSyncHarness();
+        var acc = MessageSyncHarness.Accommodation;
+
+        // The body names 5555, which is not a thread of the chat (it may be another object id): Octorate answers 404, and the notification is
+        // still a signal that something was written, so the recent pass finds the thread that had news.
+        h.Client.Setup(c => c.GetChatThreadAsync(acc, "5555", It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateNotFoundException());
+        h.Client.Setup(c => c.GetRecentChatMessagesAsync(acc, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([MessageSyncHarness.Inbound("70001", ThreadId)]);
+        h.Client.Setup(c => c.GetChatThreadAsync(acc, ThreadId, It.IsAny<CancellationToken>())).ReturnsAsync(MessageSyncHarness.Thread(ThreadId));
+        h.Client.Setup(c => c.GetChatMessagesAsync(acc, ThreadId, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([MessageSyncHarness.Inbound("70001", ThreadId)]);
+
+        await using (var db = h.NewDb())
+            await Handler(h, db).HandleAsync(Notification(OctorateWebhookEvents.ChatMessageReceived, acc, "5555"), CancellationToken.None);
+
+        Assert.Equal(["70001"], (await h.ReadAsync(db => db.OtaMessages.ToListAsync())).Select(m => m.OctorateMessageId));
+        h.Client.Verify(c => c.GetRecentChatMessagesAsync(acc, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task ChatMessageReceived_AnAccommodationOfAnotherOrg_ReadsNothing()
     {
         var h = new MessageSyncHarness();

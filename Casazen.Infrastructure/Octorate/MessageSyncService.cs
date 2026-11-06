@@ -459,7 +459,7 @@ public sealed class MessageSyncService(
         {
             // Gone between the list (or the notification) and the read: nothing to copy.
             logger.LogInformation("Octorate chat thread {OctorateThreadId} of org {OrgId} is not there any more", threadId, org.OrgId);
-            return SyncResult.Empty;
+            return SyncResult.Empty with { NotFound = 1 };
         }
 
         var added = await ApplyAsync(org.OrgId, listing, remote, channel, messages, ct);

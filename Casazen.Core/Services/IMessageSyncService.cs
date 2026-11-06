@@ -55,7 +55,8 @@ public interface IMessageSyncService
 /// <param name="SkippedChannel">The threads of a channel with no integrated chat, not imported.</param>
 /// <param name="Unassigned">The threads stored with no property because the mapping of their listing is not confirmed.</param>
 /// <param name="Complete"><c>false</c> when the pass stopped before the end (the budget of an import ran out); the next run continues.</param>
-public sealed record SyncResult(int ThreadsSeen, int MessagesAdded, int SkippedChannel, int Unassigned, bool Complete = true)
+/// <param name="NotFound">The threads that were asked for and that Octorate does not know: a notification may name something that is not a thread of the chat.</param>
+public sealed record SyncResult(int ThreadsSeen, int MessagesAdded, int SkippedChannel, int Unassigned, bool Complete = true, int NotFound = 0)
 {
     /// <summary>Nothing seen, nothing stored.</summary>
     public static SyncResult Empty { get; } = new(0, 0, 0, 0);
@@ -70,7 +71,8 @@ public sealed record SyncResult(int ThreadsSeen, int MessagesAdded, int SkippedC
             MessagesAdded + other.MessagesAdded,
             SkippedChannel + other.SkippedChannel,
             Unassigned + other.Unassigned,
-            Complete && other.Complete);
+            Complete && other.Complete,
+            NotFound + other.NotFound);
     }
 }
 

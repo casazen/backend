@@ -109,8 +109,8 @@ times (after 1, 5 and 15 minutes) and then stays failed in the Hangfire dashboar
 `ChatMessageReceivedHandler` handles `CHAT_MESSAGE_RECEIVED` only (in its own scope under the org of the event, off with
 `Features:OctorateConnector`). The accommodation and the thread named by the body are read as the names of what to read, nothing more:
 `IMessageSyncService.SyncThreadAsync` re-reads the thread and its messages through the API (`createdAfter`, with an overlap of five minutes) and
-stores what is new, under the advisory lock `OtaMessageThread` of (org, thread). A notification without a usable thread (not a number, or none)
-makes `ReconcileRecentAsync` read the org's listings instead. The accommodation must be a listing of the org's mapping, otherwise it is not read.
+stores what is new, under the advisory lock `OtaMessageThread` of (org, thread). A notification without a usable thread (not a number, or none), or whose thread Octorate does not know (404: the object id of the body may
+be another object), makes `ReconcileRecentAsync` read the org's listings instead. The accommodation must be a listing of the org's mapping, otherwise it is not read.
 
 1. **Once, in any order.** A message is one row of the org by its Octorate id and `GuestMessageReceived` (key `ota-msg:{message id}`) is recorded in
    the same save, so a notification that arrives twice, late or out of order stores one message and raises one event. `OtaThreadSynced` (key

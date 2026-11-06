@@ -9,7 +9,7 @@ namespace Casazen.Infrastructure.Octorate;
 /// The handler of <c>CHAT_MESSAGE_RECEIVED</c> (E05/F01/US01/T03, ADR-032, ADR-022-R7, OCT-08): a guest wrote on a channel, and Octorate says so to
 /// the webhook. The notification is a signal and nothing more, so the handler trusts nothing in it: it takes the accommodation and the thread
 /// from it as the names of what to read, and <see cref="IMessageSyncService.SyncThreadAsync"/> re-reads the thread through the API before any
-/// effect; a notification without usable names makes the recent pass read the org's listings instead.
+/// effect; a notification without usable names, or whose thread Octorate does not know, makes the recent pass read the org's listings instead.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -50,9 +50,19 @@ public sealed class ChatMessageReceivedHandler(
         {
             using (orgScope.Use(domainEvent.OrgId))
             {
-                result = IsUsable(domainEvent.AccommodationId, domainEvent.ObjectId)
-                    ? await sync.SyncThreadAsync(domainEvent.OrgId, domainEvent.AccommodationId, domainEvent.ObjectId!, null, ct)
-                    : await sync.ReconcileRecentAsync(domainEvent.OrgId, ct);
+                if (IsUsable(domainEvent.AccommodationId, domainEvent.ObjectId))
+                {
+                    result = await sync.SyncThreadAsync(domainEvent.OrgId, domainEvent.AccommodationId, domainEvent.ObjectId!, null, ct);
+
+                    // What the body names may not be a thread of the chat (what it holds is not recorded yet, and its object id is the first of several
+                    // keys): when Octorate does not know it, the notification is still a signal that something was written, so the recent pass reads.
+                    if (result.NotFound > 0)
+                        result = result.Plus(await sync.ReconcileRecentAsync(domainEvent.OrgId, ct));
+                }
+                else
+                {
+                    result = await sync.ReconcileRecentAsync(domainEvent.OrgId, ct);
+                }
             }
         }
         catch (OctorateAuthException ex) when (ex.IsNotConnected)
