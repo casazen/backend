@@ -85,8 +85,11 @@ public sealed class BookingPaymentLinkService(
             .FirstOrDefaultAsync(b => b.Id == bookingId, ct)
             ?? throw NotFound();
 
-        // Only a booking the host entered: the booking site has its own checkout, a portal collects its own bookings.
-        if (booking.Source != BookingSource.Manual || booking.Status == BookingStatus.Cancelled)
+        // A booking the host entered, or a confirmed one of the booking site whose price an edit raised (E08/F02/US01/T01): a hold of the booking
+        // site has its own checkout, and a portal collects its own bookings.
+        var linkable = booking.Source == BookingSource.Manual
+                       || (booking.Source == BookingSource.Direct && booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn);
+        if (!linkable || booking.Status == BookingStatus.Cancelled)
             throw Unavailable();
 
         var org = booking.Org;

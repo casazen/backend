@@ -1514,7 +1514,7 @@
     <value>The stay has already started or ended: dates and guests can no longer be changed.</value>
   </data>
   <data name="BookingUpdateSourceLocked" xml:space="preserve">
-    <value>Dates and guests can be changed only on bookings you entered: this one comes from the booking site or a channel, with its price and payment already set. You can edit the notes.</value>
+    <value>Dates and guests can be changed on bookings you entered and on confirmed bookings of the booking site: this one is a request still waiting, or comes from a channel, with its price and payment already set. You can edit the notes.</value>
   </data>
   <data name="BookingCheckInInPast" xml:space="preserve">
     <value>The check-in cannot be moved to a day already past.</value>
@@ -5108,5 +5108,11 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="OtaChannelCancelGuidanceAgoda" xml:space="preserve">
     <value>To cancel this Agoda booking, ask the guest to cancel it on Agoda.</value>
+  </data>
+  <data name="BookingSettlementFailed" xml:space="preserve">
+    <value>The payment of the price difference did not go through: the booking was not changed. You can try again, the same refund is never made twice.</value>
+  </data>
+  <data name="BookingEditPaymentInProgress" xml:space="preserve">
+    <value>A payment of this booking is still being processed, or is waiting for the guest to complete it: wait until it is settled before changing dates or guests.</value>
   </data>
 </root>

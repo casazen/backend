@@ -67,13 +67,23 @@ public sealed class PaymentRefundService(
             var payment = await db.Payments.FirstOrDefaultAsync(p => p.Id == request.PaymentId, cancellationToken)
                 ?? throw PaymentNotFound(request.PaymentId);
 
-            refund = await ReserveAsync(
+            // A key the caller decided (the refund of a booking edit): a refund of this payment that has it is the answer, not a second refund.
+            PaymentRefund? known = null;
+            if (!string.IsNullOrWhiteSpace(request.IdempotencyKey))
+            {
+                known = await db.PaymentRefunds.FirstOrDefaultAsync(
+                    r => r.PaymentId == payment.Id && r.IdempotencyKey == request.IdempotencyKey,
+                    cancellationToken);
+            }
+
+            refund = known ?? await ReserveAsync(
                 payment,
                 request.Amount,
                 PaymentRefundOrigin.Host,
                 request.Reason,
                 request.RequestedByUserId,
-                cancellationToken);
+                cancellationToken,
+                request.IdempotencyKey);
 
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);

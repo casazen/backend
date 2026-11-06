@@ -120,13 +120,18 @@ public class OtaChannelActionPolicyTests
         Assert.Null(manual.GuidanceKey);
         Assert.Null(manual.Channel);
 
-        // A direct booking, even one mirrored on Octorate: its dates are not changed here, it can be cancelled.
+        // A confirmed direct booking, even one mirrored on Octorate: its dates and guests are changed here, with the money settled (E08/F02/US01/T01).
         var direct = BookingEditRules.ChangeOptionsOf(NewBooking(BookingSource.Direct, BookingStatus.Confirmed, "5001"));
-        Assert.False(direct.CanEdit);
+        Assert.True(direct.CanEdit);
         Assert.True(direct.CanCancel);
-        Assert.Equal(BookingErrorCodes.SourceLocked, direct.ReasonCode);
+        Assert.Null(direct.ReasonCode);
         Assert.Null(direct.GuidanceKey);
         Assert.Null(direct.Channel);
+
+        // A direct booking that is still a request (a hold being paid, a «pay at the property» request) is not a booking yet: it keeps its terms.
+        var request = BookingEditRules.ChangeOptionsOf(NewBooking(BookingSource.Direct, BookingStatus.Pending));
+        Assert.False(request.CanEdit);
+        Assert.Equal(BookingErrorCodes.SourceLocked, request.ReasonCode);
 
         var inTheHouse = BookingEditRules.ChangeOptionsOf(NewBooking(BookingSource.Manual, BookingStatus.CheckedIn));
         Assert.False(inTheHouse.CanEdit);

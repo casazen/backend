@@ -2403,4 +2403,22 @@
   <data name="TodoReason_OctorateDatesTaken" xml:space="preserve">
     <value>The booking could not be created in your channel manager: the dates are taken</value>
   </data>
+  <data name="GuestBookingModified_Subject" xml:space="preserve">
+    <value>Booking changed - {0}</value>
+  </data>
+  <data name="GuestBookingModified_Body" xml:space="preserve">
+    <value>your host has changed your booking at &lt;strong&gt;{0}&lt;/strong&gt;: your stay is now from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt;, for &lt;strong&gt;{3}&lt;/strong&gt; guests.</value>
+  </data>
+  <data name="GuestBookingModified_Total" xml:space="preserve">
+    <value>New total for your stay: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="GuestBookingModified_Refund" xml:space="preserve">
+    <value>The new price is lower: we are refunding &lt;strong&gt;{0}&lt;/strong&gt; to the payment method you used.</value>
+  </data>
+  <data name="GuestBookingModified_Charged" xml:space="preserve">
+    <value>The new price is higher: the difference of &lt;strong&gt;{0}&lt;/strong&gt; has been charged to the card you saved.</value>
+  </data>
+  <data name="GuestBookingModified_PaymentLink" xml:space="preserve">
+    <value>The new price is higher: you will get a separate email with the payment link for the difference.</value>
+  </data>
 </root>

@@ -137,6 +137,19 @@ public static class BookingErrorCodes
     public const string NotCancellable = "booking_not_cancellable";
 
     /// <summary>
+    /// 422: the money of an edit of a booking of the booking site could not be settled (E08/F02/US01/T01, NF-75): Stripe refused the refund or the
+    /// charge of the saved card, or the payment link for the difference could not be made. The edit and the money are one decision: nothing is
+    /// changed, nothing is saved, and asking again with the same request is safe (the idempotency key makes Stripe return what it already did).
+    /// </summary>
+    public const string SettlementFailed = "booking_settlement_failed";
+
+    /// <summary>
+    /// 409: a payment of the booking is still being processed by Stripe, or the guest is asked to pay one (a failed charge of "Paga alla scadenza"):
+    /// the price of the booking is not changed until it is settled, or the money would be counted twice.
+    /// </summary>
+    public const string EditPaymentInProgress = "booking_edit_payment_in_progress";
+
+    /// <summary>
     /// 422: a booking that came from a channel is changed from CasaZen where the channel does not let the host do it (E02/F02/US02/T01, D8,
     /// NF-75): nothing is changed. The text is the one sentence that says how to ask the guest or the channel; <c>guidanceKey</c> and
     /// <c>channel</c> travel with the problem.
