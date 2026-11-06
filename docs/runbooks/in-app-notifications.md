@@ -58,7 +58,8 @@ and write what is still missing (at most three rounds, then Hangfire retries). R
 | `Type` | Told | `EntityId` |
 |---|---|---|
 | `new-booking`, `ota-stay-review` | hosts of the booking | booking |
-| `guest-message` | hosts of the booking (every message of the guest) | booking |
+| `guest-message` | the hosts the notification preferences select for a message of the guest of a direct booking (the person in charge and the administrators who reach the property and hold `booking.read`, who chose the counter: the default; written by `HostMessageAlertDelivery`, NF-65, § 10) | booking |
+| `ota-message` | the same, for a message of a guest on a channel (OTA); an unmapped conversation goes to the administrators | thread |
 | `guest-checkin-completed` | hosts of the booking (the guest completed the online check-in, § 10) | booking |
 | `guest-data-missing`, `alloggiati-deadline`, `alloggiati-overdue`, `alloggiati-failed`, `checkout-reminder` | hosts of the booking | booking |
 | `service-request-taken`, `-started`, `-completed`, `-rejected`, `-time-proposed` | hosts of the property | service request |
@@ -230,12 +231,15 @@ effort like the other pushes: a failure is logged with the ids and never fails t
 the *Documenti* tab (`?tab=guest`) and, on this message, reads again what the check-in changes (the booking and its check-in link, the
 guests, Alloggiati Web, the cockpit and the Home) so the page open in front of the host updates without a reload.
 
-**Messages.** A message of the guest of a direct booking (`GuestMessageService.SendAsGuestAsync`, after it is saved, never on a replayed send) queues
-a push to `PushAudience.BookingHosts(bookingId)`: type `guest-message`, delivery key `booking-message:{messageId:N}` (**one push and
-one bell entry for every message**; the e-mail stays throttled to one every ten minutes), route `/bookings/{id}/messages`. The
-lock-screen text is the property only: *Nuovo messaggio da un ospite* / *«{property}»: un ospite ti ha scritto.* (`Push_GuestMessage_*`
-in `EmailTexts.resx` and `.en.resx`); **no guest name and no text of the message**. It is best effort like the other pushes: a failure
-is logged with the ids and never fails the send.
+**Messages.** A message of the guest of a direct booking (`GuestMessageService.SendAsGuestAsync`, after it is saved, never on a replayed send) is
+alerted through the notification preferences (NF-65, `HostMessageAlertDelivery`, [guest-messages.md](guest-messages.md)), not through the decorator:
+to each person `INotificationPreferenceService` selects, a push to that one user (`PushAudience.User`: type `guest-message`, delivery key
+`booking-message:{messageId:N}`, route `/bookings/{id}/messages`, **one push for every message**), the bell entry (type `guest-message`, entity the
+booking, the same key per person, written by the delivery itself and published live: the decorator writes no entry for a push to one user) and,
+only if the person chose it, an email to its own address at most once every ten minutes per conversation. The lock-screen text is the property only:
+*Nuovo messaggio da un ospite* / *«{property}»: un ospite ti ha scritto.* (`Push_GuestMessage_*` in `EmailTexts.resx` and `.en.resx`); **no guest
+name and no text of the message**. A failure never fails the send: the alert is delivered again by a job (`HostMessageAlertDueJob.RetryAsync`),
+and nobody is told twice.
 
 **Reading clears the notification.** `POST /api/bookings/{id}/messages/read` and the host's reply
 (`POST /api/bookings/{id}/messages`, answering is reading) mark the caller's unread `guest-message` notifications of that booking as read
