@@ -102,4 +102,25 @@ public static class TestDataEntities
     /// the reset with the other showcase rows. A real activation has no marker and is never touched.
     /// </summary>
     public const string MarketplaceActivation = "MarketplaceActivation";
+
+    /// <summary>
+    /// A CRM profile (<see cref="GuestCrmProfile"/>, E07/F01, NF-88) that the CRM sync wrote from the showcase bookings. The reset deletes it, and its
+    /// contacts and proposed merges with it (they follow their profile); a profile the sync made for a real guest has no marker and is never touched.
+    /// </summary>
+    public const string CrmProfile = "CrmProfile";
+
+    /// <summary>A contact (<see cref="GuestContact"/>, NF-89) of a showcase profile: written by the CRM sync, deleted with its profile at the reset.</summary>
+    public const string CrmContact = "CrmContact";
+
+    /// <summary>A merge proposed for a showcase profile (<see cref="GuestMergeCandidate"/>, NF-88): written by the CRM sync, deleted with its profile at the reset.</summary>
+    public const string CrmMergeCandidate = "CrmMergeCandidate";
+
+    /// <summary>
+    /// A row of the privacy history of a showcase guest (<see cref="GuestConsentRecord"/>: the soft opt-in notice a direct customer was shown, the
+    /// marketing consent of the online check-in). It goes with its guest at the reset.
+    /// </summary>
+    public const string GuestConsent = "GuestConsentRecord";
+
+    /// <summary>The per-channel marketing consent of the online check-in of a showcase guest (<see cref="MarketingConsentRecord"/>); it goes with its booking at the reset.</summary>
+    public const string MarketingConsent = "MarketingConsentRecord";
 }

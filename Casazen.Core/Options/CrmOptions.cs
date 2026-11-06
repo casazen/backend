@@ -29,6 +29,9 @@ public class CrmOptions
     /// <inheritdoc cref="MinConfirmationMaxSends"/>
     public const int MaxConfirmationMaxSends = 10;
 
+    /// <summary>The calling code of the market of the product: the default of <see cref="DefaultCallingCode"/>.</summary>
+    public const string DefaultCallingCodeValue = "+39";
+
     /// <summary>
     /// The secret of the keyed index (<c>Crm:ContactIndexKey</c>, env var <c>Crm__ContactIndexKey</c>): at least
     /// <see cref="MinContactIndexKeyLength"/> random characters, never in the database and never in the repository. <b>It must never change
@@ -61,11 +64,31 @@ public class CrmOptions
     /// </summary>
     public List<string> OtaForwardDomains { get; set; } = [];
 
+    /// <summary>
+    /// The calling code a phone number written without one takes when the CRM normalizes it (E07/F01/US02/T01): <c>333 1234567</c> becomes
+    /// <c>+39 333 1234567</c>. A plus sign and one to three digits, the first not zero. Used by the keys of the matching and by the contacts, so
+    /// changing it changes the key of every national number stored without a prefix; leave it at <c>+39</c>, the market of the product. Env var
+    /// <c>Crm__DefaultCallingCode</c>.
+    /// </summary>
+    public string DefaultCallingCode { get; set; } = DefaultCallingCodeValue;
+
     /// <summary>Hours a confirmation link (double opt-in) works (72). Env var <c>Crm__ConfirmationLinkValidityHours</c>.</summary>
     public int ConfirmationLinkValidityHours { get; set; } = 72;
 
     /// <summary>How many confirmation messages one contact gets at most (3). Env var <c>Crm__ConfirmationMaxSends</c>.</summary>
     public int ConfirmationMaxSends { get; set; } = 3;
+
+    /// <summary>
+    /// True when <paramref name="value"/> is a calling code: a plus sign and one to three ASCII digits, the first not zero (<c>+39</c>,
+    /// <c>+1</c>, <c>+353</c>), with nothing around it.
+    /// </summary>
+    public static bool IsCallingCode(string? value)
+    {
+        if (value is not { Length: >= 2 and <= 4 } || value[0] != '+' || value[1] is < '1' or > '9')
+            return false;
+
+        return value.AsSpan(1).IndexOfAnyExceptInRange('0', '9') < 0;
+    }
 
     /// <summary>
     /// True when <paramref name="value"/> is a bare host name: dot-separated labels of letters, digits and hyphens (1 to 63 characters, none
@@ -123,6 +146,10 @@ public sealed class CrmOptionsValidator(IFeatureFlags featureFlags, IHostEnviron
             failures.Add(
                 $"Crm__ConfirmationMaxSends must be between {CrmOptions.MinConfirmationMaxSends} and {CrmOptions.MaxConfirmationMaxSends}.");
         }
+
+        // The prefix of the keys of the phone numbers (E07/F01/US02/T01): a typo would key every national number differently, silently.
+        if (!CrmOptions.IsCallingCode(options.DefaultCallingCode))
+            failures.Add("Crm__DefaultCallingCode must be a plus sign and one to three digits, the first not zero (for example +39).");
 
         if (RequiresKey(environment))
         {
