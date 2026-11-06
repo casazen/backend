@@ -4313,6 +4313,72 @@
   <data name="OctoratePropertyNotFound" xml:space="preserve">
     <value>Property not found.</value>
   </data>
+  <data name="OctoratePropertyExists" xml:space="preserve">
+    <value>The property is already linked to a listing on the channel manager.</value>
+  </data>
+  <data name="OctorateMappingUnconfirmed" xml:space="preserve">
+    <value>First confirm or reject the match between this property and a listing already on the channel manager, then try again.</value>
+  </data>
+  <data name="OctoratePropertyInvalid" xml:space="preserve">
+    <value>The property data is not enough to create it on the channel manager: complete the fields shown.</value>
+  </data>
+  <data name="OctorateNetworkUnknown" xml:space="preserve">
+    <value>The channel manager does not recognize the network of your account: connect the account again from the channel settings.</value>
+  </data>
+  <data name="OctorateOwnerEmailNotConfigured" xml:space="preserve">
+    <value>Creating the property on the channel manager is not active yet because the service address is missing: contact support.</value>
+  </data>
+  <data name="ListingChannelsRequired" xml:space="preserve">
+    <value>Choose at least one channel to publish to.</value>
+  </data>
+  <data name="ListingChannelUnknown" xml:space="preserve">
+    <value>One of the chosen channels does not receive content from CasaZen.</value>
+  </data>
+  <data name="ListingContentIncomplete" xml:space="preserve">
+    <value>To publish you need the title and the description in Italian and in English.</value>
+  </data>
+  <data name="ListingModifiedOutside" xml:space="preserve">
+    <value>The listing was changed outside CasaZen on one of the chosen channels: choose whether to keep the CasaZen version or take the one on the channel manager.</value>
+  </data>
+  <data name="ListingChannelNotFound" xml:space="preserve">
+    <value>Channel not found for this property.</value>
+  </data>
+  <data name="ListingChannelErrorCinMissing" xml:space="preserve">
+    <value>This channel needs a valid CIN: enter it in the property details.</value>
+  </data>
+  <data name="ListingChannelErrorPhotosBelowMinimum" xml:space="preserve">
+    <value>This channel needs at least {0} photos: add them in the photos step.</value>
+  </data>
+  <data name="ListingChannelErrorContentRejected" xml:space="preserve">
+    <value>The channel manager refused part of the content: check the listing data and try again.</value>
+  </data>
+  <data name="ListingChannelErrorChannelRefused" xml:space="preserve">
+    <value>The channel did not accept the content: fix what is shown and publish again.</value>
+  </data>
+  <data name="ListingChannelErrorChannelPushFailed" xml:space="preserve">
+    <value>Sending the content to the channel did not work: try again shortly.</value>
+  </data>
+  <data name="ListingChannelErrorChannelNotConnected" xml:space="preserve">
+    <value>The property is not connected to this channel: connect it from the channel settings.</value>
+  </data>
+  <data name="ListingChannelErrorRoomRequired" xml:space="preserve">
+    <value>Choose the room of the listing on the channel manager before publishing.</value>
+  </data>
+  <data name="ListingChannelErrorGeneric" xml:space="preserve">
+    <value>Something did not work with this channel: check the details and try again.</value>
+  </data>
+  <data name="OutsideChangeNotFound" xml:space="preserve">
+    <value>This channel has no outside change to resolve.</value>
+  </data>
+  <data name="OutsideChangeTakeNotSupported" xml:space="preserve">
+    <value>Only the descriptions of the channel manager can be taken: for the other data that changed, keep the CasaZen version.</value>
+  </data>
+  <data name="OutsideChangeTextTooLong" xml:space="preserve">
+    <value>A text on the channel manager is longer than CasaZen can accept: keep the CasaZen version or shorten it on the channel manager.</value>
+  </data>
+  <data name="OutsideChangeChoiceInvalid" xml:space="preserve">
+    <value>Choose whether to keep the CasaZen version or take the one on the channel manager.</value>
+  </data>
   <data name="OctorateMappingPropertyTaken" xml:space="preserve">
     <value>This property is already linked to another channel manager listing.</value>
   </data>
