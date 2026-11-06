@@ -326,6 +326,10 @@ public class AppDbContext(
     public DbSet<OctorateListingMapping> OctorateListingMappings { get; set; } = null!;
     public DbSet<OctorateOAuthState> OctorateOAuthStates { get; set; } = null!;
 
+    // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
+    public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
+    public DbSet<OctorateStayStateSync> OctorateStayStateSyncs { get; set; } = null!;
+
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
@@ -1659,6 +1663,12 @@ public class AppDbContext(
                 .HasDatabaseName(OctorateOAuthState.StateHashIndexName);
             entity.HasIndex(s => s.ExpiresAt);
         });
+
+        // ─── Check-in to Octorate (NF-41, NF-45, E03/F01/US01/T03) ───────────────
+        // The guests sent (one per booking and position) and the states of a stay (one per booking and state); the tenant query filter is
+        // applied below, to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new StayGuestOctorateLinkConfiguration());
+        modelBuilder.ApplyConfiguration(new OctorateStayStateSyncConfiguration());
 
         // ─── Internal activities: the staff work (NF-22) and the "To do" list (ADR-026) ───
         // An organization-level To do has no property, so the property is optional; deleting a property still deletes its

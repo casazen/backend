@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text;
+using Casazen.Core.Entities;
 using Casazen.Core.Multitenancy;
+using Casazen.Core.Octorate;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Octorate;
 using Microsoft.Extensions.Configuration;
@@ -76,6 +78,56 @@ public class OctorateApiClientTests
         Assert.Equal(OctorateRateLimiter.RequestsPerMinute - 1, h.Limiter.AvailableCalls(OrgB));
     }
 
+    [Fact]
+    public async Task OctorateCheckIn_PayloadHasNoDocumentImage_Test()
+    {
+        // AC-NF41-4 at compile time: the guest sent to Octorate is made of data fields only, no member can hold an image, a stream or bytes.
+        var dataTypes = new[] { typeof(string), typeof(int), typeof(bool), typeof(bool?), typeof(decimal?), typeof(DateOnly?) };
+        Assert.All(typeof(OctorateCheckInGuestUpsert).GetProperties(), property =>
+        {
+            Assert.Contains(property.PropertyType, dataTypes);
+            Assert.DoesNotMatch("(?i)image|photo|picture|scan|file|stream|byte|base64", property.Name);
+        });
+
+        // A guest whose document photos are on file: what leaves carries the document data and none of the photos.
+        var photos = new DocumentImage
+        {
+            FrontImageUrl = "https://storage.test/documents/front-0001.jpg",
+            BackImageUrl = "https://storage.test/documents/back-0001.jpg",
+        };
+        var guest = new StayGuest
+        {
+            Position = 0,
+            Type = StayGuestType.SingleGuest,
+            FirstName = "Ospite",
+            LastName = "Di Prova",
+            Gender = Gender.Male,
+            DateOfBirth = new DateTime(1980, 7, 1, 0, 0, 0, DateTimeKind.Utc),
+            BornInItaly = true,
+            BirthComuneName = "Como",
+            CitizenshipCode = OctorateCheckInMapper.ItalyStateCode,
+            CitizenshipName = "ITALIA",
+            ResidenceInItaly = true,
+            ResidenceComuneName = "Como",
+            DocumentType = GuestDocumentType.Passport,
+            DocumentNumber = "YA0000001",
+            DocumentIssuePlaceName = "Como",
+            DocumentExpiresOn = new DateOnly(2031, 3, 1),
+        };
+        var upsert = OctorateCheckInMapper.Map(guest, new DateOnly(2026, 11, 20), new DateOnly(2026, 11, 23), draft: false, null, null);
+        var h = new Harness();
+
+        using (h.Scope.Use(OrgA))
+            await h.Client.UpsertCheckInGuestsAsync("4711", "7001", [upsert], CancellationToken.None);
+
+        var body = Assert.Single(h.Handler.Bodies);
+        Assert.Contains("\"documentCode\":\"YA0000001\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"documentType\":\"PASOR\"", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(photos.FrontImageUrl, body, StringComparison.Ordinal);
+        Assert.DoesNotContain(photos.BackImageUrl!, body, StringComparison.Ordinal);
+        Assert.DoesNotMatch("(?i)image|photo|base64|data:", body);
+    }
+
     private sealed class Harness
     {
         public Harness()
@@ -141,13 +193,18 @@ public class OctorateApiClientTests
 
         public List<string> Authorizations { get; } = [];
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        /// <summary>The body of every call that had one.</summary>
+        public List<string> Bodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Authorizations.Add(request.Headers.Authorization?.ToString() ?? "(none)");
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            if (request.Content is not null)
+                Bodies.Add(await request.Content.ReadAsStringAsync(cancellationToken));
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(Body, Encoding.UTF8, "application/json"),
-            });
+            };
         }
     }
 

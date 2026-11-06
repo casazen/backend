@@ -74,6 +74,24 @@ public interface IOctorateApiClient
     Task SetCheckInStatusAsync(string accommodationId, string reservationId, OctorateCheckInStatus status, CancellationToken ct);
 
     /// <summary>
+    /// Creates or updates the check-in guests of a reservation (E03/F01/US01/T03, NF-41), one call per guest: a guest with no
+    /// <see cref="OctorateCheckInGuestUpsert.OctorateGuestId"/> is created (<c>POST /rest/v1/checkin/{acc}/{id}/guest</c>), one with an id is
+    /// updated (<c>PUT /rest/v1/checkin/{acc}/{id}/guest/{guestId}</c>). The result says, per guest, the Octorate id and whether it is
+    /// validated, or a stable error code: a refusal of one guest does not stop the others, and no error is turned into a success.
+    /// </summary>
+    Task<OctorateCheckInGuestResult[]> UpsertCheckInGuestsAsync(
+        string accommodationId,
+        string reservationId,
+        IReadOnlyList<OctorateCheckInGuestUpsert> guests,
+        CancellationToken ct);
+
+    /// <summary>Deletes a check-in guest of a reservation (<c>DELETE /rest/v1/checkin/{acc}/{id}/guest/{guestId}</c>).</summary>
+    Task DeleteCheckInGuestAsync(string accommodationId, string reservationId, string octorateGuestId, CancellationToken ct);
+
+    /// <summary>The arrival Octorate registered for a reservation (<c>effectiveCheckin</c>, <c>arrivalTime</c> of the single read).</summary>
+    Task<OctorateReservationArrival> GetReservationArrivalAsync(string accommodationId, string reservationId, CancellationToken ct);
+
+    /// <summary>
     /// The catalog of portals and tools Octorate offers (<c>GET /rest/v1/meta/portals</c>, E09/F01/US01/T02). A partner-level call: it acts
     /// for the application and carries no property data, so it needs no org in <see cref="IOctorateOrgScope"/>, uses the partner token
     /// (<see cref="IOctorateTokenService.GetPartnerAccessTokenAsync"/>) and takes its call from the rate-limit bucket <c>platform</c>, not an

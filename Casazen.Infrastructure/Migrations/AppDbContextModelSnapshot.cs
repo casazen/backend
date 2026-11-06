@@ -3731,6 +3731,61 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("OctorateOAuthStates");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateStayStateSync", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OctorateArrivalTime")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<DateTime?>("OctorateEffectiveCheckin")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("TodoActivityId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId", "State")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OctorateStayStateSyncs_BookingId_State");
+
+                    b.HasIndex("OrgId", "Status");
+
+                    b.ToTable("OctorateStayStateSyncs");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OfficialSourceFetch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -9425,6 +9480,64 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("StayGuests");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.StayGuestOctorateLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("OctorateGuestId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .IsFixedLength();
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("SentAsDraft")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("TodoActivityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId", "Position")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_StayGuestOctorateLinks_BookingId_Position");
+
+                    b.HasIndex("OrgId", "Status");
+
+                    b.ToTable("StayGuestOctorateLinks");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.StayTouristTax", b =>
                 {
                     b.Property<Guid>("Id")
@@ -12188,6 +12301,21 @@ namespace Casazen.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateStayStateSync", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Booking", null)
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OrgActivityEntry", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", null)
@@ -13309,6 +13437,21 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Booking");
 
                     b.Navigation("Guest");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.StayGuestOctorateLink", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Booking", null)
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.StayTouristTax", b =>

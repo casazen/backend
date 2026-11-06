@@ -1,6 +1,7 @@
 using Casazen.Core.Events;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Web.Configuration;
@@ -68,6 +69,15 @@ public static class OctorateServiceCollectionExtensions
         // calendar every 15 minutes and calls it after a successful read (scheduled only while Features:OctorateConnector is on).
         services.AddScoped<ICalMigrationService>();
         services.AddScoped<CalendarSyncJob>();
+
+        // The check-in of a stay (E03/F01/US01/T03): the guests sent to Octorate, the states of the stay (a handler of the check-in and
+        // check-out events that queues the job; the no-show is queued by the check-in endpoints) and the retry every 15 minutes (scheduled
+        // only while Features:OctorateConnector is on). Keys Octorate:WriteCityTaxValues, CheckInMaxAttempts and
+        // SendGuestsWhenSenderIsNotChannelManager.
+        services.AddScoped<ICheckInOctorateSyncService, CheckInOctorateSyncService>();
+        services.AddScoped<IEventHandler<DomainEvent>, OctorateStayStateHandler>();
+        services.AddScoped<OctorateStayStateJob>();
+        services.AddScoped<OctorateCheckInRetryJob>();
 
         return services;
     }

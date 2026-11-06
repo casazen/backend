@@ -380,6 +380,99 @@ public sealed record OctorateReservation
     }
 }
 
+/// <summary>
+/// One guest of a reservation to create or update on Octorate (E03/F01/US01/T03, NF-41): data fields only. There is no member that can carry an
+/// image, a stream or bytes, so no document photo can ever be sent (AC-NF41-4 holds at compile time). The values are the ones of the Alloggiati
+/// record CasaZen keeps (<c>StayGuest</c>): the police code of the document type, the birth and residence places as names (Octorate accepts a
+/// complete guest only with names it recognizes). Never logged.
+/// </summary>
+/// <remarks>
+/// The member names of the body are the ones of the guest example of Octorate the sandbox accepted on 2026-11-04 (<c>familyName</c>,
+/// <c>givenName</c>, <c>accommodatedType</c>, <c>birthDate</c>, <c>birthCountry</c>, <c>birthCity</c>, <c>residenceCountry</c>, <c>city</c>,
+/// <c>citizenship</c>, <c>documentType</c>, <c>documentCode</c>, <c>documentIssuePlace</c>, <c>documentIssueDate</c>, <c>documentExpire</c>,
+/// <c>sex</c>, <c>draft</c>); the tax members (<c>cityTaxPrice</c>, <c>cityTaxExemption</c>, <c>excludeCityTax</c>) were accepted and not read
+/// back (Q-004).
+/// </remarks>
+public sealed record OctorateCheckInGuestUpsert
+{
+    /// <summary>The position of the guest in the stay (CasaZen's key of the guest; not sent).</summary>
+    public required int Position { get; init; }
+
+    /// <summary>The id of the guest on Octorate: null creates it, a value updates it.</summary>
+    public string? OctorateGuestId { get; init; }
+
+    /// <summary>
+    /// <c>false</c> only when the channel manager is the sender of the property (Octorate transmits to the police); <c>true</c> otherwise. The
+    /// sandbox ignores it (the guest is read back with <c>draft = false</c>).
+    /// </summary>
+    public required bool Draft { get; init; }
+
+    /// <summary>The kind of guest of the Alloggiati record as Octorate names it (<c>SINGLE_GUEST</c>, ...).</summary>
+    public required string AccommodatedType { get; init; }
+
+    public required string FamilyName { get; init; }
+    public required string GivenName { get; init; }
+
+    /// <summary><c>MALE</c> or <c>FEMALE</c>; null when not known.</summary>
+    public string? Sex { get; init; }
+
+    public DateOnly? BirthDate { get; init; }
+
+    /// <summary><c>IT</c> for a guest born in Italy, otherwise the state of birth as entered.</summary>
+    public string? BirthCountry { get; init; }
+
+    /// <summary>The comune of birth (Italy) as its name.</summary>
+    public string? BirthCity { get; init; }
+
+    /// <summary><c>IT</c> for an Italian citizen, otherwise the citizenship as entered.</summary>
+    public string? Citizenship { get; init; }
+
+    /// <summary><c>IT</c> for a guest living in Italy, otherwise the state of residence as entered.</summary>
+    public string? ResidenceCountry { get; init; }
+
+    /// <summary>The comune (Italy) or the place of residence as its name (<c>city</c> of the body).</summary>
+    public string? ResidenceCity { get; init; }
+
+    /// <summary>The police code of the document type (<c>IDENT</c>, <c>PASOR</c>, <c>PATEN</c>, ...); only for a single guest or a head.</summary>
+    public string? DocumentType { get; init; }
+
+    /// <summary>The document number; only for a single guest or a head.</summary>
+    public string? DocumentCode { get; init; }
+
+    public string? DocumentIssuePlace { get; init; }
+    public DateOnly? DocumentIssueDate { get; init; }
+    public DateOnly? DocumentExpire { get; init; }
+
+    /// <summary>Arrival and departure of the stay (the guest example carries them).</summary>
+    public DateOnly? CheckIn { get; init; }
+    public DateOnly? CheckOut { get; init; }
+
+    /// <summary>The tourist tax of the guest; sent only with <c>Octorate:WriteCityTaxValues</c> on and a confirmed, current tax record.</summary>
+    public decimal? CityTaxPrice { get; init; }
+
+    /// <summary>The Octorate reason of the exemption, only when the host's reason has one.</summary>
+    public string? CityTaxExemption { get; init; }
+
+    /// <summary>True for an exempt guest or a stay the channel collected.</summary>
+    public bool? ExcludeCityTax { get; init; }
+}
+
+/// <summary>The outcome of one guest of <see cref="IOctorateApiClient.UpsertCheckInGuestsAsync"/>.</summary>
+/// <param name="Position">The position of the guest in the stay.</param>
+/// <param name="OctorateGuestId">The id of the guest on Octorate (the one created, or the one updated); null when it failed.</param>
+/// <param name="Created">True when the guest was created by this call.</param>
+/// <param name="Validated">What Octorate answered for <c>validated</c>; null when the answer does not say.</param>
+/// <param name="ErrorCode">A stable code when the guest failed (<c>octorate_auth</c>, <c>octorate_guest_rejected</c>, ...); null on success.</param>
+public sealed record OctorateCheckInGuestResult(int Position, string? OctorateGuestId, bool Created, bool? Validated, string? ErrorCode)
+{
+    public bool Succeeded => ErrorCode is null && OctorateGuestId is not null;
+}
+
+/// <summary>The arrival of a reservation as Octorate reads it back after <c>CHECKIN_END</c>.</summary>
+/// <param name="EffectiveCheckin">When the arrival was registered (<c>effectiveCheckin</c>, UTC); null when Octorate has none.</param>
+/// <param name="ArrivalTime">The expected arrival time of the reservation (<c>arrivalTime</c>, at most 10 characters); null when none.</param>
+public sealed record OctorateReservationArrival(DateTime? EffectiveCheckin, string? ArrivalTime);
+
 /// <summary>The states CasaZen sends with the check-in status operation (<c>PUT /rest/v1/checkin/{acc}/{id}?status=</c>).</summary>
 public enum OctorateCheckInStatus
 {
