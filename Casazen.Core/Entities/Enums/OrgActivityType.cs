@@ -3,7 +3,7 @@ namespace Casazen.Core.Entities.Enums;
 /// <summary>
 /// The stable code of what happened (<see cref="OrgActivityEntry.Type"/>, AM-02b). The list is the whole perimeter of the
 /// activity log: an event is added here, in <c>OrgActivityCatalog</c> and in the runbook <c>docs/runbooks/org-team.md</c>, never
-/// without (about 25 in the end, decision AM-D18: the catalog is closed and grows one row at a time, each written by the task that
+/// without (about 30 in the end, decision AM-D18 raised from 25: the catalog is closed and grows one row at a time, each written by the task that
 /// introduces the action). The client composes the sentence from the type and the ids; nothing here carries a name, an email,
 /// an amount or a free text. Persisted as int, explicit values in groups of ten: append-only, never reorder or reuse a
 /// value. The ones marked <i>reserved</i> have their code fixed now and are written by the task that builds the feature.

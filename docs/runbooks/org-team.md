@@ -779,12 +779,14 @@ something **asks the administrators for access**. Backend only; the screens are 
 
 ## 30. The events (the whole perimeter)
 
-Twenty-five events, **twenty-three written today and two reserved** (AM-02c: the three events of the mode of a property are written since then,
-and `MemberAreasChanged` is new; E03/F01/US05/T02 added the three of the police and ISTAT communications, 80 to 82, which bring the
-catalog to the twenty-five of AM-D18: the next event needs a decision). The runbook, `OrgActivityCatalog` and `OrgActivityType` list the
-same ones: a test fails if they disagree, and another one if an event that is not reserved is recorded by nobody or a reserved
-one by somebody. A new event is an enum value (integers in groups of ten, never reused), an entry of the catalog, a row here and
-a test; the perimeter grows row by row to about twenty-five events (decision AM-D18), never by an open list.
+Twenty-six events, **twenty-four written today and two reserved** (AM-02c: the three events of the mode of a property are written since then,
+and `MemberAreasChanged` is new; E03/F05/US01/T01 added the compliance handoff, 100; E03/F01/US05/T02 added the three of the police and
+ISTAT communications, 80 to 82). The cap of the catalog is **thirty events**: AM-D18 first said twenty-five, and the Octorate plan adds four
+(the handoff and these three), so the cap was raised to thirty until the PO confirms it; the next event after the thirtieth needs a
+decision. The runbook, `OrgActivityCatalog` and `OrgActivityType` list the same ones: a test fails if they disagree, and another one if an
+event that is not reserved is recorded by nobody or a reserved one by somebody. A new event is an enum value (integers in groups of ten,
+never reused), an entry of the catalog, a row here and a test; the perimeter grows row by row to about thirty events (decision AM-D18),
+never by an open list.
 
 | Event (`Type`) | Value | Area | Subject (`SubjectId`) | Details | Written by, and when |
 |---|---|---|---|---|---|
