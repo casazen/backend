@@ -1,3 +1,4 @@
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -21,7 +22,9 @@ namespace Casazen.Infrastructure.Jobs;
 /// <item><b>Across the orgs, one at a time</b>: the lists of what to sync are read across every org (<c>IgnoreQueryFilters([TenantQueryFilter])</c>,
 /// ids only); each booking or guest is then synced in a scope of its own under its org (<see cref="CrmSyncScopes"/>), which writes every row with
 /// the <c>OrgId</c> of that org. A booking that fails is logged with its ids and skipped; the next run retries it.</item>
-/// <item><b>Without the key</b> of the CRM index (<c>Crm:ContactIndexKey</c>) the run ends at once, with one line in the log, and does not fail.</item>
+/// <item><b>While the module is closed</b> (<see cref="CrmProfileSyncGate"/>: <c>Features:CrmMarketing</c> off, or no key of the CRM index,
+/// <c>Crm:ContactIndexKey</c>) the run ends at once, with one line in the log, and does not fail. The job is always registered; the flag is
+/// read at every run, so turning it on or off needs no restart.</item>
 /// <item>Never two runs at once (<see cref="DisableConcurrentExecutionAttribute"/>), and a run starts nothing new after <see cref="RunBudget"/>,
 /// so it ends before the next one is due. The logs carry ids and counts, never a name, an address or an error message.</item>
 /// </list>
@@ -31,6 +34,7 @@ public class CrmProfileSyncJob(
     AppDbContext db,
     IServiceScopeFactory scopeFactory,
     ICrmContactIndex contactIndex,
+    IFeatureFlags featureFlags,
     TimeProvider timeProvider,
     ILogger<CrmProfileSyncJob> logger)
 {
@@ -50,9 +54,9 @@ public class CrmProfileSyncJob(
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
-        if (!contactIndex.IsConfigured)
+        if (!CrmProfileSyncGate.IsOpen(featureFlags, contactIndex))
         {
-            logger.LogInformation("CRM profile sync skipped: Crm:ContactIndexKey is not configured");
+            logger.LogInformation("CRM profile sync skipped: Features:CrmMarketing is off or Crm:ContactIndexKey is not configured");
             return;
         }
 

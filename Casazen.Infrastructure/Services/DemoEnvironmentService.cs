@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
@@ -22,8 +23,10 @@ namespace Casazen.Infrastructure.Services;
 /// only rows marked <see cref="TestDataOrigins.Showcase"/>.
 /// </summary>
 /// <remarks>
-/// <paramref name="scopeFactory"/> and <paramref name="contactIndex"/> serve the CRM profiles of the showcase (E07/F01/US02/T03): the profiles,
-/// contacts and proposed merges are made by the CRM sync itself, in a scope under the demo org, from the bookings the reset has just created.
+/// <paramref name="scopeFactory"/>, <paramref name="contactIndex"/> and <paramref name="featureFlags"/> serve the CRM profiles of the showcase
+/// (E07/F01/US02/T03): the profiles, contacts and proposed merges are made by the CRM sync itself, in a scope under the demo org, from the
+/// bookings the reset has just created, and only when the sync is open (<see cref="CrmProfileSyncGate"/>: <c>Features:CrmMarketing</c> on and the
+/// key of the index set).
 /// </remarks>
 public class DemoEnvironmentService(
     AppDbContext db,
@@ -34,7 +37,8 @@ public class DemoEnvironmentService(
     ILogger<DemoEnvironmentService> logger,
     TimeProvider clock,
     IServiceScopeFactory scopeFactory,
-    ICrmContactIndex contactIndex) : IDemoEnvironmentService
+    ICrmContactIndex contactIndex,
+    IFeatureFlags featureFlags) : IDemoEnvironmentService
 {
     private const string Tenant = AppDbContext.TenantQueryFilter;
 
@@ -676,14 +680,16 @@ public class DemoEnvironmentService(
     /// Builds the CRM of the showcase guests (NF-88, NF-89): runs the CRM sync, as the job and the event handler do, on every showcase booking
     /// just created, each in a scope under the demo org; then marks the profiles, the contacts and the proposed merges that came out of it. The
     /// profile of a returning guest, the OTA forward address, the soft opt-in customer, the confirmed consent and the two guests who share a phone
-    /// (a merge to decide) are all made by the real rules, not written by hand. Skipped, with a log, when the CRM index has no key; a booking
-    /// that fails is logged and the reset goes on (the job would make its profile later).
+    /// (a merge to decide) are all made by the real rules, not written by hand. Skipped, with a log, while the CRM sync is closed (the flag
+    /// <c>Features:CrmMarketing</c> is off or the CRM index has no key: <see cref="CrmProfileSyncGate"/>); a booking that fails is logged and
+    /// the reset goes on (the job would make its profile later).
     /// </summary>
     private async Task SeedCrmProfilesAsync(Guid orgId, CancellationToken cancellationToken)
     {
-        if (!contactIndex.IsConfigured)
+        if (!CrmProfileSyncGate.IsOpen(featureFlags, contactIndex))
         {
-            logger.LogInformation("Demo CRM profiles of org {OrgId} were skipped: Crm:ContactIndexKey is not configured", orgId);
+            logger.LogInformation(
+                "Demo CRM profiles of org {OrgId} were skipped: Features:CrmMarketing is off or Crm:ContactIndexKey is not configured", orgId);
             return;
         }
 

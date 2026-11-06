@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Features;
 using Casazen.Core.Options;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -101,7 +102,11 @@ internal static class CrmTestWorld
             NullLogger<CrmContactService>.Instance);
     }
 
-    public static CrmProfileSyncService Sync(AppDbContext db, TimeProvider clock, CrmOptions? options = null)
+    /// <summary>The flag of the marketing module on: the CRM sync runs only with it (and with the key of the index).</summary>
+    public static TestFeatureFlags ModuleOn() => new(FeatureFlags.CrmMarketing);
+
+    /// <summary>The CRM sync, with the marketing module on unless <paramref name="flags"/> says otherwise.</summary>
+    public static CrmProfileSyncService Sync(AppDbContext db, TimeProvider clock, CrmOptions? options = null, IFeatureFlags? flags = null)
     {
         var index = CrmTestIndex.Create();
         return new CrmProfileSyncService(
@@ -109,6 +114,7 @@ internal static class CrmTestWorld
             Matching(db, clock, options),
             Contacts(db, clock, options),
             index,
+            flags ?? ModuleOn(),
             clock,
             NullLogger<CrmProfileSyncService>.Instance);
     }

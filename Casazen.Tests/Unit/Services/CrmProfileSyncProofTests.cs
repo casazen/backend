@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Casazen.Core.Entities;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -9,9 +10,9 @@ using Xunit;
 namespace Casazen.Tests.Unit.Services;
 
 /// <summary>
-/// E07/F01/US02/T03 (NF-88, NF-20): the proofs of the sync of the CRM with the bookings. A retry never duplicates a profile or a contact, and the
-/// guests of a registration never become profiles or contacts. On EF InMemory; the sync runs on a context of its own, as in the job, so the booker
-/// is read from the database and nothing is tracked beforehand.
+/// E07/F01/US02/T03 (NF-88, NF-20): the proofs of the sync of the CRM with the bookings. A retry never duplicates a profile or a contact, the
+/// guests of a registration never become profiles or contacts, and the sync writes nothing while the marketing module is closed. On EF InMemory;
+/// the sync runs on a context of its own, as in the job, so the booker is read from the database and nothing is tracked beforehand.
 /// </summary>
 public class CrmProfileSyncProofTests
 {
@@ -144,6 +145,80 @@ public class CrmProfileSyncProofTests
             new JsonSerializerOptions { ReferenceHandler = ReferenceHandler.IgnoreCycles });
         string[] coGuests = ["Fedora", "Lisi", "Ugo", "Pini", "19850303", "20120707", "1985-03-03", "2012-07-07"];
         Assert.All(coGuests, value => Assert.DoesNotContain(value, everything, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Privacy rule: the CRM sync belongs to the marketing module and follows its flag. With the key of the index set but
+    /// <c>Features:CrmMarketing</c> off, the sync is not available and writes nothing, for the booking and for the guest alike: no profile, no
+    /// contact, no proposal and no link on the guest, so no contact data enters tables that the erasure of the guests does not reach yet. The
+    /// same booking is synced as soon as the flag is on.
+    /// </summary>
+    [Fact]
+    public async Task CrmProfileSync_FlagOff_WritesNothing_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        Guid guestId;
+        Guid bookingId;
+        await using (var seed = CrmTestWorld.Open(store))
+        {
+            var guest = CrmTestWorld.AddGuest(seed, orgId, "Anna", "Verdi", "anna.verdi@example.com", phone: "333 0000444");
+            var booking = CrmTestWorld.AddBooking(seed, guest, Guid.NewGuid(), BookingStatus.Confirmed, BookingSource.Direct, 10, 2, 300m);
+            await seed.SaveChangesAsync(Ct);
+            guestId = guest.Id;
+            bookingId = booking.Id;
+        }
+
+        var flags = new TestFeatureFlags();
+        await using (var db = CrmTestWorld.Open(store))
+        {
+            var sync = CrmTestWorld.Sync(db, CrmTestWorld.Clock(), flags: flags);
+            Assert.False(sync.IsAvailable);
+            Assert.Equal(CrmSyncOutcome.NotAvailable, await sync.SyncBookingAsync(orgId, bookingId, Ct));
+            Assert.Equal(CrmSyncOutcome.NotAvailable, await sync.SyncGuestAsync(orgId, guestId, Ct));
+        }
+
+        await using (var db = CrmTestWorld.Open(store))
+        {
+            Assert.Empty(await db.GuestCrmProfiles.AsNoTracking().ToListAsync(Ct));
+            Assert.Empty(await db.GuestContacts.AsNoTracking().ToListAsync(Ct));
+            Assert.Empty(await db.GuestMergeCandidates.AsNoTracking().ToListAsync(Ct));
+            Assert.Null((await db.Guests.AsNoTracking().SingleAsync(Ct)).GuestCrmProfileId);
+        }
+
+        // The module is switched on: the same booking is synced.
+        flags.Set(FeatureFlags.CrmMarketing, true);
+        await using (var db = CrmTestWorld.Open(store))
+        {
+            var sync = CrmTestWorld.Sync(db, CrmTestWorld.Clock(), flags: flags);
+            Assert.True(sync.IsAvailable);
+            Assert.Equal(CrmSyncOutcome.Synced, await sync.SyncBookingAsync(orgId, bookingId, Ct));
+        }
+
+        await using (var db = CrmTestWorld.Open(store))
+        {
+            var profile = Assert.Single(await db.GuestCrmProfiles.AsNoTracking().ToListAsync(Ct));
+            Assert.Equal(profile.Id, (await db.Guests.AsNoTracking().SingleAsync(Ct)).GuestCrmProfileId);
+            Assert.Equal(2, await db.GuestContacts.CountAsync(Ct));
+        }
+    }
+
+    /// <summary>
+    /// The sync opens with the flag and with the key, neither alone: the key serves the always-on paths too (the suppression list of a
+    /// withdrawal), so only the flag keeps the sync closed with the rest of the module.
+    /// </summary>
+    [Theory]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, false)]
+    public void CrmProfileSyncGate_NeedsTheFlagAndTheKey_Test(bool flagOn, bool keySet, bool expected)
+    {
+        var flags = flagOn ? CrmTestWorld.ModuleOn() : new TestFeatureFlags();
+        var index = CrmTestIndex.Create(keySet ? CrmTestIndex.Key : null);
+
+        Assert.Equal(keySet, index.IsConfigured);
+        Assert.Equal(expected, CrmProfileSyncGate.IsOpen(flags, index));
     }
 
     /// <summary>Syncs the bookings in order, each on a context of its own, as the job does (a booking that fails does not leave its tracker to the next).</summary>

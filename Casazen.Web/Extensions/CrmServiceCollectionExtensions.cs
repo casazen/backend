@@ -32,7 +32,8 @@ public static class CrmServiceCollectionExtensions
 
         // E07/F01/US02 (NF-88, NF-89, NF-20): the matching of a guest to a CRM profile, finally registered (the profiles were never created while it
         // was not); the one writer of the contacts, with the rules of who may be written to (CrmContactRules); and the sync that keeps both in
-        // step with the bookings of every source. Without the key of the index they do nothing (ICrmProfileSyncService.IsAvailable).
+        // step with the bookings of every source. The sync does nothing unless Features:CrmMarketing is on and the key of the index is set
+        // (ICrmProfileSyncService.IsAvailable, CrmProfileSyncGate): it copies contact data into tables the erasure does not reach yet.
         services.AddScoped<IGuestMatchingService, GuestMatchingService>();
         services.AddScoped<ICrmContactService, CrmContactService>();
         services.AddScoped<ICrmProfileSyncService, CrmProfileSyncService>();

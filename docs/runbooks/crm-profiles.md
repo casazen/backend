@@ -19,9 +19,13 @@ module (the switch, the variables, the key) is [`crm-marketing.md`](crm-marketin
 | `CrmBookingEventHandler` | Runs the sync when a booking event arrives on the bus (it only shortens the delay) | `Casazen.Infrastructure/Events/CrmBookingEventHandler.cs` |
 | `CrmProfileSyncJob` | Recurring job `crm-profile-sync`: guarantees the result and backfills the guests with no profile | `Casazen.Infrastructure/Jobs/CrmProfileSyncJob.cs` |
 
-All of it is registered in `AddCrmMarketing` (`Casazen.Web/Extensions/CrmServiceCollectionExtensions.cs`). **Nothing here is behind
-`Features__CrmMarketing`** (that flag closes the endpoints and the send of the campaigns), but everything needs the key of the keyed index,
-`Crm__ContactIndexKey` ([`crm-marketing.md`](crm-marketing.md) § 3): without it the sync does nothing and says so once in the log (§ 4.4).
+All of it is registered in `AddCrmMarketing` (`Casazen.Web/Extensions/CrmServiceCollectionExtensions.cs`). **The sync is closed with the module**: the
+event handler, the job and the demo seed run only with `Features__CrmMarketing` **on and** the key of the keyed index, `Crm__ContactIndexKey`
+([`crm-marketing.md`](crm-marketing.md) § 3), set (`CrmProfileSyncGate`); with either missing they do nothing and say so in the log (§ 4.4). The
+reason is privacy: the sync copies the e-mail, the phone and the name of the bookers, and a keyed hash of the birth date, into `GuestContacts`,
+`GuestCrmProfiles` and `GuestMergeCandidates`, which the erasure, the anonymization and the retention of the guests (`GdprService`,
+`GuestDataEraser`, `GuestDataRetentionService`) do not reach yet: that is task E07/F06/US02/T01. **Until it is delivered, neither the key nor the
+flag is set in production** ([`deploy-checklist.md`](deploy-checklist.md)).
 
 ## 2. Matching: who is the same guest (T01)
 
@@ -191,7 +195,7 @@ record, consents and latest booking only, and ignores a guest that was erased or
 |---|---|---|
 | Event | `BookingCreated`, `BookingConfirmed`, `BookingModified`, `BookingCancelled`, `CheckOutCompleted` on the event bus (ADR-022), under the org of the event | `CrmBookingEventHandler` syncs the booker of the booking at once. It **only shortens the delay**; a failure is logged and never fails the event |
 | Recent bookings | job `crm-profile-sync`, every 15 minutes | the bookers of every booking with `UpdatedAt` in the last two hours: **this guarantees the result** (an import or a producer that records no event is covered here) |
-| Backfill | the same job, after the recent bookings | 200 guests with no `GuestCrmProfileId` (not erased, oldest first); it needs no watermark and no flag and **ends by itself** when every guest is linked |
+| Backfill | the same job, after the recent bookings | 200 guests with no `GuestCrmProfileId` (not erased, oldest first); it needs no watermark of its own and **ends by itself** when every guest is linked |
 
 `ICrmProfileSyncService.SyncBookingAsync(orgId, bookingId)` loads the booker of the booking (the record, never `StayGuest`), runs the matching, builds the
 contacts, recomputes the aggregates, and sets the language of the profile from the most recent contact language and its country from the guest when
@@ -211,7 +215,7 @@ empty. `SyncGuestAsync(orgId, guestId)` is the same for a guest in hand (the bac
 
 ### 4.3 The backfill
 
-The first runs after the key is set link the guests that existed before: 200 a run, every 15 minutes, so 19,200 a day. The log of each run says how many
+The first runs after the module is opened (flag on, key set; § 4.4) link the guests that existed before: 200 a run, every 15 minutes, so 19,200 a day. The log of each run says how many
 bookings and guests it read, synced and failed, and `more guests to link` while the chunk was full. To follow it:
 
 ```sql
@@ -225,11 +229,14 @@ SELECT (SELECT count(*) FROM casazen_prod."GuestCrmProfiles") AS profiles,
        (SELECT count(*) FROM casazen_prod."GuestMergeCandidates" WHERE "Status" = 1) AS open_proposals;
 ```
 
-### 4.4 Without the key
+### 4.4 While the module is closed
 
-With `Crm__ContactIndexKey` not configured (production with `Features__CrmMarketing` off, [`crm-marketing.md`](crm-marketing.md) § 3) the keyed index cannot
-hash: the job ends at once with one line (`CRM profile sync skipped: Crm:ContactIndexKey is not configured`) and does not fail, the event handler does
-nothing, and the demo reset skips the CRM profiles. **No profile and no contact is created in an environment until its key is set.**
+With `Features__CrmMarketing` off, or `Crm__ContactIndexKey` not configured (`CrmProfileSyncGate`; production has neither today,
+[`crm-marketing.md`](crm-marketing.md) § 3), the sync is closed: the job ends at once with one line (`CRM profile sync skipped: Features:CrmMarketing is
+off or Crm:ContactIndexKey is not configured`) and does not fail, the event handler does nothing, and the demo reset skips the CRM profiles. The flag is read
+at every run, so turning it on or off needs no restart. **No profile and no contact is created in an environment until its flag is on and its key is
+set**; neither alone opens it (the keyed index also serves the suppression list of a withdrawal, so a key can exist for that). **Production stays closed
+until E07/F06/US02/T01 (erasure and anonymization of the CRM contacts) is delivered**: no key and no flag there ([`deploy-checklist.md`](deploy-checklist.md)).
 
 ### 4.5 The demo showcase
 
@@ -237,15 +244,16 @@ The scenario `crm-profiles` ([`demo-environment.md`](demo-environment.md)) adds 
 `DEMO-TEST-1`): a returning guest with a stay that is over at Villa del Lago and one to come at Casa Trastevere; a Booking.com booking at Attico Firenze
 (its address becomes an OTA forward, service only); a direct customer at Loft Torino who was shown the soft opt-in notice (soft opt-in); a guest at Villa
 Amalfi with a confirmed marketing consent from the online check-in; and two guests at Appartamento Napoli who left the same phone number (a merge
-proposed, not done). The reset runs the CRM sync itself on every showcase booking (one scope under the demo org for each), marks the profiles, contacts
-and proposed merges it made (`TestDataEntities.CrmProfile`, `CrmContact`, `CrmMergeCandidate`) and deletes them before the guests and houses go. Every
-other demo guest has a placeholder phone number that the CRM does not take for a phone, so no two of them share one.
+proposed, not done). With the sync open (§ 4.4) the reset runs the CRM sync itself on every showcase booking (one scope under the demo org for each), marks
+the profiles, contacts and proposed merges it made (`TestDataEntities.CrmProfile`, `CrmContact`, `CrmMergeCandidate`) and deletes them before the guests
+and houses go; with it closed the bookings are there and no CRM profile is made. Every other demo guest has a placeholder phone number that the CRM does
+not take for a phone, so no two of them share one.
 
 ## 5. Troubleshooting
 
 | Symptom | Meaning / action |
 |---|---|
-| `CRM profile sync skipped: Crm:ContactIndexKey is not configured` | The key is not set in this environment: nothing is synced, by design. Set it ([`crm-marketing.md`](crm-marketing.md) § 3) and the next run starts |
+| `CRM profile sync skipped: Features:CrmMarketing is off or Crm:ContactIndexKey is not configured` | The module is closed in this environment: nothing is synced, by design. On test, to try it: set the key ([`crm-marketing.md`](crm-marketing.md) § 3) and `Features__CrmMarketing=true`, and the next run starts. In production leave both unset until E07/F06/US02/T01 is delivered (§ 4.4) |
 | `CRM sync of booking … failed: DbUpdateException/23505/UIX_GuestContacts_OrgId_Channel_ValueHash` | Two writers made the same contact at the same moment; the next run finds it and goes on. Nothing to do |
 | `CRM sync of booking … failed: …` repeated for the same ids | Look at the kind of error in the line; the booking is retried every 15 minutes while it is in the two-hour window, and the guest by the backfill while it has no profile |
 | `more guests to link` in every run | The backfill is working through a long list, 200 a run |

@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,8 @@ namespace Casazen.Infrastructure.Services;
 /// <inheritdoc cref="ICrmProfileSyncService"/>
 /// <remarks>
 /// <list type="bullet">
+/// <item><b>Closed with the module</b>: <see cref="IsAvailable"/> is the flag <c>Features:CrmMarketing</c> and the key of the index
+/// (<see cref="CrmProfileSyncGate"/>); without either nothing is read or written and the outcome is <see cref="CrmSyncOutcome.NotAvailable"/>.</item>
 /// <item><b>Order</b>: the profile first (<see cref="IGuestMatchingService.FindOrCreateProfileAsync"/>, so the contacts have a profile to belong
 /// to), then the contacts, then the aggregates. Each step saves what it changed and nothing when nothing changed, so a run that stops half way
 /// leaves what it did and the next run finishes it, and a run of an unchanged guest writes nothing.</item>
@@ -23,10 +26,11 @@ public sealed class CrmProfileSyncService(
     IGuestMatchingService matching,
     ICrmContactService contacts,
     ICrmContactIndex contactIndex,
+    IFeatureFlags featureFlags,
     TimeProvider timeProvider,
     ILogger<CrmProfileSyncService> logger) : ICrmProfileSyncService
 {
-    public bool IsAvailable => contactIndex.IsConfigured;
+    public bool IsAvailable => CrmProfileSyncGate.IsOpen(featureFlags, contactIndex);
 
     public async Task<CrmSyncOutcome> SyncBookingAsync(Guid orgId, Guid bookingId, CancellationToken cancellationToken = default)
     {

@@ -19,7 +19,8 @@ namespace Casazen.Infrastructure.Events;
 /// <item><b>A failure never fails the event</b>: it is logged with the ids and the kind of error (never a message that could hold a value) and
 /// swallowed, so the bus does not deliver the event again and the other handlers are not blamed. The job retries the booking.</item>
 /// <item><b>Idempotent</b> (ADR-022-R7): the sync changes nothing the second time, so an event delivered again does no harm.</item>
-/// <item>Without the key of the CRM index (<c>Crm:ContactIndexKey</c>) it does nothing and says nothing: the module is not set up.</item>
+/// <item>While the module is closed (<see cref="ICrmProfileSyncService.IsAvailable"/>: <c>Features:CrmMarketing</c> off, or no
+/// <c>Crm:ContactIndexKey</c>) it does nothing and says nothing: the module is not set up.</item>
 /// </list>
 /// </remarks>
 public sealed class CrmBookingEventHandler(ICrmProfileSyncService sync, ILogger<CrmBookingEventHandler> logger) : IEventHandler<DomainEvent>
