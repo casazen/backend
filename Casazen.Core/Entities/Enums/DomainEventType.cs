@@ -55,6 +55,13 @@ public enum DomainEventType
     InvoiceDataSaved = 21,
 
     /// <summary>
+    /// A property was accepted by the channel manager for the first time (E02/F03/US01/T02): its structure and content are on Octorate. About the
+    /// property (<c>EntityId</c>), recorded once; E08/F05/US02/T02 consumes it to send the calendar, the prices and the restrictions. The number
+    /// leaves room for the values other tasks of the same wave append after 20.
+    /// </summary>
+    ListingPublished = 30,
+
+    /// <summary>
     /// A thread of an OTA conversation was read from the channel manager (E05/F01/US01/T02): about the thread (<c>EntityId</c>), with the payload
     /// <c>OtaThreadSyncedPayload</c> (ids and the flag of Octorate's own assistant for the thread). Starts no routine; the guard of E05/F05
     /// consumes it to keep that assistant off (OCT-11). The numbers 50 to 59 are the messages hub (epic E05): the tasks of the waves run in parallel

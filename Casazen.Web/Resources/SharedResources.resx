@@ -4313,6 +4313,72 @@
   <data name="OctoratePropertyNotFound" xml:space="preserve">
     <value>Immobile non trovato.</value>
   </data>
+  <data name="OctoratePropertyExists" xml:space="preserve">
+    <value>L'immobile è già collegato a un annuncio sul channel manager.</value>
+  </data>
+  <data name="OctorateMappingUnconfirmed" xml:space="preserve">
+    <value>Conferma o rifiuta prima l'abbinamento di questo immobile a un annuncio già presente sul channel manager, poi riprova.</value>
+  </data>
+  <data name="OctoratePropertyInvalid" xml:space="preserve">
+    <value>I dati dell'immobile non bastano per crearlo sul channel manager: completa i campi indicati.</value>
+  </data>
+  <data name="OctorateNetworkUnknown" xml:space="preserve">
+    <value>Il channel manager non riconosce la rete del tuo account: collega di nuovo l'account dalle impostazioni dei canali.</value>
+  </data>
+  <data name="OctorateOwnerEmailNotConfigured" xml:space="preserve">
+    <value>La creazione dell'immobile sul channel manager non è ancora attiva perché manca l'indirizzo di servizio: contatta l'assistenza.</value>
+  </data>
+  <data name="ListingChannelsRequired" xml:space="preserve">
+    <value>Scegli almeno un canale su cui pubblicare.</value>
+  </data>
+  <data name="ListingChannelUnknown" xml:space="preserve">
+    <value>Uno dei canali scelti non riceve i contenuti da CasaZen.</value>
+  </data>
+  <data name="ListingContentIncomplete" xml:space="preserve">
+    <value>Per pubblicare servono il titolo e la descrizione in italiano e in inglese.</value>
+  </data>
+  <data name="ListingModifiedOutside" xml:space="preserve">
+    <value>L'annuncio è stato modificato fuori da CasaZen su uno dei canali scelti: scegli se mantenere la versione di CasaZen o prendere quella del channel manager.</value>
+  </data>
+  <data name="ListingChannelNotFound" xml:space="preserve">
+    <value>Canale non trovato per questo immobile.</value>
+  </data>
+  <data name="ListingChannelErrorCinMissing" xml:space="preserve">
+    <value>Per questo canale serve un CIN valido: inseriscilo nei dati dell'immobile.</value>
+  </data>
+  <data name="ListingChannelErrorPhotosBelowMinimum" xml:space="preserve">
+    <value>Servono almeno {0} foto per questo canale: aggiungile nel passaggio delle foto.</value>
+  </data>
+  <data name="ListingChannelErrorContentRejected" xml:space="preserve">
+    <value>Il channel manager ha rifiutato una parte dei contenuti: controlla i dati dell'annuncio e riprova.</value>
+  </data>
+  <data name="ListingChannelErrorChannelRefused" xml:space="preserve">
+    <value>Il canale non ha accettato i contenuti: correggi quanto indicato e pubblica di nuovo.</value>
+  </data>
+  <data name="ListingChannelErrorChannelPushFailed" xml:space="preserve">
+    <value>L'invio dei contenuti al canale non è riuscito: riprova tra poco.</value>
+  </data>
+  <data name="ListingChannelErrorChannelNotConnected" xml:space="preserve">
+    <value>L'immobile non è collegato a questo canale: collegalo dalle impostazioni dei canali.</value>
+  </data>
+  <data name="ListingChannelErrorRoomRequired" xml:space="preserve">
+    <value>Scegli la camera dell'annuncio nel channel manager prima di pubblicare.</value>
+  </data>
+  <data name="ListingChannelErrorGeneric" xml:space="preserve">
+    <value>Qualcosa non ha funzionato con questo canale: controlla i dettagli e riprova.</value>
+  </data>
+  <data name="OutsideChangeNotFound" xml:space="preserve">
+    <value>Questo canale non ha modifiche esterne da risolvere.</value>
+  </data>
+  <data name="OutsideChangeTakeNotSupported" xml:space="preserve">
+    <value>Si possono prendere solo le descrizioni del channel manager: per gli altri dati cambiati mantieni la versione di CasaZen.</value>
+  </data>
+  <data name="OutsideChangeTextTooLong" xml:space="preserve">
+    <value>Un testo del channel manager è più lungo di quanto CasaZen possa accettare: mantieni la versione di CasaZen o accorcialo sul channel manager.</value>
+  </data>
+  <data name="OutsideChangeChoiceInvalid" xml:space="preserve">
+    <value>Scegli se mantenere la versione di CasaZen o prendere quella del channel manager.</value>
+  </data>
   <data name="OctorateMappingPropertyTaken" xml:space="preserve">
     <value>Questo immobile è già collegato a un altro annuncio del channel manager.</value>
   </data>
