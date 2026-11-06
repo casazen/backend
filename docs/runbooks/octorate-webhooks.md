@@ -124,7 +124,9 @@ be another object), makes `ReconcileRecentAsync` read the org's listings instead
    (the last 24 hours) and the threads it names; `ota-message-deep-reconcile` (02:30 UTC) reads the threads with activity since the last deep pass
    minus two days. Both are behind the flag and keep their position per listing in `OtaMessageSyncStates` (`ImportCursor`, `LastRecentPassAt`,
    `LastDeepPassAt`, `LastError`). Not proven on a licensed structure yet: the sandbox has no `chat` module, so the shape of the chat DTOs is the
-   one of the OpenAPI and the license refusal is read from the 403 of the application server (no error of Octorate's API).
+   one of the OpenAPI and the license refusal is read from the answer of the application server that is no error of Octorate's API (no `type`): a 403
+   for the chat reads, a 500 for `recentMessages` (`sandbox-run-results.md`). Both are kept as `chat_not_licensed`, and the passes leave the listing
+   alone for an hour before they ask again.
 
 The log line of a handled event is `Octorate chat webhook handled: event {EventId}, type {EventType}, ...`: never the text, a name or an address.
 

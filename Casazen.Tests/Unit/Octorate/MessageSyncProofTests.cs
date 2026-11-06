@@ -202,7 +202,7 @@ public class MessageSyncProofTests
         var h = new MessageSyncHarness();
         h.AddListing(Unlicensed, OctorateMappingStatus.Confirmed);
         h.Client.Setup(c => c.GetRecentChatMessagesAsync(Unlicensed, It.IsAny<CancellationToken>()))
-            .ThrowsAsync(OctorateAuthException.ChatNotLicensed(403));
+            .ThrowsAsync(OctorateAuthException.ChatNotLicensed(500));
         h.Client.Setup(c => c.GetRecentChatMessagesAsync(MessageSyncHarness.Accommodation, It.IsAny<CancellationToken>()))
             .ReturnsAsync([MessageSyncHarness.Inbound("70001", ThreadId)]);
         h.Client.Setup(c => c.GetChatThreadAsync(MessageSyncHarness.Accommodation, ThreadId, It.IsAny<CancellationToken>()))

@@ -527,7 +527,7 @@ public sealed class OctorateApiClient(
     {
         var accommodation = CheckedAccommodationId(accommodationId);
         using var document = await GetChatJsonAsync(
-            $"/rest/v1/accommodation/recentMessages?property={Uri.EscapeDataString(accommodation)}", "chat-recent", ct);
+            $"/rest/v1/accommodation/recentMessages?property={Uri.EscapeDataString(accommodation)}", "chat-recent", ct, RecentChatErrorOf);
 
         var read = OctorateChatReader.ReadMessagePage(document.RootElement) ?? throw new OctorateServerException(null);
         if (read.ItemCount > read.Messages.Count)
@@ -716,10 +716,17 @@ public sealed class OctorateApiClient(
         return ParseJson(answer);
     }
 
-    /// <summary>A read of the chat of an accommodation: the common errors, plus the refusal of a license without the <c>chat</c> module (<see cref="ChatErrorOf"/>).</summary>
-    private async Task<JsonDocument> GetChatJsonAsync(string pathAndQuery, string operation, CancellationToken ct)
+    /// <summary>
+    /// A read of the chat of an accommodation: the common errors, plus the refusal of a license without the <c>chat</c> module (<see cref="ChatErrorOf"/>,
+    /// or the <paramref name="mapError"/> of an operation that gets another answer, <see cref="RecentChatErrorOf"/>).
+    /// </summary>
+    private async Task<JsonDocument> GetChatJsonAsync(
+        string pathAndQuery,
+        string operation,
+        CancellationToken ct,
+        Func<int, string?, string, OctorateException?>? mapError = null)
     {
-        var answer = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, Address(pathAndQuery)), operation, ct, mapError: ChatErrorOf);
+        var answer = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, Address(pathAndQuery)), operation, ct, mapError: mapError ?? ChatErrorOf);
         return ParseJson(answer);
     }
 
@@ -733,6 +740,18 @@ public sealed class OctorateApiClient(
         status == 403 && string.IsNullOrEmpty(errorType) && !IsWrongEnvironment(errorType, body)
             ? OctorateAuthException.ChatNotLicensed(status)
             : null;
+
+    /// <summary>
+    /// The refusals of <c>recentMessages</c>: those of <see cref="ChatErrorOf"/>, and a 500 that is not an error of Octorate's API either (no <c>type</c>).
+    /// Where the other chat reads answer 403, the sandbox answers this one with a 500 when the <c>chat</c> module is not in the license
+    /// (<c>sandbox-run-results.md</c>, <c>octorate-integration-facts.md</c>: "chat not available"), and it is the first call of every pass of the
+    /// reconciliation. A 500 that carries a <c>type</c> is a failure of Octorate and keeps its common meaning; <c>null</c> for every other answer.
+    /// Decided by the status and the shape of the answer, never by its text.
+    /// </summary>
+    internal static OctorateException? RecentChatErrorOf(int status, string? errorType, string body) =>
+        status == 500 && string.IsNullOrEmpty(errorType)
+            ? OctorateAuthException.ChatNotLicensed(status)
+            : ChatErrorOf(status, errorType, body);
 
     /// <summary>The id of a thread, trimmed: a number of 1 to <see cref="MaxConnectionIdDigits"/> digits, as the specification declares it (<c>int64</c>).</summary>
     internal static string CheckedThreadId(string threadId)

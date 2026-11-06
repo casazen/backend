@@ -22,6 +22,8 @@ public class OctorateChatClientTests
 
     private const string ServerPage = "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\"><html><head><title>Application server - Error report</title></head><body>403</body></html>";
 
+    private const string ServerErrorPage = "<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\"><html><head><title>Application server - Error report</title></head><body>500</body></html>";
+
     /// <summary>
     /// PROOF TEST: trust rule (ADR-023-R6, AC1 of T02). A 403 that is not an error of Octorate's own API, the page of the application server which is
     /// what a license without the chat module gets, is <c>chat_not_licensed</c> for the four chat reads, decided by the code and the shape of the
@@ -66,9 +68,48 @@ public class OctorateChatClientTests
             var other = await Assert.ThrowsAsync<OctorateAuthException>(() => h.Client.GetPropertyAsync("585492", CancellationToken.None));
             Assert.Equal("octorate_auth_failed", other.Code);
 
-            // A failure of Octorate is a failure, not a license.
-            h.Handler.Respond = _ => (HttpStatusCode.InternalServerError, ServerPage);
+            // A failure of Octorate is a failure, not a license: the reads that answer 403 without the module do not answer 500 for it.
+            h.Handler.Respond = _ => (HttpStatusCode.InternalServerError, ServerErrorPage);
+            await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.GetChatThreadsAsync("585492", 0, CancellationToken.None));
+        }
+    }
+
+    /// <summary>
+    /// PROOF TEST: trust rule (ADR-023-R6, AC1 of T02; <c>sandbox-run-results.md</c>: "E05/F01 must treat non-JSON 403 and 500 as chat not available").
+    /// Without the chat module the sandbox answers <c>recentMessages</c>, the first call of every pass of the reconciliation, with a 500 that is not
+    /// an error of Octorate's API: that is <c>chat_not_licensed</c> (the listing is kept as a state and rests), not a failure tried again every ten
+    /// minutes. A 500 that carries a <c>type</c> of the API, another 5xx and a 500 on the other chat reads keep their common meaning.
+    /// </summary>
+    [Fact]
+    public async Task OctorateClient_RecentChatMessages_500WithTheServerPage_IsChatNotLicensed_Test()
+    {
+        var h = new Harness();
+        using (h.Scope.Use(Org))
+        {
+            h.Handler.Respond = _ => (HttpStatusCode.InternalServerError, ServerErrorPage);
+            var refused = await Assert.ThrowsAsync<OctorateAuthException>(() => h.Client.GetRecentChatMessagesAsync("585492", CancellationToken.None));
+            Assert.Equal("chat_not_licensed", refused.Code);
+            Assert.True(refused.IsChatNotLicensed);
+            Assert.Equal(500, refused.OctorateStatusCode);
+            Assert.Equal(409, refused.ResponseStatusCode);
+            Assert.Equal("OctorateChatNotLicensed", refused.MessageKey);
+
+            // The 403 of the application server is still the license for this read, as for the others.
+            h.Handler.Respond = _ => (HttpStatusCode.Forbidden, ServerPage);
+            var forbidden = await Assert.ThrowsAsync<OctorateAuthException>(() => h.Client.GetRecentChatMessagesAsync("585492", CancellationToken.None));
+            Assert.True(forbidden.IsChatNotLicensed);
+
+            // A failure the API itself describes (it has a type) and another 5xx are failures of Octorate, not a license.
+            h.Handler.Respond = _ => (HttpStatusCode.InternalServerError, """{"type":"ApiException","message":"boom"}""");
             await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.GetRecentChatMessagesAsync("585492", CancellationToken.None));
+
+            h.Handler.Respond = _ => (HttpStatusCode.ServiceUnavailable, ServerErrorPage);
+            await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.GetRecentChatMessagesAsync("585492", CancellationToken.None));
+
+            // The other reads answer 403 without the module: a 500 on them is a failure.
+            h.Handler.Respond = _ => (HttpStatusCode.InternalServerError, ServerErrorPage);
+            await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.GetChatThreadAsync("585492", "9001", CancellationToken.None));
+            await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.GetChatMessagesAsync("585492", "9001", null, CancellationToken.None));
         }
     }
 

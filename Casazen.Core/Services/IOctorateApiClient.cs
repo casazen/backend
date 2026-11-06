@@ -141,7 +141,7 @@ public interface IOctorateApiClient
     /// <see cref="GetRecentChatMessagesAsync"/> are the reads of the copy; the send operation is E05/F02's. An answer that is not a list is
     /// <c>OctorateServerException</c>, never an empty page. A 403 that is not an error of Octorate's API, which is what a license without the
     /// <c>chat</c> module gets, is <c>OctorateAuthException</c> with the code <c>chat_not_licensed</c> (decided by the code and the shape of the
-    /// answer, never its text), the same for the other three reads.
+    /// answer, never its text), the same for the thread and its messages; <see cref="GetRecentChatMessagesAsync"/> answers 500 instead, see there.
     /// </summary>
     Task<OctorateChatThreadPage> GetChatThreadsAsync(string accommodationId, int offset, CancellationToken ct);
 
@@ -161,7 +161,10 @@ public interface IOctorateApiClient
     /// <summary>
     /// The messages created in the last 24 hours in an accommodation (<c>GET /rest/v1/accommodation/recentMessages?property=</c>, E05/F01/US01/T02):
     /// how the reconciliation finds the threads that had news, whatever the webhook missed. The operation is per accommodation in the OpenAPI
-    /// (the sandbox call carries <c>property</c>), so it takes the accommodation.
+    /// (the sandbox call carries <c>property</c>), so it takes the accommodation. Without the <c>chat</c> module this operation does not answer 403
+    /// like the others: the sandbox answers it with a 500 that is not an error of Octorate's API (no <c>type</c>), and that is "chat not available" as
+    /// well (<c>sandbox-run-results.md</c>): <c>OctorateAuthException</c> with the code <c>chat_not_licensed</c>; a 500 that carries a <c>type</c> is
+    /// <c>OctorateServerException</c>.
     /// </summary>
     Task<OctorateChatMessage[]> GetRecentChatMessagesAsync(string accommodationId, CancellationToken ct);
 

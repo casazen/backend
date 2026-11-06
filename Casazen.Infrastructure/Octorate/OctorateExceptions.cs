@@ -70,8 +70,9 @@ public sealed class OctorateAuthException : OctorateException
     public bool IsChatNotLicensed => Code == ChatNotLicensedCode;
 
     /// <summary>
-    /// Octorate refused a chat call with 403 and no error of its own API (the page of its application server, which is what a license without the
-    /// <c>chat</c> module gets in the sandbox): 409, the host asks for the module. The decision is the code and the shape of the answer, never its text.
+    /// Octorate refused a chat call with 403 (or, for <c>recentMessages</c>, 500) and no error of its own API (the page of its application server, which
+    /// is what a license without the <c>chat</c> module gets in the sandbox): 409, the host asks for the module. The decision is the code and the shape
+    /// of the answer, never its text.
     /// </summary>
     public static OctorateAuthException ChatNotLicensed(int? octorateStatusCode) =>
         new(ChatNotLicensedCode, "OctorateChatNotLicensed", StatusCodes.Status409Conflict, octorateStatusCode);

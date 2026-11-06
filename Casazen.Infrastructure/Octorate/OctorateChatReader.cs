@@ -8,8 +8,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// <summary>
 /// Reads the answers of the chat operations of Octorate (E05/F01/US01/T02): the threads (<c>ChatThreadDTO</c>) and the messages
 /// (<c>ChatMessageDTO</c>, in a bare list or in the <c>{page, data}</c> wrapper of <c>ApiListResponse</c>). The names are those of the OpenAPI
-/// of 2026-10-31: the sandbox has no <c>chat</c> module in its license (every chat call answers 403), so none of them has been seen on the
-/// wire yet and a member that is not there is <c>null</c>, never a made-up value.
+/// of 2026-10-31: the sandbox has no <c>chat</c> module in its license (the chat reads answer 403, <c>recentMessages</c> 500), so none of them has
+/// been seen on the wire yet and a member that is not there is <c>null</c>, never a made-up value.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">

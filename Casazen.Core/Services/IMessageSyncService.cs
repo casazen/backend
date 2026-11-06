@@ -80,8 +80,9 @@ public sealed record SyncResult(int ThreadsSeen, int MessagesAdded, int SkippedC
 public static class OtaMessageSyncErrorCodes
 {
     /// <summary>
-    /// The <c>chat</c> module is not in the license of the listing: Octorate answers every chat call with 403 (and the application server's page,
-    /// not an error of its API). The messages of that listing cannot be read, and a screen says so instead of showing an empty inbox.
+    /// The <c>chat</c> module is not in the license of the listing: Octorate answers the chat reads with 403, and <c>recentMessages</c> with 500, with
+    /// the application server's page and not an error of its API. The messages of that listing cannot be read, and a screen says so instead of
+    /// showing an empty inbox.
     /// </summary>
     public const string ChatNotLicensed = "chat_not_licensed";
 }
