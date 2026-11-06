@@ -17,9 +17,9 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>Reads.</b> Everything goes through the <see cref="AppDbContext"/> of the request, so the tenant filter hides the other orgs'
 /// properties, mappings and connections. The channel manager is available for a property when the connector is on and the property has
 /// a confirmed listing (<see cref="OctorateMappingStatus.Confirmed"/>) on a connection of this environment that is connected, the rule
-/// of the default of PO-02 in <see cref="PropertySenderStore"/>. The police fields come from one read of that accommodation through
-/// <see cref="IOctorateApiClient"/> for the org of the property; a failure of Octorate is an unknown answer, never an error of the host's
-/// page and never a verified one.</para>
+/// of the default of PO-02 in <see cref="PropertySenderStore"/>. The police fields come from one read of the police account of that
+/// accommodation through <see cref="IOctorateApiClient.GetPoliceAccountAsync"/> for the org of the property; a failure of Octorate is an
+/// unknown answer, never an error of the host's page and never a verified one.</para>
 /// <para><b>Writes.</b> The sender goes through <see cref="IPropertySenderStore.SetAsync"/>, the one write path, which also records the
 /// audit line of the switch (ADR-029-R4) in the same transaction: no second line is written here. The delegation consent is recorded
 /// just before it, only when every check has passed. The declaration of the activation is the only column this service writes itself.</para>
@@ -284,8 +284,8 @@ public sealed class PropertySenderService(
         {
             using (orgScope.Use(info.OrgId))
             {
-                var accommodation = await octorate.GetPropertyAsync(accommodationId, linked.Token);
-                return new PoliceReading(accommodation.PoliceAccountValid, accommodation.PoliceAutorun, accommodation.PoliceLastCron, null);
+                var account = await octorate.GetPoliceAccountAsync(accommodationId, linked.Token);
+                return new PoliceReading(account.Valid, account.Autorun, account.LastCron, null);
             }
         }
         catch (OctorateAuthException ex) when (ex.IsNotConnected)

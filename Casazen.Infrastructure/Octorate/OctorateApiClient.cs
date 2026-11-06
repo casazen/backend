@@ -60,6 +60,9 @@ public sealed class OctorateApiClient(
     /// <summary>The members of a connection read by <see cref="GetConnectionsAsync"/>: never its portal username or password.</summary>
     private const string ConnectionFields = "id,channelId,channelName,hotelId,status";
 
+    /// <summary>The member of an accommodation read by <see cref="GetPoliceAccountAsync"/>: the police account, as Octorate documents it (Q-002).</summary>
+    private const string PoliceAccountFields = "policeAccount";
+
     /// <summary>The JSON of a partial change: camelCase, the members that are not set are left out.</summary>
     private static readonly JsonSerializerOptions PartialUpdateJson = new(JsonSerializerDefaults.Web)
     {
@@ -125,6 +128,17 @@ public sealed class OctorateApiClient(
         var id = CheckedAccommodationId(accommodationId);
         using var document = await GetJsonAsync($"/rest/v1/accommodation/{Uri.EscapeDataString(id)}", "accommodation", ct);
         return ReadProperty(Unwrap(document.RootElement)) ?? throw new OctorateServerException(null);
+    }
+
+    public async Task<OctoratePoliceAccount> GetPoliceAccountAsync(string accommodationId, CancellationToken ct)
+    {
+        var id = CheckedAccommodationId(accommodationId);
+        using var document = await GetJsonAsync(
+            $"/rest/v1/accommodation/{Uri.EscapeDataString(id)}?fields={Uri.EscapeDataString(PoliceAccountFields)}", "police-account", ct);
+
+        // An answer that is not an accommodation is one CasaZen cannot read; an accommodation without a police account is not an error.
+        var accommodation = Unwrap(document.RootElement);
+        return accommodation.ValueKind == JsonValueKind.Object ? ReadPoliceAccount(accommodation) : throw new OctorateServerException(null);
     }
 
     public async Task UpdatePropertyAsync(string accommodationId, OctoratePropertyUpdate update, CancellationToken ct)
@@ -468,10 +482,6 @@ public sealed class OctorateApiClient(
             (latitude, longitude) = (null, null);
 
         item.TryGetProperty("networkInfo", out var network);
-
-        // The police account the host connected on the Octorate panel. Not every answer has it (an accommodation created through the API
-        // has none): a member that is missing stays null, and nothing is assumed about it.
-        item.TryGetProperty("policeAccount", out var police);
         return new OctorateProperty
         {
             Id = id,
@@ -485,9 +495,25 @@ public sealed class OctorateApiClient(
             Category = OctorateHttp.StringOf(item, "propertyCategory"),
             NetworkId = OctorateHttp.StringOf(network, "accessNetwork"),
             SandboxProperty = BoolOf(item, "sandboxProperty"),
-            PoliceAccountValid = BoolOf(police, "valid"),
-            PoliceAutorun = BoolOf(police, "autorun"),
-            PoliceLastCron = DateTimeOf(police, "lastCron"),
+        };
+    }
+
+    /// <summary>
+    /// The police account the host connected on the Octorate panel, from an accommodation of an answer. Not every answer has it (an
+    /// accommodation created through the API has none): a member that is missing stays <c>null</c>, and nothing is assumed about it. The code
+    /// and the web service key of the object are not read.
+    /// </summary>
+    internal static OctoratePoliceAccount ReadPoliceAccount(JsonElement accommodation)
+    {
+        JsonElement police = default;
+        if (accommodation.ValueKind == JsonValueKind.Object)
+            accommodation.TryGetProperty("policeAccount", out police);
+
+        return new OctoratePoliceAccount
+        {
+            Valid = BoolOf(police, "valid"),
+            Autorun = BoolOf(police, "autorun"),
+            LastCron = DateTimeOf(police, "lastCron"),
         };
     }
 

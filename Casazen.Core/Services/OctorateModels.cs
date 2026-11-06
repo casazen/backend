@@ -47,19 +47,25 @@ public sealed record OctorateProperty
 
     /// <summary>The <c>sandboxProperty</c> flag of a test accommodation, when Octorate sends it.</summary>
     public bool? SandboxProperty { get; init; }
+}
 
-    /// <summary>
-    /// Whether the connection to the police portal (Alloggiati Web) that the host set on the Octorate panel is valid
-    /// (<c>policeAccount.valid</c>). <c>null</c> when the answer does not carry it: Octorate does not expose it for every accommodation (an
-    /// accommodation created through the API has no <c>policeAccount</c>, decisions D17 and D31), and then nothing is assumed.
-    /// </summary>
-    public bool? PoliceAccountValid { get; init; }
+/// <summary>
+/// The police account (Alloggiati Web) the host connected on the Octorate panel for one accommodation, as the API exposes it
+/// (<c>GET /rest/v1/accommodation/{acc}?fields=policeAccount</c>, Q-002): only the three members CasaZen reads. The Alloggiati code and the
+/// web service key the same object holds are never read. A member Octorate does not send is <c>null</c> and nothing is assumed about it:
+/// an accommodation created through the API has no police account at all (decisions D17 and D31), and Octorate never defined
+/// <c>valid</c> alone as «Activated».
+/// </summary>
+public sealed record OctoratePoliceAccount
+{
+    /// <summary>Whether the connection to the police portal is valid (<c>valid</c>); <c>null</c> when not exposed.</summary>
+    public bool? Valid { get; init; }
 
-    /// <summary>Whether Octorate sends the daily automatic communication for the accommodation (<c>policeAccount.autorun</c>); <c>null</c> when not exposed.</summary>
-    public bool? PoliceAutorun { get; init; }
+    /// <summary>Whether Octorate sends the daily automatic communication for the accommodation (<c>autorun</c>); <c>null</c> when not exposed.</summary>
+    public bool? Autorun { get; init; }
 
-    /// <summary>When Octorate's daily job last ran for the accommodation (<c>policeAccount.lastCron</c>), in UTC; <c>null</c> when not exposed.</summary>
-    public DateTime? PoliceLastCron { get; init; }
+    /// <summary>When Octorate's daily job last ran for the accommodation (<c>lastCron</c>), in UTC; <c>null</c> when not exposed.</summary>
+    public DateTime? LastCron { get; init; }
 }
 
 /// <summary>

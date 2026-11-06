@@ -150,7 +150,7 @@ public class PropertySenderServiceTests
         Assert.Equal<DateTime?>(clock.GetUtcNow().UtcDateTime, declared.DeclaredAt);
 
         // Octorate cannot be reached: still unknown (a failure proves nothing) and the read of the sender does not fail.
-        octorate.Setup(o => o.GetPropertyAsync(Accommodation, It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateServerException(503));
+        octorate.Setup(o => o.GetPoliceAccountAsync(Accommodation, It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateServerException(503));
         var down = await service.TestConnectionAsync(world.Connected, CancellationToken.None);
         Assert.Equal((SenderConnectionTestOutcome.Unverifiable, SenderReasonCodes.Unavailable), (down.Outcome, down.Reason));
         Assert.Equal(SenderState.Declared, (await service.GetAsync(world.Connected, CancellationToken.None)).State);
@@ -200,27 +200,26 @@ public class PropertySenderServiceTests
     }
 
     [Fact]
-    public void OctorateApiClient_ReadProperty_ReadsThePoliceAccountOnlyWhenOctorateSendsIt()
+    public void OctorateApiClient_ReadPoliceAccount_ReadsAMemberOnlyWhenOctorateSendsIt()
     {
-        // A text date and the three members.
+        // A text date and the three members; the code and the web service key of the object are not read.
         using var full = JsonDocument.Parse(
-            """{"id":"585492","policeAccount":{"valid":true,"autorun":false,"lastCron":"2026-11-05T22:00:00Z"}}""");
-        var property = OctorateApiClient.ReadProperty(full.RootElement)!;
-        Assert.Equal<(bool?, bool?)>((true, false), (property.PoliceAccountValid, property.PoliceAutorun));
-        Assert.Equal<DateTime?>(new DateTime(2026, 11, 5, 22, 0, 0, DateTimeKind.Utc), property.PoliceLastCron);
+            """{"policeAccount":{"codice":"TEST","wsCode":"TEST","valid":true,"autorun":false,"lastCron":"2026-11-05T22:00:00Z"}}""");
+        var account = OctorateApiClient.ReadPoliceAccount(full.RootElement);
+        Assert.Equal<(bool?, bool?)>((true, false), (account.Valid, account.Autorun));
+        Assert.Equal<DateTime?>(new DateTime(2026, 11, 5, 22, 0, 0, DateTimeKind.Utc), account.LastCron);
 
         // A date in epoch milliseconds, and the members Octorate leaves out stay unknown: nothing is assumed.
         var cron = new DateTimeOffset(2026, 11, 5, 22, 0, 0, TimeSpan.Zero);
-        using var epoch = JsonDocument.Parse(
-            JsonSerializer.Serialize(new { id = "585492", policeAccount = new { lastCron = cron.ToUnixTimeMilliseconds() } }));
-        var partial = OctorateApiClient.ReadProperty(epoch.RootElement)!;
-        Assert.Equal<DateTime?>(cron.UtcDateTime, partial.PoliceLastCron);
-        Assert.Equal<(bool?, bool?)>((null, null), (partial.PoliceAccountValid, partial.PoliceAutorun));
+        using var epoch = JsonDocument.Parse(JsonSerializer.Serialize(new { policeAccount = new { lastCron = cron.ToUnixTimeMilliseconds() } }));
+        var partial = OctorateApiClient.ReadPoliceAccount(epoch.RootElement);
+        Assert.Equal<DateTime?>(cron.UtcDateTime, partial.LastCron);
+        Assert.Equal<(bool?, bool?)>((null, null), (partial.Valid, partial.Autorun));
 
         // An accommodation created through the API has no police account at all.
         using var bare = JsonDocument.Parse("""{"id":"585492","name":"Casa"}""");
-        var none = OctorateApiClient.ReadProperty(bare.RootElement)!;
-        Assert.Equal<(bool?, bool?, DateTime?)>((null, null, null), (none.PoliceAccountValid, none.PoliceAutorun, none.PoliceLastCron));
+        var none = OctorateApiClient.ReadPoliceAccount(bare.RootElement);
+        Assert.Equal<(bool?, bool?, DateTime?)>((null, null, null), (none.Valid, none.Autorun, none.LastCron));
     }
 
     /// <summary>The sender service over the real store and delegation service, with the clock, Octorate and the flags under the test's control.</summary>
@@ -250,12 +249,12 @@ public class PropertySenderServiceTests
             clock);
     }
 
-    /// <summary>What Octorate answers for the accommodation of the connected property: the police members it exposes (<c>null</c> = left out).</summary>
+    /// <summary>What Octorate answers for the police account of the connected property: the members it exposes (<c>null</c> = left out).</summary>
     private static void OctorateExposes(Mock<IOctorateApiClient> octorate, bool? valid, bool? autorun)
     {
         octorate
-            .Setup(o => o.GetPropertyAsync(Accommodation, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new OctorateProperty { Id = Accommodation, PoliceAccountValid = valid, PoliceAutorun = autorun });
+            .Setup(o => o.GetPoliceAccountAsync(Accommodation, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctoratePoliceAccount { Valid = valid, Autorun = autorun });
     }
 
     private static Task<PropertyComplianceSender> StoredAsync(AppDbContext db, Guid propertyId) =>

@@ -25,8 +25,8 @@ namespace Casazen.Core.Services;
 public interface IPropertySenderService
 {
     /// <summary>
-    /// The sender of the property with its state and verification, the police fields Octorate exposes (one read of the accommodation,
-    /// only for the channel manager and bounded in time: a failure leaves them <c>null</c> and never fails the call), whether Questura
+    /// The sender of the property with its state and verification, the police fields Octorate exposes (one read of the police account of the
+    /// accommodation, only for the channel manager and bounded in time: a failure leaves them <c>null</c> and never fails the call), whether Questura
     /// credentials exist (never their value) and whether the channel manager can be chosen. Throws <c>NotFoundException</c>
     /// (<c>property_not_found</c>) for a property the caller's org does not have.
     /// </summary>
@@ -53,7 +53,7 @@ public interface IPropertySenderService
         ComplianceSenderType? istatSender = null);
 
     /// <summary>
-    /// Tests the sender. Channel manager: reads the accommodation on Octorate and answers <see cref="SenderConnectionTestOutcome.Verified"/> only when the
+    /// Tests the sender. Channel manager: reads the police account of the accommodation on Octorate and answers <see cref="SenderConnectionTestOutcome.Verified"/> only when the
     /// police account is valid and its automatic send is on (both read), <see cref="SenderConnectionTestOutcome.Inactive"/> when it is not, and
     /// <see cref="SenderConnectionTestOutcome.Unverifiable"/> when the API does not expose it or cannot be reached. CasaZen:
     /// <see cref="SenderConnectionTestOutcome.NotAvailable"/>. Manual: <see cref="SenderConnectionTestOutcome.NotApplicable"/>. Nothing is stored or transmitted.

@@ -37,8 +37,8 @@ public class PropertySenderController(
     /// <summary>
     /// The sender of the property: who sends, ISTAT, the state (Active only when verified), how it is known, the police fields Octorate
     /// exposes, whether Questura credentials exist (never their value), whether the channel manager can be chosen and the delegation text to
-    /// accept. For a channel-manager property it reads the accommodation on Octorate once, bounded in time; if that fails the fields are
-    /// <c>null</c> and the answer is the same otherwise.
+    /// accept. For a channel-manager property it reads the police account of the accommodation on Octorate once, bounded in time; if that
+    /// fails the fields are <c>null</c> and the answer is the same otherwise.
     /// </summary>
     /// <response code="200">The sender of the property.</response>
     /// <response code="403">The caller does not reach the property.</response>
