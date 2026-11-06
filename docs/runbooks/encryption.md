@@ -29,6 +29,7 @@ value through EF; the database only ever holds the encrypted payload.
 | `Parties.Residence` (the residence or registered office of a party of a lease, no length) | `Casazen.LeaseParty` | LR-12 |
 | `LeaseContracts.TransitoryNeed`, `LeaseContracts.TransitoryDocumentation` (the need that justifies a transitory lease and the documents that prove it, free text printed in art. 2 of the contract; no length) | `Casazen.LeaseContract.TransitoryNeed` | TR |
 | `GuestContacts.Value`, `GuestContacts.DisplayName` (the e-mail address or phone number of a CRM contact and the name that goes with it; no length, the payload is longer than the text; found by `GuestContacts.ValueHash`, not by the value) | `Casazen.GuestContact` | NF-89 |
+| `OtaMessages.TextEncrypted` (property `Text`: the words of the conversations of the guests with the channels, copied from the channel manager; no length, the payload is longer than the text; never searched, never logged, emptied when the guest is erased or the retention ends, `gdpr.md`) | `Casazen.Message.Content` | ADR-032-R3 |
 
 `Guests` and `StayGuests` share one purpose on purpose: a payload copied from one table to the other by SQL (for example
 the CO-12 backfill) stays readable.
