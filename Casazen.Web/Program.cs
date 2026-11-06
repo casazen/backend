@@ -147,6 +147,10 @@ builder.Services.AddCasazenOctorate(builder.Configuration);
 // Marketplace (epic E09, NF-54 to NF-59): the catalog of channels, tools, license functions and partners; every task of the epic registers in AddCasazenMarketplace.
 builder.Services.AddCasazenMarketplace(builder.Configuration);
 
+// Marketing module (epic E07, flag CrmMarketing): the Crm options and the keyed index of the contacts and of the suppression list, all
+// registered in AddCrmMarketing. The controllers are behind the flag; the index and the suppression list serve the always-on paths too.
+builder.Services.AddCrmMarketing(builder.Configuration);
+
 // Localization — Italian (default) and English.
 // No ResourcesPath: resource names follow the marker type's namespace, so IStringLocalizer<SharedResources>
 // (Casazen.Web.Resources.SharedResources) reads Resources/SharedResources.resx and SharedResources.en.resx.
