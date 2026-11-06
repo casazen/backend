@@ -1,8 +1,10 @@
 using Casazen.Core.Events;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Extensions;
 
@@ -35,6 +37,11 @@ public static class BookingOperationsServiceCollectionExtensions
 
         // E08/F01/US01/T05 (NF-74): the payment link of a booking the host entered (the checkout page and the webhook are the checkout's).
         services.AddScoped<IBookingPaymentLinkService, BookingPaymentLinkService>();
+
+        // E08/F02/US02/T01 (NF-75, NF-76, D8): which channels let the host change or cancel a booking from CasaZen (all closed unless
+        // Octorate:ChannelActions opens one).
+        services.AddOptions<OctorateChannelActionsOptions>().BindConfiguration(OctorateChannelActionsOptions.SectionName);
+        services.AddSingleton(provider => new OtaChannelActionPolicy(provider.GetRequiredService<IOptions<OctorateChannelActionsOptions>>().Value));
         return services;
     }
 }

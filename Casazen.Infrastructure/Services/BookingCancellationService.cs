@@ -32,9 +32,13 @@ public sealed class BookingCancellationService(
     BookingNotifier notifier,
     ILogger<BookingCancellationService> logger,
     TimeProvider? timeProvider = null,
-    IDomainEventRecorder? domainEvents = null) : IBookingCancellationService
+    IDomainEventRecorder? domainEvents = null,
+    OtaChannelActionPolicy? channelPolicy = null) : IBookingCancellationService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    /// <summary>Which channels let the host cancel a reservation from CasaZen: closed for every one unless the configuration opens it (D8).</summary>
+    private readonly OtaChannelActionPolicy _channelPolicy = channelPolicy ?? OtaChannelActionPolicy.Closed;
 
     public async Task<BookingCancellationQuote> GetQuoteAsync(Guid bookingId, CancellationToken cancellationToken = default)
     {
@@ -76,7 +80,13 @@ public sealed class BookingCancellationService(
             if (booking.Status == BookingStatus.Cancelled)
                 throw new DomainConflictException(BookingErrorCodes.AlreadyCancelled, "BookingAlreadyCancelled");
             if (!IsCancellable(booking.Status))
-                throw new DomainRuleException("booking_not_cancellable", "BookingNotCancellable");
+                throw new DomainRuleException(BookingErrorCodes.NotCancellable, "BookingNotCancellable");
+
+            // A booking that came from a channel is cancelled on its channel, through Octorate first (IOtaBookingCancellationService, E08/F02/US02/T02),
+            // never here: a local cancellation would leave it alive on the channel. 422 with the sentence that says how to ask the guest or the channel;
+            // nothing is cancelled, refunded or sent (E08/F02/US02/T01, D8, NF-76).
+            if (OtaChannelActionPolicy.IsChannelBooking(booking))
+                throw _channelPolicy.CancelNotAllowed(booking.Source);
 
             var payments = await db.Payments.Where(p => p.BookingId == booking.Id).ToListAsync(cancellationToken);
             var refunds = await LoadRefundsAsync(payments, cancellationToken);
@@ -202,8 +212,7 @@ public sealed class BookingCancellationService(
             await notifier.BookingCancelledByHostAsync(bookingId, refunded, started, cancellationToken);
     }
 
-    private static bool IsCancellable(BookingStatus status) =>
-        status is BookingStatus.Pending or BookingStatus.Confirmed or BookingStatus.CheckedIn;
+    private static bool IsCancellable(BookingStatus status) => BookingEditRules.IsCancellable(status);
 
     private BookingCancellationQuote BuildQuote(
         Booking booking,
@@ -239,10 +248,14 @@ public sealed class BookingCancellationService(
             .Where(p => PaymentRefundService.PaymentIntentIdOf(p) is null && p.Status == PaymentStatus.Completed)
             .Sum(p => p.Amount);
 
+        // A booking that came from a channel is cancellable only where the channel lets the host do it (E08/F02/US02/T02, D8): the quote keeps its shape.
+        var cancellable = IsCancellable(booking.Status)
+                          && (!OtaChannelActionPolicy.IsChannelBooking(booking) || _channelPolicy.For(booking.Source).CanCancel);
+
         return new BookingCancellationQuote(
             booking.Id,
             booking.Status,
-            IsCancellable(booking.Status),
+            cancellable,
             // The refund is in the currency of the charge, which is the one of the property (CHF-MONEY): Stripe refunds in it.
             StayCurrency.ForProperty(booking.Property),
             paid,
