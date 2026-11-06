@@ -72,7 +72,7 @@ executes a merge**; a person decides (the merge is the profile API of E07/F01/US
   in **any** state (proposed, merged, dismissed) is never proposed again, so a dismissed pair stays dismissed.
 - **At most five open proposals for a profile**, and none that would take a profile it points at past five: a phone shared by an agent with a hundred
   guests is five questions to a person. The strongest are kept.
-- **When** they are made: for a new profile (phone, name at a property); when the e-mail and the name-and-birth key of a guest point at two profiles
+- **When** they are made: for a new profile (phone, name at a property; saved with the profile, § 4.2); when the e-mail and the name-and-birth key of a guest point at two profiles
   (90); and when a guest that already has a profile is found to hold an address that a contact of another profile holds (100, `same_email`: a race
   of two syncs, an address corrected to one already known). Two writers proposing the same pair at the same moment end with one row.
 
@@ -205,6 +205,12 @@ empty. `SyncGuestAsync(orgId, guestId)` is the same for a guest in hand (the bac
 
 - **Running it twice changes nothing**, so a retry or an event delivered again never duplicates a profile or a contact. If a run stops half way, what it
   saved stays (each step saves its own changes) and the next run finishes it.
+- **A new profile is saved with the questions about its duplicates.** The profile, the link of the guest and the proposals for the profiles that share its
+  phone or a name at a property are one `SaveChanges` (all or nothing): a run that fails there leaves no profile and the guest unlinked, so the next run
+  makes the profile again with its proposals (they are made once, when the profile is made, and a linked guest does not make them again). When the e-mail
+  and the name-and-birth key of a guest point at two profiles, the question about that pair is stored **before** the guest is linked, for the same reason.
+  If another sync proposed one of the pairs at the same moment (the unique index refuses the batch), only that pair is lost: the others are stored in a
+  second pass.
 - **One profile for one guest.** The event handler and the job can reach the same guest, with no profile yet, at the same moment. The profile is made
   and the guest linked to it under a PostgreSQL advisory lock of the guest (`PostgresAdvisoryLocks.Scope.CrmGuestProfile`, held only while the profile
   is saved); the second sync reads the link of the guest again inside the lock and uses the profile of the first, so no profile is left with no guest.

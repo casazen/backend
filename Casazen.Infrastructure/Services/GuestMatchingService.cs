@@ -79,12 +79,9 @@ public class GuestMatchingService(
         var found = byEmail ?? byNameBirth;
         if (found is not null)
         {
-            guest.GuestCrmProfileId = found.Id;
-            FillEmpty(found, guest, keys);
-            await db.SaveChangesAsync(cancellationToken);
-            logger.LogDebug("Matched guest {GuestId} to CRM profile {ProfileId} of org {OrgId}", guest.Id, found.Id, orgId);
-
-            // The two keys point to two profiles: the guest goes to the e-mail one and a person is asked about the pair.
+            // The two keys point to two profiles: the guest goes to the e-mail one and a person is asked about the pair. The question is stored
+            // first and the link after it, so a failure in between leaves the guest unlinked: the next run finds the two profiles again and asks
+            // again (a pair that is already there is skipped), where a link saved first would never be followed by the question.
             if (byEmail is not null && byNameBirth is not null && byEmail.Id != byNameBirth.Id)
             {
                 await StoreProposalsAsync(
@@ -94,17 +91,17 @@ public class GuestMatchingService(
                     cancellationToken);
             }
 
+            guest.GuestCrmProfileId = found.Id;
+            FillEmpty(found, guest, keys);
+            await db.SaveChangesAsync(cancellationToken);
+            logger.LogDebug("Matched guest {GuestId} to CRM profile {ProfileId} of org {OrgId}", guest.Id, found.Id, orgId);
             return found;
         }
 
-        // 3. None: a profile of its own, and a question for a person about the ones that may be the same guest. The profile is made under the
-        // lock of the guest (the event handler and the job can both be here for it): if the other sync made it first, its profile is the guest's.
+        // 3. None: a profile of its own, saved with a question for a person about the ones that may be the same guest. The profile is made under
+        // the lock of the guest (the event handler and the job can both be here for it): if the other sync made it first, its profile is the guest's.
         var (profile, created) = await CreateProfileOnceAsync(guest, keys, cancellationToken);
-        if (!created)
-            return await KeepProfileAsync(guest, profile, keys, cancellationToken);
-
-        await ProposeForNewProfileAsync(profile, guest, keys, cancellationToken);
-        return profile;
+        return created ? profile : await KeepProfileAsync(guest, profile, keys, cancellationToken);
     }
 
     public async Task<GuestCrmProfile> FindOrCreateLeadProfileAsync(
@@ -350,8 +347,10 @@ public class GuestMatchingService(
     /// Makes the profile of a guest that has none and links the guest to it, under the advisory lock of the guest. The event handler and the job
     /// can sync the same guest at the same moment, and without the lock each makes a profile and the second update of the link leaves the first
     /// one with no guest. Inside the lock the link of the guest is read again: a living profile there is the one the other sync made, and
-    /// nothing is created (<c>Created</c> is false). The lock goes with the transaction as soon as the profile is saved, so the questions that
-    /// follow run outside it.
+    /// nothing is created (<c>Created</c> is false).
+    /// <para>The profile, the link of the guest and the proposals for its possible duplicates (<see cref="StageProposalsForNewProfileAsync"/>) are one
+    /// <c>SaveChanges</c>: all or nothing. A failure leaves no profile and the guest unlinked, so the next run makes the profile again with its
+    /// questions, where a profile saved first and its proposals after would be found by the next run already linked, and never asked about.</para>
     /// </summary>
     private async Task<(GuestCrmProfile Profile, bool Created)> CreateProfileOnceAsync(
         Guest guest,
@@ -394,11 +393,15 @@ public class GuestMatchingService(
         };
         db.GuestCrmProfiles.Add(profile);
         guest.GuestCrmProfileId = profile.Id;
+        var proposed = await StageProposalsForNewProfileAsync(profile, guest, keys, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);
 
         logger.LogDebug("Created CRM profile {ProfileId} of org {OrgId} for guest {GuestId}", profile.Id, orgId, guest.Id);
+        if (proposed > 0)
+            logger.LogInformation("Proposed {Count} merge(s) for CRM profile {ProfileId} of org {OrgId}", proposed, profile.Id, orgId);
+
         return (profile, true);
     }
 
@@ -537,10 +540,11 @@ public class GuestMatchingService(
     }
 
     /// <summary>
-    /// A profile that was just created: the profiles that share its phone (80) or a normalized name and a property stayed in (60) may be the same
-    /// guest. A person decides; nothing is merged here.
+    /// A profile that is about to be saved: the profiles that share its phone (80) or a normalized name and a property stayed in (60) may be the
+    /// same guest. A person decides; nothing is merged here. The proposals are staged, not saved: the caller saves them with the profile, so a
+    /// profile never exists without the questions about its duplicates. Returns how many were staged.
     /// </summary>
-    private async Task ProposeForNewProfileAsync(GuestCrmProfile profile, Guest guest, MatchKeys keys, CancellationToken cancellationToken)
+    private async Task<int> StageProposalsForNewProfileAsync(GuestCrmProfile profile, Guest guest, MatchKeys keys, CancellationToken cancellationToken)
     {
         var orgId = profile.OrgId;
         var candidates = new Dictionary<Guid, List<string>>();
@@ -564,8 +568,10 @@ public class GuestMatchingService(
                 AddReason(candidates, id, GuestMatchRules.SameNameSameProperty);
         }
 
-        if (candidates.Count > 0)
-            await StoreProposalsAsync(orgId, profile.Id, candidates, cancellationToken);
+        if (candidates.Count == 0)
+            return 0;
+
+        return (await StageProposalsAsync(orgId, profile.Id, candidates, cancellationToken)).Count;
     }
 
     /// <summary>
@@ -629,16 +635,18 @@ public class GuestMatchingService(
     }
 
     /// <summary>
-    /// Stores the proposals of a pair of profiles, the strongest first, within the cap of <see cref="GuestMatchRules.MaxProposalsPerProfile"/>
-    /// for the profile and for each profile it points at. A pair that has a row in any state (proposed, merged, dismissed) is skipped: a dismissed
-    /// pair is never proposed again. The pair is stored with the smaller id first.
+    /// Stages the proposals of a pair of profiles (adds them to the unit of work, saves nothing), the strongest first, within the cap of
+    /// <see cref="GuestMatchRules.MaxProposalsPerProfile"/> for the profile and for each profile it points at. A pair that has a row in any state
+    /// (proposed, merged, dismissed) is skipped: a dismissed pair is never proposed again. The pair is staged with the smaller id first. Returns
+    /// the rows staged; the caller saves them, with the profile they are about or on their own (<see cref="StoreProposalsAsync"/>).
     /// </summary>
-    private async Task StoreProposalsAsync(
+    private async Task<List<GuestMergeCandidate>> StageProposalsAsync(
         Guid orgId,
         Guid profileId,
         Dictionary<Guid, List<string>> candidates,
         CancellationToken cancellationToken)
     {
+        var added = new List<GuestMergeCandidate>();
         var rowsOfProfile = await db.GuestMergeCandidates
             .AsNoTracking()
             .Where(c => c.OrgId == orgId && (c.ProfileAId == profileId || c.ProfileBId == profileId))
@@ -647,7 +655,7 @@ public class GuestMatchingService(
         var known = rowsOfProfile.Select(c => (c.ProfileAId, c.ProfileBId)).ToHashSet();
         var room = GuestMatchRules.MaxProposalsPerProfile - rowsOfProfile.Count(c => c.Status == GuestMergeStatus.Proposed);
         if (room <= 0)
-            return;
+            return added;
 
         var candidateIds = candidates.Keys.ToList();
         var openRows = await db.GuestMergeCandidates
@@ -660,7 +668,6 @@ public class GuestMatchingService(
         var open = candidateIds.ToDictionary(id => id, id => openRows.Count(c => c.ProfileAId == id || c.ProfileBId == id));
 
         var now = Now();
-        var added = new List<GuestMergeCandidate>();
         foreach (var candidate in candidates
                      .OrderByDescending(pair => GuestMatchRules.ScoreOf(pair.Value))
                      .ThenBy(pair => pair.Key))
@@ -689,6 +696,21 @@ public class GuestMatchingService(
             room--;
         }
 
+        return added;
+    }
+
+    /// <summary>
+    /// Stores the proposals of a pair of profiles on their own: <see cref="StageProposalsAsync"/> and a save. When another sync proposed one of the
+    /// pairs at the same moment (the unique index refused the batch) only the pairs that are left are stored: staged again against the rows that
+    /// exist now, the pair that was already there is skipped and the others are not lost with it.
+    /// </summary>
+    private async Task StoreProposalsAsync(
+        Guid orgId,
+        Guid profileId,
+        Dictionary<Guid, List<string>> candidates,
+        CancellationToken cancellationToken)
+    {
+        var added = await StageProposalsAsync(orgId, profileId, candidates, cancellationToken);
         if (added.Count == 0)
             return;
 
@@ -699,11 +721,18 @@ public class GuestMatchingService(
         }
         catch (DbUpdateException ex) when (CrmDatabaseErrors.IsUniqueViolation(ex) && db.Database.CurrentTransaction is null)
         {
-            // Another sync proposed one of these pairs at the same moment: the database kept the first, and the question is asked once.
+            // Another sync proposed one of these pairs at the same moment: the database kept its row. The rows staged here are let go and the
+            // pairs that are left are staged again, now against that row, and saved: a second conflict is a failure of the sync, the next run retries it.
             foreach (var row in added)
                 db.Entry(row).State = EntityState.Detached;
 
-            logger.LogInformation("A merge proposal for CRM profile {ProfileId} of org {OrgId} was already there", profileId, orgId);
+            logger.LogInformation("A merge proposal for CRM profile {ProfileId} of org {OrgId} was already there: the pairs left are stored again", profileId, orgId);
+            var remaining = await StageProposalsAsync(orgId, profileId, candidates, cancellationToken);
+            if (remaining.Count == 0)
+                return;
+
+            await db.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Proposed {Count} merge(s) for CRM profile {ProfileId} of org {OrgId}", remaining.Count, profileId, orgId);
         }
     }
 

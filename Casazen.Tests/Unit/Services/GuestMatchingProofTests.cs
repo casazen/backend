@@ -7,6 +7,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -149,6 +150,60 @@ public class GuestMatchingProofTests
         Assert.Equal(madeByFirst.Id, profile.Id);
         Assert.Equal(profile.Id, (await verify.Guests.AsNoTracking().SingleAsync(g => g.Id == guestId, Ct)).GuestCrmProfileId);
         Assert.Empty(await verify.GuestMergeCandidates.AsNoTracking().ToListAsync(Ct));
+    }
+
+    /// <summary>
+    /// Data rule: the question about the duplicates of a new profile is never lost. The profile, the link of the guest and its proposals are one
+    /// save; here the save is refused while the proposal is in it, and nothing is saved (one profile in the org, no proposal, the guest still
+    /// unlinked). The next run makes the profile again, with its proposal (same phone, 80). When the profile was saved first and the proposals
+    /// after, a failure between the two left a profile that the next run found already linked and never asked about.
+    /// </summary>
+    [Fact]
+    public async Task GuestMatching_FailedSaveWithTheProposals_LeavesNoProfileAndTheNextRunAsks_Test()
+    {
+        var refuse = new RefuseProposals();
+        var store = new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).AddInterceptors(refuse).Options;
+        var clock = CrmTestWorld.Clock();
+        var orgId = Guid.NewGuid();
+        Guid secondId;
+        await using (var seed = CrmTestWorld.Open(store))
+        {
+            var first = CrmTestWorld.AddGuest(seed, orgId, "Anna", "Verdi", "anna.verdi@example.com", phone: "333 0000111");
+            CrmTestWorld.AddBooking(seed, first, Guid.NewGuid(), BookingStatus.CheckedOut, BookingSource.Direct, -30, 2, 200m);
+            var second = CrmTestWorld.AddGuest(seed, orgId, "Luca", "Neri", "luca.neri@example.com", phone: "+39 333 0000111");
+            CrmTestWorld.AddBooking(seed, second, Guid.NewGuid(), BookingStatus.Confirmed, BookingSource.Direct, 20, 2, 220m);
+            await seed.SaveChangesAsync(Ct);
+            await CrmTestWorld.Matching(seed, clock).FindOrCreateProfileAsync(first, Ct);
+            secondId = second.Id;
+        }
+
+        // The run that fails: the second guest shares the phone of the first, so its profile comes with a proposal, and the save is refused.
+        refuse.Armed = true;
+        await using (var db = CrmTestWorld.Open(store))
+        {
+            var guest = await db.Guests.SingleAsync(g => g.Id == secondId, Ct);
+            await Assert.ThrowsAnyAsync<Exception>(() => CrmTestWorld.Matching(db, clock).FindOrCreateProfileAsync(guest, Ct));
+        }
+
+        refuse.Armed = false;
+        await using (var db = CrmTestWorld.Open(store))
+        {
+            Assert.Single(await db.GuestCrmProfiles.AsNoTracking().ToListAsync(Ct));
+            Assert.Empty(await db.GuestMergeCandidates.AsNoTracking().ToListAsync(Ct));
+            Assert.Null((await db.Guests.AsNoTracking().SingleAsync(g => g.Id == secondId, Ct)).GuestCrmProfileId);
+        }
+
+        // The next run makes the profile again, with its question.
+        await using (var db = CrmTestWorld.Open(store))
+        {
+            var guest = await db.Guests.SingleAsync(g => g.Id == secondId, Ct);
+            var profile = await CrmTestWorld.Matching(db, clock).FindOrCreateProfileAsync(guest, Ct);
+
+            Assert.Equal(2, await db.GuestCrmProfiles.CountAsync(Ct));
+            var proposal = Assert.Single(await db.GuestMergeCandidates.AsNoTracking().ToListAsync(Ct));
+            Assert.Equal(GuestMatchRules.SamePhoneScore, proposal.Score);
+            Assert.Contains(profile.Id, new[] { proposal.ProfileAId, proposal.ProfileBId });
+        }
     }
 
     /// <summary>
@@ -328,5 +383,25 @@ public class GuestMatchingProofTests
             LegalBasis = GuestContactLegalBasis.ServiceOnly,
         });
         await db.SaveChangesAsync(Ct);
+    }
+
+    /// <summary>
+    /// A database that refuses every save that carries a proposed merge, while it is armed: the exception stands for any error of the save. A
+    /// save without a proposal goes through, so a profile saved first and its proposals after would leave the profile behind.
+    /// </summary>
+    private sealed class RefuseProposals : SaveChangesInterceptor
+    {
+        public bool Armed { get; set; }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Armed && eventData.Context!.ChangeTracker.Entries<GuestMergeCandidate>().Any(entry => entry.State == EntityState.Added))
+                throw new InvalidOperationException("The database refused the save.");
+
+            return new ValueTask<InterceptionResult<int>>(result);
+        }
     }
 }

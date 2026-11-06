@@ -37,7 +37,9 @@ public interface IGuestMatchingService
     /// the guest goes to the e-mail one and the pair is proposed (score 90, <c>same_name_birth</c>). With none, a profile is created and a merge
     /// is proposed with the profiles that share its phone (80, <c>same_phone</c>) or a normalized name and a property stayed in (60,
     /// <c>same_name_same_property</c>), at most <see cref="GuestMatchRules.MaxProposalsPerProfile"/>; a pair already proposed or dismissed is
-    /// never proposed again. Fills the keys, the primary guest and the country of the profile when empty. Saves.
+    /// never proposed again. The new profile, the link of the guest and these proposals are saved together (all or nothing, under an advisory
+    /// lock of the guest, so two syncs of one guest make one profile). Fills the keys, the primary guest and the country of the profile when
+    /// empty. Saves.
     /// </summary>
     Task<GuestCrmProfile> FindOrCreateProfileAsync(
         Guest guest,
