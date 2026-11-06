@@ -975,7 +975,14 @@ public class DemoEnvironmentService(
     /// ones first: the "To do" of the deferred part, the rows of the onboarding tables, the test mappings, then the test connection they hang on.
     /// A real row has no marker and is never touched. Runs before the showcase properties go: it finds its rows by the markers they drop.
     /// </summary>
-    private async Task RemoveShowcaseOnboardingAsync(Guid orgId, CancellationToken cancellationToken)
+    /// <remarks>
+    /// A marker says what the showcase wrote, not what the row has become. A real consent reuses the one connection of the org and the
+    /// environment (its tokens are written into the marked row), and a deferral or an exit of the host writes into the one row of the part. So the
+    /// test connection, the mappings on it and the deferred part go only while they are still the invented ones (<see cref="InventedConnectionsAsync"/>,
+    /// <see cref="InventedPartStatesAsync"/>); a row the host made its own only loses its marker and stays, with its mappings and its "To do". A
+    /// mapping that is not marked is deleted only with an invented connection (the foreign key is restrictive and no real mapping can be on it).
+    /// </remarks>
+    internal async Task RemoveShowcaseOnboardingAsync(Guid orgId, CancellationToken cancellationToken)
     {
         string[] types =
         [
@@ -1008,6 +1015,15 @@ public class DemoEnvironmentService(
         var mappings = Ids(TestDataEntities.OctorateListingMapping);
         var connections = Ids(TestDataEntities.OctorateConnection);
 
+        // What is still the invented one (the others only lose their marker below).
+        var inventedConnections = await InventedConnectionsAsync(orgId, connections, cancellationToken);
+        var inventedPartStates = await InventedPartStatesAsync(orgId, partStates, todos, cancellationToken);
+        var inventedAccommodations = DemoShowcaseCatalog.OnboardingActivations
+            .SelectMany(activation => activation.Properties)
+            .Select(house => house.AccommodationId)
+            .OfType<string>()
+            .ToList();
+
         await db.InternalActivities.IgnoreQueryFilters([Tenant])
             .Where(a => a.OrgId == orgId && todos.Contains(a.Id))
             .ExecuteDeleteAsync(cancellationToken);
@@ -1017,10 +1033,10 @@ public class DemoEnvironmentService(
             .Where(a => a.OrgId == orgId
                 && a.EntityType == OnboardingActivationCodes.ConnectionTodoEntityType
                 && a.EntityId != null
-                && connections.Contains(a.EntityId.Value))
+                && inventedConnections.Contains(a.EntityId.Value))
             .ExecuteDeleteAsync(cancellationToken);
         await db.OnboardingPartStates.IgnoreQueryFilters([Tenant])
-            .Where(s => s.OrgId == orgId && partStates.Contains(s.Id))
+            .Where(s => s.OrgId == orgId && inventedPartStates.Contains(s.Id))
             .ExecuteDeleteAsync(cancellationToken);
         await db.PropertyFlowActivations.IgnoreQueryFilters([Tenant])
             .Where(a => a.OrgId == orgId && activations.Contains(a.Id))
@@ -1037,32 +1053,83 @@ public class DemoEnvironmentService(
         await db.PropertyOnboardingData.IgnoreQueryFilters([Tenant])
             .Where(d => d.OrgId == orgId && propertyData.Contains(d.Id))
             .ExecuteDeleteAsync(cancellationToken);
-        // Whatever hangs on the test connection goes with it (the foreign keys are restrictive): its invented mappings, marked or not, and the
-        // cursor a job of the OTA conversations may have written before it found no token.
+        // Whatever hangs on an invented connection goes with it (the foreign keys are restrictive): its mappings, marked or not (no real one can
+        // be on it), and the cursor a job of the OTA conversations may have written before it found no token. The marked mappings of a connection
+        // the host took over go only while they still name an invented accommodation: the real ones stay.
         await db.OctorateListingMappings.IgnoreQueryFilters([Tenant])
-            .Where(m => m.OrgId == orgId && (mappings.Contains(m.Id) || connections.Contains(m.ConnectionId)))
+            .Where(m => m.OrgId == orgId
+                && (inventedConnections.Contains(m.ConnectionId)
+                    || (mappings.Contains(m.Id) && inventedAccommodations.Contains(m.OctorateAccommodationId))))
             .ExecuteDeleteAsync(cancellationToken);
         await db.OtaMessageSyncStates.IgnoreQueryFilters([Tenant])
-            .Where(s => s.OrgId == orgId && connections.Contains(s.ConnectionId))
+            .Where(s => s.OrgId == orgId && inventedConnections.Contains(s.ConnectionId))
             .ExecuteDeleteAsync(cancellationToken);
         await db.OctorateConnections.IgnoreQueryFilters([Tenant])
-            .Where(c => c.OrgId == orgId && connections.Contains(c.Id))
+            .Where(c => c.OrgId == orgId && inventedConnections.Contains(c.Id))
             .ExecuteDeleteAsync(cancellationToken);
 
+        // Every marker goes, those of the rows the host made its own too: from now on they are real rows.
         await Markers()
             .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && types.Contains(m.EntityType))
             .ExecuteDeleteAsync(cancellationToken);
     }
 
     /// <summary>
+    /// The marked connections that are still the invented ones: the account of the template and no token at all. A consent overwrites the account
+    /// of the connection it completes and stores its tokens, so a connection with a token (even one left by a consent that failed halfway) or
+    /// with another account is the host's.
+    /// </summary>
+    private async Task<List<Guid>> InventedConnectionsAsync(Guid orgId, List<Guid> connections, CancellationToken cancellationToken)
+    {
+        if (connections.Count == 0)
+            return [];
+
+        var accounts = DemoShowcaseCatalog.OnboardingActivations.Select(activation => activation.AccountId).ToList();
+        return await db.OctorateConnections.IgnoreQueryFilters([Tenant])
+            .Where(c => c.OrgId == orgId
+                && connections.Contains(c.Id)
+                && c.OctorateAccountId != null
+                && accounts.Contains(c.OctorateAccountId)
+                && c.EncryptedRefreshToken == null
+                && c.EncryptedAccessToken == null)
+            .Select(c => c.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The marked part states that are still the invented ones: the part is tied to the "To do" the showcase raised for it, or it holds no intent at
+    /// all (resumed: the same as no row). A deferral or an exit of the host replaces the "To do" of the row, so the row is then the host's and its
+    /// new "To do" (which has no marker) must not be left pointing at a row that is gone.
+    /// </summary>
+    private async Task<List<Guid>> InventedPartStatesAsync(Guid orgId, List<Guid> partStates, List<Guid> todos, CancellationToken cancellationToken)
+    {
+        if (partStates.Count == 0)
+            return [];
+
+        var rows = await db.OnboardingPartStates.IgnoreQueryFilters([Tenant])
+            .Where(s => s.OrgId == orgId && partStates.Contains(s.Id))
+            .Select(s => new { s.Id, s.ActivityId, s.Status, s.DeferredAt, s.RemindAt })
+            .ToListAsync(cancellationToken);
+        return
+        [
+            .. rows
+                .Where(s => s.ActivityId is { } activityId
+                    ? todos.Contains(activityId)
+                    : s.Status == OnboardingPartStatus.Open && s.DeferredAt is null && s.RemindAt is null)
+                .Select(s => s.Id),
+        ];
+    }
+
+    /// <summary>
     /// The activation with Octorate of the demo org (E10/F01/US01/T04, NF-104, NF-106): a connected test connection of this environment with no
-    /// token (nothing can be called with it; a job of the connector that tries finds no token and marks it lost, which the next reset undoes), the
+    /// token (nothing can be called with it; a job of the connector that tries finds no token and marks it lost, which the next reset undoes unless
+    /// a real consent took the row over: <see cref="RemoveShowcaseOnboardingAsync"/> then keeps it, with its tokens and mappings), the
     /// confirmed listings of the houses that have one on it (no product: the booking and calendar jobs never read them), the flows activated on
     /// them, and the deferred part of the plan with its "To do" (codes and ids only, as the plan raises it). The connection and the mappings are
     /// skipped when the org has a connection of its own in the environment (a real one is never touched nor mixed with invented listings); the
     /// deferred part is skipped when the org has its own state for that part. Every row is marked as showcase data.
     /// </summary>
-    private async Task CreateOnboardingActivationAsync(
+    internal async Task CreateOnboardingActivationAsync(
         Guid orgId, string ownerId, DemoOnboardingActivationTemplate template, CancellationToken cancellationToken)
     {
         var keys = template.Properties.Select(p => p.PropertyKey).ToList();
