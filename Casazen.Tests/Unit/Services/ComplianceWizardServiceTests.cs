@@ -624,9 +624,14 @@ public class ComplianceWizardServiceTests
         AssertTarget(Assert.Single(summary.AlloggiatiManualRequired.Items), ComplianceCockpitAction.SendAlloggiati, bookingId: departing.Id);
         AssertTarget(Assert.Single(summary.AlloggiatiFailures.Items), ComplianceCockpitAction.ResolveAlloggiatiFailure, bookingId: rejected.Id);
         AssertTarget(Assert.Single(summary.TurnoversPending.Items), ComplianceCockpitAction.ConfirmPropertyReady, bookingId: turnover.Id);
-        // Every action the clients must route is produced by one section.
+        // Every action the clients must route from these six sections is produced by one of them (the eight of CHK-12 come from the sections
+        // of the compliance status: ComplianceWizardStatusTests).
         Assert.Equal(
-            Enum.GetValues<ComplianceCockpitAction>().Order(),
+            new[]
+            {
+                ComplianceCockpitAction.ActivateProperty, ComplianceCockpitAction.CompleteGuestCheckIn, ComplianceCockpitAction.CheckOut,
+                ComplianceCockpitAction.SendAlloggiati, ComplianceCockpitAction.ResolveAlloggiatiFailure, ComplianceCockpitAction.ConfirmPropertyReady,
+            }.Order(),
             new[]
             {
                 summary.PropertiesPending,

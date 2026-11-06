@@ -223,6 +223,11 @@ public class DemoEnvironmentService(
             .Where(d => propertyIds.Contains(d.PropertyId))
             .Select(d => d.StorageUrl)
             .ToListAsync(cancellationToken);
+        // NF-52: the files of the receipts uploaded for these houses go too (their rows cascade with the houses).
+        files.AddRange(await db.ManualComplianceProofs.IgnoreQueryFilters([Tenant])
+            .Where(p => p.OrgId == orgId && propertyIds.Contains(p.PropertyId))
+            .Select(p => p.FileKey)
+            .ToListAsync(cancellationToken));
         var guestIds = await Markers()
             .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.Guest)
             .Select(m => m.EntityId)
@@ -1563,6 +1568,10 @@ public class DemoEnvironmentService(
             await MarkAsync(orgId, TestDataEntities.OrgTouristTaxRate, rate.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
         }
 
+        // NF-52: who sends the police and ISTAT communications of the house (the stays below are read by the traffic light with it).
+        if (template.ComplianceSender is { } complianceSender)
+            await CreateComplianceSenderAsync(orgId, ownerId, property, complianceSender, template.Key, cancellationToken);
+
         if (template.Publish || template.Mode == RentalMode.Long)
         {
             var used = await UsedCinsAsync(orgId, cancellationToken);
@@ -1578,7 +1587,9 @@ public class DemoEnvironmentService(
             await CreateBookingAsync(orgId, property, booking, today, cancellationToken);
     }
 
-    private async Task CreateBookingAsync(
+    /// <summary>One stay of a showcase house: its booker, the booking, the registered guests and what the compliance traffic light finds on it.</summary>
+    /// <remarks>Internal so that a test can seed one stay of the catalog without the rest of the house (<c>DemoComplianceTrafficLightSeedTests</c>).</remarks>
+    internal async Task CreateBookingAsync(
         Guid orgId, Property property, DemoBookingTemplate template, DateOnly today, CancellationToken cancellationToken)
     {
         var guest = new Guest
@@ -1610,6 +1621,17 @@ public class DemoEnvironmentService(
         var madeAt = DateTime.SpecifyKind(checkIn.AddDays(-30), DateTimeKind.Utc);
         if (madeAt > UtcNow())
             madeAt = UtcNow();
+
+        // NF-52: the guests of a checked-in stay entrusted to the channel manager arrived three hours before the reset (never before the start of the
+        // check-in day): the legal term of the Alloggiati communication runs from the arrival, so the stay reads «awaiting the receipt» at whatever
+        // time of the day the showcase is reset.
+        DateTime? arrivedAt = null;
+        if (template.Compliance is { GuestsEntrusted: true } && template.Status == BookingStatus.CheckedIn)
+        {
+            var threeHoursAgo = UtcNow().AddHours(-3);
+            var startOfCheckInDay = DateTime.SpecifyKind(checkIn, DateTimeKind.Utc);
+            arrivedAt = threeHoursAgo < startOfCheckInDay ? startOfCheckInDay : threeHoursAgo;
+        }
 
         // A stay with registered guests declares as many (NF-40: the check-in wizard compares the two); the others keep two adults.
         var registered = template.Guests ?? [];
@@ -1648,6 +1670,7 @@ public class DemoEnvironmentService(
             NoShowAt = template.NoShow && template.Status == BookingStatus.Confirmed
                 ? DateTime.SpecifyKind(checkIn.AddHours(20), DateTimeKind.Utc)
                 : null,
+            ArrivedAt = arrivedAt,
             // E08/F03/US03/T02 (NF-74, NF-77): the reservation of the stay on the channel manager, with the amounts and the flags the import would have
             // stored (invented, like the rest: nothing is sent to Octorate).
             OctorateReservationId = template.Ota?.ReservationId,
@@ -1669,10 +1692,11 @@ public class DemoEnvironmentService(
             await CreateInvoiceDataAsync(orgId, booking.Id, invoiceData, template.Key, madeAt, cancellationToken);
 
         // NF-40, NF-46: the registered guests of the stay, with complete data of the right shape (they go with the booking at the next reset).
+        List<StayGuest> rows = [];
         if (template.Guests is { Count: > 0 } guests)
         {
             var arrival = DateOnly.FromDateTime(checkIn);
-            var rows = guests.Select((demo, position) => DemoStayGuest(booking, property.OwnerId, demo, position, arrival)).ToList();
+            rows = guests.Select((demo, position) => DemoStayGuest(booking, property.OwnerId, demo, position, arrival)).ToList();
             db.StayGuests.AddRange(rows);
             await db.SaveChangesAsync(cancellationToken);
             for (var position = 0; position < rows.Count; position++)
@@ -1681,7 +1705,123 @@ public class DemoEnvironmentService(
                     orgId, TestDataEntities.StayGuest, rows[position].Id, TestDataOrigins.Showcase, $"{template.Key}/{position}", cancellationToken);
             }
         }
+
+        // NF-52: what the compliance traffic light finds on the stay (guests entrusted to the channel manager, a receipt the host uploaded).
+        if (template.Compliance is { } complianceTemplate)
+            await CreateComplianceStateAsync(orgId, property.OwnerId, property, booking, rows, complianceTemplate, template.Key, cancellationToken);
     }
+
+    /// <summary>
+    /// Who sends the police and ISTAT communications of a showcase house (E03/F02/US01/T03, NF-52): the choice the demo host stored, the same for both
+    /// communications (ADR-029-R5), with the host's word that it saw «Activated» in the Octorate panel when the template says so. Written the way the
+    /// sender store writes it (both senders equal, who and when), and gone with its house at the next reset (the table cascades); marked like the rest.
+    /// </summary>
+    internal async Task CreateComplianceSenderAsync(
+        Guid orgId,
+        string ownerId,
+        Property property,
+        DemoComplianceSenderTemplate template,
+        string templateKey,
+        CancellationToken cancellationToken)
+    {
+        var now = UtcNow();
+        var sender = new PropertyComplianceSender
+        {
+            OrgId = orgId,
+            PropertyId = property.Id,
+            AlloggiatiSender = template.Sender,
+            IstatSender = template.Sender,
+            LastChangedAt = now.AddDays(-3),
+            LastChangedByUserId = ownerId,
+            ActivationDeclaredAt = template.ActivationDeclared ? now.AddDays(-2) : null,
+            ActivationDeclaredByUserId = template.ActivationDeclared ? ownerId : null,
+            CreatedAt = now.AddDays(-3),
+        };
+        db.PropertyComplianceSenders.Add(sender);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.PropertyComplianceSender, sender.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
+    }
+
+    /// <summary>
+    /// What the compliance traffic light finds on a showcase stay (E03/F02/US01/T03, NF-52). Guests entrusted: one <see cref="StayGuestOctorateLink"/>
+    /// for each registered guest, accepted by Octorate for good (not as a draft) two hours before the reset, as the channel manager holds a guest it
+    /// sends for; the stay then reads yellow while the receipt is awaited. Receipt archived: a <see cref="ManualComplianceProof"/> of the Alloggiati
+    /// communication of the arrival day, with an invented one-page PDF (it says it is test data) in the private bucket; the stay then reads green.
+    /// Nothing is sent to Octorate or to the police. The rows go with the stay and the house at the next reset (the tables cascade) and are marked like
+    /// the rest; the reset removes the file.
+    /// </summary>
+    private async Task CreateComplianceStateAsync(
+        Guid orgId,
+        string ownerId,
+        Property property,
+        Booking booking,
+        IReadOnlyList<StayGuest> guests,
+        DemoComplianceTemplate template,
+        string templateKey,
+        CancellationToken cancellationToken)
+    {
+        var now = UtcNow();
+        if (template.GuestsEntrusted)
+        {
+            var links = guests
+                .Select(guest => new StayGuestOctorateLink
+                {
+                    OrgId = orgId,
+                    BookingId = booking.Id,
+                    Position = guest.Position,
+                    OctorateGuestId = $"TEST-OCT-G-{booking.Id:N}-{guest.Position}",
+                    PayloadHash = DemoPayloadHash(booking.Id, guest.Position),
+                    SentAsDraft = false,
+                    Status = OctorateSyncStatus.Sent,
+                    Attempts = 1,
+                    SentAt = now.AddHours(-2),
+                    UpdatedAt = now.AddHours(-2),
+                })
+                .ToList();
+            db.StayGuestOctorateLinks.AddRange(links);
+            await db.SaveChangesAsync(cancellationToken);
+            for (var position = 0; position < links.Count; position++)
+            {
+                await MarkAsync(
+                    orgId, TestDataEntities.StayGuestOctorateLink, links[position].Id, TestDataOrigins.Showcase, $"{templateKey}/{position}", cancellationToken);
+            }
+        }
+
+        if (template.ReceiptArchived)
+        {
+            var proofId = Guid.NewGuid();
+            var pdf = DemoDocumentPdf.Create(
+                "RICEVUTA ALLOGGIATI WEB DI TEST",
+                DemoDocumentPdf.Marker + " CasaZen. Nessun valore fuori dall'ambiente di test.");
+            var key = StorageKeys.ManualComplianceProof(orgId, proofId, "ricevuta-di-test.pdf");
+            await using (var stream = new MemoryStream(pdf))
+                await storage.PutAsync(StorageBucket.Private, key, stream, "application/pdf", cancellationToken);
+
+            var proof = new ManualComplianceProof
+            {
+                Id = proofId,
+                OrgId = orgId,
+                PropertyId = property.Id,
+                Kind = ManualProofKind.AlloggiatiReceipt,
+                Day = RomeCalendar.DateInRome(booking.CheckInDate),
+                FileKey = key,
+                ContentType = "application/pdf",
+                UploadedByUserId = ownerId,
+                UploadedAt = now.AddHours(-1),
+            };
+            db.ManualComplianceProofs.Add(proof);
+            await db.SaveChangesAsync(cancellationToken);
+            await MarkAsync(orgId, TestDataEntities.ManualComplianceProof, proof.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// The hash of what the showcase says it sent to Octorate for a guest: SHA-256 (hex, lower case, 64 characters) of an invented text, as the
+    /// column wants. No personal data goes into it.
+    /// </summary>
+    private static string DemoPayloadHash(Guid bookingId, int position) =>
+        Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes($"TEST|demo-guest|{bookingId:N}|{position}")));
 
     /// <summary>
     /// The mirror of a showcase booking on Octorate (E08/F03/US03/T02, NF-74): the row the push would have left for the invented reservation, in the

@@ -224,10 +224,34 @@ public class ShortRentReadRulesTests
     }
 
     [Fact]
-    public void From_EveryActionOfTheCockpit_HasAPlaceInTheThingsToDo_UnderTheSameName()
+    public void From_EveryActionOfTheCockpit_HasAPlaceInTheThingsToDo_OrIsLeftOutOfTheDayOnPurpose()
     {
-        // A new cockpit action without a mapping fails here, not in front of a host.
+        // A new cockpit action neither mapped nor listed as left out of the day fails here, not in front of a host.
         foreach (var action in Enum.GetValues<ComplianceCockpitAction>())
-            Assert.Equal(action.ToString(), HostTodoPriority.From(action).ToString());
+        {
+            if (HostTodoPriority.CockpitActionsOutsideTheDay.Contains(action))
+                Assert.Throws<ArgumentOutOfRangeException>(() => HostTodoPriority.From(action));
+            else
+                Assert.Equal(action.ToString(), HostTodoPriority.From(action).ToString());
+        }
+    }
+
+    [Fact]
+    public void From_TheActionsLeftOutOfTheDay_AreTheOnesOfTheComplianceTrafficLight_AndNoOtherOne()
+    {
+        // E03/F02/US01/T03: the day reads the six older sections of the cockpit; the eight actions of the traffic light live in the new sections
+        // (the compliance cockpit and the «Da fare» list carry them). The six older ones keep their place under the same name.
+        ComplianceCockpitAction[] older =
+        [
+            ComplianceCockpitAction.ActivateProperty,
+            ComplianceCockpitAction.CompleteGuestCheckIn,
+            ComplianceCockpitAction.CheckOut,
+            ComplianceCockpitAction.SendAlloggiati,
+            ComplianceCockpitAction.ResolveAlloggiatiFailure,
+            ComplianceCockpitAction.ConfirmPropertyReady,
+        ];
+
+        Assert.Equal(older.Order(), Enum.GetValues<ComplianceCockpitAction>().Except(HostTodoPriority.CockpitActionsOutsideTheDay).Order());
+        Assert.Equal(8, HostTodoPriority.CockpitActionsOutsideTheDay.Count);
     }
 }
