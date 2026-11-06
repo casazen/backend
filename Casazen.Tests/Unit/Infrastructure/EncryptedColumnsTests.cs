@@ -34,6 +34,8 @@ public class EncryptedColumnsTests
                 "OctorateConnection.EncryptedRefreshToken:Casazen.Octorate.OAuth",
                 "OtaIntegration.ApiKey:Casazen.OtaIntegration.Secrets",
                 "OtaIntegration.ApiSecret:Casazen.OtaIntegration.Secrets",
+                // ADR-032-R3: the words of the conversations of the guests with the channels, copied from the channel manager.
+                "OtaMessage.Text:Casazen.Message.Content",
                 "Party.Residence:Casazen.LeaseParty",
                 "PlatformAiSettings.ApiKey:Casazen.PlatformAiSettings",
                 // NF-13: encrypted property access codes (gate, lockbox, smart lock PIN).

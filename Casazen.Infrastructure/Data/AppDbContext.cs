@@ -365,6 +365,13 @@ public class AppDbContext(
     public DbSet<GuestThread> GuestThreads { get; set; } = null!;
     public DbSet<GuestMessage> GuestMessages { get; set; } = null!;
 
+    // The copy of the conversations of the guests with the channels (Airbnb, Booking.com, Vrbo, Expedia), read from the channel manager: the threads,
+    // their messages (the words encrypted), the checkpoints of the sync of each listing, and the message templates of the hosts (E05/F01/US01/T01, ADR-032)
+    public DbSet<OtaMessageThread> OtaMessageThreads { get; set; } = null!;
+    public DbSet<OtaMessage> OtaMessages { get; set; } = null!;
+    public DbSet<OtaMessageSyncState> OtaMessageSyncStates { get; set; } = null!;
+    public DbSet<MessageTemplate> MessageTemplates { get; set; } = null!;
+
     // The tourist tax a host paid to a comune and the receipt of the payment: the «paid» half of the summary per comune (NF-100, REP-05)
     public DbSet<TouristTaxRemittance> TouristTaxRemittances { get; set; } = null!;
 
@@ -1613,6 +1620,15 @@ public class AppDbContext(
 
         // A retried send with the same key loses the race on UIX_GuestMessages_ThreadId_IdempotencyKey (23505) and reads the first message.
         modelBuilder.ApplyConfiguration(new GuestMessageConfiguration());
+
+        // ─── The OTA conversations, copied from the channel manager (E05/F01/US01/T01, ADR-032) ───────────────
+        // One thread per Octorate thread and organization (UIX_OtaMessageThreads_OrgId_OctorateThreadId), one message per Octorate message
+        // (UIX_OtaMessages_OrgId_OctorateMessageId) and per key of the sender's screen in a thread; the words are encrypted (EncryptedColumns).
+        // The checkpoints of the sync are one row per organization and accommodation; the templates are unique per organization, name and language.
+        modelBuilder.ApplyConfiguration(new OtaMessageThreadConfiguration());
+        modelBuilder.ApplyConfiguration(new OtaMessageConfiguration());
+        modelBuilder.ApplyConfiguration(new OtaMessageSyncStateConfiguration());
+        modelBuilder.ApplyConfiguration(new MessageTemplateConfiguration());
 
         // ─── Automation routines (NF-26, ADR-022) ────────────────────────────────
         // Unique constraint on (RoutineId, EventId) ensures idempotence: a routine executes at most once per event (ADR-022-R7).
