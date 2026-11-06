@@ -10,6 +10,7 @@ using Casazen.Core.Options;
 using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
@@ -23,6 +24,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -336,6 +338,44 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal(OnboardingAssistCodes.StepAlreadyDone, conflict.Code);
         Assert.Empty(await _db.OnboardingAssistRequests.ToListAsync());
         Assert.Empty(await _db.OrgActivityEntries.ToListAsync());
+    }
+
+    /// <summary>
+    /// Proof (permission, trust): the step support has cannot be confirmed by the host through the other door on the same row either, the handoff of
+    /// the import (E02). Asking for help clears the stored «could not tell», which is what that door lets the confirmation through on; the step
+    /// stays with support and the answer is the one of a step that was never checked.
+    /// </summary>
+    [Fact]
+    public async Task Request_ForAChannelAccessThatCouldNotBeChecked_RefusesTheConfirmationOfTheImportHandoff()
+    {
+        var step = await StartStepAsync(PanelStepKind.ChannelAccess, null);
+        var row = await _db.OnboardingPanelSteps.SingleAsync(s => s.Id == step.Id);
+        row.LastVerificationOutcome = PanelVerificationOutcomes.Unverifiable;
+        row.VerificationAttempts = 3;
+        await _db.SaveChangesAsync();
+
+        await HostService().RequestAsync(
+            _world.OrgWide,
+            _world.OwnerUserId,
+            new AssistRequestInput(OnboardingPartKey.Channels, OnboardingAssistContexts.PanelChannelAccess, null, "booking_xml"),
+            Ct);
+
+        var marked = await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync(s => s.Id == step.Id);
+        Assert.Equal((PanelStepStatus.AssistRequested, (string?)null, 0), (marked.Status, marked.LastVerificationOutcome, marked.VerificationAttempts));
+
+        // The handoff of the import reads and confirms the very same row: with support on it, it answers as before any check.
+        var handoff = new OnboardingChannelAccessHandoff(
+            _db,
+            new Mock<IOctorateApiClient>(MockBehavior.Strict).Object,
+            new OctorateOrgScope(NullTenantContext.Instance),
+            Options.Create(new OctorateOptions { FrontendBaseUrl = "https://panel.octorate.test/" }),
+            _clock,
+            NullLogger<OnboardingChannelAccessHandoff>.Instance);
+        var refused = await Assert.ThrowsAsync<DomainConflictException>(() => handoff.ConfirmAsync(_world.OrgId, _world.OwnerUserId, "booking_xml", Ct));
+
+        Assert.Equal(OnboardingPanelStepCodes.VerificationRequired, refused.Code);
+        var stillWithSupport = await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync(s => s.Id == step.Id);
+        Assert.Equal((PanelStepStatus.AssistRequested, (string?)null), (stillWithSupport.Status, stillWithSupport.CompletedByUserId));
     }
 
     // ─── The staff queue ─────────────────────────────────────────────────────────────────────────────────────

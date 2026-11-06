@@ -114,6 +114,11 @@ public sealed class OnboardingAssistService(
             {
                 step.Status = PanelStepStatus.AssistRequested;
                 step.NextVerificationAt = null;
+
+                // Support has the step: what an earlier check found no longer stands. A stored «could not tell» would let the other door on the
+                // same row (the import's channel access handoff) take the host's confirmation, so the outcome and the attempts start again.
+                step.LastVerificationOutcome = null;
+                step.VerificationAttempts = 0;
             }
         }
 
