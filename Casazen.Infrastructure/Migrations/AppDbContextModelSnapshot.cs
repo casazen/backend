@@ -1881,6 +1881,109 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("GuestConsentRecords");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.GuestContact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("BasisRecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("BasisVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Confirmation")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ConfirmationSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ConfirmationSentCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ConsentIpAddress")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int?>("ConsentSource")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisplayName")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("GuestCrmProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("GuestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsSuppressed")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<int>("LegalBasis")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Origin")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("SuppressedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SuppressedSource")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ValueHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GuestCrmProfileId");
+
+                    b.HasIndex("GuestId");
+
+                    b.HasIndex("OrgId", "GuestCrmProfileId")
+                        .HasDatabaseName("IX_GuestContacts_OrgId_GuestCrmProfileId");
+
+                    b.HasIndex("OrgId", "IsSuppressed")
+                        .HasDatabaseName("IX_GuestContacts_OrgId_IsSuppressed");
+
+                    b.HasIndex("OrgId", "Channel", "ValueHash")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_GuestContacts_OrgId_Channel_ValueHash");
+
+                    b.ToTable("GuestContacts");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.GuestCrmProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1922,7 +2025,21 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<bool>("MarketingConsentWhatsApp")
                         .HasColumnType("boolean");
 
+                    b.Property<Guid?>("MergedIntoProfileId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("NameBirthKeyHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
                     b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PhoneKeyHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid?>("PrimaryGuestId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("PropertyIdsJson")
@@ -1946,9 +2063,66 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrgId");
+                    b.HasIndex(new[] { "OrgId" }, "IX_GuestCrmProfiles_OrgId");
+
+                    b.HasIndex(new[] { "OrgId", "NameBirthKeyHash" }, "IX_GuestCrmProfiles_OrgId_NameBirthKeyHash");
+
+                    b.HasIndex(new[] { "OrgId", "PhoneKeyHash" }, "IX_GuestCrmProfiles_OrgId_PhoneKeyHash");
 
                     b.ToTable("GuestCrmProfiles");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.GuestMergeCandidate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProfileAId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProfileBId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ReasonsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProfileAId");
+
+                    b.HasIndex("ProfileBId");
+
+                    b.HasIndex("OrgId", "ProfileAId", "ProfileBId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_GuestMergeCandidates_OrgId_ProfileAId_ProfileBId");
+
+                    b.ToTable("GuestMergeCandidates", t =>
+                        {
+                            t.HasCheckConstraint("CK_GuestMergeCandidates_ProfileOrder", "\"ProfileAId\" < \"ProfileBId\"");
+
+                            t.HasCheckConstraint("CK_GuestMergeCandidates_Score", "\"Score\" >= 0 AND \"Score\" <= 100");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.GuestMessage", b =>
@@ -5803,6 +5977,49 @@ namespace Casazen.Infrastructure.Migrations
 
                             t.HasCheckConstraint("CK_PropertyStayDiscounts_PercentOff", "\"PercentOff\" > 0 AND \"PercentOff\" <= 100");
                         });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyWelcomeLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId");
+
+                    b.HasIndex("PropertyId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_PropertyWelcomeLinks_PropertyId_Active")
+                        .HasFilter("\"RevokedAt\" IS NULL");
+
+                    b.HasIndex("Token")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_PropertyWelcomeLinks_Token");
+
+                    b.ToTable("PropertyWelcomeLinks");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PushDelivery", b =>
@@ -10444,6 +10661,25 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Guest");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.GuestContact", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.GuestCrmProfile", null)
+                        .WithMany()
+                        .HasForeignKey("GuestCrmProfileId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("Casazen.Core.Entities.Guest", null)
+                        .WithMany()
+                        .HasForeignKey("GuestId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.GuestCrmProfile", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", "Org")
@@ -10453,6 +10689,27 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Org");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.GuestMergeCandidate", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.GuestCrmProfile", null)
+                        .WithMany()
+                        .HasForeignKey("ProfileAId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.GuestCrmProfile", null)
+                        .WithMany()
+                        .HasForeignKey("ProfileBId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.GuestMessage", b =>
@@ -11384,6 +11641,21 @@ namespace Casazen.Infrastructure.Migrations
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.PropertyStayDiscount", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.PropertyWelcomeLink", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Org", null)
                         .WithMany()

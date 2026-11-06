@@ -106,6 +106,13 @@ public static class EncryptedColumns
     public const string OctorateOAuthPurpose = "Casazen.Octorate.OAuth";
 
     /// <summary>
+    /// Purpose of the CRM contacts (NF-89, E07/F01/US01/T01): <see cref="GuestContact.Value"/>, the e-mail address or the phone number of a
+    /// guest or of a lead, and <see cref="GuestContact.DisplayName"/>. Nothing is searched in them: a contact is found by its keyed hash
+    /// (<see cref="GuestContact.ValueHash"/>, HMAC-SHA256 keyed by <c>Crm:ContactIndexKey</c>). Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string GuestContactPurpose = "Casazen.GuestContact";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -207,6 +214,11 @@ public static class EncryptedColumns
             OctorateOAuthPurpose,
             nameof(OctorateConnection.EncryptedAccessToken),
             nameof(OctorateConnection.EncryptedRefreshToken)),
+        // NF-89: the value and the display name of a CRM contact (E07/F01/US01/T01).
+        new EncryptedEntity<GuestContact>(
+            GuestContactPurpose,
+            nameof(GuestContact.Value),
+            nameof(GuestContact.DisplayName)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

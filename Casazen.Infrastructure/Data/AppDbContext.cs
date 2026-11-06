@@ -293,6 +293,11 @@ public class AppDbContext(
     // CRM guest profiles for marketing and segmentation (NF-23, ADR-021)
     public DbSet<GuestCrmProfile> GuestCrmProfiles { get; set; } = null!;
 
+    // CRM contacts with origin, double opt-in, legal basis and suppression, the proposed merges of duplicate profiles and the welcome QR link of a property (NF-88, NF-89, NF-90)
+    public DbSet<GuestContact> GuestContacts { get; set; } = null!;
+    public DbSet<GuestMergeCandidate> GuestMergeCandidates { get; set; } = null!;
+    public DbSet<PropertyWelcomeLink> PropertyWelcomeLinks { get; set; } = null!;
+
     // Marketing campaigns and segments (NF-24, ADR-014)
     public DbSet<GuestSegment> GuestSegments { get; set; } = null!;
     public DbSet<Campaign> Campaigns { get; set; } = null!;
@@ -426,6 +431,12 @@ public class AppDbContext(
 
         // NF-05: marketing suppression list with SHA-256 blind index for one-click unsubscribe (ADR-007-R18, R22).
         modelBuilder.ApplyConfiguration(new SuppressionListEntryConfiguration());
+
+        // NF-88, NF-89, NF-90: the CRM contacts (value encrypted at rest, found by its keyed hash), the proposed merges of two profiles (one row for
+        // each pair) and the welcome QR link of a property (one active link for each property); each carries its org (TN-2).
+        modelBuilder.ApplyConfiguration(new GuestContactConfiguration());
+        modelBuilder.ApplyConfiguration(new GuestMergeCandidateConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyWelcomeLinkConfiguration());
 
         // CO-07: one safety checklist per property, going with it; its items go with the checklist. An evidence
         // document deleted by the host leaves the item without proof (SET NULL), never deletes the answer.

@@ -28,6 +28,7 @@ value through EF; the database only ever holds the encrypted payload.
 | `LeaseContracts.DraftData` (the whole typed state of a lease draft, as JSON, while some value is missing; no length: the payload is longer than the text) | `Casazen.LeaseContract.Draft` | LR-12 |
 | `Parties.Residence` (the residence or registered office of a party of a lease, no length) | `Casazen.LeaseParty` | LR-12 |
 | `LeaseContracts.TransitoryNeed`, `LeaseContracts.TransitoryDocumentation` (the need that justifies a transitory lease and the documents that prove it, free text printed in art. 2 of the contract; no length) | `Casazen.LeaseContract.TransitoryNeed` | TR |
+| `GuestContacts.Value`, `GuestContacts.DisplayName` (the e-mail address or phone number of a CRM contact and the name that goes with it; no length, the payload is longer than the text; found by `GuestContacts.ValueHash`, not by the value) | `Casazen.GuestContact` | NF-89 |
 
 `Guests` and `StayGuests` share one purpose on purpose: a payload copied from one table to the other by SQL (for example
 the CO-12 backfill) stays readable.
@@ -41,10 +42,13 @@ Not encrypted, deliberately:
 - **Document type and Alloggiati codes** (`DocumentTypeCode`, `DocumentIssuePlaceCode`): public code tables.
 - **Document scans**: they are files in the private storage bucket (FD-07, `docs/runbooks/storage.md`), not columns.
 
-**Blind index: one, for the customers of the suppliers (SP-10).** No query filters or sorts on an encrypted column (the
+**Blind indexes: two, for the customers of the suppliers (SP-10) and for the CRM contacts (NF-89).** No query filters or sorts on an encrypted column (the
 document number is only read for a known guest). The e-mail address of a private customer of a supplier is found by
 `ServiceCustomers.EmailHash`, the HMAC-SHA256 of the lowercase address keyed by `Suppliers__CustomerIndexKey`, a secret
 that is not in the database (`suppliers.md` section 23.7); the same column on the holds counts the bookings of one address.
+A CRM contact is found by `GuestContacts.ValueHash`, the HMAC-SHA256 of the normalized address or number keyed by
+`Crm__ContactIndexKey`, also a secret that is not in the database (unique with the org and the channel). The table only stores
+the hash: the key and the service that computes it (`ICrmContactIndex`) come with E07/F06/US01/T01.
 If another exact lookup is ever needed, do the same; never compare payloads (the same value encrypts differently every time).
 The comune and the postal code of a showcase request, the language and the consent (notice version, time, client address) of
 a customer are not encrypted: the supplier sees the first two before it takes the request, the rest is consent evidence.

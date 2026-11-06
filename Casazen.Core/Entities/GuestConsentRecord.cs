@@ -64,6 +64,12 @@ public enum GuestConsentPurpose
 
     /// <summary>Marketing communications: optional consent of the guest (art. 6.1.a GDPR).</summary>
     Marketing = 2,
+
+    /// <summary>
+    /// The soft opt-in notice presented to a direct customer when the contact is collected (art. 130 c. 4 Codice privacy, PO-07, NF-90): the
+    /// customer is told that the address can be used for similar services and can object in every message. The notice is presented, never a consent.
+    /// </summary>
+    SoftOptInNotice = 3,
 }
 
 /// <summary>What happened. Stored as an integer: never renumber.</summary>
@@ -99,4 +105,10 @@ public enum GuestConsentSource
     /// with the booking and never preselected.
     /// </summary>
     BookingCheckout = 4,
+
+    /// <summary>The guest, on the welcome page of a property reached with its QR code (NF-90).</summary>
+    WelcomePage = 5,
+
+    /// <summary>The guest, on the guest page of a stay (NF-90).</summary>
+    GuestPage = 6,
 }
