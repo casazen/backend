@@ -1,11 +1,14 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit.Services;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Casazen.Tests.Integration;
@@ -90,7 +93,7 @@ public class DocumentArchivePostgresTests : IAsyncLifetime
             new LeaseDocumentArchiveSource(_db, storage),
             new TouristTaxRemittanceArchiveSource(_db, storage),
         ];
-        return new DocumentArchiveService(sources, _db);
+        return new DocumentArchiveService(sources, _db, Options.Create(new DocumentArchiveOptions()), NullLogger<DocumentArchiveService>.Instance);
     }
 
     private static DocumentArchiveQuery Query(

@@ -1,3 +1,4 @@
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -6,6 +7,7 @@ using Casazen.Web.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
@@ -17,7 +19,7 @@ namespace Casazen.Tests.Unit.Infrastructure;
 public class DocumentArchiveRegistrationTests
 {
     [Fact]
-    public void AddDocumentArchive_RegistersTheThreeSourcesAndTheService_AndNothingElse()
+    public void AddDocumentArchive_RegistersTheThreeSourcesTheServiceAndTheCaps_AndNothingElse()
     {
         var services = new ServiceCollection();
 
@@ -31,6 +33,7 @@ public class DocumentArchiveRegistrationTests
         var service = Assert.Single(services, d => d.ServiceType == typeof(IDocumentArchiveService));
         Assert.Equal(typeof(DocumentArchiveService), service.ImplementationType);
         Assert.Equal(ServiceLifetime.Scoped, service.Lifetime);
+        Assert.Single(services, d => d.ServiceType == typeof(IValidateOptions<DocumentArchiveOptions>));
     }
 
     [Fact]
@@ -50,6 +53,7 @@ public class DocumentArchiveRegistrationTests
         Assert.Equal(
             [ArchiveDocumentType.PropertyDocument, ArchiveDocumentType.Contract, ArchiveDocumentType.TouristTax],
             scope.ServiceProvider.GetServices<IDocumentArchiveSource>().Select(s => s.Type));
+        Assert.Equal(DocumentArchiveOptions.DefaultMaxExportFiles, provider.GetRequiredService<IOptions<DocumentArchiveOptions>>().Value.MaxExportFiles);
     }
 
     /// <summary>Who may read each source: the permission of the area its documents belong to, in the context that grants it.</summary>
@@ -113,5 +117,61 @@ public class DocumentArchiveRegistrationTests
         Assert.Equal(
             [ArchiveDocumentType.AlloggiatiReceipt, ArchiveDocumentType.IstatProof],
             Enum.GetValues<ArchiveDocumentType>().Where(ArchiveDocumentTypes.IsComplianceProof));
+    }
+
+    // ---------------------------------------------------------------- the caps
+
+    [Fact]
+    public void TheDefaultCaps_AreThreeHundredDocumentsAndTwoHundredMegabytes_AndAreValid()
+    {
+        var options = new DocumentArchiveOptions();
+
+        Assert.Equal(300, options.MaxExportFiles);
+        Assert.Equal(200L * 1024 * 1024, options.MaxExportBytes);
+        Assert.Empty(options.Validate());
+    }
+
+    [Theory]
+    [InlineData(0, 209715200L, "DocumentArchive__MaxExportFiles")]
+    [InlineData(2001, 209715200L, "DocumentArchive__MaxExportFiles")]
+    [InlineData(300, 1024L, "DocumentArchive__MaxExportBytes")]
+    [InlineData(300, 3L * 1024 * 1024 * 1024, "DocumentArchive__MaxExportBytes")]
+    public void ACapOutOfRange_IsRefusedAtStartup_NamingTheVariable(int files, long bytes, string variable)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DocumentArchive:MaxExportFiles"] = files.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                ["DocumentArchive:MaxExportBytes"] = bytes.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddDocumentArchive();
+        using var provider = services.BuildServiceProvider();
+
+        var refused = Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<DocumentArchiveOptions>>().Value);
+
+        Assert.Contains(variable, string.Join(' ', refused.Failures), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheCaps_AreReadFromTheConfiguration()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DocumentArchive:MaxExportFiles"] = "50",
+                ["DocumentArchive:MaxExportBytes"] = "5242880",
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddDocumentArchive();
+        using var provider = services.BuildServiceProvider();
+
+        var options = provider.GetRequiredService<IOptions<DocumentArchiveOptions>>().Value;
+
+        Assert.Equal((50, 5242880L), (options.MaxExportFiles, options.MaxExportBytes));
     }
 }

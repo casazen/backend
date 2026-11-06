@@ -1,5 +1,7 @@
 using Casazen.Core.Authorization;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Services;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -238,5 +240,135 @@ public class DocumentArchiveServiceTests
             [(ArchiveDocumentType.TouristTax, 0), (ArchiveDocumentType.Contract, 2), (ArchiveDocumentType.PropertyDocument, 0)],
             inSeptember.Select(c => (c.Type, c.Count)));
         Assert.Equal([(ArchiveDocumentType.PropertyDocument, 2)], noContracts.Select(c => (c.Type, c.Count)));
+    }
+
+    // ---------------------------------------------------------------- the file of one document
+
+    /// <summary>
+    /// PROOF TEST: data rule. A document of another org answers 404 like one that does not exist, and so does one of a property outside the scope of
+    /// the caller: the caller cannot tell them apart, and nothing is opened from the storage.
+    /// </summary>
+    [Fact]
+    public async Task DocumentArchiveDownload_OtherOrgRow_NotFound_Test()
+    {
+        var world = await DocumentArchiveWorld.CreateAsync();
+        var service = world.Service();
+
+        foreach (var (type, id) in new[]
+                 {
+                     (ArchiveDocumentType.PropertyDocument, world.OtherOrgPropertyDocument),
+                     (ArchiveDocumentType.Contract, world.OtherOrgLeaseDocument),
+                     (ArchiveDocumentType.TouristTax, world.OtherOrgTaxReceipt),
+                     (ArchiveDocumentType.PropertyDocument, Guid.NewGuid()),
+                 })
+        {
+            var missing = await Assert.ThrowsAsync<NotFoundException>(
+                () => service.OpenAsync(world.Hosts.OrgWide, DocumentArchiveWorld.Everything, type, id));
+            Assert.Equal(DocumentArchiveService.DocumentNotFoundCode, missing.Code);
+        }
+
+        // A property of the org that the collaborator was not given: the same 404, and the payment of the org (no property) as well.
+        foreach (var (type, id) in new[]
+                 {
+                     (ArchiveDocumentType.PropertyDocument, world.HiddenPropertyDocument),
+                     (ArchiveDocumentType.Contract, world.HiddenLeaseDocument),
+                     (ArchiveDocumentType.TouristTax, world.TaxReceipt),
+                 })
+        {
+            var hidden = await Assert.ThrowsAsync<NotFoundException>(
+                () => service.OpenAsync(world.Hosts.Restricted, DocumentArchiveWorld.Everything, type, id));
+            Assert.Equal(DocumentArchiveService.DocumentNotFoundCode, hidden.Code);
+        }
+    }
+
+    [Fact]
+    public async Task Download_ATypeTheCallerMayNotRead_IsForbidden_EvenForARowThatExists()
+    {
+        var world = await DocumentArchiveWorld.CreateAsync();
+        var propertiesOnly = new DocumentArchiveAccess(new HashSet<ArchiveDocumentType> { ArchiveDocumentType.PropertyDocument });
+
+        var forbidden = await Assert.ThrowsAsync<DomainForbiddenException>(
+            () => world.Service().OpenAsync(world.Hosts.OrgWide, propertiesOnly, ArchiveDocumentType.TouristTax, world.TaxReceipt));
+        // A type with no source registered (a compliance proof, for now) has no row: a 404 even if the access names it.
+        var noSource = await Assert.ThrowsAsync<NotFoundException>(
+            () => world.Service().OpenAsync(world.Hosts.OrgWide, new DocumentArchiveAccess(new HashSet<ArchiveDocumentType> { ArchiveDocumentType.AlloggiatiReceipt }),
+                ArchiveDocumentType.AlloggiatiReceipt, Guid.NewGuid()));
+
+        Assert.Equal(DocumentArchiveService.TypeForbiddenCode, forbidden.Code);
+        Assert.Equal(DocumentArchiveService.DocumentNotFoundCode, noSource.Code);
+    }
+
+    [Fact]
+    public async Task Download_OpensTheOriginalFile_WithItsNameAndItsContentType()
+    {
+        var world = await DocumentArchiveWorld.CreateAsync();
+        var service = world.Service();
+
+        var property = await service.OpenAsync(
+            world.Hosts.OrgWide, DocumentArchiveWorld.Everything, ArchiveDocumentType.PropertyDocument, world.GrantedPropertyDocument);
+        var lease = await service.OpenAsync(
+            world.Hosts.Restricted, DocumentArchiveWorld.Everything, ArchiveDocumentType.Contract, world.GrantedLeaseDocument);
+        var tax = await service.OpenAsync(
+            world.Hosts.OrgWide, DocumentArchiveWorld.Everything, ArchiveDocumentType.TouristTax, world.TaxReceipt);
+
+        await using (property.Content)
+        {
+            Assert.Equal("APE-Trullo.pdf", property.FileName);
+            Assert.Equal("application/pdf", property.ContentType);
+            Assert.Equal(DocumentArchiveWorld.Pdf("APE-Trullo.pdf"), await ReadAllAsync(property.Content));
+        }
+
+        await using (lease.Content)
+        {
+            Assert.Equal("contratto-trullo.pdf", lease.FileName);
+            Assert.Equal(DocumentArchiveWorld.Pdf("contratto-trullo.pdf"), await ReadAllAsync(lease.Content));
+        }
+
+        await using (tax.Content)
+        {
+            // The name the host sent, as the payment stores it.
+            Assert.Equal("ricevuta-ostuni.pdf", tax.FileName);
+            Assert.Equal("application/pdf", tax.ContentType);
+            Assert.Equal(DocumentArchiveWorld.Pdf("ricevuta Ostuni"), await ReadAllAsync(tax.Content));
+        }
+    }
+
+    [Fact]
+    public async Task Download_ARowWithoutAFile_IsNotFoundWithTheCodeOfItsOwn()
+    {
+        var world = await DocumentArchiveWorld.CreateAsync();
+        // The row is in the list, but the file is gone from the bucket.
+        Assert.True(world.Storage.Remove(world.KeysByDocument[world.GrantedPropertyDocument]));
+
+        var gone = await Assert.ThrowsAsync<NotFoundException>(
+            () => world.Service().OpenAsync(
+                world.Hosts.OrgWide, DocumentArchiveWorld.Everything, ArchiveDocumentType.PropertyDocument, world.GrantedPropertyDocument));
+
+        Assert.Equal(DocumentArchiveService.DocumentHasNoFileCode, gone.Code);
+    }
+
+    [Fact]
+    public async Task ThePathsOfADocument_ThatAreNotKeysOfTheBucket_AreNeverOpened()
+    {
+        var world = await DocumentArchiveWorld.CreateAsync();
+        var document = await world.Db.PropertyDocuments.FindAsync(world.GrantedPropertyDocument);
+        Assert.NotNull(document);
+        // A legacy path (a local folder) or a key that climbs out of its folder is not a key of the private bucket.
+        document.StorageUrl = "../../secrets/appsettings.json";
+        await world.Db.SaveChangesAsync();
+        world.Db.ChangeTracker.Clear();
+
+        var refused = await Assert.ThrowsAsync<NotFoundException>(
+            () => world.Service().OpenAsync(
+                world.Hosts.OrgWide, DocumentArchiveWorld.Everything, ArchiveDocumentType.PropertyDocument, world.GrantedPropertyDocument));
+
+        Assert.Equal(DocumentArchiveService.DocumentHasNoFileCode, refused.Code);
+    }
+
+    private static async Task<byte[]> ReadAllAsync(Stream stream)
+    {
+        using var copy = new MemoryStream();
+        await stream.CopyToAsync(copy);
+        return copy.ToArray();
     }
 }

@@ -143,6 +143,9 @@ public sealed record DocumentArchiveAccess(IReadOnlySet<ArchiveDocumentType> Typ
 /// <summary>A file read from the private storage, ready to be sent: the caller disposes <see cref="Content"/>.</summary>
 public sealed record ArchiveFile(Stream Content, string FileName, string ContentType);
 
+/// <summary>What an export wrote: the documents it lists, the files it holds and their size, for the line of the log.</summary>
+public sealed record DocumentArchiveExportResult(int Documents, int Files, long Bytes);
+
 /// <summary>
 /// A place the archive reads documents from. A source knows its table, who may read it and how to open a file; the archive knows how to union,
 /// filter, page, download and compress. The fiscal epic adds its documents by registering a source of its own.

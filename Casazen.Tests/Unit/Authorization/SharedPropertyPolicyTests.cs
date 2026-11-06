@@ -69,6 +69,8 @@ public class SharedPropertyPolicyTests
         // NF-99 (E07/F03/US03): the document archive. The door is the read of the property core in either context, so a landlord with only the
         // long-term area reaches the documents of its properties and the files of its leases; each type of document is then opened by the
         // permission of its own area (DocumentArchiveAccessResolver), and the receipts of the tourist tax (payment.read) stay closed to it.
+        "DocumentArchiveController.Download",
+        "DocumentArchiveController.Export",
         "DocumentArchiveController.GetTypes",
         "DocumentArchiveController.List",
     ];

@@ -1,8 +1,12 @@
+using System.Data;
 using System.Text.RegularExpressions;
 using Casazen.Core.Authorization;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Services;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
@@ -30,10 +34,10 @@ public class DocumentArchiveSqlTests
         string? search = null, DateOnly? from = null, DateOnly? to = null, Guid? propertyId = null, Guid? bookingId = null) =>
         new(null, from, to, propertyId, bookingId, search, 2, 10);
 
-    private static (DocumentArchiveService Service, List<string> Statements) Build(int count = 1)
+    private static (DocumentArchiveService Service, List<string> Statements) Build(int count = 1, Func<string, DataTable?>? rows = null)
     {
         var statements = new List<string>();
-        var db = NpgsqlTranslationProbe.NewContext(statements, count);
+        var db = NpgsqlTranslationProbe.NewContext(statements, count, rows);
         var storage = new InMemoryFileStorage();
         IDocumentArchiveSource[] sources =
         [
@@ -41,7 +45,7 @@ public class DocumentArchiveSqlTests
             new LeaseDocumentArchiveSource(db, storage),
             new TouristTaxRemittanceArchiveSource(db, storage),
         ];
-        return (new DocumentArchiveService(sources, db), statements);
+        return (new DocumentArchiveService(sources, db, Options.Create(new DocumentArchiveOptions()), NullLogger<DocumentArchiveService>.Instance), statements);
     }
 
     private static string[] Branches(string statement) => statement.Split("UNION ALL", StringSplitOptions.None);
@@ -147,9 +151,51 @@ public class DocumentArchiveSqlTests
         Assert.Equal(2, Regex.Matches(statement, "UNION ALL").Count);
     }
 
+    [Fact]
+    public async Task Export_CountsAndSumsFirst_ThenListsTheDocumentsOfTheSameUnion()
+    {
+        var (service, statements) = Build(
+            count: 1,
+            rows: sql =>
+            {
+                if (!Regex.IsMatch(sql.TrimStart(), @"^SELECT\s+(COALESCE\()?sum\(", RegexOptions.IgnoreCase))
+                    return null;
+
+                var table = new DataTable();
+                table.Columns.Add("value", typeof(long));
+                table.Rows.Add(0L);
+                return table;
+            });
+        using var destination = new MemoryStream();
+
+        await NpgsqlTranslationProbe.AssertTranslatesAsync(
+            () => service.ExportAsync(OrgWide, DocumentArchiveWorld.Everything, Query(), destination));
+
+        Assert.Equal(3, statements.Count);
+        Assert.StartsWith("SELECT count(*)", statements[0].TrimStart(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("sum(", statements[1], StringComparison.OrdinalIgnoreCase);
+        Assert.Matches("ORDER BY", statements[2]);
+        Assert.All(statements, sql => Assert.Equal(2, Regex.Matches(sql, "UNION ALL").Count));
+    }
+
+    [Fact]
+    public async Task TheRowOfADownload_IsLookedUpWithTheQueryOfTheList_ForTheSourceOfTheType()
+    {
+        var (service, statements) = Build(count: 1);
+
+        await NpgsqlTranslationProbe.AssertTranslatesAsync(
+            () => service.OpenAsync(Restricted, DocumentArchiveWorld.Everything, ArchiveDocumentType.PropertyDocument, Guid.NewGuid()));
+
+        // One source of that type: one statement, with the org and the grants of the collaborator, and no other table's rows.
+        var statement = Assert.Single(statements);
+        Assert.Matches("\"OrgId\" = @", statement);
+        Assert.Contains("PropertyMemberAccesses", statement, StringComparison.Ordinal);
+        Assert.DoesNotContain("LeaseDocuments", statement, StringComparison.Ordinal);
+    }
+
     /// <summary>
-    /// PROOF TEST: privacy rule. The archive reads the tables of the host's documents and nothing that belongs to a guest: across the list and the
-    /// count, every table the statements read is in the short list of the archive. The identity documents and the
+    /// PROOF TEST: privacy rule. The archive reads the tables of the host's documents and nothing that belongs to a guest: across the list, the
+    /// count, the export and the download, every table the statements read is in the short list of the archive. The identity documents and the
     /// selfies of the guests live in other tables and are not reachable from any source; a source added later has to be added to the list of this
     /// test too, on purpose.
     /// </summary>
@@ -161,6 +207,8 @@ public class DocumentArchiveSqlTests
         {
             await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.ListAsync(scope, DocumentArchiveWorld.Everything, Query("x")));
             await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.CountByTypeAsync(scope, DocumentArchiveWorld.Everything, Query()));
+            foreach (var type in new[] { ArchiveDocumentType.PropertyDocument, ArchiveDocumentType.Contract, ArchiveDocumentType.TouristTax })
+                await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.OpenAsync(scope, DocumentArchiveWorld.Everything, type, Guid.NewGuid()));
         }
 
         Assert.NotEmpty(statements);

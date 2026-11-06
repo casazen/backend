@@ -2,10 +2,13 @@ using System.Text;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Enums;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Tests.Unit.Services;
 
@@ -123,7 +126,8 @@ internal sealed class DocumentArchiveWorld
         new TouristTaxRemittanceArchiveSource(Db, Storage),
     ];
 
-    public DocumentArchiveService Service() => new(Sources(), Db);
+    public DocumentArchiveService Service(DocumentArchiveOptions? limits = null) =>
+        new(Sources(), Db, Options.Create(limits ?? new DocumentArchiveOptions()), NullLogger<DocumentArchiveService>.Instance);
 
     private async Task SeedDocumentsAsync()
     {

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Casazen.Core.Authorization;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
@@ -9,18 +10,24 @@ using Microsoft.AspNetCore.Mvc;
 namespace Casazen.Web.Controllers;
 
 /// <summary>
-/// The document archive (NF-99, REP-04): every document the caller may read in one place, filtered and searched. The door is the read of the
-/// property core in either rental context (<see cref="CasazenPolicies.SharedPropertyRead"/>: every host reader passes, a long-term landlord with
-/// no short-rent context included); each type of document is then opened by the permission of the area it belongs to
-/// (<see cref="DocumentArchiveAccessResolver"/>: <c>property.read</c> for the property documents, <c>lease.read</c> for the leases,
-/// <c>payment.read</c> for the tourist tax receipts, <c>guest.read</c> for the compliance proofs), so the Accountant reads the tax, property and
-/// lease documents and never a compliance proof. Everything works inside the org of the caller and the reach of its <see cref="HostScope"/>,
-/// decided in SQL.
+/// The document archive (NF-99, REP-04): every document the caller may read in one place, filtered, searched, downloaded one by one and
+/// exported as a ZIP for a period. The door is the read of the property core in either rental context (<see cref="CasazenPolicies.SharedPropertyRead"/>:
+/// every host reader passes, a long-term landlord with no short-rent context included); each type of document is then opened by the permission
+/// of the area it belongs to (<see cref="DocumentArchiveAccessResolver"/>: <c>property.read</c> for the property documents, <c>lease.read</c> for
+/// the leases, <c>payment.read</c> for the tourist tax receipts, <c>guest.read</c> for the compliance proofs), so the Accountant reads the tax,
+/// property and lease documents and never a compliance proof. Everything works inside the org of the caller and the reach of its
+/// <see cref="HostScope"/>, decided in SQL: another org's document, or one of a property outside the scope, is a 404, never a 403.
 /// <para>
 /// <c>GET api/documents</c> takes <c>type</c> (repeatable: <c>propertyDocument</c>, <c>contract</c>, <c>touristTax</c>, ...), <c>from</c> and
 /// <c>to</c> (<c>yyyy-MM-dd</c>, Europe/Rome days), <c>propertyId</c>, <c>bookingId</c>, <c>q</c>, <c>page</c> and <c>pageSize</c> (1 to 100);
 /// 400 <c>archive_invalid_type</c>, <c>archive_invalid_period</c> and <c>archive_invalid_page</c> for a word the archive does not know.
 /// <c>GET api/documents/types</c> answers the types the caller may read with their count for the same filters except the type.
+/// <c>GET api/documents/{type}/{id}/download</c> streams one file (<c>Cache-Control: private, no-store</c>): 403 <c>archive_type_forbidden</c>,
+/// 404 <c>archive_document_not_found</c> or <c>archive_document_has_no_file</c>. <c>GET api/documents/export</c> takes <c>from</c> and <c>to</c>
+/// (required, at most 24 months: 400 <c>report_invalid_period</c>, 422 <c>report_period_too_long</c>), and optional <c>type</c> and
+/// <c>propertyId</c>, and streams <c>casazen-documenti-{from}-{to}.zip</c>; beyond the caps 422 <c>archive_export_too_large</c> with the number
+/// of documents found, before the first byte. Each export and each download of a compliance proof writes one line in the log with the ids of
+/// the org and of the user and the counts, never a document name.
 /// </para>
 /// </summary>
 [ApiController]
@@ -31,7 +38,8 @@ public class DocumentArchiveController(
     IEnumerable<IDocumentArchiveSource> sources,
     IContextAuthorizationService contextAuthorization,
     IOrgContextResolver orgContextResolver,
-    IHostScopeResolver hostScopeResolver) : ControllerBase
+    IHostScopeResolver hostScopeResolver,
+    ILogger<DocumentArchiveController> logger) : ControllerBase
 {
     /// <summary>Code of a <c>type</c> that is not the key of a kind of document.</summary>
     public const string InvalidTypeCode = "archive_invalid_type";
@@ -90,6 +98,81 @@ public class DocumentArchiveController(
         var counts = await archive.CountByTypeAsync(caller.Scope, caller.Access, query, cancellationToken);
         return Ok(DocumentArchiveTypesDto.From(counts));
     }
+
+    /// <summary>One file, from the private bucket, as the original: its name and its content type.</summary>
+    [HttpGet("{type}/{id:guid}/download")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Download(string type, Guid id, CancellationToken cancellationToken)
+    {
+        if (!ArchiveDocumentTypes.TryParse(type, out var documentType))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidTypeCode, "ArchiveInvalidType");
+        if (await ResolveCallerAsync(cancellationToken) is not { } caller)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        var file = await archive.OpenAsync(caller.Scope, caller.Access, documentType, id, cancellationToken);
+
+        // A compliance proof carries data about guests: who opened one is in the log, by id, with no name of a document.
+        if (ArchiveDocumentTypes.IsComplianceProof(documentType))
+        {
+            logger.LogInformation(
+                "Document archive: a compliance proof was downloaded. OrgId={OrgId} UserId={UserId} Type={Type}",
+                caller.Scope.OrgId,
+                caller.UserId,
+                documentType);
+        }
+
+        Response.Headers.CacheControl = "private, no-store";
+        Response.Headers.XContentTypeOptions = "nosniff";
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    /// <summary>
+    /// The documents of a period as a ZIP, streamed from the storage to the response: a folder for each type and <c>indice.csv</c>. It holds
+    /// exactly what the list shows to the same caller for the same days (and the optional type and property).
+    /// </summary>
+    [HttpGet("export")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> Export(
+        [FromQuery(Name = "from")] DateOnly? fromDay,
+        [FromQuery(Name = "to")] DateOnly? toDay,
+        [FromQuery(Name = "type")] string[]? types,
+        [FromQuery] Guid? propertyId,
+        CancellationToken cancellationToken)
+    {
+        if (this.CheckPeriod(fromDay, toDay, out var first, out var last) is { } periodProblem)
+            return periodProblem;
+        if (!TryReadTypes(types, out var kinds))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, InvalidTypeCode, "ArchiveInvalidType");
+        if (await ResolveCallerAsync(cancellationToken) is not { } caller)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        // The headers of the ZIP are set when the first byte goes out, and only for a 200: the service refuses an export beyond the caps before
+        // it writes anything, and that answer is a problem (422), which must not carry the name of a file to save.
+        Response.Headers.CacheControl = "private, no-store";
+        ZipDownloadHeaders.WhenTheResponseStarts(Response, ExportFileName(first, last));
+
+        var query = new DocumentArchiveQuery(kinds, first, last, propertyId, null, null, 1, DocumentArchiveQuery.MaxPageSize);
+        var result = await archive.ExportAsync(caller.Scope, caller.Access, query, Response.Body, cancellationToken);
+
+        logger.LogInformation(
+            "Document archive exported. OrgId={OrgId} UserId={UserId} Documents={Documents} Files={Files} Bytes={Bytes}",
+            caller.Scope.OrgId,
+            caller.UserId,
+            result.Documents,
+            result.Files,
+            result.Bytes);
+        return new EmptyResult();
+    }
+
+    /// <summary>The name of the ZIP of a period: <c>casazen-documenti-20260101-20261231.zip</c>.</summary>
+    public static string ExportFileName(DateOnly from, DateOnly to) =>
+        $"casazen-documenti-{from.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}-{to.ToString("yyyyMMdd", CultureInfo.InvariantCulture)}.zip";
 
     // The words of a list or a count, before anything is read: the types, then the days. The problem to answer, or null with the query.
     private ObjectResult? ReadFilters(

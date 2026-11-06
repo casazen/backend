@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Casazen.Core.Authorization;
 using Casazen.Core.Services;
 using Casazen.Tests.Unit.Authorization;
+using Casazen.Tests.Unit.Logging;
 using Casazen.Web.Controllers;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Http;
@@ -48,7 +49,8 @@ public class DocumentArchiveControllerTests
                 ],
                 authorization.Object,
                 orgContext.Object,
-                scopes.Object)
+                scopes.Object,
+                Log)
             {
                 ControllerContext = new ControllerContext { HttpContext = http },
             };
@@ -59,6 +61,8 @@ public class DocumentArchiveControllerTests
         public static HostScope Scope { get; } = new(OrgId);
 
         public Mock<IDocumentArchiveService> Archive { get; } = new();
+
+        public CapturingLogger<DocumentArchiveController> Log { get; } = new();
 
         public HttpContext Http { get; }
 
@@ -214,5 +218,147 @@ public class DocumentArchiveControllerTests
         Assert.Equal(
             [("touristTax", 0), ("propertyDocument", 7)],
             types.Types.Select(t => (t.Type, t.Count)));
+    }
+
+    // ---------------------------------------------------------------- the download
+
+    [Fact]
+    public async Task Download_AnUnknownType_Is400()
+    {
+        var harness = new Harness();
+
+        var result = await harness.Controller.Download("passport", Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, StatusOf(result));
+        Assert.Equal(DocumentArchiveController.InvalidTypeCode, CodeOf(result));
+        harness.Archive.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Download_SendsTheFileUncached_WithItsNameAndType_AndLogsNothingForAPropertyDocument()
+    {
+        var harness = new Harness();
+        var id = Guid.NewGuid();
+        harness.Archive
+            .Setup(a => a.OpenAsync(Harness.Scope, It.IsAny<DocumentArchiveAccess>(), ArchiveDocumentType.PropertyDocument, id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ArchiveFile(new MemoryStream([1, 2, 3]), "APE.pdf", "application/pdf"));
+
+        var result = await harness.Controller.Download("propertyDocument", id, CancellationToken.None);
+
+        var file = Assert.IsType<FileStreamResult>(result);
+        Assert.Equal("application/pdf", file.ContentType);
+        Assert.Equal("APE.pdf", file.FileDownloadName);
+        Assert.Equal("private, no-store", harness.Http.Response.Headers.CacheControl.ToString());
+        Assert.Equal("nosniff", harness.Http.Response.Headers.XContentTypeOptions.ToString());
+        Assert.Empty(harness.Log.Entries);
+        await file.FileStream.DisposeAsync();
+    }
+
+    /// <summary>
+    /// PROOF TEST: privacy rule. Opening a compliance proof (it carries data about guests) writes one line in the log with the org, the user and the
+    /// type, and nothing that names a document: no title, no file name.
+    /// </summary>
+    [Fact]
+    public async Task Download_OfAComplianceProof_WritesOneLineWithIdsOnly()
+    {
+        var harness = new Harness();
+        var id = Guid.NewGuid();
+        harness.Archive
+            .Setup(a => a.OpenAsync(Harness.Scope, It.IsAny<DocumentArchiveAccess>(), ArchiveDocumentType.AlloggiatiReceipt, id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ArchiveFile(new MemoryStream([1]), "ricevuta-mario-rossi.pdf", "application/pdf"));
+
+        var result = await harness.Controller.Download("alloggiatiReceipt", id, CancellationToken.None);
+
+        await Assert.IsType<FileStreamResult>(result).FileStream.DisposeAsync();
+        var line = Assert.Single(harness.Log.Entries);
+        Assert.Equal(Harness.OrgId, line.Values["OrgId"]);
+        Assert.Equal(UserId, line.Values["UserId"]);
+        Assert.Equal(ArchiveDocumentType.AlloggiatiReceipt, line.Values["Type"]);
+        Assert.DoesNotContain("mario", harness.Log.AllOutput, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(id.ToString(), harness.Log.AllOutput, StringComparison.Ordinal);
+    }
+
+    // ---------------------------------------------------------------- the export
+
+    [Fact]
+    public async Task Export_WithoutDaysOrBeyondTwentyFourMonths_IsRefusedWithTheCodesOfTheReports()
+    {
+        var harness = new Harness();
+
+        var missing = await harness.Controller.Export(null, new DateOnly(2026, 12, 31), null, null, CancellationToken.None);
+        var tooLong = await harness.Controller.Export(new DateOnly(2024, 1, 1), new DateOnly(2026, 12, 31), null, null, CancellationToken.None);
+
+        Assert.Equal((400, "report_invalid_period"), (StatusOf(missing), CodeOf(missing)));
+        Assert.Equal((422, "report_period_too_long"), (StatusOf(tooLong), CodeOf(tooLong)));
+        harness.Archive.Verify(
+            a => a.ExportAsync(It.IsAny<HostScope>(), It.IsAny<DocumentArchiveAccess>(), It.IsAny<DocumentArchiveQuery>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Export_AnUnknownType_Is400()
+    {
+        var harness = new Harness();
+
+        var result = await harness.Controller.Export(new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31), ["receipts"], null, CancellationToken.None);
+
+        Assert.Equal((400, DocumentArchiveController.InvalidTypeCode), (StatusOf(result), CodeOf(result)));
+    }
+
+    /// <summary>
+    /// PROOF TEST: privacy rule. An export writes one line in the log with the org, the user and the counts, and nothing that names a document or
+    /// a property. The service gets the days, the types and the property of the request and the response as the destination.
+    /// </summary>
+    [Fact]
+    public async Task Export_WritesOneLineWithTheIdsAndTheCounts_AndGivesTheServiceTheResponse()
+    {
+        var harness = new Harness();
+        var propertyId = Guid.NewGuid();
+        DocumentArchiveQuery? query = null;
+        Stream? destination = null;
+        harness.Archive
+            .Setup(a => a.ExportAsync(Harness.Scope, It.IsAny<DocumentArchiveAccess>(), It.IsAny<DocumentArchiveQuery>(), It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .Callback<HostScope, DocumentArchiveAccess, DocumentArchiveQuery, Stream, CancellationToken>((_, _, asked, to, _) =>
+            {
+                query = asked;
+                destination = to;
+            })
+            .ReturnsAsync(new DocumentArchiveExportResult(3, 2, 1234));
+
+        var result = await harness.Controller.Export(
+            new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31), ["contract"], propertyId, CancellationToken.None);
+
+        Assert.IsType<EmptyResult>(result);
+        Assert.Same(harness.Http.Response.Body, destination);
+        Assert.NotNull(query);
+        Assert.Equal([ArchiveDocumentType.Contract], query.Types);
+        Assert.Equal(new DateOnly(2026, 1, 1), query.From);
+        Assert.Equal(new DateOnly(2026, 3, 31), query.To);
+        Assert.Equal(propertyId, query.PropertyId);
+        Assert.Null(query.Search);
+
+        var line = Assert.Single(harness.Log.Entries);
+        Assert.Equal(Harness.OrgId, line.Values["OrgId"]);
+        Assert.Equal(UserId, line.Values["UserId"]);
+        Assert.Equal((3, 2, 1234L), ((int)line.Values["Documents"]!, (int)line.Values["Files"]!, (long)line.Values["Bytes"]!));
+        Assert.DoesNotContain(propertyId.ToString(), harness.Log.AllOutput, StringComparison.Ordinal);
+        Assert.Equal("private, no-store", harness.Http.Response.Headers.CacheControl.ToString());
+    }
+
+    [Fact]
+    public void TheZipHeaders_AreSetForA200_AndNeverForAProblem()
+    {
+        var ok = new DefaultHttpContext();
+        var refused = new DefaultHttpContext();
+        refused.Response.StatusCode = StatusCodes.Status422UnprocessableEntity;
+
+        ZipDownloadHeaders.Apply(ok.Response, "casazen-documenti-20260101-20261231.zip");
+        ZipDownloadHeaders.Apply(refused.Response, "casazen-documenti-20260101-20261231.zip");
+
+        Assert.Equal("application/zip", ok.Response.ContentType);
+        Assert.Contains("attachment", ok.Response.Headers.ContentDisposition.ToString(), StringComparison.Ordinal);
+        Assert.Contains("casazen-documenti-20260101-20261231.zip", ok.Response.Headers.ContentDisposition.ToString(), StringComparison.Ordinal);
+        Assert.Null(refused.Response.ContentType);
+        Assert.Equal(string.Empty, refused.Response.Headers.ContentDisposition.ToString());
     }
 }
