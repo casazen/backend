@@ -29,7 +29,7 @@ public class NotificationPreferenceServiceTests : IDisposable
     public NotificationPreferenceServiceTests()
     {
         _permissions
-            .Setup(p => p.HasPermissionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(p => p.HasPermissionOrThrowAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
     }
 
@@ -384,7 +384,7 @@ public class NotificationPreferenceServiceTests : IDisposable
     {
         var world = await SeedAsync();
         _permissions
-            .Setup(p => p.HasPermissionAsync(Collaborator, "short-rent", "booking.read", It.IsAny<CancellationToken>()))
+            .Setup(p => p.HasPermissionOrThrowAsync(Collaborator, "short-rent", "booking.read", It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var recipients = await Service().ResolveAsync(
@@ -396,6 +396,24 @@ public class NotificationPreferenceServiceTests : IDisposable
             CancellationToken.None);
 
         Assert.Equal([Owner], recipients.Select(r => r.UserId).ToList());
+    }
+
+    [Fact]
+    public async Task Resolve_AnErrorReadingThePermissions_IsThrown_NobodyIsDroppedForIt()
+    {
+        var world = await SeedAsync();
+        _permissions
+            .Setup(p => p.HasPermissionOrThrowAsync(Collaborator, "short-rent", "booking.read", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TimeoutException("the database does not answer"));
+
+        // Answering «no» would drop the person for good; the exception makes the event bus (or Hangfire) deliver the event again.
+        await Assert.ThrowsAsync<TimeoutException>(() => Service().ResolveAsync(
+            new NotificationEventContext(
+                world.OrgId,
+                NotificationEventType.NewGuestMessage,
+                world.PropertyA,
+                RequiredPermission: new NotificationPermission("short-rent", "booking.read")),
+            CancellationToken.None));
     }
 
     // ─── Resolve: quiet hours (AC-NF65-3) ───

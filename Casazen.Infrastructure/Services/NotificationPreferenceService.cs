@@ -260,13 +260,17 @@ public sealed class NotificationPreferenceService(
             .ToList();
     }
 
-    /// <summary>The ones who hold the permission in its context (<see cref="IContextAuthorizationService"/>: the memberships of the person, after its onboarding).</summary>
+    /// <summary>
+    /// The ones who hold the permission in its context (<see cref="IContextAuthorizationService"/>: the memberships of the person, after its
+    /// onboarding). An error while the memberships are read is thrown, not answered as «no»: <see cref="ResolveAsync"/> runs in the event bus and
+    /// in jobs, and a person dropped for a passing error would be missed for good, while an exception makes the event be delivered again.
+    /// </summary>
     private async Task<List<Candidate>> HoldingAsync(List<Candidate> candidates, NotificationPermission required, CancellationToken ct)
     {
         var holders = new List<Candidate>(candidates.Count);
         foreach (var candidate in candidates)
         {
-            if (await contextAuthorization.HasPermissionAsync(candidate.UserId, required.ContextKey, required.PermissionKey, ct))
+            if (await contextAuthorization.HasPermissionOrThrowAsync(candidate.UserId, required.ContextKey, required.PermissionKey, ct))
                 holders.Add(candidate);
         }
 

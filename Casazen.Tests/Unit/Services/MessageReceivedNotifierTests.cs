@@ -52,7 +52,7 @@ public class MessageReceivedNotifierTests : IDisposable
     public MessageReceivedNotifierTests()
     {
         _permissions
-            .Setup(p => p.HasPermissionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(p => p.HasPermissionOrThrowAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _jobs
             .Setup(j => j.Create(It.IsAny<Job>(), It.IsAny<IState>()))
@@ -373,7 +373,7 @@ public class MessageReceivedNotifierTests : IDisposable
         await Notifier().HandleAsync(Received(world.OrgId, world.OnA, Night), CancellationToken.None);
         var (args, _) = Assert.Single(ScheduledAlerts(), a => a.Args.UserId == Owner);
         _permissions
-            .Setup(p => p.HasPermissionAsync(Owner, "short-rent", "booking.read", It.IsAny<CancellationToken>()))
+            .Setup(p => p.HasPermissionOrThrowAsync(Owner, "short-rent", "booking.read", It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
         _clock.SetUtcNow(new DateTimeOffset(MorningDue));
 
@@ -421,12 +421,32 @@ public class MessageReceivedNotifierTests : IDisposable
     {
         var world = await SeedAsync();
         _permissions
-            .Setup(p => p.HasPermissionAsync(Owner, "short-rent", "booking.read", It.IsAny<CancellationToken>()))
+            .Setup(p => p.HasPermissionOrThrowAsync(Owner, "short-rent", "booking.read", It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         await Notifier().HandleAsync(Received(world.OrgId, world.OnA, Noon), CancellationToken.None);
 
         Assert.Equal([Collaborator], _push.Queued.Select(p => p.Audience.UserId).ToList());
+    }
+
+    [Fact]
+    public async Task Handle_AnErrorReadingThePermissions_Throws_SoTheBusDeliversTheEventAgain_AndNobodyIsDroppedForIt()
+    {
+        var world = await SeedAsync();
+        _permissions
+            .Setup(p => p.HasPermissionOrThrowAsync(Owner, "short-rent", "booking.read", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TimeoutException("the database does not answer"));
+
+        await Assert.ThrowsAsync<TimeoutException>(() => Notifier().HandleAsync(Received(world.OrgId, world.OnA, Noon), CancellationToken.None));
+        Assert.Empty(_push.Queued);
+
+        // The event is delivered again, the database answers: the owner is told as if nothing had happened.
+        _permissions
+            .Setup(p => p.HasPermissionOrThrowAsync(Owner, "short-rent", "booking.read", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        await Notifier().HandleAsync(Received(world.OrgId, world.OnA, Noon), CancellationToken.None);
+
+        Assert.Contains(_push.Queued, p => p.Audience.UserId == Owner);
     }
 
     [Fact]

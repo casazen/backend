@@ -114,38 +114,7 @@ public class ContextAuthorizationService(
     {
         try
         {
-            var snapshot = await snapshotStore.GetAsync(userId, cancellationToken);
-            if (snapshot is { Exists: true, IsActive: false })
-            {
-                return false;
-            }
-
-            var contexts = BuildContexts(snapshot);
-            var context = contexts.FirstOrDefault(c => string.Equals(c.ContextKey, contextKey, StringComparison.OrdinalIgnoreCase));
-            if (context is null)
-            {
-                logger.LogDebug(
-                    "Permission denied: user {UserId} has no context {ContextKey} (host contexts wait for the onboarding)",
-                    userId, contextKey);
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(permissionKey))
-            {
-                return true;
-            }
-
-            // A permission counts only in the context that grants it: long-rent property.* never satisfies a
-            // short-rent policy. Endpoints shared by both rental contexts say so in their policy (A7-06).
-            var hasPermission = context.Permissions.Contains(permissionKey, StringComparer.OrdinalIgnoreCase);
-            if (!hasPermission)
-            {
-                logger.LogDebug(
-                    "Permission denied: user {UserId} lacks {PermissionKey} in {ContextKey}",
-                    userId, permissionKey, contextKey);
-            }
-
-            return hasPermission;
+            return await HasPermissionOrThrowAsync(userId, contextKey, permissionKey, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -154,6 +123,46 @@ public class ContextAuthorizationService(
                 userId, contextKey, permissionKey);
             return false;
         }
+    }
+
+    public async Task<bool> HasPermissionOrThrowAsync(
+        string userId,
+        string contextKey,
+        string permissionKey,
+        CancellationToken cancellationToken = default)
+    {
+        var snapshot = await snapshotStore.GetAsync(userId, cancellationToken);
+        if (snapshot is { Exists: true, IsActive: false })
+        {
+            return false;
+        }
+
+        var contexts = BuildContexts(snapshot);
+        var context = contexts.FirstOrDefault(c => string.Equals(c.ContextKey, contextKey, StringComparison.OrdinalIgnoreCase));
+        if (context is null)
+        {
+            logger.LogDebug(
+                "Permission denied: user {UserId} has no context {ContextKey} (host contexts wait for the onboarding)",
+                userId, contextKey);
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(permissionKey))
+        {
+            return true;
+        }
+
+        // A permission counts only in the context that grants it: long-rent property.* never satisfies a
+        // short-rent policy. Endpoints shared by both rental contexts say so in their policy (A7-06).
+        var hasPermission = context.Permissions.Contains(permissionKey, StringComparer.OrdinalIgnoreCase);
+        if (!hasPermission)
+        {
+            logger.LogDebug(
+                "Permission denied: user {UserId} lacks {PermissionKey} in {ContextKey}",
+                userId, permissionKey, contextKey);
+        }
+
+        return hasPermission;
     }
 
     private IReadOnlyList<string> ResolveJwtRoles()
