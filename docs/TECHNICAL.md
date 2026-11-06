@@ -1334,7 +1334,7 @@ erDiagram
 
 #### `GuestCrmProfile` (NF-88, E07/F01/US01/T01)
 
-The CRM profile of a guest (NF-23, ADR-021): stays, spend, consent and tags across the bookings of one org, matched by the SHA-256 `CompositeKeyHash`. Only the columns of the CRM data model are listed. The profile never holds an Alloggiati field (document, citizenship, place of birth: AC-NF88-6, Q1-05).
+The CRM profile of a guest (NF-23, ADR-021): stays, spend, consent and tags across the bookings of one org. Since E07/F01/US02/T01 a guest is matched by keyed hashes: the e-mail contact (`GuestContact.ValueHash`, an OTA forward address is never a key), `NameBirthKeyHash`, and for proposals `PhoneKeyHash`; `CompositeKeyHash` is the keyed HMAC-SHA256 of the ADR-021-R2 composite and only describes the profile. `IGuestMatchingService` makes and updates the profiles, `ICrmContactService` the contacts and `ICrmProfileSyncService` keeps both in step with the bookings of every source ([`crm-profiles.md`](runbooks/crm-profiles.md)). Only the columns of the CRM data model are listed. The profile never holds an Alloggiati field (document, citizenship, place of birth: AC-NF88-6, Q1-05).
 
 | Field | Type | Constraints | Description |
 |---|---|---|---|
