@@ -107,7 +107,7 @@ public sealed record TouristTaxSummary(
 /// <summary>
 /// What a payment is recorded with. The org is the caller's (the <see cref="Casazen.Core.Authorization.HostScope"/>), never part of the request.
 /// </summary>
-/// <param name="Comune">The comune as the host typed it: it has to be one of the comuni of the org's properties.</param>
+/// <param name="Comune">The comune as the host typed it: it has to be one of the comuni of the org's properties in Italy.</param>
 /// <param name="PeriodFrom">First day of the period the payment pays.</param>
 /// <param name="PeriodTo">Last day of that period, included; not before <paramref name="PeriodFrom"/>, at most a year later.</param>
 /// <param name="PaidAmount">Euros, above zero, at most two decimals.</param>
@@ -143,7 +143,7 @@ public static class TouristTaxRemittanceLimits
 /// <summary>Error codes of the payments of the tourist tax (ProblemDetails <c>code</c>, FD-05).</summary>
 public static class TouristTaxErrorCodes
 {
-    /// <summary>422: the comune is not one of the comuni of the properties the caller reaches.</summary>
+    /// <summary>422: the comune is not one of the comuni of the org's properties in Italy.</summary>
     public const string ComuneUnknown = "tourist_tax_comune_unknown";
 
     /// <summary>422: the amount is not above zero, has more than two decimals or is too large.</summary>

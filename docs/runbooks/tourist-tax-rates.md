@@ -75,7 +75,9 @@ deploy and what the admin still has to do.
   (`NothingOwed`, `ToPay`, `Paid`, `Overpaid`). Cents, not floats; the same org and property reach as the report, with one
   difference: a payment belongs to the org and to no property, so a caller who reaches only some of the properties gets the owed side
   of those properties and no payment (`paymentsHidden: true`, paid, balance and status `null`) and cannot record, delete or open
-  one (403 `tourist_tax_payments_need_whole_org`). `NothingOwed`
+  one (403 `tourist_tax_payments_need_whole_org`). Only the properties in Italy count (the rates are those of the Italian comuni and
+  the amounts are in euros): a house in another country, such as a Swiss one, is left out of the summary and its comune cannot be
+  paid, even when an Italian comune has the same name. `NothingOwed`
   means that no amount is recorded, not that nothing is due: the CSV says `Nessun importo registrato` for it and writes
   `Importo incompleto` in the note column of every row that counts stays with no amount.
 - A payment is the host's declaration, not a bank record: comune (one of the comuni of its properties), period, amount, day,

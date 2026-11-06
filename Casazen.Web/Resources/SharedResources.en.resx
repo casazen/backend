@@ -4191,7 +4191,7 @@
     <value>The draft version is not valid.</value>
   </data>
   <data name="TouristTaxComuneUnknown" xml:space="preserve">
-    <value>The comune is not one of the comuni of your properties: pick a comune where you have at least one property.</value>
+    <value>The comune is not one of the comuni of your properties in Italy: pick an Italian comune where you have at least one property.</value>
   </data>
   <data name="TouristTaxAmountInvalid" xml:space="preserve">
     <value>The amount must be above zero, in euros, with at most two decimals.</value>

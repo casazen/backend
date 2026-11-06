@@ -4191,7 +4191,7 @@
     <value>La versione della bozza non è valida.</value>
   </data>
   <data name="TouristTaxComuneUnknown" xml:space="preserve">
-    <value>Il comune indicato non è uno dei comuni dei tuoi immobili: scegli un comune in cui hai almeno un immobile.</value>
+    <value>Il comune indicato non è uno dei comuni dei tuoi immobili in Italia: scegli un comune italiano in cui hai almeno un immobile.</value>
   </data>
   <data name="TouristTaxAmountInvalid" xml:space="preserve">
     <value>L'importo deve essere maggiore di zero, in euro, con al massimo due decimali.</value>

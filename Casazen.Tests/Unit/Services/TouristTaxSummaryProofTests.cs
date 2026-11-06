@@ -225,6 +225,48 @@ public sealed class TouristTaxSummaryProofTests
         Assert.Equal((50.00m, 50.00m, TouristTaxSummaryStatus.Paid), (whole.Comuni[0].Owed, whole.Comuni[0].Paid, whole.Comuni[0].Status));
     }
 
+    /// <summary>
+    /// PROOF TEST: money and data rule. Only the properties in Italy count (the rule of the tourist tax rates): a house in Switzerland
+    /// (CHF-MONEY) is not added to the row of an Italian comune of the same name, has no row of its own with an owed amount of zero, and its
+    /// comune cannot be paid in euros; an Italian comune of the same name still can, and a country written in lower case is Italy.
+    /// </summary>
+    [Fact]
+    public async Task TouristTaxSummary_AHouseAbroad_IsNeitherCountedNorPayable_Test()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId);
+        var como = SeedProperty(db, orgId, "Casa Como", "Como");
+        var varese = SeedProperty(db, orgId, "Casa Varese", "Varese", country: "it");
+        var chaletComo = SeedProperty(db, orgId, "Chalet Como", "Como", country: "CH");
+        var lugano = SeedProperty(db, orgId, "Chalet Lugano", "Lugano", country: "CH");
+
+        // The engine records no tax for a house in Switzerland, so its stays come out with an amount of zero.
+        SeedStay(db, como, Day(2026, 2, 5), nights: 2, touristTax: 12m);
+        SeedStay(db, varese, Day(2026, 2, 20), nights: 3, touristTax: 9m);
+        SeedStay(db, chaletComo, Day(2026, 2, 12), nights: 4, touristTax: 0m);
+        SeedStay(db, lugano, Day(2026, 3, 3), nights: 2, touristTax: 0m);
+        await db.SaveChangesAsync();
+        var sut = CreateService(db);
+        var scope = new HostScope(orgId);
+
+        var summary = await sut.GetSummaryAsync(scope, FirstQuarter);
+
+        // Como has its own stay only (not the Swiss one, which would add a stay, four nights and a stay with no amount) and there is no Lugano.
+        Assert.Equal(["Como", "Varese"], summary.Comuni.Select(c => c.Comune));
+        var comoRow = summary.Comuni[0];
+        Assert.Equal((1, 2, 12.00m, 0), (comoRow.Stays, comoRow.Nights, comoRow.Owed, comoRow.StaysWithoutAmount));
+        Assert.Equal(new TouristTaxSummaryTotals(2, 5, 4, 21.00m, 0, 0m, 21.00m), summary.Total);
+
+        // A comune where the org has only a house in Switzerland cannot be paid; Como, where it also has an Italian house, can.
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => sut.RecordRemittanceAsync(scope, NewRequest("Lugano"), receipt: null));
+        Assert.Equal(TouristTaxErrorCodes.ComuneUnknown, refused.Code);
+        Assert.Empty(await db.TouristTaxRemittances.ToListAsync());
+
+        var line = await sut.RecordRemittanceAsync(scope, NewRequest("Como"), receipt: null);
+        Assert.Equal("Como", line.Comune);
+    }
+
     private static IEnumerable<string?> PoliciesOf(MemberInfo member) =>
         member.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(a => a.Policy);
 
@@ -258,7 +300,8 @@ public sealed class TouristTaxSummaryProofTests
         Guid orgId,
         string name,
         string city,
-        string ownerId = "auth0|host")
+        string ownerId = "auth0|host",
+        string country = "IT")
     {
         var property = new Property
         {
@@ -268,6 +311,8 @@ public sealed class TouristTaxSummaryProofTests
             Address = "Via Test 1",
             City = city,
             PostalCode = "00100",
+            Country = country,
+            Currency = country == "CH" ? "CHF" : "EUR",
             Bedrooms = 1,
             Bathrooms = 1,
             MaxGuests = 4,

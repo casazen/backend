@@ -13,7 +13,8 @@ namespace Casazen.Core.Services;
 /// (record, delete). They work inside the org and the reach of the <see cref="HostScope"/> given. A payment belongs to the org and to no
 /// property, so a caller who reaches only some properties gets the owed side of those properties and no payment at all
 /// (<see cref="TouristTaxSummary.PaymentsHidden"/>), and has no part in recording, deleting or opening one (403
-/// <see cref="TouristTaxErrorCodes.PaymentsNeedWholeOrg"/>).
+/// <see cref="TouristTaxErrorCodes.PaymentsNeedWholeOrg"/>). Only the properties in Italy count (<see cref="Casazen.Core.TouristTax.TouristTaxComune.IsItalianCountry"/>):
+/// the rates are those of the Italian comuni and every amount is in euros, so a house abroad is neither summed nor payable.
 /// </remarks>
 public interface ITouristTaxSummaryService
 {

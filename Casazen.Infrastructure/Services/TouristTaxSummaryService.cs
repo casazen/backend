@@ -2,6 +2,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -13,7 +14,9 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <para><b>Owed</b> is the tourist tax report of the fiscal area as it is (<see cref="IFiscalReportingService.GetTouristTaxReportAsync"/>):
 /// the amounts the engine recorded on the confirmed stays with check-in in the period, per comune, and the stays that have none counted
-/// apart. Nothing is recomputed and a missing amount is never a zero. <b>Paid</b> is the sum of the payments
+/// apart. Nothing is recomputed and a missing amount is never a zero. Only the properties in Italy count (<see cref="TouristTaxComune.IsItalianCountry"/>,
+/// the rule of the rates): the report groups the stays by the name of the comune alone, and a house in Switzerland must not fall in the row of
+/// an Italian comune of the same name, nor be paid in euros. <b>Paid</b> is the sum of the payments
 /// (<see cref="TouristTaxRemittance"/>) of the comune whose period lies <i>inside</i> the period asked, so a payment is counted by the
 /// period it declares, not by the day it was made, and the figures of a period are the same whenever they are read.</para>
 /// <para><b>Cents.</b> Every amount is turned into whole cents once (<see cref="PaymentCashRules.ToCents"/>); owed, paid and balance are
@@ -47,6 +50,7 @@ public sealed class TouristTaxSummaryService(
 
         // Owed: the report of the fiscal area, as it is (it limits the stays to the properties of the scope itself).
         var report = await fiscalReporting.GetTouristTaxReportAsync(scope, period, cancellationToken);
+        var reach = await ReachAsync(scope, cancellationToken);
 
         // Paid: the payments belong to the org and to no property, so only a caller who reaches the whole org sees them. One who reaches only
         // some properties gets what is owed on those and nothing about the payments: they cover properties it does not reach, so a balance
@@ -54,15 +58,19 @@ public sealed class TouristTaxSummaryService(
         var paymentsHidden = !scope.IsOrgWide;
         List<TouristTaxRemittance> payments = paymentsHidden ? [] : await PaymentsInAsync(scope, period, cancellationToken);
 
+        // Owed: the stay lines of the report, the amounts the engine recorded as they are, without those of a property in another country. The
+        // report groups the stays by the name of the comune alone, so a house in Switzerland (CHF-MONEY) would fall in the row of an Italian
+        // comune of the same name, or in a row of its own with an owed amount of zero, and euros could be paid for it.
         var comuni = new Dictionary<string, ComuneBuilder>(StringComparer.Ordinal);
-        foreach (var row in report.ByComune)
+        foreach (var stay in report.Stays.Where(s => !reach.ForeignPropertyIds.Contains(s.PropertyId)))
         {
-            var comune = BuilderOf(comuni, TouristTaxSummaryRules.ComuneKeyOf(row.Comune), row.Comune);
-            comune.Stays += row.Stays;
-            comune.Nights += row.Nights;
-            comune.Guests += row.Guests;
-            comune.StaysWithoutAmount += row.StaysWithoutAmount;
-            comune.OwedCents += PaymentCashRules.ToCents(row.Amount);
+            var comune = BuilderOf(comuni, TouristTaxSummaryRules.ComuneKeyOf(stay.Comune), stay.Comune);
+            comune.Stays++;
+            comune.Nights += stay.Nights;
+            comune.Guests += stay.Guests;
+            comune.Owed += stay.Amount;
+            if (stay.Amount <= 0)
+                comune.StaysWithoutAmount++;
         }
 
         // Paid: the payments inside the period. A comune with payments and no stays in the period is a row of its own.
@@ -137,8 +145,8 @@ public sealed class TouristTaxSummaryService(
         if (receipt is not null && file is null)
             throw ReceiptInvalid();
 
-        // The comune has to be one of the properties the caller reaches: a payment for a comune the org has nothing in is a mistake.
-        if (!(await ReachableComuneKeysAsync(scope, cancellationToken)).Contains(comuneKey))
+        // The comune has to be one of the properties in Italy: a payment for a comune the org has nothing in, or only a house abroad, is a mistake.
+        if (!(await ReachAsync(scope, cancellationToken)).ComuneKeys.Contains(comuneKey))
             throw new DomainRuleException(TouristTaxErrorCodes.ComuneUnknown, "TouristTaxComuneUnknown");
 
         var id = Guid.NewGuid();
@@ -251,22 +259,30 @@ public sealed class TouristTaxSummaryService(
     }
 
     /// <summary>
-    /// The comuni of the properties the scope reaches, as keys (<see cref="TouristTaxSummaryRules.ComuneKeyOf"/>): the cities of the org's
-    /// properties, the deleted ones too, narrowed by <c>InScope</c> for a caller who reaches only some. A property with no city has no comune.
+    /// The properties the scope reaches, the deleted ones too (as the report), narrowed by <c>InScope</c> for a caller who reaches only some:
+    /// the comuni of those in Italy, as keys (<see cref="TouristTaxSummaryRules.ComuneKeyOf"/>; a property with no city has no comune), and the
+    /// ids of those in another country. The rule of the country is the one of the tourist tax rates
+    /// (<see cref="TouristTaxComune.IsItalianCountry"/>): a house abroad is never taken for an Italian comune of the same name.
     /// </summary>
-    private async Task<HashSet<string>> ReachableComuneKeysAsync(HostScope scope, CancellationToken cancellationToken)
+    private async Task<Reach> ReachAsync(HostScope scope, CancellationToken cancellationToken)
     {
-        var cities = await db.Properties.AsNoTracking()
+        var properties = await db.Properties.AsNoTracking()
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(p => p.OrgId == scope.OrgId)
             .InScope(scope)
-            .Select(p => p.City)
-            .Distinct()
+            .Select(p => new { p.Id, p.City, p.Country })
             .ToListAsync(cancellationToken);
-        return cities
-            .Select(TouristTaxSummaryRules.ComuneKeyOf)
+
+        var comuneKeys = properties
+            .Where(p => TouristTaxComune.IsItalianCountry(p.Country))
+            .Select(p => TouristTaxSummaryRules.ComuneKeyOf(p.City))
             .Where(key => key.Length > 0)
             .ToHashSet(StringComparer.Ordinal);
+        var foreignPropertyIds = properties
+            .Where(p => !TouristTaxComune.IsItalianCountry(p.Country))
+            .Select(p => p.Id)
+            .ToHashSet();
+        return new Reach(comuneKeys, foreignPropertyIds);
     }
 
     /// <summary>A payment of the caller's org; anything else, another org's payment included, is a 404.</summary>
@@ -378,6 +394,9 @@ public sealed class TouristTaxSummaryService(
 
     private DateTime UtcNow() => _clock.GetUtcNow().UtcDateTime;
 
+    /// <summary>What a scope reaches: the comuni of its properties in Italy (as keys) and the ids of its properties in another country.</summary>
+    private sealed record Reach(HashSet<string> ComuneKeys, HashSet<Guid> ForeignPropertyIds);
+
     /// <summary>A receipt that was read and checked: its bytes, positioned at the start, and what it is.</summary>
     private sealed class ReceiptContent(MemoryStream content, TouristTaxReceiptKind kind) : IAsyncDisposable
     {
@@ -401,7 +420,11 @@ public sealed class TouristTaxSummaryService(
 
         public int StaysWithoutAmount { get; set; }
 
-        public long OwedCents { get; set; }
+        /// <summary>What the stays owe: the sum of the amounts the engine recorded on them.</summary>
+        public decimal Owed { get; set; }
+
+        /// <summary><see cref="Owed"/> in whole cents, turned once.</summary>
+        public long OwedCents => PaymentCashRules.ToCents(Owed);
 
         public long PaidCents { get; set; }
 

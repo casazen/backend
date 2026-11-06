@@ -227,7 +227,7 @@ public sealed class TouristTaxRemittanceDto
 /// </summary>
 public sealed class RecordRemittanceForm
 {
-    /// <summary>The comune: one of the comuni of the caller's properties (422 <c>tourist_tax_comune_unknown</c> otherwise).</summary>
+    /// <summary>The comune: one of the comuni of the org's properties in Italy (422 <c>tourist_tax_comune_unknown</c> otherwise).</summary>
     public string? Comune { get; set; }
 
     /// <summary>First day of the period the payment pays, <c>yyyy-MM-dd</c>.</summary>

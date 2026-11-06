@@ -88,7 +88,7 @@ public class TouristTaxSummaryController(
 
     /// <summary>
     /// Records a payment of the tourist tax to a comune, with its receipt when one is sent. The comune has to be one of the comuni of the
-    /// caller's properties; the amount is above zero to the cent; the day of the payment is not after today in Europe/Rome; the period is
+    /// org's properties in Italy; the amount is above zero to the cent; the day of the payment is not after today in Europe/Rome; the period is
     /// not backwards and lasts at most a year; the receipt is a PDF, a JPEG or a PNG of at most 10 MB, judged on its content and stored in
     /// the private bucket. Needs <c>payment.write</c> and a scope that reaches the whole org (403 <c>tourist_tax_payments_need_whole_org</c>
     /// otherwise). 201 with the payment.
