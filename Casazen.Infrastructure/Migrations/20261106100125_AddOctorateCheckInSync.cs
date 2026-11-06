@@ -315,7 +315,7 @@ namespace Casazen.Infrastructure.Migrations
                     StayTouristTaxId = table.Column<Guid>(type: "uuid", nullable: false),
                     Position = table.Column<int>(type: "integer", nullable: false),
                     ExemptionKind = table.Column<int>(type: "integer", nullable: false),
-                    ExemptionCode = table.Column<string>(type: "character varying(40)", maxLength: 40, nullable: true),
+                    ExemptionCode = table.Column<string>(type: "text", nullable: true),
                     TaxableNights = table.Column<int>(type: "integer", nullable: false),
                     Amount = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: false)
                 },

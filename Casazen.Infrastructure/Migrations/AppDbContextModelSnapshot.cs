@@ -10016,8 +10016,7 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("numeric(18,2)");
 
                     b.Property<string>("ExemptionCode")
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
+                        .HasColumnType("text");
 
                     b.Property<int>("ExemptionKind")
                         .HasColumnType("integer");

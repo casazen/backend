@@ -147,6 +147,11 @@ public static class EncryptedColumns
             nameof(StayGuest.DocumentNumber),
             nameof(StayGuest.DocumentIssuePlaceName),
             nameof(StayGuest.TaxExemptionCode)),
+        // NF-46: the same reason on the confirmed tax of the stay, kept 10 years for the comune's checks: encrypted too (art. 9 GDPR), and
+        // cleared with the guest's data; only the kind of the exemption and the amount stay for the fiscal retention.
+        new EncryptedEntity<StayTouristTaxGuest>(
+            GuestDocumentPurpose,
+            nameof(StayTouristTaxGuest.ExemptionCode)),
         new EncryptedEntity<PropertyQuesturaCredentials>(
             QuesturaCredentialsPurpose,
             nameof(PropertyQuesturaCredentials.Username),

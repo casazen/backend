@@ -25,8 +25,10 @@ public enum TouristTaxExemptionKind
 /// </summary>
 /// <remarks>
 /// <para>No name, birth date, age or document is stored here or in the lines: a line is a position of the stay, an exemption kind and code, and an
-/// amount. <see cref="CalculationHash"/> is the SHA-256 of the rates used and of the guest inputs, so a later change of either shows the record
-/// as stale. Tenant-owned; the lines are reached only through it.</para>
+/// amount. <see cref="CalculationHash"/> is the SHA-256 of the dates, the rates used, the positions, the amounts and the collector, so a later
+/// change of any of them shows the record as stale; it holds neither the age nor the reason of an exemption (an unsalted hash of a reason can be
+/// tried against the short list of reasons, even after the reason was erased), which are compared with the lines instead. Tenant-owned; the lines
+/// are reached only through it.</para>
 /// <para>The row also keeps the host's declaration of who collected the tax of a channel stay with no channel rule for its comune
 /// (<see cref="DeclaredCollector"/>): a declaration made before any confirmation creates the row unconfirmed (<see cref="ConfirmedAt"/>
 /// null, no lines). Only a row with <see cref="ConfirmedAt"/> set is a confirmed calculation.</para>
@@ -39,6 +41,12 @@ public class StayTouristTax : ITenantOwned
 
     /// <summary>Length of <see cref="CalculationHash"/> (hex SHA-256).</summary>
     public const int CalculationHashLength = 64;
+
+    /// <summary>
+    /// The hash of a record whose exemption reasons were erased with their guests: all zeros, a value no calculation gives. The column keeps its
+    /// value (a confirmed record always has a hash), and the record reads as stale from then on.
+    /// </summary>
+    public static readonly string ErasedCalculationHash = new('0', CalculationHashLength);
 
     /// <summary>Length of <see cref="ConfirmedByUserId"/>: the one of <c>User.Id</c>.</summary>
     public const int UserIdMaxLength = 255;
@@ -139,9 +147,9 @@ public class StayTouristTaxGuest
 
     /// <summary>
     /// The reason code (<see cref="TouristTaxExemptionReason.Code"/>); null for a paying guest, and cleared when the guest's data are erased
-    /// (the reason can reveal a health condition), while the kind and the amount stay for the fiscal retention.
+    /// (the reason can reveal a health condition, art. 9 GDPR), while the kind and the amount stay for the fiscal retention. Encrypted at rest
+    /// like the reason on the guest (<c>EncryptedColumns</c>, the purpose of the document): the column has no length, it holds the payload.
     /// </summary>
-    [MaxLength(TouristTaxExemptionReason.CodeMaxLength)]
     public string? ExemptionCode { get; set; }
 
     /// <summary>Nights on which this guest was taxed.</summary>

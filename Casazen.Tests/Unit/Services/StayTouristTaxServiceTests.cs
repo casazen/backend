@@ -5,9 +5,11 @@ using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Data.Encryption;
 using Casazen.Infrastructure.Data.Seeds;
 using Casazen.Infrastructure.Repositories;
 using Casazen.Infrastructure.Services;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -26,6 +28,9 @@ public class StayTouristTaxServiceTests
 
     private const string ComoIstat = "013075";
     private const string SevesoIstat = "108040";
+
+    // One provider for the whole class: EF keeps one model per provider.
+    private static readonly IDataProtectionProvider Provider = new EphemeralDataProtectionProvider();
 
     [Fact]
     public async Task StayTouristTax_ChannelCollected_NoDoubleCharge_Test()
@@ -146,6 +151,67 @@ public class StayTouristTaxServiceTests
         Assert.Equal(TouristTaxExemptionKind.Host, lines[1].ExemptionKind);
         Assert.Equal(0m, lines[1].Amount);
         Assert.All(await db.StayGuests.Where(s => s.BookingId == booking.Id).ToListAsync(), g => Assert.Null(g.TaxExemptionCode));
+
+        // The hash goes with the reason: the record keeps nothing that could be tried against the list of reasons, and reads as stale.
+        var record = await db.StayTouristTaxes.AsNoTracking().SingleAsync(t => t.BookingId == booking.Id);
+        Assert.Equal(StayTouristTax.ErasedCalculationHash, record.CalculationHash);
+    }
+
+    [Fact]
+    public async Task StayTouristTax_HashHoldsNeitherTheReasonNorTheAge_AChangeOfReasonStillMakesTheRecordStale_Test()
+    {
+        await using var db = await CreateContextAsync(Guid.NewGuid().ToString());
+        db.TouristTaxRates.Add(TouristTaxRateSeed.BuildRates().Single(r => r.City == "Como"));
+        // Two stays that differ only in the reason of the exemption and in the age of the guests: both guests are exempt, the amounts are equal.
+        var (_, withResident) = await SeedStayAsync(
+            db, Guid.NewGuid(), "Como", ComoIstat, BookingSource.Direct, (40, null), (45, TouristTaxExemptionReason.ResidentCode));
+        var (_, withHealthCare) = await SeedStayAsync(
+            db, Guid.NewGuid(), "Como", ComoIstat, BookingSource.Direct, (33, null), (52, TouristTaxExemptionReason.HealthCareCode));
+        var service = Service(db);
+        await service.ConfirmAsync(withResident.Id, "auth0|host");
+        await service.ConfirmAsync(withHealthCare.Id, "auth0|host");
+
+        // Nothing of the reason or of the age is in the hash: the same one for both, so a copy of the table cannot be tried against the reasons.
+        var hashes = await db.StayTouristTaxes.AsNoTracking().Select(t => t.CalculationHash).ToListAsync();
+        Assert.Equal(2, hashes.Count);
+        Assert.Equal(hashes[0], hashes[1]);
+        Assert.False((await service.GetAsync(withResident.Id)).Stale);
+
+        // The host changes the reason of the second guest to another one (both exempt: the amounts do not change): the confirmed record is
+        // stale all the same, because the reason is compared on the lines, and confirming it again brings the line to the new reason.
+        var changed = await service.SetExemptionsAsync(
+            withResident.Id, [new GuestExemption(1, TouristTaxExemptionReason.HealthCareCode)], "auth0|host");
+        Assert.True(changed.Stale);
+
+        var reconfirmed = await service.ConfirmAsync(withResident.Id, "auth0|host");
+        Assert.False(reconfirmed.Stale);
+        var line = (await db.StayTouristTaxes.Include(t => t.Guests).SingleAsync(t => t.BookingId == withResident.Id))
+            .Guests.Single(g => g.Position == 1);
+        Assert.Equal(TouristTaxExemptionReason.HealthCareCode, line.ExemptionCode);
+    }
+
+    [Fact]
+    public void StayTouristTax_ExemptionCode_StoredEncrypted_Test()
+    {
+        using var db = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+            tenantContext: null,
+            Provider);
+        var column = db.Model.FindEntityType(typeof(StayTouristTaxGuest))!.FindProperty(nameof(StayTouristTaxGuest.ExemptionCode))!;
+
+        Assert.Contains(
+            EncryptedColumns.All,
+            c => c.EntityType == typeof(StayTouristTaxGuest) && c.Property == nameof(StayTouristTaxGuest.ExemptionCode)
+                && c.Purpose == EncryptedColumns.GuestDocumentPurpose);
+        var converter = Assert.IsType<EncryptedStringConverter>(column.GetValueConverter());
+        Assert.Null(column.GetMaxLength());
+
+        var stored = (string)converter.ConvertToProvider(TouristTaxExemptionReason.HealthCareCode)!;
+
+        // What the column holds is a payload with nothing of the reason in it, read back only through the converter.
+        Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, stored, StringComparison.Ordinal);
+        Assert.DoesNotContain(TouristTaxExemptionReason.HealthCareCode, stored, StringComparison.Ordinal);
+        Assert.Equal(TouristTaxExemptionReason.HealthCareCode, converter.ConvertFromProvider(stored));
     }
 
     private static StayTouristTaxService Service(AppDbContext db) =>

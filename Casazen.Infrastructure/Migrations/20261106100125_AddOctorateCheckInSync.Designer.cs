@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Casazen.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261106095705_AddOctorateCheckInSync")]
+    [Migration("20261106100125_AddOctorateCheckInSync")]
     partial class AddOctorateCheckInSync
     {
         /// <inheritdoc />
@@ -10019,8 +10019,7 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("numeric(18,2)");
 
                     b.Property<string>("ExemptionCode")
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)");
+                        .HasColumnType("text");
 
                     b.Property<int>("ExemptionKind")
                         .HasColumnType("integer");

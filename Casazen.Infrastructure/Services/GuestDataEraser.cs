@@ -155,8 +155,9 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
 
     /// <summary>
     /// NF-46, CO-15 (art. 17 and 9 GDPR): the reason of a tourist tax exemption can reveal a health condition, so it is not kept with an erased
-    /// guest. The lines of the confirmed tax of the stays keep their kind and amount (fiscal retention, art. 6.1.c) and lose the reason code.
-    /// Returns the lines changed (none when already clear).
+    /// guest. The lines of the confirmed tax of the stays keep their kind and amount (fiscal retention, art. 6.1.c) and lose the reason code;
+    /// the calculation hash of such a record is zeroed with it (<see cref="StayTouristTax.ErasedCalculationHash"/>), so nothing left in the
+    /// record can be tried against the list of reasons. Returns the lines changed (none when already clear).
     /// </summary>
     public async Task<int> ClearTaxExemptionReasonsAsync(IReadOnlyCollection<Guid> bookingIds, CancellationToken cancellationToken)
     {
@@ -169,10 +170,16 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
             .Where(t => ids.Contains(t.BookingId) && t.Guests.Any(g => g.ExemptionCode != null))
             .ToListAsync(cancellationToken);
         var cleared = 0;
-        foreach (var line in records.SelectMany(t => t.Guests).Where(g => g.ExemptionCode is not null))
+        foreach (var record in records)
         {
-            line.ExemptionCode = null;
-            cleared++;
+            foreach (var line in record.Guests.Where(g => g.ExemptionCode is not null))
+            {
+                line.ExemptionCode = null;
+                cleared++;
+            }
+
+            if (record.CalculationHash is not null)
+                record.CalculationHash = StayTouristTax.ErasedCalculationHash;
         }
 
         return cleared;

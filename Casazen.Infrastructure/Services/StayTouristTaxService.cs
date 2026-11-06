@@ -214,9 +214,10 @@ public sealed class StayTouristTaxService(
         if (NotCalculable.Contains(breakdown.Status) || breakdown.Total is not { } total)
             throw new DomainRuleException(NotCalculableCode, "TouristTaxNotCalculable");
 
-        // Idempotent: the same calculation confirmed again changes nothing (no second line, no new time).
+        // Idempotent: the same calculation confirmed again changes nothing (no second line, no new time). The same calculation is the same
+        // hash and the same lines (the reasons of the exemptions are compared on the lines, not in the hash).
         var record = state.Record;
-        if (record is { ConfirmedAt: not null } && record.CalculationHash == state.Hash)
+        if (record is { ConfirmedAt: not null } && !state.View.Stale)
             return state.View;
 
         var now = UtcNow();
@@ -323,7 +324,8 @@ public sealed class StayTouristTaxService(
             lines,
             reasons.Select(r => new TouristTaxExemptionReasonView(r.Code, r.LabelKey)).ToList(),
             record?.ConfirmedAt,
-            Stale: record?.ConfirmedAt is not null && !string.Equals(record.CalculationHash, hash, StringComparison.Ordinal));
+            Stale: record?.ConfirmedAt is not null
+                && (!string.Equals(record.CalculationHash, hash, StringComparison.Ordinal) || !LinesMatch(record, breakdown)));
 
         return new StayTaxState(stay, breakdown, rule, decision, record, hash, view);
     }
@@ -357,8 +359,10 @@ public sealed class StayTouristTaxService(
     }
 
     /// <summary>
-    /// The SHA-256 (hex) of what the tax of the stay depends on: the dates, the rates used, each guest's position, age and exemption, the amounts
-    /// and the collector with its rule. A confirmed record whose hash differs from the current one is stale.
+    /// The SHA-256 (hex) of what the tax of the stay depends on: the dates, the rates used, each guest's position, the amounts and the collector
+    /// with its rule. A confirmed record whose hash differs from the current one is stale. Neither the age nor the reason of an exemption is in
+    /// it: an unsalted hash of a reason (which can reveal a health condition) can be tried against the short list of reasons, even after the
+    /// reason was erased. A change of age shows in the amounts, a change of reason in <see cref="LinesMatch"/>.
     /// </summary>
     private static string Hash(
         TouristTaxGuestStay stay,
@@ -366,18 +370,14 @@ public sealed class StayTouristTaxService(
         TouristTaxCollectorDecision decision,
         TouristTaxChannelRule? rule)
     {
-        var text = new StringBuilder("stay-tourist-tax:v1");
+        var text = new StringBuilder("stay-tourist-tax:v2");
         text.Append('|').Append(stay.CheckIn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
             .Append('|').Append(stay.CheckOut.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
             .Append("|status:").Append((int)breakdown.Status);
         foreach (var rateId in breakdown.AppliedRates.Select(r => r.Id).Order())
             text.Append("|rate:").Append(rateId.ToString("N"));
         foreach (var guest in stay.Guests.OrderBy(g => g.Position))
-        {
-            text.Append("|guest:").Append(guest.Position.ToString(CultureInfo.InvariantCulture))
-                .Append(':').Append(guest.AgeAtCheckIn?.ToString(CultureInfo.InvariantCulture) ?? "-")
-                .Append(':').Append(guest.HostExemptionCode ?? "-");
-        }
+            text.Append("|guest:").Append(guest.Position.ToString(CultureInfo.InvariantCulture));
 
         text.Append("|total:").Append(breakdown.Total?.ToString(CultureInfo.InvariantCulture) ?? "-");
         foreach (var guest in breakdown.Guests.OrderBy(g => g.Position))
@@ -390,6 +390,18 @@ public sealed class StayTouristTaxService(
             .Append("|rule:").Append(decision.Source == TouristTaxCollectorSource.ChannelRule ? rule?.Id.ToString("N") : "-");
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString()))).ToLowerInvariant();
     }
+
+    /// <summary>
+    /// The lines of the confirmed record are still what the calculation gives now, guest by guest: the same kind of exemption and the same
+    /// reason. The reason is compared here, on the (decrypted) lines, and not through the hash, so a change of one reason into another (both
+    /// exempt, the same amounts) still makes the record stale.
+    /// </summary>
+    private static bool LinesMatch(StayTouristTax record, TouristTaxBreakdown breakdown) =>
+        record.Guests.Count == breakdown.Guests.Count
+        && breakdown.Guests.All(guest =>
+            record.Guests.FirstOrDefault(line => line.Position == guest.Position) is { } stored
+            && stored.ExemptionKind == guest.ExemptionKind
+            && string.Equals(stored.ExemptionCode, guest.ExemptionCode, StringComparison.Ordinal));
 
     /// <summary>
     /// The price of a night of the booking, for a percentage rate: the lodging the booking recorded (its base price without the cleaning) over
