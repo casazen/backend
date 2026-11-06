@@ -146,6 +146,10 @@ public sealed class CheckoutPaymentSettlementService(
                 return new CheckoutPaymentSettlement(CheckoutPaymentOutcome.AlreadySettled, booking.Id);
 
             MarkCompleted(payment, paymentIntentId, eventAccountId, onPlatform);
+
+            // E08/F01/US01/T04: the payment became paid; its event is saved with the status (the Octorate handler records it on the reservation).
+            await PaymentEvents.RecordSucceededAsync(
+                domainEvents, db, payment, await PaymentEvents.CurrencyOfAsync(db, booking, cancellationToken), cancellationToken);
             await paymentRepository.UpdateAsync(payment);
             return new CheckoutPaymentSettlement(CheckoutPaymentOutcome.Recorded, booking.Id);
         }
@@ -174,7 +178,16 @@ public sealed class CheckoutPaymentSettlementService(
                 booking.Status);
         }
 
+        // E08/F01/US01/T04: a payment that confirms its booking is a payment received; one that is refunded at once (the dates are taken, the
+        // host cancelled) is not announced as one.
+        var completedNow = payment.Status != PaymentStatus.Completed;
         MarkCompleted(payment, paymentIntentId, eventAccountId, onPlatform);
+        if (completedNow && datesFree)
+        {
+            await PaymentEvents.RecordSucceededAsync(
+                domainEvents, db, payment, await PaymentEvents.CurrencyOfAsync(db, booking, cancellationToken), cancellationToken);
+        }
+
         await paymentRepository.UpdateAsync(payment);
 
         if (datesFree)

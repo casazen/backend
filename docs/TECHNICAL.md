@@ -975,6 +975,14 @@ site) on a property whose mapping is confirmed is created on Octorate once, by `
   `octorate_dates_unavailable`, one urgent To do `BookingOverlap` on the booking, not retried. Another 4xx: `Failed` `octorate_rejected`, not retried. No
   answer and not found: `Failed` `octorate_unavailable` and the exception propagates (the dispatcher delivers the event again). Success writes
   `OctorateReservationId`, `OctorateUpdatedAt`, `Synced` and `LastSyncedAt` in one save.
+- *Payments* (E08/F01/US01/T04, D9). `PaymentSucceeded` (payload `PaymentEventPayload`: ids, amount, currency, method; dedup key
+  `payment-succeeded:{paymentId}`) is recorded with the status change by the payment webhook (a payment that confirms or pays a confirmed
+  booking; not one refunded at once), the deferred charge and "Registra incasso". `OctoratePaymentHandler` records the payment of a `Synced`
+  booking whose property still has a target on its reservation (`POST /rest/v1/reservation/{acc}/{id}/payment`): `transaction` = the
+  PaymentIntent id or `casazen-{paymentId}`, `paymentMode` from `Octorate:PaymentModes` (`Stripe`, `CashOnArrival`, `BankTransfer`), the amount,
+  income and never a card charge. Once: `Payment.OctorateTransactionId` (unique per org) and `OctorateRegisteredAt`; the reservation is read first,
+  so a registration whose answer was lost is not sent again. A payment that arrives while the create is `Pending` is delivered again; the create
+  records the payments paid before it succeeded. Nothing for a channel's booking or a booking that is not mirrored; refunds are not mirrored.
 
 | Method | Path | Policy | Description |
 |---|---|---|---|

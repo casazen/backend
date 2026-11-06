@@ -4,6 +4,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -19,12 +20,15 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>What it counts.</b> The balance is the total of the booking minus what came in
 /// (<see cref="BookingListRules.PaidAmount"/>: collected payments, refunds taken off), the same figure the booking sheet shows.
 /// Payments still open (a checkout waiting for the card) are not money yet and do not reduce it.</para>
+/// <para><b>Its event.</b> A receipt is a payment received: <c>PaymentSucceeded</c> is recorded in the save that writes it (E08/F01/US01/T04),
+/// once per payment, so the channel manager records the income of a mirrored booking.</para>
 /// </remarks>
 public sealed class ManualPaymentService(
     AppDbContext db,
     IFiscalRegimeService fiscalRegimeService,
     ILogger<ManualPaymentService> logger,
-    TimeProvider? timeProvider = null) : IManualPaymentService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null) : IManualPaymentService
 {
     /// <summary>Prefix of <see cref="Payment.TransactionId"/> for a payment recorded by the host: the rest is the client's key.</summary>
     internal const string KeyPrefix = "manual:";
@@ -122,6 +126,10 @@ public sealed class ManualPaymentService(
 
         if (isNew)
             db.Payments.Add(payment);
+
+        // E08/F01/US01/T04: the money came in; the event is saved with the payment (the Octorate handler records it on the reservation).
+        await PaymentEvents.RecordSucceededAsync(
+            domainEvents, db, payment, await PaymentEvents.CurrencyOfAsync(db, booking, cancellationToken), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         if (transaction is not null)
             await transaction.CommitAsync(cancellationToken);

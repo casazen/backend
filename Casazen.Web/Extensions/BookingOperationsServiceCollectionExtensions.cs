@@ -30,6 +30,9 @@ public static class BookingOperationsServiceCollectionExtensions
         services.AddScoped<IBookingOctorateSyncService, BookingOctorateSyncService>();
         services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingCreateHandler>();
 
+        // E08/F01/US01/T04 (NF-74, D9): a payment of a mirrored booking that became paid is recorded on its Octorate reservation once.
+        services.AddScoped<IEventHandler<DomainEvent>, OctoratePaymentHandler>();
+
         // E08/F01/US01/T05 (NF-74): the payment link of a booking the host entered (the checkout page and the webhook are the checkout's).
         services.AddScoped<IBookingPaymentLinkService, BookingPaymentLinkService>();
         return services;

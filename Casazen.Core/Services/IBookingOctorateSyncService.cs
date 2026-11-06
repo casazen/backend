@@ -28,4 +28,13 @@ public interface IBookingOctorateSyncService
     /// <exception cref="Exceptions.NotFoundException">The booking does not exist or is of another org (404).</exception>
     /// <exception cref="Exceptions.DomainConflictException">409 <see cref="OctorateSyncErrorCodes.NotRetryable"/>.</exception>
     Task<OctorateSyncState> RequeueAsync(Guid bookingId, bool overwrite, CancellationToken ct);
+
+    /// <summary>
+    /// Records a paid payment of a mirrored booking on its Octorate reservation, once (E08/F01/US01/T04, AC-NF74-4, D9): income, "not a card
+    /// charge", with the Stripe PaymentIntent id (or <c>casazen-{paymentId}</c> for a payment the host recorded) as <c>transaction</c>, the
+    /// configured <c>paymentMode</c> and the amount. Nothing for a booking that is not mirrored, of a channel (the channel collects), whose
+    /// property is write-blocked, or a payment already recorded. A payment of a booking whose reservation is still being created makes the event
+    /// be delivered again (<c>OctorateSyncPendingException</c>); the create also records the payments paid before it succeeded.
+    /// </summary>
+    Task PushPaymentAsync(Guid paymentId, CancellationToken ct);
 }
