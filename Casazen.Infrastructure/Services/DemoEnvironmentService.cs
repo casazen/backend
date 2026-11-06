@@ -895,8 +895,13 @@ public class DemoEnvironmentService(
         await db.PropertyOnboardingData.IgnoreQueryFilters([Tenant])
             .Where(d => d.OrgId == orgId && propertyData.Contains(d.Id))
             .ExecuteDeleteAsync(cancellationToken);
+        // Whatever hangs on the test connection goes with it (the foreign keys are restrictive): its invented mappings, marked or not, and the
+        // cursor a job of the OTA conversations may have written before it found no token.
         await db.OctorateListingMappings.IgnoreQueryFilters([Tenant])
-            .Where(m => m.OrgId == orgId && mappings.Contains(m.Id))
+            .Where(m => m.OrgId == orgId && (mappings.Contains(m.Id) || connections.Contains(m.ConnectionId)))
+            .ExecuteDeleteAsync(cancellationToken);
+        await db.OtaMessageSyncStates.IgnoreQueryFilters([Tenant])
+            .Where(s => s.OrgId == orgId && connections.Contains(s.ConnectionId))
             .ExecuteDeleteAsync(cancellationToken);
         await db.OctorateConnections.IgnoreQueryFilters([Tenant])
             .Where(c => c.OrgId == orgId && connections.Contains(c.Id))
