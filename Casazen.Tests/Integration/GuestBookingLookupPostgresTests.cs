@@ -363,6 +363,7 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         var token = await OpenGuestSessionAsync(orgA, own);
         var otherGuestToken = await OpenGuestSessionAsync(orgA, otherGuestOfTheSite);
         var otherSiteToken = await OpenGuestSessionAsync(orgB, sameCodeOtherSite);
+        var hostEmail = await SeedHostWhoChoseTheEmailAsync(orgA);
 
         var path = $"{GuestBookingsPath}/{BookingCodes.Format(own.Code)}/messages";
         var marker = $"marker-{Guid.NewGuid():N}";
@@ -374,10 +375,12 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         Assert.Contains(marker, stored, StringComparison.Ordinal);
         Assert.DoesNotContain("IT60X0542811101000000123456", stored, StringComparison.Ordinal);
 
-        // The host is told by email that the guest wrote, and the email does not hold the text.
-        var queued = _factory.Emails.Queued.Where(e => e.To == orgA.ContactEmail).ToList();
-        var email = Assert.Single(queued);
+        // NF-65: the host is told by email only because the person chose it, at the address of the person (never the one of the org), once,
+        // and the email does not hold the text.
+        var email = Assert.Single(_factory.Emails.Snapshot(), e => e.To == hostEmail);
+        Assert.Equal(EmailTemplates.Names.GuestMessageToHost, email.Template);
         Assert.DoesNotContain(marker, email.Content.HtmlBody + email.Content.Subject, StringComparison.Ordinal);
+        Assert.DoesNotContain(_factory.Emails.Snapshot(), e => e.To == orgA.ContactEmail);
 
         // The guest reads their thread; the other guest of the site and the guest of the other site (same code, same email) do not see it.
         var own1 = JsonDocument.Parse(await (await GetAsync(path, token)).Content.ReadAsStringAsync()).RootElement;
@@ -560,6 +563,42 @@ public class GuestBookingLookupPostgresTests : IClassFixture<GuestBookingLookupP
         db.AddRange(org, property);
         await db.SaveChangesAsync();
         return new OrgSeed(org.Id, org.Slug, org.ContactEmail, property.Id, property.Name);
+    }
+
+    /// <summary>
+    /// The person in charge of the property of <paramref name="org"/> (its creator, in no team), onboarded and with an address of its own, who
+    /// chose the email next to the defaults for the new messages of the guests (NF-65, PO-10) and no quiet hours, so the test does not depend on
+    /// the time of day. The org has no other user. Returns the address of the person.
+    /// </summary>
+    private async Task<string> SeedHostWhoChoseTheEmailAsync(OrgSeed org)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var ownerId = await db.Properties.IgnoreQueryFilters().Where(p => p.Id == org.PropertyId).Select(p => p.OwnerId).SingleAsync();
+        var host = new User
+        {
+            Id = ownerId,
+            Email = $"person.{Guid.NewGuid():N}@example.com",
+            FirstName = "Anna",
+            LastName = "Host",
+            OrgId = org.OrgId,
+            Role = UserRole.PropertyOwner,
+            IsActive = true,
+        };
+        db.Users.Add(host);
+        await HostOnboardingSeed.MarkOnboardedAsync(db, host, org.OrgId, scope.ServiceProvider.GetRequiredService<ILegalDocumentService>());
+        await db.SaveChangesAsync();
+
+        // Start equal to end is an empty window: no quiet hours at any time of the day.
+        await scope.ServiceProvider.GetRequiredService<INotificationPreferenceService>().SaveAsync(
+            host.Id,
+            new NotificationPreferencesUpdate(
+                new QuietHoursUpdate(new TimeOnly(0, 0), new TimeOnly(0, 0)),
+                [new NotificationEventUpdate(
+                    NotificationEventType.NewGuestMessage,
+                    NotificationChannels.MobilePush | NotificationChannels.Email | NotificationChannels.CounterOnly)]),
+            CancellationToken.None);
+        return host.Email;
     }
 
     /// <summary>A booking of the public checkout: 3 nights, 300 lodging + 50 cleaning + 12 tourist tax = 362.</summary>
