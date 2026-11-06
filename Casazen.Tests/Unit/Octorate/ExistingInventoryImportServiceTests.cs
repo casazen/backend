@@ -553,6 +553,42 @@ public class ExistingInventoryImportServiceTests
     }
 
     [Fact]
+    public async Task ExistingInventoryImport_ListingWithNoMappingRowCanStillBeLeftForLater_Test()
+    {
+        // The mapping knows only the first listing: the second one has no row at all. It is not a listing nobody can decide: it can be left for
+        // later, and the others go on instead of waiting for it.
+        var h = new Harness();
+        await h.SeedAsync(verified: true);
+        var batch = await h.RunToRoomsAsync();
+        h.Rows.Add(Harness.Row("1001", OctorateMappingStatus.Confirmed, h.Properties[0]));
+
+        await using (var db = h.NewDb())
+        {
+            var refused = await Assert.ThrowsAsync<DomainConflictException>(
+                () => h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None));
+            Assert.Equal("existing_inventory_mapping_pending", refused.Code);
+        }
+
+        Assert.Equal(0, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync)));
+
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, ["1002"], CancellationToken.None);
+
+        Assert.Equal(OctorateInventoryImportStatus.Completed, batch.Channels[0].Status);
+        Assert.Equal(1, batch.Channels[0].Counts.LeftForLater);
+        Assert.Equal(1, batch.Channels[0].Counts.Connected);
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "501"));
+        Assert.Equal(0, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "502"));
+
+        // It stays left for later on the next plain command: the person's word is remembered.
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None);
+
+        Assert.Equal(1, batch.Channels[0].Counts.LeftForLater);
+        Assert.Equal(0, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync), "502"));
+    }
+
+    [Fact]
     public async Task ExistingInventoryImport_NewInventoryOnlyWhenDeclaredAndNeverFromAnImport_Test()
     {
         var h = new Harness();

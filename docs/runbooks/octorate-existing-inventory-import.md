@@ -129,7 +129,7 @@ command. In practice:
 
 - The channel is `AwaitingChannelAccess` or `ImportingRooms`: `GET` the batch (it reads the access), then `run`.
 - The channel is `AwaitingMapping`: decide the listings through the mapping endpoints, then `continue` (naming in `leaveForLater` the ones
-  to leave).
+  to leave, also a listing the mapping does not know yet: it does not hold the others back).
 - The channel is `NeedsAttention` or `Failed`: read its `errorCode` (and the `errorCode` of the items), remove the cause (§ 5), then repeat
   `run` (if its rooms are not all in) or `continue`.
 - Two commands for the same channel at the same time: the second one leaves the channel alone and returns its state.

@@ -817,15 +817,16 @@ public sealed class ExistingInventoryImportService(
 
     private static ItemDecision Decide(OctorateInventoryImportItem item, ChannelMappingRow? row, IReadOnlySet<string> leaveNow, BatchScope scope)
     {
-        if (row is null)
-            return ItemDecision.Pending;
+        if (row is not null)
+        {
+            if (row.Status == OctorateMappingStatus.Rejected)
+                return ItemDecision.Rejected;
 
-        if (row.Status == OctorateMappingStatus.Rejected)
-            return ItemDecision.Rejected;
+            if (row.Status == OctorateMappingStatus.Confirmed && row.Property is { } property)
+                return InScope(property.Id, row, scope) ? ItemDecision.Eligible : ItemDecision.OutOfScope;
+        }
 
-        if (row.Status == OctorateMappingStatus.Confirmed && row.Property is { } property)
-            return InScope(property.Id, row, scope) ? ItemDecision.Eligible : ItemDecision.OutOfScope;
-
+        // Neither confirmed nor rejected: proposed, ambiguous, or known by no mapping row at all. The person decides it or leaves it for later.
         return item.LeftForLaterAt is not null || leaveNow.Contains(item.OctorateAccommodationId)
             ? ItemDecision.LeftForLater
             : ItemDecision.Pending;
