@@ -938,7 +938,8 @@ Runbook and evidence matrix per channel: `docs/runbooks/octorate-existing-invent
   listing be created on Octorate only for a property whose scenario is explicitly `newInventory`; consumed by E02/F03/US01/T06.
 - *Client.* `IOctorateApiClient.GetOrgConnectionsAsync` (`GET /rest/v1/connection`, ids and state only) and one method for each operation:
   `ImportRoomsAsync`, `ImportReservationsAsync`, `ImportCalendarAsync`, `MarkConnectedAsync` (`POST /rest/v1/connection/{action}/{acc}/{connection}`).
-  The answer must be a JSON list (or the documented wrapper naming the same action); anything else is `OctorateServerException`, never a success.
+  The answer must be a JSON list, or the documented wrapper (a `data` array with `additionalInfo.actionPerformed` equal to the action asked); anything
+  else (`{}`, an error that came with HTTP 200, a wrapper without `data` or naming another action) is `OctorateServerException`, never a success.
 
 **Bookings of the connector (E02/F02/US01/T01, ADR-031, ADR-033).** `BookingImportService` (`IBookingImportService`) keeps one `Booking` for each
 reservation of the room of a property, found through the confirmed `OctorateListingMapping`; no endpoint, the work is done by the daily job

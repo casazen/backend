@@ -869,7 +869,31 @@ public class ExistingInventoryImportServiceTests
         var wrapper = new OctorateApiClient.OctorateAnswer(200, """{"additionalInfo": {"actionPerformed": "IMPORT_ROOMS", "connectionId": 501}, "data": [{"productId": 1, "externalId": 2}]}""");
         Assert.Single(OctorateApiClient.ReadD6Result(OctorateD6Operation.ImportRooms, "501", wrapper).Mappings);
         Assert.Empty(OctorateApiClient.ReadD6Result(OctorateD6Operation.MarkConnected, "501", new OctorateApiClient.OctorateAnswer(200, "[]")).Mappings);
-        foreach (var body in new[] { string.Empty, "ok", "\"done\"", "42", "null", "<html>403</html>" })
+        Assert.Empty(
+            OctorateApiClient.ReadD6Result(
+                OctorateD6Operation.ImportCalendar,
+                "501",
+                new OctorateApiClient.OctorateAnswer(200, """{"additionalInfo": {"actionPerformed": "import_calendar"}, "data": []}""")).Mappings);
+
+        // An object that is not the documented wrapper (nothing in it, an error that came with HTTP 200, no list, no action, another action)
+        // is no answer CasaZen can trust: an unknown result, never a success that stamps the step.
+        string[] notAnswers =
+        [
+            string.Empty,
+            "ok",
+            "\"done\"",
+            "42",
+            "null",
+            "<html>403</html>",
+            "{}",
+            """{"error": "denied"}""",
+            """{"data": [{"productId": 1, "externalId": 2}]}""",
+            """{"additionalInfo": {"actionPerformed": "IMPORT_CALENDAR"}}""",
+            """{"additionalInfo": {"actionPerformed": "IMPORT_CALENDAR"}, "data": {}}""",
+            """{"additionalInfo": {}, "data": []}""",
+            """{"additionalInfo": "IMPORT_CALENDAR", "data": []}""",
+        ];
+        foreach (var body in notAnswers)
         {
             Assert.Throws<OctorateServerException>(
                 () => OctorateApiClient.ReadD6Result(OctorateD6Operation.ImportCalendar, "501", new OctorateApiClient.OctorateAnswer(200, body)));
@@ -877,6 +901,11 @@ public class ExistingInventoryImportServiceTests
 
         Assert.Throws<OctorateServerException>(() => OctorateApiClient.ReadD6Result(OctorateD6Operation.ImportReservations, "501", wrapper));
         Assert.Throws<ArgumentException>(() => OctorateApiClient.CheckedConnectionId("5/../01"));
+
+        // Through the client: «{}» with HTTP 200 reaches the import as an unknown result.
+        handler.Body = "{}";
+        using (scope.Use(OrgA))
+            await Assert.ThrowsAsync<OctorateServerException>(() => client.ImportCalendarAsync("1001", "501", CancellationToken.None));
     }
 
     // ─── Harness ──────────────────────────────────────────────────────────────────────────────────────────────

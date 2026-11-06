@@ -53,8 +53,9 @@ The four operations of the D6 sequence are **documented by Octorate and never ru
 the partner licence is read-only (`kb/plan/octorate-integration-facts.md`, `kb/plan/capability-evidence.md`). The documented request is
 `POST /rest/v1/connection/{action}/{accommodation}/{connection}` with `action` one of `IMPORT_ROOMS`, `IMPORT_RESERVATIONS`, `IMPORT_CALENDAR`,
 `MARK_CONNECTED`; the answer is a list of the mappings `{ portalConnection, productId, externalId, id }` (the example of the specification
-wraps it as `{ additionalInfo: { actionPerformed, ... }, data: [...] }`); a failure of the channel is HTTP 550. The client reads exactly that,
-treats an answer in any other shape as an unknown result, and does not look for a status endpoint: **whether each action is synchronous is one of
+wraps it as `{ additionalInfo: { actionPerformed, ... }, data: [...] }`); a failure of the channel is HTTP 550. The client reads exactly that
+(a bare list, or a wrapper whose `data` is a list and whose `actionPerformed` is the action asked), treats an answer in any other shape
+(`{}`, an error that came with HTTP 200, a wrapper without `data`) as an unknown result, and does not look for a status endpoint: **whether each action is synchronous is one of
 the facts the pilot must record.**
 
 So each operation has a flag for each channel, **off by default**: `Octorate__ExistingInventory__Channels__{Code}__ImportRooms`,

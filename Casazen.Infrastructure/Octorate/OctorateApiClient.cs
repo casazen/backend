@@ -529,30 +529,34 @@ public sealed class OctorateApiClient(
     };
 
     /// <summary>
-    /// The answer of an operation of the D6 sequence: the list of mappings it touched, bare or as <c>data</c> of a wrapper that names the
-    /// action performed (the example of the specification). A wrapper that names another action, or a body that is neither a list nor an
-    /// object, is an answer CasaZen cannot trust: <see cref="OctorateServerException"/>.
+    /// The answer of an operation of the D6 sequence: the list of mappings it touched, bare or as the <c>data</c> array of the wrapper that
+    /// names the action performed (the example of the specification), and nothing else. Anything else is an answer CasaZen cannot trust and is
+    /// never read as a success: a body that is not a list or an object, <c>{}</c> or an error that came with HTTP 200, a wrapper without a
+    /// <c>data</c> array, one without <c>additionalInfo.actionPerformed</c> or one that names another action: <see cref="OctorateServerException"/>.
     /// </summary>
     internal static OctorateConnectionActionResult ReadD6Result(OctorateD6Operation operation, string connectionId, OctorateAnswer answer)
     {
         using var document = ParseJson(answer);
         var root = document.RootElement;
-        if (root.ValueKind is not (JsonValueKind.Array or JsonValueKind.Object))
-            throw new OctorateServerException(answer.StatusCode);
-
-        if (root.ValueKind == JsonValueKind.Object
-            && root.TryGetProperty("additionalInfo", out var info)
-            && OctorateHttp.StringOf(info, "actionPerformed") is { } performed
-            && !string.Equals(performed, D6OperationName(operation), StringComparison.OrdinalIgnoreCase))
+        var list = root.ValueKind switch
         {
-            throw new OctorateServerException(answer.StatusCode);
-        }
+            JsonValueKind.Array => root,
+            JsonValueKind.Object when NamesTheAction(root, operation) && root.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array => data,
+            _ => throw new OctorateServerException(answer.StatusCode),
+        };
 
         return new OctorateConnectionActionResult(
             operation,
             connectionId,
-            [.. Items(root).Select(ReadImportedMapping).OfType<OctorateImportedMapping>()]);
+            [.. list.EnumerateArray().Select(ReadImportedMapping).OfType<OctorateImportedMapping>()]);
     }
+
+    /// <summary>True when the wrapper of an answer says, in <c>additionalInfo.actionPerformed</c>, that it is the answer of this operation.</summary>
+    private static bool NamesTheAction(JsonElement wrapper, OctorateD6Operation operation) =>
+        wrapper.TryGetProperty("additionalInfo", out var info)
+        && info.ValueKind == JsonValueKind.Object
+        && OctorateHttp.StringOf(info, "actionPerformed") is { } performed
+        && string.Equals(performed, D6OperationName(operation), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A mapping of an answer of an operation of the D6 sequence, or <c>null</c> when the item lacks the product or the external id.</summary>
     internal static OctorateImportedMapping? ReadImportedMapping(JsonElement item)
