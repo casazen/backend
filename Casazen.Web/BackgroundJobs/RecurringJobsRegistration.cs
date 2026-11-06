@@ -310,7 +310,8 @@ public static class RecurringJobsRegistration
     /// <item>the reconciliation of the bookings every six hours (E02/F02/US01/T02, ADR-031-R8);</item>
     /// <item>the sync of the calendar every 15 minutes (E02/F02/US01/T03, ADR-002-R2, NF-36), next to the iCal sync of the feeds
     /// (<c>property-ical-sync</c>), which stays registered as it is;</item>
-    /// <item>the retry of the check-in writes (guests and states of the stay) every 15 minutes (E03/F01/US01/T03).</item>
+    /// <item>the retry of the check-in writes (guests and states of the stay) every 15 minutes (E03/F01/US01/T03);</item>
+    /// <item>the pass over the OTA conversations every 10 minutes and the deep pass at 02:30 UTC (epic E05, E05/F01/US01/T03, ADR-032, OCT-09).</item>
     /// </list>
     /// </summary>
     private static void ConfigureOctorateJobs(IRecurringJobManager recurringJobManager, bool enabled)
@@ -321,6 +322,8 @@ public static class RecurringJobsRegistration
             recurringJobManager.RemoveIfExists(OctorateBookingSyncJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(CalendarSyncJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(OctorateCheckInRetryJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(OtaMessageReconcileJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(OtaMessageDeepReconcileJob.RecurringJobId);
             return;
         }
 
@@ -346,6 +349,19 @@ public static class RecurringJobsRegistration
             CalendarSyncJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             CalendarSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        // E05/F01/US01/T03 (NF-62, OCT-09): the copy of the OTA conversations, kept up to date by the webhook and recovered by these two passes.
+        recurringJobManager.AddOrUpdate<OtaMessageReconcileJob>(
+            OtaMessageReconcileJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OtaMessageReconcileJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<OtaMessageDeepReconcileJob>(
+            OtaMessageDeepReconcileJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OtaMessageDeepReconcileJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 
