@@ -9,6 +9,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -539,6 +540,79 @@ public class PropertyDayRuleServiceTests
         targets.Verify(t => t.LookupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Exactly(3));
     }
 
+    [Fact]
+    public async Task GetDays_WhatTheChannelManagerSaid_IsRememberedForAMinute_AFailureAndATimeoutIncluded()
+    {
+        await using var db = NewDb();
+        var orgId = Guid.NewGuid();
+        var mirrored = AddProperty(db, orgId, name: "A mirrored");
+        var failing = AddProperty(db, orgId, name: "B failing");
+        var slow = AddProperty(db, orgId, name: "C slow");
+        await db.SaveChangesAsync();
+        var targets = new Mock<IOctorateBookingTargets>();
+        targets.Setup(t => t.LookupAsync(mirrored.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(OctorateTargetLookup.Of(new OctorateBookingTarget("ACC-TEST", "ROOM-TEST")));
+        targets.Setup(t => t.LookupAsync(failing.Id, It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateServerException(500));
+        targets.Setup(t => t.LookupAsync(slow.Id, It.IsAny<CancellationToken>())).ThrowsAsync(new TaskCanceledException("the budget of the read"));
+        var clock = new MovableClock(Now);
+        using var memory = new MemoryCache(new MemoryCacheOptions());
+        var service = NewService(db, targets: targets.Object, connector: true, clock: clock, memory: memory);
+        var query = new CalendarDaysQuery(new DateOnly(2026, 12, 1), new DateOnly(2026, 12, 2));
+
+        var first = await service.GetDaysAsync(new HostScope(orgId), query);
+        clock.Now = Now.AddSeconds(30);
+        var second = await service.GetDaysAsync(new HostScope(orgId), query);
+
+        // Within the minute nothing is asked again, a failure and a timeout included, and the answer is the same.
+        Assert.Equal([true, false, false], first.Properties.Select(p => p.Mirrored));
+        Assert.Equal([true, false, false], second.Properties.Select(p => p.Mirrored));
+        targets.Verify(t => t.LookupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Exactly(3));
+
+        // After the minute the three are asked again.
+        clock.Now = Now.AddSeconds(61);
+        await service.GetDaysAsync(new HostScope(orgId), query);
+        targets.Verify(t => t.LookupAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()), Times.Exactly(6));
+    }
+
+    [Fact]
+    public async Task GetDays_WhenTheChannelManagerIsSlow_TheBudgetIsSpentOnce_AndTheRestIsAskedAtTheNextRead()
+    {
+        await using var db = NewDb();
+        var orgId = Guid.NewGuid();
+        var quick = AddProperty(db, orgId, name: "A quick");
+        var slow = AddProperty(db, orgId, name: "B slow");
+        var late = AddProperty(db, orgId, name: "C late");
+        await db.SaveChangesAsync();
+        var found = OctorateTargetLookup.Of(new OctorateBookingTarget("ACC-TEST", "ROOM-TEST"));
+        var targets = new Mock<IOctorateBookingTargets>();
+        targets.Setup(t => t.LookupAsync(quick.Id, It.IsAny<CancellationToken>())).ReturnsAsync(found);
+        // The second one answers only when it is told to stop waiting, which the budget of the read does.
+        targets.Setup(t => t.LookupAsync(slow.Id, It.IsAny<CancellationToken>()))
+            .Returns(async (Guid _, CancellationToken token) =>
+            {
+                await Task.Delay(Timeout.Infinite, token);
+                return found;
+            });
+        targets.Setup(t => t.LookupAsync(late.Id, It.IsAny<CancellationToken>())).ReturnsAsync(found);
+        using var memory = new MemoryCache(new MemoryCacheOptions());
+        var service = NewService(db, targets: targets.Object, connector: true, memory: memory, budget: TimeSpan.FromMilliseconds(200));
+        var query = new CalendarDaysQuery(new DateOnly(2026, 12, 1), new DateOnly(2026, 12, 2));
+
+        var first = await service.GetDaysAsync(new HostScope(orgId), query);
+
+        // The slow one used the budget and is not mirrored; the one after it was not asked at all, and the calendar was answered whole.
+        Assert.Equal([true, false, false], first.Properties.Select(p => p.Mirrored));
+        Assert.All(first.Properties, p => Assert.Single(p.Days, day => day.Date == new DateOnly(2026, 12, 1)));
+        targets.Verify(t => t.LookupAsync(late.Id, It.IsAny<CancellationToken>()), Times.Never);
+
+        var second = await service.GetDaysAsync(new HostScope(orgId), query);
+
+        // The next read keeps what it knows (the quick one, the slow one) and asks the one that was left out.
+        Assert.Equal([true, false, true], second.Properties.Select(p => p.Mirrored));
+        foreach (var property in new[] { quick, slow, late })
+            targets.Verify(t => t.LookupAsync(property.Id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
     // --- The rules for the booking site ------------------------------------------------------------------------
 
     [Fact]
@@ -594,7 +668,10 @@ public class PropertyDayRuleServiceTests
         AppDbContext db,
         DateTimeOffset? now = null,
         IOctorateBookingTargets? targets = null,
-        bool connector = false)
+        bool connector = false,
+        TimeProvider? clock = null,
+        IMemoryCache? memory = null,
+        TimeSpan? budget = null)
     {
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.OctorateConnector)).Returns(connector);
@@ -604,7 +681,9 @@ public class PropertyDayRuleServiceTests
             flags.Object,
             new ConfigurationBuilder().Build(),
             NullLogger<PropertyDayRuleService>.Instance,
-            new FixedTimeProvider(now ?? Now));
+            clock ?? new FixedTimeProvider(now ?? Now),
+            memory,
+            budget);
     }
 
     private static HostScope ScopeOf(Property property) => new(property.OrgId);
@@ -647,6 +726,14 @@ public class PropertyDayRuleServiceTests
         AppliedAt = Now.UtcDateTime,
         ComputedAt = Now.UtcDateTime,
     };
+
+    // A clock the test moves between two reads of the calendar.
+    private sealed class MovableClock(DateTimeOffset utcNow) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = utcNow;
+
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
 
     private sealed class FixedTenantContext(Guid? orgId) : ITenantContext
     {

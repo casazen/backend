@@ -8,6 +8,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace Casazen.Infrastructure.Services;
@@ -21,8 +22,11 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="DayRulePricing.HostPrices"/>. It reads the prices in a batch instead of asking
 /// <see cref="IPricingAdapterService.GetAppliedNightlyPricesAsync"/> for each property, which would be one query per property.</para>
 /// <para><b>The channel manager is advice only.</b> <c>Mirrored</c> asks <see cref="IOctorateBookingTargets"/> once for each property of the answer
-/// and only with the connector on; the lookups together take at most <see cref="MirroredBudget"/>. A property whose lookup fails, or comes after the
-/// budget is spent, is shown as not mirrored: the calendar is never refused because the channel manager cannot be asked. Logs carry ids and codes only.</para>
+/// and only with the connector on; the lookups together take at most <see cref="MirroredBudget"/>. A property whose lookup fails or takes too long, or comes
+/// after the budget is spent, is shown as not mirrored: the calendar is never refused because the channel manager cannot be asked. What it said about a
+/// property, a failure or a timeout included, is remembered for <see cref="MirroredMemory"/> in the memory of the process, so a channel manager that is slow
+/// or down is waited for once a minute for each property and not at every read; the properties a spent budget left out are asked at the next read. Logs
+/// carry ids and codes only.</para>
 /// <para><b>Writes are staged, never saved</b> (<see cref="ApplyAsync"/>): the caller owns the transaction.</para>
 /// </remarks>
 public sealed class PropertyDayRuleService(
@@ -31,10 +35,17 @@ public sealed class PropertyDayRuleService(
     IFeatureFlags featureFlags,
     IConfiguration configuration,
     ILogger<PropertyDayRuleService> logger,
-    TimeProvider? timeProvider = null) : IPropertyDayRuleService
+    TimeProvider? timeProvider = null,
+    IMemoryCache? memory = null,
+    TimeSpan? mirroredBudget = null) : IPropertyDayRuleService
 {
-    /// <summary>The longest the lookups of the channel manager take, all the properties of one read together.</summary>
-    public static readonly TimeSpan MirroredBudget = TimeSpan.FromSeconds(10);
+    /// <summary>The longest the lookups of the channel manager take, all the properties of one read together: a calendar never waits long for advice.</summary>
+    public static readonly TimeSpan MirroredBudget = TimeSpan.FromSeconds(3);
+
+    /// <summary>How long what the channel manager said about a property is remembered, a failure or a timeout included.</summary>
+    public static readonly TimeSpan MirroredMemory = TimeSpan.FromSeconds(60);
+
+    private readonly TimeSpan _budget = mirroredBudget ?? MirroredBudget;
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly PublicOccupancyReader _occupancy = new(db, configuration, timeProvider);
@@ -192,20 +203,38 @@ public sealed class PropertyDayRuleService(
             return mirrored;
 
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        budget.CancelAfter(MirroredBudget);
+        budget.CancelAfter(_budget);
+        var spent = false;
         foreach (var propertyId in propertyIds)
         {
-            if (budget.IsCancellationRequested)
+            // What was found a moment ago, a failure or a timeout included, is not asked again: a channel manager that is slow or down costs one
+            // wait for each property in a minute, not one for each read of the calendar.
+            if (Remembered(propertyId) is { } known)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                logger.LogWarning("The channel manager lookups of the calendar took more than {Seconds} seconds: the rest are shown as not mirrored", MirroredBudget.TotalSeconds);
-                break;
+                if (known)
+                    mirrored.Add(propertyId);
+
+                continue;
             }
 
+            if (spent || budget.IsCancellationRequested)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!spent)
+                {
+                    logger.LogWarning(
+                        "The channel manager lookups of the calendar took more than {Seconds} seconds: the rest are shown as not mirrored and asked at the next read",
+                        _budget.TotalSeconds);
+                    spent = true;
+                }
+
+                continue;
+            }
+
+            var found = false;
             try
             {
-                if ((await targets.LookupAsync(propertyId, budget.Token)).Target is not null)
-                    mirrored.Add(propertyId);
+                found = (await targets.LookupAsync(propertyId, budget.Token)).Target is not null;
             }
             catch (OctorateException ex)
             {
@@ -224,10 +253,27 @@ public sealed class PropertyDayRuleService(
                 // An id of the mapping the client refuses to put in an address: nothing can be asked for this property.
                 logger.LogWarning(ex, "The channel manager cannot be asked about property {PropertyId}: shown as not mirrored", propertyId);
             }
+
+            Remember(propertyId, found);
+            if (found)
+                mirrored.Add(propertyId);
         }
 
         return mirrored;
     }
+
+    // What the channel manager said about a property in the last minute (true, false, or false because it failed or took too long); null when nothing is remembered.
+    private bool? Remembered(Guid propertyId) =>
+        memory is not null && memory.TryGetValue(new MirroredKey(propertyId), out MirroredMemo? memo) && memo is not null && memo.Until > _clock.GetUtcNow()
+            ? memo.Mirrored
+            : null;
+
+    private void Remember(Guid propertyId, bool mirrored) =>
+        memory?.Set(new MirroredKey(propertyId), new MirroredMemo(mirrored, _clock.GetUtcNow().Add(MirroredMemory)), MirroredMemory * 2);
+
+    private sealed record MirroredKey(Guid PropertyId);
+
+    private sealed record MirroredMemo(bool Mirrored, DateTimeOffset Until);
 
     // --- The limits of the read, those of the calendar of the host ---------------------------------------------
 
