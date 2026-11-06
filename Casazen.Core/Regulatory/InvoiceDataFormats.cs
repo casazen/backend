@@ -275,6 +275,25 @@ public static class InvoiceDataFormats
     /// <summary>The code of the recipient trimmed and in upper case.</summary>
     public static string NormalizeRecipientCode(string? code) => (code ?? string.Empty).Trim().ToUpperInvariant();
 
+    /// <summary>
+    /// Reads the kind of recipient a client wrote: <c>Guest</c> or <c>Company</c>, in any case. Nothing written is no kind (<c>true</c> and
+    /// <paramref name="kind"/> <c>null</c>); anything else, a number included, is <c>false</c>: the caller answers 422 <c>invoice_data_field_invalid</c>
+    /// on <see cref="InvoiceDataFields.RecipientKind"/>.
+    /// </summary>
+    public static bool TryParseRecipientKind(string? text, out InvoiceRecipientKind? kind)
+    {
+        kind = null;
+        var name = text?.Trim();
+        if (string.IsNullOrEmpty(name))
+            return true;
+
+        if (!Enum.TryParse<InvoiceRecipientKind>(name, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed) || name.All(char.IsAsciiDigit))
+            return false;
+
+        kind = parsed;
+        return true;
+    }
+
     private static bool IsItaly(string? countryCode) =>
         string.Equals(string.IsNullOrWhiteSpace(countryCode) ? BookingInvoiceData.DefaultCountryCode : countryCode.Trim(), "IT", StringComparison.OrdinalIgnoreCase);
 

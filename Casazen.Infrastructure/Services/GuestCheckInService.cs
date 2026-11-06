@@ -2,6 +2,7 @@ using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
@@ -29,9 +30,13 @@ public class GuestCheckInService(
     IOptions<GuestCheckInOptions>? options = null,
     TimeProvider? timeProvider = null,
     IOptions<GdprOptions>? gdprOptions = null,
-    IPushNotificationService? pushNotifications = null) : IGuestCheckInService
+    IPushNotificationService? pushNotifications = null,
+    IInvoiceDataService? invoiceDataService = null) : IGuestCheckInService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
+
+    // The answer to «Ti serve la fattura?» (FIS-01): the container gives the service that records its event; built by hand it records none.
+    private readonly IInvoiceDataService _invoiceData = invoiceDataService ?? new InvoiceDataService(db, timeProvider: timeProvider);
     private readonly GuestCheckInOptions _options = options?.Value ?? new GuestCheckInOptions();
     private readonly GdprOptions _gdpr = gdprOptions?.Value ?? new GdprOptions();
 
@@ -175,8 +180,13 @@ public class GuestCheckInService(
         var booking = session.Booking;
         var guests = await _stayGuests.GetForBookingAsync(booking);
         var tables = await _codeTables.GetStatusAsync();
+
+        // Two booleans and nothing of the stored data: the link is anonymous, the fiscal code, the VAT number, the address and the PEC never leave.
+        var invoice = await _invoiceData.GetAsync(booking.Id);
         return new GuestCheckInPublicView
         {
+            InvoiceRequested = invoice?.InvoiceRequested ?? false,
+            HasInvoiceData = invoice?.HasRecipientData ?? false,
             Status = session.Status,
             SessionId = session.Id,
             PropertyName = booking.Property.Name,
@@ -291,6 +301,13 @@ public class GuestCheckInService(
         if (consentErrors.Count + guestErrors.Count > 0)
             return new GuestCheckInSubmitResult { Success = false, ValidationErrors = [.. consentErrors, .. guestErrors] };
 
+        // FIS-01 (E06/F02/US01/T03): the optional answer to «Ti serve la fattura?». No answer, or a «no», changes nothing and never blocks the check-in.
+        // A «yes» with data is checked now, as a whole and before anything is written: a data that is not valid is a 422 that names the field and
+        // leaves the check-in unsaved, so the guest corrects it and sends again.
+        var invoice = request.Invoice is { NeedInvoice: true } answer ? answer : null;
+        if (invoice is { Data.HasContent: true })
+            await _invoiceData.EnsureValidAsync(session.BookingId, invoice.Data, InvoiceDataSource.CheckIn);
+
         var now = UtcNow();
         var guest = await EnsureBookingOwnsMutableGuestAsync(session, now);
 
@@ -306,6 +323,16 @@ public class GuestCheckInService(
         RecordPrivacyChoices(guest, session.Booking, request, marketingVersion, marketingEmail, now);
         guest.DataProcessingPurpose = "Alloggiati Web guest registration (TULPS Art. 109)";
         guest.UpdatedAt = now;
+
+        // The «yes» and the data, staged in the unit of work of the check-in: they are saved by the same SaveChanges, with the guests and the session.
+        // The data fills what the host did not write and never overwrites it (the source CheckIn is below Host).
+        if (invoice is not null)
+        {
+            if (invoice.Data.HasContent)
+                await _invoiceData.SaveAsync(session.BookingId, invoice.Data, InvoiceDataSource.CheckIn, save: false);
+
+            await _invoiceData.MarkRequestedAsync(session.BookingId, needInvoice: true, save: false);
+        }
 
         session.Status = GuestCheckInSessionStatus.Completo;
         session.CompletedAt = now;

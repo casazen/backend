@@ -56,48 +56,19 @@ public sealed class InvoiceDataService(
         bool save = true,
         CancellationToken ct = default)
     {
-        ArgumentNullException.ThrowIfNull(command);
-        if (!Enum.IsDefined(source))
-            throw new ArgumentOutOfRangeException(nameof(source), source, "Not a source of the invoice data.");
-
         var by = updatedByUserId is { Length: > 0 }
             ? updatedByUserId[..Math.Min(updatedByUserId.Length, BookingInvoiceData.UpdatedByUserIdMaxLength)]
             : null;
 
         for (var attempt = 1; ; attempt++)
         {
-            var orgId = await OrgOfBookingAsync(bookingId, ct);
-            var row = await FindTrackedAsync(bookingId, ct);
+            var plan = await PlanAsync(bookingId, command, source, ct);
+            if (plan.NothingToWrite)
+                return InvoiceDataView.Of(plan.Row!);
+
+            var orgId = plan.OrgId;
+            var row = plan.Row;
             var created = row is null;
-
-            var current = row is null ? EmptyState : StateOf(row);
-            var fillOnly = row is not null && InvoiceDataPrecedence.Outranks(row.Source, source);
-
-            // The kind of recipient and the country have a default: a lower source may set them only while there is nothing they describe yet.
-            var kindLocked = fillOnly && HasRecipient(current);
-            var countryLocked = fillOnly && HasAddress(current);
-            var sent = command with
-            {
-                RecipientKind = kindLocked ? null : command.RecipientKind,
-                CountryCode = countryLocked ? null : command.CountryCode,
-            };
-            var incoming = InvoiceDataFormats.Normalize(sent, InvoiceDataFormats.EffectiveCountry(sent, current.CountryCode));
-
-            var (merged, changed) = Merge(current, incoming, fillOnly);
-            if (fillOnly && !changed)
-                return InvoiceDataView.Of(row!);
-
-            var failures = InvoiceDataFormats.Validate(merged, requireIdentification: source is InvoiceDataSource.Host or InvoiceDataSource.CheckIn);
-            if (failures.Count > 0)
-            {
-                _logger.LogInformation(
-                    "Invoice data of booking {BookingId} refused ({Source}): {Fields}",
-                    bookingId,
-                    source,
-                    string.Join(',', failures.Select(f => f.Field)));
-                throw InvoiceDataErrorCodes.ToException(failures);
-            }
-
             var now = _clock.GetUtcNow().UtcDateTime;
             if (row is null)
             {
@@ -105,8 +76,8 @@ public sealed class InvoiceDataService(
                 db.BookingInvoiceData.Add(row);
             }
 
-            Copy(merged, row);
-            if (!fillOnly)
+            Copy(plan.Merged, row);
+            if (!plan.FillOnly)
             {
                 row.Source = source;
                 row.UpdatedByUserId = by;
@@ -122,7 +93,7 @@ public sealed class InvoiceDataService(
             try
             {
                 await db.SaveChangesAsync(ct);
-                _logger.LogInformation("Invoice data of booking {BookingId} saved ({Source}, fill only: {FillOnly})", bookingId, source, fillOnly);
+                _logger.LogInformation("Invoice data of booking {BookingId} saved ({Source}, fill only: {FillOnly})", bookingId, source, plan.FillOnly);
                 return InvoiceDataView.Of(row);
             }
             catch (DbUpdateConcurrencyException) when (attempt < MaxAttempts)
@@ -137,6 +108,56 @@ public sealed class InvoiceDataService(
             }
         }
     }
+
+    public Task EnsureValidAsync(Guid bookingId, SaveInvoiceDataCommand command, InvoiceDataSource source, CancellationToken ct = default) =>
+        PlanAsync(bookingId, command, source, ct);
+
+    /// <summary>
+    /// What a save would do, without doing it: the org of the booking, the row to change (<c>null</c> for a new one), the stored data with the
+    /// command applied and checked as a whole, and whether the command leaves the row as it is (a fill-only save that fills nothing). A result that
+    /// is not valid is the 422 of <see cref="InvoiceDataErrorCodes.ToException"/>.
+    /// </summary>
+    private async Task<SavePlan> PlanAsync(Guid bookingId, SaveInvoiceDataCommand command, InvoiceDataSource source, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        if (!Enum.IsDefined(source))
+            throw new ArgumentOutOfRangeException(nameof(source), source, "Not a source of the invoice data.");
+
+        var orgId = await OrgOfBookingAsync(bookingId, ct);
+        var row = await FindTrackedAsync(bookingId, ct);
+
+        var current = row is null ? EmptyState : StateOf(row);
+        var fillOnly = row is not null && InvoiceDataPrecedence.Outranks(row.Source, source);
+
+        // The kind of recipient and the country have a default: a lower source may set them only while there is nothing they describe yet.
+        var kindLocked = fillOnly && HasRecipient(current);
+        var countryLocked = fillOnly && HasAddress(current);
+        var sent = command with
+        {
+            RecipientKind = kindLocked ? null : command.RecipientKind,
+            CountryCode = countryLocked ? null : command.CountryCode,
+        };
+        var incoming = InvoiceDataFormats.Normalize(sent, InvoiceDataFormats.EffectiveCountry(sent, current.CountryCode));
+
+        var (merged, changed) = Merge(current, incoming, fillOnly);
+        if (fillOnly && !changed)
+            return new SavePlan(orgId, row, merged, fillOnly, NothingToWrite: true);
+
+        var failures = InvoiceDataFormats.Validate(merged, requireIdentification: source is InvoiceDataSource.Host or InvoiceDataSource.CheckIn);
+        if (failures.Count > 0)
+        {
+            _logger.LogInformation(
+                "Invoice data of booking {BookingId} refused ({Source}): {Fields}",
+                bookingId,
+                source,
+                string.Join(',', failures.Select(f => f.Field)));
+            throw InvoiceDataErrorCodes.ToException(failures);
+        }
+
+        return new SavePlan(orgId, row, merged, fillOnly, NothingToWrite: false);
+    }
+
+    private sealed record SavePlan(Guid OrgId, BookingInvoiceData? Row, SaveInvoiceDataCommand Merged, bool FillOnly, bool NothingToWrite);
 
     public async Task MarkRequestedAsync(Guid bookingId, bool needInvoice, bool save = true, CancellationToken ct = default)
     {

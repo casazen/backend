@@ -52,6 +52,13 @@ public interface IInvoiceDataService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Answers the question «would this save be refused?» without writing anything: the same 422 <see cref="SaveAsync"/> would answer (the data of
+    /// the command merged with the stored data and checked as a whole), or nothing when it would be accepted. A caller that saves the data with
+    /// something else (the public check-in) asks it first, so a refusal leaves everything else unsaved. A booking that is not visible is a 404.
+    /// </summary>
+    Task EnsureValidAsync(Guid bookingId, SaveInvoiceDataCommand command, InvoiceDataSource source, CancellationToken ct = default);
+
+    /// <summary>
     /// The guest's answer to «Ti serve la fattura?»: <c>true</c> sets <see cref="BookingInvoiceData.InvoiceRequested"/> and its time (the row is made when
     /// the booking has none, with the source <see cref="InvoiceDataSource.CheckIn"/>); <c>false</c> clears them, and makes no row. It does not touch the
     /// data of the recipient and records no event. <paramref name="save"/> as in <see cref="SaveAsync"/>.

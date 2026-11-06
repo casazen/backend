@@ -76,6 +76,26 @@ public class GuestCheckInSubmitRequest
 
     /// <summary>Client IP recorded with the notice presented and the consent given (proof, art. 7.1 GDPR).</summary>
     public string ConsentIpAddress { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The optional answer to «Ti serve la fattura?» (FIS-01, E06/F02/US01/T03): <c>null</c> when the guest did not answer. Never required and
+    /// never a reason to refuse the check-in for what it does not say: only data that is not valid is refused (422).
+    /// </summary>
+    public GuestCheckInInvoice? Invoice { get; set; }
+}
+
+/// <summary>
+/// The guest's answer to «Ti serve la fattura?» at the check-in (FIS-01, NF-81, E06/F02/US01/T03). <see cref="NeedInvoice"/> <c>false</c> changes
+/// nothing, whatever else is sent. <c>true</c> records the «yes» and, when <see cref="Data"/> says anything about the recipient, saves it as the
+/// invoice data of the booking with the source <see cref="Casazen.Core.Entities.Enums.InvoiceDataSource.CheckIn"/>: it fills what the host did not
+/// write and never overwrites what the host wrote.
+/// </summary>
+public sealed class GuestCheckInInvoice
+{
+    public bool NeedInvoice { get; set; }
+
+    /// <summary>What the guest typed about the recipient; a member that is <c>null</c> was left blank.</summary>
+    public SaveInvoiceDataCommand Data { get; set; } = new();
 }
 
 /// <summary>
@@ -142,6 +162,15 @@ public sealed class GuestCheckInPublicView
 
     /// <summary>Version of the marketing consent text; null when not configured, and then the consent is not offered.</summary>
     public string? MarketingConsentVersion { get; init; }
+
+    /// <summary>
+    /// The guest (or the host) already said that an invoice is needed (E06/F02/US01/T03). Only this and <see cref="HasInvoiceData"/> reach the public
+    /// page: the link is anonymous, so the stored fiscal code, VAT number, address and PEC are never returned by it.
+    /// </summary>
+    public bool InvoiceRequested { get; init; }
+
+    /// <summary>The booking already has the data of an invoice recipient (the page can say so); its content is never given.</summary>
+    public bool HasInvoiceData { get; init; }
 }
 
 /// <summary>A guest already on file, shown to prefill the portal form before completion.</summary>

@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 
@@ -131,18 +130,10 @@ public sealed class SaveInvoiceDataRequest
     /// <summary>The command of the service. A kind of recipient that is neither <c>Guest</c> nor <c>Company</c> is 422 <c>invoice_data_field_invalid</c> on <c>recipientKind</c>.</summary>
     public SaveInvoiceDataCommand ToCommand()
     {
-        InvoiceRecipientKind? kind = null;
-        if (RecipientKind is not null)
+        if (!InvoiceDataFormats.TryParseRecipientKind(RecipientKind, out var kind))
         {
-            if (!Enum.TryParse<InvoiceRecipientKind>(RecipientKind.Trim(), ignoreCase: true, out var parsed)
-                || !Enum.IsDefined(parsed)
-                || RecipientKind.Trim().All(char.IsAsciiDigit))
-            {
-                throw InvoiceDataErrorCodes.ToException(
-                    [new InvoiceDataFailure(InvoiceDataErrorCodes.FieldInvalid, InvoiceDataFields.RecipientKind)]);
-            }
-
-            kind = parsed;
+            throw InvoiceDataErrorCodes.ToException(
+                [new InvoiceDataFailure(InvoiceDataErrorCodes.FieldInvalid, InvoiceDataFields.RecipientKind)]);
         }
 
         return new SaveInvoiceDataCommand

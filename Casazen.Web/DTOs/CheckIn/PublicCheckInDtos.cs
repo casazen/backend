@@ -49,6 +49,18 @@ public class PublicCheckInContextResponse
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? MarketingConsentVersion { get; set; }
+
+    /// <summary>
+    /// The answer to «Ti serve la fattura?» is already <c>yes</c> (E06/F02/US01/T03, FIS-01): the form starts with the question answered. Absent once
+    /// the check-in is completed. The invoice data itself is write-only from this page: the link is anonymous, so the stored fiscal code, VAT number,
+    /// address and PEC are never returned, only this flag and <see cref="HasInvoiceData"/>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? InvoiceRequested { get; set; }
+
+    /// <summary>The booking already has the data of an invoice recipient (the host entered it, or Octorate had it); never its content. Absent once the check-in is completed.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? HasInvoiceData { get; set; }
 }
 
 /// <summary>A guest on file. The document number is never returned in full.</summary>
@@ -184,6 +196,85 @@ public class PublicCheckInSubmitRequest
     /// lowercase.
     /// </summary>
     public string? MarketingEmail { get; set; }
+
+    /// <summary>
+    /// The optional answer to «Ti serve la fattura?» (E06/F02/US01/T03, FIS-01): a request without this block, or with <c>needInvoice</c> false,
+    /// changes nothing and never blocks the check-in. With <c>needInvoice</c> true the data typed in it is saved as the invoice data of the booking
+    /// (source CheckIn, never over what the host wrote); a data that is not valid answers 422 with the field and saves nothing, so the guest
+    /// corrects and sends again.
+    /// </summary>
+    public PublicCheckInInvoiceDto? Invoice { get; set; }
+}
+
+/// <summary>
+/// The «Ti serve la fattura?» block of the check-in (E06/F02/US01/T03, FIS-01). Everything but <see cref="NeedInvoice"/> is optional and
+/// write-only: nothing of it is ever returned by the public page. The formats are checked by the invoice data service (fiscal code through
+/// <c>ItalianFiscalCode</c>, VAT number with its check digit when Italian, recipient code, PEC); a blank text is a field the guest left empty.
+/// </summary>
+public class PublicCheckInInvoiceDto
+{
+    /// <summary>The guest ticked «I need an invoice». False: the rest of the block is ignored.</summary>
+    public bool NeedInvoice { get; set; }
+
+    /// <summary><c>Guest</c> or <c>Company</c>.</summary>
+    public string? RecipientKind { get; set; }
+
+    public string? Name { get; set; }
+
+    public string? FiscalCode { get; set; }
+
+    public string? VatNumber { get; set; }
+
+    public string? AddressStreet { get; set; }
+
+    public string? AddressCivic { get; set; }
+
+    public string? PostalCode { get; set; }
+
+    public string? City { get; set; }
+
+    public string? Province { get; set; }
+
+    public string? CountryCode { get; set; }
+
+    public string? SdiRecipientCode { get; set; }
+
+    public string? Pec { get; set; }
+
+    /// <summary>
+    /// The block as the service reads it. A text that is blank is a field left empty (not sent), so the guest can never clear what the host wrote.
+    /// A kind of recipient that is neither <c>Guest</c> nor <c>Company</c> is 422 <c>invoice_data_field_invalid</c> on <c>recipientKind</c>.
+    /// </summary>
+    public GuestCheckInInvoice ToInput()
+    {
+        if (!InvoiceDataFormats.TryParseRecipientKind(RecipientKind, out var kind))
+        {
+            throw InvoiceDataErrorCodes.ToException(
+                [new InvoiceDataFailure(InvoiceDataErrorCodes.FieldInvalid, InvoiceDataFields.RecipientKind)]);
+        }
+
+        return new GuestCheckInInvoice
+        {
+            NeedInvoice = NeedInvoice,
+            Data = new SaveInvoiceDataCommand
+            {
+                RecipientKind = kind,
+                Name = Typed(Name),
+                FiscalCode = Typed(FiscalCode),
+                VatNumber = Typed(VatNumber),
+                AddressStreet = Typed(AddressStreet),
+                AddressCivic = Typed(AddressCivic),
+                PostalCode = Typed(PostalCode),
+                City = Typed(City),
+                Province = Typed(Province),
+                CountryCode = Typed(CountryCode),
+                SdiRecipientCode = Typed(SdiRecipientCode),
+                Pec = Typed(Pec),
+            },
+        };
+    }
+
+    private static string? Typed(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 }
 
 /// <summary>
