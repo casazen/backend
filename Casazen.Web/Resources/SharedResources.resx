@@ -360,6 +360,21 @@
   <data name="GuestNotFound" xml:space="preserve">
     <value>Ospite non trovato</value>
   </data>
+  <data name="CrmProfileNotFound" xml:space="preserve">
+    <value>Profilo ospite non trovato.</value>
+  </data>
+  <data name="CrmTagsInvalid" xml:space="preserve">
+    <value>Etichette non valide: al massimo 50, da 1 a 40 caratteri ciascuna, senza doppioni e non oltre 2.000 caratteri in tutto.</value>
+  </data>
+  <data name="CrmMergeCandidateNotFound" xml:space="preserve">
+    <value>Proposta di unione non trovata.</value>
+  </data>
+  <data name="CrmMergeNotProposed" xml:space="preserve">
+    <value>Questa proposta di unione è già stata decisa: non c'è più nulla da fare.</value>
+  </data>
+  <data name="CrmMergeSurvivorInvalid" xml:space="preserve">
+    <value>Il profilo da mantenere deve essere uno dei due profili della proposta.</value>
+  </data>
   <data name="GuestEmailAlreadyExists" xml:space="preserve">
     <value>Esiste già un ospite con questa email.</value>
   </data>

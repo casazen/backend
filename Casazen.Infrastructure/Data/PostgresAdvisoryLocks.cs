@@ -353,6 +353,13 @@ internal static class PostgresAdvisoryLocks
         /// left with no guest. Held only while the profile is made. The values 20_600 to 20_699 are the marketing module (epic E07).
         /// </summary>
         CrmGuestProfile = 20_612,
+
+        /// <summary>
+        /// The CRM profiles of one org (key: org id, <c>orgId.ToString("N")</c>, E07/F01/US03): the dismissal and the merge of a proposal, and the
+        /// tags a host gives to a profile, run one at a time, so a double click merges once, two people on the same pair decide it once, and a tag
+        /// is never lost to a merge that moves the tags of the profile at the same moment. Held for the whole change, which is saved in one go.
+        /// </summary>
+        CrmProfileMerge = 20_613,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
