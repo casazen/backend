@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Infrastructure;
@@ -7,7 +8,8 @@ namespace Casazen.Tests.Unit.Infrastructure;
 /// place</b>, <c>INotificationPreferenceService</c>, so a choice of the user (the channels, the quiet hours) or a scope (a collaborator «Solo alcuni») cannot
 /// be forgotten by a path written later. Every place of the product that tells a host user about one of the eight kinds of event
 /// (<c>NotificationEventType</c>) — it sends a push to the hosts of a property or booking or to one user, picks the people who may hear about a property
-/// (<c>HostNotificationAudience</c>) or queues one of the emails addressed to a host about those events — has to ask the service, <b>or be listed
+/// (<c>HostNotificationAudience</c>), queues one of the emails addressed to a host about those events or writes the counter of the bell or a popup
+/// alert (<c>InAppNotification</c>, <c>PopupAlert</c>) — has to ask the service, <b>or be listed
 /// below as a legacy path, with its reason and the epic that moves it</b>. A file that does neither fails the test: a new path starts inside the rule.
 /// </summary>
 public class HostNotifyingPathsArchitectureTests
@@ -18,8 +20,9 @@ public class HostNotifyingPathsArchitectureTests
     /// <summary>
     /// How a path that tells a host is recognised in the code. The pushes are found by the audience they name (the hosts of a booking, the hosts of
     /// a property, one user), the choice of people by the query of the audience, the emails by the template they queue (the emails to a host about
-    /// the new booking, the cancellation, the guest messages and the legal deadlines). The task that adds a kind of event with its own notices (an
-    /// approval to give, a draft ready, a scheduled message that failed, a sync error) adds them here in the same change.
+    /// the new booking, the cancellation, the guest messages and the legal deadlines), the counter of the bell and the popup alerts by the row they
+    /// write. The task that adds a kind of event with its own notices (an approval to give, a draft ready, a scheduled message that failed, a sync
+    /// error) adds them here in the same change.
     /// </summary>
     private static readonly string[] Notices =
     [
@@ -44,7 +47,28 @@ public class HostNotifyingPathsArchitectureTests
         // LegalDeadline.
         "EmailTemplates.Names.AlloggiatiDeadline",
         "EmailTemplates.Names.GuestCheckInIncomplete",
+
+        // The counter of the bell and the popup alerts: whoever writes a row of either for a host tells it something.
+        "InAppNotifications.Add",
+        "PopupAlerts.Add",
     ];
+
+    /// <summary>
+    /// The same, for the notices that a plain name cannot tell from a longer one: building a row of the bell or a popup alert (whatever way it is then
+    /// added to the context), but not <c>InAppNotificationItem</c>, <c>PopupAlertMessage</c> and the like.
+    /// </summary>
+    private static readonly Regex[] NoticePatterns =
+    [
+        new(@"new\s+InAppNotification\b", RegexOptions.CultureInvariant),
+        new(@"new\s+PopupAlert\b", RegexOptions.CultureInvariant),
+    ];
+
+    /// <summary>The notices a (comment-free) source contains, by name.</summary>
+    private static List<string> NoticesIn(string code) =>
+        [
+            .. Notices.Where(notice => code.Contains(notice, StringComparison.Ordinal)),
+            .. NoticePatterns.Where(pattern => pattern.IsMatch(code)).Select(pattern => pattern.ToString()),
+        ];
 
     /// <summary>
     /// The paths that tell a host without asking the service, each with the reason and the epic that migrates it (every one of them keeps the
@@ -66,6 +90,12 @@ public class HostNotifyingPathsArchitectureTests
             ("the push to the hosts about a request to a supplier (taken, started, completed, a time proposed, a quote): outside the eight kinds of event of NF-65", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/ServiceRequestNotifier.Backups.cs"] =
             ("the push to the hosts about the backup suppliers of a request: outside the eight kinds of event of NF-65", "none planned (outside the eight kinds of event of NF-65)"),
+        ["Casazen.Infrastructure/Services/ApprovalQueueService.cs"] =
+            ("the notification of the bell «there is an item to approve» (approval-queue-item), written for every active member of the org, with no scope and no permission", "E05 (F04, the approval alerts)"),
+        ["Casazen.Infrastructure/Services/AlertRouter.cs"] =
+            ("the popup alerts (ADR-025): the router decides who is alerted and when, and borrows only the quiet hours of the preferences; it does not read the channel settings yet", "E01 (the alert router reads the preferences, assumption of NF-65)"),
+        ["Casazen.Infrastructure/Services/DemoEnvironmentService.cs"] =
+            ("the sample popup alert it writes for the showcase org: test data of the demo, not an event told to a host", "none planned (demo data, not a notice)"),
     };
 
     [Fact]
@@ -77,7 +107,7 @@ public class HostNotifyingPathsArchitectureTests
         foreach (var (relative, text) in ReadSources(FindRepositoryRoot()))
         {
             var code = CodeWithoutComments(text);
-            var found = Notices.Where(notice => code.Contains(notice, StringComparison.Ordinal)).ToList();
+            var found = NoticesIn(code);
             if (found.Count == 0)
                 continue;
 
@@ -112,7 +142,7 @@ public class HostNotifyingPathsArchitectureTests
             var code = CodeWithoutComments(File.ReadAllText(path));
             if (code.Contains(TheService, StringComparison.Ordinal))
                 stale.Add($"{file} asks {TheService} now: take it off the legacy list");
-            else if (!Notices.Any(notice => code.Contains(notice, StringComparison.Ordinal)))
+            else if (NoticesIn(code).Count == 0)
                 stale.Add($"{file} no longer tells a host: take it off the legacy list");
         }
 
@@ -127,7 +157,7 @@ public class HostNotifyingPathsArchitectureTests
         var code = CodeWithoutComments(File.ReadAllText(Path.Combine(FindRepositoryRoot(), file.Replace('/', Path.DirectorySeparatorChar))));
 
         Assert.Contains(TheService, code, StringComparison.Ordinal);
-        Assert.Contains(Notices, notice => code.Contains(notice, StringComparison.Ordinal));
+        Assert.NotEmpty(NoticesIn(code));
         Assert.False(Legacy.ContainsKey(file), $"{file} goes through the service: it is not a legacy path.");
     }
 
