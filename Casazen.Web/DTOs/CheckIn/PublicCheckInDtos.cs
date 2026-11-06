@@ -56,6 +56,30 @@ public class PublicCheckInContextResponse
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? RequiredGuestFields { get; set; }
+
+    /// <summary>
+    /// The language to open the page in (NF-40): the one the guest saved, otherwise the first supported language of the browser
+    /// (<c>Accept-Language</c>), otherwise <c>it</c>. Sent with an open session only.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Language { get; set; }
+
+    /// <summary>The languages the guest can choose: <c>it</c>, <c>en</c>, <c>de</c>, <c>fr</c>, <c>es</c>. Sent with an open session only.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? SupportedLanguages { get; set; }
+}
+
+/// <summary>The language the guest chooses on the check-in page (<c>PUT api/public/checkin/{token}/language</c>).</summary>
+public class PublicCheckInLanguageRequest
+{
+    /// <summary>One of <c>it</c>, <c>en</c>, <c>de</c>, <c>fr</c>, <c>es</c>; anything else (none included) is 400 <c>language_unsupported</c>.</summary>
+    public string? Language { get; set; }
+}
+
+/// <summary>The language saved on the session.</summary>
+public class PublicCheckInLanguageResponse
+{
+    public string Language { get; set; } = string.Empty;
 }
 
 /// <summary>A guest on file. The document number is never returned in full.</summary>

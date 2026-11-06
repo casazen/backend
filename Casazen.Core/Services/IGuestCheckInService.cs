@@ -44,6 +44,29 @@ public interface IGuestCheckInService
 
     /// <summary>Expires active sessions for the booking except the session matching the raw token.</summary>
     Task ExpireOtherActiveSessionsAsync(Guid bookingId, string tokenToKeep);
+
+    /// <summary>
+    /// Saves the language the guest chose on the check-in page (NF-40, one of <c>GuestLanguages.Supported</c>) on the session of the raw
+    /// token: the page and the emails of the session use it. Refused for a language that is not supported, an unknown or expired token and a
+    /// check-in already completed.
+    /// </summary>
+    Task<GuestCheckInLanguageOutcome> SetLanguageAsync(string token, string language);
+}
+
+/// <summary>Outcome of <see cref="IGuestCheckInService.SetLanguageAsync"/>.</summary>
+public enum GuestCheckInLanguageOutcome
+{
+    /// <summary>The language is saved on the session.</summary>
+    Saved = 0,
+
+    /// <summary>Not one of the supported languages (400 <c>language_unsupported</c>).</summary>
+    Unsupported = 1,
+
+    /// <summary>The token is unknown or expired, or the booking no longer takes a check-in (404).</summary>
+    NotFound = 2,
+
+    /// <summary>The guest already completed the check-in (409 <c>checkin_already_completed</c>).</summary>
+    Completed = 3,
 }
 
 /// <summary>A link just issued: the raw token exists only here (the session stores its hash).</summary>
@@ -161,6 +184,9 @@ public sealed class GuestCheckInPublicView
     /// release, where the regional coverage is deferred (E03/F01/US08).
     /// </summary>
     public IReadOnlyList<string>? RequiredGuestFields { get; init; }
+
+    /// <summary>The language the guest saved on the session (NF-40); null until the guest chooses one.</summary>
+    public string? Language { get; init; }
 }
 
 /// <summary>A guest already on file, shown to prefill the portal form before completion.</summary>

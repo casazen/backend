@@ -1381,6 +1381,9 @@
   <data name="CheckInStatisticalValueInvalid" xml:space="preserve">
     <value>Il valore scelto non è tra quelli previsti.</value>
   </data>
+  <data name="CheckInLanguageUnsupported" xml:space="preserve">
+    <value>Questa lingua non è disponibile per il check-in.</value>
+  </data>
   <data name="CheckInTaxExemptionInvalid" xml:space="preserve">
     <value>Questo motivo di esenzione dall'imposta di soggiorno non si può scegliere.</value>
   </data>

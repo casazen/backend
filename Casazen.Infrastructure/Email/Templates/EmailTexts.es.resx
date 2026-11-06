@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- Spanish texts of the two guest check-in emails only (NF-40): every other text falls back to the neutral Italian resource and is never
+       sent to a guest in Spanish. To be reviewed by a native speaker before release. -->
+  <data name="GuestCheckInLink_Subject" xml:space="preserve">
+    <value>Completa el check-in de tu estancia — {0}</value>
+  </data>
+  <data name="GuestCheckInLink_Greeting" xml:space="preserve">
+    <value>Hola {0}:</value>
+  </data>
+  <data name="GuestCheckInLink_Body" xml:space="preserve">
+    <value>Tu estancia en &lt;strong&gt;{0}&lt;/strong&gt; empieza el &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="GuestCheckInLink_Instructions" xml:space="preserve">
+    <value>Completa el check-in con antelación haciendo clic en el enlace de abajo:</value>
+  </data>
+  <data name="GuestCheckInLink_Cta" xml:space="preserve">
+    <value>Completar el check-in</value>
+  </data>
+  <data name="GuestCheckInLink_Validity" xml:space="preserve">
+    <value>El enlace es válido hasta el {0}.</value>
+  </data>
+  <data name="GuestCheckInReminder_Subject" xml:space="preserve">
+    <value>Recordatorio: completa el check-in de tu estancia — {0}</value>
+  </data>
+  <data name="GuestCheckInReminder_Greeting" xml:space="preserve">
+    <value>Hola {0}:</value>
+  </data>
+  <data name="GuestCheckInReminder_Body" xml:space="preserve">
+    <value>Tu estancia en &lt;strong&gt;{0}&lt;/strong&gt; empieza el &lt;strong&gt;{1}&lt;/strong&gt; y todavía faltan los datos del check-in. Complétalos antes de tu llegada con el enlace de abajo: sustituye al que te enviamos antes, que ya no es válido.</value>
+  </data>
+  <data name="GuestCheckInReminder_Cta" xml:space="preserve">
+    <value>Completar el check-in</value>
+  </data>
+  <data name="GuestCheckInReminder_Validity" xml:space="preserve">
+    <value>El enlace es válido hasta el {0}.</value>
+  </data>
+</root>

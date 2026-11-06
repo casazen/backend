@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.External;
@@ -92,8 +93,10 @@ public sealed class GuestCheckInLinkEmailQueue(
 
 /// <summary>
 /// Hangfire job that sends the email of one check-in link and records the outcome on the session. The email is built when
-/// it is sent (current guest address, template <see cref="EmailTemplates.GuestCheckInLink"/>), and only while the link is
-/// still usable. Temporary provider errors are retried up to <see cref="MaxAttempts"/> times; a refused email is not.
+/// it is sent (current guest address, template <see cref="EmailTemplates.GuestCheckInLink"/>, or
+/// <see cref="EmailTemplates.GuestCheckInReminder"/> for the link the send job issued as the reminder of the missing data, in the
+/// language of the session), and only while the link is still usable. Temporary provider errors are retried up to
+/// <see cref="MaxAttempts"/> times; a refused email is not.
 /// </summary>
 public sealed class GuestCheckInLinkEmailJob(
     AppDbContext db,
@@ -149,13 +152,24 @@ public sealed class GuestCheckInLinkEmailJob(
             return;
         }
 
-        var content = EmailTemplates.GuestCheckInLink(
-            EmailTemplates.DefaultCulture,
-            booking.Guest!.FirstName,
-            booking.Property.Name,
-            booking.CheckInDate,
-            publicSiteLinks.GuestCheckIn(token),
-            session.ExpiresAt);
+        // NF-40: the email is in the language of the guest page (the choice saved on the session, Italian otherwise); a link issued as the
+        // reminder of the missing data (ReminderSentAt set by the send job) carries the reminder text.
+        var culture = GuestLanguages.CultureOf(GuestLanguages.Resolve(session.Language, null));
+        var content = session.ReminderSentAt is null
+            ? EmailTemplates.GuestCheckInLink(
+                culture,
+                booking.Guest!.FirstName,
+                booking.Property.Name,
+                booking.CheckInDate,
+                publicSiteLinks.GuestCheckIn(token),
+                session.ExpiresAt)
+            : EmailTemplates.GuestCheckInReminder(
+                culture,
+                booking.Guest!.FirstName,
+                booking.Property.Name,
+                booking.CheckInDate,
+                publicSiteLinks.GuestCheckIn(token),
+                session.ExpiresAt);
 
         EmailSendResult result;
         try

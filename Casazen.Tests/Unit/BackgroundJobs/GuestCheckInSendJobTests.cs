@@ -258,6 +258,103 @@ public class GuestCheckInSendJobTests
         Assert.Equal(GuestCheckInSessionStatus.Inviato, session.Status);
     }
 
+    /// <summary>
+    /// NF-40, AC-NF40-3: a guest who never opened the link gets ONE reminder before arrival, with a new link in the language chosen on the
+    /// page, whatever the number of runs: two runs on the same day and a run the next day queue one reminder for the stay.
+    /// </summary>
+    [Fact]
+    public async Task GuestCheckInReminder_OneReminderPerStay_Test()
+    {
+        var day = ClockAtEightUtc(daysFromToday: 0);
+        await using var db = CreateContext();
+        var booking = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 1, day.TodayInRome());
+        db.GuestCheckInSessions.Add(EarlierLink(booking, day, language: "de"));
+        await db.SaveChangesAsync();
+
+        var today = new Harness(db, EmailResult(EmailSendResult.Sent()), clock: day);
+        await today.RunSendJobAsync();
+        await today.RunSendJobAsync();
+        var tomorrow = new Harness(db, EmailResult(EmailSendResult.Sent()), clock: ClockAtEightUtc(daysFromToday: 1));
+        await tomorrow.RunSendJobAsync();
+
+        var reminder = Assert.Single(await db.GuestCheckInSessions
+            .Where(s => s.BookingId == booking.Id && s.ReminderSentAt != null)
+            .ToListAsync());
+        Assert.Equal("de", reminder.Language);
+        Assert.Single(today.QueuedJobs);
+        Assert.Empty(tomorrow.QueuedJobs);
+
+        // The email of that link is the reminder, in the guest's language.
+        await today.RunQueuedEmailJobsAsync();
+        var (_, subject, _) = Assert.Single(today.SentEmails);
+        Assert.StartsWith("Erinnerung", subject, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// NF-40, AC-NF40-3 (privacy): the reminder is transactional. It goes to the booker's contact e-mail only (never to the marketing address
+    /// the booker gave for the offers) and carries no marketing block: the check-in link is its only link, with no offer nor unsubscribe text.
+    /// </summary>
+    [Fact]
+    public async Task GuestCheckInReminder_OnlyBookerContact_NoMarketing_Test()
+    {
+        var day = ClockAtEightUtc(daysFromToday: 0);
+        await using var db = CreateContext();
+        var booking = await SeedBookingEntityAsync(db, BookingStatus.Confirmed, daysUntilCheckIn: 1, day.TodayInRome());
+        db.GuestCheckInSessions.Add(EarlierLink(booking, day, language: null));
+        db.MarketingConsentRecords.Add(new MarketingConsentRecord
+        {
+            OrgId = booking.OrgId,
+            BookingId = booking.Id,
+            GuestId = booking.GuestId,
+            MarketingEmail = "anna.offerte@example.com",
+            ConsentEmail = true,
+            EmailConfirmed = true,
+            ConsentTextVersion = "v1",
+        });
+        await db.SaveChangesAsync();
+        var harness = new Harness(db, EmailResult(EmailSendResult.Sent()), clock: day);
+
+        await harness.RunSendJobAsync();
+        await harness.RunQueuedEmailJobsAsync();
+
+        var (to, subject, html) = Assert.Single(harness.SentEmails);
+        Assert.Equal("anna@example.com", to);
+        Assert.StartsWith("Promemoria", subject, StringComparison.Ordinal);
+        harness.Email.Verify(
+            s => s.SendEmailAsync("anna.offerte@example.com", It.IsAny<string>(), It.IsAny<string>()),
+            Times.Never);
+        var links = System.Text.RegularExpressions.Regex.Matches(html, "href=\"([^\"]+)\"").Select(m => m.Groups[1].Value).ToList();
+        Assert.Matches("^https://public\\.example/checkin/[0-9a-f]{64}$", Assert.Single(links));
+        Assert.DoesNotContain("unsubscribe", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("disiscri", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("newsletter", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("offert", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 08:00 UTC of a day near today in Rome (the email job checks the link against the real clock): the time of the daily run, on the Rome
+    /// calendar date (QA-CLOCK).
+    /// </summary>
+    private static FixedTimeProvider ClockAtEightUtc(int daysFromToday) =>
+        new(new DateTimeOffset(TimeProvider.System.TodayInRome().AddDays(daysFromToday).AddHours(8), TimeSpan.Zero));
+
+    /// <summary>A link the guest received two days before the run and never opened.</summary>
+    private static GuestCheckInSession EarlierLink(Booking booking, TimeProvider clock, string? language)
+    {
+        var now = clock.GetUtcNow().UtcDateTime;
+        return new GuestCheckInSession
+        {
+            BookingId = booking.Id,
+            OrgId = booking.OrgId,
+            TokenHash = GuestCheckInService.HashToken("earlier-link-" + booking.Id),
+            Status = GuestCheckInSessionStatus.Inviato,
+            Language = language,
+            CreatedAt = now.AddDays(-2),
+            UpdatedAt = now.AddDays(-2),
+            ExpiresAt = now.AddDays(5),
+        };
+    }
+
     private static EmailSendResult EmailResult(EmailSendResult result) => result;
 
     private static StayGuest CompleteSingleGuest(Guid bookingId, Guid orgId) => new()
