@@ -66,8 +66,6 @@ public class HostNotifyingPathsArchitectureTests
             ("the push to the hosts about a request to a supplier (taken, started, completed, a time proposed, a quote): outside the eight kinds of event of NF-65", "none planned (outside the eight kinds of event of NF-65)"),
         ["Casazen.Infrastructure/Services/ServiceRequestNotifier.Backups.cs"] =
             ("the push to the hosts about the backup suppliers of a request: outside the eight kinds of event of NF-65", "none planned (outside the eight kinds of event of NF-65)"),
-        ["Casazen.Infrastructure/Services/GuestMessageService.cs"] =
-            ("the push and the email to the hosts about a message of the guest of a direct booking, until the alerts of the messages go through the service", "E05/F03/US01/T03 (the next commit)"),
     };
 
     [Fact]
@@ -123,6 +121,7 @@ public class HostNotifyingPathsArchitectureTests
 
     [Theory]
     [InlineData("Casazen.Infrastructure/Services/NotificationPreferenceService.cs")]
+    [InlineData("Casazen.Infrastructure/Services/HostMessageAlertDelivery.cs")]
     public void TheService_AndTheDeliveryOfTheMessageAlerts_AreInsideTheRule(string file)
     {
         var code = CodeWithoutComments(File.ReadAllText(Path.Combine(FindRepositoryRoot(), file.Replace('/', Path.DirectorySeparatorChar))));
@@ -130,6 +129,21 @@ public class HostNotifyingPathsArchitectureTests
         Assert.Contains(TheService, code, StringComparison.Ordinal);
         Assert.Contains(Notices, notice => code.Contains(notice, StringComparison.Ordinal));
         Assert.False(Legacy.ContainsKey(file), $"{file} goes through the service: it is not a legacy path.");
+    }
+
+    [Fact]
+    public void ThePathsOfTheGuestMessages_TellTheHostsOnlyThroughTheDelivery()
+    {
+        // Both sources of a message of a guest (a channel, a direct booking) alert through the one delivery, which asks the service.
+        var root = FindRepositoryRoot();
+        foreach (var file in new[] { "Casazen.Infrastructure/Services/GuestMessageService.cs", "Casazen.Infrastructure/Services/MessageReceivedNotifier.cs" })
+        {
+            var code = CodeWithoutComments(File.ReadAllText(Path.Combine(root, file.Replace('/', Path.DirectorySeparatorChar))));
+
+            Assert.Contains("HostMessageAlertDelivery", code, StringComparison.Ordinal);
+            Assert.DoesNotContain("PushAudience.", code, StringComparison.Ordinal);
+            Assert.DoesNotContain("EmailTemplates.Names.GuestMessageToHost", code, StringComparison.Ordinal);
+        }
     }
 
     // ─── helpers ───

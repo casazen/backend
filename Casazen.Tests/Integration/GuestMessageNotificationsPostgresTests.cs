@@ -4,10 +4,12 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
+using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
 using Casazen.Tests.Unit.Services;
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -18,8 +20,9 @@ namespace Casazen.Tests.Integration;
 
 /// <summary>
 /// The notifications of the guest messages on a real PostgreSQL database (the service uses <c>ExecuteUpdate</c>, which the in-memory
-/// provider does not run): one push to the hosts for every new message of the guest (not for a replayed one, and without name or
-/// text), the unread notifications of the booking cleared when the host reads or answers, and the unread counters per booking.
+/// provider does not run): one push to each host the preferences select (<c>INotificationPreferenceService</c>, NF-65) for every new
+/// message of the guest (not for a replayed one, and without name or text), the counter and the email that the same preferences allow, the
+/// unread notifications of the booking cleared when the host reads or answers, and the unread counters per booking.
 /// </summary>
 public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
 {
@@ -34,6 +37,8 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
     private readonly Mock<IPushNotificationService> _push = new();
     private readonly Mock<IEmailQueue> _email = new();
     private readonly Mock<IInAppNotificationPublisher> _publisher = new();
+    private readonly Mock<IBackgroundJobClient> _jobs = new();
+    private readonly Mock<IContextAuthorizationService> _permissions = new();
     private PostgresTestDatabase? _database;
 
     public async Task InitializeAsync()
@@ -41,6 +46,9 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         _database = await PostgresTestDatabase.CreateMigratedAsync();
         _email.Setup(e => e.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>())).Returns(true);
         _push.Setup(p => p.Enqueue(It.IsAny<string>(), It.IsAny<PushAudience>(), It.IsAny<PushNotificationPayload>())).Returns(true);
+        _permissions
+            .Setup(p => p.HasPermissionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
     }
 
     public async Task DisposeAsync()
@@ -52,7 +60,7 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
     // ─── The push ───
 
     [PostgresFact]
-    public async Task SendAsGuest_NewMessage_QueuesOnePushToTheHostsOfTheBooking_WithoutNameOrText()
+    public async Task SendAsGuest_NewMessage_QueuesOnePushToTheHostWhoReachesTheBooking_WithoutNameOrText()
     {
         var world = await SeedAsync();
 
@@ -61,7 +69,7 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         Assert.False(sent.Replayed);
         var call = Assert.Single(_push.Invocations);
         Assert.Equal(PushDeliveryKeys.GuestMessage(sent.Message.Id), call.Arguments[0]);
-        Assert.Equal(PushAudience.BookingHosts(world.BookingId), call.Arguments[1]);
+        Assert.Equal(PushAudience.User(world.OrgId, HostUser), call.Arguments[1]);
         var payload = Assert.IsType<PushNotificationPayload>(call.Arguments[2]);
         Assert.Equal(PushTypes.GuestMessage, payload.Type);
         Assert.Equal(world.BookingId, payload.BookingId);
@@ -87,9 +95,10 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
     }
 
     [PostgresFact]
-    public async Task SendAsGuest_TwoMessagesInTheEmailWindow_QueuesTwoPushesAndOneEmail()
+    public async Task SendAsGuest_TwoMessagesInTheEmailWindow_QueuesTwoPushesAndOneEmailToTheHostsOwnAddress()
     {
         var world = await SeedAsync();
+        await ChooseEmailAsync(HostUser);
 
         var first = await SendAsGuestAsync(world, "uno", "key-00000003");
         _clock.Advance(TimeSpan.FromMinutes(1));
@@ -98,6 +107,61 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         var keys = _push.Invocations.Select(i => (string)i.Arguments[0]).ToList();
         Assert.Equal([PushDeliveryKeys.GuestMessage(first.Message.Id), PushDeliveryKeys.GuestMessage(second.Message.Id)], keys);
         _email.Verify(e => e.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()), Times.Once);
+        _email.Verify(e => e.Enqueue(world.HostEmail, It.IsAny<EmailContent>(), EmailTemplates.Names.GuestMessageToHost), Times.Once);
+
+        // The window is over ten minutes after the first email: the next message queues the next email.
+        _clock.Advance(TimeSpan.FromMinutes(10));
+        await SendAsGuestAsync(world, "tre", "key-00000010");
+        _email.Verify(e => e.Enqueue(world.HostEmail, It.IsAny<EmailContent>(), It.IsAny<string>()), Times.Exactly(2));
+    }
+
+    [PostgresFact]
+    public async Task SendAsGuest_ByDefault_TheHostGetsPushAndCounter_AndNoEmail()
+    {
+        var world = await SeedAsync();
+
+        var sent = await SendAsGuestAsync(world, "uno", "key-00000011");
+
+        await using var db = NewDb();
+        var notification = await db.InAppNotifications.AsNoTracking().SingleAsync();
+        Assert.Equal(HostUser, notification.UserId);
+        Assert.Equal(PushTypes.GuestMessage, notification.Type);
+        Assert.Equal(world.BookingId, notification.EntityId);
+        Assert.Equal(PushDeliveryKeys.GuestMessage(sent.Message.Id), notification.DeliveryKey);
+        _publisher.Verify(p => p.PublishAsync(HostUser, PushTypes.GuestMessage, world.BookingId, It.IsAny<CancellationToken>()), Times.Once);
+        _email.Verify(e => e.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [PostgresFact]
+    public async Task SendAsGuest_ACollaboratorWithoutTheProperty_IsNotAlerted()
+    {
+        var world = await SeedAsync(collaboratorInChargeWithoutAccess: true);
+
+        await SendAsGuestAsync(world, "uno", "key-00000012");
+
+        // The person named in charge does not reach the property (it was not given): only the administrators hear about it.
+        var call = Assert.Single(_push.Invocations);
+        Assert.Equal(PushAudience.User(world.OrgId, HostUser), call.Arguments[1]);
+        await using var db = NewDb();
+        Assert.Equal([HostUser], await db.InAppNotifications.AsNoTracking().Select(n => n.UserId).ToListAsync());
+    }
+
+    [PostgresFact]
+    public async Task SendAsGuest_QuietHours_HoldThePushAndTheEmail_NotTheCounter()
+    {
+        var world = await SeedAsync();
+        await ChooseEmailAsync(HostUser);
+        _clock.SetUtcNow(new DateTimeOffset(2026, 10, 9, 21, 30, 0, TimeSpan.Zero)); // 23:30 in Rome (summer time)
+
+        await SendAsGuestAsync(world, "notte", "key-00000013");
+
+        Assert.Empty(_push.Invocations);
+        _email.Verify(e => e.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()), Times.Never);
+        await using var db = NewDb();
+        Assert.Single(await db.InAppNotifications.AsNoTracking().ToListAsync());
+        var job = Assert.Single(_jobs.Invocations, i => i.Method.Name == "Create");
+        var state = Assert.IsType<Hangfire.States.ScheduledState>(job.Arguments[1]);
+        Assert.Equal(new DateTime(2026, 10, 10, 6, 0, 0, DateTimeKind.Utc), state.EnqueueAt);
     }
 
     [PostgresFact]
@@ -236,31 +300,51 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
 
     // ─── Helpers ───
 
-    private sealed record World(Guid OrgId, Guid BookingId, Guid PropertyId);
+    private sealed record World(Guid OrgId, Guid BookingId, Guid PropertyId, string HostEmail);
 
     private AppDbContext NewDb() => _database!.CreateContext();
 
-    private GuestMessageService Service(AppDbContext db) =>
-        new(
+    private GuestMessageService Service(AppDbContext db)
+    {
+        var links = new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://public.example.test/" }));
+        var delivery = new HostMessageAlertDelivery(
+            db,
+            new NotificationPreferenceService(db, _permissions.Object, _clock, NullLogger<NotificationPreferenceService>.Instance),
+            _push.Object,
+            _email.Object,
+            _publisher.Object,
+            _jobs.Object,
+            links,
+            NullLogger<HostMessageAlertDelivery>.Instance);
+        return new GuestMessageService(
             db,
             _email.Object,
-            new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = "https://public.example.test/" })),
-            _push.Object,
+            links,
+            delivery,
             new InAppNotificationService(db, _clock, NullLogger<InAppNotificationService>.Instance),
             _publisher.Object,
             NullLogger<GuestMessageService>.Instance,
             _clock);
+    }
 
-    private async Task<World> SeedAsync()
+    private async Task<World> SeedAsync(bool collaboratorInChargeWithoutAccess = false)
     {
         await using var db = NewDb();
         var org = OrgTeamTestData.AddOrg(db);
         org.ContactEmail = "host@example.com";
-        OrgTeamTestData.AddUser(db, HostUser, org.Id, UserRole.PropertyOwner);
+        var host = OrgTeamTestData.AddUser(db, HostUser, org.Id, UserRole.PropertyOwner);
         OrgTeamTestData.AddUser(db, OtherUser, org.Id, UserRole.PropertyOwner);
+        if (collaboratorInChargeWithoutAccess)
+        {
+            // The host is the owner of the org; the other person is a collaborator "Solo alcuni" with no property, named in charge of this one.
+            OrgTeamTestData.AddMember(db, HostUser, org.Id, OrgRole.Owner);
+            OrgTeamTestData.AddMember(db, OtherUser, org.Id, OrgRole.Collaborator).PropertyScope = PropertyScope.Selected;
+        }
+
         var property = new Property
         {
             OwnerId = HostUser,
+            ResponsibleUserId = collaboratorInChargeWithoutAccess ? OtherUser : null,
             OrgId = org.Id,
             Name = "Casa Messaggi",
             Address = $"Via Messaggi {Guid.NewGuid():N}",
@@ -276,7 +360,21 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         db.Properties.Add(property);
         await db.SaveChangesAsync();
         var booking = await AddBookingAsync(db, org.Id, property.Id, checkOutInDays: 3);
-        return new World(org.Id, booking, property.Id);
+        return new World(org.Id, booking, property.Id, host.Email);
+    }
+
+    /// <summary>The user chooses the email next to the defaults of a new guest message (a push and the counter).</summary>
+    private async Task ChooseEmailAsync(string userId)
+    {
+        await using var db = NewDb();
+        await new NotificationPreferenceService(db, _permissions.Object, _clock, NullLogger<NotificationPreferenceService>.Instance).SaveAsync(
+            userId,
+            new NotificationPreferencesUpdate(
+                null,
+                [new NotificationEventUpdate(
+                    NotificationEventType.NewGuestMessage,
+                    NotificationChannels.MobilePush | NotificationChannels.Email | NotificationChannels.CounterOnly)]),
+            CancellationToken.None);
     }
 
     private async Task<World> SeedBookingAsync(World world, int checkOutInDays)

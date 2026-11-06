@@ -53,23 +53,48 @@ from `IGuestSessionService.FindBookingAsync`, so a booking of another guest or s
 - `GET api/messages/unread` (same policy and scope) → `{ "items": [ { "bookingId", "unreadCount" } ] }`: open threads with something unread only,
   at most 200, never any text. For the badges of the calendar and the lists.
 
-**Notifications of a new message.** Every message of the guest also queues a push and an in-app notification to the hosts of the booking
-(type `guest-message`, route `/bookings/{id}/messages`, text without guest name or message), and reading or answering the thread clears the
-caller's notifications of it; the bell is updated in real time. See [`in-app-notifications.md`](in-app-notifications.md) §§ 9-10.
+**Alerts to the hosts of a new message (NF-65).** Every message of the guest alerts the hosts **through the decision point of the preferences**
+(`INotificationPreferenceService`, `NewGuestMessage`; the last section of this page), the same for
+a direct thread and for a conversation of a channel (OTA, copied by the sync of the messages, `GuestMessageReceived` with source `Ota`, handled by
+`MessageReceivedNotifier`). Both go through `HostMessageAlertDelivery`:
+
+| Channel | What | Default (PO-10) |
+|---|---|---|
+| Counter | the in-app notification of the bell (direct: type `guest-message`, entity the booking, so reading or answering the thread clears it; channel: type `ota-message`, entity the thread), published to the open sessions of the person. Delivery key = the message (and the person for a channel), so a re-delivered event writes it once | on |
+| Mobile push | to the devices of that one person (`PushAudience.User`): direct route `/bookings/{id}/messages`, channel route `/messages/{threadKey}` (`PushRoutes.MessageThread`, `ota:{guid}` or `direct:{guid}`, mirrored by the app). Text: the property (and the channel) only | on |
+| Email | to the person's **own** address (`User.Email`, never only the org's), template `guest-message-to-host` (direct) or `host-message-received` (channel), at most one per conversation and person every 10 minutes | off |
+
+Who is told: the audience of the property (`HostNotificationAudience`: the person in charge while they reach it, and the administrators; a collaborator
+«Solo alcuni» only the properties it was given) narrowed to who holds `booking.read` (the permission that opens the thread), or the administrators
+for a conversation not mapped to a property. The quiet hours of the person (22:00-08:00, Europe/Rome) defer the push and the email to the instant
+they end (`HostMessageAlertDueJob`, which asks the service again before it sends), never the counter. **No text, no guest name (channel) and no
+address of the guest is in a push, an email or a notification.** An urgent message (`UrgentGuestMessage`) is alerted by the assistant (E05/F05)
+through the same delivery. The OTA handler throws when a person could not be told, and the bus delivers the event again (nobody is told twice); the
+send of a direct message never fails for it.
 
 ## Emails (the only writes to a third party)
 
-Two, both in Italian (`EmailTemplates.DefaultCulture`), both the direct consequence of a message somebody just wrote, never of a timer or an event:
+Three, all in Italian (`EmailTemplates.DefaultCulture`), all the direct consequence of a message somebody just wrote, never of a timer or an event:
 
 | Email | When | To | Content |
 |---|---|---|---|
-| `guest-message-to-host` | the guest sends a message | `Org.ContactEmail` | the guest's name, the property and the dates, a link to the booking on its Messaggi tab (`/app/short-rent/bookings/{id}?tab=messages`). **Never the text.** |
+| `guest-message-to-host` | the guest of a direct booking sends a message | each host the preferences select, at their own address | the guest's name, the property and the dates, a link to the booking on its Messaggi tab (`/app/short-rent/bookings/{id}?tab=messages`). **Never the text.** |
+| `host-message-received` | a guest writes on a channel | the same | the channel and the property, a link to the conversation (`/app/short-rent/messages/{threadKey}`). **Never the text, never the guest.** |
 | `host-reply-to-guest` | the host sends a message | the guest's email | the host's name and the property, a link to "Le mie prenotazioni" with the code filled in. **Never the text.** |
 
-At most **one per side every 10 minutes per thread** (`GuestMessageRules.NotifyIntervalMinutes`): the slot is claimed with one conditional
-`UPDATE` of `HostNotifiedAt` / `GuestNotifiedAt`, so two messages at the same moment queue one email, and the slot is given back if the email
-could not be queued (no address, provider off). The message is saved first: a failure of the email never loses a message. A replayed key sends
-nothing. No email goes to an anonymized guest.
+At most **one per conversation and person every 10 minutes** (`GuestMessageRules.NotifyIntervalMinutes`): to the hosts the slot is a row of
+`NotificationEmailSlots` per person and conversation, claimed with one conditional statement (an email held back by the quiet hours holds it until it
+is due, so the messages of the night are one email in the morning); to the guest it is `GuestNotifiedAt` of the thread. Two messages at the same
+moment queue one email, and the slot is given back if the email could not be queued (no address, provider off). The message is saved first: a
+failure of the email never loses a message. A replayed key sends nothing. No email goes to an anonymized guest. `GuestThread.HostNotifiedAt` is
+retired (no longer written).
+
+## Alerts and the preferences of notifications
+
+`GET` and `PUT api/me/notification-preferences` ([TECHNICAL.md](../TECHNICAL.md)): each person chooses, for each kind of event, the channels (mobile
+push, email, the counter; browser push is not available yet) and the quiet hours. A person who never chose gets the defaults of PO-10; a new
+guest message is a mobile push and the counter. `HostNotifyingPathsArchitectureTests` fails when a path that notifies a host about one of the eight
+kinds of event does not ask the service (the old paths are listed with the epic that moves them).
 
 ## Privacy
 

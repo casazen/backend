@@ -42,6 +42,11 @@ public sealed class InAppNotificationPushDecorator(
     {
         try
         {
+            // A push to one user (NF-65) is the push channel of that user's choice: the counter of the bell is another channel, which the
+            // caller delivers when the user chose it, with its own key. Writing one here would give a person who turned the counter off a row.
+            if (audience is { Kind: PushAudienceKind.User })
+                return;
+
             if (string.IsNullOrWhiteSpace(deliveryKey)
                 || deliveryKey.Length > InAppNotification.DeliveryKeyMaxLength
                 || audience is null

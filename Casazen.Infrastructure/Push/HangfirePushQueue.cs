@@ -15,6 +15,9 @@ public sealed class QueuedPush
 
     public Guid AudienceId { get; set; }
 
+    /// <summary>The user of a <see cref="PushAudienceKind.User"/> audience; <c>null</c> for the others (and for a job queued before it existed).</summary>
+    public string? AudienceUserId { get; set; }
+
     public string Title { get; set; } = string.Empty;
 
     public string Body { get; set; } = string.Empty;
@@ -27,12 +30,13 @@ public sealed class QueuedPush
 
     public Guid? ServiceRequestId { get; set; }
 
-    public PushAudience ToAudience() => new(AudienceKind, AudienceId);
+    public PushAudience ToAudience() => new(AudienceKind, AudienceId, AudienceUserId);
 
     public static QueuedPush From(PushAudience audience, PushNotificationPayload payload) => new()
     {
         AudienceKind = audience.Kind,
         AudienceId = audience.Id,
+        AudienceUserId = audience.UserId,
         Title = payload.Title,
         Body = payload.Body,
         Type = payload.Type,
@@ -63,6 +67,9 @@ public sealed class HangfirePushQueue(
             // MO-03 (A6-19): a tap must open a screen that exists in the app.
             if (!PushRoutes.IsAppRoute(payload.Route))
                 throw new ArgumentException($"Push route '{payload.Route}' is not a screen of the app.", nameof(payload));
+
+            if (audience.Kind == PushAudienceKind.User && string.IsNullOrWhiteSpace(audience.UserId))
+                throw new ArgumentException("A push to one user names the user.", nameof(audience));
 
             var push = QueuedPush.From(audience, payload);
             var jobId = backgroundJobClient.Enqueue<PushDeliveryJob>(job =>

@@ -621,6 +621,15 @@
   <data name="Push_GuestMessage_Body" xml:space="preserve">
     <value>{0}: a guest wrote to you.</value>
   </data>
+  <data name="Push_OtaMessage_Title" xml:space="preserve">
+    <value>New message from a guest</value>
+  </data>
+  <data name="Push_OtaMessage_Body" xml:space="preserve">
+    <value>{0}: a guest wrote to you on {1}.</value>
+  </data>
+  <data name="Push_OtaMessageUnassigned_Body" xml:space="preserve">
+    <value>A guest wrote to you on {0}.</value>
+  </data>
   <data name="Push_GuestCheckInCompleted_Title" xml:space="preserve">
     <value>Online check-in completed</value>
   </data>
@@ -1706,6 +1715,27 @@
   </data>
   <data name="HostReplyToGuest_Why" xml:space="preserve">
     <value>You receive this email because the host replied to you. We send at most one every 10 minutes per conversation.</value>
+  </data>
+  <data name="HostMessageReceived_Subject" xml:space="preserve">
+    <value>New message from a guest - {0}</value>
+  </data>
+  <data name="HostMessageReceived_Body" xml:space="preserve">
+    <value>&lt;strong&gt;A guest&lt;/strong&gt; wrote to you on &lt;strong&gt;{0}&lt;/strong&gt; about &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostMessageReceived_BodyUnassigned" xml:space="preserve">
+    <value>&lt;strong&gt;A guest&lt;/strong&gt; wrote to you on &lt;strong&gt;{0}&lt;/strong&gt;. The conversation is not linked to a property yet.</value>
+  </data>
+  <data name="HostMessageReceived_How" xml:space="preserve">
+    <value>To read it and reply, open the conversation in CasaZen. To protect the guest's data, the text of the message is not in this email.</value>
+  </data>
+  <data name="HostMessageReceived_Cta" xml:space="preserve">
+    <value>Read and reply</value>
+  </data>
+  <data name="HostMessageReceived_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy this link into your browser:</value>
+  </data>
+  <data name="HostMessageReceived_Why" xml:space="preserve">
+    <value>You receive this email because you chose to be told about new messages from guests. So as not to fill your inbox, we send at most one every 10 minutes per conversation. You can change your choice in the notification preferences of your profile.</value>
   </data>
   <data name="HostContact_Subject" xml:space="preserve">
     <value>New message from your booking site</value>

@@ -621,6 +621,15 @@
   <data name="Push_GuestMessage_Body" xml:space="preserve">
     <value>{0}: un ospite ti ha scritto.</value>
   </data>
+  <data name="Push_OtaMessage_Title" xml:space="preserve">
+    <value>Nuovo messaggio da un ospite</value>
+  </data>
+  <data name="Push_OtaMessage_Body" xml:space="preserve">
+    <value>{0}: un ospite ti ha scritto su {1}.</value>
+  </data>
+  <data name="Push_OtaMessageUnassigned_Body" xml:space="preserve">
+    <value>Un ospite ti ha scritto su {0}.</value>
+  </data>
   <data name="Push_GuestCheckInCompleted_Title" xml:space="preserve">
     <value>Check-in online completato</value>
   </data>
@@ -1706,6 +1715,27 @@
   </data>
   <data name="HostReplyToGuest_Why" xml:space="preserve">
     <value>Ricevi questa email perché l'host ti ha risposto. Ne inviamo al massimo una ogni 10 minuti per conversazione.</value>
+  </data>
+  <data name="HostMessageReceived_Subject" xml:space="preserve">
+    <value>Nuovo messaggio da un ospite - {0}</value>
+  </data>
+  <data name="HostMessageReceived_Body" xml:space="preserve">
+    <value>&lt;strong&gt;Un ospite&lt;/strong&gt; ti ha scritto su &lt;strong&gt;{0}&lt;/strong&gt; per &lt;strong&gt;{1}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostMessageReceived_BodyUnassigned" xml:space="preserve">
+    <value>&lt;strong&gt;Un ospite&lt;/strong&gt; ti ha scritto su &lt;strong&gt;{0}&lt;/strong&gt;. La conversazione non è ancora collegata a un alloggio.</value>
+  </data>
+  <data name="HostMessageReceived_How" xml:space="preserve">
+    <value>Per leggerlo e rispondere apri la conversazione in CasaZen. Per proteggere i dati dell'ospite, il testo del messaggio non è in questa email.</value>
+  </data>
+  <data name="HostMessageReceived_Cta" xml:space="preserve">
+    <value>Leggi e rispondi</value>
+  </data>
+  <data name="HostMessageReceived_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="HostMessageReceived_Why" xml:space="preserve">
+    <value>Ricevi questa email perché hai scelto di essere avvisato dei nuovi messaggi degli ospiti. Per non riempirti la posta, ne inviamo al massimo una ogni 10 minuti per conversazione. Puoi cambiare la scelta nelle preferenze di notifica del tuo profilo.</value>
   </data>
   <data name="HostContact_Subject" xml:space="preserve">
     <value>Nuovo messaggio dal tuo sito di prenotazione</value>
