@@ -17,7 +17,7 @@ whatever the flag says.
 | Every endpoint of `CrmController` (`api/crm/*`: the CRM profiles) and of `CampaignsController` (`api/campaigns/*`: segments, campaigns, approval, schedule, send) | The public consent, confirmation, unsubscribe and welcome endpoints (`api/public/marketing/*`: a link already sent keeps working) |
 | **The send of a campaign scheduled before**: the Hangfire job `CampaignSendJob` is the only way a campaign leaves, so it is closed with the module (§ 7) | The GDPR endpoints (`api/gdpr/*`), including the host recording a withdrawal: the legal record is saved whatever the flag and the key say (§ 3) |
 | The menu entries of the web app that open them (the frontend reads the key `crmMarketing` of `GET /api/public/features`) | The collection of contacts and consents at the check-in and at the checkout of a booking |
-| | The suppression list and the keyed index (§ 3 and § 5): they serve these paths too |
+| **The CRM sync of the bookings** (E07/F01/US02/T03: `CrmBookingEventHandler`, the job `crm-profile-sync`, the demo seed): it runs only with the flag on **and** the key set, and writes no profile and no contact otherwise ([`crm-profiles.md`](crm-profiles.md) § 4.4) | The suppression list and the keyed index (§ 3 and § 5): they serve these paths too |
 
 While the flag is off `GET /api/public/features` answers `"crmMarketing": false`.
 
@@ -26,11 +26,12 @@ While the flag is off `GET /api/public/features` answers `"crmMarketing": false`
 | Variable | Required | Default | Effect |
 |---|---|---|---|
 | `Features__CrmMarketing` | no | unset (off) | The switch of § 1. Missing or anything but `true` is off. Test: the product owner turns it on when he wants to try the module; production: leave it unset |
-| `Crm__ContactIndexKey` | to turn the flag on (startup); advised on every environment before that (§ 3) | none | The secret of the keyed index of the contacts and of the suppression list: at least 32 random characters. With the flag on, outside Development and Testing, the application **does not start** without it, and **only then**: with the flag off it starts, and the withdrawal the host records is saved without its suppression (§ 3). A key that is set and shorter than 32 characters stops the startup whatever the flag. In Development and Testing a fixed public key stands in and the log says so once |
+| `Crm__ContactIndexKey` | to turn the flag on (startup); advised before that on every environment but production (§ 3) | none | The secret of the keyed index of the contacts and of the suppression list: at least 32 random characters. With the flag on, outside Development and Testing, the application **does not start** without it, and **only then**: with the flag off it starts, and the withdrawal the host records is saved without its suppression (§ 3). A key that is set and shorter than 32 characters stops the startup whatever the flag. In Development and Testing a fixed public key stands in and the log says so once |
 | `Crm__OctorateContactsEnabled` | no | `false` | Reads the contacts of the guests from Octorate, one booking at a time (`crm-octorate-contacts.md`). The product owner turns it on once the static IP addresses are whitelisted by Octorate |
 | `Crm__BookingEngineSoftOptIn` | no | `false` | A customer of the booking engine of the agency's own site becomes a contact on soft opt-in for a confirmed booking. Turning it on is the product owner's declaration that the terms of Octorate allow it (D24) and that the privacy notice is shown at the booking (D34) |
 | `Crm__OtaForwardDomains__0`, `__1`… | no | empty | Bare host names (`guest.example.com`: no scheme, no path, no port, no address) of the relay addresses the OTAs give to their guests. An address on one of them is an OTA forward: service only, never marketing. **Empty on purpose**: no relay domain has been confirmed against the Octorate sandbox (it answers the flags `emailAvailable` and `phoneAvailable`, not the addresses). Add a domain only after seeing it in a real booking. An entry that is not a bare host name stops the startup outside Development and Testing |
 | `Crm__ConfirmationLinkValidityHours`, `Crm__ConfirmationMaxSends` | no | `72`, `3` | How long a double opt-in link works (1 to 720 hours) and how many confirmation messages one contact gets (1 to 10). Out of range: startup fails |
+| `Crm__DefaultCallingCode` | no | `+39` | The calling code a national phone number takes when the CRM normalizes it ([`crm-profiles.md`](crm-profiles.md) § 2.4): a plus sign and one to three digits. It is part of the keyed phone key, so leave it at `+39` and never change it once contacts exist. Not valid: startup fails |
 | `Gdpr__MarketingConsentVersion` | yes, to offer the marketing consent | none | Version of the text of the marketing consent ([`gdpr.md`](gdpr.md)). Without it the check-in and the checkout do not offer the consent |
 | `Gdpr__SoftOptInNoticeVersion` | for the soft opt-in | none | Version of the privacy notice shown to a direct customer (PO-07). **Introduced by the consent tasks** ([`crm-consent.md`](crm-consent.md)): the code does not read it yet |
 | `SIGNED_LINK_SECRET` | yes, to send a campaign | none | Signs the unsubscribe and confirmation links ([`email.md`](email.md)); rotating it invalidates the links already sent |
@@ -46,7 +47,9 @@ with `Suppliers__CustomerIndexKey`, [`suppliers.md`](suppliers.md) § 23).
 - **Never change it once a contact or a suppression entry exists.** Every hash already stored would stop matching: the same person would become a
   new contact, and **a person who opted out would stop being found by the suppression list and could be written to again**. There is no rotation;
   losing the key is losing the index (the legacy plain SHA-256 entries of the suppression list keep working, the keyed ones do not).
-- **Set it on every environment before turning the module on, and as soon as you can.** The startup asks for it only with the flag on: a missing
+- **Set it on every environment before turning the module on, and as soon as you can — except production, until E07/F06/US02/T01 (erasure and
+  anonymization of the CRM contacts) is delivered**: there neither the key nor the flag is set ([`crm-profiles.md`](crm-profiles.md) § 4.4,
+  [`deploy-checklist.md`](deploy-checklist.md)), and the known risk below stays open. The startup asks for it only with the flag on: a missing
   key must not stop production, where the module is off, and the legal record of a withdrawal is made whatever the flag and the key say. Without
   the key (flag off, outside Development and Testing):
   - **the withdrawal that the host records on a guest's request is saved as before**: `PUT api/gdpr/guests/{id}/consent` answers 204, with the
@@ -75,7 +78,9 @@ with `Suppliers__CustomerIndexKey`, [`suppliers.md`](suppliers.md) § 23).
 Production: leave `Features__CrmMarketing` unset until the product owner decides, after the checks of NF-95 on the test environment (the keyed
 suppression list, the signed link with its page, the GDPR export and erasure, the recipients from the per-channel consents). **Set
 `Crm__ContactIndexKey` in test and in production before turning `CrmMarketing` on** (with the flag on and no key the service does not start), and
-before that if you want the withdrawals the hosts record to enter the suppression list (§ 3).
+before that if you want the withdrawals the hosts record to enter the suppression list (§ 3). **Both rules wait for E07/F06/US02/T01** (erasure and
+anonymization of the CRM contacts): the CRM sync copies e-mail, phone, name and a keyed hash of the birth date of the bookers into tables that the
+erasure of the guests does not reach yet, so until that task is delivered production gets **neither the key nor the flag**.
 
 ## 5. Suppression (E07/F06/US01/T02)
 

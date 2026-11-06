@@ -337,6 +337,14 @@ internal static class PostgresAdvisoryLocks
         /// refused for dates another booking holds.
         /// </summary>
         OctorateReservation = 20_121,
+
+        /// <summary>
+        /// The CRM profile of one guest (key: the guest id, <c>guestId.ToString("N")</c>, E07/F01/US02/T03): the sync of the booker run by the event
+        /// handler and the one run by the job can reach the same guest, with no profile yet, at the same moment. The profile is made and the guest
+        /// linked to it one sync at a time, and the second reads the link again inside the lock and uses the profile the first made, so no profile is
+        /// left with no guest. Held only while the profile is made. The values 20_600 to 20_699 are the marketing module (epic E07).
+        /// </summary>
+        CrmGuestProfile = 20_612,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
