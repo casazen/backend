@@ -149,6 +149,30 @@ public interface IOctorateApiClient
     Task<OctorateReservation> CreateReservationAsync(OctorateBookingTarget target, OctorateReservationCreate request, CancellationToken ct);
 
     /// <summary>
+    /// The reservation as Octorate holds it now, read for the accommodation of <paramref name="target"/> (<c>GET /rest/v1/reservation/{acc}/{id}</c>,
+    /// E08/F02/US01/T02): the re-read after a change was refused with a 409, so the host sees both versions. The same read as
+    /// <see cref="GetReservationAsync(string, string, CancellationToken)"/>; 404 is <c>OctorateNotFoundException</c>.
+    /// </summary>
+    Task<OctorateReservation> GetReservationAsync(OctorateBookingTarget target, string reservationId, CancellationToken ct);
+
+    /// <summary>
+    /// Changes the reservation of a CasaZen booking (<c>PATCH /rest/v1/reservation/{acc}/{id}</c>, E08/F02/US01/T02, NF-75): the dates, the guests, the
+    /// price of the stay and the notes of <paramref name="update"/>, with the PMS room of <paramref name="target"/> as <c>pmsProduct</c> (the sandbox answers
+    /// 400 to a <c>PATCH</c> without it). A change is never written over a reservation that changed on Octorate since the version it is based on
+    /// (<see cref="OctorateReservationUpdate.BasedOnUpdateTime"/>): that, and a 409 of Octorate, are <c>OctorateConflictException</c>, and the
+    /// caller re-reads the reservation. A 2xx is not the proof (Octorate leaves out, without saying so, what it does not write): the reservation is read
+    /// again and returned, and a stay or guests that are not the ones sent are <c>OctorateRequestRejectedException</c>, never a success. A <c>PATCH</c> whose
+    /// content is what Octorate holds answers 304: done. Octorate has no idempotency key (D13) but the change is idempotent: sent again after a lost answer it
+    /// writes the same values. Any other answer is the typed error of the client.
+    /// </summary>
+    /// <returns>The reservation as Octorate holds it after the change, with its new <c>updateTime</c>.</returns>
+    Task<OctorateReservation> UpdateReservationAsync(
+        OctorateBookingTarget target,
+        string reservationId,
+        OctorateReservationUpdate update,
+        CancellationToken ct);
+
+    /// <summary>
     /// Records a payment on a reservation (<c>POST /rest/v1/reservation/{acc}/{id}/payment</c>, E08/F01/US01/T02): income CasaZen collected,
     /// "not a card charge" (D9): <c>transaction</c>, <c>paymentMode</c>, <c>amount</c> to the cent, <c>referenceTime</c>. Never a card, a
     /// pre-authorization or a scheduled charge.

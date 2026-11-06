@@ -2421,4 +2421,7 @@
   <data name="GuestBookingModified_PaymentLink" xml:space="preserve">
     <value>Il nuovo prezzo è più alto: per pagare la differenza ti arriva a parte un'email con il link di pagamento.</value>
   </data>
+  <data name="TodoReason_BookingSyncConflict" xml:space="preserve">
+    <value>La prenotazione è stata modificata nel tuo channel manager: scegli quale versione tenere</value>
+  </data>
 </root>

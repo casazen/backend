@@ -1437,6 +1437,33 @@ the edit**, under the property and booking locks of `HostBookingService`.
   notes) when the dates or the guests of a booking of the booking site changed; a failed email is logged and never undoes the edit. `BookingModified` is recorded
   once, by this save (E08/F06/US01/T01), with `Origin = Host`.
 
+##### Pushing an edit to Octorate (E08/F02/US01/T02, NF-75)
+
+**CasaZen first, Octorate after**, like the cancellation. `OctorateBookingUpdateHandler` (consumer of `BookingModified`, behind `Features:OctorateConnector`)
+calls `IBookingOctorateSyncService.PushUpdateAsync`, which writes the dates, the guests, the price of the stay (`roomGross` = `BasePrice`, tourist tax is Octorate's own)
+and the notes (`privateNotes`) to the reservation. It sends nothing for an event with `Origin = Octorate` (a change that came from the channel manager is never
+pushed back), for a booking of a channel, for a booking that is not confirmed or in the house, and for a reservation that came from Octorate (no row of ours).
+
+- *The state the host sees* is the `OctorateBookingSync` row (`LastOperation = Update`) under the session lock `OctorateBookingSync` of the booking: `Pending` before
+  the call, then `Synced` with the `updateTime` Octorate holds afterwards (also on `Booking.OctorateUpdatedAt`). The target is `IOctorateBookingTargets.LookupAsync`
+  (never a property whose mapping is write-blocked): a property that is not mirrored now is not written to, and the row is `Failed` `octorate_not_mirrored`, so the
+  change is not consumed with no trace and the host asks again once the mapping is back. A booking with no reservation yet whose create is under way, or still waiting
+  in the outbox, throws `OctorateSyncPendingException`: the event is delivered again after the create (events arrive out of order).
+- *The client.* `IOctorateApiClient.UpdateReservationAsync(target, id, update)` is `PATCH /rest/v1/reservation/{acc}/{id}` with the members above and the PMS room as
+  `pmsProduct` (the sandbox answers 400 without it); a 304 is done. It compares first the version CasaZen based the change on with the one Octorate holds
+  (`OctorateReservationUpdate.BasedOnUpdateTime`): another version is a conflict, as if Octorate had answered 409 (its own 409 is mapped alike), and nothing is
+  written. After the `PATCH` the reservation is read again and returned: a stay or guests that are not the ones sent are `OctorateRequestRejectedException`, never a
+  success. `GetReservationAsync(target, id)` is the re-read after a 409. **Not proven on the sandbox yet** (which answer Octorate gives to a change over a newer
+  version; the price on a `PATCH`): check them, and the channels, before opening the flag.
+- *Conflict.* A 409 re-reads the reservation, keeps its dates and guests on the row (`OctorateVersionJson`, read by the booking answer in the `Conflict` state) and its
+  `updateTime`, sets `Conflict` with `octorate_reservation_changed` and raises one «To do» on the booking (`ActivityType.BookingSyncConflict`, action `ReviewBooking`).
+  Neither version is lost and nothing is sent again by itself. A plain retry is based on the version CasaZen last saw, so it conflicts again; «keep mine»
+  (`POST /api/bookings/{id}/octorate-sync/retry?overwrite=true`, carried by `OctorateSyncRequested` as `Overwrite`) and an edit made after the conflict was
+  recorded («take theirs») are based on the version the host was shown, so they write over exactly that one and never over a newer one. On `Synced` the
+  conflict is over and its «To do» closed.
+- *Failures.* Another refusal (4xx): `Failed` `octorate_rejected`, not retried. No answer, 429 or 5xx: `Failed` `octorate_unavailable` and the exception propagates, so
+  the dispatcher delivers the event again (the change is idempotent: the same values are written).
+
 #### Marketplace (epic E09, NF-54 to NF-59)
 
 One catalog of five groups and the Active tab, read from CasaZen's own database: nothing here calls Octorate while a page loads (the portals are the
