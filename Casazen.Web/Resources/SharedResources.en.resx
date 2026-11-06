@@ -1390,6 +1390,21 @@
   <data name="CheckInDocumentNumberInvalid" xml:space="preserve">
     <value>The document number may contain only letters and digits, at most {0}.</value>
   </data>
+  <data name="CheckInDocumentIssuedOnInvalid" xml:space="preserve">
+    <value>The issue date of the document cannot be in the future or before 1900.</value>
+  </data>
+  <data name="CheckInDocumentExpiresBeforeIssue" xml:space="preserve">
+    <value>The expiry date of the document cannot be before its issue date.</value>
+  </data>
+  <data name="CheckInStatisticalValueInvalid" xml:space="preserve">
+    <value>The value chosen is not one of the allowed ones.</value>
+  </data>
+  <data name="CheckInLanguageUnsupported" xml:space="preserve">
+    <value>This language is not available for the check-in.</value>
+  </data>
+  <data name="CheckInTaxExemptionInvalid" xml:space="preserve">
+    <value>This tourist tax exemption reason cannot be chosen.</value>
+  </data>
   <data name="CheckInDocumentProcessingFailed" xml:space="preserve">
     <value>Document processing failed. Please try again or enter the data manually.</value>
   </data>
@@ -4247,6 +4262,9 @@
   <data name="OctorateAuthFailed" xml:space="preserve">
     <value>The channel manager refused CasaZen's access. Try again later; if it happens again, connect the account again.</value>
   </data>
+  <data name="OctorateSensitiveDataNotAllowed" xml:space="preserve">
+    <value>The channel manager did not give the contact details of the guests: this data is only released to the registered CasaZen server addresses and with a dedicated permission, which are not active yet.</value>
+  </data>
   <data name="OctorateUnavailable" xml:space="preserve">
     <value>The channel manager is not answering right now. Try again in a few minutes.</value>
   </data>
@@ -4722,6 +4740,57 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.rateChecker" xml:space="preserve">
     <value>Checks that your prices are consistent on every channel and flags the differences.</value>
   </data>
+  <data name="TouristTaxNotCalculable" xml:space="preserve">
+    <value>The tourist tax of this stay cannot be calculated yet: the rate, the age of a guest, the category or the price per night is missing.</value>
+  </data>
+  <data name="TouristTaxExemptionUnknown" xml:space="preserve">
+    <value>This tourist tax exemption reason cannot be chosen.</value>
+  </data>
+  <data name="TouristTaxGuestUnknown" xml:space="preserve">
+    <value>This guest is not one of the registered guests of the stay.</value>
+  </data>
+  <data name="TouristTaxCollectorNotApplicable" xml:space="preserve">
+    <value>Who collects the tax of this stay is already known: there is nothing to declare.</value>
+  </data>
+  <data name="TouristTaxRateOfficialExists" xml:space="preserve">
+    <value>This comune already has an official rate in force: that one applies.</value>
+  </data>
+  <data name="TouristTaxRateSourceRequired" xml:space="preserve">
+    <value>Say where the amount comes from (the resolution, the comune's page or its tax office).</value>
+  </data>
+  <data name="TouristTaxRateInvalid" xml:space="preserve">
+    <value>The rate is not valid: an amount from 0.01 to 50 euros, at least one night, an age from 0 to 18 and a season with a start and an end.</value>
+  </data>
+  <data name="TouristTaxConfirmConflict" xml:space="preserve">
+    <value>The tourist tax was updated at the same moment by another request. Reload and try again.</value>
+  </data>
+  <data name="TouristTaxRuleSourceInvalid" xml:space="preserve">
+    <value>The source of the rule must be a full https address.</value>
+  </data>
+  <data name="TouristTaxExemptionReasonNotFound" xml:space="preserve">
+    <value>Exemption reason not found.</value>
+  </data>
+  <data name="TouristTaxFieldRequired" xml:space="preserve">
+    <value>Required field.</value>
+  </data>
+  <data name="TouristTaxFieldMaxLength" xml:space="preserve">
+    <value>Enter at most {1} characters.</value>
+  </data>
+  <data name="TouristTaxFieldInvalid" xml:space="preserve">
+    <value>Invalid value.</value>
+  </data>
+  <data name="CheckInNotReady" xml:space="preserve">
+    <value>The check-in cannot be confirmed yet: complete the data shown.</value>
+  </data>
+  <data name="BookingNoShowNotConfirmed" xml:space="preserve">
+    <value>A no-show can be marked only for a confirmed booking whose arrival was not registered.</value>
+  </data>
+  <data name="BookingNoShowTooEarly" xml:space="preserve">
+    <value>A no-show can be marked from the check-in day.</value>
+  </data>
+  <data name="BookingNoShowAlloggiatiSent" xml:space="preserve">
+    <value>The police communication of this stay was already sent: correct it on the Alloggiati Web portal.</value>
+  </data>
   <data name="OnboardingFlowUnknown" xml:space="preserve">
     <value>Unknown activation flow.</value>
   </data>
@@ -4823,5 +4892,50 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="OctorateSyncLinkedElsewhere" xml:space="preserve">
     <value>The booking exists in the channel manager, but CasaZen already links it to another booking: check whether it is a duplicate.</value>
+  </data>
+  <data name="OctorateSyncNotMirrored" xml:space="preserve">
+    <value>The property is not linked to the channel manager right now (the connection was lost or the mapping is still to be confirmed): the cancellation was not sent. Reconnect or confirm the mapping, then try again.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceDefault" xml:space="preserve">
+    <value>To change this booking, ask the guest to request the change on the channel they booked through.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceAirbnb" xml:space="preserve">
+    <value>To change this Airbnb booking, ask the guest to request the change on Airbnb.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceBookingCom" xml:space="preserve">
+    <value>On Booking.com the guest changes the dates from the app or the extranet: ask the guest to do it there.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceExpedia" xml:space="preserve">
+    <value>To change this Expedia booking, ask the guest to request the change on Expedia.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceVrbo" xml:space="preserve">
+    <value>To change this Vrbo booking, ask the guest to request the change on Vrbo.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceTripAdvisor" xml:space="preserve">
+    <value>To change this Tripadvisor booking, ask the guest to request the change on Tripadvisor.</value>
+  </data>
+  <data name="OtaChannelModifyGuidanceAgoda" xml:space="preserve">
+    <value>To change this Agoda booking, ask the guest to request the change on Agoda.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceDefault" xml:space="preserve">
+    <value>To cancel this booking, ask the guest to cancel it on the channel they booked through.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceAirbnb" xml:space="preserve">
+    <value>To cancel this Airbnb booking, ask the guest to cancel it on Airbnb.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceBookingCom" xml:space="preserve">
+    <value>To cancel this Booking.com booking, ask the guest to cancel it on Booking.com.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceExpedia" xml:space="preserve">
+    <value>To cancel this Expedia booking, ask the guest to cancel it on Expedia.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceVrbo" xml:space="preserve">
+    <value>To cancel this Vrbo booking, ask the guest to cancel it on Vrbo.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceTripAdvisor" xml:space="preserve">
+    <value>To cancel this Tripadvisor booking, ask the guest to cancel it on Tripadvisor.</value>
+  </data>
+  <data name="OtaChannelCancelGuidanceAgoda" xml:space="preserve">
+    <value>To cancel this Agoda booking, ask the guest to cancel it on Agoda.</value>
   </data>
 </root>

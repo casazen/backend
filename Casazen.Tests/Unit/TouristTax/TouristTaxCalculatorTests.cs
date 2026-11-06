@@ -2,7 +2,12 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
+using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Data.Seeds;
+using Casazen.Infrastructure.Repositories;
+using Casazen.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Casazen.Tests.Unit.TouristTax;
@@ -383,4 +388,188 @@ public class TouristTaxCalculatorTests
 
         Assert.Equal(DateOnly.Parse(expected), RomeCalendar.DateInRome(instant));
     }
+
+    // ─── Per-guest tax (NF-46, ADR-037-R1, R2, R5): the proofs of the money and permission rules ─────────────────────────────
+
+    /// <summary>The same stay guest by guest: adults at 40 (any adult age taxes like 18), the minors at their ages.</summary>
+    private static TouristTaxGuestStay PerGuest(TouristTaxStay stay, params (int Position, string Code)[] hostExemptions)
+    {
+        var guests = Enumerable.Range(0, stay.Adults)
+            .Select(position => new TouristTaxGuest(position, 40))
+            .Concat((stay.ChildrenAges ?? []).Select((age, index) => new TouristTaxGuest(stay.Adults + index, age)))
+            .Select(guest => hostExemptions.Any(e => e.Position == guest.Position)
+                ? guest with { HostExemptionCode = hostExemptions.First(e => e.Position == guest.Position).Code }
+                : guest)
+            .ToList();
+        return new TouristTaxGuestStay(
+            stay.CheckIn,
+            stay.CheckOut,
+            guests,
+            stay.AccommodationCategory,
+            stay.NightlyPrice,
+            stay.NightlyPrices);
+    }
+
+    [Fact]
+    public void TouristTax_PerGuestTotalEqualsStayTotal_Test()
+    {
+        var cases = new (IReadOnlyList<TouristTaxRate> Rates, TouristTaxStay Stay)[]
+        {
+            // Seasons and the reduced band: Venezia Gruppo 1 across the change of season, minors of 9 (exempt), 10 (reduced) and 17.
+            (Venezia(), Stay("2027-01-30", nights: 3, adults: 2, childrenAges: [9, 10, 17], category: VeneziaGruppo1)),
+            // Cap: Firenze taxes 7 of 10 nights; a minor of 11 is exempt, one of 12 pays.
+            ([Seeded("Firenze")], Stay("2026-10-01", nights: 10, adults: 1, childrenAges: [11, 12])),
+            // Age: Milano exempts every minor.
+            ([Seeded("Milano")], Stay("2026-10-10", nights: 2, adults: 2, childrenAges: [3, 17])),
+            // Percentage: divided by all the guests, the exempt minor included.
+            ([BolognaLikePercentage()], Stay("2026-10-10", nights: 2, adults: 2, childrenAges: [5], nightlyPrice: 95m)),
+        };
+
+        foreach (var (rates, stay) in cases)
+        {
+            var quote = TouristTaxCalculator.Calculate(rates, stay);
+            var breakdown = TouristTaxCalculator.CalculatePerGuest(rates, PerGuest(stay));
+
+            Assert.Equal(TouristTaxQuoteStatus.Calculated, quote.Status);
+            Assert.Equal(quote.Status, breakdown.Status);
+            Assert.Equal(quote.Amount, breakdown.Total);
+            Assert.Equal(quote.Amount, breakdown.Guests.Sum(g => g.Amount));
+            Assert.Equal(quote.TaxableNights, breakdown.TaxableNights);
+            Assert.All(breakdown.Guests, g => Assert.Equal(g.Amount, g.Nights.Sum(n => n.Amount)));
+        }
+    }
+
+    [Fact]
+    public void TouristTax_ExemptMinorAndHostExemption_ZeroOnlyThoseGuests_Test()
+    {
+        // Firenze 6,00 € from the 12th birthday, 3 nights: an adult, an adult the host exempted as resident, a minor of 8, a minor of 15.
+        var stay = Stay("2026-10-10", nights: 3, adults: 2, childrenAges: [8, 15]);
+
+        var breakdown = TouristTaxCalculator.CalculatePerGuest(
+            [Seeded("Firenze")],
+            PerGuest(stay, (1, TouristTaxExemptionReason.ResidentCode)));
+
+        Assert.Equal(TouristTaxQuoteStatus.Calculated, breakdown.Status);
+        var guests = breakdown.Guests.ToDictionary(g => g.Position);
+        Assert.Equal(18.00m, guests[0].Amount);
+        Assert.Equal(TouristTaxExemptionKind.None, guests[0].ExemptionKind);
+        Assert.Null(guests[0].ExemptionCode);
+        Assert.Equal(0m, guests[1].Amount);
+        Assert.Equal(TouristTaxExemptionKind.Host, guests[1].ExemptionKind);
+        Assert.Equal(TouristTaxExemptionReason.ResidentCode, guests[1].ExemptionCode);
+        Assert.Equal(0, guests[1].TaxableNights);
+        Assert.Equal(0m, guests[2].Amount);
+        Assert.Equal(TouristTaxExemptionKind.Age, guests[2].ExemptionKind);
+        Assert.Equal(TouristTaxExemptionReason.MinorAgeCode, guests[2].ExemptionCode);
+        Assert.Equal(18.00m, guests[3].Amount);
+        Assert.Equal(3, guests[3].TaxableNights);
+
+        // The others keep exactly what they pay without the host exemption: the stay total minus the resident's share only.
+        var withoutExemption = TouristTaxCalculator.Calculate([Seeded("Firenze")], stay);
+        Assert.Equal(withoutExemption.Amount - 18.00m, breakdown.Total);
+        Assert.Equal(36.00m, breakdown.Total);
+    }
+
+    [Fact]
+    public void TouristTax_NightCapPerGuest_Test()
+    {
+        // Firenze: max 7 nights. 10 nights, two adults: every guest pays 7 x 6,00 and nothing from the 8th night.
+        var breakdown = TouristTaxCalculator.CalculatePerGuest(
+            [Seeded("Firenze")],
+            PerGuest(Stay("2026-10-01", nights: 10, adults: 2)));
+
+        Assert.Equal(7, breakdown.TaxableNights);
+        Assert.Equal(84.00m, breakdown.Total);
+        Assert.All(breakdown.Guests, guest =>
+        {
+            Assert.Equal(42.00m, guest.Amount);
+            Assert.Equal(7, guest.TaxableNights);
+            Assert.Equal(10, guest.Nights.Count);
+            Assert.All(guest.Nights.Take(7), night => Assert.Equal(6.00m, night.Amount));
+            Assert.All(guest.Nights.Skip(7), night => Assert.Equal(0m, night.Amount));
+        });
+    }
+
+    [Fact]
+    public async Task TouristTax_OfficialRateAlwaysWinsOverOrgRate_Test()
+    {
+        await using var db = CreateContext();
+        var orgId = Guid.NewGuid();
+        var como = Seeded("Como");
+        db.TouristTaxRates.Add(como);
+        db.OrgTouristTaxRates.Add(DeclaredRate(orgId, como.IstatCode, "Como", 9.99m));
+        await db.SaveChangesAsync();
+        var service = QuoteService(db);
+
+        var breakdown = await service.QuoteGuestsAsync(
+            new TouristTaxComune(como.IstatCode, "Como"),
+            PerGuest(Stay("2026-10-10", nights: 3, adults: 2)),
+            orgId);
+
+        // Como's official 3,00 € applies, never the 9,99 € the org declared.
+        Assert.Equal(TouristTaxQuoteStatus.Calculated, breakdown.Status);
+        Assert.Equal(18.00m, breakdown.Total);
+        Assert.All(breakdown.AppliedRates, rate => Assert.NotEqual(OrgTouristTaxRate.HostAuthority, rate.SourceAuthority));
+
+        // An official rate in force out of its season still is not replaced: the stay stays without a rate, never at the declared amount.
+        var seasonal = Seeded("Napoli");
+        seasonal.Id = Guid.NewGuid();
+        seasonal.SeasonStart = "06-01";
+        seasonal.SeasonEnd = "08-31";
+        db.TouristTaxRates.Add(seasonal);
+        db.OrgTouristTaxRates.Add(DeclaredRate(orgId, seasonal.IstatCode, "Napoli", 9.99m));
+        await db.SaveChangesAsync();
+
+        var outOfSeason = await service.QuoteGuestsAsync(
+            new TouristTaxComune(seasonal.IstatCode, "Napoli"),
+            PerGuest(Stay("2026-10-10", nights: 2, adults: 1)),
+            orgId);
+
+        Assert.Equal(TouristTaxQuoteStatus.RateUnavailable, outOfSeason.Status);
+        Assert.Null(outOfSeason.Total);
+    }
+
+    [Fact]
+    public async Task TouristTax_OrgRateNeverReadForAnotherOrg_Test()
+    {
+        await using var db = CreateContext();
+        var orgA = Guid.NewGuid();
+        var orgB = Guid.NewGuid();
+        // Seveso has no official rate (TouristTaxRateSeed): only org A declared one.
+        db.OrgTouristTaxRates.Add(DeclaredRate(orgA, "108040", "Seveso", 2.00m));
+        await db.SaveChangesAsync();
+        var service = QuoteService(db);
+        var comune = new TouristTaxComune("108040", "Seveso");
+        var stay = PerGuest(Stay("2026-10-10", nights: 2, adults: 2));
+
+        var forB = await service.QuoteGuestsAsync(comune, stay, orgB);
+        var forNobody = await service.QuoteGuestsAsync(comune, stay, orgId: null);
+        var forA = await service.QuoteGuestsAsync(comune, stay, orgA);
+
+        Assert.Equal(TouristTaxQuoteStatus.RateUnavailable, forB.Status);
+        Assert.Null(forB.Total);
+        Assert.Empty(forB.AppliedRates);
+        Assert.Equal(TouristTaxQuoteStatus.RateUnavailable, forNobody.Status);
+        Assert.Equal(TouristTaxQuoteStatus.Calculated, forA.Status);
+        Assert.Equal(8.00m, forA.Total);
+        Assert.All(forA.AppliedRates, rate => Assert.Equal(OrgTouristTaxRate.HostAuthority, rate.SourceAuthority));
+    }
+
+    private static OrgTouristTaxRate DeclaredRate(Guid orgId, string? istatCode, string city, decimal amount) => new()
+    {
+        OrgId = orgId,
+        IstatCode = istatCode,
+        City = city,
+        RatePerPersonPerNight = amount,
+        MinimumAge = 14,
+        EffectiveFrom = new DateOnly(2026, 1, 1),
+        SourceNote = "Delibera di test del comune",
+        EnteredByUserId = "auth0|host",
+    };
+
+    private static TouristTaxQuoteService QuoteService(AppDbContext db) =>
+        new(new TouristTaxRateRepository(db), NullLogger<TouristTaxQuoteService>.Instance, db);
+
+    private static AppDbContext CreateContext() =>
+        new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
 }

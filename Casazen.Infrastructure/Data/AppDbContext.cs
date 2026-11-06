@@ -336,6 +336,10 @@ public class AppDbContext(
     // The mirror of the CasaZen bookings on Octorate: the state of the last operation sent for each booking (E08/F01/US01/T01, ADR-031)
     public DbSet<OctorateBookingSync> OctorateBookingSyncs { get; set; } = null!;
 
+    // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
+    public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
+    public DbSet<OctorateStayStateSync> OctorateStayStateSyncs { get; set; } = null!;
+
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
@@ -370,6 +374,14 @@ public class AppDbContext(
 
     // The tourist tax a host paid to a comune and the receipt of the payment: the «paid» half of the summary per comune (NF-100, REP-05)
     public DbSet<TouristTaxRemittance> TouristTaxRemittances { get; set; } = null!;
+
+    // The tourist tax per guest (NF-46, ADR-037, E03/F01/US07/T01): the exemption reasons and the channel rules (platform reference data),
+    // the rate a host declares for a comune with no official one and the confirmed tax of a stay (tenant-owned; its lines are reached only
+    // through it)
+    public DbSet<TouristTaxExemptionReason> TouristTaxExemptionReasons { get; set; } = null!;
+    public DbSet<TouristTaxChannelRule> TouristTaxChannelRules { get; set; } = null!;
+    public DbSet<OrgTouristTaxRate> OrgTouristTaxRates { get; set; } = null!;
+    public DbSet<StayTouristTax> StayTouristTaxes { get; set; } = null!;
 
     // The marketplace (E09/F01, NF-54): the portal catalog cached from Octorate, the partners the platform admin curates with their texts
     // (platform data, no tenant), and what each org has activated (tenant-owned)
@@ -1717,6 +1729,12 @@ public class AppDbContext(
             .HasFilter("\"OctorateTransactionId\" IS NOT NULL")
             .HasDatabaseName(Payment.OctorateTransactionIndexName);
 
+        // ─── Check-in to Octorate (NF-41, NF-45, E03/F01/US01/T03) ───────────────
+        // The guests sent (one per booking and position) and the states of a stay (one per booking and state); the tenant query filter is
+        // applied below, to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new StayGuestOctorateLinkConfiguration());
+        modelBuilder.ApplyConfiguration(new OctorateStayStateSyncConfiguration());
+
         // ─── Internal activities: the staff work (NF-22) and the "To do" list (ADR-026) ───
         // An organization-level To do has no property, so the property is optional; deleting a property still deletes its
         // activities, as when it was required. The action is stored by name (the members are appended by later tasks).
@@ -1784,6 +1802,15 @@ public class AppDbContext(
                 t.HasCheckConstraint("CK_TouristTaxRemittances_PeriodOrder", "\"PeriodFrom\" <= \"PeriodTo\"");
             });
         });
+
+        // ─── Tourist tax per guest (NF-46, ADR-037) ──────────────────────────────
+        // Reference data (exemption reasons, seeded; channel rules, never seeded), the host-declared rates and the confirmed stay record with
+        // its lines. The tenant query filter is applied below, to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new TouristTaxExemptionReasonConfiguration());
+        modelBuilder.ApplyConfiguration(new TouristTaxChannelRuleConfiguration());
+        modelBuilder.ApplyConfiguration(new OrgTouristTaxRateConfiguration());
+        modelBuilder.ApplyConfiguration(new StayTouristTaxConfiguration());
+        modelBuilder.ApplyConfiguration(new StayTouristTaxGuestConfiguration());
 
         // ─── Marketplace (E09/F01, NF-54, NF-56, NF-57, NF-59) ───────────────────
         // The portals of the channel manager are platform data refreshed once a day, unique by the code Octorate gives them.

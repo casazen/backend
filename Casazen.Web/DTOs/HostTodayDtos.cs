@@ -95,7 +95,8 @@ public sealed class HostTodayStayDto
     public HostTodayCheckInDto? CheckIn { get; init; }
 
     /// <summary>
-    /// Where the Alloggiati Web communication stands and, until it is sent, its legal term (SR-03b); <c>null</c> for a departure.
+    /// Where the Alloggiati Web communication stands and, until it is sent, its legal term (SR-03b); <c>null</c> for a departure and for a
+    /// no-show, which owes no communication (NF-45).
     /// </summary>
     public HostTodayAlloggiatiDto? Alloggiati { get; init; }
 

@@ -59,6 +59,16 @@ public interface IStayLifecycleService
     /// <see cref="BookingErrorCodes.CheckoutNotCompleted"/> while the stay is not checked out.
     /// </summary>
     Task<StayCheckout> ConfirmPropertyReadyAsync(Guid bookingId, string? notes, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The guests never came (NF-45, E03/F01/US01/T04): sets <see cref="Booking.NoShowAt"/>; the status stays
+    /// <see cref="BookingStatus.Confirmed"/> and no bus event is recorded. Only a confirmed booking (409
+    /// <see cref="BookingErrorCodes.NotConfirmed"/>), from its check-in day in Europe/Rome (422 <c>no_show_too_early</c>), never once the police
+    /// communication went (an Alloggiati attempt sending or accepted, or a report sent or declared sent: 409 <c>no_show_alloggiati_sent</c>).
+    /// Idempotent: a stay already marked keeps its mark and nothing is queued again. A booking on Octorate gets <c>NO_SHOW</c> after the
+    /// commit (<c>OctorateStayStateJob</c>). A late arrival registered afterwards clears the mark.
+    /// </summary>
+    Task<Booking> MarkNoShowAsync(Guid bookingId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Outcome of the arrival registration.</summary>

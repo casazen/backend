@@ -62,7 +62,8 @@ public static class StayLifecycleRules
     /// <summary>
     /// Check-outs due, for the compliance cockpit (<c>checkoutsDue</c>): the departures of today (confirmed or checked
     /// in), and the checked-in stays whose departure day has passed without a check-out. Confirmed bookings of past days
-    /// are not listed: until CO-08 no arrival could be registered from the apps, so every past stay is still confirmed.
+    /// are not listed: until CO-08 no arrival could be registered from the apps, so every past stay is still confirmed. A no-show
+    /// (NF-45: the guests never came) has no departure to close and is not listed either.
     /// Translatable by EF (date-only values compared with the bounds of the day).
     /// </summary>
     public static Expression<Func<Booking, bool>> CheckOutDue(DateTime todayInRome)
@@ -70,7 +71,7 @@ public static class StayLifecycleRules
         var today = todayInRome.Date;
         var tomorrow = today.AddDays(1);
         return b => (b.Status == BookingStatus.CheckedIn && b.CheckOutDate < tomorrow)
-            || (b.Status == BookingStatus.Confirmed && b.CheckOutDate >= today && b.CheckOutDate < tomorrow);
+            || (b.Status == BookingStatus.Confirmed && b.NoShowAt == null && b.CheckOutDate >= today && b.CheckOutDate < tomorrow);
     }
 
     private static DomainRuleException ArrivalTooEarly(Booking booking) =>

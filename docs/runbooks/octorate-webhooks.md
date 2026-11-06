@@ -104,6 +104,18 @@ logged.
 `SyncBookingStateAsync` (`CHECKIN_END` / `CHECKOUT_END`); a booking with no Octorate reservation queues nothing. The job is tried three
 times (after 1, 5 and 15 minutes) and then stays failed in the Hangfire dashboard; the check-out itself is already saved.
 
+**Cancellation (E08/F02/US02).** A booking CasaZen holds (a direct one, one the host entered) that is cancelled in CasaZen is cancelled on
+Octorate after it: `OctorateBookingCancelHandler` (consumer of `BookingCancelled`, under the session lock `OctorateBookingSync` of the
+booking) marks its row `Pending`, cancels the reservation (`PUT` with the status `CANCELLED`, read again to check it, `DELETE` when Octorate refuses that way or leaves the reservation alive) and
+marks it `Synced`; no answer, 429 or 5xx leave it `Failed` and the dispatcher delivers the event again. The `RESERVATION_CANCELLED`
+notification that follows is the echo of that write: the import finds the booking cancelled and changes nothing. A cancellation that came
+from Octorate (`Origin = Octorate`) is never sent back. A property that is not mirrored now (connection lost, mapping still to decide) is never
+written to, and the row is `Failed` `octorate_not_mirrored`: reconnect or confirm the mapping, then ask again from the booking (`POST
+/api/bookings/{id}/octorate-sync/retry`). A booking that has no reservation yet but whose create was tried (Octorate may have made it and lost the
+answer) is looked up by its booking code: found, it is linked and cancelled. A booking of a channel goes the other way round: `POST /api/bookings/{id}/cancel`
+asks Octorate first and cancels in CasaZen only when it confirms, on a channel the configuration opens (`Octorate__ChannelActions__*`,
+closed by default); see [TECHNICAL.md](../TECHNICAL.md) § «Changing and cancelling a booking».
+
 ### 4c. The chat handler and the passes that back it (E05/F01/US01/T03)
 
 `ChatMessageReceivedHandler` handles `CHAT_MESSAGE_RECEIVED` only (in its own scope under the org of the event, off with

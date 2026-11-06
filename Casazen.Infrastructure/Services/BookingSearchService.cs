@@ -302,8 +302,8 @@ public sealed class BookingSearchService(
             booking =>
             {
                 var facts = payments[booking.Id].ToList();
-                // A communication exists for a stay that is confirmed; a request, a hold or a cancelled booking has none.
-                AlloggiatiWebStatus? alloggiati = booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut
+                // A communication exists for a stay that is confirmed; a request, a hold, a cancelled booking or a no-show (NF-45) has none.
+                AlloggiatiWebStatus? alloggiati = AlloggiatiStatusRules.IsDue(booking)
                     ? AlloggiatiStatusRules.Effective(
                         AlloggiatiStatusRules.SlotReport(reports[booking.Id].ToList(), booking.GuestId)?.Status,
                         booking.CheckInDate,

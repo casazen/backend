@@ -22,6 +22,7 @@ CasaZen still transmits nothing, so it now says so.
 | `InviatoManualmente` (6) | The host declared the date he sent it on the portal. CasaZen holds no receipt | `POST /api/alloggiati/{id}/mark-sent-manually` |
 | `Inviato` (2) | Transmitted, with the real receipt | the future web service client only (not implemented). Database check `CK_AlloggiatiWebReports_SentRequiresReceipt` refuses it without `ConfirmationNumber` |
 | `Rifiutato` (5), `Errore` (3) | Rejected by the portal, technical error | the future web service client only |
+| `NotDue` (11) | Nothing is due: the stay is a no-show (`Bookings.NoShowAt`, NF-45), the guests never came | **Derived** by `AlloggiatiStatusRules.Effective` for the status and the guest summary of the booking, never stored. The list, the job, the alerts, the cockpit, the Home and the booking list leave a no-show out; a communication sent or declared sent anyway stays visible |
 | 1 (old `Submitted`) | Retired | Never |
 
 - **Scheduling.** `AlloggiatiReportScheduler` schedules `AlloggiatiWebReportJob` with Hangfire `Schedule` at the start

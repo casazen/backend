@@ -356,6 +356,25 @@ public sealed record OctorateReservation
 
     public string? LastName { get; init; }
 
+    /// <summary>Longest <see cref="GuestId"/> CasaZen keeps: the limit of every id of a call to Octorate.</summary>
+    public const int GuestIdMaxLength = 64;
+
+    /// <summary>
+    /// The id of the first guest of the reservation in the guest registry of the accommodation (<c>guests[0].id</c>, E07/F06/US02/T02): the
+    /// key of the contact read (<see cref="IOctorateApiClient.GetGuestContactInfoAsync"/>). <c>null</c> when the answer names none. Which member
+    /// of the guest holds the id is not proven by the sandbox (it answers flags, not contacts): to confirm when the contact read is possible.
+    /// </summary>
+    public string? GuestId { get; init; }
+
+    /// <summary>
+    /// Octorate holds an e-mail address for the first guest (<c>emailAvailable</c>): a flag, the address itself is not in the answer. <c>null</c>
+    /// when the answer does not say.
+    /// </summary>
+    public bool? GuestEmailAvailable { get; init; }
+
+    /// <summary>Octorate holds a phone number for the first guest (<c>phoneAvailable</c>): a flag. <c>null</c> when the answer does not say.</summary>
+    public bool? GuestPhoneAvailable { get; init; }
+
     /// <summary>The e-mail of the guest, only when the answer carries one (it normally does not).</summary>
     public string? GuestEmail { get; init; }
 
@@ -403,6 +422,120 @@ public sealed record OctorateReservation
             return lines.Count == 0 ? null : lines.Sum(l => l.Amount!.Value);
         }
     }
+}
+
+/// <summary>
+/// One guest of a reservation to create or update on Octorate (E03/F01/US01/T03, NF-41): data fields only. There is no member that can carry an
+/// image, a stream or bytes, so no document photo can ever be sent (AC-NF41-4 holds at compile time). The values are the ones of the Alloggiati
+/// record CasaZen keeps (<c>StayGuest</c>): the police code of the document type, the birth and residence places as names (Octorate accepts a
+/// complete guest only with names it recognizes). Never logged.
+/// </summary>
+/// <remarks>
+/// The member names of the body are the ones of the guest example of Octorate the sandbox accepted on 2026-11-04 (<c>familyName</c>,
+/// <c>givenName</c>, <c>accommodatedType</c>, <c>birthDate</c>, <c>birthCountry</c>, <c>birthCity</c>, <c>residenceCountry</c>, <c>city</c>,
+/// <c>citizenship</c>, <c>documentType</c>, <c>documentCode</c>, <c>documentIssuePlace</c>, <c>documentIssueDate</c>, <c>documentExpire</c>,
+/// <c>sex</c>, <c>draft</c>); the tax members (<c>cityTaxPrice</c>, <c>cityTaxExemption</c>, <c>excludeCityTax</c>) were accepted and not read
+/// back (Q-004).
+/// </remarks>
+public sealed record OctorateCheckInGuestUpsert
+{
+    /// <summary>The position of the guest in the stay (CasaZen's key of the guest; not sent).</summary>
+    public required int Position { get; init; }
+
+    /// <summary>The id of the guest on Octorate: null creates it, a value updates it.</summary>
+    public string? OctorateGuestId { get; init; }
+
+    /// <summary>
+    /// <c>false</c> only when the channel manager is the sender of the property (Octorate transmits to the police); <c>true</c> otherwise. The
+    /// sandbox ignores it (the guest is read back with <c>draft = false</c>).
+    /// </summary>
+    public required bool Draft { get; init; }
+
+    /// <summary>The kind of guest of the Alloggiati record as Octorate names it (<c>SINGLE_GUEST</c>, ...).</summary>
+    public required string AccommodatedType { get; init; }
+
+    public required string FamilyName { get; init; }
+    public required string GivenName { get; init; }
+
+    /// <summary><c>MALE</c> or <c>FEMALE</c>; null when not known.</summary>
+    public string? Sex { get; init; }
+
+    public DateOnly? BirthDate { get; init; }
+
+    /// <summary><c>IT</c> for a guest born in Italy, otherwise the state of birth as entered.</summary>
+    public string? BirthCountry { get; init; }
+
+    /// <summary>The comune of birth (Italy) as its name.</summary>
+    public string? BirthCity { get; init; }
+
+    /// <summary><c>IT</c> for an Italian citizen, otherwise the citizenship as entered.</summary>
+    public string? Citizenship { get; init; }
+
+    /// <summary><c>IT</c> for a guest living in Italy, otherwise the state of residence as entered.</summary>
+    public string? ResidenceCountry { get; init; }
+
+    /// <summary>The comune (Italy) or the place of residence as its name (<c>city</c> of the body).</summary>
+    public string? ResidenceCity { get; init; }
+
+    /// <summary>The police code of the document type (<c>IDENT</c>, <c>PASOR</c>, <c>PATEN</c>, ...); only for a single guest or a head.</summary>
+    public string? DocumentType { get; init; }
+
+    /// <summary>The document number; only for a single guest or a head.</summary>
+    public string? DocumentCode { get; init; }
+
+    public string? DocumentIssuePlace { get; init; }
+    public DateOnly? DocumentIssueDate { get; init; }
+    public DateOnly? DocumentExpire { get; init; }
+
+    /// <summary>Arrival and departure of the stay (the guest example carries them).</summary>
+    public DateOnly? CheckIn { get; init; }
+    public DateOnly? CheckOut { get; init; }
+
+    /// <summary>The tourist tax of the guest; sent only with <c>Octorate:WriteCityTaxValues</c> on and a confirmed, current tax record.</summary>
+    public decimal? CityTaxPrice { get; init; }
+
+    /// <summary>The Octorate reason of the exemption, only when the host's reason has one.</summary>
+    public string? CityTaxExemption { get; init; }
+
+    /// <summary>True for an exempt guest or a stay the channel collected.</summary>
+    public bool? ExcludeCityTax { get; init; }
+}
+
+/// <summary>The outcome of one guest of <see cref="IOctorateApiClient.UpsertCheckInGuestsAsync"/>.</summary>
+/// <param name="Position">The position of the guest in the stay.</param>
+/// <param name="OctorateGuestId">The id of the guest on Octorate (the one created, or the one updated); null when it failed.</param>
+/// <param name="Created">True when the guest was created by this call.</param>
+/// <param name="Validated">What Octorate answered for <c>validated</c>; null when the answer does not say.</param>
+/// <param name="ErrorCode">A stable code when the guest failed (<c>octorate_auth</c>, <c>octorate_guest_rejected</c>, ...); null on success.</param>
+public sealed record OctorateCheckInGuestResult(int Position, string? OctorateGuestId, bool Created, bool? Validated, string? ErrorCode)
+{
+    public bool Succeeded => ErrorCode is null && OctorateGuestId is not null;
+}
+
+/// <summary>The arrival of a reservation as Octorate reads it back after <c>CHECKIN_END</c>.</summary>
+/// <param name="EffectiveCheckin">When the arrival was registered (<c>effectiveCheckin</c>, UTC); null when Octorate has none.</param>
+/// <param name="ArrivalTime">The expected arrival time of the reservation (<c>arrivalTime</c>, at most 10 characters); null when none.</param>
+public sealed record OctorateReservationArrival(DateTime? EffectiveCheckin, string? ArrivalTime);
+
+/// <summary>
+/// The contact data of one guest of the guest registry (<c>POST /rest/v1/guests/{acc}/{guestId}/contactInfo</c>, E07/F06/US02/T02): the e-mail
+/// address and the phone number, as Octorate holds them, each <c>null</c> when it has none (an Airbnb guest has none). <b>Sensitive</b>: it is
+/// never logged, and <see cref="ToString"/> says nothing of it, so a log line that formats the record cannot leak it.
+/// </summary>
+/// <param name="Email">The e-mail address; for a booking made through a portal it is a forward address.</param>
+/// <param name="Phone">The phone number.</param>
+/// <param name="Recognized">
+/// False when the answer was not understood: it was not an object, or it had none of the members that hold an address or a number (another
+/// wrapper, other names). Then <paramref name="Email"/> and <paramref name="Phone"/> are <c>null</c> because nothing could be read, not because
+/// Octorate holds nothing: the caller must not take it for "the guest has no contact". An answer that has the members and leaves them empty is
+/// recognized.
+/// </param>
+public sealed record OctorateGuestContactInfo(string? Email, string? Phone, bool Recognized = true)
+{
+    /// <summary>True when Octorate gave neither an address nor a number.</summary>
+    public bool IsEmpty => string.IsNullOrWhiteSpace(Email) && string.IsNullOrWhiteSpace(Phone);
+
+    public override string ToString() => nameof(OctorateGuestContactInfo) + " { contact data not shown }";
 }
 
 /// <summary>The states CasaZen sends with the check-in status operation (<c>PUT /rest/v1/checkin/{acc}/{id}?status=</c>).</summary>

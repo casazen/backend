@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +18,10 @@ namespace Casazen.Infrastructure.Services;
 /// Alloggiati reports keep a foreign key to it); bookings with dates, amounts and payments (fiscal and accounting records,
 /// <c>.claude/context/regulations/gdpr.md</c> § 5); the kind and position of the guests of each stay; the consent events
 /// without IP and note, and the per-channel marketing consents without e-mail and IP (proof of consent, art. 7.1 GDPR); the
-/// Alloggiati communication status and receipt reference.
+/// Alloggiati communication status and receipt reference; of the CRM (E07/F06/US02/T01), only the keyed hash of a contact that
+/// carries a suppression, with the flag and its date (the opt-out survives like the entry of the suppression list), the
+/// profile that other guests are still linked to, without its keyed hashes, tags and country, and the tombstones of the profiles
+/// merged into it, emptied but for the pointer to the profile that took their place.
 /// </remarks>
 public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, ILogger<GuestDataEraser> logger)
 {
@@ -38,7 +42,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     /// the IP and note of its consent events, the marketing e-mail and IP of its per-channel marketing consents (the consent
     /// ends), the special requests of its bookings, the name shown on its reviews (DB-12a: the
     /// mark and the text stay, anonymous); the words and the names of the copy of its conversations with the channels (E05/F01/US01/T03, ADR-032-R13);
-    /// open check-in links of its bookings expire. <see cref="GuestErasureOutcome.Changed"/> is false when there was nothing left to remove (idempotent).
+    /// open check-in links of its bookings expire; and what the CRM holds of the guest
+    /// (<see cref="EraseCrmDataAsync"/>), in the same unit of work. <see cref="GuestErasureOutcome.Changed"/> is false when there was nothing left to remove (idempotent).
     /// </summary>
     public async Task<GuestErasureOutcome> AnonymizeAsync(Guest guest, DateTime now, CancellationToken cancellationToken)
     {
@@ -49,6 +54,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         guest.MarketingConsent = false;
 
         var stayGuests = await AnonymizeStayGuestsOfBookerAsync(guest.Id, now, cancellationToken);
+        var taxReasons = await ClearTaxExemptionReasonsAsync(
+            await db.Bookings.Where(b => b.GuestId == guest.Id).Select(b => b.Id).ToListAsync(cancellationToken), cancellationToken);
         var consentEvidence = await ClearConsentEvidenceAsync(guest.Id, cancellationToken);
         var marketingConsents = await ClearMarketingConsentRecordsAsync(guest.Id, cancellationToken);
         var specialRequests = await ClearSpecialRequestsAsync(guest.Id, now, cancellationToken);
@@ -56,17 +63,223 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         await ExpireOpenCheckInLinksAsync(guest.Id, now, cancellationToken);
         var threads = await DeleteMessageThreadsAsync(guest.Id, cancellationToken);
         var otaThreads = (await AnonymizeOtaThreadsOfGuestAsync(guest.Id, now, cancellationToken)).Threads;
+        var crm = await EraseCrmDataAsync(guest, now, cancellationToken);
 
         var changed = Fingerprint(guest) != before
-            || filesDeleted > 0 || stayGuests > 0 || consentEvidence > 0 || marketingConsents > 0 || specialRequests > 0
-            || reviews > 0 || threads > 0 || otaThreads > 0
+            || filesDeleted > 0 || stayGuests > 0 || taxReasons > 0 || consentEvidence > 0 || marketingConsents > 0
+            || specialRequests > 0 || reviews > 0 || threads > 0 || otaThreads > 0 || crm.Changed
             || guest.DataAnonymizedDate is null;
         guest.AlloggiatiDataErasedAt ??= now;
         guest.DataAnonymizedDate ??= now;
         if (changed)
             guest.UpdatedAt = now;
 
-        return new GuestErasureOutcome(changed, stayGuests, filesDeleted);
+        return new GuestErasureOutcome(changed, stayGuests, filesDeleted, crm.ContactsRemoved, crm.OptOutsKept, crm.ProfileRemoved);
+    }
+
+    /// <summary>
+    /// What the CRM holds of <paramref name="guest"/> (E07/F06/US02/T01, NF-95, NF-20), staged on the context without saving, in the unit of work
+    /// of the caller:
+    /// <list type="bullet">
+    /// <item>the contacts the guest gave (<see cref="GuestContact.GuestId"/>) are deleted, and with them, when the profile is the guest's alone,
+    /// every contact of that profile; <b>a contact that carries a suppression is not deleted</b>: it stays as a row with no value, no name and no
+    /// IP, only its keyed hash, the flag and its date (<see cref="StripToOptOutMarker"/>), so the opt-out survives as the entry of the suppression
+    /// list does and a returning address is flagged again;</item>
+    /// <item>the guest is unlinked from its profile; the profile is deleted when no other guest of the org is linked to it, with the proposals of
+    /// merge that involve it; otherwise it is <b>never deleted</b> (a profile of several guests is not the erasure of one) and loses its keyed
+    /// hashes, its tags and its country, which may be the erased guest's. Guests of one profile erased in the same unit of work (the retention erases
+    /// a chunk of guests before one save) do not count for each other: the last of them takes the profile, and nothing is left with no guest;</item>
+    /// <item><b>the profiles merged into it follow it</b> (<see cref="GuestCrmProfile.MergedIntoProfileId"/>, chains included, and a link of the guest
+    /// that still points to a tombstone is followed to the survivor): when the survivor is deleted its tombstones are deleted with it; when it stays
+    /// (other guests are linked to it or to its tombstones) the tombstones are emptied, because what they held cannot be attributed to one guest: tags,
+    /// country, language, every keyed hash, the primary guest, the consent flags and the aggregates of the stays go, and only the pointer to the profile
+    /// that took their place stays;</item>
+    /// <item>the recipients of a campaign would keep their row and lose their references to the contact and to the profile (null, through their own
+    /// <c>SetNull</c> foreign keys): the campaign model is deferred (<c>kb/plan/deferred</c>, B05) and does not exist yet, so there is nothing to do
+    /// here until it does.</item>
+    /// </list>
+    /// Idempotent: once the guest is unlinked and its contacts are gone or stripped, a second run finds nothing. Nothing is logged but counts.
+    /// </summary>
+    public async Task<CrmErasureOutcome> EraseCrmDataAsync(Guest guest, DateTime now, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(guest);
+
+        var orgId = guest.OrgId;
+        var profileId = guest.GuestCrmProfileId;
+
+        // The profile of the guest is not alone in the CRM: the merges of duplicates (E07/F01/US03/T02) keep the profile that goes as a tombstone, with all
+        // it held, and move its guests and contacts to the survivor. The profiles of the guest are the survivor and every tombstone that leads to it, chains
+        // included (a link kept from before a merge may still point to a tombstone): the erasure covers all of them, or a tombstone would keep the tags, the
+        // country, the language and the keyed hashes of the guest.
+        var family = new List<Guid>();
+        if (profileId is { } linkedId)
+            family = (await CrmProfileFamily.OfAsync(db, orgId, linkedId, cancellationToken)).ProfileIds;
+
+        // The profiles are the guest's alone when no other guest of the org is linked to any of them. Read before the guest is unlinked. A guest that this
+        // unit of work has already unlinked no longer counts: an erasure run erases several guests before one save (the retention does), the database still
+        // has the first one linked when the second is read, and without this a profile whose guests all go in the same run would never be deleted and would
+        // be left with no guest, its aggregates and the contacts of no guest.
+        var alone = false;
+        if (family.Count > 0)
+        {
+            var others = await db.Guests
+                .AsNoTracking()
+                .Where(g => g.OrgId == orgId && g.GuestCrmProfileId != null && family.Contains(g.GuestCrmProfileId.Value) && g.Id != guest.Id)
+                .Select(g => g.Id)
+                .ToListAsync(cancellationToken);
+            alone = others.All(otherId => db.Guests.Local.Any(g => g.Id == otherId && (g.GuestCrmProfileId == null || !family.Contains(g.GuestCrmProfileId.Value))));
+        }
+
+        List<GuestContact> contacts;
+        if (alone)
+        {
+            contacts = await db.GuestContacts
+                .Where(c => c.OrgId == orgId && (c.GuestId == guest.Id || (c.GuestCrmProfileId != null && family.Contains(c.GuestCrmProfileId.Value))))
+                .ToListAsync(cancellationToken);
+        }
+        else
+        {
+            contacts = await db.GuestContacts
+                .Where(c => c.OrgId == orgId && c.GuestId == guest.Id)
+                .ToListAsync(cancellationToken);
+        }
+
+        int removed = 0, kept = 0;
+        foreach (var contact in contacts)
+        {
+            // Already taken out by an earlier guest of the same unit of work: not counted twice.
+            if (db.Entry(contact).State == EntityState.Deleted)
+                continue;
+
+            if (contact.IsSuppressed)
+            {
+                if (StripToOptOutMarker(contact, now))
+                    kept++;
+            }
+            else
+            {
+                db.GuestContacts.Remove(contact);
+                removed++;
+            }
+        }
+
+        var profileRemoved = false;
+        var profileTouched = false;
+        var mergedProfiles = 0;
+        if (profileId is not null)
+        {
+            // Unlinked first: the foreign key of the guest must not point at a profile that goes in the same save.
+            guest.GuestCrmProfileId = null;
+            profileTouched = true;
+
+            var profiles = await db.GuestCrmProfiles
+                .Where(p => p.OrgId == orgId && family.Contains(p.Id))
+                .ToListAsync(cancellationToken);
+            mergedProfiles = profiles.Count(p => p.MergedIntoProfileId is not null);
+            if (alone)
+            {
+                // The survivor goes, and with it every tombstone that leads to it and every proposal of merge that involves one of them.
+                var proposals = await db.GuestMergeCandidates
+                    .Where(m => m.OrgId == orgId && (family.Contains(m.ProfileAId) || family.Contains(m.ProfileBId)))
+                    .ToListAsync(cancellationToken);
+                db.GuestMergeCandidates.RemoveRange(proposals);
+                db.GuestCrmProfiles.RemoveRange(profiles);
+                profileRemoved = profiles.Count > 0;
+            }
+            else
+            {
+                foreach (var profile in profiles)
+                {
+                    if (profile.MergedIntoProfileId is null)
+                        ClearSharedProfile(profile, guest.Id, now);
+                    else
+                        ClearTombstone(profile, now);
+                }
+            }
+        }
+
+        if (removed > 0 || kept > 0 || profileTouched)
+        {
+            logger.LogInformation(
+                "CRM data of guest {GuestId}: {Contacts} contacts removed, {OptOuts} opt-outs kept without personal data, profile {Profile}, {Merged} merged profiles",
+                guest.Id,
+                removed,
+                kept,
+                profileRemoved ? "removed" : profileTouched ? "cleared" : "none",
+                mergedProfiles);
+        }
+
+        return new CrmErasureOutcome(removed, kept, profileRemoved, removed > 0 || kept > 0 || profileTouched);
+    }
+
+    /// <summary>
+    /// The profile that other guests are still linked to loses what may be the erased guest's: the keyed hashes, the tags, the country and, when it was
+    /// the erased guest, its primary guest. The language and the aggregates stay (the next sync of a guest of the profile calculates the aggregates again).
+    /// </summary>
+    private static void ClearSharedProfile(GuestCrmProfile profile, Guid guestId, DateTime now)
+    {
+        profile.PhoneKeyHash = null;
+        profile.NameBirthKeyHash = null;
+        profile.CompositeKeyHash = string.Empty;
+        profile.TagsJson = "[]";
+        profile.Country = string.Empty;
+        if (profile.PrimaryGuestId == guestId)
+            profile.PrimaryGuestId = null;
+        profile.UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// A tombstone of a merged profile (<see cref="GuestCrmProfile.MergedIntoProfileId"/>) of a survivor that stays: whatever it held cannot be told
+    /// from the data of the other guests of the survivor, so it is emptied (tags, country, language, every keyed hash, the primary guest, the consent
+    /// flags and the aggregates of its stays). What stays is the technical pointer to the profile that took its place, and the ids and times of the row.
+    /// </summary>
+    private static void ClearTombstone(GuestCrmProfile profile, DateTime now)
+    {
+        profile.CompositeKeyHash = string.Empty;
+        profile.PhoneKeyHash = null;
+        profile.NameBirthKeyHash = null;
+        profile.TagsJson = "[]";
+        profile.Country = string.Empty;
+        profile.Language = string.Empty;
+        profile.PrimaryGuestId = null;
+        profile.ConfirmedMarketingEmail = string.Empty;
+        profile.MarketingConsentEmail = false;
+        profile.MarketingConsentWhatsApp = false;
+        profile.TotalStays = 0;
+        profile.TotalSpend = 0m;
+        profile.PropertyIdsJson = "[]";
+        profile.FirstStayAt = now;
+        profile.LastStayAt = now;
+        profile.UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// Takes a contact that carries a suppression down to what the opt-out needs: the keyed hash of the value (with the org and the channel, the
+    /// key of the row), the flag, its date and its source. No value, no name, no IP, no guest, no profile, no language, and no basis, evidence or
+    /// confirmation of a consent that is gone. False when it already was a marker.
+    /// </summary>
+    private static bool StripToOptOutMarker(GuestContact contact, DateTime now)
+    {
+        var before = Fingerprint(contact);
+        contact.Value = string.Empty;
+        contact.DisplayName = null;
+        contact.Language = string.Empty;
+        contact.GuestId = null;
+        contact.GuestCrmProfileId = null;
+        contact.ConsentIpAddress = null;
+        contact.LegalBasis = GuestContactLegalBasis.None;
+        contact.BasisVersion = string.Empty;
+        contact.BasisRecordedAt = null;
+        contact.ConsentSource = null;
+        contact.Confirmation = GuestContactConfirmation.Unconfirmed;
+        contact.ConfirmedAt = null;
+        contact.ConfirmationSentAt = null;
+        contact.ConfirmationSentCount = 0;
+
+        var changed = Fingerprint(contact) != before;
+        if (changed)
+            contact.UpdatedAt = now;
+        return changed;
     }
 
     /// <summary>
@@ -149,7 +362,40 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
             perBooker[booker] = perBooker.GetValueOrDefault(booker) + 1;
         }
 
+        await ClearTaxExemptionReasonsAsync(bookingIds, cancellationToken);
         return perBooker;
+    }
+
+    /// <summary>
+    /// NF-46, CO-15 (art. 17 and 9 GDPR): the reason of a tourist tax exemption can reveal a health condition, so it is not kept with an erased
+    /// guest. The lines of the confirmed tax of the stays keep their kind and amount (fiscal retention, art. 6.1.c) and lose the reason code;
+    /// the calculation hash of such a record is zeroed with it (<see cref="StayTouristTax.ErasedCalculationHash"/>), so nothing left in the
+    /// record can be tried against the list of reasons. Returns the lines changed (none when already clear).
+    /// </summary>
+    public async Task<int> ClearTaxExemptionReasonsAsync(IReadOnlyCollection<Guid> bookingIds, CancellationToken cancellationToken)
+    {
+        if (bookingIds.Count == 0)
+            return 0;
+
+        var ids = bookingIds.ToList();
+        var records = await db.StayTouristTaxes
+            .Include(t => t.Guests)
+            .Where(t => ids.Contains(t.BookingId) && t.Guests.Any(g => g.ExemptionCode != null))
+            .ToListAsync(cancellationToken);
+        var cleared = 0;
+        foreach (var record in records)
+        {
+            foreach (var line in record.Guests.Where(g => g.ExemptionCode is not null))
+            {
+                line.ExemptionCode = null;
+                cleared++;
+            }
+
+            if (record.CalculationHash is not null)
+                record.CalculationHash = StayTouristTax.ErasedCalculationHash;
+        }
+
+        return cleared;
     }
 
     /// <summary>
@@ -188,6 +434,21 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         row.DocumentNumber = string.Empty;
         row.DocumentIssuePlaceCode = null;
         row.DocumentIssuePlaceName = string.Empty;
+
+        // NF-40, NF-46: the document dates, the residence, the statistical fields and the tourist tax exemption (whose reason can reveal
+        // a health condition) go with the guest too.
+        row.DocumentIssuedOn = null;
+        row.DocumentExpiresOn = null;
+        row.ResidenceInItaly = null;
+        row.ResidenceComuneCode = null;
+        row.ResidenceComuneName = null;
+        row.ResidenceProvince = null;
+        row.ResidenceCountryCode = null;
+        row.ResidenceCountryName = null;
+        row.TourismType = null;
+        row.TravelWay = null;
+        row.EducationLevel = null;
+        row.TaxExemptionCode = null;
 
         var changed = Fingerprint(row) != before || row.AnonymizedAt is null;
         row.AnonymizedAt ??= now;
@@ -443,11 +704,36 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         s.FirstName, s.LastName, s.Gender?.ToString(), s.DateOfBirth?.ToString("O"), s.BornInItaly?.ToString(),
         s.BirthComuneCode, s.BirthComuneName, s.BirthProvince, s.BirthCountryCode, s.BirthCountryName,
         s.CitizenshipCode, s.CitizenshipName, s.DocumentType?.ToString(), s.DocumentTypeCode, s.DocumentNumber,
-        s.DocumentIssuePlaceCode, s.DocumentIssuePlaceName);
+        s.DocumentIssuePlaceCode, s.DocumentIssuePlaceName, s.DocumentIssuedOn?.ToString("O"), s.DocumentExpiresOn?.ToString("O"),
+        s.ResidenceInItaly?.ToString(), s.ResidenceComuneCode, s.ResidenceComuneName, s.ResidenceProvince, s.ResidenceCountryCode,
+        s.ResidenceCountryName, s.TourismType, s.TravelWay, s.EducationLevel, s.TaxExemptionCode);
+
+    private static string Fingerprint(GuestContact c) => string.Join(
+        '\u001f',
+        c.Value, c.DisplayName, c.Language, c.GuestId?.ToString(), c.GuestCrmProfileId?.ToString(), c.ConsentIpAddress,
+        c.LegalBasis.ToString(), c.BasisVersion, c.BasisRecordedAt?.ToString("O"), c.ConsentSource?.ToString(),
+        c.Confirmation.ToString(), c.ConfirmedAt?.ToString("O"), c.ConfirmationSentAt?.ToString("O"), c.ConfirmationSentCount);
 }
 
-/// <summary>What an erasure changed: false <see cref="Changed"/> means it had already been done.</summary>
-public sealed record GuestErasureOutcome(bool Changed, int StayGuestsAnonymized, int FilesDeleted);
+/// <summary>
+/// What an erasure changed: false <see cref="Changed"/> means it had already been done. The CRM counters are those of
+/// <see cref="GuestDataEraser.EraseCrmDataAsync"/> (counts only, never an address): the contacts deleted, the opt-outs that stay as a row with
+/// no personal data, and whether the profile of the guest was deleted.
+/// </summary>
+public sealed record GuestErasureOutcome(
+    bool Changed,
+    int StayGuestsAnonymized,
+    int FilesDeleted,
+    int CrmContactsRemoved = 0,
+    int CrmOptOutsKept = 0,
+    bool CrmProfileRemoved = false);
+
+/// <summary>What the erasure of the CRM data of a guest did (<see cref="GuestDataEraser.EraseCrmDataAsync"/>).</summary>
+/// <param name="ContactsRemoved">Contacts deleted.</param>
+/// <param name="OptOutsKept">Suppressed contacts taken down to an opt-out marker (the ones that already were one are not counted).</param>
+/// <param name="ProfileRemoved">The profile of the guest was deleted because no other guest was linked to it.</param>
+/// <param name="Changed">Anything was staged, the unlink of the guest from its profile included.</param>
+public sealed record CrmErasureOutcome(int ContactsRemoved, int OptOutsKept, bool ProfileRemoved, bool Changed);
 
 /// <summary>What the anonymization of OTA conversations changed: the threads, and the messages that lost their words.</summary>
 public sealed record OtaAnonymizationOutcome(int Threads, int Messages);

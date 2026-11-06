@@ -132,4 +132,28 @@ public static class BookingErrorCodes
     /// portal owns its cancellation, and a delete from here is not proven to be accepted.
     /// </summary>
     public const string ChannelCancelNotAllowed = "octorate_channel_cancel_not_allowed";
+
+    /// <summary>422: the booking cannot be cancelled in its state (checked out).</summary>
+    public const string NotCancellable = "booking_not_cancellable";
+
+    /// <summary>
+    /// 422: a booking that came from a channel is changed from CasaZen where the channel does not let the host do it (E02/F02/US02/T01, D8,
+    /// NF-75): nothing is changed. The text is the one sentence that says how to ask the guest or the channel; <c>guidanceKey</c> and
+    /// <c>channel</c> travel with the problem.
+    /// </summary>
+    public const string OtaBookingChangeNotAllowed = "ota_booking_change_not_allowed";
+
+    /// <summary>
+    /// 422: a booking that came from a channel is cancelled from CasaZen where the channel does not let the host do it (E08/F02/US02/T01, D8,
+    /// NF-76): nothing is changed, Octorate is not asked. Same members as <see cref="OtaBookingChangeNotAllowed"/>.
+    /// </summary>
+    public const string OtaBookingCancelNotAllowed = "ota_booking_cancel_not_allowed";
+
+    /// <summary>
+    /// 422: Octorate refused to cancel the reservation of a channel booking, or could not be asked (no connected account, a property that is not
+    /// mirrored, a mapping write-blocked, the flag off): the booking is as it was, in CasaZen and on the channel (E08/F02/US02/T02, NF-76). An
+    /// Octorate that does not answer is a 503 instead (<see cref="OctorateSyncErrorCodes.Unavailable"/>). Same members as
+    /// <see cref="OtaBookingChangeNotAllowed"/>.
+    /// </summary>
+    public const string OctorateCancelFailed = "octorate_cancel_failed";
 }

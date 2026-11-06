@@ -29,6 +29,7 @@ public class OctorateJobsRegistrationTests
         OctorateBookingImportJob.RecurringJobId,
         OctorateBookingSyncJob.RecurringJobId,
         CalendarSyncJob.RecurringJobId,
+        OctorateCheckInRetryJob.RecurringJobId,
     ];
 
     [Fact]
@@ -127,6 +128,10 @@ public class OctorateJobsRegistrationTests
         // The calendar sync runs every 15 minutes: it waits as the other frequent jobs do, far less than its interval.
         Assert.Equal(JobLockTimeouts.FrequentSeconds, CalendarSyncJob.LockTimeoutSeconds);
         Assert.True(CalendarSyncJob.LockTimeoutSeconds < 5 * 60);
+
+        // The retry of the check-in writes runs every 15 minutes too (E03/F01/US01/T03).
+        Assert.Equal("*/15 * * * *", OctorateCheckInRetryJob.Cron);
+        Assert.Equal(JobLockTimeouts.FrequentSeconds, OctorateCheckInRetryJob.LockTimeoutSeconds);
     }
 
     [Fact]
@@ -170,6 +175,22 @@ public class OctorateJobsRegistrationTests
             d => d.ServiceType == typeof(IEventHandler<DomainEvent>) && d.ImplementationType == typeof(OctorateBookingStatePushHandler));
         Assert.Contains(services, d => d.ServiceType == typeof(IBookingImportService) && d.ImplementationType == typeof(BookingImportService));
         Assert.Contains(services, d => d.ServiceType == typeof(BookingStateMapper));
+    }
+
+    [Fact]
+    public void TheArrivalAndTheDeparture_ReachOctorateThroughOneHandlerOnly()
+    {
+        var services = new ServiceCollection();
+        services.AddCasazenOctorate(new ConfigurationBuilder().Build());
+
+        // E02 sends CHECKIN_END and CHECKOUT_END when the host registers the arrival or the departure. The check-in sync of E03 sends only the
+        // NO_SHOW, which the check-in endpoints queue: no second handler reacts to the same events, so the two states are not sent twice.
+        var handlers = services
+            .Where(d => d.ServiceType == typeof(IEventHandler<DomainEvent>))
+            .Select(d => d.ImplementationType)
+            .ToList();
+
+        Assert.Equal(typeof(OctorateBookingStatePushHandler), Assert.Single(handlers));
     }
 
     private static IFeatureFlags Flags(bool octorateConnector)
