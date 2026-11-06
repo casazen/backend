@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Features;
 using Casazen.Infrastructure.Data;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
@@ -14,9 +15,11 @@ namespace Casazen.Web.Controllers;
 /// <summary>
 /// CRM guest profiles for the caller's org (NF-23, ADR-021): read aggregated guest data
 /// for marketing and segmentation, scoped to the properties the caller reaches.
+/// Behind <c>Features:CrmMarketing</c> (E07/F06/US01/T01): 404 while it is off, before authentication.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
+[FeatureGate(FeatureFlags.CrmMarketing)]
 [Authorize(Policy = CasazenPolicies.GuestRead)]
 public class CrmController(
     AppDbContext dbContext,

@@ -141,6 +141,17 @@ public static class FeatureFlags
     /// </summary>
     public const string OctorateConnector = "OctorateConnector";
 
+    /// <summary>
+    /// E07/F06/US01/T01 (NF-95, CRM-08, Q1-29): the unfinished marketing module, <b>off by default</b> until it is safe to send. It closes the
+    /// CRM profiles (<c>api/crm/*</c>), the segments and the campaigns (<c>api/campaigns/*</c>), and the menu entries of the web app that open
+    /// them (the frontend reads the key <c>crmMarketing</c>). Off, every endpoint of <c>CrmController</c> and <c>CampaignsController</c> answers
+    /// 404 like a route that does not exist, before authentication. <b>Not behind it, on purpose</b>: the public consent, confirmation,
+    /// unsubscribe and welcome endpoints, the GDPR endpoints, and the collection of contacts and consents at the check-in and at the checkout:
+    /// a legal record is made whatever the flag says. On, outside Development and Testing, <c>Crm:ContactIndexKey</c> is required at startup
+    /// (<c>CrmOptionsValidator</c>). Runbook <c>docs/runbooks/crm-marketing.md</c>.
+    /// </summary>
+    public const string CrmMarketing = "CrmMarketing";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -157,5 +168,6 @@ public static class FeatureFlags
         SupplierRequestBackups,
         CheckInIdentityVerification,
         OctorateConnector,
+        CrmMarketing,
     ];
 }
