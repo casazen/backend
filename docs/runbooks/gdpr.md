@@ -289,3 +289,19 @@ Verification after deploy: Railway logs at 03:00 UTC show `GDPR retention: wizar
 Database: `select count(*) from "WizardDrafts" where "ExpiresAt" < now() and "UserId" <> '';` is 0 once the job has run. The logs carry counts only, never the content of a draft.
 
 Not part of the erasure of a guest (art. 17): a draft belongs to the host user who typed it, not to a guest record; the guest data typed in it is anonymized with the draft, within 30 days of the last save at most.
+
+## 13. The copy of the OTA conversations (ADR-032, E05/F01)
+
+The conversations of the guests with Airbnb, Booking.com, Vrbo and Expedia are copied from the channel manager into `OtaMessageThreads` and
+`OtaMessages` (the words encrypted at rest, [encryption.md](encryption.md)). The words, the name of the guest and the name of the sender are
+personal data; the link to an attachment is kept (the file is not).
+
+| Trigger | What happens | Code |
+|---|---|---|
+| Erasure (`DELETE /api/gdpr/guests/{id}`) or anonymization (`POST /api/gdpr/guests/{id}/anonymize`) of a guest | The threads of the guest's bookings lose the text and the name of the sender of every message and the link to its attachment, and the name of the guest of the thread becomes `ANONYMIZED`. The thread is marked (`OtaMessageThreads.AnonymizedAt`); its ids, dates, direction, delivery state and counts stay. A second call changes nothing | `GuestDataEraser.AnonymizeOtaThreadsOfGuestAsync` (called by `AnonymizeAsync`) |
+| A later read of the channel manager | A thread with `AnonymizedAt` gets no personal data from it: a message that arrives after the erasure is stored without its text, name and attachment, and the thread keeps its placeholder | `MessageSyncService` |
+| Retention | Nightly job `gdpr-data-retention`, after the guest data: **the copy follows the period of `Gdpr:Retention:AlloggiatiData`** (no period of its own: assumption to be confirmed by the product owner), counted from the check-out of the stay as for the guests of the stay; a stay that is still open is left alone; an inquiry with no booking is counted from its last message. **Off until the period and its source are configured**: without them every run logs `GDPR retention: the copy of the OTA conversations is not applied (...)` and nothing is anonymized | `OtaMessageRetentionService.ApplyRetentionAsync` |
+
+Not in the export of the guest's data (art. 15, 20) yet: the conversations are in the hub of messages for the host who reaches the property; their
+export for the guest is a decision of the product owner. Verification after deploy: Railway logs at 03:00 UTC show `GDPR OTA message retention done: period
+configured {Configured}, N conversations and M messages anonymized`; the logs carry counts only, never a text, a name or an address.
