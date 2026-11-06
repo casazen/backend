@@ -3587,6 +3587,48 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("MarketplacePortals");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.MessageTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "Name", "Language")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_MessageTemplates_OrgId_Name_Language");
+
+                    b.ToTable("MessageTemplates");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OctorateBookingSync", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5076,6 +5118,248 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("PropertyId");
 
                     b.ToTable("OtaIntegrations");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OtaMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AttachmentContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("AttachmentUrl")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DeliveryState")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Direction")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("OctorateMessageId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Origin")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RuleCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("SenderName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SentByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("TextEncrypted");
+
+                    b.Property<Guid>("ThreadId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrgId", "OctorateMessageId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OtaMessages_OrgId_OctorateMessageId")
+                        .HasFilter("\"OctorateMessageId\" IS NOT NULL");
+
+                    b.HasIndex("ThreadId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OtaMessages_ThreadId_IdempotencyKey")
+                        .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+
+                    b.HasIndex("ThreadId", "SentAt")
+                        .HasDatabaseName("IX_OtaMessages_ThreadId_SentAt");
+
+                    b.ToTable("OtaMessages", t =>
+                        {
+                            t.HasCheckConstraint("CK_OtaMessages_DeliveryState", "\"DeliveryState\" IN (1, 2, 3, 4, 5)");
+
+                            t.HasCheckConstraint("CK_OtaMessages_Direction", "\"Direction\" IN (1, 2)");
+
+                            t.HasCheckConstraint("CK_OtaMessages_Origin", "\"Origin\" IN (1, 2, 3)");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OtaMessageSyncState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ImportCursor")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("InitialImportCompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastCreatedAfter")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastDeepPassAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("LastRecentPassAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OctorateAccommodationId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConnectionId");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("OrgId", "OctorateAccommodationId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OtaMessageSyncStates_OrgId_OctorateAccommodationId");
+
+                    b.ToTable("OtaMessageSyncStates");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OtaMessageThread", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool?>("AiAssistantOn")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("AnonymizedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ChannelSource")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DefaultProcessor")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("GuestDisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LastMessageAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("LastMessageDirection")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("OctorateAccommodationId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("OctorateReservationId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("OctorateThreadId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("UnreadCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("OrgId", "BookingId")
+                        .HasDatabaseName("IX_OtaMessageThreads_OrgId_BookingId");
+
+                    b.HasIndex("OrgId", "OctorateReservationId")
+                        .HasDatabaseName("IX_OtaMessageThreads_OrgId_OctorateReservationId_Unlinked")
+                        .HasFilter("\"BookingId\" IS NULL AND \"OctorateReservationId\" IS NOT NULL");
+
+                    b.HasIndex("OrgId", "OctorateThreadId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OtaMessageThreads_OrgId_OctorateThreadId");
+
+                    b.HasIndex("OrgId", "PropertyId", "LastMessageAt")
+                        .HasDatabaseName("IX_OtaMessageThreads_OrgId_PropertyId_LastMessageAt");
+
+                    b.ToTable("OtaMessageThreads", t =>
+                        {
+                            t.HasCheckConstraint("CK_OtaMessageThreads_ChannelSource", "\"ChannelSource\" IN (1, 2, 3, 4)");
+
+                            t.HasCheckConstraint("CK_OtaMessageThreads_Kind", "\"Kind\" IN (1, 2)");
+
+                            t.HasCheckConstraint("CK_OtaMessageThreads_LastMessageDirection", "\"LastMessageDirection\" IS NULL OR \"LastMessageDirection\" IN (1, 2)");
+                        });
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OtaSyncLog", b =>
@@ -12942,6 +13226,15 @@ namespace Casazen.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.MessageTemplate", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OctorateBookingSync", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.Booking", null)
@@ -13185,6 +13478,64 @@ namespace Casazen.Infrastructure.Migrations
                         .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OtaMessage", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.OtaMessageThread", null)
+                        .WithMany()
+                        .HasForeignKey("ThreadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OtaMessageSyncState", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.OctorateConnection", null)
+                        .WithMany()
+                        .HasForeignKey("ConnectionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OtaMessageThread", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Booking", "Booking")
+                        .WithMany()
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Casazen.Core.Entities.Org", null)
+                        .WithMany()
+                        .HasForeignKey("OrgId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Casazen.Core.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Booking");
 
                     b.Navigation("Property");
                 });

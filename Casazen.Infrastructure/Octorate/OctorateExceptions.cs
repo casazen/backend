@@ -1,3 +1,4 @@
+using Casazen.Core.Services;
 using Microsoft.AspNetCore.Http;
 
 namespace Casazen.Infrastructure.Octorate;
@@ -54,6 +55,9 @@ public sealed class OctorateAuthException : OctorateException
     /// <summary>Code of a refusal by Octorate.</summary>
     public const string RefusedCode = "octorate_auth_failed";
 
+    /// <summary>Code of a chat call refused because the <c>chat</c> module is not in the license of the accommodation (E05/F01/US01/T02).</summary>
+    public const string ChatNotLicensedCode = OtaMessageSyncErrorCodes.ChatNotLicensed;
+
     private OctorateAuthException(string code, string messageKey, int responseStatusCode, int? octorateStatusCode)
         : base(code, messageKey, responseStatusCode, octorateStatusCode)
     {
@@ -61,6 +65,17 @@ public sealed class OctorateAuthException : OctorateException
 
     /// <summary>True when the org has no usable connection: the host has to connect (again).</summary>
     public bool IsNotConnected => Code == NotConnectedCode;
+
+    /// <summary>True when the chat of the accommodation is not in its license: its messages cannot be read, and that is a state, not a failure to retry.</summary>
+    public bool IsChatNotLicensed => Code == ChatNotLicensedCode;
+
+    /// <summary>
+    /// Octorate refused a chat call with 403 (or, for <c>recentMessages</c>, 500) and no error of its own API (the page of its application server, which
+    /// is what a license without the <c>chat</c> module gets in the sandbox): 409, the host asks for the module. The decision is the code and the shape
+    /// of the answer, never its text.
+    /// </summary>
+    public static OctorateAuthException ChatNotLicensed(int? octorateStatusCode) =>
+        new(ChatNotLicensedCode, "OctorateChatNotLicensed", StatusCodes.Status409Conflict, octorateStatusCode);
 
     /// <summary>The org has no connection, or it is disconnected: 409, the host connects again.</summary>
     public static OctorateAuthException NotConnected() =>
@@ -132,3 +147,22 @@ public sealed class OctorateOAuthStateInvalidException()
 /// </summary>
 public sealed class OctorateExchangeFailedException(int? octorateStatusCode, Exception? innerException = null)
     : OctorateException("octorate_exchange_failed", "OctorateExchangeFailed", StatusCodes.Status502BadGateway, octorateStatusCode, innerException);
+
+/// <summary>
+/// Octorate refused the data of an accommodation CasaZen asked it to create (E02/F03/US01/T06): 400 <c>ApiParamsExemption</c>, with the fields it
+/// names (<c>machine_name</c> and message). The creator turns it into 422 <c>octorate_property_invalid</c> with the fields, so the wizard shows them
+/// on the step that owns each one. The message of the exception names the code only: the fields carry the names Octorate gave, never a value.
+/// </summary>
+public sealed class OctoratePropertyRejectedException(IReadOnlyList<OctorateFieldError> fields)
+    : OctorateException("octorate_property_invalid", "OctoratePropertyInvalid", StatusCodes.Status422UnprocessableEntity, StatusCodes.Status400BadRequest)
+{
+    /// <summary>The fields Octorate refused.</summary>
+    public IReadOnlyList<OctorateFieldError> Fields { get; } = fields;
+}
+
+/// <summary>
+/// The network named for a new accommodation is not one Octorate knows (E02/F03/US01/T06): 412. The new accommodation was not created; the host
+/// connects the account again.
+/// </summary>
+public sealed class OctorateNetworkUnknownException()
+    : OctorateException("octorate_network_unknown", "OctorateNetworkUnknown", StatusCodes.Status409Conflict, StatusCodes.Status412PreconditionFailed);

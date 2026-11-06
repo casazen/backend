@@ -39,7 +39,8 @@ public sealed class GuestDataRetentionService(
     ILogger<GuestDataRetentionService> logger) : IGuestDataRetentionService
 {
     private const int ChunkSize = 100;
-    private static readonly BookingStatus[] OpenBookingStatuses =
+    /// <summary>The bookings whose stay is not over: no retention applies to their guests' data (also read by the retention of the OTA conversations).</summary>
+    internal static readonly BookingStatus[] OpenBookingStatuses =
         [BookingStatus.Pending, BookingStatus.Confirmed, BookingStatus.CheckedIn];
 
     /// <summary>Reference date of the stay-based categories: the latest check-out, or the creation date without bookings.</summary>

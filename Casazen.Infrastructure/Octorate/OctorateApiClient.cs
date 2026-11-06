@@ -31,7 +31,7 @@ namespace Casazen.Infrastructure.Octorate;
 /// whitelisted is an <see cref="OctorateAuthException"/>.</para>
 /// <para><b>Logs.</b> The operation, the org, Octorate's status and error type, the time: never a body, a token or a code.</para>
 /// </remarks>
-public sealed class OctorateApiClient(
+public sealed partial class OctorateApiClient(
     HttpClient httpClient,
     IOctorateTokenService tokenService,
     OctorateRateLimiter rateLimiter,
@@ -85,6 +85,12 @@ public sealed class OctorateApiClient(
 
     /// <summary>The longest reason of a refused availability check that is kept (one line, never a body).</summary>
     private const int MaxReasonLength = 200;
+
+    /// <summary>The pages of the messages of one thread read at most (a thread has far fewer); more is an answer that is not understood, not a short thread.</summary>
+    internal const int MaxChatMessagePages = 200;
+
+    /// <summary>How an instant is written in the <c>createdAfter</c> of the chat messages: ISO 8601, UTC, milliseconds.</summary>
+    private const string ChatInstantFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
 
     /// <summary>The JSON of a partial change: camelCase, the members that are not set are left out.</summary>
     private static readonly JsonSerializerOptions PartialUpdateJson = new(JsonSerializerDefaults.Web)
@@ -735,6 +741,107 @@ public sealed class OctorateApiClient(
         return [.. Items(document.RootElement).Select(ReadPmsRoom).OfType<OctoratePmsRoom>()];
     }
 
+    public async Task<OctorateChatThreadPage> GetChatThreadsAsync(string accommodationId, int offset, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+
+        // `filterReadStatus=false` asks for the threads whatever their read state ("Read All Threads" in the collection of Octorate).
+        var path = string.Create(
+            CultureInfo.InvariantCulture,
+            $"/rest/v1/chat/{Uri.EscapeDataString(accommodation)}/threads?offset={offset}&filterReadStatus=false");
+        using var document = await GetChatJsonAsync(path, "chat-threads", ct);
+
+        // An answer that is not a list is one CasaZen cannot read, not a list with nothing in it: the caller must not read "no thread" into it.
+        var page = OctorateChatReader.ReadThreadPage(document.RootElement) ?? throw new OctorateServerException(null);
+        if (page.Unreadable > 0)
+        {
+            logger.LogWarning(
+                "Octorate chat threads of org {OrgId}: {Items} items of the page at {Offset} could not be read", orgScope.OrgId, page.Unreadable, offset);
+        }
+
+        return page;
+    }
+
+    public async Task<OctorateChatThread> GetChatThreadAsync(string accommodationId, string threadId, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var thread = CheckedThreadId(threadId);
+        using var document = await GetChatJsonAsync(
+            $"/rest/v1/chat/{Uri.EscapeDataString(accommodation)}/threads/{Uri.EscapeDataString(thread)}", "chat-thread", ct);
+        return OctorateChatReader.ReadThread(Unwrap(document.RootElement), thread) ?? throw new OctorateServerException(null);
+    }
+
+    public async Task<OctorateChatMessage[]> GetChatMessagesAsync(string accommodationId, string threadId, DateTime? createdAfter, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var thread = CheckedThreadId(threadId);
+        var basePath = $"/rest/v1/chat/{Uri.EscapeDataString(accommodation)}/threads/{Uri.EscapeDataString(thread)}/messages";
+        var after = createdAfter is { } instant
+            ? "createdAfter=" + Uri.EscapeDataString(AsUtcInstant(instant).ToString(ChatInstantFormat, CultureInfo.InvariantCulture))
+            : null;
+
+        var messages = new List<OctorateChatMessage>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var page = 0; page < MaxChatMessagePages; page++)
+        {
+            var query = string.Join('&', new[] { after, page > 0 ? string.Create(CultureInfo.InvariantCulture, $"page={page}") : null }.OfType<string>());
+            using var document = await GetChatJsonAsync(query.Length > 0 ? $"{basePath}?{query}" : basePath, "chat-messages", ct);
+
+            // An answer that is not a list is one CasaZen cannot read, not a thread with no message.
+            var read = OctorateChatReader.ReadMessagePage(document.RootElement) ?? throw new OctorateServerException(null);
+            if (read.ItemCount > read.Messages.Count)
+            {
+                logger.LogWarning(
+                    "Octorate chat messages of thread {ThreadId} of org {OrgId}: {Items} items could not be read",
+                    thread,
+                    orgScope.OrgId,
+                    read.ItemCount - read.Messages.Count);
+            }
+
+            var added = 0;
+            foreach (var message in read.Messages)
+            {
+                if (seen.Add(message.Id))
+                {
+                    messages.Add(message);
+                    added++;
+                }
+            }
+
+            // A bare list, an empty page or the last page the wrapper announces is the end. A wrapper that announces more pages and gives the same
+            // page again ignores the page asked for: the thread was not read whole, and that is never taken for a whole thread.
+            if (read.ItemCount == 0 || read.TotalPages is null || page + 1 >= read.TotalPages)
+                return [.. messages];
+
+            if (added == 0)
+                throw new OctorateServerException(null);
+        }
+
+        logger.LogWarning(
+            "Octorate chat messages of thread {ThreadId} of org {OrgId}: stopped after {Pages} pages, the thread may be longer",
+            thread,
+            orgScope.OrgId,
+            MaxChatMessagePages);
+        throw new OctorateServerException(null);
+    }
+
+    public async Task<OctorateChatMessage[]> GetRecentChatMessagesAsync(string accommodationId, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        using var document = await GetChatJsonAsync(
+            $"/rest/v1/accommodation/recentMessages?property={Uri.EscapeDataString(accommodation)}", "chat-recent", ct, RecentChatErrorOf);
+
+        var read = OctorateChatReader.ReadMessagePage(document.RootElement) ?? throw new OctorateServerException(null);
+        if (read.ItemCount > read.Messages.Count)
+        {
+            logger.LogWarning(
+                "Octorate recent chat messages of org {OrgId}: {Items} items could not be read", orgScope.OrgId, read.ItemCount - read.Messages.Count);
+        }
+
+        return [.. read.Messages];
+    }
+
     public async Task<OctoratePortal[]> GetPortalsAsync(CancellationToken ct)
     {
         // A partner-level call: no org, the partner token, the bucket "platform". The answer is a bare array (v1) or {data: [...]}.
@@ -800,7 +907,9 @@ public sealed class OctorateApiClient(
         Func<HttpRequestMessage> createRequest,
         string operation,
         CancellationToken ct,
-        int? answerStatus = null)
+        int? answerStatus = null,
+        Func<int, string, OctorateException?>? translateError = null,
+        Func<int, string?, string, OctorateException?>? mapError = null)
     {
         var orgId = orgScope.OrgId;
         var caller = new Caller(
@@ -808,21 +917,25 @@ public sealed class OctorateApiClient(
             token => tokenService.GetAccessTokenAsync(orgId, token),
             (rejected, token) => tokenService.RefreshRejectedTokenAsync(orgId, rejected, token),
             () => rateLimiter.TryAcquireAsync(orgId));
-        return await SendAsync(createRequest, operation, caller, ct, answerStatus);
+        return await SendAsync(createRequest, operation, caller, ct, answerStatus, translateError, mapError);
     }
 
     /// <summary>
     /// One partner-level call (the application's own, no org): the partner token, a refused partner token renewed once, and a call from the
     /// bucket <see cref="OctorateRateLimiter.PlatformKey"/>. Otherwise the same as <see cref="SendAsync(Func{HttpRequestMessage}, string, CancellationToken)"/>.
     /// </summary>
-    private Task<OctorateAnswer> SendAsPlatformAsync(Func<HttpRequestMessage> createRequest, string operation, CancellationToken ct)
+    private Task<OctorateAnswer> SendAsPlatformAsync(
+        Func<HttpRequestMessage> createRequest,
+        string operation,
+        CancellationToken ct,
+        Func<int, string, OctorateException?>? translateError = null)
     {
         var caller = new Caller(
             OctorateRateLimiter.PlatformKey,
             tokenService.GetPartnerAccessTokenAsync,
             tokenService.RefreshRejectedPartnerTokenAsync,
             rateLimiter.TryAcquirePlatformAsync);
-        return SendAsync(createRequest, operation, caller, ct);
+        return SendAsync(createRequest, operation, caller, ct, translateError: translateError);
     }
 
     /// <summary>The call itself, for whoever <paramref name="caller"/> is: its token, its bucket, its refresh of a refused token.</summary>
@@ -831,7 +944,9 @@ public sealed class OctorateApiClient(
         string operation,
         Caller caller,
         CancellationToken ct,
-        int? answerStatus = null)
+        int? answerStatus = null,
+        Func<int, string, OctorateException?>? translateError = null,
+        Func<int, string?, string, OctorateException?>? mapError = null)
     {
         var token = await caller.GetTokenAsync(ct);
         var tokenRefreshed = false;
@@ -898,7 +1013,12 @@ public sealed class OctorateApiClient(
                     continue;
                 }
 
-                throw ErrorOf(status, errorType, body);
+                // An operation may give a status its own meaning (the refused data of a new accommodation, an unknown network) before the generic mapping.
+                if (translateError?.Invoke(status, body) is { } translated)
+                    throw translated;
+
+                // The operation may know a refusal that is its own (a chat call without the module in the license); else the common mapping.
+                throw mapError?.Invoke(status, errorType, body) ?? ErrorOf(status, errorType, body);
             }
         }
     }
@@ -908,6 +1028,57 @@ public sealed class OctorateApiClient(
         var answer = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, Address(pathAndQuery)), operation, ct);
         return ParseJson(answer);
     }
+
+    /// <summary>
+    /// A read of the chat of an accommodation: the common errors, plus the refusal of a license without the <c>chat</c> module (<see cref="ChatErrorOf"/>,
+    /// or the <paramref name="mapError"/> of an operation that gets another answer, <see cref="RecentChatErrorOf"/>).
+    /// </summary>
+    private async Task<JsonDocument> GetChatJsonAsync(
+        string pathAndQuery,
+        string operation,
+        CancellationToken ct,
+        Func<int, string?, string, OctorateException?>? mapError = null)
+    {
+        var answer = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get, Address(pathAndQuery)), operation, ct, mapError: mapError ?? ChatErrorOf);
+        return ParseJson(answer);
+    }
+
+    /// <summary>
+    /// The refusal that is the chat's own: a 403 whose answer is not an error of Octorate's API (no <c>type</c>: the page of the application server,
+    /// which is what the sandbox answers to every chat call of a license without the <c>chat</c> module) and not the wrong environment. A 403 that
+    /// is a typed error of the API (a refused token, the wrong environment) keeps its common meaning; <c>null</c> for every other answer. Decided by
+    /// the status and the shape of the answer, never by its text.
+    /// </summary>
+    internal static OctorateException? ChatErrorOf(int status, string? errorType, string body) =>
+        status == 403 && string.IsNullOrEmpty(errorType) && !IsWrongEnvironment(errorType, body)
+            ? OctorateAuthException.ChatNotLicensed(status)
+            : null;
+
+    /// <summary>
+    /// The refusals of <c>recentMessages</c>: those of <see cref="ChatErrorOf"/>, and a 500 that is not an error of Octorate's API either (no <c>type</c>).
+    /// Where the other chat reads answer 403, the sandbox answers this one with a 500 when the <c>chat</c> module is not in the license
+    /// (<c>sandbox-run-results.md</c>, <c>octorate-integration-facts.md</c>: "chat not available"), and it is the first call of every pass of the
+    /// reconciliation. A 500 that carries a <c>type</c> is a failure of Octorate and keeps its common meaning; <c>null</c> for every other answer.
+    /// Decided by the status and the shape of the answer, never by its text.
+    /// </summary>
+    internal static OctorateException? RecentChatErrorOf(int status, string? errorType, string body) =>
+        status == 500 && string.IsNullOrEmpty(errorType)
+            ? OctorateAuthException.ChatNotLicensed(status)
+            : ChatErrorOf(status, errorType, body);
+
+    /// <summary>The id of a thread, trimmed: a number of 1 to <see cref="MaxConnectionIdDigits"/> digits, as the specification declares it (<c>int64</c>).</summary>
+    internal static string CheckedThreadId(string threadId)
+    {
+        var id = threadId?.Trim();
+        if (!IsNumericId(id))
+            throw new ArgumentException($"A thread id is a number of 1 to {MaxConnectionIdDigits} digits.", nameof(threadId));
+
+        return id!;
+    }
+
+    /// <summary>An instant as a UTC instant: a local time is converted, a time of unknown kind is taken as UTC.</summary>
+    private static DateTime AsUtcInstant(DateTime instant) =>
+        instant.Kind == DateTimeKind.Local ? instant.ToUniversalTime() : DateTime.SpecifyKind(instant, DateTimeKind.Utc);
 
     /// <summary>A read for the application itself (the partner-level calls): see <see cref="SendAsPlatformAsync"/>.</summary>
     private async Task<JsonDocument> GetPlatformJsonAsync(string pathAndQuery, string operation, CancellationToken ct)
