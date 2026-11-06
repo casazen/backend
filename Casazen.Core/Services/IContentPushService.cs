@@ -34,7 +34,9 @@ public interface IContentPushService
     /// <summary>
     /// Runs the publication the job was queued for (called by <c>ListingPublishJob</c> under the org of the property): creates the property on Octorate
     /// when it is new, pushes the groups of the content, the photos and each channel, and records the result. A channel whose rule is not met, or
-    /// that fails, is <c>ToFix</c> with its code and a «To do», and the others go on (AC-NF29-3).
+    /// that fails, is <c>ToFix</c> with its code and a «To do», and the others go on (AC-NF29-3). The run is for the channels it was queued for,
+    /// whatever state their rows are in (they are put in <c>Sending</c> first): a publication queued while an earlier run of the property was going
+    /// on is not lost.
     /// </summary>
     Task RunAsync(
         Guid propertyId,

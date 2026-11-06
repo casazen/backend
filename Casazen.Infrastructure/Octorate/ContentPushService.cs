@@ -194,7 +194,7 @@ public sealed class ContentPushService(
         }
     }
 
-    /// <summary>The run itself, with the rows of the requested channels now <c>Sending</c>.</summary>
+    /// <summary>The run itself, with the rows of the requested channels put in <c>Sending</c> by <see cref="RowsForRunAsync"/>.</summary>
     private async Task PushAsync(Property property, List<ListingChannelState> rows, string userId, IReadOnlySet<string>? roles, CancellationToken ct)
     {
         var orgId = property.OrgId;
@@ -550,7 +550,12 @@ public sealed class ContentPushService(
         row.ErrorMessage = ListingChannelErrors.ItalianMessage(errorCode);
     }
 
-    /// <summary>The rows of the requested channels, <c>Sending</c>: the ones the endpoint made, else new ones (a run started without its endpoint).</summary>
+    /// <summary>
+    /// The rows of the requested channels, put in <c>Sending</c> now: the run decides from the channels it was queued for, not from the state it finds
+    /// the rows in. A publication queued while an earlier run of the same property was going on finds its rows back in <c>Accepted</c> or <c>ToFix</c>
+    /// (the earlier run writes the state it ends with over the <c>Sending</c> the newer request put), and would otherwise do nothing: what the host
+    /// changed meanwhile would never be pushed. The row exists already when the endpoint made it; a run started without its endpoint makes it.
+    /// </summary>
     private async Task<List<ListingChannelState>> RowsForRunAsync(Property property, IReadOnlyList<string> codes, CancellationToken ct)
     {
         if (codes.Count == 0)
@@ -558,12 +563,23 @@ public sealed class ContentPushService(
 
         var rows = await db.ListingChannelStates.Where(s => s.PropertyId == property.Id && codes.Contains(s.ChannelCode)).ToListAsync(ct);
         var changed = false;
-        foreach (var code in codes.Where(code => rows.All(r => r.ChannelCode != code)))
+        foreach (var code in codes)
         {
-            var row = new ListingChannelState { OrgId = property.OrgId, PropertyId = property.Id, ChannelCode = code, Status = ChannelPublishStatus.Sending };
-            db.ListingChannelStates.Add(row);
-            rows.Add(row);
-            changed = true;
+            var row = rows.FirstOrDefault(r => r.ChannelCode == code);
+            if (row is null)
+            {
+                row = new ListingChannelState { OrgId = property.OrgId, PropertyId = property.Id, ChannelCode = code, Status = ChannelPublishStatus.Sending };
+                db.ListingChannelStates.Add(row);
+                rows.Add(row);
+                changed = true;
+            }
+            else if (row.Status != ChannelPublishStatus.Sending)
+            {
+                row.Status = ChannelPublishStatus.Sending;
+                row.ErrorCode = null;
+                row.ErrorMessage = null;
+                changed = true;
+            }
         }
 
         if (changed)

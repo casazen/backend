@@ -344,6 +344,37 @@ public class ListingPublishProofTests
         Assert.NotNull(rows["airbnb_xml"].ExternalChangeAt);
     }
 
+    [Theory]
+    [InlineData(ChannelPublishStatus.Accepted)]
+    [InlineData(ChannelPublishStatus.Published)]
+    [InlineData(ChannelPublishStatus.ToFix)]
+    public async Task RunAsync_APublicationQueuedWhileAnEarlierRunWasGoingOn_StillPushesItsChannels(ChannelPublishStatus found)
+    {
+        // The earlier run ended after the new request put the rows in Sending and wrote the state it ends with over it: the run queued by the request
+        // finds the rows Accepted, Published or ToFix and has to publish all the same, or what the host changed meanwhile would never be pushed.
+        var propertyId = await SeedPropertyAsync(OrgA, photoCount: 4);
+        var earlier = new ListingChannelBaseline(
+            new Dictionary<string, string> { [ListingContentGroups.Property] = "p0", [ListingContentGroups.Descriptions] = "d0", [ListingContentGroups.Rooms] = "r0" },
+            null,
+            []);
+        await SeedPushedRowAsync(propertyId, "homeaway", found, earlier);
+        SetUpClient("proc-2");
+        await using var db = NewDb();
+
+        await Service(db).RunAsync(propertyId, ["homeaway"], false, Host, null, CancellationToken.None);
+
+        await using var check = NewDb();
+        var row = await check.ListingChannelStates.AsNoTracking().SingleAsync();
+        Assert.Equal(ChannelPublishStatus.Accepted, row.Status);
+        Assert.Null(row.ErrorCode);
+        Assert.Equal(2, row.ContentVersion);
+        Assert.Equal("proc-2", ListingChannelBaseline.Parse(row.ContentHashesJson).ProcessId);
+        _client.Verify(
+            c => c.PushChannelAsync(Accommodation, Product, It.Is<OctorateChannelTarget>(t => t.PortalCode == "homeaway"), It.IsAny<CancellationToken>()),
+            Times.Once);
+        _recorder.Verify(r => r.Record(DomainEventType.ListingPublished, propertyId, It.IsAny<object>(), It.IsAny<string?>(), OrgA), Times.Never);
+    }
+
     private ContentPushService Service(AppDbContext db)
     {
         var urls = new PublicPhotoUrlService(_storage.Object);

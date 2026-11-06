@@ -937,7 +937,8 @@ answered with their own code (`octorate_not_connected` 409, `octorate_auth_faile
 - *Guards, then a job.* `PublishAsync` checks the reach, the content channels (`ListingChannels`), the confirmed mapping (`IsWriteBlockedAsync`), the declared
   scenario of a property with no mapping, the Italian and English texts and the changes made outside CasaZen on any channel of the property (the groups of the
   content are shared, so a publication to one channel writes them for all), and only then marks the channel rows `Sending` and queues `ListingPublishJob` (`[DisableConcurrentExecution]` for the property, no automatic retry: Octorate has no idempotency key and the refresh token
-  of a creation comes once). The job runs under `IOctorateOrgScope.Use(orgId)`.
+  of a creation comes once). The job runs under `IOctorateOrgScope.Use(orgId)` and works for the channels it was queued for, not from the state it finds their
+  rows in (it puts them in `Sending` first): a publication queued while an earlier run of the property was going on is not lost.
 - *Creation (T06).* `OctoratePropertyCreator` is the `newInventory` entry of the connect flow: only for a property a person declared never published
   (`IInventoryScenarioGuard`), with no confirmed mapping and in no proposed or ambiguous row. `POST /rest/v2/accommodation` is made with the partner token;
   `welcome_user` is false and the credentials Octorate would send go to `octorate-{orgId}@{Octorate:OwnerEmailDomain}` (PO-19), never to the owner.
