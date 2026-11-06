@@ -18,6 +18,10 @@ namespace Casazen.Infrastructure.Services;
 /// One place for the push (<c>PushDeliveryJob</c>), the bell (<c>InAppNotificationJob</c>) and the e-mails (<see cref="VerificationOperatorAlerts"/>),
 /// so the three cannot disagree. The query runs in jobs and in the anonymous guest request, with no tenant: every read ignores the query filters
 /// and scopes to the org explicitly.
+/// <para>The seeded role of the collaborator never holds <c>verification.decision</c> (a test proves it), so the grant branch is the rule of
+/// <c>HostScope</c> for a role that might hold it. The area rule of AM-02c that <c>HostNotificationAudience</c> adds (a grant counts only in an
+/// area the collaborator works in) is not applied here on purpose: if a role of the matrix ever gives a collaborator the permission, align this
+/// query with that one.</para>
 /// </remarks>
 internal static class VerificationOperatorAudience
 {
