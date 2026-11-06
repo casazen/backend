@@ -925,6 +925,15 @@ reservation of the room of a property, found through the confirmed `OctorateList
   and for a caller without `payment.read`); every booking answer carries `otaSource` (the channel of an imported booking, null otherwise).
 - *Guest.* A new `Guest` for the booking (name only: Octorate gives contact data only with a special permission), or the guest of the org with the same
   e-mail and the same name when the reservation carries an e-mail; purpose «GDPR art. 6.1.b», no consent claimed; the booker is the first `StayGuest`.
+- *Contacts of the guest (E07/F06/US02/T02, NF-94, `docs/runbooks/crm-octorate-contacts.md`).* No endpoint. `IOctorateContactsService.ReadForBookingAsync(orgId,
+  bookingId)` reads, for ONE booking, the reservation (the id of its first guest, `OctorateReservation.GuestId`) and then
+  `POST /rest/v1/guests/{acc}/{guestId}/contactInfo` (`IOctorateApiClient.GetGuestContactInfoAsync`, `OctorateGuestContactInfo`: sensitive data that Octorate
+  releases only from the registered static IP addresses; a 401/403 is `OctorateSensitiveDataNotAllowedException`, code `octorate_sensitive_data_not_allowed` 409,
+  never an empty result) and stores the address and the number with `ICrmContactService.UpsertContactAsync` (origin `OctorateContactInfo`, service only; an OTA or
+  relay address is an `OtaForward`; a customer of the booking engine, channel 270, is soft opt-in for a confirmed booking only while `Crm:BookingEngineSoftOptIn`
+  is on). Nothing is read unless `Crm:OctorateContactsEnabled` and `Features:OctorateConnector` are on, for a stay already over, for an erased guest, or past
+  `Crm:OctorateContactReadsPerHour` (50) reads an hour for the org; a refusal is remembered for the booking (`OctorateContactReadLedger`, in memory) and not
+  asked again in a loop. `OctorateContactsEventHandler` calls it on `BookingCreated` with `Origin = Octorate` (a failure never fails the event).
 - *Events.* `BookingCreated`, `BookingConfirmed`, `BookingModified` (property, dates, guests or figures changed, not cancelled) and `BookingCancelled`, with
   `Origin = Octorate`, once each (`BookingEvents` keys). None for a stay that is already over and none for a reservation first seen cancelled.
 - *Out.* `SyncBookingStateAsync` sends `CHECKIN_END` / `CHECKOUT_END` (`PUT /rest/v1/checkin/{acc}/{id}?status=`) and the cancellation of a reservation made
@@ -991,9 +1000,9 @@ code: they are rows, and the words of the cards are rows and resource keys (`Mar
 | `GET` | `/api/legal/dpa` | Anonymous | Data Processing Agreement |
 | `GET` | `/api/legal/tos` | Anonymous | Terms of Service |
 | `GET` | `/api/legal/privacy` | Anonymous | Privacy policy |
-| `GET` | `/api/gdpr/guests/{id}/export` | JWT | Export guest personal data |
+| `GET` | `/api/gdpr/guests/{id}/export` | JWT | Export guest personal data; since E07/F06/US02/T01 also `marketingChannels` (per-channel consents), `crmProfile`, `contacts` and `messages` (`docs/runbooks/gdpr.md` § 13) |
 | `GET` | `/api/gdpr/org/export` | OrgBillingAdmin (AM-03b; was property.read) | Fiscal data of the org (Partita IVA, codice fiscale, fiscal years and taxpayers of the properties) and the people with access (ids, role, status, scope): the owner and the administrators only; the property sections hold only the properties the caller's scope reaches (`docs/runbooks/org-team.md` § 40) |
-| `DELETE` | `/api/gdpr/guests/{id}` | guest.manage (AM-03; was guest.write) | Erasure request (Art. 17) |
+| `DELETE` | `/api/gdpr/guests/{id}` | guest.manage (AM-03; was guest.write) | Erasure request (Art. 17); since E07/F06/US02/T01 it also deletes the guest's CRM contacts (a suppressed one stays as a bare opt-out marker), unlinks the profile and deletes it when no other guest is linked |
 | `POST` | `/api/gdpr/guests/{id}/anonymize` | guest.manage (AM-03; was guest.write) | Anonymize guest record |
 | `PUT` | `/api/gdpr/guests/{id}/consent` | guest.manage (AM-03; was guest.write) | Update GDPR consent |
 | `GET` | `/api/tourist-tax-rates` | JWT | List tourist tax rates |

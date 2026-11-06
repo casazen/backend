@@ -49,6 +49,24 @@ public class CrmOptions
     /// </summary>
     public bool OctorateContactsEnabled { get; set; }
 
+    /// <summary>Fewest and most contact reads from Octorate one org may make in an hour (E07/F06/US02/T02).</summary>
+    public const int MinOctorateContactReadsPerHour = 1;
+
+    /// <inheritdoc cref="MinOctorateContactReadsPerHour"/>
+    public const int MaxOctorateContactReadsPerHour = 500;
+
+    /// <summary>The default of <see cref="OctorateContactReadsPerHour"/>.</summary>
+    public const int DefaultOctorateContactReadsPerHour = 50;
+
+    /// <summary>
+    /// How many bookings one org may have their guest contacts read from Octorate in an hour (E07/F06/US02/T02, NF-94, 50). The contacts are
+    /// sensitive data that Octorate logs on every read: they are asked for one booking at a time and never in bulk, so a burst (the first import of
+    /// a listing creates many bookings at once) is spread over the hours instead of reading them all; a booking over the cap is read by the next
+    /// call that needs it, after the hour. Counted in memory, by the running instance. Env var <c>Crm__OctorateContactReadsPerHour</c>, 1 to
+    /// <see cref="MaxOctorateContactReadsPerHour"/>; anything else stops the startup.
+    /// </summary>
+    public int OctorateContactReadsPerHour { get; set; } = DefaultOctorateContactReadsPerHour;
+
     /// <summary>
     /// Whether a customer of the booking engine of the agency's own site becomes a contact on soft opt-in for a confirmed booking. Off by
     /// default; turning it on is the product owner's declaration that the terms of Octorate allow it (D24) and that the privacy notice is
@@ -145,6 +163,13 @@ public sealed class CrmOptionsValidator(IFeatureFlags featureFlags, IHostEnviron
         {
             failures.Add(
                 $"Crm__ConfirmationMaxSends must be between {CrmOptions.MinConfirmationMaxSends} and {CrmOptions.MaxConfirmationMaxSends}.");
+        }
+
+        // The cap of the contact reads from Octorate (E07/F06/US02/T02): zero or a huge number would switch the guard off, silently.
+        if (options.OctorateContactReadsPerHour is < CrmOptions.MinOctorateContactReadsPerHour or > CrmOptions.MaxOctorateContactReadsPerHour)
+        {
+            failures.Add(
+                $"Crm__OctorateContactReadsPerHour must be between {CrmOptions.MinOctorateContactReadsPerHour} and {CrmOptions.MaxOctorateContactReadsPerHour}.");
         }
 
         // The prefix of the keys of the phone numbers (E07/F01/US02/T01): a typo would key every national number differently, silently.

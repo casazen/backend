@@ -100,6 +100,9 @@ internal static class OctorateReservationReader
             Infants = OctorateJson.Int(item, "infants"),
             FirstName = OctorateJson.Text(item, "firstName") ?? OctorateJson.Text(firstGuest, "firstName"),
             LastName = OctorateJson.Text(item, "lastName") ?? OctorateJson.Text(firstGuest, "lastName"),
+            GuestId = GuestIdOf(item, firstGuest),
+            GuestEmailAvailable = OctorateJson.Bool(firstGuest, "emailAvailable"),
+            GuestPhoneAvailable = OctorateJson.Bool(firstGuest, "phoneAvailable"),
             GuestEmail = EmailOf(OctorateJson.Text(item, "email", "guestEmail") ?? OctorateJson.Text(firstGuest, "email")),
             GuestPhone = PhoneOf(OctorateJson.Text(item, "phone", "guestPhone") ?? OctorateJson.Text(firstGuest, "phone")),
             // Only what the guest wrote: never the private notes of the host.
@@ -112,6 +115,16 @@ internal static class OctorateReservationReader
             PaymentStatus = OctorateJson.Text(item, "paymentStatus"),
             PriceBreakdown = PriceBreakdownOf(item),
         };
+    }
+
+    /// <summary>
+    /// The id of the guest in the guest registry (E07/F06/US02/T02): a <c>guestId</c> of the reservation itself, else the <c>id</c> of its first
+    /// guest. <c>null</c> when there is none, or one longer than a call accepts. Not proven by the sandbox (it gives flags, not contacts).
+    /// </summary>
+    private static string? GuestIdOf(JsonElement item, JsonElement firstGuest)
+    {
+        var id = OctorateJson.Text(item, "guestId") ?? OctorateJson.Text(firstGuest, "id", "guestId");
+        return id is { Length: <= OctorateReservation.GuestIdMaxLength } ? id : null;
     }
 
     /// <summary>The status Octorate wrote, or <c>null</c> for a word that is none of the three.</summary>

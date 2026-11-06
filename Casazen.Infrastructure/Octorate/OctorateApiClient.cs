@@ -208,6 +208,53 @@ public sealed class OctorateApiClient(
         return OctorateReservationReader.Read(Unwrap(document.RootElement), reservation) ?? throw new OctorateServerException(null);
     }
 
+    public async Task<OctorateGuestContactInfo> GetGuestContactInfoAsync(string accommodationId, string guestId, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var guest = CheckedId(guestId, nameof(guestId));
+
+        OctorateAnswer answer;
+        try
+        {
+            answer = await SendAsync(
+                () => new HttpRequestMessage(
+                    HttpMethod.Post,
+                    Address($"/rest/v1/guests/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(guest)}/contactInfo"))
+                {
+                    Content = new StringContent("{}", Encoding.UTF8, "application/json"),
+                },
+                "guest-contact-info",
+                ct);
+        }
+        catch (OctorateAuthException ex) when (!ex.IsNotConnected)
+        {
+            // 401 or 403 that is not a stale token (that one was refreshed and retried by SendAsync): the static IP addresses of CasaZen are not
+            // registered with Octorate yet, or the application has no contactInfo permission. Never turned into a guest with no contact.
+            logger.LogWarning(
+                "Octorate guest-contact-info for org {OrgId}: refused (HTTP {StatusCode}); the sensitive data is not released to this application",
+                orgScope.OrgId,
+                ex.OctorateStatusCode);
+            throw new OctorateSensitiveDataNotAllowedException(ex.OctorateStatusCode);
+        }
+
+        // The answer is the guest's contact data: it is read and returned, never logged (not even on a parse failure).
+        using var document = ParseJson(answer);
+        var root = Unwrap(document.RootElement);
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new OctorateServerException(answer.StatusCode);
+
+        return ReadGuestContactInfo(root);
+    }
+
+    /// <summary>
+    /// The e-mail address and the phone number of an answer of <c>contactInfo</c>. The names are not proven by the sandbox (its guest contacts
+    /// need the static IP whitelist): the plain ones and their usual spellings are read, a member that is missing or empty is <c>null</c>.
+    /// </summary>
+    internal static OctorateGuestContactInfo ReadGuestContactInfo(JsonElement root) =>
+        new(
+            OctorateJson.Text(root, "email", "emailAddress", "mail"),
+            OctorateJson.Text(root, "phone", "phoneNumber", "mobile", "telephone"));
+
     public async Task<OctorateCalendarDay[]> GetCalendarAsync(
         string accommodationId,
         IReadOnlyCollection<string> productIds,
