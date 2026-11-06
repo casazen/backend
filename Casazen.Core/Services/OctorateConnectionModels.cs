@@ -15,7 +15,10 @@ namespace Casazen.Core.Services;
 /// <param name="ConnectionId">The connection id (a number, as Octorate gives it).</param>
 /// <param name="PortalCode">The portal (channel or tool) the connection is to: the <c>PortalCode</c> of the marketplace catalog (<c>channelId</c>).</param>
 /// <param name="Status">The state as Octorate gives it (<c>DISABLED</c>, <c>WAITING</c>, <c>ENABLED</c>); <c>null</c> when not said.</param>
-/// <param name="LastUpdate">When the channel last answered about the connection, as its log says (UTC); <c>null</c> when not said.</param>
+/// <param name="LastUpdate">
+/// The latest moment Octorate gives for the connection (UTC): the moment of the last log of the channel, else when the person logged in; <c>null</c> when it
+/// gives none.
+/// </param>
 /// <param name="LastError">
 /// One line of the channel's own words when its last log reports a failure; <c>null</c> when it reports none or when the log cannot be read.
 /// Text of the channel: shown only after it is turned into simple words, and never logged.

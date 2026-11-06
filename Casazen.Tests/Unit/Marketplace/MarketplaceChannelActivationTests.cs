@@ -582,6 +582,38 @@ public class MarketplaceChannelActivationTests
         Assert.Equal(MarketplaceActivationStatus.Pending, Assert.Single(await retry.ActivationsAsync()).Status);
     }
 
+    [Fact]
+    public async Task StartAsync_AfterTheActivationWasDeactivated_StartsAgainOnTheSameRow_AndALostAnswerLeavesNoStaleConnection()
+    {
+        var w = await World.CreateAsync();
+        var first = await w.StartAsync();
+
+        // The host turned it off: the row is kept as Deactivated and the connection is gone from the channel manager.
+        await using (var db = w.NewDb())
+        {
+            var row = await db.MarketplaceActivations.SingleAsync();
+            row.Status = MarketplaceActivationStatus.Deactivated;
+            await db.SaveChangesAsync();
+        }
+
+        w.Connections.Clear();
+
+        // The channel manager does not answer the new create: the row keeps no id (the old one belonged to the connection that is gone).
+        w.CreateFailure = new OctorateServerException(null);
+        await Assert.ThrowsAsync<OctorateServerException>(() => w.StartAsync());
+        var kept = Assert.Single(await w.ActivationsAsync());
+        Assert.Equal((first.ActivationId, MarketplaceActivationStatus.Pending), (kept.Id, kept.Status));
+        Assert.Null(kept.OctorateConnectionId);
+
+        // The channel manager did make it: the next start takes it, on the same row, and makes no third connection.
+        w.CreateFailure = null;
+        w.Connections.Add(new OctorateConnectionInfo("7002", "142", "WAITING", null, null));
+        var restarted = await w.StartAsync();
+        Assert.Equal((first.ActivationId, MarketplaceActivationStatus.Pending), (restarted.ActivationId, restarted.Status));
+        Assert.Equal("7002", Assert.Single(await w.ActivationsAsync()).OctorateConnectionId);
+        Assert.Equal(2, w.Created.Count);
+    }
+
     // ─── Registration and the proposer ────────────────────────────────────────────────────────────────────
 
     /// <summary>The exact list of what the activation registers: the service, and the verifier of the channel access with the order that beats the default one.</summary>

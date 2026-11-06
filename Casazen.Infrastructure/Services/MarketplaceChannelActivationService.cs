@@ -163,6 +163,7 @@ public sealed class MarketplaceChannelActivationService(
                 // Whether the channel manager made the connection is not known: the activation is kept without its id, so that the next start
                 // finds the connection in the list and takes it instead of making a second one.
                 activation.Status = MarketplaceActivationStatus.Pending;
+                activation.OctorateConnectionId = null;
                 activation.LastErrorCode = ex.Code;
                 activation.LastErrorAt = now;
                 activation.UpdatedAt = now;
