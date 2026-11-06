@@ -1195,11 +1195,14 @@ public class ExistingInventoryImportServiceTests
         /// <summary>The two properties of org A the batches are about.</summary>
         public List<Guid> Properties { get; } = [];
 
+        /// <summary>One instance for every context: EF builds its internal services once for the same interceptor.</summary>
+        private static readonly HonourCancellation CancellationInterceptor = new();
+
         /// <summary>Runs after Octorate answered an operation, before the service sees the answer (a hook for a request that is closed then).</summary>
         public Action<OctorateD6Operation, string>? AfterAnswer { get; set; }
 
         public AppDbContext NewDb() =>
-            new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).AddInterceptors(new HonourCancellation()).Options, NullTenantContext.Instance);
+            new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).AddInterceptors(CancellationInterceptor).Options, NullTenantContext.Instance);
 
         public ExistingInventoryImportService Service(
             AppDbContext db,
