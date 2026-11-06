@@ -221,7 +221,7 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 
 #### Wizard drafts (ADR-024, E01/F02)
 
-`{type}` is the name of a `WizardType` (`ListingCreate`, `ListingEdit`, `BookingCreate`, `BookingEdit`, `CheckIn`, `CheckOut`, `ComplianceSender`, `TouristTax`; a number, or a name that is not one: 400 `wizard_type_unknown`). `entityId` tells what the wizard edits (the query of `GET` and `DELETE`, a member of the body of `POST`); none means the draft of a new entity. The person is always the token's `sub` and the org the caller's own; the answers are `private, no-store`. A caller with no host org gets 404 `not_found`.
+`{type}` is the name of a `WizardType` (`ListingCreate`, `ListingEdit`, `BookingCreate`, `BookingEdit`, `CheckIn`, `CheckOut`, `ComplianceSender`, `TouristTax`, `OnboardingActivation`, `OnboardingBulk`; a number, or a name that is not one: 400 `wizard_type_unknown`). `entityId` tells what the wizard edits (the query of `GET` and `DELETE`, a member of the body of `POST`); none means the draft of a new entity. The person is always the token's `sub` and the org the caller's own; the answers are `private, no-store`. A caller with no host org gets 404 `not_found`.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
@@ -1479,7 +1479,7 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | `Id` | `Guid` | PK | Client-generated |
 | `OrgId` | `Guid` | tenant key (`ITenantOwned`), no foreign key | The org the person worked in |
 | `UserId` | `string` (255) | not a foreign key | The Auth0 subject. The retention overwrites it with the empty string |
-| `WizardType` | `int` (enum) | explicit numbers, never reused | `ListingCreate` 1, `ListingEdit` 2, `BookingCreate` 3, `BookingEdit` 4, `CheckIn` 5, `CheckOut` 6, `ComplianceSender` 7, `TouristTax` 8 |
+| `WizardType` | `int` (enum) | explicit numbers, never reused | `ListingCreate` 1, `ListingEdit` 2, `BookingCreate` 3, `BookingEdit` 4, `CheckIn` 5, `CheckOut` 6, `ComplianceSender` 7, `TouristTax` 8, `OnboardingActivation` 9, `OnboardingBulk` 10 |
 | `EntityId` | `Guid?` | not a key | What the wizard edits; `null` for a wizard that creates something |
 | `Version` | `int` | — | The counter the client sees (1 at the first save, plus one at every save); a save behind it is a conflict |
 | `DraftJson` | `jsonb` | — | The typed data without the personal fields; `{}` once anonymized |
@@ -1503,6 +1503,21 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | `RecordedByUserId` | `string` (255) | required, not a foreign key | The Auth0 subject who recorded it |
 | `CreatedAt`, `UpdatedAt` | `DateTime` | UTC | — |
 | | | index `(OrgId, ComuneKey, PeriodFrom, PeriodTo)`, **not unique** | A comune can be paid in instalments, so payments of the same comune and period are all kept |
+
+#### Activation of CasaZen with Octorate (NF-104..NF-107, E10/F01/US01/T01)
+
+Six tables keep what the activation cannot derive: the host's intents and the activation facts. **The state of a part of the plan and of a flow is never stored**: it is derived on every read from the connection, the mapping, the sender... (the principle of the activation checklist of PL-15). Every table is `ITenantOwned` (`OrgId` FK `Orgs` RESTRICT, global tenant query filter); a property-bound row goes with its property (FK `Properties` CASCADE). Ids are `Guid`, users are `string` (255, the Auth0 subject, never a foreign key), enums are stored as their number (explicit values, never renumbered), no row holds a secret or personal data. Nothing writes to them yet except the tasks of E10 that follow; they are not read while `Features:OctorateOnboarding` is off.
+
+| Table (entity) | Fields | Keys and indexes | Notes |
+|---|---|---|---|
+| `OnboardingPartStates` (`OnboardingPartState`) | `PartKey` (`OnboardingPartKey` 1..11: `OctorateConnection`, `Properties`, `Channels`, `Listings`, `PricesRules`, `Compliance`, `Identification`, `MessagesAi`, `FiscalDocuments`, `Partners`, `Activation`), `Status` (`Open` 1, `Deferred` 2), `DeferredAt?`, `RemindAt?`, `ActivityId?` (the "To do", a reference), `UpdatedAt`, `UpdatedByUserId` | **unique** `(OrgId, PartKey)` (`UIX_OnboardingPartStates_OrgId_PartKey`) | Only a deferral is stored: a part with no row is open |
+| `PropertyFlowActivations` (`PropertyFlowActivation`) | `PropertyId`, `Flow` (`OnboardingFlow` 1..6: `Listings`, `Bookings`, `CheckInCompliance`, `Messages`, `Documents`, `Reports`), `ActivatedAt`, `ActivatedByUserId`, `DeactivatedAt?`, `DeactivatedByUserId?` | **unique** `(PropertyId, Flow)` (`UIX_PropertyFlowActivations_PropertyId_Flow`) | An activation after a deactivation reuses the row and clears `DeactivatedAt`. The row is not the state: a flow is active only while a row without `DeactivatedAt` exists **and** every prerequisite holds |
+| `OnboardingPanelSteps` (`OnboardingPanelStep`) | `PropertyId?`, `Kind` (`PanelStepKind`: `PoliceConnection` 1, `IstatConnection` 2, `ChannelAccess` 3), `ChannelCode?` (40), `Status` (`PanelStepStatus`: `Started` 1, `Verified` 2, `Confirmed` 3, `NotValid` 4, `AssistRequested` 5), `HandoffMode` (`PanelHandoffMode`: `RedirectCallback` 1, `ManagedWindow` 2), `HandoffNonceHash?` (64, the SHA-256 of the nonce, never the nonce), `HandoffExpiresAt?`, `CallbackConsumedAt?`, `ResumeWizardType?` (`WizardType`), `ResumeDraftEntityId?`, `ResumeStepCode?` (50), `StartedAt`, `NextVerificationAt?`, `VerificationAttempts`, `CompletedAt?`, `VerifiedAt?`, `LastVerificationOutcome?` (20: `verified`, `notValid`, `unverifiable`), `CompletedByUserId?`, `ActivityId?` | **unique** `(OrgId, PropertyId, Kind, ChannelCode)` with `NULLS NOT DISTINCT` (`UIX_OnboardingPanelSteps_OrgId_PropertyId_Kind_ChannelCode`) | Persists the ownership before the hand-over to the Octorate panel, the exact step to resume and the count that rate-limits the background verification. Needs PostgreSQL 15 or later (`NULLS NOT DISTINCT`) |
+| `OnboardingAssistRequests` (`OnboardingAssistRequest`) | `PartKey`, `PropertyId?`, `Context` (30: `panelPolice`, `panelIstat`, `panelChannelAccess`, `part`), `Status` (`OnboardingAssistStatus`: `Requested` 1, `InProgress` 2, `Done` 3, `Cancelled` 4), `DraftWizardType?`, `DraftEntityId?`, `RequestedByUserId`, `RequestedAt`, `AssignedToUserId?`, `UpdatedAt`, `CompletedAt?`, `StaffNote?` (500, no personal data), `ActivityId?` | **unique** `(OrgId, PartKey, PropertyId)` with `NULLS NOT DISTINCT`, only where `Status IN (1, 2)` (`UIX_OnboardingAssistRequests_OpenPerPartAndProperty`) | One open «Do it for me» request for each part and property. The wizard draft is a **reference** (type and entity id), never a copy of its content |
+| `OnboardingPilotMembers` (`OnboardingPilotMember`) | `PropertyId`, `AddedAt`, `AddedByUserId` | **unique** `PropertyId` (`UIX_OnboardingPilotMembers_PropertyId`) | The pilot group of an agency's progressive activation |
+| `PropertyOnboardingData` (`PropertyOnboardingData`) | `PropertyId`, `AlloggiatiRoomNumbersJson?` (`jsonb`, an array of at most 20 short codes), `UpdatedAt`, `UpdatedByUserId` | **unique** `PropertyId` (`UIX_PropertyOnboardingData_PropertyId`) | The lock code stays in the encrypted `PropertyAccessCode` |
+
+The migration is `AddOnboardingActivation`. The tables are not part of the demo reset yet (`TestDataEntities`): the demo scenario task of E10 (E10/F01/US01/T04) adds their constants together with the rows it marks. A row in any of them makes the org "in use" for `OrgEmptinessChecker` (the default: a table is checked unless it is listed in `OnboardingRows`).
 
 ---
 
