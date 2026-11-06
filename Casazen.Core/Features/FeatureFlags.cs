@@ -141,6 +141,16 @@ public static class FeatureFlags
     /// </summary>
     public const string OctorateConnector = "OctorateConnector";
 
+    /// <summary>
+    /// E10/F01/US01/T02 (NF-104..NF-107): the activation of CasaZen with Octorate, <b>off by default</b> until the plan, the flows and the
+    /// panel steps are ready to be shown. Off, every endpoint of epic E10 answers 404 before authentication
+    /// (<c>api/onboarding/flows/*</c> and the ones the later tasks of E10 add) <b>except</b> <c>GET api/onboarding/status</c>, which stays
+    /// reachable and answers exactly as before (its <c>flows</c> member is empty). On, that endpoint also gives the summary of the six
+    /// flows to a caller who passes <c>property.read</c>. This task owns the flag: the other E10 tasks only read it. It needs no variable
+    /// to start: nothing in the application is configured by it.
+    /// </summary>
+    public const string OctorateOnboarding = "OctorateOnboarding";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -157,5 +167,6 @@ public static class FeatureFlags
         SupplierRequestBackups,
         CheckInIdentityVerification,
         OctorateConnector,
+        OctorateOnboarding,
     ];
 }

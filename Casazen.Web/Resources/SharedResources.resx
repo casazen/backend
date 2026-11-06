@@ -4355,4 +4355,10 @@
   <data name="OctorateHandoffGuideIstatPeriodCheck" xml:space="preserve">
     <value>Controlla che il periodo risulti inviato per la regione della struttura. Un avviso rosso significa che la regione non consente l'invio diretto: in quel caso il file va caricato a mano sul portale regionale.</value>
   </data>
+  <data name="OnboardingFlowUnknown" xml:space="preserve">
+    <value>Flusso di attivazione sconosciuto.</value>
+  </data>
+  <data name="OnboardingFlowStateUnknown" xml:space="preserve">
+    <value>Stato del flusso sconosciuto.</value>
+  </data>
 </root>

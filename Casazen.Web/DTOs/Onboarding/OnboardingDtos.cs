@@ -26,6 +26,11 @@ public class OnboardingStatusDto
     public bool Activated { get; set; }
     public string? PublicBookingUrl { get; set; }
     public List<ActivationStepDto> Steps { get; set; } = [];
+
+    // The six flows (listings, bookings, check-in and compliance, messages, documents, reports) over the properties the caller reaches
+    // (NF-106, E10/F01/US01/T02): filled only with Features:OctorateOnboarding on and for a caller who may read the short-stay side of the
+    // properties (property.read); empty otherwise, and the member is then the only difference from the response without the flag.
+    public List<FlowSummaryDto> Flows { get; set; } = [];
 }
 
 /// <summary>

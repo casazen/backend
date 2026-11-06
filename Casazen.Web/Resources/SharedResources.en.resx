@@ -4355,4 +4355,10 @@
   <data name="OctorateHandoffGuideIstatPeriodCheck" xml:space="preserve">
     <value>Check that the period shows as sent for the region of the structure. A red warning means the region does not allow direct sending: in that case the file has to be uploaded by hand on the regional portal.</value>
   </data>
+  <data name="OnboardingFlowUnknown" xml:space="preserve">
+    <value>Unknown activation flow.</value>
+  </data>
+  <data name="OnboardingFlowStateUnknown" xml:space="preserve">
+    <value>Unknown flow state.</value>
+  </data>
 </root>
