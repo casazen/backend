@@ -33,8 +33,12 @@ namespace Casazen.Infrastructure.Octorate;
 /// itself, the host asks again. No answer, 429 or 5xx: <c>Failed</c> and the exception propagates, so the dispatcher delivers the event again
 /// (ADR-022-R4, R5). The call is idempotent (the client sends nothing for a reservation that is cancelled already), so a delivery that follows a
 /// lost answer succeeds.</item>
-/// <item><b>Out of order.</b> The events arrive in the order they occurred, not in the order they were handled: a cancellation that finds the
-/// create of the reservation under way (its row is <c>Pending</c>) is delivered again after it, never consumed with no effect.</item>
+/// <item><b>Out of order, and a create with no answer.</b> The events arrive in the order they occurred, not in the order they were handled. A create
+/// under way holds the lock of the booking, so the cancellation is delivered again after it (<see cref="OctorateSyncBusyException"/>); a row that is
+/// still <c>Pending</c> under the lock is a push that stopped. A booking with no reservation id whose create was tried (its row has attempts) may have
+/// its reservation on Octorate all the same, the answer being lost (D13), and the create gives up on a cancelled booking: the cancellation looks the
+/// reservation up by its reference, links it to the booking and cancels it. Nothing found after the whole list was read: the reservation was never made.
+/// A booking with no create tried has nothing on Octorate. Never consumed with no effect.</item>
 /// <item>Ids, enums and dates only are read from the event (ADR-022-R21); the org is the event's (ADR-022-R6). Logs carry ids and codes.</item>
 /// </list>
 /// </remarks>
@@ -100,7 +104,7 @@ public sealed class OctorateBookingCancelHandler(
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
             .Where(b => b.Id == bookingId && b.OrgId == orgId)
-            .Select(b => new BookingFacts(b.Id, b.OrgId, b.PropertyId, b.Status, b.Source, b.OctorateReservationId))
+            .Select(b => new BookingFacts(b.Id, b.OrgId, b.PropertyId, b.Status, b.Source, b.OctorateReservationId, b.BookingCode))
             .FirstOrDefaultAsync(ct);
         if (booking is null)
         {
@@ -119,16 +123,12 @@ public sealed class OctorateBookingCancelHandler(
         if (askedAgain && sync is not { LastOperation: OctorateSyncOperation.Cancel })
             return;
 
-        if (booking.OctorateReservationId is not { } reservationId)
-        {
-            // No reservation on Octorate yet. When its create is under way (the row is Pending, or a process stopped during it) the event is delivered
-            // again after it, never consumed with no effect. Otherwise the reservation was never made (the create gives up on a cancelled booking):
-            // there is nothing to cancel.
-            if (sync is { State: OctorateSyncState.Pending })
-                throw new OctorateSyncPendingException(bookingId);
-
+        // The reservation of the booking. One that has none yet but whose create was tried (its row has attempts) may have been made all the same, the
+        // answer of Octorate being lost: the create gives up on a cancelled booking and would never find it, so it is looked up by its reference and
+        // linked here, and cancelled below. No create tried: nothing exists on Octorate.
+        var reservationId = booking.OctorateReservationId ?? await FindAndLinkAsync(booking, sync, ct);
+        if (reservationId is null)
             return;
-        }
 
         OctorateTargetLookup lookup;
         try
@@ -207,6 +207,76 @@ public sealed class OctorateBookingCancelHandler(
         logger.LogInformation("Octorate cancellation of booking {BookingId} of org {OrgId}: the reservation is cancelled on Octorate", bookingId, orgId);
     }
 
+    /// <summary>
+    /// The reservation of a cancelled booking that has no reservation id, when a create was tried (its row has attempts): Octorate may have made the
+    /// reservation and lost the answer (D13), and the create gives up on a cancelled booking, so it would never look for it. It is looked up by its
+    /// reference, the booking code, as the create does, and linked to the booking; its id is returned and the cancellation goes on. <c>null</c> when no
+    /// create was tried (nothing exists on Octorate), when the whole list was read and has none (the reservation was never made), or when the lookup
+    /// could not be made (the row says why, and the event is delivered again when Octorate did not answer).
+    /// </summary>
+    private async Task<string?> FindAndLinkAsync(BookingFacts booking, OctorateBookingSync? sync, CancellationToken ct)
+    {
+        if (sync is not { Attempts: > 0 })
+            return null;
+
+        // Only the accommodation is needed: the rooms are not read to look a reservation up.
+        var accommodation = await targets.AccommodationOfAsync(booking.PropertyId, ct);
+        if (accommodation is null)
+        {
+            // Not mirrored now: nothing can be looked up, and the cancellation is not dropped (see the remarks of the class).
+            await RecordAsync(booking, sync, OctorateSyncState.Failed, OctorateSyncErrorCodes.NotMirrored, ct);
+            logger.LogWarning(
+                "Octorate cancellation of booking {BookingId} of org {OrgId}: its property is not mirrored now, the reservation of the create is not looked up; the host asks again",
+                booking.Id,
+                booking.OrgId);
+            return null;
+        }
+
+        OctorateReservation? found;
+        try
+        {
+            using (orgScope.Use(booking.OrgId))
+                found = await client.FindReservationByExternalReferenceAsync(accommodation, booking.BookingCode, ct);
+        }
+        catch (OctorateException ex)
+        {
+            // No answer, a 429 or a 5xx (or a list that could not be read whole, which proves nothing): the event is delivered again.
+            var retry = ex is OctorateServerException or OctorateRateLimitException;
+            await RecordAsync(booking, sync, OctorateSyncState.Failed, retry ? OctorateSyncErrorCodes.Unavailable : OctorateSyncErrorCodes.Rejected, ct);
+            logger.LogWarning(
+                "Octorate cancellation of booking {BookingId}: the reservation of the create could not be looked up ({Code}, HTTP {Status})",
+                booking.Id,
+                ex.Code,
+                ex.OctorateStatusCode);
+            if (retry)
+                throw;
+
+            return null;
+        }
+        catch (ArgumentException ex)
+        {
+            // A reference Octorate could not take: nothing left CasaZen, and asking again changes nothing.
+            await RecordAsync(booking, sync, OctorateSyncState.Failed, OctorateSyncErrorCodes.Rejected, ct);
+            logger.LogWarning(ex, "Octorate cancellation of booking {BookingId}: the reference cannot be written, the reservation is not looked up", booking.Id);
+            return null;
+        }
+
+        if (found is null)
+        {
+            logger.LogInformation("Octorate cancellation of booking {BookingId}: no reservation has its reference, the create never made one", booking.Id);
+            return null;
+        }
+
+        // Linked, as the create does when it hears the answer: from here the booking is one with its reservation.
+        var tracked = await db.Bookings.FirstAsync(b => b.Id == booking.Id && b.OrgId == booking.OrgId, ct);
+        tracked.OctorateReservationId = found.Id;
+        tracked.OctorateUpdatedAt = found.UpdatedAt ?? tracked.OctorateUpdatedAt;
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation(
+            "Octorate cancellation of booking {BookingId} of org {OrgId}: reservation {ReservationId} of the create found by its reference and linked", booking.Id, booking.OrgId, found.Id);
+        return found.Id;
+    }
+
     private async Task<OctorateBookingSync> MarkPendingAsync(BookingFacts booking, OctorateBookingSync? sync, CancellationToken ct)
     {
         var now = UtcNow;
@@ -261,5 +331,6 @@ public sealed class OctorateBookingCancelHandler(
         Guid PropertyId,
         BookingStatus Status,
         BookingSource Source,
-        string? OctorateReservationId);
+        string? OctorateReservationId,
+        string BookingCode);
 }

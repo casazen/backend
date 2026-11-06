@@ -111,7 +111,8 @@ marks it `Synced`; no answer, 429 or 5xx leave it `Failed` and the dispatcher de
 notification that follows is the echo of that write: the import finds the booking cancelled and changes nothing. A cancellation that came
 from Octorate (`Origin = Octorate`) is never sent back. A property that is not mirrored now (connection lost, mapping still to decide) is never
 written to, and the row is `Failed` `octorate_not_mirrored`: reconnect or confirm the mapping, then ask again from the booking (`POST
-/api/bookings/{id}/octorate-sync/retry`). A booking of a channel goes the other way round: `POST /api/bookings/{id}/cancel`
+/api/bookings/{id}/octorate-sync/retry`). A booking that has no reservation yet but whose create was tried (Octorate may have made it and lost the
+answer) is looked up by its booking code: found, it is linked and cancelled. A booking of a channel goes the other way round: `POST /api/bookings/{id}/cancel`
 asks Octorate first and cancels in CasaZen only when it confirms, on a channel the configuration opens (`Octorate__ChannelActions__*`,
 closed by default); see [TECHNICAL.md](../TECHNICAL.md) § «Changing and cancelling a booking».
 

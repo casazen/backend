@@ -1127,8 +1127,12 @@ no channel are closed (`OtaChannelActionPolicy.For`). A *booking of a channel* i
   under the session lock of the booking: `Pending` before the call, then `Synced`; 409: `Conflict` `octorate_reservation_changed`; another refusal (4xx):
   `Failed` `octorate_rejected`; neither is tried again by itself. No answer, 429 or 5xx: `Failed` `octorate_unavailable` and the exception propagates, so the
   dispatcher delivers the event again (ADR-022-R4, R5). The host's «ask again» (`POST /api/bookings/{id}/octorate-sync/retry`, `OctorateSyncRequested`) is
-  consumed by the same handler for a row whose last operation is the cancellation. A cancellation that finds the create of the reservation under way
-  (row `Pending`, or the lock taken) is delivered again after it; the create of a booking that was cancelled while its target was read makes no reservation.
+  consumed by the same handler for a row whose last operation is the cancellation. A cancellation that finds the create of the reservation under way (the
+  lock taken) is delivered again after it; the create of a booking that was cancelled while its target was read makes no reservation. A booking with no
+  reservation id whose create was tried (its row has attempts: the answer may have been lost after Octorate made the reservation, D13) is looked up on
+  Octorate by its reference (the booking code, as the create does), also when it is cancelled, which the create gives up on: found, the reservation is linked
+  to the booking and cancelled; nothing found after the whole list was read, it was never made; no answer, `Failed` `octorate_unavailable` and the event is
+  delivered again. A booking with no create tried has nothing on Octorate and sends nothing.
 - *The client* (`IOctorateApiClient.CancelReservationAsync(target, reservationId)`): reads the reservation (a reservation that is `CANCELLED` already is
   done: the retry of a cancellation whose answer was lost sends nothing, D13), sends the same document back with `PUT /rest/v1/reservation/{acc}/{id}` and
   only its `status` changed to `CANCELLED` (the documented way: `PATCH` cannot move a confirmed reservation to cancelled). A 2xx of the PUT is not the
