@@ -172,13 +172,16 @@ public sealed class BookingOctorateSyncService(
             }
         }
 
-        await RecordSyncedAsync(booking, sync, reservation, ct);
+        var attempts = sync.Attempts;
+        if (!await RecordSyncedAsync(booking, sync, reservation, ct))
+            return OctorateSyncState.Failed;
+
         logger.LogInformation(
             "Octorate push of booking {BookingId} of org {OrgId}: reservation {ReservationId} recorded (attempt {Attempt})",
             bookingId,
             booking.OrgId,
             reservation.Id,
-            sync.Attempts);
+            attempts);
 
         // The payments made before the reservation existed (their event found nothing to record them on): recorded now, under the same lock.
         return await CatchUpPaymentsAsync(booking.OrgId, bookingId, target.AccommodationId, reservation.Id, ct);
@@ -633,7 +636,11 @@ public sealed class BookingOctorateSyncService(
         return OctorateSyncState.Conflict;
     }
 
-    private async Task RecordSyncedAsync(BookingFacts booking, OctorateBookingSync sync, OctorateReservation reservation, CancellationToken ct)
+    /// <summary>
+    /// Saves the reservation id on the booking and closes the mirror in one save. <c>false</c> when another booking holds the reservation (the row
+    /// is then <c>Failed</c>, see <see cref="RecoverLinkAsync"/>); an error of the database that is not that goes up.
+    /// </summary>
+    private async Task<bool> RecordSyncedAsync(BookingFacts booking, OctorateBookingSync sync, OctorateReservation reservation, CancellationToken ct)
     {
         var now = UtcNow;
         var tracked = await db.Bookings.FirstAsync(b => b.Id == booking.Id && b.OrgId == booking.OrgId, ct);
@@ -645,7 +652,65 @@ public sealed class BookingOctorateSyncService(
         sync.OctorateUpdateTime = reservation.UpdatedAt;
         sync.LastSyncedAt = now;
         sync.UpdatedAt = now;
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            if (await RecoverLinkAsync(booking, reservation, ct) is not { } linked)
+                throw;
+
+            return linked;
+        }
+    }
+
+    /// <summary>
+    /// The save of the reservation id failed, usually on the unique index of (org, Octorate id): the import read the reservation before the id was
+    /// saved and holds it on a booking. The holder is read again. This booking itself (the import matched its echo by reference and linked it):
+    /// the mirror is closed, <c>true</c>. Another booking (a duplicate made before the import matched by reference): nothing is moved by guess, the
+    /// mirror is marked <c>Failed</c> with <see cref="OctorateSyncErrorCodes.ReservationLinkedElsewhere"/>, <c>false</c>, never a <c>Pending</c> that
+    /// nothing completes. Nobody holds it, so the index was not the cause: <c>null</c>, and the caller raises the error.
+    /// </summary>
+    private async Task<bool?> RecoverLinkAsync(BookingFacts booking, OctorateReservation reservation, CancellationToken ct)
+    {
+        // The failed save leaves its changes in the tracker: forgotten, and read again.
+        db.ChangeTracker.Clear();
+
+        var holder = await db.Bookings
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(b => b.OrgId == booking.OrgId && b.OctorateReservationId == reservation.Id)
+            .Select(b => (Guid?)b.Id)
+            .FirstOrDefaultAsync(ct);
+        if (holder is null)
+            return null;
+
+        var sync = await db.OctorateBookingSyncs.FirstAsync(s => s.BookingId == booking.Id && s.OrgId == booking.OrgId, ct);
+        var now = UtcNow;
+        var linked = holder == booking.Id;
+        if (linked)
+        {
+            sync.State = OctorateSyncState.Synced;
+            sync.ErrorCode = null;
+            sync.OctorateUpdateTime = reservation.UpdatedAt;
+            sync.LastSyncedAt = now;
+        }
+        else
+        {
+            sync.State = OctorateSyncState.Failed;
+            sync.ErrorCode = OctorateSyncErrorCodes.ReservationLinkedElsewhere;
+            logger.LogWarning(
+                "Octorate push of booking {BookingId}: reservation {ReservationId} is already held by booking {HolderId}, nothing is linked by guess",
+                booking.Id,
+                reservation.Id,
+                holder);
+        }
+
+        sync.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
+        return linked;
     }
 
     /// <summary>

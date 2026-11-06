@@ -4668,4 +4668,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OctorateSyncPaymentsNotRecorded" xml:space="preserve">
     <value>La prenotazione è nel channel manager, ma non tutti gli incassi sono stati registrati. Controlla e riprova.</value>
   </data>
+  <data name="OctorateSyncLinkedElsewhere" xml:space="preserve">
+    <value>La prenotazione esiste nel channel manager, ma in CasaZen è già collegata a un'altra prenotazione: controlla se è un duplicato.</value>
+  </data>
 </root>

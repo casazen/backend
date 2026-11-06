@@ -31,6 +31,12 @@ public static class OctorateSyncErrorCodes
     /// </summary>
     public const string PaymentsNotRecorded = "octorate_payments_not_recorded";
 
+    /// <summary>
+    /// The reservation exists on Octorate but CasaZen already holds it on another booking (a duplicate made by the import): nothing is
+    /// linked by guess, a person decides which one stays.
+    /// </summary>
+    public const string ReservationLinkedElsewhere = "octorate_reservation_linked_elsewhere";
+
     /// <summary>The resource key of the message of each code (Italian and English).</summary>
     public static IReadOnlyDictionary<string, string> MessageKeys { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -41,5 +47,6 @@ public static class OctorateSyncErrorCodes
         [RoomNotChosen] = "OctorateSyncRoomNotChosen",
         [NotRetryable] = "OctorateSyncNotRetryable",
         [PaymentsNotRecorded] = "OctorateSyncPaymentsNotRecorded",
+        [ReservationLinkedElsewhere] = "OctorateSyncLinkedElsewhere",
     };
 }
