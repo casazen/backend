@@ -600,6 +600,9 @@
   <data name="TodoReason_BookingSpecialRequest" xml:space="preserve">
     <value>New booking with a special request</value>
   </data>
+  <data name="TodoReason_BookingOverlap" xml:space="preserve">
+    <value>{0}: the booking arrives on nights that are already taken, from {1} to {2}</value>
+  </data>
   <data name="Push_GuestMessage_Title" xml:space="preserve">
     <value>New message from a guest</value>
   </data>

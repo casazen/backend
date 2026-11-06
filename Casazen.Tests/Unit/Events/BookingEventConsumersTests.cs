@@ -404,7 +404,8 @@ public class BookingEventConsumersTests : IAsyncLifetime
             .Select(d => d.ImplementationType)
             .ToList();
         // In the order of registration: the three of E08/F06 (cleaning «To do», special request «To do», channel alert), then the two
-        // that write to Octorate (E08/F01/US01): the booking created on confirmation (T03) and the payment recorded once paid (T04).
+        // that write to Octorate (E08/F01/US01): the booking created on confirmation (T03) and the payment recorded once paid (T04), then
+        // the one that raises the «To do» of a booking from the channel manager on taken nights (E08/F01/US02/T02).
         Assert.Equal(
             [
                 typeof(BookingCleaningActivityHandler),
@@ -412,6 +413,7 @@ public class BookingEventConsumersTests : IAsyncLifetime
                 typeof(ChannelBookingAlertHandler),
                 typeof(OctorateBookingCreateHandler),
                 typeof(OctoratePaymentHandler),
+                typeof(BookingOverlapHandler),
             ],
             handlers);
     }
