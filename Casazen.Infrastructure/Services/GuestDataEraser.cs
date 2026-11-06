@@ -82,7 +82,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     /// list does and a returning address is flagged again;</item>
     /// <item>the guest is unlinked from its profile; the profile is deleted when no other guest of the org is linked to it, with the proposals of
     /// merge that involve it; otherwise it is <b>never deleted</b> (a profile of several guests is not the erasure of one) and loses its keyed
-    /// hashes, its tags and its country, which may be the erased guest's;</item>
+    /// hashes, its tags and its country, which may be the erased guest's. Guests of one profile erased in the same unit of work (the retention erases
+    /// a chunk of guests before one save) do not count for each other: the last of them takes the profile, and nothing is left with no guest;</item>
     /// <item>the recipients of a campaign would keep their row and lose their references to the contact and to the profile (null, through their own
     /// <c>SetNull</c> foreign keys): the campaign model is deferred (<c>kb/plan/deferred</c>, B05) and does not exist yet, so there is nothing to do
     /// here until it does.</item>
@@ -96,13 +97,19 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         var orgId = guest.OrgId;
         var profileId = guest.GuestCrmProfileId;
 
-        // The profile is the guest's alone when no other guest of the org is linked to it. Read before the guest is unlinked.
+        // The profile is the guest's alone when no other guest of the org is linked to it. Read before the guest is unlinked. A guest that this unit of work
+        // has already unlinked no longer counts: an erasure run erases several guests before one save (the retention does), the database still has the first
+        // one linked when the second is read, and without this a profile whose guests all go in the same run would never be deleted and would be left with
+        // no guest, its aggregates and the contacts of no guest.
         var alone = false;
         if (profileId is { } linkedId)
         {
-            alone = !await db.Guests.AnyAsync(
-                g => g.OrgId == orgId && g.GuestCrmProfileId == linkedId && g.Id != guest.Id,
-                cancellationToken);
+            var others = await db.Guests
+                .AsNoTracking()
+                .Where(g => g.OrgId == orgId && g.GuestCrmProfileId == linkedId && g.Id != guest.Id)
+                .Select(g => g.Id)
+                .ToListAsync(cancellationToken);
+            alone = others.All(otherId => db.Guests.Local.Any(g => g.Id == otherId && g.GuestCrmProfileId != linkedId));
         }
 
         List<GuestContact> contacts;
@@ -122,6 +129,10 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         int removed = 0, kept = 0;
         foreach (var contact in contacts)
         {
+            // Already taken out by an earlier guest of the same unit of work: not counted twice.
+            if (db.Entry(contact).State == EntityState.Deleted)
+                continue;
+
             if (contact.IsSuppressed)
             {
                 if (StripToOptOutMarker(contact, now))

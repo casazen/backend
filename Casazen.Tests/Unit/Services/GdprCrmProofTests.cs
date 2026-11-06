@@ -331,6 +331,46 @@ public class GdprCrmProofTests
     }
 
     /// <summary>
+    /// Proof test (data rule): the guests of one profile who are all erased in the same run (the retention erases a chunk of guests before one save)
+    /// take the profile with them. Each is read against a database that still has the other linked, so the first leaves the profile and the last takes
+    /// it, with its proposals and the contact of no guest; nothing is left with no guest, and the opt-out stays as a bare marker.
+    /// </summary>
+    [Fact]
+    public async Task GdprErasure_GuestsOfOneProfileErasedInTheSameRun_TakeTheProfileWithThem_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        var world = await SeedSharedProfileAsync(store, orgId);
+
+        await using (var db = CrmTestWorld.Open(store))
+        {
+            var eraser = new GuestDataEraser(db, Mock.Of<IFileStorage>(), NullLogger<GuestDataEraser>.Instance);
+            var first = await db.Guests.SingleAsync(g => g.Id == world.FirstGuestId, Ct);
+            var second = await db.Guests.SingleAsync(g => g.Id == world.SecondGuestId, Ct);
+
+            var afterFirst = await eraser.AnonymizeAsync(first, CrmTestWorld.Now.UtcDateTime, Ct);
+            var afterSecond = await eraser.AnonymizeAsync(second, CrmTestWorld.Now.UtcDateTime, Ct);
+            await db.SaveChangesAsync(Ct);
+
+            Assert.False(afterFirst.CrmProfileRemoved);
+            Assert.True(afterSecond.CrmProfileRemoved);
+        }
+
+        await using var verify = CrmTestWorld.Open(store);
+        Assert.False(await verify.GuestCrmProfiles.AnyAsync(p => p.Id == world.ProfileId, Ct));
+        Assert.Equal(0, await verify.GuestMergeCandidates.CountAsync(m => m.OrgId == orgId && (m.ProfileAId == world.ProfileId || m.ProfileBId == world.ProfileId), Ct));
+        Assert.All(await verify.Guests.AsNoTracking().Where(g => g.OrgId == orgId).ToListAsync(Ct), g => Assert.Null(g.GuestCrmProfileId));
+
+        // Their contacts and the lead are gone; the opt-out of the first guest is the one row left, bare.
+        var marker = Assert.Single(await verify.GuestContacts.AsNoTracking().Where(c => c.OrgId == orgId).ToListAsync(Ct));
+        Assert.Equal(Index.Hash("mario.old@example.com"), marker.ValueHash);
+        Assert.True(marker.IsSuppressed);
+        Assert.Equal(string.Empty, marker.Value);
+        Assert.Null(marker.GuestId);
+        Assert.Null(marker.GuestCrmProfileId);
+    }
+
+    /// <summary>
     /// Proof test (privacy rule, AC-NF95-7): when the retention ends the marketing consent of a guest, its contacts on consent go back to service
     /// only, and are not suppressed (an expiry is not an opt-out: the guest can consent again). A soft opt-in and a suppression stay as they were,
     /// and a guest whose consent has not ended keeps its contacts.
