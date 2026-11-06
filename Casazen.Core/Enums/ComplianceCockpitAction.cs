@@ -32,4 +32,43 @@ public enum ComplianceCockpitAction
     /// on its last step (CO-17). Target: the booking.
     /// </summary>
     ConfirmPropertyReady,
+
+    // E03/F02/US01/T03 (NF-52, CHK-12): the actions below are appended, never renamed or renumbered; the clients map them to a page
+    // (COMPLIANCE_ACTION_TARGETS) and show an item whose action they do not know without a link.
+
+    /// <summary>
+    /// The identity of the guest who leaves the document is not verified yet: their selfie is awaited before the arrival, or an operator has
+    /// to decide (CHK-11, NF-50). Target: the booking.
+    /// </summary>
+    VerifyIdentity,
+
+    /// <summary>
+    /// The Alloggiati Web communication of the stay was sent, entrusted to the channel manager or declared sent, and its receipt is not archived
+    /// yet: the host uploads it (CHK-08). Target: the booking.
+    /// </summary>
+    UploadAlloggiatiReceipt,
+
+    /// <summary>
+    /// The police send of the channel manager is not active or cannot be verified for the property: activate it or reconnect it (CHK-03, CHK-12).
+    /// Target: the property.
+    /// </summary>
+    ActivateOctorateSend,
+
+    /// <summary>
+    /// A stay the channel manager does not send by itself: one over 30 nights, or a short stay not covered by its daily run. The host sends it
+    /// by hand (CHK-12). Target: the booking.
+    /// </summary>
+    SendAlloggiatiManually,
+
+    /// <summary>The proof of the ISTAT communication of a period is not archived: the host uploads it. Target: the property, with the period (<c>yyyy-MM</c>).</summary>
+    UploadIstatProof,
+
+    /// <summary>The tourist tax rate of the property's comune is not known (never taken as zero): the host enters it. Target: the property.</summary>
+    EnterMunicipalityTaxRate,
+
+    /// <summary>The tourist tax of a closed period is not declared and paid with its receipts archived. Target: the property, with the period (<c>yyyy-MM</c>).</summary>
+    DeclareTouristTax,
+
+    /// <summary>The police (Alloggiati Web) credentials kept in CasaZen were refused: the host sets them again. Target: the property.</summary>
+    RenewPoliceCredentials,
 }

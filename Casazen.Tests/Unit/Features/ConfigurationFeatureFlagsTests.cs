@@ -91,6 +91,8 @@ public class ConfigurationFeatureFlagsTests
                 "FiscalDocumentIssuance",
                 // E06/F02/US01/T04: the sync of the billing data with Octorate (pre-fill of the invoice data, write-back), off until the customer endpoints are proven.
                 "OctorateBillingSync",
+                // E03/F02/US01/T03: the compliance traffic light of the cockpit and the feed of its items into the «Da fare» list, off until the proofs can be archived.
+                "ComplianceTrafficLight",
             },
             FeatureFlags.All);
     }

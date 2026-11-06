@@ -254,6 +254,27 @@ public static class HostTodoPriority
         Casazen.Core.Enums.ComplianceCockpitAction.SendAlloggiati => HostTodoAction.SendAlloggiati,
         Casazen.Core.Enums.ComplianceCockpitAction.ResolveAlloggiatiFailure => HostTodoAction.ResolveAlloggiatiFailure,
         Casazen.Core.Enums.ComplianceCockpitAction.ConfirmPropertyReady => HostTodoAction.ConfirmPropertyReady,
-        _ => throw new ArgumentOutOfRangeException(nameof(action), action, "A cockpit action without a place in the things to do."),
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(action), action, "A cockpit action without a place in the things to do: map it, or list it in CockpitActionsOutsideTheDay."),
     };
+
+    /// <summary>
+    /// The cockpit actions of the compliance traffic light (E03/F02/US01/T03, NF-52) that the list of the day does not carry: the day reads the six
+    /// older sections of the cockpit, while these items live in the new sections (identity, receipts, sends by hand, connections, periods), which the
+    /// compliance cockpit shows and the «Da fare» list (ADR-026) receives. A cockpit action is either mapped by <see cref="From"/> or listed here, so a new
+    /// one is decided on purpose: the test <c>From_EveryActionOfTheCockpit_HasAPlaceInTheThingsToDo_OrIsLeftOutOfTheDayOnPurpose</c> holds the two
+    /// against the enum.
+    /// </summary>
+    public static IReadOnlySet<Casazen.Core.Enums.ComplianceCockpitAction> CockpitActionsOutsideTheDay { get; } =
+        new HashSet<Casazen.Core.Enums.ComplianceCockpitAction>
+        {
+            Casazen.Core.Enums.ComplianceCockpitAction.VerifyIdentity,
+            Casazen.Core.Enums.ComplianceCockpitAction.UploadAlloggiatiReceipt,
+            Casazen.Core.Enums.ComplianceCockpitAction.SendAlloggiatiManually,
+            Casazen.Core.Enums.ComplianceCockpitAction.ActivateOctorateSend,
+            Casazen.Core.Enums.ComplianceCockpitAction.RenewPoliceCredentials,
+            Casazen.Core.Enums.ComplianceCockpitAction.UploadIstatProof,
+            Casazen.Core.Enums.ComplianceCockpitAction.EnterMunicipalityTaxRate,
+            Casazen.Core.Enums.ComplianceCockpitAction.DeclareTouristTax,
+        };
 }
