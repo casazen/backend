@@ -244,11 +244,21 @@ public sealed record ComplianceStatusItem(
 /// <param name="IdentityBookingIds">The stays whose identity verification was evaluated: the ones arriving soon, while the verification is on.</param>
 /// <param name="PropertyIds">The properties whose connection, credentials, rate and periods were evaluated.</param>
 /// <param name="Periods">The months (<c>yyyy-MM</c>) of the ISTAT and tourist tax periods that were evaluated.</param>
+/// <param name="BookingWindowStartUtc">
+/// The first arrival day the Alloggiati status looks at (the lookback, <c>Compliance:StatusLookbackDays</c>); <c>null</c> when the evaluation has none.
+/// A stay that arrived before it is not evaluated any more, and nobody chases its To do here.
+/// </param>
+/// <param name="ConnectionNotReadPropertyIds">
+/// The properties whose police send of the channel manager was <b>not read</b> in this evaluation (over the limit of live reads of a call, no answer in
+/// memory): they have no connection item, and that is not because the connection is fine, so their To do about the connection is left alone.
+/// </param>
 public sealed record ComplianceEvaluatedUniverse(
     IReadOnlySet<Guid> BookingIds,
     IReadOnlySet<Guid> IdentityBookingIds,
     IReadOnlySet<Guid> PropertyIds,
-    IReadOnlySet<string> Periods)
+    IReadOnlySet<string> Periods,
+    DateTime? BookingWindowStartUtc = null,
+    IReadOnlySet<Guid>? ConnectionNotReadPropertyIds = null)
 {
     /// <summary>Nothing was looked at.</summary>
     public static ComplianceEvaluatedUniverse None { get; } =

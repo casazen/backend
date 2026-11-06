@@ -280,6 +280,29 @@ public class InternalActivityService(
             .ToDictionary(g => g.Key, g => g.First());
     }
 
+    public async Task<IReadOnlyList<InternalActivity>> FindOpenInScopeAsync(
+        HostScope scope,
+        string action,
+        string entityType,
+        IReadOnlyCollection<Guid> exceptEntityIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(exceptEntityIds);
+        var parsed = ParseAction(action);
+        var type = Bounded(entityType, TodoLimits.EntityTypeMaxLength, nameof(entityType))
+                   ?? throw new ArgumentException("A To do names the type of the entity it is about.", nameof(entityType));
+
+        var except = exceptEntityIds.Distinct().ToList();
+        return await OpenTodos(scope)
+            .Where(a => a.Action == parsed && a.EntityType == type && a.EntityId != null && !except.Contains(a.EntityId.Value))
+            .OrderBy(a => a.CreatedAt)
+            .ThenBy(a => a.Id)
+            .Take(TodoLimits.MaxPendingItems * 10)
+            .AsNoTracking()
+            .ToListAsync(ct);
+    }
+
     /// <summary>The member of <see cref="ActivityAction"/> named <paramref name="action"/> (exactly, not a number); anything else is a programming error.</summary>
     private static ActivityAction ParseAction(string action)
     {

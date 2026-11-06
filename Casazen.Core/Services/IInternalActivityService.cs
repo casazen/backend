@@ -143,6 +143,20 @@ public interface IInternalActivityService
         string entityType,
         IReadOnlyCollection<Guid> entityIds,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// The open "To do" with this <paramref name="action"/> on an entity of this <paramref name="entityType"/> that the <paramref name="scope"/> reaches
+    /// (the same reach as the list: its org, the properties it reaches), except those about <paramref name="exceptEntityIds"/>: how the compliance
+    /// cockpit finds the items of stays it no longer evaluates (cancelled, no-show, past the lookback) to close them. At most
+    /// <see cref="TodoLimits.MaxPendingItems"/> times ten, the oldest first, so a backlog is closed over several runs. An action that is not a member of
+    /// <see cref="ActivityAction"/> is an <see cref="ArgumentException"/>.
+    /// </summary>
+    Task<IReadOnlyList<InternalActivity>> FindOpenInScopeAsync(
+        HostScope scope,
+        string action,
+        string entityType,
+        IReadOnlyCollection<Guid> exceptEntityIds,
+        CancellationToken ct = default);
 }
 
 /// <summary>
