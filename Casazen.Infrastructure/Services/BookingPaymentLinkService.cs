@@ -92,6 +92,16 @@ public sealed class BookingPaymentLinkService(
         if (!linkable || booking.Status == BookingStatus.Cancelled)
             throw Unavailable();
 
+        // A booking of the booking site paid at its deadline ("Paga alla scadenza") whose card has not been charged yet is collected by the deadline
+        // charge, on the whole total, and that charge knows nothing of a link: the guest would pay twice. No link until the deadline charge is
+        // collected; after it, only a price raised by an edit leaves a balance (and that one is charged to the saved card).
+        if (booking.Source == BookingSource.Direct && booking.PaymentOption == PaymentOption.OnCancellationDeadline)
+        {
+            var deferred = DeferredCharges.FindPayment(booking, booking.Payments);
+            if (deferred is null || !DeferredCharges.IsCollected(deferred.Status))
+                throw Unavailable();
+        }
+
         var org = booking.Org;
         if (!org.CanTakeDirectPayments || string.IsNullOrWhiteSpace(org.Slug) || !links.IsConfigured)
             throw Unavailable();
