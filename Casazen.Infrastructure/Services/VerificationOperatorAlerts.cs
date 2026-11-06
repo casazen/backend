@@ -1,6 +1,7 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -47,11 +48,22 @@ public sealed class VerificationOperatorAlerts(
                 PropertyName = s.Booking.Property.Name,
                 PropertyOwnerId = s.Booking.Property.OwnerId,
                 s.Booking.CheckInDate,
+                BookingStatus = s.Booking.Status,
+                s.Booking.NoShowAt,
             })
             .FirstOrDefaultAsync(ct);
         if (target is null)
         {
             logger.LogWarning("Verification alert for session {SessionId} not raised: the session does not exist", sessionId);
+            return;
+        }
+
+        // The one definition of an active stay (AlloggiatiStatusRules): the queue does not list a request, a hold, a cancelled stay or a no-show,
+        // so an alert about one would tell the operators of something they cannot open.
+        if (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(target.BookingStatus) || target.NoShowAt is not null)
+        {
+            logger.LogInformation(
+                "Verification alert of booking {BookingId} not raised: the stay is not active ({Status})", target.BookingId, target.BookingStatus);
             return;
         }
 
@@ -121,5 +133,23 @@ public sealed class VerificationOperatorAlerts(
         logger.LogInformation(
             "Identity verification of booking {BookingId} handed to the operators ({Reason}): {Queued} of {Recipients} e-mails queued",
             target.BookingId, reasonCode, queued, recipients.Count);
+    }
+
+    public async Task ResolveAsync(Guid orgId, Guid bookingId, CancellationToken ct)
+    {
+        // The anonymous guest request has no tenant: the org is named in the query.
+        var type = nameof(ActivityType.IdentityVerification);
+        var open = await db.InternalActivities
+            .AsNoTracking()
+            .Where(a => a.OrgId == orgId
+                        && a.ActivityType == type
+                        && a.EntityType == InternalActivity.BookingEntityType
+                        && a.EntityId == bookingId
+                        && a.CompletedAt == null)
+            .Select(a => a.Id)
+            .ToListAsync(ct);
+
+        foreach (var id in open)
+            await activities.CloseAsync(id, InternalActivity.ClosedBySystem, ct);
     }
 }

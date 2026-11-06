@@ -443,6 +443,11 @@ public class BookingEventConsumersTests : IAsyncLifetime
         // What E04 closed before is still closed.
         Assert.Contains(ActivityType.CheckInPending, ActivityAutoCloseHandler.Rules[DomainEventType.CheckInCompleted]);
         Assert.Contains(ActivityType.CheckOutPending, ActivityAutoCloseHandler.Rules[DomainEventType.CheckOutCompleted]);
+        // E03/F04/US02: the identity verification of a stay that was cancelled or is over has nobody to wait for; the guest completing the form
+        // does not settle it (an operator may still have to decide).
+        Assert.Contains(ActivityType.IdentityVerification, ActivityAutoCloseHandler.Rules[DomainEventType.BookingCancelled]);
+        Assert.Contains(ActivityType.IdentityVerification, ActivityAutoCloseHandler.Rules[DomainEventType.CheckOutCompleted]);
+        Assert.DoesNotContain(ActivityType.IdentityVerification, ActivityAutoCloseHandler.Rules[DomainEventType.CheckInCompleted]);
     }
 
     // --- Helpers ------------------------------------------------------------------------------------------------------------------

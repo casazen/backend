@@ -11,9 +11,17 @@ public interface IVerificationOperatorAlerts
     /// Raises the alert for the check-in session <paramref name="sessionId"/> because of <paramref name="reasonCode"/> (one of
     /// <see cref="VerificationAlertReasons"/>). The "To do" is written with the pending changes of the caller's unit of work (the session that
     /// moved to the operator), so the two are saved together; the push and the e-mails are queued after it. A session that does not exist raises
-    /// nothing. An unknown reason is an <see cref="ArgumentException"/>.
+    /// nothing, and neither does a stay that is not active (the one definition of <c>AlloggiatiStatusRules</c>: a request, a hold, a cancelled stay
+    /// or a no-show has nobody to wait for: the queue does not list it either). An unknown reason is an <see cref="ArgumentException"/>.
     /// </summary>
     Task RaiseAsync(Guid sessionId, string reasonCode, CancellationToken ct);
+
+    /// <summary>
+    /// Closes the open "To do" of the identity verification of the booking <paramref name="bookingId"/> of the org <paramref name="orgId"/> (closed by
+    /// the system): the verification is over without a decision of an operator, for example it passed on its own after the operator asked for a new
+    /// photo. Nothing open: nothing happens.
+    /// </summary>
+    Task ResolveAsync(Guid orgId, Guid bookingId, CancellationToken ct);
 }
 
 /// <summary>Why a verification went to the operator: the codes of <see cref="IVerificationOperatorAlerts.RaiseAsync"/> (shown in the e-mail).</summary>
