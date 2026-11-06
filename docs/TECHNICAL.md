@@ -308,7 +308,8 @@ Property record choices (PC-02):
 | `GET` | `/api/bookings/{id}` | Get a single booking; SR-05a adds `paymentState`, `paidAmount` and `guestDataComplete` (below); E08/F03/US03/T02 adds `otaAmounts`, `collection`, `amountSources` (money: not for a caller without `payment.read`) and `octorateSync` (see *The booking answer* in the section on the bookings of the connector). Every booking answer, the lists too, has `otaSource` and `changeOptions` |
 | `GET` | `/api/bookings/{id}/timeline` | SR-05a: the history of the booking, derived from its timestamps and the rows tied to it (below); `booking.read` on its property, 404 outside the caller's scope |
 | `POST` | `/api/bookings` | Create a booking (availability check + tourist tax calculation) |
-| `PUT` | `/api/bookings/{id}` | Update a booking. 422 `ota_booking_change_not_allowed` for a booking that came from a channel whose channel is closed (every channel unless `Octorate:ChannelActions` opens it; nothing is changed, E08/F02/US02), 422 `ota_amounts_readonly` for a changed amount of the channel (below) |
+| `PUT` | `/api/bookings/{id}` | Update a booking: a booking entered by the host, or a confirmed one of the booking site, not started. Answers the booking and a `settlement` block `{ action, state, amount, offlineRefundDue, currency }` (E08/F02/US01/T01, below). 422 `booking_settlement_failed` when Stripe refuses the refund or the charge (nothing is saved), 409 `booking_edit_payment_in_progress`, 403 `booking_edit_payment_permission_required` when the edit moves money and the caller has no `payment.write` (the edits that move none need `booking.write` only), 422 `booking_tourist_tax_unavailable`, 422 `ota_booking_change_not_allowed` for a booking that came from a channel whose channel is closed (every channel unless `Octorate:ChannelActions` opens it; nothing is changed, E08/F02/US02), 422 `ota_amounts_readonly` for a changed amount of the channel (below) |
+| `POST` | `/api/bookings/{id}/edit-quote` | `BookingWrite` on the property of the booking (404 outside the caller's scope) and `payment.read` (403 `booking_edit_payment_permission_required`: it shows what the guest paid), as the quote of the cancellation. Same body as the `PUT`; answers what the `PUT` would do with the money, and does nothing: `{ currency, previousTotal, newTotal, paidSoFar, difference, action (refund, chargeSavedCard, paymentLink, none), amount, offlineRefundDue }`. The same checks and errors as the edit (E08/F02/US01/T01, below) |
 | `DELETE` | `/api/bookings/{id}` | Cancel a booking |
 | `GET` | `/api/bookings/{id}/cancellation` | What cancelling now would do (paid and refundable amounts, the minimum refund, `cancellable`); `booking.read` and `payment.read`. For a booking of a channel `cancellable` also follows the rule of its channel |
 | `POST` | `/api/bookings/{id}/cancel` | `BookingWrite`. A direct or manual booking: Stripe intents cancelled and the refund as always, then Octorate follows (below). A booking that came from a channel: Octorate first, 200 only after it confirmed, no refund; 422 `ota_booking_cancel_not_allowed` (closed channel), 422 `octorate_cancel_failed` (Octorate refuses or cannot be asked), 503 `octorate_unavailable` (no answer); the booking is unchanged in the three (E08/F02/US02, below) |
@@ -411,8 +412,9 @@ changes the status writes its time in the same save (`HostBookingService`, `OnSi
 booking that went through those states before the migration keeps them null: its history shows the step without a time, never an
 invented one. Every booking answer now carries `confirmedAt`, `cancelledAt`, `arrivedAt`, `checkedOutAt` and `canEdit`
 (`{ allowed, reason }`: `reason` is `Cancelled`, `Started` or `SourceLocked`, the first that holds; `BookingEditRules`, the very rule of
-`PUT /api/bookings/{id}`, which `HostBookingService` reads: only a booking entered by the host, not started, not cancelled can have its
-dates and guests changed, SR-D5). `GET /api/bookings/{id}` adds `paymentState` (as the list), `paidAmount` (euros, `null` without
+`PUT /api/bookings/{id}`, which `HostBookingService` reads: only a booking entered by the host or a confirmed one of the booking site, not started,
+not cancelled can have its dates and guests changed; SR-D5 no longer holds for a confirmed booking of the booking site, E08/F02/US01/T01).
+`GET /api/bookings/{id}` adds `paymentState` (as the list), `paidAmount` (euros, `null` without
 `payment.read`) and `guestDataComplete` (`null` for a request, a hold or a cancelled booking). Since E08/F03/US03/T02 every booking answer also carries
 `otaSource` and `changeOptions` (`BookingEditRules.ChangeOptionsOf`: what the host may do, below), and the detail the amounts of the channel, who
 collects, where each figure comes from and the mirror on Octorate.
@@ -1369,11 +1371,11 @@ keys of `SharedResources` in Italian and English); a channel that is not listed,
 no channel are closed (`OtaChannelActionPolicy.For`). A *booking of a channel* is one with a channel source **and** an `OctorateReservationId`
 (`OtaChannelActionPolicy.IsChannelBooking`): a stay made from the iCal feed of a channel has no reservation and is CasaZen's own record.
 - *`changeOptions`* (`BookingEditRules.ChangeOptionsOf(booking, policy)`, the rule every booking answer carries since E08/F03/US03/T02): `{ canEdit, canCancel, reasonCode,
-  guidanceKey, channel, cancelReasonCode, cancelGuidanceKey }`. `canEdit` is what `PUT /api/bookings/{id}` accepts (a booking entered by the host, not
-  started, not cancelled); `canCancel` is the status (waiting, confirmed or in the house) and, for a booking of a channel, the rule of the channel.
+  guidanceKey, channel, cancelReasonCode, cancelGuidanceKey }`. `canEdit` is what `PUT /api/bookings/{id}` accepts (a booking entered by the host, or a
+  confirmed one of the booking site, not started, not cancelled); `canCancel` is the status (waiting, confirmed or in the house) and, for a booking of a channel, the rule of the channel.
   `reasonCode` and `guidanceKey` explain the first thing that is not allowed (the change, else the cancellation); `cancelReasonCode` and `cancelGuidanceKey`
   are always the cancellation's, so a screen that cancels shows the right sentence even when the change is refused too. The codes are `booking_not_editable`
-  (cancelled), `booking_stay_locked` (started), `booking_update_source_locked` (a booking the host did not enter), `ota_booking_change_not_allowed` and
+  (cancelled), `booking_stay_locked` (started), `booking_update_source_locked` (a booking of a channel, or a request of the booking site still waiting), `ota_booking_change_not_allowed` and
   `ota_booking_cancel_not_allowed` (the channel is closed), `booking_already_cancelled` and `booking_not_cancellable` (checked out). `guidanceKey` is only
   there for a booking of a channel, and `channel` is its source (`BookingCom`); both are `null` for every other booking.
 - *Errors* (422, `application/problem+json`, `detail` is the one sentence of the channel in the language of the request, `guidanceKey` and `channel` are
@@ -1414,6 +1416,85 @@ no channel are closed (`OtaChannelActionPolicy.For`). A *booking of a channel* i
   that is still alive is `DELETE`d, as it is when Octorate refuses the request itself (`OctorateRequestRejectedException`: 400, 405, 406, 415, 422...), the
   way the sandbox proved on 2026-11-04. Any other answer, the read that checks the PUT included, is the typed error of the client, never a delete and never
   a success. The answers of the PUT are **not proven on the sandbox yet**: check them, and then the channels one by one, before opening a flag.
+
+##### Editing a booking of the booking site (E08/F02/US01/T01, NF-75)
+
+A confirmed booking of the booking site (`Source = Direct`) that has not started is edited like one the host entered (`BookingEditRules.Of`): dates, guests,
+notes. A request still waiting (a checkout hold, a «pay at the property» request) and every channel source stay locked (`booking_update_source_locked`).
+The price is worked out again with `IBookingService.PriceHostStayAsync` (tourist tax included) and the money follows it, **in the same unit of work as
+the edit**, under the property and booking locks of `HostBookingService`.
+
+- *The difference.* `difference = newTotal − paidSoFar`, `paidSoFar` being what the guest paid and did not get back: the completed payments (Stripe or recorded by
+  the host) minus the refunds made and the ones started. `BookingEditSettlementRules.Plan` (pure) turns it into the action: below zero **`refund`** on the Stripe
+  payments, newest first, never above what each can still return; above zero **`chargeSavedCard`** (the card the booking saved, `StripeCustomerId` and
+  `StripePaymentMethodId`, charged off-session through `DeferredChargeService.ChargeSavedCardAsync`, a PaymentIntent of the checkout's kind `direct-booking` so the
+  payment webhook settles one that is still processing) or, with no saved card, **`paymentLink`** (`IBookingPaymentLinkService`, which now also makes the
+  link of a confirmed booking of the booking site); zero **`none`**. What the guest paid offline cannot go back online: it is `offlineRefundDue`, for the host.
+  A higher price is collected online only when the guest paid online already and the booking is not a «pay at the property» one: a booking whose card is charged at
+  its deadline (`OnCancellationDeadline`) and was not yet charged has paid nothing, the charge of the deadline takes the new total (the deadline follows the new
+  check-in), and the action is `none`. A payment Stripe is still processing, or a failed charge of the deadline that waits for the guest, makes the difference
+  uncertain: 409 `booking_edit_payment_in_progress` for ANY change of the price of a booking of the booking site, whatever the plan (a failed charge of the
+  deadline has paid nothing, so its plan is `none`, and the PaymentIntent the guest is asked to pay keeps the old amount); nothing is changed. A booking entered by
+  the host keeps its way: the host records and gives back the money by hand, the action is `none`.
+- *Who may.* An edit whose plan moves money (`refund`, `chargeSavedCard`, `paymentLink`) needs `payment.write` on the property on top of `booking.write`, as the
+  cancellation and the payment endpoints: 403 `booking_edit_payment_permission_required`, before any Stripe call and any write. The controller works the plan out
+  (the quote) for a caller who has no `payment.write`; the service checks the plan it really makes, under the lock of the booking
+  (`HostBookingUpdate.CanMoveMoney`, `false` by default), so a plan that changed meanwhile never moves money without the permission. The quote needs `payment.read`.
+- *Where the money cannot be worked out.* When the new dates have no tourist tax rate (`RateUnavailable`, `CategoryRequired`, `NightlyPriceRequired`) and the booking
+  of the booking site already holds a tax the guest paid, the new price would leave it out and the money would give it back by itself: 422
+  `booking_tourist_tax_unavailable`, nothing is changed. A booking of the booking site that came from Octorate's own booking engine (the import maps its channel to
+  Direct) has an `OctorateReservationId` and no `OctorateBookingSync` row: its dates and guests are not edited here (`booking_update_source_locked`, the notes are),
+  because the edit would never reach Octorate.
+- *The payment link* of `IBookingPaymentLinkService` serves a confirmed booking of the booking site, but not one paid at its deadline (`OnCancellationDeadline`)
+  whose deadline charge is not collected yet (waiting or failed): that charge takes the whole total and knows nothing of a link, so the guest would pay twice
+  (`payment_link_unavailable`).
+- *One decision.* The order is: the checks (booking, capacity, dates free for the other bookings and the calendar blocks, ages of the minors, a payment link that
+  can be made), then the Stripe call, then the writes (booking, `BookingModified`, the refund row or the payment row of the charge), then the payment link (it
+  needs the new total saved), then the commit. **When Stripe refuses nothing is saved**: 422 `booking_settlement_failed`; the booking change and the refund row are
+  committed together. The refund goes through `IPaymentRefundService.RefundAsync` with the idempotency key `booking-edit-refund:{bookingId}:{UpdatedAt:O}:{paymentId}`
+  (the `UpdatedAt` the booking has until the commit, so a request repeated after a lost answer gets the refund Stripe already made, and one repeated after the commit finds
+  the price paid and moves nothing); a refund of the payment that already has the key is returned, not made again. A Stripe that is only slow leaves the refund
+  `Pending` with the retry job of the refund: `settlement.state` is `pending`. The charge uses `booking-edit-charge:{bookingId}:{UpdatedAt:O}:{cents}`; Stripe repeats
+  a refused charge for the same key, so the same request after a declined card answers the same refusal until the booking changes.
+- *`POST /api/bookings/{id}/edit-quote`.* The same checks and the same plan, without locks, writes or Stripe calls: `{ currency, previousTotal, newTotal, paidSoFar,
+  difference, action, amount, offlineRefundDue }`. `PUT` answers the booking and `settlement` `{ action, state (none, done, pending), amount, offlineRefundDue, currency }`.
+- *After the commit.* The guest gets one email (`BookingNotifier.BookingModifiedAsync`, `EmailTemplates.GuestBookingModified`, Italian and English, never the host's
+  notes) when the dates or the guests of a booking of the booking site changed; a failed email is logged and never undoes the edit. It is the only email for the
+  refund Stripe confirmed at once (`PaymentRefundRequest.NotifyGuest = false`: the refund's own «refund confirmed» is claimed); a refund still pending is confirmed by
+  the later email, as always. `BookingModified` is recorded once, by this save (E08/F06/US01/T01), with `Origin = Host`.
+
+##### Pushing an edit to Octorate (E08/F02/US01/T02, NF-75)
+
+**CasaZen first, Octorate after**, like the cancellation. `OctorateBookingUpdateHandler` (consumer of `BookingModified`, behind `Features:OctorateConnector`)
+calls `IBookingOctorateSyncService.PushUpdateAsync`, which writes the dates, the guests, the price of the stay (`roomGross` = `BasePrice`, tourist tax is Octorate's own)
+and the notes (`privateNotes`) to the reservation. It sends nothing for an event with `Origin = Octorate` (a change that came from the channel manager is never
+pushed back), for a booking of a channel, for a booking that is not confirmed or in the house, and for a reservation that came from Octorate (no row of ours).
+
+- *The state the host sees* is the `OctorateBookingSync` row (`LastOperation = Update`) under the session lock `OctorateBookingSync` of the booking: `Pending` before
+  the call, then `Synced` with the `updateTime` Octorate holds afterwards (also on `Booking.OctorateUpdatedAt`). The target is `IOctorateBookingTargets.LookupAsync`
+  (never a property whose mapping is write-blocked): a property that is not mirrored now is not written to, and the row is `Failed` `octorate_not_mirrored`, so the
+  change is not consumed with no trace and the host asks again once the mapping is back. A booking with no reservation yet whose create is under way, or still waiting
+  in the outbox, throws `OctorateSyncPendingException`: the event is delivered again after the create (events arrive out of order).
+- *The client.* `IOctorateApiClient.UpdateReservationAsync(target, id, update)` is `PATCH /rest/v1/reservation/{acc}/{id}` with the members above and the PMS room as
+  `pmsProduct` (the sandbox answers 400 without it); a 304 is done. It compares first the version CasaZen based the change on with the one Octorate holds
+  (`OctorateReservationUpdate.BasedOnUpdateTime`): another version is a conflict, as if Octorate had answered 409 (its own 409 is mapped alike), and nothing is
+  written. After the `PATCH` the reservation is read again and returned: a stay or guests that are not the ones sent are `OctorateRequestRejectedException`, never a
+  success. `GetReservationAsync(target, id)` is the re-read after a 409. **Not proven on the sandbox yet** (which answer Octorate gives to a change over a newer
+  version; the price on a `PATCH`): check them, and the channels, before opening the flag.
+- *Conflict.* A 409 re-reads the reservation, keeps its dates and guests on the row (`OctorateVersionJson`, read by the booking answer in the `Conflict` state) and its
+  `updateTime`, sets `Conflict` with `octorate_reservation_changed` and raises one «To do» on the booking (`ActivityType.BookingSyncConflict`, action `ReviewBooking`).
+  Neither version is lost and nothing is sent again by itself. A plain retry, and ANY edit made after the conflict (the notes, a price, another stay), are based on
+  the version CasaZen last saw, so they conflict again: nothing is written, the row keeps Octorate's version and the «To do» stays open. Two ways settle it, both by a
+  person who has seen both versions. «Keep mine» (`POST /api/bookings/{id}/octorate-sync/retry?overwrite=true`, carried by `OctorateSyncRequested` as `Overwrite`) is
+  based on the version the host was shown, so it writes over exactly that one and never over a newer one. «Take theirs» is the booking edited to the stay and the
+  guests the row kept of Octorate's version: nothing is written, that version is adopted (its `updateTime` becomes the one of the booking), the row is `Synced` and
+  the «To do» closed. On `Synced` the conflict is over.
+- *Idempotent.* When the version found holds the stay and the guests of the change already (arrival, departure and guests the same, the price too when Octorate gives
+  it), the change was made by an earlier attempt whose answer was lost: it is done, the version is returned, nothing is written (the private notes are not compared:
+  Octorate gives back only the guest's). A row `Failed` with `PaymentsNotRecorded` is not hidden by a change: once the change is written the payments are tried again,
+  and the row goes back to `Failed` if one still cannot be recorded.
+- *Failures.* Another refusal (4xx): `Failed` `octorate_rejected`, not retried. No answer, 429 or 5xx: `Failed` `octorate_unavailable` and the exception propagates, so
+  the dispatcher delivers the event again (the change is idempotent: the same values are written).
 
 #### Marketplace (epic E09, NF-54 to NF-59)
 

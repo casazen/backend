@@ -67,19 +67,36 @@ public sealed class PaymentRefundService(
             var payment = await db.Payments.FirstOrDefaultAsync(p => p.Id == request.PaymentId, cancellationToken)
                 ?? throw PaymentNotFound(request.PaymentId);
 
-            refund = await ReserveAsync(
+            // A key the caller decided (the refund of a booking edit): a refund of this payment that has it is the answer, not a second refund.
+            PaymentRefund? known = null;
+            if (!string.IsNullOrWhiteSpace(request.IdempotencyKey))
+            {
+                known = await db.PaymentRefunds.FirstOrDefaultAsync(
+                    r => r.PaymentId == payment.Id && r.IdempotencyKey == request.IdempotencyKey,
+                    cancellationToken);
+            }
+
+            refund = known ?? await ReserveAsync(
                 payment,
                 request.Amount,
                 PaymentRefundOrigin.Host,
                 request.Reason,
                 request.RequestedByUserId,
-                cancellationToken);
+                cancellationToken,
+                request.IdempotencyKey);
 
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
         }
 
-        return await SubmitAsync(refund, throwOnTransientFailure: false, cancellationToken);
+        var submitted = await SubmitAsync(refund, throwOnTransientFailure: false, cancellationToken, notifyGuest: request.NotifyGuest);
+
+        // The caller tells the guest itself, in one email: a refund Stripe confirmed at once has its own "refund confirmed" claimed, so no other path
+        // (a delivery of the webhook, a retry) sends it later. One still pending keeps its notification: the guest is told when Stripe confirms it.
+        if (!request.NotifyGuest && submitted.Status == PaymentRefundStatus.Succeeded)
+            await ClaimGuestNotificationAsync(submitted.Id, cancellationToken);
+
+        return submitted;
     }
 
     public async Task<IReadOnlyList<PaymentRefund>> GetRefundsAsync(Guid paymentId, CancellationToken cancellationToken = default) =>

@@ -85,9 +85,22 @@ public sealed class BookingPaymentLinkService(
             .FirstOrDefaultAsync(b => b.Id == bookingId, ct)
             ?? throw NotFound();
 
-        // Only a booking the host entered: the booking site has its own checkout, a portal collects its own bookings.
-        if (booking.Source != BookingSource.Manual || booking.Status == BookingStatus.Cancelled)
+        // A booking the host entered, or a confirmed one of the booking site whose price an edit raised (E08/F02/US01/T01): a hold of the booking
+        // site has its own checkout, and a portal collects its own bookings.
+        var linkable = booking.Source == BookingSource.Manual
+                       || (booking.Source == BookingSource.Direct && booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn);
+        if (!linkable || booking.Status == BookingStatus.Cancelled)
             throw Unavailable();
+
+        // A booking of the booking site paid at its deadline ("Paga alla scadenza") whose card has not been charged yet is collected by the deadline
+        // charge, on the whole total, and that charge knows nothing of a link: the guest would pay twice. No link until the deadline charge is
+        // collected; after it, only a price raised by an edit leaves a balance (and that one is charged to the saved card).
+        if (booking.Source == BookingSource.Direct && booking.PaymentOption == PaymentOption.OnCancellationDeadline)
+        {
+            var deferred = DeferredCharges.FindPayment(booking, booking.Payments);
+            if (deferred is null || !DeferredCharges.IsCollected(deferred.Status))
+                throw Unavailable();
+        }
 
         var org = booking.Org;
         if (!org.CanTakeDirectPayments || string.IsNullOrWhiteSpace(org.Slug) || !links.IsConfigured)
