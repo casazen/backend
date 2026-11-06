@@ -245,6 +245,8 @@ Full description in [`in-app-notifications.md`](in-app-notifications.md) (always
 | Org export | Not part of `GET /api/gdpr/org/export` (the fiscal export of the org): the notifications are the user's | — |
 | Privacy notice | Should mention that CasaZen keeps for 90 days the list of the events that concerned the user (kind of event and reference, no content). Belongs to the legal owner ([legal-documents.md](legal-documents.md)); **not changed by UI-12a**, to do before the next release `develop` → `main` (the notifications are always written) | — |
 
+**Popup alerts (NF-08, ADR-025).** `PopupAlerts` and `UserNotificationPreferences` hold the user id with references (the type of the alert, the kind and the id of the booking or property it is about, its urgency, some instants) and the quiet hours of the user: **no name, no text, no address**, and the same five references are all that the API (`GET /api/me/alerts/pending`) and the hub (`alertReceived`) ever carry. Both tables go with the user and with the org (foreign keys `ON DELETE CASCADE`), as the notifications do, and a user reads and answers only its own alerts (the id of another user's is a 404). **There is no retention job yet**: a dismissed alert stays until the account or the org is erased; to decide, with the legal advisor, before the next release `develop` → `main`. Full description: [in-app-notifications.md](in-app-notifications.md) § 9 and `docs/TECHNICAL.md`.
+
 ## 11. Self-service deletion of a guest account (mobile app)
 
 The app stores ask that an app which lets people register lets them **delete the account in the app**. `DELETE /api/guest/account` (policy

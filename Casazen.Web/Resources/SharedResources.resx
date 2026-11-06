@@ -2059,6 +2059,12 @@
   <data name="PropertyOwnerNotFound" xml:space="preserve">
     <value>Proprietario non trovato.</value>
   </data>
+  <data name="PopupAlertCannotSnoozePastDeadline" xml:space="preserve">
+    <value>Non puoi rimandare questo avviso oltre la scadenza di legge: scegli un orario che arrivi prima della scadenza.</value>
+  </data>
+  <data name="PopupAlertRemindAtRequired" xml:space="preserve">
+    <value>Indica quando vuoi essere avvisato di nuovo (data e ora).</value>
+  </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, period=Last30Days oppure period=Next30Days.</value>
   </data>
@@ -4183,5 +4189,80 @@
   </data>
   <data name="WizardDraftClientVersionInvalid" xml:space="preserve">
     <value>La versione della bozza non è valida.</value>
+  </data>
+  <data name="OctorateNotConnected" xml:space="preserve">
+    <value>Il collegamento con il channel manager non è attivo: collegalo di nuovo dalle impostazioni dei canali.</value>
+  </data>
+  <data name="OctorateAuthFailed" xml:space="preserve">
+    <value>Il channel manager ha rifiutato l'accesso di CasaZen. Riprova più tardi; se succede ancora, collega di nuovo l'account.</value>
+  </data>
+  <data name="OctorateUnavailable" xml:space="preserve">
+    <value>Il channel manager non risponde in questo momento. Riprova tra qualche minuto.</value>
+  </data>
+  <data name="OctorateNotFound" xml:space="preserve">
+    <value>Il channel manager non trova ciò che è stato richiesto.</value>
+  </data>
+  <data name="OctorateConflict" xml:space="preserve">
+    <value>Il channel manager ha rifiutato la modifica perché è in conflitto con i suoi dati. Aggiorna la pagina e riprova.</value>
+  </data>
+  <data name="OctorateWrongEnvironment" xml:space="preserve">
+    <value>L'account del channel manager appartiene a un altro ambiente (prova o produzione): il collegamento non è stato attivato.</value>
+  </data>
+  <data name="OctorateRateLimited" xml:space="preserve">
+    <value>Troppe richieste al channel manager in poco tempo: riprova tra un minuto.</value>
+  </data>
+  <data name="OctorateRequestRejected" xml:space="preserve">
+    <value>Il channel manager ha rifiutato la richiesta.</value>
+  </data>
+  <data name="OctorateWebhookNotConfigured" xml:space="preserve">
+    <value>Il webhook del channel manager non è configurato su questo ambiente.</value>
+  </data>
+  <data name="OctorateWebhookSecretInvalid" xml:space="preserve">
+    <value>L'indirizzo del webhook non è valido.</value>
+  </data>
+  <data name="OctorateStateInvalid" xml:space="preserve">
+    <value>La richiesta di collegamento non è più valida (scaduta, già usata o avviata da un altro account). Ricomincia il collegamento del channel manager.</value>
+  </data>
+  <data name="OctorateExchangeFailed" xml:space="preserve">
+    <value>Il channel manager non ha confermato l'autorizzazione. Ricomincia il collegamento.</value>
+  </data>
+  <data name="OctorateConnectionNeedsWholeOrg" xml:space="preserve">
+    <value>Il collegamento del channel manager riguarda tutti gli immobili dell'organizzazione: può gestirlo solo chi li vede tutti.</value>
+  </data>
+  <data name="OctorateCodeRequired" xml:space="preserve">
+    <value>Manca il codice di autorizzazione restituito dal channel manager.</value>
+  </data>
+  <data name="OctorateStateRequired" xml:space="preserve">
+    <value>Manca lo stato della richiesta di collegamento restituito dal channel manager.</value>
+  </data>
+  <data name="OctorateMappingNotFound" xml:space="preserve">
+    <value>Annuncio del channel manager non trovato tra quelli della tua organizzazione.</value>
+  </data>
+  <data name="OctoratePropertyNotFound" xml:space="preserve">
+    <value>Immobile non trovato.</value>
+  </data>
+  <data name="OctorateMappingPropertyTaken" xml:space="preserve">
+    <value>Questo immobile è già collegato a un altro annuncio del channel manager.</value>
+  </data>
+  <data name="OctorateMappingLinkedToOtherProperty" xml:space="preserve">
+    <value>Questo annuncio è già collegato a un altro immobile: scollegalo prima, poi collegalo a quello nuovo.</value>
+  </data>
+  <data name="OctorateRoomInvalid" xml:space="preserve">
+    <value>La camera scelta non appartiene a questo annuncio del channel manager.</value>
+  </data>
+  <data name="OctorateMappingNotConfirmed" xml:space="preserve">
+    <value>Conferma prima a quale immobile corrisponde l'annuncio, poi scegli la camera.</value>
+  </data>
+  <data name="OctorateMappingAlreadyConfirmed" xml:space="preserve">
+    <value>Questo annuncio è già collegato a un immobile: non serve importarlo.</value>
+  </data>
+  <data name="OctorateMappingRefreshConflict" xml:space="preserve">
+    <value>Gli annunci del channel manager si stanno già aggiornando: riprova tra qualche istante.</value>
+  </data>
+  <data name="OctorateMappingPropertyRequired" xml:space="preserve">
+    <value>Indica a quale immobile corrisponde l'annuncio.</value>
+  </data>
+  <data name="OctorateRoomRequired" xml:space="preserve">
+    <value>Indica la camera dell'annuncio.</value>
   </data>
 </root>

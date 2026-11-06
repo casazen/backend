@@ -2059,6 +2059,12 @@
   <data name="PropertyOwnerNotFound" xml:space="preserve">
     <value>Property owner not found.</value>
   </data>
+  <data name="PopupAlertCannotSnoozePastDeadline" xml:space="preserve">
+    <value>You cannot snooze this alert past its legal deadline: choose a time that comes before the deadline.</value>
+  </data>
+  <data name="PopupAlertRemindAtRequired" xml:space="preserve">
+    <value>Say when you want to be reminded again (date and time).</value>
+  </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, period=Last30Days or period=Next30Days.</value>
   </data>
@@ -4183,5 +4189,80 @@
   </data>
   <data name="WizardDraftClientVersionInvalid" xml:space="preserve">
     <value>The draft version is not valid.</value>
+  </data>
+  <data name="OctorateNotConnected" xml:space="preserve">
+    <value>The connection to the channel manager is not active: connect it again from the channel settings.</value>
+  </data>
+  <data name="OctorateAuthFailed" xml:space="preserve">
+    <value>The channel manager refused CasaZen's access. Try again later; if it happens again, connect the account again.</value>
+  </data>
+  <data name="OctorateUnavailable" xml:space="preserve">
+    <value>The channel manager is not answering right now. Try again in a few minutes.</value>
+  </data>
+  <data name="OctorateNotFound" xml:space="preserve">
+    <value>The channel manager cannot find what was requested.</value>
+  </data>
+  <data name="OctorateConflict" xml:space="preserve">
+    <value>The channel manager refused the change because it conflicts with its data. Refresh the page and try again.</value>
+  </data>
+  <data name="OctorateWrongEnvironment" xml:space="preserve">
+    <value>The channel manager account belongs to another environment (test or production): the connection was not activated.</value>
+  </data>
+  <data name="OctorateRateLimited" xml:space="preserve">
+    <value>Too many requests to the channel manager in a short time: try again in a minute.</value>
+  </data>
+  <data name="OctorateRequestRejected" xml:space="preserve">
+    <value>The channel manager refused the request.</value>
+  </data>
+  <data name="OctorateWebhookNotConfigured" xml:space="preserve">
+    <value>The channel manager webhook is not configured on this environment.</value>
+  </data>
+  <data name="OctorateWebhookSecretInvalid" xml:space="preserve">
+    <value>The webhook address is not valid.</value>
+  </data>
+  <data name="OctorateStateInvalid" xml:space="preserve">
+    <value>The connection request is no longer valid (expired, already used or started by another account). Start connecting the channel manager again.</value>
+  </data>
+  <data name="OctorateExchangeFailed" xml:space="preserve">
+    <value>The channel manager did not confirm the authorization. Start connecting again.</value>
+  </data>
+  <data name="OctorateConnectionNeedsWholeOrg" xml:space="preserve">
+    <value>The channel manager connection concerns every property of the organization: only someone who sees them all can manage it.</value>
+  </data>
+  <data name="OctorateCodeRequired" xml:space="preserve">
+    <value>The authorization code returned by the channel manager is missing.</value>
+  </data>
+  <data name="OctorateStateRequired" xml:space="preserve">
+    <value>The state of the connection request returned by the channel manager is missing.</value>
+  </data>
+  <data name="OctorateMappingNotFound" xml:space="preserve">
+    <value>Channel manager listing not found among those of your organization.</value>
+  </data>
+  <data name="OctoratePropertyNotFound" xml:space="preserve">
+    <value>Property not found.</value>
+  </data>
+  <data name="OctorateMappingPropertyTaken" xml:space="preserve">
+    <value>This property is already linked to another channel manager listing.</value>
+  </data>
+  <data name="OctorateMappingLinkedToOtherProperty" xml:space="preserve">
+    <value>This listing is already linked to another property: unlink it first, then link it to the new one.</value>
+  </data>
+  <data name="OctorateRoomInvalid" xml:space="preserve">
+    <value>The chosen room does not belong to this channel manager listing.</value>
+  </data>
+  <data name="OctorateMappingNotConfirmed" xml:space="preserve">
+    <value>First confirm which property the listing is, then choose the room.</value>
+  </data>
+  <data name="OctorateMappingAlreadyConfirmed" xml:space="preserve">
+    <value>This listing is already linked to a property: there is nothing to import.</value>
+  </data>
+  <data name="OctorateMappingRefreshConflict" xml:space="preserve">
+    <value>The channel manager listings are already being refreshed: try again in a moment.</value>
+  </data>
+  <data name="OctorateMappingPropertyRequired" xml:space="preserve">
+    <value>Say which property the listing is.</value>
+  </data>
+  <data name="OctorateRoomRequired" xml:space="preserve">
+    <value>Say which room of the listing it is.</value>
   </data>
 </root>

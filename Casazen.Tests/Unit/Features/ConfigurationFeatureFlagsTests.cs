@@ -81,6 +81,8 @@ public class ConfigurationFeatureFlagsTests
                 "SupplierRequestBackups",
                 // DEB-01: the document reading and the selfie check of the guest check-in, placeholders, off until real models exist.
                 "CheckInIdentityVerification",
+                // E02/F01/US02/T01: the Octorate connector (connection, mapping, webhook), off until the sandbox is validated.
+                "OctorateConnector",
             },
             FeatureFlags.All);
     }

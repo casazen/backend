@@ -456,6 +456,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEventHandler<DomainEvent>, RoutineEventHandler>();
         // ADR-026-R4: an event whose condition is met closes the "To do" items it satisfies (E04/F01/US01/T01).
         services.AddScoped<IEventHandler<DomainEvent>, ActivityAutoCloseHandler>();
+        // NF-08, NF-22: the popup alerts (ADR-025). The router stores an alert for a user, holds it back during the user's quiet hours
+        // unless it is a legal one, and pushes it through IPopupAlertPublisher (SignalR, registered with the push services); the job
+        // popup-alert-due (RecurringJobsRegistration) pushes the ones that fell due. The user reads them at api/me/alerts.
+        services.AddScoped<IAlertRouter, AlertRouter>();
         services.AddScoped<IOtaIntegrationService, OtaIntegrationService>();
         services.AddScoped<IPropertyDocumentService, PropertyDocumentService>();
         services.AddScoped<IPropertyPhotoService, PropertyPhotoService>();

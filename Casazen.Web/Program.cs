@@ -141,6 +141,9 @@ builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 // What the booking events start by themselves: the cleaning and special-request "To do", the alert of a booking from a channel (E08/F06)
 builder.Services.AddCasazenBookingOperations();
 
+// Octorate connector (epic E02, ADR-023): its services, clients, handlers and jobs, all registered in AddCasazenOctorate.
+builder.Services.AddCasazenOctorate(builder.Configuration);
+
 // Localization — Italian (default) and English.
 // No ResourcesPath: resource names follow the marker type's namespace, so IStringLocalizer<SharedResources>
 // (Casazen.Web.Resources.SharedResources) reads Resources/SharedResources.resx and SharedResources.en.resx.

@@ -99,6 +99,13 @@ public static class EncryptedColumns
     public const string WizardDraftPiiPurpose = "Casazen.WizardDraft.PII";
 
     /// <summary>
+    /// Purpose of the OAuth tokens of the connection of an organization to Octorate (ADR-023-R1): the access and the refresh token of
+    /// <see cref="OctorateConnection"/>. Their own purpose: a payload of another column never reads as a token. Never change it: the
+    /// stored refresh tokens, which Octorate gives once, would become unreadable and every host would have to connect again.
+    /// </summary>
+    public const string OctorateOAuthPurpose = "Casazen.Octorate.OAuth";
+
+    /// <summary>
     /// Purpose of the CRM contacts (NF-89, E07/F01/US01/T01): <see cref="GuestContact.Value"/>, the e-mail address or the phone number of a
     /// guest or of a lead, and <see cref="GuestContact.DisplayName"/>. Nothing is searched in them: a contact is found by its keyed hash
     /// (<see cref="GuestContact.ValueHash"/>, HMAC-SHA256 keyed by <c>Crm:ContactIndexKey</c>). Never change it: stored values would become unreadable.
@@ -202,6 +209,11 @@ public static class EncryptedColumns
         new EncryptedEntity<WizardDraft>(
             WizardDraftPiiPurpose,
             nameof(WizardDraft.EncryptedFieldsJson)),
+        // ADR-023-R1: the OAuth tokens of the Octorate connection of an organization (E02/F01/US01/T01).
+        new EncryptedEntity<OctorateConnection>(
+            OctorateOAuthPurpose,
+            nameof(OctorateConnection.EncryptedAccessToken),
+            nameof(OctorateConnection.EncryptedRefreshToken)),
         // NF-89: the value and the display name of a CRM contact (E07/F01/US01/T01).
         new EncryptedEntity<GuestContact>(
             GuestContactPurpose,

@@ -44,4 +44,10 @@ public enum ActivityAction
 
     /// <summary>The channel settings: <c>/app/short-rent/settings/channels</c>.</summary>
     ReconnectChannel = 11,
+
+    /// <summary>The mapping of the listings found on the channel manager (the connect wizard, E02/F01/US02/T05), at the listing to decide.</summary>
+    ConfirmChannelMapping = 12,
+
+    /// <summary>The «Check imported listing» wizard of the property created from the channel manager (LST-03).</summary>
+    CheckImportedListing = 13,
 }
