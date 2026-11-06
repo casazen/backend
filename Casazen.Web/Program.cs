@@ -144,6 +144,9 @@ builder.Services.AddCasazenBookingOperations();
 // Octorate connector (epic E02, ADR-023): its services, clients, handlers and jobs, all registered in AddCasazenOctorate.
 builder.Services.AddCasazenOctorate(builder.Configuration);
 
+// Marketplace (epic E09, NF-54 to NF-59): the catalog of channels, tools, license functions and partners; every task of the epic registers in AddCasazenMarketplace.
+builder.Services.AddCasazenMarketplace(builder.Configuration);
+
 // Localization — Italian (default) and English.
 // No ResourcesPath: resource names follow the marker type's namespace, so IStringLocalizer<SharedResources>
 // (Casazen.Web.Resources.SharedResources) reads Resources/SharedResources.resx and SharedResources.en.resx.

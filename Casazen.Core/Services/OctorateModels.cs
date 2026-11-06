@@ -98,6 +98,73 @@ public sealed record OctorateRoom
 /// <param name="Status">The state of the connection as Octorate gives it.</param>
 public sealed record OctorateChannelConnection(string? Id, string? ChannelId, string? ChannelName, string? ExternalId, string? Status);
 
+/// <summary>The <c>portalCategory</c> values of the portal catalog that the marketplace shows, spelled as Octorate spells them.</summary>
+public static class OctoratePortalCategories
+{
+    /// <summary>A sales channel.</summary>
+    public const string Ota = "OTA";
+
+    /// <summary>A tool that works with the channel manager and does not sell the accommodations.</summary>
+    public const string ExternalTool = "EXTERNAL_TOOL";
+}
+
+/// <summary>
+/// A portal or tool of the channel manager's catalog (<c>GET /rest/v1/meta/portals</c>, a partner-level call): the data the marketplace
+/// caches once a day and the channel costs report reads for the way each portal collects its commission. Only the members CasaZen uses; a
+/// flag Octorate does not send is <c>false</c>, never guessed true, except <see cref="CommissionsInvoiced"/>, where "not said" is
+/// <c>null</c> and is not the same as no.
+/// </summary>
+public sealed record OctoratePortal
+{
+    /// <summary>Longest portal code CasaZen keeps (the column of the cache is 100 characters); a longer one is left out.</summary>
+    public const int CodeMaxLength = 100;
+
+    /// <summary>The identifier of the portal in the calls about connections, as Octorate gives it (a number is kept as its text).</summary>
+    public required string PortalCode { get; init; }
+
+    /// <summary>The name of the portal; its code when Octorate gives none.</summary>
+    public required string Name { get; init; }
+
+    /// <summary><c>portalCategory</c>: <see cref="OctoratePortalCategories.Ota"/>, <see cref="OctoratePortalCategories.ExternalTool"/>, another value, or <c>null</c> when Octorate gives none.</summary>
+    public string? PortalCategory { get; init; }
+
+    /// <summary>A connection to the portal can be created through the API (<c>creatable</c>).</summary>
+    public bool Creatable { get; init; }
+
+    /// <summary>Octorate offers the portal (<c>enabled</c>).</summary>
+    public bool Enabled { get; init; }
+
+    /// <summary>Octorate lists the portal first (<c>preferred</c>).</summary>
+    public bool Preferred { get; init; }
+
+    /// <summary>The site of the portal, only when it is an absolute https address (<c>website</c>).</summary>
+    public string? Website { get; init; }
+
+    /// <summary>The logo of the portal, only when it is an absolute https address (<c>logo</c>).</summary>
+    public string? Logo { get; init; }
+
+    /// <summary>The connection needs the identifier of the property on the portal (<c>requiresHotelId</c>).</summary>
+    public bool RequiresHotelId { get; init; }
+
+    /// <summary>The connection needs the username and password of the portal (<c>requiresPassword</c>).</summary>
+    public bool RequiresPassword { get; init; }
+
+    /// <summary>The host gives the access on the channel manager's own panel (<c>requiresTokenAuthentication</c>).</summary>
+    public bool RequiresTokenAuthentication { get; init; }
+
+    /// <summary>The portal carries the content and the rates of the listing (<c>featureContent</c>).</summary>
+    public bool FeatureContent { get; init; }
+
+    /// <summary>The channel manager can manage the listing on the portal itself (<c>octorateManageable</c>).</summary>
+    public bool OctorateManageable { get; init; }
+
+    /// <summary>The portal pays the host net of its commission (<c>commissionIncludedInPayments</c>).</summary>
+    public bool CommissionIncludedInPayments { get; init; }
+
+    /// <summary>The portal invoices its commission separately (<c>commissionsInvoiced</c>); <c>null</c> when Octorate does not say.</summary>
+    public bool? CommissionsInvoiced { get; init; }
+}
+
 /// <summary>
 /// A partial change of an accommodation (<c>PATCH /rest/v2/accommodation/{acc}</c>): only the members that are set are sent, the
 /// others stay as they are on Octorate.

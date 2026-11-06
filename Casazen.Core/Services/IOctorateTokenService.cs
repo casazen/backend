@@ -41,6 +41,24 @@ public interface IOctorateTokenService
     /// </summary>
     /// <exception cref="UnauthorizedAccessException">An authenticated request disconnects another org.</exception>
     Task DisconnectAsync(Guid orgId, CancellationToken ct);
+
+    /// <summary>
+    /// The access token of the application itself, for the calls that carry no property data and act for no org (the catalog of portals,
+    /// <c>GET /rest/v1/meta/portals</c>; E09/F01/US01/T02, ADR-023-R5). It comes from the partner login (<c>POST /rest/v1/identity/apilogin</c>,
+    /// the application's client id and secret, <c>Octorate:ClientId</c> and <c>Octorate:ClientSecret</c>) and is valid about 36 hours. It
+    /// is kept in memory, shared by the whole application, reused while it is valid and renewed when it expires within five minutes, and
+    /// never two renewals run at once. It is not an org's token: no connection is read, and no org is needed. Neither the secret nor the token
+    /// is ever logged.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The client id or the client secret is not configured.</exception>
+    Task<string> GetPartnerAccessTokenAsync(CancellationToken ct);
+
+    /// <summary>
+    /// A new partner token after Octorate refused <paramref name="rejectedAccessToken"/> (403 <c>ApiLoginInvalid</c>): renewed under the same
+    /// gate as <see cref="GetPartnerAccessTokenAsync"/>, unless another caller already replaced the rejected token, whose new token is
+    /// returned. The client calls it once per request, never in a loop.
+    /// </summary>
+    Task<string> RefreshRejectedPartnerTokenAsync(string rejectedAccessToken, CancellationToken ct);
 }
 
 /// <summary>
