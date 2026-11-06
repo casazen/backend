@@ -756,6 +756,27 @@
   <data name="CalendarTooManyProperties" xml:space="preserve">
     <value>Puoi chiedere al massimo {0} immobili alla volta.</value>
   </data>
+  <data name="CalendarDayRuleInvalidPrice" xml:space="preserve">
+    <value>Il prezzo di una notte deve essere tra {0} e {1}, con al massimo due decimali.</value>
+  </data>
+  <data name="CalendarDayRuleInvalidStay" xml:space="preserve">
+    <value>Il soggiorno deve essere tra {0} e {1} notti, e il massimo non può essere inferiore al minimo.</value>
+  </data>
+  <data name="CalendarDayRuleInvalidAdvance" xml:space="preserve">
+    <value>L'anticipo di prenotazione deve essere tra {0} e {1} giorni, e il massimo non può essere inferiore al minimo.</value>
+  </data>
+  <data name="CalendarDayRuleRangeInvalid" xml:space="preserve">
+    <value>L'ultimo giorno del periodo non può essere precedente al primo.</value>
+  </data>
+  <data name="CalendarDayRuleRangeTooLong" xml:space="preserve">
+    <value>Una modifica può riguardare al massimo {0} giorni: scegli un periodo più breve.</value>
+  </data>
+  <data name="CalendarDayRuleInPast" xml:space="preserve">
+    <value>I giorni scelti sono già passati: scegli giorni da oggi in poi.</value>
+  </data>
+  <data name="CalendarDayRuleNothingToChange" xml:space="preserve">
+    <value>Scegli almeno un valore da modificare e almeno un giorno.</value>
+  </data>
   <data name="CalendarInvalidRequest" xml:space="preserve">
     <value>Le date o gli immobili richiesti non sono validi: controlla le date (da 2000 a 2100) e gli identificativi degli immobili.</value>
   </data>

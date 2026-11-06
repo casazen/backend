@@ -168,11 +168,12 @@ public class BookingListRulesTests
     [InlineData(BookingSource.Manual, BookingChannel.Manual)]
     [InlineData(BookingSource.Airbnb, BookingChannel.Airbnb)]
     [InlineData(BookingSource.BookingCom, BookingChannel.BookingCom)]
-    [InlineData(BookingSource.Expedia, BookingChannel.Other)]
-    [InlineData(BookingSource.Vrbo, BookingChannel.Other)]
-    [InlineData(BookingSource.TripAdvisor, BookingChannel.Other)]
-    [InlineData(BookingSource.Agoda, BookingChannel.Other)]
+    [InlineData(BookingSource.Expedia, BookingChannel.Expedia)]
+    [InlineData(BookingSource.Vrbo, BookingChannel.Vrbo)]
+    [InlineData(BookingSource.TripAdvisor, BookingChannel.TripAdvisor)]
+    [InlineData(BookingSource.Agoda, BookingChannel.Agoda)]
     [InlineData(BookingSource.Local, BookingChannel.Other)]
+    [InlineData(BookingSource.OtherChannel, BookingChannel.Other)]
     public void ChannelOf_TheSourceAsTheHostReadsIt(BookingSource source, BookingChannel expected)
     {
         Assert.Equal(expected, BookingListRules.ChannelOf(source));
@@ -272,6 +273,7 @@ public class BookingListRulesTests
     [InlineData(new[] { "airbnb", "BOOKINGCOM" }, new[] { BookingChannel.Airbnb, BookingChannel.BookingCom })]
     [InlineData(new[] { "Direct,Manual" }, new[] { BookingChannel.Direct, BookingChannel.Manual })]
     [InlineData(new[] { " Other , Direct ", "Direct" }, new[] { BookingChannel.Other, BookingChannel.Direct })]
+    [InlineData(new[] { "expedia,VRBO", "TripAdvisor", "agoda" }, new[] { BookingChannel.Expedia, BookingChannel.Vrbo, BookingChannel.TripAdvisor, BookingChannel.Agoda })]
     [InlineData(new[] { "" }, new BookingChannel[0])]
     [InlineData(new string[0], new BookingChannel[0])]
     public void TryParseNames_RepeatedOrSeparatedByCommas_ByNameAndAnyCase_WithoutRepeats(string[] values, BookingChannel[] expected)
@@ -282,7 +284,7 @@ public class BookingListRulesTests
     }
 
     [Theory]
-    [InlineData("Expedia")]
+    [InlineData("Pinterest")]
     [InlineData("1")]
     [InlineData("Airbnb,Foo")]
     [InlineData("airbnb booking")]

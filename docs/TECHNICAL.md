@@ -302,6 +302,7 @@ Property record choices (PC-02):
 | `POST` | `/api/bookings/{id}/cancel` | `BookingWrite`. A direct or manual booking: Stripe intents cancelled and the refund as always, then Octorate follows (below). A booking that came from a channel: Octorate first, 200 only after it confirmed, no refund; 422 `ota_booking_cancel_not_allowed` (closed channel), 422 `octorate_cancel_failed` (Octorate refuses or cannot be asked), 503 `octorate_unavailable` (no answer); the booking is unchanged in the three (E08/F02/US02, below) |
 | `GET` | `/api/bookings/calendar` | Calendar view of one property (`?propertyId&startDate&endDate&timezone`); unchanged |
 | `GET` | `/api/calendar` | SR-02a: the calendar of all the host's properties in one read (below): `?from&to&propertyIds&timezone` |
+| `GET` | `/api/calendar/days` | short-rent property.read | E08/F05/US01/T02 (NF-36, NF-78): the price and the rules of every night of the properties the caller reaches (below): `?from&to&propertyIds`; `{ today, properties: [{ propertyId, timezone, currency, mirrored, days: [{ date, priceCents, priceSource, minNights, maxNights, closedToArrival, closedToDeparture, minAdvanceDays, maxAdvanceDays, hasRule, taken }] }] }` |
 | `POST` | `/api/bookings/{id}/check-in` | Perform check-in: records `ArrivedAt`, schedules the Alloggiati Web job (idempotent) |
 | `POST` | `/api/bookings/{id}/check-out` | Perform check-out |
 | `GET` | `/api/bookings/{id}/alloggiati-status` | Alloggiati Web status (same as `/api/alloggiati/{id}/status`) |
@@ -340,7 +341,11 @@ are gone). Everything below is optional and additive; nothing of the SR-03 answe
   booking is in one chip at most; a Confirmed stay of the past that nobody registered is in none yet (it is in `all`). 400
   `booking_list_invalid_view`.
 - `channel`, repeated or separated by commas: `Direct` (the booking site), `Manual` (entered by the host), `Airbnb`,
-  `BookingCom`, `Other` (every other source); 400 `booking_list_invalid_channel`.
+  `BookingCom`, `Expedia`, `Vrbo`, `TripAdvisor`, `Agoda`, `Other` (every other source: a local one, or a portal of the channel
+  manager that has no source of its own); 400 `booking_list_invalid_channel`. **Change of E08/F05/US01/T02 (NF-78):** the four
+  portals have a channel of their own (`BookingListRules.ChannelOf`), so `channel=Other` no longer returns the bookings of
+  Expedia, Vrbo, TripAdvisor and Agoda: ask for them by name (`channel=Other&channel=Expedia`). The `channel` of every booking
+  of the list, of the search and of the calendar (`GET /api/calendar`) tells them apart.
 - `checkInStatus`, repeated or separated by commas: the state of the online check-in link as `GET /api/dashboard/today`
   reads it (`NotSent`, `Sent`, `InProgress`, `Completed`, `Expired`), from the link alone, not from whether the guests' data are
   complete; filtered in SQL. 400 `booking_list_invalid_check_in_status`.
@@ -389,6 +394,36 @@ most 50, 422 `calendar_too_many_properties`; without it the first 50 by name, `p
 One read for the properties and one each for the bookings, their payments, the blocks and the interventions: none per property.
 `GET /api/bookings/calendar` is not touched. The Home puts the nights taken twice among its things to do (`ResolveCalendarConflict`,
 below), from `CalendarAlertRules`, the calculation the future alerts of the calendar will share.
+
+**The price and the rules of the nights (E08/F05/US01, NF-36, NF-78; `IPropertyDayRuleService`, table `PropertyDayRules`).** CasaZen had one
+minimum stay per property (`Property.MinNights`) and a price for a date only through the seasonal proposals the host confirmed; a
+night can now have its own price, a minimum and a maximum stay, an arrival or a departure closed, and a minimum and a maximum advance.
+One row per property and stay date (unique `(PropertyId, StayDate)`), written only while a value is set (a row left with no value is
+deleted); `StayDate` is the calendar date of the property the night starts on (a `date`, never converted: only «today», which decides
+whether a night is over, is read on the time zone of the property, `DayRuleRules.TodayOf`). The check constraint
+`CK_PropertyDayRules_Values` refuses a price outside 0.01 to 100000, a stay outside 1 to 365 nights, an advance outside 0 to 730 days
+and a maximum below its minimum; the service refuses the same before it stages anything (422 `calendar_day_rule_invalid_price`,
+`calendar_day_rule_invalid_stay`, `calendar_day_rule_invalid_advance`, `calendar_day_rule_range_invalid`,
+`calendar_day_rule_range_too_long` (more than 366 days), `calendar_day_rule_in_past`, `calendar_day_rule_nothing_to_change`); the price
+is rounded to the cent, half away from zero, as `StayPricing` rounds. No endpoint writes the rules here: the changes API
+(E08/F05/US02/T03) calls `IPropertyDayRuleService.ApplyAsync`, which stages the rows (skipping and counting the nights before today of
+the property) and never saves: the caller owns the transaction and, on a unique violation of the night
+(`IsDateConflict`), calls `DiscardStaged` and stages once more. The changes sent to the channel manager are `CalendarChangeProcesses`
+and `CalendarChangeChunks` (no personal data; the state of the process is derived from its chunks; accepted by the channel manager is
+not published on the portals).
+
+`GET /api/calendar/days` (policy `short-rent property.read`, the caller's `HostScope` in SQL like the calendar above): `from` and `to`
+(`yyyy-MM-dd`, both included; today and the 29 days after it when missing; at most 92 days, 422 `calendar_window_too_large`; `to` before
+`from` is 400 `booking_calendar_range_invalid`; years 2000 to 2100) and `propertyIds` (repeated or separated by commas, at most 50, 422
+`calendar_too_many_properties`; one the caller does not reach is left out as if it did not exist; without it the first 50 by name). The
+answer is `{ today, properties: [{ propertyId, timezone, currency, mirrored, days }] }`, `today` being Europe/Rome and `timezone` the
+IANA zone of the property. Each day: `date`; `priceCents` (the number of the quote of a one-night stay: `StayPricing.NightPrice` with
+the prices the host set, `DayRulePricing.HostPrices`); `priceSource` (`DayRule`, `Seasonal`, `Weekend` or `Base`); `minNights` (the rule,
+else `Property.MinNights`, else 1); `maxNights`, `minAdvanceDays`, `maxAdvanceDays` (absent when not set); `closedToArrival`,
+`closedToDeparture`; `hasRule`; `taken` (the nights `PublicOccupancyReader` says are taken, the definition of the public calendar).
+`mirrored` is true when `IOctorateBookingTargets.LookupAsync` finds a target (advice only: with the connector off, or when the channel
+manager cannot be asked in 10 seconds, it is false and the days are answered all the same). One query per kind of data for all the
+properties: the properties, the rules, the confirmed seasonal prices and the taken nights.
 
 **The state and the history of one booking (SR-05a, SR-D17).** `Booking` keeps three more times, all nullable and never backfilled:
 `ConfirmedAt` (a payment that settled, the host's confirmation or acceptance, or a booking confirmed from the start: entered by the

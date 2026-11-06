@@ -756,6 +756,27 @@
   <data name="CalendarTooManyProperties" xml:space="preserve">
     <value>You can ask for at most {0} properties at a time.</value>
   </data>
+  <data name="CalendarDayRuleInvalidPrice" xml:space="preserve">
+    <value>The price of a night must be between {0} and {1}, with at most two decimals.</value>
+  </data>
+  <data name="CalendarDayRuleInvalidStay" xml:space="preserve">
+    <value>A stay must be between {0} and {1} nights, and the maximum cannot be below the minimum.</value>
+  </data>
+  <data name="CalendarDayRuleInvalidAdvance" xml:space="preserve">
+    <value>The booking advance must be between {0} and {1} days, and the maximum cannot be below the minimum.</value>
+  </data>
+  <data name="CalendarDayRuleRangeInvalid" xml:space="preserve">
+    <value>The last day of the range cannot be before the first.</value>
+  </data>
+  <data name="CalendarDayRuleRangeTooLong" xml:space="preserve">
+    <value>A change can cover at most {0} days: choose a shorter range.</value>
+  </data>
+  <data name="CalendarDayRuleInPast" xml:space="preserve">
+    <value>The days you chose are already over: choose days from today onwards.</value>
+  </data>
+  <data name="CalendarDayRuleNothingToChange" xml:space="preserve">
+    <value>Choose at least one value to change and at least one day.</value>
+  </data>
   <data name="CalendarInvalidRequest" xml:space="preserve">
     <value>The dates or the properties asked for are not valid: check the dates (from 2000 to 2100) and the property ids.</value>
   </data>

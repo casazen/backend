@@ -163,6 +163,13 @@ public static class DemoShowcaseCatalog
         /// part of the plan deferred with its "To do". Rows marked with the onboarding constants of <c>TestDataEntities</c>.
         /// </summary>
         public const string OnboardingActivation = "onboarding-activation";
+
+        /// <summary>
+        /// The price and the rules of single nights of a house (E08/F05/US01/T02, NF-36): the lake villa has a price of its own on some nights of a
+        /// weekend a few weeks ahead, a longer minimum stay, a night closed to arrival, a day closed to departure, and a shorter maximum stay with a
+        /// minimum advance. Invented rows of the house, marked as showcase data (<c>TestDataEntities.PropertyDayRule</c>); nothing is sent to a channel manager.
+        /// </summary>
+        public const string CalendarDayRules = "calendar-day-rules";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -227,6 +234,7 @@ public static class DemoShowcaseCatalog
         Scenario.CrmWelcomeLink,
         Scenario.BookingOtaAmounts,
         Scenario.OnboardingActivation,
+        Scenario.CalendarDayRules,
     ];
 
     /// <summary>
@@ -319,7 +327,7 @@ public static class DemoShowcaseCatalog
             NightlyRate: 180m,
             CleaningFee: 40m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile, Scenario.ListingChannelStates, Scenario.PropertyRoomsAndDiscounts],
+            Scenarios: [Scenario.PublishedLombardia, Scenario.BookingUpcoming, Scenario.BookingPast, Scenario.BookingManualLight, Scenario.PropertyWizardFields, Scenario.PropertySiteProfile, Scenario.ListingChannelStates, Scenario.PropertyRoomsAndDiscounts, Scenario.CalendarDayRules],
             Profile: new DemoPropertyProfile(
                 AccommodationType.HouseOrVilla, 5, 140, "Villa sul lago con giardino (demo)",
                 new TimeOnly(15, 0), new TimeOnly(10, 0), SmokingPolicy.No, PetsPolicy.OnRequest, PartiesPolicy.No,
@@ -386,6 +394,16 @@ public static class DemoShowcaseCatalog
             [
                 new(7, 10m),
                 new(28, 20m),
+            ],
+            // NF-36: the price and the rules of single nights a few weeks ahead, after the stays of the demo: a weekend at a price of its own with a
+            // longer minimum stay, a night closed to arrival, a day closed to departure, and a short maximum stay booked at least two days ahead.
+            DayRules:
+            [
+                new(50, Price: 260m, MinNights: 3),
+                new(51, Price: 260m, MinNights: 3),
+                new(52, ClosedToArrival: true),
+                new(55, MaxNights: 5, MinAdvanceDays: 2),
+                new(58, ClosedToDeparture: true),
             ],
             Bookings:
             [
@@ -1480,7 +1498,8 @@ public sealed record DemoPropertyTemplate(
     IReadOnlyList<DemoChannelState>? ChannelStates = null,
     IReadOnlyList<DemoRoom>? Rooms = null,
     IReadOnlyList<DemoStayDiscount>? StayDiscounts = null,
-    DemoDeclaredTouristTaxRate? DeclaredTouristTaxRate = null);
+    DemoDeclaredTouristTaxRate? DeclaredTouristTaxRate = null,
+    IReadOnlyList<DemoDayRule>? DayRules = null);
 
 /// <summary>
 /// A room of a demo property with its beds (NF-34): invented like the rest of the demo. The counters of the property (<c>Bedrooms</c>, <c>Beds</c>)
@@ -1490,6 +1509,21 @@ public sealed record DemoRoom(PropertyRoomType Type, IReadOnlyList<RoomBed> Beds
 
 /// <summary>A length-of-stay discount of a demo property (NF-35): from <paramref name="MinNights"/> nights, <paramref name="PercentOff"/> percent less on the lodging.</summary>
 public sealed record DemoStayDiscount(int MinNights, decimal PercentOff);
+
+/// <summary>
+/// The price and the rules of one night of a demo property (E08/F05/US01/T02, NF-36): the night that starts <paramref name="OffsetDays"/> days after the
+/// day of the reset, with the values a host could set from the calendar (invented, and inside the bounds the rules of the service apply: the showcase
+/// test checks them with the same function). A value left out is unset.
+/// </summary>
+public sealed record DemoDayRule(
+    int OffsetDays,
+    decimal? Price = null,
+    int? MinNights = null,
+    int? MaxNights = null,
+    bool ClosedToArrival = false,
+    bool ClosedToDeparture = false,
+    int? MinAdvanceDays = null,
+    int? MaxAdvanceDays = null);
 
 /// <summary>
 /// The state of a demo property on one channel of the channel manager (NF-27, NF-38): invented like the rest of the demo. It exists so the list
