@@ -99,6 +99,12 @@ public enum OctorateStayStateOutcome
     AlreadySent = 1,
     Sent = 2,
     Failed = 3,
+
+    /// <summary>
+    /// The stay is no longer in the state the push is about (a <see cref="OctorateStayState.NoShow"/> that is retried after a late arrival cleared
+    /// the mark): nothing was called and the open row of the push was closed.
+    /// </summary>
+    NotApplicable = 4,
 }
 
 /// <summary>A push of a state of the stay: the outcome and, when it failed, why.</summary>

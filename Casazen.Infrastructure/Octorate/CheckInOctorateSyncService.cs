@@ -251,6 +251,23 @@ public sealed class CheckInOctorateSyncService(
         if (row is { Status: OctorateSyncStatus.Sent })
             return new OctorateStayStateResult(OctorateStayStateOutcome.AlreadySent, null);
 
+        // The stay is read again right before the call: a NO_SHOW that failed and is retried after a late arrival (the mark cleared, CHECKIN_END
+        // already sent) would reach Octorate last and mark a stay in progress as a no-show. Such a push is dropped without a call, and its open
+        // row closed (a row that is still to retry would otherwise be picked up again and again).
+        await db.Entry(booking).ReloadAsync(cancellationToken);
+        if (state == OctorateStayState.NoShow && !(booking.Status == BookingStatus.Confirmed && booking.NoShowAt is not null))
+        {
+            if (row is not null)
+            {
+                await CloseTodoAsync(row.TodoActivityId, cancellationToken);
+                db.OctorateStayStateSyncs.Remove(row);
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
+            logger.LogInformation("State {State} of booking {BookingId} not sent to Octorate: the stay is no longer in it", state, booking.Id);
+            return new OctorateStayStateResult(OctorateStayStateOutcome.NotApplicable, null);
+        }
+
         if (row is null)
         {
             row = new OctorateStayStateSync { OrgId = booking.OrgId, BookingId = booking.Id, State = state };

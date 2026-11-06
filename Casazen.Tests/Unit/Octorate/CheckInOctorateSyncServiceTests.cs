@@ -156,6 +156,42 @@ public class CheckInOctorateSyncServiceTests
     }
 
     [Fact]
+    public async Task OctorateCheckIn_NoShowIsSentOnlyWhileTheStayIsStillANoShow_Test()
+    {
+        // The first push failed and waits for the retry; the stay is still a no-show: the retry sends it.
+        var still = await Harness.CreateAsync(ComplianceSenderType.ChannelManager, noShow: true);
+        await still.AddStateRowAsync(OctorateStayState.NoShow, OctorateSyncStatus.Failed, attempts: 1);
+
+        var sent = await still.Service().SetStayStateAsync(still.BookingId, OctorateStayState.NoShow, CancellationToken.None);
+
+        Assert.Equal(OctorateStayStateOutcome.Sent, sent.Outcome);
+        still.Client.Verify(
+            c => c.SetCheckInStatusAsync(Accommodation, Reservation, OctorateCheckInStatus.NoShow, It.IsAny<CancellationToken>()), Times.Once);
+
+        // The guests then arrived late: the host registered the arrival (the mark is cleared, the stay is checked in and CHECKIN_END went). The
+        // retry of the NO_SHOW would reach Octorate last and mark a stay in progress as a no-show: nothing is called and the row is closed.
+        var arrived = await Harness.CreateAsync(ComplianceSenderType.ChannelManager, status: BookingStatus.CheckedIn);
+        await arrived.AddStateRowAsync(OctorateStayState.NoShow, OctorateSyncStatus.Failed, attempts: 1);
+
+        var dropped = await arrived.Service().SetStayStateAsync(arrived.BookingId, OctorateStayState.NoShow, CancellationToken.None);
+
+        Assert.Equal(OctorateStayStateOutcome.NotApplicable, dropped.Outcome);
+        arrived.Client.VerifyNoOtherCalls();
+        await using (var db = arrived.NewDb())
+            Assert.Empty(await db.OctorateStayStateSyncs.ToListAsync());
+
+        // The first push finds the arrival already registered: nothing is called and no row is made.
+        var late = await Harness.CreateAsync(ComplianceSenderType.ChannelManager, status: BookingStatus.CheckedIn);
+
+        var first = await late.Service().SetStayStateAsync(late.BookingId, OctorateStayState.NoShow, CancellationToken.None);
+
+        Assert.Equal(OctorateStayStateOutcome.NotApplicable, first.Outcome);
+        late.Client.VerifyNoOtherCalls();
+        await using var lateDb = late.NewDb();
+        Assert.Empty(await lateDb.OctorateStayStateSyncs.ToListAsync());
+    }
+
+    [Fact]
     public async Task OctorateCheckIn_NoWriteWithoutConfirmedMapping_Test()
     {
         // A listing only proposed, ambiguous or rejected: not mirrored.
