@@ -1,6 +1,7 @@
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.BackgroundJobs;
+using Casazen.Web.Resources;
 
 namespace Casazen.Web.Extensions;
 
@@ -19,6 +20,10 @@ public static class MarketplaceServiceCollectionExtensions
         // The cache of Octorate's portal catalog and its daily refresh (E09/F01/US01/T02).
         services.AddScoped<IMarketplacePortalCatalogService, MarketplacePortalCatalogService>();
         services.AddScoped<MarketplacePortalRefreshJob>();
+
+        // The words of the marketplace in the language the page asks for, and the catalog with the Active tab (E09/F01/US01/T03).
+        services.AddSingleton<IMarketplaceTexts, ResxMarketplaceTexts>();
+        services.AddScoped<IMarketplaceCatalogService, MarketplaceCatalogService>();
 
         return services;
     }

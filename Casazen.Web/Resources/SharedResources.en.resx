@@ -4346,4 +4346,88 @@
   <data name="OctorateHandoffGuideIstatPeriodCheck" xml:space="preserve">
     <value>Check that the period shows as sent for the region of the structure. A red warning means the region does not allow direct sending: in that case the file has to be uploaded by hand on the regional portal.</value>
   </data>
+  <data name="MarketplacePropertyNotFound" xml:space="preserve">
+    <value>Property not found among those you can access.</value>
+  </data>
+  <data name="MarketplaceEntryNotFound" xml:space="preserve">
+    <value>Marketplace entry not found.</value>
+  </data>
+  <data name="Marketplace.Channel.Benefit" xml:space="preserve">
+    <value>Get the bookings from {0} in CasaZen.</value>
+  </data>
+  <data name="Marketplace.Tool.Benefit" xml:space="preserve">
+    <value>Connect {0} to CasaZen.</value>
+  </data>
+  <data name="Marketplace.Licensed.chat.Name" xml:space="preserve">
+    <value>Guest chat</value>
+  </data>
+  <data name="Marketplace.Licensed.chat.Benefit" xml:space="preserve">
+    <value>Write to the guests of your channels from a single inbox.</value>
+  </data>
+  <data name="Marketplace.Licensed.invoice.Name" xml:space="preserve">
+    <value>Invoicing</value>
+  </data>
+  <data name="Marketplace.Licensed.invoice.Benefit" xml:space="preserve">
+    <value>Issue the invoices of your stays from the channel manager.</value>
+  </data>
+  <data name="Marketplace.Licensed.fiscalPrinter.Name" xml:space="preserve">
+    <value>Fiscal printer</value>
+  </data>
+  <data name="Marketplace.Licensed.fiscalPrinter.Benefit" xml:space="preserve">
+    <value>Print the receipt for payments received at the property.</value>
+  </data>
+  <data name="Marketplace.Licensed.smartOffer.Name" xml:space="preserve">
+    <value>Smart offers</value>
+  </data>
+  <data name="Marketplace.Licensed.smartOffer.Benefit" xml:space="preserve">
+    <value>Offer targeted discounts to guests who are about to book.</value>
+  </data>
+  <data name="Marketplace.Licensed.octoDaily.Name" xml:space="preserve">
+    <value>Daily report</value>
+  </data>
+  <data name="Marketplace.Licensed.octoDaily.Benefit" xml:space="preserve">
+    <value>Get a daily summary of arrivals, departures and takings.</value>
+  </data>
+  <data name="Marketplace.Licensed.rms.Name" xml:space="preserve">
+    <value>Revenue management (RMS)</value>
+  </data>
+  <data name="Marketplace.Licensed.rms.Benefit" xml:space="preserve">
+    <value>Let your prices follow demand automatically.</value>
+  </data>
+  <data name="Marketplace.Licensed.businessIntelligence.Name" xml:space="preserve">
+    <value>Business intelligence</value>
+  </data>
+  <data name="Marketplace.Licensed.businessIntelligence.Benefit" xml:space="preserve">
+    <value>Analyze the results of your channels with charts and comparisons.</value>
+  </data>
+  <data name="Marketplace.Licensed.bookingEngine.Name" xml:space="preserve">
+    <value>Booking engine</value>
+  </data>
+  <data name="Marketplace.Licensed.bookingEngine.Benefit" xml:space="preserve">
+    <value>Sell direct from your own website with a booking form.</value>
+  </data>
+  <data name="Marketplace.Licensed.octoSite.Name" xml:space="preserve">
+    <value>Website</value>
+  </data>
+  <data name="Marketplace.Licensed.octoSite.Benefit" xml:space="preserve">
+    <value>Build a website for your property, linked to your availability.</value>
+  </data>
+  <data name="Marketplace.Licensed.webConcierge.Name" xml:space="preserve">
+    <value>Web concierge</value>
+  </data>
+  <data name="Marketplace.Licensed.webConcierge.Benefit" xml:space="preserve">
+    <value>Give guests information and services before and during their stay.</value>
+  </data>
+  <data name="Marketplace.Licensed.metaSearch.Name" xml:space="preserve">
+    <value>Meta search engines</value>
+  </data>
+  <data name="Marketplace.Licensed.metaSearch.Benefit" xml:space="preserve">
+    <value>Show your prices on comparison sites and bring in direct bookings.</value>
+  </data>
+  <data name="Marketplace.Licensed.rateChecker.Name" xml:space="preserve">
+    <value>Rate checker</value>
+  </data>
+  <data name="Marketplace.Licensed.rateChecker.Benefit" xml:space="preserve">
+    <value>Check that your prices are consistent on every channel.</value>
+  </data>
 </root>
