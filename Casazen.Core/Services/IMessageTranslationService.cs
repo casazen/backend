@@ -8,11 +8,13 @@ namespace Casazen.Core.Services;
 /// the stored message keeps the original text, and the screen shows the translation as a machine translation next to it.
 /// </summary>
 /// <remarks>
-/// <para><b>Who translates.</b> CasaZen's own AI first: <see cref="IAiProvider"/> on the cheapest tier, behind the platform budget (the provider is
+/// <para><b>Who translates.</b> CasaZen's own AI first, <b>but only with <see cref="Casazen.Core.Features.FeatureFlags.MessageTranslationAi"/> on, which is off by
+/// default</b>: what a guest wrote is personal data and the AI provider is an external sub-processor (<c>docs/runbooks/ai.md</c>), so with the flag off
+/// the provider is never asked. With it on: <see cref="IAiProvider"/> on the cheapest tier, behind the platform budget (the provider is
 /// wrapped by the guard of <see cref="IAiBudgetGuard"/>, so a call that would pass the monthly cap never leaves). The channel manager's translation of
-/// the message (<see cref="IOctorateApiClient.TranslateChatMessageAsync"/>) is the fallback when the AI cannot be used (no provider is configured, the
-/// budget is used up, the provider does not answer or answers something unusable), and it exists only for a message of a conversation of a channel that
-/// the channel manager holds. With neither: 422 <c>translation_unavailable</c>.</para>
+/// the message (<see cref="IOctorateApiClient.TranslateChatMessageAsync"/>) is the fallback when the AI is off or cannot be used (no provider is
+/// configured, the budget is used up, the provider does not answer or answers something unusable), and it exists only for a message of a conversation of
+/// a channel that the channel manager holds. With neither: 422 <c>translation_unavailable</c>.</para>
 /// <para><b>Personal data (FD-21).</b> What reaches the AI provider is the text after <c>PiiScrubber</c> (e-mail addresses, phone numbers and fiscal
 /// codes become placeholders) and after the names of the conversation (the guest, the host) have been replaced by placeholders, which are put back in the
 /// translation. Other names typed in the text cannot be told from words and are not recognized: the host chooses to translate a message, and the

@@ -238,11 +238,14 @@ has no dates): the text never holds a literal `{{…}}`. `GET api/messages/threa
 conversation of a channel, read only, to copy.
 
 **Translation** (`POST api/messages/translate`, `{ threadKey, messageId | text, targetLanguage }`): for the screen only, **never stored** (the message keeps its
-original), always marked `machineTranslated`. CasaZen's AI first (`Economy` tier, behind the platform budget, under the AI limits of the user and of the
-org), with the text scrubbed (`PiiScrubber` takes out e-mail addresses, phone numbers and fiscal codes; the names of the guest and of the host become
-`[[N1]]…` and are put back in the translation; other names in the free text are not recognized); the channel manager's translation of that message when the AI
-is not configured, the budget is used up, or the provider fails; **422** `translation_unavailable` with neither (a text the host is still writing has no message
-on the channel manager). **422** `translation_language_invalid` (not one of the 14), `translation_input_invalid` (a message and a text together, or neither).
+original), always marked `machineTranslated`. **CasaZen's AI only with `Features:MessageTranslationAi` on, which is off by default** (FD-21, AI-06: what a guest
+wrote goes to an external sub-processor, [ai.md](ai.md); the product owner turns it on after deciding the transfer): `Economy` tier, behind the platform budget, under
+the AI limits of the user and of the org, with the text scrubbed (`PiiScrubber` takes out e-mail addresses, phone numbers and fiscal codes; the names of the guest
+and of the host become `[[N1]]…` and are put back in the translation, a name whose words are all short, «Li Wu», is replaced as a whole name and the particles
+de, da, di, van, von, al, el are left alone; **a document number, an IBAN, a street address and the names of other people are not recognized**). With the flag off the
+provider is never asked: the channel manager's translation of that message is the only one, and it is also the one used when the AI is not configured, the budget
+is used up, or the provider fails; **422** `translation_unavailable` with neither (a text the host is still writing has no message on the channel manager, so with
+the flag off every draft is 422). **422** `translation_language_invalid` (not one of the 14), `translation_input_invalid` (a message and a text together, or neither).
 
 **Demo.** The scenario `message-templates` of the showcase (`DemoShowcaseCatalog.HostMessageTemplates`) writes three invented templates at reset (a welcome in Italian
 and in English and a reminder of the departure, all saying TEST, together using the eight variables), marked `TestDataEntities.MessageTemplate` and deleted by the

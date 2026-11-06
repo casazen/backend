@@ -148,8 +148,9 @@ public class MessageTemplatesController(
 
     /// <summary>
     /// The translation of a message of a conversation (<c>messageId</c>) or of a text the host is writing (<c>text</c>), one of the two, into
-    /// <c>targetLanguage</c>. It is for the screen: marked <c>machineTranslated</c>, never stored, the message keeps its original. CasaZen's AI first (the
-    /// text with its contact data and the names of the conversation replaced), the channel manager's translation of the message when the AI cannot be used;
+    /// <c>targetLanguage</c>. It is for the screen: marked <c>machineTranslated</c>, never stored, the message keeps its original. CasaZen's AI first, <b>only
+    /// with <c>Features:MessageTranslationAi</c> on (off by default: what a guest wrote goes to an external sub-processor)</b>, the text with its contact data
+    /// and the names of the conversation replaced; the channel manager's translation of the message when the AI is off or cannot be used;
     /// 422 <c>translation_unavailable</c> with neither. 400 <c>thread_key_invalid</c>; 404 <c>thread_not_found</c> or <c>message_not_found</c>; 422
     /// <c>translation_language_invalid</c>, <c>translation_input_invalid</c>, <c>message_text_invalid</c>; 429 <c>rate_limited</c> (the limits of the AI).
     /// </summary>

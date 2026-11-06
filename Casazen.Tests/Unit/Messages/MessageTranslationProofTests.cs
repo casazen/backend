@@ -9,6 +9,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
+using Casazen.Infrastructure.Features;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Logging;
@@ -33,7 +34,8 @@ public class MessageTranslationProofTests : IAsyncLifetime
     private readonly AppDbContext _db = HostScopeScenario.NewInMemoryDb();
     private readonly Mock<IAiProvider> _ai = new();
     private readonly Mock<IOctorateApiClient> _client = new();
-    private readonly TestFeatureFlags _flags = new(FeatureFlags.OctorateConnector);
+    // Both on: the connector of the channel manager and the flag of the AI translation (off by default in the application, see the proofs of the flag below).
+    private readonly TestFeatureFlags _flags = new(FeatureFlags.OctorateConnector, FeatureFlags.MessageTranslationAi);
     private readonly AiResponseCache _cache = new(Options.Create(new AiCacheOptions()));
     private readonly CapturingLogger<MessageTranslationService> _log = new();
     private readonly List<AiRequest> _requests = [];
@@ -136,6 +138,69 @@ public class MessageTranslationProofTests : IAsyncLifetime
         Assert.DoesNotContain("Jonas", _log.AllOutput, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("jonas.berg", _log.AllOutput, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("EN:", _log.AllOutput, StringComparison.Ordinal);
+    }
+
+    // ---- The AI only behind its own flag ------------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// PROOF TEST: privacy rule (FD-21, AI-06). With <c>Features:MessageTranslationAi</c> off, which is the default, nothing a guest wrote reaches the AI provider:
+    /// not the text of a message, not the draft the host is writing, even when a provider is configured and would answer; the memory of its answers is not
+    /// read either (an answer kept for these very words is not served). The channel manager translates the message it holds, by its id; a text only the AI
+    /// could translate, and a message the channel manager cannot translate, are 422 <c>translation_unavailable</c>.
+    /// </summary>
+    [Fact]
+    public async Task MessageTranslation_AiFlagOff_NeverCallsTheProvider_Test()
+    {
+        _flags.Set(FeatureFlags.MessageTranslationAi, false);
+        AiRepeatsWhatItGets();
+        _client
+            .Setup(c => c.TranslateChatMessageAsync("ACC-1", _world.GrantedReservation.OctorateThreadId, "70123", "en", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("Hello, from the channel manager");
+
+        // The very words were translated before, with the flag on: that answer stays in the memory of the AI and must not be served now.
+        _flags.Set(FeatureFlags.MessageTranslationAi, true);
+        await Service().TranslateAsync(_world.Scope.OrgWide, Key, _guestMessage.Id, null, "en");
+        Assert.Single(_requests);
+        _requests.Clear();
+        _ai.Invocations.Clear();
+        _flags.Set(FeatureFlags.MessageTranslationAi, false);
+
+        var byMessage = await Service().TranslateAsync(_world.Scope.OrgWide, Key, _guestMessage.Id, null, "en");
+        Assert.Equal(MessageTranslationProvider.ChannelManager, byMessage.Provider);
+        Assert.Equal("Hello, from the channel manager", byMessage.Text);
+
+        // The text of a draft has no message on the channel manager: only the AI could translate it, and it is off.
+        var draft = await Assert.ThrowsAsync<DomainRuleException>(() => Service().TranslateAsync(_world.Scope.OrgWide, Key, null, Secret, "en"));
+        Assert.Equal("translation_unavailable", draft.Code);
+
+        // A message the channel manager cannot translate is not translated by the AI instead.
+        _client
+            .Setup(c => c.TranslateChatMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateServerException(500));
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(() => Service().TranslateAsync(_world.Scope.OrgWide, Key, _guestMessage.Id, null, "en"));
+        Assert.Equal("translation_unavailable", refused.Code);
+
+        Assert.Empty(_requests);
+        _ai.Verify(
+            p => p.GenerateAsync(It.IsAny<AiRequest>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        _ai.Verify(
+            p => p.GenerateAsync(It.IsAny<string>(), It.IsAny<AiModelTier>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    /// <summary>The flag is read at every call, and it is off in the application unless somebody turns it on (a missing value is off).</summary>
+    [Fact]
+    public void MessageTranslationAi_IsOffUnlessConfigured()
+    {
+        var empty = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
+        var on = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Features:MessageTranslationAi"] = "true" })
+            .Build();
+
+        Assert.False(ConfigurationFeatureFlags.IsEnabled(empty, FeatureFlags.MessageTranslationAi));
+        Assert.True(ConfigurationFeatureFlags.IsEnabled(on, FeatureFlags.MessageTranslationAi));
+        Assert.Contains(FeatureFlags.MessageTranslationAi, FeatureFlags.All);
     }
 
     // ---- Never stored -----------------------------------------------------------------------------------------------------------------------

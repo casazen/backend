@@ -17,13 +17,15 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Nothing is written.</b> The service reads the message, translates it and returns the text: no row of the conversation is created or changed
 /// (the stored message keeps the original, ADR-032), and the translation is not kept anywhere but the short memory of the AI answers
 /// (<see cref="IAiResponseCache"/>, per organization, which holds the translation of the scrubbed text).</item>
-/// <item><b>The AI first, behind the platform budget.</b> One call on the cheapest tier (<see cref="AiModelTier.Economy"/>) of <see cref="IAiProvider"/>, which
-/// is wrapped by the monthly budget when an external provider is active: a call over the cap never leaves and throws
+/// <item><b>The AI first, but only behind its own flag, and behind the platform budget.</b> With <see cref="FeatureFlags.MessageTranslationAi"/> <b>off (the
+/// default)</b> the AI provider is never asked and its memory of answers is not read: what a guest wrote does not leave CasaZen for a sub-processor until
+/// the product owner has decided that (<c>docs/runbooks/ai.md</c>). With it on: one call on the cheapest tier (<see cref="AiModelTier.Economy"/>) of
+/// <see cref="IAiProvider"/>, which is wrapped by the monthly budget when an external provider is active: a call over the cap never leaves and throws
 /// <see cref="AiBudgetExceededException"/>. What the provider gets is the text after <see cref="MessageTranslationPrompt.Scrub"/>.</item>
-/// <item><b>The channel manager second.</b> When the AI cannot be used (no provider is configured, the budget is used up, the provider fails or answers
-/// nothing usable) and the text is a message of a conversation of a channel that the channel manager holds, its own translation of that message is asked for
-/// (<see cref="IOctorateApiClient.TranslateChatMessageAsync"/>, by the id of its message: no word of CasaZen's leaves). A text the host is still writing has no
-/// message there, so only the AI can translate it. With neither: 422 <c>translation_unavailable</c>.</item>
+/// <item><b>The channel manager second (the only one with the flag off).</b> When the AI is off or cannot be used (no provider is configured, the budget is
+/// used up, the provider fails or answers nothing usable) and the text is a message of a conversation of a channel that the channel manager holds, its own
+/// translation of that message is asked for (<see cref="IOctorateApiClient.TranslateChatMessageAsync"/>, by the id of its message: no word of CasaZen's
+/// leaves). A text the host is still writing has no message there, so only the AI can translate it. With neither: 422 <c>translation_unavailable</c>.</item>
 /// <item><b>Logs</b> carry ids, the language and which translator answered: never the text, the translation or a name.</item>
 /// </list>
 /// </remarks>
@@ -71,7 +73,10 @@ public sealed class MessageTranslationService(
         if (source.Text is not { Length: > 0 and <= GuestMessageRules.TextMaxLength } original)
             throw new DomainRuleException(MessageChannelRules.TextInvalidCode, "GuestMessageTextInvalid");
 
-        if (await TryAiAsync(scope.OrgId, conversation, original, language, ct) is { } byAi)
+        // The AI only behind its own flag (FD-21, AI-06): what a guest wrote is personal data and the provider is an external sub-processor. With the flag
+        // off nothing of the text reaches the provider and the memory of its answers is not even read.
+        if (featureFlags.IsEnabled(FeatureFlags.MessageTranslationAi)
+            && await TryAiAsync(scope.OrgId, conversation, original, language, ct) is { } byAi)
         {
             logger.LogInformation("Message translation for org {OrgId} into {Language}: the AI answered", scope.OrgId, language);
             return new MessageTranslation(byAi, language, MessageTranslationProvider.Ai);
