@@ -401,6 +401,96 @@ public class GdprCrmProofTests
         Assert.Equal(GuestContactLegalBasis.Consent, untouched.LegalBasis);
     }
 
+    /// <summary>
+    /// Proof test (privacy rule, AC-NF95-7): the end of the marketing consent is not undone by the next sync of the guest. The per-channel consent of the
+    /// check-in stays on record as proof, and the sync that follows every booking event reads it again: after the retention it leaves the contacts on
+    /// service only, while a consent the guest gives afterwards counts as a new one.
+    /// </summary>
+    [Fact]
+    public async Task GdprRetention_EndOfMarketingConsent_IsNotUndoneByTheNextSyncOfTheGuest_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var clock = CrmTestWorld.Clock();
+        var orgId = Guid.NewGuid();
+        Guid guestId;
+        await using (var seed = CrmTestWorld.Open(store))
+        {
+            var mario = CrmTestWorld.AddGuest(seed, orgId, "Mario", "Rossi", "mario.rossi@example.com");
+            mario.MarketingConsent = true;
+            mario.MarketingConsentDate = CrmTestWorld.Day(-400);
+            seed.MarketingConsentRecords.Add(MarketingConsentOf(orgId, mario.Id, CrmTestWorld.Day(-400)));
+            await seed.SaveChangesAsync(Ct);
+            guestId = mario.Id;
+        }
+
+        async Task<GuestContact> MarketingAddressAsync()
+        {
+            await using var read = CrmTestWorld.Open(store);
+            return await read.GuestContacts.AsNoTracking().SingleAsync(c => c.OrgId == orgId && c.ValueHash == Index.Hash("mario.marketing@example.it"), Ct);
+        }
+
+        async Task SyncAsync()
+        {
+            await using var db = CrmTestWorld.Open(store);
+            await CrmTestWorld.Contacts(db, clock).SyncFromGuestAsync(guestId, Ct);
+        }
+
+        // The sync after the check-in puts the marketing address on consent, confirmed by the guest: marketable.
+        await SyncAsync();
+        Assert.True(CrmContactRules.CanReceiveMarketing(await MarketingAddressAsync()));
+
+        // The retention ends the consent: the address goes back to service only.
+        await using (var db = CrmTestWorld.Open(store))
+        {
+            var options = new GdprOptions
+            {
+                Retention = new GdprRetentionOptions { Marketing = new RetentionPeriodOptions { Years = 1, Source = "Decisione del titolare del 2026-11" } },
+            };
+            var retention = new GuestDataRetentionService(
+                db,
+                new GuestDataEraser(db, Mock.Of<IFileStorage>(), NullLogger<GuestDataEraser>.Instance),
+                Options.Create(options),
+                clock,
+                NullLogger<GuestDataRetentionService>.Instance);
+            await retention.ApplyAsync(Ct);
+        }
+
+        Assert.Equal(GuestContactLegalBasis.ServiceOnly, (await MarketingAddressAsync()).LegalBasis);
+
+        // The next sync of the guest (any booking event) reads the same record again and leaves the address where the end put it.
+        await SyncAsync();
+        var afterSync = await MarketingAddressAsync();
+        Assert.Equal(GuestContactLegalBasis.ServiceOnly, afterSync.LegalBasis);
+        Assert.False(CrmContactRules.CanReceiveMarketing(afterSync));
+        Assert.False(afterSync.IsSuppressed);
+
+        // A consent the guest gives afterwards is a new consent and counts.
+        clock.Advance(TimeSpan.FromDays(1));
+        await using (var seed = CrmTestWorld.Open(store))
+        {
+            seed.MarketingConsentRecords.Add(MarketingConsentOf(orgId, guestId, clock.GetUtcNow().UtcDateTime));
+            await seed.SaveChangesAsync(Ct);
+        }
+
+        await SyncAsync();
+        Assert.Equal(GuestContactLegalBasis.Consent, (await MarketingAddressAsync()).LegalBasis);
+    }
+
+    /// <summary>The per-channel consent the check-in records for an e-mail address typed for marketing, confirmed by the guest.</summary>
+    private static MarketingConsentRecord MarketingConsentOf(Guid orgId, Guid guestId, DateTime at) => new()
+    {
+        OrgId = orgId,
+        BookingId = Guid.NewGuid(),
+        GuestId = guestId,
+        MarketingEmail = "mario.marketing@example.it",
+        ConsentEmail = true,
+        ConsentWhatsApp = false,
+        EmailConfirmed = true,
+        ConsentTimestamp = at,
+        ConsentTextVersion = "marketing-v2",
+        IpAddress = "203.0.113.7",
+    };
+
     // ---- the world of the proofs --------------------------------------------------------------------------------------------------
 
     /// <summary>The ids and the hashes of <see cref="SeedMarioAndAnnaAsync"/>.</summary>

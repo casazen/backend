@@ -334,6 +334,9 @@ address, no phone number, no name, no hash.
 When the job ends the marketing consent of a guest (event `Expired`, § 3), the contacts of the guest on `Consent` go back to `ServiceOnly`: what a
 stay needs (check-in, instructions, invoice) is still allowed and marketing is not. **They are not suppressed**: an expiry is not an opt-out and the
 guest can consent again. A contact on soft opt-in, a contact that is suppressed and the evidence of the consent that ended are left as they are.
+**The sync of the CRM does not give it back**: the per-channel consents of the check-in (`MarketingConsentRecord`) stay on record as proof, and the sync that
+follows every booking event of the guest (`SyncFromGuestAsync`, [`crm-profiles.md`](crm-profiles.md) § 3.4) reads only the ones given after the last `Expired`
+or `Withdrawn` event of the guest; a consent the guest gives afterwards counts as a new consent.
 
 ### Verification after deploy
 

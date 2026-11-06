@@ -180,7 +180,9 @@ Builds the contacts of one guest from what CasaZen already has and links them to
 2. the **phone number** of the guest record, service only (a phone of an OTA booking is a number like another: only an e-mail address is a forward);
 3. the **per-channel consents of the check-in** (`MarketingConsentRecord`): the marketing e-mail is a consent (typed at the check-in, so it does not arrive
    with the booking: only its domain can make it a forward), **confirmed only when the guest confirmed it** (the record keeps a flag, not a time: the
-   time of the confirmation is the time the sync learned of it); WhatsApp is a consent on the phone of the guest;
+   time of the confirmation is the time the sync learned of it); WhatsApp is a consent on the phone of the guest. **A consent given before the last end of
+   the guest's marketing consent (an `Expired` event of the retention, a `Withdrawn` one) is not read again** (the record stays as proof, but the sync
+   would give back what the end took away); one given after it counts;
 4. the **old yes/no flag** (`Guest.MarketingConsent`, set by the old check-in and checkout): a consent on the e-mail of the guest, **unconfirmed**, so
    **not marketable until confirmed**, with the details of the latest marketing consent of the privacy history when there is one.
 
