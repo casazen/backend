@@ -721,6 +721,8 @@ public class BookingServiceTests
         Assert.Equal(GuestConsentSource.BookingCheckout, insertedConsent.Source);
         Assert.Equal("203.0.113.7", insertedConsent.IpAddress);
         Assert.Equal(guest.MarketingConsentDate, insertedConsent.RecordedAt);
+        // The legacy box is the e-mail channel, and the row of the register says so.
+        Assert.Equal(GuestConsentChannelNote.Email, insertedConsent.Note);
         // The plain insert is for the checkouts without consent.
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
     }

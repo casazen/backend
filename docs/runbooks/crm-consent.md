@@ -14,7 +14,7 @@ screens of the host are frontend tasks; this page is about the API.
 | **An e-mail consent is not marketable until the person confirms** (double opt-in, § 3): `CrmContactRules.CanReceiveMarketing`. | `CrmContactRules`, `MarketingConfirmationService` |
 | **Minors are excluded**: at the check-in the consent is the booker's, who must be of age; on the welcome page the guest declares to be of age. | `GuestCheckInService`, `WelcomeConsentService` |
 | **A suppression is final.** An address that opted out is never written to again: not by a new consent, not by a new booking, not by an old confirmation link. A consent given afterwards is stored, the contact stays suppressed, and no confirmation e-mail is sent. | `CrmContactService`, `MarketingConfirmationService` |
-| **The proof is kept**: the version of the text, the time, the source and the IP address of the person, on the contact (`BasisVersion`, `BasisRecordedAt`, `ConsentSource`, `ConsentIpAddress`) and, for a guest, in the privacy history (`GuestConsentRecords`). | `CrmContactService.RecordConsentAsync` |
+| **The proof is kept**: the version of the text, the time, the source and the IP address of the person, on the contact (`BasisVersion`, `BasisRecordedAt`, `ConsentSource`, `ConsentIpAddress`) and, for a guest, in the privacy history (`GuestConsentRecords`; the row of a consent names its channel in `Note`: `channel=email`, `channel=whatsapp`). | `CrmContactService.RecordConsentAsync` |
 | **No address in a log, in a URL or in a link.** | everywhere |
 
 ## 2. Variables
@@ -28,7 +28,7 @@ screens of the host are frontend tasks; this page is about the API.
 | `Email__ApiKey`, `Email__FromAddress` | to send the double opt-in e-mail | The e-mail provider ([`email.md`](email.md)). Unset: the queue refuses the message, nothing is counted as sent, the consent stays unconfirmed. |
 | `Crm__ConfirmationLinkValidityHours` | no (72) | How long the link of the e-mail works, 1 to 720. |
 | `Crm__ConfirmationMaxSends` | no (3) | How many confirmation e-mails one contact gets, ever, 1 to 10. |
-| `Crm__ContactIndexKey` | to store the contacts | The keyed index of the contacts ([`crm-marketing.md`](crm-marketing.md) § 3). Without it the checkout and the check-in still record the consent in the privacy history and never fail, but no contact is made and no e-mail is sent; the sync of the CRM makes the contacts later, when the key is there. |
+| `Crm__ContactIndexKey` | to store the contacts | The keyed index of the contacts ([`crm-marketing.md`](crm-marketing.md) § 3). Without it the checkout and the check-in still record the consent in the privacy history and never fail, but no contact is made and no e-mail is sent; when the key is there the sync of the CRM makes the **e-mail** contact of a checkout consent (from `Guest.MarketingConsent`) and the contacts of the check-in (from its `MarketingConsentRecord`), but **not the WhatsApp contact of a checkout consent** (§ 4.1). |
 | `RateLimiting__PublicMarketingConsent__PermitLimit`, `__WindowSeconds` | no (60 per 10 minutes per client IP) | The limit of the anonymous consent calls ([`proxy-ip.md`](proxy-ip.md)). |
 
 ## 3. The double opt-in (T01)
@@ -101,15 +101,20 @@ address, so the profile of the guest reads it too.
 
 - **Consents.** A consent needs `Gdpr__MarketingConsentVersion` (the public org's `marketingConsentVersion`): without it, 422
   `direct_booking_marketing_consent_unavailable` and nothing is stored. Each ticked channel is one row of the privacy history
-  (`GuestConsentRecords`: `Marketing`, `Granted`, source `BookingCheckout`, the version, the IP, the time), **written in the same insert as the
-  booking and the guest** (`IBookingRepository.AddWithGuestConsentsAsync`): a checkout that loses the dates or whose payment cannot start leaves
-  none of them. The e-mail channel also marks `Guest.MarketingConsent` (the flag the host's recorded withdrawal looks at).
+  (`GuestConsentRecords`: `Marketing`, `Granted`, source `BookingCheckout`, the version, the IP, the time, and in `Note` the channel,
+  `channel=email` or `channel=whatsapp`: the register has no column for it and the two rows of a guest who ticks both would be the same),
+  **written in the same insert as the booking and the guest** (`IBookingRepository.AddWithGuestConsentsAsync`): a checkout that loses the dates
+  or whose payment cannot start leaves none of them. The e-mail channel also marks `Guest.MarketingConsent` (the flag the host's recorded
+  withdrawal looks at).
 - **Contacts.** Once the guest has a payment to complete (or a request to confirm) each channel becomes a consent contact
   (`ICrmContactService.RecordConsentAsync`: origin `DirectBooking`, source `BookingCheckout`, the version, the IP, the time, the guest and the
   default language of the org), and the e-mail one gets its double opt-in message (§ 3). The history row is not written twice
   (`CrmConsentInput.RecordHistory = false`). **It never fails the checkout**: without `Crm__ContactIndexKey`, or if a contact or the e-mail
-  fails, a line in the log (ids and error type, no address) says so, the history has the consent and the CRM sync makes the contact later;
-  the host can send the confirmation again (`send-confirmation`).
+  fails, a line in the log (ids and error type, no address) says so and the history has the consent. **What the sync recovers**: the e-mail
+  contact (the CRM sync reads `Guest.MarketingConsent` and the history), never the WhatsApp contact of a checkout: the sync builds a WhatsApp
+  contact only from the `MarketingConsentRecord` of the check-in, so a WhatsApp consent of the checkout whose contact was not made stays in
+  the history (with its channel) and the guest has to give it again (guest page or welcome page). The host can send the confirmation of an
+  e-mail contact again (`send-confirmation`).
 - **The notice.** `GET /api/public/orgs/{slug}` carries `softOptInNoticeVersion` (`Gdpr__SoftOptInNoticeVersion`; `null` while the product
   owner has not set it, and nothing in code or in `appsettings.json` sets it). A `softOptInNoticeVersion` equal to the current one is recorded
   in the same insert (`SoftOptInNotice`, `NoticePresented`, source `BookingCheckout`, version, IP): the customer is *told*, never asked.

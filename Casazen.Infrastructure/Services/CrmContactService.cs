@@ -79,6 +79,7 @@ public class CrmContactService(
                         Version = evidence.Version,
                         Source = input.Source,
                         IpAddress = evidence.IpAddress,
+                        Note = GuestConsentChannelNote.For(input.Channel),
                         RecordedAt = recordedAt,
                     });
                     historyStaged = true;

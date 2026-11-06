@@ -117,6 +117,12 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
             (notice.Action, notice.Version, notice.Source));
         Assert.True(booking.Guest.MarketingConsent);
 
+        // The register names the channel of each consent: the two rows are not the same row.
+        Assert.Null(notice.Note);
+        Assert.Equal(
+            new[] { GuestConsentChannelNote.Email, GuestConsentChannelNote.WhatsApp },
+            history.Where(r => r.Purpose == GuestConsentPurpose.Marketing).Select(r => r.Note ?? string.Empty).Order().ToArray());
+
         // The contacts of the CRM: a consent for each channel, with the version, the source and the guest.
         var contacts = await db.GuestContacts.IgnoreQueryFilters().AsNoTracking().Where(c => c.OrgId == property.OrgId).ToListAsync();
         var email = Assert.Single(contacts, c => c.Channel == GuestContactChannel.Email);

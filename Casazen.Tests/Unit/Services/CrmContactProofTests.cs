@@ -233,6 +233,33 @@ public class CrmContactProofTests
         Assert.Equal(before, after);
     }
 
+    /// <summary>
+    /// Privacy rule: the privacy history says on which channel a consent was given. A guest who consents on the e-mail and on WhatsApp at the same
+    /// moment leaves two rows that differ only by their note; without it the register could not prove which of the two the person agreed to.
+    /// </summary>
+    [Fact]
+    public async Task CrmContact_ConsentHistory_NamesTheChannelOfEachConsent_Test()
+    {
+        await using var db = CrmTestWorld.Open(CrmTestWorld.NewStore());
+        var contacts = CrmTestWorld.Contacts(db, CrmTestWorld.Clock());
+        var orgId = Guid.NewGuid();
+        var guest = CrmTestWorld.AddGuest(db, orgId, "Anna", "Verdi", "anna@example.com");
+        await db.SaveChangesAsync(Ct);
+
+        await contacts.RecordConsentAsync(
+            new CrmConsentInput(orgId, GuestContactChannel.Email, "anna@example.com", GuestContactOrigin.CheckIn, "consent-v1", GuestConsentSource.GuestPortal, GuestId: guest.Id),
+            Ct);
+        await contacts.RecordConsentAsync(
+            new CrmConsentInput(orgId, GuestContactChannel.WhatsApp, "+393331112222", GuestContactOrigin.CheckIn, "consent-v1", GuestConsentSource.GuestPortal, GuestId: guest.Id),
+            Ct);
+
+        var notes = await db.GuestConsentRecords.AsNoTracking()
+            .Where(r => r.Purpose == GuestConsentPurpose.Marketing && r.Action == GuestConsentAction.Granted)
+            .Select(r => r.Note ?? string.Empty)
+            .ToListAsync(Ct);
+        Assert.Equal(new[] { GuestConsentChannelNote.Email, GuestConsentChannelNote.WhatsApp }, notes.Order().ToArray());
+    }
+
     private static MarketingConsentRecord ConsentOf(Booking booking, Guest guest, bool confirmed) => new()
     {
         OrgId = booking.OrgId,

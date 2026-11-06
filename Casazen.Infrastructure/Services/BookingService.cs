@@ -735,7 +735,8 @@ public class BookingService(
     /// the text the guest saw, the source, the time and the IP as the check-in portal records its own, and, when the page showed the soft
     /// opt-in notice in force, one <see cref="GuestConsentPurpose.SoftOptInNotice"/> row (the notice is presented, never a consent). The
     /// e-mail consent also marks the snapshot (<c>Guest.MarketingConsent</c> and its date): the yes/no the withdrawal that a host records on a
-    /// guest's request looks at. A WhatsApp consent alone does not, because that flag is read as a consent to the e-mail address.
+    /// guest's request looks at. A WhatsApp consent alone does not, because that flag is read as a consent to the e-mail address. Each consent row
+    /// names its channel (<see cref="GuestConsentChannelNote"/>): without it the rows of a guest who ticks both channels would be the same.
     /// </summary>
     private static List<GuestConsentRecord> RecordCheckoutConsents(
         Guest guest,
@@ -753,17 +754,21 @@ public class BookingService(
             {
                 guest.MarketingConsent = true;
                 guest.MarketingConsentDate = at;
-                records.Add(NewCheckoutRecord(guest, GuestConsentPurpose.Marketing, GuestConsentAction.Granted, marketingVersion, consentIpAddress, at));
+                records.Add(NewCheckoutRecord(
+                    guest, GuestConsentPurpose.Marketing, GuestConsentAction.Granted, marketingVersion, consentIpAddress, at, GuestConsentChannelNote.Email));
             }
 
             if (whatsApp)
-                records.Add(NewCheckoutRecord(guest, GuestConsentPurpose.Marketing, GuestConsentAction.Granted, marketingVersion, consentIpAddress, at));
+            {
+                records.Add(NewCheckoutRecord(
+                    guest, GuestConsentPurpose.Marketing, GuestConsentAction.Granted, marketingVersion, consentIpAddress, at, GuestConsentChannelNote.WhatsApp));
+            }
         }
 
         if (noticeVersion is not null)
         {
             records.Add(NewCheckoutRecord(
-                guest, GuestConsentPurpose.SoftOptInNotice, GuestConsentAction.NoticePresented, noticeVersion, consentIpAddress, at));
+                guest, GuestConsentPurpose.SoftOptInNotice, GuestConsentAction.NoticePresented, noticeVersion, consentIpAddress, at, null));
         }
 
         return records;
@@ -775,7 +780,8 @@ public class BookingService(
         GuestConsentAction action,
         string version,
         string consentIpAddress,
-        DateTime at)
+        DateTime at,
+        string? channelNote)
     {
         return new GuestConsentRecord
         {
@@ -788,6 +794,7 @@ public class BookingService(
             IpAddress = string.IsNullOrWhiteSpace(consentIpAddress)
                 ? null
                 : (consentIpAddress.Length > 50 ? consentIpAddress[..50] : consentIpAddress),
+            Note = channelNote,
             RecordedAt = at,
         };
     }
