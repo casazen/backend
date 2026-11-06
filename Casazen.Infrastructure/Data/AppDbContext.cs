@@ -354,6 +354,13 @@ public class AppDbContext(
     // The tourist tax a host paid to a comune and the receipt of the payment: the «paid» half of the summary per comune (NF-100, REP-05)
     public DbSet<TouristTaxRemittance> TouristTaxRemittances { get; set; } = null!;
 
+    // The marketplace (E09/F01, NF-54): the portal catalog cached from Octorate, the partners the platform admin curates with their texts
+    // (platform data, no tenant), and what each org has activated (tenant-owned)
+    public DbSet<MarketplacePortal> MarketplacePortals { get; set; } = null!;
+    public DbSet<MarketplacePartner> MarketplacePartners { get; set; } = null!;
+    public DbSet<MarketplacePartnerText> MarketplacePartnerTexts { get; set; } = null!;
+    public DbSet<MarketplaceActivation> MarketplaceActivations { get; set; } = null!;
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
@@ -1688,6 +1695,67 @@ public class AppDbContext(
                 t.HasCheckConstraint("CK_TouristTaxRemittances_PaidAmountPositive", "\"PaidAmount\" > 0");
                 t.HasCheckConstraint("CK_TouristTaxRemittances_PeriodOrder", "\"PeriodFrom\" <= \"PeriodTo\"");
             });
+        });
+
+        // ─── Marketplace (E09/F01, NF-54, NF-56, NF-57, NF-59) ───────────────────
+        // The portals of the channel manager are platform data refreshed once a day, unique by the code Octorate gives them.
+        modelBuilder.Entity<MarketplacePortal>(entity =>
+        {
+            entity.HasIndex(p => p.PortalCode)
+                .IsUnique()
+                .HasDatabaseName(MarketplacePortal.PortalCodeIndexName);
+        });
+
+        // A partner is a row the platform admin enters: unique by its slug, read in the order of its work. Its texts go with it. The checks
+        // keep a code that is not a lowercase slug and a site that is not https out of the table, whoever writes the row.
+        modelBuilder.Entity<MarketplacePartner>(entity =>
+        {
+            entity.HasIndex(p => p.Code)
+                .IsUnique()
+                .HasDatabaseName(MarketplacePartner.CodeIndexName);
+            entity.HasIndex(p => new { p.Job, p.SortOrder });
+            entity.HasMany(p => p.Texts)
+                .WithOne()
+                .HasForeignKey(t => t.PartnerId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint(MarketplacePartner.CodeSlugCheckName, "\"Code\" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'");
+                t.HasCheckConstraint(MarketplacePartner.WebsiteHttpsCheckName, "\"WebsiteUrl\" LIKE 'https://%'");
+            });
+        });
+
+        // One row of texts per partner and language (it or en).
+        modelBuilder.Entity<MarketplacePartnerText>(entity =>
+        {
+            entity.Property(t => t.FaqJson).HasColumnType("jsonb");
+            entity.HasIndex(t => new { t.PartnerId, t.Language })
+                .IsUnique()
+                .HasDatabaseName(MarketplacePartnerText.PartnerLanguageIndexName);
+            entity.ToTable(t => t.HasCheckConstraint(MarketplacePartnerText.LanguageCheckName, "\"Language\" IN ('it', 'en')"));
+        });
+
+        // What an org activated. A channel or a tool is per property, a licensed function and a partner per org: two partial unique indexes
+        // (the database takes two NULLs for different values, so one index would let a second org-level row in). An activation goes with its
+        // property (CASCADE; a property is soft-deleted, so in practice it stays). xmin is the concurrency token. The tenant query filter
+        // is applied below, to every ITenantOwned entity.
+        modelBuilder.Entity<MarketplaceActivation>(entity =>
+        {
+            entity.Property(a => a.RowVersion).IsRowVersion();
+            entity.HasOne<Property>()
+                .WithMany()
+                .HasForeignKey(a => a.PropertyId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(a => new { a.OrgId, a.Kind, a.TargetCode })
+                .IsUnique()
+                .HasFilter("\"PropertyId\" IS NULL")
+                .HasDatabaseName(MarketplaceActivation.OrgLevelIndexName);
+            entity.HasIndex(a => new { a.OrgId, a.PropertyId, a.Kind, a.TargetCode })
+                .IsUnique()
+                .HasFilter("\"PropertyId\" IS NOT NULL")
+                .HasDatabaseName(MarketplaceActivation.PropertyLevelIndexName);
+            entity.HasIndex(a => new { a.OrgId, a.Status });
         });
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the

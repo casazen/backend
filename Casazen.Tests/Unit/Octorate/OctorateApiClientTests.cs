@@ -126,6 +126,12 @@ public class OctorateApiClientTests
         public Task SaveTokensAsync(Guid orgId, OctorateTokenResponse tokens, CancellationToken ct) => Task.CompletedTask;
 
         public Task DisconnectAsync(Guid orgId, CancellationToken ct) => Task.CompletedTask;
+
+        public Task<string> GetPartnerAccessTokenAsync(CancellationToken ct) =>
+            throw new InvalidOperationException("No partner-level call is made in these tests.");
+
+        public Task<string> RefreshRejectedPartnerTokenAsync(string rejectedAccessToken, CancellationToken ct) =>
+            throw new InvalidOperationException("No partner-level call is made in these tests.");
     }
 
     /// <summary>Answers every call with one JSON object (configuration and accommodation both read what they need) and keeps the tokens sent.</summary>

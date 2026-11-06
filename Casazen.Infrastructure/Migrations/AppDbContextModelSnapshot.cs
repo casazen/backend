@@ -3196,6 +3196,312 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("MarketingConsentRecords");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.MarketplaceActivation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ChangeRequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeclaredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeclared")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LastErrorAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OctorateConnectionId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TargetCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("TodoActivityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId");
+
+                    b.HasIndex("OrgId", "Status");
+
+                    b.HasIndex("OrgId", "Kind", "TargetCode")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_MarketplaceActivations_OrgId_Kind_Target_OrgLevel")
+                        .HasFilter("\"PropertyId\" IS NULL");
+
+                    b.HasIndex("OrgId", "PropertyId", "Kind", "TargetCode")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_MarketplaceActivations_OrgId_PropertyId_Kind_Target")
+                        .HasFilter("\"PropertyId\" IS NOT NULL");
+
+                    b.ToTable("MarketplaceActivations");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.MarketplacePartner", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("InvoicedBy")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsVisible")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Job")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("LogoKey")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("OctoratePortalCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.PrimitiveCollection<List<string>>("ServiceCategories")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedByUserId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.PrimitiveCollection<List<string>>("VisibleCountries")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.PrimitiveCollection<int[]>("VisiblePlanTiers")
+                        .IsRequired()
+                        .HasColumnType("integer[]");
+
+                    b.Property<string>("WebsiteUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_MarketplacePartners_Code");
+
+                    b.HasIndex("Job", "SortOrder");
+
+                    b.ToTable("MarketplacePartners", t =>
+                        {
+                            t.HasCheckConstraint("CK_MarketplacePartners_CodeSlug", "\"Code\" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'");
+
+                            t.HasCheckConstraint("CK_MarketplacePartners_WebsiteHttps", "\"WebsiteUrl\" LIKE 'https://%'");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.MarketplacePartnerText", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActivationGuide")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("Audience")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Benefit")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("CostText")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("DataShared")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("Deactivation")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("FaqJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<Guid>("PartnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Requirements")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PartnerId", "Language")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_MarketplacePartnerTexts_PartnerId_Language");
+
+                    b.ToTable("MarketplacePartnerTexts", t =>
+                        {
+                            t.HasCheckConstraint("CK_MarketplacePartnerTexts_Language", "\"Language\" IN ('it', 'en')");
+                        });
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.MarketplacePortal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("CommissionIncludedInPayments")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("CommissionsInvoiced")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("Creatable")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("FeatureContent")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsListed")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("OctorateManageable")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("PortalCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<bool>("Preferred")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("RefreshedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("RequiresHotelId")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RequiresPassword")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("RequiresTokenAuthentication")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Website")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PortalCode")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_MarketplacePortals_PortalCode");
+
+                    b.ToTable("MarketplacePortals");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OctorateConnection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -11398,6 +11704,23 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("Guest");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.MarketplaceActivation", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Property", null)
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.MarketplacePartnerText", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.MarketplacePartner", null)
+                        .WithMany("Texts")
+                        .HasForeignKey("PartnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OctorateListingMapping", b =>
                 {
                     b.HasOne("Casazen.Core.Entities.OctorateConnection", null)
@@ -12889,6 +13212,11 @@ namespace Casazen.Infrastructure.Migrations
                     b.Navigation("RentSchedule");
 
                     b.Navigation("Signers");
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.MarketplacePartner", b =>
+                {
+                    b.Navigation("Texts");
                 });
 
             modelBuilder.Entity("Casazen.Core.Entities.OwnerStatement", b =>
