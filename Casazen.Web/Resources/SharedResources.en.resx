@@ -4190,6 +4190,39 @@
   <data name="WizardDraftClientVersionInvalid" xml:space="preserve">
     <value>The draft version is not valid.</value>
   </data>
+  <data name="TouristTaxComuneUnknown" xml:space="preserve">
+    <value>The comune is not one of the comuni of your properties in Italy: pick an Italian comune where you have at least one property.</value>
+  </data>
+  <data name="TouristTaxAmountInvalid" xml:space="preserve">
+    <value>The amount must be above zero, in euros, with at most two decimals.</value>
+  </data>
+  <data name="TouristTaxDateInFuture" xml:space="preserve">
+    <value>The payment date cannot be after today.</value>
+  </data>
+  <data name="TouristTaxPeriodInvalid" xml:space="preserve">
+    <value>The period of the payment is not valid: the start date cannot be after the end date and the period lasts one year at most.</value>
+  </data>
+  <data name="TouristTaxReceiptInvalid" xml:space="preserve">
+    <value>The receipt must be a PDF, or a JPEG or PNG photo, of {0} MB at most.</value>
+  </data>
+  <data name="TouristTaxTextTooLong" xml:space="preserve">
+    <value>The reference can have {0} characters at most and the note {1}.</value>
+  </data>
+  <data name="TouristTaxRemittanceNotFound" xml:space="preserve">
+    <value>Payment not found.</value>
+  </data>
+  <data name="TouristTaxReceiptNotFound" xml:space="preserve">
+    <value>This payment has no receipt available.</value>
+  </data>
+  <data name="TouristTaxStatusNothingRecorded" xml:space="preserve">
+    <value>No amount recorded</value>
+  </data>
+  <data name="TouristTaxOwedIncomplete" xml:space="preserve">
+    <value>Incomplete amount</value>
+  </data>
+  <data name="TouristTaxPaymentsNeedWholeOrg" xml:space="preserve">
+    <value>Recording a tourist tax payment, deleting it or opening its receipt needs access to all the properties: your access is limited to some.</value>
+  </data>
   <data name="OctorateNotConnected" xml:space="preserve">
     <value>The connection to the channel manager is not active: connect it again from the channel settings.</value>
   </data>

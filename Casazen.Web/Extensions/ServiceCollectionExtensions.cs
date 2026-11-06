@@ -633,6 +633,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILeaseRegistrationProvider, UnconfiguredLeaseRegistrationProvider>();
         services.AddScoped<IFiscalRegimeService, FiscalService>();
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
+        // NF-100: the tourist tax owed, paid and receipted per comune, over the tourist tax report above (GET /api/tourist-tax/summary).
+        services.AddScoped<ITouristTaxSummaryService, TouristTaxSummaryService>();
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         // AM-02: the people of an org: seats of the plan, invitations and their acceptance, the members and the hourly
