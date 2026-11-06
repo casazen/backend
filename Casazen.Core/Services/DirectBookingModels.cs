@@ -261,10 +261,26 @@ public static class DirectBookingErrorCodes
     public const string ChildAgesRequired = "tourist_tax_child_ages_required";
 
     /// <summary>
-    /// 422: the stay is shorter than the minimum stay of the property (<c>Property.MinNights</c>, DB-03), in the quote and in
-    /// the checkout. The message says the minimum. The host can still enter a shorter stay by hand.
+    /// 422: the stay is shorter than the minimum stay of its arrival date, in the quote and in the checkout: the minimum stay of that night
+    /// (<see cref="PropertyDayRule.MinNights"/>, NF-36) or, when the night has none, the one of the property (<c>Property.MinNights</c>, DB-03).
+    /// The message says the minimum. The host can still enter a shorter stay by hand.
     /// </summary>
     public const string MinNightsNotMet = "direct_booking_min_nights_not_met";
+
+    /// <summary>422: the stay arrives on a night that is closed to arrival (<see cref="PropertyDayRule.ClosedToArrival"/>, NF-36), in the quote and in the checkout.</summary>
+    public const string ArrivalClosed = "direct_booking_arrival_closed";
+
+    /// <summary>422: the stay leaves on a day that is closed to departure (<see cref="PropertyDayRule.ClosedToDeparture"/>, NF-36), in the quote and in the checkout.</summary>
+    public const string DepartureClosed = "direct_booking_departure_closed";
+
+    /// <summary>422: the stay is longer than the maximum stay of its arrival date (<see cref="PropertyDayRule.MaxNights"/>, NF-36). The message says the maximum.</summary>
+    public const string MaxNightsExceeded = "direct_booking_max_nights_exceeded";
+
+    /// <summary>422: the stay is booked closer to its arrival than the minimum advance of its arrival date (<see cref="PropertyDayRule.MinAdvanceDays"/>, NF-36). The message says the minimum.</summary>
+    public const string AdvanceTooShort = "direct_booking_advance_too_short";
+
+    /// <summary>422: the stay is booked further ahead of its arrival than the maximum advance of its arrival date (<see cref="PropertyDayRule.MaxAdvanceDays"/>, NF-36). The message says the maximum.</summary>
+    public const string AdvanceTooLong = "direct_booking_advance_too_long";
 
     /// <summary>
     /// 422: the checkout carries <c>marketingConsent: true</c> but the marketing consent text has no version

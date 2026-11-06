@@ -1336,6 +1336,21 @@
   <data name="DirectBookingMinNightsNotMet" xml:space="preserve">
     <value>The minimum stay for this property is {0} nights.</value>
   </data>
+  <data name="DirectBookingArrivalClosed" xml:space="preserve">
+    <value>Arrivals are not possible on this date: choose another arrival day.</value>
+  </data>
+  <data name="DirectBookingDepartureClosed" xml:space="preserve">
+    <value>Departures are not possible on this date: choose another departure day.</value>
+  </data>
+  <data name="DirectBookingMaxNightsExceeded" xml:space="preserve">
+    <value>The maximum stay for this arrival is {0} nights.</value>
+  </data>
+  <data name="DirectBookingAdvanceTooShort" xml:space="preserve">
+    <value>This date must be booked at least {0} days ahead.</value>
+  </data>
+  <data name="DirectBookingAdvanceTooLong" xml:space="preserve">
+    <value>This date can be booked at most {0} days ahead.</value>
+  </data>
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Consent to receive offers is not available right now: try again without selecting it.</value>
   </data>

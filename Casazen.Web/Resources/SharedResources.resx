@@ -1336,6 +1336,21 @@
   <data name="DirectBookingMinNightsNotMet" xml:space="preserve">
     <value>Il soggiorno minimo per questa casa è di {0} notti.</value>
   </data>
+  <data name="DirectBookingArrivalClosed" xml:space="preserve">
+    <value>Non è possibile arrivare in questa data: scegli un altro giorno di arrivo.</value>
+  </data>
+  <data name="DirectBookingDepartureClosed" xml:space="preserve">
+    <value>Non è possibile partire in questa data: scegli un altro giorno di partenza.</value>
+  </data>
+  <data name="DirectBookingMaxNightsExceeded" xml:space="preserve">
+    <value>Il soggiorno massimo per questo arrivo è di {0} notti.</value>
+  </data>
+  <data name="DirectBookingAdvanceTooShort" xml:space="preserve">
+    <value>Questa data va prenotata con almeno {0} giorni di anticipo.</value>
+  </data>
+  <data name="DirectBookingAdvanceTooLong" xml:space="preserve">
+    <value>Questa data si può prenotare al massimo {0} giorni prima.</value>
+  </data>
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Il consenso a ricevere offerte non è disponibile in questo momento: riprova senza selezionarlo.</value>
   </data>
