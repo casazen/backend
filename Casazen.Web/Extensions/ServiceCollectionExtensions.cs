@@ -504,6 +504,9 @@ public static class ServiceCollectionExtensions
         // The sender of a property for the host (E03/F01/US02/T01): its state, the switch with the confirmation and the delegation, the connection
         // test against Octorate and the declaration «Activated». The sender «CasaZen sends» is not offered in this release (Questura accounts postponed).
         services.AddScoped<IPropertySenderService, PropertySenderService>();
+        // Whether the police and ISTAT send of a property is really active (E03/F02/US01/T02, NF-52): the sender view turned into a state per
+        // communication (Active only on Octorate's word, Unknown when it is not readable), with a short memory for the status engine.
+        services.AddScoped<IComplianceConnectionHealthService, ComplianceConnectionHealthService>();
 
         // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
         // One instance per request: the EF filter reads it, the middleware and the org resolver write it (A1-20).
