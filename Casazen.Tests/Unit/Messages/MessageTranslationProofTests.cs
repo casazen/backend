@@ -15,6 +15,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Logging;
 using Casazen.Tests.Unit.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
@@ -213,8 +214,8 @@ public class MessageTranslationProofTests : IAsyncLifetime
     [Fact]
     public void MessageTranslationAi_IsOffUnlessConfigured()
     {
-        var empty = new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build();
-        var on = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+        var empty = new ConfigurationBuilder().Build();
+        var on = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Features:MessageTranslationAi"] = "true" })
             .Build();
 
