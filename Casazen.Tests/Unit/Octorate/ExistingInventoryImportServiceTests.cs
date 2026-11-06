@@ -324,6 +324,90 @@ public class ExistingInventoryImportServiceTests
     }
 
     [Fact]
+    public async Task ExistingInventoryImport_ReachOfTheCallerLimitsWhatIsShownAndTouched_Test()
+    {
+        // A collaborator «Solo alcuni» reaches only the first property. The second one, of the same org and never declared, has its listing
+        // confirmed too: the collaborator's batch must neither show it nor touch it, whatever the collaborator asks.
+        var h = new Harness();
+        await h.SeedAsync(verified: true);
+        var mine = h.Properties[0];
+        var colleagues = h.Properties[1];
+        var limited = new FakeScope(OrgA, orgWide: false, mine);
+
+        ExistingInventoryBatchView batch;
+        await using (var db = h.NewDb())
+        {
+            var service = h.Service(db, limited);
+            batch = await service.CreateBatchAsync(CallerA, ["142"], ExistingInventoryScope.ForProperties([mine]), CancellationToken.None);
+            await service.StartChannelAccessAsync(CallerA, batch.Id, "142", CancellationToken.None);
+            batch = await service.RunAsync(CallerA, batch.Id, CancellationToken.None);
+        }
+
+        // Both listings were unknown when the rooms were imported; then the mapping confirms them: the second one to a property that was
+        // confirmed long before the batch and that nobody declared.
+        var longBefore = DateTime.UtcNow.AddDays(-30);
+        h.Rows.AddRange([Harness.Row("1001", OctorateMappingStatus.Confirmed, mine), Harness.Row("1002", OctorateMappingStatus.Confirmed, colleagues, longBefore)]);
+
+        // The batch shows the collaborator its own listing only, and the org-wide caller both, the second one as outside the scope.
+        await using (var db = h.NewDb())
+        {
+            var seen = await h.Service(db, limited).GetBatchAsync(CallerA, batch.Id, CancellationToken.None);
+            Assert.Equal(1, seen.Channels[0].Counts.Found);
+            Assert.Equal("1001", Assert.Single(seen.Channels[0].Items).OctorateAccommodationId);
+
+            var whole = await h.Service(db).GetBatchAsync(CallerA, batch.Id, CancellationToken.None);
+            Assert.Equal(2, whole.Channels[0].Counts.Found);
+            Assert.Equal(1, whole.Channels[0].Counts.OutOfScope);
+        }
+
+        // The collaborator goes on, naming the other listing as one to leave for later: that is ignored, and nothing of the other property
+        // is asked of Octorate, read into CasaZen, declared or marked.
+        await using (var db = h.NewDb())
+            batch = await h.Service(db, limited).ContinueAsync(CallerA, batch.Id, ["1002"], CancellationToken.None);
+
+        Assert.Equal(OctorateInventoryImportStatus.Completed, batch.Channels[0].Status);
+        Assert.Equal(1, batch.Channels[0].Counts.Connected);
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync), "501"));
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "501"));
+        foreach (var method in new[] { nameof(IOctorateApiClient.ImportReservationsAsync), nameof(IOctorateApiClient.ImportCalendarAsync), nameof(IOctorateApiClient.MarkConnectedAsync) })
+            Assert.Equal(0, h.Calls(method, "502"));
+
+        Assert.Equal(new[] { mine }, h.Bookings.Invocations.Select(i => (Guid)i.Arguments[0]).Distinct().ToArray());
+        await using (var db = h.NewDb())
+        {
+            Assert.Empty(await db.OctorateInventoryIntents.Where(i => i.PropertyId == colleagues).ToListAsync());
+            var other = await db.OctorateInventoryImportItems.AsNoTracking().SingleAsync(i => i.OctorateConnectionId == "502");
+            Assert.Null(other.LeftForLaterAt);
+            Assert.Null(other.OctorateReservationsImportedAt);
+        }
+
+        // A listing confirmed to a property AFTER the batch began is a property the import itself made: the org-wide caller goes on for it
+        // and declares it «already on OTAs». The collaborator still does not see it, and declares nothing.
+        h.Rows[1] = Harness.Row("1002", OctorateMappingStatus.Confirmed, colleagues, DateTime.UtcNow.AddHours(1));
+        await using (var db = h.NewDb())
+        {
+            batch = await h.Service(db, limited).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None);
+            Assert.Equal(1, batch.Channels[0].Counts.Found);
+        }
+
+        Assert.Equal(0, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync), "502"));
+        await using (var db = h.NewDb())
+            Assert.Empty(await db.OctorateInventoryIntents.Where(i => i.PropertyId == colleagues).ToListAsync());
+
+        await using (var db = h.NewDb())
+            batch = await h.Service(db).ContinueAsync(CallerA, batch.Id, null, CancellationToken.None);
+
+        Assert.Equal(2, batch.Channels[0].Counts.Connected);
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.ImportReservationsAsync), "502"));
+        Assert.Equal(1, h.Calls(nameof(IOctorateApiClient.MarkConnectedAsync), "502"));
+        await using (var db = h.NewDb())
+        {
+            var declared = await db.OctorateInventoryIntents.AsNoTracking().SingleAsync(i => i.PropertyId == colleagues);
+            Assert.Equal(OctorateInventoryScenario.OnOtas, declared.Scenario);
+        }
+    }
+
+    [Fact]
     public async Task ExistingInventoryImport_ResumeIsIdempotent_Test()
     {
         var h = new Harness();
@@ -793,7 +877,7 @@ public class ExistingInventoryImportServiceTests
         public static OctorateConnectionSummary Conn(string id, string accommodation, string channel = "142") =>
             new(id, channel, accommodation, "H" + id, "ENABLED", true);
 
-        public static ChannelMappingRow Row(string accommodation, OctorateMappingStatus status, Guid? propertyId = null) =>
+        public static ChannelMappingRow Row(string accommodation, OctorateMappingStatus status, Guid? propertyId = null, DateTime? confirmedAt = null) =>
             new(
                 Guid.NewGuid(),
                 accommodation,
@@ -808,7 +892,7 @@ public class ExistingInventoryImportServiceTests
                 propertyId is { } id ? new ChannelMappingProperty(id, "Casa", "Via Prova 1", "Como") : null,
                 [],
                 [],
-                null);
+                confirmedAt);
 
         private Task<OctorateConnectionActionResult> Act(OctorateD6Operation operation, string connection) =>
             Failures.TryGetValue((operation, connection), out var failure)

@@ -38,6 +38,15 @@ Both are resumed by repeating the command: nothing already done is done again.
 The calendar of a connected listing is read into CasaZen by the 15-minute `CalendarSyncJob`, as for every confirmed listing; the import does
 not read it itself.
 
+**Which listings a batch covers, and who sees them.** A listing confirmed to a property belongs to the batch when that property is declared
+`onOtas` and is one of the properties of the batch (every declared `onOtas` property for a batch of the whole inventory). A property **with no
+declaration** says nothing about the batch: every property that existed before the declarations is like that, so it is covered by a batch of
+the whole inventory only, or by a batch of named properties when its listing was confirmed to it **after the batch began** (the import itself
+made the property); the import then declares it `onOtas`, in the name of someone who reaches it. Any other confirmed listing is left alone and
+shown as `outOfScope`. A person who does not reach the whole organization (a collaborator «Solo alcuni») sees, decides and moves only the
+listings of the properties it reaches, the same rule as the mapping list: the other listings are not in its counts or items, cannot be left for
+later by it, and nothing is asked of Octorate or declared for them in its name.
+
 ## 3. What is verified, and the evidence matrix
 
 The four operations of the D6 sequence are **documented by Octorate and never run on a real property**: the sandbox has no OTA connected and
@@ -76,8 +85,8 @@ What the pilot must record, for each channel, before its flags are turned on:
 2. Each operation: the exact answer, whether it is complete when the call returns, how long it takes, whether repeating it is harmless, and
    what it does to rooms already mapped.
 3. Whether a connection already working in Octorate (a listing declared `onOctorate`) shows up in the connections of the channel and so would
-   be imported again. The import skips a listing already confirmed to a property declared in another scenario or outside the scope of the
-   batch, but it cannot tell a working connection that has no mapping in CasaZen.
+   be imported again. The import skips a listing already confirmed to a property declared in another scenario, outside the scope of the
+   batch or with no declaration that the batch did not make (see § 2), but it cannot tell a working connection that has no mapping in CasaZen.
 4. In writing from each OTA: that the listing id, the reviews, the ranking and the history stay after the move from the current system (D6).
    Until then the wizard says «identifiers preserved» and promises nothing else.
 

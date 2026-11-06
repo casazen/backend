@@ -21,7 +21,9 @@ namespace Casazen.Core.Services;
 /// and no response carries one, nor the address of the panel once the access has started.</item>
 /// <item><b>One org, and the reach of the caller.</b> Every method reads only rows of the caller's org. A batch is within the reach of its
 /// caller: the whole inventory needs a caller who reaches the whole org, and the properties of a batch (or of its group) must be reachable
-/// by whoever acts on it. An id of another org is the same 404 as an unknown one.</item>
+/// by whoever acts on it. An id of another org is the same 404 as an unknown one. A caller who does not reach the whole org sees, decides and
+/// moves only the listings of the properties it reaches (the rule of the mapping list): the others are not in the answers and are never touched
+/// in its name.</item>
 /// </list>
 /// </remarks>
 public interface IExistingInventoryImportService

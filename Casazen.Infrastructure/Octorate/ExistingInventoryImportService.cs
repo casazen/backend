@@ -115,7 +115,7 @@ public sealed class ExistingInventoryImportService(
         }
 
         Audit("batch-created", caller.OrgId, batch.Id, null, codes.Count, caller.UserId);
-        return await ViewAsync(caller.OrgId, batch.Id, ct);
+        return await ViewAsync(caller, batch.Id, ct);
     }
 
     public async Task<ExistingInventoryBatchView> GetBatchAsync(ExistingInventoryCaller caller, Guid batchId, CancellationToken ct)
@@ -135,7 +135,7 @@ public sealed class ExistingInventoryImportService(
             await db.SaveChangesAsync(ct);
         }
 
-        return await ViewAsync(caller.OrgId, batch.Id, ct);
+        return await ViewAsync(caller, batch.Id, ct);
     }
 
     // ─── Access to the channels ───────────────────────────────────────────────────────────────────────────────
@@ -203,7 +203,7 @@ public sealed class ExistingInventoryImportService(
         await db.SaveChangesAsync(ct);
 
         Audit("access-confirmed", batch.OrgId, batch.Id, channel.ChannelCode, 0, caller.UserId);
-        return await ViewAsync(caller.OrgId, batch.Id, ct);
+        return await ViewAsync(caller, batch.Id, ct);
     }
 
     // ─── Room import ──────────────────────────────────────────────────────────────────────────────────────────
@@ -238,11 +238,11 @@ public sealed class ExistingInventoryImportService(
                 continue;
             }
 
-            await RunChannelRoomsAsync(batch.OrgId, batch.Id, channelId, ct);
+            await RunChannelRoomsAsync(caller, batch.Id, channelId, ct);
         }
 
         await RefreshBatchStatusAsync(batch.OrgId, batch.Id, ct);
-        return await ViewAsync(caller.OrgId, batch.Id, ct);
+        return await ViewAsync(caller, batch.Id, ct);
     }
 
     /// <summary>
@@ -250,8 +250,9 @@ public sealed class ExistingInventoryImportService(
     /// connection that has no stamp, and, with every room imported, the listings of the org are read again so the mapping can start. Nothing is
     /// created on Octorate. Every step is saved before the next one; any failure leaves the channel at the step that failed.
     /// </summary>
-    private async Task RunChannelRoomsAsync(Guid orgId, Guid batchId, Guid channelId, CancellationToken ct)
+    private async Task RunChannelRoomsAsync(ExistingInventoryCaller caller, Guid batchId, Guid channelId, CancellationToken ct)
     {
+        var orgId = caller.OrgId;
         var channel = await LoadChannelAsync(orgId, channelId, ct);
         var batch = await db.OctorateInventoryImportBatches.AsNoTracking().FirstAsync(b => b.OrgId == orgId && b.Id == batchId, ct);
 
@@ -276,7 +277,10 @@ public sealed class ExistingInventoryImportService(
             .GroupBy(c => c.Id, StringComparer.Ordinal)
             .Select(g => g.First())
             .ToList();
-        await AddItemsAsync(batch, channel, found, ct);
+        var rows = await RowsAsync(orgId, ct);
+        var scope = new BatchScope(await IntentsAsync(orgId, ct), ScopeIds(batch), batch.CreatedAt);
+        var audience = await AudienceAsync(caller, rows, ct);
+        await AddItemsAsync(batch, channel, found, rows, scope, audience, ct);
         if (channel.Items.Count == 0)
         {
             // The access is given but Octorate shows no connection of this channel: nothing is created to make one.
@@ -346,19 +350,18 @@ public sealed class ExistingInventoryImportService(
         if (channels.Count == 0)
             throw new DomainConflictException("existing_inventory_not_ready", "ExistingInventoryNotReady");
 
-        // The decision about every listing, before anything is written or asked of Octorate: every one is confirmed, rejected, out of the
-        // batch or left for later, or the command is refused.
+        // The decision about every listing the caller sees, before anything is written or asked of Octorate: every one is confirmed, rejected,
+        // out of the batch or left for later, or the command is refused. A listing of a property the caller does not reach is none of its
+        // business: it is not decided, not left for later, not declared and not touched.
         var rows = await RowsAsync(orgId, ct);
-        var intents = await IntentsAsync(orgId, ct);
-        var scopeIds = ScopeIds(batch);
+        var scope = new BatchScope(await IntentsAsync(orgId, ct), ScopeIds(batch), batch.CreatedAt);
+        var audience = await AudienceAsync(caller, rows, ct);
         var plan = new Dictionary<Guid, ItemPlan>();
         var pending = 0;
         foreach (var channel in channels)
         {
-            foreach (var item in channel.Items)
+            foreach (var (item, row, decision) in Decisions(channel.Items, rows, leaveNow, scope, audience))
             {
-                rows.TryGetValue(item.OctorateAccommodationId, out var row);
-                var decision = Decide(item, row, leaveNow, intents, scopeIds);
                 plan[item.Id] = new ItemPlan(decision, row?.Property?.Id);
                 if (decision == ItemDecision.Pending)
                     pending++;
@@ -375,7 +378,7 @@ public sealed class ExistingInventoryImportService(
 
         // The decisions are saved: what was left for later is remembered, what was decided since is no longer left.
         var now = Now();
-        foreach (var item in channels.SelectMany(c => c.Items))
+        foreach (var item in channels.SelectMany(c => c.Items).Where(i => plan.ContainsKey(i.Id)))
         {
             var decision = plan[item.Id].Decision;
             if (decision == ItemDecision.LeftForLater && item.LeftForLaterAt is null)
@@ -396,7 +399,7 @@ public sealed class ExistingInventoryImportService(
 
         // A property the import itself made (confirmed from a listing of this batch) has no declaration yet: it is «already on OTAs».
         var undeclared = plan.Values
-            .Where(p => p.Decision == ItemDecision.Eligible && p.PropertyId is { } id && !intents.ContainsKey(id))
+            .Where(p => p.Decision == ItemDecision.Eligible && p.PropertyId is { } id && !scope.Intents.ContainsKey(id))
             .Select(p => p.PropertyId!.Value)
             .Distinct()
             .ToList();
@@ -416,7 +419,7 @@ public sealed class ExistingInventoryImportService(
         }
 
         await RefreshBatchStatusAsync(orgId, batchId, ct);
-        return await ViewAsync(orgId, batchId, ct);
+        return await ViewAsync(caller, batchId, ct);
     }
 
     /// <summary>
@@ -738,31 +741,27 @@ public sealed class ExistingInventoryImportService(
 
     /// <summary>
     /// Creates the items of the connections the channel does not hold yet, except those the person never meant for this import: a listing it
-    /// rejected, and one confirmed to a property that is declared in another scenario or is outside the scope of the batch. The stamps an
-    /// earlier batch wrote for the same connection are taken just before an operation would be asked (<see cref="InheritAsync"/>).
+    /// rejected, one confirmed to a property that is declared in another scenario or is outside the scope of the batch, and one the caller
+    /// does not see (<see cref="Covers"/>). The stamps an earlier batch wrote for the same connection are taken just before an operation
+    /// would be asked (<see cref="InheritAsync"/>).
     /// </summary>
     private async Task AddItemsAsync(
         OctorateInventoryImportBatch batch,
         OctorateInventoryImportChannel channel,
         IReadOnlyList<OctorateConnectionSummary> found,
+        IReadOnlyDictionary<string, ChannelMappingRow> rows,
+        BatchScope scope,
+        Audience audience,
         CancellationToken ct)
     {
         var known = channel.Items.Select(i => i.OctorateConnectionId).ToHashSet(StringComparer.Ordinal);
-        var added = found.Where(c => !known.Contains(c.Id)).ToList();
+        var added = found.Where(c => !known.Contains(c.Id) && Covers(c.AccommodationId, rows, scope, audience)).ToList();
         if (added.Count == 0)
             return;
 
-        var rows = await RowsAsync(batch.OrgId, ct);
-        var intents = await IntentsAsync(batch.OrgId, ct);
-        var scopeIds = ScopeIds(batch);
         var now = Now();
         foreach (var connection in added)
         {
-            rows.TryGetValue(connection.AccommodationId, out var row);
-            var probe = new OctorateInventoryImportItem { OctorateAccommodationId = connection.AccommodationId };
-            if (row is not null && Decide(probe, row, NoIds, intents, scopeIds) is ItemDecision.Rejected or ItemDecision.OutOfScope)
-                continue;
-
             var item = new OctorateInventoryImportItem
             {
                 OrgId = batch.OrgId,
@@ -784,12 +783,39 @@ public sealed class ExistingInventoryImportService(
         await db.SaveChangesAsync(ct);
     }
 
-    private static ItemDecision Decide(
-        OctorateInventoryImportItem item,
-        ChannelMappingRow? row,
+    /// <summary>
+    /// A listing the room import takes in: one no mapping row knows yet (its rooms must be in before a property can be proposed for it), or one
+    /// the caller sees that is neither rejected nor outside the scope of the batch.
+    /// </summary>
+    private static bool Covers(string accommodationId, IReadOnlyDictionary<string, ChannelMappingRow> rows, BatchScope scope, Audience audience)
+    {
+        if (!rows.TryGetValue(accommodationId, out var row))
+            return true;
+
+        var probe = new OctorateInventoryImportItem { OctorateAccommodationId = accommodationId };
+        return audience.Sees(row) && Decide(probe, row, NoIds, scope) is not (ItemDecision.Rejected or ItemDecision.OutOfScope);
+    }
+
+    /// <summary>The decision about each listing of a channel that the caller sees; the others are none of its business and are left out.</summary>
+    private static List<(OctorateInventoryImportItem Item, ChannelMappingRow? Row, ItemDecision Decision)> Decisions(
+        IEnumerable<OctorateInventoryImportItem> items,
+        IReadOnlyDictionary<string, ChannelMappingRow> rows,
         IReadOnlySet<string> leaveNow,
-        IReadOnlyDictionary<Guid, OctorateInventoryScenario> intents,
-        IReadOnlySet<Guid>? scopeIds)
+        BatchScope scope,
+        Audience audience)
+    {
+        var decided = new List<(OctorateInventoryImportItem Item, ChannelMappingRow? Row, ItemDecision Decision)>();
+        foreach (var item in items)
+        {
+            rows.TryGetValue(item.OctorateAccommodationId, out var row);
+            if (audience.Sees(row))
+                decided.Add((item, row, Decide(item, row, leaveNow, scope)));
+        }
+
+        return decided;
+    }
+
+    private static ItemDecision Decide(OctorateInventoryImportItem item, ChannelMappingRow? row, IReadOnlySet<string> leaveNow, BatchScope scope)
     {
         if (row is null)
             return ItemDecision.Pending;
@@ -798,7 +824,7 @@ public sealed class ExistingInventoryImportService(
             return ItemDecision.Rejected;
 
         if (row.Status == OctorateMappingStatus.Confirmed && row.Property is { } property)
-            return InScope(property.Id, intents, scopeIds) ? ItemDecision.Eligible : ItemDecision.OutOfScope;
+            return InScope(property.Id, row, scope) ? ItemDecision.Eligible : ItemDecision.OutOfScope;
 
         return item.LeftForLaterAt is not null || leaveNow.Contains(item.OctorateAccommodationId)
             ? ItemDecision.LeftForLater
@@ -806,15 +832,17 @@ public sealed class ExistingInventoryImportService(
     }
 
     /// <summary>
-    /// A confirmed listing belongs to the batch when its property is declared «already on OTAs» and in the scope of the batch, or has no
-    /// declaration at all (a property the import itself made from a listing of the batch). One declared in another scenario never does.
+    /// A confirmed listing belongs to the batch when its property is declared «already on OTAs» and in the scope of the batch. A property with no
+    /// declaration says nothing about it (every property that existed before the declarations is like that): it belongs to the whole inventory,
+    /// or to a batch of named properties only when the person confirmed the listing to it after the batch began (the import itself made it).
+    /// One declared in another scenario never does.
     /// </summary>
-    private static bool InScope(Guid propertyId, IReadOnlyDictionary<Guid, OctorateInventoryScenario> intents, IReadOnlySet<Guid>? scopeIds)
+    private static bool InScope(Guid propertyId, ChannelMappingRow row, BatchScope scope)
     {
-        if (!intents.TryGetValue(propertyId, out var scenario))
-            return true;
+        if (scope.Intents.TryGetValue(propertyId, out var scenario))
+            return scenario == OctorateInventoryScenario.OnOtas && (scope.PropertyIds is null || scope.PropertyIds.Contains(propertyId));
 
-        return scenario == OctorateInventoryScenario.OnOtas && (scopeIds is null || scopeIds.Contains(propertyId));
+        return scope.PropertyIds is null || (row.ConfirmedAt is { } confirmedAt && confirmedAt > scope.BatchCreatedAt);
     }
 
     private static List<OctorateInventoryImportItem> EligibleItems(OctorateInventoryImportChannel channel, IReadOnlyDictionary<Guid, ItemPlan> plan) =>
@@ -1014,15 +1042,18 @@ public sealed class ExistingInventoryImportService(
     }
 
     /// <summary>
-    /// Declares «already on OTAs» the properties the import made from the listings of the batch. Another command that declared one first wins
-    /// on the unique index of the intents, and its row is the one that stays.
+    /// Declares «already on OTAs» the properties the import made from the listings of the batch, but only the ones the caller reaches: nobody
+    /// declares in its own name a property it has no access to. Another command that declared one first wins on the unique index of the
+    /// intents, and its row is the one that stays.
     /// </summary>
     private async Task DeclareImportedAsync(ExistingInventoryCaller caller, IReadOnlyCollection<Guid> propertyIds, CancellationToken ct)
     {
-        if (propertyIds.Count == 0)
+        var reachable = await ReachableAsync(caller, propertyIds, ct);
+        var declarable = propertyIds.Where(reachable.Contains).ToList();
+        if (declarable.Count == 0)
             return;
 
-        await DeclareOnOtasAsync(caller, propertyIds, overwrite: false, Now(), ct);
+        await DeclareOnOtasAsync(caller, declarable, overwrite: false, Now(), ct);
         try
         {
             await db.SaveChangesAsync(ct);
@@ -1143,6 +1174,28 @@ public sealed class ExistingInventoryImportService(
         return true;
     }
 
+    /// <summary>The ones among the properties that are properties of the caller's org, not deleted, within the reach of the caller (the others are left out).</summary>
+    private async Task<IReadOnlySet<Guid>> ReachableAsync(ExistingInventoryCaller caller, IReadOnlyCollection<Guid> propertyIds, CancellationToken ct)
+    {
+        var reachable = new HashSet<Guid>();
+        var ids = propertyIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return reachable;
+
+        var rows = await db.Properties
+            .AsNoTracking()
+            .Where(p => p.OrgId == caller.OrgId && ids.Contains(p.Id))
+            .Select(p => new { p.Id, p.OwnerId })
+            .ToListAsync(ct);
+        foreach (var row in rows)
+        {
+            if (await hostScopeResolver.CanReachPropertyAsync(caller.UserId, caller.TokenRoles ?? NoTokenRoles, caller.OrgId, row.Id, row.OwnerId, ct))
+                reachable.Add(row.Id);
+        }
+
+        return reachable;
+    }
+
     /// <summary>The channel codes of a request: trimmed, distinct, and each one a listed, enabled OTA of the catalog of the channel manager.</summary>
     private async Task<List<string>> ValidChannelsAsync(IReadOnlyCollection<string> channelCodes, CancellationToken ct)
     {
@@ -1211,9 +1264,24 @@ public sealed class ExistingInventoryImportService(
         return rows.ToDictionary(i => i.PropertyId!.Value, i => i.Scenario);
     }
 
-    /// <summary>The batch as the API shows it, read from the database as it was saved.</summary>
-    private async Task<ExistingInventoryBatchView> ViewAsync(Guid orgId, Guid batchId, CancellationToken ct)
+    /// <summary>The listings the caller sees: all of them when it reaches the whole org, otherwise only the ones of the properties it reaches.</summary>
+    private async Task<Audience> AudienceAsync(ExistingInventoryCaller caller, IReadOnlyDictionary<string, ChannelMappingRow> rows, CancellationToken ct)
     {
+        var reach = await ReachAsync(caller, ct);
+        if (reach.IsOrgWide)
+            return Audience.Everyone;
+
+        var propertyIds = rows.Values
+            .SelectMany(row => row.Property is { } property ? new[] { property.Id } : row.Candidates.Select(c => c.Id).ToArray())
+            .Distinct()
+            .ToList();
+        return new Audience(false, await ReachableAsync(caller, propertyIds, ct));
+    }
+
+    /// <summary>The batch as the API shows it, read from the database as it was saved, and limited to the listings the caller sees.</summary>
+    private async Task<ExistingInventoryBatchView> ViewAsync(ExistingInventoryCaller caller, Guid batchId, CancellationToken ct)
+    {
+        var orgId = caller.OrgId;
         var batch = await db.OctorateInventoryImportBatches
             .AsNoTracking()
             .Include(b => b.Channels)
@@ -1224,10 +1292,11 @@ public sealed class ExistingInventoryImportService(
         var hasItems = batch.Channels.Any(c => c.Items.Count > 0);
         var rows = hasItems ? await RowsAsync(orgId, ct) : new Dictionary<string, ChannelMappingRow>(StringComparer.Ordinal);
         var intents = hasItems ? await IntentsAsync(orgId, ct) : new Dictionary<Guid, OctorateInventoryScenario>();
-        var scopeIds = ScopeIds(batch);
+        var scope = new BatchScope(intents, ScopeIds(batch), batch.CreatedAt);
+        var audience = hasItems ? await AudienceAsync(caller, rows, ct) : Audience.Everyone;
         var channels = batch.Channels
             .OrderBy(c => c.ChannelCode, StringComparer.Ordinal)
-            .Select(c => ProjectChannel(c, rows, intents, scopeIds))
+            .Select(c => ProjectChannel(c, rows, scope, audience))
             .ToList();
         return new ExistingInventoryBatchView(
             batch.Id,
@@ -1245,38 +1314,38 @@ public sealed class ExistingInventoryImportService(
     private ExistingInventoryChannelView ProjectChannel(
         OctorateInventoryImportChannel channel,
         IReadOnlyDictionary<string, ChannelMappingRow> rows,
-        IReadOnlyDictionary<Guid, OctorateInventoryScenario> intents,
-        IReadOnlySet<Guid>? scopeIds)
+        BatchScope scope,
+        Audience audience)
     {
+        // Only the listings the caller sees: the id and the progress of another property's listing are none of its business.
         var items = channel.Items
             .OrderBy(i => i.OctorateAccommodationId, StringComparer.Ordinal)
-            .ThenBy(i => i.OctorateConnectionId, StringComparer.Ordinal)
-            .ToList();
-        var decisions = items.Select(i => Decide(i, rows.GetValueOrDefault(i.OctorateAccommodationId), NoIds, intents, scopeIds)).ToList();
+            .ThenBy(i => i.OctorateConnectionId, StringComparer.Ordinal);
+        var decided = Decisions(items, rows, NoIds, scope, audience);
         var counts = new ExistingInventoryCounts(
-            items.Count,
-            items.Count(i => i.RoomsImportedAt is not null),
-            decisions.Count(d => d == ItemDecision.Eligible),
-            decisions.Count(d => d == ItemDecision.Pending),
-            decisions.Count(d => d == ItemDecision.LeftForLater),
-            decisions.Count(d => d == ItemDecision.Rejected),
-            decisions.Count(d => d == ItemDecision.OutOfScope),
-            items.Count(i => i.ReservationsImportedAt is not null),
-            items.Count(i => i.CalendarImportedAt is not null),
-            items.Count(i => i.ConnectedAt is not null),
-            items.Count(i => i.ErrorCode is not null));
-        var views = items
-            .Select(i => new ExistingInventoryItemView(
-                i.OctorateAccommodationId,
-                i.OctorateConnectionId,
-                rows.TryGetValue(i.OctorateAccommodationId, out var row) ? row.Status : null,
-                i.LeftForLaterAt is not null,
-                i.RoomsImportedAt is not null,
-                i.RoomCount,
-                i.ReservationsImportedAt is not null,
-                i.CalendarImportedAt is not null,
-                i.ConnectedAt is not null,
-                i.ErrorCode))
+            decided.Count,
+            decided.Count(d => d.Item.RoomsImportedAt is not null),
+            decided.Count(d => d.Decision == ItemDecision.Eligible),
+            decided.Count(d => d.Decision == ItemDecision.Pending),
+            decided.Count(d => d.Decision == ItemDecision.LeftForLater),
+            decided.Count(d => d.Decision == ItemDecision.Rejected),
+            decided.Count(d => d.Decision == ItemDecision.OutOfScope),
+            decided.Count(d => d.Item.ReservationsImportedAt is not null),
+            decided.Count(d => d.Item.CalendarImportedAt is not null),
+            decided.Count(d => d.Item.ConnectedAt is not null),
+            decided.Count(d => d.Item.ErrorCode is not null));
+        var views = decided
+            .Select(d => new ExistingInventoryItemView(
+                d.Item.OctorateAccommodationId,
+                d.Item.OctorateConnectionId,
+                d.Row?.Status,
+                d.Item.LeftForLaterAt is not null,
+                d.Item.RoomsImportedAt is not null,
+                d.Item.RoomCount,
+                d.Item.ReservationsImportedAt is not null,
+                d.Item.CalendarImportedAt is not null,
+                d.Item.ConnectedAt is not null,
+                d.Item.ErrorCode))
             .ToList();
         var code = channel.ChannelCode;
         return new ExistingInventoryChannelView(
@@ -1562,4 +1631,30 @@ public sealed class ExistingInventoryImportService(
     private sealed record Failure(string Code, OctorateInventoryImportStatus Status, bool StopsChannel);
 
     private sealed record BookingOutcome(Failure? Failure);
+
+    /// <summary>
+    /// What says which listings a batch covers: the scenario declared for each property, the properties the batch is restricted to
+    /// (<c>null</c> for the whole inventory) and the moment the batch began.
+    /// </summary>
+    private sealed record BatchScope(IReadOnlyDictionary<Guid, OctorateInventoryScenario> Intents, IReadOnlySet<Guid>? PropertyIds, DateTime BatchCreatedAt);
+
+    /// <summary>
+    /// The listings a caller sees, as the mapping list shows them (<c>OctorateMappingController</c>): all of them to a caller who reaches the whole
+    /// org, otherwise those proposed or confirmed to a property it reaches, or ambiguous between properties of which it reaches one.
+    /// </summary>
+    private sealed class Audience(bool everything, IReadOnlySet<Guid> reachable)
+    {
+        public static Audience Everyone { get; } = new(true, new HashSet<Guid>());
+
+        public bool Sees(ChannelMappingRow? row)
+        {
+            if (everything)
+                return true;
+
+            if (row is null)
+                return false;
+
+            return row.Property is { } property ? reachable.Contains(property.Id) : row.Candidates.Any(c => reachable.Contains(c.Id));
+        }
+    }
 }
