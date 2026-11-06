@@ -217,6 +217,75 @@ public class OctoratePaymentProofTests
         h.Client.Verify(c => c.GetPmsRoomsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    /// <summary>
+    /// PROOF TEST: money rule. The guest pays the whole price to CasaZen, tourist tax included, but the reservation on Octorate holds the stay
+    /// only (Octorate works the tax out itself and its create has no member for it): the payments are recorded without the part that is
+    /// tourist tax, in whatever order their events are delivered, and their sum never passes the price of the reservation (300 of 306).
+    /// </summary>
+    [Fact]
+    public async Task OctoratePayment_WithTouristTax_IsRecordedWithoutTheTax_AndNeverPassesThePrice_Test()
+    {
+        var h = new OctorateSyncHarness();
+        var bookingId = await h.SeedBookingAsync();
+        await MirrorAsync(h, bookingId);
+        var deposit = await SeedPaymentAsync(
+            h, bookingId, 100m, PaymentMethod.CashOnArrival, stripePaymentIntentId: null, processedAt: new DateTime(2026, 11, 6, 8, 0, 0, DateTimeKind.Utc));
+        var balance = await SeedPaymentAsync(
+            h, bookingId, 206m, PaymentMethod.CreditCard, stripePaymentIntentId: "pi_3Balance", processedAt: new DateTime(2026, 11, 6, 9, 0, 0, DateTimeKind.Utc));
+        var registered = ServeOctorate(h);
+
+        // Delivered in the opposite order of their coming in: the result does not depend on it.
+        await DeliverAsync(h, balance);
+        await DeliverAsync(h, deposit);
+
+        Assert.Equal(100m, Assert.Single(registered, r => r.Transaction == $"casazen-{deposit}").Amount);
+        Assert.Equal(200m, Assert.Single(registered, r => r.Transaction == "pi_3Balance").Amount);
+        Assert.Equal(300m, registered.Sum(r => r.Amount));
+    }
+
+    /// <summary>A payment that pays tourist tax only (after the stay is paid in full) has nothing to record on the reservation: Octorate is not called.</summary>
+    [Fact]
+    public async Task OctoratePayment_ThatPaysOnlyTheTouristTax_IsNotSentToOctorate_Test()
+    {
+        var h = new OctorateSyncHarness();
+        var bookingId = await h.SeedBookingAsync();
+        await MirrorAsync(h, bookingId);
+        var stay = await SeedPaymentAsync(
+            h, bookingId, 300m, PaymentMethod.BankTransfer, stripePaymentIntentId: null, processedAt: new DateTime(2026, 11, 6, 8, 0, 0, DateTimeKind.Utc));
+        var tax = await SeedPaymentAsync(
+            h, bookingId, 6m, PaymentMethod.CashOnArrival, stripePaymentIntentId: null, processedAt: new DateTime(2026, 11, 6, 9, 0, 0, DateTimeKind.Utc));
+        var registered = ServeOctorate(h);
+
+        await DeliverAsync(h, stay);
+        await DeliverAsync(h, tax);
+
+        var only = Assert.Single(registered);
+        Assert.Equal($"casazen-{stay}", only.Transaction);
+        Assert.Equal(300m, only.Amount);
+        await using var read = h.NewDb();
+        Assert.Null((await read.Payments.AsNoTracking().SingleAsync(p => p.Id == tax)).OctorateTransactionId);
+    }
+
+    /// <summary>The tourist tax is the last slice of the price: what the payments pay inside it is left out, in whatever pieces they come.</summary>
+    [Theory]
+    [InlineData(306.0, 0.0, 306.0, 6.0, 300.0)]
+    [InlineData(100.0, 0.0, 306.0, 6.0, 100.0)]
+    [InlineData(206.0, 100.0, 306.0, 6.0, 200.0)]
+    [InlineData(6.0, 300.0, 306.0, 6.0, 0.0)]
+    [InlineData(50.0, 280.0, 330.0, 30.0, 20.0)]
+    [InlineData(50.0, 0.0, 306.0, 0.0, 50.0)]
+    public void AmountNetOfTouristTax_LeavesOutOnlyThePartInTheLastSliceOfThePrice(
+        double amount,
+        double paidBefore,
+        double total,
+        double tax,
+        double expected)
+    {
+        var net = OctorateReservationRequests.AmountNetOfTouristTax((decimal)amount, (decimal)paidBefore, (decimal)total, (decimal)tax);
+
+        Assert.Equal((decimal)expected, net);
+    }
+
     /// <summary>Octorate creates the reservation, keeps the payments it is sent and lists their transactions on the single read.</summary>
     private static List<OctoratePaymentRegistration> ServeOctorate(OctorateSyncHarness h, bool failFirstRead = false)
     {
@@ -303,7 +372,8 @@ public class OctoratePaymentProofTests
         Guid bookingId,
         decimal amount,
         PaymentMethod method,
-        string? stripePaymentIntentId)
+        string? stripePaymentIntentId,
+        DateTime? processedAt = null)
     {
         await using var db = h.NewDb();
         var payment = new Payment
@@ -315,7 +385,7 @@ public class OctoratePaymentProofTests
             Method = method,
             TransactionId = stripePaymentIntentId ?? $"manual:{Guid.NewGuid():N}",
             StripePaymentIntentId = stripePaymentIntentId,
-            ProcessedAt = new DateTime(2026, 11, 6, 8, 30, 0, DateTimeKind.Utc),
+            ProcessedAt = processedAt ?? new DateTime(2026, 11, 6, 8, 30, 0, DateTimeKind.Utc),
         };
         db.Payments.Add(payment);
         await db.SaveChangesAsync();

@@ -306,7 +306,7 @@ public sealed class BookingOctorateSyncService(
     /// <summary>
     /// Records one paid payment on the reservation, the caller holding the lock of the booking: read again (it may have been recorded meanwhile),
     /// looked for on the reservation first (a registration whose answer was lost is already there, D13), then sent; the transaction is kept on the
-    /// payment, unique in the org.
+    /// payment, unique in the org. What is recorded is the part of the payment that is not tourist tax (<see cref="AmountOnReservationAsync"/>).
     /// </summary>
     /// <exception cref="InvalidOperationException">The <c>paymentMode</c> of the way the payment was collected is not configured.</exception>
     private async Task RegisterPaymentAsync(Guid orgId, string accommodationId, string reservationId, Guid paymentId, CancellationToken ct)
@@ -325,6 +325,18 @@ public sealed class BookingOctorateSyncService(
                 "(Octorate__PaymentModes__*, docs/runbooks/deploy-checklist.md): the payment is not recorded on Octorate.");
         }
 
+        var amount = await AmountOnReservationAsync(payment, ct);
+        if (amount <= 0m)
+        {
+            // Everything this payment pays is tourist tax, which Octorate works out for itself: there is nothing to record on the reservation.
+            logger.LogInformation(
+                "Octorate payment {PaymentId} of org {OrgId}: it pays tourist tax only, nothing is recorded on reservation {ReservationId}",
+                paymentId,
+                orgId,
+                reservationId);
+            return;
+        }
+
         using (orgScope.Use(orgId))
         {
             var reservation = await client.GetReservationAsync(accommodationId, reservationId, ct);
@@ -333,7 +345,7 @@ public sealed class BookingOctorateSyncService(
                 await client.RegisterPaymentAsync(
                     accommodationId,
                     reservationId,
-                    new OctoratePaymentRegistration(transaction, mode, payment.Amount, payment.ProcessedAt ?? payment.UpdatedAt),
+                    new OctoratePaymentRegistration(transaction, mode, amount, payment.ProcessedAt ?? payment.UpdatedAt),
                     ct);
             }
         }
@@ -343,6 +355,43 @@ public sealed class BookingOctorateSyncService(
         await db.SaveChangesAsync(ct);
         logger.LogInformation(
             "Octorate payment {PaymentId} of org {OrgId}: recorded on reservation {ReservationId} ({Mode})", paymentId, orgId, reservationId, mode);
+    }
+
+    /// <summary>
+    /// What of a payment goes on the reservation of Octorate. The reservation holds the stay (<c>roomGross</c> is <see cref="Booking.BasePrice"/>) and
+    /// Octorate works out the tourist tax itself (its create has no such member), while the guest pays <see cref="Booking.TotalPrice"/> to CasaZen.
+    /// So the part of the payments that is tourist tax is left out and the payments recorded on a reservation never pass its price by the tax:
+    /// the tax is the last <see cref="Booking.TouristTax"/> of the price, taken from the payments of the booking in the order they came in
+    /// (<see cref="OctorateReservationRequests.AmountNetOfTouristTax"/>). Zero when the payment pays tourist tax only.
+    /// </summary>
+    private async Task<decimal> AmountOnReservationAsync(Payment payment, CancellationToken ct)
+    {
+        var price = await db.Bookings
+            .AsNoTracking()
+            .Where(b => b.Id == payment.BookingId && b.OrgId == payment.OrgId)
+            .Select(b => new { b.TotalPrice, b.TouristTax })
+            .FirstOrDefaultAsync(ct);
+        if (price is null || price.TouristTax <= 0m)
+            return OctorateReservationRequests.Money(payment.Amount);
+
+        var others = await db.Payments
+            .AsNoTracking()
+            .Where(p => p.OrgId == payment.OrgId
+                        && p.BookingId == payment.BookingId
+                        && p.Status == PaymentStatus.Completed
+                        && p.Id != payment.Id)
+            .Select(p => new { p.Id, p.Amount, p.ProcessedAt, p.CreatedAt })
+            .ToListAsync(ct);
+        var at = payment.ProcessedAt ?? payment.CreatedAt;
+        var paidBefore = others
+            .Where(p =>
+            {
+                var when = p.ProcessedAt ?? p.CreatedAt;
+                return when < at || (when == at && p.Id.CompareTo(payment.Id) < 0);
+            })
+            .Sum(p => p.Amount);
+
+        return OctorateReservationRequests.AmountNetOfTouristTax(payment.Amount, paidBefore, price.TotalPrice, price.TouristTax);
     }
 
     /// <summary>

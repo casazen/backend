@@ -17,7 +17,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>No automatic charge</b> (D9): no <c>scheduled*</c>, <c>preauth*</c>, <c>stopCron</c>, <c>creditCard</c>, <c>paymentStep</c> or
 /// <c>deposit</c> is ever written; Octorate never charges a card for CasaZen.</item>
 /// <item><b>Amounts</b> to the cent: <c>roomGross</c> is the booking's price without the tourist tax (lodging and cleaning, the figure the import
-/// reads back from <c>roomGross</c>), a payment its exact amount.</item>
+/// reads back from <c>roomGross</c>), a payment its exact amount without the part that is tourist tax (<see cref="AmountNetOfTouristTax"/>:
+/// Octorate's reservation has no tourist tax member to write, so the payments never pass its price).</item>
 /// <item><b>Dates.</b> Octorate reads <c>checkin</c> and <c>checkout</c> as instants in UTC: a Rome day is sent as the instant it starts in Rome
 /// (<see cref="RomeCalendar.StartOfDayUtc(DateOnly)"/>), in the form <c>2026-12-09T23:00:00+00:00[UTC]</c> of the sandbox and of Octorate's own
 /// examples.</item>
@@ -147,6 +148,29 @@ internal static class OctorateReservationRequests
             ["description"] = PaymentDescription,
         };
         return body.ToJsonString();
+    }
+
+    /// <summary>
+    /// What of a payment goes on the reservation of Octorate, to the cent. The reservation holds the stay (<c>roomGross</c> is the price without the
+    /// tourist tax) and Octorate works the tourist tax out itself (<c>touristTax</c> is read-only on its reservations and the create has no such
+    /// member), while the guest pays the whole <paramref name="totalPrice"/> to CasaZen. The tax is taken as the last <paramref name="touristTax"/>
+    /// of the price: of the payments of the booking, in the order they came in (<paramref name="paidBefore"/> is what came in before this one),
+    /// the part that falls in that last slice is left out, so the payments recorded on a reservation never pass its price by the tax. A payment
+    /// that pays tourist tax only gives zero; a booking without tourist tax changes nothing.
+    /// </summary>
+    public static decimal AmountNetOfTouristTax(decimal amount, decimal paidBefore, decimal totalPrice, decimal touristTax)
+    {
+        var paid = Money(amount);
+        var total = Money(totalPrice);
+        var tax = Money(Math.Min(touristTax, total));
+        if (tax <= 0m)
+            return paid;
+
+        var from = Math.Max(0m, Money(paidBefore));
+        var to = from + paid;
+        var taxStarts = total - tax;
+        var taxPaid = Math.Max(0m, Math.Min(to, total) - Math.Max(from, taxStarts));
+        return paid - taxPaid;
     }
 
     /// <summary>An amount to the cent (half away from zero, as every amount of CasaZen).</summary>

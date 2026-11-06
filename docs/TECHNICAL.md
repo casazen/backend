@@ -992,9 +992,13 @@ site) on a property whose mapping is confirmed is created on Octorate once, by `
   booking site records the payment first and the confirmation still waits in the outbox), is delivered again, never consumed with no effect. The
   create, and every later delivery of the confirmation or retry of the host once the reservation exists, records the payments paid before it or
   whose recording failed, and swallows no error: the row is `Failed` `octorate_payments_not_recorded` and the exception goes up where the outbox
-  must deliver again. Nothing for a channel's booking or a booking that is not mirrored; refunds are not mirrored. "Registra incasso" cancels on
-  Stripe the open PaymentIntent of the payment link of the booking (its row becomes Canceled) before it writes the receipt, so an open page
-  cannot collect the balance again; while the guest is paying (processing, or succeeded and not recorded yet) it answers 409 `payment_in_progress`.
+  must deliver again. **Tourist tax.** The reservation holds the stay (`roomGross` = `BasePrice`) and Octorate works the tax out itself (its
+  create has no tourist tax member), while the guest pays `TotalPrice` to CasaZen: the amount recorded leaves out the part of the payments that is
+  tourist tax, taken as the last `TouristTax` of the price in the order the payments came in, so the payments recorded never pass the price of the
+  reservation (a payment that pays tax only is not sent). Nothing for a channel's booking or a booking that is not mirrored; refunds are not
+  mirrored. "Registra incasso" cancels on Stripe the open PaymentIntent of the payment link of the booking (its row becomes Canceled) before it
+  writes the receipt, so an open page cannot collect the balance again; while the guest is paying (processing, or succeeded and not recorded yet)
+  it answers 409 `payment_in_progress`.
 
 | Method | Path | Policy | Description |
 |---|---|---|---|
