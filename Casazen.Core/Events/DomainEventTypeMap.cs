@@ -28,6 +28,9 @@ public static class DomainEventTypeMap
     {
         // A notification of the Octorate webhook (E02/F01/US01/T03): event name, accommodation and object id, read from the payload.
         [DomainEventType.OctorateWebhookReceived] = typeof(OctorateWebhookReceivedEvent),
+
+        // A property accepted by the channel manager for the first time (E02/F03/US01/T02): the property, read from the payload.
+        [DomainEventType.ListingPublished] = typeof(ListingPublishedEvent),
     };
 
     private static readonly ConcurrentDictionary<Type, Func<Guid, Guid, DomainEventType, Guid, DateTime, string, DomainEvent>> Factories = new();
