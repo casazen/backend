@@ -5232,4 +5232,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="AssistStepAlreadyDone" xml:space="preserve">
     <value>Questo passaggio è già completato: non c'è nulla da chiedere all'assistenza.</value>
   </data>
+  <data name="OnboardingPartNotReopenable" xml:space="preserve">
+    <value>Questa parte non è disponibile: non c'è nessun passaggio da riaprire.</value>
+  </data>
 </root>
