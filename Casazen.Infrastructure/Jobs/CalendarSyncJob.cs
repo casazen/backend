@@ -33,16 +33,18 @@ namespace Casazen.Infrastructure.Jobs;
 /// it, the blocks stay as they were and the iCal feeds keep being imported, because it does not show that Octorate has taken over.</item>
 /// <item><b>Fail closed.</b> An open day needs an explicit signal: the units available or the stop flag (<see cref="OctorateCalendarDay.HasSignal"/>).
 /// An answer in which no day has either (days that hold only a date, or a date and a price) is not understood: it is not "everything is open", it
-/// changes nothing and deprecates nothing.</item>
+/// changes nothing and deprecates nothing. Nor does an answer that does not reach both ends of the window that was asked for (its first and its last
+/// day, <see cref="OctorateClosedNights.Covers"/>): a night that is not in the answer is not known to be open. The <c>page</c> of the answer is not
+/// followed; one that stops short because of it is such an answer.</item>
 /// <item><b>Replaced, not accumulated.</b> Each run rewrites the Octorate blocks of the property in one transaction, under the iCal lock of the
 /// property: a night Octorate reopened, or that a booking or a manual block now takes, leaves its block; one that is closed again comes back. A row
 /// that did not change is not written.</item>
 /// <item><b>Restrictions.</b> The minimum and maximum stay and the closed arrival and departure of each day are read by the client
 /// (<see cref="OctorateCalendarDay"/>) but stored nowhere: they close no night, CasaZen is the sole writer of the restrictions (PO-16) and has no
 /// column for the ones of the channel manager. The pricing and rule tasks of E08/F05 are their consumers.</item>
-/// <item><b>A read that cannot be trusted changes nothing.</b> An answer without a day of the room or without a day that has a signal, a failed call
-/// or an error of the database leaves the blocks as they were and the iCal feeds imported: nothing is deprecated on a guess
-/// (<see cref="ICalMigrationService"/>).</item>
+/// <item><b>A read that cannot be trusted changes nothing.</b> An answer without a day of the room, one that stops short of the window or has no day
+/// with a signal, a failed call or an error of the database leaves the blocks as they were and the iCal feeds imported: nothing is deprecated on a
+/// guess (<see cref="ICalMigrationService"/>).</item>
 /// <item><b>Tenant.</b> A system read over every org; each property is read for its own org under <see cref="IOctorateOrgScope.Use"/> (the client
 /// takes no org), and every query names the org. A property that fails does not stop the others; an org whose connection is refused, in the wrong
 /// environment or over its rate limit stops the org until the next run. No retry by Hangfire: the next run reads the same window.</item>
@@ -167,6 +169,19 @@ public class CalendarSyncJob(
             logger.LogWarning(
                 "Octorate calendar of property {PropertyId}: the answer has no day of the room, nothing was changed and no iCal feed was deprecated",
                 target.PropertyId);
+            return PropertyOutcome.Unreadable;
+        }
+
+        // The answer must reach both ends of the window that was asked for (its first and its last day). One that stops short (days left out, a
+        // second page that is not followed) says nothing of the nights after it, and a night that is not in the answer must not read as open: its
+        // block would be removed and the feeds handed over on a guess.
+        if (!OctorateClosedNights.Covers(days, from, to))
+        {
+            logger.LogWarning(
+                "Octorate calendar of property {PropertyId}: the answer does not reach both ends of the window ({From} to {To}), nothing was changed and no iCal feed was deprecated",
+                target.PropertyId,
+                from,
+                to);
             return PropertyOutcome.Unreadable;
         }
 

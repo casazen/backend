@@ -446,6 +446,11 @@ of manual blocks, prices and restrictions is E08/F05/US02 (PO-16, one writer for
 An open day needs an explicit signal: the units available or the stop flag. An answer in which **no** day has either is not understood (it is not "everything
 is open"): the run changes nothing and deprecates nothing, and the log says so (`no day of the answer says its availability or whether it is stopped`).
 
+The answer must also reach both ends of the window that was asked for: a day on the first date and one on the last. An answer that stops short (days
+left out, or a second `page` that the client does not follow) says nothing about the nights after it, and a night that is not in the answer is not known
+to be open: the run changes nothing and deprecates nothing, and the log says so (`the answer does not reach both ends of the window`). The next run
+reads the window again.
+
 A calendar in which **no** day is opened (no unit, no price and nothing stopped, on every day read) is not a live calendar of the room: the run reads
 nothing from it, the Octorate blocks stay as they were and no feed is deprecated, so the iCal feeds keep being imported until a day is opened. The log
 says so (`no day of the room has been opened`).
@@ -462,8 +467,8 @@ change is not written.
   carries the manual blocks only: no echo), never converted into a stay, and the host cannot remove them (422 `calendar_block_not_manual`): the nights
   are opened in Octorate.
 - *A read that cannot be trusted changes nothing.* A failed call, an answer with no day of the room (an answer with no recognizable day at all is an
-  `OctorateServerException` of the client, never an empty calendar), an answer in which no day has units or a stop flag, or an error of the database
-  leaves the blocks as they were and deprecates nothing.
+  `OctorateServerException` of the client, never an empty calendar), an answer that stops short of the window, an answer in which no day has units or a
+  stop flag, or an error of the database leaves the blocks as they were and deprecates nothing.
   A property that fails does not stop the others; an org whose connection is refused, in the wrong environment or over its rate limit stops until the
   next run. No retry by Hangfire: the next run reads the same window.
 - *No longer mapped.* At the end of a run the Octorate blocks of a property with no confirmed mapping at all (the host rejected the listing or mapped

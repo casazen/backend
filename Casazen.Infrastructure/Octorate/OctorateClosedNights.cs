@@ -44,6 +44,18 @@ internal static class OctorateClosedNights
     }
 
     /// <summary>
+    /// The answer reaches both ends of the window that was asked for: it holds a day on <paramref name="from"/> and one on <paramref name="to"/>
+    /// (both included). An answer that stops short (days left out, a second page that was not followed) says nothing of the nights it leaves out,
+    /// and a night that is not in the answer must not read as open: it would remove its block and hand the feeds over on a guess.
+    /// </summary>
+    internal static bool Covers(IReadOnlyCollection<OctorateCalendarDay> days, DateOnly from, DateOnly to)
+    {
+        ArgumentNullException.ThrowIfNull(days);
+
+        return days.Any(d => d.Date == from) && days.Any(d => d.Date == to);
+    }
+
+    /// <summary>
     /// The closed nights from <paramref name="from"/> to <paramref name="to"/> (both included), in order and once each, less the nights in
     /// <paramref name="takenElsewhere"/>.
     /// </summary>

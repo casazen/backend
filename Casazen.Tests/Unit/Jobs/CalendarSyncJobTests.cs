@@ -309,10 +309,39 @@ public class CalendarSyncJobTests
 
         await Job(h, db).ExecuteAsync(CancellationToken.None);
 
+        await AssertUntouchedAsync(h, airbnb);
+    }
+
+    [Fact]
+    public async Task AnAnswerThatDoesNotReachBothEndsOfTheWindow_ChangesNothing_AndDeprecatesNothing_UntilItIsComplete()
+    {
+        var h = new Octorate.BookingImportHarness();
+        await SetChannelsAsync(h, """{ "274": "A-1" }""");
+        var airbnb = await SeedFeedAsync(h, ICalFeedChannel.Airbnb);
+        await SeedBlockAsync(h, CalendarBlockSource.Octorate, firstNight: 9, checkOutDay: 11);
+        await using var db = h.NewDb();
+        var job = Job(h, db);
+        var firstDay = new DateOnly(2026, 11, 6);
+        var lastDay = new DateOnly(2027, 11, 6);
+
+        // The window is the 6th of November 2026 to the 6th of November 2027. The answer stops after a few days (days left out, or a second page
+        // that is not followed): the nights 9 and 10 are not in it, and a night that is not in the answer is not an open night.
+        ServeAsIs(h, OpenOn(firstDay), Open(7), Open(8), Open(12));
+        await job.ExecuteAsync(CancellationToken.None);
+        await AssertUntouchedAsync(h, airbnb);
+
+        // The same when it starts late: the last day is there, the first is not.
+        ServeAsIs(h, Open(7), Open(8), Open(12), OpenOn(lastDay));
+        await job.ExecuteAsync(CancellationToken.None);
+        await AssertUntouchedAsync(h, airbnb);
+
+        // An answer that reaches both ends is read: the nights 9 and 10 are open now, so their block goes, 12 is closed, and the feed is handed over.
+        ServeAsIs(h, OpenOn(firstDay), Open(9), Open(10), Closed(12), OpenOn(lastDay));
+        await job.ExecuteAsync(CancellationToken.None);
+
         await using var read = h.NewDb();
-        var block = await read.CalendarBlocks.AsNoTracking().SingleAsync();
-        Assert.Equal((Utc(9), Utc(11)), (block.StartUtc, block.EndUtc));
-        Assert.False((await read.PropertyICalFeeds.AsNoTracking().SingleAsync(f => f.Id == airbnb)).Deprecated);
+        Assert.Equal(["octorate:2026-11-12"], (await read.CalendarBlocks.AsNoTracking().ToListAsync()).Select(b => b.ExternalUid));
+        Assert.True((await read.PropertyICalFeeds.AsNoTracking().SingleAsync(f => f.Id == airbnb)).Deprecated);
     }
 
     [Fact]
@@ -440,17 +469,17 @@ public class CalendarSyncJobTests
         var seen = new Dictionary<string, Guid>();
         h.Client
             .Setup(c => c.GetCalendarAsync(Accommodation, It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .Returns(() =>
+            .Returns((string _, IReadOnlyCollection<string> _, DateOnly from, DateOnly to, CancellationToken _) =>
             {
                 seen[Accommodation] = scope.OrgId;
-                return Task.FromResult(new[] { Closed(10) });
+                return Task.FromResult(Window([Closed(10)], from, to));
             });
         h.Client
             .Setup(c => c.GetCalendarAsync("B-ACC", It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .Returns(() =>
+            .Returns((string _, IReadOnlyCollection<string> _, DateOnly from, DateOnly to, CancellationToken _) =>
             {
                 seen["B-ACC"] = scope.OrgId;
-                return Task.FromResult(new[] { Closed(15, "B-ROOM") });
+                return Task.FromResult(Window([Closed(15, "B-ROOM")], from, to));
             });
         await using var db = h.NewDb();
 
@@ -487,8 +516,20 @@ public class CalendarSyncJobTests
         return host.Object;
     }
 
-    /// <summary>The calendar of the room of the harness answers these days (the last answer set is the one given).</summary>
+    /// <summary>
+    /// The calendar of the room of the harness answers these days, and a day on each end of the window it is asked for, as a complete answer does
+    /// (the last answer set is the one given). The days added say nothing (no units, no stop flag, no price): they close no night and prove nothing.
+    /// </summary>
     private static void Serve(Octorate.BookingImportHarness h, params OctorateCalendarDay[] days)
+    {
+        h.Client.Reset();
+        h.Client
+            .Setup(c => c.GetCalendarAsync(Accommodation, It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .Returns((string _, IReadOnlyCollection<string> _, DateOnly from, DateOnly to, CancellationToken _) => Task.FromResult(Window(days, from, to)));
+    }
+
+    /// <summary>The calendar of the room answers exactly these days, whatever window it is asked for: an answer that can stop short of it.</summary>
+    private static void ServeAsIs(Octorate.BookingImportHarness h, params OctorateCalendarDay[] days)
     {
         h.Client.Reset();
         h.Client
@@ -499,7 +540,23 @@ public class CalendarSyncJobTests
     private static void ServeFor(Octorate.BookingImportHarness h, string accommodation, string room, params OctorateCalendarDay[] days) =>
         h.Client
             .Setup(c => c.GetCalendarAsync(accommodation, It.Is<IReadOnlyCollection<string>>(p => p.Single() == room), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(days);
+            .Returns((string _, IReadOnlyCollection<string> _, DateOnly from, DateOnly to, CancellationToken _) => Task.FromResult(Window(days, from, to)));
+
+    /// <summary>The days given, and for each room that has some, a day on <paramref name="from"/> and one on <paramref name="to"/> when it has none there.</summary>
+    private static OctorateCalendarDay[] Window(OctorateCalendarDay[] days, DateOnly from, DateOnly to)
+    {
+        var answer = days.ToList();
+        foreach (var room in days.Select(d => d.ProductId).Distinct(StringComparer.Ordinal))
+        {
+            foreach (var end in new[] { from, to })
+            {
+                if (!days.Any(d => d.ProductId == room && d.Date == end))
+                    answer.Add(Bare(end, room));
+            }
+        }
+
+        return [.. answer];
+    }
 
     private static DateTime Utc(int day) => new(2026, 11, day, 0, 0, 0, DateTimeKind.Utc);
 
@@ -514,6 +571,22 @@ public class CalendarSyncJobTests
 
     private static OctorateCalendarDay NeverOpened(int day) =>
         new(Room, new DateOnly(2026, 11, day), 0, 0m, false, null, null, null, null);
+
+    /// <summary>A day that holds a date and nothing else.</summary>
+    private static OctorateCalendarDay Bare(DateOnly date, string product = Room) =>
+        new(product, date, null, null, null, null, null, null, null);
+
+    private static OctorateCalendarDay OpenOn(DateOnly date) =>
+        new(Room, date, 1, 100m, false, 2, null, null, null);
+
+    /// <summary>The Octorate block of the nights 9 and 10 (seeded by the test) is still the only block, and the feed is still imported.</summary>
+    private static async Task AssertUntouchedAsync(Octorate.BookingImportHarness h, Guid feedId)
+    {
+        await using var read = h.NewDb();
+        var block = await read.CalendarBlocks.AsNoTracking().SingleAsync();
+        Assert.Equal((Utc(9), Utc(11)), (block.StartUtc, block.EndUtc));
+        Assert.False((await read.PropertyICalFeeds.AsNoTracking().SingleAsync(f => f.Id == feedId)).Deprecated);
+    }
 
     private static async Task<List<CalendarBlock>> OctorateBlocksAsync(Octorate.BookingImportHarness h)
     {
