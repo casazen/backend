@@ -82,20 +82,23 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         return !conflicting;
     }
 
-    public Task<Booking> AddAsync(Booking booking) => AddCoreAsync(booking, guestConsent: null);
+    public Task<Booking> AddAsync(Booking booking) => AddCoreAsync(booking, guestConsents: null);
 
-    public Task<Booking> AddWithGuestConsentAsync(Booking booking, GuestConsentRecord consent)
+    public Task<Booking> AddWithGuestConsentsAsync(Booking booking, IReadOnlyList<GuestConsentRecord> consents)
     {
         ArgumentNullException.ThrowIfNull(booking);
-        ArgumentNullException.ThrowIfNull(consent);
-        // The record belongs to the guest snapshot written with the booking: a consent of another guest is a bug, not a row.
-        if (consent.GuestId != booking.GuestId)
-            throw new ArgumentException("The consent must belong to the guest of the booking.", nameof(consent));
+        ArgumentNullException.ThrowIfNull(consents);
+        if (consents.Count == 0)
+            throw new ArgumentException("At least one record of the privacy history is expected.", nameof(consents));
 
-        return AddCoreAsync(booking, consent);
+        // The records belong to the guest snapshot written with the booking: a record of another guest is a bug, not a row.
+        if (consents.Any(consent => consent.GuestId != booking.GuestId))
+            throw new ArgumentException("Every record must belong to the guest of the booking.", nameof(consents));
+
+        return AddCoreAsync(booking, consents);
     }
 
-    private async Task<Booking> AddCoreAsync(Booking booking, GuestConsentRecord? guestConsent)
+    private async Task<Booking> AddCoreAsync(Booking booking, IReadOnlyList<GuestConsentRecord>? guestConsents)
     {
         await using var transaction = await BeginPropertyGuardTransactionAsync(booking.PropertyId);
 
@@ -109,8 +112,8 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         }
 
         context.Bookings.Add(booking);
-        if (guestConsent is not null)
-            context.GuestConsentRecords.Add(guestConsent);
+        if (guestConsents is not null)
+            context.GuestConsentRecords.AddRange(guestConsents);
         await context.SaveChangesAsync();
 
         if (transaction is not null)

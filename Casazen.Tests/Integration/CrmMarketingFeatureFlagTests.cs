@@ -26,6 +26,10 @@ public class CrmMarketingFeatureFlagTests(CasazenWebApplicationFactory factory) 
     [InlineData("POST", "/api/campaigns/00000000-0000-0000-0000-000000000001/submit")]
     [InlineData("POST", "/api/campaigns/00000000-0000-0000-0000-000000000001/schedule")]
     [InlineData("GET", "/api/crm/guests")]
+    [InlineData("POST", "/api/crm/contacts/00000000-0000-0000-0000-000000000001/send-confirmation")]
+    [InlineData("GET", "/api/properties/00000000-0000-0000-0000-000000000001/welcome-link")]
+    [InlineData("POST", "/api/properties/00000000-0000-0000-0000-000000000001/welcome-link")]
+    [InlineData("POST", "/api/properties/00000000-0000-0000-0000-000000000001/welcome-link/rotate")]
     [InlineData("GET", "/api/crm/guests/00000000-0000-0000-0000-000000000001")]
     [InlineData("PUT", "/api/crm/guests/00000000-0000-0000-0000-000000000001/tags")]
     [InlineData("GET", "/api/crm/merge-candidates")]
@@ -57,6 +61,7 @@ public class CrmMarketingFeatureFlagTests(CasazenWebApplicationFactory factory) 
     [Theory]
     [InlineData("/api/public/marketing/unsubscribe?orgId=00000000-0000-0000-0000-000000000001", "email_hash_missing")]
     [InlineData("/api/public/marketing/confirm-email?guestId=00000000-0000-0000-0000-000000000001", "email_missing")]
+    [InlineData("/api/public/marketing/confirm?contactId=00000000-0000-0000-0000-000000000001", "expires_at_missing")]
     public async Task PublicMarketingEndpoints_AreNotBehindTheFlag_TheyAnswerTheirOwnProblems(string path, string code)
     {
         using var client = factory.CreateClient();

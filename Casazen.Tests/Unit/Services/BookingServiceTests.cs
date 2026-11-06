@@ -444,7 +444,7 @@ public class BookingServiceTests
         Assert.Equal(DirectBookingErrorCodes.MinNightsNotMet, ex.Code);
         Assert.Equal(4, Assert.Single(ex.MessageArgs));
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
-        _mockRepository.Verify(x => x.AddWithGuestConsentAsync(It.IsAny<Booking>(), It.IsAny<GuestConsentRecord>()), Times.Never);
+        _mockRepository.Verify(x => x.AddWithGuestConsentsAsync(It.IsAny<Booking>(), It.IsAny<IReadOnlyList<GuestConsentRecord>>()), Times.Never);
         _mockGuestRepository.Verify(x => x.AddAsync(It.IsAny<Guest>()), Times.Never);
         _mockStripe.Verify(
             x => x.CreateConnectedAccountPaymentIntentAsync(
@@ -686,14 +686,14 @@ public class BookingServiceTests
         var service = NewServiceWithSettings(("Gdpr:MarketingConsentVersion", " marketing-2026-10 "));
         var property = ConnectReadyProperty();
         Booking? insertedBooking = null;
-        GuestConsentRecord? insertedConsent = null;
-        _mockRepository.Setup(x => x.AddWithGuestConsentAsync(It.IsAny<Booking>(), It.IsAny<GuestConsentRecord>()))
-            .Callback((Booking b, GuestConsentRecord c) =>
+        IReadOnlyList<GuestConsentRecord>? insertedConsents = null;
+        _mockRepository.Setup(x => x.AddWithGuestConsentsAsync(It.IsAny<Booking>(), It.IsAny<IReadOnlyList<GuestConsentRecord>>()))
+            .Callback((Booking b, IReadOnlyList<GuestConsentRecord> c) =>
             {
                 insertedBooking = b;
-                insertedConsent = c;
+                insertedConsents = c;
             })
-            .ReturnsAsync((Booking b, GuestConsentRecord _) => b);
+            .ReturnsAsync((Booking b, IReadOnlyList<GuestConsentRecord> _) => b);
         _mockStripe
             .Setup(x => x.CreateConnectedAccountPaymentIntentAsync(
                 It.IsAny<string>(), It.IsAny<long>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>>()))
@@ -708,7 +708,8 @@ public class BookingServiceTests
         await service.CreateDirectBookingAsync(input);
 
         Assert.NotNull(insertedBooking);
-        Assert.NotNull(insertedConsent);
+        Assert.NotNull(insertedConsents);
+        var insertedConsent = Assert.Single(insertedConsents);
         var guest = insertedBooking.Guest;
         Assert.True(guest.MarketingConsent);
         Assert.NotNull(guest.MarketingConsentDate);
@@ -720,6 +721,8 @@ public class BookingServiceTests
         Assert.Equal(GuestConsentSource.BookingCheckout, insertedConsent.Source);
         Assert.Equal("203.0.113.7", insertedConsent.IpAddress);
         Assert.Equal(guest.MarketingConsentDate, insertedConsent.RecordedAt);
+        // The legacy box is the e-mail channel, and the row of the register says so.
+        Assert.Equal(GuestConsentChannelNote.Email, insertedConsent.Note);
         // The plain insert is for the checkouts without consent.
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
     }
@@ -737,7 +740,7 @@ public class BookingServiceTests
         Assert.Equal(DirectBookingErrorCodes.MarketingConsentUnavailable, ex.Code);
         Assert.Equal("DirectBookingMarketingConsentUnavailable", ex.MessageKey);
         _mockRepository.Verify(x => x.AddAsync(It.IsAny<Booking>()), Times.Never);
-        _mockRepository.Verify(x => x.AddWithGuestConsentAsync(It.IsAny<Booking>(), It.IsAny<GuestConsentRecord>()), Times.Never);
+        _mockRepository.Verify(x => x.AddWithGuestConsentsAsync(It.IsAny<Booking>(), It.IsAny<IReadOnlyList<GuestConsentRecord>>()), Times.Never);
         _mockPropertyRepository.Verify(x => x.GetByIdAsync(It.IsAny<Guid>()), Times.Never);
     }
 
@@ -765,7 +768,7 @@ public class BookingServiceTests
         Assert.NotNull(inserted);
         Assert.False(inserted.Guest.MarketingConsent);
         Assert.Null(inserted.Guest.MarketingConsentDate);
-        _mockRepository.Verify(x => x.AddWithGuestConsentAsync(It.IsAny<Booking>(), It.IsAny<GuestConsentRecord>()), Times.Never);
+        _mockRepository.Verify(x => x.AddWithGuestConsentsAsync(It.IsAny<Booking>(), It.IsAny<IReadOnlyList<GuestConsentRecord>>()), Times.Never);
     }
 
     /// <summary>A service like <c>_service</c> with more settings (same mocks), for the settings that default to none.</summary>
