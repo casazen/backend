@@ -267,6 +267,79 @@ public sealed class TouristTaxSummaryProofTests
         Assert.Equal("Como", line.Comune);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule. A receipt of at most 10 MB is stored and one byte more is refused as a whole: 422, nothing in the bucket and
+    /// nothing in the table. The size is counted on what is read, not on what the client says.
+    /// </summary>
+    [Fact]
+    public async Task TouristTaxReceipt_OneByteOverTenMegabytes_IsRefusedAndNothingIsStored_Test()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedProperty(db, orgId, "Loft Milano", "Milano");
+        await db.SaveChangesAsync();
+        var storage = new Mock<IFileStorage>();
+        var sut = CreateService(db, storage.Object);
+        var scope = new HostScope(orgId);
+
+        var content = new byte[TouristTaxRemittanceLimits.MaxReceiptBytes + 1];
+        "%PDF-"u8.CopyTo(content);
+
+        await using (var tooLarge = new MemoryStream(content))
+        {
+            var refused = await Assert.ThrowsAsync<DomainRuleException>(
+                () => sut.RecordRemittanceAsync(scope, NewRequest("Milano"), tooLarge));
+            Assert.Equal(TouristTaxErrorCodes.ReceiptInvalid, refused.Code);
+        }
+
+        Assert.Empty(await db.TouristTaxRemittances.ToListAsync());
+        storage.Verify(
+            s => s.PutAsync(It.IsAny<StorageBucket>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        // The same PDF cut at exactly 10 MB is the largest accepted.
+        await using var atTheLimit = new MemoryStream(content, 0, (int)TouristTaxRemittanceLimits.MaxReceiptBytes);
+        var line = await sut.RecordRemittanceAsync(scope, NewRequest("Milano"), atTheLimit);
+
+        Assert.True(line.HasReceipt);
+        storage.Verify(
+            s => s.PutAsync(
+                StorageBucket.Private,
+                It.Is<string>(key => key.EndsWith(".pdf", StringComparison.Ordinal)),
+                It.IsAny<Stream>(),
+                "application/pdf",
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule (tenant isolation). The payment of another org, deleted or opened by the caller of org A, is a 404 (the answer
+    /// for a payment that does not exist) and is left as it was.
+    /// </summary>
+    [Fact]
+    public async Task TouristTaxRemittance_OfAnotherOrg_IsNotFoundAndLeftAlone_Test()
+    {
+        var orgA = Guid.NewGuid();
+        var orgB = Guid.NewGuid();
+        await using var db = CreateDb();
+        var theirs = SeedPayment(db, orgB, "Roma", FirstQuarter.From, FirstQuarter.To, 10m, new DateOnly(2026, 4, 12));
+        await db.SaveChangesAsync();
+        var sut = CreateService(db);
+
+        foreach (var attempt in new Func<Task>[]
+        {
+            () => sut.DeleteRemittanceAsync(new HostScope(orgA), theirs.Id),
+            () => sut.OpenReceiptAsync(new HostScope(orgA), theirs.Id),
+            () => sut.DeleteRemittanceAsync(new HostScope(orgA), Guid.NewGuid()),
+        })
+        {
+            var notFound = await Assert.ThrowsAsync<NotFoundException>(attempt);
+            Assert.Equal(TouristTaxErrorCodes.RemittanceNotFound, notFound.Code);
+        }
+
+        Assert.Equal(theirs.Id, Assert.Single(await db.TouristTaxRemittances.ToListAsync()).Id);
+    }
+
     private static IEnumerable<string?> PoliciesOf(MemberInfo member) =>
         member.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(a => a.Policy);
 
