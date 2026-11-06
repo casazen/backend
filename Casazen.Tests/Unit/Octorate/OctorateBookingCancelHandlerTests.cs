@@ -201,6 +201,107 @@ public class OctorateBookingCancelHandlerTests
         Assert.Equal(OctorateSyncOperation.Create, (await h.ReadSyncAsync(failedCreate))!.LastOperation);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (NF-76, OCT-04). A booking that has its reservation on Octorate and whose property is not mirrored now (the connection was
+    /// lost, the mapping is not confirmed or still to decide, so write-blocked) is never written to, but its cancellation is not consumed with no trace:
+    /// the row is <c>Failed</c> with <c>octorate_not_mirrored</c> (nothing was sent), so the host can ask again, and the retry sends it, once, when the
+    /// property is mirrored again.
+    /// </summary>
+    [Fact]
+    public async Task Handle_APropertyNotMirroredNow_LeavesAFailedRow_AndNothingIsSent_UntilTheHostAsksAgain()
+    {
+        var cases = new (Func<OctorateSyncHarness, Task> Break, Func<OctorateSyncHarness, Task> Restore)[]
+        {
+            // The refresh token was refused: no call is made for the org until the host connects again.
+            (harness => SetConnectionAsync(harness, OctorateConnectionStatus.Disconnected), harness => SetConnectionAsync(harness, OctorateConnectionStatus.Connected)),
+
+            // A mapping that is not confirmed any more: the property has no listing to write to.
+            (harness => SetMappingAsync(harness, OctorateMappingStatus.Rejected), harness => SetMappingAsync(harness, OctorateMappingStatus.Confirmed)),
+
+            // A new proposal for the same property, still to decide: writes are blocked until a person confirms.
+            (AddProposedMappingAsync, RemoveProposedMappingsAsync),
+        };
+
+        foreach (var (breakMirror, restoreMirror) in cases)
+        {
+            var h = new OctorateSyncHarness();
+            var bookingId = await SeedCancelledAsync(h);
+            await breakMirror(h);
+
+            // The cancellation arrives while the property is not mirrored: nothing leaves, the row says so.
+            await HandleAsync(h, await EventAsync(h, bookingId, BookingEventOrigin.Host));
+            await AssertNotSentAsync(h, bookingId);
+
+            // The host asks again before the connection or the mapping is back: the same row, nothing leaves.
+            await HandleAsync(h, await EventAsync(h, bookingId, BookingEventOrigin.System, DomainEventType.OctorateSyncRequested));
+            await AssertNotSentAsync(h, bookingId);
+
+            // Back: the host asks again and the cancellation is sent, once.
+            await restoreMirror(h);
+            h.Client
+                .Setup(c => c.CancelReservationAsync(It.IsAny<OctorateBookingTarget>(), "9001", It.IsAny<CancellationToken>()))
+                .Returns(Task.CompletedTask);
+            await HandleAsync(h, await EventAsync(h, bookingId, BookingEventOrigin.System, DomainEventType.OctorateSyncRequested));
+
+            h.Client.Verify(
+                c => c.CancelReservationAsync(It.IsAny<OctorateBookingTarget>(), "9001", It.IsAny<CancellationToken>()), Times.Once);
+            var synced = await h.ReadSyncAsync(bookingId);
+            Assert.NotNull(synced);
+            Assert.Equal(OctorateSyncState.Synced, synced.State);
+            Assert.Equal(OctorateSyncOperation.Cancel, synced.LastOperation);
+            Assert.Null(synced.ErrorCode);
+        }
+    }
+
+    private static async Task AssertNotSentAsync(OctorateSyncHarness h, Guid bookingId)
+    {
+        h.Client.Verify(
+            c => c.CancelReservationAsync(It.IsAny<OctorateBookingTarget>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        var row = await h.ReadSyncAsync(bookingId);
+        Assert.NotNull(row);
+        Assert.Equal(OctorateSyncState.Failed, row.State);
+        Assert.Equal(OctorateSyncOperation.Cancel, row.LastOperation);
+        Assert.Equal(OctorateSyncErrorCodes.NotMirrored, row.ErrorCode);
+        Assert.Equal(1, row.Attempts);
+    }
+
+    private static async Task SetConnectionAsync(OctorateSyncHarness h, OctorateConnectionStatus status)
+    {
+        await using var db = h.NewDb();
+        (await db.OctorateConnections.SingleAsync()).Status = status;
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SetMappingAsync(OctorateSyncHarness h, OctorateMappingStatus status)
+    {
+        await using var db = h.NewDb();
+        (await db.OctorateListingMappings.SingleAsync()).Status = status;
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task AddProposedMappingAsync(OctorateSyncHarness h)
+    {
+        await using var db = h.NewDb();
+        var connection = await db.OctorateConnections.SingleAsync();
+        db.OctorateListingMappings.Add(new OctorateListingMapping
+        {
+            OrgId = OrgA,
+            ConnectionId = connection.Id,
+            OctorateAccommodationId = "777001",
+            SnapshotName = "Casa del Lago (altro annuncio)",
+            PropertyId = h.PropertyId,
+            Status = OctorateMappingStatus.Proposed,
+        });
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task RemoveProposedMappingsAsync(OctorateSyncHarness h)
+    {
+        await using var db = h.NewDb();
+        db.OctorateListingMappings.RemoveRange(await db.OctorateListingMappings.Where(m => m.Status == OctorateMappingStatus.Proposed).ToListAsync());
+        await db.SaveChangesAsync();
+    }
+
     private static async Task HandleAsync(OctorateSyncHarness h, DomainEvent domainEvent, bool connector = true)
     {
         var tenant = new RequestTenant(OrgA);

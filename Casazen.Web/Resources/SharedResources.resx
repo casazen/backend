@@ -4824,6 +4824,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OctorateSyncLinkedElsewhere" xml:space="preserve">
     <value>La prenotazione esiste nel channel manager, ma in CasaZen è già collegata a un'altra prenotazione: controlla se è un duplicato.</value>
   </data>
+  <data name="OctorateSyncNotMirrored" xml:space="preserve">
+    <value>La struttura non è collegata al channel manager in questo momento (connessione interrotta o mappatura da confermare): l'annullamento non è stato inviato. Ricollega o conferma la mappatura, poi riprova.</value>
+  </data>
   <data name="OtaChannelModifyGuidanceDefault" xml:space="preserve">
     <value>Per modificare questa prenotazione chiedi all'ospite di richiedere la modifica sul canale da cui ha prenotato.</value>
   </data>

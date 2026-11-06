@@ -21,8 +21,12 @@ namespace Casazen.Infrastructure.Octorate;
 /// <list type="bullet">
 /// <item><b>No echo.</b> A cancellation that came from Octorate (<see cref="BookingEventOrigin.Octorate"/>: the import, or the cancellation of a
 /// channel booking that Octorate confirmed first) is never sent back, and a booking of a channel is never cancelled from here (it goes through
-/// <see cref="IOtaBookingCancellationService"/>). Only what exists on Octorate: a booking with no reservation, a property that is not mirrored or
-/// whose mapping is write-blocked, and every event while <c>Features:OctorateConnector</c> is off, send nothing.</item>
+/// <see cref="IOtaBookingCancellationService"/>). Only what exists on Octorate: a booking with no reservation, and every event while
+/// <c>Features:OctorateConnector</c> is off, send nothing.</item>
+/// <item><b>Not mirrored, never silent.</b> A property that is not mirrored now (the connection was lost or is in error, the mapping is still to decide
+/// or write-blocked) is never written to. When its booking already has its reservation on Octorate the cancellation is not dropped, though: the row
+/// is <c>Failed</c> with <see cref="OctorateSyncErrorCodes.NotMirrored"/> (nothing was sent), so the host asks again once the connection or the mapping
+/// is back, and nothing leaves a reservation alive on Octorate with no trace.</item>
 /// <item><b>The state the host sees</b> is the <see cref="OctorateBookingSync"/> row (<see cref="OctorateSyncOperation.Cancel"/>), under the
 /// session lock of the booking: <c>Pending</c> before the call (so a process that stops during it leaves a trace), then <c>Synced</c>. Octorate
 /// refusing the dates or the state of the reservation (409): <c>Conflict</c>; another refusal (4xx): <c>Failed</c>; neither is tried again by
@@ -144,10 +148,14 @@ public sealed class OctorateBookingCancelHandler(
             return;
         }
 
-        // Not mirrored (no connected account, a mapping still to decide or write-blocked): nothing is ever written, and no row is made.
+        // Not mirrored (the connection was lost or is in error, a mapping still to decide or write-blocked): nothing is ever written to Octorate, but
+        // the booking has its reservation there, so the cancellation is not consumed with no trace: the row says it was not sent and the host asks
+        // again (the retry runs this again) once the connection or the mapping is back.
         if (lookup.Gap == OctorateTargetGap.NotMirrored)
         {
-            logger.LogInformation("Octorate cancellation of booking {BookingId}: its property is not mirrored, nothing is sent", bookingId);
+            await RecordAsync(booking, sync, OctorateSyncState.Failed, OctorateSyncErrorCodes.NotMirrored, ct);
+            logger.LogWarning(
+                "Octorate cancellation of booking {BookingId} of org {OrgId}: its property is not mirrored now, nothing is sent; the host asks again", bookingId, orgId);
             return;
         }
 

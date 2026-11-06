@@ -1121,7 +1121,9 @@ no channel are closed (`OtaChannelActionPolicy.For`). A *booking of a channel* i
   `BookingCancellationService` decides the policy, the refund and the intents as always; `OctorateBookingCancelHandler` (consumer of `BookingCancelled`,
   behind `Features:OctorateConnector`) then cancels the reservation, so the refund of the guest never waits for Octorate. It sends nothing for an event with
   `Origin = Octorate` (a cancellation that came from the channel manager is never pushed back), for a booking of a channel, for a booking that is no longer
-  cancelled, for a property that is not mirrored or whose mapping is write-blocked. The state is the `OctorateBookingSync` row (`LastOperation = Cancel`)
+  cancelled. A property that is not mirrored now (the connection was lost or is in error, the mapping is still to decide or write-blocked) is never written
+  to, but a booking that already has its reservation on Octorate is not left with no trace: its row is `Failed` `octorate_not_mirrored` (nothing was sent) and
+  the host asks again once the connection or the mapping is back. The state is the `OctorateBookingSync` row (`LastOperation = Cancel`)
   under the session lock of the booking: `Pending` before the call, then `Synced`; 409: `Conflict` `octorate_reservation_changed`; another refusal (4xx):
   `Failed` `octorate_rejected`; neither is tried again by itself. No answer, 429 or 5xx: `Failed` `octorate_unavailable` and the exception propagates, so the
   dispatcher delivers the event again (ADR-022-R4, R5). The host's «ask again» (`POST /api/bookings/{id}/octorate-sync/retry`, `OctorateSyncRequested`) is
