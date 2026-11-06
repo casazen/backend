@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using Casazen.Core.Exceptions;
+using Casazen.Infrastructure.Octorate;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Stripe;
@@ -21,6 +22,7 @@ namespace Casazen.Web.Middleware;
 /// <item><see cref="UnauthorizedAccessException"/> → 403 <c>forbidden</c> (the caller is authenticated but may not act
 /// on the resource; 401 is reserved for a missing or invalid token);</item>
 /// <item><see cref="PaymentProcessingException"/>, <see cref="StripeException"/> → 503 <c>payment_provider_error</c>;</item>
+/// <item><see cref="OctorateException"/> (the channel manager) → its own status (404, 409, 429 or 502), code and localized message;</item>
 /// <item>anything else, <see cref="InvalidOperationException"/> included → 500 <c>internal_error</c>.</item>
 /// </list>
 /// The client never receives an exception message: the details go to the log with the trace id, the route template
@@ -131,6 +133,13 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
                     ProblemCodes.PaymentProviderError,
                     "PaymentProviderUnavailableDetail");
                 LogUnhandled(context, exception, "from the payment provider");
+                break;
+
+            case OctorateException octorate:
+                // The channel manager's answer, typed by the client (ADR-023-R6): its own status, code and localized text, never
+                // Octorate's body. The client already logged the operation and Octorate's status.
+                problem = ApiProblemDetails.Create(context, octorate.ResponseStatusCode, octorate.Code, octorate.MessageKey);
+                LogRejected(context, exception, octorate.ResponseStatusCode, octorate.Code);
                 break;
 
             default:

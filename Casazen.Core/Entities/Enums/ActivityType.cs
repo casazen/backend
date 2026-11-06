@@ -59,4 +59,16 @@ public enum ActivityType
     /// at the check-in or when the booking is cancelled.
     /// </summary>
     BookingSpecialRequest = 14,
+
+    /// <summary>
+    /// A listing found on the channel manager matches several CasaZen properties, or none clearly: a person confirms or rejects the
+    /// mapping (E02/F01/US02/T03); closed when the mapping is confirmed or rejected. Organization-level: about the mapping, not a property.
+    /// </summary>
+    ConfirmChannelMapping = 20,
+
+    /// <summary>
+    /// A property was created from a listing of the channel manager and is inactive until a person checks what was imported (LST-03,
+    /// E02/F01/US02/T03).
+    /// </summary>
+    CheckImportedListing = 21,
 }
