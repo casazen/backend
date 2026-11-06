@@ -6,8 +6,10 @@ namespace Casazen.Infrastructure.Data.Configurations;
 
 /// <summary>
 /// The proposed merges of two CRM profiles (NF-88): a row follows its two profiles (cascade) and carries their org (TN-2, restrict like every
-/// other <c>OrgId</c> foreign key). The unique index on the org and the two profiles keeps one row for each pair, as long as the service stores
-/// the smaller id first; the database cannot check the order, because PostgreSQL sorts a <c>uuid</c> differently from <see cref="Guid.CompareTo(Guid)"/>.
+/// other <c>OrgId</c> foreign key). A pair is stored in one order only, the smaller profile id first, and the database enforces it with a check
+/// (<c>"ProfileAId" &lt; "ProfileBId"</c>, which also refuses a profile paired with itself): (A, B) and (B, A) cannot both exist, so the unique
+/// index on the org and the two profiles keeps one row for each pair. PostgreSQL compares a <c>uuid</c> byte by byte in its canonical order, which
+/// is the order of <see cref="Guid.CompareTo(Guid)"/>: the code that inserts a pair sorts it that way, and the check accepts what it writes.
 /// </summary>
 internal sealed class GuestMergeCandidateConfiguration : IEntityTypeConfiguration<GuestMergeCandidate>
 {
@@ -26,7 +28,8 @@ internal sealed class GuestMergeCandidateConfiguration : IEntityTypeConfiguratio
             t.HasCheckConstraint(
                 "CK_GuestMergeCandidates_Score",
                 $"\"Score\" >= {GuestMergeCandidate.MinScore} AND \"Score\" <= {GuestMergeCandidate.MaxScore}");
-            t.HasCheckConstraint("CK_GuestMergeCandidates_DistinctProfiles", "\"ProfileAId\" <> \"ProfileBId\"");
+            // The canonical order of the pair; strictly smaller, so a profile cannot be paired with itself either.
+            t.HasCheckConstraint("CK_GuestMergeCandidates_ProfileOrder", "\"ProfileAId\" < \"ProfileBId\"");
         });
     }
 }
