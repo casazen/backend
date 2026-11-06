@@ -4214,6 +4214,12 @@
   <data name="TouristTaxReceiptNotFound" xml:space="preserve">
     <value>This payment has no receipt available.</value>
   </data>
+  <data name="TouristTaxStatusNothingRecorded" xml:space="preserve">
+    <value>No amount recorded</value>
+  </data>
+  <data name="TouristTaxOwedIncomplete" xml:space="preserve">
+    <value>Incomplete amount</value>
+  </data>
   <data name="OctorateNotConnected" xml:space="preserve">
     <value>The connection to the channel manager is not active: connect it again from the channel settings.</value>
   </data>

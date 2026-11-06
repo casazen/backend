@@ -1,11 +1,14 @@
+using System.Globalization;
 using Casazen.Core.Authorization;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
 using Casazen.Web.Infrastructure;
+using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.Controllers;
 
@@ -29,8 +32,12 @@ namespace Casazen.Web.Controllers;
 public class TouristTaxSummaryController(
     ITouristTaxSummaryService summaries,
     IOrgContextResolver orgContextResolver,
-    IHostScopeResolver hostScopeResolver) : ControllerBase
+    IHostScopeResolver hostScopeResolver,
+    IStringLocalizer<SharedResources> localizer) : ControllerBase
 {
+    /// <summary>The language of the CSV: Italian, whatever the language the caller asked in.</summary>
+    private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
+
     /// <summary>
     /// The largest request: the receipt and a margin for the other fields. The multipart body is buffered in memory up to this size
     /// (<see cref="RequestFormLimitsAttribute.MemoryBufferThreshold"/>), so a receipt is never spilled to a temporary file on disk: the
@@ -64,7 +71,7 @@ public class TouristTaxSummaryController(
         {
             var summary = await summaries.GetSummaryAsync(scope, new FiscalReportPeriod(from, to), cancellationToken);
             return csv
-                ? File(TouristTaxSummaryDocuments.Csv(summary), "text/csv", TouristTaxSummaryDocuments.FileName(summary.Period))
+                ? File(TouristTaxSummaryDocuments.Csv(summary, CsvTexts()), "text/csv", TouristTaxSummaryDocuments.FileName(summary.Period))
                 : Ok(TouristTaxSummaryDto.From(summary, TouristTaxSummaryDocuments.SummaryTitle));
         }
         catch (FiscalValidationException ex)
@@ -164,5 +171,25 @@ public class TouristTaxSummaryController(
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
         return orgId is null ? null : await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
+    }
+
+    /// <summary>
+    /// The words the CSV takes from the resources, read in Italian: the file is Italian (title, header, statuses) whatever the language the
+    /// caller asked in, so a file for the accountant never mixes two languages. The language is set for these two lookups only.
+    /// </summary>
+    private TouristTaxCsvTexts CsvTexts()
+    {
+        var previous = CultureInfo.CurrentUICulture;
+        CultureInfo.CurrentUICulture = ItalianCulture;
+        try
+        {
+            return new TouristTaxCsvTexts(
+                localizer["TouristTaxStatusNothingRecorded"].Value,
+                localizer["TouristTaxOwedIncomplete"].Value);
+        }
+        finally
+        {
+            CultureInfo.CurrentUICulture = previous;
+        }
     }
 }

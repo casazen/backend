@@ -5,6 +5,15 @@ using Casazen.Core.Utilities;
 namespace Casazen.Infrastructure.Services;
 
 /// <summary>
+/// The two words of the CSV that come from the resources (<c>SharedResources</c>, Italian and English). The web layer reads them in Italian:
+/// the file is Italian (title, header, statuses) whatever the language of the caller, so a file for the accountant never mixes two languages.
+/// </summary>
+/// <param name="NothingRecorded">The status of a comune with nothing recorded on its stays and nothing paid. It says that no amount is
+/// recorded, never that nothing is due: a stay with no amount is not a stay with a tax of zero.</param>
+/// <param name="IncompleteAmount">The note of a row (and of the total) with stays that have no amount recorded: the owed amount may be incomplete.</param>
+public sealed record TouristTaxCsvTexts(string NothingRecorded, string IncompleteAmount);
+
+/// <summary>
 /// The title and the CSV file of the tourist tax summary (NF-100), in Italian like the fiscal reports (<see cref="FiscalReportDocuments"/>)
 /// and the reports of the host (<see cref="HostReportDocuments"/>): for a spreadsheet set to Italian (<see cref="CsvWriter"/>). The title says
 /// which base the numbers are on, and the file carries it on its first row with the days, so no figure travels without its label. Nothing
@@ -24,10 +33,13 @@ public static class TouristTaxSummaryDocuments
     /// <summary>
     /// The summary as a file: the title with its base and the days on the first row, the header, a row for each comune with what is owed,
     /// what was paid and the balance, the <c>Totale</c> row; then, after an empty row, the payments (a row for each, with its comune).
+    /// The last column is the note: «Importo incompleto» on every row (and on the total) that counts stays with no amount recorded, because
+    /// then the owed amount, and so the balance and the status, may be incomplete.
     /// </summary>
-    public static byte[] Csv(TouristTaxSummary summary)
+    public static byte[] Csv(TouristTaxSummary summary, TouristTaxCsvTexts texts)
     {
         ArgumentNullException.ThrowIfNull(summary);
+        ArgumentNullException.ThrowIfNull(texts);
 
         var rows = new List<IReadOnlyList<object?>>
         {
@@ -41,12 +53,22 @@ public static class TouristTaxSummaryDocuments
                 "Soggiorni senza importo",
                 "Imposta versata (€)",
                 "Saldo (€)",
-                "Stato"),
+                "Stato",
+                "Nota"),
         };
         rows.AddRange(summary.Comuni.Select(c => Row(
-            c.Comune, c.Stays, c.Nights, c.Guests, c.Owed, c.StaysWithoutAmount, c.Paid, c.Balance, StatusLabel(c.Status))));
+            c.Comune,
+            c.Stays,
+            c.Nights,
+            c.Guests,
+            c.Owed,
+            c.StaysWithoutAmount,
+            c.Paid,
+            c.Balance,
+            StatusLabel(c.Status, texts),
+            IncompleteNote(c.StaysWithoutAmount, texts))));
         var t = summary.Total;
-        rows.Add(Row(Total, t.Stays, t.Nights, t.Guests, t.Owed, t.StaysWithoutAmount, t.Paid, t.Balance, null));
+        rows.Add(Row(Total, t.Stays, t.Nights, t.Guests, t.Owed, t.StaysWithoutAmount, t.Paid, t.Balance, null, IncompleteNote(t.StaysWithoutAmount, texts)));
 
         rows.Add(Row());
         rows.Add(Row("Versamenti registrati"));
@@ -75,15 +97,27 @@ public static class TouristTaxSummaryDocuments
         return $"casazen-tassa-soggiorno-riepilogo-{Compact(period.From)}-{Compact(period.To)}.csv";
     }
 
-    /// <summary>The status in Italian, as the file says it.</summary>
-    public static string StatusLabel(TouristTaxSummaryStatus status) => status switch
+    /// <summary>
+    /// The status in Italian, as the file says it. <see cref="TouristTaxSummaryStatus.NothingOwed"/> means that nothing is recorded, not that
+    /// nothing is due (a stay with no amount is counted apart), so the file never says «niente da versare» for it.
+    /// </summary>
+    public static string StatusLabel(TouristTaxSummaryStatus status, TouristTaxCsvTexts texts)
     {
-        TouristTaxSummaryStatus.NothingOwed => "Niente da versare",
-        TouristTaxSummaryStatus.ToPay => "Da versare",
-        TouristTaxSummaryStatus.Paid => "Versata",
-        TouristTaxSummaryStatus.Overpaid => "Versata in più",
-        _ => status.ToString(),
-    };
+        ArgumentNullException.ThrowIfNull(texts);
+
+        return status switch
+        {
+            TouristTaxSummaryStatus.NothingOwed => texts.NothingRecorded,
+            TouristTaxSummaryStatus.ToPay => "Da versare",
+            TouristTaxSummaryStatus.Paid => "Versata",
+            TouristTaxSummaryStatus.Overpaid => "Versata in più",
+            _ => status.ToString(),
+        };
+    }
+
+    /// <summary>The note of a row: the incomplete-amount text when it counts stays with no amount, empty otherwise.</summary>
+    private static string? IncompleteNote(int staysWithoutAmount, TouristTaxCsvTexts texts) =>
+        staysWithoutAmount > 0 ? texts.IncompleteAmount : null;
 
     private static IReadOnlyList<object?> Row(params object?[] cells) => cells;
 

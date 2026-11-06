@@ -4214,6 +4214,12 @@
   <data name="TouristTaxReceiptNotFound" xml:space="preserve">
     <value>Questo versamento non ha una ricevuta disponibile.</value>
   </data>
+  <data name="TouristTaxStatusNothingRecorded" xml:space="preserve">
+    <value>Nessun importo registrato</value>
+  </data>
+  <data name="TouristTaxOwedIncomplete" xml:space="preserve">
+    <value>Importo incompleto</value>
+  </data>
   <data name="OctorateNotConnected" xml:space="preserve">
     <value>Il collegamento con il channel manager non è attivo: collegalo di nuovo dalle impostazioni dei canali.</value>
   </data>

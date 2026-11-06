@@ -649,7 +649,9 @@ record or delete, and the collaborator has neither. It works in the org and the 
   `IFiscalReportingService.GetTouristTaxReportAsync` as they are: the amounts the engine recorded on the confirmed stays with check-in in
   the period (BK-03). A stay with no recorded amount (rate not available, exempt guests, a booking from a channel) is counted in
   `staysWithoutAmount` and never taken as zero: when it is above zero `owed` may be incomplete, and `NothingOwed` only means that nothing
-  is recorded.
+  is recorded. Every label made from it says so: the CSV writes `Nessun importo registrato` for `NothingOwed` (never «niente da versare»)
+  and `Importo incompleto` next to every row and total with `staysWithoutAmount` above zero; the page has to do the same, with the same two
+  texts, and to show the note next to `owed` and `status` whenever `staysWithoutAmount` is above zero, also for `Paid`.
 - **Paid is the payments inside the period.** A payment counts for a summary when its own period (`periodFrom`..`periodTo`) lies inside the
   period asked, whatever the day it was made, so the figures of a period do not change with the day they are read. Several payments of the
   same comune and period (instalments) are all counted. A comune with payments and no stays in the period is a row of its own.
@@ -667,9 +669,12 @@ record or delete, and the collaborator has neither. It works in the org and the 
   then the file.
 - **The CSV** is written by `CsvWriter`: the title with its base and the days on the first row
   (`Tassa di soggiorno per comune: dovuta sui soggiorni con check-in nel periodo, versata con periodo compreso nel periodo, dal 01/01/2026 al
-  31/12/2026`), the header, a row for each comune (owed, stays without an amount, paid, balance, status in words) and a `Totale` row; then,
-  after an empty row, the payments (comune, period, amount, day, reference, note, whether it has a receipt). The file is
-  `casazen-tassa-soggiorno-riepilogo-20260101-20261231.csv`.
+  31/12/2026`), the header, a row for each comune (owed, stays without an amount, paid, balance, status in words, note) and a `Totale` row;
+  then, after an empty row, the payments (comune, period, amount, day, reference, note, whether it has a receipt). The last column, `Nota`,
+  says `Importo incompleto` on every row (and on the `Totale` row) that counts stays with no amount recorded, and the status of a comune
+  with nothing recorded and nothing paid is `Nessun importo registrato`. The two texts are in `SharedResources`
+  (`TouristTaxStatusNothingRecorded`, `TouristTaxOwedIncomplete`, Italian and English) and are read in Italian whatever the language of the
+  caller, because the rest of the file is Italian. The file is `casazen-tassa-soggiorno-riepilogo-20260101-20261231.csv`.
 
 #### Owner portal (ADR-011, NF-96)
 
