@@ -2110,6 +2110,9 @@
   <data name="NotificationEventDuplicated" xml:space="preserve">
     <value>Lo stesso tipo di avviso compare più volte: indicalo una sola volta.</value>
   </data>
+  <data name="NotificationEventInvalid" xml:space="preserve">
+    <value>Un tipo di avviso dell'elenco è vuoto: indica per ognuno il tipo e i canali.</value>
+  </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, period=Last30Days oppure period=Next30Days.</value>
   </data>

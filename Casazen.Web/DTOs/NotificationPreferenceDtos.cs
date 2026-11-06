@@ -2,6 +2,8 @@ using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
+using Casazen.Web.Resources;
+using Microsoft.Extensions.Localization;
 
 namespace Casazen.Web.DTOs;
 
@@ -92,11 +94,27 @@ public sealed class NotificationChannelAvailabilityDto
 /// A save of the caller's own settings. The kinds of event that are not listed stay as they are; an empty request is a 422. A kind of event in the
 /// list replaces its channels with the ones given (<c>[]</c> = nothing at all, refused for the legal deadline).
 /// </summary>
-public sealed class SaveNotificationPreferencesRequest
+public sealed class SaveNotificationPreferencesRequest : IValidatableObject
 {
+    /// <summary>Resource key of the 400 for a null among the kinds of event.</summary>
+    public const string EventInvalidMessageKey = "NotificationEventInvalid";
+
     public QuietHoursRequest? QuietHours { get; init; }
 
     public List<NotificationEventRequest>? Events { get; init; }
+
+    /// <summary>
+    /// A null among the kinds of event (<c>"events": [null]</c>) is not validated by its own attributes, as there is no object to read them from: it
+    /// is a malformed request, 400, never a kind of event that reaches the action and fails there.
+    /// </summary>
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (Events is not null && Events.Any(e => e is null))
+        {
+            var localizer = validationContext.GetService(typeof(IStringLocalizer<SharedResources>)) as IStringLocalizer;
+            yield return new ValidationResult(localizer?[EventInvalidMessageKey].Value ?? EventInvalidMessageKey, [nameof(Events)]);
+        }
+    }
 }
 
 public sealed class QuietHoursRequest
