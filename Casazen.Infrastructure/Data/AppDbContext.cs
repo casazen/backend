@@ -96,6 +96,13 @@ public class AppDbContext(
     public DbSet<AlloggiatiSendAttempt> AlloggiatiSendAttempts { get; set; } = null!;
     public DbSet<AlloggiatiReceipt> AlloggiatiReceipts { get; set; } = null!;
 
+    // The compliance dashboard "am I compliant?" (E03/F02/US01/T01, NF-52, NF-47): the stage of the period and connection alerts, the monthly
+    // summary already sent to an org, the log of what was sent and by whom, and the proofs a host uploads (ids, codes and keys: no guest data)
+    public DbSet<ComplianceAlertState> ComplianceAlertStates { get; set; } = null!;
+    public DbSet<ComplianceMonthlySummaryLog> ComplianceMonthlySummaryLogs { get; set; } = null!;
+    public DbSet<ComplianceSendLogEntry> ComplianceSendLogEntries { get; set; } = null!;
+    public DbSet<ManualComplianceProof> ManualComplianceProofs { get; set; } = null!;
+
     // Official ISTAT list of the comuni and the log of its imports (SU-04)
     public DbSet<Comune> Comuni { get; set; } = null!;
     public DbSet<ComuneImport> ComuneImports { get; set; } = null!;
@@ -551,6 +558,13 @@ public class AppDbContext(
         modelBuilder.ApplyConfiguration(new PropertyComplianceSenderConfiguration());
         modelBuilder.ApplyConfiguration(new AlloggiatiSendAttemptConfiguration());
         modelBuilder.ApplyConfiguration(new AlloggiatiReceiptConfiguration());
+
+        // NF-52, NF-47 (E03/F02/US01/T01): the alerts of a period or a connection sent once (unique per property, kind and reference), the monthly
+        // summary sent once per org and month, the log of the sends and the proofs a host uploads; tenant rows (TN-2).
+        modelBuilder.ApplyConfiguration(new ComplianceAlertStateConfiguration());
+        modelBuilder.ApplyConfiguration(new ComplianceMonthlySummaryLogConfiguration());
+        modelBuilder.ApplyConfiguration(new ComplianceSendLogEntryConfiguration());
+        modelBuilder.ApplyConfiguration(new ManualComplianceProofConfiguration());
 
         // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
         modelBuilder.Entity<Booking>()
