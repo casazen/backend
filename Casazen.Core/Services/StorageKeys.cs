@@ -89,6 +89,13 @@ public static partial class StorageKeys
     public static string TouristTaxReceipt(Guid orgId, Guid remittanceId, string fileName) =>
         $"tourist-tax/{orgId}/{remittanceId}/{fileName}";
 
+    /// <summary>
+    /// The file of a proof the host uploaded for the compliance traffic light (private bucket, E03/F02/US01, NF-47, NF-52): the receipt of an Alloggiati,
+    /// ISTAT or tourist tax communication. Never reached by a public URL. <paramref name="fileName"/> is made by the server, never the one the host sent.
+    /// </summary>
+    public static string ManualComplianceProof(Guid orgId, Guid proofId, string fileName) =>
+        $"compliance-proofs/{orgId}/{proofId}/{fileName}";
+
     /// <summary>A new random file name that keeps only the (lower-cased) extension of the upload.</summary>
     public static string NewFileName(string? originalFileName) =>
         $"{Guid.NewGuid()}{Path.GetExtension(originalFileName ?? string.Empty).ToLowerInvariant()}";

@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Regulatory;
+using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs.Compliance;
 
@@ -151,6 +152,38 @@ public class ComplianceSummaryItemDto
     /// property to activate and for a turnover.
     /// </summary>
     public DateTime? DueAt { get; set; }
+
+    // E03/F02/US01/T03 (NF-52, CHK-12): "am I compliant?". The members below are add-only: an older client ignores them.
+
+    /// <summary>
+    /// The traffic light, serialized by name: <c>Green</c> only with an archived proof (an Alloggiati receipt of the arrival day, an ISTAT proof, the
+    /// tax receipts, a valid CIN, a passed identity verification), <c>Yellow</c> while the data are entrusted to a sender within the deadline and
+    /// the receipt is awaited (or the period is open), <c>Red</c> when the host has to act. A client that does not know the value shows "to verify":
+    /// it never computes green.
+    /// </summary>
+    public ComplianceLight? Light { get; set; }
+
+    /// <summary>A stable snake_case code the client translates (<c>receipt_archived</c>, <c>awaiting_receipt</c>, <c>entrusted_to_channel_manager</c>, <c>external_verification_required</c>, <c>evidence_missing</c>, <c>deadline_overdue</c>, ...); an unknown code gets a generic text.</summary>
+    public string? Reason { get; set; }
+
+    /// <summary>The month (<c>yyyy-MM</c>) of an item about an ISTAT or tourist tax period; <c>null</c> for the others.</summary>
+    public string? Period { get; set; }
+
+    /// <summary>What backs the light: <c>OfficialProof</c> (an archived proof), <c>ExternalVerificationRequired</c> (the outcome is only in Octorate), <c>Missing</c> or <c>NotApplicable</c>.</summary>
+    public ComplianceEvidenceClass? EvidenceClass { get; set; }
+
+    /// <summary>Where the evidence comes from (<c>casazen_receipt</c>, <c>manual_upload</c>, <c>cin_format</c>, <c>biometric_log</c>, <c>operator_decision</c>, <c>octorate</c>); <c>null</c> when there is none.</summary>
+    public string? EvidenceSource { get; set; }
+
+    /// <summary>When the proof was archived or the verification passed (UTC); <c>null</c> when there is none.</summary>
+    public DateTime? LastVerifiedAt { get; set; }
+
+    /// <summary>
+    /// <c>Alloggiati</c> or <c>Istat</c> when the outcome is held only by Octorate and CasaZen has no proof: the client offers «Verifica nel tuo
+    /// Cassetto Compliance» (<c>POST api/compliance/octorate-handoffs</c> with this topic). Starting or returning from the handoff changes
+    /// nothing here. <c>null</c> when none applies.
+    /// </summary>
+    public OctorateHandoffTopic? HandoffTopic { get; set; }
 }
 
 /// <summary>One thing an item of the cockpit still lacks (SR-03): a stable code, the field it is about, how many guests lack it.</summary>
@@ -191,6 +224,24 @@ public class ComplianceSummaryDto
 
     /// <summary>Stays checked out whose property was not declared ready for the next guest (CO-17).</summary>
     public ComplianceSummarySectionDto TurnoversPending { get; set; } = new();
+
+    // E03/F02/US01/T03 (NF-52): the sections below are add-only and empty for an older API. Each lists the items of its kind with their light, the
+    // green ones too (red first); its count is the number of items that need attention (not green).
+
+    /// <summary>The identity of the guest who leaves the document, for the stays arriving soon (<c>VerifyIdentity</c>). Empty while the identity verification is off.</summary>
+    public ComplianceSummarySectionDto IdentityPending { get; set; } = new();
+
+    /// <summary>The communications sent, entrusted to the channel manager or declared sent, with the receipt archived or awaited (<c>UploadAlloggiatiReceipt</c>). These stays are not in <see cref="AlloggiatiManualRequired"/>.</summary>
+    public ComplianceSummarySectionDto ReceiptsToUpload { get; set; } = new();
+
+    /// <summary>The stays the channel manager does not send by itself, which the host sends by hand (<c>SendAlloggiatiManually</c>). These stays are not in <see cref="AlloggiatiManualRequired"/>.</summary>
+    public ComplianceSummarySectionDto ManualSendsRequired { get; set; } = new();
+
+    /// <summary>The police send of the channel manager that is not active or cannot be verified (<c>ActivateOctorateSend</c>), and the police credentials that were refused (<c>RenewPoliceCredentials</c>).</summary>
+    public ComplianceSummarySectionDto ConnectionsToFix { get; set; } = new();
+
+    /// <summary>The ISTAT (<c>UploadIstatProof</c>) and tourist tax (<c>DeclareTouristTax</c>) of the closed months, with their <c>period</c>, and the tourist tax rates that are not known (<c>EnterMunicipalityTaxRate</c>).</summary>
+    public ComplianceSummarySectionDto PeriodItems { get; set; } = new();
 }
 
 /// <summary>

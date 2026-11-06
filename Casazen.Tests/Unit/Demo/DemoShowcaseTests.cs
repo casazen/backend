@@ -633,6 +633,56 @@ public class DemoShowcaseTests
         Assert.All(channel, s => Assert.Null(s.Ota!.Sync));
     }
 
+    /// <summary>
+    /// NF-52 (E03/F02/US01/T03): the compliance traffic light has a stay in yellow (the guests entrusted to the channel manager, at an Italian house whose
+    /// stored sender is the channel manager) and one in green (the receipt of the arrival day archived, inside the days the light looks at). Both have
+    /// registered guests of a valid composition, invented and at example.com; the receipt is stored under a key valid in the private bucket.
+    /// </summary>
+    [Fact]
+    public void ComplianceTrafficLight_TheDemoHasAnEntrustedStayInYellowAndOneWithAnArchivedReceiptInGreen_AllInvented()
+    {
+        var stays = DemoShowcaseCatalog.Properties
+            .SelectMany(p => p.Bookings.Where(b => b.Compliance is not null).Select(b => (Property: p, Booking: b)))
+            .ToList();
+
+        Assert.Contains(DemoShowcaseCatalog.Scenario.ComplianceTrafficLight, DemoShowcaseCatalog.Scenarios);
+        Assert.Equal(2, stays.Count);
+        Assert.All(stays, s => Assert.Equal(DemoShowcaseCatalog.Scenario.ComplianceTrafficLight, s.Booking.Scenario));
+        Assert.All(stays, s => Assert.EndsWith("@example.com", s.Booking.Email, StringComparison.Ordinal));
+        Assert.All(stays, s =>
+        {
+            Assert.NotEmpty(s.Booking.Guests!);
+            Assert.Empty(AlloggiatiRecordRules.CompositionErrors(s.Booking.Guests!.Select(g => g.Type).ToList()));
+        });
+
+        // Yellow: the guests are entrusted, and the house they are at is sent by the channel manager (the only one in the catalog), in Italy: a house
+        // outside Italy has no police sender, and the invented comune of the tax rule has no real code. The stay has arrived and is not a short one.
+        var entrusted = Assert.Single(stays, s => s.Booking.Compliance!.GuestsEntrusted);
+        var sender = Assert.Single(DemoShowcaseCatalog.Properties, p => p.ComplianceSender is not null);
+        Assert.Equal(entrusted.Property.Key, sender.Key);
+        Assert.Equal(ComplianceSenderType.ChannelManager, sender.ComplianceSender!.Sender);
+        Assert.True(sender.ComplianceSender.ActivationDeclared);
+        Assert.NotEqual("TIC", sender.Place.RegionCode);
+        Assert.DoesNotMatch("^999", sender.Place.IstatCode);
+        Assert.Equal(BookingStatus.CheckedIn, entrusted.Booking.Status);
+        Assert.Equal(0, entrusted.Booking.CheckInOffsetDays);
+        Assert.True(entrusted.Booking.Nights > 1);
+        Assert.False(entrusted.Booking.Compliance!.ReceiptArchived);
+
+        // Green: a finished stay with the receipt archived, whose arrival day is inside the days the status engine looks at.
+        var archived = Assert.Single(stays, s => s.Booking.Compliance!.ReceiptArchived);
+        Assert.False(archived.Booking.Compliance!.GuestsEntrusted);
+        Assert.Equal(BookingStatus.CheckedOut, archived.Booking.Status);
+        Assert.InRange(archived.Booking.CheckInOffsetDays, 1 - new ComplianceOptions().StatusLookbackDays, -1);
+        Assert.Null(archived.Property.ComplianceSender);
+
+        // The receipt is stored under a key the private bucket accepts, named by the server and not by the host.
+        var key = StorageKeys.ManualComplianceProof(Guid.NewGuid(), Guid.NewGuid(), "ricevuta-di-test.pdf");
+        Assert.True(StorageKeys.IsValid(key), key);
+        Assert.StartsWith("compliance-proofs/", key, StringComparison.Ordinal);
+        Assert.InRange(key.Length, 1, ManualComplianceProof.FileKeyMaxLength);
+    }
+
     [Fact]
     public void CrmProfiles_TheDemoHasAReturningGuestAnOtaGuestADirectCustomerACheckInConsentAndTwoGuestsSharingAPhone_AllInvented()
     {

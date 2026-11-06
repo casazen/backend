@@ -184,6 +184,20 @@ public static class FeatureFlags
     /// </summary>
     public const string OctorateBillingSync = "OctorateBillingSync";
 
+    /// <summary>
+    /// E03/F02/US01/T03 (NF-52, CHK-12): the compliance traffic light of the cockpit, <b>off by default</b> until the proofs it asks for can be
+    /// archived. It gates <c>GET api/compliance/summary</c> and the two other readers of the same summary (the Home of the day,
+    /// <c>GET api/dashboard/today</c>, and «Gestisci con AI»). Off, the summary is exactly what it was before: the items carry no light, reason or
+    /// evidence, the five new sections (<c>identityPending</c>, <c>receiptsToUpload</c>, <c>manualSendsRequired</c>, <c>connectionsToFix</c>,
+    /// <c>periodItems</c>) are empty, the section of the stays to send by hand lists every stay as before, the status is not even evaluated and the
+    /// feed of the red and yellow items into the «Da fare» list (<c>ComplianceActivityFeeder</c>) writes nothing. On, every item says whether the host
+    /// is compliant and the «Da fare» list is kept in step with the cockpit. Why it is off: nothing in the application archives the proofs that turn
+    /// an item green yet (the receipts and tax proofs of <c>ManualComplianceProof</c>, the receipt a report points to), so on, every stay of the last 90
+    /// days would get a red To do nobody can close. Not behind it: <c>GET api/properties/{propertyId}/compliance/connection-health</c>, which writes
+    /// nothing. It needs no variable to start. This task owns the flag: the other tasks of epic E03 only read it.
+    /// </summary>
+    public const string ComplianceTrafficLight = "ComplianceTrafficLight";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -204,5 +218,6 @@ public static class FeatureFlags
         OctorateOnboarding,
         FiscalDocumentIssuance,
         OctorateBillingSync,
+        ComplianceTrafficLight,
     ];
 }

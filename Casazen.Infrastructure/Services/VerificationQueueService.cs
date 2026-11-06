@@ -32,9 +32,6 @@ public class VerificationQueueService(
     IAccessCodeService? accessCodes = null,
     IInternalActivityService? activities = null) : IVerificationQueueService
 {
-    /// <summary>The attempts after which a session of before E03/F04/US02 (no operator request recorded) waits for an operator (ADR-013-R5).</summary>
-    private const int LegacyMaxAttempts = 3;
-
     /// <summary>The model name of an operator row when no automatic outcome came before it (a refused consent, a request of the guest).</summary>
     internal const string OperatorModelName = "operator";
 
@@ -343,15 +340,11 @@ public class VerificationQueueService(
     /// sessions of before E03/F04/US02 (no consent, no request recorded) keep their rule: a usable session that escalated or used three attempts.
     /// </summary>
     private IQueryable<GuestCheckInSession> PendingSessions(HostScope scope) =>
-        SessionsInScope(scope).Where(s =>
-            db.Bookings.Any(b => b.Id == s.BookingId && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
-            && s.BiometricOutcome != BiometricOutcome.Accept
-            && (s.OperatorRequestedAt != null
-                || s.BiometricConsentRefusedAt != null
-                || (s.Status != GuestCheckInSessionStatus.Scaduto
-                    && (s.BiometricOutcome == BiometricOutcome.Escalate
-                        || (s.BiometricAttempts >= LegacyMaxAttempts && s.BiometricConsentAt == null))))
-            && !db.BiometricVerificationLogs.Any(l =>
+        SessionsInScope(scope)
+            .Where(s => db.Bookings.Any(b => b.Id == s.BookingId && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null))
+            // The one definition of a session that waits for an operator, shared with the compliance traffic light (VerificationOperatorRules).
+            .Where(VerificationOperatorRules.NeedsOperator)
+            .Where(s => !db.BiometricVerificationLogs.Any(l =>
                 l.BookingId == s.BookingId && l.Method == VerificationMethod.Operator && l.CreatedAt >= (s.OperatorRequestedAt ?? s.CreatedAt)));
 
     /// <summary>
