@@ -11,7 +11,10 @@ using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
+using Casazen.Tests.Unit.Authorization;
+using Casazen.Web.Controllers;
 using Casazen.Web.DTOs;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
@@ -323,6 +326,62 @@ public class ExistingInventoryImportServiceTests
                 () => otherOrg.GetBatchAsync(new ExistingInventoryCaller(OrgB, UserB), whole.Id, CancellationToken.None));
             Assert.Equal("existing_inventory_batch_not_found", foreignBatch.Code);
         }
+    }
+
+    [Fact]
+    public async Task ExistingInventoryImport_EmptyPropertySelectionIsNeverTheWholeInventory_Test()
+    {
+        // A wizard with nothing ticked sends an empty list of properties. It must not start a batch on the whole organization of someone who
+        // reaches it: only leaving the list out asks for the whole inventory.
+        var import = new Mock<IExistingInventoryImportService>();
+        var view = new ExistingInventoryBatchView(
+            Guid.NewGuid(),
+            OctorateInventoryScopeKind.AllInventory,
+            null,
+            [],
+            OctorateInventoryImportStatus.Draft,
+            null,
+            DateTime.UtcNow,
+            DateTime.UtcNow,
+            null,
+            []);
+        import
+            .Setup(i => i.CreateBatchAsync(It.IsAny<ExistingInventoryCaller>(), It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<ExistingInventoryScope>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(view);
+        var controller = new OctorateExistingInventoryController(import.Object, new FixedOrg(OrgA))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { User = HostAuthorizationTestHarness.User(UserA, "PropertyOwner") },
+            },
+        };
+
+        var empty = await Assert.ThrowsAsync<DomainRuleException>(
+            () => controller.Create(new CreateExistingInventoryBatchRequest { Channels = ["142"], PropertyIds = [] }, CancellationToken.None));
+        Assert.Equal("existing_inventory_scope_invalid", empty.Code);
+        import.Verify(
+            i => i.CreateBatchAsync(It.IsAny<ExistingInventoryCaller>(), It.IsAny<IReadOnlyCollection<string>>(), It.IsAny<ExistingInventoryScope>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        // Leaving the list out is the whole inventory, and naming a property is that property.
+        await controller.Create(new CreateExistingInventoryBatchRequest { Channels = ["142"] }, CancellationToken.None);
+        import.Verify(
+            i => i.CreateBatchAsync(
+                It.IsAny<ExistingInventoryCaller>(),
+                It.IsAny<IReadOnlyCollection<string>>(),
+                It.Is<ExistingInventoryScope>(s => s.Kind == OctorateInventoryScopeKind.AllInventory),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        var property = Guid.NewGuid();
+        await controller.Create(new CreateExistingInventoryBatchRequest { Channels = ["142"], PropertyIds = [property] }, CancellationToken.None);
+        import.Verify(
+            i => i.CreateBatchAsync(
+                It.IsAny<ExistingInventoryCaller>(),
+                It.IsAny<IReadOnlyCollection<string>>(),
+                It.Is<ExistingInventoryScope>(s => s.Kind == OctorateInventoryScopeKind.Properties && s.PropertyIds.SequenceEqual(new[] { property })),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]
@@ -1130,6 +1189,12 @@ public class ExistingInventoryImportServiceTests
             string? propertyOwnerId,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(org == orgId && (orgWide || (propertyId is { } id && reachable.Contains(id))));
+    }
+
+    /// <summary>The org of the caller of a controller: always the same one.</summary>
+    private sealed class FixedOrg(Guid orgId) : Casazen.Web.Infrastructure.IOrgContextResolver
+    {
+        public Task<Guid?> GetOrProvisionOrgIdAsync(CancellationToken cancellationToken = default) => Task.FromResult<Guid?>(orgId);
     }
 
     /// <summary>The tokens of a stub: a fixed one for every org and for the partner.</summary>

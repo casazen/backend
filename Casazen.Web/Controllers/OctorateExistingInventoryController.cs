@@ -38,7 +38,7 @@ public sealed class OctorateExistingInventoryController(
     /// <response code="201">The new batch.</response>
     /// <response code="403">No org, or the whole inventory was asked for by a caller who does not reach the whole org (<c>existing_inventory_needs_whole_org</c>).</response>
     /// <response code="404">A property is not the org's or is not within the caller's reach (<c>octorate_property_not_found</c>); the group does not exist.</response>
-    /// <response code="422"><c>existing_inventory_channels_required</c>, <c>existing_inventory_channel_not_supported</c>, <c>existing_inventory_scope_invalid</c>.</response>
+    /// <response code="422"><c>existing_inventory_channels_required</c>, <c>existing_inventory_channel_not_supported</c>, <c>existing_inventory_scope_invalid</c> (both properties and group, or an empty list of properties: the whole inventory is asked for by leaving the list out).</response>
     [HttpPost("existing-inventory/batches")]
     [ProducesResponseType(typeof(ExistingInventoryBatchDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -50,6 +50,11 @@ public sealed class OctorateExistingInventoryController(
     {
         if (await CallerAsync(cancellationToken) is not { } caller)
             return NoOrg();
+
+        // A selection of no property is not «all the properties»: only leaving the list out takes the whole inventory. A wizard with nothing
+        // ticked must not start a batch on the whole organization of someone who reaches it.
+        if (request.PropertyIds is { Count: 0 })
+            throw new DomainRuleException("existing_inventory_scope_invalid", "ExistingInventoryScopeInvalid");
 
         var hasProperties = request.PropertyIds is { Count: > 0 };
         var hasGroup = !string.IsNullOrWhiteSpace(request.Group);

@@ -7,7 +7,7 @@ namespace Casazen.Web.DTOs;
 /// <summary>
 /// Starts an import of existing OTA inventory (<c>POST api/octorate/existing-inventory/batches</c>, E02/F01/US03): the channels the person
 /// uses and the properties it is about. Without <see cref="PropertyIds"/> and <see cref="Group"/> it is the whole inventory (the caller must
-/// reach the whole org); one of them narrows it; both is a 422.
+/// reach the whole org); one of them narrows it; both is a 422, and so is an empty <see cref="PropertyIds"/>.
 /// </summary>
 public sealed class CreateExistingInventoryBatchRequest
 {
@@ -15,7 +15,10 @@ public sealed class CreateExistingInventoryBatchRequest
     [Required(ErrorMessage = "ExistingInventoryChannelsRequired")]
     public List<string>? Channels { get; set; }
 
-    /// <summary>The CasaZen properties the import is about, each of the org and within the caller's reach.</summary>
+    /// <summary>
+    /// The CasaZen properties the import is about, each of the org and within the caller's reach. Leave it out for the whole inventory: an empty
+    /// list is a selection of nothing and is refused (422), never taken for all of them.
+    /// </summary>
     public List<Guid>? PropertyIds { get; set; }
 
     /// <summary>The named group of the mixed portfolio.</summary>
