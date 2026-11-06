@@ -15,7 +15,7 @@ namespace Casazen.Core.Services;
 /// <item><b>What is stored</b> goes through <see cref="ICrmContactService"/>: origin <c>OctorateContactInfo</c>, basis service only; an address of
 /// an OTA booking or on a relay domain is an OTA forward and never marketing; a customer of the booking engine of the agency is soft opt-in for a
 /// confirmed booking only while <c>Crm:BookingEngineSoftOptIn</c> is on.</item>
-/// <item><b>Never in bulk</b>: a stay already over is not read, and an org gets at most <c>Crm:OctorateContactReadsPerHour</c> reads an hour.</item>
+/// <item><b>Never in bulk</b>: a stay already over and a cancelled booking are not read, and an org gets at most <c>Crm:OctorateContactReadsPerHour</c> reads an hour.</item>
 /// <item><b>A refusal is not an empty contact</b>: it is recorded as not available for that booking and not asked again in a loop.</item>
 /// <item>Nothing the read returns, and no address, number or name, is written to a log: ids and the outcome only.</item>
 /// </list>
@@ -83,6 +83,9 @@ public enum OctorateContactReadOutcome
     /// while. The answer is to be seen once in the sandbox (runbook § 5).
     /// </summary>
     Unrecognized = 12,
+
+    /// <summary>Nothing was read: the booking is cancelled, so there is no stay to serve with the contact of its guest. A pending booking is read.</summary>
+    BookingCancelled = 13,
 }
 
 /// <summary>The result of a contact read for one booking.</summary>

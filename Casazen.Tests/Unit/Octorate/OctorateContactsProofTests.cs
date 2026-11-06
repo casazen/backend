@@ -306,6 +306,30 @@ public class OctorateContactsProofTests
     }
 
     /// <summary>
+    /// Proof test (privacy rule, AC-NF94-5): a cancelled booking has no stay to serve, so the contact of its guest is not read, however far its check-in
+    /// is: no call to Octorate, nothing stored. A pending booking, a stay in the making, is read.
+    /// </summary>
+    [Fact]
+    public async Task OctorateContacts_CancelledBooking_IsNotRead_ButAPendingOneIs_Test()
+    {
+        var h = new BookingImportHarness();
+        var cancelled = await h.SeedBookingAsync("res-cancelled", source: BookingSource.BookingCom, status: BookingStatus.Cancelled);
+        var pending = await h.SeedBookingAsync("res-pending", source: BookingSource.BookingCom, status: BookingStatus.Pending);
+        Serve(h, "res-cancelled", "guest-cancelled", "cancelled@guest.example.org", phone: null);
+        Serve(h, "res-pending", "guest-pending", "pending@guest.example.org", phone: null);
+
+        await using var db = h.NewDb();
+        var service = Service(h, db, new CrmOptions { OctorateContactsEnabled = true });
+
+        Assert.Equal(OctorateContactReadOutcome.BookingCancelled, (await service.ReadForBookingAsync(OrgA, cancelled, Ct)).Outcome);
+        h.Client.Verify(c => c.GetReservationAsync(It.IsAny<string>(), "res-cancelled", It.IsAny<CancellationToken>()), Times.Never);
+        h.Client.Verify(c => c.GetGuestContactInfoAsync(It.IsAny<string>(), "guest-cancelled", It.IsAny<CancellationToken>()), Times.Never);
+
+        Assert.Equal(OctorateContactReadOutcome.Stored, (await service.ReadForBookingAsync(OrgA, pending, Ct)).Outcome);
+        Assert.Single(await db.GuestContacts.AsNoTracking().ToListAsync(Ct));
+    }
+
+    /// <summary>
     /// Proof test (permission rule, AC-NF94-6): a refusal of the sensitive data (no static IP, no permission) is recorded as not available for the
     /// booking and is not asked again in a loop: the second call, and the calls of the next hours, do not reach Octorate; an outage is not recorded
     /// (a later call tries again) and nothing is stored in either case.

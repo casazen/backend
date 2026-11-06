@@ -41,10 +41,11 @@ For `ReadForBookingAsync` the first rule that does not hold ends the call, and n
 1. `Crm__OctorateContactsEnabled` and the connector are on, and the CRM module is open: `Features__CrmMarketing` on and `Crm__ContactIndexKey` set (else `Disabled`, and not even a query).
 2. The booking is a booking of the org with an Octorate reservation id **that came from Octorate** (else `NotAnOctorateBooking`). A booking made in CasaZen and sent to Octorate has a reservation id too, and a row of the mirror (`OctorateBookingSyncs`, made when CasaZen creates the reservation, never by the import): it is CasaZen's own, its guest's contact is already here, and it is written on channel `270` (`Octorate__DirectChannelId`), the same channel as the booking engine of the agency, so it must not be taken for a customer of that engine and given its soft opt-in.
 3. Its **check-out is not in the past** in Rome (else `StayOver`: no history is read).
-4. Its guest was not erased or anonymized (else `GuestErased`: the contacts erased by [`gdpr.md`](gdpr.md) § 13 do not come back).
-5. The ledger does not remember it: a booking read in the last 24 hours is `AlreadyRead` (or `NothingToStore`), one Octorate refused in the last 6 hours is `NotAvailable`: no call.
-6. The property of the booking has a confirmed listing on Octorate (else `NotMapped`).
-7. The org has fewer than `Crm__OctorateContactReadsPerHour` reads in the last hour (else `OverCap`). Every call that reaches Octorate counts, refused or not.
+4. The booking is **not cancelled** (else `BookingCancelled`: a cancelled booking has no stay to serve, so its guest's contact is not worth a sensitive read). A pending booking is read.
+5. Its guest was not erased or anonymized (else `GuestErased`: the contacts erased by [`gdpr.md`](gdpr.md) § 13 do not come back).
+6. The ledger does not remember it: a booking read in the last 24 hours is `AlreadyRead` (or `NothingToStore`), one Octorate refused or answered in a form not understood in the last 6 hours is `NotAvailable` or `Unrecognized`: no call.
+7. The property of the booking has a confirmed listing on Octorate (else `NotMapped`).
+8. The org has fewer than `Crm__OctorateContactReadsPerHour` reads in the last hour (else `OverCap`). Every call that reaches Octorate counts, refused or not.
 
 Then, for the org of the booking: the reservation is read (`GET reservation/{acc}/{id}`: the id of its first guest, and the flags `emailAvailable` and
 `phoneAvailable` of that guest), and, unless Octorate says it holds neither an address nor a number, the contact of that guest is read. Two calls for
@@ -56,7 +57,7 @@ one booking.
 |---|---|
 | An address of a booking made through an OTA (Booking.com, Airbnb, Vrbo, Expedia, Agoda, TripAdvisor, another portal) or on a relay domain | Origin `OtaForward`, **service only, never marketing**, never in a campaign |
 | An address of the booking engine of the agency (channel `270`), `Crm__BookingEngineSoftOptIn` on, booking confirmed or later | `SoftOptIn` (the notice recorded as `octorate-booking-engine`, source `BookingCheckout`, at the time of the booking) |
-| The same, with the flag off, or a booking that is still pending or cancelled | Service only |
+| The same, with the flag off, or a booking that is still pending | Service only |
 | Any other address | Service only |
 | A phone number | Service only, always |
 | Airbnb | Octorate gives no address and no number: nothing is stored (`NothingToStore`) |
@@ -74,7 +75,7 @@ weaker basis never lowers a stronger one and a suppression is never cleared (see
 | `NotAvailable` | Octorate refused the read (no static IP, no permission), rejected the request (a 4xx that is no missing reservation and no limit), no longer knows the reservation, or names no guest id | refused (6 h) |
 | `Unrecognized` | Octorate answered, but CasaZen does not understand the answer: it has none of the members of a contact (another wrapper, other names, not an object), or it is empty while the reservation says Octorate holds an address or a number. **Not "the guest has no contact"**; the log carries the code `octorate_contact_info_unrecognized` and nothing of the answer | unrecognized (6 h) |
 | `Deferred` | Octorate did not answer, or a limit was reached, or the connection is not usable, or the body cannot be parsed at all: not the booking's fault | nothing; a later call tries again; **never retried in a loop** |
-| `Disabled`, `NotAnOctorateBooking`, `StayOver`, `GuestErased`, `NotMapped`, `OverCap` | Nothing was read (rules 1 to 7) | nothing |
+| `Disabled`, `NotAnOctorateBooking`, `StayOver`, `BookingCancelled`, `GuestErased`, `NotMapped`, `OverCap` | Nothing was read (rules 1 to 8) | nothing |
 
 The ledger is in memory: a restart forgets it, which can cost one more call for a booking and never a stored contact, and with several API
 instances each one counts its own reads. Today the API runs as one instance.

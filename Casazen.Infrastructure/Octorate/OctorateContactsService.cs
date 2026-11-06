@@ -22,7 +22,7 @@ namespace Casazen.Infrastructure.Octorate;
 /// module open (<see cref="CrmProfileSyncGate"/>: <c>Features:CrmMarketing</c> on and <c>Crm:ContactIndexKey</c> set, else nothing could be
 /// stored and nothing is asked of Octorate); a booking of
 /// the org with an Octorate reservation id that came from Octorate (not one CasaZen made and sent there, which has a row of the mirror);
-/// a check-out that is not in the past; a guest that was not erased; what the memory of
+/// a check-out that is not in the past; a booking that is not cancelled; a guest that was not erased; what the memory of
 /// <see cref="OctorateContactReadLedger"/> says (read lately, or refused lately: no call); a confirmed listing of the property; and at most
 /// <c>Crm:OctorateContactReadsPerHour</c> reads an hour for the org. Only then Octorate is called: the reservation (for the guest id) and the
 /// contact of that guest, two calls for one booking, never a list.</item>
@@ -100,6 +100,11 @@ public sealed class OctorateContactsService(
         // No history: a stay that is over has no use for the contact of its guest.
         if (booking.CheckOutDate.Date < timeProvider.TodayInRome().Date)
             return new OctorateContactReadResult(OctorateContactReadOutcome.StayOver);
+
+        // A cancelled booking has no stay to serve (no message, no check-in, no invoice to prepare): its guest's contact is not worth a sensitive read that
+        // Octorate logs. A pending booking is read: it is a stay in the making, and it is the one the event of its creation announces.
+        if (booking.Status == BookingStatus.Cancelled)
+            return new OctorateContactReadResult(OctorateContactReadOutcome.BookingCancelled);
 
         // The guest of an erased or anonymized record is not asked about: its contacts were erased (E07/F06/US02/T01) and must not come back.
         var guest = await db.Guests
