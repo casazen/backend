@@ -31,8 +31,9 @@ public interface IComplianceConnectionHealthService
     /// kept for <see cref="ComplianceConnectionHealthRules.CacheDuration"/>, and at most
     /// <see cref="ComplianceConnectionHealthRules.MaxLiveReadsPerCall"/> properties are read from Octorate in one call: a property that was not
     /// read yet, and has no answer in memory, is <see cref="ConnectionHealthState.Unknown"/> with the reason
-    /// <see cref="ComplianceConnectionHealthRules.NotCheckedYetReason"/> (never an error and never active), and the next call reads it. A property
-    /// the caller's org does not have is left out of the answer.
+    /// <see cref="ComplianceConnectionHealthRules.NotCheckedYetReason"/> (never an error and never active), and the next call reads it: the ones
+    /// never read or read longest ago go first. That answer is a placeholder, not a reading: the status engine gives it no verdict and no To do
+    /// (the property was not looked at). A property the caller's org does not have is left out of the answer.
     /// </summary>
     Task<IReadOnlyDictionary<Guid, ComplianceConnectionHealth>> GetManyAsync(IReadOnlyCollection<Guid> propertyIds, CancellationToken ct);
 }
@@ -98,6 +99,12 @@ public static class ComplianceConnectionHealthRules
 {
     /// <summary>How long an answer of <see cref="IComplianceConnectionHealthService.GetManyAsync"/> is reused before Octorate is asked again.</summary>
     public static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// How long the moment a property was last read is kept after its answer expired: the properties never read, or read longest ago, are read first
+    /// by <see cref="IComplianceConnectionHealthService.GetManyAsync"/>, so over the calls every property gets its turn.
+    /// </summary>
+    public static readonly TimeSpan LastReadMemory = TimeSpan.FromHours(6);
 
     /// <summary>The most properties <see cref="IComplianceConnectionHealthService.GetManyAsync"/> reads from Octorate in one call.</summary>
     public const int MaxLiveReadsPerCall = 5;

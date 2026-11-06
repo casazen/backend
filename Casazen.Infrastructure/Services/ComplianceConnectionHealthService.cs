@@ -56,15 +56,20 @@ public sealed class ComplianceConnectionHealthService(
             .Select(p => p.Id)
             .ToListAsync(ct);
 
-        var liveReads = 0;
-        foreach (var propertyId in visible.Order())
+        // What is in memory is served; of the others, the ones never read or read longest ago are read first, so that over the calls every property
+        // gets its turn (a fixed order would read the same five every time the answers have expired and never reach the sixth).
+        var waiting = new List<Guid>();
+        foreach (var propertyId in visible)
         {
-            if (cache.TryGetValue(CacheKey(propertyId), out ComplianceConnectionHealth? known) && known is not null)
-            {
+            if (cache.TryGetValue(CacheKeyOf(propertyId), out ComplianceConnectionHealth? known) && known is not null)
                 answers[propertyId] = known;
-                continue;
-            }
+            else
+                waiting.Add(propertyId);
+        }
 
+        var liveReads = 0;
+        foreach (var propertyId in waiting.OrderBy(LastReadAt).ThenBy(id => id))
+        {
             if (liveReads >= ComplianceConnectionHealthRules.MaxLiveReadsPerCall)
             {
                 answers[propertyId] = NotCheckedYet(propertyId);
@@ -79,6 +84,10 @@ public sealed class ComplianceConnectionHealthService(
 
         return answers;
     }
+
+    /// <summary>When the property was last read from Octorate (UTC), whether or not the answer is still in memory; the beginning of time when never.</summary>
+    private DateTime LastReadAt(Guid propertyId) =>
+        cache.TryGetValue(LastReadKeyOf(propertyId), out DateTime at) ? at : DateTime.MinValue;
 
     /// <summary>The health of a property from its sender view; the sender service decides what Octorate proved.</summary>
     private async Task<ComplianceConnectionHealth> ReadAsync(Guid propertyId, CancellationToken ct)
@@ -158,8 +167,14 @@ public sealed class ComplianceConnectionHealthService(
         return new ComplianceConnectionHealth(propertyId, true, line, line, false, false, _clock.GetUtcNow().UtcDateTime);
     }
 
-    private void Remember(ComplianceConnectionHealth health) =>
-        cache.Set(CacheKey(health.PropertyId), health, ComplianceConnectionHealthRules.CacheDuration);
+    private void Remember(ComplianceConnectionHealth health)
+    {
+        cache.Set(CacheKeyOf(health.PropertyId), health, ComplianceConnectionHealthRules.CacheDuration);
+        cache.Set(LastReadKeyOf(health.PropertyId), health.CheckedAt, ComplianceConnectionHealthRules.LastReadMemory);
+    }
 
-    private static string CacheKey(Guid propertyId) => $"compliance-connection-health:{propertyId:N}";
+    /// <summary>The key of the answer of a property in memory (internal: a test lets it expire).</summary>
+    internal static string CacheKeyOf(Guid propertyId) => $"compliance-connection-health:{propertyId:N}";
+
+    private static string LastReadKeyOf(Guid propertyId) => $"compliance-connection-health-read:{propertyId:N}";
 }

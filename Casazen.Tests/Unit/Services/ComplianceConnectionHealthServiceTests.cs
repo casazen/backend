@@ -307,6 +307,38 @@ public class ComplianceConnectionHealthServiceTests
         Assert.Empty(await harness.Health.GetManyAsync([], CancellationToken.None));
     }
 
+    [Fact]
+    public async Task ConnectionHealth_ManyProperties_TheOnesNeverReadAreReadFirst_SoEveryPropertyGetsItsTurn_Test()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var world = await SeedAsync(databaseName, extraConnected: 6);
+        var octorate = new Mock<IOctorateApiClient>();
+        octorate
+            .Setup(o => o.GetPoliceAccountAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctoratePoliceAccount { Valid = true, Autorun = true });
+        await using var db = TenantDb(databaseName, world.OrgId);
+        var harness = new Harness(db, octorate);
+        var ids = world.AllConnected.ToList();
+        Assert.Equal(7, ids.Count);
+
+        var first = await harness.Health.GetManyAsync(ids, CancellationToken.None);
+        var notReadYet = first.Values
+            .Where(h => h.Alloggiati.Reason == ComplianceConnectionHealthRules.NotCheckedYetReason)
+            .Select(h => h.PropertyId)
+            .ToList();
+        Assert.Equal(2, notReadYet.Count);
+
+        // The answers expire (five minutes pass) but the moment each was read is remembered: the next call starts with the two that were left out, the
+        // ones a fixed order would leave out again and again.
+        foreach (var id in ids)
+            harness.Cache.Remove(ComplianceConnectionHealthService.CacheKeyOf(id));
+
+        var second = await harness.Health.GetManyAsync(ids, CancellationToken.None);
+        Assert.All(notReadYet, id => Assert.NotEqual(ComplianceConnectionHealthRules.NotCheckedYetReason, second[id].Alloggiati.Reason));
+        Assert.All(notReadYet, id => Assert.Equal(ConnectionHealthState.Active, second[id].Alloggiati.State));
+        Assert.Equal(2, second.Values.Count(h => h.Alloggiati.Reason == ComplianceConnectionHealthRules.NotCheckedYetReason));
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────────
 
     private static void Exposes(Mock<IOctorateApiClient> octorate, bool? valid, bool? autorun, DateTime? lastCron) =>
@@ -351,13 +383,16 @@ public class ComplianceConnectionHealthServiceTests
                 environment.Object,
                 senderLog ?? NullLogger<PropertySenderService>.Instance,
                 Clock);
+            Cache = new MemoryCache(new MemoryCacheOptions());
             Health = new ComplianceConnectionHealthService(
                 Sender,
                 db,
-                new MemoryCache(new MemoryCacheOptions()),
+                Cache,
                 healthLog ?? NullLogger<ComplianceConnectionHealthService>.Instance,
                 Clock);
         }
+
+        public IMemoryCache Cache { get; }
 
         public FakeTimeProvider Clock { get; } = new(Start);
 
