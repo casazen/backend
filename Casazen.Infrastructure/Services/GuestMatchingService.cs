@@ -96,7 +96,7 @@ public class GuestMatchingService(
             guest.GuestCrmProfileId = found.Id;
             FillEmpty(found, guest, keys);
             await db.SaveChangesAsync(cancellationToken);
-            logger.LogInformation("Matched guest {GuestId} to CRM profile {ProfileId} of org {OrgId}", guest.Id, found.Id, orgId);
+            logger.LogDebug("Matched guest {GuestId} to CRM profile {ProfileId} of org {OrgId}", guest.Id, found.Id, orgId);
 
             // The two keys point to two profiles: the guest goes to the e-mail one and a person is asked about the pair.
             if (byEmail is not null && byNameBirth is not null && byEmail.Id != byNameBirth.Id)
@@ -137,7 +137,7 @@ public class GuestMatchingService(
         db.GuestCrmProfiles.Add(profile);
         guest.GuestCrmProfileId = profile.Id;
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Created CRM profile {ProfileId} of org {OrgId} for guest {GuestId}", profile.Id, orgId, guest.Id);
+        logger.LogDebug("Created CRM profile {ProfileId} of org {OrgId} for guest {GuestId}", profile.Id, orgId, guest.Id);
 
         await ProposeForNewProfileAsync(profile, guest, keys, cancellationToken);
         return profile;
@@ -215,7 +215,7 @@ public class GuestMatchingService(
         };
         db.GuestCrmProfiles.Add(profile);
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Created lead CRM profile {ProfileId} of org {OrgId}", profile.Id, orgId);
+        logger.LogDebug("Created lead CRM profile {ProfileId} of org {OrgId}", profile.Id, orgId);
 
         if (sharing.Count > 1)
         {
@@ -312,7 +312,7 @@ public class GuestMatchingService(
 
         profile.UpdatedAt = Now();
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation(
+        logger.LogDebug(
             "Updated CRM profile {ProfileId}: {Stays} stays, {Properties} properties",
             profileId,
             totalStays,
