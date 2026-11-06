@@ -128,8 +128,20 @@ public static class PublicStayReasons
     /// <summary>A night of the stay is taken (booking, hold, request, iCal or manual block: the answer does not say which).</summary>
     public const string Busy = "busy";
 
-    /// <summary>The stay is shorter than the minimum stay of the house.</summary>
+    /// <summary>The stay is shorter than the minimum stay of the night it arrives on (the rule of that night, else the minimum of the house).</summary>
     public const string MinNights = "min_nights";
+
+    /// <summary>The stay arrives on a night that is closed to arrival (a rule of the night, E08/F05/US01/T04, NF-36).</summary>
+    public const string ArrivalClosed = "arrival_closed";
+
+    /// <summary>The stay leaves on a day that is closed to departure (a rule of the day, NF-36).</summary>
+    public const string DepartureClosed = "departure_closed";
+
+    /// <summary>The stay is longer than the maximum stay of the night it arrives on (NF-36).</summary>
+    public const string MaxNights = "max_nights";
+
+    /// <summary>The stay is booked closer to its arrival, or further ahead of it, than the advance limits of the night it arrives on allow (NF-36).</summary>
+    public const string Advance = "advance";
 
     /// <summary>The house sleeps fewer people than the party.</summary>
     public const string Guests = "guests";
@@ -303,10 +315,14 @@ public sealed record PublicStayCard(
 /// <summary>Whether a house is free for the stay asked.</summary>
 /// <param name="Available">Free for the stay (and bookable); <c>true</c> when no dates were chosen, since there is nothing to be taken.</param>
 /// <param name="Reason">Why not, one of <see cref="PublicStayReasons"/>; <c>null</c> when free.</param>
-/// <param name="MinNights">The minimum stay of the house, <c>null</c> for none.</param>
+/// <param name="MinNights">
+/// The minimum stay of the night the stay arrives on: the rule of that night (NF-36), else the minimum of the house; <c>null</c> for none. Without
+/// dates, the minimum of the house.
+/// </param>
 /// <param name="FirstFreeCheckIn">
 /// The first check-in day, not before the one asked and not before today, for which a stay as long as the one asked (and at least the
-/// minimum stay) is free within <see cref="PublicSiteSearch.FirstFreeHorizonDays"/> days; the check-in asked when the house is free;
+/// minimum stay of that night) is free and breaks no rule of its nights (closed arrival or departure, maximum stay, advance) within
+/// <see cref="PublicSiteSearch.FirstFreeHorizonDays"/> days; the check-in asked when the house is free;
 /// <c>null</c> when the reason is not a matter of dates or nothing is free in that time.
 /// </param>
 public sealed record PublicStayAvailability(bool Available, string? Reason, int? MinNights, DateOnly? FirstFreeCheckIn);
@@ -342,7 +358,7 @@ public sealed record PublicSiteCalendar(
 /// <summary>One night of the site.</summary>
 /// <param name="AnyAvailable">A stay can start that night in some house that sleeps the party.</param>
 /// <param name="FromPriceCents">The cheapest night among those houses; <c>null</c> when none is free.</param>
-/// <param name="MinNights">The shortest minimum stay among them (1 for none); <c>null</c> when none is free.</param>
+/// <param name="MinNights">The shortest minimum stay of that night among them (the rule of the night, else the house's; 1 for none); <c>null</c> when none is free.</param>
 public sealed record PublicSiteCalendarDay(DateOnly Date, bool AnyAvailable, long? FromPriceCents, int? MinNights);
 
 /// <summary>A place of the site: the comune of some published houses.</summary>

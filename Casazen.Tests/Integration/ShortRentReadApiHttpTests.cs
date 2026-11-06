@@ -933,7 +933,8 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
 
         var arriving = await JsonAsync(await owner.GetAsync(
             $"/api/bookings/search?arrivalFrom={today:yyyy-MM-dd}&arrivalTo={today.AddDays(6):yyyy-MM-dd}&sort=checkIn:asc&pageSize=100"));
-        var others = await JsonAsync(await owner.GetAsync("/api/bookings/search?channel=Other&channel=Manual&pageSize=100"));
+        var others = await JsonAsync(await owner.GetAsync("/api/bookings/search?channel=Other&channel=Manual&channel=Expedia&pageSize=100"));
+        var withoutExpedia = await JsonAsync(await owner.GetAsync("/api/bookings/search?channel=Other&channel=Manual&pageSize=100"));
         var byTotal = await JsonAsync(await owner.GetAsync("/api/bookings/search?sort=total:desc&pageSize=100"));
         var byGuest = await JsonAsync(await owner.GetAsync("/api/bookings/search?sort=guest&pageSize=100"));
 
@@ -946,13 +947,17 @@ public class ShortRentReadApiHttpTests(OrgInvitationsFactory factory) : IClassFi
         Assert.All(checkIns, day => Assert.InRange(DateOnly.FromDateTime(day), today, today.AddDays(6)));
         Assert.DoesNotContain(around.InHouse, arrivingIds);
         Assert.DoesNotContain(around.Request, arrivingIds);
-        // Entered by the host, or from another portal than Airbnb and Booking.com.
+        // Entered by the host, from a local source, or from Expedia (NF-78: the portals have a channel of their own, Expedia is asked by name).
         var otherIds = others.GetProperty("items").EnumerateArray().Select(b => b.GetProperty("id").GetGuid()).ToList();
         Assert.Contains(around.InHouse, otherIds);
         Assert.Contains(around.Cancelled, otherIds);
         Assert.DoesNotContain(around.ArrivesToday, otherIds);
         Assert.DoesNotContain(around.Completed, otherIds);
-        Assert.All(others.GetProperty("items").EnumerateArray(), b => Assert.Contains(b.GetProperty("channel").GetString(), new[] { "Manual", "Other" }));
+        Assert.All(others.GetProperty("items").EnumerateArray(), b => Assert.Contains(b.GetProperty("channel").GetString(), new[] { "Manual", "Other", "Expedia" }));
+        // Without the name of the portal, «other» no longer returns the Expedia stay.
+        var withoutExpediaIds = withoutExpedia.GetProperty("items").EnumerateArray().Select(b => b.GetProperty("id").GetGuid()).ToList();
+        Assert.Contains(around.InHouse, withoutExpediaIds);
+        Assert.DoesNotContain(around.Cancelled, withoutExpediaIds);
         // The order: the total, biggest first, and the guest by last name.
         var totals = byTotal.GetProperty("items").EnumerateArray().Select(b => b.GetProperty("totalPrice").GetDecimal()).ToList();
         Assert.Equal(totals.OrderByDescending(t => t), totals);

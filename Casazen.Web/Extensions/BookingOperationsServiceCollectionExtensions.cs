@@ -60,6 +60,10 @@ public static class BookingOperationsServiceCollectionExtensions
 
         // E08/F03/US03/T02 (NF-74, NF-77): the state of the mirror of a booking, read for the booking answer (a read only, no push).
         services.AddScoped<IBookingOctorateSyncReader, BookingOctorateSyncReader>();
+
+        // E08/F05/US01/T02 (NF-36, NF-78): the price and the rules of the nights of a property. The store of the rules and the read of every day of
+        // the calendar; the quote, the checkout, the public calendar and the search of the booking site read the rules through it (T03, T04).
+        services.AddScoped<IPropertyDayRuleService, PropertyDayRuleService>();
         return services;
     }
 }
