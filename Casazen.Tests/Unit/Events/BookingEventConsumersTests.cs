@@ -451,6 +451,28 @@ public class BookingEventConsumersTests : IAsyncLifetime
     }
 
     [Fact]
+    public void AddCasazenBookingOperations_RegistersTheDayRulesService()
+    {
+        var services = new ServiceCollection();
+
+        services.AddCasazenBookingOperations();
+
+        // The quote and the checkout (BookingService), the public calendar and the search of the booking site judge a stay with the rules of its
+        // nights (E08/F05/US01, NF-36). They take this service as a required constructor parameter, so the container cannot build them without
+        // this registration and none of them can go on without the rules in silence.
+        var descriptor = Assert.Single(services, d => d.ServiceType == typeof(IPropertyDayRuleService));
+        Assert.Equal(typeof(PropertyDayRuleService), descriptor.ImplementationType);
+        Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+        foreach (var consumer in new[] { typeof(BookingService), typeof(PublicCalendarService), typeof(PublicSiteSearchService) })
+        {
+            var parameter = Assert.Single(
+                Assert.Single(consumer.GetConstructors()).GetParameters(),
+                p => p.ParameterType == typeof(IPropertyDayRuleService));
+            Assert.False(parameter.IsOptional, $"{consumer.Name} takes the day rules as an optional parameter: a lost registration would switch them off.");
+        }
+    }
+
+    [Fact]
     public void AddCasazenBookingOperations_RegistersThePolicyOfTheChannelsAsASingletonThatReadsTheConfiguration()
     {
         var services = new ServiceCollection();

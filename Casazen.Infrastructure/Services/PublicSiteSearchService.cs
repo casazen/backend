@@ -30,8 +30,8 @@ public sealed class PublicSiteSearchService(
     ITouristTaxRateRepository taxRates,
     IConfiguration configuration,
     PublicReadCache cache,
-    TimeProvider? timeProvider = null,
-    IPropertyDayRuleService? dayRules = null) : IPublicSiteSearchService
+    IPropertyDayRuleService dayRules,
+    TimeProvider? timeProvider = null) : IPublicSiteSearchService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly PublicOccupancyReader _occupancy = new(db, configuration, timeProvider);
@@ -468,8 +468,8 @@ public sealed class PublicSiteSearchService(
 
     /// <summary>
     /// The rules of the nights of all the houses from <paramref name="from"/> (included) to <paramref name="toExclusive"/> (excluded), in one read
-    /// (<see cref="IPropertyDayRuleService.GetRulesForSiteAsync"/>, a public read of the site): never one read per house. None when the service is not
-    /// there or there is nothing to read.
+    /// (<see cref="IPropertyDayRuleService.GetRulesForSiteAsync"/>, a public read of the site): never one read per house. None when there is nothing
+    /// to read.
     /// </summary>
     private async Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>>> LoadDayRulesAsync(
         IReadOnlyCollection<Guid> ids,
@@ -477,7 +477,7 @@ public sealed class PublicSiteSearchService(
         DateOnly toExclusive,
         CancellationToken cancellationToken)
     {
-        if (dayRules is null || ids.Count == 0 || toExclusive <= from)
+        if (ids.Count == 0 || toExclusive <= from)
             return new Dictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>>();
 
         return await dayRules.GetRulesForSiteAsync(ids, from, toExclusive, cancellationToken);

@@ -85,7 +85,7 @@ public class DayRulesBookingSiteTests
             NoChannelManager.Instance,
             timeProvider: clock,
             dayRules: _rules);
-        _calendar = new PublicCalendarService(_db, _pricing, configuration, clock, _rules);
+        _calendar = new PublicCalendarService(_db, _pricing, configuration, _rules, clock);
 
         var org = new OrgEntity
         {
@@ -282,7 +282,7 @@ public class DayRulesBookingSiteTests
         var rules = new PropertyDayRuleService(
             asOtherOrg, Mock.Of<IOctorateBookingTargets>(), Mock.Of<IFeatureFlags>(), _configuration, NullLogger<PropertyDayRuleService>.Instance, _clock);
         var pricing = new PricingAdapterService(asOtherOrg, Mock.Of<IPricingAdapterConfigRepository>(), NullLogger<PricingAdapterService>.Instance, _clock);
-        var calendar = await new PublicCalendarService(asOtherOrg, pricing, _configuration, _clock, rules)
+        var calendar = await new PublicCalendarService(asOtherOrg, pricing, _configuration, rules, _clock)
             .GetAsync(_property.Id, night, night.AddDays(1));
 
         var day = Assert.Single(calendar.Days);

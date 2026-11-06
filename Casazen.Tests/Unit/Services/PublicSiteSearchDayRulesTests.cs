@@ -50,7 +50,7 @@ public class PublicSiteSearchDayRulesTests
         taxRates
             .Setup(r => r.GetActiveInPeriodAsync(It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<TouristTaxRate>());
-        var search = new PublicSiteSearchService(db, taxRates.Object, configuration, new PublicReadCache(configuration), clock, rules);
+        var search = new PublicSiteSearchService(db, taxRates.Object, configuration, new PublicReadCache(configuration), rules, clock);
 
         var result = await search.SearchStaysAsync(org, Criteria(Arrival, 2));
 
@@ -94,7 +94,7 @@ public class PublicSiteSearchDayRulesTests
             configuration,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<PropertyDayRuleService>.Instance,
             clock));
-        var search = new PublicSiteSearchService(db, Mock.Of<ITouristTaxRateRepository>(), configuration, new PublicReadCache(configuration), clock, rules);
+        var search = new PublicSiteSearchService(db, Mock.Of<ITouristTaxRateRepository>(), configuration, new PublicReadCache(configuration), rules, clock);
 
         var calendar = await search.GetSiteCalendarAsync(org, Arrival, Arrival.AddDays(3), 2, 0);
 

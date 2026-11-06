@@ -25,8 +25,8 @@ public sealed class PublicCalendarService(
     AppDbContext db,
     IPricingAdapterService pricing,
     IConfiguration configuration,
-    TimeProvider? timeProvider = null,
-    IPropertyDayRuleService? dayRules = null) : IPublicCalendarService
+    IPropertyDayRuleService dayRules,
+    TimeProvider? timeProvider = null) : IPublicCalendarService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly PublicOccupancyReader _occupancy = new(db, configuration, timeProvider);
@@ -93,8 +93,7 @@ public sealed class PublicCalendarService(
 
             // The rules of the days (NF-36): dates, numbers and flags of the property, public like its price; no guest data.
             IReadOnlyDictionary<DateOnly, DayRuleValues> rules = DayRuleStayChecks.NoRules;
-            if (dayRules is not null
-                && (await dayRules.GetRulesForSiteAsync([property.Id], first, end, cancellationToken)).TryGetValue(property.Id, out var ofProperty))
+            if ((await dayRules.GetRulesForSiteAsync([property.Id], first, end, cancellationToken)).TryGetValue(property.Id, out var ofProperty))
             {
                 rules = ofProperty;
             }

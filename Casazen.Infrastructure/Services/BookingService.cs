@@ -32,13 +32,13 @@ public class BookingService(
     OnSiteRequestNotifier onSiteNotifier,
     IPricingAdapterService pricingAdapterService,
     IChannelManagerAvailability channelManager,
+    IPropertyDayRuleService dayRules,
     TimeProvider? timeProvider = null,
     IStayDiscountService? stayDiscountService = null,
     IDomainEventRecorder? domainEvents = null,
     ICrmContactService? crmContacts = null,
     IMarketingConfirmationService? marketingConfirmation = null,
-    ICrmContactIndex? contactIndex = null,
-    IPropertyDayRuleService? dayRules = null) : IBookingService
+    ICrmContactIndex? contactIndex = null) : IBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -458,8 +458,7 @@ public class BookingService(
         var arrival = RomeCalendar.DateInRome(checkIn);
         var departure = RomeCalendar.DateInRome(checkOut);
         var rules = DayRuleStayChecks.NoRules;
-        if (dayRules is not null
-            && (await dayRules.GetRulesForSiteAsync([property.Id], arrival, departure.AddDays(1), cancellationToken)).TryGetValue(property.Id, out var ofProperty))
+        if ((await dayRules.GetRulesForSiteAsync([property.Id], arrival, departure.AddDays(1), cancellationToken)).TryGetValue(property.Id, out var ofProperty))
         {
             rules = ofProperty;
         }
