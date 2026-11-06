@@ -113,6 +113,13 @@ public static class EncryptedColumns
     public const string GuestContactPurpose = "Casazen.GuestContact";
 
     /// <summary>
+    /// Purpose of the invoice data of a booking (FIS-01, NF-81, E06/F02/US01/T01): the name, the fiscal code, the VAT number, the address and the PEC
+    /// of <see cref="BookingInvoiceData"/>, who an invoice is made out to. Personal data of a guest or of a company's contact; nothing is searched in
+    /// it. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string BookingInvoiceDataPurpose = "Casazen.BookingInvoiceData";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -219,6 +226,17 @@ public static class EncryptedColumns
             GuestContactPurpose,
             nameof(GuestContact.Value),
             nameof(GuestContact.DisplayName)),
+        // NF-81: who an invoice of a booking is made out to (E06/F02/US01/T01); the code of the SDI and the province are not personal data.
+        new EncryptedEntity<BookingInvoiceData>(
+            BookingInvoiceDataPurpose,
+            nameof(BookingInvoiceData.Name),
+            nameof(BookingInvoiceData.FiscalCode),
+            nameof(BookingInvoiceData.VatNumber),
+            nameof(BookingInvoiceData.AddressStreet),
+            nameof(BookingInvoiceData.AddressCivic),
+            nameof(BookingInvoiceData.PostalCode),
+            nameof(BookingInvoiceData.City),
+            nameof(BookingInvoiceData.Pec)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

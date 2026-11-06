@@ -329,6 +329,9 @@ public class AppDbContext(
     // The mirror of the CasaZen bookings on Octorate: the state of the last operation sent for each booking (E08/F01/US01/T01, ADR-031)
     public DbSet<OctorateBookingSync> OctorateBookingSyncs { get; set; } = null!;
 
+    // Who an invoice of a booking is made out to, one row for each booking, personal data encrypted (FIS-01, NF-81, E06/F02/US01/T01)
+    public DbSet<BookingInvoiceData> BookingInvoiceData { get; set; } = null!;
+
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
@@ -1678,6 +1681,12 @@ public class AppDbContext(
                 .HasDatabaseName(OctorateBookingSync.BookingIndexName);
             entity.HasIndex(s => new { s.OrgId, s.State });
         });
+
+        // ─── Invoice data and issuer of the documents (epic E06, NF-81, NF-82) ───────────────────────────────
+        // The invoice data of a booking: one row for each booking (unique BookingId), gone with the booking (cascade); the personal columns are
+        // encrypted by EncryptedColumns (no length) and xmin is the concurrency token. The tenant query filter is applied below, as to every
+        // ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new BookingInvoiceDataConfiguration());
 
         // A payment is recorded on its Octorate reservation once (E08/F01/US01/T01, AC-NF74-4): its transaction is unique in the org. Only
         // the payments recorded there are in the index.

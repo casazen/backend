@@ -17,6 +17,15 @@ public class EncryptedColumnsTests
         Assert.Equal(
             new[]
             {
+                // NF-81: who an invoice of a booking is made out to (name, fiscal code, VAT number, address, PEC).
+                "BookingInvoiceData.AddressCivic:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.AddressStreet:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.City:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.FiscalCode:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.Name:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.Pec:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.PostalCode:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.VatNumber:Casazen.BookingInvoiceData",
                 "DocumentImage.BackImageUrl:Casazen.DocumentImage",
                 "DocumentImage.FrontImageUrl:Casazen.DocumentImage",
                 "Guest.DocumentIssuingCountry:Casazen.Guest.Document",
