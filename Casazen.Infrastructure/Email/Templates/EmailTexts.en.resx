@@ -2250,4 +2250,31 @@
   <data name="SupplierAlternative_Unit_PerSquareMeter" xml:space="preserve">
     <value>per m²</value>
   </data>
+  <data name="BookingPaymentLink_Subject" xml:space="preserve">
+    <value>Payment for your stay - {0}</value>
+  </data>
+  <data name="BookingPaymentLink_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="BookingPaymentLink_Body" xml:space="preserve">
+    <value>here is the link to pay for your stay at &lt;strong&gt;{0}&lt;/strong&gt; from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt;.</value>
+  </data>
+  <data name="BookingPaymentLink_Amount" xml:space="preserve">
+    <value>Amount to pay: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="BookingPaymentLink_Cta" xml:space="preserve">
+    <value>Pay now</value>
+  </data>
+  <data name="BookingPaymentLink_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy this link into your browser:</value>
+  </data>
+  <data name="BookingPaymentLink_Secure" xml:space="preserve">
+    <value>The payment takes place on a secure Stripe page and goes straight to your host. If you receive a new link, always use the latest one: the previous one no longer works.</value>
+  </data>
+  <data name="BookingPaymentLink_NotYou" xml:space="preserve">
+    <value>If you do not recognise this booking, ignore this email and do not pay.</value>
+  </data>
+  <data name="TodoReason_OctorateDatesTaken" xml:space="preserve">
+    <value>The booking could not be created in your channel manager: the dates are taken</value>
+  </data>
 </root>

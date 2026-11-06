@@ -27,8 +27,10 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>Once.</b> The key is (org, Octorate reservation id), unique in the database; each reservation is applied under an advisory lock of
 /// that key, so the job and a webhook handler never make it twice. A version whose <c>updateTime</c> is not newer than the applied one changes
 /// nothing; an unchanged reservation is not even read again.</item>
-/// <item><b>The booking follows its room.</b> A reservation is found by (org, Octorate id) only. When a newer version of it is read from the room of
+/// <item><b>The booking follows its room.</b> A reservation is found by (org, Octorate id). When a newer version of it is read from the room of
 /// another property of the org, the booking is moved to that property (a modification is recorded), so its nights are not held on the old one.</item>
+/// <item><b>Its own echo.</b> A reservation CasaZen created has the booking code as <c>refer</c>. If it is read before the push saved its id, the booking
+/// of the same org and property with that code and no id is linked to it (id and version) and no second booking is made (E08/F01/US01).</item>
 /// <item><b>Events.</b> Recorded with <c>Origin = Octorate</c> in the same unit of work as the change (ids, enums and dates only), through
 /// <see cref="BookingEvents"/> and its keys. A stay that is already over, and a reservation first seen already cancelled, are stored for the
 /// record and raise none: nothing is to be told, scheduled or cleaned for them.</item>
@@ -355,6 +357,10 @@ public sealed class BookingImportService(
         if (booking is not null && (IsNotNewer(reservation.UpdatedAt, booking.OctorateUpdatedAt) || IsProtected(booking.UpdatedAt, options)))
             return Applied.Skipped;
 
+        // The echo of a reservation CasaZen created itself, read before the push saved its id: the booking is there, it is linked, not made again.
+        if (booking is null && await LinkOwnBookingAsync(target, reservation, ct))
+            return Applied.Skipped;
+
         if (reservation.Status is not { } remote)
         {
             logger.LogWarning("Octorate reservation {ReservationId} of property {PropertyId} has a status CasaZen does not know: not imported", reservation.Id, target.PropertyId);
@@ -461,6 +467,41 @@ public sealed class BookingImportService(
         await RecordChangeAsync(booking, statusChanged, propertyChanged || datesChanged || guestsChanged || moneyChanged, todayRome, ct);
         await db.SaveChangesAsync(ct);
         return Applied.Updated;
+    }
+
+    /// <summary>
+    /// A reservation CasaZen created itself (E08/F01/US01): its <c>refer</c> is the code of the booking that was pushed, and the booking of the same
+    /// org and property that holds that code and has no Octorate id yet is that booking, whose id the push has not saved yet (the reconciliation, a
+    /// webhook or a lookup that found nothing conclusive came first). It is linked (id and version) and nothing else changes: a second booking on the
+    /// same dates would make the push, which saves the same id later, hit the unique index of (org, Octorate id). <c>false</c> when there is no such
+    /// booking; a booking of a channel is never taken for it.
+    /// </summary>
+    private async Task<bool> LinkOwnBookingAsync(Target target, OctorateReservation reservation, CancellationToken ct)
+    {
+        var reference = reservation.Refer?.Trim();
+        if (string.IsNullOrEmpty(reference))
+            return false;
+
+        var own = await db.Bookings
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .FirstOrDefaultAsync(
+                b => b.OrgId == target.OrgId
+                     && b.PropertyId == target.PropertyId
+                     && b.BookingCode == reference
+                     && b.OctorateReservationId == null,
+                ct);
+        if (own is null || FiscalCopy.IsOtaBookingSource(own.Source))
+            return false;
+
+        own.OctorateReservationId = reservation.Id;
+        own.OctorateUpdatedAt = reservation.UpdatedAt ?? own.OctorateUpdatedAt;
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation(
+            "Octorate reservation {ReservationId} of property {PropertyId}: the echo of booking {BookingId}, linked to it and not imported again",
+            reservation.Id,
+            target.PropertyId,
+            own.Id);
+        return true;
     }
 
     private async Task<Applied> CreateAsync(
