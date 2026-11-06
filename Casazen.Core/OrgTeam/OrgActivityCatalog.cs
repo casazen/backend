@@ -87,11 +87,24 @@ public static class OrgActivityDetailKeys
     /// <summary>The random id of a handoff, returned to the client and kept with the line so the two can be matched (E03/F05/US01/T01).</summary>
     public const string Handoff = "handoff";
 
+    /// <summary>The code of the part of the activation plan a «Do it for me» request is about (<c>compliance</c>, <c>channels</c>...): a code of a closed list (E10/F01/US03/T01).</summary>
+    public const string Part = "part";
+
+    /// <summary>
+    /// What a «Do it for me» request asked help with (<c>panelPolice</c>, <c>panelIstat</c>, <c>panelChannelAccess</c>, <c>part</c>): a code of the closed list
+    /// <c>OnboardingAssistContexts</c>, never a text (E10/F01/US03/T01).
+    /// </summary>
+    public const string Context = "context";
+
+    /// <summary>Where a «Do it for me» request stands after the event (<c>requested</c>, <c>inProgress</c>, <c>done</c>, <c>cancelled</c>), a code (E10/F01/US03/T01).</summary>
+    public const string Status = "status";
+
     public static IReadOnlyList<string> All { get; } =
     [
         Role, FromRole, ToRole, Scope, Granted, Revoked, Released, FromTier, ToTier, Source, RequestedArea, FromMode, ToMode, EffectiveOn,
         FromAreas, ToAreas, Reminders, FromSender, ToSender, DelegationVersion,
         Topic, Booking, Period, Handoff,
+        Part, Context, Status,
     ];
 }
 
@@ -208,6 +221,13 @@ public static partial class OrgActivityCatalog
         // topic, the opaque handoff id and, when the request had them, the booking id and the period. Never a guest, never an outcome.
         new(OrgActivityType.OctorateComplianceHandoffStarted, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
             [OrgActivityDetailKeys.Topic, OrgActivityDetailKeys.Handoff, OrgActivityDetailKeys.Booking, OrgActivityDetailKeys.Period]),
+
+        // «Do it for me» (E10/F01/US03/T01, NF-15): a host asks CasaZen support to do a part or a panel step, and every staff action on the request.
+        // The line says which part, which context and where the request stands: never the draft, a note, a credential or a person.
+        new(OrgActivityType.OnboardingAssistRequested, OrgActivityArea.Account, OrgActivitySubjectType.Org,
+            [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status]),
+        new(OrgActivityType.OnboardingAssistUpdated, OrgActivityArea.Account, OrgActivitySubjectType.Org,
+            [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status]),
     ];
 
     /// <summary>Every event the log can record, in the order of the runbook.</summary>
