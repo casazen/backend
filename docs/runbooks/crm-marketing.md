@@ -33,7 +33,7 @@ While the flag is off `GET /api/public/features` answers `"crmMarketing": false`
 | `Crm__ConfirmationLinkValidityHours`, `Crm__ConfirmationMaxSends` | no | `72`, `3` | How long a double opt-in link works (1 to 720 hours) and how many confirmation messages one contact gets (1 to 10). Out of range: startup fails |
 | `Crm__DefaultCallingCode` | no | `+39` | The calling code a national phone number takes when the CRM normalizes it ([`crm-profiles.md`](crm-profiles.md) § 2.4): a plus sign and one to three digits. It is part of the keyed phone key, so leave it at `+39` and never change it once contacts exist. Not valid: startup fails |
 | `Gdpr__MarketingConsentVersion` | yes, to offer the marketing consent | none | Version of the text of the marketing consent ([`gdpr.md`](gdpr.md)). Without it the check-in and the checkout do not offer the consent |
-| `Gdpr__SoftOptInNoticeVersion` | for the soft opt-in | none | Version of the privacy notice shown to a direct customer (PO-07). **Introduced by the consent tasks** ([`crm-consent.md`](crm-consent.md)): the code does not read it yet |
+| `Gdpr__SoftOptInNoticeVersion` | for the soft opt-in | none | Version of the privacy notice shown to a direct customer (PO-07). Read by the public org (`softOptInNoticeVersion`) and by the checkout, which records the notice as presented only when the version sent back is this one ([`crm-consent.md`](crm-consent.md) § 4.1). Unset: no notice is shown or recorded and the customer's e-mail stays service only |
 | `SIGNED_LINK_SECRET` | yes, to send a campaign | none | Signs the unsubscribe and confirmation links ([`email.md`](email.md)); rotating it invalidates the links already sent |
 
 ## 3. The key (`Crm__ContactIndexKey`)

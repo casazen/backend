@@ -19,6 +19,19 @@ public record DirectBookingGuestInput(
 /// When the guest thinks they will arrive (DB-03b): <c>HH:mm</c> or <c>late</c> (after the check-in window), <c>null</c> when they
 /// do not say. Only a note for the host (<see cref="ArrivalTimeRules"/>): it changes no price, no availability and no check.
 /// </param>
+/// <param name="MarketingConsentEmail">
+/// The guest ticked the optional box for offers by e-mail (E07/F04/US01/T02, NF-90): never preselected, never required. The legacy
+/// <paramref name="MarketingConsent"/> counts as this channel. Like every consent it needs the version of its text.
+/// </param>
+/// <param name="MarketingConsentWhatsApp">
+/// The guest ticked the optional box for offers on WhatsApp: never preselected, never required. Needs a phone number that can be reached, else
+/// 422 <see cref="DirectBookingErrorCodes.WhatsAppRequiresPhone"/>.
+/// </param>
+/// <param name="SoftOptInNoticeVersion">
+/// The version of the soft opt-in notice (art. 130 c. 4 Codice privacy) the checkout showed, <c>null</c> when it showed none. The booking
+/// records that the notice was presented only when it is the configured one (<c>Gdpr:SoftOptInNoticeVersion</c>); any other is 409
+/// <see cref="DirectBookingErrorCodes.SoftOptInNoticeOutdated"/>.
+/// </param>
 public record DirectBookingCreateInput(
     Guid PropertyId,
     DateTime CheckInDate,
@@ -32,7 +45,10 @@ public record DirectBookingCreateInput(
     PaymentOption PaymentOption = PaymentOption.Immediate,
     IReadOnlyList<int>? ChildrenAges = null,
     bool MarketingConsent = false,
-    string? ExpectedArrivalTime = null);
+    string? ExpectedArrivalTime = null,
+    bool MarketingConsentEmail = false,
+    bool MarketingConsentWhatsApp = false,
+    string? SoftOptInNoticeVersion = null);
 
 /// <summary>Stay to price before booking (checkout quote).</summary>
 /// <param name="ChildrenAges">Age of each minor at check-in, needed when the tourist tax depends on it.</param>
@@ -256,6 +272,18 @@ public static class DirectBookingErrorCodes
     /// so it is not offered (<c>marketingConsentVersion</c> of the public org is null) and not accepted either.
     /// </summary>
     public const string MarketingConsentUnavailable = "direct_booking_marketing_consent_unavailable";
+
+    /// <summary>
+    /// 422: the checkout ticks the WhatsApp consent but the guest left no phone number that can be reached (E07/F04/US01/T02, NF-90): a consent
+    /// on a channel needs the address of that channel.
+    /// </summary>
+    public const string WhatsAppRequiresPhone = "direct_booking_whatsapp_requires_phone";
+
+    /// <summary>
+    /// 409: the checkout carries a <c>softOptInNoticeVersion</c> that is not the current one (<c>Gdpr:SoftOptInNoticeVersion</c>, or none is
+    /// configured any more): the notice the guest read is not the notice in force, so it is never recorded as presented.
+    /// </summary>
+    public const string SoftOptInNoticeOutdated = "direct_booking_soft_opt_in_notice_outdated";
 
     /// <summary>
     /// 422: the checkout carries an <c>expectedArrivalTime</c> that is neither <c>HH:mm</c> nor <c>late</c> (DB-03b,

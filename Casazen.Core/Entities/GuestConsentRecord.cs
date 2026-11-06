@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Multitenancy;
 
 namespace Casazen.Core.Entities;
@@ -45,7 +46,10 @@ public class GuestConsentRecord : ITenantOwned
     [MaxLength(50)]
     public string? IpAddress { get; set; }
 
-    /// <summary>How the guest asked the host to withdraw (date, channel): required for <see cref="GuestConsentSource.HostOnGuestRequest"/>. Cleared on anonymization.</summary>
+    /// <summary>
+    /// How the guest asked the host to withdraw (date, channel): required for <see cref="GuestConsentSource.HostOnGuestRequest"/>. On the row
+    /// of a marketing consent that is granted, the channel it was given on (<see cref="GuestConsentChannelNote"/>). Cleared on anonymization.
+    /// </summary>
     [MaxLength(500)]
     public string? Note { get; set; }
 
@@ -111,4 +115,26 @@ public enum GuestConsentSource
 
     /// <summary>The guest, on the guest page of a stay (NF-90).</summary>
     GuestPage = 6,
+}
+
+/// <summary>
+/// The channel a marketing consent was given on, as the row that grants it states it in <see cref="GuestConsentRecord.Note"/>
+/// (<c>channel=email</c>, <c>channel=whatsapp</c>). The register has no column for it, and a guest who ticks two channels at once leaves two rows
+/// that would otherwise be the same: the register is the proof of the act, so it names the channel. Nothing is written for a notice.
+/// </summary>
+public static class GuestConsentChannelNote
+{
+    /// <summary>A consent to offers by e-mail.</summary>
+    public const string Email = "channel=email";
+
+    /// <summary>A consent to offers on WhatsApp.</summary>
+    public const string WhatsApp = "channel=whatsapp";
+
+    /// <summary>The note of a consent on <paramref name="channel"/>; <c>null</c> for a channel a marketing consent is not given on.</summary>
+    public static string? For(GuestContactChannel channel) => channel switch
+    {
+        GuestContactChannel.Email => Email,
+        GuestContactChannel.WhatsApp => WhatsApp,
+        _ => null,
+    };
 }
