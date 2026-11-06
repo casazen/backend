@@ -68,6 +68,12 @@ the query of the call below.
 the ten minutes or past the maximum sends nothing. A message the e-mail queue refuses is not counted. A contact that is not an e-mail address with the
 person's consent (service only, an OTA forward, a phone number), that is already confirmed, or that is suppressed, gets none.
 
+**The limits hold when requests arrive together** (the welcome page and the guest page are public, so a script can call them many times at once).
+The send is **booked before the message is queued**, by one conditional `UPDATE` of the contact (not suppressed, not confirmed, fewer than the maximum
+sent, the last one at least ten minutes old) that also counts the send: of the requests for the same contact that arrive together, only the one whose
+update touched the row queues the e-mail, and the others answer "too soon" or "limit reached". When the queue refuses the message (or fails) the
+booking is given back, so the count never includes a message that was not queued. Proof: `MarketingConfirmationConcurrencyPostgresTests` (PostgreSQL).
+
 **What the click also does**: `ICrmContactService.MarkConfirmedAsync` (the only call that sets `Confirmed`) and, for the rows of the per-channel
 consent that the online check-in recorded before the contacts existed (`MarketingConsentRecord`), the confirmation of the same guest and the same
 address, so the profile of the guest reads it too.

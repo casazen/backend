@@ -17,6 +17,10 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Rules before anything is queued</b>, in this order: the contact exists in the org; it is not suppressed; it is an e-mail address
 /// with a consent that is not confirmed yet; fewer than <c>Crm:ConfirmationMaxSends</c> messages were sent; the last one was sent ten minutes
 /// ago or more. A message that could not be queued is not counted.</item>
+/// <item><b>The send is booked, then queued.</b> The same rules are the <c>WHERE</c> of one conditional <c>UPDATE</c> that also counts the
+/// send, and only the request whose update touched the row queues the message: requests that reach the same contact together (a script on the
+/// public pages, a double click) find the send already booked and queue nothing, so the limits hold whatever the concurrency. When the queue
+/// refuses the message the send is given back.</item>
 /// <item><b>The e-mail</b> is rendered in the language of the contact (<see cref="EmailTemplates.CultureOf"/>: English for <c>en</c>, Italian
 /// for everything else) with the public name of the org, and queued through <see cref="IEmailQueue"/> (Hangfire), never sent inside the
 /// request.</item>
@@ -46,23 +50,14 @@ public class MarketingConfirmationService(
         Guid contactId,
         CancellationToken cancellationToken = default)
     {
-        var contact = await db.GuestContacts.FirstOrDefaultAsync(c => c.OrgId == orgId && c.Id == contactId, cancellationToken);
+        // Not tracked: the booking of the send below is an update of the row itself, so a copy kept by this context would be out of date at once.
+        var contact = await db.GuestContacts.AsNoTracking().FirstOrDefaultAsync(c => c.OrgId == orgId && c.Id == contactId, cancellationToken);
         if (contact is null)
             return MarketingConfirmationSendOutcome.ContactNotFound;
 
-        // The person asked not to be written to: nothing goes out, whatever consent was recorded on the contact afterwards.
-        if (contact.IsSuppressed)
-            return MarketingConfirmationSendOutcome.Suppressed;
-
-        if (!NeedsConfirmation(contact))
-            return MarketingConfirmationSendOutcome.NotRequired;
-
-        if (contact.ConfirmationSentCount >= options.Value.ConfirmationMaxSends)
-            return MarketingConfirmationSendOutcome.LimitReached;
-
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        if (contact.ConfirmationSentAt is { } sentAt && now - sentAt < MinimumInterval)
-            return MarketingConfirmationSendOutcome.TooSoon;
+        if (RefusalOf(contact, now) is { } refusal)
+            return refusal;
 
         string confirmUrl;
         MarketingConfirmationLink link;
@@ -90,25 +85,41 @@ public class MarketingConfirmationService(
             confirmUrl,
             link.ExpiresAtUtc);
 
-        // Queued before it is counted: a message the queue refused (no e-mail provider configured) must not use up one of the sends.
-        if (!emailQueue.Enqueue(contact.Value, content, EmailTemplates.Names.MarketingConfirmation))
+        // The send is booked BEFORE the message is queued, by one conditional update: of the requests that reach the contact together, only
+        // one finds the limits still open and goes on. A read of the counters followed by the queue and a save would let all of them through.
+        if (!await BookSendAsync(contact, now, cancellationToken))
+        {
+            // Another request booked the send first, or the person confirmed or opted out meanwhile: the answer says why, from the row as it is now.
+            var current = await db.GuestContacts.AsNoTracking().FirstOrDefaultAsync(c => c.OrgId == orgId && c.Id == contactId, cancellationToken);
+            return current is null
+                ? MarketingConfirmationSendOutcome.ContactNotFound
+                : RefusalOf(current, now) ?? MarketingConfirmationSendOutcome.TooSoon;
+        }
+
+        var queued = false;
+        try
+        {
+            queued = emailQueue.Enqueue(contact.Value, content, EmailTemplates.Names.MarketingConfirmation);
+        }
+        finally
+        {
+            // A message the queue refused (no e-mail provider configured), or a queue that failed, must not use up one of the sends.
+            if (!queued)
+                await GiveBackSendAsync(contact, CancellationToken.None);
+        }
+
+        if (!queued)
         {
             logger.LogWarning(
                 "Marketing confirmation of contact {ContactId} of org {OrgId} not queued: the e-mail queue refused it", contact.Id, orgId);
             return MarketingConfirmationSendOutcome.Unavailable;
         }
 
-        contact.Confirmation = GuestContactConfirmation.Pending;
-        contact.ConfirmationSentAt = now;
-        contact.ConfirmationSentCount++;
-        contact.UpdatedAt = now;
-        await db.SaveChangesAsync(cancellationToken);
-
         logger.LogInformation(
             "Marketing confirmation of contact {ContactId} of org {OrgId} queued (send {SendCount})",
             contact.Id,
             orgId,
-            contact.ConfirmationSentCount);
+            contact.ConfirmationSentCount + 1);
         return MarketingConfirmationSendOutcome.Queued;
     }
 
@@ -156,6 +167,124 @@ public class MarketingConfirmationService(
 
         await ConfirmLegacyRowsAsync(contact, cancellationToken);
         return alreadyConfirmed ? MarketingConfirmationOutcome.AlreadyConfirmed : MarketingConfirmationOutcome.Confirmed;
+    }
+
+    /// <summary>
+    /// Why nothing is sent to the contact now, by the rules in their order; <c>null</c> when a message can go. Only what the contact looked like
+    /// when it was read: the booking of the send (<see cref="BookSendAsync"/>) applies the same limits to the row itself.
+    /// </summary>
+    private MarketingConfirmationSendOutcome? RefusalOf(GuestContact contact, DateTime now)
+    {
+        // The person asked not to be written to: nothing goes out, whatever consent was recorded on the contact afterwards.
+        if (contact.IsSuppressed)
+            return MarketingConfirmationSendOutcome.Suppressed;
+
+        if (!NeedsConfirmation(contact))
+            return MarketingConfirmationSendOutcome.NotRequired;
+
+        if (contact.ConfirmationSentCount >= options.Value.ConfirmationMaxSends)
+            return MarketingConfirmationSendOutcome.LimitReached;
+
+        if (contact.ConfirmationSentAt is { } sentAt && now - sentAt < MinimumInterval)
+            return MarketingConfirmationSendOutcome.TooSoon;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Counts one more send on the contact, once and only if the limits are still open in the database: the person is not suppressed nor
+    /// confirmed, fewer than <c>Crm:ConfirmationMaxSends</c> messages were sent, and the last one went out at least ten minutes ago. One
+    /// conditional <c>UPDATE</c>, so of the requests that arrive together exactly one gets <c>true</c>. Without a relational database (the
+    /// in-memory store of the unit tests: no bulk update, no concurrent writer) the same rules are applied to the tracked row.
+    /// </summary>
+    private async Task<bool> BookSendAsync(GuestContact seen, DateTime now, CancellationToken cancellationToken)
+    {
+        var maxSends = options.Value.ConfirmationMaxSends;
+        var latestSentAt = now - MinimumInterval;
+
+        if (db.Database.IsRelational())
+        {
+            var booked = await db.GuestContacts
+                .Where(c => c.OrgId == seen.OrgId
+                    && c.Id == seen.Id
+                    && !c.IsSuppressed
+                    && c.Confirmation != GuestContactConfirmation.Confirmed
+                    && c.ConfirmationSentCount < maxSends
+                    && (c.ConfirmationSentAt == null || c.ConfirmationSentAt <= latestSentAt))
+                .ExecuteUpdateAsync(
+                    set => set
+                        .SetProperty(c => c.Confirmation, GuestContactConfirmation.Pending)
+                        .SetProperty(c => c.ConfirmationSentAt, (DateTime?)now)
+                        .SetProperty(c => c.ConfirmationSentCount, c => c.ConfirmationSentCount + 1)
+                        .SetProperty(c => c.UpdatedAt, now),
+                    cancellationToken);
+            if (booked == 0)
+                return false;
+
+            await ReloadTrackedAsync(seen.Id, cancellationToken);
+            return true;
+        }
+
+        var contact = await db.GuestContacts.FirstOrDefaultAsync(c => c.OrgId == seen.OrgId && c.Id == seen.Id, cancellationToken);
+        if (contact is null
+            || contact.IsSuppressed
+            || contact.Confirmation == GuestContactConfirmation.Confirmed
+            || contact.ConfirmationSentCount >= maxSends
+            || (contact.ConfirmationSentAt is { } sentAt && sentAt > latestSentAt))
+        {
+            return false;
+        }
+
+        contact.Confirmation = GuestContactConfirmation.Pending;
+        contact.ConfirmationSentAt = now;
+        contact.ConfirmationSentCount++;
+        contact.UpdatedAt = now;
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Takes back the send <see cref="BookSendAsync"/> counted, because the message was not queued: the counter, the time of the last send and
+    /// the confirmation go back to what <paramref name="before"/> (the contact as it was read) held. No other request can have booked a send
+    /// in between: the one just booked closes the contact for ten minutes.
+    /// </summary>
+    private async Task GiveBackSendAsync(GuestContact before, CancellationToken cancellationToken)
+    {
+        if (db.Database.IsRelational())
+        {
+            await db.GuestContacts
+                .Where(c => c.OrgId == before.OrgId && c.Id == before.Id && c.ConfirmationSentCount > 0)
+                .ExecuteUpdateAsync(
+                    set => set
+                        .SetProperty(c => c.Confirmation, before.Confirmation)
+                        .SetProperty(c => c.ConfirmationSentAt, before.ConfirmationSentAt)
+                        .SetProperty(c => c.ConfirmationSentCount, c => c.ConfirmationSentCount - 1)
+                        .SetProperty(c => c.UpdatedAt, before.UpdatedAt),
+                    cancellationToken);
+            await ReloadTrackedAsync(before.Id, cancellationToken);
+            return;
+        }
+
+        var contact = await db.GuestContacts.FirstOrDefaultAsync(c => c.OrgId == before.OrgId && c.Id == before.Id, cancellationToken);
+        if (contact is null || contact.ConfirmationSentCount == 0)
+            return;
+
+        contact.Confirmation = before.Confirmation;
+        contact.ConfirmationSentAt = before.ConfirmationSentAt;
+        contact.ConfirmationSentCount--;
+        contact.UpdatedAt = before.UpdatedAt;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The conditional updates bypass the change tracker: a copy of the contact that this context tracks (the one a collection point has just
+    /// recorded) is read again, so that no later save of the same unit of work writes the old counters back.
+    /// </summary>
+    private async Task ReloadTrackedAsync(Guid contactId, CancellationToken cancellationToken)
+    {
+        var entry = db.ChangeTracker.Entries<GuestContact>().FirstOrDefault(e => e.Entity.Id == contactId && e.State == EntityState.Unchanged);
+        if (entry is not null)
+            await entry.ReloadAsync(cancellationToken);
     }
 
     /// <summary>
