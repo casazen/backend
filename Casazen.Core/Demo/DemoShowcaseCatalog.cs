@@ -71,6 +71,7 @@ public static class DemoShowcaseCatalog
         public const string ReportYearOverYear = "report-year-over-year";
         public const string ListingChannelStates = "listing-channel-states";
         public const string PropertyRoomsAndDiscounts = "property-rooms-and-discounts";
+        public const string PopupAlerts = "popup-alerts";
         public const string WizardDrafts = "wizard-drafts";
     }
 
@@ -116,6 +117,7 @@ public static class DemoShowcaseCatalog
         Scenario.ReportYearOverYear,
         Scenario.ListingChannelStates,
         Scenario.PropertyRoomsAndDiscounts,
+        Scenario.PopupAlerts,
         Scenario.WizardDrafts,
     ];
 
@@ -600,6 +602,20 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
+    /// Popup alerts of the demo host (NF-08, ADR-025): one open and one snoozed, so the queue of the host shows an alert at once and has
+    /// another one coming back later. They are written for the owner of the org at reset, point at the demo stays and houses by key
+    /// (<see cref="DemoPopupAlertTemplate.PropertyKey"/>, <see cref="DemoPopupAlertTemplate.BookingKey"/>) and carry no text and no
+    /// personal data: a type, a reference and an urgency, like every alert.
+    /// </summary>
+    public static IReadOnlyList<DemoPopupAlertTemplate> PopupAlerts { get; } =
+    [
+        // Open: the check-in of the stay that arrives in two weeks is still to do. Pending as soon as the host opens the app.
+        new("check-in-da-completare", AlertType.CheckInPending, "villa-lago", "arrivo", AlertUrgency.High, null, Scenario.PopupAlerts),
+        // Snoozed: the host chose «Remind me later» on the house still in draft; the alert comes back in three hours.
+        new("bozza-da-completare", AlertType.ComplianceIssue, DraftKey, null, AlertUrgency.Normal, 3, Scenario.PopupAlerts),
+    ];
+
+    /// <summary>
     /// Wizard drafts demo (ADR-024): one half-filled draft of the demo host (a manual booking left at the guest step), so that the screens
     /// that resume a draft have one to show. The typed data is invented (the guest is <c>@example.com</c> and the name says TEST); the
     /// reset splits it as the service does, so the guest's name, e-mail and phone are stored encrypted and the rest in clear. Saved two days
@@ -881,6 +897,27 @@ public sealed record DemoRoutineTemplate(
     int DaysBefore,
     RoutineActionType ActionType,
     bool IsTestMode,
+    string Scenario);
+
+/// <summary>
+/// A popup alert of the demo host (NF-08, ADR-025): invented like the rest of the demo, written for the owner of the org at reset and
+/// marked as showcase data (<c>TestDataEntities.PopupAlert</c>), so the next reset deletes it. It names what it is about by key: the demo
+/// stay <paramref name="BookingKey"/> of the house <paramref name="PropertyKey"/>, or the house itself when there is no booking key.
+/// </summary>
+/// <param name="Key">Stable key of the alert inside the template.</param>
+/// <param name="Type">What the alert is about.</param>
+/// <param name="PropertyKey">The demo property (<see cref="DemoPropertyTemplate.Key"/>) the alert is about, or the one of the stay.</param>
+/// <param name="BookingKey">The demo stay (<see cref="DemoBookingTemplate.Key"/>) of that property; <c>null</c> = the alert is about the property.</param>
+/// <param name="Urgency">How urgent it is.</param>
+/// <param name="SnoozedForHours">Hours from the reset until the alert is pending again (it was snoozed); <c>null</c> = open, pending at once.</param>
+/// <param name="Scenario">The scenario it exercises.</param>
+public sealed record DemoPopupAlertTemplate(
+    string Key,
+    AlertType Type,
+    string PropertyKey,
+    string? BookingKey,
+    AlertUrgency Urgency,
+    int? SnoozedForHours,
     string Scenario);
 
 /// <summary>

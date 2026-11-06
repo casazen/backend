@@ -2059,6 +2059,12 @@
   <data name="PropertyOwnerNotFound" xml:space="preserve">
     <value>Property owner not found.</value>
   </data>
+  <data name="PopupAlertCannotSnoozePastDeadline" xml:space="preserve">
+    <value>You cannot snooze this alert past its legal deadline: choose a time that comes before the deadline.</value>
+  </data>
+  <data name="PopupAlertRemindAtRequired" xml:space="preserve">
+    <value>Say when you want to be reminded again (date and time).</value>
+  </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, period=Last30Days or period=Next30Days.</value>
   </data>

@@ -251,6 +251,10 @@ public class AppDbContext(
     // The bell of the shell: one row per user and event, written next to the push of the same event (UI-12a)
     public DbSet<InAppNotification> InAppNotifications { get; set; } = null!;
 
+    // The popup alerts of a user (shown outside the wizard, «Do now» / «Remind me later») and the quiet hours that hold them back (NF-08, NF-22, ADR-025)
+    public DbSet<PopupAlert> PopupAlerts { get; set; } = null!;
+    public DbSet<UserNotificationPreferences> UserNotificationPreferences { get; set; } = null!;
+
     // Approval queue for items requiring human decision before taking effect (NF-06)
     public DbSet<ApprovalQueueItem> ApprovalQueueItems { get; set; } = null!;
 
@@ -1479,6 +1483,11 @@ public class AppDbContext(
 
         // ─── In-app notifications (UI-12a) ──────────────────────────────────────
         modelBuilder.ApplyConfiguration(new InAppNotificationConfiguration());
+
+        // ─── Popup alerts and the quiet hours of the users (NF-08, NF-22, ADR-025) ──────
+        // Both go with the user and with the org (ON DELETE CASCADE); the preferences are unique per (org, user).
+        modelBuilder.ApplyConfiguration(new PopupAlertConfiguration());
+        modelBuilder.ApplyConfiguration(new UserNotificationPreferencesConfiguration());
 
         // ─── Verified reviews (DB-12a) ──────────────────────────────────────────
         // A review goes with its booking and its property (a property is soft-deleted, so in practice it stays for good): the host has no

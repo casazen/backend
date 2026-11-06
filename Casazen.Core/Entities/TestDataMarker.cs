@@ -70,6 +70,12 @@ public static class TestDataEntities
     /// <summary>A length-of-stay discount tier of a property (NF-35); goes with its property.</summary>
     public const string PropertyStayDiscount = "PropertyStayDiscount";
 
+    /// <summary>
+    /// A popup alert of the demo host (NF-08, ADR-025). It points at a demo stay or house by id and has no foreign key to it, so the reset
+    /// deletes it by its marker before it deletes the stays and the houses.
+    /// </summary>
+    public const string PopupAlert = "PopupAlert";
+
     /// <summary>A saved draft of a wizard (<see cref="WizardDraft"/>): the demo host's, written by the showcase and deleted by its reset.</summary>
     public const string WizardDraft = "WizardDraft";
 }

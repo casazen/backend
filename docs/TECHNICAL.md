@@ -173,6 +173,9 @@ There are **48** controller source files under `Casazen.Web/Controllers/`. The s
 | `GET` | `/api/me/activities` | JWT (`Authenticated`; the caller's `HostScope`) | ADR-026, NF-07: the caller's «To do» list, the open items of its org (`InternalActivities` rows with an `action`, `CompletedAt` null) its scope reaches: a collaborator «Solo alcuni» only the items of the properties it was given, never an organization-level item (no property); sorted by the server, urgency `High` first, then `dueAt` (none last), then creation; at most 50: `[{ id, activityType, action, entityType, entityId, propertyId, dueAt, urgency, reason, createdAt }]`. No personal or staff data (no person, rate, note): the client reads the detail from the entity's API and maps `action` to its route (`ACTION_ROUTE_MAP`). `private, no-store`; empty for a caller with no org or scope |
 | `GET` | `/api/me/activities/count` | same | `{ count }`: the open `High` items of the list (the nav badge) |
 | `POST` | `/api/me/activities/{id}/close` | short-rent `property.write` (`PropertyWrite`, on top of `Authenticated`; the caller's `HostScope`) | Closes an item by hand (`Status` `Completed`, `CompletedAt`, `ClosedBy` = the caller); 204, idempotent; 403 for a caller without `property.write` in the short-rent context (a role that only reads, the accountant or a collaborator with no write permission: it reads the list and the count but closes nothing), before anything is looked up; 404 for an item the caller's scope does not reach (a property not given, another org, unknown). The items are raised and closed by the system through `IInternalActivityService.CreateAsync` / `CloseAsync` (idempotent per type and entity while open) and `ActivityAutoCloseHandler` (`CheckInCompleted` closes `CheckInPending` and `BookingSpecialRequest`, `CheckOutCompleted` closes `CheckOutPending`, `BookingCancelled` closes `BookingSpecialRequest`, `PropertyReadyDeclared` closes `CleaningDue`, `AlloggiatiReceiptArrived` closes `AlloggiatiDeadline` and `ReceiptToRetrieve`, for the event's booking). The booking events (ADR-022, E08/F06) are recorded in the outbox by the services that change a booking, in the same save as the change (`BookingEvents`): `BookingCreated`, `BookingConfirmed`, `BookingModified`, `BookingCancelled`, `CheckInCompleted`, `CheckOutCompleted`, `PropertyReadyDeclared`, with a payload of ids, enums and dates only (`BookingEventPayload`: booking, property, source, origin Host, Guest, System or Octorate, status, check-in, check-out) and the dedup keys `booking-created:{id}`, `booking-confirmed:{id}`, `booking-cancelled:{id}`, `booking-modified:{id}:{UpdatedAt}`, `checkin:{id}`, `checkout:{id}`, `property-ready:{id}`; their consumers raise «Check-out completato senza una pulizia richiesta» (`CleaningDue`, action `CompleteCheckOut`, due at the next arrival, `High` within 48 hours), «Nuova prenotazione con una richiesta speciale» (`BookingSpecialRequest`, action `ReviewBooking`) and, for a booking whose origin is Octorate, the new-booking push to the hosts; a closed row is kept for the audit |
+| `GET` | `/api/me/alerts/pending` | JWT (`Authenticated`; the caller's `HostScope`) | ADR-025, NF-08: the caller's popup alerts that are pending (`PopupAlerts` rows of the caller, in its org, `DismissedAt` null and `RemindAt` null or already passed), narrowed to its scope: an owner, an administrator, a manager or a collaborator with every property sees them all; a collaborator «Solo alcuni» only the ones about a `Booking` or a `Property` it was given, never an org-level one (ADR-025-R4). Sorted by the server, urgency `High` first, then the oldest: `[{ alertId, alertType, entityType, entityId, urgency }]`, the two enums by name. **No personal data and no text** (ADR-025-R5): the client reads the detail from the API of the entity. `private, no-store`; empty for a caller with no org or scope. The alerts are written by `IAlertRouter` (quiet hours 22:00-08:00 on the clock of Rome, legal alerts excepted) and pushed on the SignalR hub `/hubs/notifications`, client method `alertReceived`, with the same five fields |
+| `POST` | `/api/me/alerts/{id}/dismiss` | same | Dismisses one alert of the caller (`DismissedAt`); 204, idempotent (the first instant is kept); no body needed. 404 for an alert that is not the caller's (another user's, another org's, unknown), never 403 |
+| `PATCH` | `/api/me/alerts/{id}/remind` | same | «Remind me later»: body `{ "remindAt": "<ISO 8601 with offset>" }`; sets `RemindAt` and clears `DeliveredAt`, so the job `popup-alert-due` pushes the alert again when the snooze ends; 204. **400 `cannot_snooze_past_deadline`** when the alert has a legal `Deadline` and `remindAt` is after it (ADR-025-R10); 400 `validation_error` without `remindAt`; an alert already dismissed stays dismissed (204); 404 as for dismiss |
 
 #### Multi-tenancy (orgs & workspace)
 
@@ -1291,6 +1294,30 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | `DeliveryKey` | `string` (200) | — | The key of the push of the same event |
 | | | **unique** `(DeliveryKey, UserId)` (`UIX_InAppNotifications_DeliveryKey_UserId`), indexes on `(UserId, ReadAt, CreatedAt)`, `CreatedAt`, `OrgId` | Once per event and user |
 | `CreatedAt`, `ReadAt` | `DateTime`, `DateTime?` | — | The instant of the event (UTC, microseconds); `null` while unread. Deleted 90 days after `CreatedAt` (`docs/runbooks/in-app-notifications.md`) |
+
+#### `PopupAlert` (NF-08, ADR-025)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (CASCADE), tenant key (`ITenantOwned`) | The host org of the alerted user |
+| `UserId` | `string` (255) | FK `Users` (CASCADE) | The alerted user (the Auth0 subject) |
+| `AlertType` | `string` (50) | stored by name | `BookingNeedsReview`, `CheckInPending`, `CheckOutPending`, `AlloggiatiDeadline`, `IstatDeadline`, `ComplianceIssue`, `ChannelSyncError`; the client writes the title from it. The Alloggiati and ISTAT alerts are the legal ones: they bypass the quiet hours |
+| `EntityType`, `EntityId` | `string` (64), `Guid` | not a key | What the alert is about (`Booking`, `Property`, ...); the client reads the detail from the API of that entity. No name, no text |
+| `Urgency` | `int` | `Low` = 1, `Normal` = 2, `High` = 3 | Stored as the number: the pending list is sorted by it descending |
+| `CreatedAt`, `DismissedAt`, `RemindAt`, `Deadline`, `DeliveredAt` | `DateTime`, `DateTime?` ×4 | UTC | Raised; dismissed (never pending again); pending from this instant (the end of the quiet hours, or of the snooze; `null` = at once); the legal deadline a snooze cannot pass; when the alert was last pushed to the open sessions (cleared by a snooze) |
+| | | indexes on `(UserId, DismissedAt, RemindAt)` (`IX_PopupAlerts_UserId_DismissedAt_RemindAt`, the pending list) and on `RemindAt` where the alert is waiting for its push (`IX_PopupAlerts_RemindAt_Due`, the job), and on `OrgId` | Alerts are never deleted by a job (no retention yet); they go with the user and with the org |
+
+#### `UserNotificationPreferences` (NF-08, ADR-025)
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | FK `Orgs` (CASCADE), tenant key (`ITenantOwned`) | The host org of the user |
+| `UserId` | `string` (255) | FK `Users` (CASCADE) | The user |
+| `QuietHoursStart`, `QuietHoursEnd` | `TimeOnly` | default 22:00 and 08:00 | Wall-clock times of Europe/Rome; a window that ends before it starts runs over midnight; equal times are an empty window |
+| `LegalAlertsOverrideQuietHours` | `bool` | default `true` | Stored for the notifications page; the router lets the legal alerts through whatever it says (ADR-025-R3) |
+| | | **unique** `(OrgId, UserId)` (`UIX_UserNotificationPreferences_OrgId_UserId`) | One row per user, created with the defaults the first time an alert is routed to it |
 
 #### `WizardDraft` (ADR-024, E01/F02)
 
