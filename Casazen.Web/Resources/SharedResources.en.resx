@@ -2213,7 +2213,7 @@
     <value>Invalid view: use one of the names all, toConfirm, upcoming, inProgress, completed or cancelled.</value>
   </data>
   <data name="BookingListInvalidChannel" xml:space="preserve">
-    <value>Invalid channel: use the names Direct, Manual, Airbnb, BookingCom or Other, repeated or separated by commas.</value>
+    <value>Invalid channel: use the names Direct, Manual, Airbnb, BookingCom, Expedia, Vrbo, TripAdvisor, Agoda or Other (every other source), repeated or separated by commas.</value>
   </data>
   <data name="BookingListInvalidCheckInStatus" xml:space="preserve">
     <value>Invalid check-in status: use the names NotSent, Sent, InProgress, Completed or Expired, repeated or separated by commas.</value>

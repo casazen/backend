@@ -2213,7 +2213,7 @@
     <value>Vista non valida: usa uno dei nomi all, toConfirm, upcoming, inProgress, completed o cancelled.</value>
   </data>
   <data name="BookingListInvalidChannel" xml:space="preserve">
-    <value>Canale non valido: usa i nomi Direct, Manual, Airbnb, BookingCom o Other, ripetuti o separati da virgole.</value>
+    <value>Canale non valido: usa i nomi Direct, Manual, Airbnb, BookingCom, Expedia, Vrbo, TripAdvisor, Agoda o Other (ogni altra origine), ripetuti o separati da virgole.</value>
   </data>
   <data name="BookingListInvalidCheckInStatus" xml:space="preserve">
     <value>Stato del check-in non valido: usa i nomi NotSent, Sent, InProgress, Completed o Expired, ripetuti o separati da virgole.</value>
