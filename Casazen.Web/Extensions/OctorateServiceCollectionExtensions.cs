@@ -61,6 +61,11 @@ public static class OctorateServiceCollectionExtensions
         services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingStatePushHandler>();
         services.AddScoped<OctorateBookingStatePushJob>();
 
+        // The calendar of the listings (E02/F02/US01/T03): the hand-over of the iCal feeds of a channel to Octorate, and the job that reads the
+        // calendar every 15 minutes and calls it after a successful read (scheduled only while Features:OctorateConnector is on).
+        services.AddScoped<ICalMigrationService>();
+        services.AddScoped<CalendarSyncJob>();
+
         return services;
     }
 }

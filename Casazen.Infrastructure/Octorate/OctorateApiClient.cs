@@ -42,6 +42,9 @@ public sealed class OctorateApiClient(
     /// <summary>The pages of accommodations read at most in one listing (pages are numbered from 0).</summary>
     private const int MaxAccommodationPages = 50;
 
+    /// <summary>The most products one call of the calendar read names (Octorate answers at most 20 products a call).</summary>
+    internal const int MaxCalendarProducts = 20;
+
     /// <summary>The <c>type</c> of Octorate's 403 for an access token that is not valid (any more): refresh and retry once.</summary>
     private const string ApiLoginInvalidType = "ApiLoginInvalid";
 
@@ -185,6 +188,47 @@ public sealed class OctorateApiClient(
         using var document = await GetJsonAsync(
             $"/rest/v1/reservation/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}", "reservation", ct);
         return OctorateReservationReader.Read(Unwrap(document.RootElement), reservation) ?? throw new OctorateServerException(null);
+    }
+
+    public async Task<OctorateCalendarDay[]> GetCalendarAsync(
+        string accommodationId,
+        IReadOnlyCollection<string> productIds,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(productIds);
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var products = productIds.Select(p => CheckedId(p, nameof(productIds))).Distinct(StringComparer.Ordinal).ToList();
+        if (products.Count == 0)
+            throw new ArgumentException("A calendar read names at least one product.", nameof(productIds));
+        if (to < from)
+            throw new ArgumentException("The last day of the calendar is before its first day.", nameof(to));
+
+        var days = new List<OctorateCalendarDay>();
+        foreach (var chunk in products.Chunk(MaxCalendarProducts))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // `dateTo` is included, as Octorate documents it.
+            var path = string.Create(
+                CultureInfo.InvariantCulture,
+                $"/rest/v1/calendar/{Uri.EscapeDataString(accommodation)}?dateFrom={from:yyyy-MM-dd}&dateTo={to:yyyy-MM-dd}&products={Uri.EscapeDataString(string.Join(',', chunk))}");
+            using var document = await GetJsonAsync(path, "calendar", ct);
+
+            var read = OctorateCalendarReader.Read(document.RootElement, chunk);
+            if (read.Count == 0)
+            {
+                // A calendar with no day for a range that is not empty is an answer that was not understood: never an empty calendar.
+                logger.LogWarning(
+                    "Octorate calendar of org {OrgId}: no day could be read from the answer for {Products} products", orgScope.OrgId, chunk.Length);
+                throw new OctorateServerException(null);
+            }
+
+            days.AddRange(read);
+        }
+
+        return [.. days];
     }
 
     public async Task CancelReservationAsync(string accommodationId, string reservationId, CancellationToken ct)

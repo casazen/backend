@@ -740,6 +740,11 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("FeedId", "ExternalUid")
                         .IsUnique();
 
+                    b.HasIndex("PropertyId", "ExternalUid")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_CalendarBlocks_PropertyId_ExternalUid_Octorate")
+                        .HasFilter("\"Source\" = 2");
+
                     b.ToTable("CalendarBlocks");
                 });
 
@@ -5478,6 +5483,12 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Deprecated")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("DeprecatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ImportUrl")

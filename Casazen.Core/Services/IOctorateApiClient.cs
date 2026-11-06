@@ -53,6 +53,19 @@ public interface IOctorateApiClient
     /// <summary>One reservation with its payments and price breakdown (<c>GET /rest/v1/reservation/{acc}/{id}</c>); 404 is <c>OctorateNotFoundException</c>.</summary>
     Task<OctorateReservation> GetReservationAsync(string accommodationId, string reservationId, CancellationToken ct);
 
+    /// <summary>
+    /// The calendar of the given products of an accommodation from <paramref name="from"/> to <paramref name="to"/>, both included
+    /// (<c>GET /rest/v1/calendar/{acc}</c>, E02/F02/US01/T03; at most 20 products a call, more are asked in several calls). An answer that
+    /// holds no recognizable day for a non-empty range is <c>OctorateServerException</c>, never an empty calendar: a caller that deprecates
+    /// something after a successful read must not do it on an answer it could not read.
+    /// </summary>
+    Task<OctorateCalendarDay[]> GetCalendarAsync(
+        string accommodationId,
+        IReadOnlyCollection<string> productIds,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken ct);
+
     /// <summary>Cancels a reservation (<c>DELETE /rest/v1/reservation/{acc}/{id}</c>): a change of the status to <c>CANCELLED</c> with <c>PATCH</c> answers 400.</summary>
     Task CancelReservationAsync(string accommodationId, string reservationId, CancellationToken ct);
 

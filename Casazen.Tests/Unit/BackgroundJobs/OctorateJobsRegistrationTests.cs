@@ -28,6 +28,7 @@ public class OctorateJobsRegistrationTests
     [
         OctorateBookingImportJob.RecurringJobId,
         OctorateBookingSyncJob.RecurringJobId,
+        CalendarSyncJob.RecurringJobId,
     ];
 
     [Fact]
@@ -59,6 +60,28 @@ public class OctorateJobsRegistrationTests
         Assert.Equal(nameof(OctorateBookingSyncJob.ExecuteAsync), sync.Job.Method.Name);
         Assert.Equal(TimeSpan.FromMinutes(5), OctorateBookingSyncJob.OptimisticWindow);
         manager.Verify(m => m.RemoveIfExists(OctorateBookingSyncJob.RecurringJobId), Times.Never);
+    }
+
+    [Fact]
+    public void Configure_OctorateConnectorOn_SchedulesTheCalendarSyncEveryFifteenMinutes_NextToTheICalSyncThatKeepsItsOwn()
+    {
+        var (manager, jobs) = Manager();
+
+        RecurringJobsRegistration.Configure(manager.Object, Flags(octorateConnector: true));
+
+        // ADR-002-R2, NF-36: the new job runs every 15 minutes, like the iCal sync of the feeds, which is registered as it was.
+        Assert.Equal("CalendarSync", CalendarSyncJob.RecurringJobId);
+        var calendar = jobs[CalendarSyncJob.RecurringJobId];
+        Assert.Equal("*/15 * * * *", calendar.Cron);
+        Assert.Equal(TimeZoneInfo.Utc, calendar.Options.TimeZone);
+        Assert.Equal(nameof(CalendarSyncJob.ExecuteAsync), calendar.Job.Method.Name);
+        manager.Verify(m => m.RemoveIfExists(CalendarSyncJob.RecurringJobId), Times.Never);
+
+        var ical = jobs["property-ical-sync"];
+        Assert.Equal(PropertyICalSchedule.SyncCron, ical.Cron);
+        Assert.Equal(calendar.Cron, ical.Cron);
+        Assert.Equal(15, PropertyICalSchedule.SyncEveryMinutes);
+        Assert.Contains("ical-supplier-sync", jobs.Keys);
     }
 
     [Fact]
@@ -100,6 +123,10 @@ public class OctorateJobsRegistrationTests
         // The jobs live in the infrastructure project, which cannot see JobLockTimeouts (web): the numbers are kept equal here.
         Assert.Equal(JobLockTimeouts.DefaultSeconds, OctorateBookingImportJob.LockTimeoutSeconds);
         Assert.Equal(JobLockTimeouts.DefaultSeconds, OctorateBookingSyncJob.LockTimeoutSeconds);
+
+        // The calendar sync runs every 15 minutes: it waits as the other frequent jobs do, far less than its interval.
+        Assert.Equal(JobLockTimeouts.FrequentSeconds, CalendarSyncJob.LockTimeoutSeconds);
+        Assert.True(CalendarSyncJob.LockTimeoutSeconds < 5 * 60);
     }
 
     [Fact]
@@ -114,6 +141,8 @@ public class OctorateJobsRegistrationTests
                      typeof(OctorateBookingImportJob),
                      typeof(OctorateBookingSyncJob),
                      typeof(OctorateBookingStatePushJob),
+                     typeof(CalendarSyncJob),
+                     typeof(ICalMigrationService),
                  })
         {
             Assert.Contains(services, d => d.ServiceType == type && d.Lifetime == ServiceLifetime.Scoped);

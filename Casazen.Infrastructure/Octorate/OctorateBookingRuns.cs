@@ -9,7 +9,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// <summary>
 /// What the daily import and the reconciliation of the bookings have in common (E02/F02/US01/T01 and T02): which properties they read, how
 /// far back each one reads, and how one property failing leaves the others alone. A system read over every org: each property is then read
-/// for its own org under <see cref="IOctorateOrgScope.Use"/>.
+/// for its own org under <see cref="IOctorateOrgScope.Use"/>. The list of the properties (<see cref="ListMappedPropertiesAsync"/>) is also the
+/// one the calendar job of E02/F02/US01/T03 reads.
 /// </summary>
 internal static class OctorateBookingRuns
 {
@@ -24,6 +25,19 @@ internal static class OctorateBookingRuns
     /// A listing that is proposed, ambiguous or rejected is never read, nor is one of an org that disconnected.
     /// </summary>
     internal static async Task<IReadOnlyList<RunTarget>> ListTargetsAsync(AppDbContext db, OctorateEnvironment environment, CancellationToken ct)
+    {
+        var mapped = await ListMappedPropertiesAsync(db, environment, ct);
+        return [.. mapped.Select(m => new RunTarget(m.OrgId, m.PropertyId, m.BookingsImportedThrough))];
+    }
+
+    /// <summary>
+    /// The single definition of "which properties are read from Octorate" (the bookings and the calendar): each one with the accommodation and
+    /// the room the mapping confirmed, ordered by org so a caller opens one <see cref="IOctorateOrgScope.Use"/> per org.
+    /// </summary>
+    internal static async Task<IReadOnlyList<MappedProperty>> ListMappedPropertiesAsync(
+        AppDbContext db,
+        OctorateEnvironment environment,
+        CancellationToken ct)
     {
         var connectionIds = await db.OctorateConnections
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
@@ -43,10 +57,11 @@ internal static class OctorateBookingRuns
                         && connectionIds.Contains(m.ConnectionId))
             .OrderBy(m => m.OrgId)
             .ThenBy(m => m.OctorateAccommodationId)
-            .Select(m => new { m.OrgId, m.PropertyId, m.BookingsImportedThrough })
+            .Select(m => new { m.OrgId, m.PropertyId, m.OctorateAccommodationId, m.OctorateProductId, m.BookingsImportedThrough })
             .ToListAsync(ct);
 
-        return [.. rows.Select(r => new RunTarget(r.OrgId, r.PropertyId!.Value, r.BookingsImportedThrough))];
+        return [.. rows.Select(r => new MappedProperty(
+            r.OrgId, r.PropertyId!.Value, r.OctorateAccommodationId, r.OctorateProductId!, r.BookingsImportedThrough))];
     }
 
     /// <summary>
@@ -97,6 +112,9 @@ internal static class OctorateBookingRuns
 
     /// <summary>A property to read: its org, itself and the instant of the last complete read of its listing.</summary>
     internal sealed record RunTarget(Guid OrgId, Guid PropertyId, DateTime? ImportedThrough);
+
+    /// <summary>A property of a confirmed mapping: its org, itself, the accommodation and the room (product) of the listing, and the last complete read of its bookings.</summary>
+    internal sealed record MappedProperty(Guid OrgId, Guid PropertyId, string AccommodationId, string ProductId, DateTime? BookingsImportedThrough);
 
     /// <summary>The counts of a whole run, for its log line.</summary>
     internal sealed class RunTotals

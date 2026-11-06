@@ -299,3 +299,45 @@ public enum OctorateCheckInStatus
     /// <summary><c>NO_SHOW</c>: the guest never came.</summary>
     NoShow = 3,
 }
+
+/// <summary>
+/// One day of one product of the calendar of an accommodation (<c>GET /rest/v1/calendar/{acc}</c>, E02/F02/US01/T03): the availability, the
+/// price and the restrictions Octorate holds for that day. The calendar read is used for the closed nights; the amount of the price is
+/// only used to tell a day that was never opened from a day that is sold out (<see cref="IsClosed"/>).
+/// </summary>
+/// <param name="ProductId">The product (room) the day is about.</param>
+/// <param name="Date">The day (calendar date of the accommodation).</param>
+/// <param name="Availability">Units available (<c>availability</c>); <c>null</c> when the answer does not say.</param>
+/// <param name="Price">The price of the night (<c>price</c>); <c>null</c> when the answer does not say.</param>
+/// <param name="StopSell">The day is closed for sale (<c>stopSells</c>).</param>
+/// <param name="MinStay">Minimum nights (<c>minstay</c>).</param>
+/// <param name="MaxStay">Maximum nights (<c>maxstay</c>).</param>
+/// <param name="CloseToArrival">No arrival on that day (<c>closeToArrival</c>).</param>
+/// <param name="CloseToDeparture">No departure on that day (<c>closeToDeparture</c>).</param>
+public sealed record OctorateCalendarDay(
+    string ProductId,
+    DateOnly Date,
+    int? Availability,
+    decimal? Price,
+    bool? StopSell,
+    int? MinStay,
+    int? MaxStay,
+    bool? CloseToArrival,
+    bool? CloseToDeparture)
+{
+    /// <summary>
+    /// The night is not for sale: stopped, or no unit available on a day that is on sale. A day with no unit and no price is a day Octorate
+    /// holds but nobody opened (a structure whose calendar was never filled, or cannot be written for lack of a licence, shows availability 0
+    /// and price 0 on every day, sandbox runs of 2026-11-04): no channel can sell it, so there is nothing to protect and it is not closed. A day
+    /// that does not say whether it has units or is stopped is not closed. The restrictions of an open day (minimum stay, no arrival, no
+    /// departure) close nothing.
+    /// </summary>
+    public bool IsClosed => StopSell == true || (Availability is <= 0 && Price is not <= 0);
+
+    /// <summary>
+    /// The day was opened in Octorate: it has units, or a price, or it is stopped, or the answer says none of the three (an unknown value is not
+    /// "never opened"). A calendar with no opened day at all is not a live calendar of the room (never filled, no licence): it says nothing about
+    /// the nights, so the calendar sync reads nothing from it and does not take it as proof that Octorate has taken over from the iCal feeds.
+    /// </summary>
+    public bool IsOpened => !(Availability is <= 0 && Price is <= 0 && StopSell != true);
+}

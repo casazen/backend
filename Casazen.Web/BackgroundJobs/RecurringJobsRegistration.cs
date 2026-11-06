@@ -294,7 +294,9 @@ public static class RecurringJobsRegistration
     /// read and no calendar is synced, and the schedule of an earlier deploy is removed (<c>RemoveIfExists</c>), as for the OTA partner jobs.
     /// <list type="bullet">
     /// <item>the daily import of the bookings, at 02:00 Europe/Rome (E02/F02/US01/T01, ADR-033-R4);</item>
-    /// <item>the reconciliation of the bookings every six hours (E02/F02/US01/T02, ADR-031-R8).</item>
+    /// <item>the reconciliation of the bookings every six hours (E02/F02/US01/T02, ADR-031-R8);</item>
+    /// <item>the sync of the calendar every 15 minutes (E02/F02/US01/T03, ADR-002-R2, NF-36), next to the iCal sync of the feeds
+    /// (<c>property-ical-sync</c>), which stays registered as it is.</item>
     /// </list>
     /// </summary>
     private static void ConfigureOctorateJobs(IRecurringJobManager recurringJobManager, bool enabled)
@@ -303,6 +305,7 @@ public static class RecurringJobsRegistration
         {
             recurringJobManager.RemoveIfExists(OctorateBookingImportJob.RecurringJobId);
             recurringJobManager.RemoveIfExists(OctorateBookingSyncJob.RecurringJobId);
+            recurringJobManager.RemoveIfExists(CalendarSyncJob.RecurringJobId);
             return;
         }
 
@@ -316,6 +319,12 @@ public static class RecurringJobsRegistration
             OctorateBookingSyncJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             OctorateBookingSyncJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        recurringJobManager.AddOrUpdate<CalendarSyncJob>(
+            CalendarSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            CalendarSyncJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

@@ -872,6 +872,17 @@ reservation of the room of a property, found through the confirmed `OctorateList
   window from the last complete read of each listing and corrects the differences, leaving alone a booking changed in CasaZen within 5 minutes
   (`BookingImportOptions.SkipChangedWithin`). `CheckInCompleted` and `CheckOutCompleted` (check-out wizard included) queue `OctorateBookingStatePushJob`
   through `OctorateBookingStatePushHandler` for a booking that has an Octorate reservation (`docs/runbooks/octorate-webhooks.md` § 4b).
+- *Calendar and the iCal feeds (E02/F02/US01/T03, ADR-002, NF-36).* The job `CalendarSync` (every 15 minutes, UTC, behind the flag, next to
+  `property-ical-sync`) reads the calendar of each confirmed listing (`GET /rest/v1/calendar/{acc}`, from today to a year ahead on the clock of the
+  property) and never writes to Octorate (PO-16). The nights it holds closed (`stopSells`, or availability 0 on a day that has a price: a day with
+  neither is a calendar nobody opened and closes nothing; a calendar with no opened day at all is not read, blocks and feeds stay as they were) that no
+  booking, manual block or iCal block takes already become `CalendarBlock`s of source
+  `Octorate` (2), one for each run of nights, key `(PropertyId, ExternalUid)` = `octorate:{date of the first night}` (unique filtered index), no feed, no
+  currency, never exported and never turned into a stay; the host cannot remove them. The minimum and maximum stay and the closed arrival and
+  departure of a day are read and stored nowhere. After a read that worked, `ICalMigrationService.DeprecateCoveredFeedsAsync` sets `Deprecated` and
+  `DeprecatedAt` on the feeds of the property whose channel (Airbnb 274, Booking.com 142) the confirmed listing has; `SyncAllFeedsAsync` skips them
+  and they, their blocks and the export are kept; a feed of channel `Other` is never touched. `GET /api/properties/{id}/ical/feeds`, the calendar
+  overview and `GET /api/dashboard/ical-feeds` answer `deprecated` (the first also `deprecatedAt`); details in `docs/runbooks/ical.md` § Octorate.
 
 #### Compliance / legal
 
