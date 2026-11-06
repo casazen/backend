@@ -140,10 +140,13 @@ public static class EncryptedColumns
             GuestDocumentPurpose,
             nameof(Guest.DocumentNumber),
             nameof(Guest.DocumentIssuingCountry)),
+        // NF-46: the tourist tax exemption the host chose travels with the document, under the same purpose: its reason can reveal a
+        // health condition (art. 9 GDPR).
         new EncryptedEntity<StayGuest>(
             GuestDocumentPurpose,
             nameof(StayGuest.DocumentNumber),
-            nameof(StayGuest.DocumentIssuePlaceName)),
+            nameof(StayGuest.DocumentIssuePlaceName),
+            nameof(StayGuest.TaxExemptionCode)),
         new EncryptedEntity<PropertyQuesturaCredentials>(
             QuesturaCredentialsPurpose,
             nameof(PropertyQuesturaCredentials.Username),

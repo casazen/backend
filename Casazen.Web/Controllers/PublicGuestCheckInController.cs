@@ -76,6 +76,7 @@ public class PublicGuestCheckInController(
             AvailableCodeTables = view.AvailableCodeTables,
             PrivacyNoticeVersion = view.PrivacyNoticeVersion,
             MarketingConsentVersion = view.MarketingConsentVersion,
+            RequiredGuestFields = view.RequiredGuestFields ?? [],
         };
 
         return Ok(response);

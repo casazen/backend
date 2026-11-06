@@ -1372,6 +1372,18 @@
   <data name="CheckInDocumentNumberInvalid" xml:space="preserve">
     <value>The document number may contain only letters and digits, at most {0}.</value>
   </data>
+  <data name="CheckInDocumentIssuedOnInvalid" xml:space="preserve">
+    <value>The issue date of the document cannot be in the future or before 1900.</value>
+  </data>
+  <data name="CheckInDocumentExpiresBeforeIssue" xml:space="preserve">
+    <value>The expiry date of the document cannot be before its issue date.</value>
+  </data>
+  <data name="CheckInStatisticalValueInvalid" xml:space="preserve">
+    <value>The value chosen is not one of the allowed ones.</value>
+  </data>
+  <data name="CheckInTaxExemptionInvalid" xml:space="preserve">
+    <value>This tourist tax exemption reason cannot be chosen.</value>
+  </data>
   <data name="CheckInDocumentProcessingFailed" xml:space="preserve">
     <value>Document processing failed. Please try again or enter the data manually.</value>
   </data>

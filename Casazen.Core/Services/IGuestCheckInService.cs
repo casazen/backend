@@ -101,6 +101,18 @@ public static class CheckInValidationKeys
     public const string CodeInvalid = "CheckInCodeInvalid";
     public const string CodeUnknown = "CheckInCodeUnknown";
     public const string DocumentNumberInvalid = "CheckInDocumentNumberInvalid";
+
+    /// <summary>The document issue day is after today (Europe/Rome) or before 1900 (NF-40).</summary>
+    public const string DocumentIssuedOnInvalid = "CheckInDocumentIssuedOnInvalid";
+
+    /// <summary>The document expires before the day it was issued (NF-40).</summary>
+    public const string DocumentExpiresBeforeIssue = "CheckInDocumentExpiresBeforeIssue";
+
+    /// <summary>A statistical field holds a value outside its closed list (NF-40, <c>IstatGuestFieldLists</c>).</summary>
+    public const string StatisticalValueInvalid = "CheckInStatisticalValueInvalid";
+
+    /// <summary>The tourist tax exemption is not an active reason the host may choose (NF-46).</summary>
+    public const string TaxExemptionInvalid = "CheckInTaxExemptionInvalid";
 }
 
 public class GuestCheckInSubmitResult
@@ -142,6 +154,13 @@ public sealed class GuestCheckInPublicView
 
     /// <summary>Version of the marketing consent text; null when not configured, and then the consent is not offered.</summary>
     public string? MarketingConsentVersion { get; init; }
+
+    /// <summary>
+    /// The statistical fields (<c>IstatGuestFieldLists</c> names) the region of the property requires, so the page asks nothing more than
+    /// the region needs (data minimization, ADR-030-R1). Empty when the comune is unknown or the region requires none; empty in this
+    /// release, where the regional coverage is deferred (E03/F01/US08).
+    /// </summary>
+    public IReadOnlyList<string>? RequiredGuestFields { get; init; }
 }
 
 /// <summary>A guest already on file, shown to prefill the portal form before completion.</summary>
@@ -168,4 +187,18 @@ public sealed class StayGuestPrefill
 
     public string? DocumentIssuePlaceCode { get; init; }
     public string DocumentIssuePlaceName { get; init; } = string.Empty;
+
+    public DateOnly? DocumentIssuedOn { get; init; }
+    public DateOnly? DocumentExpiresOn { get; init; }
+    public bool? ResidenceInItaly { get; init; }
+    public string? ResidenceComuneCode { get; init; }
+    public string? ResidenceComuneName { get; init; }
+    public string? ResidenceProvince { get; init; }
+    public string? ResidenceCountryCode { get; init; }
+    public string? ResidenceCountryName { get; init; }
+    public string? TourismType { get; init; }
+    public string? TravelWay { get; init; }
+    public string? EducationLevel { get; init; }
+
+    // No tourist tax exemption: it is the host's decision and never shown on the guest page.
 }

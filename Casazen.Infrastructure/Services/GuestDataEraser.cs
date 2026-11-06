@@ -187,6 +187,21 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         row.DocumentIssuePlaceCode = null;
         row.DocumentIssuePlaceName = string.Empty;
 
+        // NF-40, NF-46: the document dates, the residence, the statistical fields and the tourist tax exemption (whose reason can reveal
+        // a health condition) go with the guest too.
+        row.DocumentIssuedOn = null;
+        row.DocumentExpiresOn = null;
+        row.ResidenceInItaly = null;
+        row.ResidenceComuneCode = null;
+        row.ResidenceComuneName = null;
+        row.ResidenceProvince = null;
+        row.ResidenceCountryCode = null;
+        row.ResidenceCountryName = null;
+        row.TourismType = null;
+        row.TravelWay = null;
+        row.EducationLevel = null;
+        row.TaxExemptionCode = null;
+
         var changed = Fingerprint(row) != before || row.AnonymizedAt is null;
         row.AnonymizedAt ??= now;
         if (changed)
@@ -333,7 +348,9 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         s.FirstName, s.LastName, s.Gender?.ToString(), s.DateOfBirth?.ToString("O"), s.BornInItaly?.ToString(),
         s.BirthComuneCode, s.BirthComuneName, s.BirthProvince, s.BirthCountryCode, s.BirthCountryName,
         s.CitizenshipCode, s.CitizenshipName, s.DocumentType?.ToString(), s.DocumentTypeCode, s.DocumentNumber,
-        s.DocumentIssuePlaceCode, s.DocumentIssuePlaceName);
+        s.DocumentIssuePlaceCode, s.DocumentIssuePlaceName, s.DocumentIssuedOn?.ToString("O"), s.DocumentExpiresOn?.ToString("O"),
+        s.ResidenceInItaly?.ToString(), s.ResidenceComuneCode, s.ResidenceComuneName, s.ResidenceProvince, s.ResidenceCountryCode,
+        s.ResidenceCountryName, s.TourismType, s.TravelWay, s.EducationLevel, s.TaxExemptionCode);
 }
 
 /// <summary>What an erasure changed: false <see cref="Changed"/> means it had already been done.</summary>

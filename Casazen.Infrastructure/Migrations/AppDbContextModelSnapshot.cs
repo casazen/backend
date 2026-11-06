@@ -693,6 +693,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid?>("ICalFeedId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("NoShowAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int>("NumberOfAdults")
                         .HasColumnType("integer");
 
@@ -1959,6 +1962,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Language")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
                     b.Property<string>("LinkEmailError")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
@@ -1968,6 +1975,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReminderSentAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("SentAt")
                         .HasColumnType("timestamp with time zone");
@@ -9308,6 +9318,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<DateTime?>("DateOfBirth")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateOnly?>("DocumentExpiresOn")
+                        .HasColumnType("date");
+
                     b.Property<string>("DocumentIssuePlaceCode")
                         .HasMaxLength(9)
                         .HasColumnType("character varying(9)");
@@ -9315,6 +9328,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("DocumentIssuePlaceName")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<DateOnly?>("DocumentIssuedOn")
+                        .HasColumnType("date");
 
                     b.Property<string>("DocumentNumber")
                         .IsRequired()
@@ -9326,6 +9342,10 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("DocumentTypeCode")
                         .HasMaxLength(5)
                         .HasColumnType("character varying(5)");
+
+                    b.Property<string>("EducationLevel")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.Property<string>("EnteredByUserId")
                         .HasMaxLength(200)
@@ -9352,6 +9372,40 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int>("Position")
                         .HasColumnType("integer");
+
+                    b.Property<string>("ResidenceComuneCode")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)");
+
+                    b.Property<string>("ResidenceComuneName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("ResidenceCountryCode")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)");
+
+                    b.Property<string>("ResidenceCountryName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<bool?>("ResidenceInItaly")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ResidenceProvince")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("TaxExemptionCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TourismType")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("TravelWay")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
 
                     b.Property<int>("Type")
                         .HasColumnType("integer");

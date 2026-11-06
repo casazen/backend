@@ -64,6 +64,8 @@ public class EncryptedColumnsTests
                 "ShowcaseInquiry.Payload:Casazen.ServiceCustomer",
                 "StayGuest.DocumentIssuePlaceName:Casazen.Guest.Document",
                 "StayGuest.DocumentNumber:Casazen.Guest.Document",
+                // NF-46: the tourist tax exemption the host chose (its reason can reveal a health condition).
+                "StayGuest.TaxExemptionCode:Casazen.Guest.Document",
                 // ADR-024: the personal half of a wizard draft (the fields that name a person, split off what the person typed).
                 "WizardDraft.EncryptedFieldsJson:Casazen.WizardDraft.PII",
             },

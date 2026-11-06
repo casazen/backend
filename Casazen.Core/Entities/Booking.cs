@@ -66,6 +66,12 @@ public class Booking : ITenantOwned
     /// </summary>
     public DateTime? CheckedOutAt { get; set; }
 
+    /// <summary>
+    /// When the host marked the stay as a no-show (UTC, NF-45): a confirmed booking whose guest never arrived. The status stays
+    /// <see cref="BookingStatus.Confirmed"/>; a late arrival clears it. Null for every other stay.
+    /// </summary>
+    public DateTime? NoShowAt { get; set; }
+
     public int NumberOfGuests { get; set; }
 
     [Required]
