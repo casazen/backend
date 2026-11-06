@@ -148,6 +148,10 @@ builder.Services.AddCasazenOctorate(builder.Configuration);
 // the reconciliation jobs and the retention of the copy, all registered in AddMessageSync.
 builder.Services.AddMessageSync();
 
+// Who is told what and how (epic E05, feature F03, NF-65): the notification preferences of the host users with their single decision point, and the alerts
+// of the new messages of the guests that already use it, all registered in AddNotificationPreferences.
+builder.Services.AddNotificationPreferences();
+
 // Marketplace (epic E09, NF-54 to NF-59): the catalog of channels, tools, license functions and partners; every task of the epic registers in AddCasazenMarketplace.
 builder.Services.AddCasazenMarketplace(builder.Configuration);
 

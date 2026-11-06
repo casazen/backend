@@ -2098,6 +2098,18 @@
   <data name="PopupAlertRemindAtRequired" xml:space="preserve">
     <value>Indica quando vuoi essere avvisato di nuovo (data e ora).</value>
   </data>
+  <data name="NotificationLegalChannelRequired" xml:space="preserve">
+    <value>Le scadenze di legge non possono restare senza un canale: lascia attivo almeno un canale per le scadenze di legge.</value>
+  </data>
+  <data name="NotificationChannelUnavailable" xml:space="preserve">
+    <value>Questo canale non è ancora disponibile: scegli tra notifica sul telefono, email e contatore.</value>
+  </data>
+  <data name="NotificationPreferencesEmpty" xml:space="preserve">
+    <value>Non c'è niente da salvare: indica gli orari di silenzio o i canali di almeno un tipo di avviso.</value>
+  </data>
+  <data name="NotificationEventDuplicated" xml:space="preserve">
+    <value>Lo stesso tipo di avviso compare più volte: indicalo una sola volta.</value>
+  </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Periodo non valido: usa period=Month con month nel formato AAAA-MM, period=Last30Days oppure period=Next30Days.</value>
   </data>

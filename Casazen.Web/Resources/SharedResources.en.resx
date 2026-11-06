@@ -2098,6 +2098,18 @@
   <data name="PopupAlertRemindAtRequired" xml:space="preserve">
     <value>Say when you want to be reminded again (date and time).</value>
   </data>
+  <data name="NotificationLegalChannelRequired" xml:space="preserve">
+    <value>Legal deadlines cannot be left without a channel: keep at least one channel on for legal deadlines.</value>
+  </data>
+  <data name="NotificationChannelUnavailable" xml:space="preserve">
+    <value>This channel is not available yet: choose between phone notification, email and the counter.</value>
+  </data>
+  <data name="NotificationPreferencesEmpty" xml:space="preserve">
+    <value>There is nothing to save: give the quiet hours or the channels of at least one kind of alert.</value>
+  </data>
+  <data name="NotificationEventDuplicated" xml:space="preserve">
+    <value>The same kind of alert appears more than once: give it only once.</value>
+  </data>
   <data name="DashboardInvalidPeriod" xml:space="preserve">
     <value>Invalid period: use period=Month with month as YYYY-MM, period=Last30Days or period=Next30Days.</value>
   </data>
