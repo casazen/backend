@@ -144,4 +144,10 @@ public static class TestDataEntities
     /// test token. It follows its house (cascade) and the reset deletes its marker with the other showcase markers.
     /// </summary>
     public const string WelcomeLink = "PropertyWelcomeLink";
+
+    /// <summary>
+    /// The mirror of a showcase booking on the channel manager (<see cref="Entities.OctorateBookingSync"/>, E08/F03/US03/T02, NF-74): the state of the last operation of
+    /// an invented reservation, nothing is sent. It goes with its booking (cascade) and the reset deletes its marker with the other showcase markers.
+    /// </summary>
+    public const string OctorateBookingSync = "OctorateBookingSync";
 }

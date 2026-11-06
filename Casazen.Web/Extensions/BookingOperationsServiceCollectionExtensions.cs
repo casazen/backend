@@ -45,6 +45,9 @@ public static class BookingOperationsServiceCollectionExtensions
         services.AddSingleton(provider => new OtaChannelActionPolicy(provider.GetRequiredService<IOptions<OctorateChannelActionsOptions>>().Value));
         services.AddScoped<IOtaBookingCancellationService, OtaBookingCancellationService>();
         services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingCancelHandler>();
+
+        // E08/F03/US03/T02 (NF-74, NF-77): the state of the mirror of a booking, read for the booking answer (a read only, no push).
+        services.AddScoped<IBookingOctorateSyncReader, BookingOctorateSyncReader>();
         return services;
     }
 }
