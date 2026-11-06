@@ -295,11 +295,15 @@ public class PublicCheckInInvoiceDto
     public string? Pec { get; set; }
 
     /// <summary>
-    /// The block as the service reads it. A text that is blank is a field left empty (not sent), so the guest can never clear what the host wrote.
-    /// A kind of recipient that is neither <c>Guest</c> nor <c>Company</c> is 422 <c>invoice_data_field_invalid</c> on <c>recipientKind</c>.
+    /// The block as the service reads it. A «no» (<see cref="NeedInvoice"/> false) is nothing: the rest of the block is not even read, so whatever it
+    /// holds never blocks the check-in. A text that is blank is a field left empty (not sent), so the guest can never clear what the host wrote.
+    /// With a «yes», a kind of recipient that is neither <c>Guest</c> nor <c>Company</c> is 422 <c>invoice_data_field_invalid</c> on <c>recipientKind</c>.
     /// </summary>
     public GuestCheckInInvoice ToInput()
     {
+        if (!NeedInvoice)
+            return new GuestCheckInInvoice { NeedInvoice = false };
+
         if (!InvoiceDataFormats.TryParseRecipientKind(RecipientKind, out var kind))
         {
             throw InvoiceDataErrorCodes.ToException(

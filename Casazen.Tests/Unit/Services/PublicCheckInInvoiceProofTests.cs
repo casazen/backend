@@ -150,6 +150,39 @@ public class PublicCheckInInvoiceProofTests
         Assert.Equal((DomainEventType.InvoiceDataSaved, seed.BookingId), (raised.EventType, raised.EntityId));
     }
 
+    /// <summary>
+    /// A «no» to «Ti serve la fattura?» is nothing, whatever else the block holds: the kind of recipient and the rest are not even read, so the
+    /// check-in completes, no invoice data is made and no event is recorded. The same block with a «yes» is refused on the kind, with the field.
+    /// </summary>
+    [Fact]
+    public async Task PublicCheckIn_ANoWithABadKind_NeverBlocksTheCheckIn_AndAYesWithABadKindIsRefused()
+    {
+        await using var seed = await SeedAsync();
+        var invoices = new InvoiceDataService(seed.Db, new DomainEventRecorder(seed.Db, NullTenantContext.Instance, TimeProvider.System));
+        var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance, invoiceDataService: invoices);
+        var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
+
+        var no = new PublicCheckInInvoiceDto { NeedInvoice = false, RecipientKind = "not a kind", FiscalCode = "not a code", Pec = "not an address" };
+        var input = no.ToInput();
+        Assert.False(input.NeedInvoice);
+        Assert.False(input.Data.HasContent);
+
+        var request = ValidGuests();
+        request.Invoice = input;
+        var done = await svc.SubmitAsync(token, request);
+
+        Assert.True(done.Success);
+        seed.Db.ChangeTracker.Clear();
+        Assert.Equal(GuestCheckInSessionStatus.Completo, (await seed.Db.GuestCheckInSessions.AsNoTracking().SingleAsync()).Status);
+        Assert.Empty(await seed.Db.BookingInvoiceData.AsNoTracking().ToListAsync());
+        Assert.Empty(await seed.Db.OutboxEvents.AsNoTracking().ToListAsync());
+
+        var yes = new PublicCheckInInvoiceDto { NeedInvoice = true, RecipientKind = "not a kind" };
+        var refusal = Assert.Throws<DomainRuleException>(() => yes.ToInput());
+        Assert.Equal(InvoiceDataErrorCodes.FieldInvalid, refusal.Code);
+        Assert.Equal(InvoiceDataFields.RecipientKind, refusal.Extensions["field"]);
+    }
+
     private static async Task<Seed> SeedAsync()
     {
         var db = new AppDbContext(
