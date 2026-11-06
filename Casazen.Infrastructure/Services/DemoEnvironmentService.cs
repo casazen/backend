@@ -7,6 +7,7 @@ using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.SiteProfile;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -115,10 +116,11 @@ public class DemoEnvironmentService(
         if (!string.Equals(confirmation, DemoShowcaseCatalog.ResetConfirmation, StringComparison.Ordinal))
             throw new DomainRuleException("demo_reset_confirmation", "DemoResetConfirmation");
 
-        // The drafts and the popup alerts first: removing the showcase properties drops every showcase marker of the org, and these are
-        // found by theirs.
+        // The drafts, the popup alerts and the tourist tax payments first: removing the showcase properties drops every showcase marker of
+        // the org, and these are found by theirs.
         await RemoveShowcaseWizardDraftsAsync(orgId, cancellationToken);
         await RemoveShowcasePopupAlertsAsync(orgId, cancellationToken);
+        await RemoveShowcaseTouristTaxRemittancesAsync(orgId, cancellationToken);
         var removed = await RemoveShowcaseAsync(orgId, cancellationToken);
         await RemoveShowcaseHostInvitesAsync(orgId, cancellationToken);
         var unpublished = removeUnpublished ? await RemoveUnpublishedAsync(orgId, cancellationToken) : 0;
@@ -135,6 +137,10 @@ public class DemoEnvironmentService(
 
         foreach (var draft in DemoShowcaseCatalog.WizardDrafts)
             await CreateWizardDraftAsync(orgId, ownerId, draft, cancellationToken);
+
+        // NF-100: the tourist tax payments of the demo host name the comune of a house just created, so they come after the houses.
+        foreach (var remittance in DemoShowcaseCatalog.TouristTaxRemittances)
+            await CreateTouristTaxRemittanceAsync(orgId, ownerId, remittance, cancellationToken);
 
         // NF-08: the popup alerts of the demo host point at the stays and houses just created, so they come last.
         foreach (var alert in DemoShowcaseCatalog.PopupAlerts)
@@ -374,6 +380,110 @@ public class DemoEnvironmentService(
         await MarkAsync(orgId, TestDataEntities.PopupAlert, alert.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
+    /// <summary>
+    /// Deletes the tourist tax payments the showcase wrote for the org and their invented receipts, found by their markers (NF-100). A real
+    /// payment has no marker and is never touched; the files are removed after the rows, and one that cannot be is only logged.
+    /// </summary>
+    private async Task RemoveShowcaseTouristTaxRemittancesAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var remittanceIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.TouristTaxRemittance)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (remittanceIds.Count == 0)
+            return;
+
+        var files = await db.TouristTaxRemittances.IgnoreQueryFilters([Tenant])
+            .Where(r => r.OrgId == orgId && remittanceIds.Contains(r.Id) && r.ReceiptStorageKey != null)
+            .Select(r => r.ReceiptStorageKey!)
+            .ToListAsync(cancellationToken);
+        await db.TouristTaxRemittances.IgnoreQueryFilters([Tenant])
+            .Where(r => r.OrgId == orgId && remittanceIds.Contains(r.Id))
+            .ExecuteDeleteAsync(cancellationToken);
+        await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.TouristTaxRemittance)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        foreach (var file in files)
+        {
+            if (!StorageKeys.IsValid(file))
+                continue;
+            try
+            {
+                await storage.DeleteAsync(StorageBucket.Private, file, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Demo tourist tax receipt {Key} was left in storage after the reset", file);
+            }
+        }
+    }
+
+    /// <summary>
+    /// One tourist tax payment of the demo host, with its invented receipt (a PDF that says it is test data) in the private bucket, for the
+    /// comune of a house the showcase has just created (found by the template key of its marker). Skipped, with a warning, when the house was
+    /// not created. The same rules as a payment recorded through the service: an amount above zero, a period that is not backwards, a day that is
+    /// not after today in Europe/Rome (the template says so, and <c>DemoShowcaseTests</c> checks it).
+    /// </summary>
+    private async Task CreateTouristTaxRemittanceAsync(
+        Guid orgId, string ownerId, DemoTouristTaxRemittanceTemplate template, CancellationToken cancellationToken)
+    {
+        var propertyId = await Markers()
+            .Where(m => m.OrgId == orgId
+                && m.Origin == TestDataOrigins.Showcase
+                && m.EntityType == TestDataEntities.Property
+                && m.TemplateKey == template.PropertyKey)
+            .Select(m => m.EntityId)
+            .FirstOrDefaultAsync(cancellationToken);
+        var city = propertyId == Guid.Empty
+            ? null
+            : await Properties(orgId).Where(p => p.Id == propertyId).Select(p => p.City).FirstOrDefaultAsync(cancellationToken);
+        var comuneKey = TouristTaxSummaryRules.ComuneKeyOf(city);
+        if (city is null || comuneKey.Length == 0)
+        {
+            logger.LogWarning(
+                "Demo tourist tax payment {Key} of org {OrgId} was skipped: the house it names was not created",
+                template.Key,
+                orgId);
+            return;
+        }
+
+        var today = clock.TodayInRomeAsDateOnly();
+        var remittanceId = Guid.NewGuid();
+        var pdf = DemoDocumentPdf.Create(
+            "RICEVUTA DI VERSAMENTO DI TEST",
+            DemoDocumentPdf.Marker + " CasaZen. Nessun valore fuori dall'ambiente di test.");
+        var fileName = "ricevuta-di-test.pdf";
+        var key = StorageKeys.TouristTaxReceipt(orgId, remittanceId, fileName);
+        await using (var stream = new MemoryStream(pdf))
+            await storage.PutAsync(StorageBucket.Private, key, stream, "application/pdf", cancellationToken);
+
+        var now = UtcNow();
+        var remittance = new TouristTaxRemittance
+        {
+            Id = remittanceId,
+            OrgId = orgId,
+            Comune = city.Trim(),
+            ComuneKey = comuneKey,
+            PeriodFrom = today.AddDays(template.PeriodFromOffsetDays),
+            PeriodTo = today.AddDays(template.PeriodToOffsetDays),
+            PaidAmount = template.PaidAmount,
+            PaidOn = today.AddDays(template.PaidOnOffsetDays),
+            PaymentReference = template.Reference,
+            Notes = template.Notes,
+            ReceiptStorageKey = key,
+            ReceiptFileName = fileName,
+            ReceiptContentType = "application/pdf",
+            ReceiptSizeBytes = pdf.Length,
+            RecordedByUserId = ownerId,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.TouristTaxRemittances.Add(remittance);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.TouristTaxRemittance, remittance.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
     private async Task<int> RemoveUnpublishedAsync(Guid orgId, CancellationToken cancellationToken)
     {
         var bookings = db.Bookings.IgnoreQueryFilters([Tenant]);
@@ -568,10 +678,12 @@ public class DemoEnvironmentService(
 
         var checkIn = today.AddDays(template.CheckInOffsetDays).ToDateTime(TimeOnly.MinValue);
         var nights = property.NightlyRate * template.Nights;
-        // SR-06a: a booking entered by hand at a price the host agreed (the demo stays carry no tourist tax, so the total is the lodging).
+        // SR-06a: a booking entered by hand at a price the host agreed. The demo stays carry no tourist tax unless the template says so
+        // (NF-100: the amount the engine would have recorded, invented like the rest), so the price is the lodging and the tax comes on top.
         var quoted = nights + property.CleaningFee;
         var total = template.AgreedTotal ?? quoted;
         var priceAgreed = total != quoted;
+        var touristTax = template.TouristTax ?? 0m;
         // SR-05a: the history of a demo stay reads in order, as the timeline of the booking shows it: made a month before the
         // arrival and confirmed at once, so a stay already over was not "made today"; checked out at the end of its last night.
         var madeAt = DateTime.SpecifyKind(checkIn.AddDays(-30), DateTimeKind.Utc);
@@ -591,7 +703,9 @@ public class DemoEnvironmentService(
             PaymentOption = template.PaymentOption,
             BasePrice = total,
             CleaningFee = Math.Min(property.CleaningFee, total),
-            TotalPrice = total,
+            TouristTax = touristTax,
+            TouristTaxAmount = touristTax,
+            TotalPrice = total + touristTax,
             PriceOverridden = priceAgreed,
             PriceOverrideNote = priceAgreed ? template.PriceNote : null,
             SpecialRequests = "Prenotazione di dimostrazione con un ospite inventato.",

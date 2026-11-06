@@ -591,6 +591,12 @@ public static class ServiceCollectionExtensions
         // host sends, written by the AI when one is in effect) and closes the departures that are over; the rest stays the host's.
         services.AddScoped<IAutopilotMessageWriter, AutopilotMessageWriter>();
         services.AddScoped<IComplianceAutopilotService, ComplianceAutopilotService>();
+        // CHK-15 (E03/F05/US01/T01): the controlled passage of a host to the Octorate Cassetto Compliance. It prepares the allowlisted address
+        // and the guide and writes one line of the activity log; it never signs in to Octorate, reads an outcome or changes a compliance state.
+        // Addresses come from Octorate:FrontendBaseUrl and Octorate:ComplianceHandoff, nothing is required (the home of the panel is the default).
+        services.AddOptions<OctorateComplianceHandoffOptions>()
+            .BindConfiguration(OctorateComplianceHandoffOptions.SectionName);
+        services.AddScoped<IOctorateComplianceHandoffService, OctorateComplianceHandoffService>();
         // D.L. 145/2023 safety checklist of a short-stay property (CO-07).
         services.AddScoped<IPropertySafetyChecklistService, PropertySafetyChecklistService>();
         // Single evaluation of the activation blockers, suspension and nightly check of the published properties (CO-06).
@@ -622,6 +628,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ILeaseRegistrationProvider, UnconfiguredLeaseRegistrationProvider>();
         services.AddScoped<IFiscalRegimeService, FiscalService>();
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
+        // NF-100: the tourist tax owed, paid and receipted per comune, over the tourist tax report above (GET /api/tourist-tax/summary).
+        services.AddScoped<ITouristTaxSummaryService, TouristTaxSummaryService>();
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         // AM-02: the people of an org: seats of the plan, invitations and their acceptance, the members and the hourly

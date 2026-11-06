@@ -78,4 +78,11 @@ public static class TestDataEntities
 
     /// <summary>A saved draft of a wizard (<see cref="WizardDraft"/>): the demo host's, written by the showcase and deleted by its reset.</summary>
     public const string WizardDraft = "WizardDraft";
+
+    /// <summary>
+    /// A payment of the tourist tax to a comune, with its receipt (<see cref="TouristTaxRemittance"/>, NF-100): the demo host's, written by
+    /// the showcase and deleted by its reset together with its invented receipt. A real remittance never carries a marker, so the reset
+    /// never touches it.
+    /// </summary>
+    public const string TouristTaxRemittance = "TouristTaxRemittance";
 }

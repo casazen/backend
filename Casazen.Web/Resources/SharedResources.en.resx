@@ -4190,6 +4190,39 @@
   <data name="WizardDraftClientVersionInvalid" xml:space="preserve">
     <value>The draft version is not valid.</value>
   </data>
+  <data name="TouristTaxComuneUnknown" xml:space="preserve">
+    <value>The comune is not one of the comuni of your properties in Italy: pick an Italian comune where you have at least one property.</value>
+  </data>
+  <data name="TouristTaxAmountInvalid" xml:space="preserve">
+    <value>The amount must be above zero, in euros, with at most two decimals.</value>
+  </data>
+  <data name="TouristTaxDateInFuture" xml:space="preserve">
+    <value>The payment date cannot be after today.</value>
+  </data>
+  <data name="TouristTaxPeriodInvalid" xml:space="preserve">
+    <value>The period of the payment is not valid: the start date cannot be after the end date and the period lasts one year at most.</value>
+  </data>
+  <data name="TouristTaxReceiptInvalid" xml:space="preserve">
+    <value>The receipt must be a PDF, or a JPEG or PNG photo, of {0} MB at most.</value>
+  </data>
+  <data name="TouristTaxTextTooLong" xml:space="preserve">
+    <value>The reference can have {0} characters at most and the note {1}.</value>
+  </data>
+  <data name="TouristTaxRemittanceNotFound" xml:space="preserve">
+    <value>Payment not found.</value>
+  </data>
+  <data name="TouristTaxReceiptNotFound" xml:space="preserve">
+    <value>This payment has no receipt available.</value>
+  </data>
+  <data name="TouristTaxStatusNothingRecorded" xml:space="preserve">
+    <value>No amount recorded</value>
+  </data>
+  <data name="TouristTaxOwedIncomplete" xml:space="preserve">
+    <value>Incomplete amount</value>
+  </data>
+  <data name="TouristTaxPaymentsNeedWholeOrg" xml:space="preserve">
+    <value>Recording a tourist tax payment, deleting it or opening its receipt needs access to all the properties: your access is limited to some.</value>
+  </data>
   <data name="OctorateNotConnected" xml:space="preserve">
     <value>The connection to the channel manager is not active: connect it again from the channel settings.</value>
   </data>
@@ -4270,5 +4303,53 @@
   </data>
   <data name="OctorateChannelCancelNotAllowed" xml:space="preserve">
     <value>A booking that comes from a portal is cancelled on the portal: CasaZen cannot cancel it on its behalf.</value>
+  </data>
+  <data name="OctorateHandoffTopicRequired" xml:space="preserve">
+    <value>Say what you want to check: Alloggiati or ISTAT.</value>
+  </data>
+  <data name="OctorateHandoffPropertyRequired" xml:space="preserve">
+    <value>Say which property to check.</value>
+  </data>
+  <data name="OctorateHandoffReturnPathRequired" xml:space="preserve">
+    <value>The CasaZen page to come back to is missing.</value>
+  </data>
+  <data name="OctorateHandoffReturnPathInvalid" xml:space="preserve">
+    <value>The page to come back to must be a CasaZen path, starting with a slash (/).</value>
+  </data>
+  <data name="OctorateHandoffPeriodInvalid" xml:space="preserve">
+    <value>The period must be a month (yyyy-MM) or a day (yyyy-MM-dd).</value>
+  </data>
+  <data name="OctorateHandoffTargetNotFound" xml:space="preserve">
+    <value>Property or booking not found among those of your organization.</value>
+  </data>
+  <data name="OctorateHandoffPropertyNotMapped" xml:space="preserve">
+    <value>This property is not connected to the channel manager: connect it before checking the compliance items there.</value>
+  </data>
+  <data name="OctorateHandoffDestinationUnavailable" xml:space="preserve">
+    <value>The passage to the Cassetto Compliance is not available right now. Try again in a few minutes.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiDailyMenu" xml:space="preserve">
+    <value>Sign in to Octorate if asked, then open the PMS menu and go to the Alloggiati section.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiDailyCheck" xml:space="preserve">
+    <value>Check that the guests of the stay show as sent and not as «invio sospeso» (sending suspended): if they do, use the button to send them again. If the connection does not show «Attivata» (active), complete the Alloggiati portal details in the panel. Octorate sends once a day.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiShortStayMenu" xml:space="preserve">
+    <value>Sign in to Octorate if asked, then open the PMS menu and go to the Alloggiati section, where you find the immediate manual send.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiShortStayCheck" xml:space="preserve">
+    <value>The stay lasts 24 hours at most: the communication is due within 6 hours of arrival and Octorate's daily send may come later. Send it manually right away and check that the outcome shows as sent.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiLongStayMenu" xml:space="preserve">
+    <value>Sign in to Octorate if asked, then open the PMS menu and go to the Alloggiati section for the manual send file; the file is then sent from the Alloggiati Web portal.</value>
+  </data>
+  <data name="OctorateHandoffGuideAlloggiatiLongStayCheck" xml:space="preserve">
+    <value>The stay is longer than 30 nights: Octorate's daily send does not cover it and it has to be done by hand. Check that it was sent from the Alloggiati Web portal and that the outcome shows as sent.</value>
+  </data>
+  <data name="OctorateHandoffGuideIstatPeriodMenu" xml:space="preserve">
+    <value>Sign in to Octorate if asked, then open the PMS menu and go to the ISTAT section.</value>
+  </data>
+  <data name="OctorateHandoffGuideIstatPeriodCheck" xml:space="preserve">
+    <value>Check that the period shows as sent for the region of the structure. A red warning means the region does not allow direct sending: in that case the file has to be uploaded by hand on the regional portal.</value>
   </data>
 </root>
