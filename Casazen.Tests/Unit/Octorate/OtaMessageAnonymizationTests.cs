@@ -325,6 +325,84 @@ public class OtaMessageAnonymizationTests
         Assert.All(messages, AssertAnonymous);
     }
 
+    /// <summary>
+    /// PROOF TEST: privacy rule (ADR-032-R13). A read of the channel manager that ran while the guest was erased can store a message in a thread the
+    /// erasure has just marked (the erasure takes no lock of the sync): the mark is there and a name and a link are too. The next erasure of the guest
+    /// empties that message and leaves the mark, and the messages that were clean, as they were; after it nothing is left to do.
+    /// </summary>
+    [Fact]
+    public async Task AMessageStoredInAMarkedThreadByARacingRead_IsEmptiedByTheNextErasure_Test()
+    {
+        await using var db = NewDb($"ota-race-erasure-{Guid.NewGuid():N}");
+        var orgId = Guid.NewGuid();
+        var guest = new Guest { OrgId = orgId, FirstName = "Giulietta", LastName = "Verdi", Email = "giulietta@example.com" };
+        var booking = NewBooking(orgId, Guid.NewGuid(), guest.Id, "R-1");
+        var markedAt = Now.AddHours(-2);
+        var thread = NewThread(orgId, booking.Id, "1", GuestDataEraser.AnonymizedName);
+        thread.AnonymizedAt = markedAt;
+        db.Guests.Add(guest);
+        db.Bookings.Add(booking);
+        db.OtaMessageThreads.Add(thread);
+        db.OtaMessages.AddRange(
+            NewMessage(thread, "10", OtaMessageDirection.Inbound, GuestDataEraser.AnonymizedName, string.Empty, null),
+            NewMessage(thread, "11", OtaMessageDirection.Inbound, "Giulietta Verdi", "Il mio telefono e 333 1234567", "https://resx.example.test/doc-1.jpg"));
+        await db.SaveChangesAsync();
+        var eraser = new GuestDataEraser(db, Mock.Of<IFileStorage>(), NullLogger<GuestDataEraser>.Instance);
+
+        var outcome = await eraser.AnonymizeAsync(guest, Now, CancellationToken.None);
+        await db.SaveChangesAsync();
+
+        Assert.True(outcome.Changed);
+        db.ChangeTracker.Clear();
+        Assert.All(await db.OtaMessages.ToListAsync(), AssertAnonymous);
+        Assert.Equal(markedAt, (await db.OtaMessageThreads.SingleAsync()).AnonymizedAt);
+
+        // Nothing is left to do: a second erasure changes nothing.
+        var again = await eraser.AnonymizeAsync(await db.Guests.SingleAsync(), Now.AddDays(1), CancellationToken.None);
+        Assert.False(again.Changed);
+    }
+
+    /// <summary>
+    /// The same race, found by the nightly retention: a marked conversation that holds a name or a link again is emptied again, whether or not a period
+    /// is configured (it is no decision of the retention), the conversations that are clean are not touched, and a second run finds nothing.
+    /// </summary>
+    [Fact]
+    public async Task AMessageStoredInAMarkedThreadByARacingRead_IsEmptiedByTheRetentionWhateverItsPeriod_Test()
+    {
+        await using var db = NewDb($"ota-race-retention-{Guid.NewGuid():N}");
+        var orgId = Guid.NewGuid();
+        var markedAt = Now.AddHours(-2);
+        var racing = NewThread(orgId, null, "1", GuestDataEraser.AnonymizedName);
+        var tidy = NewThread(orgId, null, "2", GuestDataEraser.AnonymizedName);
+        foreach (var thread in new[] { racing, tidy })
+            thread.AnonymizedAt = markedAt;
+
+        db.OtaMessageThreads.AddRange(racing, tidy);
+        db.OtaMessages.AddRange(
+            NewMessage(racing, "10", OtaMessageDirection.Inbound, "Giulietta Verdi", "Il mio telefono e 333 1234567", null),
+            NewMessage(racing, "11", OtaMessageDirection.Outbound, GuestDataEraser.AnonymizedName, string.Empty, "https://resx.example.test/doc-1.jpg"),
+            NewMessage(tidy, "20", OtaMessageDirection.Inbound, GuestDataEraser.AnonymizedName, string.Empty, null));
+        await db.SaveChangesAsync();
+        var clock = new FixedTimeProvider(new DateTimeOffset(Now));
+        var eraser = new GuestDataEraser(db, Mock.Of<IFileStorage>(), NullLogger<GuestDataEraser>.Instance);
+        var service = new OtaMessageRetentionService(
+            db, eraser, Microsoft.Extensions.Options.Options.Create(new GdprOptions()), clock, NullLogger<OtaMessageRetentionService>.Instance);
+
+        var first = await service.ApplyRetentionAsync();
+
+        // No period is configured, so the retention anonymizes nothing by itself; the conversation that held a name and a link is emptied again.
+        Assert.Equal(new OtaMessageRetentionResult(false, 1, 2), first);
+        db.ChangeTracker.Clear();
+        Assert.All(await db.OtaMessages.Where(m => m.ThreadId == racing.Id).ToListAsync(), AssertAnonymous);
+        var threads = await db.OtaMessageThreads.ToDictionaryAsync(t => t.OctorateThreadId);
+        Assert.Equal(markedAt, threads["1"].AnonymizedAt);
+        Assert.Equal(Now, threads["1"].UpdatedAt);
+        Assert.Equal(Now.AddDays(-30), threads["2"].UpdatedAt);
+
+        var second = await service.ApplyRetentionAsync();
+        Assert.Equal(new OtaMessageRetentionResult(false, 0, 0), second);
+    }
+
     /// <summary>A guest with a booking of the property of the harness for the reservation, erased (anonymized and deleted, as the erasure leaves it) or not.</summary>
     private static async Task<Booking> SeedBookingAsync(MessageSyncHarness h, string reservationId, bool erased)
     {

@@ -21,7 +21,9 @@ namespace Casazen.Infrastructure.Services;
 /// <item><b>Which threads.</b> The threads of a booking whose stay is over (a booking still pending, confirmed or in the house is left alone); a thread
 /// with no booking (an inquiry, or a conversation whose booking CasaZen does not hold) has no stay to count from, so its period is counted from its last
 /// message.</item>
-/// <item><b>Once.</b> A thread that was anonymized carries a mark and is not selected again; the read of the channel manager brings nothing of it back.</item>
+/// <item><b>Once.</b> A thread that was anonymized carries a mark and is not selected again by the period; the read of the channel manager brings nothing
+/// of it back. The one thing done again, whichever the period, is the repair of a marked thread that holds a name or a link of a person again because a
+/// read of the channel manager raced the mark (<see cref="GuestDataEraser.HoldingPersonalData"/>): the erasure and the sync do not wait for each other.</item>
 /// <item><b>Privacy.</b> The log carries counts, never an id of a person, a name or a text.</item>
 /// </list>
 /// </remarks>
@@ -36,6 +38,10 @@ public sealed class OtaMessageRetentionService(
 
     public async Task<OtaMessageRetentionResult> ApplyRetentionAsync(CancellationToken cancellationToken = default)
     {
+        // Whatever the period: a conversation that is marked as anonymized but holds a name or a link again is emptied again. It is no decision of the
+        // retention, it finishes the work of an erasure or of an earlier run that a read of the channel manager raced.
+        var repaired = await RepairMarkedThreadsAsync(cancellationToken);
+
         var period = gdprOptions.Value.Retention.AlloggiatiData;
         if (!period.IsConfigured)
         {
@@ -43,7 +49,7 @@ public sealed class OtaMessageRetentionService(
                 "GDPR retention: the copy of the OTA conversations is not applied ({Problem}); nothing of it is anonymized until " +
                 "Gdpr:Retention:AlloggiatiData has a period and its source (docs/runbooks/gdpr.md)",
                 period.ConfigurationProblem);
-            return new OtaMessageRetentionResult(false, 0, 0);
+            return new OtaMessageRetentionResult(false, repaired.Threads, repaired.Messages);
         }
 
         var today = timeProvider.TodayInRome();
@@ -74,19 +80,51 @@ public sealed class OtaMessageRetentionService(
             .Select(t => t.Id)
             .ToList();
 
+        var anonymized = await AnonymizeInChunksAsync(due, cancellationToken);
+        var threads = anonymized.Threads + repaired.Threads;
+        var messages = anonymized.Messages + repaired.Messages;
+
+        logger.LogInformation(
+            "GDPR retention: the copy of the OTA conversations applied: {Threads} threads, {Messages} messages anonymized", threads, messages);
+        return new OtaMessageRetentionResult(true, threads, messages);
+    }
+
+    /// <summary>
+    /// The threads that are marked as anonymized while a message of theirs still has a sender's name or a link to an attachment (see
+    /// <see cref="GuestDataEraser.HoldingPersonalData"/>): a read of the channel manager that ran while the guest was erased stored it after the erasure
+    /// had read the thread, and neither waits for the other. Emptied again, whichever the period.
+    /// </summary>
+    private async Task<(int Threads, int Messages)> RepairMarkedThreadsAsync(CancellationToken ct)
+    {
+        var marked = db.OtaMessageThreads
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(t => t.AnonymizedAt != null);
+        var ids = await eraser.HoldingPersonalData(marked).Select(t => t.Id).ToListAsync(ct);
+        if (ids.Count == 0)
+            return (0, 0);
+
+        var repaired = await AnonymizeInChunksAsync(ids, ct);
+        logger.LogInformation(
+            "GDPR retention: {Threads} conversations already marked as anonymized held a name or a link again, {Messages} messages emptied",
+            repaired.Threads,
+            repaired.Messages);
+        return repaired;
+    }
+
+    private async Task<(int Threads, int Messages)> AnonymizeInChunksAsync(IReadOnlyList<Guid> ids, CancellationToken ct)
+    {
         int threads = 0, messages = 0;
-        foreach (var chunk in due.Chunk(ChunkSize))
+        foreach (var chunk in ids.Chunk(ChunkSize))
         {
             var now = timeProvider.GetUtcNow().UtcDateTime;
-            var outcome = await eraser.AnonymizeOtaThreadsAsync(chunk, now, cancellationToken);
-            await db.SaveChangesAsync(cancellationToken);
+            var outcome = await eraser.AnonymizeOtaThreadsAsync(chunk, now, ct);
+            await db.SaveChangesAsync(ct);
             db.ChangeTracker.Clear();
             threads += outcome.Threads;
             messages += outcome.Messages;
         }
 
-        logger.LogInformation(
-            "GDPR retention: the copy of the OTA conversations applied: {Threads} threads, {Messages} messages anonymized", threads, messages);
-        return new OtaMessageRetentionResult(true, threads, messages);
+        return (threads, messages);
     }
 }

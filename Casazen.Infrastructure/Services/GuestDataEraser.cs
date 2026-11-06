@@ -318,8 +318,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     /// </summary>
     public async Task<OtaAnonymizationOutcome> AnonymizeOtaThreadsOfGuestAsync(Guid guestId, DateTime now, CancellationToken cancellationToken)
     {
-        var threadIds = await db.OtaMessageThreads
-            .Where(t => t.AnonymizedAt == null && t.BookingId != null && db.Bookings.Any(b => b.Id == t.BookingId && b.GuestId == guestId))
+        var ofGuest = db.OtaMessageThreads.Where(t => t.BookingId != null && db.Bookings.Any(b => b.Id == t.BookingId && b.GuestId == guestId));
+        var threadIds = await HoldingPersonalData(ofGuest)
             .Select(t => t.Id)
             .ToListAsync(cancellationToken);
 
@@ -327,11 +327,26 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     }
 
     /// <summary>
-    /// Takes the personal data out of the OTA threads <paramref name="threadIds"/>, once: the text of every message is emptied, its sender's name
+    /// The threads among <paramref name="threads"/> that still hold something of a person: the ones not marked yet, and the marked ones with a message
+    /// that still has a sender's name or a link to an attachment. The anonymization sets that name on every message it touches and drops the link, so a
+    /// marked thread that has either is one where a read of the channel manager, racing the erasure, stored a message after the erasure had read the
+    /// thread (the erasure and the sync do not wait for each other). Found on the plain columns on purpose: the text is encrypted and never compared in SQL.
+    /// </summary>
+    internal IQueryable<OtaMessageThread> HoldingPersonalData(IQueryable<OtaMessageThread> threads)
+    {
+        return threads.Where(t => t.AnonymizedAt == null
+            || db.OtaMessages.Any(m => m.ThreadId == t.Id
+                && (m.SenderName != AnonymizedName || m.AttachmentUrl != null || m.AttachmentContentType != null)));
+    }
+
+    /// <summary>
+    /// Takes the personal data out of the OTA threads <paramref name="threadIds"/>: the text of every message is emptied, its sender's name
     /// and the name of the guest of the thread become <see cref="AnonymizedName"/>, and the address of an attachment on the channel manager is
     /// forgotten (the file itself is not here: only the link to it was). The thread is marked (<see cref="OtaMessageThread.AnonymizedAt"/>), so the
-    /// next read of the channel manager brings none of it back and a second run finds nothing to do. Stages the changes without saving. The ids,
-    /// the dates, the direction, the state and the counts stay: they are the shape of the conversation, not a person.
+    /// next read of the channel manager brings none of it back and a second run finds nothing to do. A thread that is marked already is touched only
+    /// for the messages that still hold something (<see cref="HoldingPersonalData"/>: a read that raced the mark stored them). Stages the changes
+    /// without saving. The ids, the dates, the direction, the state and the counts stay: they are the shape of the conversation, not a person.
+    /// The outcome counts the threads that changed and the messages that lost something.
     /// </summary>
     public async Task<OtaAnonymizationOutcome> AnonymizeOtaThreadsAsync(
         IReadOnlyCollection<Guid> threadIds,
