@@ -28,6 +28,9 @@ public static class RecurringJobsRegistration
         // E02/F02: the jobs of the Octorate connector (bookings and calendar), only while the connector is on.
         ConfigureOctorateJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
 
+        // E10/F01/US01/T04: the "To do" of the flows to complete and of a lost connection, only while the activation with Octorate is on.
+        ConfigureOnboardingJobs(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateOnboarding));
+
         // ADR-022-R8: the time triggers of the stays ("2 days before check-in") are written to the outbox every
         // Routine:EvaluationIntervalMinutes (default 5), whatever the flags say; an org without a time routine gets nothing.
         recurringJobManager.AddOrUpdate<TimeEventEmitterJob>(
@@ -385,6 +388,26 @@ public static class RecurringJobsRegistration
             ListingOutsideChangeJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             ListingOutsideChangeJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The "To do" sync of the activation of CasaZen with Octorate (E10/F01/US01/T04, NF-106, NF-108): only with
+    /// <see cref="FeatureFlags.OctorateOnboarding"/> on, hourly at minute 20 UTC. With the flag off no "To do" of a flow is raised or closed and the
+    /// schedule of an earlier deploy is removed (<c>RemoveIfExists</c>).
+    /// </summary>
+    private static void ConfigureOnboardingJobs(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(OnboardingFlowTodoSyncJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<OnboardingFlowTodoSyncJob>(
+            OnboardingFlowTodoSyncJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            OnboardingFlowTodoSyncJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

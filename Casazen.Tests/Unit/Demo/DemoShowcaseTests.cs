@@ -3,6 +3,7 @@ using Casazen.Core.Demo;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Models;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
@@ -94,6 +95,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.FiscalIssuerProfiles.Select(profile => profile.Scenario))
             .Concat(DemoShowcaseCatalog.TouristTaxChannelRules.Select(rule => rule.Scenario))
             .Concat(DemoShowcaseCatalog.WelcomeLinks.Select(link => link.Scenario))
+            .Concat(DemoShowcaseCatalog.OnboardingActivations.Select(activation => activation.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -759,6 +761,60 @@ public class DemoShowcaseTests
             Pec = data.Pec,
         };
         Assert.Empty(InvoiceDataFormats.Validate(state, requireIdentification: true));
+    }
+
+    /// <summary>
+    /// E10/F01/US01/T04 (NF-104, NF-106): the activation with Octorate has template data (a scenario without it fails here and in the coverage test
+    /// above): a test connection whose account says TEST, three short-rent houses of the template whose bookings flow is, by the real rules of the
+    /// flow status, in three different states (active; every prerequisite met and not activated; listing not confirmed), invented listing ids that
+    /// say TEST, and one deferred part that the plan lets the host defer.
+    /// </summary>
+    [Fact]
+    public void OnboardingActivation_TheDemoOrgHasATestConnection_ThreeHousesInDifferentFlowStates_AndADeferredPart()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.OnboardingActivation, DemoShowcaseCatalog.Scenarios);
+        var activation = Assert.Single(DemoShowcaseCatalog.OnboardingActivations);
+        Assert.Equal(DemoShowcaseCatalog.Scenario.OnboardingActivation, activation.Scenario);
+        Assert.Contains("TEST", activation.AccountId, StringComparison.Ordinal);
+        Assert.True(activation.AccountId.Length <= OctorateConnection.AccountIdMaxLength);
+        Assert.Equal(3, activation.Properties.Select(p => p.PropertyKey).Distinct(StringComparer.Ordinal).Count());
+
+        var connected = FlowPrerequisite.Holds(OnboardingPrerequisiteKeys.Connection);
+        var states = new List<(string State, string? Reason)>();
+        foreach (var house in activation.Properties)
+        {
+            var template = Assert.Single(DemoShowcaseCatalog.Properties, p => p.Key == house.PropertyKey);
+            Assert.Equal(RentalMode.Short, template.Mode);
+            Assert.Contains(DemoShowcaseCatalog.Scenario.OnboardingActivation, template.Scenarios);
+            if (house.AccommodationId is { } accommodation)
+            {
+                Assert.Contains("TEST", accommodation, StringComparison.Ordinal);
+                Assert.True(accommodation.Length <= OctorateListingMapping.AccommodationIdMaxLength);
+            }
+
+            // The bookings flow needs the connection and the confirmed listing (T02): the state the house shows after a reset.
+            var mapping = house.AccommodationId is null
+                ? FlowPrerequisite.Lacks(OnboardingPrerequisiteKeys.Mapping, OnboardingFlowReasons.MappingUnconfirmed)
+                : FlowPrerequisite.Holds(OnboardingPrerequisiteKeys.Mapping);
+            var row = house.ActivatedFlows.Contains(OnboardingFlow.Bookings)
+                ? new PropertyFlowActivation { PropertyId = Guid.NewGuid(), Flow = OnboardingFlow.Bookings, ActivatedByUserId = "auth0|demo" }
+                : null;
+            var status = OnboardingFlowStatusRules.Evaluate(
+                new FlowPropertyFacts(Guid.NewGuid(), template.Name, template.Place.City, template.Mode, true),
+                OnboardingFlow.Bookings,
+                row,
+                FlowReadiness.Needing(connected, mapping));
+            states.Add((status.State, status.Reason));
+        }
+
+        Assert.Equal(3, states.Distinct().Count());
+        Assert.Contains((OnboardingFlowStates.Active, (string?)null), states);
+        Assert.Contains((OnboardingFlowStates.ToComplete, (string?)OnboardingFlowReasons.FlowNotActivated), states);
+        Assert.Contains((OnboardingFlowStates.ToComplete, (string?)OnboardingFlowReasons.MappingUnconfirmed), states);
+
+        // The deferred part is one the plan lets the host defer, with a reminder in the future.
+        Assert.True(OnboardingPartCatalog.IsDeferrable(activation.DeferredPart));
+        Assert.InRange(activation.RemindInDays, 1, OnboardingPlanLimits.MaxRemindDays);
     }
 
     [Fact]

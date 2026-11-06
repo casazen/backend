@@ -12,6 +12,7 @@ using Casazen.Tests.Unit.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -98,7 +99,8 @@ public class DemoMessageThreadsResetPostgresTests : IAsyncLifetime
         new FixedTimeProvider(new DateTimeOffset(At)),
         Mock.Of<IServiceScopeFactory>(),
         Mock.Of<ICrmContactIndex>(),
-        Mock.Of<IFeatureFlags>());
+        Mock.Of<IFeatureFlags>(),
+        Mock.Of<IHostEnvironment>(e => e.EnvironmentName == Environments.Development));
 
     /// <summary>
     /// An org with two showcase houses and a stay at each (the markers the reset leaves), the three conversations of the showcase written by the real seed

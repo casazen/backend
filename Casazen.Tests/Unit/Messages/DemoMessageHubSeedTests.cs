@@ -9,6 +9,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -86,7 +87,8 @@ public class DemoMessageHubSeedTests : IAsyncLifetime
         new FixedTimeProvider(MessageHubTestKit.Now),
         Mock.Of<IServiceScopeFactory>(),
         Mock.Of<ICrmContactIndex>(),
-        Mock.Of<IFeatureFlags>());
+        Mock.Of<IFeatureFlags>(),
+        Mock.Of<IHostEnvironment>(e => e.EnvironmentName == Environments.Development));
 
     private async Task SeedAllAsync()
     {

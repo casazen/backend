@@ -68,4 +68,15 @@ public enum DomainEventType
     /// and each picked a number of its own, so that two of them never pick the same one.
     /// </summary>
     OtaThreadSynced = 50,
+
+    /// <summary>
+    /// An org administrator activated a flow on a property after the server verified its prerequisites (E10/F01/US01/T04, NF-104, NF-106):
+    /// about the property (<c>EntityId</c>), with the payload <c>OnboardingFlowEventPayload</c> (the property, the flow, the activation row). Recorded
+    /// in the same unit of work as the activation row. Starts no routine; nothing consumes it yet. The numbers 100 to 109 are the activation of
+    /// CasaZen with Octorate (epic E10), so that the tasks of the waves that run in parallel never pick the same number.
+    /// </summary>
+    OnboardingFlowActivated = 100,
+
+    /// <summary>An org administrator deactivated a flow on a property (E10/F01/US01/T04): about the property, with the same payload.</summary>
+    OnboardingFlowDeactivated = 101,
 }
