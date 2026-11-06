@@ -46,4 +46,11 @@ public enum DomainEventType
     /// message, an alert) runs a second time.
     /// </summary>
     OctorateSyncRequested = 20,
+
+    /// <summary>
+    /// The invoice data of a booking was saved (E06/F02/US01/T02, FIS-01): by the host, by the guest at the check-in or by the import of the channel
+    /// manager. About the booking (<c>EntityId</c>), with the payload <c>InvoiceDataSavedPayload</c> (the booking and the source, nothing personal). The
+    /// consumer that writes the data to Octorate (E06/F02/US01/T04) reads the data from the booking, in its own org. Starts no routine.
+    /// </summary>
+    InvoiceDataSaved = 21,
 }

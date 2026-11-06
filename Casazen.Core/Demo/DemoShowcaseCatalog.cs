@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.3";
+    public const string Version = "2026-11-06.4";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -91,6 +91,13 @@ public static class DemoShowcaseCatalog
         public const string MarketplaceActivationDeclared = "marketplace-activation-declared";
 
         /// <summary>
+        /// Who an invoice of a booking is made out to (E06/F02/US01, FIS-01, NF-81): a finished direct stay for which the guest asked for an invoice
+        /// at the online check-in and the host completed the data of the company. Written for the booking at reset, marked as showcase data
+        /// (<c>TestDataEntities.BookingInvoiceData</c>) and gone with the booking.
+        /// </summary>
+        public const string InvoiceData = "invoice-data";
+
+        /// <summary>
         /// The CRM profiles built from the bookings (E07/F01/US02, NF-88, NF-89): a returning guest with a past and an upcoming stay at two houses, a
         /// guest whose booking comes from an OTA (the address becomes a forward, service only), a direct customer with the soft opt-in notice, a guest
         /// with a confirmed marketing consent from the online check-in, and two guests who share a phone (a merge to decide). The profiles, the
@@ -147,6 +154,7 @@ public static class DemoShowcaseCatalog
         Scenario.MarketplacePartnersVisible,
         Scenario.MarketplaceActivationDeclared,
         Scenario.CrmProfiles,
+        Scenario.InvoiceData,
     ];
 
     /// <summary>
@@ -407,6 +415,33 @@ public static class DemoShowcaseCatalog
                 new("tassa-versata", "Irene", "Valli", "ospite.demo.tassa-1@example.com", -75, 3, BookingStatus.CheckedOut, Scenario.TouristTaxPaid, BookingSource.Direct, TouristTax: 18.00m),
                 new("tassa-da-versare", "Omar", "Haddad", "ospite.demo.tassa-2@example.com", -50, 2, BookingStatus.CheckedOut, Scenario.TouristTaxPaid, BookingSource.Direct, TouristTax: 12.00m),
                 new("tassa-senza-importo", "Katja", "Novak", "ospite.demo.tassa-3@example.com", -30, 2, BookingStatus.CheckedOut, Scenario.TouristTaxPaid, BookingSource.Airbnb),
+                // NF-81 (Scenario.InvoiceData): a finished direct stay, paid at the property, for which the guest asked for an invoice at the online
+                // check-in and the host completed the data of the company. Invented like the rest: a VAT number with a valid check digit, an
+                // address at example.com, TEST in the name.
+                new(
+                    "fattura-azienda",
+                    "Luca",
+                    "Ferri",
+                    "ospite.demo.fattura@example.com",
+                    -12,
+                    2,
+                    BookingStatus.CheckedOut,
+                    Scenario.InvoiceData,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    InvoiceData: new DemoInvoiceData(
+                        InvoiceRecipientKind.Company,
+                        "Demo Viaggi S.r.l. (TEST)",
+                        "12345678903",
+                        "IT12345678903",
+                        "Via Brera",
+                        "18",
+                        "20121",
+                        "Milano",
+                        "MI",
+                        "ABC1234",
+                        "fatture.demo@pec.example.com",
+                        InvoiceDataSource.Host)),
             ]),
         new(
             Key: "casa-trastevere",
@@ -859,7 +894,26 @@ public sealed record DemoBookingTemplate(
     decimal? TouristTax = null,
     string? Phone = null,
     bool SoftOptInNotice = false,
-    bool CheckInMarketingConsent = false);
+    bool CheckInMarketingConsent = false,
+    DemoInvoiceData? InvoiceData = null);
+
+/// <summary>
+/// Who an invoice of a demo stay is made out to (NF-81): the invoice data written for the booking at reset, the guest's «yes» at the check-in included.
+/// Invented: a VAT number with a valid check digit, an address and a PEC at example.com, TEST in the name.
+/// </summary>
+public sealed record DemoInvoiceData(
+    InvoiceRecipientKind Kind,
+    string Name,
+    string? FiscalCode,
+    string? VatNumber,
+    string AddressStreet,
+    string AddressCivic,
+    string PostalCode,
+    string City,
+    string Province,
+    string? SdiRecipientCode,
+    string? Pec,
+    InvoiceDataSource Source);
 
 public sealed record DemoPropertyTemplate(
     string Key,

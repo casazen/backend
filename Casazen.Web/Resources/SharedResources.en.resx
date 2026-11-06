@@ -4674,4 +4674,22 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OctorateSyncLinkedElsewhere" xml:space="preserve">
     <value>The booking exists in the channel manager, but CasaZen already links it to another booking: check whether it is a duplicate.</value>
   </data>
+  <data name="InvoiceDataFiscalCodeInvalid" xml:space="preserve">
+    <value>The fiscal code is not valid: check it and try again.</value>
+  </data>
+  <data name="InvoiceDataVatNumberInvalid" xml:space="preserve">
+    <value>The VAT number is not valid: an Italian one has 11 digits, with the prefix IT in front, and the last one is a check digit.</value>
+  </data>
+  <data name="InvoiceDataRecipientCodeInvalid" xml:space="preserve">
+    <value>The recipient code is not valid: it is 7 upper case letters or digits.</value>
+  </data>
+  <data name="InvoiceDataPecInvalid" xml:space="preserve">
+    <value>The PEC is not a valid e-mail address.</value>
+  </data>
+  <data name="InvoiceDataRecipientRequired" xml:space="preserve">
+    <value>The invoice needs the fiscal code or the VAT number of whoever receives it.</value>
+  </data>
+  <data name="InvoiceDataFieldInvalid" xml:space="preserve">
+    <value>A field of the invoice data is not valid or is too long: check it and try again.</value>
+  </data>
 </root>

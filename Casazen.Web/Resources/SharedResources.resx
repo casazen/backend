@@ -4674,4 +4674,22 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OctorateSyncLinkedElsewhere" xml:space="preserve">
     <value>La prenotazione esiste nel channel manager, ma in CasaZen è già collegata a un'altra prenotazione: controlla se è un duplicato.</value>
   </data>
+  <data name="InvoiceDataFiscalCodeInvalid" xml:space="preserve">
+    <value>Il codice fiscale non è valido: controllalo e riprova.</value>
+  </data>
+  <data name="InvoiceDataVatNumberInvalid" xml:space="preserve">
+    <value>La partita IVA non è valida: sono 11 cifre, con il prefisso IT davanti, e l'ultima è di controllo.</value>
+  </data>
+  <data name="InvoiceDataRecipientCodeInvalid" xml:space="preserve">
+    <value>Il codice destinatario non è valido: sono 7 tra lettere maiuscole e cifre.</value>
+  </data>
+  <data name="InvoiceDataPecInvalid" xml:space="preserve">
+    <value>La PEC non è un indirizzo email valido.</value>
+  </data>
+  <data name="InvoiceDataRecipientRequired" xml:space="preserve">
+    <value>Per la fattura servono il codice fiscale o la partita IVA di chi la riceve.</value>
+  </data>
+  <data name="InvoiceDataFieldInvalid" xml:space="preserve">
+    <value>Un dato della fattura non è valido o è troppo lungo: controllalo e riprova.</value>
+  </data>
 </root>

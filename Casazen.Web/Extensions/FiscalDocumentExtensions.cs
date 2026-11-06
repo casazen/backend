@@ -1,3 +1,6 @@
+using Casazen.Core.Services;
+using Casazen.Infrastructure.Services;
+
 namespace Casazen.Web.Extensions;
 
 /// <summary>
@@ -10,6 +13,9 @@ public static class FiscalDocumentExtensions
     public static IServiceCollection AddCasazenFiscalDocuments(this IServiceCollection services, IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
+
+        // Who an invoice of a booking is made out to, with the precedence of its sources (E06/F02/US01/T02).
+        services.AddScoped<IInvoiceDataService, InvoiceDataService>();
 
         return services;
     }

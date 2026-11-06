@@ -123,4 +123,11 @@ public static class TestDataEntities
 
     /// <summary>The per-channel marketing consent of the online check-in of a showcase guest (<see cref="MarketingConsentRecord"/>); it goes with its booking at the reset.</summary>
     public const string MarketingConsent = "MarketingConsentRecord";
+
+    /// <summary>
+    /// Who an invoice of a showcase stay is made out to (<see cref="BookingInvoiceData"/>, E06/F02/US01, NF-81): written with the booking at the
+    /// reset, invented and marked TEST. It goes with its booking (the table cascades), so the reset deletes it with the stay; a real row has no
+    /// marker and is never touched.
+    /// </summary>
+    public const string BookingInvoiceData = "BookingInvoiceData";
 }

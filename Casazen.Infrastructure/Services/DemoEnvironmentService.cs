@@ -1013,6 +1013,42 @@ public class DemoEnvironmentService(
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.Booking, booking.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
         await CreateCrmConsentsAsync(orgId, guest.Id, booking.Id, template, madeAt, cancellationToken);
+        if (template.InvoiceData is { } invoiceData)
+            await CreateInvoiceDataAsync(orgId, booking.Id, invoiceData, template.Key, madeAt, cancellationToken);
+    }
+
+    /// <summary>
+    /// Who the invoice of a showcase stay is made out to (NF-81): the guest's «yes» of the online check-in and the data of the recipient, in the
+    /// row the real flows write (encrypted by the context). It goes with its booking when the reset deletes it (the table cascades).
+    /// </summary>
+    private async Task CreateInvoiceDataAsync(
+        Guid orgId, Guid bookingId, DemoInvoiceData template, string templateKey, DateTime madeAt, CancellationToken cancellationToken)
+    {
+        var row = new BookingInvoiceData
+        {
+            OrgId = orgId,
+            BookingId = bookingId,
+            InvoiceRequested = true,
+            InvoiceRequestedAt = madeAt,
+            RecipientKind = template.Kind,
+            Name = template.Name,
+            FiscalCode = template.FiscalCode,
+            VatNumber = template.VatNumber,
+            AddressStreet = template.AddressStreet,
+            AddressCivic = template.AddressCivic,
+            PostalCode = template.PostalCode,
+            City = template.City,
+            Province = template.Province,
+            CountryCode = BookingInvoiceData.DefaultCountryCode,
+            SdiRecipientCode = template.SdiRecipientCode,
+            Pec = template.Pec,
+            Source = template.Source,
+            CreatedAt = madeAt,
+            UpdatedAt = madeAt,
+        };
+        db.BookingInvoiceData.Add(row);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.BookingInvoiceData, row.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
     }
 
     /// <summary>

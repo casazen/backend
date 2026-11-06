@@ -694,6 +694,31 @@ record or delete, and the collaborator has neither. It works in the org and the 
   owed side only: a title that says the payments are not shown, no paid, balance and status columns and no list of payments. The file is
   `casazen-tassa-soggiorno-riepilogo-20260101-20261231.csv`.
 
+#### Invoice data of a booking (FIS-01, NF-81, E06/F02/US01)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/bookings/{bookingId}/invoice-data` | short-rent `payment.read` + `booking.read` on the booking | Who an invoice of the booking is made out to: `{ bookingId, invoiceRequested, invoiceRequestedAt, recipientKind, name, fiscalCode, vatNumber, addressStreet, addressCivic, postalCode, city, province, countryCode, sdiRecipientCode, pec, source, updatedAt }`, with `recipientKind` `Guest`\|`Company` and `source` `Octorate`\|`CheckIn`\|`Host`. A booking with no data answers the empty object (`bookingId` and `invoiceRequested: false`). 404 `booking_not_found` for a booking of another org, 403 for one the caller sees and may not read (a collaborator «Solo alcuni» on a property it was not given) |
+| `PUT` | `/api/bookings/{bookingId}/invoice-data` | short-rent `payment.write` + `booking.write` on the booking | Saves who the invoice is for with the source `Host`, and answers the data as saved. A member that is left out keeps its value, one sent empty clears it. 422 with the `code` and the `field` of the first failure and every failure in `errors` (`[{ field, code }]`): `invoice_data_fiscal_code_invalid`, `invoice_data_vat_number_invalid`, `invoice_data_recipient_code_invalid`, `invoice_data_pec_invalid`, `invoice_data_recipient_required` (a company needs a VAT number or a fiscal code, a private person in Italy a fiscal code, a recipient outside Italy neither), `invoice_data_field_invalid` (too long, or a province, a country, an Italian postal code or a kind of recipient that is not one). 404 and 403 as above |
+
+`InvoiceDataController` authorizes the booking as a `HostResource` of its property (`BookingOperations`): another org's booking is invisible (404), one the
+caller sees and may not use is 403. The accountant reads and cannot write; the collaborator has neither right.
+
+- **Precedence by source, decided on the row.** `BookingInvoiceData.Source` is the highest source that ever wrote the row: Host over CheckIn
+  over Octorate (`InvoiceDataPrecedence`). When it outranks the incoming source, the incoming data fills only the fields that are empty (it
+  never overwrites and never clears a stored value) and the row keeps its source; otherwise it overwrites the fields it sends and the row takes
+  the incoming source. The kind of recipient and the country have a default, so a lower source sets them only while the row holds no data of the
+  recipient, or no address. A save that fills nothing writes nothing and records no event.
+- **The whole result is checked.** The command is merged with the stored data into a copy and the copy is validated by `InvoiceDataFormats`
+  (the fiscal code through `ItalianFiscalCode`, the VAT number with its check digit when Italian, the recipient code, the PEC, lengths and shapes),
+  so a 422 saves nothing. The text is normalized first: fiscal code upper case without spaces, VAT number with its country prefix, recipient code
+  upper case, PEC lower case. The identification of the recipient is required of what a person typed (Host, CheckIn), not of the partial data of
+  an import.
+- **Event.** A save that wrote something records `InvoiceDataSaved` (the booking and the source, no personal data) in the same unit of work
+  (ADR-022-R1). Two writers of the same row: `xmin` is its concurrency token and `BookingId` is unique, so the loser reads the row the other one
+  saved and applies the precedence to it.
+- **No document, no Alloggiati data.** Nothing is read or copied from the identity documents or the guests of the stay.
+
 #### Owner portal (ADR-011, NF-96)
 
 Policy `OwnerPortal` on the class (JWT claim `context=owner_portal` and a valid `owner_id`; never a host role); 401 without a valid owner
@@ -1633,6 +1658,23 @@ administrators (`docs/runbooks/org-team.md` § 24).
 | `RecordedByUserId` | `string` (255) | required, not a foreign key | The Auth0 subject who recorded it |
 | `CreatedAt`, `UpdatedAt` | `DateTime` | UTC | — |
 | | | index `(OrgId, ComuneKey, PeriodFrom, PeriodTo)`, **not unique** | A comune can be paid in instalments, so payments of the same comune and period are all kept |
+
+#### `BookingInvoiceData` (NF-81, E06/F02/US01/T01)
+
+Who an invoice of a booking is made out to. One row for each booking; it goes with the booking. Personal data is encrypted at rest with the purpose `Casazen.BookingInvoiceData` (no length on those columns: the payload is longer than the text, the lengths are checked on input).
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| `Id` | `Guid` | PK | Auto-generated |
+| `OrgId` | `Guid` | tenant key (`ITenantOwned`) | The org of the booking, set by the service, never by a client |
+| `BookingId` | `Guid` | FK `Bookings` (CASCADE), **unique** (`UIX_BookingInvoiceData_BookingId`) | The booking; at most one row |
+| `InvoiceRequested`, `InvoiceRequestedAt` | `bool`, `DateTime?` | — | The guest said «Ti serve la fattura?» yes at the check-in, and when |
+| `RecipientKind` | `int` (enum) | explicit numbers, never reused | `Guest` 1, `Company` 2 |
+| `Name` (200), `FiscalCode` (16), `VatNumber` (28, with the country prefix), `AddressStreet` (200), `AddressCivic` (20), `PostalCode` (10), `City` (100), `Pec` (254) | `text`, nullable | encrypted at rest (`Casazen.BookingInvoiceData`) | The denomination or «First Last», the codice fiscale, the VAT number, the address and the PEC; the length is the limit checked on input |
+| `Province` (2), `CountryCode` (2, default `IT`), `SdiRecipientCode` (7) | `string` | not encrypted | The province, the ISO 3166-1 alpha-2 country and the code of the recipient on the SDI |
+| `Source` | `int` (enum) | explicit numbers, never reused | The highest source that ever wrote the row: `Octorate` 1, `CheckIn` 2, `Host` 3. It is the precedence |
+| `CreatedAt`, `UpdatedAt`, `UpdatedByUserId` | `DateTime`, `DateTime`, `string?` (255) | — | UTC; the person who saved it last when it was the host |
+| `xmin` | `uint` | concurrency token (`RowVersion`) | PostgreSQL system column; no column of its own |
 
 #### Activation of CasaZen with Octorate (NF-104..NF-107, E10/F01/US01/T01)
 

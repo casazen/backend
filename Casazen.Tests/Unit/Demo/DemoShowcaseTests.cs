@@ -413,4 +413,44 @@ public class DemoShowcaseTests
         Assert.NotNull(CrmNormalizer.NormalizePhone(DemoShowcaseCatalog.CrmSharedPhone));
         Assert.Null(CrmNormalizer.NormalizePhone("+390000000000"));
     }
+
+    [Fact]
+    public void InvoiceData_TheDemoHasAFinishedDirectStayWithAnInvoiceRecipientThatPassesTheRulesOfARealOne_AllInvented()
+    {
+        var stays = DemoShowcaseCatalog.Properties
+            .SelectMany(p => p.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.InvoiceData))
+            .ToList();
+
+        // NF-81: the booking of the host has an invoice recipient to show, so the scenario has template data and a scenario without it fails.
+        Assert.Contains(DemoShowcaseCatalog.Scenario.InvoiceData, DemoShowcaseCatalog.Scenarios);
+        var stay = Assert.Single(stays);
+        var data = stay.InvoiceData;
+        Assert.NotNull(data);
+        Assert.Equal(BookingSource.Direct, stay.Source);
+        Assert.Equal(BookingStatus.CheckedOut, stay.Status);
+        Assert.EndsWith("@example.com", stay.Email, StringComparison.Ordinal);
+
+        // Invented and obviously so: TEST in the name, an address at example.com.
+        Assert.Contains("TEST", data.Name, StringComparison.Ordinal);
+        Assert.EndsWith("@example.com", data.Pec!, StringComparison.Ordinal);
+        Assert.Equal(InvoiceDataSource.Host, data.Source);
+
+        // Valid for the rules a recipient saved through the service obeys: no failure, and the recipient is identified.
+        var state = new SaveInvoiceDataCommand
+        {
+            RecipientKind = data.Kind,
+            Name = data.Name,
+            FiscalCode = data.FiscalCode,
+            VatNumber = data.VatNumber,
+            AddressStreet = data.AddressStreet,
+            AddressCivic = data.AddressCivic,
+            PostalCode = data.PostalCode,
+            City = data.City,
+            Province = data.Province,
+            CountryCode = BookingInvoiceData.DefaultCountryCode,
+            SdiRecipientCode = data.SdiRecipientCode,
+            Pec = data.Pec,
+        };
+        Assert.Empty(InvoiceDataFormats.Validate(state, requireIdentification: true));
+    }
 }
