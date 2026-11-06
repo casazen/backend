@@ -27,10 +27,13 @@ public class BookingInvoiceDataEncryptionPostgresTests
     private const string Pec = "fatture.gino@pec.example.com";
     private const string SdiCode = "ABC1234";
 
+    // The hash of the billing data last written to Octorate (E06/F02/US01/T04): a hash of the data above, stored encrypted like it.
+    private const string BillingHash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+
     // Whole values and pieces of them that cannot appear by chance in a base64url payload (a dot, an at sign, a space, a slash, eleven digits or
     // nine letters in a row): a shorter piece could, by luck, and make the proof flaky.
     private static readonly string[] Secrets =
-        [Name, "Ristorante", FiscalCode, VatNumber, "12345678903", Street, "Sale Rosa", Civic, PostalCode, City, Pec, "fatture.gino"];
+        [Name, "Ristorante", FiscalCode, VatNumber, "12345678903", Street, "Sale Rosa", Civic, PostalCode, City, Pec, "fatture.gino", BillingHash];
 
     /// <summary>
     /// PROOF TEST: privacy rule. The raw text of every personal column of the invoice data holds a Data Protection payload and none of the value
@@ -102,6 +105,8 @@ public class BookingInvoiceDataEncryptionPostgresTests
                 SdiRecipientCode = SdiCode,
                 Pec = Pec,
                 Source = InvoiceDataSource.Host,
+                OctorateBillingHash = BillingHash,
+                OctorateBillingSentAt = at,
                 CreatedAt = at,
                 UpdatedAt = at,
             });
@@ -120,8 +125,9 @@ public class BookingInvoiceDataEncryptionPostgresTests
             await stored.Database.SqlQueryRaw<string>("SELECT \"PostalCode\" AS \"Value\" FROM \"BookingInvoiceData\"").SingleAsync(),
             await stored.Database.SqlQueryRaw<string>("SELECT \"City\" AS \"Value\" FROM \"BookingInvoiceData\"").SingleAsync(),
             await stored.Database.SqlQueryRaw<string>("SELECT \"Pec\" AS \"Value\" FROM \"BookingInvoiceData\"").SingleAsync(),
+            await stored.Database.SqlQueryRaw<string>("SELECT \"OctorateBillingHash\" AS \"Value\" FROM \"BookingInvoiceData\"").SingleAsync(),
         };
-        Assert.Equal(8, raws.Length);
+        Assert.Equal(9, raws.Length);
         Assert.All(raws, raw =>
         {
             Assert.StartsWith(EncryptedColumns.ProtectedPayloadPrefix, raw, StringComparison.Ordinal);
@@ -139,6 +145,7 @@ public class BookingInvoiceDataEncryptionPostgresTests
         Assert.Equal((Name, FiscalCode, VatNumber), (row.Name, row.FiscalCode, row.VatNumber));
         Assert.Equal((Street, Civic, PostalCode, City), (row.AddressStreet, row.AddressCivic, row.PostalCode, row.City));
         Assert.Equal(Pec, row.Pec);
+        Assert.Equal(BillingHash, row.OctorateBillingHash);
         Assert.Equal(SdiCode, row.SdiRecipientCode);
     }
 }

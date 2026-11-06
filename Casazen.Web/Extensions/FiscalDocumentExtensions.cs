@@ -1,5 +1,7 @@
+using Casazen.Core.Events;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 
 namespace Casazen.Web.Extensions;
@@ -24,6 +26,12 @@ public static class FiscalDocumentExtensions
 
         // Who issues the documents of an organization and of each booking (E06/F02/US02/T02).
         services.AddScoped<IDocumentIssuerService, DocumentIssuerService>();
+
+        // The billing data and Octorate (E06/F02/US01/T04), both behind Features:OctorateConnector and Features:OctorateBillingSync: the invoice data of a
+        // booking imported from Octorate is pre-filled from its customer record (BookingCreated), and the data saved in CasaZen is written to Octorate where
+        // Octorate is the issuer (InvoiceDataSaved). Run by the outbox dispatcher, so neither can fail an import or a host's save.
+        services.AddScoped<IEventHandler<DomainEvent>, InvoiceDataFromOctorateHandler>();
+        services.AddScoped<IEventHandler<DomainEvent>, OctorateBillingWriteBackHandler>();
 
         return services;
     }

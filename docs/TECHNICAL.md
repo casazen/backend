@@ -718,6 +718,20 @@ caller sees and may not use is 403. The accountant reads and cannot write; the c
   (ADR-022-R1). Two writers of the same row: `xmin` is its concurrency token and `BookingId` is unique, so the loser reads the row the other one
   saved and applies the precedence to it.
 - **No document, no Alloggiati data.** Nothing is read or copied from the identity documents or the guests of the stay.
+- **Sync with Octorate (E06/F02/US01/T04)**, behind `Features:OctorateConnector` **and** `Features:OctorateBillingSync` (off). Two handlers of the outbox, so
+  neither can fail an import or a host's save. `InvoiceDataFromOctorateHandler` (`BookingCreated` of origin Octorate, a stay not yet over, a mirrored property)
+  reads the customer record of the booker (`IOctorateApiClient.GetBookerBillingDataAsync`: the reservation names the record, then `GET /rest/v1/guests/{acc}/{guestId}`),
+  leaves out the fields that fail the checks of the invoice data and saves the rest with the source Octorate (fill-only, so never over a host's or a guest's word).
+  `OctorateBillingWriteBackHandler` (`InvoiceDataSaved` whose source is not Octorate): where `IDocumentIssuerService.ResolveIssuerAsync` says Octorate and the
+  booking has a reservation there, it writes the billing members to that record (`PUT /rest/v1/guests/{acc}/{guestId}`: company name for a company, fiscal code,
+  VAT number, address on one line, postal code, city, province, country, SDI code, PEC; nothing else, nothing cleared) once for each change: the hash of the body
+  written is kept on the row (`OctorateBillingHash`, encrypted at rest, with `OctorateBillingSentAt`). A failing or refused call (no answer, a 5xx, the rate limit,
+  a refusal of the credentials or of the guests' sensitive data, which needs CasaZen's outbound IPs whitelisted, D24) is logged with ids and a code, never a
+  value, and rethrown, so the outbox delivers the event again and, after five deliveries, keeps it dead-lettered with the code; a record Octorate does not know,
+  a request it rejects, a conflict or no connection is logged the same way and left. A booking whose reservation is being created, or whose confirmation is
+  still in the outbox, makes the event be delivered again (`OctorateBillingPendingException`) instead of dropping the data.
+  **Documented, not proven:** the routes are the ones the requirements record from Octorate's specification; the member names are assumed
+  (`OctorateBillingMapping`). Check them on the sandbox before the flag is turned on (`docs/runbooks/feature-flags.md`).
 
 #### Issuer of the fiscal documents (FIS-02, NF-82, PO-05, E06/F02/US02)
 

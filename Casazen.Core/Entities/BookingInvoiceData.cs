@@ -15,7 +15,8 @@ namespace Casazen.Core.Entities;
 /// <item><b>Personal data, encrypted.</b> <see cref="Name"/>, <see cref="FiscalCode"/>, <see cref="VatNumber"/>, <see cref="AddressStreet"/>,
 /// <see cref="AddressCivic"/>, <see cref="PostalCode"/>, <see cref="City"/> and <see cref="Pec"/> are encrypted at rest (<c>EncryptedColumns</c>,
 /// purpose <c>Casazen.BookingInvoiceData</c>): the code reads and writes the clear value through EF, the database only holds the payload, so these
-/// columns carry no length (the payload is longer than the text) and the lengths below are checked on input. Nothing is searched in them.</item>
+/// columns carry no length (the payload is longer than the text) and the lengths below are checked on input. Nothing is searched in them. So is
+/// <see cref="OctorateBillingHash"/>, the hash of what was last written to Octorate: a hash of personal data is personal data.</item>
 /// <item><b>Precedence.</b> <see cref="Source"/> is the highest source that ever wrote the row. A write from a lower source fills only the empty
 /// fields (<see cref="InvoiceDataPrecedence"/>), so a host's edit is never overwritten by an import or by the guest.</item>
 /// <item><b>Not copied from elsewhere.</b> The row never holds an identity document or any Alloggiati data: only what an invoice needs.</item>
@@ -125,6 +126,16 @@ public class BookingInvoiceData : ITenantOwned
 
     /// <summary>The highest source that ever wrote the row: it decides whether a later write may overwrite a field or only fill an empty one.</summary>
     public InvoiceDataSource Source { get; set; }
+
+    /// <summary>
+    /// The hash of the billing data last written to Octorate (E06/F02/US01/T04): what makes the write-back happen once for each change, because the data
+    /// is not sent again while its hash is the one stored here. A hash of personal data is personal data, so it is <b>encrypted at rest</b> like the data
+    /// itself (no length on the column). <c>null</c> until a write succeeded; never part of an answer of the API.
+    /// </summary>
+    public string? OctorateBillingHash { get; set; }
+
+    /// <summary>When the billing data was last written to Octorate (UTC); <c>null</c> until it was.</summary>
+    public DateTime? OctorateBillingSentAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

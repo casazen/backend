@@ -892,6 +892,12 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<string>("Name")
                         .HasColumnType("text");
 
+                    b.Property<string>("OctorateBillingHash")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("OctorateBillingSentAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 

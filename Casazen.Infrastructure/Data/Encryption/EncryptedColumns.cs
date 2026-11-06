@@ -236,7 +236,9 @@ public static class EncryptedColumns
             nameof(BookingInvoiceData.AddressCivic),
             nameof(BookingInvoiceData.PostalCode),
             nameof(BookingInvoiceData.City),
-            nameof(BookingInvoiceData.Pec)),
+            nameof(BookingInvoiceData.Pec),
+            // E06/F02/US01/T04: the hash of the billing data last written to Octorate is a hash of the personal data above.
+            nameof(BookingInvoiceData.OctorateBillingHash)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

@@ -175,6 +175,15 @@ public static class FeatureFlags
     /// </summary>
     public const string FiscalDocumentIssuance = "FiscalDocumentIssuance";
 
+    /// <summary>
+    /// E06/F02/US01/T04 (NF-81, NF-82, FIS-01, FIS-02): the sync of the billing data with Octorate, <b>off by default</b> until the customer (address
+    /// book) endpoints are proven in the Octorate sandbox and CasaZen's outbound IPs are whitelisted (Octorate refuses the guests' sensitive data
+    /// before that). It gates two handlers and nothing else: the pre-fill of the invoice data of a booking imported from Octorate (<c>BookingCreated</c>)
+    /// and the write of the billing data saved in CasaZen to Octorate, only where Octorate is the issuer (<c>InvoiceDataSaved</c>). Both also need
+    /// <c>Features:OctorateConnector</c>. It needs no variable to start. This task owns the flag: the other tasks of epic E06 only read it.
+    /// </summary>
+    public const string OctorateBillingSync = "OctorateBillingSync";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -194,5 +203,6 @@ public static class FeatureFlags
         CrmMarketing,
         OctorateOnboarding,
         FiscalDocumentIssuance,
+        OctorateBillingSync,
     ];
 }

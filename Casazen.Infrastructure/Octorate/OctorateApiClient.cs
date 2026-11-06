@@ -432,6 +432,52 @@ public sealed class OctorateApiClient(
         return [.. Items(document.RootElement).Select(ReadPortal).OfType<OctoratePortal>()];
     }
 
+    public async Task<OctorateBillingData?> GetBookerBillingDataAsync(string accommodationId, string reservationId, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+
+        var customerId = await CustomerIdOfReservationAsync(accommodation, reservation, ct);
+        if (customerId is null)
+            return null;
+
+        // Sensitive data: nothing of the answer is logged, and a refusal before the outbound IPs are whitelisted is an OctorateAuthException.
+        using var document = await GetJsonAsync(
+            $"/rest/v1/guests/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(customerId)}", "customer-billing", ct);
+        return OctorateBillingMapping.Read(Unwrap(document.RootElement));
+    }
+
+    public async Task UpsertBookerBillingDataAsync(string accommodationId, string reservationId, OctorateBillingData data, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+
+        var json = OctorateBillingMapping.WriteBody(data);
+        if (json == OctorateBillingMapping.EmptyBody)
+            throw new ArgumentException("Billing data with nothing to write is not sent.", nameof(data));
+
+        var customerId = await CustomerIdOfReservationAsync(accommodation, reservation, ct) ?? throw new OctorateNotFoundException();
+        await SendAsync(
+            () => new HttpRequestMessage(
+                HttpMethod.Put,
+                Address($"/rest/v1/guests/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(customerId)}"))
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            },
+            "customer-billing-write",
+            ct);
+    }
+
+    /// <summary>The id of the customer record a reservation names (<c>GET /rest/v1/reservation/{acc}/{id}</c>), or <c>null</c> when it names none or an unusable id.</summary>
+    private async Task<string?> CustomerIdOfReservationAsync(string accommodationId, string reservationId, CancellationToken ct)
+    {
+        using var document = await GetJsonAsync(
+            $"/rest/v1/reservation/{Uri.EscapeDataString(accommodationId)}/{Uri.EscapeDataString(reservationId)}", "reservation-customer", ct);
+        var id = OctorateBillingMapping.CustomerIdOf(Unwrap(document.RootElement));
+        return id is { Length: > 0 and <= MaxAccommodationIdLength } ? id : null;
+    }
+
     /// <summary>
     /// One call for the org of the scope: the org first (none: it throws and nothing leaves), then its token and a call from its bucket,
     /// the answer of a success, or the typed error. Retries a 429 after the backoff delays and a refused token once after a refresh.

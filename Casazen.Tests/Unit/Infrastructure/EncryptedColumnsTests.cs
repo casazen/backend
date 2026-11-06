@@ -17,12 +17,14 @@ public class EncryptedColumnsTests
         Assert.Equal(
             new[]
             {
-                // NF-81: who an invoice of a booking is made out to (name, fiscal code, VAT number, address, PEC).
+                // NF-81: who an invoice of a booking is made out to (name, fiscal code, VAT number, address, PEC) and, with it, the hash of what was
+                // last written to Octorate (E06/F02/US01/T04).
                 "BookingInvoiceData.AddressCivic:Casazen.BookingInvoiceData",
                 "BookingInvoiceData.AddressStreet:Casazen.BookingInvoiceData",
                 "BookingInvoiceData.City:Casazen.BookingInvoiceData",
                 "BookingInvoiceData.FiscalCode:Casazen.BookingInvoiceData",
                 "BookingInvoiceData.Name:Casazen.BookingInvoiceData",
+                "BookingInvoiceData.OctorateBillingHash:Casazen.BookingInvoiceData",
                 "BookingInvoiceData.Pec:Casazen.BookingInvoiceData",
                 "BookingInvoiceData.PostalCode:Casazen.BookingInvoiceData",
                 "BookingInvoiceData.VatNumber:Casazen.BookingInvoiceData",
