@@ -10,7 +10,7 @@ namespace Casazen.Core.Entities;
 /// alerted. One row per user and conversation; no text, no name, no address.
 /// </summary>
 /// <remarks>
-/// <para>The slot is claimed with one conditional statement (<c>INotificationEmailSlots</c>, see <c>HostMessageAlertDelivery</c>): two
+/// <para>The slot is claimed with one conditional statement (<c>HostMessageAlertDelivery</c>): two
 /// messages at the same moment queue one email for the person, and an email deferred by the quiet hours holds the slot until the
 /// instant it is due, so the messages of the night are one email in the morning and not one each.</para>
 /// <para>The row goes with the user and with the org (foreign keys <c>ON DELETE CASCADE</c>); a row not claimed for a week is
