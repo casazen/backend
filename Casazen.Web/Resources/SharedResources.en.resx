@@ -4272,7 +4272,7 @@
     <value>Someone else has just changed who sends the communications of this property: reload the page and check before changing it again.</value>
   </data>
   <data name="AlloggiatiDelegationVersionInvalid" xml:space="preserve">
-    <value>The version of the delegation text is not valid: it must be the code of the version (letters, digits, dot, hyphen), at most 50 characters.</value>
+    <value>The version of the delegation text is not valid: it must be the code of the version (letters, digits, dot, hyphen), at most 40 characters.</value>
   </data>
   <data name="OctorateHandoffTopicRequired" xml:space="preserve">
     <value>Say what you want to check: Alloggiati or ISTAT.</value>

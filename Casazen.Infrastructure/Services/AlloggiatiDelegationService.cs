@@ -14,14 +14,15 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// The delegation lives on the <see cref="Org"/> row (the <c>AlloggiatiDelegation*</c> columns). The activity line is staged in the unit of
 /// work of the change (<see cref="IActivityLog.Record"/>) and saved with it, or not at all. The line holds the org as its subject, the
-/// account as its actor and, for a grant, the version when it is a short code of the log: never a name, an e-mail or the text.
+/// account as its actor and, for a grant, the version (a code of at most 40 characters, the limit of a value of the log): never a
+/// name, an e-mail or the text.
 /// </remarks>
 public sealed partial class AlloggiatiDelegationService(
     AppDbContext db,
     IActivityLog activityLog,
     TimeProvider? timeProvider = null) : IAlloggiatiDelegationService
 {
-    /// <summary>The error code of a version of the delegation text that is not a code of at most 50 characters.</summary>
+    /// <summary>The error code of a version of the delegation text that is not a code of at most 40 characters.</summary>
     public const string VersionInvalidCode = "alloggiati_delegation_version_invalid";
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -48,9 +49,8 @@ public sealed partial class AlloggiatiDelegationService(
         org.AlloggiatiDelegationRevokedAt = null;
         org.AlloggiatiDelegationRevokedByUserId = null;
         org.UpdatedAt = now;
-        activityLog.Record(OrgActivityCatalog.IsSafeDetailValue(version)
-            ? OrgActivity.Of(org.Id, OrgActivityType.AlloggiatiDelegationGranted, userId, org.Id.ToString(), (OrgActivityDetailKeys.DelegationVersion, version))
-            : OrgActivity.Of(org.Id, OrgActivityType.AlloggiatiDelegationGranted, userId, org.Id.ToString()));
+        activityLog.Record(OrgActivity.Of(
+            org.Id, OrgActivityType.AlloggiatiDelegationGranted, userId, org.Id.ToString(), (OrgActivityDetailKeys.DelegationVersion, version)));
         await db.SaveChangesAsync(ct);
         return Info(org);
     }
@@ -84,7 +84,7 @@ public sealed partial class AlloggiatiDelegationService(
             org.AlloggiatiDelegationTextVersion,
             org.AlloggiatiDelegationRevokedAt);
 
-    /// <summary>The version of the delegation text, trimmed: a code of at most 50 characters, or a 422.</summary>
+    /// <summary>The version of the delegation text, trimmed: a code of at most 40 characters, or a 422.</summary>
     private static string Version(string? textVersion)
     {
         var version = textVersion?.Trim();
@@ -109,9 +109,10 @@ public sealed partial class AlloggiatiDelegationService(
     private DateTime Now() => UtcDateTime.TruncateToMicroseconds(_clock.GetUtcNow().UtcDateTime);
 
     /// <summary>
-    /// A code of the legal documents (<see cref="Org.AlloggiatiDelegationTextVersionMaxLength"/> = 50 characters at most): a letter or
-    /// a digit, then letters, digits, <c>.</c>, <c>_</c> or <c>-</c>. No space, no <c>@</c>, no sentence.
+    /// A code of the legal documents, at most <see cref="OrgActivityCatalog.MaxDetailValueLength"/> = 40 characters: the longest value a
+    /// line of the activity log accepts, so the line of a grant always carries the version it proves (the column of the org holds 50). A
+    /// letter or a digit, then letters, digits, <c>.</c>, <c>_</c> or <c>-</c>. No space, no <c>@</c>, no sentence.
     /// </summary>
-    [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$")]
+    [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$")]
     private static partial Regex VersionPattern();
 }

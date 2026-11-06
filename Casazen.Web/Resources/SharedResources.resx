@@ -4272,7 +4272,7 @@
     <value>Un'altra persona ha appena cambiato chi invia le comunicazioni di questo immobile: ricarica la pagina e controlla prima di cambiarlo di nuovo.</value>
   </data>
   <data name="AlloggiatiDelegationVersionInvalid" xml:space="preserve">
-    <value>La versione del testo della delega non è valida: deve essere il codice della versione (lettere, cifre, punto, trattino), al massimo 50 caratteri.</value>
+    <value>La versione del testo della delega non è valida: deve essere il codice della versione (lettere, cifre, punto, trattino), al massimo 40 caratteri.</value>
   </data>
   <data name="OctorateHandoffTopicRequired" xml:space="preserve">
     <value>Indica cosa vuoi verificare: Alloggiati o ISTAT.</value>

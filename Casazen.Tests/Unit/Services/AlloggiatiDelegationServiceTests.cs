@@ -49,11 +49,14 @@ public class AlloggiatiDelegationServiceTests
             Assert.True(granted.Valid);
             Assert.Equal((clock.GetUtcNow().UtcDateTime, Admin, Version), (granted.GrantedAt!.Value, granted.GrantedByUserId, granted.TextVersion));
 
-            // The same version again changes nothing; a version that is not a code is refused.
+            // The same version again changes nothing; a version that is not a code is refused, and so is one the log could not hold.
             await service.GrantAsync(org.Id, Admin, Version);
             var invalid = await Assert.ThrowsAsync<DomainRuleException>(
                 () => service.GrantAsync(org.Id, Admin, "Mario Rossi <mario.rossi@example.com>"));
             Assert.Equal("alloggiati_delegation_version_invalid", invalid.Code);
+            var tooLong = await Assert.ThrowsAsync<DomainRuleException>(
+                () => service.GrantAsync(org.Id, Admin, new string('v', OrgActivityCatalog.MaxDetailValueLength + 1)));
+            Assert.Equal("alloggiati_delegation_version_invalid", tooLong.Code);
 
             // Revoked: not valid any more, the grant stays as it was; revoking again changes nothing.
             clock.Advance(TimeSpan.FromHours(1));

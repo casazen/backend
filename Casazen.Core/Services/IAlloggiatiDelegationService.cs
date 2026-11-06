@@ -9,7 +9,7 @@ namespace Casazen.Core.Services;
 /// <para>A revocation blocks new sends, not the retrieval of the receipts of the transmissions already acquired: the send path
 /// (E03/F01/US06) enforces it by reading <see cref="AlloggiatiDelegationInfo.Valid"/>.</para>
 /// <para>The legal text and its version belong to the sender wizard (E03/F01/US02/T02) and to the legal documents: here the version is
-/// data, a code (letters, digits, <c>.</c>, <c>_</c>, <c>-</c>, at most 50 characters). The service never checks roles: the web layer
+/// data, a code (letters, digits, <c>.</c>, <c>_</c>, <c>-</c>, at most 40 characters). The service never checks roles: the web layer
 /// authorizes the org and the person.</para>
 /// </remarks>
 public interface IAlloggiatiDelegationService
@@ -20,7 +20,7 @@ public interface IAlloggiatiDelegationService
     /// <summary>
     /// Grants the delegation with the version of the text <paramref name="userId"/> accepted, and records
     /// <c>AlloggiatiDelegationGranted</c>; a grant after a revocation clears the revocation. Granting again the version that is
-    /// already valid changes and records nothing. A version that is not a code of at most 50 characters is refused with
+    /// already valid changes and records nothing. A version that is not a code of at most 40 characters is refused with
     /// <c>DomainRuleException</c> <c>alloggiati_delegation_version_invalid</c>.
     /// </summary>
     Task<AlloggiatiDelegationInfo> GrantAsync(Guid orgId, string userId, string textVersion, CancellationToken ct = default);

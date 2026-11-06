@@ -71,7 +71,7 @@ public static class OrgActivityDetailKeys
 
     /// <summary>
     /// The version of the delegation text an org accepted when it delegated the Alloggiati transmission (a code of the legal
-    /// documents, e.g. <c>2026-11-v1</c>), never the text. Written only when it is a short code of the log.
+    /// documents, e.g. <c>2026-11-v1</c>), never the text. Always written: the delegation refuses a version of more than 40 characters.
     /// </summary>
     public const string DelegationVersion = "delegationVersion";
 
