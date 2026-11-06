@@ -1,3 +1,4 @@
+using System.Data;
 using System.Globalization;
 using System.Text.Json;
 using Casazen.Core.Entities;
@@ -10,6 +11,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -181,8 +183,14 @@ public sealed class BookingOverlapHandler(
                 return;
 
             // The nights moved: the item says the old ones. Another item for the new nights; the alert already told the host about the booking.
+            // The old item is closed and the new one written in one transaction: if the second cannot be written the first is still open, and the
+            // delivery that is made again, of this event or of any other event of the property, finds it and replaces it.
+            await using var transaction = await BeginTransactionAsync(ct);
             await activities.CloseAsync(open.Id, InternalActivity.ClosedBySystem, ct);
             await RaiseItemAsync(stay, wanted, ct);
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+
             return;
         }
 
@@ -395,6 +403,18 @@ public sealed class BookingOverlapHandler(
             // The property is gone (deleted since): nothing to review, and a retry would find the same.
             logger.LogInformation("Property {PropertyId} of booking {BookingId} not found, no To do for the nights taken", stay.PropertyId, stay.BookingId);
         }
+    }
+
+    /// <summary>
+    /// A transaction for the two writes of a replacement (the old item closed, the new one raised); <c>null</c> where there is none to begin: the
+    /// provider is not PostgreSQL (the tests on InMemory), or the caller already has one open and commits it.
+    /// </summary>
+    private async Task<IDbContextTransaction?> BeginTransactionAsync(CancellationToken ct)
+    {
+        if (!db.Database.IsNpgsql() || db.Database.CurrentTransaction is not null)
+            return null;
+
+        return await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
     }
 
     /// <summary>The same one-line form the list keeps a reason in (<see cref="IInternalActivityService.CreateAsync"/>), so the two compare.</summary>

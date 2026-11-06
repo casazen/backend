@@ -1151,7 +1151,7 @@ site) on a property whose mapping is confirmed is created on Octorate once, by `
   prenotazione arriva su notti già occupate, dal {first night} al {day they are free again}») names the property and the first shared range and nothing of the
   guest. An item the host closed by hand is not raised again for the same nights (a change of the price must not bring it back); other nights are another item.
   On `BookingCancelled` and `BookingModified`, whatever the origin, the open items of the property are checked again and closed by the system when their
-  booking has no conflict any more or no longer takes its nights; when the nights moved, the item is replaced by one that says the new ones. The item of
+  booking has no conflict any more or no longer takes its nights; when the nights moved, the item is replaced by one that says the new ones (the old one closed and the new one written in one transaction, so a failed write leaves the old one open for the next delivery). The item of
   a booking whose `OctorateBookingSync` is `Conflict` (Octorate refused the dates, above) is left alone while the booking is alive: its overlap is on
   the other side. A block that disappears (the host removes it, the iCal import drops it) closes nothing by itself: the next cancellation or change of a
   booking of the property does.
