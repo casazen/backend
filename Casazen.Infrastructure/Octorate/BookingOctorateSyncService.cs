@@ -101,13 +101,18 @@ public sealed class BookingOctorateSyncService(
             ?? throw new OctorateSyncBusyException(bookingId);
 
         var sync = await db.OctorateBookingSyncs.FirstOrDefaultAsync(s => s.BookingId == bookingId && s.OrgId == booking.OrgId, ct);
-        var reservationId = await db.Bookings
+        var held = await db.Bookings
             .AsNoTracking()
             .Where(b => b.Id == bookingId)
-            .Select(b => b.OctorateReservationId)
+            .Select(b => new { b.OctorateReservationId, b.Status })
             .FirstOrDefaultAsync(ct);
-        if (reservationId is not null)
+        if (held?.OctorateReservationId is not null)
             return sync?.State ?? OctorateSyncState.Synced;
+
+        // Cancelled while the target was read (E08/F02/US02/T02): no reservation is made for it. The push of the cancellation takes this lock too,
+        // so it either finds the reservation made before this check (and cancels it) or finds none and leaves, and this check sees the cancellation.
+        if (held is null || !IsMirrorable(booking.Source, held.Status, booking.CheckOutDate))
+            return null;
 
         if (lookup.Target is not { } target)
             return await RecordAsync(booking, sync, OctorateSyncState.Failed, OctorateSyncErrorCodes.RoomNotChosen, ct);

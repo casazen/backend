@@ -99,6 +99,21 @@
   <data name="GuestCheckInLink_Validity" xml:space="preserve">
     <value>Il link è valido fino al {0}.</value>
   </data>
+  <data name="GuestCheckInReminder_Subject" xml:space="preserve">
+    <value>Promemoria: completa il check-in per il tuo soggiorno — {0}</value>
+  </data>
+  <data name="GuestCheckInReminder_Greeting" xml:space="preserve">
+    <value>Gentile {0},</value>
+  </data>
+  <data name="GuestCheckInReminder_Body" xml:space="preserve">
+    <value>Il tuo soggiorno presso &lt;strong&gt;{0}&lt;/strong&gt; inizia il &lt;strong&gt;{1}&lt;/strong&gt; e mancano ancora i dati per il check-in. Completali prima dell'arrivo con il link qui sotto: sostituisce quello che ti abbiamo inviato in precedenza, che non è più valido.</value>
+  </data>
+  <data name="GuestCheckInReminder_Cta" xml:space="preserve">
+    <value>Completa il check-in</value>
+  </data>
+  <data name="GuestCheckInReminder_Validity" xml:space="preserve">
+    <value>Il link è valido fino al {0}.</value>
+  </data>
   <data name="GuestCheckInIncomplete_Subject" xml:space="preserve">
     <value>Dati ospiti mancanti — {0} ({1})</value>
   </data>

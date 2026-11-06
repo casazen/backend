@@ -43,6 +43,9 @@ public sealed class OctorateApiClient(
     /// <summary>Longest accommodation id CasaZen accepts (the id column of the mappings is 64 characters).</summary>
     public const int MaxAccommodationIdLength = 64;
 
+    /// <summary>The longest arrival time kept (<c>OctorateStayStateSync.OctorateArrivalTime</c>).</summary>
+    public const int ArrivalTimeMaxLength = 10;
+
     /// <summary>The pages of accommodations read at most in one listing (pages are numbered from 0).</summary>
     private const int MaxAccommodationPages = 50;
 
@@ -341,6 +344,72 @@ public sealed class OctorateApiClient(
             ct);
     }
 
+    public async Task CancelReservationAsync(OctorateBookingTarget target, string reservationId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        var accommodation = CheckedAccommodationId(target.AccommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+        var path = $"/rest/v1/reservation/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}";
+
+        // What Octorate holds now. A reservation that is cancelled already is done: the retry of a cancellation whose answer was lost sends
+        // nothing (Octorate has no idempotency key, D13). Otherwise this document is what the PUT sends back, with only its status changed.
+        string body;
+        using (var document = await GetJsonAsync(path, "reservation", ct))
+        {
+            var current = Unwrap(document.RootElement);
+            var held = OctorateReservationReader.Read(current, reservation) ?? throw new OctorateServerException(null);
+            if (held.Status == OctorateBookingStatus.Cancelled)
+                return;
+
+            body = OctorateReservationRequests.CancelBody(current, target);
+        }
+
+        // The documented path: PUT with the status CANCELLED (PATCH cannot move a confirmed reservation to cancelled).
+        var accepted = false;
+        try
+        {
+            await SendAsync(
+                () => new HttpRequestMessage(HttpMethod.Put, Address(path))
+                {
+                    Content = new StringContent(body, Encoding.UTF8, "application/json"),
+                },
+                "reservation-cancel",
+                ct);
+            accepted = true;
+        }
+        catch (OctorateRequestRejectedException refused)
+        {
+            // Octorate says the reservation cannot be cancelled that way (a refusal of the request itself): the way the sandbox proved is next.
+            logger.LogInformation(
+                "Octorate reservation-cancel for org {OrgId}: the status change was refused (HTTP {StatusCode}), the reservation is deleted instead",
+                orgScope.OrgId,
+                refused.OctorateStatusCode);
+        }
+
+        if (accepted)
+        {
+            // A 2xx is not the proof: Octorate leaves out, without saying so, what it does not take (the sandbox ignores fields it does not write).
+            // The reservation is cancelled when Octorate reads it as cancelled; otherwise the status was ignored and the way the sandbox proved
+            // is next. A read that fails is its typed error (nothing is deleted on a guess, the caller sees no confirmation).
+            if (await StatusOfReservationAsync(path, reservation, ct) == OctorateBookingStatus.Cancelled)
+                return;
+
+            logger.LogWarning(
+                "Octorate reservation-cancel for org {OrgId}: the status change was accepted but the reservation is not cancelled, it is deleted instead",
+                orgScope.OrgId);
+        }
+
+        await SendAsync(() => new HttpRequestMessage(HttpMethod.Delete, Address(path)), "reservation-delete", ct);
+    }
+
+    /// <summary>The status Octorate holds for a reservation now (one read); <c>null</c> for a word that is none of the three.</summary>
+    private async Task<OctorateBookingStatus?> StatusOfReservationAsync(string path, string reservationId, CancellationToken ct)
+    {
+        using var document = await GetJsonAsync(path, "reservation", ct);
+        var held = OctorateReservationReader.Read(Unwrap(document.RootElement), reservationId) ?? throw new OctorateServerException(null);
+        return held.Status;
+    }
+
     public async Task SetCheckInStatusAsync(string accommodationId, string reservationId, OctorateCheckInStatus status, CancellationToken ct)
     {
         var accommodation = CheckedAccommodationId(accommodationId);
@@ -353,6 +422,180 @@ public sealed class OctorateApiClient(
             "checkin-status",
             ct);
     }
+
+    public async Task<OctorateCheckInGuestResult[]> UpsertCheckInGuestsAsync(
+        string accommodationId,
+        string reservationId,
+        IReadOnlyList<OctorateCheckInGuestUpsert> guests,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(guests);
+        var path = CheckInGuestsPath(accommodationId, reservationId);
+        var results = new List<OctorateCheckInGuestResult>(guests.Count);
+        foreach (var guest in guests)
+        {
+            ct.ThrowIfCancellationRequested();
+            var existingId = string.IsNullOrWhiteSpace(guest.OctorateGuestId) ? null : CheckedId(guest.OctorateGuestId, nameof(guests));
+            var json = CheckInGuestJson(guest, existingId);
+            try
+            {
+                // Create with v1: the version the sandbox accepted on 2026-11-04. The v2 create runs a police prevalidation that refused the
+                // guest ("residence city not recognized") even with the police name of the comune, for a field (cityPoliceCode) CasaZen does
+                // not have yet (sandbox-run-results.md, open point 2).
+                var answer = existingId is null
+                    ? await SendAsync(
+                        () => new HttpRequestMessage(HttpMethod.Post, Address(path))
+                        {
+                            Content = new StringContent(json, Encoding.UTF8, "application/json"),
+                        },
+                        "checkin-guest-create",
+                        ct)
+                    : await SendAsync(
+                        () => new HttpRequestMessage(HttpMethod.Put, Address($"{path}/{Uri.EscapeDataString(existingId)}"))
+                        {
+                            Content = new StringContent(json, Encoding.UTF8, "application/json"),
+                        },
+                        "checkin-guest-update",
+                        ct);
+
+                var (answeredId, validated) = ReadCheckInGuestAnswer(answer.Body);
+                var guestId = existingId ?? answeredId;
+                results.Add(guestId is null
+                    // A creation whose answer names no guest cannot be followed: it is a failure, never a success without an id.
+                    ? new OctorateCheckInGuestResult(guest.Position, null, false, null, CheckInErrorCodes.Server)
+                    : new OctorateCheckInGuestResult(guest.Position, guestId, existingId is null, validated, null));
+            }
+            catch (OctorateException ex)
+            {
+                results.Add(new OctorateCheckInGuestResult(guest.Position, existingId, false, null, CheckInErrorCodes.Of(ex)));
+            }
+        }
+
+        return [.. results];
+    }
+
+    public async Task DeleteCheckInGuestAsync(string accommodationId, string reservationId, string octorateGuestId, CancellationToken ct)
+    {
+        var path = CheckInGuestsPath(accommodationId, reservationId);
+        var guestId = CheckedId(octorateGuestId, nameof(octorateGuestId));
+        await SendAsync(
+            () => new HttpRequestMessage(HttpMethod.Delete, Address($"{path}/{Uri.EscapeDataString(guestId)}")),
+            "checkin-guest-delete",
+            ct);
+    }
+
+    public async Task<OctorateReservationArrival> GetReservationArrivalAsync(string accommodationId, string reservationId, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+        using var document = await GetJsonAsync(
+            $"/rest/v1/reservation/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}", "reservation-arrival", ct);
+        var root = Unwrap(document.RootElement);
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new OctorateServerException(null);
+
+        var arrivalTime = OctorateHttp.StringOf(root, "arrivalTime");
+        return new OctorateReservationArrival(
+            InstantOf(OctorateHttp.StringOf(root, "effectiveCheckin")),
+            arrivalTime is { Length: > ArrivalTimeMaxLength } ? arrivalTime[..ArrivalTimeMaxLength] : arrivalTime);
+    }
+
+    /// <summary>The address of the guests of a reservation (v1).</summary>
+    private static string CheckInGuestsPath(string accommodationId, string reservationId)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+        return $"/rest/v1/checkin/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}/guest";
+    }
+
+    /// <summary>
+    /// The JSON of a check-in guest, with the member names of Octorate's guest example (<see cref="OctorateCheckInGuestUpsert"/>): the members
+    /// that are not set are left out, so a tax value that must not travel is never sent, not even as null.
+    /// </summary>
+    internal static string CheckInGuestJson(OctorateCheckInGuestUpsert guest, string? octorateGuestId)
+    {
+        ArgumentNullException.ThrowIfNull(guest);
+        var body = new Dictionary<string, object?>
+        {
+            ["id"] = octorateGuestId,
+            ["type"] = "GUEST",
+            ["accommodatedType"] = guest.AccommodatedType,
+            ["familyName"] = guest.FamilyName,
+            ["givenName"] = guest.GivenName,
+            ["sex"] = guest.Sex,
+            ["birthDate"] = DateText(guest.BirthDate),
+            ["birthCountry"] = guest.BirthCountry,
+            ["birthCity"] = guest.BirthCity,
+            ["citizenship"] = guest.Citizenship,
+            ["nationality"] = guest.Citizenship,
+            ["residenceCountry"] = guest.ResidenceCountry,
+            ["city"] = guest.ResidenceCity,
+            ["documentType"] = guest.DocumentType,
+            ["documentCode"] = guest.DocumentCode,
+            ["documentIssuePlace"] = guest.DocumentIssuePlace,
+            ["documentIssueDate"] = DateText(guest.DocumentIssueDate),
+            ["documentExpire"] = MidnightText(guest.DocumentExpire),
+            ["checkin"] = DateText(guest.CheckIn),
+            ["checkout"] = DateText(guest.CheckOut),
+            ["draft"] = guest.Draft,
+            ["cityTaxPrice"] = guest.CityTaxPrice,
+            ["cityTaxExemption"] = guest.CityTaxExemption,
+            ["excludeCityTax"] = guest.ExcludeCityTax,
+        };
+        return JsonSerializer.Serialize(body.Where(member => member.Value is not null).ToDictionary(member => member.Key, member => member.Value));
+    }
+
+    /// <summary>The id and the <c>validated</c> flag of the answer of a guest write; both null for an answer with no body or no object.</summary>
+    internal static (string? Id, bool? Validated) ReadCheckInGuestAnswer(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return (null, null);
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = Unwrap(document.RootElement);
+            if (root.ValueKind != JsonValueKind.Object)
+                return (null, null);
+
+            var id = OctorateHttp.StringOf(root, "id");
+            return (id is { Length: <= MaxAccommodationIdLength } ? id : null, BoolOf(root, "validated"));
+        }
+        catch (JsonException)
+        {
+            return (null, null);
+        }
+    }
+
+    /// <summary>An instant Octorate writes as text (ISO, UTC) or as milliseconds since 1970; null when it is neither.</summary>
+    internal static DateTime? InstantOf(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        if (DateTime.TryParse(
+                text,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal,
+                out var parsed))
+        {
+            return DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+        }
+
+        return long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var milliseconds)
+               && milliseconds is > 0 and < 253_402_300_800_000
+            ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds).UtcDateTime
+            : null;
+    }
+
+    private static string? DateText(DateOnly? date) => date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The midnight of a day as a date-time (<c>2030-01-01T00:00:00</c>): <c>documentExpire</c> is a <c>date-time</c> in the OpenAPI and the
+    /// sandbox read it back as written. Built from a <see cref="DateTime"/>, because a <see cref="DateOnly"/> refuses a format with a time part.
+    /// </summary>
+    private static string? MidnightText(DateOnly? date) =>
+        date?.ToDateTime(TimeOnly.MinValue).ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
 
     public async Task<OctorateAvailabilityResult> CheckAvailabilityAsync(
         OctorateBookingTarget target,

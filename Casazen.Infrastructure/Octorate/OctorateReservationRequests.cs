@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Casazen.Core.Entities;
 using Casazen.Core.Services;
@@ -116,6 +117,33 @@ internal static class OctorateReservationRequests
 
         // The PMS room of the unit, only when the target knows it: any other pmsProduct answers 500 on the sandbox.
         if (!string.IsNullOrWhiteSpace(target.PmsProductId))
+            body["pmsProduct"] = IdValue(target.PmsProductId);
+
+        return body.ToJsonString();
+    }
+
+    /// <summary>The <c>status</c> of a cancelled reservation, as Octorate spells it.</summary>
+    public const string CancelledStatus = "CANCELLED";
+
+    /// <summary>
+    /// The body of <c>PUT /rest/v1/reservation/{acc}/{id}</c> that cancels a reservation (E08/F02/US02/T02): <paramref name="current"/>, the
+    /// reservation as Octorate gave it, word for word, with only its <c>status</c> changed to <c>CANCELLED</c>. A PUT may replace what it does not
+    /// carry, so the reservation goes back whole and nothing of it (the dates, the guests, the price, the payments) is rewritten. The room and
+    /// the PMS room of <paramref name="target"/> complete a document that left them out (any other <c>pmsProduct</c> answers 500).
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="current"/> is not a JSON object.</exception>
+    public static string CancelBody(JsonElement current, OctorateBookingTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (current.ValueKind != JsonValueKind.Object)
+            throw new ArgumentException("A reservation is a JSON object.", nameof(current));
+
+        var body = JsonNode.Parse(current.GetRawText())!.AsObject();
+        body["status"] = CancelledStatus;
+        if (body["product"] is null)
+            body["product"] = IdValue(target.ProductId);
+
+        if (!string.IsNullOrWhiteSpace(target.PmsProductId) && body["pmsProduct"] is null)
             body["pmsProduct"] = IdValue(target.PmsProductId);
 
         return body.ToJsonString();

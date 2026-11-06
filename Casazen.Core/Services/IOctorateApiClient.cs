@@ -89,8 +89,40 @@ public interface IOctorateApiClient
     /// <summary>Cancels a reservation (<c>DELETE /rest/v1/reservation/{acc}/{id}</c>): a change of the status to <c>CANCELLED</c> with <c>PATCH</c> answers 400.</summary>
     Task CancelReservationAsync(string accommodationId, string reservationId, CancellationToken ct);
 
+    /// <summary>
+    /// Cancels the reservation of a booking the way Octorate documents it (E08/F02/US02/T02, NF-76): the reservation is read, and when it is
+    /// <c>CANCELLED</c> already nothing is sent (the retry of a cancellation whose answer was lost is done); otherwise the same document goes back
+    /// with <c>PUT /rest/v1/reservation/{acc}/{id}</c> and only its <c>status</c> changed to <c>CANCELLED</c> (<c>PATCH</c> cannot move a confirmed
+    /// reservation to cancelled, and a PUT with less than the whole reservation could rewrite what it leaves out). A 2xx of the PUT is not taken for
+    /// the proof (Octorate ignores, without saying so, what it does not write): the reservation is read again and only a <c>CANCELLED</c> reservation
+    /// is a success. When Octorate answers that the reservation cannot be cancelled that way (a refusal of the request itself,
+    /// <c>OctorateRequestRejectedException</c>), or accepts the PUT and the reservation is still not cancelled, it is <c>DELETE</c>d instead, the way
+    /// the sandbox proved on 2026-11-04. Any other answer, the read that checks the PUT included, is the typed error of the client, never a success:
+    /// not found, conflict, refused credentials, rate limit, server failure. <paramref name="target"/> names the accommodation and gives the room
+    /// (<c>product</c>) and PMS room (<c>pmsProduct</c>) the document is completed with when the answer left them out.
+    /// </summary>
+    Task CancelReservationAsync(OctorateBookingTarget target, string reservationId, CancellationToken ct);
+
     /// <summary>The state of the stay CasaZen owns (<c>PUT /rest/v1/checkin/{acc}/{id}?status=</c>): arrival, departure, no-show.</summary>
     Task SetCheckInStatusAsync(string accommodationId, string reservationId, OctorateCheckInStatus status, CancellationToken ct);
+
+    /// <summary>
+    /// Creates or updates the check-in guests of a reservation (E03/F01/US01/T03, NF-41), one call per guest: a guest with no
+    /// <see cref="OctorateCheckInGuestUpsert.OctorateGuestId"/> is created (<c>POST /rest/v1/checkin/{acc}/{id}/guest</c>), one with an id is
+    /// updated (<c>PUT /rest/v1/checkin/{acc}/{id}/guest/{guestId}</c>). The result says, per guest, the Octorate id and whether it is
+    /// validated, or a stable error code: a refusal of one guest does not stop the others, and no error is turned into a success.
+    /// </summary>
+    Task<OctorateCheckInGuestResult[]> UpsertCheckInGuestsAsync(
+        string accommodationId,
+        string reservationId,
+        IReadOnlyList<OctorateCheckInGuestUpsert> guests,
+        CancellationToken ct);
+
+    /// <summary>Deletes a check-in guest of a reservation (<c>DELETE /rest/v1/checkin/{acc}/{id}/guest/{guestId}</c>).</summary>
+    Task DeleteCheckInGuestAsync(string accommodationId, string reservationId, string octorateGuestId, CancellationToken ct);
+
+    /// <summary>The arrival Octorate registered for a reservation (<c>effectiveCheckin</c>, <c>arrivalTime</c> of the single read).</summary>
+    Task<OctorateReservationArrival> GetReservationArrivalAsync(string accommodationId, string reservationId, CancellationToken ct);
 
     /// <summary>
     /// Octorate's availability check of the room of <paramref name="target"/> for the nights from <paramref name="from"/> to the night before

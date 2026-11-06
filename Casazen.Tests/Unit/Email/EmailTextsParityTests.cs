@@ -5,7 +5,7 @@ namespace Casazen.Tests.Unit.Email;
 
 /// <summary>
 /// The texts of the emails exist in both languages and once: <c>EmailTexts.resx</c> (Italian, the default) and <c>EmailTexts.en.resx</c>
-/// have the same keys, none repeated. A missing English key is not an error at run time (the resource manager falls back to the Italian
+/// have the same keys, none repeated; German, French and Spanish hold exactly the guest check-in emails (NF-40). A missing English key is not an error at run time (the resource manager falls back to the Italian
 /// text) and a repeated key is only a warning of the build, so without this test an English email could go out in Italian, or a merge
 /// of two branches that add the same key could pass unnoticed.
 /// </summary>
@@ -27,9 +27,34 @@ public class EmailTextsParityTests
         Assert.Empty(english.Except(italian));
     }
 
+    /// <summary>
+    /// NF-40 (AC-NF40-4): German, French and Spanish hold exactly the texts of the two guest check-in emails (the link and the reminder), every
+    /// one of them, and nothing else: the other emails are never sent to a guest in these languages, and a German text of another email would
+    /// be a half-translated email.
+    /// </summary>
+    [Theory]
+    [InlineData("EmailTexts.de.resx")]
+    [InlineData("EmailTexts.fr.resx")]
+    [InlineData("EmailTexts.es.resx")]
+    public void GuestLanguages_HoldExactlyTheGuestCheckInKeys(string fileName)
+    {
+        var guestCheckInKeys = Keys("EmailTexts.resx")
+            .Where(k => k.StartsWith("GuestCheckInLink_", StringComparison.Ordinal)
+                        || k.StartsWith("GuestCheckInReminder_", StringComparison.Ordinal))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        Assert.NotEmpty(guestCheckInKeys);
+        Assert.Contains("GuestCheckInReminder_Subject", guestCheckInKeys);
+        Assert.Equal(guestCheckInKeys, Keys(fileName).Order(StringComparer.Ordinal).ToList());
+    }
+
     [Theory]
     [InlineData("EmailTexts.resx")]
     [InlineData("EmailTexts.en.resx")]
+    [InlineData("EmailTexts.de.resx")]
+    [InlineData("EmailTexts.fr.resx")]
+    [InlineData("EmailTexts.es.resx")]
     public void NoKeyIsRepeated(string fileName)
     {
         var keys = Keys(fileName);

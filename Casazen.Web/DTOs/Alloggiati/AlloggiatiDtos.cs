@@ -9,6 +9,8 @@ namespace Casazen.Web.DTOs.Alloggiati;
 public class AlloggiatiStatusDto
 {
     public Guid BookingId { get; set; }
+
+    /// <summary><see cref="AlloggiatiWebStatus.NotDue"/> for a no-show (NF-45): the guests never came, nothing is to be communicated.</summary>
     public AlloggiatiWebStatus Status { get; set; }
 
     /// <summary>Reference of the real receipt; only with <see cref="AlloggiatiWebStatus.Inviato"/>.</summary>

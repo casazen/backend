@@ -113,4 +113,12 @@ public enum AlloggiatiWebStatus
     /// the portal; never sent again by itself.
     /// </summary>
     ToVerify = 10,
+
+    // E03/F01/US01 (NF-45): the value below is derived by AlloggiatiStatusRules.Effective and never stored in a report.
+
+    /// <summary>
+    /// Nothing is due: the stay is a no-show (<see cref="Booking.NoShowAt"/>), the guests never came and there is nobody to communicate. Never
+    /// stored: it is what every reader derives from the no-show mark, so the stay is neither "to send manually" nor overdue and no alert is sent.
+    /// </summary>
+    NotDue = 11,
 }

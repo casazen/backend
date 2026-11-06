@@ -53,6 +53,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         guest.MarketingConsent = false;
 
         var stayGuests = await AnonymizeStayGuestsOfBookerAsync(guest.Id, now, cancellationToken);
+        var taxReasons = await ClearTaxExemptionReasonsAsync(
+            await db.Bookings.Where(b => b.GuestId == guest.Id).Select(b => b.Id).ToListAsync(cancellationToken), cancellationToken);
         var consentEvidence = await ClearConsentEvidenceAsync(guest.Id, cancellationToken);
         var marketingConsents = await ClearMarketingConsentRecordsAsync(guest.Id, cancellationToken);
         var specialRequests = await ClearSpecialRequestsAsync(guest.Id, now, cancellationToken);
@@ -62,8 +64,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         var crm = await EraseCrmDataAsync(guest, now, cancellationToken);
 
         var changed = Fingerprint(guest) != before
-            || filesDeleted > 0 || stayGuests > 0 || consentEvidence > 0 || marketingConsents > 0 || specialRequests > 0
-            || reviews > 0 || threads > 0 || crm.Changed
+            || filesDeleted > 0 || stayGuests > 0 || taxReasons > 0 || consentEvidence > 0 || marketingConsents > 0
+            || specialRequests > 0 || reviews > 0 || threads > 0 || crm.Changed
             || guest.DataAnonymizedDate is null;
         guest.AlloggiatiDataErasedAt ??= now;
         guest.DataAnonymizedDate ??= now;
@@ -358,7 +360,40 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
             perBooker[booker] = perBooker.GetValueOrDefault(booker) + 1;
         }
 
+        await ClearTaxExemptionReasonsAsync(bookingIds, cancellationToken);
         return perBooker;
+    }
+
+    /// <summary>
+    /// NF-46, CO-15 (art. 17 and 9 GDPR): the reason of a tourist tax exemption can reveal a health condition, so it is not kept with an erased
+    /// guest. The lines of the confirmed tax of the stays keep their kind and amount (fiscal retention, art. 6.1.c) and lose the reason code;
+    /// the calculation hash of such a record is zeroed with it (<see cref="StayTouristTax.ErasedCalculationHash"/>), so nothing left in the
+    /// record can be tried against the list of reasons. Returns the lines changed (none when already clear).
+    /// </summary>
+    public async Task<int> ClearTaxExemptionReasonsAsync(IReadOnlyCollection<Guid> bookingIds, CancellationToken cancellationToken)
+    {
+        if (bookingIds.Count == 0)
+            return 0;
+
+        var ids = bookingIds.ToList();
+        var records = await db.StayTouristTaxes
+            .Include(t => t.Guests)
+            .Where(t => ids.Contains(t.BookingId) && t.Guests.Any(g => g.ExemptionCode != null))
+            .ToListAsync(cancellationToken);
+        var cleared = 0;
+        foreach (var record in records)
+        {
+            foreach (var line in record.Guests.Where(g => g.ExemptionCode is not null))
+            {
+                line.ExemptionCode = null;
+                cleared++;
+            }
+
+            if (record.CalculationHash is not null)
+                record.CalculationHash = StayTouristTax.ErasedCalculationHash;
+        }
+
+        return cleared;
     }
 
     /// <summary>
@@ -397,6 +432,21 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         row.DocumentNumber = string.Empty;
         row.DocumentIssuePlaceCode = null;
         row.DocumentIssuePlaceName = string.Empty;
+
+        // NF-40, NF-46: the document dates, the residence, the statistical fields and the tourist tax exemption (whose reason can reveal
+        // a health condition) go with the guest too.
+        row.DocumentIssuedOn = null;
+        row.DocumentExpiresOn = null;
+        row.ResidenceInItaly = null;
+        row.ResidenceComuneCode = null;
+        row.ResidenceComuneName = null;
+        row.ResidenceProvince = null;
+        row.ResidenceCountryCode = null;
+        row.ResidenceCountryName = null;
+        row.TourismType = null;
+        row.TravelWay = null;
+        row.EducationLevel = null;
+        row.TaxExemptionCode = null;
 
         var changed = Fingerprint(row) != before || row.AnonymizedAt is null;
         row.AnonymizedAt ??= now;
@@ -544,7 +594,9 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         s.FirstName, s.LastName, s.Gender?.ToString(), s.DateOfBirth?.ToString("O"), s.BornInItaly?.ToString(),
         s.BirthComuneCode, s.BirthComuneName, s.BirthProvince, s.BirthCountryCode, s.BirthCountryName,
         s.CitizenshipCode, s.CitizenshipName, s.DocumentType?.ToString(), s.DocumentTypeCode, s.DocumentNumber,
-        s.DocumentIssuePlaceCode, s.DocumentIssuePlaceName);
+        s.DocumentIssuePlaceCode, s.DocumentIssuePlaceName, s.DocumentIssuedOn?.ToString("O"), s.DocumentExpiresOn?.ToString("O"),
+        s.ResidenceInItaly?.ToString(), s.ResidenceComuneCode, s.ResidenceComuneName, s.ResidenceProvince, s.ResidenceCountryCode,
+        s.ResidenceCountryName, s.TourismType, s.TravelWay, s.EducationLevel, s.TaxExemptionCode);
 
     private static string Fingerprint(GuestContact c) => string.Join(
         '\u001f',

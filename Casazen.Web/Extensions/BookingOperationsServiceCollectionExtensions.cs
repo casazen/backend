@@ -1,8 +1,10 @@
 using Casazen.Core.Events;
+using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
+using Microsoft.Extensions.Options;
 
 namespace Casazen.Web.Extensions;
 
@@ -35,6 +37,14 @@ public static class BookingOperationsServiceCollectionExtensions
 
         // E08/F01/US01/T05 (NF-74): the payment link of a booking the host entered (the checkout page and the webhook are the checkout's).
         services.AddScoped<IBookingPaymentLinkService, BookingPaymentLinkService>();
+
+        // E08/F02/US02 (NF-75, NF-76, D8): which channels let the host change or cancel a booking from CasaZen (all closed unless
+        // Octorate:ChannelActions opens one), the cancellation of a channel booking asked to Octorate first, and the cancellation of a booking
+        // CasaZen holds pushed to Octorate after the local one.
+        services.AddOptions<OctorateChannelActionsOptions>().BindConfiguration(OctorateChannelActionsOptions.SectionName);
+        services.AddSingleton(provider => new OtaChannelActionPolicy(provider.GetRequiredService<IOptions<OctorateChannelActionsOptions>>().Value));
+        services.AddScoped<IOtaBookingCancellationService, OtaBookingCancellationService>();
+        services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingCancelHandler>();
 
         // E08/F01/US02/T01 (NF-74, NF-80): whether the channel manager can take a stay, asked before a booking of CasaZen is written and when the
         // host looks at the dates (the public calendar and availability never ask it).

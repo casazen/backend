@@ -24,5 +24,8 @@ internal sealed class GuestCheckInSessionConfiguration : IEntityTypeConfiguratio
             .IsUnique()
             .HasFilter("\"Status\" IN (0, 1, 2, 3)")
             .HasDatabaseName("UIX_GuestCheckInSessions_BookingId_ActiveStatus");
+
+        // NF-40: the language the guest chose (two letters) and the one reminder of the missing data (E03/F01/US01/T02).
+        entity.Property(s => s.Language).HasMaxLength(2);
     }
 }

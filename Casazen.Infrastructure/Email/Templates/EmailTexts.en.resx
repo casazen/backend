@@ -99,6 +99,21 @@
   <data name="GuestCheckInLink_Validity" xml:space="preserve">
     <value>The link is valid until {0}.</value>
   </data>
+  <data name="GuestCheckInReminder_Subject" xml:space="preserve">
+    <value>Reminder: complete the check-in for your stay — {0}</value>
+  </data>
+  <data name="GuestCheckInReminder_Greeting" xml:space="preserve">
+    <value>Dear {0},</value>
+  </data>
+  <data name="GuestCheckInReminder_Body" xml:space="preserve">
+    <value>Your stay at &lt;strong&gt;{0}&lt;/strong&gt; starts on &lt;strong&gt;{1}&lt;/strong&gt; and the check-in data are still missing. Please complete them before you arrive using the link below: it replaces the one we sent you before, which is no longer valid.</value>
+  </data>
+  <data name="GuestCheckInReminder_Cta" xml:space="preserve">
+    <value>Complete the check-in</value>
+  </data>
+  <data name="GuestCheckInReminder_Validity" xml:space="preserve">
+    <value>The link is valid until {0}.</value>
+  </data>
   <data name="GuestCheckInIncomplete_Subject" xml:space="preserve">
     <value>Guest data missing — {0} ({1})</value>
   </data>
