@@ -87,6 +87,10 @@ public static class RateLimitingServiceCollectionExtensions
         new(RateLimitPolicies.GuestAccountRead, 60, OneMinute, PartitionByUser: true),
         new(RateLimitPolicies.GuestAccountSession, 20, TimeSpan.FromMinutes(10), PartitionByUser: true),
         new(RateLimitPolicies.GuestAccountDelete, 5, TimeSpan.FromMinutes(10), PartitionByUser: true),
+
+        // The anonymous marketing consent calls (E07/F04/US01): the confirmation link, the welcome page and the guest page. Per client IP;
+        // each can queue an e-mail to an address somebody typed.
+        new(RateLimitPolicies.PublicMarketingConsent, 30, TimeSpan.FromMinutes(10)),
     ];
 
     public static IServiceCollection AddCasazenRateLimiting(this IServiceCollection services)

@@ -4641,4 +4641,28 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OnboardingFlowStateUnknown" xml:space="preserve">
     <value>Stato del flusso sconosciuto.</value>
   </data>
+  <data name="ContactIdMissing" xml:space="preserve">
+    <value>L'identificativo del contatto è obbligatorio.</value>
+  </data>
+  <data name="ContactNotFound" xml:space="preserve">
+    <value>Il link non corrisponde a nessuna iscrizione.</value>
+  </data>
+  <data name="MarketingContactSuppressed" xml:space="preserve">
+    <value>Questo indirizzo risulta cancellato dalle comunicazioni promozionali: la conferma non può riattivarlo.</value>
+  </data>
+  <data name="MarketingConfirmationUnavailable" xml:space="preserve">
+    <value>Non è stato possibile mettere in coda il messaggio di conferma: riprova tra qualche minuto.</value>
+  </data>
+  <data name="CrmContactNotFound" xml:space="preserve">
+    <value>Contatto non trovato.</value>
+  </data>
+  <data name="CrmConfirmationNotRequired" xml:space="preserve">
+    <value>Questo contatto non ha bisogno di una conferma: non è un indirizzo email con un consenso oppure è già confermato.</value>
+  </data>
+  <data name="CrmConfirmationLimitReached" xml:space="preserve">
+    <value>Il messaggio di conferma è già stato inviato a questo contatto il numero massimo di volte.</value>
+  </data>
+  <data name="CrmContactSuppressed" xml:space="preserve">
+    <value>Il contatto ha chiesto di non ricevere comunicazioni promozionali: non gli si può inviare la conferma.</value>
+  </data>
 </root>

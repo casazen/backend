@@ -4641,4 +4641,28 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OnboardingFlowStateUnknown" xml:space="preserve">
     <value>Unknown flow state.</value>
   </data>
+  <data name="ContactIdMissing" xml:space="preserve">
+    <value>The contact identifier is required.</value>
+  </data>
+  <data name="ContactNotFound" xml:space="preserve">
+    <value>The link does not match any subscription.</value>
+  </data>
+  <data name="MarketingContactSuppressed" xml:space="preserve">
+    <value>This address has opted out of promotional messages: confirming cannot switch it back on.</value>
+  </data>
+  <data name="MarketingConfirmationUnavailable" xml:space="preserve">
+    <value>The confirmation message could not be queued: try again in a few minutes.</value>
+  </data>
+  <data name="CrmContactNotFound" xml:space="preserve">
+    <value>Contact not found.</value>
+  </data>
+  <data name="CrmConfirmationNotRequired" xml:space="preserve">
+    <value>This contact does not need a confirmation: it is not an email address with a consent, or it is already confirmed.</value>
+  </data>
+  <data name="CrmConfirmationLimitReached" xml:space="preserve">
+    <value>The confirmation message has already been sent to this contact the maximum number of times.</value>
+  </data>
+  <data name="CrmContactSuppressed" xml:space="preserve">
+    <value>The contact asked not to receive promotional messages: no confirmation can be sent to them.</value>
+  </data>
 </root>

@@ -1,6 +1,7 @@
 using Casazen.Core.Events;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Services;
@@ -43,6 +44,12 @@ public static class CrmServiceCollectionExtensions
         // profile.
         services.AddScoped<IEventHandler<DomainEvent>, CrmBookingEventHandler>();
         services.AddScoped<CrmProfileSyncJob>();
+
+        // E07/F04/US01 (NF-90, CRM-03): the collection of the marketing consents. The double opt-in: the signed link of the confirmation e-mail
+        // (the secret of the signed links, no address in it) and the service that sends the e-mail and records the click. Not behind
+        // Features:CrmMarketing: a link already sent keeps working, and every collection point calls it.
+        services.AddSingleton<MarketingConfirmationLinks>();
+        services.AddScoped<IMarketingConfirmationService, MarketingConfirmationService>();
 
         return services;
     }

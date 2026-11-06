@@ -2250,4 +2250,25 @@
   <data name="SupplierAlternative_Unit_PerSquareMeter" xml:space="preserve">
     <value>al m²</value>
   </data>
+  <data name="MarketingConfirmation_Subject" xml:space="preserve">
+    <value>Conferma l'iscrizione alle novità di {0}</value>
+  </data>
+  <data name="MarketingConfirmation_Greeting" xml:space="preserve">
+    <value>Ciao,</value>
+  </data>
+  <data name="MarketingConfirmation_Body" xml:space="preserve">
+    <value>qualcuno ha chiesto, con questo indirizzo email, di ricevere offerte e novità da &lt;strong&gt;{0}&lt;/strong&gt;. Per attivare l'iscrizione conferma che l'indirizzo è tuo: finché non lo fai non ti scriveremo nulla di promozionale.</value>
+  </data>
+  <data name="MarketingConfirmation_Cta" xml:space="preserve">
+    <value>Conferma l'iscrizione</value>
+  </data>
+  <data name="MarketingConfirmation_LinkFallback" xml:space="preserve">
+    <value>Se il pulsante non funziona, copia questo link nel browser:</value>
+  </data>
+  <data name="MarketingConfirmation_Validity" xml:space="preserve">
+    <value>Il link è personale e vale fino al {0} (ora italiana).</value>
+  </data>
+  <data name="MarketingConfirmation_Ignore" xml:space="preserve">
+    <value>Se non sei stato tu, ignora questo messaggio: non succede nulla e non ti verrà inviato niente. Potrai sempre cancellarti da ogni messaggio che riceverai.</value>
+  </data>
 </root>
