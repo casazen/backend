@@ -5184,6 +5184,27 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OtaChannelCancelGuidanceAgoda" xml:space="preserve">
     <value>To cancel this Agoda booking, ask the guest to cancel it on Agoda.</value>
   </data>
+  <data name="ArchiveTypeForbidden" xml:space="preserve">
+    <value>You do not have access to this type of document.</value>
+  </data>
+  <data name="ArchiveDocumentNotFound" xml:space="preserve">
+    <value>Document not found.</value>
+  </data>
+  <data name="ArchiveDocumentHasNoFile" xml:space="preserve">
+    <value>This document has no file to download.</value>
+  </data>
+  <data name="ArchiveExportTooLarge" xml:space="preserve">
+    <value>Too many documents for one archive: {0} were found, and an export holds at most {1} documents and {2} MB (a document whose size is not known counts as {3} MB). Narrow the period or pick a document type or a property.</value>
+  </data>
+  <data name="ArchiveInvalidType" xml:space="preserve">
+    <value>Invalid document type.</value>
+  </data>
+  <data name="ArchiveInvalidPeriod" xml:space="preserve">
+    <value>Invalid period: give the days as YYYY-MM-DD, with the first not after the last.</value>
+  </data>
+  <data name="ArchiveInvalidPage" xml:space="preserve">
+    <value>Invalid page: pages start at 1 and hold from 1 to {0} documents.</value>
+  </data>
   <data name="BookingSettlementFailed" xml:space="preserve">
     <value>The payment of the price difference did not go through: the booking was not changed. You can try again, the same refund is never made twice.</value>
   </data>
