@@ -7,7 +7,8 @@ namespace Casazen.Core.Entities;
 
 /// <summary>
 /// Who sends the police (Alloggiati Web) and ISTAT communications of a property (ADR-029, NF-42, CHK-03): one row per property
-/// (unique index <see cref="PropertyIndexName"/>), written only by <c>IPropertySenderStore.SetAsync</c>. A property without a row has
+/// (unique index <see cref="PropertyIndexName"/>), its senders written only by <c>IPropertySenderStore.SetAsync</c> and its declaration
+/// of the activation only by <c>IPropertySenderService.DeclareActivatedAsync</c>. A property without a row has
 /// the default of PO-02 (the channel manager while its listing is confirmed on a connected Octorate account, manual otherwise),
 /// computed when it is read and never stored.
 /// </summary>
@@ -51,6 +52,17 @@ public class PropertyComplianceSender : ITenantOwned
     [Required]
     [MaxLength(UserIdMaxLength)]
     public string LastChangedByUserId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// When the host declared that it saw «Activated» in the Octorate panel (UTC), <c>null</c> when it did not (E03/F01/US02/T01). It is the
+    /// host's word, never a verification, and it counts only while it is not older than <see cref="LastChangedAt"/>: a later change of
+    /// the sender voids it, so a declaration made for the channel manager never carries over to a later choice of the same sender.
+    /// </summary>
+    public DateTime? ActivationDeclaredAt { get; set; }
+
+    /// <summary>Who declared it: the Auth0 subject of the account, not a foreign key; <c>null</c> when nobody did.</summary>
+    [MaxLength(UserIdMaxLength)]
+    public string? ActivationDeclaredByUserId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
