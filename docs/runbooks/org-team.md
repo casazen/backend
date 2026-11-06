@@ -779,11 +779,14 @@ something **asks the administrators for access**. Backend only; the screens are 
 
 ## 30. The events (the whole perimeter)
 
-Twenty events, **seventeen written today and three reserved** (AM-02c: the three events of the mode of a property are written since then,
-and `MemberAreasChanged` is new). The runbook, `OrgActivityCatalog` and `OrgActivityType` list the
-same ones: a test fails if they disagree, and another one if an event that is not reserved is recorded by nobody or a reserved
-one by somebody. A new event is an enum value (integers in groups of ten, never reused), an entry of the catalog, a row here and
-a test; the perimeter grows row by row to about twenty-five events (decision AM-D18), never by an open list.
+Twenty-six events, **twenty-four written today and two reserved** (AM-02c: the three events of the mode of a property are written since then,
+and `MemberAreasChanged` is new; E03/F05/US01/T01 added the compliance handoff, 100; E03/F01/US05/T02 added the three of the police and
+ISTAT communications, 80 to 82). The cap of the catalog is **thirty events**: AM-D18 first said twenty-five, and the Octorate plan adds four
+(the handoff and these three), so the cap was raised to thirty until the PO confirms it; the next event after the thirtieth needs a
+decision. The runbook, `OrgActivityCatalog` and `OrgActivityType` list the same ones: a test fails if they disagree, and another one if an
+event that is not reserved is recorded by nobody or a reserved one by somebody. A new event is an enum value (integers in groups of ten,
+never reused), an entry of the catalog, a row here and a test; the perimeter grows row by row to about thirty events (decision AM-D18),
+never by an open list.
 
 | Event (`Type`) | Value | Area | Subject (`SubjectId`) | Details | Written by, and when |
 |---|---|---|---|---|---|
@@ -808,12 +811,15 @@ a test; the perimeter grows row by row to about twenty-five events (decision AM-
 | `PropertyActivatedWithReminders` | 43 | `short-rent` | the property | `reminders` | PO decision 2026-11-01 (option A): the host's activation (`PropertyComplianceStatusService`, the save that makes the property active) with the documents or the safety checklist still open, which the host acknowledged (`remindersAcknowledged`); `reminders` = the open steps joined by a dot (`documents`, `safety`, `documents.safety`). See [compliance.md](compliance.md) §1 |
 | `OctorateComplianceHandoffStarted` | 100 | `short-rent` | the property | `topic`, `handoff`, `booking`, `period` | E03/F05/US01/T01 (CHK-15): `OctorateComplianceHandoffService.StartAsync`, in the only save of the call, when the host starts «Verifica nel tuo Cassetto Compliance» (`POST /api/compliance/octorate-handoffs`); the actor is the host. `topic` = `Alloggiati` or `Istat`; `handoff` = the opaque id returned to the client; `booking` = the booking id and `period` = `yyyy-MM` or `yyyy-MM-dd`, **only when the request had them**. The line says that the passage started and nothing else: no guest, no credential, no cookie, no outcome, and the handoff changes no compliance state or proof. A refusal (404, 409, 422) writes nothing |
 | `TrustedSupplierAdded` | 60 | `supplier` | the supplier | none | *reserved*: the trusted suppliers of the host (wave spec P10) |
-| `TrustedSupplierRemoved` | 61 | `supplier` | the supplier | none | *reserved*: same |
+| `TrustedSupplierRemoved` | 61 | `supplier` | the supplier | none | NF-21: `TrustedSupplierService`, when a supplier is removed from the trusted ones (no longer reserved) |
 | `AdminGrantedConcordatoFacileGift` | 70 | `account` | the org | none | `ConcordatoFacileAdminService.GrantGiftAsync`, in the save that creates the gift; the actor is the admin who granted it |
+| `PropertySenderChanged` | 80 | `short-rent` | the property | `fromSender`, `toSender` | E03/F01/US05/T02 (ADR-029-R4, the audit of the sender switch): `PropertySenderStore.SetAsync`, the one write path of who sends the police (Alloggiati Web) and ISTAT communications of a property, in the save of the change; `fromSender` and `toSender` are `ChannelManager`, `CasaZen` or `Manual` (before a first choice, `fromSender` is the default the property had: `ChannelManager` while its listing is confirmed on a connected channel manager, `Manual` otherwise). The same sender again writes nothing; a first choice equal to the default stores the choice and writes nothing |
+| `AlloggiatiDelegationGranted` | 81 | `short-rent` | the org | `delegationVersion` | E03/F01/US05/T02 (AW-R02, ADR-015-R10): `AlloggiatiDelegationService.GrantAsync`, in the save of the grant; the actor is who delegated the transmission; `delegationVersion` is the code of the delegation text accepted (always written: a version is a code of 40 characters at most, the limit of a value of the log, or the grant is refused with 422 `alloggiati_delegation_version_invalid`), **never the text**. Granting again the version already valid writes nothing |
+| `AlloggiatiDelegationRevoked` | 82 | `short-rent` | the org | none | E03/F01/US05/T02: `AlloggiatiDelegationService.RevokeAsync`, in the save of the revocation; revoking a delegation that is not valid writes nothing |
 
 The area is one of `account`, `short-rent`, `long-rent`, `supplier` (the keys of the contexts of the web app). A reserved event is
 **not written by anything yet**: its code and its details are fixed now so that the integers do not change when the task that builds
-the feature arrives (today `TierAssigned` and the two of the trusted suppliers). The events of the mode of a property carry the area of the property
+the feature arrives (today `TierAssigned` and `TrustedSupplierAdded`). The events of the mode of a property carry the area of the property
 (`short-rent` or `long-rent`), so the screens of each area can filter their own; `PropertyModeService` writes them only when an `IActivityLog` is
 registered (every deploy).
 

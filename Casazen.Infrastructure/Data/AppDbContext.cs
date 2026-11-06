@@ -90,6 +90,12 @@ public class AppDbContext(
     public DbSet<AlloggiatiCodeTableImport> AlloggiatiCodeTableImports { get; set; } = null!;
     public DbSet<PropertyQuesturaCredentials> PropertyQuesturaCredentials { get; set; } = null!;
 
+    // Who sends the police and ISTAT communications of each property, the attempts of the Alloggiati transmission and the daily receipts
+    // of a Questura account (ADR-029, ADR-015, AW-R04, AW-R05; E03/F01/US05/T01)
+    public DbSet<PropertyComplianceSender> PropertyComplianceSenders { get; set; } = null!;
+    public DbSet<AlloggiatiSendAttempt> AlloggiatiSendAttempts { get; set; } = null!;
+    public DbSet<AlloggiatiReceipt> AlloggiatiReceipts { get; set; } = null!;
+
     // Official ISTAT list of the comuni and the log of its imports (SU-04)
     public DbSet<Comune> Comuni { get; set; } = null!;
     public DbSet<ComuneImport> ComuneImports { get; set; } = null!;
@@ -413,6 +419,15 @@ public class AppDbContext(
                 "CK_AlloggiatiWebReports_SentRequiresReceipt",
                 $"\"Status\" <> {(int)AlloggiatiWebStatus.Inviato} OR btrim(coalesce(\"ConfirmationNumber\", '')) <> ''"));
 
+        // AW-R05: the daily receipt of the account that covers the communication; a receipt removed at the end of its retention leaves
+        // the communication without it (SET NULL), never removes it.
+        modelBuilder.Entity<AlloggiatiWebReport>()
+            .HasOne<AlloggiatiReceipt>()
+            .WithMany()
+            .HasForeignKey(r => r.ReceiptId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // CO-10: the alert stages of a stay go with it.
         modelBuilder.Entity<StayAlertState>()
             .HasOne(s => s.Booking)
@@ -485,6 +500,12 @@ public class AppDbContext(
 
         // CO-14: one set of Alloggiati Web credentials per property, going with it; tenant row (TN-2).
         modelBuilder.ApplyConfiguration(new PropertyQuesturaCredentialsConfiguration());
+
+        // ADR-029, ADR-015 (E03/F01/US05/T01): the sender of each property (never two), the attempts of the Alloggiati transmission (at
+        // most one open per booking) and the daily receipts of a Questura account (one per org, account, day and mode); tenant rows (TN-2).
+        modelBuilder.ApplyConfiguration(new PropertyComplianceSenderConfiguration());
+        modelBuilder.ApplyConfiguration(new AlloggiatiSendAttemptConfiguration());
+        modelBuilder.ApplyConfiguration(new AlloggiatiReceiptConfiguration());
 
         // "Le mie prenotazioni" finds a booking by the org of the site and its code (BK-11).
         modelBuilder.Entity<Booking>()
