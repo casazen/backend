@@ -1,5 +1,8 @@
+using Casazen.Core.Events;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
+using Casazen.Infrastructure.Events;
+using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Services;
 using Microsoft.Extensions.Options;
 
@@ -27,13 +30,18 @@ public static class CrmServiceCollectionExtensions
         // The keyed index of the contacts and of the suppression list: HMAC-SHA256 keyed by Crm:ContactIndexKey.
         services.AddSingleton<ICrmContactIndex, CrmContactIndex>();
 
-        // E07/F01/US02/T01 (NF-88, NF-20): the matching of a guest to a CRM profile, finally registered (while it was not, no profile was ever
-        // created). It finds a guest by the e-mail contact or the name and birth date, never executes a merge, and needs the key of the index.
+        // E07/F01/US02 (NF-88, NF-89, NF-20): the matching of a guest to a CRM profile, finally registered (the profiles were never created while it
+        // was not); the one writer of the contacts, with the rules of who may be written to (CrmContactRules); and the sync that keeps both in
+        // step with the bookings of every source. Without the key of the index they do nothing (ICrmProfileSyncService.IsAvailable).
         services.AddScoped<IGuestMatchingService, GuestMatchingService>();
-
-        // E07/F01/US02/T02 (NF-89, CRM-02): the one writer of the contacts, with the rules of who may be written to (CrmContactRules): origin,
-        // double opt-in, legal basis for each channel, suppression. Needs the key of the index as well.
         services.AddScoped<ICrmContactService, CrmContactService>();
+        services.AddScoped<ICrmProfileSyncService, CrmProfileSyncService>();
+
+        // The sync on the event bus (a handler of every event, it filters on the booking ones): it only shortens the delay, and a failure never
+        // fails the event. The recurring job crm-profile-sync (RecurringJobsRegistration) guarantees the result and backfills the guests with no
+        // profile.
+        services.AddScoped<IEventHandler<DomainEvent>, CrmBookingEventHandler>();
+        services.AddScoped<CrmProfileSyncJob>();
 
         return services;
     }

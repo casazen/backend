@@ -1,7 +1,7 @@
 # Runbook: CRM profiles, contacts and the sync with the bookings
 
-Tasks E07/F01/US02/T01 (matching) and T02 (contacts) of the Octorate plan, requirements NF-88 (unified customer database) and NF-89
-(legal basis of a contact). This page is the runbook of the profiles; the overview of the marketing
+Tasks E07/F01/US02/T01 (matching), T02 (contacts) and T03 (sync from the bookings) of the Octorate plan, requirements NF-88 (unified customer
+database), NF-89 (legal basis of a contact) and NF-20 (populated CRM). This page is the runbook of the profiles; the overview of the marketing
 module (the switch, the variables, the key) is [`crm-marketing.md`](crm-marketing.md). The tables are those of E07/F01/US01
 ([`TECHNICAL.md`](../TECHNICAL.md)): `GuestCrmProfiles`, `GuestContacts`, `GuestMergeCandidates`.
 
@@ -15,10 +15,13 @@ module (the switch, the variables, the key) is [`crm-marketing.md`](crm-marketin
 | `IGuestMatchingService` | Finds or creates the profile of a guest or of a lead, proposes merges, keeps the aggregates | `Casazen.Infrastructure/Services/GuestMatchingService.cs` |
 | `CrmContactRules` | Who may be written to, on which channel and why (`CanReceiveMarketing`, `CanReceiveService`, `ReachabilityReason`) | `Casazen.Core/Services/CrmContactRules.cs` |
 | `ICrmContactService` | The one writer of the contacts: origin, legal basis, double opt-in, suppression | `Casazen.Infrastructure/Services/CrmContactService.cs` |
+| `ICrmProfileSyncService` | Syncs the booker of a booking: profile, contacts, aggregates | `Casazen.Infrastructure/Services/CrmProfileSyncService.cs` |
+| `CrmBookingEventHandler` | Runs the sync when a booking event arrives on the bus (it only shortens the delay) | `Casazen.Infrastructure/Events/CrmBookingEventHandler.cs` |
+| `CrmProfileSyncJob` | Recurring job `crm-profile-sync`: guarantees the result and backfills the guests with no profile | `Casazen.Infrastructure/Jobs/CrmProfileSyncJob.cs` |
 
 All of it is registered in `AddCrmMarketing` (`Casazen.Web/Extensions/CrmServiceCollectionExtensions.cs`). **Nothing here is behind
 `Features__CrmMarketing`** (that flag closes the endpoints and the send of the campaigns), but everything needs the key of the keyed index,
-`Crm__ContactIndexKey` ([`crm-marketing.md`](crm-marketing.md) § 3): without it nothing can be hashed.
+`Crm__ContactIndexKey` ([`crm-marketing.md`](crm-marketing.md) § 3): without it the sync does nothing and says so once in the log (§ 4.4).
 
 ## 2. Matching: who is the same guest (T01)
 
@@ -104,7 +107,8 @@ phone, proposes the merge with them. It does not write the contact: the caller d
 
 ### 2.7 What it never reads
 
-Never `StayGuest`, a document, the place of birth, the citizenship, the sex or any other Alloggiati field of the booker (AC-NF88-6, Q1-05). The `Country` of the guest (not the
+Never `StayGuest`, a document, the place of birth, the citizenship, the sex or any other Alloggiati field of the booker (AC-NF88-6, Q1-05); the
+sync loads a record with the columns it needs and nothing else ([§ 4](#4-the-sync-with-the-bookings-t03)). The `Country` of the guest (not the
 citizenship) fills the country of the profile when empty. The logs carry ids and counts, never a name, an address, a number or a hash.
 
 ## 3. Contacts (T02)
@@ -176,3 +180,73 @@ Builds the contacts of one guest from what CasaZen already has and links them to
 
 It is idempotent (running it twice changes nothing, not even an update time), flags the addresses already on the suppression list, reads the booker's
 record, consents and latest booking only, and ignores a guest that was erased or anonymized.
+
+## 4. The sync with the bookings (T03)
+
+### 4.1 The three paths
+
+| Path | When | What |
+|---|---|---|
+| Event | `BookingCreated`, `BookingConfirmed`, `BookingModified`, `BookingCancelled`, `CheckOutCompleted` on the event bus (ADR-022), under the org of the event | `CrmBookingEventHandler` syncs the booker of the booking at once. It **only shortens the delay**; a failure is logged and never fails the event |
+| Recent bookings | job `crm-profile-sync`, every 15 minutes | the bookers of every booking with `UpdatedAt` in the last two hours: **this guarantees the result** (an import or a producer that records no event is covered here) |
+| Backfill | the same job, after the recent bookings | 200 guests with no `GuestCrmProfileId` (not erased, oldest first); it needs no watermark and no flag and **ends by itself** when every guest is linked |
+
+`ICrmProfileSyncService.SyncBookingAsync(orgId, bookingId)` loads the booker of the booking (the record, never `StayGuest`), runs the matching, builds the
+contacts, recomputes the aggregates, and sets the language of the profile from the most recent contact language and its country from the guest when
+empty. `SyncGuestAsync(orgId, guestId)` is the same for a guest in hand (the backfill, a guest created from the guest list who never had a booking).
+
+### 4.2 Idempotency, failures, tenant
+
+- **Running it twice changes nothing**, so a retry or an event delivered again never duplicates a profile or a contact. If a run stops half way, what it
+  saved stays (each step saves its own changes) and the next run finishes it.
+- **A booking that fails** is logged with its ids, the kind of error and the SQLSTATE (never the message, which can carry a value) and skipped; the next
+  run retries it. A failing booking never stops the job or the event.
+- **The job reads across the orgs** with `IgnoreQueryFilters([TenantQueryFilter])` (ids only), then syncs each booking or guest in a scope of its own under
+  its org (`IBackgroundTenantScope`, as the event bus does): the scope has its own `DbContext`, the tenant filter sees that org only, and every row is
+  written with its own `OrgId`.
+- A run starts no booking or guest after ten minutes, so it ends before the next one is due; what is left is done by the next run. Never two runs at
+  once (`[DisableConcurrentExecution]`, 60 s lock wait, [`hangfire.md`](hangfire.md)).
+
+### 4.3 The backfill
+
+The first runs after the key is set link the guests that existed before: 200 a run, every 15 minutes, so 19,200 a day. The log of each run says how many
+bookings and guests it read, synced and failed, and `more guests to link` while the chunk was full. To follow it:
+
+```sql
+-- Guests still to link (the backfill ends when this is 0)
+SELECT count(*) FROM casazen_prod."Guests"
+WHERE "GuestCrmProfileId" IS NULL AND "DataAnonymizedDate" IS NULL AND NOT "IsDeleted" AND NOT "ErasureRequested";
+
+-- Profiles, contacts and proposed merges
+SELECT (SELECT count(*) FROM casazen_prod."GuestCrmProfiles") AS profiles,
+       (SELECT count(*) FROM casazen_prod."GuestContacts") AS contacts,
+       (SELECT count(*) FROM casazen_prod."GuestMergeCandidates" WHERE "Status" = 1) AS open_proposals;
+```
+
+### 4.4 Without the key
+
+With `Crm__ContactIndexKey` not configured (production with `Features__CrmMarketing` off, [`crm-marketing.md`](crm-marketing.md) § 3) the keyed index cannot
+hash: the job ends at once with one line (`CRM profile sync skipped: Crm:ContactIndexKey is not configured`) and does not fail, the event handler does
+nothing, and the demo reset skips the CRM profiles. **No profile and no contact is created in an environment until its key is set.**
+
+### 4.5 The demo showcase
+
+The scenario `crm-profiles` ([`demo-environment.md`](demo-environment.md)) adds seven bookings with invented guests (`@example.com`, texts versioned
+`DEMO-TEST-1`): a returning guest with a stay that is over at Villa del Lago and one to come at Casa Trastevere; a Booking.com booking at Attico Firenze
+(its address becomes an OTA forward, service only); a direct customer at Loft Torino who was shown the soft opt-in notice (soft opt-in); a guest at Villa
+Amalfi with a confirmed marketing consent from the online check-in; and two guests at Appartamento Napoli who left the same phone number (a merge
+proposed, not done). The reset runs the CRM sync itself on every showcase booking (one scope under the demo org for each), marks the profiles, contacts
+and proposed merges it made (`TestDataEntities.CrmProfile`, `CrmContact`, `CrmMergeCandidate`) and deletes them before the guests and houses go. Every
+other demo guest has a placeholder phone number that the CRM does not take for a phone, so no two of them share one.
+
+## 5. Troubleshooting
+
+| Symptom | Meaning / action |
+|---|---|
+| `CRM profile sync skipped: Crm:ContactIndexKey is not configured` | The key is not set in this environment: nothing is synced, by design. Set it ([`crm-marketing.md`](crm-marketing.md) § 3) and the next run starts |
+| `CRM sync of booking … failed: DbUpdateException/23505/UIX_GuestContacts_OrgId_Channel_ValueHash` | Two writers made the same contact at the same moment; the next run finds it and goes on. Nothing to do |
+| `CRM sync of booking … failed: …` repeated for the same ids | Look at the kind of error in the line; the booking is retried every 15 minutes while it is in the two-hour window, and the guest by the backfill while it has no profile |
+| `more guests to link` in every run | The backfill is working through a long list, 200 a run |
+| A guest with no profile although the job ran | The guest was erased, anonymized or asked for erasure (left alone on purpose), or has no row in the org of the booking |
+| Two profiles for one person | The matching proposes the merge (`GuestMergeCandidates`); a person decides. Two addresses and no common name, phone or birth date cannot be told apart |
+| An address is not marketable | `CrmContactRules.ReachabilityReason` says why (§ 3.2): forward, not confirmed, service only, suppressed |

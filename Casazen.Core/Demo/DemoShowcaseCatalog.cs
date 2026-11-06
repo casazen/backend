@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.2";
+    public const string Version = "2026-11-06.3";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -29,6 +29,19 @@ public static class DemoShowcaseCatalog
     /// is created by hand in Auth0, with this email and the email marked as verified (docs/runbooks/auth0.md § 12): CasaZen never creates one.
     /// </summary>
     public const string GuestAppEmail = "ospite.app.demo@example.com";
+
+    /// <summary>
+    /// Version of the invented texts the CRM guests of <see cref="Scenario.CrmProfiles"/> saw: the soft opt-in notice of the direct customer and the
+    /// marketing consent of the online check-in. It says TEST, like every invented value of the showcase.
+    /// </summary>
+    public const string CrmTextVersion = "DEMO-TEST-1";
+
+    /// <summary>
+    /// The phone number the two guests of <see cref="Scenario.CrmProfiles"/> who share one give. Invented: seven zeros stand for what a real
+    /// number would have. The other demo guests have a placeholder number (all zeros) that the CRM does not take for a phone, so they never
+    /// share one.
+    /// </summary>
+    public const string CrmSharedPhone = "+39 333 0000777";
 
     public static class Scenario
     {
@@ -76,6 +89,14 @@ public static class DemoShowcaseCatalog
         public const string TouristTaxPaid = "tourist-tax-paid";
         public const string MarketplacePartnersVisible = "marketplace-partners-visible";
         public const string MarketplaceActivationDeclared = "marketplace-activation-declared";
+
+        /// <summary>
+        /// The CRM profiles built from the bookings (E07/F01/US02, NF-88, NF-89): a returning guest with a past and an upcoming stay at two houses, a
+        /// guest whose booking comes from an OTA (the address becomes a forward, service only), a direct customer with the soft opt-in notice, a guest
+        /// with a confirmed marketing consent from the online check-in, and two guests who share a phone (a merge to decide). The profiles, the
+        /// contacts and the proposed merges are written by the CRM sync of the showcase bookings.
+        /// </summary>
+        public const string CrmProfiles = "crm-profiles";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -125,6 +146,7 @@ public static class DemoShowcaseCatalog
         Scenario.TouristTaxPaid,
         Scenario.MarketplacePartnersVisible,
         Scenario.MarketplaceActivationDeclared,
+        Scenario.CrmProfiles,
     ];
 
     /// <summary>
@@ -344,6 +366,20 @@ public static class DemoShowcaseCatalog
                 new("anno-prima-diretta", "Chiara", "Neri", "ospite.demo.anno-prima-1@example.com", -351, 4, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Direct),
                 new("anno-prima-airbnb", "Pietro", "Gallo", "ospite.demo.anno-prima-2@example.com", -344, 3, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Airbnb),
                 new("anno-prima-booking", "Sofie", "Peeters", "ospite.demo.anno-prima-3@example.com", -325, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.BookingCom),
+                // NF-88 (Scenario.CrmProfiles): a guest who comes back. This stay is over; the next one is at Casa Trastevere. Another record of the
+                // guest, the same address: one profile, one stay counted, two houses.
+                new(
+                    "crm-ritorno-passato",
+                    "Sofia",
+                    "Marchetti",
+                    "sofia.marchetti.demo@example.com",
+                    -70,
+                    3,
+                    BookingStatus.CheckedOut,
+                    Scenario.CrmProfiles,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    Phone: "+39 333 0000555"),
             ]),
         new(
             Key: "appartamento-brera",
@@ -395,6 +431,19 @@ public static class DemoShowcaseCatalog
                 new("past-guest-roma", "Francesca", "Romano", "francesca.demo@example.com", -15, 5, BookingStatus.CheckedOut, Scenario.AlloggiatiRegistered),
                 // NF-96: the same months one year earlier (see the villa).
                 new("anno-prima-roma", "Elisa", "Fontana", "ospite.demo.anno-prima-4@example.com", -380, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Direct),
+                // NF-88 (Scenario.CrmProfiles): the guest of the villa comes back, to a second house.
+                new(
+                    "crm-ritorno-in-arrivo",
+                    "Sofia",
+                    "Marchetti",
+                    "sofia.marchetti.demo@example.com",
+                    30,
+                    3,
+                    BookingStatus.Confirmed,
+                    Scenario.CrmProfiles,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    Phone: "+39 333 0000555"),
             ]),
         new(
             Key: "bilocale-navigli",
@@ -449,6 +498,18 @@ public static class DemoShowcaseCatalog
                 new("airbnb-ical", "Thomas", "Schmidt", "thomas.demo@example.com", 7, 3, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.Airbnb),
                 // NF-96: the same months one year earlier (see the villa).
                 new("anno-prima-firenze", "Hugo", "Martin", "ospite.demo.anno-prima-5@example.com", -358, 3, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Airbnb),
+                // NF-88, NF-89 (Scenario.CrmProfiles): a booking that comes from an OTA. Its address is a forward: the contact is service only and
+                // never marketable, and it is no key to recognise the guest by.
+                new(
+                    "crm-prenotazione-ota",
+                    "Hans",
+                    "Weber",
+                    "hans.weber.demo@example.com",
+                    20,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.CrmProfiles,
+                    BookingSource.BookingCom),
             ]),
         new(
             Key: "loft-torino",
@@ -467,6 +528,20 @@ public static class DemoShowcaseCatalog
             Bookings:
             [
                 new("rejected-guest", "Paolo", "Neri", "paolo.demo@example.com", -5, 2, BookingStatus.CheckedOut, Scenario.CheckInRejected),
+                // NF-88, NF-89 (Scenario.CrmProfiles): a customer of the public checkout who was shown the soft opt-in notice and whose booking is
+                // confirmed: the contact is on soft opt-in (art. 130 c. 4 Codice privacy), marketable with the unsubscribe in every message.
+                new(
+                    "crm-cliente-diretto",
+                    "Chiara",
+                    "Fontana",
+                    "chiara.fontana.demo@example.com",
+                    10,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.CrmProfiles,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    SoftOptInNotice: true),
             ]),
         new(
             Key: "villa-lugano",
@@ -512,7 +587,35 @@ public static class DemoShowcaseCatalog
             CleaningFee: 35m,
             Cadastral: null,
             Scenarios: [Scenario.AgencyPropertiesCrossRegion],
-            Bookings: []),
+            // NF-88 (Scenario.CrmProfiles): two different guests who left the same phone number (a family, an agent who books for others). They
+            // are two profiles; the matching proposes the merge to a person and never does it.
+            Bookings:
+            [
+                new(
+                    "crm-telefono-condiviso-1",
+                    "Elisa",
+                    "Moretti",
+                    "elisa.moretti.demo@example.com",
+                    -40,
+                    3,
+                    BookingStatus.CheckedOut,
+                    Scenario.CrmProfiles,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    Phone: CrmSharedPhone),
+                new(
+                    "crm-telefono-condiviso-2",
+                    "Paolo",
+                    "Riva",
+                    "paolo.riva.demo@example.com",
+                    25,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.CrmProfiles,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    Phone: CrmSharedPhone),
+            ]),
         new(
             Key: "villa-amalfi",
             Name: "Villa Amalfi (demo)",
@@ -532,6 +635,20 @@ public static class DemoShowcaseCatalog
                 new("booking-com-ical", "Marie", "Dubois", "marie.demo@example.com", 21, 5, BookingStatus.Confirmed, Scenario.BookingOtaIcal, BookingSource.BookingCom),
                 // NF-96: the same months one year earlier (see the villa).
                 new("anno-prima-amalfi", "Lucia", "Esposito", "ospite.demo.anno-prima-6@example.com", -344, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.BookingCom),
+                // NF-88, NF-89, NF-90 (Scenario.CrmProfiles): a guest who ticked the marketing consent in the online check-in and confirmed the
+                // address (double opt-in): the contact is a consent, confirmed, marketable.
+                new(
+                    "crm-consenso-checkin",
+                    "Marco",
+                    "Pellegrini",
+                    "marco.pellegrini.demo@example.com",
+                    12,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.CrmProfiles,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    CheckInMarketingConsent: true),
             ]),
     ];
 
@@ -739,7 +856,10 @@ public sealed record DemoBookingTemplate(
     string? PriceNote = null,
     PaymentOption PaymentOption = PaymentOption.Immediate,
     BookingCancellationReason? CancellationReason = null,
-    decimal? TouristTax = null);
+    decimal? TouristTax = null,
+    string? Phone = null,
+    bool SoftOptInNotice = false,
+    bool CheckInMarketingConsent = false);
 
 public sealed record DemoPropertyTemplate(
     string Key,

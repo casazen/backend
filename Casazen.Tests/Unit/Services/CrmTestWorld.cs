@@ -100,4 +100,16 @@ internal static class CrmTestWorld
             clock,
             NullLogger<CrmContactService>.Instance);
     }
+
+    public static CrmProfileSyncService Sync(AppDbContext db, TimeProvider clock, CrmOptions? options = null)
+    {
+        var index = CrmTestIndex.Create();
+        return new CrmProfileSyncService(
+            db,
+            Matching(db, clock, options),
+            Contacts(db, clock, options),
+            index,
+            clock,
+            NullLogger<CrmProfileSyncService>.Instance);
+    }
 }
