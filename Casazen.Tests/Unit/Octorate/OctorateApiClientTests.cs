@@ -158,6 +158,68 @@ public class OctorateApiClientTests
         Assert.Equal<DateTime?>(new DateTime(2026, 11, 5, 22, 0, 0, DateTimeKind.Utc), account.LastCron);
     }
 
+    /// <summary>
+    /// Proof (trust, E10/F01/US03/T01, AC-NF107-3): what only means «CasaZen cannot tell» is never an exception and never a verdict. The account is
+    /// read as <c>Readable</c> with <c>valid</c> true or false; the field absent (an accommodation created through the API has none), without
+    /// <c>valid</c>, a read Octorate refused and an accommodation it does not know are <c>Readable</c> false. A failure worth a retry keeps its typed
+    /// error, so a caller never takes it for a verdict.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"id":"4711","policeAccount":{"codice":"TEST","valid":true,"autorun":false,"lastCron":"2026-11-05T22:00:00Z"}}""", HttpStatusCode.OK, true, true)]
+    [InlineData("""{"id":"4711","policeAccount":{"valid":false,"autorun":true}}""", HttpStatusCode.OK, true, false)]
+    [InlineData("""{"id":"4711","name":"Casa creata via API"}""", HttpStatusCode.OK, false, null)]
+    [InlineData("""{"id":"4711","policeAccount":{"autorun":true,"lastCron":"2026-11-05T22:00:00Z"}}""", HttpStatusCode.OK, false, null)]
+    [InlineData("""{"type":"ApiResourceNotFound"}""", HttpStatusCode.NotFound, false, null)]
+    [InlineData("""{"type":"ApiSecurityException"}""", HttpStatusCode.Forbidden, false, null)]
+    public async Task OctorateClient_PoliceAccountStatus_ReadsValid_AndCannotTellIsNeverAVerdict_Test(
+        string body,
+        HttpStatusCode status,
+        bool readable,
+        bool? valid)
+    {
+        var h = new Harness();
+        h.Handler.Body = body;
+        h.Handler.StatusCode = status;
+
+        OctoratePoliceAccountStatus account;
+        using (h.Scope.Use(OrgA))
+            account = await h.Client.GetPoliceAccountStatusAsync("4711", CancellationToken.None);
+
+        Assert.Equal(readable, account.Readable);
+        Assert.Equal(valid, account.Valid);
+        if (!readable)
+        {
+            Assert.Null(account.Autorun);
+            Assert.Null(account.LastCron);
+        }
+
+        // The same read as the police account of the sender: asked for by name, nothing else of the accommodation.
+        Assert.Equal(
+            "https://api.octorate.test/connect/rest/v1/accommodation/4711?fields=policeAccount",
+            Assert.Single(h.Handler.Addresses).AbsoluteUri);
+    }
+
+    [Fact]
+    public async Task OctorateClient_PoliceAccountStatus_KeepsTheMembersOfAReadableAccount_AndRetryableFailuresKeepTheirTypedError_Test()
+    {
+        var h = new Harness();
+        h.Handler.Body = """{"id":"4711","policeAccount":{"codice":"TEST","wsCode":"TEST","valid":true,"autorun":false,"lastCron":"2026-11-05T22:00:00Z"}}""";
+
+        using (h.Scope.Use(OrgA))
+        {
+            var readable = await h.Client.GetPoliceAccountStatusAsync("4711", CancellationToken.None);
+            Assert.Equal(new OctoratePoliceAccountStatus(true, true, false, new DateTime(2026, 11, 5, 22, 0, 0, DateTimeKind.Utc)), readable);
+
+            // A failure of Octorate is not «cannot tell»: the typed error reaches the caller, which decides nothing.
+            h.Handler.StatusCode = HttpStatusCode.InternalServerError;
+            h.Handler.Body = """{"message":"boom"}""";
+            await Assert.ThrowsAsync<OctorateServerException>(() => h.Client.GetPoliceAccountStatusAsync("4711", CancellationToken.None));
+        }
+
+        // No org, no call: not an answer of «cannot tell» either.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => h.Client.GetPoliceAccountStatusAsync("4711", CancellationToken.None));
+    }
+
     private sealed class Harness
     {
         public Harness()
@@ -230,13 +292,16 @@ public class OctorateApiClientTests
         /// <summary>What every call is answered with.</summary>
         public string Body { get; set; } = """{"id":"4711","name":"Casa Prova","environment":"SANDBOX","quotaLimit":180,"quotaStatus":57}""";
 
+        /// <summary>The status of the answer of every call.</summary>
+        public HttpStatusCode StatusCode { get; set; } = HttpStatusCode.OK;
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Authorizations.Add(request.Headers.Authorization?.ToString() ?? "(none)");
             Addresses.Add(request.RequestUri!);
             if (request.Content is not null)
                 Bodies.Add(await request.Content.ReadAsStringAsync(cancellationToken));
-            return new HttpResponseMessage(HttpStatusCode.OK)
+            return new HttpResponseMessage(StatusCode)
             {
                 Content = new StringContent(Body, Encoding.UTF8, "application/json"),
             };

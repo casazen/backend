@@ -69,6 +69,23 @@ public sealed record OctoratePoliceAccount
 }
 
 /// <summary>
+/// What CasaZen could read of the police account of one accommodation to verify the guided step of the police connection
+/// (<c>IOctorateApiClient.GetPoliceAccountStatusAsync</c>, E10/F01/US03/T01, D17, D31). <see cref="Readable"/> is true only when Octorate
+/// exposed <c>valid</c>; it is false, and the other members are <c>null</c>, when the field is absent (an accommodation created through the
+/// API has no police account: S25), when the read was refused or when Octorate does not know the accommodation. A caller never reads a
+/// refusal as «not valid»: not readable is «CasaZen cannot tell».
+/// </summary>
+/// <param name="Readable">True when <c>valid</c> was read.</param>
+/// <param name="Valid">Whether the connection to the police portal is valid; <c>null</c> when not readable.</param>
+/// <param name="Autorun">Whether Octorate sends the daily communication; <c>null</c> when not exposed.</param>
+/// <param name="LastCron">When Octorate's daily job last ran (UTC); <c>null</c> when not exposed.</param>
+public sealed record OctoratePoliceAccountStatus(bool Readable, bool? Valid, bool? Autorun, DateTime? LastCron)
+{
+    /// <summary>The status of an account CasaZen could not read.</summary>
+    public static OctoratePoliceAccountStatus NotReadable { get; } = new(false, null, null, null);
+}
+
+/// <summary>
 /// A product of an accommodation (<c>GET /rest/v3/roomrates/{acc}</c>): a room (unit), or a rate derived from one
 /// (<see cref="DerivedFromId"/>, Octorate's <c>derivedRule.parent</c>). The rooms, beds and guests the matcher and the import use.
 /// </summary>

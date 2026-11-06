@@ -779,11 +779,11 @@ something **asks the administrators for access**. Backend only; the screens are 
 
 ## 30. The events (the whole perimeter)
 
-Twenty-six events, **twenty-four written today and two reserved** (AM-02c: the three events of the mode of a property are written since then,
+Twenty-eight events, **twenty-six written today and two reserved** (AM-02c: the three events of the mode of a property are written since then,
 and `MemberAreasChanged` is new; E03/F05/US01/T01 added the compliance handoff, 100; E03/F01/US05/T02 added the three of the police and
-ISTAT communications, 80 to 82). The cap of the catalog is **thirty events**: AM-D18 first said twenty-five, and the Octorate plan adds four
-(the handoff and these three), so the cap was raised to thirty until the PO confirms it; the next event after the thirtieth needs a
-decision. The runbook, `OrgActivityCatalog` and `OrgActivityType` list the same ones: a test fails if they disagree, and another one if an
+ISTAT communications, 80 to 82; E10/F01/US03/T01 added the two of «Do it for me», 110 and 111). The cap of the catalog is **thirty events**:
+AM-D18 first said twenty-five, and the Octorate plan adds six (the handoff, these three and the two of «Do it for me»), so the cap was raised
+to thirty until the PO confirms it; the next event after the thirtieth needs a decision. The runbook, `OrgActivityCatalog` and `OrgActivityType` list the same ones: a test fails if they disagree, and another one if an
 event that is not reserved is recorded by nobody or a reserved one by somebody. A new event is an enum value (integers in groups of ten,
 never reused), an entry of the catalog, a row here and a test; the perimeter grows row by row to about thirty events (decision AM-D18),
 never by an open list.
@@ -816,6 +816,8 @@ never by an open list.
 | `PropertySenderChanged` | 80 | `short-rent` | the property | `fromSender`, `toSender` | E03/F01/US05/T02 (ADR-029-R4, the audit of the sender switch): `PropertySenderStore.SetAsync`, the one write path of who sends the police (Alloggiati Web) and ISTAT communications of a property, in the save of the change; `fromSender` and `toSender` are `ChannelManager`, `CasaZen` or `Manual` (before a first choice, `fromSender` is the default the property had: `ChannelManager` while its listing is confirmed on a connected channel manager, `Manual` otherwise). The same sender again writes nothing; a first choice equal to the default stores the choice and writes nothing |
 | `AlloggiatiDelegationGranted` | 81 | `short-rent` | the org | `delegationVersion` | E03/F01/US05/T02 (AW-R02, ADR-015-R10): `AlloggiatiDelegationService.GrantAsync`, in the save of the grant; the actor is who delegated the transmission; `delegationVersion` is the code of the delegation text accepted (always written: a version is a code of 40 characters at most, the limit of a value of the log, or the grant is refused with 422 `alloggiati_delegation_version_invalid`), **never the text**. Granting again the version already valid writes nothing |
 | `AlloggiatiDelegationRevoked` | 82 | `short-rent` | the org | none | E03/F01/US05/T02: `AlloggiatiDelegationService.RevokeAsync`, in the save of the revocation; revoking a delegation that is not valid writes nothing |
+| `OnboardingAssistRequested` | 110 | `account` | the org | `part`, `context`, `status` | E10/F01/US03/T01 (NF-15, AC-NF15-1, «Do it for me»): `OnboardingAssistService.RequestAsync`, in the save that stores the request (`POST /api/onboarding/assist-requests`); the actor is the host. `part` = the code of the part of the plan (`compliance`, `channels`...), `context` = `panelPolice`, `panelIstat`, `panelChannelAccess` or `part`, `status` = `requested`: three codes of closed lists. The line says that help was asked and nothing else: **never the draft** (the request keeps a reference to it), a credential, a note or a person. A refusal (404, 409, 422) writes nothing |
+| `OnboardingAssistUpdated` | 111 | `account` | the org | `part`, `context`, `status` | E10/F01/US03/T01 (NF-15, AC-NF15-3): `OnboardingAssistService.UpdateAsync`, in the save of every staff update (`PUT /api/admin/onboarding/assist-requests/{id}`), **in the org of the request** (never the staff user's), with the staff user as the actor. `status` = `inProgress`, `done` or `cancelled`; a repeated update (a new note) writes a line again. **The note is never recorded**: it lives on the request, is at most 500 characters and holds no e-mail address. A refusal (404, 409, 422) writes nothing |
 
 The area is one of `account`, `short-rent`, `long-rent`, `supplier` (the keys of the contexts of the web app). A reserved event is
 **not written by anything yet**: its code and its details are fixed now so that the integers do not change when the task that builds

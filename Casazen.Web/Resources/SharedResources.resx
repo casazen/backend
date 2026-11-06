@@ -5121,4 +5121,55 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="BookingTouristTaxUnavailable" xml:space="preserve">
     <value>Non riusciamo a calcolare la tassa di soggiorno per le nuove date: il prezzo scenderebbe della tassa che l'ospite ha già pagato e il rimborso partirebbe da solo. La prenotazione non è stata modificata: scegli altre date o chiedi assistenza.</value>
   </data>
+  <data name="PanelStepKindInvalid" xml:space="preserve">
+    <value>Questo tipo di passaggio guidato non esiste.</value>
+  </data>
+  <data name="PanelStepChannelInvalid" xml:space="preserve">
+    <value>Il codice del canale non è valido: serve per l'accesso a un canale e solo per quello.</value>
+  </data>
+  <data name="PanelStepResumeInvalid" xml:space="preserve">
+    <value>Il punto da cui riprendere non è valido.</value>
+  </data>
+  <data name="PanelStepNotFound" xml:space="preserve">
+    <value>Questo passaggio guidato non esiste.</value>
+  </data>
+  <data name="PanelStepVerificationRequired" xml:space="preserve">
+    <value>CasaZen deve prima provare a verificare il passaggio: conferma solo se non riesce.</value>
+  </data>
+  <data name="PanelStepNotValid" xml:space="preserve">
+    <value>Il passaggio non risulta valido: ripetilo nel pannello del channel manager.</value>
+  </data>
+  <data name="PanelStepAssistOpen" xml:space="preserve">
+    <value>L'assistenza CasaZen sta già seguendo questo passaggio.</value>
+  </data>
+  <data name="PanelStepCallbackUnsupported" xml:space="preserve">
+    <value>Questo passaggio non prevede il ritorno automatico dal pannello.</value>
+  </data>
+  <data name="PanelStepStateInvalid" xml:space="preserve">
+    <value>Il ritorno dal pannello non è valido o è scaduto: riavvia il passaggio.</value>
+  </data>
+  <data name="OnboardingNeedsWholeOrg" xml:space="preserve">
+    <value>Questa operazione riguarda l'intera organizzazione: serve l'accesso a tutti gli immobili.</value>
+  </data>
+  <data name="AssistRequestAlreadyOpen" xml:space="preserve">
+    <value>C'è già una richiesta di aiuto aperta per questa parte e questo immobile.</value>
+  </data>
+  <data name="AssistRequestNotFound" xml:space="preserve">
+    <value>Questa richiesta di aiuto non esiste.</value>
+  </data>
+  <data name="AssistRequestClosed" xml:space="preserve">
+    <value>Questa richiesta è già chiusa.</value>
+  </data>
+  <data name="AssistContextInvalid" xml:space="preserve">
+    <value>Il tipo di aiuto richiesto non è valido per questa parte.</value>
+  </data>
+  <data name="AssistStatusInvalid" xml:space="preserve">
+    <value>Lo stato indicato non è valido: usa inProgress, done o cancelled.</value>
+  </data>
+  <data name="AssistNoteInvalid" xml:space="preserve">
+    <value>La nota può avere al massimo 500 caratteri e non può contenere indirizzi e-mail.</value>
+  </data>
+  <data name="AssistStepAlreadyDone" xml:space="preserve">
+    <value>Questo passaggio è già completato: non c'è nulla da chiedere all'assistenza.</value>
+  </data>
 </root>

@@ -36,6 +36,16 @@ public interface IOctorateApiClient
     /// </summary>
     Task<OctoratePoliceAccount> GetPoliceAccountAsync(string accommodationId, CancellationToken ct);
 
+    /// <summary>
+    /// The state of the police account of one accommodation, as the guided step of the police connection needs it (E10/F01/US03/T01, D17,
+    /// D31): the same read as <see cref="GetPoliceAccountAsync"/> (same error mapping and rate-limit gate), answered as
+    /// <see cref="OctoratePoliceAccountStatus"/>. It never throws for what only means «CasaZen cannot tell»: the field absent (an accommodation
+    /// created through the API has none: S25), a read Octorate refused (credentials, permission, environment) and an accommodation Octorate does
+    /// not know are <see cref="OctoratePoliceAccountStatus.Readable"/> false. A failure worth a later retry (429, 5xx, no answer) is the typed
+    /// error of the client, so a caller never takes a failed read for a verdict.
+    /// </summary>
+    Task<OctoratePoliceAccountStatus> GetPoliceAccountStatusAsync(string octorateAccommodationId, CancellationToken ct);
+
     /// <summary>Changes the members of <paramref name="update"/> that are set, and nothing else (<c>PATCH /rest/v2/accommodation/{acc}</c>).</summary>
     Task UpdatePropertyAsync(string accommodationId, OctoratePropertyUpdate update, CancellationToken ct);
 
