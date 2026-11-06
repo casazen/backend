@@ -21,8 +21,12 @@ public static class MessagesHubServiceCollectionExtensions
 
         // The proxy of the attachments (ADR-032-R5): its own client, with no automatic redirect and a connection that goes to public addresses only
         // (the address was read from a channel, so it is untrusted); the 30 seconds and the 20 MB are kept by the fetcher itself, which reads the body.
+        // RemoveAllLoggers: the logging handlers every client of the factory gets by default write «Sending HTTP request GET https://host/path» (the query
+        // is hidden, the host and the path are not) at Information for each file that is opened, and the address may carry a token or the name of a file:
+        // the fetcher logs the kind of failure itself and nothing else.
         services.AddHttpClient<IOtaAttachmentFetcher, OtaAttachmentFetcher>(client => client.Timeout = Timeout.InfiniteTimeSpan)
-            .ConfigurePrimaryHttpMessageHandler(OtaAttachmentFetcher.CreateHandler);
+            .ConfigurePrimaryHttpMessageHandler(OtaAttachmentFetcher.CreateHandler)
+            .RemoveAllLoggers();
 
         return services;
     }
