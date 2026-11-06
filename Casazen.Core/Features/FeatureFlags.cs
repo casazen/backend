@@ -165,6 +165,25 @@ public static class FeatureFlags
     /// </summary>
     public const string OctorateOnboarding = "OctorateOnboarding";
 
+    /// <summary>
+    /// E06/F02/US02/T02 (NF-82, FIS-02, PO-05): the issuance of fiscal documents by CasaZen, <b>off by default</b> until the accountant has approved the
+    /// rules of the documents (<c>FiscalDocuments</c> options) and the issuance (epic E06/F01) is delivered. It gates only two things: the issuance
+    /// itself, and the choice of the mode «CasaZen issues, direct bookings only» of the issuer setting (<c>PUT api/fiscal/documents/settings</c> answers
+    /// 422 <c>document_issuance_not_available</c> for it while the flag is off; a booking cannot be locked to CasaZen as its issuer either). Not behind
+    /// it: reading and saving the setting for the other two modes (Octorate, the accountant), the invoice data of a booking and the reading of the
+    /// documents Octorate issued. It needs no variable to start. This task owns the flag: the other tasks of epic E06 only read it.
+    /// </summary>
+    public const string FiscalDocumentIssuance = "FiscalDocumentIssuance";
+
+    /// <summary>
+    /// E06/F02/US01/T04 (NF-81, NF-82, FIS-01, FIS-02): the sync of the billing data with Octorate, <b>off by default</b> until the customer (address
+    /// book) endpoints are proven in the Octorate sandbox and CasaZen's outbound IPs are whitelisted (Octorate refuses the guests' sensitive data
+    /// before that). It gates two handlers and nothing else: the pre-fill of the invoice data of a booking imported from Octorate (<c>BookingCreated</c>)
+    /// and the write of the billing data saved in CasaZen to Octorate, only where Octorate is the issuer (<c>InvoiceDataSaved</c>). Both also need
+    /// <c>Features:OctorateConnector</c>. It needs no variable to start. This task owns the flag: the other tasks of epic E06 only read it.
+    /// </summary>
+    public const string OctorateBillingSync = "OctorateBillingSync";
+
     /// <summary>Every flag, in the order exposed to the frontend.</summary>
     public static IReadOnlyList<string> All { get; } =
     [
@@ -183,5 +202,7 @@ public static class FeatureFlags
         OctorateConnector,
         CrmMarketing,
         OctorateOnboarding,
+        FiscalDocumentIssuance,
+        OctorateBillingSync,
     ];
 }

@@ -336,6 +336,13 @@ public class AppDbContext(
     // The mirror of the CasaZen bookings on Octorate: the state of the last operation sent for each booking (E08/F01/US01/T01, ADR-031)
     public DbSet<OctorateBookingSync> OctorateBookingSyncs { get; set; } = null!;
 
+    // Who an invoice of a booking is made out to, one row for each booking, personal data encrypted (FIS-01, NF-81, E06/F02/US01/T01)
+    public DbSet<BookingInvoiceData> BookingInvoiceData { get; set; } = null!;
+
+    // Who issues the documents of an organization (one profile for each org) and the single issuer of each booking (FIS-02, NF-82, E06/F02/US02/T01)
+    public DbSet<OrgFiscalIssuerProfile> OrgFiscalIssuerProfiles { get; set; } = null!;
+    public DbSet<BookingDocumentIssuer> BookingDocumentIssuers { get; set; } = null!;
+
     // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
     public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
     public DbSet<OctorateStayStateSync> OctorateStayStateSyncs { get; set; } = null!;
@@ -1720,6 +1727,17 @@ public class AppDbContext(
                 .HasDatabaseName(OctorateBookingSync.BookingIndexName);
             entity.HasIndex(s => new { s.OrgId, s.State });
         });
+
+        // ─── Invoice data and issuer of the documents (epic E06, NF-81, NF-82) ───────────────────────────────
+        // The invoice data of a booking: one row for each booking (unique BookingId), gone with the booking (cascade); the personal columns are
+        // encrypted by EncryptedColumns (no length) and xmin is the concurrency token. The tenant query filter is applied below, as to every
+        // ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new BookingInvoiceDataConfiguration());
+
+        // The profile of the issuer of an org (unique OrgId) and the single issuer of a booking (unique BookingId, cascade with the booking):
+        // the database itself refuses a second one of either (FIS-02, NF-82).
+        modelBuilder.ApplyConfiguration(new OrgFiscalIssuerProfileConfiguration());
+        modelBuilder.ApplyConfiguration(new BookingDocumentIssuerConfiguration());
 
         // A payment is recorded on its Octorate reservation once (E08/F01/US01/T01, AC-NF74-4): its transaction is unique in the org. Only
         // the payments recorded there are in the index.
