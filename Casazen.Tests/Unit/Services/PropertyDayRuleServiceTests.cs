@@ -182,6 +182,37 @@ public class PropertyDayRuleServiceTests
     }
 
     [Fact]
+    public async Task Apply_ARangeEntirelyInThePast_IsRefusedWithItsCode_AndStagesNothing()
+    {
+        await using var db = NewDb();
+        var property = AddProperty(db, Guid.NewGuid());
+        await db.SaveChangesAsync();
+        var service = NewService(db);
+        var price = new DayRulePatch(Price: FieldPatch<decimal>.Set(100m));
+
+        // Today is the 9th of October: the 1st to the 8th are all over, whatever the weekdays asked for.
+        var allPast = await Assert.ThrowsAsync<DomainRuleException>(
+            () => service.ApplyAsync(ScopeOf(property), property.Id, new DateOnly(2026, 10, 1), new DateOnly(2026, 10, 8), null, price, "auth0|host"));
+        var onlyPastWeekdays = await Assert.ThrowsAsync<DomainRuleException>(
+            () => service.ApplyAsync(
+                ScopeOf(property),
+                property.Id,
+                new DateOnly(2026, 10, 5),
+                new DateOnly(2026, 10, 11),
+                new HashSet<DayOfWeek> { DayOfWeek.Monday },
+                price,
+                "auth0|host"));
+
+        Assert.Equal(DayRuleErrorCodes.InPast, allPast.Code);
+        Assert.Equal(DayRuleErrorCodes.InPast, onlyPastWeekdays.Code);
+        Assert.Empty(db.ChangeTracker.Entries<PropertyDayRule>());
+
+        // One night that is not over (today) is enough for the change to go through, the nights over counted as skipped.
+        var result = await service.ApplyAsync(ScopeOf(property), property.Id, new DateOnly(2026, 10, 8), new DateOnly(2026, 10, 9), null, price, "auth0|host");
+        Assert.Equal(new DayRuleApplyResult(1, 0, 1), result);
+    }
+
+    [Fact]
     public async Task Apply_OnlyTheChosenWeekdays_AreTouched()
     {
         await using var db = NewDb();

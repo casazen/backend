@@ -424,6 +424,11 @@ public sealed class PropertyDayRuleService(
             plan.Add((night, row, after));
         }
 
+        // Every night the change touches is already over on the clock of the property and nothing is left to change or to leave as it is: there is
+        // nothing to stage, and the caller is told why instead of «0 changed».
+        if (plan.Count == 0 && unchanged == 0 && skippedPast > 0)
+            throw DayRuleRules.ProblemOf(DayRuleErrorCodes.InPast);
+
         var stamp = now.UtcDateTime;
         foreach (var (night, row, after) in plan)
         {

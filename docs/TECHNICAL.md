@@ -414,7 +414,7 @@ whether a night is over, is read on the time zone of the property, `DayRuleRules
 `CK_PropertyDayRules_Values` refuses a price outside 0.01 to 100000, a stay outside 1 to 365 nights, an advance outside 0 to 730 days
 and a maximum below its minimum; the service refuses the same before it stages anything (422 `calendar_day_rule_invalid_price`,
 `calendar_day_rule_invalid_stay`, `calendar_day_rule_invalid_advance`, `calendar_day_rule_range_invalid`,
-`calendar_day_rule_range_too_long` (more than 366 days), `calendar_day_rule_in_past`, `calendar_day_rule_nothing_to_change`); the price
+`calendar_day_rule_range_too_long` (more than 366 days), `calendar_day_rule_in_past` when every night the change touches is already over on the clock of the property, `calendar_day_rule_nothing_to_change`); the price
 is rounded to the cent, half away from zero, as `StayPricing` rounds. No endpoint writes the rules here: the changes API
 (E08/F05/US02/T03) calls `IPropertyDayRuleService.ApplyAsync`, which stages the rows (skipping and counting the nights before today of
 the property) and never saves: the caller owns the transaction and, on a unique violation of the night

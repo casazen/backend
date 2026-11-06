@@ -60,7 +60,8 @@ public interface IPropertyDayRuleService
     /// every night, or only the weekdays of <paramref name="days"/> (<c>null</c> = every day; an empty set is a 422, never «all»). Nights before today
     /// of the property are skipped and counted; a night whose values do not change is counted and left alone; a row left with no value is deleted. The
     /// values are validated night by night against the merged values (the patch over what the night has), and everything is checked before anything is
-    /// staged, so a refused change stages nothing.
+    /// staged, so a refused change stages nothing. When every night the change touches is already over (and none is left to change or to leave
+    /// as it is) the change is refused with <see cref="DayRuleErrorCodes.InPast"/>.
     /// </summary>
     /// <remarks>
     /// It never calls <c>SaveChanges</c>: the caller owns the transaction and saves the staged rows with its own. When that save fails because a
