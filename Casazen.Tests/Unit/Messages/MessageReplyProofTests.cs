@@ -434,6 +434,31 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal(1, await RowsWithKeyAsync());
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule. The read of the thread, which comes before the post, failed (a 5xx, a timeout, an answer that cannot be read): the message was never
+    /// built nor posted, so it is NOT a message to verify. The row goes away, the error reaches the caller, and the same key sends the message when the channel
+    /// manager answers again (not a replay of a message that never left, shown for ever as «to verify»).
+    /// </summary>
+    [Fact]
+    public async Task OtaReply_TheReadOfTheThreadBeforeTheSendFails_LeavesNoRow_AndTheSameKeyCanBeSentAgain_Test()
+    {
+        var rig = new MessageReplyRig(_db);
+        rig.Client
+            .Setup(c => c.SendChatMessageAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OctorateChatNotReadException(500));
+
+        var error = await Assert.ThrowsAsync<OctorateChatNotReadException>(() => ReplyAsync(rig, _world.GrantedReservation));
+        Assert.Equal(502, error.ResponseStatusCode);
+        Assert.Equal(0, await RowsWithKeyAsync());
+
+        rig.ChannelManagerAccepts("90004");
+        var again = await ReplyAsync(rig, _world.GrantedReservation);
+
+        Assert.False(again.Replayed);
+        Assert.Equal(OtaMessageDeliveryState.Sent, again.State);
+        Assert.Equal(1, await RowsWithKeyAsync());
+    }
+
     /// <summary>The caller left while the message was on its way: just as unknown as a timeout. The row says so and the cancellation goes on.</summary>
     [Fact]
     public async Task OtaReply_TheCallerLeaves_TheMessageIsLeftToVerify()

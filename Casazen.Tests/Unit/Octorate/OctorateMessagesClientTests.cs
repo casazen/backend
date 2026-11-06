@@ -102,6 +102,34 @@ public class OctorateMessagesClientTests
         Assert.Single(h.Handler.Calls, call => call.Method == HttpMethod.Post);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule. A failure of the READ of the thread, which comes before the post (a 5xx, a timeout, an answer that cannot be read), is not the
+    /// outcome nobody knows: nothing was posted, and the error says so (<see cref="OctorateChatNotReadException"/>), so the caller can send the message again.
+    /// </summary>
+    [Theory]
+    [InlineData("500")]
+    [InlineData("timeout")]
+    [InlineData("unreadable")]
+    public async Task SendChatMessage_AFailureOfTheReadOfTheThread_IsNotTheAmbiguousOutcome_AndNothingIsPosted_Test(string failure)
+    {
+        var h = new Harness();
+        h.Handler.Respond = _ => failure switch
+        {
+            "500" => (HttpStatusCode.InternalServerError, """{"type":"ApiException","message":"boom"}"""),
+            "timeout" => throw new TaskCanceledException("timed out"),
+            _ => (HttpStatusCode.OK, "<html>not json</html>"),
+        };
+
+        using (h.Scope.Use(Org))
+        {
+            var error = await Assert.ThrowsAsync<OctorateChatNotReadException>(() => h.Client.SendChatMessageAsync("585492", "9001", "Ciao", CancellationToken.None));
+            Assert.Equal("octorate_unavailable", error.Code);
+            Assert.Equal(502, error.ResponseStatusCode);
+        }
+
+        Assert.All(h.Handler.Calls, call => Assert.Equal(HttpMethod.Get, call.Method));
+    }
+
     [Fact]
     public async Task SendChatMessage_AThreadWithNoPersonOfTheHostSide_OrNoIdOnTheChannel_IsRefusedBeforeAnythingIsSent()
     {

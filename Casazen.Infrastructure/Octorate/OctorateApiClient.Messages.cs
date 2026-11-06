@@ -23,8 +23,18 @@ public sealed partial class OctorateApiClient
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
 
         // The message names the person who writes and the thread on the channel (both required by the OpenAPI); they are read from the thread
-        // first. A failure of this read leaves nothing written: the message was not sent.
-        var remote = await GetChatThreadAsync(accommodation, thread, ct);
+        // first. A failure of this read leaves nothing written: the message was not sent, and the caller is told so (it is not the outcome
+        // nobody knows of the POST below, which is an OctorateServerException).
+        OctorateChatThread remote;
+        try
+        {
+            remote = await GetChatThreadAsync(accommodation, thread, ct);
+        }
+        catch (OctorateServerException ex)
+        {
+            throw new OctorateChatNotReadException(ex.OctorateStatusCode, ex);
+        }
+
         if (OctorateChatRequests.NewMessageBody(thread, remote, text, timeProvider.GetUtcNow().UtcDateTime) is not { } json)
             throw new OctorateChatNotSendableException();
 

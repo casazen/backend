@@ -107,6 +107,14 @@ public sealed class OctorateSensitiveDataNotAllowedException(int? octorateStatus
 public sealed class OctorateChatNotSendableException()
     : OctorateException("octorate_chat_not_sendable", "OctorateChatNotSendable", StatusCodes.Status409Conflict, null);
 
+/// <summary>
+/// The read of the thread that comes before a message is sent (E05/F02/US02/T01) failed: no answer, a 5xx, or an answer that cannot be read. <b>Nothing was
+/// sent</b>: the message is built from that read, so it was never posted, and the caller may send it again with the same key. 502, like any failure of
+/// Octorate. Not an <see cref="OctorateServerException"/> on purpose: that one, when it comes from the POST itself, is the outcome nobody knows.
+/// </summary>
+public sealed class OctorateChatNotReadException(int? octorateStatusCode, Exception? innerException = null)
+    : OctorateException("octorate_unavailable", "OctorateUnavailable", StatusCodes.Status502BadGateway, octorateStatusCode, innerException);
+
 /// <summary>Octorate failed (5xx), did not answer in time, or answered something that cannot be read: 502, worth a later retry.</summary>
 public sealed class OctorateServerException(int? octorateStatusCode, Exception? innerException = null)
     : OctorateException("octorate_unavailable", "OctorateUnavailable", StatusCodes.Status502BadGateway, octorateStatusCode, innerException);

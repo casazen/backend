@@ -204,7 +204,7 @@ per person like the direct reply). Answer `{ channel, threadKey, message, state,
 | `Sent` | the channel manager accepted it (also a direct message, and an e-mail that was queued) | 200 |
 | `Created`, `WaitingAuthorization` | the channel manager has it and sends it (it reports the next state; the copy of the conversation completes the row) | 200 |
 | `Error` | a typed refusal (a token it does not take, the chat module not in the license, a request it rejects), with its `errorCode`; the guest got nothing | 200 |
-| `ManualVerify` | no answer, a 5xx or an answer that cannot be read: the message **may** have gone. **This call never sends it again**; the copy of the conversation matches it with the message that arrived (same text, within ten minutes), or a person checks on the channel | 202 |
+| `ManualVerify` | no answer, a 5xx or an answer that cannot be read **to the post of the message**: the message **may** have gone (the same failure of the read of the thread that comes before the post is not this: nothing was sent, the row goes away, the answer is 502 `octorate_unavailable` and the same key sends the message again). **This call never sends it again**; the copy of the conversation matches it with the message that arrived (same text, within ten minutes), or a person checks on the channel | 202 |
 
 The checks, in order: the conversation within the reach of the caller (**404** `thread_not_found`, also for another org's and for the unassigned one when the
 caller does not reach every property), the guest not erased (**409** `thread_closed`; also a direct thread past the seventh day after the check-out), a

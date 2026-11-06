@@ -225,7 +225,9 @@ public interface IOctorateApiClient
     /// the thread names (<see cref="OctorateChatThread.HostPersonId"/>) on the thread the channel gave (<see cref="OctorateChatThread.ExternalThreadId"/>),
     /// both read from the thread first; a thread that names none of them is <c>OctorateChatNotSendableException</c> and nothing is sent. Answers the id
     /// Octorate gave the message and the state it reports; a 2xx answer without an id is <c>OctorateServerException</c>, because the message may exist
-    /// all the same. <b>The send is never repeated by the client</b> (OCT-13): a timeout, a 5xx or an answer that cannot be read leaves the outcome
+    /// all the same. A failure of the read of the thread, which comes first (no answer, a 5xx, an answer that cannot be read), is
+    /// <c>OctorateChatNotReadException</c>: nothing was posted, and the message can be sent again. <b>The send is never repeated by the client</b>
+    /// (OCT-13): a timeout, a 5xx or an answer that cannot be read of the POST itself leaves the outcome
     /// unknown, and only the caller, after the copy of the conversation (<see cref="IMessageSyncService"/>) has shown whether the message arrived,
     /// decides about a second send. The words are personal data and are never logged. A license without the <c>chat</c> module is
     /// <c>OctorateAuthException</c> with the code <c>chat_not_licensed</c>, as for the reads. <b>Documented, not proven:</b> the sandbox has no chat

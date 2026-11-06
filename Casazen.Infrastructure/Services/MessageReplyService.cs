@@ -253,6 +253,13 @@ public sealed class MessageReplyService(
             await DiscardAsync(row);
             throw;
         }
+        catch (OctorateChatNotReadException)
+        {
+            // The thread could not be read, so the message was never built nor posted: the row is taken away again, the same key can be sent again, and
+            // the 502 reaches the caller. (A 5xx, a timeout or an unreadable answer of the POST itself is the outcome nobody knows: ManualVerify above.)
+            await DiscardAsync(row);
+            throw;
+        }
         catch (OctorateException ex)
         {
             // A typed refusal: a message the channel manager did not take. The state says so, with the code.
