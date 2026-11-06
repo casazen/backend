@@ -4665,4 +4665,10 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="CrmContactSuppressed" xml:space="preserve">
     <value>Il contatto ha chiesto di non ricevere comunicazioni promozionali: non gli si può inviare la conferma.</value>
   </data>
+  <data name="DirectBookingWhatsAppRequiresPhone" xml:space="preserve">
+    <value>Per ricevere messaggi su WhatsApp serve un numero di telefono valido: indicalo e riprova.</value>
+  </data>
+  <data name="DirectBookingSoftOptInNoticeOutdated" xml:space="preserve">
+    <value>L'informativa che hai letto è stata aggiornata: ricarica la pagina, leggi la nuova versione e riprova.</value>
+  </data>
 </root>

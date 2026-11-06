@@ -33,7 +33,10 @@ public class BookingService(
     IPricingAdapterService pricingAdapterService,
     TimeProvider? timeProvider = null,
     IStayDiscountService? stayDiscountService = null,
-    IDomainEventRecorder? domainEvents = null) : IBookingService
+    IDomainEventRecorder? domainEvents = null,
+    ICrmContactService? crmContacts = null,
+    IMarketingConfirmationService? marketingConfirmation = null,
+    ICrmContactIndex? contactIndex = null) : IBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -123,16 +126,27 @@ public class BookingService(
             throw new DomainRuleException(DirectBookingErrorCodes.ConsentOutdated, "DirectBookingConsentOutdated");
         }
 
-        // DB-03: the optional "send me offers" box. As on the check-in portal (CO-15) it exists only with a versioned text
-        // (Gdpr:MarketingConsentVersion): the version is recorded with the consent as the proof of what the guest agreed to.
-        // Without one a consent cannot be recorded properly, so it is refused instead of silently dropped.
+        // DB-03 / NF-90: the optional "send me offers" boxes, one for each channel (e-mail, WhatsApp). As on the check-in portal (CO-15) a
+        // consent exists only with a versioned text (Gdpr:MarketingConsentVersion): the version is recorded with the consent as the proof of
+        // what the guest agreed to. Without one a consent cannot be recorded properly, so it is refused instead of silently dropped. The
+        // legacy single box counts as the e-mail channel.
         var marketingVersion = GdprOptions.Normalize(
             configuration[$"{GdprOptions.SectionName}:{nameof(GdprOptions.MarketingConsentVersion)}"]);
-        if (input.MarketingConsent && marketingVersion is null)
+        var emailConsent = input.MarketingConsent || input.MarketingConsentEmail;
+        var whatsAppConsent = input.MarketingConsentWhatsApp;
+        if ((emailConsent || whatsAppConsent) && marketingVersion is null)
         {
             throw new DomainRuleException(
                 DirectBookingErrorCodes.MarketingConsentUnavailable, "DirectBookingMarketingConsentUnavailable");
         }
+
+        // A consent on a channel needs the address of that channel: WhatsApp needs a phone number the CRM can store and reach.
+        if (whatsAppConsent && CrmNormalizer.NormalizePhone(input.Guest.Phone, DefaultCallingCode()) is null)
+            throw new DomainRuleException(DirectBookingErrorCodes.WhatsAppRequiresPhone, "DirectBookingWhatsAppRequiresPhone");
+
+        // NF-90: the soft opt-in notice (art. 130 c. 4 Codice privacy). The version the page showed must be the one in force, else the notice
+        // the guest read is not the notice we would record as presented.
+        var softOptInNoticeVersion = ResolveSoftOptInNotice(input.SoftOptInNoticeVersion);
 
         // DB-03b: the optional expected arrival time is a note for the host: only its shape is checked, before anything is written.
         if (!ArrivalTimeRules.TryNormalize(input.ExpectedArrivalTime, out var expectedArrivalTime))
@@ -178,11 +192,12 @@ public class BookingService(
         var guest = NewGuestSnapshotWithConsent(
             property.OrgId, input.Guest, input.ConsentVersion, input.ConsentIpAddress);
 
-        // DB-03: the optional marketing consent is recorded on the guest and in the append-only register of the privacy
-        // history (version of the text, time, source, IP), in the same insert as the booking and the guest.
-        var marketingConsent = input.MarketingConsent && marketingVersion is not null
-            ? RecordMarketingConsent(guest, marketingVersion, input.ConsentIpAddress)
-            : null;
+        // DB-03 / NF-90: the optional marketing consents (one row for each channel the guest ticked) and the soft opt-in notice that was
+        // presented are recorded in the append-only register of the privacy history (version of the text, time, source, IP), in the same
+        // insert as the booking and the guest; the e-mail consent is also recorded on the guest.
+        var consentAt = _clock.GetUtcNow().UtcDateTime;
+        var consentRecords = RecordCheckoutConsents(
+            guest, emailConsent, whatsAppConsent, marketingVersion, softOptInNoticeVersion, input.ConsentIpAddress, consentAt);
 
         var basePrice = price.BasePrice;
         var touristTaxAmount = price.TouristTax.AmountOrZero;
@@ -253,11 +268,11 @@ public class BookingService(
             // is removed with its events, BK-18). The confirmation follows with the payment.
             BookingEvents.RecordCreated(domainEvents, booking, BookingEventOrigin.Guest);
 
-            // Booking and guest snapshot (and the marketing consent, when the guest gave it) in one insert: a concurrent
+            // Booking and guest snapshot (and the privacy history of the checkout, when there is some) in one insert: a concurrent
             // checkout that takes the dates first leaves none of them.
-            createdBooking = marketingConsent is null
+            createdBooking = consentRecords.Count == 0
                 ? await repository.AddAsync(booking)
-                : await repository.AddWithGuestConsentAsync(booking, marketingConsent);
+                : await repository.AddWithGuestConsentsAsync(booking, consentRecords);
         }
         catch (InvalidOperationException ex) when (
             ex.Message.Contains("Property not available", StringComparison.OrdinalIgnoreCase))
@@ -303,6 +318,19 @@ public class BookingService(
             await DiscardFailedCheckoutAsync(createdBooking.Id);
             throw;
         }
+
+        // NF-90: the guest has a payment to complete (or a request to confirm), so the attempt is a booking: the consents they ticked become
+        // contacts of the CRM and the double opt-in e-mail goes out. Best effort: the privacy history is already saved with the booking.
+        await RecordCrmConsentsAsync(
+            guest,
+            property.OrgId,
+            org.DefaultLanguage,
+            emailConsent,
+            whatsAppConsent,
+            marketingVersion,
+            input.ConsentIpAddress,
+            consentAt,
+            createdBooking.Id);
 
         var publishableKey = configuration["Stripe:PublishableKey"] ?? string.Empty;
         return new DirectBookingCreateResult(
@@ -702,30 +730,163 @@ public class BookingService(
     }
 
     /// <summary>
-    /// The guest of the checkout agreed to receive offers (DB-03): marks the snapshot (<c>Guest.MarketingConsent</c> and its
-    /// date) and returns the row of the append-only register of the privacy history (CO-15), with the version of the text the
-    /// guest saw, the source, the time and the IP, as the check-in portal records its own. Not saved: it is written with the
-    /// booking and the guest, in one transaction.
+    /// The rows of the privacy history of the checkout (DB-03, E07/F04/US01/T02, NF-90), not saved: they are written with the booking and the
+    /// guest, in one transaction. One <see cref="GuestConsentPurpose.Marketing"/> row for each channel the guest ticked, with the version of
+    /// the text the guest saw, the source, the time and the IP as the check-in portal records its own, and, when the page showed the soft
+    /// opt-in notice in force, one <see cref="GuestConsentPurpose.SoftOptInNotice"/> row (the notice is presented, never a consent). The
+    /// e-mail consent also marks the snapshot (<c>Guest.MarketingConsent</c> and its date): the yes/no the withdrawal that a host records on a
+    /// guest's request looks at. A WhatsApp consent alone does not, because that flag is read as a consent to the e-mail address.
     /// </summary>
-    private GuestConsentRecord RecordMarketingConsent(Guest guest, string version, string consentIpAddress)
+    private static List<GuestConsentRecord> RecordCheckoutConsents(
+        Guest guest,
+        bool email,
+        bool whatsApp,
+        string? marketingVersion,
+        string? noticeVersion,
+        string consentIpAddress,
+        DateTime at)
     {
-        var now = _clock.GetUtcNow().UtcDateTime;
-        guest.MarketingConsent = true;
-        guest.MarketingConsentDate = now;
+        var records = new List<GuestConsentRecord>(3);
+        if (marketingVersion is not null)
+        {
+            if (email)
+            {
+                guest.MarketingConsent = true;
+                guest.MarketingConsentDate = at;
+                records.Add(NewCheckoutRecord(guest, GuestConsentPurpose.Marketing, GuestConsentAction.Granted, marketingVersion, consentIpAddress, at));
+            }
 
+            if (whatsApp)
+                records.Add(NewCheckoutRecord(guest, GuestConsentPurpose.Marketing, GuestConsentAction.Granted, marketingVersion, consentIpAddress, at));
+        }
+
+        if (noticeVersion is not null)
+        {
+            records.Add(NewCheckoutRecord(
+                guest, GuestConsentPurpose.SoftOptInNotice, GuestConsentAction.NoticePresented, noticeVersion, consentIpAddress, at));
+        }
+
+        return records;
+    }
+
+    private static GuestConsentRecord NewCheckoutRecord(
+        Guest guest,
+        GuestConsentPurpose purpose,
+        GuestConsentAction action,
+        string version,
+        string consentIpAddress,
+        DateTime at)
+    {
         return new GuestConsentRecord
         {
             OrgId = guest.OrgId,
             GuestId = guest.Id,
-            Purpose = GuestConsentPurpose.Marketing,
-            Action = GuestConsentAction.Granted,
+            Purpose = purpose,
+            Action = action,
             Version = version,
             Source = GuestConsentSource.BookingCheckout,
             IpAddress = string.IsNullOrWhiteSpace(consentIpAddress)
                 ? null
                 : (consentIpAddress.Length > 50 ? consentIpAddress[..50] : consentIpAddress),
-            RecordedAt = now,
+            RecordedAt = at,
         };
+    }
+
+    /// <summary>
+    /// The version of the soft opt-in notice to record as presented, or <c>null</c> when the checkout sent none. A version that is not the
+    /// configured one (<c>Gdpr:SoftOptInNoticeVersion</c>; none configured counts) is a notice the guest read that is no longer in force:
+    /// 409, so it is never recorded as presented.
+    /// </summary>
+    private string? ResolveSoftOptInNotice(string? versionSent)
+    {
+        var sent = GdprOptions.Normalize(versionSent);
+        if (sent is null)
+            return null;
+
+        var current = GdprOptions.Normalize(
+            configuration[$"{GdprOptions.SectionName}:{nameof(GdprOptions.SoftOptInNoticeVersion)}"]);
+        if (current is null || !string.Equals(sent, current, StringComparison.Ordinal))
+            throw new DomainConflictException(DirectBookingErrorCodes.SoftOptInNoticeOutdated, "DirectBookingSoftOptInNoticeOutdated");
+
+        return current;
+    }
+
+    private string? DefaultCallingCode() =>
+        configuration[$"{CrmOptions.SectionName}:{nameof(CrmOptions.DefaultCallingCode)}"];
+
+    /// <summary>
+    /// Makes the consents the guest ticked contacts of the CRM and sends the double opt-in e-mail of the address (E07/F04/US01/T02, NF-90,
+    /// CRM-03): origin <see cref="GuestContactOrigin.DirectBooking"/>, source <see cref="GuestConsentSource.BookingCheckout"/>, with the
+    /// version, the IP, the time and the default language of the org. The privacy history is already saved with the booking, so the row is
+    /// not written twice (<see cref="CrmConsentInput.RecordHistory"/>). <b>Best effort and never fatal</b>: the checkout does not depend
+    /// on the CRM. Without the key of the contact index (the CRM is closed in this environment) nothing is made and the sync of the CRM makes
+    /// the contacts once it is open; a contact or an e-mail that fails is logged by id and error type, never by address, and the host can
+    /// send the confirmation again.
+    /// </summary>
+    private async Task RecordCrmConsentsAsync(
+        Guest guest,
+        Guid orgId,
+        string? orgLanguage,
+        bool email,
+        bool whatsApp,
+        string? marketingVersion,
+        string consentIpAddress,
+        DateTime at,
+        Guid bookingId)
+    {
+        if ((!email && !whatsApp) || marketingVersion is null || crmContacts is null || contactIndex is not { IsConfigured: true })
+            return;
+
+        try
+        {
+            var ip = string.IsNullOrWhiteSpace(consentIpAddress) ? null : consentIpAddress;
+            var displayName = $"{guest.FirstName} {guest.LastName}".Trim();
+            if (email)
+            {
+                var contact = await crmContacts.RecordConsentAsync(new CrmConsentInput(
+                    orgId,
+                    GuestContactChannel.Email,
+                    guest.Email,
+                    GuestContactOrigin.DirectBooking,
+                    marketingVersion,
+                    GuestConsentSource.BookingCheckout,
+                    ip,
+                    at,
+                    orgLanguage,
+                    displayName,
+                    GuestId: guest.Id,
+                    BookedVia: BookingSource.Direct,
+                    RecordHistory: false));
+
+                if (contact is not null && marketingConfirmation is not null)
+                    await marketingConfirmation.SendConfirmationAsync(orgId, contact.Id);
+            }
+
+            if (whatsApp)
+            {
+                await crmContacts.RecordConsentAsync(new CrmConsentInput(
+                    orgId,
+                    GuestContactChannel.WhatsApp,
+                    guest.PhoneNumber,
+                    GuestContactOrigin.DirectBooking,
+                    marketingVersion,
+                    GuestConsentSource.BookingCheckout,
+                    ip,
+                    at,
+                    orgLanguage,
+                    displayName,
+                    GuestId: guest.Id,
+                    BookedVia: BookingSource.Direct,
+                    RecordHistory: false));
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(
+                "The CRM contact of the marketing consent of checkout {BookingId} could not be made ({Error}); the privacy history has the consent and the CRM sync makes the contact",
+                bookingId,
+                CrmDatabaseErrors.Describe(ex));
+        }
     }
 
     /// <summary>The guest of a direct checkout with its consent, not saved: it is written with its booking.</summary>

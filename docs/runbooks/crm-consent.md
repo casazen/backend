@@ -22,6 +22,7 @@ screens of the host are frontend tasks; this page is about the API.
 | Variable | Required | Effect |
 |---|---|---|
 | `Gdpr__MarketingConsentVersion` | to offer any consent | Version of the text of the marketing consent. Unset: the checkout, the check-in, the welcome page and the guest page do not offer it ([`gdpr.md`](gdpr.md)). |
+| `Gdpr__SoftOptInNoticeVersion` | to show the soft opt-in notice | Version of the soft opt-in notice of the checkout (art. 130 c. 4 Codice privacy, PO-07). **No default in code or in `appsettings.json`**: the text is the product owner's. Unset: no notice is shown or recorded and the customer's e-mail stays service only (§ 4.1). |
 | `SIGNED_LINK_SECRET` | to send the double opt-in e-mail | Signs the confirmation link (and the unsubscribe link). Unset: the confirmation e-mail is not sent (the outcome `Unavailable`, an error in the log that names the variable) and the endpoint that checks the link answers 500 `configuration_error`. Rotating it invalidates the links already sent. |
 | `App__PublicSiteBaseUrl` | to send the double opt-in e-mail | The address of the web app the link points at (`/marketing/confirm`). |
 | `Email__ApiKey`, `Email__FromAddress` | to send the double opt-in e-mail | The e-mail provider ([`email.md`](email.md)). Unset: the queue refuses the message, nothing is counted as sent, the consent stays unconfirmed. |
@@ -79,3 +80,50 @@ address, so the profile of the guest reads it too.
 | The host gets 409 `crm_confirmation_limit_reached` | Three messages already went out to that contact. Nothing resets the count; the person can still use a link of an earlier message while it is valid. |
 | The link says it is expired | 72 hours (`Crm__ConfirmationLinkValidityHours`) passed. The host sends a new one (up to the limit). |
 | The click answers 409 `contact_suppressed` | The person opted out after the e-mail was sent. A confirmation cannot lift an opt-out. |
+
+## 4. The collection points
+
+### 4.1 The checkout of the booking site (T02)
+
+`POST /api/public/bookings` ([`direct-booking.md`](direct-booking.md) § 11.6). Three optional fields, none required and none preselected:
+
+| Field | Meaning |
+|---|---|
+| `marketingConsentEmail` | Offers by e-mail. The old `marketingConsent` still works and counts as this channel. |
+| `marketingConsentWhatsApp` | Offers on WhatsApp. Needs the guest's phone number: 422 `direct_booking_whatsapp_requires_phone` when it is missing or is not a number the CRM can store. |
+| `softOptInNoticeVersion` | The version of the soft opt-in notice the page showed (art. 130 c. 4 Codice privacy, PO-07). |
+
+- **Consents.** A consent needs `Gdpr__MarketingConsentVersion` (the public org's `marketingConsentVersion`): without it, 422
+  `direct_booking_marketing_consent_unavailable` and nothing is stored. Each ticked channel is one row of the privacy history
+  (`GuestConsentRecords`: `Marketing`, `Granted`, source `BookingCheckout`, the version, the IP, the time), **written in the same insert as the
+  booking and the guest** (`IBookingRepository.AddWithGuestConsentsAsync`): a checkout that loses the dates or whose payment cannot start leaves
+  none of them. The e-mail channel also marks `Guest.MarketingConsent` (the flag the host's recorded withdrawal looks at).
+- **Contacts.** Once the guest has a payment to complete (or a request to confirm) each channel becomes a consent contact
+  (`ICrmContactService.RecordConsentAsync`: origin `DirectBooking`, source `BookingCheckout`, the version, the IP, the time, the guest and the
+  default language of the org), and the e-mail one gets its double opt-in message (§ 3). The history row is not written twice
+  (`CrmConsentInput.RecordHistory = false`). **It never fails the checkout**: without `Crm__ContactIndexKey`, or if a contact or the e-mail
+  fails, a line in the log (ids and error type, no address) says so, the history has the consent and the CRM sync makes the contact later;
+  the host can send the confirmation again (`send-confirmation`).
+- **The notice.** `GET /api/public/orgs/{slug}` carries `softOptInNoticeVersion` (`Gdpr__SoftOptInNoticeVersion`; `null` while the product
+  owner has not set it, and nothing in code or in `appsettings.json` sets it). A `softOptInNoticeVersion` equal to the current one is recorded
+  in the same insert (`SoftOptInNotice`, `NoticePresented`, source `BookingCheckout`, version, IP): the customer is *told*, never asked.
+  Any other version, or one when none is configured, is 409 `direct_booking_soft_opt_in_notice_outdated` and nothing is stored. **No
+  configured notice means the customer's e-mail stays service only**: the contact service makes it soft opt-in only for a confirmed booking
+  with a recorded notice.
+
+### 4.2 The online check-in (T02)
+
+`POST /api/public/checkin/{token}` ([`gdpr.md`](gdpr.md)). The per-channel consent of the portal (`marketingConsentEmail`,
+`marketingConsentWhatsApp`, `marketingEmail`) was already validated and recorded in a `MarketingConsentRecord` (unconfirmed). After the check-in
+is saved:
+
+- a ticked **e-mail** channel makes the consent contact of the address the guest typed (origin `CheckIn`, source `GuestPortal`, the version, the
+  IP, the time, the default language of the org, the guest) and queues its double opt-in message;
+- a ticked **WhatsApp** channel makes a contact only when the booker's phone number is known; otherwise the consent stays in the
+  `MarketingConsentRecord` and the CRM sync (`SyncFromGuestAsync`) makes the contact when a phone exists;
+- a box **left unticked changes nothing**, not even an earlier consent: withdrawing is a deliberate act of its own;
+- **minors are excluded**: the consent is the booker's, who must be of age (400 on `MarketingConsentEmail` / `MarketingConsentWhatsApp`
+  otherwise), and a submission whose booker is a minor makes no contact;
+- the legacy box (`marketingConsent`) still writes `Guest.MarketingConsent` for the privacy history; no campaign reads it any more.
+
+The contacts are made after the check-in is saved and never fail it, with the same rules as the checkout (§ 4.1).

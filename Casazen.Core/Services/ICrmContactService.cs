@@ -32,7 +32,8 @@ public interface ICrmContactService
     /// Records a person's consent on a contact (art. 6.1.a GDPR): the basis becomes <see cref="GuestContactLegalBasis.Consent"/> and the
     /// confirmation <see cref="GuestContactConfirmation.Unconfirmed"/> (a consent already confirmed that is renewed stays confirmed), with the
     /// version of the text, the source, the address of the person's connection, the time and the language. With a guest known it also appends one
-    /// <see cref="GuestConsentRecord"/> (marketing, granted), so the privacy history stays complete. An OTA forward address keeps its origin and
+    /// <see cref="GuestConsentRecord"/> (marketing, granted), so the privacy history stays complete (unless <see cref="CrmConsentInput.RecordHistory"/>
+    /// says the caller wrote that row already). An OTA forward address keeps its origin and
     /// its service-only basis (the consent is in the history, the address is not marketable), and a suppressed contact stays suppressed.
     /// Returns <c>null</c> when the value cannot be stored.
     /// </summary>
@@ -125,6 +126,10 @@ public sealed record CrmContactInput(
 /// <param name="GuestCrmProfileId">The profile it belongs to; <c>null</c> for a lead with no profile yet.</param>
 /// <param name="GuestId">The guest that consented; with it the privacy history gets its row.</param>
 /// <param name="BookedVia">The source of the booking the value arrived with.</param>
+/// <param name="RecordHistory">
+/// True (the default) to append the <see cref="GuestConsentRecord"/> of the privacy history when a guest is known. False when the caller
+/// already wrote that row itself, in the same insert as the booking (the public checkout, E07/F04/US01/T02), so the history holds the act once.
+/// </param>
 public sealed record CrmConsentInput(
     Guid OrgId,
     GuestContactChannel Channel,
@@ -138,4 +143,5 @@ public sealed record CrmConsentInput(
     string? DisplayName = null,
     Guid? GuestCrmProfileId = null,
     Guid? GuestId = null,
-    BookingSource? BookedVia = null);
+    BookingSource? BookedVia = null,
+    bool RecordHistory = true);

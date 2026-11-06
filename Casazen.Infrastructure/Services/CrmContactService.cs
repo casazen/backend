@@ -68,7 +68,7 @@ public class CrmContactService(
             async () =>
             {
                 var contact = await StageAsync(contactInput, new ConsentToApply(evidence, null, Fresh: true), cancellationToken);
-                if (contact is not null && input.GuestId is { } guestId && !historyStaged)
+                if (contact is not null && input.RecordHistory && input.GuestId is { } guestId && !historyStaged)
                 {
                     db.GuestConsentRecords.Add(new GuestConsentRecord
                     {
