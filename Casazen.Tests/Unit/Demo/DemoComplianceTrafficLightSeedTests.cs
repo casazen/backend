@@ -169,6 +169,8 @@ public class DemoComplianceTrafficLightSeedTests
             .Returns(Task.CompletedTask);
         var gate = new Mock<IDemoEnvironmentGate>();
         gate.SetupGet(g => g.IsAvailable).Returns(true);
+        var hostEnvironment = new Mock<IHostEnvironment>();
+        hostEnvironment.SetupGet(h => h.EnvironmentName).Returns("Staging");
         var seeding = new DemoEnvironmentService(
             db,
             storage.Object,
@@ -179,7 +181,8 @@ public class DemoComplianceTrafficLightSeedTests
             clock,
             Mock.Of<IServiceScopeFactory>(),
             Mock.Of<ICrmContactIndex>(),
-            Mock.Of<IFeatureFlags>());
+            Mock.Of<IFeatureFlags>(),
+            hostEnvironment.Object);
 
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         foreach (var template in templates)
