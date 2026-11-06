@@ -33,7 +33,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// <see cref="BookingEvents"/> and its keys. A stay that is already over, and a reservation first seen already cancelled, are stored for the
 /// record and raise none: nothing is to be told, scheduled or cleaned for them.</item>
 /// <item><b>Money.</b> The figures of a booking CasaZen owns (entered by the host, or paid through CasaZen) are not overwritten by the read of its
-/// reservation, and a booking CasaZen cancelled is not brought back by it. The OTA figures are never derived: see <see cref="BookingStateMapper"/>.</item>
+/// reservation, and a booking CasaZen cancelled is not brought back by it. The OTA figures are never derived: see <see cref="BookingStateMapper"/>.
+/// A price Octorate does not give is not written (never replaced by a zero), and a reservation that does not state the currency of the property
+/// brings no amount at all: the figures the booking held stay.</item>
 /// <item><b>Rate limit.</b> The single reads wait for the bucket of the org to refill (at most <see cref="MaxRateWait"/>); a run that cannot go on
 /// stops, is reported <see cref="ImportOutcome.Incomplete"/> and does not move the checkpoint of the listing.</item>
 /// <item><b>Privacy.</b> The logs carry ids, counts and the type of an error, never a name, a note, an amount or a body.</item>
@@ -387,10 +389,14 @@ public sealed class BookingImportService(
         var propertyChanged = booking.PropertyId != target.PropertyId;
         var datesChanged = booking.CheckInDate.Date != arrival.Date || booking.CheckOutDate.Date != departure.Date;
         var guestsChanged = booking.NumberOfGuests != guests || booking.NumberOfAdults != adults || booking.NumberOfChildren != children;
+
+        // The amounts of a reservation that does not state the currency of the property are not imported, whatever else it says: the figures held
+        // stay. A price Octorate does not give is not written either, so it is never replaced by a zero (ApplyMoney).
         var moneyChanged = !owned
-                           && (booking.BasePrice != prices.Lodging
-                               || booking.TotalPrice != prices.Total
-                               || booking.TouristTax != prices.TouristTax
+                           && mapper.InCurrencyOf(reservation, target.Currency)
+                           && (Differs(booking.BasePrice, prices.Lodging)
+                               || Differs(booking.TotalPrice, prices.Total)
+                               || Differs(booking.TouristTax, prices.TouristTax)
                                || booking.OtaCommission != amounts.Commission
                                || booking.OtaNetAmount != amounts.Net
                                || booking.OtaPaidAmount != amounts.Paid
@@ -529,17 +535,34 @@ public sealed class BookingImportService(
             await BookingEvents.RecordAsync(recorder, db, DomainEventType.BookingModified, booking, BookingEventOrigin.Octorate, ct);
     }
 
+    /// <summary>
+    /// Writes the figures Octorate gave. A price it did not give (or gave in another currency, or in none) is not written: the booking keeps the
+    /// one it had. A booking that never had one is left with the default of the column, zero (the price columns are not nullable and this task adds
+    /// no migration); the OTA figures beside it are <c>null</c>, "not available". The OTA figures are replaced as read: <c>null</c> is their way
+    /// to say so.
+    /// </summary>
     private static void ApplyMoney(Booking booking, StayPrices prices, OtaAmounts amounts)
     {
-        booking.BasePrice = prices.Lodging;
-        booking.TotalPrice = prices.Total;
-        booking.TouristTax = prices.TouristTax;
-        booking.TouristTaxAmount = prices.TouristTax;
+        if (prices.Lodging is { } lodging)
+            booking.BasePrice = lodging;
+
+        if (prices.Total is { } total)
+            booking.TotalPrice = total;
+
+        if (prices.TouristTax is { } tax)
+        {
+            booking.TouristTax = tax;
+            booking.TouristTaxAmount = tax;
+        }
+
         booking.OtaCommission = amounts.Commission;
         booking.OtaNetAmount = amounts.Net;
         booking.OtaPaidAmount = amounts.Paid;
         booking.OtaBalanceAmount = amounts.Balance;
     }
+
+    /// <summary>A figure Octorate gave and that differs from the one held; a figure it did not give changes nothing.</summary>
+    private static bool Differs(decimal held, decimal? read) => read is { } value && held != value;
 
     /// <summary>
     /// A booking CasaZen owns: entered by the host, or one that has payments or a saved card in CasaZen. Octorate's figures do not replace

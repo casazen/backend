@@ -191,32 +191,43 @@ public class BookingStateMapperTests
     [Theory]
     [InlineData("CHF", "EUR")]
     [InlineData("EUR", "CHF")]
-    public void ToOtaAmountsAndToStayPrices_AReservationInAnotherCurrencyThanTheProperty_GivesNoFigureAtAll(string reservationCurrency, string propertyCurrency)
+    [InlineData(null, "EUR")]
+    [InlineData(null, "CHF")]
+    public void ToOtaAmountsAndToStayPrices_AReservationInAnotherCurrencyThanThePropertyOrInNone_GivesNoFigureAtAll(string? reservationCurrency, string propertyCurrency)
     {
         var reservation = Reservation() with
         {
             Currency = reservationCurrency,
             RoomGross = 100m,
             TotalGross = 110m,
+            TouristTax = 2m,
             TotalPaid = 50m,
             PriceBreakdown = [new OctoratePriceComponent("COMMISSION", 12m)],
         };
 
+        // A currency that is missing is not taken for the property's: its amounts are in an unknown unit.
         Assert.Equal(OtaAmounts.None, Mapper.ToOtaAmounts(reservation, propertyCurrency));
         Assert.Equal(StayPrices.None, Mapper.ToStayPrices(reservation, propertyCurrency));
         Assert.False(Mapper.InCurrencyOf(reservation, propertyCurrency));
-        Assert.True(Mapper.InCurrencyOf(reservation with { Currency = null }, propertyCurrency));
         Assert.True(Mapper.InCurrencyOf(reservation with { Currency = propertyCurrency }, propertyCurrency));
+        Assert.True(Mapper.InCurrencyOf(reservation with { Currency = propertyCurrency.ToLowerInvariant() }, propertyCurrency));
     }
 
     [Fact]
-    public void ToStayPrices_TheFiguresOctorateGivesAndZeroForTheOnesItDoesNot()
+    public void ToStayPrices_TheFiguresOctorateGives_AndNullForTheOnesItDoesNot_NeverZero()
     {
         var full = Mapper.ToStayPrices(Reservation() with { RoomGross = 200m, TotalGross = 230.555m, TouristTax = 8m }, "EUR");
         Assert.Equal(new StayPrices(200m, 230.56m, 8m), full);
 
         var totalOnly = Mapper.ToStayPrices(Reservation() with { TotalGross = 90m }, "EUR");
-        Assert.Equal(new StayPrices(90m, 90m, 0m), totalOnly);
+        Assert.Equal(new StayPrices(90m, 90m, null), totalOnly);
+
+        var roomOnly = Mapper.ToStayPrices(Reservation() with { RoomGross = 70m }, "EUR");
+        Assert.Equal(new StayPrices(70m, 70m, null), roomOnly);
+
+        // A figure that is really zero is a figure; one that is missing is not.
+        var free = Mapper.ToStayPrices(Reservation() with { RoomGross = 0m, TotalGross = 0m, TouristTax = 0m }, "EUR");
+        Assert.Equal(new StayPrices(0m, 0m, 0m), free);
 
         Assert.Equal(StayPrices.None, Mapper.ToStayPrices(Reservation(), "EUR"));
     }
@@ -242,5 +253,6 @@ public class BookingStateMapperTests
         Assert.Equal(expected, Mapper.ToOutbound(status));
     }
 
-    private static OctorateReservation Reservation() => new() { Id = "7001" };
+    /// <summary>A reservation in euros (the amounts are only taken from a reservation that states the currency of the property).</summary>
+    private static OctorateReservation Reservation() => new() { Id = "7001", Currency = "EUR" };
 }

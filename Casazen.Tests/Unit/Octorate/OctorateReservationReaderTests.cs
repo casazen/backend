@@ -82,6 +82,23 @@ public class OctorateReservationReaderTests
         Assert.Null(reservation.TotalGuests);
     }
 
+    // ApiReservationRespDTO.currency is an object with a currencyCode (OpenAPI 2026-11-04); a plain code is read too. Anything else is no currency,
+    // and the amounts of a reservation with none are not imported as if they were in the currency of the property.
+    [Theory]
+    [InlineData("""{ "id": "1", "currency": "eur" }""", "EUR")]
+    [InlineData("""{ "id": "1", "currency": { "currencyCode": "chf", "numericCode": 756, "displayName": "Swiss Franc" } }""", "CHF")]
+    [InlineData("""{ "id": "1", "currencyCode": "EUR" }""", "EUR")]
+    [InlineData("""{ "id": "1", "currency": { "numericCode": 978 } }""", null)]
+    [InlineData("""{ "id": "1", "currency": "euro" }""", null)]
+    [InlineData("""{ "id": "1", "currency": 978 }""", null)]
+    [InlineData("""{ "id": "1" }""", null)]
+    public void Read_TheCurrencyIsTheCodeOrTheObjectOfTheOpenApi_AndNullWhenTheAnswerStatesNone(string json, string? expected)
+    {
+        using var document = JsonDocument.Parse(json);
+
+        Assert.Equal(expected, OctorateReservationReader.Read(document.RootElement)!.Currency);
+    }
+
     [Theory]
     [InlineData("""{ "id": "1", "status": "CANCELLED" }""", OctorateBookingStatus.Cancelled)]
     [InlineData("""{ "id": "1", "status": "canceled" }""", OctorateBookingStatus.Cancelled)]

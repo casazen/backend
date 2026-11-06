@@ -10,7 +10,7 @@ namespace Casazen.Infrastructure.Octorate;
 /// are those the sandbox runs recorded (<c>kb/plan/octorate-integration-facts.md</c>): <c>id</c>, <c>refer</c>, <c>channelId</c>, <c>channelName</c>,
 /// <c>channelRefer</c>, <c>otaId</c>, <c>status</c>, <c>checkin</c>, <c>checkout</c>, <c>roomGross</c>, <c>totalGross</c>, <c>touristTax</c>,
 /// <c>totalGuest</c>, <c>paymentStatus</c>, <c>product</c>, <c>pmsProduct</c>, <c>firstName</c>, <c>lastName</c>, <c>updateTime</c> and, in the
-/// single read, <c>totalPaid</c> and <c>priceBreakdown</c>.
+/// single read, <c>totalPaid</c> and <c>priceBreakdown</c>; the <c>currency</c> is, in the OpenAPI, an object with a <c>currencyCode</c>.
 /// </summary>
 /// <remarks>
 /// A member that is not there is <c>null</c>, never a made-up value: an amount Octorate does not give stays unknown. The private notes of
@@ -104,7 +104,7 @@ internal static class OctorateReservationReader
             GuestPhone = PhoneOf(OctorateJson.Text(item, "phone", "guestPhone") ?? OctorateJson.Text(firstGuest, "phone")),
             // Only what the guest wrote: never the private notes of the host.
             Notes = OctorateJson.Text(item, "guestNotes", "guestNote", "specialRequests", "comments", "comment"),
-            Currency = CurrencyOf(OctorateJson.Text(item, "currency", "currencyCode")),
+            Currency = CurrencyOf(item),
             RoomGross = OctorateJson.Decimal(item, "roomGross"),
             TotalGross = OctorateJson.Decimal(item, "totalGross"),
             TouristTax = OctorateJson.Decimal(item, "touristTax"),
@@ -145,6 +145,17 @@ internal static class OctorateReservationReader
 
     private static string? PhoneOf(string? text) => text is { Length: > 0 and <= MaxPhoneLength } ? text : null;
 
-    private static string? CurrencyOf(string? text) =>
-        text is { Length: 3 } && text.All(char.IsAsciiLetter) ? text.ToUpperInvariant() : null;
+    /// <summary>
+    /// The ISO code of the currency of the reservation. <c>ApiReservationRespDTO.currency</c> is an object (<c>{ "currencyCode": "EUR", "numericCode":
+    /// 978, ... }</c>, OpenAPI 2026-11-04); the plain code as a string is read as well. <c>null</c> when the answer states none, or something that is
+    /// not a three-letter code: the amounts of such a reservation are not taken for the property's.
+    /// </summary>
+    private static string? CurrencyOf(JsonElement item)
+    {
+        if (OctorateJson.Find(item, "currency", "currencyCode") is not { } value)
+            return null;
+
+        var text = value.ValueKind == JsonValueKind.Object ? OctorateJson.Text(value, "currencyCode") : OctorateJson.TextOf(value);
+        return text is { Length: 3 } && text.All(char.IsAsciiLetter) ? text.ToUpperInvariant() : null;
+    }
 }

@@ -76,26 +76,84 @@ public class BookingImportProofTests
     }
 
     [Fact]
-    public async Task BookingImport_AReservationInAnotherCurrencyThanTheProperty_StoresNoFigure()
+    public async Task BookingImport_AReservationInAnotherCurrencyThanThePropertyOrInNone_WritesNoAmount_AndTheFiguresHeldStay()
     {
         var h = new BookingImportHarness();
+        await using var db = h.NewDb();
+        var service = h.Service(db);
+
+        // The first version is in the currency of the property: its figures are stored.
+        h.Serve(Res("7001"));
+        await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
+        var held = await h.ReadBookingAsync("7001");
+        Assert.Equal((300m, 330m, 6m, 45m, 100m), (held.BasePrice, held.TotalPrice, held.TouristTax, held.OtaCommission, held.OtaPaidAmount));
+
+        // A newer version in francs, and a newer one that states no currency at all: its amounts are in another unit, or in an unknown one, so
+        // none is written, and no zero takes the place of the figures held.
         var inFrancs = Res("7001") with
         {
+            UpdatedAt = SecondVersion,
             Currency = "CHF",
             TotalGross = 500m,
             RoomGross = 480m,
-            TotalPaid = 100m,
+            TouristTax = 9m,
+            TotalPaid = 10m,
             PriceBreakdown = [new OctoratePriceComponent("COMMISSION", 50m)],
         };
-        h.Serve(inFrancs);
+        var withoutCurrency = inFrancs with { UpdatedAt = SecondVersion.AddHours(1), Currency = null };
+        foreach (var version in new[] { inFrancs, withoutCurrency })
+        {
+            h.Serve(version);
+            var result = await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
+
+            Assert.Equal((0, 0), (result.Created, result.Updated));
+            var booking = await h.ReadBookingAsync("7001");
+            Assert.Equal((300m, 330m, 6m, 45m, 100m), (booking.BasePrice, booking.TotalPrice, booking.TouristTax, booking.OtaCommission, booking.OtaPaidAmount));
+            Assert.Equal(version.UpdatedAt, booking.OctorateUpdatedAt);
+        }
+
+        // A booking made from such a reservation takes no amount of it: the OTA figures are "not available", and no price is written.
+        h.Serve(Res("7002") with { Currency = "CHF" }, Res("7003") with { Currency = null });
+        await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
+        foreach (var id in new[] { "7002", "7003" })
+        {
+            var booking = await h.ReadBookingAsync(id);
+            Assert.Null(booking.OtaCommission);
+            Assert.Null(booking.OtaPaidAmount);
+            Assert.NotEqual(330m, booking.TotalPrice);
+            Assert.NotEqual(300m, booking.BasePrice);
+            Assert.NotEqual(6m, booking.TouristTax);
+        }
+    }
+
+    [Fact]
+    public async Task BookingImport_APriceOctorateDoesNotGive_IsNotWrittenAsZero_ThePreviousOneStays()
+    {
+        var h = new BookingImportHarness();
         await using var db = h.NewDb();
+        var service = h.Service(db);
+        h.Serve(Res("7001"));
+        await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
 
-        await h.Service(db).ImportAllAsync(h.PropertyId, CancellationToken.None);
+        // A newer version, in the currency of the property, that moves the stay and gives no price at all.
+        h.Serve(Res("7001") with
+        {
+            UpdatedAt = SecondVersion,
+            CheckIn = "2026-11-24",
+            CheckOut = "2026-11-27",
+            RoomGross = null,
+            TotalGross = null,
+            TouristTax = null,
+            TotalPaid = null,
+            PriceBreakdown = [],
+        });
+        var result = await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
 
-        await using var read = h.NewDb();
-        var booking = await read.Bookings.AsNoTracking().SingleAsync();
-        Assert.Equal(0m, booking.TotalPrice);
-        Assert.Equal(0m, booking.BasePrice);
+        // The dates follow the reservation; the prices are the ones held, not zero. What the channel kept and what was paid are "not available".
+        Assert.Equal(1, result.Updated);
+        var booking = await h.ReadBookingAsync("7001");
+        Assert.Equal(new DateTime(2026, 11, 24, 0, 0, 0, DateTimeKind.Utc), booking.CheckInDate);
+        Assert.Equal((300m, 330m, 6m), (booking.BasePrice, booking.TotalPrice, booking.TouristTax));
         Assert.Null(booking.OtaCommission);
         Assert.Null(booking.OtaPaidAmount);
     }

@@ -22,7 +22,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// in <see cref="Booking.ChannelLabel"/>: a wrong value is never reused. The source is the per-channel state of a booking.</item>
 /// <item><b>Dates.</b> <c>checkin</c> and <c>checkout</c> are UTC instants: they are put on the clock of the property
 /// (<see cref="TimezoneHelper.ConvertUtcToLocal"/>) and only the local calendar date is kept, as every stay date is (midnight UTC of the date).</item>
-/// <item><b>Amounts.</b> Rounded to the cent and bounded to what the columns hold; <c>null</c> stays <c>null</c>, it is never turned into zero.</item>
+/// <item><b>Amounts.</b> Rounded to the cent and bounded to what the columns hold; <c>null</c> stays <c>null</c>, it is never turned into zero. They
+/// are taken only from a reservation that states the currency of the property: with another currency, or none, no amount is imported.</item>
 /// </list>
 /// </remarks>
 public sealed class BookingStateMapper
@@ -159,8 +160,8 @@ public sealed class BookingStateMapper
     /// <summary>
     /// The four OTA figures of a booking from the reservation (ADR-033-R2, sandbox and OpenAPI 2026-11-04): the commission is the sum of the
     /// <c>COMMISSION</c> lines of the breakdown, <c>null</c> without one; the paid amount is <c>totalPaid</c>; the net and the balance have no
-    /// documented source and stay <c>null</c>, never derived from <c>roomGross</c>. All <c>null</c> when the reservation is not in the currency
-    /// of the property: the figures would be in another unit.
+    /// documented source and stay <c>null</c>, never derived from <c>roomGross</c>. All <c>null</c> when the reservation does not state the
+    /// currency of the property (<see cref="InCurrencyOf"/>): the figures would be in another unit, or in an unknown one.
     /// </summary>
     public OtaAmounts ToOtaAmounts(OctorateReservation reservation, string propertyCurrency)
     {
@@ -178,7 +179,8 @@ public sealed class BookingStateMapper
 
     /// <summary>
     /// The price figures of the stay (lodging, total, tourist tax) from the reservation: the room gross, the total gross and the tourist tax as
-    /// Octorate gives them; zero for a figure it does not give, and zero for all when the currency is not the property's.
+    /// Octorate gives them. A figure it does not give is <c>null</c>, never zero (a zero would read as a price), and every figure is <c>null</c>
+    /// when the reservation does not state the currency of the property (<see cref="InCurrencyOf"/>): the caller writes none of them.
     /// </summary>
     public StayPrices ToStayPrices(OctorateReservation reservation, string propertyCurrency)
     {
@@ -187,18 +189,21 @@ public sealed class BookingStateMapper
         if (!InCurrencyOf(reservation, propertyCurrency))
             return StayPrices.None;
 
-        var total = ToMoney(reservation.TotalGross) ?? ToMoney(reservation.RoomGross) ?? 0m;
+        var total = ToMoney(reservation.TotalGross) ?? ToMoney(reservation.RoomGross);
         var lodging = ToMoney(reservation.RoomGross) ?? total;
-        return new StayPrices(lodging, total, ToMoney(reservation.TouristTax) ?? 0m);
+        return new StayPrices(lodging, total, ToMoney(reservation.TouristTax));
     }
 
-    /// <summary>True when the reservation names no currency, or the one of the property (EUR or CHF).</summary>
+    /// <summary>
+    /// True when the reservation states the currency of the property (EUR or CHF). A reservation that states none is not taken for being in it: its
+    /// amounts are in an unknown unit, and an amount of an unknown unit is not imported as if it were in the currency of the property.
+    /// </summary>
     public bool InCurrencyOf(OctorateReservation reservation, string propertyCurrency)
     {
         ArgumentNullException.ThrowIfNull(reservation);
 
-        return reservation.Currency is null
-               || string.Equals(reservation.Currency, StayCurrency.Normalize(propertyCurrency), StringComparison.OrdinalIgnoreCase);
+        return reservation.Currency is not null
+               && string.Equals(reservation.Currency, StayCurrency.Normalize(propertyCurrency), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -238,12 +243,12 @@ public readonly record struct OtaAmounts(decimal? Commission, decimal? Net, deci
     public static OtaAmounts None => default;
 }
 
-/// <summary>The price figures of the stay of an imported booking.</summary>
+/// <summary>The price figures of the stay of an imported booking; each <c>null</c> when Octorate does not give it (or not in the currency of the property): a zero would read as a price.</summary>
 /// <param name="Lodging">The room (<c>BasePrice</c>).</param>
 /// <param name="Total">The total of the reservation (<c>TotalPrice</c>).</param>
 /// <param name="TouristTax">The tourist tax, as Octorate gives it.</param>
-public readonly record struct StayPrices(decimal Lodging, decimal Total, decimal TouristTax)
+public readonly record struct StayPrices(decimal? Lodging, decimal? Total, decimal? TouristTax)
 {
-    /// <summary>All zero.</summary>
+    /// <summary>No figure.</summary>
     public static StayPrices None => default;
 }

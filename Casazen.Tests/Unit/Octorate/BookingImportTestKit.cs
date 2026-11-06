@@ -26,7 +26,10 @@ internal static class BookingImportTestKit
     public static readonly DateTime FirstVersion = new(2026, 11, 5, 10, 0, 0, DateTimeKind.Utc);
     public static readonly DateTime SecondVersion = new(2026, 11, 5, 12, 0, 0, DateTimeKind.Utc);
 
-    /// <summary>A confirmed reservation of Airbnb on the room of the property, 20 to 22 November 2026, with a commission of 45 and 100 paid.</summary>
+    /// <summary>
+    /// A confirmed reservation of Airbnb on the room of the property, 20 to 22 November 2026, in euros, with a commission of 45 and 100 paid (the
+    /// amounts are only taken from a reservation that states the currency of the property, EUR for the harness).
+    /// </summary>
     public static OctorateReservation Res(
         string id,
         OctorateBookingStatus status = OctorateBookingStatus.Confirmed,
@@ -35,6 +38,7 @@ internal static class BookingImportTestKit
             Id = id,
             Status = status,
             Product = product,
+            Currency = "EUR",
             ChannelId = "274",
             ChannelName = "Airbnb",
             CheckIn = "2026-11-19T23:00:00Z",
