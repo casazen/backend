@@ -18,9 +18,12 @@ namespace Casazen.Infrastructure.Services;
 /// proposal as the previous holder left it, and save everything they change in a single <c>SaveChanges</c>; the aggregates of the survivor are then
 /// computed again by <see cref="IGuestMatchingService.UpdateProfileAggregatesAsync"/> inside the same transaction. Whatever fails before the commit
 /// leaves nothing behind.</item>
-/// <item><b>The scope of a proposal</b> is the scope of the two living profiles it ends up with: a profile merged into another is followed to the
-/// one that took its place (as the matching does), so a proposal already decided answers 409 to the person who decided it, and a proposal with a
-/// profile the caller does not reach answers 404 whatever its state.</item>
+/// <item><b>The scope of a proposal</b> is the scope of the two living profiles it ends up with, reached <b>in full</b>
+/// (<see cref="ICrmProfileReadService.ProfilesWhollyInScope"/>): a merge moves every guest and every contact of the profile that goes, so a caller
+/// limited to some properties decides a proposal only when no guest of either profile, and no guest who gave one of their contacts, is outside its
+/// reach (fail closed: the same 404 as for a profile it does not reach at all, for the merge and for the dismissal, and the proposal is not listed).
+/// A profile merged into another is followed to the one that took its place (as the matching does), so a proposal already decided answers 409 to
+/// the person who decided it, and a proposal with a profile the caller does not reach answers 404 whatever its state.</item>
 /// <item><b>Nothing of a contact is edited.</b> The guests and the contacts of the profile that goes are re-pointed with stub rows that carry only
 /// the key and the link (no document, no address is read, no encrypted value is decrypted or written): the update sets one column. Basis,
 /// confirmation, suppression, version and times stay exactly as they were.</item>
@@ -49,8 +52,8 @@ public sealed class CrmProfileMergeService(
         pageSize = Math.Clamp(pageSize, 1, CrmProfileRules.MaxPageSize);
         var orgId = scope.OrgId;
 
-        // Both profiles of the proposal in the scope of the caller, in the same statement; a tombstone is in no scope.
-        var reachable = profiles.ProfilesInScope(scope).Select(profile => profile.Id);
+        // Both profiles of the proposal reached in full by the caller, in the same statement; a tombstone is in no scope.
+        var reachable = profiles.ProfilesWhollyInScope(scope).Select(profile => profile.Id);
         var open = db.GuestMergeCandidates
             .AsNoTracking()
             .Where(candidate => candidate.OrgId == orgId
@@ -205,8 +208,8 @@ public sealed class CrmProfileMergeService(
     // ---- the proposal -------------------------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// The proposal of the org, tracked, once the caller is known to reach the two profiles it ends up with (404 otherwise). Called inside the
-    /// lock, so what it reads is what the previous holder committed.
+    /// The proposal of the org, tracked, once the caller is known to reach in full the two profiles it ends up with (404 otherwise, whether a
+    /// profile is out of its reach or reached only in part). Called inside the lock, so what it reads is what the previous holder committed.
     /// </summary>
     private async Task<Decidable> LoadDecidableAsync(HostScope scope, Guid candidateId, CancellationToken cancellationToken)
     {
@@ -221,7 +224,7 @@ public sealed class CrmProfileMergeService(
             throw CandidateNotFound();
 
         var wanted = new[] { first.Value, second.Value }.Distinct().ToList();
-        var reachable = await profiles.ProfilesInScope(scope).CountAsync(profile => wanted.Contains(profile.Id), cancellationToken);
+        var reachable = await profiles.ProfilesWhollyInScope(scope).CountAsync(profile => wanted.Contains(profile.Id), cancellationToken);
         if (reachable != wanted.Count)
             throw CandidateNotFound();
 

@@ -31,6 +31,15 @@ public interface ICrmProfileReadService
     /// </summary>
     IQueryable<GuestCrmProfile> ProfilesInScope(HostScope scope);
 
+    /// <summary>
+    /// The living profiles that the caller reaches in full: those of <see cref="ProfilesInScope"/> of which every guest, and every guest who gave
+    /// one of the contacts, has a booking at a property the caller reaches. A caller who reaches the whole org reaches every profile in full.
+    /// These are the profiles a merge is decided on: a merge moves all the guests and all the contacts of the profile that goes, so a caller
+    /// limited to some properties never decides one that would move what it does not reach (fail closed). An <c>IQueryable</c> of the same
+    /// context, to compose in the same statement. Nothing is loaded.
+    /// </summary>
+    IQueryable<GuestCrmProfile> ProfilesWhollyInScope(HostScope scope);
+
     /// <summary>The bookings of the caller's org at the properties the caller reaches.</summary>
     IQueryable<Booking> BookingsInScope(HostScope scope);
 

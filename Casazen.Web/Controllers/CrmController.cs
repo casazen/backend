@@ -36,7 +36,7 @@ public class CrmController(
     /// <summary>404: the profile does not exist, is of another org, is not reached by the caller or was merged into another.</summary>
     public const string ProfileNotFoundCode = "crm_profile_not_found";
 
-    /// <summary>404: the merge proposal does not exist, is of another org, or has a profile the caller does not reach.</summary>
+    /// <summary>404: the merge proposal does not exist, is of another org, or has a profile the caller does not reach in full.</summary>
     public const string MergeCandidateNotFoundCode = "crm_merge_candidate_not_found";
 
     /// <summary>
@@ -132,7 +132,7 @@ public class CrmController(
     }
 
     /// <summary>
-    /// The merge proposals the caller can decide: both profiles in its scope, the surest first, each with the score, the reasons and a
+    /// The merge proposals the caller can decide: both profiles reached in full (every guest of each at a property the caller reaches), the surest first, each with the score, the reasons and a
     /// side-by-side summary of the two profiles (the values of the contacts masked) (AC-NF88-3). Nothing merges by itself; a person decides.
     /// A caller with no reach gets 403 and is never widened to the whole org.
     /// </summary>
@@ -163,7 +163,7 @@ public class CrmController(
 
     /// <summary>
     /// The two profiles are two people: the proposal is dismissed with the time and the user, and the pair is never proposed again.
-    /// 404 <c>crm_merge_candidate_not_found</c> (another org's, or a pair with a profile the caller does not reach); 409
+    /// 404 <c>crm_merge_candidate_not_found</c> (another org's, or a pair with a profile the caller does not reach in full); 409
     /// <c>crm_merge_not_proposed</c> when it was already decided, and nothing changes.
     /// </summary>
     /// <param name="id">The proposal.</param>

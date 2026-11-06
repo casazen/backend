@@ -274,6 +274,7 @@ not take for a phone, so no two of them share one.
 | An address is not marketable | `CrmContactRules.ReachabilityReason` says why (§ 3.2): forward, not confirmed, service only, suppressed |
 | `404 crm_profile_not_found` for a profile the screen showed a moment ago | It was merged into another (the screen holds the id of the tombstone), or the caller does not reach it (§ 6.1); reload the list |
 | `409 crm_merge_not_proposed` | The proposal was already decided, by a double click or by someone else (§ 6.2); nothing changed |
+| A merge proposal the owner sees is missing for a collaborator «Solo alcuni» | A profile of the pair has a guest (or a contact given by a guest) at a property the collaborator does not reach: it is not listed for it and answers 404 `crm_merge_candidate_not_found` (§ 6.2, fail closed); the owner or an administrator decides it |
 | `422 crm_tags_invalid` with fewer than 50 tags | The tags together must fit 2,000 characters (the column); shorten them or drop some |
 
 ## 6. The profile API: list, detail, tags and merge (E07/F01/US03)
@@ -300,7 +301,11 @@ pieces: `ICrmProfileReadService` (`CrmProfileReadService`: the scope, the list, 
 
 ### 6.2 Deciding a merge
 
-A proposal (§ 2.3) is decided by whoever reaches both of its profiles. **Dismiss** records who and when and keeps the row, so the pair is never proposed
+A proposal (§ 2.3) is decided by whoever reaches both of its profiles **in full**. A merge moves every guest and every contact of the profile that
+goes, so a collaborator «Solo alcuni» does not decide a pair when a profile has a guest (or a contact given by a guest) at a property it does not reach:
+the pair is not listed for it, and the merge and the dismissal answer 404 `crm_merge_candidate_not_found`, as for a profile out of its scope; the
+owner, the administrators and the managers (the whole org) decide it. The rule is `ProfilesWhollyInScope`; relaxing it is a decision of the PO.
+**Dismiss** records who and when and keeps the row, so the pair is never proposed
 again. **Merge** moves the guests and the contacts of the profile that goes to the survivor **as they are** (the update sets the link and nothing
 else: basis, confirmation, suppression, version and times are untouched, no contact is copied, nothing is decrypted), joins the tags up to the cap,
 computes the aggregates of the survivor again, leaves the other profile as a tombstone (`MergedIntoProfileId`; the lists, the scope and the segments

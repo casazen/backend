@@ -393,4 +393,119 @@ public class CrmMergeProofTests
         var decided = await merge.MergeAsync(restricted, reachedId, firstId, CrmProfileApiWorld.Collaborator, Ct);
         Assert.Equal(firstId, decided.Id);
     }
+
+    /// <summary>
+    /// Permission rule, fail closed: a merge moves every guest and every contact of the profile that goes, so a collaborator limited to some
+    /// properties decides a proposal only when it reaches both profiles in full. A profile with a guest at a property the collaborator does not
+    /// reach (a person who stayed at both houses), or with a contact given by such a guest, makes the proposal as good as missing for it: not
+    /// listed, not counted as a proposal on the profile, and 404 (the answer for a profile out of scope) for the merge and for the dismissal, with
+    /// nothing changed. The whole org decides it and the guest of the other house moves with the rest; a pair the collaborator reaches in full
+    /// is decided as ever.
+    /// </summary>
+    [Fact]
+    public async Task CrmMerge_ProfileReachedOnlyInPart_Is404ForALimitedCaller_Test()
+    {
+        var store = CrmTestWorld.NewStore();
+        var clock = CrmTestWorld.Clock();
+        var orgId = Guid.NewGuid();
+        Guid withMixedId, withContactId, plainId, annaId, mixedId, carlaId, ericaId, atHiddenId;
+        await using (var seed = CrmTestWorld.Open(store))
+        {
+            var granted = CrmProfileApiWorld.AddHouse(seed, orgId, "Trullo");
+            var hidden = CrmProfileApiWorld.AddHouse(seed, orgId, "Casa Bianca");
+            seed.PropertyMemberAccesses.Add(new PropertyMemberAccess
+            {
+                OrgId = orgId,
+                UserId = CrmProfileApiWorld.Collaborator,
+                PropertyId = granted.Id,
+            });
+
+            // One person with two guest records: one at the house of the collaborator, one at the other.
+            var atGranted = CrmTestWorld.AddGuest(seed, orgId, "Anna", "Rossi", "anna.rossi@example.com");
+            var atHidden = CrmTestWorld.AddGuest(seed, orgId, "Annamaria", "Segreta", "anna.segreta@example.com");
+            CrmTestWorld.AddBooking(seed, atGranted, granted.Id, BookingStatus.CheckedOut, BookingSource.Direct, -30, 2, 200m);
+            CrmTestWorld.AddBooking(seed, atHidden, hidden.Id, BookingStatus.CheckedOut, BookingSource.Airbnb, -60, 3, 300m);
+            var mixed = CrmProfileApiWorld.NewProfile(orgId, atGranted.Id, stays: 2, spend: 500m);
+            atGranted.GuestCrmProfileId = mixed.Id;
+            atHidden.GuestCrmProfileId = mixed.Id;
+            seed.GuestCrmProfiles.Add(mixed);
+
+            // People the collaborator reaches in full; one of them has an address that a guest of the other house gave (a guest of no profile here).
+            var anna = CrmProfileApiWorld.AddPerson(seed, orgId, "Anna", "Verdi", granted);
+            var carla = CrmProfileApiWorld.AddPerson(seed, orgId, "Carla", "Neri", granted);
+            var dario = CrmProfileApiWorld.AddPerson(seed, orgId, "Dario", "Blu", granted);
+            var erica = CrmProfileApiWorld.AddPerson(seed, orgId, "Erica", "Gialli", granted);
+            var fabio = CrmProfileApiWorld.AddPerson(seed, orgId, "Fabio", "Viola", granted);
+            var stranger = CrmTestWorld.AddGuest(seed, orgId, "Elio", "Altrove", "elio.altrove@example.com");
+            CrmTestWorld.AddBooking(seed, stranger, hidden.Id, BookingStatus.CheckedOut, BookingSource.Direct, -50, 2, 100m);
+            seed.GuestContacts.Add(CrmProfileApiWorld.NewContact(
+                orgId, carla.Profile.Id, GuestContactChannel.Email, "elio.altrove@example.com", GuestContactOrigin.DirectBooking, GuestContactLegalBasis.ServiceOnly, guestId: stranger.Id));
+
+            var withMixed = Proposal(orgId, anna.Profile.Id, mixed.Id, 80);
+            var withContact = Proposal(orgId, carla.Profile.Id, dario.Profile.Id, 70);
+            var plain = Proposal(orgId, erica.Profile.Id, fabio.Profile.Id, 60);
+            seed.GuestMergeCandidates.AddRange(withMixed, withContact, plain);
+            await seed.SaveChangesAsync(Ct);
+
+            withMixedId = withMixed.Id;
+            withContactId = withContact.Id;
+            plainId = plain.Id;
+            annaId = anna.Profile.Id;
+            mixedId = mixed.Id;
+            carlaId = carla.Profile.Id;
+            ericaId = erica.Profile.Id;
+            atHiddenId = atHidden.Id;
+        }
+
+        var restricted = new HostScope(orgId, GrantedToUserId: CrmProfileApiWorld.Collaborator);
+        var orgWide = new HostScope(orgId);
+        await using var db = CrmTestWorld.Open(store);
+        var merge = CrmProfileApiWorld.MergeService(db, clock);
+        var read = CrmProfileApiWorld.ReadService(db, clock);
+
+        // Listed: the whole org decides the three pairs, the collaborator the one it reaches in full; and only on that pair does it see a proposal.
+        Assert.Equal(3, (await merge.ListProposedAsync(orgWide, 1, 50, Ct)).TotalCount);
+        var limited = await merge.ListProposedAsync(restricted, 1, 50, Ct);
+        Assert.Equal(plainId, Assert.Single(limited.Items).Id);
+        var seen = (await read.ListAsync(restricted, new CrmProfileFilter(), 1, 50, Ct)).Items;
+        Assert.False(seen.Single(item => item.Id == annaId).HasMergeProposal);
+        Assert.False(seen.Single(item => item.Id == mixedId).HasMergeProposal);
+        Assert.True(seen.Single(item => item.Id == ericaId).HasMergeProposal);
+        Assert.True((await read.ListAsync(orgWide, new CrmProfileFilter(), 1, 50, Ct)).Items.Single(item => item.Id == annaId).HasMergeProposal);
+
+        // The pair with the profile that stayed at both houses, and the pair with the address a guest of the other house gave: 404 for the merge
+        // (whichever profile is kept) and for the dismissal, the answer of a profile out of scope, and nothing is changed.
+        string untouched;
+        await using (var check = CrmTestWorld.Open(store))
+        {
+            untouched = await SnapshotAsync(check);
+        }
+
+        foreach (var (candidateId, survivorId) in new[] { (withMixedId, annaId), (withMixedId, mixedId), (withContactId, carlaId) })
+        {
+            var merging = await Assert.ThrowsAsync<NotFoundException>(
+                () => merge.MergeAsync(restricted, candidateId, survivorId, CrmProfileApiWorld.Collaborator, Ct));
+            Assert.Equal("crm_merge_candidate_not_found", merging.Code);
+        }
+
+        foreach (var candidateId in new[] { withMixedId, withContactId })
+        {
+            var dismissing = await Assert.ThrowsAsync<NotFoundException>(
+                () => merge.DismissAsync(restricted, candidateId, CrmProfileApiWorld.Collaborator, Ct));
+            Assert.Equal("crm_merge_candidate_not_found", dismissing.Code);
+        }
+
+        await using (var check = CrmTestWorld.Open(store))
+        {
+            Assert.Equal(untouched, await SnapshotAsync(check));
+        }
+
+        // The pair it reaches in full is decided as ever; the whole org decides the other, and the guest of the other house moves with the rest.
+        var decided = await merge.MergeAsync(restricted, plainId, ericaId, CrmProfileApiWorld.Collaborator, Ct);
+        Assert.Equal(ericaId, decided.Id);
+        var everything = await merge.MergeAsync(orgWide, withMixedId, annaId, "auth0|titolare", Ct);
+        Assert.Equal(annaId, everything.Id);
+        await using var verify = CrmTestWorld.Open(store);
+        Assert.Equal(annaId, (await verify.Guests.AsNoTracking().SingleAsync(guest => guest.Id == atHiddenId, Ct)).GuestCrmProfileId);
+    }
 }

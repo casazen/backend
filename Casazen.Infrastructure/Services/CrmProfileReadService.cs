@@ -17,7 +17,8 @@ namespace Casazen.Infrastructure.Services;
 /// <list type="bullet">
 /// <item><b>Scope is in the statement.</b> The profiles of a caller who reaches some properties are narrowed by <c>InScope</c> (one <c>EXISTS</c>
 /// on the bookings it reaches); the list sorts, filters and counts the stays with sub-queries over those same bookings, so a page costs the same
-/// queries whatever the number of profiles, and the figures of a limited caller never come from the totals stored on the profile.</item>
+/// queries whatever the number of profiles, and the figures of a limited caller never come from the totals stored on the profile. The merge of two
+/// profiles is decided on the ones the caller reaches <b>in full</b> (<see cref="ProfilesWhollyInScope"/>): it moves every guest and every contact.</item>
 /// <item><b>Few queries for a page.</b> The profiles of the page are found first (ids only); then one query each for their data, the guests that
 /// give the name, the bookings, the contacts and the merge proposals, all by the ids of the page.</item>
 /// <item><b>Keyed search.</b> The names are searched in clear (they are not encrypted); an e-mail address or a phone number is found only by its
@@ -47,6 +48,24 @@ public sealed class CrmProfileReadService(
         return db.GuestCrmProfiles
             .Where(profile => profile.OrgId == orgId && profile.MergedIntoProfileId == null)
             .InScope(scope, db.Bookings);
+    }
+
+    public IQueryable<GuestCrmProfile> ProfilesWhollyInScope(HostScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+
+        var reached = ProfilesInScope(scope);
+        if (scope.IsOrgWide)
+            return reached;
+
+        // A limited caller reaches a profile in full when none of its guests, and none of the guests who gave its contacts, is without a booking at a
+        // property it reaches: the two sub-queries are in the same statement as the scope of the profile.
+        var orgId = scope.OrgId;
+        var stays = BookingsInScope(scope);
+        var guests = db.Guests.Where(guest => guest.OrgId == orgId && guest.GuestCrmProfileId != null);
+        var contacts = db.GuestContacts.Where(contact => contact.OrgId == orgId && contact.GuestCrmProfileId != null && contact.GuestId != null);
+        return reached.Where(profile => !guests.Any(guest => guest.GuestCrmProfileId == profile.Id && !stays.Any(stay => stay.GuestId == guest.Id))
+            && !contacts.Any(contact => contact.GuestCrmProfileId == profile.Id && !stays.Any(stay => stay.GuestId == contact.GuestId)));
     }
 
     public IQueryable<Booking> BookingsInScope(HostScope scope)
@@ -584,8 +603,9 @@ public sealed class CrmProfileReadService(
     }
 
     /// <summary>
-    /// For each of these profiles, the merge proposals waiting for a person that the caller may decide: both profiles of the proposal in its
-    /// scope. A proposal with a profile the caller does not reach is not counted, so a limited caller learns nothing of a duplicate it cannot see.
+    /// For each of these profiles, the merge proposals waiting for a person that the caller may decide: both profiles of the proposal reached in
+    /// full (<see cref="ProfilesWhollyInScope"/>, the rule of the merge). A proposal with a profile the caller does not reach, or reaches only in
+    /// part, is not counted, so a limited caller learns nothing of a duplicate it cannot see or could not decide.
     /// </summary>
     private async Task<Dictionary<Guid, int>> ProposalCountsAsync(HostScope scope, List<Guid> profileIds, CancellationToken cancellationToken)
     {
@@ -603,7 +623,7 @@ public sealed class CrmProfileReadService(
             return counts;
 
         var involved = pairs.SelectMany(pair => new[] { pair.ProfileAId, pair.ProfileBId }).Distinct().ToList();
-        var reachable = (await ProfilesInScope(scope)
+        var reachable = (await ProfilesWhollyInScope(scope)
                 .Where(profile => involved.Contains(profile.Id))
                 .Select(profile => profile.Id)
                 .ToListAsync(cancellationToken))

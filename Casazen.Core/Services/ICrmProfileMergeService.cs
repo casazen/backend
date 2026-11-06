@@ -11,9 +11,12 @@ namespace Casazen.Core.Services;
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-/// <item><b>Scope.</b> A proposal is the caller's to decide when both of its profiles are in its scope (<see cref="ICrmProfileReadService.ProfilesInScope"/>);
-/// one that is not is as good as missing (404), and so is one of another org. A profile that was merged into another is followed to the profile that took its
-/// place, so a second click on a proposal already decided is answered for what it is (409) and not as a missing one.</item>
+/// <item><b>Scope.</b> A proposal is the caller's to decide when both of its profiles are reached in full (<see cref="ICrmProfileReadService.ProfilesWhollyInScope"/>:
+/// every guest of each, and every guest who gave one of its contacts, has a booking at a property the caller reaches), because a merge moves all of them. A
+/// caller limited to some properties never decides a proposal that would move what it does not reach: it is as good as missing (404, not listed, the same
+/// answer as for a profile out of scope), for the merge and for the dismissal, and so is a proposal of another org. The caller who reaches the whole org
+/// decides every proposal of the org. A profile that was merged into another is followed to the profile that took its place, so a second click on a
+/// proposal already decided is answered for what it is (409) and not as a missing one.</item>
 /// <item><b>One transaction, one lock of the org.</b> A merge or a dismissal takes the advisory lock of the org
 /// (<c>PostgresAdvisoryLocks.Scope.CrmProfileMerge</c>), decides on the proposal as it is after the previous holder, and saves the whole change together.
 /// A double click, or two people on the same pair, merges once.</item>
@@ -27,8 +30,8 @@ namespace Casazen.Core.Services;
 public interface ICrmProfileMergeService
 {
     /// <summary>
-    /// The proposals waiting for a decision that the caller may decide, the surest first, with a side-by-side summary of the two profiles
-    /// (computed over what the caller reaches, the contacts masked). <paramref name="page"/> starts at 1; <paramref name="pageSize"/> is cut to
+    /// The proposals waiting for a decision that the caller may decide (both profiles reached in full), the surest first, with a side-by-side
+    /// summary of the two profiles (computed over what the caller reaches, the contacts masked). <paramref name="page"/> starts at 1; <paramref name="pageSize"/> is cut to
     /// <see cref="CrmProfileRules.MaxPageSize"/>.
     /// </summary>
     Task<CrmMergeCandidatePage> ListProposedAsync(
@@ -41,7 +44,7 @@ public interface ICrmProfileMergeService
     /// The two profiles are two people: the proposal is <see cref="GuestMergeStatus.Dismissed"/> with the time and the user, and is never
     /// proposed again.
     /// </summary>
-    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><c>crm_merge_candidate_not_found</c> (404): no such proposal, of another org, or a profile out of the caller's scope.</exception>
+    /// <exception cref="Casazen.Core.Exceptions.NotFoundException"><c>crm_merge_candidate_not_found</c> (404): no such proposal, of another org, or a profile out of the caller's scope or reached only in part.</exception>
     /// <exception cref="Casazen.Core.Exceptions.DomainConflictException"><c>crm_merge_not_proposed</c> (409): the proposal was already decided; nothing changes.</exception>
     Task DismissAsync(HostScope scope, Guid candidateId, string? userId, CancellationToken cancellationToken = default);
 
