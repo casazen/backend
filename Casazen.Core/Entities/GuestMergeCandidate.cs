@@ -16,8 +16,10 @@ namespace Casazen.Core.Entities;
 /// stays in the table so that the matching does not propose it again.</item>
 /// <item><b>One row for each pair.</b> The pair is stored with <see cref="ProfileAId"/> smaller than <see cref="ProfileBId"/> (by
 /// <see cref="Guid.CompareTo(Guid)"/>), so that (A, B) and (B, A) are the same row; the unique index on the org and the two profiles
-/// keeps it so. The database does not check the order: PostgreSQL sorts a <c>uuid</c> differently from .NET, so the check belongs to the
-/// service that writes the pair. It does check that the two profiles differ and that the score is between 0 and 100.</item>
+/// keeps it so. The database enforces the order with a check (<c>CK_GuestMergeCandidates_ProfileOrder</c>, <c>"ProfileAId" &lt; "ProfileBId"</c>,
+/// which also refuses a profile paired with itself) and refuses a pair stored the other way round. PostgreSQL compares a <c>uuid</c> byte by byte
+/// in its canonical order, which is the order of <see cref="Guid.CompareTo(Guid)"/>: <b>the code that inserts a pair must sort it</b>, smaller id
+/// first, and the check accepts it. The database also checks that the score is between 0 and 100.</item>
 /// <item><b>No personal data.</b> A row holds ids, a score and reason codes, never a name, a phone number or a birth date: the reasons say
 /// which kind of evidence matched (<c>same_phone</c>, <c>same_name_birth</c>), not what it was.</item>
 /// <item><b>Tenant.</b> <see cref="ITenantOwned"/>: <see cref="OrgId"/> is the org of the two profiles, which are always of the same org.</item>

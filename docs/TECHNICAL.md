@@ -1294,7 +1294,7 @@ Two profiles proposed to a person for a manual merge. The model never executes a
 |---|---|---|---|
 | `Id` | `Guid` | PK | Auto-generated |
 | `OrgId` | `Guid` | FK `Orgs` (RESTRICT), tenant key (`ITenantOwned`) | The org of the two profiles |
-| `ProfileAId`, `ProfileBId` | `Guid` | FK `GuestCrmProfiles` (CASCADE), **unique** `(OrgId, ProfileAId, ProfileBId)` (`UIX_GuestMergeCandidates_OrgId_ProfileAId_ProfileBId`), check `ProfileAId <> ProfileBId` | The pair, stored with `ProfileAId` smaller than `ProfileBId` (`Guid.CompareTo`), so (A, B) and (B, A) are one row. The service writes them in that order: the database cannot check it, PostgreSQL sorts a `uuid` differently from .NET |
+| `ProfileAId`, `ProfileBId` | `Guid` | FK `GuestCrmProfiles` (CASCADE), **unique** `(OrgId, ProfileAId, ProfileBId)` (`UIX_GuestMergeCandidates_OrgId_ProfileAId_ProfileBId`), check `ProfileAId < ProfileBId` (`CK_GuestMergeCandidates_ProfileOrder`) | The pair, stored with `ProfileAId` smaller than `ProfileBId`, so (A, B) and (B, A) are one row. The database enforces the order: a pair stored the other way round, or a profile paired with itself, is refused. A PostgreSQL `uuid` compares in the byte order of `Guid.CompareTo`, so the code that inserts a pair must sort it that way (smaller id first) |
 | `Score` | `int` | check between 0 and 100 (`CK_GuestMergeCandidates_Score`) | How sure the matching is |
 | `ReasonsJson` | `jsonb` | — | A JSON array of reason codes, for example `["same_phone","same_name_birth"]`; no personal data |
 | `Status` | `int` (enum) | explicit numbers, never reused | `Proposed` 1, `Merged` 2, `Dismissed` 3 |
