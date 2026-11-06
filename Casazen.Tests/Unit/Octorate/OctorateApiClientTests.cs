@@ -128,6 +128,31 @@ public class OctorateApiClientTests
         Assert.DoesNotMatch("(?i)image|photo|base64|data:", body);
     }
 
+    [Fact]
+    public async Task OctorateClient_PoliceAccount_IsAskedForByNameAndTheCardKeepsItsAddress_Test()
+    {
+        var h = new Harness();
+        h.Handler.Body = """{"id":"4711","policeAccount":{"codice":"TEST","wsCode":"TEST","valid":true,"autorun":true,"lastCron":"2026-11-05T22:00:00Z"}}""";
+
+        OctoratePoliceAccount account;
+        using (h.Scope.Use(OrgA))
+        {
+            account = await h.Client.GetPoliceAccountAsync("4711", CancellationToken.None);
+            await h.Client.GetPropertyAsync("4711", CancellationToken.None);
+        }
+
+        // The police account is asked for by name (Q-002), so it does arrive; the card read for the import is read as before, without fields.
+        Assert.Equal(
+            new[]
+            {
+                "https://api.octorate.test/connect/rest/v1/accommodation/4711?fields=policeAccount",
+                "https://api.octorate.test/connect/rest/v1/accommodation/4711",
+            },
+            h.Handler.Addresses.Select(address => address.AbsoluteUri).ToArray());
+        Assert.Equal<(bool?, bool?)>((true, true), (account.Valid, account.Autorun));
+        Assert.Equal<DateTime?>(new DateTime(2026, 11, 5, 22, 0, 0, DateTimeKind.Utc), account.LastCron);
+    }
+
     private sealed class Harness
     {
         public Harness()
@@ -186,19 +211,24 @@ public class OctorateApiClientTests
             throw new InvalidOperationException("No partner-level call is made in these tests.");
     }
 
-    /// <summary>Answers every call with one JSON object (configuration and accommodation both read what they need) and keeps the tokens sent.</summary>
+    /// <summary>Answers every call with one JSON object (configuration and accommodation both read what they need), and keeps the tokens sent and the addresses called.</summary>
     private sealed class RecordingHandler : HttpMessageHandler
     {
-        private const string Body = """{"id":"4711","name":"Casa Prova","environment":"SANDBOX","quotaLimit":180,"quotaStatus":57}""";
-
         public List<string> Authorizations { get; } = [];
 
         /// <summary>The body of every call that had one.</summary>
         public List<string> Bodies { get; } = [];
 
+        /// <summary>The addresses called, in order.</summary>
+        public List<Uri> Addresses { get; } = [];
+
+        /// <summary>What every call is answered with.</summary>
+        public string Body { get; set; } = """{"id":"4711","name":"Casa Prova","environment":"SANDBOX","quotaLimit":180,"quotaStatus":57}""";
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Authorizations.Add(request.Headers.Authorization?.ToString() ?? "(none)");
+            Addresses.Add(request.RequestUri!);
             if (request.Content is not null)
                 Bodies.Add(await request.Content.ReadAsStringAsync(cancellationToken));
             return new HttpResponseMessage(HttpStatusCode.OK)

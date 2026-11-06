@@ -75,6 +75,7 @@ and production never block each other.
 | `time-event-emitter` (ADR-022-R8: writes the time triggers of the stays, "2 days before check-in", for the offsets the active routines of each org ask for, when they are due at Rome midnight shifted by the offset; one per booking, kind, offset and due hour thanks to the unique `(OrgId, DedupKey)` index; **always registered**) | `*/Routine__EvaluationIntervalMinutes` (default `*/5`) | `TimeEventEmitterJob.ExecuteAsync` | 60 s |
 | `outbox-cleanup` (ADR-022-R15, R21: deletes the dispatched events older than `EventBus__RetentionDays` (60, never below 30) 1,000 rows per statement, never an undispatched event or a dead letter; anonymizes once the dead letters older than the retention (empty payload, error and entity); counts only in the log; **always registered**) | 03:10 | `OutboxCleanupJob.ExecuteAsync` | 300 s |
 | `popup-alert-due` (ADR-025-R3, R6: pushes to the open sessions of the user the popup alerts that fell due, the ones the quiet hours held back (`RemindAt` = 08:00 in Rome) and the ones the user snoozed: `RemindAt` passed, not dismissed, `DeliveredAt` null; sets `DeliveredAt`, one commit per alert, so each is pushed once and not again until a snooze clears it; 100 at a time within a 40 s budget; a failed alert stays due; see [in-app-notifications.md § 9](in-app-notifications.md#9-real-time-signalr); **always registered**) | every minute | `PopupAlertDueJob.ExecuteAsync` | 50 s |
+| `crm-profile-sync` (E07/F01/US02/T03, NF-88, NF-20: syncs the CRM of the booker of every booking with `UpdatedAt` in the last two hours (profile, contacts, aggregates), then links 200 guests with no profile (`GuestCrmProfileId` null, not erased, oldest first) until none is left; each booking or guest in a scope of its own under its org; a booking that fails is logged with its ids and skipped, the next run retries it; starts nothing after ten minutes; ends at once, with one line, unless `Features__CrmMarketing` is on and `Crm__ContactIndexKey` is configured (read at every run); a failed run is not retried; **always registered**, see [crm-profiles.md § 4](crm-profiles.md#4-the-sync-with-the-bookings-t03)) | `*/15` | `CrmProfileSyncJob.ExecuteAsync` | 60 s |
 
 On-demand: `AlloggiatiWebReportJob.ReportGuestAsync` locks per booking (`…ReportGuestAsync:<bookingId>`), so two
 submissions of the same booking to Alloggiati Web never run at once. `PushDeliveryJob.SendAsync` (MO-04) locks per
@@ -271,7 +272,7 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   SELECT 'prod', id, lastheartbeat FROM hangfire_casazen_prod.server
   ORDER BY env, lastheartbeat DESC;
 
-  -- 38 recurring jobs in each schema with every flag on; 33 with the defaults
+  -- 39 recurring jobs in each schema with every flag on; 34 with the defaults
   -- (Features:OtaPartnerApi, Features:RliProvider, Features:ESignProvider and Features:SupplierRequestAutoCancel off:
   -- ota-sync-all, booking-pull-all, lease-registration-status-poll, lease-sign-status-poll and
   -- service-request-auto-cancel are the five that appear only with their flag on; every other job, among them
@@ -279,7 +280,7 @@ before the first start with FD-11, or hand over the tables Hangfire created with
   -- Features:SupplierRequestBackups says), org-invitation-maintenance, org-activity-retention,
   -- service-payment-sync, service-payment-reminders, in-app-notification-retention (UI-12a), supplier-showcase-media-cleanup (SP-13b),
   -- property-mode-change (PM-02), lease-draft-retention (LR-12), lease-term-renewal (LR-14) and
-  -- lease-notice-reminder (LR-11c-a), is in both counts; marketplace-portal-refresh (E09/F01/US01/T02) is a sixth that appears
+  -- lease-notice-reminder (LR-11c-a) and crm-profile-sync (E07/F01/US02/T03), is in both counts; marketplace-portal-refresh (E09/F01/US01/T02) is a sixth that appears
   -- only with Features:OctorateConnector on, so add one to the first count when that flag is on too)
   SELECT 'test' AS env, count(*) FROM hangfire_casazen_test.set WHERE key = 'recurring-jobs'
   UNION ALL

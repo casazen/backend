@@ -373,6 +373,15 @@ public class AppDbContext(
     public DbSet<MarketplacePartnerText> MarketplacePartnerTexts { get; set; } = null!;
     public DbSet<MarketplaceActivation> MarketplaceActivations { get; set; } = null!;
 
+    // The activation of CasaZen with Octorate: what the host chose to do later for each part of the plan, the flows activated on each property, the
+    // guided steps of the Octorate panel, the «Do it for me» requests, the pilot group of an agency and the per-property data (E10/F01/US01/T01, NF-104..NF-107)
+    public DbSet<OnboardingPartState> OnboardingPartStates { get; set; } = null!;
+    public DbSet<PropertyFlowActivation> PropertyFlowActivations { get; set; } = null!;
+    public DbSet<OnboardingPanelStep> OnboardingPanelSteps { get; set; } = null!;
+    public DbSet<OnboardingAssistRequest> OnboardingAssistRequests { get; set; } = null!;
+    public DbSet<OnboardingPilotMember> OnboardingPilotMembers { get; set; } = null!;
+    public DbSet<PropertyOnboardingData> PropertyOnboardingData { get; set; } = null!;
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
@@ -1807,6 +1816,18 @@ public class AppDbContext(
                 .HasDatabaseName(MarketplaceActivation.PropertyLevelIndexName);
             entity.HasIndex(a => new { a.OrgId, a.Status });
         });
+
+        // ─── Activation of CasaZen with Octorate (NF-104..NF-107, E10/F01/US01/T01) ─────────────────────────────
+        // The host's intents and the activation facts only: the state of a part or of a flow is derived on read. One state for each org and
+        // part, one activation for each property and flow, one panel step for each org, property, kind and channel (two NULLs are equal),
+        // one open «Do it for me» request for each org, part and property, one pilot membership and one data row for each property. The
+        // property-bound rows go with their property (cascade); every row carries its org (restrict) and the tenant filter applies to all.
+        modelBuilder.ApplyConfiguration(new OnboardingPartStateConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyFlowActivationConfiguration());
+        modelBuilder.ApplyConfiguration(new OnboardingPanelStepConfiguration());
+        modelBuilder.ApplyConfiguration(new OnboardingAssistRequestConfiguration());
+        modelBuilder.ApplyConfiguration(new OnboardingPilotMemberConfiguration());
+        modelBuilder.ApplyConfiguration(new PropertyOnboardingDataConfiguration());
 
         // PC-05, A2-18: soft-deleted properties never appear in a normal read. A separate named filter (not the
         // tenant one) so it composes independently: IgnoreQueryFilters([TenantQueryFilter]) (entitlement counts,

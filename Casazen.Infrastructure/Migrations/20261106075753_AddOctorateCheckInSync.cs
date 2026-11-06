@@ -8,11 +8,145 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Casazen.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class AddGuestTouristTax : Migration
+    public partial class AddOctorateCheckInSync : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.AddColumn<DateOnly>(
+                name: "DocumentExpiresOn",
+                table: "StayGuests",
+                type: "date",
+                nullable: true);
+
+            migrationBuilder.AddColumn<DateOnly>(
+                name: "DocumentIssuedOn",
+                table: "StayGuests",
+                type: "date",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "EducationLevel",
+                table: "StayGuests",
+                type: "character varying(30)",
+                maxLength: 30,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "ResidenceComuneCode",
+                table: "StayGuests",
+                type: "character varying(9)",
+                maxLength: 9,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "ResidenceComuneName",
+                table: "StayGuests",
+                type: "character varying(100)",
+                maxLength: 100,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "ResidenceCountryCode",
+                table: "StayGuests",
+                type: "character varying(9)",
+                maxLength: 9,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "ResidenceCountryName",
+                table: "StayGuests",
+                type: "character varying(100)",
+                maxLength: 100,
+                nullable: true);
+
+            migrationBuilder.AddColumn<bool>(
+                name: "ResidenceInItaly",
+                table: "StayGuests",
+                type: "boolean",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "ResidenceProvince",
+                table: "StayGuests",
+                type: "character varying(2)",
+                maxLength: 2,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "TaxExemptionCode",
+                table: "StayGuests",
+                type: "text",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "TourismType",
+                table: "StayGuests",
+                type: "character varying(30)",
+                maxLength: 30,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "TravelWay",
+                table: "StayGuests",
+                type: "character varying(30)",
+                maxLength: 30,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "Language",
+                table: "GuestCheckInSessions",
+                type: "character varying(2)",
+                maxLength: 2,
+                nullable: true);
+
+            migrationBuilder.AddColumn<DateTime>(
+                name: "ReminderSentAt",
+                table: "GuestCheckInSessions",
+                type: "timestamp with time zone",
+                nullable: true);
+
+            migrationBuilder.AddColumn<DateTime>(
+                name: "NoShowAt",
+                table: "Bookings",
+                type: "timestamp with time zone",
+                nullable: true);
+
+            migrationBuilder.CreateTable(
+                name: "OctorateStayStateSyncs",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    OrgId = table.Column<Guid>(type: "uuid", nullable: false),
+                    BookingId = table.Column<Guid>(type: "uuid", nullable: false),
+                    State = table.Column<int>(type: "integer", nullable: false),
+                    Status = table.Column<int>(type: "integer", nullable: false),
+                    Attempts = table.Column<int>(type: "integer", nullable: false),
+                    LastAttemptAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    SentAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    ErrorCode = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true),
+                    OctorateEffectiveCheckin = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    OctorateArrivalTime = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: true),
+                    ReadAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    TodoActivityId = table.Column<Guid>(type: "uuid", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OctorateStayStateSyncs", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_OctorateStayStateSyncs_Bookings_BookingId",
+                        column: x => x.BookingId,
+                        principalTable: "Bookings",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_OctorateStayStateSyncs_Orgs_OrgId",
+                        column: x => x.OrgId,
+                        principalTable: "Orgs",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
             migrationBuilder.CreateTable(
                 name: "OrgTouristTaxRates",
                 columns: table => new
@@ -42,6 +176,41 @@ namespace Casazen.Infrastructure.Migrations
                     table.CheckConstraint("CK_OrgTouristTaxRates_SourceNoteRequired", "btrim(\"SourceNote\") <> ''");
                     table.ForeignKey(
                         name: "FK_OrgTouristTaxRates_Orgs_OrgId",
+                        column: x => x.OrgId,
+                        principalTable: "Orgs",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "StayGuestOctorateLinks",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    OrgId = table.Column<Guid>(type: "uuid", nullable: false),
+                    BookingId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Position = table.Column<int>(type: "integer", nullable: false),
+                    OctorateGuestId = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
+                    PayloadHash = table.Column<string>(type: "character(64)", fixedLength: true, maxLength: 64, nullable: false),
+                    SentAsDraft = table.Column<bool>(type: "boolean", nullable: false),
+                    Status = table.Column<int>(type: "integer", nullable: false),
+                    Attempts = table.Column<int>(type: "integer", nullable: false),
+                    ErrorCode = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: true),
+                    SentAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    TodoActivityId = table.Column<Guid>(type: "uuid", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_StayGuestOctorateLinks", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_StayGuestOctorateLinks_Bookings_BookingId",
+                        column: x => x.BookingId,
+                        principalTable: "Bookings",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_StayGuestOctorateLinks_Orgs_OrgId",
                         column: x => x.OrgId,
                         principalTable: "Orgs",
                         principalColumn: "Id",
@@ -176,6 +345,17 @@ namespace Casazen.Infrastructure.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_OctorateStayStateSyncs_OrgId_Status",
+                table: "OctorateStayStateSyncs",
+                columns: new[] { "OrgId", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "UIX_OctorateStayStateSyncs_BookingId_State",
+                table: "OctorateStayStateSyncs",
+                columns: new[] { "BookingId", "State" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_OrgTouristTaxRates_OrgId_City",
                 table: "OrgTouristTaxRates",
                 columns: new[] { "OrgId", "City" });
@@ -184,6 +364,17 @@ namespace Casazen.Infrastructure.Migrations
                 name: "IX_OrgTouristTaxRates_OrgId_IstatCode",
                 table: "OrgTouristTaxRates",
                 columns: new[] { "OrgId", "IstatCode" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_StayGuestOctorateLinks_OrgId_Status",
+                table: "StayGuestOctorateLinks",
+                columns: new[] { "OrgId", "Status" });
+
+            migrationBuilder.CreateIndex(
+                name: "UIX_StayGuestOctorateLinks_BookingId_Position",
+                table: "StayGuestOctorateLinks",
+                columns: new[] { "BookingId", "Position" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_StayTouristTaxes_ChannelRuleId",
@@ -224,7 +415,13 @@ namespace Casazen.Infrastructure.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
+                name: "OctorateStayStateSyncs");
+
+            migrationBuilder.DropTable(
                 name: "OrgTouristTaxRates");
+
+            migrationBuilder.DropTable(
+                name: "StayGuestOctorateLinks");
 
             migrationBuilder.DropTable(
                 name: "StayTouristTaxGuests");
@@ -237,6 +434,66 @@ namespace Casazen.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "TouristTaxChannelRules");
+
+            migrationBuilder.DropColumn(
+                name: "DocumentExpiresOn",
+                table: "StayGuests");
+
+            migrationBuilder.DropColumn(
+                name: "DocumentIssuedOn",
+                table: "StayGuests");
+
+            migrationBuilder.DropColumn(
+                name: "EducationLevel",
+                table: "StayGuests");
+
+            migrationBuilder.DropColumn(
+                name: "ResidenceComuneCode",
+                table: "StayGuests");
+
+            migrationBuilder.DropColumn(
+                name: "ResidenceComuneName",
+                table: "StayGuests");
+
+            migrationBuilder.DropColumn(
+                name: "ResidenceCountryCode",
+                table: "StayGuests");
+
+            migrationBuilder.DropColumn(
+                name: "ResidenceCountryName",
+                table: "StayGuests");
+
+            migrationBuilder.DropColumn(
+                name: "ResidenceInItaly",
+                table: "StayGuests");
+
+            migrationBuilder.DropColumn(
+                name: "ResidenceProvince",
+                table: "StayGuests");
+
+            migrationBuilder.DropColumn(
+                name: "TaxExemptionCode",
+                table: "StayGuests");
+
+            migrationBuilder.DropColumn(
+                name: "TourismType",
+                table: "StayGuests");
+
+            migrationBuilder.DropColumn(
+                name: "TravelWay",
+                table: "StayGuests");
+
+            migrationBuilder.DropColumn(
+                name: "Language",
+                table: "GuestCheckInSessions");
+
+            migrationBuilder.DropColumn(
+                name: "ReminderSentAt",
+                table: "GuestCheckInSessions");
+
+            migrationBuilder.DropColumn(
+                name: "NoShowAt",
+                table: "Bookings");
         }
     }
 }

@@ -26,6 +26,16 @@ public interface IOctorateApiClient
     /// <summary>One accommodation (<c>GET /rest/v1/accommodation/{acc}</c>).</summary>
     Task<OctorateProperty> GetPropertyAsync(string accommodationId, CancellationToken ct);
 
+    /// <summary>
+    /// The police account of one accommodation: the link to Alloggiati Web that the host set on the Octorate panel
+    /// (<c>GET /rest/v1/accommodation/{acc}?fields=policeAccount</c>, Q-002, E03/F01/US02/T01). A read of its own, not a member of
+    /// <see cref="GetPropertyAsync"/>: the account is asked for by name, as Octorate documents it, and the card read for the import is
+    /// left as it was. Only <c>valid</c>, <c>autorun</c> and <c>lastCron</c> are read; the answer also holds the Alloggiati code and the web
+    /// service key, which are never read, logged or kept. A member Octorate leaves out, or an accommodation without a police account, is
+    /// <c>null</c> in the result and not an error.
+    /// </summary>
+    Task<OctoratePoliceAccount> GetPoliceAccountAsync(string accommodationId, CancellationToken ct);
+
     /// <summary>Changes the members of <paramref name="update"/> that are set, and nothing else (<c>PATCH /rest/v2/accommodation/{acc}</c>).</summary>
     Task UpdatePropertyAsync(string accommodationId, OctoratePropertyUpdate update, CancellationToken ct);
 

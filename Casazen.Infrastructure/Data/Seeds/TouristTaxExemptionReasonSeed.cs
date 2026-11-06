@@ -3,7 +3,7 @@ using Casazen.Core.Entities;
 namespace Casazen.Infrastructure.Data.Seeds;
 
 /// <summary>
-/// The reasons of a tourist tax exemption (NF-46, ADR-037-R1), applied by the migration <c>AddGuestTouristTax</c> through <c>HasData</c>:
+/// The reasons of a tourist tax exemption (NF-46, ADR-037-R1), applied by the migration <c>AddOctorateCheckInSync</c> through <c>HasData</c>:
 /// <see cref="TouristTaxExemptionReason.MinorAgeCode"/> (automatic, the calculator applies it from the age) and the host-chosen categories the
 /// regulation context lists as typically exempt (<c>.claude/context/regulations/imposta_soggiorno.md</c>, "Esenzioni Comuni": residents, health
 /// or care stays, companions of disabled people, law enforcement on duty), plus the manager's family and "other". The ids are fixed so that the
