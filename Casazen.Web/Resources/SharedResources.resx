@@ -5109,4 +5109,13 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OtaChannelCancelGuidanceAgoda" xml:space="preserve">
     <value>Per cancellare questa prenotazione di Agoda chiedi all'ospite di annullarla su Agoda.</value>
   </data>
+  <data name="ArchiveInvalidType" xml:space="preserve">
+    <value>Tipo di documento non valido.</value>
+  </data>
+  <data name="ArchiveInvalidPeriod" xml:space="preserve">
+    <value>Periodo non valido: indica i giorni nel formato AAAA-MM-GG, con il primo non dopo l'ultimo.</value>
+  </data>
+  <data name="ArchiveInvalidPage" xml:space="preserve">
+    <value>Pagina non valida: le pagine partono da 1 e ognuna ha da 1 a {0} documenti.</value>
+  </data>
 </root>

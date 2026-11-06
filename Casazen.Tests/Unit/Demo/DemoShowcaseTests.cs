@@ -498,6 +498,24 @@ public class DemoShowcaseTests
     }
 
     [Fact]
+    public void DocumentArchive_TheDemoHouseHasTheCertificatesOfItsRegion_AndAnInventedReceiptOfItsTouristTaxPayment()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.DocumentArchive, DemoShowcaseCatalog.Scenarios);
+        var house = Assert.Single(DemoShowcaseCatalog.Properties, p => p.Scenarios.Contains(DemoShowcaseCatalog.Scenario.DocumentArchive));
+
+        // NF-99: the archive is a read model over the tables the showcase already fills. A published house gets the TEST certificates of its
+        // region from the compliance fill (real PDF bytes, marked as showcase data), so the host finds property documents under Documents...
+        Assert.True(house.Publish);
+        Assert.NotEmpty(DemoRequiredDocuments.ForRegion(new ComplianceOptions().RequiredDocuments, house.Place.RegionCode));
+
+        // ...and the receipt of the tourist tax payment of that very house, an invented one-page PDF that says it is test data.
+        var payment = Assert.Single(DemoShowcaseCatalog.TouristTaxRemittances, t => t.PropertyKey == house.Key);
+        Assert.Equal(DemoShowcaseCatalog.Scenario.TouristTaxPaid, payment.Scenario);
+        Assert.Contains(DemoShowcaseCatalog.Scenario.TouristTaxPaid, house.Scenarios);
+        Assert.Contains("TEST", payment.Reference, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MarketplacePartners_TheDemoPartner_IsObviouslyTestData_InBothLanguages_AndTheHostDeclaredItActivatedInThePast()
     {
         var partners = DemoShowcaseCatalog.MarketplacePartners;

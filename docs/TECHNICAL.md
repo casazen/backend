@@ -753,6 +753,34 @@ record or delete, and the collaborator has neither. It works in the org and the 
   owed side only: a title that says the payments are not shown, no paid, balance and status columns and no list of payments. The file is
   `casazen-tassa-soggiorno-riepilogo-20260101-20261231.csv`.
 
+#### Document archive (NF-99, REP-04, E07/F03/US03)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/documents` | `property.read` in either rental context (the door), then the permission of each type | A page of the documents the caller may read: `{ items, totalCount, page, pageSize }`, an item `{ type, id, title, date, propertyId, propertyName, bookingId, bookingCode, contentType, sizeBytes }` (`type` is a key, never a text: `propertyDocument`, `contract`, `touristTax`, `invoice`, `receipt`, `creditNote`, `alloggiatiReceipt`, `istatProof`; `date` is the Europe/Rome day; `sizeBytes` is `null` when the source stores none). Newest day first, then by id. Query: `type` (repeatable), `from` and `to` (`yyyy-MM-dd`, both included, each optional), `propertyId`, `bookingId`, `q` (title, property name or booking code, at most 100 characters, case-insensitive), `page` (from 1) and `pageSize` (1 to 100, default 25). 400 `archive_invalid_type` (a word that is not a key), `archive_invalid_period` (`to` before `from`, or a year outside 2000-2100), `archive_invalid_page`; 403 without an org |
+| `GET` | `/api/documents/types` | same | `{ types: [{ type, count }] }`: every type the caller may read, with how many documents match the other filters of the request (`from`, `to`, `propertyId`, `bookingId`, `q`; the type is the one thing left out), zero included. A type the caller may not read is not there |
+
+`DocumentArchiveController` carries the read of the property core on the class (`SharedPropertyRead`: `property.read` in the short-rent **or** the
+long-rent context, so a landlord with only the long-term area passes the door too) and each type is then opened by the permission of the area its
+documents belong to, asked for the caller as the context policies do (`IContextAuthorizationService.HasPermissionAsync`, through
+`DocumentArchiveAccessResolver`, which fails closed). It works in the org and the `HostScope` of the caller.
+- **The sources.** The archive is a read model: it owns no table and copies no file. A source (`IDocumentArchiveSource`) knows one table, the
+  context and the permission that read it, its rows as `ArchiveRow` (`Query(scope)`) and how to open a file (`OpenAsync`). Registered by
+  `AddDocumentArchive`: `PropertyDocumentArchiveSource` (type `propertyDocument`, `property.read` in `short-rent|long-rent`, the file name as
+  title, the day of the upload), `LeaseDocumentArchiveSource` (`contract`, `lease.read` in `long-rent`, every file attached to a lease) and
+  `TouristTaxRemittanceArchiveSource` (`touristTax`, `payment.read` in `short-rent`, the comune as title, the day of the payment, only the
+  payments recorded with a receipt). The Alloggiati receipts and the ISTAT proofs (`guest.read`) join with their tasks; the invoices, receipts and
+  credit notes with the fiscal epic, each by registering its own source. **The guest identity documents and the selfies are never a source.**
+- **One statement for the list.** The sources of the allowed types, each already narrowed to the org and to the reach of the caller and filtered by
+  the request, are concatenated (`UNION ALL`, the same member initialiser for all) and counted, ordered and paged by the database: two commands
+  (count and page) whatever the number of sources, and one more for `types`. A source that is not allowed, or not asked for, is not in the
+  statement. An empty `Types` list selects nothing, never everything. The day of an upload is worked out by PostgreSQL in Europe/Rome
+  (`AT TIME ZONE`), so the filter by days and the order are made in SQL on the day the host sees.
+- **Reach.** Every query names the org of the scope on the row and on each joined property; a row with a property is returned only if the
+  property is in the scope (`InScope`, an `EXISTS` in the same statement); a row with no property (a tourist tax receipt) only to a scope that
+  reaches the whole org, as the tourist tax summary does. The download looks the row up with the query of the list, and the export lists its
+  documents with it: what is not in the list for a caller cannot be downloaded or exported by it.
+
 #### Invoice data of a booking (FIS-01, NF-81, E06/F02/US01)
 
 | Method | Path | Auth | Description |
