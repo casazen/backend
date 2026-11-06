@@ -932,7 +932,8 @@ reservation of the room of a property, found through the confirmed `OctorateList
 - *Calendar and the iCal feeds (E02/F02/US01/T03, ADR-002, NF-36).* The job `CalendarSync` (every 15 minutes, UTC, behind the flag, next to
   `property-ical-sync`) reads the calendar of each confirmed listing (`GET /rest/v1/calendar/{acc}`, from today to a year ahead on the clock of the
   property) and never writes to Octorate (PO-16). The nights it holds closed (`stopSells`, or availability 0 on a day that has a price: a day with
-  neither is a calendar nobody opened and closes nothing; a calendar with no opened day at all is not read, blocks and feeds stay as they were) that no
+  neither is a calendar nobody opened and closes nothing; a calendar with no opened day at all is not read, and nor is an answer in which no day has
+  units or a stop flag, an open day needing an explicit signal: blocks and feeds stay as they were) that no
   booking, manual block or iCal block takes already become `CalendarBlock`s of source
   `Octorate` (2), one for each run of nights, key `(PropertyId, ExternalUid)` = `octorate:{date of the first night}` (unique filtered index), no feed, no
   currency, never exported and never turned into a stay; the host cannot remove them. The minimum and maximum stay and the closed arrival and

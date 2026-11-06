@@ -335,9 +335,17 @@ public sealed record OctorateCalendarDay(
     public bool IsClosed => StopSell == true || (Availability is <= 0 && Price is not <= 0);
 
     /// <summary>
-    /// The day was opened in Octorate: it has units, or a price, or it is stopped, or the answer says none of the three (an unknown value is not
-    /// "never opened"). A calendar with no opened day at all is not a live calendar of the room (never filled, no licence): it says nothing about
-    /// the nights, so the calendar sync reads nothing from it and does not take it as proof that Octorate has taken over from the iCal feeds.
+    /// The answer says something about the sale of the day: how many units are available, or whether the day is stopped. A day with neither
+    /// (only its date, or its date and a price) is not a reading of the calendar: it cannot tell an open night from a closed one, so it is no proof
+    /// that the night is open and no proof that Octorate runs the room.
     /// </summary>
-    public bool IsOpened => !(Availability is <= 0 && Price is <= 0 && StopSell != true);
+    public bool HasSignal => Availability is not null || StopSell is not null;
+
+    /// <summary>
+    /// The day was opened in Octorate. An open day needs an explicit signal (<see cref="HasSignal"/>); with one, it is opened unless it has no
+    /// unit, no price and is not stopped, which is how a calendar never filled shows (or one that cannot be written for lack of a licence). A
+    /// calendar with no opened day at all is not a live calendar of the room: it says nothing about the nights, so the calendar sync reads
+    /// nothing from it and does not take it as proof that Octorate has taken over from the iCal feeds.
+    /// </summary>
+    public bool IsOpened => HasSignal && !(Availability is <= 0 && Price is <= 0 && StopSell != true);
 }

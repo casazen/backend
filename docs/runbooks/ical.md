@@ -440,7 +440,11 @@ of manual blocks, prices and restrictions is E08/F05/US02 (PO-16, one writer for
 | `stopSells` | the night is closed |
 | availability 0 on a day that has a price (or whose answer carries no price) | the night is closed |
 | availability 0 and price 0 | nothing: the day was never opened (the sandbox shows a calendar that was never filled, or cannot be written for lack of a licence, like this); no channel can sell it, and reading it as closed would shut the property on the booking site |
+| neither availability nor `stopSells` (only a date, or a date and a price) | nothing: the day is no reading of the calendar, it cannot tell an open night from a closed one |
 | minimum or maximum stay, closed arrival, closed departure | nothing: they close no night, and CasaZen is the sole writer of the restrictions; the client reads them for the pricing tasks of E08/F05 |
+
+An open day needs an explicit signal: the units available or the stop flag. An answer in which **no** day has either is not understood (it is not "everything
+is open"): the run changes nothing and deprecates nothing, and the log says so (`no day of the answer says its availability or whether it is stopped`).
 
 A calendar in which **no** day is opened (no unit, no price and nothing stopped, on every day read) is not a live calendar of the room: the run reads
 nothing from it, the Octorate blocks stay as they were and no feed is deprecated, so the iCal feeds keep being imported until a day is opened. The log
@@ -458,7 +462,8 @@ change is not written.
   carries the manual blocks only: no echo), never converted into a stay, and the host cannot remove them (422 `calendar_block_not_manual`): the nights
   are opened in Octorate.
 - *A read that cannot be trusted changes nothing.* A failed call, an answer with no day of the room (an answer with no recognizable day at all is an
-  `OctorateServerException` of the client, never an empty calendar) or an error of the database leaves the blocks as they were and deprecates nothing.
+  `OctorateServerException` of the client, never an empty calendar), an answer in which no day has units or a stop flag, or an error of the database
+  leaves the blocks as they were and deprecates nothing.
   A property that fails does not stop the others; an org whose connection is refused, in the wrong environment or over its rate limit stops until the
   next run. No retry by Hangfire: the next run reads the same window.
 - *No longer mapped.* At the end of a run the Octorate blocks of a property with no confirmed mapping at all (the host rejected the listing or mapped

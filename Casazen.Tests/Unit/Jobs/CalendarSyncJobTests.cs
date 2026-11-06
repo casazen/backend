@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -286,6 +287,32 @@ public class CalendarSyncJobTests
         await using var after = h.NewDb();
         Assert.Empty(await OctorateBlocksAsync(h));
         Assert.True((await after.PropertyICalFeeds.AsNoTracking().SingleAsync(f => f.Id == airbnb)).Deprecated);
+    }
+
+    [Fact]
+    public async Task DaysThatSayNothingButTheirDate_AreNoReadingOfTheCalendar_TheBlocksStayAndNoFeedIsDeprecated()
+    {
+        var h = new Octorate.BookingImportHarness();
+        await SetChannelsAsync(h, """{ "274": "A-1" }""");
+        var airbnb = await SeedFeedAsync(h, ICalFeedChannel.Airbnb);
+        await SeedBlockAsync(h, CalendarBlockSource.Octorate, firstNight: 9, checkOutDay: 11);
+        // An answer whose days hold a date and no other member: no units, no stop flag, no price. It cannot tell an open night from a closed one,
+        // so it is not "everything is open": it must not remove the block of the nights 9 and 10, nor hand the feed over.
+        using var document = JsonDocument.Parse("""
+            { "data": [ { "id": "956528", "days": [ { "date": "2026-11-09" }, { "date": "2026-11-10" }, { "date": "2026-11-11" } ] } ] }
+            """);
+        var days = OctorateCalendarReader.Read(document.RootElement, [Room]);
+        Assert.Equal(3, days.Count);
+        Assert.All(days, d => Assert.False(d.HasSignal));
+        Serve(h, [.. days]);
+        await using var db = h.NewDb();
+
+        await Job(h, db).ExecuteAsync(CancellationToken.None);
+
+        await using var read = h.NewDb();
+        var block = await read.CalendarBlocks.AsNoTracking().SingleAsync();
+        Assert.Equal((Utc(9), Utc(11)), (block.StartUtc, block.EndUtc));
+        Assert.False((await read.PropertyICalFeeds.AsNoTracking().SingleAsync(f => f.Id == airbnb)).Deprecated);
     }
 
     [Fact]

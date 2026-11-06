@@ -31,14 +31,18 @@ namespace Casazen.Infrastructure.Jobs;
 /// for lack of a licence) close nothing: no channel can sell them, and reading them as closed would shut the property on the booking site. A
 /// calendar with <i>no</i> opened day at all (<see cref="OctorateCalendarDay.IsOpened"/>) is not a live calendar of the room: nothing is read from
 /// it, the blocks stay as they were and the iCal feeds keep being imported, because it does not show that Octorate has taken over.</item>
+/// <item><b>Fail closed.</b> An open day needs an explicit signal: the units available or the stop flag (<see cref="OctorateCalendarDay.HasSignal"/>).
+/// An answer in which no day has either (days that hold only a date, or a date and a price) is not understood: it is not "everything is open", it
+/// changes nothing and deprecates nothing.</item>
 /// <item><b>Replaced, not accumulated.</b> Each run rewrites the Octorate blocks of the property in one transaction, under the iCal lock of the
 /// property: a night Octorate reopened, or that a booking or a manual block now takes, leaves its block; one that is closed again comes back. A row
 /// that did not change is not written.</item>
 /// <item><b>Restrictions.</b> The minimum and maximum stay and the closed arrival and departure of each day are read by the client
 /// (<see cref="OctorateCalendarDay"/>) but stored nowhere: they close no night, CasaZen is the sole writer of the restrictions (PO-16) and has no
 /// column for the ones of the channel manager. The pricing and rule tasks of E08/F05 are their consumers.</item>
-/// <item><b>A read that cannot be trusted changes nothing.</b> An answer without a day of the room, a failed call or an error of the database leaves
-/// the blocks as they were and the iCal feeds imported: nothing is deprecated on a guess (<see cref="ICalMigrationService"/>).</item>
+/// <item><b>A read that cannot be trusted changes nothing.</b> An answer without a day of the room or without a day that has a signal, a failed call
+/// or an error of the database leaves the blocks as they were and the iCal feeds imported: nothing is deprecated on a guess
+/// (<see cref="ICalMigrationService"/>).</item>
 /// <item><b>Tenant.</b> A system read over every org; each property is read for its own org under <see cref="IOctorateOrgScope.Use"/> (the client
 /// takes no org), and every query names the org. A property that fails does not stop the others; an org whose connection is refused, in the wrong
 /// environment or over its rate limit stops the org until the next run. No retry by Hangfire: the next run reads the same window.</item>
@@ -162,6 +166,17 @@ public class CalendarSyncJob(
         {
             logger.LogWarning(
                 "Octorate calendar of property {PropertyId}: the answer has no day of the room, nothing was changed and no iCal feed was deprecated",
+                target.PropertyId);
+            return PropertyOutcome.Unreadable;
+        }
+
+        // A day that says neither how many units it has nor whether it is stopped (only its date, or its date and a price) is no reading of the
+        // calendar. An answer made of such days cannot tell an open night from a closed one: it must not read as "everything is open" and
+        // remove the blocks, so nothing is changed and no feed is deprecated on it.
+        if (!days.Any(d => d.HasSignal))
+        {
+            logger.LogWarning(
+                "Octorate calendar of property {PropertyId}: no day of the answer says its availability or whether it is stopped, nothing was changed and no iCal feed was deprecated",
                 target.PropertyId);
             return PropertyOutcome.Unreadable;
         }

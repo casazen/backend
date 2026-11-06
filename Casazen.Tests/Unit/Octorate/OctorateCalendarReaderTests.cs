@@ -153,8 +153,9 @@ public class OctorateCalendarReaderTests
         Assert.Equal(expectedClosed, day.IsClosed);
     }
 
-    // A day is opened when it has units, or a price, or is stopped, or the answer does not say. Only a day with no unit, no price and nothing
-    // stopped was never opened; a calendar made of those alone is no live calendar of the room.
+    // An open day needs an explicit signal: the units available or the stop flag. A day that says neither (only its date, or its date and a price)
+    // is not opened, whatever else it holds: it is no proof that the night is open. With a signal, a day is opened unless it has no unit, no price
+    // and is not stopped (a calendar never filled); a calendar made of days that are not opened is no live calendar of the room.
     [Theory]
     [InlineData(0, 0, null, false)]
     [InlineData(0, 0, false, false)]
@@ -163,15 +164,18 @@ public class OctorateCalendarReaderTests
     [InlineData(1, 0, null, true)]
     [InlineData(0, 100, null, true)]
     [InlineData(0, null, null, true)]
-    [InlineData(null, 0, null, true)]
-    [InlineData(null, null, null, true)]
-    public void ADay_IsOpened_UnlessItHasNoUnitNoPriceAndIsNotStopped(int? availability, int? price, bool? stopSell, bool expectedOpened)
+    [InlineData(null, 0, null, false)]
+    [InlineData(null, 100, null, false)]
+    [InlineData(null, null, null, false)]
+    [InlineData(null, null, true, true)]
+    public void ADay_IsOpened_OnlyWithASignal_AndNotWhenItHasNoUnitNoPriceAndIsNotStopped(int? availability, int? price, bool? stopSell, bool expectedOpened)
     {
         var day = new OctorateCalendarDay("956528", new DateOnly(2026, 11, 10), availability, price, stopSell, null, null, null, null);
 
         Assert.Equal(expectedOpened, day.IsOpened);
-        // A closed night is always an opened day: the two never disagree.
+        // A closed night is always an opened day, and an opened day always has a signal: the three never disagree.
         Assert.True(!day.IsClosed || day.IsOpened);
+        Assert.True(!day.IsOpened || day.HasSignal);
     }
 
     [Fact]
