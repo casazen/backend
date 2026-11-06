@@ -79,7 +79,10 @@ public class BookingLifecycleController(
     /// (tourist tax included) and new dates that overlap another booking or a calendar block answer 409 <c>booking_dates_unavailable</c>.
     /// For a booking of the booking site the money follows the price (E08/F02/US01/T01, NF-75): the answer is the booking and a
     /// <c>settlement</c> block (<c>action</c>: refund, chargeSavedCard, paymentLink, none; <c>state</c>). When Stripe refuses the refund
-    /// or the charge nothing is saved: 422 <c>booking_settlement_failed</c>. <c>POST /api/bookings/{id}/edit-quote</c> says it beforehand.
+    /// or the charge nothing is saved: 422 <c>booking_settlement_failed</c>. <c>POST /api/bookings/{id}/edit-quote</c> says it beforehand. An edit
+    /// whose money moves (a refund, the saved card charged, a payment link) also needs <c>payment.write</c> on the property, like the cancellation
+    /// and the payment endpoints: 403 <c>booking_edit_payment_permission_required</c> otherwise, before anything is done; the edits that move no money
+    /// need <c>booking.write</c> only.
     /// </summary>
     [HttpPut("{id:guid}")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
@@ -98,7 +101,19 @@ public class BookingLifecycleController(
         if (!await CanWriteAsync(id, cancellationToken))
             return BookingNotFound();
 
-        var result = await hostBookings.UpdateAsync(ToUpdate(id, request), cancellationToken);
+        // Money moves (a refund, the saved card charged, a payment link) only for who may handle it, as the cancellation and the payment endpoints:
+        // payment.write on the property. The plan is worked out before anything is done; the service checks the plan it really makes again under
+        // the lock of the booking, so a plan that changed meanwhile never moves money without the permission.
+        var update = ToUpdate(id, request);
+        var canMoveMoney = await CanAccessAsync(id, PaymentOperations.Write, cancellationToken, logDenial: false);
+        if (!canMoveMoney)
+        {
+            var plan = await hostBookings.QuoteEditAsync(update, cancellationToken);
+            if (plan.Action != BookingSettlementAction.None)
+                return EditPaymentPermissionMissing();
+        }
+
+        var result = await hostBookings.UpdateAsync(update with { CanMoveMoney = canMoveMoney }, cancellationToken);
         var response = BookingMapper.Fill(new UpdateBookingResponse(), result.Booking, DateTime.UtcNow, channelPolicy);
         response.Settlement = BookingEditSettlementDto.From(result.Settlement);
         return Ok(response);
@@ -107,8 +122,9 @@ public class BookingLifecycleController(
     /// <summary>
     /// What <c>PUT /api/bookings/{id}</c> would do with the same body, worked out and not done (E08/F02/US01/T01, NF-75): the new total, what the guest
     /// has paid, the difference and the action on it (<c>refund</c>, <c>chargeSavedCard</c>, <c>paymentLink</c>, <c>none</c>), so the host reads it
-    /// before confirming. The same checks and errors as the edit; nothing is saved or sent to Stripe. Authorized like the other booking actions
-    /// (<c>booking.write</c> on the property of the booking): 404 for a booking of another org or out of the caller's reach.
+    /// before confirming. The same checks and errors as the edit; nothing is saved or sent to Stripe. <c>booking.write</c> on the property of the
+    /// booking (404 for a booking of another org or out of the caller's reach) and, because it shows what the guest paid and what the money comes to,
+    /// <c>payment.read</c> (403 <c>booking_edit_payment_permission_required</c>), as the quote of the cancellation.
     /// </summary>
     [HttpPost("{id:guid}/edit-quote")]
     [Authorize(Policy = CasazenPolicies.BookingWrite)]
@@ -126,6 +142,11 @@ public class BookingLifecycleController(
 
         if (!await CanWriteAsync(id, cancellationToken))
             return BookingNotFound();
+
+        // The quote says what the guest has paid and what the money of the edit comes to: money, so payment.read on the property as the quote of
+        // the cancellation (BookingCancellationController.GetQuote).
+        if (!await CanAccessAsync(id, PaymentOperations.Read, cancellationToken))
+            return EditPaymentPermissionMissing();
 
         var quote = await hostBookings.QuoteEditAsync(ToUpdate(id, request), cancellationToken);
         return Ok(BookingEditQuoteDto.From(quote));
@@ -461,7 +482,8 @@ public class BookingLifecycleController(
     private async Task<bool> CanAccessAsync(
         Guid bookingId,
         HostOperationRequirement operation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool logDenial = true)
     {
         var booking = await bookingService.GetBookingAsync(bookingId);
         if (booking is null)
@@ -474,11 +496,20 @@ public class BookingLifecycleController(
         if (await authorizationService.IsAuthorizedAsync(User, property with { OrgId = booking.OrgId }, operation))
             return true;
 
-        logger.LogWarning(
-            "User {UserId} denied {Permission} on booking {BookingId}", User.GetUserId(), operation.PermissionKey, bookingId);
+        // A denial that only asks "may this caller also move money?" is not an event (the edit goes on without money): no warning for it.
+        if (logDenial)
+        {
+            logger.LogWarning(
+                "User {UserId} denied {Permission} on booking {BookingId}", User.GetUserId(), operation.PermissionKey, bookingId);
+        }
+
         return false;
     }
 
     private ObjectResult BookingNotFound() =>
         this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "BookingNotFound");
+
+    /// <summary>403: the edit would move money (or shows it) and the caller has no <c>payment.write</c> (<c>payment.read</c> for the quote).</summary>
+    private ObjectResult EditPaymentPermissionMissing() =>
+        this.ApiProblem(StatusCodes.Status403Forbidden, BookingErrorCodes.EditPaymentPermissionRequired, "BookingEditPaymentPermissionRequired");
 }

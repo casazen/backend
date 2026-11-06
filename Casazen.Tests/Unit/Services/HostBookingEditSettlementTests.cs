@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
@@ -430,6 +431,221 @@ public class HostBookingEditSettlementTests
             () => h.Service(db).QuoteEditAsync(h.GuestsEdit(bookingId, guests: 1), CancellationToken.None));
     }
 
+    // --- The fixes after the review --------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// PROOF TEST: permission rule (E08/F02/US01/T01). An edit whose plan moves money (here a refund) is refused 403 for a caller who may not handle the
+    /// money of the booking (<c>payment.write</c>): before any call to Stripe and any write, the booking is exactly as it was. An edit that moves none (the
+    /// notes) goes on for the same caller.
+    /// </summary>
+    [Fact]
+    public async Task HostBookingEdit_WithoutTheRightToMoveMoney_Is403_AndMovesNothing_Test()
+    {
+        var h = new Harness();
+        var (bookingId, paymentId) = await h.SeedAsync(payments: [h.StripePayment("pi_1", 400m)]);
+        var before = await h.ReadBookingAsync(bookingId);
+        h.PriceOf(300m);
+
+        await using (var db = h.NewDb())
+        {
+            var refused = await Assert.ThrowsAsync<DomainForbiddenException>(
+                () => h.Service(db).UpdateAsync(h.GuestsEdit(bookingId, guests: 1, canMoveMoney: false), CancellationToken.None));
+            Assert.Equal(BookingErrorCodes.EditPaymentPermissionRequired, refused.Code);
+        }
+
+        // Stripe was never called (its mock is strict), nothing was saved.
+        h.Stripe.VerifyNoOtherCalls();
+        var stored = await h.ReadBookingAsync(bookingId);
+        Assert.Equal((before.TotalPrice, before.NumberOfGuests, before.UpdatedAt), (stored.TotalPrice, stored.NumberOfGuests, stored.UpdatedAt));
+        Assert.Empty(await h.ReadRefundsAsync());
+        Assert.Equal(0m, (await h.ReadPaymentAsync(paymentId)).RefundedAmount);
+
+        // The notes move no money: the same caller changes them.
+        await using var notesDb = h.NewDb();
+        var notes = await h.Service(notesDb).UpdateAsync(
+            h.GuestsEdit(bookingId, guests: 2, notes: "Arrivo alle 22", canMoveMoney: false), CancellationToken.None);
+        Assert.Equal(BookingSettlementAction.None, notes.Settlement.Action);
+        Assert.Equal("Arrivo alle 22", notes.Booking.SpecialRequests);
+    }
+
+    /// <summary>
+    /// PROOF TEST: money rule. A booking "Paga alla scadenza" whose charge at the deadline failed (the guest is asked to pay the same PaymentIntent, which
+    /// the retries confirm too) has paid nothing, so the plan of any edit is <c>none</c>: the price must still wait, or the guest pays the old amount of that
+    /// PaymentIntent. 409 <c>booking_edit_payment_in_progress</c> for the edit and for the quote, whether the price goes up or down, and the booking is
+    /// exactly as it was. An edit that leaves the price alone (the notes) goes on.
+    /// </summary>
+    [Theory]
+    [InlineData(380)]
+    [InlineData(250)]
+    public async Task HostBookingEdit_AFailedChargeAtTheDeadline_Is409ForAnyChangeOfPrice_AndChangesNothing_Test(int newTotal)
+    {
+        var h = new Harness();
+        var failed = h.StripePayment("pi_f", 300m);
+        failed.Status = PaymentStatus.Failed;
+        failed.ProcessedAt = null;
+        failed.Description = DeferredCharges.PaymentDescription;
+        var (bookingId, paymentId) = await h.SeedAsync(
+            payments: [failed],
+            configure: b =>
+            {
+                b.PaymentOption = PaymentOption.OnCancellationDeadline;
+                b.StripeSetupIntentId = "seti_1";
+                b.StripeCustomerId = "cus_1";
+                b.StripePaymentMethodId = "pm_1";
+                b.DeferredChargeFailedAt = new DateTime(2026, 11, 5, 6, 0, 0, DateTimeKind.Utc);
+                b.TotalPrice = 300m;
+            });
+        var before = await h.ReadBookingAsync(bookingId);
+        h.PriceOf(newTotal);
+
+        await using (var db = h.NewDb())
+        {
+            var refused = await Assert.ThrowsAsync<DomainConflictException>(
+                () => h.Service(db).UpdateAsync(h.GuestsEdit(bookingId, guests: 3), CancellationToken.None));
+            Assert.Equal(BookingErrorCodes.EditPaymentInProgress, refused.Code);
+        }
+
+        await using (var quoteDb = h.NewDb())
+        {
+            var refused = await Assert.ThrowsAsync<DomainConflictException>(
+                () => h.Service(quoteDb).QuoteEditAsync(h.GuestsEdit(bookingId, guests: 3), CancellationToken.None));
+            Assert.Equal(BookingErrorCodes.EditPaymentInProgress, refused.Code);
+        }
+
+        var stored = await h.ReadBookingAsync(bookingId);
+        Assert.Equal((before.TotalPrice, before.NumberOfGuests, before.UpdatedAt), (stored.TotalPrice, stored.NumberOfGuests, stored.UpdatedAt));
+        Assert.Equal(PaymentStatus.Failed, (await h.ReadPaymentAsync(paymentId)).Status);
+        h.Stripe.VerifyNoOtherCalls();
+
+        // The price does not change (the notes): nothing waits for the payment.
+        await using var notesDb = h.NewDb();
+        var notes = await h.Service(notesDb).UpdateAsync(h.GuestsEdit(bookingId, guests: 2, notes: "Arrivo alle 22"), CancellationToken.None);
+        Assert.Equal("Arrivo alle 22", notes.Booking.SpecialRequests);
+    }
+
+    /// <summary>
+    /// PROOF TEST: money rule (imposta di soggiorno). The new dates have no rate for the tourist tax while the booking holds one the guest paid with the
+    /// stay: the new price would leave it out and the money of the edit would give it back by itself. 422 <c>booking_tourist_tax_unavailable</c>, nothing
+    /// is refunded or saved. With the tax worked out the same edit refunds only the difference.
+    /// </summary>
+    [Fact]
+    public async Task HostBookingEdit_TheTouristTaxOfTheNewDatesCannotBeWorkedOut_IsRefused_AndNothingIsRefunded_Test()
+    {
+        var h = new Harness();
+        var (bookingId, paymentId) = await h.SeedAsync(
+            payments: [h.StripePayment("pi_1", 412m)],
+            configure: b =>
+            {
+                b.BasePrice = 400m;
+                b.TouristTax = 12m;
+                b.TotalPrice = 412m;
+            });
+        var before = await h.ReadBookingAsync(bookingId);
+        h.PriceOf(400m, TouristTaxQuoteStatus.RateUnavailable);
+
+        await using (var db = h.NewDb())
+        {
+            var refused = await Assert.ThrowsAsync<DomainRuleException>(
+                () => h.Service(db).UpdateAsync(h.GuestsEdit(bookingId, guests: 1), CancellationToken.None));
+            Assert.Equal(BookingErrorCodes.TouristTaxUnavailable, refused.Code);
+        }
+
+        await using (var quoteDb = h.NewDb())
+        {
+            var refused = await Assert.ThrowsAsync<DomainRuleException>(
+                () => h.Service(quoteDb).QuoteEditAsync(h.GuestsEdit(bookingId, guests: 1), CancellationToken.None));
+            Assert.Equal(BookingErrorCodes.TouristTaxUnavailable, refused.Code);
+        }
+
+        h.Stripe.VerifyNoOtherCalls();
+        var stored = await h.ReadBookingAsync(bookingId);
+        Assert.Equal((before.TotalPrice, before.TouristTax, before.NumberOfGuests), (stored.TotalPrice, stored.TouristTax, stored.NumberOfGuests));
+        Assert.Empty(await h.ReadRefundsAsync());
+        Assert.Equal(0m, (await h.ReadPaymentAsync(paymentId)).RefundedAmount);
+
+        // The tax is worked out (here to nothing: every guest exempt): the price drops by it and exactly that is refunded.
+        var requests = h.AllowRefunds();
+        h.PriceOf(400m);
+        await using var okDb = h.NewDb();
+        var result = await h.Service(okDb).UpdateAsync(h.GuestsEdit(bookingId, guests: 1), CancellationToken.None);
+        Assert.Equal((BookingSettlementAction.Refund, 12m), (result.Settlement.Action, result.Settlement.Amount));
+        Assert.Equal(1_200, Assert.Single(requests).AmountCents);
+    }
+
+    /// <summary>
+    /// A "direct" booking CasaZen did not make (the import maps the booking engine of Octorate to Direct, and such a reservation has no mirror row) is not
+    /// edited here: its dates and guests would never reach Octorate. 422 <c>booking_update_source_locked</c>, the notes still change. One CasaZen made has
+    /// its row and is edited.
+    /// </summary>
+    [Fact]
+    public async Task HostBookingEdit_ADirectBookingThatCameFromOctorate_IsLocked_AndOneCasaZenMirrorsIsNot()
+    {
+        var h = new Harness();
+        var (bookingId, _) = await h.SeedAsync(
+            payments: [h.StripePayment("pi_1", 400m)],
+            configure: b => b.OctorateReservationId = "130219355");
+        h.PriceOf(300m);
+
+        await using (var db = h.NewDb())
+        {
+            var refused = await Assert.ThrowsAsync<DomainRuleException>(
+                () => h.Service(db).UpdateAsync(h.GuestsEdit(bookingId, guests: 1), CancellationToken.None));
+            Assert.Equal(BookingErrorCodes.SourceLocked, refused.Code);
+            var notes = await h.Service(db).UpdateAsync(h.GuestsEdit(bookingId, guests: 2, notes: "Arrivo alle 22"), CancellationToken.None);
+            Assert.Equal("Arrivo alle 22", notes.Booking.SpecialRequests);
+        }
+
+        h.Stripe.VerifyNoOtherCalls();
+
+        // CasaZen made it and pushed it: it has its row, and the edit goes on (the money follows the price).
+        var booking = await h.ReadBookingAsync(bookingId);
+        await using (var db = h.NewDb())
+        {
+            db.OctorateBookingSyncs.Add(new OctorateBookingSync
+            {
+                OrgId = OrgId,
+                BookingId = bookingId,
+                PropertyId = booking.PropertyId,
+                State = OctorateSyncState.Synced,
+                LastOperation = OctorateSyncOperation.Create,
+                CreatedAt = Clock.GetUtcNow().UtcDateTime,
+                UpdatedAt = Clock.GetUtcNow().UtcDateTime,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        h.AllowRefunds();
+        await using var mirrored = h.NewDb();
+        var result = await h.Service(mirrored).UpdateAsync(h.GuestsEdit(bookingId, guests: 1), CancellationToken.None);
+        Assert.Equal(BookingSettlementAction.Refund, result.Settlement.Action);
+    }
+
+    /// <summary>
+    /// The guest is told once: the email of the edit after the commit. The refund Stripe confirmed at once sends no "refund confirmed" of its own (its
+    /// notification is claimed, so no other path sends it later either).
+    /// </summary>
+    [Fact]
+    public async Task HostBookingEdit_Refund_TellsTheGuestOnce_WithNoRefundConfirmedOfItsOwn()
+    {
+        var h = new Harness();
+        var (bookingId, _) = await h.SeedAsync(payments: [h.StripePayment("pi_1", 400m)]);
+        h.AllowRefunds();
+        h.PriceOf(300m);
+
+        await using (var db = h.NewDb())
+            await h.Service(db).UpdateAsync(h.GuestsEdit(bookingId, guests: 1), CancellationToken.None);
+
+        h.Emails.Verify(
+            e => e.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), Casazen.Infrastructure.Email.Templates.EmailTemplates.Names.GuestBookingModified),
+            Times.Once);
+        h.Emails.Verify(
+            e => e.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), Casazen.Infrastructure.Email.Templates.EmailTemplates.Names.GuestRefundConfirmed),
+            Times.Never);
+        var refund = Assert.Single(await h.ReadRefundsAsync());
+        Assert.Equal(PaymentRefundStatus.Succeeded, refund.Status);
+        Assert.NotNull(refund.GuestNotifiedAt);
+    }
+
     // --- The words -------------------------------------------------------------------------------------------------------------
 
     [Fact]
@@ -527,8 +743,8 @@ public class HostBookingEditSettlementTests
             return requests;
         }
 
-        /// <summary>The price the edit comes to, whatever the stay: <paramref name="total"/> without tourist tax.</summary>
-        public void PriceOf(decimal total) =>
+        /// <summary>The price the edit comes to, whatever the stay: <paramref name="total"/> without tourist tax (or the tax <paramref name="taxStatus"/> says it cannot be worked out).</summary>
+        public void PriceOf(decimal total, TouristTaxQuoteStatus taxStatus = TouristTaxQuoteStatus.Calculated) =>
             Pricing
                 .Setup(p => p.PriceHostStayAsync(
                     It.IsAny<Property>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<IReadOnlyList<int>?>(), It.IsAny<CancellationToken>()))
@@ -543,7 +759,9 @@ public class HostBookingEditSettlementTests
                         total / nights,
                         0m,
                         total,
-                        new TouristTaxQuote(TouristTaxQuoteStatus.Calculated, 0m, nights, nights, false, [], []),
+                        taxStatus == TouristTaxQuoteStatus.Calculated
+                            ? new TouristTaxQuote(taxStatus, 0m, nights, nights, false, [], [])
+                            : new TouristTaxQuote(taxStatus, null, nights, 0, false, [], []),
                         total,
                         "EUR",
                         checkIn.AddDays(-7),
@@ -551,7 +769,7 @@ public class HostBookingEditSettlementTests
                         new StayLodging(nights, 0, total / nights, total / nights, total));
                 });
 
-        public HostBookingUpdate GuestsEdit(Guid bookingId, int guests, string? notes = null) =>
+        public HostBookingUpdate GuestsEdit(Guid bookingId, int guests, string? notes = null, bool canMoveMoney = true) =>
             new(
                 bookingId,
                 new DateTime(2026, 12, 10, 0, 0, 0, DateTimeKind.Utc),
@@ -561,7 +779,8 @@ public class HostBookingEditSettlementTests
                 null,
                 notes ?? "Arriviamo tardi",
                 null,
-                "auth0|host");
+                "auth0|host",
+                canMoveMoney);
 
         public Payment StripePayment(string paymentIntentId, decimal amount) => new()
         {

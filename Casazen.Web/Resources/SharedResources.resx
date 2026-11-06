@@ -5115,4 +5115,10 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="BookingEditPaymentInProgress" xml:space="preserve">
     <value>Un pagamento di questa prenotazione è ancora in corso, oppure aspetta che sia il cliente a completarlo: attendi che sia concluso prima di cambiare date od ospiti.</value>
   </data>
+  <data name="BookingEditPaymentPermissionRequired" xml:space="preserve">
+    <value>Questa modifica muove denaro (un rimborso, l'addebito della carta salvata o un link di pagamento): serve il permesso di gestire i pagamenti della struttura. La prenotazione non è stata modificata.</value>
+  </data>
+  <data name="BookingTouristTaxUnavailable" xml:space="preserve">
+    <value>Non riusciamo a calcolare la tassa di soggiorno per le nuove date: il prezzo scenderebbe della tassa che l'ospite ha già pagato e il rimborso partirebbe da solo. La prenotazione non è stata modificata: scegli altre date o chiedi assistenza.</value>
+  </data>
 </root>

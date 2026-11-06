@@ -70,6 +70,14 @@ public sealed class HostBookingService(
         var booking = await LoadAsync(update.BookingId, cancellationToken);
         var edit = await EvaluateAsync(booking, update, checkIn, checkOut, cancellationToken);
 
+        // Money moves only for who may handle it (payment.write). The plan is known now, under the lock: before any date check, any call to Stripe and any
+        // write, and whatever the plan was when the caller was first asked (the controller worked it out too, but a payment may have come in since).
+        if (edit.Plan.Action != BookingSettlementAction.None && !update.CanMoveMoney)
+        {
+            logger.LogWarning("Booking {BookingId} not changed: the caller may not handle the money of the edit ({Action})", booking.Id, edit.Plan.Action);
+            throw new DomainForbiddenException(BookingErrorCodes.EditPaymentPermissionRequired, "BookingEditPaymentPermissionRequired");
+        }
+
         // The checks that can refuse the dates come before any money moves.
         if (edit.DatesChanged)
         {
@@ -253,6 +261,17 @@ public sealed class HostBookingService(
         if (editability.Reason == BookingEditLock.Cancelled)
             throw new DomainRuleException(BookingErrorCodes.NotEditable, "BookingNotEditable");
 
+        // A "direct" booking that CasaZen did not make: the import maps the booking engine of Octorate (its own channel) to Direct, and such a
+        // reservation has no mirror row (CasaZen writes nothing on a reservation that came from Octorate). An edit of its dates or guests would never
+        // reach Octorate, the two calendars would differ, and the guest would be told of a change Octorate does not hold: they stay Octorate's to change.
+        if (editability.Allowed
+            && booking.Source == BookingSource.Direct
+            && !string.IsNullOrWhiteSpace(booking.OctorateReservationId)
+            && !await db.OctorateBookingSyncs.AsNoTracking().AnyAsync(s => s.BookingId == booking.Id, cancellationToken))
+        {
+            editability = BookingEditability.LockedBy(BookingEditLock.SourceLocked);
+        }
+
         var datesChanged = checkIn != booking.CheckInDate.Date || checkOut != booking.CheckOutDate.Date;
         var (storedAdults, storedChildren) = BookingGuestCounts.Of(booking);
         var adults = update.NumberOfGuests - update.NumberOfChildren;
@@ -277,21 +296,32 @@ public sealed class HostBookingService(
                 booking.Property, checkIn, checkOut, adults, update.NumberOfChildren, update.ChildrenAges, cancellationToken);
             if (price.TouristTax.Status == TouristTaxQuoteStatus.ChildAgesRequired)
                 throw new DomainRuleException(DirectBookingErrorCodes.ChildAgesRequired, "TouristTaxChildAgesRequired");
+
+            // The tax of the new dates cannot be worked out (no rate for some night, a category or a night price missing) while the booking holds a tax
+            // that the guest paid: the new price would leave it out and the money of the edit would give it back by itself. Nothing is changed.
+            if (booking.Source == BookingSource.Direct
+                && booking.TouristTax > 0m
+                && price.TouristTax.Status != TouristTaxQuoteStatus.Calculated)
+            {
+                throw new DomainRuleException(BookingErrorCodes.TouristTaxUnavailable, "BookingTouristTaxUnavailable");
+            }
         }
 
         var currency = StayCurrency.ForProperty(booking.Property);
         var money = await ReadMoneyAsync(booking, cancellationToken);
         var newTotal = price?.TotalPrice ?? booking.TotalPrice;
 
+        // A payment that is not settled yet (Stripe is processing it, or the guest is asked to pay it) makes what was paid, and so the difference,
+        // uncertain: the price of a booking of the booking site waits for it, or the money would be counted twice. For EVERY change of the price, not
+        // only when the plan moves money: a booking "Paga alla scadenza" whose charge failed has paid nothing (the plan is `none`) and the PaymentIntent
+        // the guest is asked to pay, which the retries confirm too, keeps the old amount.
+        if (booking.Source == BookingSource.Direct && price is not null && (money.Processing || money.AwaitsGuestPayment))
+            throw new DomainConflictException(BookingErrorCodes.EditPaymentInProgress, "BookingEditPaymentInProgress");
+
         // The money follows the price only for a confirmed booking of the booking site; the bookings of the host are settled by hand ("Registra incasso").
         var plan = booking.Source == BookingSource.Direct && price is not null
             ? BookingEditSettlementRules.Plan(newTotal, money.Paid, money.Refundable, money.CollectsOnline, HasSavedCard(booking))
             : BookingEditPlan.None;
-
-        // A payment that is not settled yet (Stripe is processing it, or the guest is asked to pay it) makes what was paid, and so the difference,
-        // uncertain: the price waits for it, or the money would be counted twice.
-        if (plan.Action != BookingSettlementAction.None && (money.Processing || money.AwaitsGuestPayment))
-            throw new DomainConflictException(BookingErrorCodes.EditPaymentInProgress, "BookingEditPaymentInProgress");
 
         // A link that cannot be made is known before the host confirms: the answer is the same as the edit's.
         if (plan.Action == BookingSettlementAction.PaymentLink)
@@ -403,7 +433,10 @@ public sealed class HostBookingService(
                         part.Amount,
                         "Booking edit",
                         requestedByUserId,
-                        BookingEditSettlementRules.RefundKey(booking.Id, booking.UpdatedAt, part.PaymentId)),
+                        BookingEditSettlementRules.RefundKey(booking.Id, booking.UpdatedAt, part.PaymentId),
+                        // The guest is told once, by the email of the edit after the commit: the refund sends no "refund confirmed" of its own now
+                        // (and its notification is claimed when Stripe confirmed it at once); one still pending is confirmed by a later email.
+                        NotifyGuest: false),
                     cancellationToken);
                 if (refund.Status is PaymentRefundStatus.Failed or PaymentRefundStatus.Canceled)
                 {

@@ -150,6 +150,18 @@ public static class BookingErrorCodes
     public const string EditPaymentInProgress = "booking_edit_payment_in_progress";
 
     /// <summary>
+    /// 403: the edit of a booking of the booking site would move money (a refund, the saved card charged, a payment link), or the quote of the edit
+    /// shows it, and the caller has no <c>payment.write</c> (<c>payment.read</c> for the quote) on the property (E08/F02/US01/T01): nothing is done.
+    /// </summary>
+    public const string EditPaymentPermissionRequired = "booking_edit_payment_permission_required";
+
+    /// <summary>
+    /// 422: the new dates have no tourist tax rate (or one that cannot be worked out) and the booking already holds a tourist tax that the guest paid:
+    /// the price would drop by the tax and the money of the edit would give it back by itself (E08/F02/US01/T01). Nothing is changed.
+    /// </summary>
+    public const string TouristTaxUnavailable = "booking_tourist_tax_unavailable";
+
+    /// <summary>
     /// 422: a booking that came from a channel is changed from CasaZen where the channel does not let the host do it (E02/F02/US02/T01, D8,
     /// NF-75): nothing is changed. The text is the one sentence that says how to ask the guest or the channel; <c>guidanceKey</c> and
     /// <c>channel</c> travel with the problem.

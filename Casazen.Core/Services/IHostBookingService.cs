@@ -67,6 +67,11 @@ public interface IHostBookingService
 /// <see cref="BookingErrorCodes.OtaAmountsReadonly"/> (E02/F02/US01/T01, ADR-033-R3).
 /// </param>
 /// <param name="RequestedByUserId">The Auth0 subject of the host, kept on the refunds of the edit; <c>null</c> when there is none.</param>
+/// <param name="CanMoveMoney">
+/// The caller may handle the money of the booking (<c>payment.write</c> on its property). <c>false</c> by default: an edit whose plan moves money
+/// (a refund, the saved card charged, a payment link) is then refused with 403 <see cref="BookingErrorCodes.EditPaymentPermissionRequired"/> before
+/// anything is done; an edit that moves no money does not need it.
+/// </param>
 public sealed record HostBookingUpdate(
     Guid BookingId,
     DateTime CheckInDate,
@@ -76,7 +81,8 @@ public sealed record HostBookingUpdate(
     IReadOnlyList<int>? ChildrenAges,
     string? SpecialRequests,
     OtaAmountsInput? OtaAmounts = null,
-    string? RequestedByUserId = null);
+    string? RequestedByUserId = null,
+    bool CanMoveMoney = false);
 
 /// <summary>
 /// The commission, net, paid and balance amounts of the channel as a request to change a booking carried them (each <c>null</c> when it did

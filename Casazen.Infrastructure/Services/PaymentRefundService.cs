@@ -89,7 +89,14 @@ public sealed class PaymentRefundService(
                 await transaction.CommitAsync(cancellationToken);
         }
 
-        return await SubmitAsync(refund, throwOnTransientFailure: false, cancellationToken);
+        var submitted = await SubmitAsync(refund, throwOnTransientFailure: false, cancellationToken, notifyGuest: request.NotifyGuest);
+
+        // The caller tells the guest itself, in one email: a refund Stripe confirmed at once has its own "refund confirmed" claimed, so no other path
+        // (a delivery of the webhook, a retry) sends it later. One still pending keeps its notification: the guest is told when Stripe confirms it.
+        if (!request.NotifyGuest && submitted.Status == PaymentRefundStatus.Succeeded)
+            await ClaimGuestNotificationAsync(submitted.Id, cancellationToken);
+
+        return submitted;
     }
 
     public async Task<IReadOnlyList<PaymentRefund>> GetRefundsAsync(Guid paymentId, CancellationToken cancellationToken = default) =>
