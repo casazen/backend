@@ -72,30 +72,10 @@ public class PropertySenderServiceTests
         Assert.Equal(ComplianceSenderType.Manual, (await StoredAsync(db, world.Connected)).AlloggiatiSender);
         Assert.Null(await DelegationGrantedAtAsync(db, world.OrgId));
 
-        // The consent names the text the person read, and it has to be the text in force: without the version, or with another one (the
-        // screen was loaded before the text changed), nothing is recorded and the 409 carries the version to show.
-        var unnamed = await Assert.ThrowsAsync<DomainRuleException>(
-            () => service.SwitchAsync(world.Connected, ComplianceSenderType.ChannelManager, true, true, Host, CancellationToken.None));
-        Assert.Equal("alloggiati_delegation_text_version_required", unnamed.Code);
-        var stale = await Assert.ThrowsAsync<DomainConflictException>(
-            () => service.SwitchAsync(
-                world.Connected, ComplianceSenderType.ChannelManager, true, true, Host, CancellationToken.None, delegationTextVersion: "2026-10-v0"));
-        Assert.Equal("alloggiati_delegation_text_outdated", stale.Code);
-        Assert.Equal<object?>(AlloggiatiDelegationTexts.CurrentVersion, stale.Extensions["delegationTextVersion"]);
-        Assert.Equal(ComplianceSenderType.Manual, (await StoredAsync(db, world.Connected)).AlloggiatiSender);
-        Assert.Null(await DelegationGrantedAtAsync(db, world.OrgId));
-
-        // With the consent and the text in force it is recorded on the organization (who, when, which text), then the channel manager is set.
+        // Every other refusal comes before the consent is recorded. With the consent ticked and the text read, the sender «CasaZen sends», an
+        // ISTAT sender that differs, a channel manager the property cannot use and a property outside Italy are all refused, the sender
+        // stays and the organization still has no delegation afterwards.
         var seen = AlloggiatiDelegationTexts.CurrentVersion;
-        var automatic = await service.SwitchAsync(
-            world.Connected, ComplianceSenderType.ChannelManager, true, true, Host, CancellationToken.None, delegationTextVersion: seen);
-        Assert.Equal((ComplianceSenderType.ChannelManager, true), (automatic.Sender, automatic.DelegationAccepted));
-        var org = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == world.OrgId);
-        Assert.Equal(
-            (Host, AlloggiatiDelegationTexts.CurrentVersion),
-            (org.AlloggiatiDelegationGrantedByUserId, org.AlloggiatiDelegationTextVersion));
-
-        // The sender «CasaZen sends» is not offered, and ISTAT cannot follow another sender: both refused, the sender stays.
         var casaZen = await Assert.ThrowsAsync<DomainRuleException>(
             () => service.SwitchAsync(
                 world.Connected, ComplianceSenderType.CasaZen, true, true, Host, CancellationToken.None, delegationTextVersion: seen));
@@ -111,8 +91,6 @@ public class PropertySenderServiceTests
                 istatSender: ComplianceSenderType.ChannelManager,
                 delegationTextVersion: seen));
         Assert.Equal("sender_istat_mismatch", mismatch.Code);
-
-        // A property that is not connected to the channel manager cannot choose it; a property outside Italy has no sender to choose.
         var notConnected = await Assert.ThrowsAsync<DomainRuleException>(
             () => service.SwitchAsync(
                 world.NotConnected, ComplianceSenderType.ChannelManager, true, true, Host, CancellationToken.None, delegationTextVersion: seen));
@@ -122,6 +100,30 @@ public class PropertySenderServiceTests
                 world.Swiss, ComplianceSenderType.Manual, true, true, Host, CancellationToken.None, delegationTextVersion: seen));
         Assert.Equal("sender_not_applicable", swiss.Code);
         Assert.False(await db.PropertyComplianceSenders.AnyAsync(s => s.PropertyId == world.NotConnected || s.PropertyId == world.Swiss));
+        Assert.Equal(ComplianceSenderType.Manual, (await StoredAsync(db, world.Connected)).AlloggiatiSender);
+        Assert.Null(await DelegationGrantedAtAsync(db, world.OrgId));
+
+        // The consent names the text the person read, and it has to be the text in force: without the version, or with another one (the
+        // screen was loaded before the text changed), nothing is recorded and the 409 carries the version to show.
+        var unnamed = await Assert.ThrowsAsync<DomainRuleException>(
+            () => service.SwitchAsync(world.Connected, ComplianceSenderType.ChannelManager, true, true, Host, CancellationToken.None));
+        Assert.Equal("alloggiati_delegation_text_version_required", unnamed.Code);
+        var stale = await Assert.ThrowsAsync<DomainConflictException>(
+            () => service.SwitchAsync(
+                world.Connected, ComplianceSenderType.ChannelManager, true, true, Host, CancellationToken.None, delegationTextVersion: "2026-10-v0"));
+        Assert.Equal("alloggiati_delegation_text_outdated", stale.Code);
+        Assert.Equal<object?>(AlloggiatiDelegationTexts.CurrentVersion, stale.Extensions["delegationTextVersion"]);
+        Assert.Equal(ComplianceSenderType.Manual, (await StoredAsync(db, world.Connected)).AlloggiatiSender);
+        Assert.Null(await DelegationGrantedAtAsync(db, world.OrgId));
+
+        // With the consent and the text in force it is recorded on the organization (who, when, which text), then the channel manager is set.
+        var automatic = await service.SwitchAsync(
+            world.Connected, ComplianceSenderType.ChannelManager, true, true, Host, CancellationToken.None, delegationTextVersion: seen);
+        Assert.Equal((ComplianceSenderType.ChannelManager, true), (automatic.Sender, automatic.DelegationAccepted));
+        var org = await db.Orgs.AsNoTracking().SingleAsync(o => o.Id == world.OrgId);
+        Assert.Equal(
+            (Host, AlloggiatiDelegationTexts.CurrentVersion),
+            (org.AlloggiatiDelegationGrantedByUserId, org.AlloggiatiDelegationTextVersion));
 
         // The same sender again changes and records nothing.
         var again = await service.SwitchAsync(world.Connected, ComplianceSenderType.ChannelManager, false, false, Host, CancellationToken.None);
@@ -235,6 +237,41 @@ public class PropertySenderServiceTests
         await service.SwitchAsync(world.Connected, ComplianceSenderType.ChannelManager, true, false, Host, CancellationToken.None);
         var voided = await service.GetAsync(world.Connected, CancellationToken.None);
         Assert.Equal((SenderState.Unverified, (DateTime?)null), (voided.State, voided.DeclaredAt));
+    }
+
+    [Fact]
+    public async Task PropertySender_DeclarationStandsUntilALaterChoice_Test()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var world = await SeedAsync(databaseName);
+        var clock = new FakeTimeProvider(Start);
+        var octorate = new Mock<IOctorateApiClient>();
+        OctorateExposes(octorate, valid: null, autorun: null);
+        await using var db = OrgTeamTestData.NewDb(databaseName);
+        var service = NewService(db, clock, octorate);
+
+        // The org accepted the delegation, and the property still has the default sender: the channel manager, with no row yet.
+        await new AlloggiatiDelegationService(db, new ActivityLog(db, clock), clock)
+            .GrantAsync(world.OrgId, Host, AlloggiatiDelegationTexts.CurrentVersion);
+        Assert.False(await db.PropertyComplianceSenders.AnyAsync());
+
+        // The declaration makes the row of the default sender at this very instant, so the moment of the declaration and the moment of the
+        // last choice of the sender are the same one. On that boundary the declaration stands.
+        var declared = await service.DeclareActivatedAsync(world.Connected, Host, CancellationToken.None);
+        var row = await StoredAsync(db, world.Connected);
+        Assert.Equal<DateTime?>(Start.UtcDateTime, row.LastChangedAt);
+        Assert.Equal<DateTime?>(Start.UtcDateTime, row.ActivationDeclaredAt);
+        Assert.Equal((SenderState.Declared, SenderVerification.UserDeclared), (declared.State, declared.Verification));
+        Assert.Equal<DateTime?>(Start.UtcDateTime, declared.DeclaredAt);
+
+        // One microsecond later the sender is chosen again (the other one, and back): a later choice, so the declaration was about the
+        // choice before it and is void, the sender is not even said to be declared.
+        clock.Advance(TimeSpan.FromTicks(10));
+        var manual = await service.SwitchAsync(world.Connected, ComplianceSenderType.Manual, true, false, Host, CancellationToken.None);
+        Assert.Null(manual.DeclaredAt);
+        var back = await service.SwitchAsync(world.Connected, ComplianceSenderType.ChannelManager, true, false, Host, CancellationToken.None);
+        Assert.Equal((SenderState.Unverified, SenderVerification.Unverifiable), (back.State, back.Verification));
+        Assert.Null(back.DeclaredAt);
     }
 
     [Fact]
