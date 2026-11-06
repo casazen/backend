@@ -221,8 +221,9 @@ Octorate id): the row that knows the key and the person stays. A row left in `Cr
 
 **First message** (`GET api/bookings/{id}/contact-options`, `POST api/bookings/{id}/messages/new`): the channel is the conversation the booking has on a channel
 (never one whose mapping is undecided), else the direct conversation while it is open, else, for a booking of a channel with no chat (Agoda, TripAdvisor,
-another portal), an **e-mail** when the channel manager says it holds the guest's address (`emailAvailable`: a flag; the address is not asked for to answer the
-options), else `None` with the reason. The e-mail reads the contact of **that one booking** (`POST /rest/v2/reservation/{acc}/{refer}/contactInfo`, a special
+another portal), an **e-mail** when the stay is an active one (confirmed, checked in or checked out and not a no-show: the statuses of `AlloggiatiStatusRules`;
+a pending or cancelled booking and a no-show get `no_conversation`, and the contact of their guest is not even read) and the channel manager says it holds the
+guest's address (`emailAvailable`: a flag; the address is not asked for to answer the options), else `None` with the reason. The e-mail reads the contact of **that one booking** (`POST /rest/v2/reservation/{acc}/{refer}/contactInfo`, a special
 permission that Octorate gives only to the registered static IP addresses of CasaZen, S7/D24, and logs on every read): until they are registered the answer is
 **409** `contact_info_unavailable` and nothing is queued. A read that Octorate answered is recorded as `ContactInfoRead` in the activity log (booking, person,
 purpose `message_to_guest`); the address and the phone number are in no answer, no log line and no row, and go only to the queue of the e-mails

@@ -5,6 +5,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.OrgTeam;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -427,7 +428,8 @@ public sealed class MessageReplyService(
                 b.CheckOutDate,
                 b.OctorateReservationId,
                 b.Guest.DataAnonymizedDate == null && !b.Guest.IsDeleted && b.Guest.Email != string.Empty,
-                b.Guest.DataAnonymizedDate == null && !b.Guest.IsDeleted && b.Guest.PhoneNumber != string.Empty))
+                b.Guest.DataAnonymizedDate == null && !b.Guest.IsDeleted && b.Guest.PhoneNumber != string.Empty,
+                b.NoShowAt != null))
             .FirstOrDefaultAsync(ct)
             ?? throw BookingNotFound();
 
@@ -473,6 +475,11 @@ public sealed class MessageReplyService(
 
         // A channel that has a chat but no conversation yet: the guest has not written, and the channel does not let the host start one.
         if (booking.OtaChat)
+            return new Choice(booking.Id, None(MessageContactOptions.NoConversationReason, false, false));
+
+        // The e-mail is a first contact about a stay that exists: a booking that is pending or cancelled, or a no-show, gets none, and the contact of its guest is
+        // not even read. The statuses are the ones of a stay that owes a police communication, the single definition of an active stay (AlloggiatiStatusRules).
+        if (!AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status) || booking.NoShow)
             return new Choice(booking.Id, None(MessageContactOptions.NoConversationReason, false, false));
 
         // A channel with no chat: the only way is an e-mail, if the channel manager holds the guest's address (a flag; the address is not asked for).
@@ -701,7 +708,8 @@ public sealed class MessageReplyService(
         DateTime CheckOutDate,
         string? OctorateReservationId,
         bool HasEmail,
-        bool HasPhone)
+        bool HasPhone,
+        bool NoShow)
     {
         /// <summary>The channel of the booking is one of the four that have a chat (the others are written to by e-mail).</summary>
         public bool OtaChat => OtaChannelMapper.Of(Source) is not null;

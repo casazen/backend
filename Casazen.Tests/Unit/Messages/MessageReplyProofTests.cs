@@ -843,6 +843,68 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Empty(await _db.OrgActivityEntries.AsNoTracking().ToListAsync());
     }
 
+    private async Task<(MessageReplyRig Rig, Booking Booking)> EmailRigOfStayAsync(BookingStatus status, bool noShow)
+    {
+        var rig = new MessageReplyRig(_db);
+        var guest = await MessageReplyScenario.AddGuestAsync(_db, _world.Scope.OrgId, "Mei", "Tanaka", country: "JP");
+        var booking = await MessageReplyScenario.AddBookingAsync(
+            _db, _world, _world.Scope.Granted.Id, guest, BookingSource.Agoda, "RES-AGODA-3", status: status);
+        if (noShow)
+        {
+            var stored = await _db.Bookings.FirstAsync(b => b.Id == booking.Id);
+            stored.NoShowAt = MessageHubTestKit.Now.UtcDateTime;
+            await _db.SaveChangesAsync();
+            _db.ChangeTracker.Clear();
+        }
+
+        rig.Targets.Setup(t => t.AccommodationOfAsync(_world.Scope.Granted.Id, It.IsAny<CancellationToken>())).ReturnsAsync("ACC-1");
+        rig.Client
+            .Setup(c => c.GetReservationAsync("ACC-1", "RES-AGODA-3", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateReservation { Id = "RES-AGODA-3", Refer = "REF-79", GuestEmailAvailable = true });
+        rig.Client
+            .Setup(c => c.GetReservationContactInfoAsync("ACC-1", "REF-79", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateGuestContactInfo(MessageReplyScenario.GuestEmail, null));
+        return (rig, booking);
+    }
+
+    /// <summary>
+    /// PROOF TEST: privacy and data rule. The e-mail is a first contact about a stay that exists: a booking that is pending or cancelled, and a no-show, has no way
+    /// to write, and the contact of its guest is not even read from the channel manager (the statuses of an active stay are the single definition of the
+    /// Alloggiati rules, the same that decides which stays owe a police communication).
+    /// </summary>
+    [Theory]
+    [InlineData(BookingStatus.Pending, false)]
+    [InlineData(BookingStatus.Cancelled, false)]
+    [InlineData(BookingStatus.Confirmed, true)]
+    public async Task StartConversation_EmailPath_APendingCancelledOrNoShowStay_HasNoWayToWrite_AndItsContactIsNotRead_Test(BookingStatus status, bool noShow)
+    {
+        var (rig, booking) = await EmailRigOfStayAsync(status, noShow);
+
+        var options = await rig.Service.ChooseChannelAsync(_world.Scope.OrgWide, booking.Id);
+        var error = await Assert.ThrowsAsync<DomainConflictException>(() =>
+            rig.Service.StartConversationAsync(_world.Scope.OrgWide, booking.Id, "Buongiorno", Key, UserId));
+
+        Assert.Equal((MessageContactChannel.None, "no_conversation", false), (options.Channel, options.Reason, options.EmailAvailable));
+        Assert.Equal("no_contact_channel", error.Code);
+        rig.Client.VerifyNoOtherCalls();
+        Assert.Empty(rig.Emails.Sent);
+        Assert.Empty(await _db.OrgActivityEntries.AsNoTracking().ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(BookingStatus.Confirmed)]
+    [InlineData(BookingStatus.CheckedIn)]
+    [InlineData(BookingStatus.CheckedOut)]
+    public async Task ChooseChannel_EmailPath_AConfirmedCheckedInOrCheckedOutStay_IsWrittenToByEmail(BookingStatus status)
+    {
+        var (rig, booking) = await EmailRigOfStayAsync(status, noShow: false);
+
+        var options = await rig.Service.ChooseChannelAsync(_world.Scope.OrgWide, booking.Id);
+
+        Assert.Equal(MessageContactChannel.Email, options.Channel);
+        Assert.True(options.EmailAvailable);
+    }
+
     [Fact]
     public async Task StartConversation_AGuestWithoutAnAddressOnTheChannelManager_HasNoWayToWrite()
     {
