@@ -309,7 +309,7 @@ renamed or removed.
 | `marketingChannels` | Each per-channel consent of the check-in: the booking, the channels ticked, the marketing e-mail, whether it was confirmed (double opt-in), the version of the text, the time and the IP |
 | `crmProfile` | Language, country and tags; the aggregates (stays, spend, first and last stay) **only when the profile is the guest's alone**, with `sharedWithOtherGuests`; `null` when the guest has no profile. Never the keyed hashes, the proposals of merge, the confirmed marketing address or the data of another guest |
 | `contacts` | Channel, value, display name, language, origin, confirmation (and when), legal basis, version of the text and time of the basis, source and IP of the consent, suppression (flag, date, source). The contacts the guest gave and, when the profile is the guest's alone, every contact of the profile: the same set the erasure removes |
-| `messages` | The messages the guest exchanged with the host: booking, sender (`Guest` or `Host`), text, time. The messages of the OTA hub that E05 persists are added by E05 |
+| `messages` | The messages the guest exchanged with the host: booking, sender (`Guest` or `Host`), text, time. **Not opened by `guest.read` alone**: they follow the message screens of the host (`BookingMessagesController`), so they are in the export only when the caller holds `booking.read` on the org and only for the threads of the properties its scope reaches (a collaborator «Solo alcuni» gets the conversations of the properties it was given; without `booking.read` the section is empty). The rest of the export is the guest's own data and is the same for everyone who may read the guest. The messages of the OTA hub that E05 persists are added by E05, with the same rule |
 
 A profile that other guests are linked to (the merge of duplicates) adds their stays to its aggregates, so the aggregates are left out of the
 export of each of them; the stays of the guest are in `bookings`.
@@ -343,5 +343,5 @@ guest can consent again. A contact on soft opt-in, a contact that is suppressed 
    `select count(*) from "GuestCrmProfiles" where "Id" = '<profile id>';` is 0 when the guest was the only one linked.
 2. An unsubscribed contact of that guest is still there as a marker: `select "Channel", "IsSuppressed", "SuppressedAt" from "GuestContacts" where "Value" = '' and "IsSuppressed";`
    (no value, no name, no IP: the columns `Value` and `DisplayName` are empty or null).
-3. The export of a guest with a profile and contacts has `marketingChannels`, `crmProfile`, `contacts` and `messages`.
+3. The export of a guest with a profile and contacts has `marketingChannels`, `crmProfile`, `contacts` and `messages`; the same export asked by a collaborator limited to some properties, or without `booking.read`, has only the conversations of the properties it reaches (none without `booking.read`).
 4. The logs of the erasure say `CRM data of guest {GuestId}: N contacts removed, M opt-outs kept without personal data`, and nothing else about them.

@@ -72,9 +72,16 @@ public class GdprService(
     public async Task<GuestDataExport> ExportGuestDataAsync(
         Guid orgId,
         Guid guestId,
+        HostScope scope,
+        bool includeMessages,
         string? actorUserId,
         CancellationToken cancellationToken = default)
     {
+        // The reach of the caller is always declared, never assumed: a scope of another org is a mistake of the caller, not a wider reach.
+        ArgumentNullException.ThrowIfNull(scope);
+        if (scope.OrgId != orgId)
+            throw new ArgumentException("The reach of the caller is not on the org of the guest.", nameof(scope));
+
         var guest = await db.Guests.AsNoTracking().FirstOrDefaultAsync(g => g.Id == guestId && g.OrgId == orgId, cancellationToken)
             ?? throw GuestNotFound(guestId);
 
@@ -135,7 +142,12 @@ public class GdprService(
             .ToListAsync(cancellationToken);
         var (crmProfile, profileIsGuestsAlone) = await ReadCrmProfileAsync(guest, cancellationToken);
         var contacts = await ReadCrmContactsAsync(guest, profileIsGuestsAlone, cancellationToken);
-        var messages = await ReadMessagesAsync(orgId, bookingIds, cancellationToken);
+
+        // The messages are not the guest's data alone: they follow the rules of the message screens of the host (BookingMessagesController), that is
+        // booking.read and the properties the caller reaches. guest.read opens the rest of the export, not the conversations on stays out of reach.
+        IReadOnlyList<GuestExportMessage> messages = [];
+        if (includeMessages)
+            messages = await ReadMessagesAsync(orgId, scope, bookingIds, cancellationToken);
 
         var now = UtcNow();
         var export = new GuestDataExport
@@ -249,14 +261,19 @@ public class GdprService(
             c.BasisRecordedAt, c.ConsentSource, c.ConsentIpAddress, c.IsSuppressed, c.SuppressedAt, c.SuppressedSource, c.CreatedAt)).ToList();
     }
 
-    /// <summary>The messages of the conversations the guest had with the host on its bookings (DB-14a), oldest first.</summary>
+    /// <summary>
+    /// The messages of the conversations the guest had with the host on its bookings (DB-14a), oldest first: only the threads of the properties
+    /// <paramref name="scope"/> reaches, in SQL (<c>InScope</c>, the rule of every list of the host). A thread on a stay out of reach is not read.
+    /// </summary>
     private async Task<IReadOnlyList<GuestExportMessage>> ReadMessagesAsync(
         Guid orgId,
+        HostScope scope,
         List<Guid> bookingIds,
         CancellationToken cancellationToken)
     {
         var threads = await db.GuestThreads.AsNoTracking()
             .Where(t => t.OrgId == orgId && bookingIds.Contains(t.BookingId))
+            .InScope(scope)
             .Select(t => new { t.Id, t.BookingId })
             .ToListAsync(cancellationToken);
         if (threads.Count == 0)

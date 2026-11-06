@@ -1050,7 +1050,7 @@ code: they are rows, and the words of the cards are rows and resource keys (`Mar
 | `GET` | `/api/legal/dpa` | Anonymous | Data Processing Agreement |
 | `GET` | `/api/legal/tos` | Anonymous | Terms of Service |
 | `GET` | `/api/legal/privacy` | Anonymous | Privacy policy |
-| `GET` | `/api/gdpr/guests/{id}/export` | JWT | Export guest personal data; since E07/F06/US02/T01 also `marketingChannels` (per-channel consents), `crmProfile`, `contacts` and `messages` (`docs/runbooks/gdpr.md` § 13) |
+| `GET` | `/api/gdpr/guests/{id}/export` | JWT | Export guest personal data; since E07/F06/US02/T01 also `marketingChannels` (per-channel consents), `crmProfile`, `contacts` and `messages` (`docs/runbooks/gdpr.md` § 13; the messages only with `booking.read` and only for the properties the caller's scope reaches) |
 | `GET` | `/api/gdpr/org/export` | OrgBillingAdmin (AM-03b; was property.read) | Fiscal data of the org (Partita IVA, codice fiscale, fiscal years and taxpayers of the properties) and the people with access (ids, role, status, scope): the owner and the administrators only; the property sections hold only the properties the caller's scope reaches (`docs/runbooks/org-team.md` § 40) |
 | `DELETE` | `/api/gdpr/guests/{id}` | guest.manage (AM-03; was guest.write) | Erasure request (Art. 17); since E07/F06/US02/T01 it also deletes the guest's CRM contacts (a suppressed one stays as a bare opt-out marker), unlinks the profile and deletes it when no other guest is linked |
 | `POST` | `/api/gdpr/guests/{id}/anonymize` | guest.manage (AM-03; was guest.write) | Anonymize guest record |

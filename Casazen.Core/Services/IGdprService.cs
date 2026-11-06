@@ -13,8 +13,14 @@ public interface IGdprService
     /// <summary>Consents with their versions, retention per category and status, for the host's GDPR tab.</summary>
     Task<GuestPrivacySummary> GetGuestPrivacySummaryAsync(Guid orgId, Guid guestId, CancellationToken cancellationToken = default);
 
-    /// <summary>Complete, versioned export (art. 15 and 20 GDPR), document decrypted; audited.</summary>
-    Task<GuestDataExport> ExportGuestDataAsync(Guid orgId, Guid guestId, string? actorUserId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Complete, versioned export (art. 15 and 20 GDPR), document decrypted; audited. The data of the guest is what <c>guest.read</c> opens; the
+    /// <b>messages</b> of its bookings (E07/F06/US02/T01) follow the rules of the message screens of the host instead: only the threads of the
+    /// properties <paramref name="scope"/> reaches, and only when the caller holds <c>booking.read</c> (<paramref name="includeMessages"/>).
+    /// </summary>
+    /// <param name="scope">The caller's reach, from <see cref="Casazen.Core.Authorization.IHostScopeResolver"/>; its org must be <paramref name="orgId"/>. Never widened: a scope is always passed.</param>
+    /// <param name="includeMessages">The caller holds <c>booking.read</c> on the org; false leaves the messages out of the export.</param>
+    Task<GuestDataExport> ExportGuestDataAsync(Guid orgId, Guid guestId, Casazen.Core.Authorization.HostScope scope, bool includeMessages, string? actorUserId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Erasure (art. 17 GDPR): every personal field of the guest and of the guests of its stays, the consent IPs and notes,

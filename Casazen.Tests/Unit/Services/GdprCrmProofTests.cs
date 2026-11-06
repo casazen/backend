@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Models;
@@ -45,7 +46,7 @@ public class GdprCrmProofTests
 
         GuestDataExport export;
         await using (var db = CrmTestWorld.Open(store))
-            export = await Service(db).ExportGuestDataAsync(orgId, world.MarioId, "auth0|host", Ct);
+            export = await Service(db).ExportGuestDataAsync(orgId, world.MarioId, new HostScope(orgId), true, "auth0|host", Ct);
 
         // The per-channel consent of the check-in, with everything that proves it.
         var channel = Assert.Single(export.MarketingChannels);
@@ -122,7 +123,7 @@ public class GdprCrmProofTests
 
         GuestDataExport export;
         await using (var db = CrmTestWorld.Open(store))
-            export = await Service(db).ExportGuestDataAsync(orgId, world.FirstGuestId, "auth0|host", Ct);
+            export = await Service(db).ExportGuestDataAsync(orgId, world.FirstGuestId, new HostScope(orgId), true, "auth0|host", Ct);
 
         var profile = export.CrmProfile;
         Assert.NotNull(profile);
@@ -137,6 +138,61 @@ public class GdprCrmProofTests
         Assert.Contains(export.Contacts, c => c.Value == "mario.rossi@example.com");
         Assert.Contains(export.Contacts, c => c.Value == "mario.old@example.com");
         Assert.DoesNotContain(export.Contacts, c => c.Value is "luisa.verdi@example.com" or "lead@example.com");
+    }
+
+    /// <summary>
+    /// Proof test (permission and scope rule): the messages of an export follow the rules of the message screens of the host. A guest with a stay at
+    /// two properties: the owner's export holds both conversations; the export of a collaborator «Solo alcuni», who was given the first property
+    /// only, holds the conversation of that stay and nothing of the other; a caller without <c>booking.read</c> gets none, and the rest of the
+    /// export is the same. A scope of another org is refused, never widened.
+    /// </summary>
+    [Fact]
+    public async Task GdprExport_Messages_OnlyOfThePropertiesTheCallerReaches_AndOnlyWithBookingRead_Test()
+    {
+        const string collaborator = "auth0|collaboratore";
+        var store = CrmTestWorld.NewStore();
+        var orgId = Guid.NewGuid();
+        Guid guestId, grantedBookingId;
+        await using (var seed = CrmTestWorld.Open(store))
+        {
+            var granted = NewProperty(orgId);
+            var hidden = NewProperty(orgId);
+            seed.Properties.AddRange(granted, hidden);
+            seed.PropertyMemberAccesses.Add(new PropertyMemberAccess { OrgId = orgId, UserId = collaborator, PropertyId = granted.Id });
+            var mario = CrmTestWorld.AddGuest(seed, orgId, "Mario", "Rossi", "mario.rossi@example.com");
+            var atGranted = CrmTestWorld.AddBooking(seed, mario, granted.Id, BookingStatus.CheckedOut, BookingSource.Direct, -20, 3, 300m);
+            var atHidden = CrmTestWorld.AddBooking(seed, mario, hidden.Id, BookingStatus.CheckedOut, BookingSource.Direct, -60, 3, 300m);
+            AddConversation(seed, orgId, granted.Id, atGranted.Id, "Arriveremo verso le 18.", "Perfetto, vi aspettiamo.");
+            AddConversation(seed, orgId, hidden.Id, atHidden.Id, "Ci sono le zanzare?", "Abbiamo le zanzariere.");
+            await seed.SaveChangesAsync(Ct);
+            guestId = mario.Id;
+            grantedBookingId = atGranted.Id;
+        }
+
+        GuestDataExport wholeOrg, limited, withoutBookingRead;
+        await using (var db = CrmTestWorld.Open(store))
+            wholeOrg = await Service(db).ExportGuestDataAsync(orgId, guestId, new HostScope(orgId), true, "auth0|titolare", Ct);
+        await using (var db = CrmTestWorld.Open(store))
+            limited = await Service(db).ExportGuestDataAsync(orgId, guestId, new HostScope(orgId, GrantedToUserId: collaborator), true, collaborator, Ct);
+        await using (var db = CrmTestWorld.Open(store))
+            withoutBookingRead = await Service(db).ExportGuestDataAsync(orgId, guestId, new HostScope(orgId), false, "auth0|contabile", Ct);
+
+        Assert.Equal(4, wholeOrg.Messages.Count);
+
+        // The collaborator reads the conversation of the property it was given, not the one of the other.
+        Assert.Equal(2, limited.Messages.Count);
+        Assert.All(limited.Messages, m => Assert.Equal(grantedBookingId, m.BookingId));
+        Assert.DoesNotContain(limited.Messages, m => m.Text.Contains("zanzar", StringComparison.OrdinalIgnoreCase));
+
+        // Without booking.read no message leaves; the rest of the export is as it was.
+        Assert.Empty(withoutBookingRead.Messages);
+        Assert.Equal(wholeOrg.Bookings.Count, withoutBookingRead.Bookings.Count);
+        Assert.Equal(wholeOrg.Contacts.Count, withoutBookingRead.Contacts.Count);
+
+        // A scope of another org is a mistake of the caller: refused, not read as a wider reach.
+        await using var other = CrmTestWorld.Open(store);
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => Service(other).ExportGuestDataAsync(orgId, guestId, new HostScope(Guid.NewGuid()), true, "auth0|altro", Ct));
     }
 
     /// <summary>
