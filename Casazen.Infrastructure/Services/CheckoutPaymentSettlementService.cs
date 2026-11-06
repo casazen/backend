@@ -146,6 +146,10 @@ public sealed class CheckoutPaymentSettlementService(
                 return new CheckoutPaymentSettlement(CheckoutPaymentOutcome.AlreadySettled, booking.Id);
 
             MarkCompleted(payment, paymentIntentId, eventAccountId, onPlatform);
+
+            // E08/F01/US01/T04: the payment became paid; its event is saved with the status (the Octorate handler records it on the reservation).
+            await PaymentEvents.RecordSucceededAsync(
+                domainEvents, db, payment, await PaymentEvents.CurrencyOfAsync(db, booking, cancellationToken), cancellationToken);
             await paymentRepository.UpdateAsync(payment);
             return new CheckoutPaymentSettlement(CheckoutPaymentOutcome.Recorded, booking.Id);
         }
@@ -160,9 +164,30 @@ public sealed class CheckoutPaymentSettlementService(
                 .Where(b => b.Id == booking.Id)
                 .Where(CheckoutHolds.IsExpired(expiredHoldCutoff))
                 .AnyAsync(cancellationToken);
-        var datesFree = await AreDatesFreeAsync(booking, expiredHoldCutoff, checkCalendarBlocks: !validHold, cancellationToken);
+        // A booking the host entered (its payment link, E08/F01/US01/T05) is confirmed from the start: a payment that succeeds once the host
+        // cancelled it never brings it back, whatever the dates, and is refunded in full like a payment on dates that are taken.
+        var hostBooking = booking.Source == BookingSource.Manual;
+        var datesFree = !hostBooking
+                        && await AreDatesFreeAsync(booking, expiredHoldCutoff, checkCalendarBlocks: !validHold, cancellationToken);
+        if (hostBooking)
+        {
+            logger.LogWarning(
+                "Payment intent {PaymentIntentId} succeeded on host booking {BookingId} in status {Status}: refunded, the booking stays as it is",
+                paymentIntentId,
+                booking.Id,
+                booking.Status);
+        }
 
+        // E08/F01/US01/T04: a payment that confirms its booking is a payment received; one that is refunded at once (the dates are taken, the
+        // host cancelled) is not announced as one.
+        var completedNow = payment.Status != PaymentStatus.Completed;
         MarkCompleted(payment, paymentIntentId, eventAccountId, onPlatform);
+        if (completedNow && datesFree)
+        {
+            await PaymentEvents.RecordSucceededAsync(
+                domainEvents, db, payment, await PaymentEvents.CurrencyOfAsync(db, booking, cancellationToken), cancellationToken);
+        }
+
         await paymentRepository.UpdateAsync(payment);
 
         if (datesFree)

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -65,6 +66,18 @@ public sealed class OctorateApiClient(
 
     /// <summary>The member of an accommodation read by <see cref="GetPoliceAccountAsync"/>: the police account, as Octorate documents it (Q-002).</summary>
     private const string PoliceAccountFields = "policeAccount";
+
+    /// <summary>Octorate's answer of the availability check for a room that cannot be booked (OpenAPI: "Not available to book").</summary>
+    internal const int NotAvailableStatus = 406;
+
+    /// <summary>Days back the lookup by reference reads the reservations created (a create retried later is still found).</summary>
+    internal const int FindLookbackDays = 30;
+
+    /// <summary>Pages of the list the lookup by reference reads at most; a longer list is not a proof of absence.</summary>
+    internal const int MaxFindPages = 10;
+
+    /// <summary>The longest reason of a refused availability check that is kept (one line, never a body).</summary>
+    private const int MaxReasonLength = 200;
 
     /// <summary>The JSON of a partial change: camelCase, the members that are not set are left out.</summary>
     private static readonly JsonSerializerOptions PartialUpdateJson = new(JsonSerializerDefaults.Web)
@@ -444,6 +457,144 @@ public sealed class OctorateApiClient(
 
     private static string? DateText(DateOnly? date) => date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
+    public async Task<OctorateAvailabilityResult> CheckAvailabilityAsync(
+        OctorateBookingTarget target,
+        DateOnly from,
+        DateOnly to,
+        int guests,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentOutOfRangeException.ThrowIfLessThan(guests, 1);
+        if (to <= from)
+            throw new ArgumentException("A stay has at least one night.", nameof(to));
+
+        var accommodation = CheckedAccommodationId(target.AccommodationId);
+        var product = CheckedId(target.ProductId, nameof(target));
+
+        // The nights of the stay: the calendar of Octorate counts days with the last one included, and the departure day is not a night.
+        var lastNight = to.AddDays(-1);
+        var path = string.Create(
+            CultureInfo.InvariantCulture,
+            $"/rest/v1/calendar/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(product)}/availabilityCheck?startDate={from:yyyy-MM-dd}&endDate={lastNight:yyyy-MM-dd}");
+
+        // 406 is Octorate's "not available to book" (OpenAPI and sandbox): an answer, not an error. Every other refusal stays a typed error.
+        var answer = await SendAsync(
+            () => new HttpRequestMessage(HttpMethod.Get, Address(path)), "availability-check", ct, NotAvailableStatus);
+        return answer.StatusCode == NotAvailableStatus
+            ? new OctorateAvailabilityResult(false, ReasonOf(answer.Body))
+            : new OctorateAvailabilityResult(true, null);
+    }
+
+    public async Task<OctorateReservation> CreateReservationAsync(
+        OctorateBookingTarget target,
+        OctorateReservationCreate request,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(request);
+        var accommodation = CheckedAccommodationId(target.AccommodationId);
+        CheckedId(target.ProductId, nameof(target));
+
+        var channelId = OctorateReservationRequests.DirectChannelIdOf(configuration)
+            ?? throw new InvalidOperationException(
+                $"{OctorateReservationRequests.DirectChannelIdKey} must be the channel id of the direct bookings (Octorate__DirectChannelId, docs/runbooks/deploy-checklist.md).");
+        var json = OctorateReservationRequests.CreateBody(target, request, channelId, timeProvider.GetUtcNow().UtcDateTime);
+
+        // availability=true: the night is taken off every channel (the default of Octorate, written so it never depends on it).
+        var answer = await SendAsync(
+            () => new HttpRequestMessage(HttpMethod.Post, Address($"/rest/v1/reservation/{Uri.EscapeDataString(accommodation)}?availability=true"))
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            },
+            "reservation-create",
+            ct);
+
+        // The reservation created, with its id: an answer without one is not taken as a success (the caller finds the reservation by its reference).
+        using var document = ParseJson(answer);
+        var root = document.RootElement;
+        var item = root.ValueKind == JsonValueKind.Array ? root.EnumerateArray().FirstOrDefault() : Unwrap(root);
+        return OctorateReservationReader.Read(item) ?? throw new OctorateServerException(answer.StatusCode);
+    }
+
+    public async Task<OctoratePaymentResult> RegisterPaymentAsync(
+        string accommodationId,
+        string reservationId,
+        OctoratePaymentRegistration payment,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(payment);
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+        var json = OctorateReservationRequests.PaymentBody(payment);
+
+        var answer = await SendAsync(
+            () => new HttpRequestMessage(
+                HttpMethod.Post,
+                Address($"/rest/v1/reservation/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}/payment"))
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            },
+            "reservation-payment",
+            ct);
+        return new OctoratePaymentResult(PaymentIdOf(answer.Body));
+    }
+
+    public async Task<OctorateReservation?> FindReservationByExternalReferenceAsync(
+        string accommodationId,
+        string externalReference,
+        CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var reference = externalReference?.Trim();
+        if (string.IsNullOrEmpty(reference) || reference.Length > OctorateReservationRequests.MaxReferenceLength)
+            throw new ArgumentException("A reference has 1 to 25 characters.", nameof(externalReference));
+
+        var today = timeProvider.TodayInRomeAsDateOnly();
+        var from = today.AddDays(-FindLookbackDays);
+        var to = today.AddDays(1);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var complete = true;
+        for (var page = 0; page < MaxFindPages; page++)
+        {
+            var result = await GetReservationsAsync(
+                accommodation,
+                new OctorateReservationQuery(OctorateReservationListType.CreateTime, from, to, page, OctorateReservationQuery.MaxPageSize),
+                ct);
+
+            var found = result.Reservations.FirstOrDefault(r => string.Equals(r.Refer?.Trim(), reference, StringComparison.OrdinalIgnoreCase));
+            if (found is not null)
+                return found;
+
+            // An item that could not be read may be the one looked for: the list is then not a proof that the reservation is not there.
+            if (result.Unreadable > 0)
+                complete = false;
+
+            // The end of the list: a page with no item, or one that repeats what was read (an answer that ignores the page).
+            var added = result.Reservations.Count(r => seen.Add(r.Id));
+            if (result.ItemCount == 0 || added == 0)
+            {
+                if (complete)
+                    return null;
+
+                logger.LogWarning(
+                    "Octorate reservation lookup of org {OrgId}: some reservations could not be read, the absence is not proven", orgScope.OrgId);
+                throw new OctorateServerException(null);
+            }
+        }
+
+        logger.LogWarning(
+            "Octorate reservation lookup of org {OrgId}: stopped after {Pages} pages, the absence is not proven", orgScope.OrgId, MaxFindPages);
+        throw new OctorateServerException(null);
+    }
+
+    public async Task<OctoratePmsRoom[]> GetPmsRoomsAsync(string accommodationId, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        using var document = await GetJsonAsync($"/rest/v1/pms/{Uri.EscapeDataString(accommodation)}", "pms-rooms", ct);
+        return [.. Items(document.RootElement).Select(ReadPmsRoom).OfType<OctoratePmsRoom>()];
+    }
+
     public async Task<OctoratePortal[]> GetPortalsAsync(CancellationToken ct)
     {
         // A partner-level call: no org, the partner token, the bucket "platform". The answer is a bare array (v1) or {data: [...]}.
@@ -454,8 +605,13 @@ public sealed class OctorateApiClient(
     /// <summary>
     /// One call for the org of the scope: the org first (none: it throws and nothing leaves), then its token and a call from its bucket,
     /// the answer of a success, or the typed error. Retries a 429 after the backoff delays and a refused token once after a refresh.
+    /// <paramref name="answerStatus"/> is a status that is an answer of the operation and not an error (the 406 of the availability check).
     /// </summary>
-    private async Task<OctorateAnswer> SendAsync(Func<HttpRequestMessage> createRequest, string operation, CancellationToken ct)
+    private async Task<OctorateAnswer> SendAsync(
+        Func<HttpRequestMessage> createRequest,
+        string operation,
+        CancellationToken ct,
+        int? answerStatus = null)
     {
         var orgId = orgScope.OrgId;
         var caller = new Caller(
@@ -463,7 +619,7 @@ public sealed class OctorateApiClient(
             token => tokenService.GetAccessTokenAsync(orgId, token),
             (rejected, token) => tokenService.RefreshRejectedTokenAsync(orgId, rejected, token),
             () => rateLimiter.TryAcquireAsync(orgId));
-        return await SendAsync(createRequest, operation, caller, ct);
+        return await SendAsync(createRequest, operation, caller, ct, answerStatus);
     }
 
     /// <summary>
@@ -481,7 +637,12 @@ public sealed class OctorateApiClient(
     }
 
     /// <summary>The call itself, for whoever <paramref name="caller"/> is: its token, its bucket, its refresh of a refused token.</summary>
-    private async Task<OctorateAnswer> SendAsync(Func<HttpRequestMessage> createRequest, string operation, Caller caller, CancellationToken ct)
+    private async Task<OctorateAnswer> SendAsync(
+        Func<HttpRequestMessage> createRequest,
+        string operation,
+        Caller caller,
+        CancellationToken ct,
+        int? answerStatus = null)
     {
         var token = await caller.GetTokenAsync(ct);
         var tokenRefreshed = false;
@@ -523,7 +684,7 @@ public sealed class OctorateApiClient(
                 var body = await OctorateHttp.ReadBodyAsync(response, ct);
                 var elapsedMs = (long)timeProvider.GetElapsedTime(started).TotalMilliseconds;
                 // 304: a PATCH or a PUT whose content is identical to what Octorate holds answers "not modified" (S25, D13): it is done.
-                if (response.IsSuccessStatusCode || status == 304)
+                if (response.IsSuccessStatusCode || status == 304 || status == answerStatus)
                 {
                     logger.LogDebug(
                         "Octorate {Operation} for {Caller}: HTTP {StatusCode} in {ElapsedMs} ms", operation, caller.Label, status, elapsedMs);
@@ -723,6 +884,69 @@ public sealed class OctorateApiClient(
                 OctorateHttp.StringOf(item, "channelName"),
                 OctorateHttp.StringOf(item, "hotelId"),
                 OctorateHttp.StringOf(item, "status"));
+
+    /// <summary>A PMS room of an answer of <c>pms</c>, or <c>null</c> when the item has no usable id.</summary>
+    internal static OctoratePmsRoom? ReadPmsRoom(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var id = OctorateHttp.StringOf(item, "id");
+        return id is null || id.Length > MaxAccommodationIdLength
+            ? null
+            : new OctoratePmsRoom(id, OctorateHttp.StringOf(item, "parentId"), OctorateHttp.StringOf(item, "name"));
+    }
+
+    /// <summary>The id of the payment in the answer of a payment registration (<c>{"id": 21575084, ...}</c>); <c>null</c> when it has none.</summary>
+    internal static string? PaymentIdOf(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return null;
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            return OctorateHttp.StringOf(Unwrap(document.RootElement), "id");
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The reason Octorate gives when a room cannot be booked (sandbox: <c>Not sellable</c>, <c>Day size mismatch</c>): the text of the answer,
+    /// or its <c>message</c>, <c>description</c>, <c>error</c> or <c>type</c>, on one line and at most <see cref="MaxReasonLength"/> characters;
+    /// <c>null</c> for an empty answer or a page of HTML.
+    /// </summary>
+    internal static string? ReasonOf(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return null;
+
+        string? text;
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            text = root.ValueKind == JsonValueKind.String
+                ? root.GetString()
+                : FirstStringOf(root, ReasonMembers);
+        }
+        catch (JsonException)
+        {
+            text = body.TrimStart().StartsWith('<') ? null : body;
+        }
+
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var line = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        return line.Length <= MaxReasonLength ? line : line[..MaxReasonLength];
+    }
+
+    /// <summary>The names under which Octorate gives the reason of a refusal, most specific first.</summary>
+    private static readonly string[] ReasonMembers = ["message", "description", "error", "type"];
 
     /// <summary>The names under which a portal's identifier may come, most specific first; a number is read as its text.</summary>
     private static readonly string[] PortalCodeMembers = ["portalCode", "channelId", "portalId", "id", "code"];

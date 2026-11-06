@@ -287,6 +287,18 @@ public class Booking : ITenantOwned
     public string? CheckoutTokenHash { get; set; }
 
     /// <summary>
+    /// How the guest of a booking the host entered is to pay it (the payment step of the new-booking wizard, NF-74, E08/F01/US01/T05):
+    /// payment link, at the property or bank transfer. <c>null</c> for every other booking and for the host bookings made before it.
+    /// </summary>
+    public HostPaymentArrangement? HostPaymentArrangement { get; set; }
+
+    /// <summary>
+    /// When the last payment link of the balance was sent to the guest (UTC, E08/F01/US01/T05). A new link replaces the token in
+    /// <see cref="CheckoutTokenHash"/>, so the previous link stops working. <c>null</c> when no link was ever sent.
+    /// </summary>
+    public DateTime? PaymentLinkSentAt { get; set; }
+
+    /// <summary>
     /// SHA-256 (hex) of the one-time guest self-cancellation token (BK-02, BK-07): the raw token is only in the
     /// signed link emailed to the guest. Invalidated after use or when a new link is sent.
     /// </summary>

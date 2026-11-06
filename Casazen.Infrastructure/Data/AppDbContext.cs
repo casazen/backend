@@ -326,6 +326,9 @@ public class AppDbContext(
     public DbSet<OctorateListingMapping> OctorateListingMappings { get; set; } = null!;
     public DbSet<OctorateOAuthState> OctorateOAuthStates { get; set; } = null!;
 
+    // The mirror of the CasaZen bookings on Octorate: the state of the last operation sent for each booking (E08/F01/US01/T01, ADR-031)
+    public DbSet<OctorateBookingSync> OctorateBookingSyncs { get; set; } = null!;
+
     // The check-in guests and the states of a stay sent to Octorate (NF-41, NF-45, E03/F01/US01/T03): ids, hashes and codes, no personal data
     public DbSet<StayGuestOctorateLink> StayGuestOctorateLinks { get; set; } = null!;
     public DbSet<OctorateStayStateSync> OctorateStayStateSyncs { get; set; } = null!;
@@ -1672,6 +1675,29 @@ public class AppDbContext(
                 .HasDatabaseName(OctorateOAuthState.StateHashIndexName);
             entity.HasIndex(s => s.ExpiresAt);
         });
+
+        // The mirror of a CasaZen booking on Octorate (E08/F01/US01/T01, ADR-031): one row per booking, gone with its booking (CASCADE);
+        // the list of the failures of an org reads (OrgId, State). The dates Octorate holds after a 409 are jsonb.
+        modelBuilder.Entity<OctorateBookingSync>(entity =>
+        {
+            entity.HasOne<Booking>()
+                .WithMany()
+                .HasForeignKey(s => s.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.Property(s => s.OctorateVersionJson).HasColumnType("jsonb");
+            entity.HasIndex(s => s.BookingId)
+                .IsUnique()
+                .HasDatabaseName(OctorateBookingSync.BookingIndexName);
+            entity.HasIndex(s => new { s.OrgId, s.State });
+        });
+
+        // A payment is recorded on its Octorate reservation once (E08/F01/US01/T01, AC-NF74-4): its transaction is unique in the org. Only
+        // the payments recorded there are in the index.
+        modelBuilder.Entity<Payment>()
+            .HasIndex(p => new { p.OrgId, p.OctorateTransactionId })
+            .IsUnique()
+            .HasFilter("\"OctorateTransactionId\" IS NOT NULL")
+            .HasDatabaseName(Payment.OctorateTransactionIndexName);
 
         // ─── Check-in to Octorate (NF-41, NF-45, E03/F01/US01/T03) ───────────────
         // The guests sent (one per booking and position) and the states of a stay (one per booking and state); the tenant query filter is

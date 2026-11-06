@@ -9,6 +9,15 @@ namespace Casazen.Core.Entities;
 [Table("Payments")]
 public class Payment : ITenantOwned
 {
+    /// <summary>Longest <see cref="OctorateTransactionId"/> (varchar 100).</summary>
+    public const int OctorateTransactionIdMaxLength = 100;
+
+    /// <summary>
+    /// Name of the unique index on (<see cref="OrgId"/>, <see cref="OctorateTransactionId"/>), filtered to the payments recorded in Octorate:
+    /// a payment is recorded on its reservation once (E08/F01/US01/T01, AC-NF74-4).
+    /// </summary>
+    public const string OctorateTransactionIndexName = "UIX_Payments_OrgId_OctorateTransactionId";
+
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -73,6 +82,17 @@ public class Payment : ITenantOwned
     public decimal NetAmountAfterWithholding { get; set; }
 
     public WithholdingSource WithholdingSource { get; set; } = WithholdingSource.None;
+
+    /// <summary>
+    /// The <c>transaction</c> this payment was recorded with on its Octorate reservation (E08/F01/US01/T04): the Stripe PaymentIntent id, or
+    /// <c>casazen-{paymentId}</c> for a payment the host recorded by hand. Unique in the org (<see cref="OctorateTransactionIndexName"/>), so
+    /// a payment is recorded in Octorate once; <c>null</c> while it is not recorded there.
+    /// </summary>
+    [MaxLength(OctorateTransactionIdMaxLength)]
+    public string? OctorateTransactionId { get; set; }
+
+    /// <summary>When Octorate confirmed the payment on the reservation (UTC); <c>null</c> while it is not recorded there.</summary>
+    public DateTime? OctorateRegisteredAt { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

@@ -339,6 +339,14 @@ internal static class PostgresAdvisoryLocks
         OctorateReservation = 20_121,
 
         /// <summary>
+        /// The mirror of one CasaZen booking on Octorate (key: booking id, <c>bookingId.ToString("N")</c>, E08/F01/US01/T03): the create and the
+        /// payments of a booking are sent one at a time, so a reservation is created once and a payment recorded once even when two deliveries
+        /// of an event, or a retry of the host, run together. A session lock (<see cref="TryAcquireSessionLockAsync"/>): held across the
+        /// commit of the attempt, the call to Octorate and the commit of its outcome; a holder that finds it taken leaves and is delivered again.
+        /// </summary>
+        OctorateBookingSync = 20_131,
+
+        /// <summary>
         /// The check-in of one booking to Octorate (E03/F01/US01/T03; key: <c>{bookingId:N}:guests</c> for the send of its guests,
         /// <c>{bookingId:N}:state:{state}</c> for the push of one state): each runs one at a time (session lock, held for the whole send), so two
         /// runs never create the same guest twice nor push the same state twice. The values 20_131 and 20_132 belong to other scopes of the

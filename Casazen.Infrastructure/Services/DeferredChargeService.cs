@@ -668,12 +668,19 @@ public sealed class DeferredChargeService(
         switch (status)
         {
             case PaymentStatus.Completed:
-                payment.Status = PaymentStatus.Completed;
-                payment.Amount = paymentIntent.Amount > 0 ? paymentIntent.Amount / 100m : payment.Amount;
-                payment.ProcessedAt ??= now;
-                booking.DeferredChargeFailedAt = null;
-                booking.UpdatedAt = now;
-                return null;
+                {
+                    var completedNow = payment.Status != PaymentStatus.Completed;
+                    payment.Status = PaymentStatus.Completed;
+                    payment.Amount = paymentIntent.Amount > 0 ? paymentIntent.Amount / 100m : payment.Amount;
+                    payment.ProcessedAt ??= now;
+                    booking.DeferredChargeFailedAt = null;
+                    booking.UpdatedAt = now;
+
+                    // E08/F01/US01/T04: the deferred charge is a payment received, saved with its event (the Octorate handler records it).
+                    if (completedNow)
+                        PaymentEvents.RecordSucceeded(domainEvents, db, payment, paymentIntent.Currency);
+                    return null;
+                }
 
             case PaymentStatus.Processing:
                 payment.Status = PaymentStatus.Processing;
