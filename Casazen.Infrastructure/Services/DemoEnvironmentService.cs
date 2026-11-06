@@ -138,6 +138,7 @@ public class DemoEnvironmentService(
         await RemoveShowcaseMarketplaceAsync(orgId, cancellationToken);
         await RemoveShowcaseTouristTaxRulesAsync(orgId, cancellationToken);
         await RemoveShowcaseMessageThreadsAsync(orgId, cancellationToken);
+        await RemoveShowcaseMessageTemplatesAsync(orgId, cancellationToken);
         await RemoveShowcaseCrmAsync(orgId, cancellationToken);
         await RemoveShowcaseFiscalIssuerProfilesAsync(orgId, cancellationToken);
         await RemoveShowcaseOnboardingAsync(orgId, cancellationToken);
@@ -158,6 +159,10 @@ public class DemoEnvironmentService(
         // NF-61, NF-64: the conversations of the hub of messages are about the houses and stays just created, so they come after them.
         foreach (var thread in DemoShowcaseCatalog.MessageThreads)
             await CreateMessageThreadAsync(orgId, ownerId, thread, cancellationToken);
+
+        // E05/F02/US02/T02: the message templates of the demo host point at no house or stay, so they can come anywhere after the removal above.
+        foreach (var messageTemplate in DemoShowcaseCatalog.HostMessageTemplates)
+            await CreateHostMessageTemplateAsync(orgId, messageTemplate, cancellationToken);
 
         // NF-90: the welcome link (the QR code) of the demo house, which the houses just created make possible.
         foreach (var welcomeLink in DemoShowcaseCatalog.WelcomeLinks)
@@ -927,6 +932,58 @@ public class DemoEnvironmentService(
 
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.OtaMessageThread, otaThread.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes the message templates the showcase wrote for the org, found by their markers (E05/F02/US02/T02), and the markers: a template points at
+    /// no house and no stay, so the removal of the houses would leave it behind. A template the host wrote has no marker and is never touched.
+    /// Runs before the showcase houses go: that removal drops every showcase marker of the org.
+    /// </summary>
+    internal async Task RemoveShowcaseMessageTemplatesAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var markers = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.MessageTemplate)
+            .ToListAsync(cancellationToken);
+        if (markers.Count == 0)
+            return;
+
+        var templateIds = markers.Select(m => m.EntityId).ToList();
+        var templates = await db.MessageTemplates.IgnoreQueryFilters([Tenant])
+            .Where(t => t.OrgId == orgId && templateIds.Contains(t.Id))
+            .ToListAsync(cancellationToken);
+        db.MessageTemplates.RemoveRange(templates);
+        db.TestDataMarkers.RemoveRange(markers);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// One message template of the demo host (E05/F02/US02/T02): invented words that say TEST, with the variables a real template may use. A host
+    /// may already have a template with the same name and language (they are unique for each org): then the showcase one is skipped, with a line in
+    /// the log, and the host's is never touched or marked.
+    /// </summary>
+    internal async Task CreateHostMessageTemplateAsync(Guid orgId, DemoHostMessageTemplate template, CancellationToken cancellationToken)
+    {
+        if (await db.MessageTemplates.IgnoreQueryFilters([Tenant])
+                .AnyAsync(t => t.OrgId == orgId && t.Name == template.Name && t.Language == template.Language, cancellationToken))
+        {
+            logger.LogInformation("Demo message template {Key} skipped: org {OrgId} already has one with that name and language", template.Key, orgId);
+            return;
+        }
+
+        var now = UtcNow();
+        var row = new MessageTemplate
+        {
+            OrgId = orgId,
+            Name = template.Name,
+            Language = template.Language,
+            Body = template.Body,
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        db.MessageTemplates.Add(row);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.MessageTemplate, row.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
     /// <summary>The id of the showcase row of <paramref name="entityType"/> that came from the template <paramref name="templateKey"/>, or <c>null</c> when there is none.</summary>

@@ -92,6 +92,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.MarketplacePartners.Select(partner => partner.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplaceActivations.Select(activation => activation.Scenario))
             .Concat(DemoShowcaseCatalog.MessageThreads.Select(thread => thread.Scenario))
+            .Concat(DemoShowcaseCatalog.HostMessageTemplates.Select(template => template.Scenario))
             .Concat(DemoShowcaseCatalog.FiscalIssuerProfiles.Select(profile => profile.Scenario))
             .Concat(DemoShowcaseCatalog.TouristTaxChannelRules.Select(rule => rule.Scenario))
             .Concat(DemoShowcaseCatalog.WelcomeLinks.Select(link => link.Scenario))

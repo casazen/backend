@@ -177,6 +177,65 @@ public class MessageSyncRulesTests
         Assert.Equal((OtaMessageDirection.Outbound, MessageOrigin.Person, (string?)null), (separate.Direction, separate.Origin, separate.IdempotencyKey));
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (OCT-10). A row CasaZen wrote and never saw the answer for (the process stopped after the call, or the save of the outcome failed)
+    /// stays «Created» with no id: once it is older than the time a send can take, the message of Octorate completes it instead of being imported as a second
+    /// row (the same message shown twice, the first «sending» for ever); a row written a moment ago is a send that is still running, and is left to its own save.
+    /// </summary>
+    [Fact]
+    public async Task ARowWrittenAndNeverAnswered_IsCompletedByTheMessageOfOctorate_OnceItIsOlderThanASend_AndNeverDuplicated_Test()
+    {
+        var h = new MessageSyncHarness();
+        var acc = MessageSyncHarness.Accommodation;
+        var now = MessageSyncHarness.Now.UtcDateTime;
+        h.Client.Setup(c => c.GetChatThreadAsync(acc, ThreadId, It.IsAny<CancellationToken>())).ReturnsAsync(MessageSyncHarness.Thread(ThreadId));
+        h.Client.Setup(c => c.GetChatMessagesAsync(acc, ThreadId, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([MessageSyncHarness.Inbound("70001", ThreadId)]);
+        await using (var db = h.NewDb())
+            await h.Service(db).SyncThreadAsync(MessageSyncHarness.OrgA, acc, ThreadId, null, CancellationToken.None);
+
+        var threadGuid = (await h.ReadAsync(db => db.OtaMessageThreads.SingleAsync())).Id;
+        await using (var seed = h.NewDb())
+        {
+            seed.OtaMessages.AddRange(
+                Written(threadGuid, "Il codice della cassetta e 1234", now.AddMinutes(-9), "k-1"),
+                Written(threadGuid, "Il parcheggio e gratuito", now.AddSeconds(-20), "k-2"));
+            await seed.SaveChangesAsync();
+        }
+
+        h.Client.Setup(c => c.GetChatMessagesAsync(acc, ThreadId, It.IsAny<DateTime?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                MessageSyncHarness.Inbound("70001", ThreadId),
+                Outbound("80001", "Il codice della cassetta e 1234", now.AddMinutes(-8)),
+                Outbound("80002", "Il parcheggio e gratuito", now.AddSeconds(-15)),
+            ]);
+        await using (var db = h.NewDb())
+            await h.Service(db).SyncThreadAsync(MessageSyncHarness.OrgA, acc, ThreadId, null, CancellationToken.None);
+
+        var rows = await h.ReadAsync(db => db.OtaMessages.OrderBy(m => m.SentAt).ToListAsync());
+        Assert.Equal(4, rows.Count);
+
+        // The old row got the id and the state Octorate reports, and kept what CasaZen knew of it.
+        var completed = Assert.Single(rows, m => m.IdempotencyKey == "k-1");
+        Assert.Equal("80001", completed.OctorateMessageId);
+        Assert.Equal(OtaMessageDeliveryState.Sent, completed.DeliveryState);
+        Assert.Equal("auth0|host", completed.SentByUserId);
+
+        // The row of a send that may still be running is not touched; the message of Octorate is a row of its own, which the save of that send takes away.
+        var running = Assert.Single(rows, m => m.IdempotencyKey == "k-2");
+        Assert.Null(running.OctorateMessageId);
+        Assert.Equal(OtaMessageDeliveryState.Created, running.DeliveryState);
+        Assert.Single(rows, m => m.OctorateMessageId == "80002");
+    }
+
+    private static OtaMessage Written(Guid threadId, string text, DateTime createdAt, string key)
+    {
+        var row = Pending(threadId, text, createdAt, key);
+        row.DeliveryState = OtaMessageDeliveryState.Created;
+        return row;
+    }
+
     private static OtaMessage Pending(Guid threadId, string text, DateTime sentAt, string key) => new()
     {
         OrgId = MessageSyncHarness.OrgA,
