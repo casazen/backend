@@ -22,6 +22,19 @@ public static partial class PushRoutes
     public static string BookingMessages(Guid bookingId) => $"/bookings/{bookingId}/messages";
 
     /// <summary>
+    /// A conversation of the hub of messages (E05/F03, NF-65, ADR-032-R12): <c>/messages/{threadKey}</c>, where the key is <c>ota:{guid}</c> for a
+    /// conversation of a channel or <c>direct:{guid}</c> for one of the guest area. The app mirrors it in <c>notification-routes.ts</c>.
+    /// </summary>
+    /// <exception cref="ArgumentException">The key is not one of the two forms: a route is built only for a conversation that exists in the hub.</exception>
+    public static string MessageThread(string threadKey)
+    {
+        if (string.IsNullOrEmpty(threadKey) || !ThreadKeyPattern().IsMatch(threadKey))
+            throw new ArgumentException("A thread key is 'ota:' or 'direct:' followed by a GUID.", nameof(threadKey));
+
+        return $"/messages/{threadKey}";
+    }
+
+    /// <summary>
     /// A request in the supplier area of the app: the destination of every push to a supplier org about a service request (a
     /// new request, the answer of the customer, a payment received). An app version without that area opens on its usual screen.
     /// </summary>
@@ -31,7 +44,10 @@ public static partial class PushRoutes
     public static bool IsAppRoute(string? route) => route is not null && AppRoutePattern().IsMatch(route);
 
     [GeneratedRegex(
-        "^(/properties|/bookings/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(/checkout|/messages)?|/supplier/requests/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$",
+        "^(/properties|/bookings/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(/checkout|/messages)?|/messages/(ota|direct):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|/supplier/requests/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$",
         RegexOptions.CultureInvariant)]
     private static partial Regex AppRoutePattern();
+
+    [GeneratedRegex("^(ota|direct):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", RegexOptions.CultureInvariant)]
+    private static partial Regex ThreadKeyPattern();
 }

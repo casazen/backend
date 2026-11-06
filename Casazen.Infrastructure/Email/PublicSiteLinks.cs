@@ -316,6 +316,16 @@ public sealed class PublicSiteLinks(IOptions<PublicSiteOptions> options)
     public string HostBookingMessages(Guid bookingId) => Build($"/app/short-rent/bookings/{bookingId:D}?tab=messages");
 
     /// <summary>
+    /// Host console: one conversation of the hub of messages (route <c>/app/short-rent/messages/:threadKey</c>, E05/F02, NF-65), where the key is
+    /// <c>ota:{guid}</c> for a conversation of a channel. The key is only letters, digits, a colon and dashes, so it needs no escaping.
+    /// </summary>
+    public string HostMessageThread(string threadKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(threadKey);
+        return Build($"/app/short-rent/messages/{threadKey}");
+    }
+
+    /// <summary>
     /// Host console: the page of one property in the area of its rental mode (routes <c>/app/short-rent/properties/:id</c> for
     /// <see cref="Core.Entities.Enums.RentalMode.Short"/>, <c>/app/long-rent/properties/:id</c> for
     /// <see cref="Core.Entities.Enums.RentalMode.Long"/>, PM-02).

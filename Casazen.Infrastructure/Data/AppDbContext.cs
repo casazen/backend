@@ -261,6 +261,10 @@ public class AppDbContext(
     public DbSet<PopupAlert> PopupAlerts { get; set; } = null!;
     public DbSet<UserNotificationPreferences> UserNotificationPreferences { get; set; } = null!;
 
+    // What each user chose for each kind of event, and the slot of the one-email-every-ten-minutes rule (E05/F03, NF-65)
+    public DbSet<UserNotificationChannelSetting> UserNotificationChannelSettings { get; set; } = null!;
+    public DbSet<NotificationEmailSlot> NotificationEmailSlots { get; set; } = null!;
+
     // Approval queue for items requiring human decision before taking effect (NF-06)
     public DbSet<ApprovalQueueItem> ApprovalQueueItems { get; set; } = null!;
 
@@ -1618,6 +1622,11 @@ public class AppDbContext(
         // Both go with the user and with the org (ON DELETE CASCADE); the preferences are unique per (org, user).
         modelBuilder.ApplyConfiguration(new PopupAlertConfiguration());
         modelBuilder.ApplyConfiguration(new UserNotificationPreferencesConfiguration());
+
+        // ─── What each user chose for each kind of event, and the email slot of a conversation (E05/F03, NF-65) ──────
+        // Both go with the user and with the org (ON DELETE CASCADE); unique per (org, user, event type) and per (org, user, conversation).
+        modelBuilder.ApplyConfiguration(new UserNotificationChannelSettingConfiguration());
+        modelBuilder.ApplyConfiguration(new NotificationEmailSlotConfiguration());
 
         // ─── Verified reviews (DB-12a) ──────────────────────────────────────────
         // A review goes with its booking and its property (a property is soft-deleted, so in practice it stays for good): the host has no

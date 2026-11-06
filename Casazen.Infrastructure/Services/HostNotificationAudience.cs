@@ -32,6 +32,22 @@ namespace Casazen.Infrastructure.Services;
 internal static class HostNotificationAudience
 {
     /// <summary>
+    /// The users of <paramref name="orgId"/> to tell about something that belongs to the org and to no property (NF-65: a conversation of a channel
+    /// whose listing is not mapped yet): the administrators, the owner and the <c>Admin</c>s. Nobody limited to some properties is among them: the
+    /// thing is outside every «Solo alcuni» reach. Active accounts only, never a deactivated member.
+    /// </summary>
+    public static IQueryable<User> AdministratorsToTell(AppDbContext db, Guid orgId) =>
+        db.Users
+            .AsNoTracking()
+            .Where(u => u.OrgId == orgId && u.IsActive)
+            .Where(u => !db.OrgMembers.IgnoreQueryFilters().Any(m => m.UserId == u.Id && m.Status == OrgMemberStatus.Deactivated))
+            .Where(u => db.OrgMembers.IgnoreQueryFilters().Any(m =>
+                m.UserId == u.Id
+                && m.OrgId == orgId
+                && m.Status == OrgMemberStatus.Active
+                && (m.Role == OrgRole.Owner || m.Role == OrgRole.Admin)));
+
+    /// <summary>
     /// The users of <paramref name="orgId"/> to tell about the property <paramref name="propertyId"/>, whose person in charge is
     /// <paramref name="responsibleUserId"/> (<c>null</c> = nobody named) and whose creator is <paramref name="creatorUserId"/>.
     /// </summary>

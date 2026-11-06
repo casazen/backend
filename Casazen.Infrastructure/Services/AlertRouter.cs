@@ -112,22 +112,8 @@ public sealed class AlertRouter(
         if (PopupAlert.IsLegal(type))
             return null;
 
-        var start = preferences.QuietHoursStart;
-        var end = preferences.QuietHoursEnd;
-        var local = RomeCalendar.ToRome(now).DateTime;
-        var time = TimeOnly.FromDateTime(local);
-
-        // [start, end): a window that ends before it starts runs over midnight, start equal to end is empty.
-        if (!time.IsBetween(start, end))
-            return null;
-
-        // In the evening part of a window over midnight the quiet hours end the next morning, in every other case today.
-        var endsTomorrow = start > end && time >= start;
-        var endDate = DateOnly.FromDateTime(local).AddDays(endsTomorrow ? 1 : 0);
-        var until = RomeCalendar.ToUtc(endDate, end);
-
-        // The hour that happens twice when the clocks go back can put the end of the window at an instant that has already passed.
-        return until > now ? until : null;
+        // The one definition of the quiet hours, shared with the preferences of the notifications (NF-65).
+        return NotificationPreferenceRules.QuietHoursEndUtc(preferences.QuietHoursStart, preferences.QuietHoursEnd, now);
     }
 
     private Task<bool> IsOpenAsync(Guid orgId, string userId, AlertType type, string entityType, Guid entityId, CancellationToken ct) =>

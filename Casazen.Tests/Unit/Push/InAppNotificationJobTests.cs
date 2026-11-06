@@ -189,7 +189,11 @@ public class InAppNotificationJobTests : IDisposable
             [PushAudienceKind.VerificationOperators] = PushAudience.VerificationOperators(world.BookingId),
         };
 
-        foreach (var kind in Enum.GetValues<PushAudienceKind>())
+        // NF-65: a push to one user is the push channel of that user's choice. The counter of the bell is another channel, which the caller
+        // delivers when the user chose it, with its own key: the decorator queues no notification for it (InAppNotificationPushDecoratorTests).
+        var withoutNotificationByDesign = new HashSet<PushAudienceKind> { PushAudienceKind.User };
+
+        foreach (var kind in Enum.GetValues<PushAudienceKind>().Where(k => !withoutNotificationByDesign.Contains(k)))
         {
             Assert.True(audiences.ContainsKey(kind), $"PushAudienceKind.{kind} has no case in this test: add its rule to InAppNotificationJob.");
             await _kit.Job().CreateAsync($"key:{kind}", Queued(audiences[kind]), CancellationToken.None);
