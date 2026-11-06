@@ -490,6 +490,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IConcordatoFacileAdminService, ConcordatoFacileAdminService>();
         // Alloggiati Web credentials of a property: write-only, encrypted at rest (CO-14, A5-30).
         services.AddScoped<IQuesturaCredentialsService, QuesturaCredentialsService>();
+        // Who sends the police and ISTAT communications of a property (stored, or the default of PO-02) through one write path, and the
+        // delegation of the Alloggiati transmission of the org (ADR-029, AW-R02, E03/F01/US05/T02). The sender switch with its checks
+        // and the endpoints sit on top of them (E03/F01/US02/T01).
+        services.AddScoped<IPropertySenderStore, PropertySenderStore>();
+        services.AddScoped<IAlloggiatiDelegationService, AlloggiatiDelegationService>();
 
         // Multi-tenant Org boundary (US-004): tenant resolution + org/entitlement reads.
         // One instance per request: the EF filter reads it, the middleware and the org resolver write it (A1-20).

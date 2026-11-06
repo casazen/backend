@@ -4265,4 +4265,13 @@
   <data name="OctorateRoomRequired" xml:space="preserve">
     <value>Indica la camera dell'annuncio.</value>
   </data>
+  <data name="SenderNotApplicable" xml:space="preserve">
+    <value>Questo immobile non è in Italia: non c'è da scegliere chi invia le comunicazioni ad Alloggiati Web e all'ISTAT. Le comunicazioni del suo Paese restano a cura tua.</value>
+  </data>
+  <data name="SenderChangedConcurrently" xml:space="preserve">
+    <value>Un'altra persona ha appena cambiato chi invia le comunicazioni di questo immobile: ricarica la pagina e controlla prima di cambiarlo di nuovo.</value>
+  </data>
+  <data name="AlloggiatiDelegationVersionInvalid" xml:space="preserve">
+    <value>La versione del testo della delega non è valida: deve essere il codice della versione (lettere, cifre, punto, trattino), al massimo 50 caratteri.</value>
+  </data>
 </root>

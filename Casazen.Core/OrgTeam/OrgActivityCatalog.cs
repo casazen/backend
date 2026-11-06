@@ -60,10 +60,25 @@ public static class OrgActivityDetailKeys
     /// </summary>
     public const string Reminders = "reminders";
 
+    /// <summary>
+    /// Who sent the police and ISTAT communications of a property before a change (E03/F01/US05/T02): the name of the
+    /// <see cref="ComplianceSenderType"/> (<c>ChannelManager</c>, <c>CasaZen</c>, <c>Manual</c>).
+    /// </summary>
+    public const string FromSender = "fromSender";
+
+    /// <summary>Who sends them after the change, written like <see cref="FromSender"/>.</summary>
+    public const string ToSender = "toSender";
+
+    /// <summary>
+    /// The version of the delegation text an org accepted when it delegated the Alloggiati transmission (a code of the legal
+    /// documents, e.g. <c>2026-11-v1</c>), never the text. Written only when it is a short code of the log.
+    /// </summary>
+    public const string DelegationVersion = "delegationVersion";
+
     public static IReadOnlyList<string> All { get; } =
     [
         Role, FromRole, ToRole, Scope, Granted, Revoked, Released, FromTier, ToTier, Source, RequestedArea, FromMode, ToMode, EffectiveOn,
-        FromAreas, ToAreas, Reminders,
+        FromAreas, ToAreas, Reminders, FromSender, ToSender, DelegationVersion,
     ];
 }
 
@@ -167,6 +182,14 @@ public static partial class OrgActivityCatalog
 
         // ConcordatoFacile gift.
         new(OrgActivityType.AdminGrantedConcordatoFacileGift, OrgActivityArea.Account, OrgActivitySubjectType.Org, []),
+
+        // The police and ISTAT communications (E03/F01/US05/T02): who sends them for a property (ADR-029-R4), and the delegation of the
+        // Alloggiati transmission of the org (AW-R02, ADR-015-R10).
+        new(OrgActivityType.PropertySenderChanged, OrgActivityArea.ShortRent, OrgActivitySubjectType.Property,
+            [OrgActivityDetailKeys.FromSender, OrgActivityDetailKeys.ToSender]),
+        new(OrgActivityType.AlloggiatiDelegationGranted, OrgActivityArea.ShortRent, OrgActivitySubjectType.Org,
+            [OrgActivityDetailKeys.DelegationVersion]),
+        new(OrgActivityType.AlloggiatiDelegationRevoked, OrgActivityArea.ShortRent, OrgActivitySubjectType.Org, []),
     ];
 
     /// <summary>Every event the log can record, in the order of the runbook.</summary>
