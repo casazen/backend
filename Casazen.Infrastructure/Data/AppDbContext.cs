@@ -354,6 +354,14 @@ public class AppDbContext(
     // The tourist tax a host paid to a comune and the receipt of the payment: the «paid» half of the summary per comune (NF-100, REP-05)
     public DbSet<TouristTaxRemittance> TouristTaxRemittances { get; set; } = null!;
 
+    // The tourist tax per guest (NF-46, ADR-037, E03/F01/US07/T01): the exemption reasons and the channel rules (platform reference data),
+    // the rate a host declares for a comune with no official one and the confirmed tax of a stay (tenant-owned; its lines are reached only
+    // through it)
+    public DbSet<TouristTaxExemptionReason> TouristTaxExemptionReasons { get; set; } = null!;
+    public DbSet<TouristTaxChannelRule> TouristTaxChannelRules { get; set; } = null!;
+    public DbSet<OrgTouristTaxRate> OrgTouristTaxRates { get; set; } = null!;
+    public DbSet<StayTouristTax> StayTouristTaxes { get; set; } = null!;
+
     // The marketplace (E09/F01, NF-54): the portal catalog cached from Octorate, the partners the platform admin curates with their texts
     // (platform data, no tenant), and what each org has activated (tenant-owned)
     public DbSet<MarketplacePortal> MarketplacePortals { get; set; } = null!;
@@ -1719,6 +1727,15 @@ public class AppDbContext(
                 t.HasCheckConstraint("CK_TouristTaxRemittances_PeriodOrder", "\"PeriodFrom\" <= \"PeriodTo\"");
             });
         });
+
+        // ─── Tourist tax per guest (NF-46, ADR-037) ──────────────────────────────
+        // Reference data (exemption reasons, seeded; channel rules, never seeded), the host-declared rates and the confirmed stay record with
+        // its lines. The tenant query filter is applied below, to every ITenantOwned entity.
+        modelBuilder.ApplyConfiguration(new TouristTaxExemptionReasonConfiguration());
+        modelBuilder.ApplyConfiguration(new TouristTaxChannelRuleConfiguration());
+        modelBuilder.ApplyConfiguration(new OrgTouristTaxRateConfiguration());
+        modelBuilder.ApplyConfiguration(new StayTouristTaxConfiguration());
+        modelBuilder.ApplyConfiguration(new StayTouristTaxGuestConfiguration());
 
         // ─── Marketplace (E09/F01, NF-54, NF-56, NF-57, NF-59) ───────────────────
         // The portals of the channel manager are platform data refreshed once a day, unique by the code Octorate gives them.
