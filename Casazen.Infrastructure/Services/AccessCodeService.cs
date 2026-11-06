@@ -96,6 +96,10 @@ public class AccessCodeService : IAccessCodeService
 
     public async Task<string?> ReleaseToGuestAsync(Guid bookingId, string channel, CancellationToken ct = default)
     {
+        // E03/F04/US02: the log records how the code left, so the channel is one of the known ones (never a free text).
+        if (!AccessCodeReleaseChannels.All.Contains(channel, StringComparer.Ordinal))
+            throw new ArgumentException($"Unknown release channel '{channel}'.", nameof(channel));
+
         // Check verification passed before releasing (AC-NF13-3, AC-NF13-6)
         if (!await IsVerificationPassedAsync(bookingId, ct))
         {
@@ -195,21 +199,19 @@ public class AccessCodeService : IAccessCodeService
                     .Max(ac => (DateTime?)ac.UpdatedAt)));
 
     /// <summary>
-    /// Checks if the booking's guest has passed biometric verification or operator verification.
+    /// The verification gate of both reads of the code (AC-NF13-6, AC-NF50-4, AC-NF24-4, E03/F04/US02): the latest
+    /// <see cref="BiometricVerificationLog"/> of the booking is an <see cref="BiometricOutcome.Accept"/>, written by the agent or by an operator's
+    /// approval. Since E03/F04/US02/T03 an operator's rejection writes a row too (<see cref="VerificationMethod.Operator"/>, <c>Reject</c>): who
+    /// decided does not open the gate, only an accepted outcome does. Internal so a test proves the gate.
     /// </summary>
-    private async Task<bool> IsVerificationPassedAsync(Guid bookingId, CancellationToken ct)
+    internal async Task<bool> IsVerificationPassedAsync(Guid bookingId, CancellationToken ct)
     {
         var verificationLog = await _db.BiometricVerificationLogs
             .Where(v => v.BookingId == bookingId)
             .OrderByDescending(v => v.CreatedAt)
             .FirstOrDefaultAsync(ct);
 
-        if (verificationLog == null)
-            return false;
-
-        // Accept if outcome is Accept OR if operator manually verified (AC-NF13-6)
-        return verificationLog.Outcome == BiometricOutcome.Accept
-            || verificationLog.OperatorUserId != null;
+        return verificationLog is { Outcome: BiometricOutcome.Accept };
     }
 }
 

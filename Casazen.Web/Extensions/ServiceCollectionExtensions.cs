@@ -438,6 +438,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBiometricVerificationService, BiometricVerificationService>();
         // NF-12: Operator verification queue for manual biometric decisions (ADR-013).
         services.AddScoped<IVerificationQueueService, VerificationQueueService>();
+        // E03/F04/US02/T03: the immediate alert to the operators (push, e-mail, urgent "To do") when a verification needs a person.
+        services.AddScoped<IVerificationOperatorAlerts, VerificationOperatorAlerts>();
         // NF-13: Property access codes with encryption and verification gating (E06/F03/US01/T01).
         services.AddScoped<IAccessCodeService, AccessCodeService>();
         // NF-15: Swiss compliance files of the Ticino properties (ADR-016, E08): police notification XML, OTR overnight CSV and the

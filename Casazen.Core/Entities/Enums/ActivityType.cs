@@ -77,4 +77,11 @@ public enum ActivityType
     /// too). About the booking, urgent: the host checks the booking and the calendars of the channels before a second guest arrives.
     /// </summary>
     BookingOverlap = 22,
+
+    /// <summary>
+    /// The identity of the guest of a stay waits for an operator (E03/F04/US02/T03, CHK-11): the agent asked for a review, the attempts are used,
+    /// the guest refused the biometric consent or asked for a person, or the check could not run. About the booking, urgent, leading to its
+    /// verification (<see cref="ActivityAction.VerifyIdentity"/>); closed by the operator's decision.
+    /// </summary>
+    IdentityVerification = 40,
 }

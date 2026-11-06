@@ -233,6 +233,7 @@ public sealed class PushDeliveryJob(
             PushAudienceKind.BookingHosts => await BookingHostDevicesAsync(audience.Id, cancellationToken),
             PushAudienceKind.PropertyHosts => await PropertyHostDevicesAsync(audience.Id, cancellationToken),
             PushAudienceKind.SupplierOrg => await SupplierDevicesAsync(audience.Id, cancellationToken),
+            PushAudienceKind.VerificationOperators => await VerificationOperatorDevicesAsync(audience.Id, cancellationToken),
             _ => throw new ArgumentOutOfRangeException(nameof(audience), audience.Kind, "Unknown push audience."),
         };
 
@@ -262,6 +263,37 @@ public sealed class PushDeliveryJob(
         }
 
         return await HostDevicesAsync(booking.OrgId, booking.PropertyId, booking.ResponsibleUserId, booking.OwnerId, cancellationToken);
+    }
+
+    /// <summary>
+    /// The devices of the users who decide the identity verification of the booking's guest (E03/F04/US02/T03): they hold
+    /// <c>verification.decision</c> and reach the property (<see cref="VerificationOperatorAudience"/>), registered in that org.
+    /// </summary>
+    private async Task<List<DeviceRegistration>> VerificationOperatorDevicesAsync(Guid bookingId, CancellationToken cancellationToken)
+    {
+        // IgnoreQueryFilters: background job without a tenant; the recipients are limited to the booking's org.
+        var booking = await db.Bookings
+            .AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(b => b.Id == bookingId)
+            .Select(b => new { b.OrgId, b.PropertyId, b.Property.OwnerId })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (booking is null)
+        {
+            logger.LogWarning("Push to the verification operators of booking {BookingId} skipped: booking not found", bookingId);
+            return [];
+        }
+
+        return await db.DeviceRegistrations
+            .AsNoTracking()
+            .Join(
+                VerificationOperatorAudience.UsersToTell(db, booking.OrgId, booking.PropertyId, booking.OwnerId),
+                device => device.UserId,
+                user => user.Id,
+                (device, user) => device)
+            .Where(device => device.OrgId == booking.OrgId)
+            .OrderBy(d => d.CreatedAt)
+            .ToListAsync(cancellationToken);
     }
 
     private async Task<List<DeviceRegistration>> PropertyHostDevicesAsync(Guid propertyId, CancellationToken cancellationToken)

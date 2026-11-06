@@ -3824,6 +3824,9 @@
   <data name="VerificationReasonRequired" xml:space="preserve">
     <value>Il motivo del rifiuto è obbligatorio</value>
   </data>
+  <data name="VerificationMetricsPeriodInvalid" xml:space="preserve">
+    <value>Il periodo non è valido: la data di inizio deve precedere quella di fine e il periodo non può superare 366 giorni.</value>
+  </data>
   <data name="BatchAlreadyDownloadedOrPaid" xml:space="preserve">
     <value>Il batch è già stato scaricato o pagato</value>
   </data>

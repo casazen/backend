@@ -3824,6 +3824,9 @@
   <data name="VerificationReasonRequired" xml:space="preserve">
     <value>A rejection reason is required</value>
   </data>
+  <data name="VerificationMetricsPeriodInvalid" xml:space="preserve">
+    <value>The period is not valid: the start date must come before the end date and the period cannot be longer than 366 days.</value>
+  </data>
   <data name="BatchAlreadyDownloadedOrPaid" xml:space="preserve">
     <value>The batch has already been downloaded or paid</value>
   </data>

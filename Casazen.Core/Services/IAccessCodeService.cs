@@ -19,7 +19,9 @@ public interface IAccessCodeService
 
     /// <summary>
     /// Gets the access code for a booking (permission and verification required).
-    /// Logs the access and BLOCKS if verification not passed.
+    /// Logs the access and BLOCKS if verification not passed. <b>The verification gate</b> (shared with <see cref="ReleaseToGuestAsync"/>):
+    /// the latest <c>BiometricVerificationLog</c> of the booking is an <c>Accept</c>, of the agent or of an operator's approval; a review, a
+    /// failed attempt, an operator's rejection or no row at all release nothing (AC-NF50-4, AC-NF24-4).
     /// </summary>
     /// <param name="bookingId">Booking to get code for</param>
     /// <param name="userId">User requesting the code</param>
@@ -29,10 +31,11 @@ public interface IAccessCodeService
 
     /// <summary>
     /// Releases the access code to a guest (verification required, logged).
-    /// Used by guest-facing endpoints after verification passes.
+    /// Used by guest-facing endpoints after verification passes. Same gate as <see cref="GetAccessCodeAsync"/>; the release log records the
+    /// channel and the time, never the code.
     /// </summary>
     /// <param name="bookingId">Booking to release code for</param>
-    /// <param name="channel">How the code is released ("screen", "email")</param>
+    /// <param name="channel">How the code is released, one of <see cref="AccessCodeReleaseChannels"/>; another value is an <see cref="ArgumentException"/></param>
     /// <param name="ct">Cancellation token</param>
     /// <returns>Plain text code, or null if verification not passed</returns>
     Task<string?> ReleaseToGuestAsync(Guid bookingId, string channel, CancellationToken ct = default);
@@ -52,6 +55,28 @@ public interface IAccessCodeService
     /// <param name="pageSize">The page size wanted, brought within 1 and <see cref="AccessCodeStatusPage.MaxPageSize"/>.</param>
     /// <param name="ct">Cancellation token</param>
     Task<AccessCodeStatusPage> GetStatusAsync(HostScope scope, int page, int pageSize, CancellationToken ct = default);
+}
+
+/// <summary>
+/// The channels a lock code is released through (<see cref="IAccessCodeService.ReleaseToGuestAsync"/>): what the release log records, never the
+/// code (AC-NF13-4). E03/F04/US02.
+/// </summary>
+public static class AccessCodeReleaseChannels
+{
+    /// <summary>Shown to the guest on the check-in page, in the answer of a passed selfie (E03/F04/US02/T04).</summary>
+    public const string CheckInScreen = "checkin-screen";
+
+    /// <summary>E-mailed to the guest (template <c>GuestAccessCode</c>).</summary>
+    public const string Email = "email";
+
+    /// <summary>Released by the approval of an operator from the verification queue (E03/F04/US02/T03).</summary>
+    public const string Operator = "operator";
+
+    /// <summary>A screen of a guest-facing page (the channel of before E03/F04/US02).</summary>
+    public const string Screen = "screen";
+
+    /// <summary>Every channel; any other value is refused.</summary>
+    public static IReadOnlyList<string> All { get; } = [CheckInScreen, Email, Operator, Screen];
 }
 
 /// <summary>A page of the lock code status of the properties of the host (NF-50).</summary>
