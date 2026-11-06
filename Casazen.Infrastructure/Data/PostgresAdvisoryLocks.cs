@@ -337,6 +337,14 @@ internal static class PostgresAdvisoryLocks
         /// refused for dates another booking holds.
         /// </summary>
         OctorateReservation = 20_121,
+
+        /// <summary>
+        /// The import of the existing inventory of one OTA channel of one org (key: org id and channel code, <c>orgId.ToString("N") + ":" + code</c>,
+        /// E02/F01/US03, session lock held for the whole step): two commands of the same channel, from two batches or two requests, never ask
+        /// Octorate for the same room import, reservation import, calendar import or «mark connected» at once. A command that does not get the
+        /// lock leaves the channel as it is: the one that holds it is doing the work, and the next command resumes from the stamps.
+        /// </summary>
+        OctorateInventoryImport = 20_131,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();

@@ -53,6 +53,9 @@ public sealed class OctorateOptions
     /// <summary>The thresholds of the matcher of the listings (<c>Octorate:Mapping</c>, E02/F01/US02/T03).</summary>
     public OctorateMappingOptions Mapping { get; set; } = new();
 
+    /// <summary>The import of the listings that already exist on OTAs (<c>Octorate:ExistingInventory</c>, E02/F01/US03): the evidence of the pilot, channel by channel.</summary>
+    public OctorateExistingInventoryOptions ExistingInventory { get; set; } = new();
+
     /// <summary>The life of a consent state, brought into 1 to <see cref="MaxStateLifetimeMinutes"/> minutes.</summary>
     public TimeSpan StateLifetime =>
         TimeSpan.FromMinutes(StateLifetimeMinutes is >= 1 and <= MaxStateLifetimeMinutes ? StateLifetimeMinutes : DefaultStateLifetimeMinutes);

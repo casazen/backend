@@ -91,4 +91,31 @@ public interface IOctorateApiClient
     /// is one method and one <see cref="OctoratePortal"/> for every reader of the catalog (the marketplace cache, the channel costs report).
     /// </summary>
     Task<OctoratePortal[]> GetPortalsAsync(CancellationToken ct);
+
+    /// <summary>
+    /// Every connection of a channel the org's token sees, in one call (<c>GET /rest/v1/connection?fields=id,channelId,hotelId,status,
+    /// userLogged,accommodationId</c>, E02/F01/US03): how the import finds, after the person gave the access in the Octorate panel, the
+    /// connection of each listing to a channel and whether it was authorized. Only those fields are asked, so the portal credentials a
+    /// connection holds never reach CasaZen. An item without a numeric id, a channel or an accommodation is left out.
+    /// </summary>
+    Task<OctorateConnectionSummary[]> GetOrgConnectionsAsync(CancellationToken ct);
+
+    /// <summary>
+    /// <c>IMPORT_ROOMS</c> on one connection (<c>POST /rest/v1/connection/IMPORT_ROOMS/{acc}/{connection}</c>, E02/F01/US03, D6): Octorate
+    /// reads the rooms of the existing listing on the channel, ready to be mapped. It creates and publishes nothing on the channel. An
+    /// answer that cannot be read as the list of mappings the operation documents is <c>OctorateServerException</c>, never a success.
+    /// </summary>
+    Task<OctorateConnectionActionResult> ImportRoomsAsync(string accommodationId, string connectionId, CancellationToken ct);
+
+    /// <summary><c>IMPORT_RESERVATIONS</c> on one connection (the future reservations of the channel, inside Octorate): same shape and errors as <see cref="ImportRoomsAsync"/>.</summary>
+    Task<OctorateConnectionActionResult> ImportReservationsAsync(string accommodationId, string connectionId, CancellationToken ct);
+
+    /// <summary><c>IMPORT_CALENDAR</c> on one connection (the calendar of the channel, inside Octorate): same shape and errors as <see cref="ImportRoomsAsync"/>.</summary>
+    Task<OctorateConnectionActionResult> ImportCalendarAsync(string accommodationId, string connectionId, CancellationToken ct);
+
+    /// <summary>
+    /// <c>MARK_CONNECTED</c> on one connection (tells Octorate, and the channel when needed, that the connection is ready): same shape and
+    /// errors as <see cref="ImportRoomsAsync"/>. Called only for a listing a person confirmed.
+    /// </summary>
+    Task<OctorateConnectionActionResult> MarkConnectedAsync(string accommodationId, string connectionId, CancellationToken ct);
 }
