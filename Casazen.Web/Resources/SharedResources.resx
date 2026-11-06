@@ -4190,4 +4190,28 @@
   <data name="WizardDraftClientVersionInvalid" xml:space="preserve">
     <value>La versione della bozza non è valida.</value>
   </data>
+  <data name="TouristTaxComuneUnknown" xml:space="preserve">
+    <value>Il comune indicato non è uno dei comuni dei tuoi immobili: scegli un comune in cui hai almeno un immobile.</value>
+  </data>
+  <data name="TouristTaxAmountInvalid" xml:space="preserve">
+    <value>L'importo deve essere maggiore di zero, in euro, con al massimo due decimali.</value>
+  </data>
+  <data name="TouristTaxDateInFuture" xml:space="preserve">
+    <value>La data del versamento non può essere successiva a oggi.</value>
+  </data>
+  <data name="TouristTaxPeriodInvalid" xml:space="preserve">
+    <value>Il periodo del versamento non è valido: la data di inizio non può essere successiva a quella di fine e il periodo dura al massimo un anno.</value>
+  </data>
+  <data name="TouristTaxReceiptInvalid" xml:space="preserve">
+    <value>La ricevuta deve essere un PDF, oppure una foto JPEG o PNG, di al massimo {0} MB.</value>
+  </data>
+  <data name="TouristTaxTextTooLong" xml:space="preserve">
+    <value>Il riferimento può avere al massimo {0} caratteri e la nota al massimo {1}.</value>
+  </data>
+  <data name="TouristTaxRemittanceNotFound" xml:space="preserve">
+    <value>Versamento non trovato.</value>
+  </data>
+  <data name="TouristTaxReceiptNotFound" xml:space="preserve">
+    <value>Questo versamento non ha una ricevuta disponibile.</value>
+  </data>
 </root>

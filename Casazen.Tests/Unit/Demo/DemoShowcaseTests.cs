@@ -87,6 +87,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.Routines.Select(rt => rt.Scenario))
             .Concat(DemoShowcaseCatalog.PopupAlerts.Select(alert => alert.Scenario))
             .Concat(DemoShowcaseCatalog.WizardDrafts.Select(wd => wd.Scenario))
+            .Concat(DemoShowcaseCatalog.TouristTaxRemittances.Select(tt => tt.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -275,6 +276,43 @@ public class DemoShowcaseTests
             if (a.BookingKey is not null)
                 Assert.Contains(house!.Bookings, b => b.Key == a.BookingKey);
         });
+    }
+
+    [Fact]
+    public void TouristTaxPaid_TheDemoHasStaysThatCarryTaxAndAPaymentOfPartOfIt_ValidForTheRulesOfARealPayment()
+    {
+        var payment = Assert.Single(DemoShowcaseCatalog.TouristTaxRemittances);
+        var house = Assert.Single(DemoShowcaseCatalog.Properties, p => p.Key == payment.PropertyKey);
+        var stays = house.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.TouristTaxPaid).ToList();
+        var taxed = stays.Where(s => (s.TouristTax ?? 0m) > 0m).ToList();
+
+        // NF-100: the summary of the demo host shows an amount owed, a part of it paid with a receipt, and a stay counted apart.
+        Assert.Contains(DemoShowcaseCatalog.Scenario.TouristTaxPaid, DemoShowcaseCatalog.Scenarios);
+        Assert.Equal(DemoShowcaseCatalog.Scenario.TouristTaxPaid, payment.Scenario);
+        Assert.Equal(stays.Count, stays.Select(s => s.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(stays, s => Assert.EndsWith("@example.com", s.Email, StringComparison.Ordinal));
+        // The tourist tax report lists confirmed, checked-in and checked-out stays, and these are all finished.
+        Assert.All(stays, s => Assert.Equal(BookingStatus.CheckedOut, s.Status));
+        Assert.All(stays, s => Assert.True(s.CheckInOffsetDays + s.Nights <= 0, $"{s.Key} is not over."));
+        Assert.True(taxed.Count >= 2, "The comune needs two stays that carry tax: one paid and one still to pay.");
+        Assert.Contains(stays, s => (s.TouristTax ?? 0m) == 0m);
+
+        // The payment obeys the rules of a payment recorded through the service: an amount above zero, a period that is not backwards and
+        // lasts at most a year, a day that is not in the future.
+        var anchor = new DateOnly(2026, 11, 6);
+        Assert.True(TouristTaxSummaryRules.IsValidAmount(payment.PaidAmount));
+        Assert.True(TouristTaxSummaryRules.IsValidRemittancePeriod(
+            anchor.AddDays(payment.PeriodFromOffsetDays), anchor.AddDays(payment.PeriodToOffsetDays)));
+        Assert.True(payment.PaidOnOffsetDays <= 0);
+        Assert.Contains("TEST", payment.Reference, StringComparison.Ordinal);
+
+        // It pays what the stays that check in during its period owe, not more, and leaves another stay to pay.
+        var inside = taxed
+            .Where(s => s.CheckInOffsetDays >= payment.PeriodFromOffsetDays && s.CheckInOffsetDays <= payment.PeriodToOffsetDays)
+            .ToList();
+        Assert.NotEmpty(inside);
+        Assert.Equal(payment.PaidAmount, inside.Sum(s => s.TouristTax ?? 0m));
+        Assert.True(taxed.Count > inside.Count);
     }
 
     [Fact]
