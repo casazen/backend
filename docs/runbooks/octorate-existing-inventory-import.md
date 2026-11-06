@@ -146,4 +146,6 @@ command. In practice:
 - Two commands for the same channel at the same time: the second one leaves the channel alone and returns its state.
 
 An external item (one Octorate connection) is imported and marked at most once, also across batches: a later batch inherits the stamps of the
-earlier one before it asks Octorate anything.
+earlier one before it asks Octorate anything. A **result nobody knows** (`d6_result_unknown`) is remembered by the item of that batch only: a
+second batch for the same connection does not know it and would ask the operation again, so check the panel before opening another batch
+while a listing waits with that code.
