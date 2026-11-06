@@ -41,7 +41,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     /// Full anonymization of <paramref name="guest"/>: every personal field, its document scan, the guests of its stays,
     /// the IP and note of its consent events, the marketing e-mail and IP of its per-channel marketing consents (the consent
     /// ends), the special requests of its bookings, the name shown on its reviews (DB-12a: the
-    /// mark and the text stay, anonymous); open check-in links of its bookings expire; and what the CRM holds of the guest
+    /// mark and the text stay, anonymous); the words and the names of the copy of its conversations with the channels (E05/F01/US01/T03, ADR-032-R13);
+    /// open check-in links of its bookings expire; and what the CRM holds of the guest
     /// (<see cref="EraseCrmDataAsync"/>), in the same unit of work. <see cref="GuestErasureOutcome.Changed"/> is false when there was nothing left to remove (idempotent).
     /// </summary>
     public async Task<GuestErasureOutcome> AnonymizeAsync(Guest guest, DateTime now, CancellationToken cancellationToken)
@@ -61,11 +62,12 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         var reviews = await AnonymizeReviewsAsync(guest.Id, cancellationToken);
         await ExpireOpenCheckInLinksAsync(guest.Id, now, cancellationToken);
         var threads = await DeleteMessageThreadsAsync(guest.Id, cancellationToken);
+        var otaThreads = (await AnonymizeOtaThreadsOfGuestAsync(guest.Id, now, cancellationToken)).Threads;
         var crm = await EraseCrmDataAsync(guest, now, cancellationToken);
 
         var changed = Fingerprint(guest) != before
             || filesDeleted > 0 || stayGuests > 0 || taxReasons > 0 || consentEvidence > 0 || marketingConsents > 0
-            || specialRequests > 0 || reviews > 0 || threads > 0 || crm.Changed
+            || specialRequests > 0 || reviews > 0 || threads > 0 || otaThreads > 0 || crm.Changed
             || guest.DataAnonymizedDate is null;
         guest.AlloggiatiDataErasedAt ??= now;
         guest.DataAnonymizedDate ??= now;
@@ -569,6 +571,114 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         return threads.Count;
     }
 
+    /// <summary>
+    /// The copy of the OTA conversations of the guest (E05/F01/US01/T03, ADR-032-R13): the threads of the guest's bookings lose the words and the
+    /// names, see <see cref="AnonymizeOtaThreadsAsync"/>. The threads stay with the booking and the dates of their messages, so the host still sees
+    /// that a conversation took place, and no more. A conversation with no booking (an inquiry) has no guest record to be erased with: the retention
+    /// takes care of it.
+    /// </summary>
+    public async Task<OtaAnonymizationOutcome> AnonymizeOtaThreadsOfGuestAsync(Guid guestId, DateTime now, CancellationToken cancellationToken)
+    {
+        var ofGuest = db.OtaMessageThreads.Where(t => t.BookingId != null && db.Bookings.Any(b => b.Id == t.BookingId && b.GuestId == guestId));
+        var threadIds = await HoldingPersonalData(ofGuest)
+            .Select(t => t.Id)
+            .ToListAsync(cancellationToken);
+
+        return await AnonymizeOtaThreadsAsync(threadIds, now, cancellationToken);
+    }
+
+    /// <summary>
+    /// The threads among <paramref name="threads"/> that still hold something of a person: the ones not marked yet, and the marked ones with a message
+    /// that still has a sender's name or a link to an attachment. The anonymization sets that name on every message it touches and drops the link, so a
+    /// marked thread that has either is one where a read of the channel manager, racing the erasure, stored a message after the erasure had read the
+    /// thread (the erasure and the sync do not wait for each other). Found on the plain columns on purpose: the text is encrypted and never compared in SQL.
+    /// </summary>
+    internal IQueryable<OtaMessageThread> HoldingPersonalData(IQueryable<OtaMessageThread> threads)
+    {
+        return threads.Where(t => t.AnonymizedAt == null
+            || db.OtaMessages.Any(m => m.ThreadId == t.Id
+                && (m.SenderName != AnonymizedName || m.AttachmentUrl != null || m.AttachmentContentType != null)));
+    }
+
+    /// <summary>
+    /// Takes the personal data out of the OTA threads <paramref name="threadIds"/>: the text of every message is emptied, its sender's name
+    /// and the name of the guest of the thread become <see cref="AnonymizedName"/>, and the address of an attachment on the channel manager is
+    /// forgotten (the file itself is not here: only the link to it was). The thread is marked (<see cref="OtaMessageThread.AnonymizedAt"/>), so the
+    /// next read of the channel manager brings none of it back and a second run finds nothing to do. A thread that is marked already is touched only
+    /// for the messages that still hold something (<see cref="HoldingPersonalData"/>: a read that raced the mark stored them). Stages the changes
+    /// without saving. The ids, the dates, the direction, the state and the counts stay: they are the shape of the conversation, not a person.
+    /// The outcome counts the threads that changed and the messages that lost something.
+    /// </summary>
+    public async Task<OtaAnonymizationOutcome> AnonymizeOtaThreadsAsync(
+        IReadOnlyCollection<Guid> threadIds,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(threadIds);
+        if (threadIds.Count == 0)
+            return new OtaAnonymizationOutcome(0, 0);
+
+        var threads = await db.OtaMessageThreads
+            .Where(t => threadIds.Contains(t.Id))
+            .ToListAsync(cancellationToken);
+        if (threads.Count == 0)
+            return new OtaAnonymizationOutcome(0, 0);
+
+        var ids = threads.Select(t => t.Id).ToList();
+        var messages = (await db.OtaMessages.Where(m => ids.Contains(m.ThreadId)).ToListAsync(cancellationToken)).ToLookup(m => m.ThreadId);
+        int changed = 0, cleared = 0;
+        foreach (var thread in threads)
+        {
+            var marked = thread.AnonymizedAt is not null;
+            var lost = AnonymizeOtaThread(thread, messages[thread.Id], now);
+            if (!marked || lost > 0)
+            {
+                changed++;
+                cleared += lost;
+            }
+        }
+
+        return new OtaAnonymizationOutcome(changed, cleared);
+    }
+
+    /// <summary>
+    /// Takes the personal data out of one OTA thread that is loaded with its messages (<see cref="AnonymizeOtaThreadsAsync"/> says what goes). The one
+    /// place that knows which fields are personal: the erasure and the retention call it for the threads they find, and the sync of the channel manager
+    /// calls it for a thread of an erased guest that was not there to be erased when the guest was. A message that holds nothing of a person is left as it is.
+    /// Stages the changes without saving. Returns the messages that lost something.
+    /// </summary>
+    internal static int AnonymizeOtaThread(OtaMessageThread thread, IEnumerable<OtaMessage> messages, DateTime now)
+    {
+        ArgumentNullException.ThrowIfNull(thread);
+        ArgumentNullException.ThrowIfNull(messages);
+
+        var lost = 0;
+        foreach (var message in messages)
+        {
+            if (message.Text.Length == 0 && message.SenderName == AnonymizedName && message.AttachmentUrl is null && message.AttachmentContentType is null)
+                continue;
+
+            message.Text = string.Empty;
+            message.SenderName = AnonymizedName;
+            message.AttachmentUrl = null;
+            message.AttachmentContentType = null;
+            lost++;
+        }
+
+        if (thread.AnonymizedAt is null)
+        {
+            thread.GuestDisplayName = AnonymizedName;
+            thread.AnonymizedAt = now;
+            thread.UpdatedAt = now;
+        }
+        else if (lost > 0)
+        {
+            thread.UpdatedAt = now;
+        }
+
+        return lost;
+    }
+
     /// <summary>An open check-in link would let someone enter personal data again for an anonymized guest.</summary>
     private async Task ExpireOpenCheckInLinksAsync(Guid guestId, DateTime now, CancellationToken cancellationToken)
     {
@@ -624,3 +734,6 @@ public sealed record GuestErasureOutcome(
 /// <param name="ProfileRemoved">The profile of the guest was deleted because no other guest was linked to it.</param>
 /// <param name="Changed">Anything was staged, the unlink of the guest from its profile included.</param>
 public sealed record CrmErasureOutcome(int ContactsRemoved, int OptOutsKept, bool ProfileRemoved, bool Changed);
+
+/// <summary>What the anonymization of OTA conversations changed: the threads, and the messages that lost their words.</summary>
+public sealed record OtaAnonymizationOutcome(int Threads, int Messages);
