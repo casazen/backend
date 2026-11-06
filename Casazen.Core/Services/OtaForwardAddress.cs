@@ -16,14 +16,13 @@ namespace Casazen.Core.Services;
 /// </summary>
 public static class OtaForwardAddress
 {
-    /// <summary>True for the sources that are an online travel agency: Airbnb, Booking.com, Expedia, Vrbo, TripAdvisor and Agoda.</summary>
+    /// <summary>
+    /// True for the sources that are an online travel agency, by the one definition of the code, <see cref="FiscalCopy.IsOtaBookingSource"/>:
+    /// the channels with a value of their own and <see cref="BookingSource.OtherChannel"/> (a portal of Octorate with no value of its own, the
+    /// stay of a calendar of another channel). The list is not repeated here: a channel added to that definition is an OTA here too.
+    /// </summary>
     public static bool IsOtaSource(BookingSource? source) =>
-        source is BookingSource.Airbnb
-            or BookingSource.BookingCom
-            or BookingSource.Expedia
-            or BookingSource.Vrbo
-            or BookingSource.TripAdvisor
-            or BookingSource.Agoda;
+        source is { } known && FiscalCopy.IsOtaBookingSource(known);
 
     /// <summary>
     /// True when <paramref name="bookingSource"/> is an online travel agency or the host of <paramref name="email"/> is one of

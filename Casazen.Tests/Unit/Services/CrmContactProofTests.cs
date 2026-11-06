@@ -18,8 +18,9 @@ public class CrmContactProofTests
 
     /// <summary>
     /// Privacy rule: a forward address is never reachable for marketing, whatever consent is recorded on it. The address arrives with an OTA
-    /// booking and then, on a relay domain of the list, with a direct one; the guest ticks the marketing box on it and confirms it; the contact stays
-    /// an OTA forward on service only, the consent is in the privacy history, and the rule says no even to a contact forged with a confirmed consent.
+    /// booking, then from a portal of Octorate with no value of its own (<c>OtherChannel</c>, an OTA like the others), then, on a relay domain of
+    /// the list, with a direct one; the guest ticks the marketing box on it and confirms it; the contact stays an OTA forward on service only, the
+    /// consent is in the privacy history, and the rule says no even to a contact forged with a confirmed consent.
     /// </summary>
     [Fact]
     public async Task CrmContact_OtaForwardAddress_NeverMarketable_Test()
@@ -59,6 +60,16 @@ public class CrmContactProofTests
         Assert.True(CrmContactRules.CanReceiveService(stored));
         // The privacy history is complete: the person did tick the box.
         Assert.Single(await db.GuestConsentRecords.AsNoTracking().Where(r => r.Purpose == GuestConsentPurpose.Marketing && r.Action == GuestConsentAction.Granted).ToListAsync(Ct));
+
+        // The same from a portal with no value of its own: OtherChannel is an OTA for the code (FiscalCopy.IsOtaBookingSource), so it is a forward too.
+        var viaPortal = await contacts.UpsertContactAsync(
+            new CrmContactInput(orgId, GuestContactChannel.Email, "portal-31@guest.example.com", GuestContactOrigin.Manual, GuestId: guest.Id, BookedVia: BookingSource.OtherChannel),
+            Ct);
+        Assert.NotNull(viaPortal);
+        Assert.Equal(GuestContactOrigin.OtaForward, viaPortal.Origin);
+        Assert.Equal(GuestContactLegalBasis.ServiceOnly, viaPortal.LegalBasis);
+        Assert.False(CrmContactRules.CanReceiveMarketing(viaPortal));
+        Assert.Equal(CrmContactRules.ReasonOtaForward, CrmContactRules.ReachabilityReason(viaPortal));
 
         // The same on a relay domain of the list, with a booking of the public checkout.
         var onRelay = await contacts.UpsertContactAsync(

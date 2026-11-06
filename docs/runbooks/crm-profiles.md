@@ -52,9 +52,11 @@ The order for a guest is: the profile it already has (a merged profile is follow
 the name-and-birth key; with none a profile is created, and the proposals of phone and of name-at-a-property are made for it. A pair that has
 several reasons takes the highest score and lists them all, the strongest first.
 
-**An OTA forward is never a key.** An address is a forward when the booking comes from Airbnb, Booking.com, Expedia, Vrbo, TripAdvisor or Agoda
-(whatever the address, so it holds for a relay domain nobody has seen), or when its host is one of `Crm__OtaForwardDomains` or a subdomain of one
-([`crm-marketing.md`](crm-marketing.md) § 2). A contact already stored as a forward is not a way to find a person either, so a direct booking that
+**An OTA forward is never a key.** An address is a forward when the booking comes from an OTA channel (whatever the address, so it holds for a relay
+domain nobody has seen), or when its host is one of `Crm__OtaForwardDomains` or a subdomain of one ([`crm-marketing.md`](crm-marketing.md) § 2). An
+OTA channel is what the code calls one everywhere, `FiscalCopy.IsOtaBookingSource` (`OtaForwardAddress.IsOtaSource` asks it, there is no second
+list): Airbnb, Booking.com, Expedia, Vrbo, TripAdvisor, Agoda **and `OtherChannel`**, the portals of Octorate that have no value of their own and the
+stays made from the calendar of another channel. A contact already stored as a forward is not a way to find a person either, so a direct booking that
 brings the same address does not join the guest of the channel.
 
 ### 2.3 Proposals
@@ -169,8 +171,8 @@ only > none**, and a weaker basis never overwrites a stronger one.
 
 Builds the contacts of one guest from what CasaZen already has and links them to the guest's profile:
 
-1. the **e-mail** of the guest record, with the origin of the guest's latest booking (an OTA source: `OtaForward`; `Direct`: `DirectBooking`; anything else,
-   including a guest with no booking: `Manual`);
+1. the **e-mail** of the guest record, with the origin of the guest's latest booking (an OTA source, `OtherChannel` included (§ 2.2): `OtaForward`; `Direct`:
+   `DirectBooking`; anything else, including a guest with no booking: `Manual`);
 2. the **phone number** of the guest record, service only (a phone of an OTA booking is a number like another: only an e-mail address is a forward);
 3. the **per-channel consents of the check-in** (`MarketingConsentRecord`): the marketing e-mail is a consent (typed at the check-in, so it does not arrive
    with the booking: only its domain can make it a forward), **confirmed only when the guest confirmed it** (the record keeps a flag, not a time: the

@@ -112,12 +112,17 @@ public class GuestMatchingProofTests
 
     /// <summary>
     /// Privacy rule: a forward address of an online travel agency cannot join two guests. Two different people whose bookings come from two
-    /// channels with the same forward address, a direct booking that brings an address already stored as a forward, and two direct bookings with the
-    /// same address on a relay domain of the list: five guests, five profiles, and no proposal.
+    /// channels with the same forward address, a direct booking that brings an address already stored as a forward, two direct bookings with the
+    /// same address on a relay domain of the list, and two bookings of a portal with no value of its own (<c>OtherChannel</c>, an OTA for the code)
+    /// whose address the contact service stored as a forward: seven guests, seven profiles, and no proposal.
     /// </summary>
     [Fact]
     public async Task GuestMatching_OtaForwardAddress_IsNeverAKey_Test()
     {
+        // One definition of an OTA in the code: the forward rule follows it, OtherChannel included (it once listed six channels and left it out).
+        Assert.All(Enum.GetValues<BookingSource>(), source => Assert.Equal(FiscalCopy.IsOtaBookingSource(source), OtaForwardAddress.IsOtaSource(source)));
+        Assert.True(OtaForwardAddress.IsOtaSource(BookingSource.OtherChannel));
+
         await using var db = CrmTestWorld.Open(CrmTestWorld.NewStore());
         var clock = CrmTestWorld.Clock();
         var options = new CrmOptions { OtaForwardDomains = ["relay.example.org"] };
@@ -134,22 +139,31 @@ public class GuestMatchingProofTests
         CrmTestWorld.AddBooking(db, onRelayOne, propertyId, BookingStatus.Confirmed, BookingSource.Direct, 50, 2, 340m);
         var onRelayTwo = CrmTestWorld.AddGuest(db, orgId, "Marta", "Neri", "abc123@relay.example.org");
         CrmTestWorld.AddBooking(db, onRelayTwo, propertyId, BookingStatus.Confirmed, BookingSource.Direct, 70, 2, 360m);
+        // A portal of Octorate with no value of its own (OtherChannel) is an OTA for the code: two people it gives one address are two guests.
+        var viaPortal = CrmTestWorld.AddGuest(db, orgId, "Sara", "Blu", "portal-2290@guest.example.com");
+        CrmTestWorld.AddBooking(db, viaPortal, propertyId, BookingStatus.Confirmed, BookingSource.OtherChannel, 90, 2, 380m);
+        var viaPortalToo = CrmTestWorld.AddGuest(db, orgId, "Nico", "Viola", "portal-2290@guest.example.com");
+        CrmTestWorld.AddBooking(db, viaPortalToo, propertyId, BookingStatus.Confirmed, BookingSource.OtherChannel, 110, 2, 400m);
         await db.SaveChangesAsync(Ct);
 
         var matching = CrmTestWorld.Matching(db, clock, options);
+        var contacts = CrmTestWorld.Contacts(db, clock, options);
         var profiles = new List<Guid>();
-        foreach (var guest in new[] { viaAirbnb, viaBooking, storedForward, onRelayOne, onRelayTwo })
+        foreach (var guest in new[] { viaAirbnb, viaBooking, storedForward, onRelayOne, onRelayTwo, viaPortal, viaPortalToo })
         {
             profiles.Add((await matching.FindOrCreateProfileAsync(guest, Ct)).Id);
 
             // The first guest of each address leaves it as a contact, an OTA forward as the contact service stores it: if it were a key, the next
-            // guest would be found by it.
+            // guest would be found by it. The address of the portal is stored by the contact service itself, which must know the portal as a channel.
             if (guest == viaAirbnb || guest == onRelayOne)
                 await AddEmailContactAsync(db, guest, GuestContactOrigin.OtaForward);
+            else if (guest == viaPortal)
+                await contacts.SyncFromGuestAsync(guest.Id, Ct);
         }
 
-        Assert.Equal(5, profiles.Distinct().Count());
-        Assert.Equal(5, await db.GuestCrmProfiles.CountAsync(p => p.OrgId == orgId, Ct));
+        Assert.Equal(7, profiles.Distinct().Count());
+        Assert.Equal(7, await db.GuestCrmProfiles.CountAsync(p => p.OrgId == orgId, Ct));
+        Assert.Equal(GuestContactOrigin.OtaForward, (await db.GuestContacts.AsNoTracking().SingleAsync(c => c.GuestId == viaPortal.Id, Ct)).Origin);
         Assert.Empty(await db.GuestMergeCandidates.ToListAsync(Ct));
     }
 
