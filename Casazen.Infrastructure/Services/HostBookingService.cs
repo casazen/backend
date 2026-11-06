@@ -1,10 +1,13 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -30,7 +33,8 @@ public sealed class HostBookingService(
     PropertyICalSyncService propertyICalSyncService,
     IOnSiteBookingRequestService onSiteRequests,
     ILogger<HostBookingService> logger,
-    TimeProvider? timeProvider = null) : IHostBookingService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null) : IHostBookingService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -116,6 +120,8 @@ public sealed class HostBookingService(
         booking.SpecialRequests = update.SpecialRequests?.Trim() ?? string.Empty;
         booking.UpdatedAt = _clock.GetUtcNow().UtcDateTime;
 
+        // Saved by the same save as the change; a change the repository refuses takes its event back (ADR-022-R1).
+        await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingModified, booking, BookingEventOrigin.Host, cancellationToken);
         await SaveAsync(booking, transaction, checkOverlap: datesChanged, cancellationToken);
         logger.LogInformation(
             "Booking {BookingId} updated by the host (dates changed: {DatesChanged}, guests changed: {GuestsChanged})",
@@ -160,6 +166,7 @@ public sealed class HostBookingService(
         booking.ConfirmedAt = booking.UpdatedAt;
 
         // The repository also issues the guest check-in token of a confirmed booking.
+        await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingConfirmed, booking, BookingEventOrigin.Host, cancellationToken);
         await SaveAsync(booking, transaction, checkOverlap: true, cancellationToken);
         logger.LogInformation("Manual booking {BookingId} confirmed by the host", booking.Id);
         return booking;

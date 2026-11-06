@@ -1,7 +1,10 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -28,7 +31,8 @@ public sealed class BookingCancellationService(
     IStripeService stripeService,
     BookingNotifier notifier,
     ILogger<BookingCancellationService> logger,
-    TimeProvider? timeProvider = null) : IBookingCancellationService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null) : IBookingCancellationService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -97,6 +101,15 @@ public sealed class BookingCancellationService(
             if (request.Initiator == BookingCancellationInitiator.Guest && booking.GuestCancelTokenExpiresAt > now)
                 booking.GuestCancelTokenExpiresAt = now;
 
+            // The one place where a booking is cancelled by a person, the host or the guest (GuestBookingCancellationService goes
+            // through here): the event is saved with the cancellation, and the transaction that commits one commits the other.
+            await BookingEvents.RecordAsync(
+                domainEvents,
+                db,
+                DomainEventType.BookingCancelled,
+                booking,
+                request.Initiator == BookingCancellationInitiator.Guest ? BookingEventOrigin.Guest : BookingEventOrigin.Host,
+                cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
 
             var remaining = request.RefundAmount ?? 0m;

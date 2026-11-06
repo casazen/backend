@@ -22,7 +22,9 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="CancellationRefundPolicy.EvaluateGuestRefund(Booking, DateTimeOffset, decimal)"/>, the same for the preview the guest sees
 /// and for the cancellation; <see cref="BookingCancellationService"/> checks it again under its lock (the guest's minimum is the
 /// policy's refund, DB-08h) and, when the guest cancels with the link, spends the link in the same transaction as the cancellation;
-/// an error leaves it usable until it expires.
+/// an error leaves it usable until it expires. The <c>BookingCancelled</c> event of a guest's cancellation (origin Guest,
+/// E08/F06/US01/T01) is recorded by <see cref="BookingCancellationService"/>, in the save that cancels the booking: this class cancels
+/// nothing itself, and a second record here would be a second event for the same cancellation.
 /// </remarks>
 public sealed class GuestBookingCancellationService(
     AppDbContext db,

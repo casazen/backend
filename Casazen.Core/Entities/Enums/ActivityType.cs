@@ -49,14 +49,26 @@ public enum ActivityType
     ReconnectChannelManager = 12,
 
     /// <summary>
+    /// A stay ended and nobody asked for a cleaning: the property has to be declared ready or a cleaning requested before the
+    /// next arrival (E08/F06/US01/T02). About the booking that ended; closes when the property is declared ready.
+    /// </summary>
+    CleaningDue = 13,
+
+    /// <summary>
+    /// A booking came with a special request of the guest, to read before the arrival (E08/F06/US01/T02). About the booking; closes
+    /// at the check-in or when the booking is cancelled.
+    /// </summary>
+    BookingSpecialRequest = 14,
+
+    /// <summary>
     /// A listing found on the channel manager matches several CasaZen properties, or none clearly: a person confirms or rejects the
     /// mapping (E02/F01/US02/T03); closed when the mapping is confirmed or rejected. Organization-level: about the mapping, not a property.
     /// </summary>
-    ConfirmChannelMapping = 13,
+    ConfirmChannelMapping = 20,
 
     /// <summary>
     /// A property was created from a listing of the channel manager and is inactive until a person checks what was imported (LST-03,
     /// E02/F01/US02/T03).
     /// </summary>
-    CheckImportedListing = 14,
+    CheckImportedListing = 21,
 }

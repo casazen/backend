@@ -588,6 +588,18 @@
   <data name="Push_NewBooking_Body" xml:space="preserve">
     <value>{0}: dal {1} al {2}, ospiti: {3}.</value>
   </data>
+  <data name="Push_ChannelBooking_Title" xml:space="preserve">
+    <value>Nuova prenotazione da {0}</value>
+  </data>
+  <data name="Push_ChannelBooking_Body" xml:space="preserve">
+    <value>{0}: dal {1} al {2}, ospiti: {3}.</value>
+  </data>
+  <data name="TodoReason_CleaningDue" xml:space="preserve">
+    <value>Check-out completato senza una pulizia richiesta</value>
+  </data>
+  <data name="TodoReason_BookingSpecialRequest" xml:space="preserve">
+    <value>Nuova prenotazione con una richiesta speciale</value>
+  </data>
   <data name="Push_GuestMessage_Title" xml:space="preserve">
     <value>Nuovo messaggio da un ospite</value>
   </data>

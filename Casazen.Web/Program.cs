@@ -138,6 +138,9 @@ builder.Services.AddCasazenLongRentLeaseOperations(builder.Configuration);
 // OTA partner adapters with resilience patterns: registered only with Features:OtaPartnerApi on (D10, FD-20)
 builder.Services.AddCasazenOtaIntegrations(builder.Configuration);
 
+// What the booking events start by themselves: the cleaning and special-request "To do", the alert of a booking from a channel (E08/F06)
+builder.Services.AddCasazenBookingOperations();
+
 // Octorate connector (epic E02, ADR-023): its services, clients, handlers and jobs, all registered in AddCasazenOctorate.
 builder.Services.AddCasazenOctorate(builder.Configuration);
 

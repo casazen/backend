@@ -1,10 +1,12 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Events;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -26,7 +28,8 @@ public sealed class OtaStayService(
     IBookingRepository bookingRepository,
     ICheckoutHoldExpiryService checkoutHoldExpiry,
     ILogger<OtaStayService> logger,
-    TimeProvider? timeProvider = null) : IOtaStayService
+    TimeProvider? timeProvider = null,
+    IDomainEventRecorder? domainEvents = null) : IOtaStayService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -144,6 +147,10 @@ public sealed class OtaStayService(
 
         try
         {
+            // The host completes the block of a channel: created and confirmed, saved with the stay (a stay the repository refuses
+            // takes its events back, and the context is cleared below).
+            BookingEvents.RecordCreated(domainEvents, stay, BookingEventOrigin.Host);
+
             // Joins the transaction: the property's dates lock and the overlap check against every booking not cancelled.
             await bookingRepository.AddAsync(stay);
         }
@@ -214,6 +221,8 @@ public sealed class OtaStayService(
 
         if (datesChanged)
         {
+            // The stay takes the dates its block has on the channel: a change of the booking made by the host, saved with it.
+            await BookingEvents.RecordAsync(domainEvents, db, DomainEventType.BookingModified, stay, BookingEventOrigin.Host, cancellationToken);
             try
             {
                 // Joins the transaction: the property's dates lock and the overlap check against the other bookings.

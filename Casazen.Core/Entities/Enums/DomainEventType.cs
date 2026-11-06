@@ -32,4 +32,10 @@ public enum DomainEventType
 
     OctorateWebhookReceived = 17,
     OctorateBookingStateChanged = 18,
+
+    /// <summary>
+    /// The host declared the property ready after the check-out of a stay, at the check-out wizard or later (E08/F06/US01). About the
+    /// booking (<c>EntityId</c>); it closes the cleaning "To do" of that stay. Starts no routine.
+    /// </summary>
+    PropertyReadyDeclared = 19,
 }
