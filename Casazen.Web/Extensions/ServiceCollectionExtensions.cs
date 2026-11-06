@@ -436,6 +436,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFaceEmbedder, FaceEmbedder>();
         services.AddScoped<IAntiSpoofingService, AntiSpoofingService>();
         services.AddScoped<IBiometricVerificationService, BiometricVerificationService>();
+        // E03/F04/US02/T02: the identity verification agent on top of that pipeline: the capture checks and one rule-based decision with
+        // versioned thresholds. No AI provider, no logger, no storage among its dependencies (PO-09).
+        services.AddSingleton<CaptureQualityAssessor>();
+        services.AddScoped<IIdentityVerificationAgent, IdentityVerificationAgent>();
         // NF-12: Operator verification queue for manual biometric decisions (ADR-013).
         services.AddScoped<IVerificationQueueService, VerificationQueueService>();
         // E03/F04/US02/T03: the immediate alert to the operators (push, e-mail, urgent "To do") when a verification needs a person.
