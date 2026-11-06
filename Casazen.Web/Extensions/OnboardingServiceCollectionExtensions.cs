@@ -61,6 +61,15 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IFlowDryRunCheck, CheckInComplianceDryRunCheck>();
         services.AddScoped<OnboardingFlowTodoSyncJob>();
 
+        // The guided steps of the Octorate panel and «Do it for me» (E10/F01/US03/T01): the steps with their verification, the requests with
+        // the staff queue. One default verifier for each kind of step (order 0); an epic that can read more registers its own for the same kind
+        // with a higher order (the marketplace epic, E09/F02/US01/T02, for the access to a channel) and it is the one that runs.
+        services.AddScoped<IOnboardingPanelStepService, OnboardingPanelStepService>();
+        services.AddScoped<IOnboardingAssistService, OnboardingAssistService>();
+        services.AddScoped<IPanelStepVerifier, PoliceConnectionPanelVerifier>();
+        services.AddScoped<IPanelStepVerifier, IstatConnectionPanelVerifier>();
+        services.AddScoped<IPanelStepVerifier, ChannelAccessDefaultPanelVerifier>();
+
         return services;
     }
 }

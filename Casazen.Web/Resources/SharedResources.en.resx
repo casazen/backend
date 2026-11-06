@@ -5148,4 +5148,55 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OtaChannelCancelGuidanceAgoda" xml:space="preserve">
     <value>To cancel this Agoda booking, ask the guest to cancel it on Agoda.</value>
   </data>
+  <data name="PanelStepKindInvalid" xml:space="preserve">
+    <value>This kind of guided step does not exist.</value>
+  </data>
+  <data name="PanelStepChannelInvalid" xml:space="preserve">
+    <value>The channel code is not valid: it is needed for a channel access, and only for that.</value>
+  </data>
+  <data name="PanelStepResumeInvalid" xml:space="preserve">
+    <value>The point to resume from is not valid.</value>
+  </data>
+  <data name="PanelStepNotFound" xml:space="preserve">
+    <value>This guided step does not exist.</value>
+  </data>
+  <data name="PanelStepVerificationRequired" xml:space="preserve">
+    <value>CasaZen must first try to verify the step: confirm only if it cannot.</value>
+  </data>
+  <data name="PanelStepNotValid" xml:space="preserve">
+    <value>The step is not valid: do it again in the channel manager panel.</value>
+  </data>
+  <data name="PanelStepAssistOpen" xml:space="preserve">
+    <value>CasaZen support is already handling this step.</value>
+  </data>
+  <data name="PanelStepCallbackUnsupported" xml:space="preserve">
+    <value>This step has no automatic return from the panel.</value>
+  </data>
+  <data name="PanelStepStateInvalid" xml:space="preserve">
+    <value>The return from the panel is not valid or has expired: start the step again.</value>
+  </data>
+  <data name="OnboardingNeedsWholeOrg" xml:space="preserve">
+    <value>This applies to the whole organization: access to all the properties is needed.</value>
+  </data>
+  <data name="AssistRequestAlreadyOpen" xml:space="preserve">
+    <value>A help request is already open for this part and property.</value>
+  </data>
+  <data name="AssistRequestNotFound" xml:space="preserve">
+    <value>This help request does not exist.</value>
+  </data>
+  <data name="AssistRequestClosed" xml:space="preserve">
+    <value>This request is already closed.</value>
+  </data>
+  <data name="AssistContextInvalid" xml:space="preserve">
+    <value>The kind of help asked for is not valid for this part.</value>
+  </data>
+  <data name="AssistStatusInvalid" xml:space="preserve">
+    <value>The status is not valid: use inProgress, done or cancelled.</value>
+  </data>
+  <data name="AssistNoteInvalid" xml:space="preserve">
+    <value>The note can have at most 500 characters and cannot contain e-mail addresses.</value>
+  </data>
+  <data name="AssistStepAlreadyDone" xml:space="preserve">
+    <value>This step is already done: there is nothing to ask support.</value>
+  </data>
 </root>

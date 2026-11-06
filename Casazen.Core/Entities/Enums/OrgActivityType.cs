@@ -141,6 +141,23 @@ public enum OrgActivityType
     /// </summary>
     OctorateComplianceHandoffStarted = 100,
 
+    // ─── «Do it for me» (account, E10/F01/US03/T01, NF-15) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// A host asked CasaZen support to do a part, or a step of the Octorate panel, of the activation for it («Do it for me», UX-15, AC-NF15-1).
+    /// Written by <c>OnboardingAssistService.RequestAsync</c>, in the save that stores the request. Subject: the org. Details: the part, the context
+    /// of the request and its status (<c>requested</c>), short codes only: never the draft, a note or a person. The actor is the host.
+    /// </summary>
+    OnboardingAssistRequested = 110,
+
+    /// <summary>
+    /// CasaZen staff took, completed or closed a «Do it for me» request, or changed its note (AC-NF15-3). Written by
+    /// <c>OnboardingAssistService.UpdateAsync</c> in the <b>org of the request</b>, not in the staff user's, with the staff user as the actor.
+    /// Subject: the org. Details: the part, the context and the new status (<c>inProgress</c>, <c>done</c>, <c>cancelled</c>); the note is never
+    /// recorded.
+    /// </summary>
+    OnboardingAssistUpdated = 111,
+
     // ─── Messages to the guests (hub of messages, E05/F02/US02/T01) ──────────────────────────────────────
 
     /// <summary>
