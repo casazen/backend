@@ -7,8 +7,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// What the contact reads from Octorate remember between two calls (E07/F06/US02/T02, NF-94): how many reads an org made in the last hour (the
 /// cap of <c>Crm:OctorateContactReadsPerHour</c>), which bookings were read lately (not asked again) and which ones Octorate refused (not asked
 /// again in a loop). In memory, one instance for the application (singleton): a restart forgets it, which can cost one more call for a booking
-/// and never a stored contact, and with several API instances each one counts its own reads. No address, number or name is kept here: only ids
-/// and instants.
+/// and never a stored contact, and with several API instances each one counts its own reads. <b>It therefore holds only with ONE API instance</b>
+/// (one replica while <c>Crm:OctorateContactsEnabled</c> is on: the deploy checklist and the runbook say so); persisting it would take a table, a
+/// migration the task does not have. No address, number or name is kept here: only ids and instants.
 /// </summary>
 public sealed class OctorateContactReadLedger
 {

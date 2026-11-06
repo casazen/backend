@@ -32,7 +32,10 @@ All of it is registered in `AddCrmMarketing` and does nothing while the switches
 | `Crm__OtaForwardDomains__0`, `__1`… | empty | The relay domains of the OTAs: an address on one of them is an OTA forward whatever the booking |
 
 Prerequisites outside the code, none of which CasaZen can check: (1) the outbound IP addresses of the API are static and registered with Octorate
-(S7, D24); (2) the application has the `contactInfo` permission; (3) the operation is checked once against the Octorate sandbox (§ 5).
+(S7, D24); (2) the application has the `contactInfo` permission; (3) the operation is checked once against the Octorate sandbox (§ 5); (4) **the API
+runs as ONE instance** (one replica on Railway) while `Crm__OctorateContactsEnabled` is on: the hourly cap and the memory of the bookings (§ 4) are in the
+memory of the instance and are not persisted (the brief lists no entity, so no migration), so with N instances each counts its own and the cap becomes N
+times as large.
 
 ## 3. The rules, in order
 
@@ -77,8 +80,11 @@ weaker basis never lowers a stronger one and a suppression is never cleared (see
 | `Deferred` | Octorate did not answer, or a limit was reached, or the connection is not usable, or the body cannot be parsed at all: not the booking's fault | nothing; a later call tries again; **never retried in a loop** |
 | `Disabled`, `NotAnOctorateBooking`, `StayOver`, `BookingCancelled`, `GuestErased`, `NotMapped`, `OverCap` | Nothing was read (rules 1 to 8) | nothing |
 
-The ledger is in memory: a restart forgets it, which can cost one more call for a booking and never a stored contact, and with several API
-instances each one counts its own reads. Today the API runs as one instance.
+The ledger is in memory, one for the application, and **it holds only with one API instance**: a restart or a deploy forgets it (the count of the hour,
+the bookings read in the last day, the ones Octorate refused or answered in a form not understood in the last 6 hours), which can cost one more call for a
+booking and never a stored contact; with several instances each one counts its own reads (the cap becomes N times as large) and its own memory. Keep the
+service at one replica while `Crm__OctorateContactsEnabled` is on ([`deploy-checklist.md`](deploy-checklist.md)); making the ledger durable needs a
+table, so a migration, and is not part of this task.
 
 ## 5. What is assumed and not proven (to check in the sandbox)
 

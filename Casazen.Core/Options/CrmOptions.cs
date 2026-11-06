@@ -62,7 +62,8 @@ public class CrmOptions
     /// How many bookings one org may have their guest contacts read from Octorate in an hour (E07/F06/US02/T02, NF-94, 50). The contacts are
     /// sensitive data that Octorate logs on every read: they are asked for one booking at a time and never in bulk, so a burst (the first import of
     /// a listing creates many bookings at once) is spread over the hours instead of reading them all; a booking over the cap is read by the next
-    /// call that needs it, after the hour. Counted in memory, by the running instance. Env var <c>Crm__OctorateContactReadsPerHour</c>, 1 to
+    /// call that needs it, after the hour. Counted in memory, by the running instance: it holds only with ONE API instance (one replica while
+    /// <c>Crm:OctorateContactsEnabled</c> is on), a restart starts the count over. Env var <c>Crm__OctorateContactReadsPerHour</c>, 1 to
     /// <see cref="MaxOctorateContactReadsPerHour"/>; anything else stops the startup.
     /// </summary>
     public int OctorateContactReadsPerHour { get; set; } = DefaultOctorateContactReadsPerHour;
