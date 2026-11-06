@@ -13,9 +13,9 @@ public interface IContentPushService
     /// every channel is a content channel (422 <c>listing_channel_unknown</c>), the property is in no proposed or ambiguous mapping (409
     /// <c>octorate_mapping_unconfirmed</c>) and, without a confirmed mapping, was declared <c>newInventory</c> (409
     /// <c>octorate_existing_inventory_must_import</c>), the Italian and English texts exist (422 <c>listing_content_incomplete</c> with the missing
-    /// ones), and no requested channel has a change made outside CasaZen unless <paramref name="overwrite"/> is true (409
-    /// <c>listing_modified_outside</c> with the channels): nothing is overwritten silently (NF-27). A list of channels that is empty is refused
-    /// (422), never read as «all».
+    /// ones), and no channel of the property has a change made outside CasaZen unless <paramref name="overwrite"/> is true (409
+    /// <c>listing_modified_outside</c> with the channels flagged, requested or not: the content is shared by the channels and a publication writes
+    /// it for all of them): nothing is overwritten silently (NF-27). A list of channels that is empty is refused (422), never read as «all».
     /// </summary>
     /// <param name="propertyId">The property.</param>
     /// <param name="channels">The codes of the portals to publish to.</param>

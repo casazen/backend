@@ -35,7 +35,7 @@ public sealed class ListingPublishController(
     /// </summary>
     /// <response code="202">Queued: the channels asked for, now <c>Sending</c>.</response>
     /// <response code="404">The property is not the caller's, or the caller does not reach it.</response>
-    /// <response code="409"><c>octorate_mapping_unconfirmed</c>: the property sits in a proposed or ambiguous mapping; <c>octorate_existing_inventory_must_import</c>: the property is not declared never published and has no mapping; <c>listing_modified_outside</c>: a requested channel was changed outside CasaZen (the channels are listed), choose first or send <c>overwrite</c>.</response>
+    /// <response code="409"><c>octorate_mapping_unconfirmed</c>: the property sits in a proposed or ambiguous mapping; <c>octorate_existing_inventory_must_import</c>: the property is not declared never published and has no mapping; <c>listing_modified_outside</c>: a channel of the property, requested or not, was changed outside CasaZen and the content is shared by the channels (the channels flagged are listed), choose first or send <c>overwrite</c>.</response>
     /// <response code="422"><c>listing_content_incomplete</c>: the Italian or English text is missing (the missing ones are listed); <c>listing_channels_required</c>; <c>listing_channel_unknown</c>.</response>
     [HttpPost]
     [ProducesResponseType(typeof(ListingPublishResponse), StatusCodes.Status202Accepted)]

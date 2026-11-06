@@ -30,7 +30,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>Nothing is written before the guards.</b> The endpoint only queues a job; the guards (reach, content channel, confirmed mapping, the
 /// declared scenario of a property with no mapping, the Italian and English texts, no unresolved change made outside CasaZen) run first and answer 4xx.
 /// A list of channels that is empty is a 422, never «all». A publication refused for a change made outside CasaZen is the only outcome until the
-/// person chooses to keep CasaZen's version (<c>overwrite</c>) or to take Octorate's descriptions (E02/F03/US01/T07): nothing is overwritten silently.</item>
+/// person chooses to keep CasaZen's version (<c>overwrite</c>) or to take Octorate's descriptions (E02/F03/US01/T07): nothing is overwritten silently.
+/// The content is shared by the channels of the property, so the change flagged on any of them counts, requested or not.</item>
 /// <item><b>One run for each property.</b> <see cref="ListingPublishJob"/> runs under <see cref="IOctorateOrgScope.Use"/> of the property's org. A
 /// property with no confirmed mapping is created on Octorate first (<see cref="IOctoratePropertyCreator"/>, which refuses existing inventory); a
 /// mapping with no room gets its unit created once (found by name when an earlier run already made it) and set.</item>
@@ -108,10 +109,12 @@ public sealed class ContentPushService(
             };
         }
 
-        // A change made on Octorate after the last push is overwritten only by the person's choice (NF-27).
+        // A change made on Octorate after the last push is overwritten only by the person's choice (NF-27). The groups of the content (the
+        // accommodation, the descriptions, the rooms) are shared by the channels of the property and a publication writes them for all of them, so a
+        // change flagged on any channel of the property stops it, whichever channels were asked for.
         var outside = await db.ListingChannelStates
             .AsNoTracking()
-            .Where(s => s.PropertyId == propertyId && codes.Contains(s.ChannelCode) && s.ExternalChangeAt != null)
+            .Where(s => s.PropertyId == propertyId && s.ExternalChangeAt != null)
             .Select(s => s.ChannelCode)
             .OrderBy(code => code)
             .ToListAsync(ct);

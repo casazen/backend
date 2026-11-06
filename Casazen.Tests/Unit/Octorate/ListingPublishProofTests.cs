@@ -184,6 +184,41 @@ public class ListingPublishProofTests
     }
 
     [Fact]
+    public async Task PublishAsync_AChangeFlaggedOnAnotherChannel_RefusesTheWholePublication_BecauseTheContentIsShared()
+    {
+        // NF-27: a publication writes the groups of the content for every channel of the property. Publishing only to a channel that has no flag (a new
+        // one, say) would write over the change flagged on another channel with no choice made, so the flag of any channel of the property counts.
+        var propertyId = await SeedPropertyAsync(OrgA);
+        await using (var seed = NewDb())
+        {
+            seed.ListingChannelStates.Add(new ListingChannelState
+            {
+                OrgId = OrgA,
+                PropertyId = propertyId,
+                ChannelCode = "booking_xml",
+                Status = ChannelPublishStatus.Published,
+                ExternalChangeAt = Now.UtcDateTime.AddHours(-2),
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = NewDb(new FixedTenant(OrgA));
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(
+            () => Service(db).PublishAsync(propertyId, ["homeaway"], false, Host, CancellationToken.None));
+
+        Assert.Equal("listing_modified_outside", ex.Code);
+        Assert.Equal(["booking_xml"], Assert.IsAssignableFrom<IEnumerable<string>>(ex.Extensions["channels"]));
+        _jobs.Verify(j => j.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Never);
+        await using (var check = NewDb())
+            Assert.Equal(["booking_xml"], (await check.ListingChannelStates.ToListAsync()).Select(s => s.ChannelCode));
+
+        var rows = await Service(db).PublishAsync(propertyId, ["homeaway"], true, Host, CancellationToken.None);
+
+        Assert.Equal(ChannelPublishStatus.Sending, Assert.Single(rows).Status);
+        _jobs.Verify(j => j.Create(It.IsAny<Job>(), It.IsAny<IState>()), Times.Once);
+    }
+
+    [Fact]
     public async Task PublishAsync_WithNoChannelOrAnUnknownOne_IsRefused_NeverReadAsAll()
     {
         var propertyId = await SeedPropertyAsync(OrgA);
