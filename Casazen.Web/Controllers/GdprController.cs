@@ -47,20 +47,24 @@ public class GdprController(
 
     /// <summary>
     /// Complete, versioned export of the guest's data (art. 15 and 20 GDPR) with the identity document in clear: audited,
-    /// never cached.
+    /// never cached. The <c>messages</c> of the guest's bookings are not opened by <c>guest.read</c> alone: they follow the
+    /// message screens of the host (<c>BookingMessagesController</c>), so they are in the export only with <c>booking.read</c>
+    /// on the org and only for the properties the caller's scope reaches.
     /// </summary>
     [HttpGet("guests/{id:guid}/export")]
     [Authorize(Policy = CasazenPolicies.GuestRead)]
     [ProducesResponseType(typeof(GuestDataExport), StatusCodes.Status200OK)]
     public async Task<IActionResult> ExportGuestData(Guid id)
     {
-        if (await ResolveGuestOrgAsync(id) is not { } orgId)
+        if (await ResolveGuestReachAsync(id) is not { } reach)
             return NotFound();
-        if (!await IsAllowedAsync(orgId, GuestOperations.Read))
+        if (!await IsAllowedAsync(reach.OrgId, GuestOperations.Read))
             return Forbid();
 
+        var includeMessages = await authorizationService.IsAuthorizedAsync(User, HostResource.ForOrg(reach.OrgId), BookingOperations.Read);
+
         logger.LogInformation("GDPR data export requested for guest {GuestId} by user {UserId}", id, User.GetUserId());
-        var export = await gdprService.ExportGuestDataAsync(orgId, id, User.GetUserId(), HttpContext.RequestAborted);
+        var export = await gdprService.ExportGuestDataAsync(reach.OrgId, id, reach.Scope, includeMessages, User.GetUserId(), HttpContext.RequestAborted);
         Response.Headers.CacheControl = "private, no-store";
         return Ok(export);
     }
@@ -174,6 +178,16 @@ public class GdprController(
     /// </summary>
     private async Task<Guid?> ResolveGuestOrgAsync(Guid guestId)
     {
+        var reach = await ResolveGuestReachAsync(guestId);
+        return reach?.OrgId;
+    }
+
+    /// <summary>
+    /// <see cref="ResolveGuestOrgAsync"/> with the reach it was decided on: the org and the scope of the caller, for the answers that
+    /// narrow their content by it (the messages of the export).
+    /// </summary>
+    private async Task<(Guid OrgId, HostScope Scope)?> ResolveGuestReachAsync(Guid guestId)
+    {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(HttpContext.RequestAborted);
         if (orgId is null)
             return null;
@@ -181,9 +195,10 @@ public class GdprController(
         if (await hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, HttpContext.RequestAborted) is not { } scope)
             return null;
 
-        return await guestAccessService.IsGuestAccessibleAsync(guestId, scope, HttpContext.RequestAborted)
-            ? orgId
-            : null;
+        if (!await guestAccessService.IsGuestAccessibleAsync(guestId, scope, HttpContext.RequestAborted))
+            return null;
+
+        return (orgId.Value, scope);
     }
 
     private async Task<bool> IsAllowedAsync(Guid orgId, HostOperationRequirement operation)
