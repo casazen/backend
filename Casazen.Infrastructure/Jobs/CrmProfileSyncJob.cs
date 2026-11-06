@@ -23,8 +23,8 @@ namespace Casazen.Infrastructure.Jobs;
 /// ids only); each booking or guest is then synced in a scope of its own under its org (<see cref="CrmSyncScopes"/>), which writes every row with
 /// the <c>OrgId</c> of that org. A booking that fails is logged with its ids and skipped; the next run retries it.</item>
 /// <item><b>While the module is closed</b> (<see cref="CrmProfileSyncGate"/>: <c>Features:CrmMarketing</c> off, or no key of the CRM index,
-/// <c>Crm:ContactIndexKey</c>) the run ends at once, with one line in the log, and does not fail. The job is always registered; the flag is
-/// read at every run, so turning it on or off needs no restart.</item>
+/// <c>Crm:ContactIndexKey</c>) the run ends at once, with one line in the log, and does not fail. The job is always registered; the gate is asked
+/// at every run.</item>
 /// <item>Never two runs at once (<see cref="DisableConcurrentExecutionAttribute"/>), and a run starts nothing new after <see cref="RunBudget"/>,
 /// so it ends before the next one is due. The logs carry ids and counts, never a name, an address or an error message.</item>
 /// </list>

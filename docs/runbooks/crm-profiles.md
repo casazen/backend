@@ -244,10 +244,10 @@ SELECT (SELECT count(*) FROM casazen_prod."GuestCrmProfiles") AS profiles,
 
 With `Features__CrmMarketing` off, or `Crm__ContactIndexKey` not configured (`CrmProfileSyncGate`; production has neither today,
 [`crm-marketing.md`](crm-marketing.md) § 3), the sync is closed: the job ends at once with one line (`CRM profile sync skipped: Features:CrmMarketing is
-off or Crm:ContactIndexKey is not configured`) and does not fail, the event handler does nothing, and the demo reset skips the CRM profiles. The flag is read
-at every run, so turning it on or off needs no restart. **No profile and no contact is created in an environment until its flag is on and its key is
-set**; neither alone opens it (the keyed index also serves the suppression list of a withdrawal, so a key can exist for that). **Production stays closed
-until E07/F06/US02/T01 (erasure and anonymization of the CRM contacts) is delivered**: no key and no flag there ([`deploy-checklist.md`](deploy-checklist.md)).
+off or Crm:ContactIndexKey is not configured`) and does not fail, the event handler does nothing, and the demo reset skips the CRM profiles. The gate is asked
+at every run and at every event. **No profile and no contact is created in an environment until its flag is on and its key is set**; neither alone opens it
+(the keyed index also serves the suppression list of a withdrawal, so a key can exist for that). **Production stays closed until E07/F06/US02/T01 (erasure
+and anonymization of the CRM contacts) is delivered**: no key and no flag there ([`deploy-checklist.md`](deploy-checklist.md)).
 
 ### 4.5 The demo showcase
 
