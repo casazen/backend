@@ -10,7 +10,9 @@ namespace Casazen.Infrastructure.Services;
 
 /// <summary>
 /// The ZIP of the document archive (NF-99, E07/F03/US03/T02), built with <c>System.IO.Compression</c> straight from the storage to the
-/// destination: each file is read in chunks and written into its entry, so neither a file nor the archive is ever held in memory. The
+/// destination: each file is read in chunks and written into its entry, so the archive is never held in memory and the files go one at a time (the
+/// storage hands over one object at a time: in production S3 copies that single object in memory, 20 MB at most for a contract and 10 MB for a
+/// property document; no disk is ever used). The
 /// destination does not have to be seekable or to accept synchronous writes, and the response of the API is neither (see
 /// <see cref="DeferredWriteStream"/>). A folder for each type, the files named <c>{date}-{title}</c> with the name made safe and unique, and
 /// <c>indice.csv</c> at the root, written last because the SHA-256 of a file is known only once it was copied.

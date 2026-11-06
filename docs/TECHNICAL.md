@@ -796,8 +796,8 @@ documents belong to, asked for the caller as the context policies do (`IContextA
   `contratti`, `documenti-immobile`), the files named `{yyyy-MM-dd}-{title}{extension}` (the title cut to 100 characters and made safe, `-2`, `-3` for
   a name already taken) and `indice.csv` at the root (`CsvWriter`: `;`, UTF-8 with BOM; columns `Tipo`, `Data`, `Immobile`, `Codice prenotazione`,
   `Titolo`, `File`, `Dimensione (byte)`, `SHA-256`), written last because the hash is known once a file was copied. A document with no file (or
-  whose file is gone) is in the index with an empty `File`. Each file is copied in chunks from the storage into its entry, so neither a file nor
-  the archive is held in memory, and the destination needs no seek and no synchronous write (the response of Kestrel has neither; the ZIP writer finishes each
+  whose file is gone) is in the index with an empty `File`. Each file is copied in chunks from the storage into its entry, so the archive is never held in memory and the files go one at a time (in production S3 copies the single object: 20 MB at most for a contract, 10 MB for a property document; the disk is never used),
+  and the destination needs no seek and no synchronous write (the response of Kestrel has neither; the ZIP writer finishes each
   entry with a synchronous call, which is kept and sent with the next asynchronous one). The caps count the sizes the documents declare; a document that stores no size (every property
   document) counts as 10 MB, the largest file an upload allows, never as zero: with the default 200 MB an export of property documents holds at most
   20 files, and the 21st is refused with the 422 whatever the cap of files. The headers of the ZIP are set
