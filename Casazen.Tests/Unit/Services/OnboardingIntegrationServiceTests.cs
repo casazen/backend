@@ -447,8 +447,9 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// A reopen never changes data: the senders, the channel states, the connection and the houses are the same after reopening the sender, the
-    /// channels, the properties and the connection. The sender changes only through the sender switch of E03 (no second path here).
+    /// A reopen never changes data: the parts stand put off or left half way (so the reopen does its one write, the deferral and its "To do"),
+    /// and the senders, the channel states, the connection and the houses are the same after reopening the sender, the channels, the properties
+    /// and the connection. The sender changes only through the sender switch of E03 (no second path here).
     /// </summary>
     [Fact]
     public async Task Reopen_ChangesNoSenderChannelConnectionOrProperty()
@@ -465,12 +466,30 @@ public class OnboardingIntegrationServiceTests : IAsyncLifetime
             Sender(_world.Hidden, ComplianceSenderType.Manual));
         _db.ListingChannelStates.Add(Channel(_world.Granted, "booking_xml", ChannelPublishStatus.Published));
         await _db.SaveChangesAsync();
-        var service = Build(_db).Integration;
+        var (service, plan) = Build(_db);
+
+        // Every part is put off first (the ones nothing else needs) or left half way (the others), so each one has its stored intent and an open
+        // "To do": the reopen then takes the one path that writes, and the rows it must not touch still do not change.
+        OnboardingPartKey[] parts = [OnboardingPartKey.Compliance, OnboardingPartKey.Channels, OnboardingPartKey.Properties, OnboardingPartKey.OctorateConnection];
+        foreach (var key in parts)
+        {
+            if (OnboardingPartCatalog.IsDeferrable(key))
+                await plan.DeferAsync(_world.OrgId, _world.OwnerUserId, key, null, Ct);
+            else
+                await plan.ExitAsync(_world.OrgId, _world.OwnerUserId, key, Ct);
+        }
+
+        Assert.Equal(parts.Length, await _db.InternalActivities.AsNoTracking().CountAsync(a => a.CompletedAt == null, Ct));
         var before = await SnapshotAsync();
 
-        foreach (var key in new[] { OnboardingPartKey.Compliance, OnboardingPartKey.Channels, OnboardingPartKey.Properties, OnboardingPartKey.OctorateConnection })
+        foreach (var key in parts)
             await service.ReopenPartAsync(_world.OrgId, _world.OwnerUserId, key, Ct);
 
+        // The one thing the reopen writes is done (the intents are open again with no reminder, every "To do" is closed); nothing else changed.
+        var rows = await _db.OnboardingPartStates.AsNoTracking().ToListAsync(Ct);
+        Assert.Equal(parts.Length, rows.Count);
+        Assert.All(rows, row => Assert.Equal((OnboardingPartStatus.Open, (DateTime?)null, (Guid?)null), (row.Status, row.RemindAt, row.ActivityId)));
+        Assert.Equal(0, await _db.InternalActivities.AsNoTracking().CountAsync(a => a.CompletedAt == null, Ct));
         Assert.Equal(before, await SnapshotAsync());
     }
 
