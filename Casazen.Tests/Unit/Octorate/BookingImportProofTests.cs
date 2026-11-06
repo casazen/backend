@@ -286,6 +286,36 @@ public class BookingImportProofTests
         Assert.Equal(1, await read.Properties.IgnoreQueryFilters().CountAsync());
     }
 
+    [Fact]
+    public async Task BookingImport_AReservationMovedToTheRoomOfAnotherPropertyOfTheOrg_TakesItsBookingWithIt()
+    {
+        var h = new BookingImportHarness();
+        h.Serve(Res("7001"));
+        await using var db = h.NewDb();
+        var service = h.Service(db);
+        await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
+        var before = await h.ReadBookingAsync("7001");
+        Assert.Equal(h.PropertyId, before.PropertyId);
+
+        // Octorate moves the reservation to the room of another property of the org: a newer version, nothing else in it has changed.
+        var other = await h.AddListingAsync("111111", "222222");
+        h.Clock.Advance(TimeSpan.FromHours(1));
+        h.ServeMore("111111", Res("7001", product: "222222") with { UpdatedAt = SecondVersion });
+
+        var result = await service.ImportAllAsync(other, CancellationToken.None);
+
+        // It is the same booking, now on the other property (its nights are no longer held on the old one), with a modification recorded for
+        // the new property; no second booking is made.
+        Assert.Equal((0, 1), (result.Created, result.Updated));
+        var after = await h.ReadBookingAsync("7001");
+        Assert.Equal((before.Id, other, SecondVersion), (after.Id, after.PropertyId, after.OctorateUpdatedAt));
+        await using var read = h.NewDb();
+        Assert.Equal(1, await read.Bookings.CountAsync());
+        var modified = Assert.Single(await h.ReadEventsAsync(), e => e.EventType == DomainEventType.BookingModified);
+        using var payload = JsonDocument.Parse(modified.PayloadJson);
+        Assert.Equal((before.Id, other), (modified.EntityId, payload.RootElement.GetProperty("PropertyId").GetGuid()));
+    }
+
     [Theory]
     [InlineData(OctorateMappingStatus.Proposed)]
     [InlineData(OctorateMappingStatus.Ambiguous)]

@@ -904,9 +904,11 @@ reservation of the room of a property, found through the confirmed `OctorateList
   all (a server may serve fewer than the size asked for, so a short page is not the end; `IOctorateApiClient.GetReservationsAsync` returns an
   `OctorateReservationPage`, the reservations read and the number of items the page held), then the single read of each reservation that is new or
   newer than the one held (the list has neither the payments nor the price breakdown). A reservation of another room of the listing is reported in the
-  result (`Unmapped`) and never creates a property. The checkpoint is `OctorateListingMapping.BookingsImportedThrough`: null means "read the whole
-  history (3 years)", otherwise the next run starts two days before it; it moves only when a run read everything it had to (not after the rate limit,
-  an error, or an item of the list that could not be read: no id, or one over 50 characters, counted as failed).
+  result (`Unmapped`) and never creates a property. A reservation is found by (org, Octorate id) only: when a newer version of it is read from the
+  room of another property of the org, its booking is moved to that property (a `BookingModified` event is recorded), so its nights are not held on
+  the old one. The checkpoint is `OctorateListingMapping.BookingsImportedThrough`: null means "read the whole history (3 years)", otherwise the next
+  run starts two days before it; it moves only when a run read everything it had to (not after the rate limit, an error, or an item of the list that
+  could not be read: no id, or one over 50 characters, counted as failed).
 - *Mapping* (`BookingStateMapper`). `WAITING` Pending, `CONFIRMED` Confirmed, `CANCELLED` Cancelled; a stay checked in or out is never moved back, and a
   booking CasaZen owns (entered by the host, or with payments or a saved card) keeps its figures and is not brought back from a cancellation by a read.
   The channel comes from `channelId` (142 Booking.com, 274 Airbnb, 235 Vrbo, 4 Expedia, 270 the booking engine of the agency = `Direct`) then from the name;
@@ -919,7 +921,7 @@ reservation of the room of a property, found through the confirmed `OctorateList
   and for a caller without `payment.read`); every booking answer carries `otaSource` (the channel of an imported booking, null otherwise).
 - *Guest.* A new `Guest` for the booking (name only: Octorate gives contact data only with a special permission), or the guest of the org with the same
   e-mail and the same name when the reservation carries an e-mail; purpose «GDPR art. 6.1.b», no consent claimed; the booker is the first `StayGuest`.
-- *Events.* `BookingCreated`, `BookingConfirmed`, `BookingModified` (dates, guests or figures changed, not cancelled) and `BookingCancelled`, with
+- *Events.* `BookingCreated`, `BookingConfirmed`, `BookingModified` (property, dates, guests or figures changed, not cancelled) and `BookingCancelled`, with
   `Origin = Octorate`, once each (`BookingEvents` keys). None for a stay that is already over and none for a reservation first seen cancelled.
 - *Out.* `SyncBookingStateAsync` sends `CHECKIN_END` / `CHECKOUT_END` (`PUT /rest/v1/checkin/{acc}/{id}?status=`) and the cancellation of a reservation made
   in CasaZen (`DELETE /rest/v1/reservation/{acc}/{id}`); 422 `octorate_channel_cancel_not_allowed` for a reservation that came from a portal; nothing for

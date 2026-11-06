@@ -27,6 +27,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>Once.</b> The key is (org, Octorate reservation id), unique in the database; each reservation is applied under an advisory lock of
 /// that key, so the job and a webhook handler never make it twice. A version whose <c>updateTime</c> is not newer than the applied one changes
 /// nothing; an unchanged reservation is not even read again.</item>
+/// <item><b>The booking follows its room.</b> A reservation is found by (org, Octorate id) only. When a newer version of it is read from the room of
+/// another property of the org, the booking is moved to that property (a modification is recorded), so its nights are not held on the old one.</item>
 /// <item><b>Events.</b> Recorded with <c>Origin = Octorate</c> in the same unit of work as the change (ids, enums and dates only), through
 /// <see cref="BookingEvents"/> and its keys. A stay that is already over, and a reservation first seen already cancelled, are stored for the
 /// record and raise none: nothing is to be told, scheduled or cleaned for them.</item>
@@ -379,6 +381,10 @@ public sealed class BookingImportService(
         var status = mapper.ToBookingStatus(remote, booking.Status, owned);
 
         var statusChanged = status != booking.Status;
+
+        // The booking is found by (org, Octorate id) only. When Octorate moves the reservation to a room that is mapped to another property of the
+        // org, the booking follows its room: left on the old property it would hold the nights there and leave the new one looking free.
+        var propertyChanged = booking.PropertyId != target.PropertyId;
         var datesChanged = booking.CheckInDate.Date != arrival.Date || booking.CheckOutDate.Date != departure.Date;
         var guestsChanged = booking.NumberOfGuests != guests || booking.NumberOfAdults != adults || booking.NumberOfChildren != children;
         var moneyChanged = !owned
@@ -397,11 +403,14 @@ public sealed class BookingImportService(
         if (reservation.UpdatedAt is { } updatedAt)
             booking.OctorateUpdatedAt = updatedAt;
 
-        if (!(statusChanged || datesChanged || guestsChanged || moneyChanged || originChanged || noteChanged))
+        if (!(statusChanged || propertyChanged || datesChanged || guestsChanged || moneyChanged || originChanged || noteChanged))
         {
             await db.SaveChangesAsync(ct);
             return Applied.Skipped;
         }
+
+        if (propertyChanged)
+            booking.PropertyId = target.PropertyId;
 
         if (statusChanged)
         {
@@ -443,7 +452,7 @@ public sealed class BookingImportService(
             booking.SpecialRequests = note;
 
         booking.UpdatedAt = now;
-        await RecordChangeAsync(booking, statusChanged, datesChanged || guestsChanged || moneyChanged, todayRome, ct);
+        await RecordChangeAsync(booking, statusChanged, propertyChanged || datesChanged || guestsChanged || moneyChanged, todayRome, ct);
         await db.SaveChangesAsync(ct);
         return Applied.Updated;
     }
@@ -503,7 +512,7 @@ public sealed class BookingImportService(
 
     /// <summary>
     /// The events of a change of an existing booking (ADR-033-R7): the confirmation and the cancellation when the state became that, the
-    /// modification when the dates, the guests or the amounts changed and the booking is not cancelled. None for a stay that is over.
+    /// modification when the property, the dates, the guests or the amounts changed and the booking is not cancelled. None for a stay that is over.
     /// </summary>
     private async Task RecordChangeAsync(Booking booking, bool statusChanged, bool modified, DateTime todayRome, CancellationToken ct)
     {
