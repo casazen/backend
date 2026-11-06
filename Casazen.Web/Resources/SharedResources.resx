@@ -4631,6 +4631,45 @@
   <data name="MarketplaceEntryNotFound" xml:space="preserve">
     <value>Voce del marketplace non trovata.</value>
   </data>
+  <data name="MarketplaceOctorateNotConnected" xml:space="preserve">
+    <value>Il collegamento con il channel manager non è attivo: collegalo dalle impostazioni dei canali, poi riprova.</value>
+  </data>
+  <data name="MarketplacePropertyNotLinked" xml:space="preserve">
+    <value>Questo immobile non è ancora abbinato a un annuncio del channel manager: conferma l'abbinamento, poi riprova.</value>
+  </data>
+  <data name="MarketplacePortalUnknown" xml:space="preserve">
+    <value>Canale o strumento non trovato.</value>
+  </data>
+  <data name="MarketplacePortalNotCreatable" xml:space="preserve">
+    <value>Questo canale o strumento non si può collegare da CasaZen: il channel manager lo gestisce solo dal suo pannello.</value>
+  </data>
+  <data name="MarketplaceCredentialsRequired" xml:space="preserve">
+    <value>Mancano alcuni dati per collegare il canale (identificativo della struttura sul canale, nome utente o password): completali e riprova.</value>
+  </data>
+  <data name="MarketplaceCredentialsTooLong" xml:space="preserve">
+    <value>Uno dei dati di accesso al canale è troppo lungo.</value>
+  </data>
+  <data name="MarketplaceConnectionExists" xml:space="preserve">
+    <value>Questo immobile è già collegato a questo canale sul channel manager: controlla il collegamento esistente invece di crearne un altro.</value>
+  </data>
+  <data name="MarketplaceActivationKindRequired" xml:space="preserve">
+    <value>Indica se si tratta di un canale di vendita o di uno strumento collegato.</value>
+  </data>
+  <data name="MarketplaceActivationNotFound" xml:space="preserve">
+    <value>Attivazione non trovata tra quelle a cui hai accesso.</value>
+  </data>
+  <data name="MarketplaceConnectionMissing" xml:space="preserve">
+    <value>Il collegamento non risulta più sul channel manager: ricomincia l'attivazione del canale.</value>
+  </data>
+  <data name="MarketplacePanelAccessPending" xml:space="preserve">
+    <value>Prima di continuare dai l'accesso al canale dal pannello del channel manager, poi torna qui.</value>
+  </data>
+  <data name="MarketplaceMappingRequired" xml:space="preserve">
+    <value>Scegli almeno una camera del canale da abbinare alla tua unità.</value>
+  </data>
+  <data name="MarketplaceMappingInvalid" xml:space="preserve">
+    <value>Una delle camere scelte non è tra quelle del canale o dell'immobile.</value>
+  </data>
   <data name="Marketplace.Channel.Benefit" xml:space="preserve">
     <value>Ricevi in CasaZen le prenotazioni di {0}.</value>
   </data>
