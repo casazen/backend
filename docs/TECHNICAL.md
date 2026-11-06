@@ -940,7 +940,9 @@ reservation of the room of a property, found through the confirmed `OctorateList
   currency, never exported and never turned into a stay; the host cannot remove them. The minimum and maximum stay and the closed arrival and
   departure of a day are read and stored nowhere. After a read that worked, `ICalMigrationService.DeprecateCoveredFeedsAsync` sets `Deprecated` and
   `DeprecatedAt` on the feeds of the property whose channel (Airbnb 274, Booking.com 142) the confirmed listing has; `SyncAllFeedsAsync` skips them
-  and they, their blocks and the export are kept; a feed of channel `Other` is never touched. `GET /api/properties/{id}/ical/feeds`, the calendar
+  and they, their blocks and the export are kept; a feed of channel `Other` is never touched. The hand-over is not one way: when a property is not read
+  any more (its mapping is not confirmed, or its connection is not connected) `ReinstateFeedsAsync` clears the flags and the feeds are imported again.
+  `GET /api/properties/{id}/ical/feeds`, the calendar
   overview and `GET /api/dashboard/ical-feeds` answer `deprecated` (the first also `deprecatedAt`); details in `docs/runbooks/ical.md` § Octorate.
 
 #### Compliance / legal

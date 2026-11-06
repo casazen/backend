@@ -473,7 +473,8 @@ change is not written.
   next run. No retry by Hangfire: the next run reads the same window.
 - *No longer mapped.* At the end of a run the Octorate blocks of a property with no confirmed mapping at all (the host rejected the listing or mapped
   the property again) are removed. A property whose mapping is confirmed but whose connection is disconnected or in error keeps them: a failing
-  connection must not reopen nights the channel manager holds closed.
+  connection must not reopen nights the channel manager holds closed. Its deprecated feeds, like those of a property with no confirmed mapping, are given
+  back to the import (see "Hand-over of the feeds").
 - *Log.* Counts and ids, per property when something changed (`Debug` when not) and one line for the run; no address, no name, no amount.
 
 ### Hand-over of the feeds (`ICalMigrationService`)
@@ -483,6 +484,14 @@ the org of the mapping, not already deprecated) whose channel is one of the port
 Airbnb and `142` Booking.com. Until then, and after a failed read, the feeds keep being imported: no gap and no double import.
 
 - A feed of channel `Other` is never deprecated automatically: Octorate does not know its source.
+- *The hand-over is not one way.* At the end of each run `ReinstateFeedsAsync` clears `Deprecated` and `DeprecatedAt` on the deprecated feeds of every
+  property the job does not read now, that is a property whose mapping is not confirmed (the host rejected the listing or mapped the property again)
+  or whose connection is not connected (the token was refused, the host disconnected), or whose listing has no room chosen: no source would keep its
+  calendar up to date otherwise, and the feeds are imported again by `property-ical-sync`. The first read that works after the listing is back
+  deprecates them again. A read that merely failed (a call, an answer that cannot be used) changes nothing: the feeds stay deprecated and the blocks stay.
+  The log names the property and the feeds by id. With `Features:OctorateConnector` off the job is removed, so nothing gives the feeds back: after
+  turning the flag off on an environment that had handed feeds over, clear the two columns by hand
+  (`UPDATE "PropertyICalFeeds" SET "Deprecated" = false, "DeprecatedAt" = NULL WHERE "Deprecated"`) to have them imported again.
 - `PropertyICalSyncService.SyncAllFeedsAsync` skips a deprecated feed (ADR-002-R14). The feed, the blocks it imported and the export are kept
   (ADR-002-R13). The blocks of a deprecated feed are no longer refreshed: the host removes the feed, and CasaZen's iCal link in the channel's own
   settings, when it is no longer needed. "Sync now" of one feed stays the host's explicit choice.

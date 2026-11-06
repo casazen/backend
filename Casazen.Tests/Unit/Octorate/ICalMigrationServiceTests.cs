@@ -143,6 +143,40 @@ public class ICalMigrationServiceTests
     }
 
     [Fact]
+    public async Task TheHandOverIsNotOneWay_TheFeedsOfAPropertyNoLongerRead_AreGivenBack_AndTheOthersStayDeprecated()
+    {
+        var s = new Scenario();
+        var noLongerRead = await s.AddFeedAsync(ICalFeedChannel.Airbnb, url: SecretAddress);
+        var stillRead = Guid.NewGuid();
+        var kept = await s.AddFeedAsync(ICalFeedChannel.Airbnb, propertyId: stillRead);
+        var ofAnotherOrg = await s.AddFeedAsync(ICalFeedChannel.BookingCom, orgId: OrgB, propertyId: Guid.NewGuid());
+        var neverDeprecated = await s.AddFeedAsync(ICalFeedChannel.Other);
+        await s.MarkDeprecatedAsync(noLongerRead, kept, ofAnotherOrg);
+        await using var db = s.NewDb();
+
+        // The calendar job reads one property now (the one of `kept`): every other deprecated feed goes back to the import, in every org.
+        var given = await s.Service(db).ReinstateFeedsAsync([stillRead], CancellationToken.None);
+
+        Assert.Equal(new[] { noLongerRead, ofAnotherOrg }.Order(), given.Order());
+        await using var read = s.NewDb();
+        var feeds = await read.PropertyICalFeeds.AsNoTracking().ToDictionaryAsync(f => f.Id);
+        Assert.False(feeds[noLongerRead].Deprecated);
+        Assert.Null(feeds[noLongerRead].DeprecatedAt);
+        Assert.False(feeds[ofAnotherOrg].Deprecated);
+        Assert.True(feeds[kept].Deprecated);
+        Assert.NotNull(feeds[kept].DeprecatedAt);
+        Assert.False(feeds[neverDeprecated].Deprecated);
+        // The feed itself is untouched, and the log names the property and the feed, never the address.
+        Assert.Equal(SecretAddress, feeds[noLongerRead].ImportUrl);
+        Assert.All(s.Log.Lines, line => Assert.DoesNotContain("secret.example.com", line, StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(s.Log.Lines, line => line.Contains(noLongerRead.ToString(), StringComparison.Ordinal));
+
+        // Nothing left to give back: a second call changes nothing.
+        await using var again = s.NewDb();
+        Assert.Empty(await s.Service(again).ReinstateFeedsAsync([stillRead], CancellationToken.None));
+    }
+
+    [Fact]
     public async Task AnUnknownProperty_HasNothingToDeprecate()
     {
         var s = new Scenario();
@@ -228,6 +262,18 @@ public class ICalMigrationServiceTests
             db.PropertyICalFeeds.Add(feed);
             await db.SaveChangesAsync();
             return feed.Id;
+        }
+
+        public async Task MarkDeprecatedAsync(params Guid[] feedIds)
+        {
+            await using var db = NewDb();
+            foreach (var feed in await db.PropertyICalFeeds.Where(f => feedIds.Contains(f.Id)).ToListAsync())
+            {
+                feed.Deprecated = true;
+                feed.DeprecatedAt = Now.UtcDateTime;
+            }
+
+            await db.SaveChangesAsync();
         }
 
         public async Task AddBlockAsync(Guid feedId, string uid)

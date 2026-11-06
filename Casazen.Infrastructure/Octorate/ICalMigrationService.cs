@@ -25,6 +25,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// untouched (ADR-002-R13). The blocks of a deprecated feed are no longer refreshed: the host removes the feed when it is no longer needed.</item>
 /// <item><b>Once, and per org.</b> Already deprecated feeds are left as they are (idempotent); only the feeds of the mapping's org are read or changed,
 /// under the iCal lock of the property. The log line has the property and feed ids, never an address.</item>
+/// <item><b>Not one way.</b> When the Octorate calendar of a property is no longer read (its mapping is not confirmed any more, or its connection is
+/// not connected), <see cref="ReinstateFeedsAsync"/> clears <see cref="PropertyICalFeed.Deprecated"/> and the feeds are imported again: nothing else
+/// would keep the calendar of the property up to date. A read that merely failed changes nothing.</item>
 /// </list>
 /// </remarks>
 public sealed class ICalMigrationService(AppDbContext db, TimeProvider timeProvider, ILogger<ICalMigrationService> logger)
@@ -96,6 +99,66 @@ public sealed class ICalMigrationService(AppDbContext db, TimeProvider timeProvi
         logger.LogInformation(
             "iCal feeds of property {PropertyId} deprecated, the Octorate calendar replaces them: {FeedIds}", propertyId, string.Join(", ", ids));
         return ids;
+    }
+
+    /// <summary>
+    /// Gives back to the iCal import the deprecated feeds of every property whose Octorate calendar is not read any more: its mapping is no longer
+    /// confirmed (the host rejected the listing or mapped the property again), or its connection is no longer connected (the token was refused, the
+    /// host disconnected). The hand-over is not one way: with the calendar of Octorate no longer read nothing else would keep the calendar of the
+    /// property up to date. <paramref name="readPropertyIds"/> are the properties the calendar job reads now (confirmed mapping with its room, on a
+    /// connected connection): their feeds stay deprecated, and so do the feeds of a property whose read merely failed (that changes nothing).
+    /// Returns the ids of the feeds given back (none when there is nothing to do).
+    /// </summary>
+    public async Task<IReadOnlyList<Guid>> ReinstateFeedsAsync(IReadOnlyCollection<Guid> readPropertyIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(readPropertyIds);
+
+        // Most runs find nothing left to do: look before taking any lock.
+        var read = readPropertyIds.ToList();
+        var pending = await db.PropertyICalFeeds
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(f => f.Deprecated && !read.Contains(f.PropertyId))
+            .Select(f => new { f.OrgId, f.PropertyId })
+            .Distinct()
+            .ToListAsync(ct);
+
+        var returned = new List<Guid>();
+        foreach (var target in pending)
+        {
+            // The iCal lock of the property, like the hand-over itself: a sync of a feed that is running finishes before the feed is given back.
+            await using var transaction = await PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+                db, ct, (PostgresAdvisoryLocks.Scope.PropertyICalSync, target.PropertyId.ToString()));
+
+            var feeds = await db.PropertyICalFeeds
+                .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+                .Where(f => f.OrgId == target.OrgId && f.PropertyId == target.PropertyId && f.Deprecated)
+                .OrderBy(f => f.CreatedAt)
+                .ThenBy(f => f.Id)
+                .ToListAsync(ct);
+            if (feeds.Count == 0)
+                continue;
+
+            foreach (var feed in feeds)
+            {
+                feed.Deprecated = false;
+                feed.DeprecatedAt = null;
+            }
+
+            await db.SaveChangesAsync(ct);
+            if (transaction is not null)
+                await transaction.CommitAsync(ct);
+
+            var ids = feeds.Select(f => f.Id).ToList();
+            db.ChangeTracker.Clear();
+            returned.AddRange(ids);
+            logger.LogInformation(
+                "iCal feeds of property {PropertyId} given back to the import, the Octorate calendar is not read any more: {FeedIds}",
+                target.PropertyId,
+                string.Join(", ", ids));
+        }
+
+        return returned;
     }
 
     /// <summary>The portal codes of the listing: the keys of <c>{ "142": "1234567" }</c>; none for a column that is empty or not an object.</summary>

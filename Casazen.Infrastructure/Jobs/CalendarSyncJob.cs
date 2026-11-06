@@ -51,6 +51,10 @@ namespace Casazen.Infrastructure.Jobs;
 /// <item><b>Properties no longer mapped.</b> The Octorate blocks of a property with no confirmed mapping at all (the host rejected or changed it) are
 /// removed at the end of the run, so a closure that no longer belongs to the property cannot stay on it. A property whose connection is only
 /// disconnected or in error keeps them: its nights stay closed until the connection is back.</item>
+/// <item><b>The hand-over is not one way.</b> A property that is not read any more, because its mapping is not confirmed or its connection is not
+/// connected, gets its deprecated iCal feeds back at the end of the run (<see cref="ICalMigrationService.ReinstateFeedsAsync"/>): they are imported
+/// again, the only source left for its calendar. They are deprecated again by the first read that works after the listing is back. A read that
+/// only failed changes nothing.</item>
 /// <item>The lock waits <see cref="LockTimeoutSeconds"/>, the value of <c>JobLockTimeouts.FrequentSeconds</c> (a test keeps the two equal).</item>
 /// </list>
 /// </remarks>
@@ -95,8 +99,13 @@ public class CalendarSyncJob(
 
         totals.Released = await RemoveBlocksOfUnmappedPropertiesAsync(cancellationToken);
 
+        // The hand-over is not one way: a property whose calendar is not read any more (mapping not confirmed, connection not connected) gets its
+        // feeds back, because nothing else would keep its calendar up to date. A property whose read failed this time is still in the list.
+        var feedsBack = await migration.ReinstateFeedsAsync([.. properties.Select(p => p.PropertyId)], cancellationToken);
+        totals.FeedsReinstated = feedsBack.Count;
+
         logger.LogInformation(
-            "Octorate calendar sync: {Properties} properties read, {Closed} closed nights in {Blocks} blocks ({Added} added, {Changed} changed, {Removed} removed), {Feeds} iCal feeds deprecated, {Unreadable} answers not used (not understood, or no day opened), {Failed} failed, {Released} blocks of unmapped properties removed",
+            "Octorate calendar sync: {Properties} properties read, {Closed} closed nights in {Blocks} blocks ({Added} added, {Changed} changed, {Removed} removed), {Feeds} iCal feeds deprecated, {Unreadable} answers not used (not understood, stops short of the window, or no day opened), {Failed} failed, {Released} blocks of unmapped properties removed, {Reinstated} iCal feeds given back to the import",
             totals.Properties,
             totals.ClosedNights,
             totals.Blocks,
@@ -106,7 +115,8 @@ public class CalendarSyncJob(
             totals.FeedsDeprecated,
             totals.Unreadable,
             totals.Failed,
-            totals.Released);
+            totals.Released,
+            totals.FeedsReinstated);
     }
 
     // One property: a failure is logged (ids and the type of the error) and does not stop the other properties; false when the org cannot be
@@ -434,6 +444,8 @@ public class CalendarSyncJob(
         public int Failed { get; set; }
 
         public int Released { get; set; }
+
+        public int FeedsReinstated { get; set; }
 
         public void Add(PropertyOutcome outcome)
         {

@@ -426,6 +426,37 @@ public class CalendarSyncJobTests
         Assert.False((await after.PropertyICalFeeds.AsNoTracking().SingleAsync(f => f.Id == proposedFeed)).Deprecated);
     }
 
+    [Fact]
+    public async Task WhenTheListingIsNoLongerRead_TheDeprecatedFeedsAreImportedAgain_AndHandedOverAgainWhenItIsBack()
+    {
+        var h = new Octorate.BookingImportHarness();
+        await SetChannelsAsync(h, """{ "274": "A-1", "142": "B-1" }""");
+        var airbnb = await SeedFeedAsync(h, ICalFeedChannel.Airbnb);
+        Serve(h, Open(10), Open(11));
+        await using var db = h.NewDb();
+        var job = Job(h, db);
+
+        // A read that works hands the feed over, and the runs that follow leave it so.
+        await job.ExecuteAsync(CancellationToken.None);
+        await job.ExecuteAsync(CancellationToken.None);
+        await AssertFeedAsync(h, airbnb, deprecated: true);
+
+        // Octorate refuses the token: the connection is no longer connected and nothing reads the calendar. The feed is the source again.
+        await SetConnectionAsync(h, OctorateConnectionStatus.Disconnected);
+        await job.ExecuteAsync(CancellationToken.None);
+        await AssertFeedAsync(h, airbnb, deprecated: false);
+
+        // Reconnected: the first read that works hands it over again.
+        await SetConnectionAsync(h, OctorateConnectionStatus.Connected);
+        await job.ExecuteAsync(CancellationToken.None);
+        await AssertFeedAsync(h, airbnb, deprecated: true);
+
+        // The host rejects the listing: the mapping is not confirmed any more, and the feed is the source again.
+        await SetMappingStatusAsync(h, OctorateMappingStatus.Rejected);
+        await job.ExecuteAsync(CancellationToken.None);
+        await AssertFeedAsync(h, airbnb, deprecated: false);
+    }
+
     // ─── The blocks of a property that is no longer mapped ───────────────────────────────────────────────
 
     [Fact]
@@ -629,6 +660,28 @@ public class CalendarSyncJobTests
         db.PropertyICalFeeds.Add(feed);
         await db.SaveChangesAsync();
         return feed.Id;
+    }
+
+    private static async Task AssertFeedAsync(Octorate.BookingImportHarness h, Guid feedId, bool deprecated)
+    {
+        await using var read = h.NewDb();
+        var feed = await read.PropertyICalFeeds.AsNoTracking().SingleAsync(f => f.Id == feedId);
+        Assert.Equal(deprecated, feed.Deprecated);
+        Assert.Equal(deprecated, feed.DeprecatedAt is not null);
+    }
+
+    private static async Task SetConnectionAsync(Octorate.BookingImportHarness h, OctorateConnectionStatus status)
+    {
+        await using var db = h.NewDb();
+        (await db.OctorateConnections.SingleAsync()).Status = status;
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SetMappingStatusAsync(Octorate.BookingImportHarness h, OctorateMappingStatus status)
+    {
+        await using var db = h.NewDb();
+        (await db.OctorateListingMappings.SingleAsync(m => m.Id == h.MappingId)).Status = status;
+        await db.SaveChangesAsync();
     }
 
     private static async Task SetChannelsAsync(Octorate.BookingImportHarness h, string channelIdsJson)
