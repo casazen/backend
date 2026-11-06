@@ -28,8 +28,8 @@ public class BookingsController(
     IOtaStayService otaStays,
     ILogger<BookingsController> logger,
     IOptions<BookingsOptions> bookingsOptions,
-    IBookingOctorateSyncReader? octorateSync = null,
-    OtaChannelActionPolicy? channelPolicy = null) : ControllerBase
+    IBookingOctorateSyncReader octorateSync,
+    OtaChannelActionPolicy channelPolicy) : ControllerBase
 {
     /// <summary>Code of a <c>status</c> query value of the search that is not the name of a booking status (SR-03).</summary>
     public const string InvalidStatusCode = "booking_list_invalid_status";
@@ -300,7 +300,7 @@ public class BookingsController(
 
     // The answer of the lists: each booking with what its row says besides it. Every row says its channel (otaSource, the "OTA" badge) and what
     // the host may do with it (changeOptions); the amounts of the channel are the detail's.
-    private static PagedResultDto<BookingListItemDto> ToPage(BookingSearchPage result, OtaChannelActionPolicy? channelPolicy)
+    private static PagedResultDto<BookingListItemDto> ToPage(BookingSearchPage result, OtaChannelActionPolicy channelPolicy)
     {
         var nowUtc = DateTime.UtcNow;
         return new PagedResultDto<BookingListItemDto>
@@ -316,15 +316,11 @@ public class BookingsController(
     private async Task<bool> CanReadPaymentsAsync(IAuthorizationService hostAuthorization) =>
         (await hostAuthorization.AuthorizeAsync(User, CasazenPolicies.PaymentRead)).Succeeded;
 
-    // The mirror of the booking on Octorate (E08/F03/US03/T02): null when it is not mirrored. Asking again is a write on the booking
-    // (POST .../octorate-sync/retry needs booking.write on its property, 404 otherwise), so a caller who may only read never gets canRetry.
-    private async Task<BookingOctorateSyncDto?> ReadOctorateSyncAsync(
-        Booking booking, IAuthorizationService hostAuthorization, CancellationToken cancellationToken)
+    // The mirror of the booking on Octorate as the booking answer says it (E08/F03/US03/T02): null when it is not mirrored. Asking again is a write on the
+    // booking (POST .../octorate-sync/retry needs booking.write on its property, 404 otherwise), so a caller who may only read never gets canRetry.
+    private async Task<BookingOctorateSyncDto?> OctorateSyncOfAsync(
+        Booking booking, BookingSyncStatus? status, IAuthorizationService hostAuthorization)
     {
-        if (octorateSync is null)
-            return null;
-
-        var status = await octorateSync.GetAsync(booking.OrgId, booking.Id, cancellationToken);
         if (status is null)
             return null;
 
@@ -386,10 +382,11 @@ public class BookingsController(
     /// <para>
     /// E08/F03/US03/T02: a booking that came from a channel through the channel manager has <c>otaSource</c>, <c>otaAmounts</c> (commission, net,
     /// paid, balance, as stored: a figure Octorate did not give is <c>null</c>, never zero) and <c>collection</c> (who collects, whether the commission
-    /// is already taken out of the payments). <c>amountSources</c> says where each figure comes from (<c>Stripe</c>, <c>ChannelManager</c>,
-    /// <c>Manual</c>). Like <c>paidAmount</c>, <c>otaAmounts</c>, <c>collection</c> and <c>amountSources</c> are left out for a caller without
-    /// <c>payment.read</c>, who still gets <c>paymentState</c>. <c>octorateSync</c> is the mirror of the booking on Octorate (<c>null</c> when it
-    /// is not mirrored) and carries no money.
+    /// is already taken out of the payments). <c>otaAmounts</c> is also there for a reservation of the booking engine of the agency that the import made
+    /// (it counts as direct, so it has no <c>otaSource</c>, but its money is Octorate's). <c>amountSources</c> says where each figure comes from
+    /// (<c>Stripe</c>, <c>ChannelManager</c>, <c>Manual</c>). Like <c>paidAmount</c>, <c>otaAmounts</c>, <c>collection</c> and <c>amountSources</c> are
+    /// left out for a caller without <c>payment.read</c>, who still gets <c>paymentState</c>. <c>octorateSync</c> is the mirror of the booking on
+    /// Octorate (<c>null</c> when it is not mirrored) and carries no money.
     /// </para>
     /// </summary>
     [HttpGet("{id}")]
@@ -410,6 +407,11 @@ public class BookingsController(
 
         var response = BookingMapper.Fill(new BookingDetailDto(), booking, DateTime.UtcNow, channelPolicy);
 
+        // The mirror of the booking on Octorate, read once (the booking and the org together). Its row is the state the screen shows, and its very
+        // existence tells whose money the booking has: only the push of CasaZen makes the row, never the import.
+        var mirror = await octorateSync.GetAsync(booking.OrgId, booking.Id, HttpContext.RequestAborted);
+        var pushedByCasaZen = mirror is not null;
+
         // What came in: the state for everyone, the money only for a caller who may read payments (SR-D7). The payments came with the booking.
         var payments = booking.Payments.Select(p => new BookingPaymentFact(p.Status, p.Amount, p.RefundedAmount)).ToList();
         response.PaymentState = BookingListRules.PaymentStateOf(booking.TotalPrice, payments).ToString();
@@ -418,9 +420,10 @@ public class BookingsController(
         if (canReadPayments)
         {
             // The amounts of the channel (E02/F02/US01/T01, ADR-033-R8): money too, so the same reach as the paid amount; read-only, exactly as
-            // stored (a figure Octorate did not give stays null, never zero). Only a booking of a channel has them: one CasaZen made and sent to
-            // Octorate has a reservation there too and its money is CasaZen's.
-            response.OtaAmounts = OtaChannelActionPolicy.IsChannelBooking(booking)
+            // stored (a figure Octorate did not give stays null, never zero). A booking of a channel has them, and so does a reservation of the
+            // booking engine of the agency that the import made (Direct, a reservation on Octorate, no row of the mirror): their money is Octorate's.
+            // One CasaZen made and sent to Octorate has a reservation there too (and a row), and its money is CasaZen's.
+            response.OtaAmounts = BookingAmountSourceRules.HoldsChannelManagerMoney(booking, pushedByCasaZen)
                 ? new OtaAmountsDto
                 {
                     Commission = booking.OtaCommission,
@@ -433,11 +436,11 @@ public class BookingsController(
 
             // Who collects (E08/F03/US03/T02, NF-77) and where each figure comes from (Stripe, the channel manager, the host): money data as well.
             response.Collection = BookingCollectionDto.From(booking);
-            response.AmountSources = BookingAmountSourcesDto.From(BookingAmountSourceRules.Of(booking, booking.Payments));
+            response.AmountSources = BookingAmountSourcesDto.From(BookingAmountSourceRules.Of(booking, booking.Payments, pushedByCasaZen));
         }
 
         // The mirror of the booking on the channel manager: a state and a code, no money, so whoever reads the booking sees it.
-        response.OctorateSync = await ReadOctorateSyncAsync(booking, hostAuthorization, HttpContext.RequestAborted);
+        response.OctorateSync = await OctorateSyncOfAsync(booking, mirror, hostAuthorization);
         // A communication exists for a stay that is confirmed or later: a request, a hold or a cancelled booking has none.
         response.GuestDataComplete = booking.Status is BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut
             ? await alloggiatiWebService.IsStayDataCompleteAsync(id)

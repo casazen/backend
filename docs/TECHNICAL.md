@@ -1182,12 +1182,12 @@ reservation of the room of a property, found through the confirmed `OctorateList
   has `otaSource` and `changeOptions`. `otaSource` is the channel (`Airbnb`, `BookingCom`, `Expedia`, `Vrbo`, `TripAdvisor`, `Agoda`, `OtherChannel`) of a
   *booking of a channel* (`OtaChannelActionPolicy.IsChannelBooking`) and `null` for every other: also for a booking CasaZen made and sent to Octorate (it has
   a reservation there too, and is the booking site's) and for a reservation of the booking engine of the agency (it counts as direct). It is what the
-  "OTA" badge of the list reads (ADR-033-R9; `BookingSearchService` loads the bookings and `BookingMapper.ToListItem` fills it, so every item has it).
+  "OTA" badge of the list reads (ADR-033-R9; `BookingSearchService` loads the bookings and `BookingMapper.ToListItem` fills it, so every item has it). Whose money a booking has is another question (`BookingAmountSourceRules.HoldsChannelManagerMoney`): the channel manager's for a booking of a channel and also for a reservation of the booking engine of the agency that the import made (Source `Direct`, a reservation on Octorate and no row of the mirror: only the push of CasaZen makes that row, never the import), CasaZen's for a booking it made and sent to Octorate (it has the row). The first two keep `otaAmounts` and have `ChannelManager` as the source of their figures.
   `changeOptions` is `BookingEditRules.ChangeOptionsOf(booking, policy)` (below), the policy being the configured one. `GET /api/bookings/{id}` adds:
-  `otaAmounts` `{ commission, net, paid, balance, currency }` for a booking of a channel, exactly as stored (a figure Octorate did not give is `null` on
+  `otaAmounts` `{ commission, net, paid, balance, currency }` for a booking whose money is the channel manager's, exactly as stored (a figure Octorate did not give is `null` on
   the wire, never zero); `collection` `{ companyCollect, commissionIncludedInPayments }` for a booking of a channel (each flag `null` when it is not
   known); `amountSources` `{ total, paid, balance, commission, net }` (`BookingAmountSourceRules`): `Stripe`, `ChannelManager` or `Manual`, and a figure
-  the booking does not have is left out of the JSON. A booking of a channel is `ChannelManager` for every figure Octorate gave; any other has `total`
+  the booking does not have is left out of the JSON. A booking whose money is the channel manager's is `ChannelManager` for every figure Octorate gave; any other has `total`
   `Stripe` when it is the quote of the booking site (`Direct`, price not overridden) and `Manual` when the host entered the booking or the price, and
   `paid` `Stripe` when every collected payment went through Stripe, `Manual` as soon as one is a cash or bank transfer payment the host recorded (a
   number that holds something the host typed is not presented as Stripe's), none when nothing was collected. `otaAmounts`, `collection` and

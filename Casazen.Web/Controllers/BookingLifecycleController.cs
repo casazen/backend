@@ -37,7 +37,7 @@ public class BookingLifecycleController(
     IAuthorizationService authorizationService,
     IStringLocalizer<SharedResources> localizer,
     ILogger<BookingLifecycleController> logger,
-    OtaChannelActionPolicy? channelPolicy = null) : ControllerBase
+    OtaChannelActionPolicy channelPolicy) : ControllerBase
 {
     /// <summary>
     /// Price of a stay the host is entering or changing (manual booking): lodging, cleaning and the tourist tax of the

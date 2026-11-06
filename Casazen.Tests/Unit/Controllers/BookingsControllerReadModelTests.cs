@@ -197,11 +197,11 @@ public class BookingsControllerReadModelTests
     [Fact]
     public async Task BookingDetail_ABookingCasaZenMadeAndSentToOctorate_IsNotABookingOfAChannel()
     {
-        // The push gives it a reservation on Octorate, as the import gives one to a booking of a channel; it is still the booking site's.
+        // The push gives it a reservation on Octorate, as the import gives one to a booking of a channel, and the row of the mirror; it is still the booking site's.
         var booking = ChannelBooking(BookingSource.Direct, reservationId: "7003");
         booking.OtaPaidAmount = 99m;
 
-        var dto = await DetailAsync(booking);
+        var dto = await DetailAsync(booking, reader: Mirror(booking, OctorateSyncState.Synced));
 
         Assert.Null(dto.OtaSource);
         Assert.Null(dto.OtaAmounts);
@@ -210,6 +210,39 @@ public class BookingsControllerReadModelTests
         Assert.Null(dto.ChangeOptions.Channel);
         Assert.Null(dto.ChangeOptions.GuidanceKey);
         Assert.Null(BookingMapper.ToResponse(booking).OtaSource);
+    }
+
+    [Fact]
+    public async Task BookingDetail_AReservationOfTheBookingEngineOfTheAgency_IsDirectButItsMoneyIsOctorates_UnlikeOneCasaZenPushed()
+    {
+        // The import makes it from channel 270: Direct, a reservation on Octorate whose prices and amounts are Octorate's, and no row of the mirror
+        // (only the push of CasaZen makes one). The guest paid on the booking engine, not through Stripe.
+        var booking = ChannelBooking(BookingSource.Direct, reservationId: "7008");
+        booking.OtaCommission = null;
+        booking.OtaPaidAmount = 330.55m;
+
+        var dto = await DetailAsync(booking, reader: Mirror(booking, null));
+
+        // It counts as direct for the badge, the flags of a channel and the rule of the changes...
+        Assert.Null(dto.OtaSource);
+        Assert.Null(dto.Collection);
+        Assert.Null(dto.ChangeOptions.Channel);
+        // ...but the money is the channel manager's: its amounts are there, as stored, and Stripe is not told to be their source.
+        var amounts = Assert.IsType<OtaAmountsDto>(dto.OtaAmounts);
+        Assert.Equal((null, null, 330.55m, null, "CHF"), (amounts.Commission, amounts.Net, amounts.Paid, amounts.Balance, amounts.Currency));
+        Assert.Equal(("ChannelManager", "ChannelManager"), (dto.AmountSources!.Total, dto.AmountSources.Paid));
+        Assert.Null(dto.AmountSources.Commission);
+        Assert.Equal(0m, dto.PaidAmount);
+
+        // Like every amount, they are left out for a caller who may not read payments.
+        var collaborator = await DetailAsync(booking, canReadPayments: false, reader: Mirror(booking, null));
+        Assert.Null(collaborator.OtaAmounts);
+        Assert.Null(collaborator.AmountSources);
+
+        // The very same booking with the row of the mirror was made by CasaZen: its money is CasaZen's, whatever Octorate stored beside it.
+        var pushed = await DetailAsync(booking, reader: Mirror(booking, OctorateSyncState.Synced));
+        Assert.Null(pushed.OtaAmounts);
+        Assert.Equal("Stripe", pushed.AmountSources!.Total);
     }
 
     // ─── What the host may do ────────────────────────────────────────────────────────────────────────────
@@ -414,8 +447,8 @@ public class BookingsControllerReadModelTests
             Mock.Of<IOtaStayService>(),
             Mock.Of<ILogger<BookingsController>>(),
             Options.Create(new BookingsOptions { DefaultPageSize = 10 }),
-            reader,
-            policy)
+            reader ?? Mock.Of<IBookingOctorateSyncReader>(),
+            policy ?? OtaChannelActionPolicy.Closed)
         {
             ControllerContext = new ControllerContext
             {

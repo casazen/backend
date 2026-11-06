@@ -175,8 +175,9 @@ public class BookingDetailDto : BookingResponseDto
 
     /// <summary>
     /// The amounts of the channel of a booking that came from a channel (E02/F02/US01/T01, E08/F03/US03/T02, ADR-033-R8, read-only): commission, net, paid
-    /// and balance, each <c>null</c> when Octorate does not give it ("not available", never zero), exactly as stored. <c>null</c> for a booking that does
-    /// not come from a channel, and for a caller without <c>payment.read</c> (as <see cref="PaidAmount"/>).
+    /// and balance, each <c>null</c> when Octorate does not give it ("not available", never zero), exactly as stored. They are also there for a reservation
+    /// of the booking engine of the agency that the import made (it counts as direct, but its money is Octorate's). <c>null</c> for any other booking,
+    /// one CasaZen made and sent to Octorate included, and for a caller without <c>payment.read</c> (as <see cref="PaidAmount"/>).
     /// </summary>
     public OtaAmountsDto? OtaAmounts { get; set; }
 
@@ -189,7 +190,8 @@ public class BookingDetailDto : BookingResponseDto
 
     /// <summary>
     /// Where each figure of the booking comes from (E08/F03/US03/T02, NF-77): Stripe for a booking of the booking site, the channel manager for a booking of a
-    /// channel, the host for what was entered by hand. <c>null</c> for a caller without <c>payment.read</c> (as <see cref="PaidAmount"/>).
+    /// channel (or a reservation of the booking engine of the agency), the host for what was entered by hand. <c>null</c> for a caller without
+    /// <c>payment.read</c> (as <see cref="PaidAmount"/>).
     /// </summary>
     public BookingAmountSourcesDto? AmountSources { get; set; }
 

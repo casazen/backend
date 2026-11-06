@@ -11,7 +11,7 @@ public enum AmountSource
     /// <summary>The booking site: the price the guest was quoted and the card payments Stripe collected for it (a direct booking).</summary>
     Stripe,
 
-    /// <summary>The channel manager: the figures of a booking that came from a channel are the ones Octorate gives.</summary>
+    /// <summary>The channel manager: the figures of a booking that came from a channel, or from the booking engine of the agency, are the ones Octorate gives.</summary>
     ChannelManager,
 
     /// <summary>The host: a price, or a payment (cash, bank transfer), that the host entered by hand.</summary>
@@ -24,9 +24,9 @@ public enum AmountSource
 /// </summary>
 /// <param name="Total">The price of the stay.</param>
 /// <param name="Paid">What came in.</param>
-/// <param name="Balance">What is still to pay (a booking of a channel only: CasaZen does not work out a balance of its own bookings).</param>
-/// <param name="Commission">What the channel kept (a booking of a channel only).</param>
-/// <param name="Net">What the host receives (a booking of a channel only).</param>
+/// <param name="Balance">What is still to pay (the money of the channel manager only: CasaZen does not work out a balance of its own bookings).</param>
+/// <param name="Commission">What the channel kept (the money of the channel manager only).</param>
+/// <param name="Net">What the host receives (the money of the channel manager only).</param>
 public sealed record BookingAmountSources(
     AmountSource? Total,
     AmountSource? Paid,
@@ -35,8 +35,9 @@ public sealed record BookingAmountSources(
     AmountSource? Net);
 
 /// <summary>
-/// The one rule of where the figures of a booking come from (NF-77). A booking of a channel (<see cref="OtaChannelActionPolicy.IsChannelBooking(Booking)"/>)
-/// has the figures of Octorate and nothing else: each one is <see cref="AmountSource.ChannelManager"/> when Octorate gave it, and has no source when it did
+/// The one rule of where the figures of a booking come from (NF-77). When the money of a booking is the channel manager's
+/// (<see cref="HoldsChannelManagerMoney"/>: a booking of a channel, or a reservation of the booking engine of the agency that the import made) it has the
+/// figures of Octorate and nothing else: each one is <see cref="AmountSource.ChannelManager"/> when Octorate gave it, and has no source when it did
 /// not (a figure that is not available is not attributed). Any other booking is CasaZen's: its price is <see cref="AmountSource.Stripe"/> when it is the
 /// quote of the booking site and <see cref="AmountSource.Manual"/> when the host entered the booking or the price; what came in is
 /// <see cref="AmountSource.Stripe"/> when every collected payment went through Stripe and <see cref="AmountSource.Manual"/> as soon as one of them is a
@@ -44,13 +45,34 @@ public sealed record BookingAmountSources(
 /// </summary>
 public static class BookingAmountSourceRules
 {
-    /// <summary>The sources of the figures of <paramref name="booking"/>, whose payments are <paramref name="payments"/>.</summary>
-    public static BookingAmountSources Of(Booking booking, IEnumerable<Payment> payments)
+    /// <summary>
+    /// Whether the figures of <paramref name="booking"/> are those of the channel manager. They are for a booking of a channel
+    /// (<see cref="OtaChannelActionPolicy.IsChannelBooking(Booking)"/>) and for a reservation of the booking engine of the agency (channel 270, counted as
+    /// <see cref="BookingSource.Direct"/> for the badge, the fiscal rules and the changes) that the import made: it has a reservation on Octorate whose prices
+    /// and amounts are Octorate's. The two differ from a booking CasaZen made and sent to Octorate, which has a reservation there too and whose money is
+    /// CasaZen's, by the row of the mirror (<see cref="OctorateBookingSync"/>): only the push of CasaZen makes it, never the import. Hence
+    /// <paramref name="pushedByCasaZen"/>: the booking has that row.
+    /// </summary>
+    public static bool HoldsChannelManagerMoney(Booking booking, bool pushedByCasaZen)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+
+        return OtaChannelActionPolicy.IsChannelBooking(booking)
+               || (booking.Source == BookingSource.Direct
+                   && !pushedByCasaZen
+                   && !string.IsNullOrWhiteSpace(booking.OctorateReservationId));
+    }
+
+    /// <summary>
+    /// The sources of the figures of <paramref name="booking"/>, whose payments are <paramref name="payments"/>; <paramref name="pushedByCasaZen"/> is
+    /// whether it has a row of the mirror on Octorate (see <see cref="HoldsChannelManagerMoney"/>).
+    /// </summary>
+    public static BookingAmountSources Of(Booking booking, IEnumerable<Payment> payments, bool pushedByCasaZen)
     {
         ArgumentNullException.ThrowIfNull(booking);
         ArgumentNullException.ThrowIfNull(payments);
 
-        if (OtaChannelActionPolicy.IsChannelBooking(booking))
+        if (HoldsChannelManagerMoney(booking, pushedByCasaZen))
         {
             return new BookingAmountSources(
                 AmountSource.ChannelManager,
@@ -60,8 +82,8 @@ public static class BookingAmountSourceRules
                 FromChannel(booking.OtaNetAmount));
         }
 
-        // Only a booking made on the booking site, at the price of its quote, is priced there; every other one (entered by the host, a stay from an
-        // iCal feed) has the price the host gave it.
+        // Only a booking made on the booking site, at the price of its quote, is priced there (one CasaZen sent to Octorate included: its price stays
+        // CasaZen's); every other one (entered by the host, a stay from an iCal feed) has the price the host gave it.
         var total = booking.Source == BookingSource.Direct && !booking.PriceOverridden ? AmountSource.Stripe : AmountSource.Manual;
         return new BookingAmountSources(total, PaidSourceOf(payments), null, null, null);
     }

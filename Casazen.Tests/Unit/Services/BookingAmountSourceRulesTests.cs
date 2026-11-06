@@ -17,7 +17,7 @@ public class BookingAmountSourceRulesTests
         booking.OtaCommission = 18.15m;
         booking.OtaPaidAmount = 123.45m;
 
-        var sources = BookingAmountSourceRules.Of(booking, []);
+        var sources = BookingAmountSourceRules.Of(booking, [], pushedByCasaZen: false);
 
         Assert.Equal(AmountSource.ChannelManager, sources.Total);
         Assert.Equal(AmountSource.ChannelManager, sources.Paid);
@@ -28,7 +28,7 @@ public class BookingAmountSourceRulesTests
 
         booking.OtaNetAmount = 105.30m;
         booking.OtaBalanceAmount = 0m;
-        var complete = BookingAmountSourceRules.Of(booking, []);
+        var complete = BookingAmountSourceRules.Of(booking, [], pushedByCasaZen: false);
         Assert.Equal(AmountSource.ChannelManager, complete.Net);
         Assert.Equal(AmountSource.ChannelManager, complete.Balance);
     }
@@ -39,7 +39,7 @@ public class BookingAmountSourceRulesTests
         var booking = Channel(BookingSource.BookingCom, "7002");
         booking.OtaPaidAmount = 50m;
 
-        var sources = BookingAmountSourceRules.Of(booking, [NewPayment(PaymentMethod.CashOnArrival, null, 10m)]);
+        var sources = BookingAmountSourceRules.Of(booking, [NewPayment(PaymentMethod.CashOnArrival, null, 10m)], pushedByCasaZen: false);
 
         Assert.Equal(AmountSource.ChannelManager, sources.Paid);
     }
@@ -49,7 +49,7 @@ public class BookingAmountSourceRulesTests
     {
         var booking = new Booking { Source = BookingSource.Direct, TotalPrice = 330m };
 
-        var sources = BookingAmountSourceRules.Of(booking, [NewPayment(PaymentMethod.CreditCard, "pi_123", 330m)]);
+        var sources = BookingAmountSourceRules.Of(booking, [NewPayment(PaymentMethod.CreditCard, "pi_123", 330m)], pushedByCasaZen: false);
 
         Assert.Equal(AmountSource.Stripe, sources.Total);
         Assert.Equal(AmountSource.Stripe, sources.Paid);
@@ -65,10 +65,44 @@ public class BookingAmountSourceRulesTests
         // It has a reservation on Octorate too, but it does not come from a channel.
         var booking = new Booking { Source = BookingSource.Direct, OctorateReservationId = "7003" };
 
-        var sources = BookingAmountSourceRules.Of(booking, [NewPayment(PaymentMethod.CreditCard, "pi_123", 100m)]);
+        var sources = BookingAmountSourceRules.Of(booking, [NewPayment(PaymentMethod.CreditCard, "pi_123", 100m)], pushedByCasaZen: true);
 
         Assert.Equal(AmountSource.Stripe, sources.Total);
         Assert.Equal(AmountSource.Stripe, sources.Paid);
+    }
+
+    [Fact]
+    public void Of_AReservationOfTheBookingEngineOfTheAgency_IsDirectButItsFiguresAreTheChannelManagers()
+    {
+        // The import made it from channel 270: Direct, a reservation on Octorate and no row of the mirror. Its price and what was paid are Octorate's.
+        var booking = new Booking { Source = BookingSource.Direct, OctorateReservationId = "7008", TotalPrice = 330.55m, OtaPaidAmount = 330.55m };
+
+        var sources = BookingAmountSourceRules.Of(booking, [], pushedByCasaZen: false);
+
+        Assert.Equal(AmountSource.ChannelManager, sources.Total);
+        Assert.Equal(AmountSource.ChannelManager, sources.Paid);
+        // What Octorate did not give has no source.
+        Assert.Null(sources.Commission);
+        Assert.Null(sources.Net);
+        Assert.Null(sources.Balance);
+    }
+
+    [Theory]
+    [InlineData(BookingSource.Airbnb, "7001", false, true)]
+    [InlineData(BookingSource.Airbnb, "7001", true, true)]
+    [InlineData(BookingSource.Direct, "7008", false, true)]
+    [InlineData(BookingSource.Direct, " ", false, false)]
+    [InlineData(BookingSource.Direct, null, false, false)]
+    [InlineData(BookingSource.Direct, "7003", true, false)]
+    [InlineData(BookingSource.Manual, "7004", false, false)]
+    [InlineData(BookingSource.Manual, "7004", true, false)]
+    [InlineData(BookingSource.Airbnb, null, false, false)]
+    public void HoldsChannelManagerMoney_AChannelBooking_OrAReservationTheImportMadeOfTheBookingEngine_AndNothingCasaZenPushed(
+        BookingSource source, string? reservationId, bool pushedByCasaZen, bool expected)
+    {
+        var booking = new Booking { Source = source, OctorateReservationId = reservationId };
+
+        Assert.Equal(expected, BookingAmountSourceRules.HoldsChannelManagerMoney(booking, pushedByCasaZen));
     }
 
     [Theory]
@@ -122,7 +156,7 @@ public class BookingAmountSourceRulesTests
         // A stay from an iCal feed of a channel (Airbnb with no reservation on Octorate) is CasaZen's own record, entered by the host.
         var booking = new Booking { Source = source, PriceOverridden = priceOverridden, TotalPrice = 100m };
 
-        Assert.Equal(expected, BookingAmountSourceRules.Of(booking, []).Total);
+        Assert.Equal(expected, BookingAmountSourceRules.Of(booking, [], pushedByCasaZen: false).Total);
     }
 
     private static Booking Channel(BookingSource source, string reservationId) =>

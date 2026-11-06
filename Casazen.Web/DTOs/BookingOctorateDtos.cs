@@ -89,15 +89,15 @@ public sealed class BookingAmountSourcesDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Paid { get; init; }
 
-    /// <summary>What is still to pay (a booking of a channel, when Octorate gives it).</summary>
+    /// <summary>What is still to pay (the money of the channel manager, when Octorate gives it).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Balance { get; init; }
 
-    /// <summary>What the channel kept (a booking of a channel, when Octorate gives it).</summary>
+    /// <summary>What the channel kept (the money of the channel manager, when Octorate gives it).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Commission { get; init; }
 
-    /// <summary>What the host receives (a booking of a channel, when Octorate gives it).</summary>
+    /// <summary>What the host receives (the money of the channel manager, when Octorate gives it).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Net { get; init; }
 
