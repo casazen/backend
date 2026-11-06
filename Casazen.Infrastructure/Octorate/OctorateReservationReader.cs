@@ -114,6 +114,7 @@ internal static class OctorateReservationReader
             TotalPaid = OctorateJson.Decimal(item, "totalPaid"),
             PaymentStatus = OctorateJson.Text(item, "paymentStatus"),
             PriceBreakdown = PriceBreakdownOf(item),
+            PaymentTransactions = PaymentTransactionsOf(item),
         };
     }
 
@@ -125,6 +126,21 @@ internal static class OctorateReservationReader
     {
         var id = OctorateJson.Text(item, "guestId") ?? OctorateJson.Text(firstGuest, "id", "guestId");
         return id is { Length: <= OctorateReservation.GuestIdMaxLength } ? id : null;
+    }
+
+    /// <summary>The <c>transaction</c> of each payment of the single read (<c>payments[].transaction</c>, <c>ApiReservationPaymentDTO</c>); never an amount or a card.</summary>
+    private static IReadOnlyList<string> PaymentTransactionsOf(JsonElement item)
+    {
+        if (OctorateJson.Find(item, "payments") is not { ValueKind: JsonValueKind.Array } payments)
+            return [];
+
+        return
+        [
+            .. payments.EnumerateArray()
+                .Where(payment => payment.ValueKind == JsonValueKind.Object)
+                .Select(payment => OctorateJson.Text(payment, "transaction"))
+                .OfType<string>(),
+        ];
     }
 
     /// <summary>The status Octorate wrote, or <c>null</c> for a word that is none of the three.</summary>

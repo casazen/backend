@@ -8,6 +8,7 @@ using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email.Templates;
 using Casazen.Infrastructure.Events;
+using Casazen.Infrastructure.Octorate;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Email;
 using Casazen.Tests.Unit.Push;
@@ -392,7 +393,7 @@ public class BookingEventConsumersTests : IAsyncLifetime
     // --- Registration and closing rules ---------------------------------------------------------------------------------------
 
     [Fact]
-    public void AddCasazenBookingOperations_RegistersTheThreeConsumersOnTheBus()
+    public void AddCasazenBookingOperations_RegistersTheConsumersOnTheBus()
     {
         var services = new ServiceCollection();
 
@@ -402,8 +403,16 @@ public class BookingEventConsumersTests : IAsyncLifetime
             .Where(d => d.ServiceType == typeof(IEventHandler<DomainEvent>))
             .Select(d => d.ImplementationType)
             .ToList();
+        // In the order of registration: the three of E08/F06 (cleaning «To do», special request «To do», channel alert), then the two
+        // that write to Octorate (E08/F01/US01): the booking created on confirmation (T03) and the payment recorded once paid (T04).
         Assert.Equal(
-            [typeof(BookingCleaningActivityHandler), typeof(BookingSpecialRequestActivityHandler), typeof(ChannelBookingAlertHandler)],
+            [
+                typeof(BookingCleaningActivityHandler),
+                typeof(BookingSpecialRequestActivityHandler),
+                typeof(ChannelBookingAlertHandler),
+                typeof(OctorateBookingCreateHandler),
+                typeof(OctoratePaymentHandler),
+            ],
             handlers);
     }
 

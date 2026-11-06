@@ -403,6 +403,12 @@ public sealed record OctorateReservation
     public IReadOnlyList<OctoratePriceComponent> PriceBreakdown { get; init; } = [];
 
     /// <summary>
+    /// The <c>transaction</c> of each payment recorded on the reservation (<c>payments</c> of the single read, E08/F01/US01/T04): how CasaZen sees
+    /// that a payment it sent is already there when the answer of the registration was lost. Empty when the answer lists none.
+    /// </summary>
+    public IReadOnlyList<string> PaymentTransactions { get; init; } = [];
+
+    /// <summary>
     /// The sum of the <see cref="CommissionType"/> lines that have an amount; <c>null</c> when there is none. The only source of the
     /// commission: the reservation has no top-level commission, net or balance (sandbox and OpenAPI, 2026-11-04).
     /// </summary>

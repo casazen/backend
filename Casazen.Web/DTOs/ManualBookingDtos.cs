@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 
 namespace Casazen.Web.DTOs;
@@ -88,6 +89,14 @@ public class CreateManualBookingRequest : IValidatableObject
     /// <summary>The portal of the block, only for the calendar of a portal that is not Airbnb or Booking.com (422 <c>ota_stay_source_required</c> otherwise).</summary>
     public BookingSource? Source { get; set; }
 
+    /// <summary>
+    /// How the guest pays (the payment step of the new-booking wizard, NF-74): <c>none</c> (the default), <c>paymentLink</c> (the guest is
+    /// e-mailed a secure link to pay the balance online; needs <c>payment.write</c> and a Stripe account ready, 422
+    /// <c>payment_link_unavailable</c> otherwise), <c>onSite</c> or <c>bankTransfer</c> (recorded only: the host records the income with
+    /// "Registra incasso", nothing is sent). Not with <see cref="BlockId"/>: the portal collects.
+    /// </summary>
+    public HostPaymentArrangement? PaymentArrangement { get; set; }
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
         BookingGuestsValidation.Validate(validationContext, Adults + Children, Children, ChildrenAges);
 }
@@ -108,4 +117,39 @@ public sealed class ManualBookingResponse : BookingResponseDto
     /// this: the guest completes them with the online check-in.
     /// </summary>
     public bool GuestDataComplete { get; set; }
+
+    /// <summary>
+    /// The payment link e-mailed to the guest, given this once for the host to copy (<c>paymentArrangement = paymentLink</c>); <c>null</c> for
+    /// the other arrangements. The token in it is never stored: a new link is made with <c>POST /api/bookings/{id}/payment-link</c>.
+    /// </summary>
+    public string? PaymentLinkUrl { get; set; }
+
+    /// <summary>
+    /// Why the payment link is missing although the booking was created (<c>payment_link_unavailable</c>, <c>payment_provider_error</c>): the
+    /// host sends it again from the booking. <c>null</c> otherwise.
+    /// </summary>
+    public string? PaymentLinkError { get; set; }
+}
+
+/// <summary>The answer of <c>POST /api/bookings/{id}/payment-link</c> (NF-74, E08/F01/US01/T05).</summary>
+/// <param name="BookingId">The booking.</param>
+/// <param name="PaymentLinkUrl">The link e-mailed to the guest, given this once for the host to copy; the previous link no longer works.</param>
+/// <param name="Amount">The balance the guest pays.</param>
+/// <param name="Currency">The currency of the property.</param>
+/// <param name="SentAt">When the link was made (UTC).</param>
+/// <param name="EmailSent">The e-mail to the guest was queued (false when the guest has no address).</param>
+public sealed record BookingPaymentLinkResponse(
+    Guid BookingId,
+    string PaymentLinkUrl,
+    decimal Amount,
+    string Currency,
+    DateTime SentAt,
+    bool EmailSent)
+{
+    public static BookingPaymentLinkResponse From(BookingPaymentLink link)
+    {
+        ArgumentNullException.ThrowIfNull(link);
+
+        return new BookingPaymentLinkResponse(link.BookingId, link.Url, link.Amount, link.Currency, link.SentAt, link.EmailQueued);
+    }
 }
