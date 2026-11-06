@@ -5119,7 +5119,7 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
     <value>Questo documento non ha un file da scaricare.</value>
   </data>
   <data name="ArchiveExportTooLarge" xml:space="preserve">
-    <value>Troppi documenti per un solo archivio: ne risultano {0}, e un'esportazione ne contiene al massimo {1} per {2} MB. Restringi il periodo o scegli un tipo di documento o un immobile.</value>
+    <value>Troppi documenti per un solo archivio: ne risultano {0}, e un'esportazione ne contiene al massimo {1} per {2} MB (un documento di cui non si conosce la dimensione conta {3} MB). Restringi il periodo o scegli un tipo di documento o un immobile.</value>
   </data>
   <data name="ArchiveInvalidType" xml:space="preserve">
     <value>Tipo di documento non valido.</value>

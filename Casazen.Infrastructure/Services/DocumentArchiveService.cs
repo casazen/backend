@@ -150,7 +150,10 @@ public sealed class DocumentArchiveService(
 
         // The caps are checked before a byte is written: a refusal is a 422 the host can act on, never a download that stops half way.
         var found = rows is null ? 0 : await rows.CountAsync(cancellationToken);
-        var declaredBytes = rows is null || found == 0 ? 0L : await rows.SumAsync(r => r.SizeBytes ?? 0L, cancellationToken);
+        // A document that stores no size (every property document) counts as the largest upload, never as zero: the cap bounds the response.
+        var declaredBytes = rows is null || found == 0
+            ? 0L
+            : await rows.SumAsync(r => r.SizeBytes ?? DocumentArchiveOptions.UndeclaredDocumentBytes, cancellationToken);
         if (found > limits.MaxExportFiles || declaredBytes > limits.MaxExportBytes)
             throw TooLarge(found, limits);
 
@@ -256,8 +259,11 @@ public sealed class DocumentArchiveService(
     private static ArchiveRow WithContentType(ArchiveRow row) =>
         row.ContentType.Length > 0 ? row : row with { ContentType = StorageKeys.ContentTypeFor(row.Title) };
 
-    private static DomainRuleException TooLarge(int found, DocumentArchiveOptions limits) =>
-        new(ExportTooLargeCode, "ArchiveExportTooLarge", found, limits.MaxExportFiles, limits.MaxExportBytes / (1024 * 1024))
+    private static DomainRuleException TooLarge(int found, DocumentArchiveOptions limits)
+    {
+        var megabytes = limits.MaxExportBytes / (1024 * 1024);
+        var undeclaredMegabytes = DocumentArchiveOptions.UndeclaredDocumentBytes / (1024 * 1024);
+        return new(ExportTooLargeCode, "ArchiveExportTooLarge", found, limits.MaxExportFiles, megabytes, undeclaredMegabytes)
         {
             Extensions = new Dictionary<string, object?>
             {
@@ -266,4 +272,5 @@ public sealed class DocumentArchiveService(
                 ["maxBytes"] = limits.MaxExportBytes,
             },
         };
+    }
 }

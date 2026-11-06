@@ -202,13 +202,68 @@ public class DocumentArchiveExportTests
         var world = await DocumentArchiveWorld.CreateAsync();
         using var destination = new MemoryStream();
 
-        // The files of the leases and the receipt declare their size; together they are far above ten bytes.
+        // The files of the leases and the receipt declare their size, and the property documents count as the largest upload; together they are
+        // far above ten bytes.
         var refused = await Assert.ThrowsAsync<DomainRuleException>(
             () => world.Service(new DocumentArchiveOptions { MaxExportBytes = 10 })
                 .ExportAsync(world.Hosts.OrgWide, DocumentArchiveWorld.Everything, EveryDocument, destination));
 
         Assert.Equal(DocumentArchiveService.ExportTooLargeCode, refused.Code);
         Assert.Equal(5, refused.Extensions["fileCount"]);
+        Assert.Equal(0, destination.Length);
+    }
+
+    /// <summary>
+    /// A property document stores no size, so the byte cap counts it as the largest upload (10 MB), never as zero: the two property documents of
+    /// the world do not fit in a cap of 15 MB, and fit exactly in one of 20 MB (a cap is exceeded, not reached).
+    /// </summary>
+    [Fact]
+    public async Task Export_APropertyDocumentWithNoSize_CountsAsTheLargestUploadInTheByteCap()
+    {
+        var world = await DocumentArchiveWorld.CreateAsync();
+        var propertyDocuments = EveryDocument with { Types = [ArchiveDocumentType.PropertyDocument] };
+        using var destination = new MemoryStream();
+
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(
+            () => world.Service(new DocumentArchiveOptions { MaxExportBytes = 15L * 1024 * 1024 })
+                .ExportAsync(world.Hosts.OrgWide, DocumentArchiveWorld.Everything, propertyDocuments, destination));
+
+        Assert.Equal(DocumentArchiveService.ExportTooLargeCode, refused.Code);
+        Assert.Equal(2, refused.Extensions["fileCount"]);
+        Assert.Equal(15L * 1024 * 1024, refused.Extensions["maxBytes"]);
+        Assert.Equal(0, destination.Length);
+
+        var (_, result) = await ExportAsync(
+            world,
+            world.Hosts.OrgWide,
+            DocumentArchiveWorld.Everything,
+            propertyDocuments,
+            new DocumentArchiveOptions { MaxExportBytes = 2 * DocumentArchiveOptions.UndeclaredDocumentBytes });
+        Assert.Equal(2, result.Documents);
+    }
+
+    /// <summary>
+    /// With the default caps (300 files, 200 MB) an export of property documents is refused from the 21st file, far below the file cap: 21 times
+    /// 10 MB is more than 200 MB. Twenty are allowed. Nothing is written before the refusal.
+    /// </summary>
+    [Fact]
+    public async Task Export_OfPropertyDocumentsWithNoSize_IsRefusedByTheDefaultByteCapFromTheTwentyFirst()
+    {
+        var world = await DocumentArchiveWorld.CreateAsync();
+        var propertyDocuments = EveryDocument with { Types = [ArchiveDocumentType.PropertyDocument] };
+
+        await world.AddPropertyDocumentsAsync(18);
+        var (_, atTheCap) = await ExportAsync(world, world.Hosts.OrgWide, DocumentArchiveWorld.Everything, propertyDocuments);
+
+        await world.AddPropertyDocumentsAsync(1);
+        using var destination = new MemoryStream();
+        var refused = await Assert.ThrowsAsync<DomainRuleException>(
+            () => world.Service().ExportAsync(world.Hosts.OrgWide, DocumentArchiveWorld.Everything, propertyDocuments, destination));
+
+        Assert.Equal(20, atTheCap.Documents);
+        Assert.Equal(DocumentArchiveService.ExportTooLargeCode, refused.Code);
+        Assert.Equal(21, refused.Extensions["fileCount"]);
+        Assert.Equal(DocumentArchiveOptions.DefaultMaxExportFiles, refused.Extensions["maxFiles"]);
         Assert.Equal(0, destination.Length);
     }
 

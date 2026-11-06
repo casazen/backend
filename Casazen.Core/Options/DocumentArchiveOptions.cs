@@ -27,11 +27,18 @@ public sealed class DocumentArchiveOptions
     /// <inheritdoc cref="LowestMaxExportBytes"/>
     public const long HighestMaxExportBytes = 2L * 1024 * 1024 * 1024;
 
+    /// <summary>
+    /// What a document that stores no size counts as in the byte cap of an export: 10 MB, the largest file an upload of a property document allows.
+    /// The cap is an upper bound of the response, so a document of unknown size is counted at its worst case, never at zero.
+    /// </summary>
+    public const long UndeclaredDocumentBytes = 10L * 1024 * 1024;
+
     /// <summary>The most documents one export holds (1 to <see cref="HighestMaxExportFiles"/>). Env var <c>DocumentArchive__MaxExportFiles</c>, key <c>DocumentArchive:MaxExportFiles</c>.</summary>
     public int MaxExportFiles { get; set; } = DefaultMaxExportFiles;
 
     /// <summary>
-    /// The most bytes one export holds, counted on the sizes the documents declare (a document that stores no size counts as zero). Env var
+    /// The most bytes one export holds, counted on the sizes the documents declare; a document that stores no size (every property document) counts
+    /// as <see cref="UndeclaredDocumentBytes"/>, so with the default 200 MB an export of property documents holds at most 20 files. Env var
     /// <c>DocumentArchive__MaxExportBytes</c>, key <c>DocumentArchive:MaxExportBytes</c>.
     /// </summary>
     public long MaxExportBytes { get; set; } = DefaultMaxExportBytes;

@@ -129,6 +129,18 @@ internal sealed class DocumentArchiveWorld
     public DocumentArchiveService Service(DocumentArchiveOptions? limits = null) =>
         new(Sources(), Db, Options.Create(limits ?? new DocumentArchiveOptions()), NullLogger<DocumentArchiveService>.Instance);
 
+    /// <summary>
+    /// More documents of the granted property, as an upload stores them: no size, and a file in the bucket (one more file name each time).
+    /// </summary>
+    public async Task AddPropertyDocumentsAsync(int count)
+    {
+        for (var number = 0; number < count; number++)
+            AddPropertyDocument(Hosts.Granted, $"extra-{Guid.NewGuid():N}.pdf", GrantedPropertyDay);
+
+        await Db.SaveChangesAsync();
+        Db.ChangeTracker.Clear();
+    }
+
     private async Task SeedDocumentsAsync()
     {
         GrantedPropertyDocument = AddPropertyDocument(Hosts.Granted, "APE-Trullo.pdf", GrantedPropertyDay);
