@@ -139,6 +139,35 @@ public class VerificationOperatorDecisionProofTests
         Assert.Equal(1, metrics.Review);
     }
 
+    /// <summary>
+    /// Data rule (the one definition of an active stay): a cancelled stay or a no-show is neither listed nor decided, and gets no code even with
+    /// an accepted verification.
+    /// </summary>
+    [Fact]
+    public async Task VerificationDecision_CancelledOrNoShowStay_NeitherDecidedNorGivenTheCode()
+    {
+        var world = new World();
+        var property = world.AddProperty("auth0|owner");
+        world.AddCode(property);
+        var cancelled = world.AddPendingStay(property, "guest.cancelled@example.com", status: BookingStatus.Cancelled);
+        var noShow = world.AddPendingStay(property, "guest.noshow@example.com", noShowAt: Now.UtcDateTime.AddDays(-1));
+        world.AddAutomaticAccept(noShow);
+        await world.SaveAsync();
+
+        var emails = new Mock<IEmailQueue>();
+        await using var db = world.NewDb();
+        var accessCodes = new AccessCodeService(db, NullLogger<AccessCodeService>.Instance);
+        var service = NewService(db, emails.Object, accessCodes);
+        var scope = new HostScope(world.OrgId);
+
+        Assert.Empty(await service.GetPendingVerificationsAsync(Operator, scope));
+        Assert.False(await service.RecordManualVerificationAsync(cancelled, scope, true, null, Operator));
+        Assert.False(await service.RecordManualVerificationAsync(noShow, scope, true, null, Operator));
+        Assert.Null(await accessCodes.ReleaseToGuestAsync(noShow, AccessCodeReleaseChannels.CheckInScreen));
+        Assert.False(await db.AccessCodeReleaseLogs.AnyAsync());
+        emails.Verify(q => q.Enqueue(It.IsAny<string?>(), It.IsAny<EmailContent>(), It.IsAny<string>()), Times.Never);
+    }
+
     private static VerificationQueueService NewService(AppDbContext db, IEmailQueue queue, IAccessCodeService accessCodes) => new(
         db,
         queue,
@@ -206,8 +235,13 @@ public class VerificationOperatorDecisionProofTests
         public void Grant(string userId, Guid propertyId) =>
             _rows.Add(new PropertyMemberAccess { OrgId = OrgId, UserId = userId, PropertyId = propertyId });
 
-        /// <summary>A confirmed stay whose guest went to the operator (an operator request on its session).</summary>
-        public Guid AddPendingStay(Guid propertyId, string email, string? language = null)
+        /// <summary>A stay (confirmed unless said otherwise) whose guest went to the operator (an operator request on its session).</summary>
+        public Guid AddPendingStay(
+            Guid propertyId,
+            string email,
+            string? language = null,
+            BookingStatus status = BookingStatus.Confirmed,
+            DateTime? noShowAt = null)
         {
             var guest = new Guest { Id = Guid.NewGuid(), OrgId = OrgId, FirstName = "Ospite", LastName = "Test", Email = email };
             var booking = new Booking
@@ -218,7 +252,8 @@ public class VerificationOperatorDecisionProofTests
                 GuestId = guest.Id,
                 CheckInDate = new DateTime(2026, 11, 10),
                 CheckOutDate = new DateTime(2026, 11, 12),
-                Status = BookingStatus.Confirmed,
+                Status = status,
+                NoShowAt = noShowAt,
                 Source = BookingSource.Direct,
                 NumberOfGuests = 1,
                 TotalPrice = 200m,
@@ -264,6 +299,25 @@ public class VerificationOperatorDecisionProofTests
                 Provisional = true,
                 DurationMs = 820,
                 CreatedAt = Now.UtcDateTime.AddMinutes(-10),
+            });
+        }
+
+        /// <summary>The agent's acceptance of the stay (the gate of the code is open by the log).</summary>
+        public void AddAutomaticAccept(Guid bookingId)
+        {
+            var booking = _rows.OfType<Booking>().Single(b => b.Id == bookingId);
+            _rows.Add(new BiometricVerificationLog
+            {
+                OrgId = OrgId,
+                BookingId = bookingId,
+                GuestId = booking.GuestId,
+                Outcome = BiometricOutcome.Accept,
+                Method = VerificationMethod.Biometric,
+                Attempts = 1,
+                ModelName = "AuraFace-v1",
+                ModelVersion = "1.0.0",
+                ThresholdsJson = "{}",
+                CreatedAt = Now.UtcDateTime.AddMinutes(-2),
             });
         }
 

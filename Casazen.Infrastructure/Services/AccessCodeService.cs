@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -115,6 +116,16 @@ public class AccessCodeService : IAccessCodeService
 
         if (booking == null)
             return null;
+
+        // E03/F04/US02: a code opens the door of a stay still to come or in progress. The one definition of an active stay
+        // (AlloggiatiStatusRules: no request, hold, cancelled stay or no-show), and not one already over.
+        if (!AlloggiatiStatusRules.IsDue(booking) || booking.Status == BookingStatus.CheckedOut)
+        {
+            _logger.LogWarning(
+                "Access code release denied for booking {BookingId}: the stay is not active ({Status})",
+                bookingId, booking.Status);
+            return null;
+        }
 
         var accessCode = await _db.Set<PropertyAccessCode>()
             .FirstOrDefaultAsync(ac => ac.PropertyId == booking.PropertyId, ct);

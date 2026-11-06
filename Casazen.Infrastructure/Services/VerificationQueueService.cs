@@ -1,6 +1,7 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
@@ -316,13 +317,15 @@ public class VerificationQueueService(
     }
 
     /// <summary>
-    /// The sessions of the scope that wait for an operator: still usable (not expired by a rejection or a new link), not accepted, sent to the
-    /// operator (a request of the guest or the flow, a refused consent, a review, the legacy three attempts), and with no decision of an operator
-    /// since they were created.
+    /// The sessions of the scope that wait for an operator: of an active stay (the one definition of <see cref="AlloggiatiStatusRules"/>: a
+    /// request, a hold, a cancelled stay or a no-show is never decided), still usable (not expired by a rejection or a new link), not accepted,
+    /// sent to the operator (a request of the guest or the flow, a refused consent, a review, the legacy three attempts), and with no decision of
+    /// an operator since they were created.
     /// </summary>
     private IQueryable<GuestCheckInSession> PendingSessions(HostScope scope) =>
         SessionsInScope(scope).Where(s =>
-            s.Status != GuestCheckInSessionStatus.Scaduto
+            db.Bookings.Any(b => b.Id == s.BookingId && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
+            && s.Status != GuestCheckInSessionStatus.Scaduto
             && s.BiometricOutcome != BiometricOutcome.Accept
             && (s.OperatorRequestedAt != null
                 || s.BiometricConsentRefusedAt != null

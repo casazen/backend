@@ -32,7 +32,8 @@ public interface IAccessCodeService
     /// <summary>
     /// Releases the access code to a guest (verification required, logged).
     /// Used by guest-facing endpoints after verification passes. Same gate as <see cref="GetAccessCodeAsync"/>; the release log records the
-    /// channel and the time, never the code.
+    /// channel and the time, never the code. Since E03/F04/US02 the stay must be active and not over (<c>AlloggiatiStatusRules.IsDue</c>, not
+    /// checked out): a cancelled stay, a request, a hold or a no-show get no code.
     /// </summary>
     /// <param name="bookingId">Booking to release code for</param>
     /// <param name="channel">How the code is released, one of <see cref="AccessCodeReleaseChannels"/>; another value is an <see cref="ArgumentException"/></param>
