@@ -1129,6 +1129,9 @@
   <data name="PaymentExceedsBalance" xml:space="preserve">
     <value>The amount is more than what is still to be collected ({0} €).</value>
   </data>
+  <data name="PaymentInProgress" xml:space="preserve">
+    <value>The guest is paying with the payment link, or has just paid: wait for the payment to be confirmed before recording a receipt by hand.</value>
+  </data>
   <data name="PaymentRefundAccountMissing" xml:space="preserve">
     <value>The host's Stripe account is not available: complete or reconnect Stripe in the payment settings and try again.</value>
   </data>

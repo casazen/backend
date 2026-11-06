@@ -1129,6 +1129,9 @@
   <data name="PaymentExceedsBalance" xml:space="preserve">
     <value>L'importo supera quello che resta da incassare ({0} €).</value>
   </data>
+  <data name="PaymentInProgress" xml:space="preserve">
+    <value>Il cliente sta pagando con il link di pagamento, oppure ha appena pagato: attendi la conferma del pagamento prima di registrare un incasso a mano.</value>
+  </data>
   <data name="PaymentRefundAccountMissing" xml:space="preserve">
     <value>L'account Stripe dell'host non è disponibile: completa o ricollega Stripe nelle impostazioni dei pagamenti e riprova.</value>
   </data>

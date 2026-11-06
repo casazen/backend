@@ -74,6 +74,51 @@ public class BookingPaymentLinkProofTests
         Assert.NotNull(stored.PaymentLinkSentAt);
     }
 
+    /// <summary>
+    /// PROOF TEST: money rule. The host records a receipt by hand on a booking whose guest has a payment link: the open PaymentIntent of the
+    /// link is cancelled on Stripe (under the same lock) and its row marked Canceled, so a page the guest already has open cannot collect the
+    /// balance a second time. While the guest is paying (the PaymentIntent is processing, or succeeded and not recorded yet) the receipt waits
+    /// instead, and nothing is cancelled or written.
+    /// </summary>
+    [Fact]
+    public async Task ManualReceipt_OnABookingWithAPaymentLink_CancelsTheOpenIntent_AndWaitsForAPaymentInProgress_Test()
+    {
+        var h = new Harness();
+        var booking = await h.SeedHostBookingAsync(total: 300.00m);
+        await h.LinkAsync(booking);
+        var intentId = h.LastIntentId;
+
+        // The guest is paying right now: the receipt waits, nothing is cancelled and nothing is written.
+        h.SetIntentStatus(intentId, "processing");
+        var waiting = await Assert.ThrowsAsync<DomainConflictException>(() => h.RecordCashAsync(booking, 100m, "receipt-1"));
+        Assert.Equal("payment_in_progress", waiting.Code);
+        Assert.Empty(h.CancelledIntents);
+        await using (var read = h.NewDb(null))
+        {
+            var link = await read.Payments.AsNoTracking().SingleAsync();
+            Assert.Equal(PaymentStatus.Pending, link.Status);
+        }
+
+        // The guest has not paid: the receipt is recorded and the open PaymentIntent of the link is cancelled, its row marked Canceled.
+        h.SetIntentStatus(intentId, "requires_payment_method");
+        var receipt = await h.RecordCashAsync(booking, 100m, "receipt-2");
+        Assert.True(receipt.Created);
+        Assert.Equal(PaymentStatus.Completed, receipt.Payment.Status);
+        Assert.Equal(intentId, Assert.Single(h.CancelledIntents));
+        await using (var read = h.NewDb(null))
+        {
+            var rows = await read.Payments.AsNoTracking().Where(p => p.BookingId == booking).ToListAsync();
+            Assert.Equal(2, rows.Count);
+            Assert.Equal(PaymentStatus.Canceled, rows.Single(p => p.StripePaymentIntentId == intentId).Status);
+            Assert.Equal(PaymentStatus.Completed, rows.Single(p => p.StripePaymentIntentId == null).Status);
+        }
+
+        // The same receipt sent again records nothing and cancels nothing more.
+        var again = await h.RecordCashAsync(booking, 100m, "receipt-2");
+        Assert.False(again.Created);
+        Assert.Single(h.CancelledIntents);
+    }
+
     private static string TokenOf(string url)
     {
         var query = new Uri(url).Query;
@@ -133,11 +178,44 @@ public class BookingPaymentLinkProofTests
                         Status = "requires_payment_method",
                     };
                     _intents[intent.Id] = intent;
+                    LastIntentId = intent.Id;
                     return intent;
                 });
             _stripe
                 .Setup(s => s.GetPaymentIntentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((string id, string? _, CancellationToken _) => _intents[id]);
+            _stripe
+                .Setup(s => s.CancelPaymentIntentAsync(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string id, string? _, string _, CancellationToken _) =>
+                {
+                    CancelledIntents.Add(id);
+                    _intents[id].Status = "canceled";
+                    return _intents[id];
+                });
+        }
+
+        /// <summary>The PaymentIntent the last link made.</summary>
+        public string LastIntentId { get; private set; } = string.Empty;
+
+        /// <summary>The PaymentIntents cancelled on Stripe, in order.</summary>
+        public List<string> CancelledIntents { get; } = [];
+
+        /// <summary>What Stripe says of a PaymentIntent from now on (the guest pays, or is paying).</summary>
+        public void SetIntentStatus(string intentId, string status) => _intents[intentId].Status = status;
+
+        /// <summary>A cash receipt the host records by hand, in an authenticated request of org A.</summary>
+        public async Task<ManualPaymentResult> RecordCashAsync(Guid bookingId, decimal amount, string key)
+        {
+            await using var db = NewDb(new HostTenant(OrgA));
+            var service = new ManualPaymentService(
+                db,
+                Mock.Of<IFiscalRegimeService>(),
+                NullLogger<ManualPaymentService>.Instance,
+                new FixedTimeProvider(new DateTimeOffset(2026, 11, 6, 9, 0, 0, TimeSpan.Zero)),
+                null,
+                _stripe.Object);
+            return await service.RecordAsync(
+                new ManualPaymentCommand(bookingId, amount, Casazen.Core.Entities.PaymentMethod.CashOnArrival, null, null, key));
         }
 
         public string ClientSecretOf(long amountCents) => $"secret_for_{amountCents}";
