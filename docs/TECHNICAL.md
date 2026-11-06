@@ -768,7 +768,10 @@ caller sees and may not use is 403. The accountant reads and cannot write; the c
   neither can fail an import or a host's save. `InvoiceDataFromOctorateHandler` (`BookingCreated` of origin Octorate, a stay not yet over, a mirrored property)
   reads the customer record the reservation names (`IOctorateApiClient.GetBookerBillingDataAsync`: `GetReservationAsync` gives its `invoiceHolderId`, which most
   reservations do not carry, then `GET /rest/v1/guests/{acc}/{guestId}`, the `GuestDTO` of the OpenAPI), leaves out the fields that fail the checks of the invoice
-  data and saves the rest with the source Octorate (fill-only, so never over a host's or a guest's word).
+  data and saves the rest with the source Octorate (fill-only, so never over a host's or a guest's word). It makes two calls and runs only while the bucket of
+  the org (`OctorateRateLimiter`, 100 calls a minute, shared with the push of the bookings, the payments and the calendar) keeps half of it after them
+  (`OctorateBillingSyncRules.PrefillQuotaReserve`); with less, an import of many bookings pre-fills the first ones and the others are left for the host to
+  fill in, with an information line and no error (nothing triggers a later pre-fill).
   `OctorateBillingWriteBackHandler` (`InvoiceDataSaved` whose source is not Octorate): where `IDocumentIssuerService.ResolveIssuerAsync` says Octorate and the
   booking has a reservation there that names a customer record, it writes the billing members to that record (`PUT /rest/v1/guests/{acc}/{guestId}`: `fiscalCode`,
   `vatCode`, `address` on one line, `zip`, `city`, `country` and `legalMail`, the PEC; nothing else, nothing cleared, no record made for a reservation that names

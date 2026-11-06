@@ -6,7 +6,8 @@ namespace Casazen.Infrastructure.Octorate;
 
 /// <summary>
 /// What the two handlers of the billing data sync with Octorate share (E06/F02/US01/T04): when they run at all, which failures of Octorate the write-back
-/// delivers the event again for, the code of a reservation with no customer record, and how the payload of an event is read. No state, no call.
+/// delivers the event again for, the code of a reservation with no customer record, how much of the quota of an org the pre-fill leaves alone, and how the
+/// payload of an event is read. No state, no call.
 /// </summary>
 internal static class OctorateBillingSyncRules
 {
@@ -21,6 +22,28 @@ internal static class OctorateBillingSyncRules
         ArgumentNullException.ThrowIfNull(featureFlags);
 
         return featureFlags.IsEnabled(FeatureFlags.OctorateConnector) && featureFlags.IsEnabled(FeatureFlags.OctorateBillingSync);
+    }
+
+    /// <summary>The calls the pre-fill of one booking makes to Octorate: the reservation (for the customer record it names) and the record itself.</summary>
+    public const int PrefillCalls = 2;
+
+    /// <summary>
+    /// The calls of the bucket of an org (<see cref="OctorateRateLimiter"/>) that the pre-fill never uses: half of it. The bucket is shared with
+    /// everything else CasaZen sends to Octorate for the org (the bookings it creates, the payments, the calendar), and the pre-fill is a convenience, so
+    /// it must never be what empties it.
+    /// </summary>
+    public const int PrefillQuotaReserve = OctorateRateLimiter.RequestsPerMinute / 2;
+
+    /// <summary>
+    /// True while the bucket of <paramref name="orgId"/> holds the calls of a pre-fill and still leaves <see cref="PrefillQuotaReserve"/>. A pre-fill that
+    /// finds less is not made and is not an error (the booking is left for the host to fill in): an import of many bookings reads the first ones and leaves
+    /// the quota to the work that matters, instead of draining it and sending the next minutes of that work into the rate limit.
+    /// </summary>
+    public static bool QuotaAllowsPrefill(OctorateRateLimiter rateLimiter, Guid orgId)
+    {
+        ArgumentNullException.ThrowIfNull(rateLimiter);
+
+        return rateLimiter.AvailableCalls(orgId) - PrefillCalls >= PrefillQuotaReserve;
     }
 
     /// <summary>

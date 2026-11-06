@@ -538,6 +538,51 @@ public class OctorateBillingSyncProofTests
     }
 
     [Fact]
+    public async Task PreFill_LeavesHalfOfTheQuotaOfTheOrgAlone_AndItIsNotAnErrorWhenItDoes()
+    {
+        var rig = new Rig();
+        var logger = new CapturingLogger<InvoiceDataFromOctorateHandler>();
+        var booking = await rig.SeedBookingAsync();
+        var created = Created(booking, BookingEventOrigin.Octorate);
+        rig.Client
+            .Setup(c => c.GetBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctorateBillingData { IsCompany = true, Name = CompanyName, VatNumber = VatNumber });
+
+        // The bucket is the org's, shared with everything else sent to Octorate. At the boundary: a pre-fill makes two calls and must leave the half of the
+        // bucket (50) alone, so it runs with 52 calls left and not with 51.
+        Assert.Equal(OctorateRateLimiter.RequestsPerMinute / 2, OctorateBillingSyncRules.PrefillQuotaReserve);
+        var probe = new OctorateRateLimiter(rig.Clock);
+        Assert.True(OctorateBillingSyncRules.QuotaAllowsPrefill(probe, OrgA));
+        for (var used = 0; used < OctorateRateLimiter.RequestsPerMinute - 52; used++)
+            Assert.True(await probe.TryAcquireAsync(OrgA));
+        Assert.Equal(52, probe.AvailableCalls(OrgA));
+        Assert.True(OctorateBillingSyncRules.QuotaAllowsPrefill(probe, OrgA));
+        Assert.True(await probe.TryAcquireAsync(OrgA));
+        Assert.False(OctorateBillingSyncRules.QuotaAllowsPrefill(probe, OrgA));
+
+        // The org has used enough of its quota: nothing is read, nothing is thrown, the event is consumed with a line that says why, and the booking has
+        // no data from Octorate (the host fills it in).
+        while (rig.Limiter.AvailableCalls(OrgA) - OctorateBillingSyncRules.PrefillCalls >= OctorateBillingSyncRules.PrefillQuotaReserve)
+            Assert.True(await rig.Limiter.TryAcquireAsync(OrgA));
+
+        await rig.FromOctorate(logger: logger).HandleAsync(created, Ct);
+
+        rig.Client.Verify(c => c.GetBookerBillingDataAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.Null(await rig.RowOrNullAsync(booking.Id));
+        Assert.Contains("quota of the org is low", logger.AllOutput, StringComparison.Ordinal);
+        Assert.Contains(booking.Id.ToString(), logger.AllOutput, StringComparison.Ordinal);
+
+        // The bucket refills (20 calls every 12 seconds): the next booking is pre-filled.
+        rig.Clock.Advance(OctorateRateLimiter.BurstPeriod);
+        await rig.FromOctorate(logger: logger).HandleAsync(created, Ct);
+
+        rig.Client.Verify(c => c.GetBookerBillingDataAsync(AccommodationId, ReservationId, It.IsAny<CancellationToken>()), Times.Once);
+        var row = await rig.RowAsync(booking.Id);
+        Assert.Equal(VatNumber, row.VatNumber);
+        Assert.Equal(InvoiceDataSource.Octorate, row.Source);
+    }
+
+    [Fact]
     public async Task PreFill_ReadsNothingThatItShouldNotRead()
     {
         var rig = new Rig();
@@ -891,6 +936,7 @@ public class OctorateBillingSyncProofTests
         public Rig(TestFeatureFlags? flags = null)
         {
             Flags = flags ?? new TestFeatureFlags(FeatureFlags.OctorateConnector, FeatureFlags.OctorateBillingSync);
+            Limiter = new OctorateRateLimiter(Clock);
             Targets.Setup(t => t.AccommodationOfAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(AccommodationId);
             Issuer
                 .Setup(i => i.ResolveIssuerAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -900,6 +946,9 @@ public class OctorateBillingSyncProofTests
         public string DatabaseName { get; } = $"octorate-billing-{Guid.NewGuid():N}";
 
         public FakeTimeProvider Clock { get; } = new(Now);
+
+        /// <summary>The bucket of calls to Octorate, one for the application (a singleton), on the clock of the rig.</summary>
+        public OctorateRateLimiter Limiter { get; }
 
         public ITenantContext Tenant { get; } = new FixedTenantContext(OrgA);
 
@@ -923,6 +972,7 @@ public class OctorateBillingSyncProofTests
                 Client.Object,
                 new OctorateOrgScope(Tenant),
                 new InvoiceDataService(db, new DomainEventRecorder(db, Tenant, Clock), Clock),
+                Limiter,
                 Clock,
                 logger ?? NullLogger<InvoiceDataFromOctorateHandler>.Instance);
         }

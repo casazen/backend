@@ -35,6 +35,11 @@ namespace Casazen.Infrastructure.Octorate;
 /// <item><b>No history.</b> A stay that is over, or a booking that was cancelled since, is not read: the sensitive data of a guest is not fetched in bulk
 /// for stays nobody will invoice from this flow, and the quota of the org stays for the live bookings. (The import itself records <c>BookingCreated</c>
 /// only for a stay that is not over and not cancelled; this is the same rule when the event is handled later.)</item>
+/// <item><b>The quota of the org is not its to spend.</b> A pre-fill makes <see cref="OctorateBillingSyncRules.PrefillCalls"/> calls, on the bucket of the
+/// org (<see cref="OctorateRateLimiter"/>, shared with the push of the bookings, the payments and the calendar). It runs only while the bucket keeps
+/// <see cref="OctorateBillingSyncRules.PrefillQuotaReserve"/> calls after it; otherwise it is not made, with an information line and no error, and the
+/// booking is left for the host to fill in. An import of many bookings therefore pre-fills the first ones and never drains the quota of the work that
+/// matters. Nothing triggers a later pre-fill of a booking left out.</item>
 /// <item>Nothing while <c>Features:OctorateConnector</c> or <c>Features:OctorateBillingSync</c> is off, nothing for a property that is not mirrored, and
 /// nothing for a booking CasaZen created itself (it has no customer record on Octorate to read). The org is the event's (ADR-022-R6).</item>
 /// </list>
@@ -46,6 +51,7 @@ public sealed class InvoiceDataFromOctorateHandler(
     IOctorateApiClient client,
     IOctorateOrgScope orgScope,
     IInvoiceDataService invoiceData,
+    OctorateRateLimiter rateLimiter,
     TimeProvider timeProvider,
     ILogger<InvoiceDataFromOctorateHandler> logger) : IEventHandler<DomainEvent>
 {
@@ -84,6 +90,19 @@ public sealed class InvoiceDataFromOctorateHandler(
         var accommodationId = await targets.AccommodationOfAsync(booking.PropertyId, ct);
         if (accommodationId is null)
             return;
+
+        // The quota of the org is shared with everything else CasaZen sends to Octorate: the pre-fill is a convenience and leaves half of it alone, so an
+        // import of many bookings never starves the work that matters. Not an error: the booking is simply left for the host to fill in.
+        if (!OctorateBillingSyncRules.QuotaAllowsPrefill(rateLimiter, orgId))
+        {
+            logger.LogInformation(
+                "Billing data of booking {BookingId} of org {OrgId} not read from Octorate: the quota of the org is low ({Available} calls left, {Reserve} are left alone)",
+                bookingId,
+                orgId,
+                rateLimiter.AvailableCalls(orgId),
+                OctorateBillingSyncRules.PrefillQuotaReserve);
+            return;
+        }
 
         OctorateBillingData? billing;
         using (orgScope.Use(orgId))
