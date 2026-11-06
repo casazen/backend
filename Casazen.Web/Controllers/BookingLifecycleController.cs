@@ -102,7 +102,8 @@ public class BookingLifecycleController(
                 request.NumberOfGuests,
                 request.NumberOfChildren,
                 request.ChildrenAges,
-                request.SpecialRequests),
+                request.SpecialRequests,
+                new OtaAmountsInput(request.OtaCommission, request.OtaNetAmount, request.OtaPaidAmount, request.OtaBalanceAmount)),
             cancellationToken);
         return Ok(BookingMapper.ToResponse(updated));
     }

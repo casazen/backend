@@ -7,7 +7,9 @@ namespace Casazen.Web.DTOs;
 /// <summary>
 /// Body of <c>PUT /api/bookings/{id}</c> (PC-07, A2-07): only what the host may change. Status, source, prices, guest,
 /// payment and check-in token are never read from the request (unknown JSON properties are ignored): the status changes
-/// through its own actions (confirm, check-in, check-out, cancel) and the price is computed by the server.
+/// through its own actions (confirm, check-in, check-out, cancel) and the price is computed by the server. The four amounts of the channel
+/// (commission, net, paid, balance) are the one exception: they are read so that a request which tries to change them is refused with 422
+/// <c>ota_amounts_readonly</c> instead of being silently ignored (E02/F02/US01/T01, ADR-033-R3).
 /// </summary>
 public class UpdateBookingRequest : IValidatableObject
 {
@@ -30,6 +32,18 @@ public class UpdateBookingRequest : IValidatableObject
 
     [MaxLength(1000)]
     public string? SpecialRequests { get; set; }
+
+    /// <summary>Read-only: the commission of the channel. A value other than the stored one is refused (422 <c>ota_amounts_readonly</c>).</summary>
+    public decimal? OtaCommission { get; set; }
+
+    /// <summary>Read-only: the net of the channel. A value other than the stored one is refused (422 <c>ota_amounts_readonly</c>).</summary>
+    public decimal? OtaNetAmount { get; set; }
+
+    /// <summary>Read-only: what the guest paid on the channel. A value other than the stored one is refused (422 <c>ota_amounts_readonly</c>).</summary>
+    public decimal? OtaPaidAmount { get; set; }
+
+    /// <summary>Read-only: the balance of the channel. A value other than the stored one is refused (422 <c>ota_amounts_readonly</c>).</summary>
+    public decimal? OtaBalanceAmount { get; set; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
         BookingGuestsValidation.Validate(validationContext, NumberOfGuests, NumberOfChildren, ChildrenAges);

@@ -512,6 +512,14 @@ public class AppDbContext(
             .HasIndex(b => new { b.OrgId, b.BookingCode })
             .IsUnique();
 
+        // A reservation of Octorate is one booking in an org (E02/F02/US01/T01, ADR-033-R1): the key of the import, whoever imports it and
+        // however many times. Only the rows that have an Octorate id are in it; the others (null) are as many as there are bookings.
+        modelBuilder.Entity<Booking>()
+            .HasIndex(b => new { b.OrgId, b.OctorateReservationId })
+            .IsUnique()
+            .HasFilter("\"OctorateReservationId\" IS NOT NULL")
+            .HasDatabaseName(Booking.OctorateReservationIndexName);
+
         // GPS coordinates (PC-06, A2-33): 6 decimals are about 0.1 m, the old 2 decimals placed a house up to a kilometre
         // away on the map. numeric(9,6) holds -999.999999..999.999999: the API accepts only -90..90 and -180..180.
         modelBuilder.Entity<Property>()
@@ -1406,6 +1414,21 @@ public class AppDbContext(
         modelBuilder.Entity<CalendarBlock>()
             .HasIndex(b => new { b.FeedId, b.ExternalUid })
             .IsUnique();
+
+        // The index of the foreign key to the property, declared here so that it stays: EF drops the index of a foreign key when another index
+        // starts with the same column, filtered or not, and the filtered index below holds the Octorate blocks only. Every read of the blocks
+        // of a property (availability, calendar, export) goes through this one.
+        modelBuilder.Entity<CalendarBlock>()
+            .HasIndex(b => b.PropertyId);
+
+        // The blocks read from the Octorate calendar have no feed (E02/F02/US01/T03): the unique index on (FeedId, ExternalUid) does not cover
+        // them (a null feed is never equal to another), so their key is the property and the UID, for that source only
+        // (CalendarBlockSource.Octorate = 2).
+        modelBuilder.Entity<CalendarBlock>()
+            .HasIndex(b => new { b.PropertyId, b.ExternalUid })
+            .IsUnique()
+            .HasFilter("\"Source\" = 2")
+            .HasDatabaseName(CalendarBlock.OctorateUidIndexName);
 
         // OTA stay created from an imported block (CO-21, D7): one stay per block. Deleting the booking keeps the block,
         // which takes its nights again on its own.

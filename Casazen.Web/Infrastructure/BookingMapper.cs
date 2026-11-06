@@ -59,6 +59,8 @@ public static class BookingMapper
         response.Status = booking.Status.ToString();
         response.CancellationNote = booking.CancellationNote;
         response.Source = booking.Source.ToString();
+        // The channel of a booking that came from the channel manager: what tells it apart from the others (the "OTA" badge).
+        response.OtaSource = booking.OctorateReservationId is null ? null : booking.Source.ToString();
         response.SpecialRequests = booking.SpecialRequests;
         response.ExpectedArrivalTime = booking.ExpectedArrivalTime;
         response.PaymentOption = booking.PaymentOption.ToString();

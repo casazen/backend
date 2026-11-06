@@ -702,8 +702,31 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<int>("NumberOfGuests")
                         .HasColumnType("integer");
 
+                    b.Property<string>("OctorateReservationId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime?>("OctorateUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
+
+                    b.Property<decimal?>("OtaBalanceAmount")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("OtaCommission")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("OtaNetAmount")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<decimal?>("OtaPaidAmount")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)");
 
                     b.Property<DateTime?>("OtaReviewRaisedAt")
                         .HasColumnType("timestamp with time zone");
@@ -787,6 +810,11 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("OrgId", "BookingCode")
                         .IsUnique();
 
+                    b.HasIndex("OrgId", "OctorateReservationId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_Bookings_OrgId_OctorateReservationId")
+                        .HasFilter("\"OctorateReservationId\" IS NOT NULL");
+
                     b.ToTable("Bookings");
                 });
 
@@ -846,6 +874,11 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.HasIndex("FeedId", "ExternalUid")
                         .IsUnique();
+
+                    b.HasIndex("PropertyId", "ExternalUid")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_CalendarBlocks_PropertyId_ExternalUid_Octorate")
+                        .HasFilter("\"Source\" = 2");
 
                     b.ToTable("CalendarBlocks");
                 });
@@ -3554,6 +3587,9 @@ namespace Casazen.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("BookingsImportedThrough")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("CandidatePropertyIdsJson")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -5950,6 +5986,12 @@ namespace Casazen.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Deprecated")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("DeprecatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ImportUrl")

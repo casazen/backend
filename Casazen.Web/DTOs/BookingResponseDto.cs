@@ -48,6 +48,14 @@ public class BookingResponseDto
     /// <summary>Reason the host wrote when cancelling (host only).</summary>
     public string? CancellationNote { get; set; }
     public string Source { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The channel of a booking that came from the channel manager (E02/F02/US01/T01, ADR-033-R9, read-only): <c>Airbnb</c>, <c>BookingCom</c>,
+    /// <c>Expedia</c>, <c>Vrbo</c>, <c>TripAdvisor</c>, <c>Agoda</c>, <c>OtherChannel</c> (the name is in <see cref="ChannelLabel"/>) or
+    /// <c>Direct</c> (the booking engine of the agency). <c>null</c> for every booking that was not imported: this is what the "OTA" badge reads.
+    /// </summary>
+    public string? OtaSource { get; set; }
+
     public string SpecialRequests { get; set; } = string.Empty;
 
     /// <summary>
@@ -155,10 +163,39 @@ public class BookingDetailDto : BookingResponseDto
     public decimal? PaidAmount { get; set; }
 
     /// <summary>
+    /// The amounts of the channel of a booking imported from the channel manager (E02/F02/US01/T01, ADR-033-R8, read-only): commission, net, paid
+    /// and balance, each <c>null</c> when Octorate does not give it ("not available", never zero). <c>null</c> for a booking that was not
+    /// imported, and for a caller without <c>payment.read</c> (as <see cref="PaidAmount"/>).
+    /// </summary>
+    public OtaAmountsDto? OtaAmounts { get; set; }
+
+    /// <summary>
     /// Every guest of the stay has every field of the Alloggiati record, whoever entered them; <c>null</c> for a booking that has no
     /// communication (a request, a hold, a cancelled booking).
     /// </summary>
     public bool? GuestDataComplete { get; set; }
+}
+
+/// <summary>
+/// The four amounts a channel manager gives for an imported booking, in <see cref="Currency"/> (the currency of the property). Each is
+/// <c>null</c> when it is not available: a screen says so and a report counts it apart, neither treats it as zero.
+/// </summary>
+public sealed class OtaAmountsDto
+{
+    /// <summary>What the channel kept: the sum of the commission lines of the reservation.</summary>
+    public decimal? Commission { get; init; }
+
+    /// <summary>What the host receives; not available until Octorate gives a field for it.</summary>
+    public decimal? Net { get; init; }
+
+    /// <summary>What the guest paid.</summary>
+    public decimal? Paid { get; init; }
+
+    /// <summary>What is still to pay; not available until Octorate gives a field for it.</summary>
+    public decimal? Balance { get; init; }
+
+    /// <summary>ISO 4217 code of the property: the amounts are in it.</summary>
+    public string Currency { get; init; } = StayCurrency.Default;
 }
 
 /// <summary>
