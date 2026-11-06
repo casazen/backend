@@ -89,7 +89,7 @@ public class ComplianceActivityFeederTests
     }
 
     [Fact]
-    public async Task Feed_IsIdempotent_AndAYellowThatTurnsRedIsStillOneTodo()
+    public async Task Feed_IsIdempotent_AndAYellowThatTurnsRedIsStillOneOpenTodo_NowTheRedOne()
     {
         var world = await FeedWorld.SeedAsync();
         var stay = Guid.NewGuid();
@@ -101,10 +101,13 @@ public class ComplianceActivityFeederTests
         await world.Feeder(db).FeedAsync(world.Scope, yellow, CancellationToken.None);
         await world.Feeder(db).FeedAsync(world.Scope, red, CancellationToken.None);
 
+        // The same reading twice raised one; the item that turned red has ONE open To do, the red one (high, with its reason): the yellow one it
+        // replaced is closed by the system, not left on the list with the old urgency.
         var todos = await db.InternalActivities.AsNoTracking().Where(a => a.Action != null).ToListAsync();
-        var only = Assert.Single(todos);
-        Assert.Equal((stay, InternalActivity.StatusPending), (only.EntityId, only.Status));
-        Assert.Null(only.CompletedAt);
+        var only = Assert.Single(todos, t => t.CompletedAt is null);
+        Assert.Equal((stay, InternalActivity.StatusPending, ActivityUrgency.High, ComplianceReasonCodes.ReceiptMissing), (only.EntityId, only.Status, only.Urgency!.Value, only.Reason));
+        var replaced = Assert.Single(todos, t => t.CompletedAt is not null);
+        Assert.Equal((InternalActivity.ClosedBySystem, ActivityUrgency.Medium, ComplianceReasonCodes.AwaitingReceipt), (replaced.ClosedBy, replaced.Urgency!.Value, replaced.Reason));
     }
 
     [Fact]
