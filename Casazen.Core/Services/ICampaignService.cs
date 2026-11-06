@@ -66,6 +66,8 @@ public interface ICampaignService
     /// Sends a campaign immediately (AC-NF24-7, AC-NF24-8, AC-NF24-9).
     /// Re-evaluates segment, filters by consent/suppression, sends via IEmailService.
     /// Includes UTM params and one-click unsubscribe link. No tracking pixel.
+    /// While <c>Features:CrmMarketing</c> is off (E07/F06/US01/T01) it sends nothing: it logs a warning, returns without failing (the Hangfire
+    /// job is not retried) and puts a scheduled campaign back to <c>Approved</c>, so the host can schedule it again once the module is on.
     /// </summary>
     /// <param name="campaignId">Campaign ID.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
