@@ -45,6 +45,14 @@ public static class BookingOperationsServiceCollectionExtensions
         services.AddSingleton(provider => new OtaChannelActionPolicy(provider.GetRequiredService<IOptions<OctorateChannelActionsOptions>>().Value));
         services.AddScoped<IOtaBookingCancellationService, OtaBookingCancellationService>();
         services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingCancelHandler>();
+
+        // E08/F01/US02/T01 (NF-74, NF-80): whether the channel manager can take a stay, asked before a booking of CasaZen is written and when the
+        // host looks at the dates (the public calendar and availability never ask it).
+        services.AddScoped<IChannelManagerAvailability, ChannelManagerAvailabilityService>();
+
+        // E08/F01/US02/T02 (NF-80): a booking that arrives from the channel manager on taken nights raises an urgent To do and an alert, and the
+        // item closes by itself when the nights are free again.
+        services.AddScoped<IEventHandler<DomainEvent>, BookingOverlapHandler>();
         return services;
     }
 }
