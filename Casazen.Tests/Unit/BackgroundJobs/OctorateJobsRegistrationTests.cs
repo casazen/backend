@@ -130,6 +130,13 @@ public class OctorateJobsRegistrationTests
         // The calendar sync runs every 15 minutes: it waits as the other frequent jobs do, far less than its interval.
         Assert.Equal(JobLockTimeouts.FrequentSeconds, CalendarSyncJob.LockTimeoutSeconds);
         Assert.True(CalendarSyncJob.LockTimeoutSeconds < 5 * 60);
+
+        // The follow-up of the publications is as frequent; the check of the changes made outside CasaZen, the daily health check and the
+        // publication of a listing, run on demand, wait as the other hourly, daily and on-demand jobs do.
+        Assert.Equal(JobLockTimeouts.FrequentSeconds, ListingStatusSyncJob.LockTimeoutSeconds);
+        Assert.Equal(JobLockTimeouts.DefaultSeconds, ListingOutsideChangeJob.LockTimeoutSeconds);
+        Assert.Equal(JobLockTimeouts.DefaultSeconds, ListingChannelHealthJob.LockTimeoutSeconds);
+        Assert.Equal(JobLockTimeouts.DefaultSeconds, ListingPublishJob.LockTimeoutSeconds);
     }
 
     [Fact]

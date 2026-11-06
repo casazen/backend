@@ -1,4 +1,5 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
@@ -19,6 +20,7 @@ public class ListingOutsideChangeJob(
     AppDbContext db,
     IOutsideChangeService outsideChanges,
     IHostEnvironment hostEnvironment,
+    IFeatureFlags featureFlags,
     ILogger<ListingOutsideChangeJob> logger)
 {
     public const string RecurringJobId = "listing-outside-change";
@@ -27,12 +29,15 @@ public class ListingOutsideChangeJob(
     public const string Cron = "0 * * * *";
 
     /// <summary>The seconds a run waits for the previous one.</summary>
-    public const int LockTimeoutSeconds = 60;
+    public const int LockTimeoutSeconds = 300;
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     [DisableConcurrentExecution(timeoutInSeconds: LockTimeoutSeconds)]
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
+        if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
+            return;
+
         var pushed = await db.ListingChannelStates
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()

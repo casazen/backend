@@ -1,4 +1,5 @@
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
@@ -24,6 +25,7 @@ public class ListingStatusSyncJob(
     AppDbContext db,
     IListingStatusService status,
     IHostEnvironment hostEnvironment,
+    IFeatureFlags featureFlags,
     ILogger<ListingStatusSyncJob> logger)
 {
     public const string RecurringJobId = "listing-status-sync";
@@ -38,6 +40,9 @@ public class ListingStatusSyncJob(
     [DisableConcurrentExecution(timeoutInSeconds: LockTimeoutSeconds)]
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
+        if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
+            return;
+
         var rowTargets = await db.ListingChannelStates
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()

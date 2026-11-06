@@ -20,8 +20,8 @@ namespace Casazen.Infrastructure.Jobs;
 /// </remarks>
 public class ListingPublishJob(IContentPushService push, ILogger<ListingPublishJob> logger)
 {
-    /// <summary>The seconds a run waits for the previous run of the same property: a publication with many photos takes minutes.</summary>
-    public const int LockTimeoutSeconds = 600;
+    /// <summary>The seconds a run waits for the previous run of the same property: the lock wait of an on-demand job (`JobLockTimeouts.DefaultSeconds`).</summary>
+    public const int LockTimeoutSeconds = 300;
 
     [AutomaticRetry(Attempts = 0, OnAttemptsExceeded = AttemptsExceededAction.Fail)]
     [DisableConcurrentExecution("ListingPublishJob.RunAsync:{0}", LockTimeoutSeconds)]

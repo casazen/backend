@@ -1,5 +1,6 @@
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Features;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
 using Hangfire;
@@ -21,6 +22,7 @@ namespace Casazen.Infrastructure.Jobs;
 public class ListingChannelHealthJob(
     AppDbContext db,
     ListingTodos todos,
+    IFeatureFlags featureFlags,
     TimeProvider timeProvider,
     ILogger<ListingChannelHealthJob> logger)
 {
@@ -30,7 +32,7 @@ public class ListingChannelHealthJob(
     public const string Cron = "0 6 * * *";
 
     /// <summary>The seconds a run waits for the previous one.</summary>
-    public const int LockTimeoutSeconds = 60;
+    public const int LockTimeoutSeconds = 300;
 
     /// <summary>The code the item carries as its reason.</summary>
     public const string Reason = "listing_channel_silent";
@@ -39,6 +41,9 @@ public class ListingChannelHealthJob(
     [DisableConcurrentExecution(timeoutInSeconds: LockTimeoutSeconds)]
     public async Task ExecuteAsync(CancellationToken cancellationToken)
     {
+        if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
+            return;
+
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var threshold = now - ListingStatusService.SyncAlertAfter;
 

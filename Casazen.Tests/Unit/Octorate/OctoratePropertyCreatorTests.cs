@@ -9,6 +9,7 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -155,6 +156,30 @@ public class OctoratePropertyCreatorTests
     }
 
     [Fact]
+    public async Task CreateAsync_NeverLogsThePayloadTheTokenOrTheAlternativeAddress()
+    {
+        // AC4 (ADR-023-R13): the contact, the address and the token of the creation are personal data or secrets, whatever the level of the log.
+        var propertyId = await SeedAsync(OctorateInventoryScenario.NewInventory);
+        _mappings.Setup(m => m.IsWriteBlockedAsync(propertyId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _client
+            .Setup(c => c.CreatePropertyAsync(It.IsAny<OctoratePropertyCreate>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctoratePropertyCreated("585492", "refresh-token-once"));
+        _tokens.Setup(t => t.SaveTokensAsync(OrgId, It.IsAny<OctorateTokenResponse>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        _mappings.Setup(m => m.RefreshAsync(OrgId, It.IsAny<CancellationToken>())).ReturnsAsync(new List<ChannelMappingRow>());
+        _mappings
+            .Setup(m => m.ConfirmAsync(OrgId, "585492", propertyId, null, Publisher, It.IsAny<CancellationToken>(), It.IsAny<IReadOnlySet<string>?>()))
+            .Returns(Task.CompletedTask);
+        var logger = new CapturingLogger<OctoratePropertyCreator>();
+
+        await Creator(logger: logger).CreateAsync(propertyId, Publisher, CancellationToken.None);
+
+        var text = string.Join('\n', logger.Messages);
+        Assert.NotEmpty(logger.Messages);
+        foreach (var secret in new[] { "host@example.com", "+390212345678", "refresh-token-once", "octorate-", OwnerDomain, "Giulia", "Rossi", "Via del Lago", "22100" })
+            Assert.DoesNotContain(secret, text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task CreateAsync_APropertyWithoutPositionOrContact_IsRefusedByFieldBeforeAnyCall()
     {
         var propertyId = await SeedAsync(OctorateInventoryScenario.NewInventory, latitude: 0m, longitude: 0m, contactPhone: null);
@@ -198,7 +223,7 @@ public class OctoratePropertyCreatorTests
         _client.Verify(c => c.CreatePropertyAsync(It.IsAny<OctoratePropertyCreate>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
-    private OctoratePropertyCreator Creator(IChannelMappingService? mappings = null)
+    private OctoratePropertyCreator Creator(IChannelMappingService? mappings = null, ILogger<OctoratePropertyCreator>? logger = null)
     {
         var host = new Mock<IHostEnvironment>();
         host.SetupGet(h => h.EnvironmentName).Returns("Staging");
@@ -212,7 +237,7 @@ public class OctoratePropertyCreatorTests
             _scope.Object,
             Microsoft.Extensions.Options.Options.Create(new OctorateOptions { OwnerEmailDomain = OwnerDomain }),
             host.Object,
-            NullLogger<OctoratePropertyCreator>.Instance);
+            logger ?? NullLogger<OctoratePropertyCreator>.Instance);
     }
 
     private ChannelMappingService MappingService(AppDbContext db)
@@ -233,6 +258,22 @@ public class OctoratePropertyCreatorTests
             host.Object,
             clock,
             NullLogger<ChannelMappingService>.Instance);
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull
+        {
+            return null;
+        }
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
     }
 
     private AppDbContext NewDb() =>
