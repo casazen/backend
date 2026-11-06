@@ -120,6 +120,13 @@ public static class EncryptedColumns
     public const string BookingInvoiceDataPurpose = "Casazen.BookingInvoiceData";
 
     /// <summary>
+    /// Purpose of the words of the OTA conversations (ADR-032-R3, E05/F01/US01/T01): <see cref="OtaMessage.Text"/>, free text a guest or a
+    /// host wrote on a channel, copied from the channel manager. Read by the hosts who reach the property of the thread and by nobody else,
+    /// never searched, never logged. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string OtaMessageTextPurpose = "Casazen.Message.Content";
+
+    /// <summary>
     /// Start of every Data Protection payload (base64url of its magic header <c>09 F0 C9 F0</c>). A stored value without
     /// it was written in clear before its column was encrypted.
     /// </summary>
@@ -247,6 +254,10 @@ public static class EncryptedColumns
             nameof(BookingInvoiceData.Pec),
             // E06/F02/US01/T04: the hash of the billing data last written to Octorate is a hash of the personal data above.
             nameof(BookingInvoiceData.OctorateBillingHash)),
+        // ADR-032-R3: the words of the OTA conversations of the guests (E05/F01/US01/T01).
+        new EncryptedEntity<OtaMessage>(
+            OtaMessageTextPurpose,
+            nameof(OtaMessage.Text)),
     ];
 
     /// <summary>Every encrypted column: entity, property and Data Protection purpose.</summary>

@@ -116,6 +116,34 @@ answer) is looked up by its booking code: found, it is linked and cancelled. A b
 asks Octorate first and cancels in CasaZen only when it confirms, on a channel the configuration opens (`Octorate__ChannelActions__*`,
 closed by default); see [TECHNICAL.md](../TECHNICAL.md) § «Changing and cancelling a booking».
 
+### 4c. The chat handler and the passes that back it (E05/F01/US01/T03)
+
+`ChatMessageReceivedHandler` handles `CHAT_MESSAGE_RECEIVED` only (in its own scope under the org of the event, off with
+`Features:OctorateConnector`). The accommodation and the thread named by the body are read as the names of what to read, nothing more:
+`IMessageSyncService.SyncThreadAsync` re-reads the thread and its messages through the API (`createdAfter`, with an overlap of five minutes) and
+stores what is new, under the advisory lock `OtaMessageThread` of (org, thread). A notification without a usable thread (not a number, or none), or whose thread Octorate does not know (404: the object id of the body may
+be another object), makes `ReconcileRecentAsync` read the org's listings instead. The accommodation must be a listing of the org's mapping, otherwise it is not read.
+
+1. **Once, in any order.** A message is one row of the org by its Octorate id and `GuestMessageReceived` (key `ota-msg:{message id}`) is recorded in
+   the same save, so a notification that arrives twice, late or out of order stores one message and raises one event. `OtaThreadSynced` (key
+   `ota-thread:{thread}:{last message}:{flag of Octorate's assistant}`) says a thread was read, for the guard that keeps that assistant off.
+   A new inbound message older than 48 hours is stored and raises no event: the import of a history must not notify.
+2. **A thread of a listing nobody confirmed** is stored with no property (unassigned) and gets it at the first pass after the confirmation.
+3. **Failures.** An error of Octorate, or the calls of the org being used up, makes the handler throw, and the dispatcher delivers the event again
+   at its next run (the handler never waits for the calls to refill: it runs in the outbox dispatcher, which serves every org within a budget of
+   seconds, so it ends at once with the rate limit; the jobs and the import wait for them, up to two minutes);
+   an org that disconnected, and a listing without the chat module in its license (`OtaMessageSyncStates.LastError = chat_not_licensed`, shown to
+   the host as a state and never as an empty inbox), end the handler quietly.
+4. **The passes.** `ota-message-reconcile` (every 10 minutes) reads `GET /rest/v1/accommodation/recentMessages?property=` for each listing
+   (the last 24 hours) and the threads it names; `ota-message-deep-reconcile` (02:30 UTC) reads the threads with activity since the last deep pass
+   minus two days. Both are behind the flag and keep their position per listing in `OtaMessageSyncStates` (`ImportCursor`, `LastRecentPassAt`,
+   `LastDeepPassAt`, `LastError`). Not proven on a licensed structure yet: the sandbox has no `chat` module, so the shape of the chat DTOs is the
+   one of the OpenAPI and the license refusal is read from the answer of the application server that is no error of Octorate's API (no `type`): a 403
+   for the chat reads, a 500 for `recentMessages` (`sandbox-run-results.md`). Both are kept as `chat_not_licensed`, and the passes leave the listing
+   alone for an hour before they ask again.
+
+The log line of a handled event is `Octorate chat webhook handled: event {EventId}, type {EventType}, ...`: never the text, a name or an address.
+
 ## 5. Rotating the secret
 
 1. Generate a new secret (§ 2) and set `Octorate__WebhookSecret` on the environment (the service redeploys).

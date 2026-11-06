@@ -31,6 +31,7 @@ value through EF; the database only ever holds the encrypted payload.
 | `LeaseContracts.TransitoryNeed`, `LeaseContracts.TransitoryDocumentation` (the need that justifies a transitory lease and the documents that prove it, free text printed in art. 2 of the contract; no length) | `Casazen.LeaseContract.TransitoryNeed` | TR |
 | `GuestContacts.Value`, `GuestContacts.DisplayName` (the e-mail address or phone number of a CRM contact and the name that goes with it; no length, the payload is longer than the text; found by `GuestContacts.ValueHash`, not by the value) | `Casazen.GuestContact` | NF-89 |
 | `BookingInvoiceData.Name`, `FiscalCode`, `VatNumber`, `AddressStreet`, `AddressCivic`, `PostalCode`, `City`, `Pec` (who an invoice of a booking is made out to; no length, the payload is longer than the text; nothing is searched in them; the SDI code and the province stay in clear) and `OctorateBillingHash` (the hash of the billing data last written to Octorate: a hash of that personal data, compared in memory only) | `Casazen.BookingInvoiceData` | NF-81, E06/F02/US01/T04 |
+| `OtaMessages.TextEncrypted` (property `Text`: the words of the conversations of the guests with the channels, copied from the channel manager; no length, the payload is longer than the text; never searched, never logged, emptied when the guest is erased or the retention ends, `gdpr.md`) | `Casazen.Message.Content` | ADR-032-R3 |
 
 `Guests` and `StayGuests` share one purpose on purpose: a payload copied from one table to the other by SQL (for example
 the CO-12 backfill) stays readable.
