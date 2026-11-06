@@ -13,13 +13,16 @@ namespace Casazen.Core.Services;
 /// <param name="ExternalId">The id of the listing on the channel (<c>hotelId</c>), when Octorate has it.</param>
 /// <param name="Status">The state of the connection as Octorate gives it (<c>DISABLED</c>, <c>WAITING</c>, <c>ENABLED</c>).</param>
 /// <param name="UserLogged">Octorate's flag that the person logged in and the connection is authorized to operate; <c>null</c> when not said.</param>
+/// <param name="LoginAt">When the person logged in on the channel, as Octorate says it (<c>loginAt</c>, UTC); <c>null</c> when not said. It tells a
+/// login made after a hand-over to the panel from an authorization that was there before it.</param>
 public sealed record OctorateConnectionSummary(
     string Id,
     string ChannelId,
     string AccommodationId,
     string? ExternalId,
     string? Status,
-    bool? UserLogged)
+    bool? UserLogged,
+    DateTime? LoginAt = null)
 {
     /// <summary>The <c>status</c> of a connection that works.</summary>
     public const string EnabledStatus = "ENABLED";

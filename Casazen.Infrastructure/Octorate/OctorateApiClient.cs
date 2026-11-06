@@ -65,7 +65,7 @@ public sealed class OctorateApiClient(
     private const string PoliceAccountFields = "policeAccount";
 
     /// <summary>The members of a connection read by <see cref="GetOrgConnectionsAsync"/>: ids and state, never its portal username or password.</summary>
-    private const string OrgConnectionFields = "id,channelId,hotelId,status,userLogged,accommodationId";
+    private const string OrgConnectionFields = "id,channelId,hotelId,status,userLogged,loginAt,accommodationId";
 
     /// <summary>The most digits of a connection id (Octorate's ids are 64-bit numbers).</summary>
     private const int MaxConnectionIdDigits = 19;
@@ -600,7 +600,8 @@ public sealed class OctorateApiClient(
             accommodationId,
             external is { Length: <= MaxAccommodationIdLength } ? external : null,
             OctorateHttp.StringOf(item, "status"),
-            BoolOf(item, "userLogged"));
+            BoolOf(item, "userLogged"),
+            DateTimeOf(item, "loginAt"));
     }
 
     /// <summary>The <c>type</c> of the list of reservations, as Octorate spells it.</summary>

@@ -26,7 +26,7 @@ creates a duplicate on the OTA.
 |---|---|---|---|
 | 1 | The host chooses the OTAs and the properties (all, some, or a group of the mixed portfolio) and the batch is created | host | `Draft` |
 | 2 | `access/start`: the step, the hand-over and the resume point are saved, then the address of the Octorate panel is returned; the host gives the access on the panel | host, in the panel | `AwaitingChannelAccess` |
-| 3 | CasaZen reads the connections of the org (at most once for each backoff window) and finds an authorized connection of the channel: the access is **verified** and the channel moves on by itself. Only if the checks run out (`AccessCheckMaxAttempts`) the host may **confirm** it (`access/confirm`), never before | CasaZen | `ImportingRooms` |
+| 3 | CasaZen reads the connections of the org (at most once for each backoff window) and finds an authorized connection of the channel that is new to this hand-over (the host logged in on it after the hand-over began, or it belongs to an accommodation confirmed to a property of the batch; one the org already had working for another property proves nothing): the access is **verified** and the channel moves on by itself. Only if the checks run out (`AccessCheckMaxAttempts`) the host may **confirm** it (`access/confirm`), never before | CasaZen | `ImportingRooms` |
 | 4 | `run`: `IMPORT_ROOMS` on each connection of the channel that Octorate shows as authorized, then the listings of the org are read again and the matcher proposes a property for each | CasaZen | `AwaitingMapping` |
 | 5 | The host confirms each listing to a property, chooses another, imports it as a CasaZen property (the local record only, inactive and «to check»; nothing is created on the OTA), rejects it, or leaves it for later | host | `AwaitingMapping` |
 | 6 | `continue`: for the confirmed listings, `IMPORT_RESERVATIONS` and the import of the reservations into CasaZen, then `IMPORT_CALENDAR`, then `MARK_CONNECTED`. A listing left for later stays write-blocked and is not marked connected; the others go on | CasaZen | `ImportingReservations`, `ImportingCalendar`, `MarkingConnected`, `Completed` |
@@ -86,7 +86,10 @@ chosen at all.
 What the pilot must record, for each channel, before its flags are turned on:
 
 1. The access: after the host gives the access in the panel, does `GET /rest/v1/connection` show the connection with `userLogged` true or
-   `status` `ENABLED` (this is what CasaZen takes as «verified»)? Does a connection exist on an accommodation the org's token sees? If Octorate
+   `status` `ENABLED`, and does it carry `loginAt` (the time of the host's login)? CasaZen takes as «verified» an authorized connection whose
+   `loginAt` is after the hand-over, or that belongs to an accommodation confirmed to a property of the batch; where `loginAt` is not there (and
+   in a batch of the whole inventory) a first access is confirmed by the host after the checks run out. Does a connection exist on an
+   accommodation the org's token sees? If Octorate
    needs a technical structure to hold the channel (D6 note), who creates it and how: **CasaZen does not create it in this task**, and until
    someone does the import stops at `channel_connection_not_found`.
 2. Each operation: the exact answer, whether it is complete when the call returns, how long it takes, whether repeating it is harmless, and

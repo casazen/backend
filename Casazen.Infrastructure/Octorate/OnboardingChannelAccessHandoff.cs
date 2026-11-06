@@ -25,8 +25,10 @@ namespace Casazen.Infrastructure.Octorate;
 /// <para><b>How the access is checked.</b> The panel offers no callback for the login to a channel, so the handoff is
 /// <see cref="PanelHandoffMode.ManagedWindow"/> and CasaZen reads, at most once for each backoff window, the connections the org's token
 /// sees: a connection of the channel that is authorized (<see cref="OctorateConnectionSummary.IsAuthorized"/>) is the proof, and completes
-/// the step. When the checks run out (<see cref="OctorateExistingInventoryOptions.AccessCheckMaxAttempts"/>) without that proof the outcome
-/// is stored as «could not tell» and only then may the person confirm: the confirmation is the fallback, never the normal path.</para>
+/// the step, when it is new to this hand-over: the person logged in on it after the hand-over began, or it belongs to an accommodation the
+/// batch is about (<see cref="IsProofAsync"/>). A connection the org already had working for another property is no proof. When the checks
+/// run out (<see cref="OctorateExistingInventoryOptions.AccessCheckMaxAttempts"/>) without that proof the outcome is stored as «could not
+/// tell» and only then may the person confirm: the confirmation is the fallback, never the normal path.</para>
 /// <para>No credential is ever stored or logged: the nonce column stays empty (no callback), the log lines carry ids and codes.</para>
 /// </remarks>
 public sealed class OnboardingChannelAccessHandoff(
@@ -203,14 +205,14 @@ public sealed class OnboardingChannelAccessHandoff(
         step.NextVerificationAt = Now().Add(settings.BackoffAfter(attempt));
         await db.SaveChangesAsync(ct);
 
-        var authorized = false;
+        var ofChannel = new List<OctorateConnectionSummary>();
         try
         {
             OctorateConnectionSummary[] connections;
             using (orgScope.Use(step.OrgId))
                 connections = await client.GetOrgConnectionsAsync(ct);
 
-            authorized = connections.Any(c => string.Equals(c.ChannelId, channelCode, StringComparison.Ordinal) && c.IsAuthorized);
+            ofChannel.AddRange(connections.Where(c => string.Equals(c.ChannelId, channelCode, StringComparison.Ordinal) && c.IsAuthorized));
         }
         catch (OctorateException ex)
         {
@@ -219,6 +221,7 @@ public sealed class OnboardingChannelAccessHandoff(
                 attempt, step.OrgId, channelCode, ex.Code);
         }
 
+        var authorized = ofChannel.Count > 0 && await IsProofAsync(step, ofChannel, ct);
         var now = Now();
         if (authorized)
         {
@@ -235,6 +238,52 @@ public sealed class OnboardingChannelAccessHandoff(
         }
 
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Whether an authorized connection of the channel proves the access was given for THIS hand-over. One that was already authorized before the
+    /// person was sent to the panel (the org has a working connection of the channel for another property) says nothing about it, or the step
+    /// would be verified at the first check without the person giving anything. It is a proof when the person logged in on it after the
+    /// hand-over began (<see cref="OctorateConnectionSummary.LoginAt"/>), or when it belongs to an accommodation the batch is about.
+    /// </summary>
+    private async Task<bool> IsProofAsync(OnboardingPanelStep step, IReadOnlyList<OctorateConnectionSummary> authorized, CancellationToken ct)
+    {
+        if (authorized.Any(c => c.LoginAt is { } loggedAt && loggedAt >= step.StartedAt))
+            return true;
+
+        var accommodations = await BatchAccommodationsAsync(step, ct);
+        return authorized.Any(c => accommodations.Contains(c.AccommodationId));
+    }
+
+    /// <summary>
+    /// The accommodations of Octorate the batch of the hand-over is about: the ones its properties are confirmed to. The batch is the resume
+    /// point of the step. The whole inventory names no property, so no accommodation stands for it: only a login after the hand-over proves it.
+    /// </summary>
+    private async Task<HashSet<string>> BatchAccommodationsAsync(OnboardingPanelStep step, CancellationToken ct)
+    {
+        var accommodations = new HashSet<string>(StringComparer.Ordinal);
+        if (step.ResumeDraftEntityId is not { } batchId)
+            return accommodations;
+
+        var batch = await db.OctorateInventoryImportBatches
+            .AsNoTracking()
+            .Where(b => b.OrgId == step.OrgId && b.Id == batchId)
+            .Select(b => new { b.ScopeKind, b.ScopePropertyIdsJson })
+            .FirstOrDefaultAsync(ct);
+        if (batch is null || batch.ScopeKind == OctorateInventoryScopeKind.AllInventory)
+            return accommodations;
+
+        var propertyIds = ExistingInventoryImportService.ParseIds(batch.ScopePropertyIdsJson);
+        if (propertyIds.Count == 0)
+            return accommodations;
+
+        var confirmed = await db.OctorateListingMappings
+            .AsNoTracking()
+            .Where(m => m.OrgId == step.OrgId && m.Status == OctorateMappingStatus.Confirmed && m.PropertyId != null && propertyIds.Contains(m.PropertyId.Value))
+            .Select(m => m.OctorateAccommodationId)
+            .ToListAsync(ct);
+        accommodations.UnionWith(confirmed);
+        return accommodations;
     }
 
     /// <summary>The step of the org for the channel: one row for each org, kind and channel, with no property (unique index).</summary>

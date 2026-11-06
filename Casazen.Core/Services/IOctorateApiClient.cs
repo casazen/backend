@@ -94,9 +94,9 @@ public interface IOctorateApiClient
 
     /// <summary>
     /// Every connection of a channel the org's token sees, in one call (<c>GET /rest/v1/connection?fields=id,channelId,hotelId,status,
-    /// userLogged,accommodationId</c>, E02/F01/US03): how the import finds, after the person gave the access in the Octorate panel, the
-    /// connection of each listing to a channel and whether it was authorized. Only those fields are asked, so the portal credentials a
-    /// connection holds never reach CasaZen. An item without a numeric id, a channel or an accommodation is left out.
+    /// userLogged,loginAt,accommodationId</c>, E02/F01/US03): how the import finds, after the person gave the access in the Octorate panel, the
+    /// connection of each listing to a channel, whether it was authorized and when the person logged in. Only those fields are asked, so the
+    /// portal credentials a connection holds never reach CasaZen. An item without a numeric id, a channel or an accommodation is left out.
     /// </summary>
     Task<OctorateConnectionSummary[]> GetOrgConnectionsAsync(CancellationToken ct);
 

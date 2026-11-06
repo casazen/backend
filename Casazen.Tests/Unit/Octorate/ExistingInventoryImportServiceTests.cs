@@ -955,7 +955,7 @@ public class ExistingInventoryImportServiceTests
         connections.Add(new OctorateConnectionSummary("502", "142", "1002", "H2", "ENABLED", true));
         Assert.Equal(ChannelAccessState.Verifying, (await handoff.GetAsync(OrgA, "274", verifyIfDue: true, CancellationToken.None)).State);
         clock.Advance(TimeSpan.FromMinutes(1));
-        connections.Add(new OctorateConnectionSummary("503", "274", "1001", "H3", null, true));
+        connections.Add(new OctorateConnectionSummary("503", "274", "1001", "H3", null, true, clock.GetUtcNow().UtcDateTime));
         var verified = await handoff.GetAsync(OrgA, "274", verifyIfDue: true, CancellationToken.None);
         Assert.Equal(ChannelAccessState.Verified, verified.State);
         await handoff.ConfirmAsync(OrgA, UserA, "274", CancellationToken.None);
@@ -966,6 +966,94 @@ public class ExistingInventoryImportServiceTests
         Assert.Null(OnboardingChannelAccessHandoff.ParsePanelUrl("https://user:secret@panel.example.test/octobook"));
         Assert.Null(OnboardingChannelAccessHandoff.ParsePanelUrl("https://127.0.0.1/octobook"));
         Assert.Equal(PanelUrl, OnboardingChannelAccessHandoff.ParsePanelUrl(PanelUrl));
+    }
+
+    [Fact]
+    public async Task ChannelAccessHandoff_AConnectionAlreadyAuthorizedBeforeIsNoProofOfThisAccess_Test()
+    {
+        // The org already has a working connection of the channel for another property. That is not the access the person was sent to give:
+        // the step must not be verified, and the import must not go on, because of it.
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 11, 6, 8, 0, 0, TimeSpan.Zero));
+        var longBefore = clock.GetUtcNow().UtcDateTime.AddDays(-30);
+        var connections = new List<OctorateConnectionSummary> { new("501", "142", "1001", "H1", "ENABLED", true, longBefore) };
+        var client = new Mock<IOctorateApiClient>(MockBehavior.Strict);
+        client.Setup(c => c.GetOrgConnectionsAsync(It.IsAny<CancellationToken>())).Returns(() => Task.FromResult(connections.ToArray()));
+        var database = $"channel-access-proof-{Guid.NewGuid():N}";
+        AppDbContext NewDb() => new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(database).Options, NullTenantContext.Instance);
+        OnboardingChannelAccessHandoff Handoff(AppDbContext db) => new(
+            db,
+            client.Object,
+            new OctorateOrgScope(NullTenantContext.Instance),
+            Microsoft.Extensions.Options.Options.Create(new OctorateOptions
+            {
+                FrontendBaseUrl = PanelUrl,
+                ExistingInventory = new OctorateExistingInventoryOptions { AccessCheckMaxAttempts = 6, AccessCheckBackoffSeconds = 1 },
+            }),
+            clock,
+            NullLogger<OnboardingChannelAccessHandoff>.Instance);
+
+        // A batch of one named property, which is confirmed to the accommodation 1002; and a batch of the whole inventory.
+        var property = Guid.NewGuid();
+        var named = Guid.NewGuid();
+        var whole = Guid.NewGuid();
+        await using var db = NewDb();
+        db.OctorateInventoryImportBatches.AddRange(
+            new OctorateInventoryImportBatch
+            {
+                Id = named,
+                OrgId = OrgA,
+                ScopeKind = OctorateInventoryScopeKind.Properties,
+                ScopePropertyIdsJson = JsonSerializer.Serialize(new[] { property }),
+                CreatedByUserId = UserA,
+            },
+            new OctorateInventoryImportBatch
+            {
+                Id = whole,
+                OrgId = OrgA,
+                ScopeKind = OctorateInventoryScopeKind.AllInventory,
+                CreatedByUserId = UserA,
+            });
+        db.OctorateListingMappings.Add(new OctorateListingMapping
+        {
+            OrgId = OrgA,
+            ConnectionId = Guid.NewGuid(),
+            OctorateAccommodationId = "1002",
+            PropertyId = property,
+            Status = OctorateMappingStatus.Confirmed,
+        });
+        await db.SaveChangesAsync();
+        var handoff = Handoff(db);
+
+        async Task<ChannelAccessState> CheckAsync(string channel)
+        {
+            clock.Advance(TimeSpan.FromMinutes(1));
+            return (await handoff.GetAsync(OrgA, channel, verifyIfDue: true, CancellationToken.None)).State;
+        }
+
+        // Channel 142, batch of the named property: the old authorization is no proof, nor is another old one for an accommodation the
+        // batch is not about; one of the accommodation the batch is about is.
+        await handoff.StartAsync(OrgA, "142", new ChannelAccessResumePoint(named, "142"), CancellationToken.None);
+        Assert.Equal(ChannelAccessState.Verifying, await CheckAsync("142"));
+        connections.Add(new OctorateConnectionSummary("502", "142", "1009", "H9", "ENABLED", true, longBefore));
+        Assert.Equal(ChannelAccessState.Verifying, await CheckAsync("142"));
+        connections.Add(new OctorateConnectionSummary("503", "142", "1002", "H2", "ENABLED", true));
+        Assert.Equal(ChannelAccessState.Verified, await CheckAsync("142"));
+
+        // Channel 274: the person logged in before the hand-over (no proof), then after it (the proof), whatever accommodation it is.
+        await handoff.StartAsync(OrgA, "274", new ChannelAccessResumePoint(named, "274"), CancellationToken.None);
+        connections.Add(new OctorateConnectionSummary("700", "274", "1010", "H10", null, true, clock.GetUtcNow().UtcDateTime.AddDays(-10)));
+        Assert.Equal(ChannelAccessState.Verifying, await CheckAsync("274"));
+        clock.Advance(TimeSpan.FromMinutes(1));
+        connections.Add(new OctorateConnectionSummary("701", "274", "1011", "H11", null, true, clock.GetUtcNow().UtcDateTime));
+        Assert.Equal(ChannelAccessState.Verified, await CheckAsync("274"));
+
+        // Channel 235, batch of the whole inventory: no accommodation stands for the whole inventory, so only a login after the hand-over proves it.
+        await handoff.StartAsync(OrgA, "235", new ChannelAccessResumePoint(whole, "235"), CancellationToken.None);
+        connections.Add(new OctorateConnectionSummary("800", "235", "1002", "H20", "ENABLED", true));
+        Assert.Equal(ChannelAccessState.Verifying, await CheckAsync("235"));
+        Assert.Equal(ChannelAccessState.Verifying, await CheckAsync("235"));
+        connections.Add(new OctorateConnectionSummary("801", "235", "1012", "H21", "ENABLED", true, clock.GetUtcNow().UtcDateTime));
+        Assert.Equal(ChannelAccessState.Verified, await CheckAsync("235"));
     }
 
     [Fact]
@@ -995,10 +1083,10 @@ public class ExistingInventoryImportServiceTests
             await client.ImportCalendarAsync("1001", "501", CancellationToken.None);
             await client.MarkConnectedAsync("1001", "501", CancellationToken.None);
 
-            handler.Body = """[{"id": 501, "channelId": 142, "accommodationId": "1001", "hotelId": "H1", "status": "ENABLED", "userLogged": true, "username": "must-not-be-read", "password": "must-not-be-read"}, {"id": "abc", "channelId": 142, "accommodationId": "1"}, {"id": 9, "channelId": 142}]""";
+            handler.Body = """[{"id": 501, "channelId": 142, "accommodationId": "1001", "hotelId": "H1", "status": "ENABLED", "userLogged": true, "loginAt": "2026-11-05T09:30:00Z", "username": "must-not-be-read", "password": "must-not-be-read"}, {"id": "abc", "channelId": 142, "accommodationId": "1"}, {"id": 9, "channelId": 142}]""";
             var connections = await client.GetOrgConnectionsAsync(CancellationToken.None);
             var connection = Assert.Single(connections);
-            Assert.Equal(new OctorateConnectionSummary("501", "142", "1001", "H1", "ENABLED", true), connection);
+            Assert.Equal(new OctorateConnectionSummary("501", "142", "1001", "H1", "ENABLED", true, new DateTime(2026, 11, 5, 9, 30, 0, DateTimeKind.Utc)), connection);
             Assert.True(connection.IsAuthorized);
         }
 

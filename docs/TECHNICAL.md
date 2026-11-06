@@ -911,7 +911,9 @@ Runbook and evidence matrix per channel: `docs/runbooks/octorate-existing-invent
   `ImportingRooms`, `AwaitingMapping`, `ImportingReservations`, `ImportingCalendar`, `MarkingConnected`, `Completed`, `Failed`, `NeedsAttention`. Ids, codes and
   stamps only: no credential, token, panel address or payload of Octorate.
 - *Sequence.* Access in the Octorate panel (`IChannelAccessHandoff`, the `channelAccess` panel step of E10: the minimal implementation keeps it in
-  `OnboardingPanelStep` and checks the access by reading the connections of the org, `OctorateConnectionSummary.IsAuthorized`; the confirmation by hand is
+  `OnboardingPanelStep` and checks the access by reading the connections of the org: an authorized connection (`OctorateConnectionSummary.IsAuthorized`) proves
+  it only when it is new to the hand-over, that is, the person logged in on it after the hand-over began (`loginAt`) or it belongs to an accommodation confirmed
+  to a property of the batch; a connection the org already had working for another property proves nothing; the confirmation by hand is
   accepted only after the check stored «could not tell») -> `IMPORT_ROOMS` for each authorized connection of the channel -> `IChannelMappingService.RefreshAsync` ->
   `AwaitingMapping` (a person confirms, imports as a CasaZen property or rejects each listing through the mapping endpoints, or leaves it for later) ->
   `IMPORT_RESERVATIONS` and `IBookingImportService.ImportAllAsync` -> `IMPORT_CALENDAR` -> `MARK_CONNECTED`. The calendar is then read into CasaZen by the

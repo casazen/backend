@@ -1627,7 +1627,8 @@ public sealed class ExistingInventoryImportService(
     private static HashSet<Guid>? ScopeIds(OctorateInventoryImportBatch batch) =>
         batch.ScopeKind == OctorateInventoryScopeKind.AllInventory ? null : [.. PropertyIdsOf(batch)];
 
-    private static List<Guid> ParseIds(string? json)
+    /// <summary>The ids of a JSON array of ids (a batch scope); an empty or unreadable one names none.</summary>
+    internal static List<Guid> ParseIds(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
             return [];
