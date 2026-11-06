@@ -116,11 +116,12 @@ public class DemoEnvironmentService(
         if (!string.Equals(confirmation, DemoShowcaseCatalog.ResetConfirmation, StringComparison.Ordinal))
             throw new DomainRuleException("demo_reset_confirmation", "DemoResetConfirmation");
 
-        // The drafts, the popup alerts and the tourist tax payments first: removing the showcase properties drops every showcase marker of
-        // the org, and these are found by theirs.
+        // The drafts, the popup alerts, the tourist tax payments and the marketplace rows first: removing the showcase properties drops
+        // every showcase marker of the org, and these are found by theirs.
         await RemoveShowcaseWizardDraftsAsync(orgId, cancellationToken);
         await RemoveShowcasePopupAlertsAsync(orgId, cancellationToken);
         await RemoveShowcaseTouristTaxRemittancesAsync(orgId, cancellationToken);
+        await RemoveShowcaseMarketplaceAsync(orgId, cancellationToken);
         var removed = await RemoveShowcaseAsync(orgId, cancellationToken);
         await RemoveShowcaseHostInvitesAsync(orgId, cancellationToken);
         var unpublished = removeUnpublished ? await RemoveUnpublishedAsync(orgId, cancellationToken) : 0;
@@ -145,6 +146,13 @@ public class DemoEnvironmentService(
         // NF-08: the popup alerts of the demo host point at the stays and houses just created, so they come last.
         foreach (var alert in DemoShowcaseCatalog.PopupAlerts)
             await CreatePopupAlertAsync(orgId, ownerId, alert, cancellationToken);
+
+        // E09/F01: the test partner of the marketplace catalog, then the activation of it that the demo host declared (it names the partner by code).
+        foreach (var partner in DemoShowcaseCatalog.MarketplacePartners)
+            await CreateMarketplacePartnerAsync(orgId, ownerId, partner, cancellationToken);
+
+        foreach (var activation in DemoShowcaseCatalog.MarketplaceActivations)
+            await CreateMarketplaceActivationAsync(orgId, activation, cancellationToken);
 
         settings.LastResetAt = UtcNow();
         settings.LastResetBy = actorUserId;
@@ -482,6 +490,142 @@ public class DemoEnvironmentService(
         db.TouristTaxRemittances.Add(remittance);
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.TouristTaxRemittance, remittance.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes what the showcase wrote on the marketplace for the org, found by the markers (E09/F01): the activations it declared, then the test
+    /// partners it created (their texts go with them). An activation or a partner a person made has no marker and is never touched.
+    /// </summary>
+    private async Task RemoveShowcaseMarketplaceAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var activationIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.MarketplaceActivation)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (activationIds.Count > 0)
+        {
+            await db.MarketplaceActivations.IgnoreQueryFilters([Tenant])
+                .Where(a => a.OrgId == orgId && activationIds.Contains(a.Id))
+                .ExecuteDeleteAsync(cancellationToken);
+        }
+
+        var partnerIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.MarketplacePartner)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (partnerIds.Count > 0)
+            await db.MarketplacePartners.Where(p => partnerIds.Contains(p.Id)).ExecuteDeleteAsync(cancellationToken);
+
+        await Markers()
+            .Where(m => m.OrgId == orgId
+                && m.Origin == TestDataOrigins.Showcase
+                && (m.EntityType == TestDataEntities.MarketplaceActivation
+                    || m.EntityType == TestDataEntities.MarketplacePartner
+                    || m.EntityType == TestDataEntities.MarketplacePartnerText))
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// One test partner of the marketplace catalog with its Italian and English texts, marked as showcase data. Skipped, with a log, when the catalog
+    /// already has a partner with that code (another org's showcase created it, or a person did): the code is unique, and a partner that is not
+    /// the showcase's is never replaced.
+    /// </summary>
+    private async Task CreateMarketplacePartnerAsync(
+        Guid orgId, string ownerId, DemoMarketplacePartnerTemplate template, CancellationToken cancellationToken)
+    {
+        if (await db.MarketplacePartners.AnyAsync(p => p.Code == template.Code, cancellationToken))
+        {
+            logger.LogInformation("Demo marketplace partner {Key} skipped: the catalog already has a partner with that code", template.Key);
+            return;
+        }
+
+        var now = UtcNow();
+        var partner = new MarketplacePartner
+        {
+            Code = template.Code,
+            Name = template.Name,
+            Job = template.Job,
+            SortOrder = template.SortOrder,
+            IsVisible = true,
+            WebsiteUrl = template.WebsiteUrl,
+            InvoicedBy = template.InvoicedBy,
+            ServiceCategories = [.. template.ServiceCategories],
+            CreatedAt = now,
+            UpdatedAt = now,
+            UpdatedByUserId = ownerId,
+        };
+        partner.Texts.Add(MarketplaceText(partner, MarketplacePartnerText.Italian, template.Italian));
+        partner.Texts.Add(MarketplaceText(partner, MarketplacePartnerText.English, template.English));
+        db.MarketplacePartners.Add(partner);
+        await db.SaveChangesAsync(cancellationToken);
+
+        await MarkAsync(orgId, TestDataEntities.MarketplacePartner, partner.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+        foreach (var text in partner.Texts)
+        {
+            await MarkAsync(
+                orgId, TestDataEntities.MarketplacePartnerText, text.Id, TestDataOrigins.Showcase, $"{template.Key}:{text.Language}", cancellationToken);
+        }
+    }
+
+    private static MarketplacePartnerText MarketplaceText(MarketplacePartner partner, string language, DemoMarketplacePartnerText text) =>
+        new()
+        {
+            PartnerId = partner.Id,
+            Language = language,
+            Benefit = text.Benefit,
+            Audience = text.Audience,
+            Description = text.Description,
+            Requirements = text.Requirements,
+            CostText = text.CostText,
+            DataShared = text.DataShared,
+            Deactivation = text.Deactivation,
+            ActivationGuide = text.ActivationGuide,
+            FaqJson = System.Text.Json.JsonSerializer.Serialize(text.Faq.Select(faq => new { q = faq.Question, a = faq.Answer })),
+        };
+
+    /// <summary>
+    /// The activation of a test partner that the demo host declared: org-level, active, declared (Octorate proves nothing for a partner on its own
+    /// site) a few days ago. Skipped, with a warning, when the partner is not in the catalog, and when the org already has an activation of it (a
+    /// real one is never touched).
+    /// </summary>
+    private async Task CreateMarketplaceActivationAsync(
+        Guid orgId, DemoMarketplaceActivationTemplate template, CancellationToken cancellationToken)
+    {
+        var code = DemoShowcaseCatalog.MarketplacePartners.FirstOrDefault(p => p.Key == template.PartnerKey)?.Code;
+        if (code is null || !await db.MarketplacePartners.AnyAsync(p => p.Code == code, cancellationToken))
+        {
+            logger.LogWarning(
+                "Demo marketplace activation {Key} of org {OrgId} was skipped: the partner it names is not in the catalog", template.Key, orgId);
+            return;
+        }
+
+        var taken = await db.MarketplaceActivations.IgnoreQueryFilters([Tenant])
+            .AnyAsync(
+                a => a.OrgId == orgId && a.PropertyId == null && a.Kind == MarketplaceActivationKind.Partner && a.TargetCode == code,
+                cancellationToken);
+        if (taken)
+        {
+            logger.LogInformation("Demo marketplace activation {Key} skipped: the org already has an activation of that partner", template.Key);
+            return;
+        }
+
+        var now = UtcNow();
+        var declaredAt = now.AddDays(template.DeclaredOffsetDays);
+        var activation = new MarketplaceActivation
+        {
+            OrgId = orgId,
+            Kind = MarketplaceActivationKind.Partner,
+            TargetCode = code,
+            Status = MarketplaceActivationStatus.Active,
+            IsDeclared = true,
+            DeclaredAt = declaredAt,
+            RequestedAt = declaredAt,
+            CreatedAt = declaredAt,
+            UpdatedAt = declaredAt,
+        };
+        db.MarketplaceActivations.Add(activation);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.MarketplaceActivation, activation.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
     private async Task<int> RemoveUnpublishedAsync(Guid orgId, CancellationToken cancellationToken)

@@ -23,6 +23,9 @@ public static class OctorateServiceCollectionExtensions
         services.AddHttpClient(OctorateTokenService.HttpClientName, OctorateHttp.Configure);
         services.AddScoped<IOctorateTokenService, OctorateTokenService>();
 
+        // The token of the application itself (the partner login, E09/F01/US01/T02): one for the whole process, reused while valid.
+        services.AddSingleton<OctoratePartnerTokenCache>();
+
         // The API client (E02/F01/US01/T02), always registered: the org of every call comes from the scope of the DI scope, the
         // rate-limit buckets are the application's (one per org).
         services.AddHttpClient<IOctorateApiClient, OctorateApiClient>(OctorateHttp.Configure);

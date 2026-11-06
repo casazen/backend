@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.1";
+    public const string Version = "2026-11-06.2";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -74,6 +74,8 @@ public static class DemoShowcaseCatalog
         public const string PopupAlerts = "popup-alerts";
         public const string WizardDrafts = "wizard-drafts";
         public const string TouristTaxPaid = "tourist-tax-paid";
+        public const string MarketplacePartnersVisible = "marketplace-partners-visible";
+        public const string MarketplaceActivationDeclared = "marketplace-activation-declared";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -121,6 +123,8 @@ public static class DemoShowcaseCatalog
         Scenario.PopupAlerts,
         Scenario.WizardDrafts,
         Scenario.TouristTaxPaid,
+        Scenario.MarketplacePartnersVisible,
+        Scenario.MarketplaceActivationDeclared,
     ];
 
     /// <summary>
@@ -660,6 +664,56 @@ public static class DemoShowcaseCatalog
             "Versamento di dimostrazione con ricevuta inventata (TEST).",
             Scenario.TouristTaxPaid),
     ];
+
+    /// <summary>
+    /// Partners of the marketplace catalog (E09/F01, NF-54, NF-59): one partner that is obviously test data (TEST in its name, an example address,
+    /// texts in Italian and English that say so), visible to every plan and country, so the Partners group of a test environment is not empty. It is
+    /// platform data like every partner, entered by the showcase because the admin screens that enter one are not built yet; the showcase creates it
+    /// only if the catalog has no partner with that code, and the reset of the org that created it deletes it.
+    /// </summary>
+    public static IReadOnlyList<DemoMarketplacePartnerTemplate> MarketplacePartners { get; } =
+    [
+        new(
+            "partner-di-prova",
+            "partner-di-prova-test",
+            "Partner di prova (TEST)",
+            MarketplacePartnerJob.Cleaning,
+            0,
+            "https://example.com/",
+            MarketplaceCostInvoicer.Partner,
+            [Casazen.Core.Suppliers.ServiceCategories.Cleaning],
+            new DemoMarketplacePartnerText(
+                "Una scheda di prova per vedere come appare un partner (TEST).",
+                "Per chi vuole vedere un esempio di scheda del marketplace (TEST).",
+                "Scheda di dimostrazione con dati inventati: non è un servizio reale e non porta a un sito vero (TEST).",
+                "Nessun requisito: è una scheda di prova.\nIl sito è un indirizzo di esempio.",
+                "Nessun costo reale: scheda di prova (TEST).",
+                "Nessun dato viene condiviso: è una scheda di prova (TEST).",
+                "Per disattivarlo basta dichiarare di averlo spento (TEST).",
+                "Apri il sito di esempio e torna qui: è una guida di prova (TEST).",
+                [new DemoMarketplaceFaq("Questa scheda è reale?", "No: è una scheda di dimostrazione con dati inventati (TEST).")]),
+            new DemoMarketplacePartnerText(
+                "A test card to see how a partner looks (TEST).",
+                "For anyone who wants to see an example of a marketplace card (TEST).",
+                "Demonstration card with invented data: it is not a real service and does not lead to a real site (TEST).",
+                "No requirements: it is a test card.\nThe site is an example address.",
+                "No real cost: test card (TEST).",
+                "No data is shared: it is a test card (TEST).",
+                "To turn it off it is enough to declare that you switched it off (TEST).",
+                "Open the example site and come back here: this is a test guide (TEST).",
+                [new DemoMarketplaceFaq("Is this card real?", "No: it is a demonstration card with invented data (TEST).")]),
+            Scenario.MarketplacePartnersVisible),
+    ];
+
+    /// <summary>
+    /// What the demo host declared activated on the marketplace (E09/F01, NF-56): the partner of <see cref="MarketplacePartners"/>, activated on its own
+    /// site and declared by the host a few days ago, so the Active tab shows an integration whose status the host declared and Octorate did not prove.
+    /// Written for the org at reset, marked as showcase data (<c>TestDataEntities.MarketplaceActivation</c>), deleted by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoMarketplaceActivationTemplate> MarketplaceActivations { get; } =
+    [
+        new("attivazione-dichiarata", "partner-di-prova", -3, Scenario.MarketplaceActivationDeclared),
+    ];
 }
 
 public sealed record DemoPlace(string City, string IstatCode, string RegionCode, string PostalCode, string Address);
@@ -989,3 +1043,52 @@ public sealed record DemoTouristTaxRemittanceTemplate(
     string Reference,
     string Notes,
     string Scenario);
+
+/// <summary>
+/// A partner of the marketplace catalog (E09/F01): platform data like every partner, marked as showcase data by the org whose reset created it
+/// (<c>TestDataEntities.MarketplacePartner</c>). <paramref name="Code"/> is the lowercase slug the activations name it by.
+/// </summary>
+/// <param name="Key">Stable key of the partner inside the template.</param>
+/// <param name="Code">The slug of the partner (unique in the catalog).</param>
+/// <param name="Name">The name; it says TEST.</param>
+/// <param name="Job">The work it does, which orders the Partners group.</param>
+/// <param name="SortOrder">The place among the partners of the same job.</param>
+/// <param name="WebsiteUrl">An example address (https).</param>
+/// <param name="InvoicedBy">Who invoices the cost.</param>
+/// <param name="ServiceCategories">The codes of <c>GET api/service-categories</c> it works for.</param>
+/// <param name="Italian">The Italian texts.</param>
+/// <param name="English">The English texts.</param>
+/// <param name="Scenario">The scenario it exercises.</param>
+public sealed record DemoMarketplacePartnerTemplate(
+    string Key,
+    string Code,
+    string Name,
+    MarketplacePartnerJob Job,
+    int SortOrder,
+    string WebsiteUrl,
+    MarketplaceCostInvoicer InvoicedBy,
+    IReadOnlyList<string> ServiceCategories,
+    DemoMarketplacePartnerText Italian,
+    DemoMarketplacePartnerText English,
+    string Scenario);
+
+/// <summary>The words of a showcase partner in one language; the lines of <paramref name="Requirements"/> and <paramref name="DataShared"/> are separated by a line break.</summary>
+public sealed record DemoMarketplacePartnerText(
+    string Benefit,
+    string Audience,
+    string Description,
+    string Requirements,
+    string? CostText,
+    string DataShared,
+    string Deactivation,
+    string ActivationGuide,
+    IReadOnlyList<DemoMarketplaceFaq> Faq);
+
+/// <summary>A question and its answer.</summary>
+public sealed record DemoMarketplaceFaq(string Question, string Answer);
+
+/// <summary>
+/// The partner the demo host declared activated (E09/F01, NF-56): an org-level activation of <paramref name="PartnerKey"/>, status active and
+/// declared (not proven by Octorate), declared <paramref name="DeclaredOffsetDays"/> days from the reset (negative: in the past).
+/// </summary>
+public sealed record DemoMarketplaceActivationTemplate(string Key, string PartnerKey, int DeclaredOffsetDays, string Scenario);

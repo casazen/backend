@@ -72,4 +72,13 @@ public interface IOctorateApiClient
 
     /// <summary>The state of the stay CasaZen owns (<c>PUT /rest/v1/checkin/{acc}/{id}?status=</c>): arrival, departure, no-show.</summary>
     Task SetCheckInStatusAsync(string accommodationId, string reservationId, OctorateCheckInStatus status, CancellationToken ct);
+
+    /// <summary>
+    /// The catalog of portals and tools Octorate offers (<c>GET /rest/v1/meta/portals</c>, E09/F01/US01/T02). A partner-level call: it acts
+    /// for the application and carries no property data, so it needs no org in <see cref="IOctorateOrgScope"/>, uses the partner token
+    /// (<see cref="IOctorateTokenService.GetPartnerAccessTokenAsync"/>) and takes its call from the rate-limit bucket <c>platform</c>, not an
+    /// org's. Same HTTPS client, timeout, typed errors and backoff as the other calls. An item with no usable identifier is left out; there
+    /// is one method and one <see cref="OctoratePortal"/> for every reader of the catalog (the marketplace cache, the channel costs report).
+    /// </summary>
+    Task<OctoratePortal[]> GetPortalsAsync(CancellationToken ct);
 }

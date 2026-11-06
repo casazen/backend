@@ -60,6 +60,9 @@ public static class RecurringJobsRegistration
 
         ConfigureServiceRequestAutoCancel(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.SupplierRequestAutoCancel));
 
+        // E09/F01/US01/T02 (ADR-023): the cache of the portal catalog of the marketplace is refreshed every day, only while the Octorate connector is on.
+        ConfigureMarketplacePortalRefresh(recurringJobManager, featureFlags.IsEnabled(FeatureFlags.OctorateConnector));
+
         // SP-BKP: the groups of backup suppliers are followed whatever the flag SupplierRequestBackups says (it only gates their creation): a
         // group that exists has its windows, and turning the flag off must not leave its requests hanging. With no group a run finds nothing.
         recurringJobManager.AddOrUpdate<ServiceRequestGroupJob>(
@@ -345,6 +348,26 @@ public static class RecurringJobsRegistration
             ServiceRequestAutoCancelJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),
             ServiceRequestAutoCancelJob.Cron,
+            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+    }
+
+    /// <summary>
+    /// The daily refresh of the portal catalog cached for the marketplace (E09/F01/US01/T02): only with
+    /// <see cref="FeatureFlags.OctorateConnector"/> on. With the flag off nothing calls Octorate, and the schedule of an earlier deploy is
+    /// removed; the cache keeps what it had, and the marketplace goes on reading it.
+    /// </summary>
+    private static void ConfigureMarketplacePortalRefresh(IRecurringJobManager recurringJobManager, bool enabled)
+    {
+        if (!enabled)
+        {
+            recurringJobManager.RemoveIfExists(MarketplacePortalRefreshJob.RecurringJobId);
+            return;
+        }
+
+        recurringJobManager.AddOrUpdate<MarketplacePortalRefreshJob>(
+            MarketplacePortalRefreshJob.RecurringJobId,
+            job => job.ExecuteAsync(CancellationToken.None),
+            MarketplacePortalRefreshJob.Cron,
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 

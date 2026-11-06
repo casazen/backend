@@ -85,4 +85,21 @@ public static class TestDataEntities
     /// never touches it.
     /// </summary>
     public const string TouristTaxRemittance = "TouristTaxRemittance";
+
+    /// <summary>
+    /// A partner of the marketplace catalog (<see cref="MarketplacePartner"/>, E09/F01): platform data, shared by every org of the installation, so
+    /// the showcase creates it only when the catalog has no partner with its code, and the reset of the org that created it deletes it (its texts go
+    /// with it). It is named TEST and points at an example address, so it is obvious in the catalog of a test environment; the showcase exists
+    /// only outside Production.
+    /// </summary>
+    public const string MarketplacePartner = "MarketplacePartner";
+
+    /// <summary>The texts of a showcase partner (<see cref="MarketplacePartnerText"/>); they go with the partner.</summary>
+    public const string MarketplacePartnerText = "MarketplacePartnerText";
+
+    /// <summary>
+    /// An activation of the marketplace of the demo org (<see cref="MarketplaceActivation"/>, E09/F01): the partner it declared activated, deleted by
+    /// the reset with the other showcase rows. A real activation has no marker and is never touched.
+    /// </summary>
+    public const string MarketplaceActivation = "MarketplaceActivation";
 }
