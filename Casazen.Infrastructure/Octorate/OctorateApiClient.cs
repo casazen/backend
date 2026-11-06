@@ -691,6 +691,16 @@ public sealed partial class OctorateApiClient(
             var held = await GetReservationAsync(accommodation, reservation, ct);
             if (held.UpdatedAt is { } heldAt && heldAt != basedOn)
             {
+                // Another version, but one that already holds exactly the stay and the guests this change writes: the change was made already, by an
+                // earlier attempt whose answer was lost (a timeout, a 5xx on the read that checks it), which moved the updateTime itself. It is done: the
+                // version is returned and nothing is written over it (a second PATCH would only move the updateTime again).
+                if (HoldsTheStayOf(held, update))
+                {
+                    logger.LogInformation(
+                        "Octorate reservation-update for org {OrgId}: the reservation already holds the stay and the guests of the change, nothing is written", orgScope.OrgId);
+                    return held;
+                }
+
                 logger.LogInformation(
                     "Octorate reservation-update for org {OrgId}: the reservation changed on Octorate since the version of the change, nothing is written", orgScope.OrgId);
                 throw new OctorateConflictException();
@@ -727,6 +737,21 @@ public sealed partial class OctorateApiClient(
         }
 
         return after;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="reservation"/> already holds what <paramref name="update"/> writes: the arrival, the departure and the guests are all
+    /// known and the same, and the price of the stay, when Octorate gives one, is the same to the cent. A member Octorate leaves out is not a match.
+    /// </summary>
+    internal static bool HoldsTheStayOf(OctorateReservation reservation, OctorateReservationUpdate update)
+    {
+        var mapper = new BookingStateMapper();
+        var arrival = mapper.ToStayDate(reservation.CheckIn, null) is { } checkIn ? DateOnly.FromDateTime(checkIn) : (DateOnly?)null;
+        var departure = mapper.ToStayDate(reservation.CheckOut, null) is { } checkOut ? DateOnly.FromDateTime(checkOut) : (DateOnly?)null;
+        if (arrival != update.CheckIn || departure != update.CheckOut || reservation.TotalGuests != update.Guests)
+            return false;
+
+        return reservation.RoomGross is not { } gross || Math.Abs(gross - update.RoomGross) < 0.005m;
     }
 
     public async Task<OctoratePaymentResult> RegisterPaymentAsync(

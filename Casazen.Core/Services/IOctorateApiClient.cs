@@ -160,7 +160,8 @@ public interface IOctorateApiClient
     /// price of the stay and the notes of <paramref name="update"/>, with the PMS room of <paramref name="target"/> as <c>pmsProduct</c> (the sandbox answers
     /// 400 to a <c>PATCH</c> without it). A change is never written over a reservation that changed on Octorate since the version it is based on
     /// (<see cref="OctorateReservationUpdate.BasedOnUpdateTime"/>): that, and a 409 of Octorate, are <c>OctorateConflictException</c>, and the
-    /// caller re-reads the reservation. A 2xx is not the proof (Octorate leaves out, without saying so, what it does not write): the reservation is read
+    /// caller re-reads the reservation. Except when the other version already holds the stay and the guests of the change (an earlier attempt made it
+    /// and its answer was lost): that is done, the reservation as it is is returned and nothing is written. A 2xx is not the proof (Octorate leaves out, without saying so, what it does not write): the reservation is read
     /// again and returned, and a stay or guests that are not the ones sent are <c>OctorateRequestRejectedException</c>, never a success. A <c>PATCH</c> whose
     /// content is what Octorate holds answers 304: done. Octorate has no idempotency key (D13) but the change is idempotent: sent again after a lost answer it
     /// writes the same values. Any other answer is the typed error of the client.

@@ -96,6 +96,141 @@ public class BookingUpdatePushTests
         Assert.Equal(octorate.UpdatedAt, (await h.ReadBookingAsync(bookingId)).OctorateUpdatedAt);
     }
 
+    /// <summary>
+    /// PROOF TEST: data rule (AC3 of E08/F02/US01/T02). The edit never overwrites Octorate by itself. After a conflict the host changes only the notes: that
+    /// edit is based on the version CasaZen last saw, not on the one the host was shown, so it conflicts again; nothing is written to Octorate, the row
+    /// keeps Octorate's version and the «To do» stays open.
+    /// </summary>
+    [Fact]
+    public async Task BookingUpdatePush_AnEditAfterAConflict_NeverOverwritesOctorate_AndKeepsTheTodoOpen_Test()
+    {
+        var h = new OctorateSyncHarness();
+        var bookingId = await SeedMirroredAsync(h);
+        var octorate = new FakeOctorate(h, T1);
+        octorate.ChangedOutside(new DateOnly(2026, 12, 11), new DateOnly(2026, 12, 14), 3, T1.AddHours(1));
+        Assert.Equal(OctorateSyncState.Conflict, await PushAsync(h, bookingId, askedAgain: false, overwrite: false));
+        var todoId = await SeedOpenConflictTodoAsync(h, bookingId);
+
+        // Later, the host changes only the notes: the booking was edited after the conflict was recorded.
+        await using (var db = h.NewDb())
+        {
+            var booking = await db.Bookings.SingleAsync(b => b.Id == bookingId);
+            booking.SpecialRequests = "Arrivo alle 22";
+            booking.UpdatedAt = T1.AddHours(2);
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Equal(OctorateSyncState.Conflict, await PushAsync(h, bookingId, askedAgain: false, overwrite: false));
+
+        // Based on the version CasaZen last saw (T1): refused as a conflict, nothing of Octorate changed.
+        Assert.Equal(T1, octorate.Updates.Last().BasedOnUpdateTime);
+        Assert.Equal(new DateOnly(2026, 12, 11), octorate.CheckIn);
+        Assert.Equal(new DateOnly(2026, 12, 14), octorate.CheckOut);
+        Assert.Equal(3, octorate.Guests);
+        var row = await h.ReadSyncAsync(bookingId);
+        Assert.NotNull(row);
+        Assert.Equal(OctorateSyncState.Conflict, row.State);
+        Assert.Equal(
+            new OctorateVersionSnapshot(new DateOnly(2026, 12, 11), new DateOnly(2026, 12, 14), 3),
+            OctorateVersionSnapshot.Parse(row.OctorateVersionJson));
+        h.Activities.Verify(a => a.CloseAsync(todoId, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    /// <summary>
+    /// «Take theirs»: the host changes the booking to the stay and the guests Octorate holds. There is nothing to write: the version is adopted (its time is
+    /// the one of the booking now), nothing is sent, the row is <c>Synced</c> and the «To do» of the conflict closed.
+    /// </summary>
+    [Fact]
+    public async Task PushUpdate_TheBookingAlignedToOctoratesVersion_IsAdopted_NothingIsWritten_AndTheTodoIsClosed()
+    {
+        var h = new OctorateSyncHarness();
+        var bookingId = await SeedMirroredAsync(h);
+        var octorate = new FakeOctorate(h, T1);
+        octorate.ChangedOutside(new DateOnly(2026, 12, 11), new DateOnly(2026, 12, 14), 3, T1.AddHours(1));
+        Assert.Equal(OctorateSyncState.Conflict, await PushAsync(h, bookingId, askedAgain: false, overwrite: false));
+        var theirs = octorate.AsReservation();
+        var todoId = await SeedOpenConflictTodoAsync(h, bookingId);
+        var writes = octorate.Updates.Count;
+
+        await using (var db = h.NewDb())
+        {
+            var booking = await db.Bookings.SingleAsync(b => b.Id == bookingId);
+            booking.CheckInDate = new DateTime(2026, 12, 11, 0, 0, 0, DateTimeKind.Utc);
+            booking.CheckOutDate = new DateTime(2026, 12, 14, 0, 0, 0, DateTimeKind.Utc);
+            booking.NumberOfGuests = 3;
+            booking.NumberOfAdults = 3;
+            booking.UpdatedAt = T1.AddHours(2);
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Equal(OctorateSyncState.Synced, await PushAsync(h, bookingId, askedAgain: false, overwrite: false));
+
+        Assert.Equal(writes, octorate.Updates.Count);
+        var row = await h.ReadSyncAsync(bookingId);
+        Assert.NotNull(row);
+        Assert.Equal((OctorateSyncState.Synced, OctorateSyncOperation.Update, null), (row.State, row.LastOperation, row.ErrorCode));
+        Assert.Null(row.OctorateVersionJson);
+        Assert.Equal(theirs.UpdatedAt, (await h.ReadBookingAsync(bookingId)).OctorateUpdatedAt);
+        h.Activities.Verify(a => a.CloseAsync(todoId, InternalActivity.ClosedBySystem, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// A change on a row that holds payments not recorded on the reservation (<c>Failed</c>, <c>PaymentsNotRecorded</c>) does not hide them: they are tried
+    /// again once the change is written. One that still cannot be recorded leaves the row <c>Failed</c> with the same code, never <c>Synced</c>; recorded, the
+    /// row is <c>Synced</c> and the payment has its transaction.
+    /// </summary>
+    [Fact]
+    public async Task PushUpdate_AnEditOnARowWithPaymentsNotRecorded_DoesNotHideThem()
+    {
+        var h = new OctorateSyncHarness();
+        var bookingId = await SeedMirroredAsync(h);
+        await using (var db = h.NewDb())
+        {
+            var failedRow = await db.OctorateBookingSyncs.SingleAsync();
+            failedRow.State = OctorateSyncState.Failed;
+            failedRow.LastOperation = OctorateSyncOperation.Payment;
+            failedRow.ErrorCode = OctorateSyncErrorCodes.PaymentsNotRecorded;
+            await db.SaveChangesAsync();
+        }
+
+        var paymentId = await SeedUnrecordedPaymentAsync(h, bookingId, 100m);
+        var octorate = new FakeOctorate(h, T1);
+        var registered = new List<OctoratePaymentRegistration>();
+        var accepts = false;
+        h.Client
+            .Setup(c => c.GetReservationAsync(OctorateSyncHarness.Accommodation, ReservationId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new OctorateReservation { Id = ReservationId, PaymentTransactions = registered.Select(r => r.Transaction).ToList() });
+        h.Client
+            .Setup(c => c.RegisterPaymentAsync(OctorateSyncHarness.Accommodation, ReservationId, It.IsAny<OctoratePaymentRegistration>(), It.IsAny<CancellationToken>()))
+            .Returns((string _, string _, OctoratePaymentRegistration payment, CancellationToken _) =>
+            {
+                if (!accepts)
+                    return Task.FromException<OctoratePaymentResult>(new OctorateRequestRejectedException(400));
+
+                registered.Add(payment);
+                return Task.FromResult(new OctoratePaymentResult("21575084"));
+            });
+
+        // The change is written, the payment still cannot be recorded: the row says so again.
+        Assert.Equal(OctorateSyncState.Failed, await PushAsync(h, bookingId, askedAgain: false, overwrite: false));
+        Assert.Single(octorate.Updates);
+        var stillFailed = await h.ReadSyncAsync(bookingId);
+        Assert.NotNull(stillFailed);
+        Assert.Equal(
+            (OctorateSyncState.Failed, OctorateSyncOperation.Payment, OctorateSyncErrorCodes.PaymentsNotRecorded),
+            (stillFailed.State, stillFailed.LastOperation, stillFailed.ErrorCode));
+
+        // Octorate takes it: the row is Synced and the payment is recorded.
+        accepts = true;
+        Assert.Equal(OctorateSyncState.Synced, await PushAsync(h, bookingId, askedAgain: false, overwrite: false));
+        var synced = await h.ReadSyncAsync(bookingId);
+        Assert.NotNull(synced);
+        Assert.Equal(OctorateSyncState.Synced, synced.State);
+        Assert.Equal($"casazen-{paymentId}", Assert.Single(registered).Transaction);
+        await using var read = h.NewDb();
+        Assert.Equal($"casazen-{paymentId}", (await read.Payments.AsNoTracking().SingleAsync(p => p.Id == paymentId)).OctorateTransactionId);
+    }
+
     // --- The push ----------------------------------------------------------------------------------------------------------------
 
     [Fact]
@@ -354,6 +489,34 @@ public class BookingUpdatePushTests
         Assert.Equal(new DateTime(2026, 11, 6, 8, 30, 0, DateTimeKind.Utc), after.UpdatedAt);
     }
 
+    /// <summary>
+    /// A change whose answer was lost (a timeout, a 5xx on the read that checks it) was made all the same and moved the <c>updateTime</c> itself: the
+    /// delivery that follows finds another version, but one that already holds the stay and the guests of the change. That is done, not a conflict: the
+    /// version is returned and nothing is written over it. The same version with another stay or other guests is still a conflict.
+    /// </summary>
+    [Fact]
+    public async Task UpdateReservationAsync_AVersionThatAlreadyHoldsTheChange_IsDone_NothingIsWritten()
+    {
+        var done = new ClientHarness();
+        done.Answer(HttpStatusCode.OK, Reservation(updateTime: "2026-11-06T09:00:05Z", checkIn: "2026-12-12", checkOut: "2026-12-15", guests: 3));
+        OctorateReservation held;
+        using (done.Scope.Use(OctorateSyncHarness.OrgA))
+            held = await done.Client.UpdateReservationAsync(Target(), ReservationId, Update(basedOn: T1), CancellationToken.None);
+
+        Assert.Equal(new DateTime(2026, 11, 6, 9, 0, 5, DateTimeKind.Utc), held.UpdatedAt);
+        Assert.Equal(HttpMethod.Get, Assert.Single(done.Requests).Method);
+
+        var otherGuests = new ClientHarness();
+        otherGuests.Answer(HttpStatusCode.OK, Reservation(updateTime: "2026-11-06T09:00:05Z", checkIn: "2026-12-12", checkOut: "2026-12-15", guests: 4));
+        using (otherGuests.Scope.Use(OctorateSyncHarness.OrgA))
+        {
+            await Assert.ThrowsAsync<OctorateConflictException>(
+                () => otherGuests.Client.UpdateReservationAsync(Target(), ReservationId, Update(basedOn: T1), CancellationToken.None));
+        }
+
+        Assert.Equal(HttpMethod.Get, Assert.Single(otherGuests.Requests).Method);
+    }
+
     [Fact]
     public async Task UpdateReservationAsync_A409OfOctorate_AndAnAcceptedPatchThatChangedNothing_AreNeverASuccess()
     {
@@ -447,6 +610,48 @@ public class BookingUpdatePushTests
             await AddSyncAsync(h, bookingId, OctorateSyncState.Synced, OctorateSyncOperation.Create);
 
         return bookingId;
+    }
+
+    /// <summary>The open «To do» of a conflict about the booking, as <c>IInternalActivityService</c> would have written it (the harness mocks the service).</summary>
+    private static async Task<Guid> SeedOpenConflictTodoAsync(OctorateSyncHarness h, Guid bookingId)
+    {
+        await using var db = h.NewDb();
+        var todo = new InternalActivity
+        {
+            OrgId = OctorateSyncHarness.OrgA,
+            PropertyId = h.PropertyId,
+            BookingId = bookingId,
+            ActivityType = nameof(ActivityType.BookingSyncConflict),
+            Action = ActivityAction.ReviewBooking,
+            EntityType = InternalActivity.BookingEntityType,
+            EntityId = bookingId,
+            Urgency = ActivityUrgency.High,
+            ScheduledAt = T1,
+        };
+        db.InternalActivities.Add(todo);
+        await db.SaveChangesAsync();
+        return todo.Id;
+    }
+
+    /// <summary>A payment the host recorded in cash, collected and not recorded on the reservation of Octorate.</summary>
+    private static async Task<Guid> SeedUnrecordedPaymentAsync(OctorateSyncHarness h, Guid bookingId, decimal amount)
+    {
+        await using var db = h.NewDb();
+        var payment = new Payment
+        {
+            OrgId = OctorateSyncHarness.OrgA,
+            BookingId = bookingId,
+            Amount = amount,
+            Status = PaymentStatus.Completed,
+            Method = Casazen.Core.Entities.PaymentMethod.CashOnArrival,
+            TransactionId = "cash-receipt",
+            ProcessedAt = T1.AddMinutes(-30),
+            CreatedAt = T1.AddMinutes(-30),
+            UpdatedAt = T1.AddMinutes(-30),
+        };
+        db.Payments.Add(payment);
+        await db.SaveChangesAsync();
+        return payment.Id;
     }
 
     private static async Task AddSyncAsync(OctorateSyncHarness h, Guid bookingId, OctorateSyncState state, OctorateSyncOperation operation)
