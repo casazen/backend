@@ -532,7 +532,8 @@ public class DemoEnvironmentService(
     /// not created. The same rules as a payment recorded through the service: an amount above zero, a period that is not backwards, a day that is
     /// not after today in Europe/Rome (the template says so, and <c>DemoShowcaseTests</c> checks it).
     /// </summary>
-    private async Task CreateTouristTaxRemittanceAsync(
+    /// <remarks>Internal so that a test can seed the payment of one house of the catalog (<c>DemoDocumentArchiveSeedTests</c>).</remarks>
+    internal async Task CreateTouristTaxRemittanceAsync(
         Guid orgId, string ownerId, DemoTouristTaxRemittanceTemplate template, CancellationToken cancellationToken)
     {
         var propertyId = await Markers()
@@ -1405,7 +1406,9 @@ public class DemoEnvironmentService(
         return pending.Count;
     }
 
-    private async Task CreateShowcasePropertyAsync(
+    /// <summary>One house of the showcase with what its template says: its details, its listing rows, its documents and its stays.</summary>
+    /// <remarks>Internal so that a test can seed one house of the catalog without the rest of the showcase (<c>DemoDocumentArchiveSeedTests</c>).</remarks>
+    internal async Task CreateShowcasePropertyAsync(
         Guid orgId, string ownerId, DemoPropertyTemplate template, CancellationToken cancellationToken)
     {
         var place = await ResolvePlaceAsync(template.Place, cancellationToken);
