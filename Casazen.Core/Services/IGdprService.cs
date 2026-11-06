@@ -13,8 +13,14 @@ public interface IGdprService
     /// <summary>Consents with their versions, retention per category and status, for the host's GDPR tab.</summary>
     Task<GuestPrivacySummary> GetGuestPrivacySummaryAsync(Guid orgId, Guid guestId, CancellationToken cancellationToken = default);
 
-    /// <summary>Complete, versioned export (art. 15 and 20 GDPR), document decrypted; audited.</summary>
-    Task<GuestDataExport> ExportGuestDataAsync(Guid orgId, Guid guestId, string? actorUserId, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Complete, versioned export (art. 15 and 20 GDPR), document decrypted; audited. The data of the guest is what <c>guest.read</c> opens; the
+    /// <b>messages</b> of its bookings (E07/F06/US02/T01) follow the rules of the message screens of the host instead: only the threads of the
+    /// properties <paramref name="scope"/> reaches, and only when the caller holds <c>booking.read</c> (<paramref name="includeMessages"/>).
+    /// </summary>
+    /// <param name="scope">The caller's reach, from <see cref="Casazen.Core.Authorization.IHostScopeResolver"/>; its org must be <paramref name="orgId"/>. Never widened: a scope is always passed.</param>
+    /// <param name="includeMessages">The caller holds <c>booking.read</c> on the org; false leaves the messages out of the export.</param>
+    Task<GuestDataExport> ExportGuestDataAsync(Guid orgId, Guid guestId, Casazen.Core.Authorization.HostScope scope, bool includeMessages, string? actorUserId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Erasure (art. 17 GDPR): every personal field of the guest and of the guests of its stays, the consent IPs and notes,
@@ -38,9 +44,12 @@ public interface IGdprService
     /// check-in portal or at the checkout of the booking site): <paramref name="marketingConsent"/> true raises <c>DomainRuleException</c>
     /// (<c>gdpr_marketing_consent_host_grant_forbidden</c>, 422). A withdrawal needs the guest's documented request in
     /// <paramref name="note"/> (<c>gdpr_marketing_withdrawal_note_required</c>); withdrawing a consent that is not in
-    /// force changes nothing. A withdrawal that is recorded also puts the e-mail of the guest and every marketing e-mail of its per-channel
-    /// consents in the suppression list (<see cref="ISuppressionService"/>, source <c>manual</c>), and flags the CRM contacts with the same
-    /// keyed hash, in the same unit of work (E07/F06/US01/T02, AC-NF95-6). <b>The withdrawal never depends on the key of that index</b>: without
+    /// force (the flag is unset and the guest has no open CRM contact) changes nothing. A withdrawal that is recorded also puts the e-mail of the
+    /// guest and every marketing e-mail of its per-channel consents in the suppression list (<see cref="ISuppressionService"/>, source
+    /// <c>manual</c>), and flags the CRM contacts with the same keyed hash, in the same unit of work (E07/F06/US01/T02, AC-NF95-6). <b>It ends
+    /// every consent the guest gave</b>, not only the one the flag says (E07/F04/US01): the open CRM contacts of the guest, for example a
+    /// consent on WhatsApp alone (which leaves the flag unset) or on an address typed on the guest page, are suppressed too, each with its row of
+    /// the privacy history (<see cref="ICrmContactService.WithdrawAsync"/>). <b>The withdrawal never depends on the key of that index</b>: without
     /// <c>Crm:ContactIndexKey</c> (allowed while <c>Features:CrmMarketing</c> is off) the consent record, the audit entry and the flag are saved
     /// all the same, the suppression is skipped and an error in the log names the withdrawal and the variable.
     /// </summary>

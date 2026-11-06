@@ -62,6 +62,14 @@ public class PublicOrgDto
     /// </summary>
     public string? MarketingConsentVersion { get; set; }
 
+    /// <summary>
+    /// Version of the soft opt-in notice the checkout shows to the customer (<c>Gdpr:SoftOptInNoticeVersion</c>, art. 130 c. 4 Codice privacy,
+    /// PO-07, E07/F04/US01/T02), or null while the product owner has not set it: the checkout then shows no notice and the booking refuses a
+    /// <c>softOptInNoticeVersion</c> (409 <c>direct_booking_soft_opt_in_notice_outdated</c>). The booking sends back the version it showed, so the
+    /// notice recorded is the one the customer read. Set by the endpoint.
+    /// </summary>
+    public string? SoftOptInNoticeVersion { get; set; }
+
     /// <summary>The theme the site renders: always one of <c>PublicSiteThemes.All</c> (unset or unsupported → default).</summary>
     public string PublicThemeId { get; set; } = PublicSiteThemes.Default;
 

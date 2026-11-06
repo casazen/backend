@@ -26,7 +26,11 @@ public class GdprMarketingWithdrawalSuppressionTests
     private static DbContextOptions<AppDbContext> NewOptions() =>
         new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase($"gdpr-withdrawal-suppression-{Guid.NewGuid()}").Options;
 
-    private static GdprService NewService(AppDbContext db, ISuppressionService? suppression, ILogger<GdprService>? logger = null) =>
+    private static GdprService NewService(
+        AppDbContext db,
+        ISuppressionService? suppression,
+        ILogger<GdprService>? logger = null,
+        ICrmContactService? crmContacts = null) =>
         new(
             db,
             Mock.Of<IGuestRepository>(),
@@ -34,7 +38,28 @@ public class GdprMarketingWithdrawalSuppressionTests
             Options.Create(new GdprOptions()),
             TimeProvider.System,
             logger ?? NullLogger<GdprService>.Instance,
-            suppression);
+            suppression,
+            crmContacts);
+
+    /// <summary>A contact the guest gave on a channel of the CRM (E07/F04/US01): a consent, by default.</summary>
+    private static GuestContact ContactOf(
+        Guid orgId,
+        Guid guestId,
+        GuestContactChannel channel,
+        string value,
+        GuestContactLegalBasis basis = GuestContactLegalBasis.Consent) => new()
+        {
+            OrgId = orgId,
+            GuestId = guestId,
+            Channel = channel,
+            Value = value,
+            ValueHash = Index.Hash(value),
+            Origin = GuestContactOrigin.GuestPage,
+            LegalBasis = basis,
+            BasisVersion = "consent-v1",
+            BasisRecordedAt = DateTime.UtcNow,
+            ConsentSource = GuestConsentSource.GuestPage,
+        };
 
     private static MarketingConsentRecord Consent(Guid orgId, Guid guestId, string marketingEmail) => new()
     {
@@ -198,5 +223,131 @@ public class GdprMarketingWithdrawalSuppressionTests
         Assert.True((await verify.Guests.SingleAsync(g => g.Id == guest.Id)).MarketingConsent);
         Assert.False(await verify.GuestConsentRecords.AnyAsync());
         Assert.False(await verify.SuppressionListEntries.AnyAsync());
+    }
+
+    /// <summary>
+    /// Proof test (privacy rule, E07/F04/US01, art. 7.3 GDPR): the withdrawal the host records on the guest's request ends the consent the flag
+    /// does not say. A guest who consented on WhatsApp alone has the flag unset, and the call used to answer «nothing to withdraw»: now the
+    /// contact of the guest is suppressed (source <c>manual</c>, back to service only, no longer marketable), the privacy history has the
+    /// withdrawal with the actor and the documented request, the audit entry is written, the flag stays unset, and the contact of another guest
+    /// and a contact that was no consent are not touched.
+    /// </summary>
+    [Fact]
+    public async Task GdprWithdrawalByHost_EndsTheWhatsAppConsentThatTheFlagDoesNotSay_Test()
+    {
+        var options = NewOptions();
+        var orgId = Guid.NewGuid();
+        var guest = new Guest { OrgId = orgId, FirstName = "Mario", LastName = "Rossi", Email = "mario.rossi@example.com", MarketingConsent = false };
+        var other = new Guest { OrgId = orgId, FirstName = "Anna", LastName = "Neri", Email = "anna.neri@example.com", MarketingConsent = false };
+        await using (var seed = new AppDbContext(options))
+        {
+            seed.Guests.AddRange(guest, other);
+            seed.GuestContacts.AddRange(
+                ContactOf(orgId, guest.Id, GuestContactChannel.WhatsApp, "+393331112222"),
+                ContactOf(orgId, guest.Id, GuestContactChannel.Phone, "+393331113333", GuestContactLegalBasis.ServiceOnly),
+                ContactOf(orgId, other.Id, GuestContactChannel.WhatsApp, "+393339998888"));
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = new AppDbContext(options))
+        {
+            var suppression = new SuppressionService(db, Index, NullLogger<SuppressionService>.Instance);
+            await NewService(db, suppression, crmContacts: CrmTestWorld.Contacts(db, TimeProvider.System))
+                .UpdateMarketingConsentAsync(orgId, guest.Id, false, "Richiesta dell'ospite per telefono del 03/11", "auth0|host");
+        }
+
+        await using var verify = new AppDbContext(options);
+        var whatsApp = await verify.GuestContacts.SingleAsync(c => c.GuestId == guest.Id && c.Channel == GuestContactChannel.WhatsApp);
+        Assert.True(whatsApp.IsSuppressed);
+        Assert.Equal("manual", whatsApp.SuppressedSource);
+        Assert.Equal(GuestContactLegalBasis.ServiceOnly, whatsApp.LegalBasis);
+        Assert.False(CrmContactRules.CanReceiveMarketing(whatsApp));
+
+        // The record: the history has the withdrawal, who recorded it and the request; the audit entry; the flag was not set and still is not.
+        var row = await verify.GuestConsentRecords.SingleAsync(r => r.GuestId == guest.Id);
+        Assert.Equal(
+            (GuestConsentPurpose.Marketing, GuestConsentAction.Withdrawn, GuestConsentSource.HostOnGuestRequest, "auth0|host", "Richiesta dell'ospite per telefono del 03/11"),
+            (row.Purpose, row.Action, row.Source, row.RecordedByUserId, row.Note));
+        Assert.Equal(GuestPrivacyAuditAction.MarketingConsentWithdrawn, (await verify.GuestPrivacyAuditEntries.SingleAsync(a => a.GuestId == guest.Id)).Action);
+        Assert.False((await verify.Guests.SingleAsync(g => g.Id == guest.Id)).MarketingConsent);
+
+        // Nobody else: the contact that was no consent, and the consent of another guest.
+        Assert.False((await verify.GuestContacts.SingleAsync(c => c.GuestId == guest.Id && c.Channel == GuestContactChannel.Phone)).IsSuppressed);
+        var theirs = await verify.GuestContacts.SingleAsync(c => c.GuestId == other.Id);
+        Assert.False(theirs.IsSuppressed);
+        Assert.True(CrmContactRules.CanReceiveMarketing(theirs));
+        Assert.False(await verify.GuestConsentRecords.AnyAsync(r => r.GuestId == other.Id));
+    }
+
+    /// <summary>
+    /// Proof test (privacy rule): with the flag set, the withdrawal also ends the contacts of the guest that the addresses it knows do not
+    /// reach: an e-mail typed on the guest page is not in the consent records of the check-in, and its address now enters the suppression list
+    /// with the others; the WhatsApp contact is suppressed; the flag is cleared and the withdrawal is recorded once as before.
+    /// </summary>
+    [Fact]
+    public async Task GdprWithdrawalByHost_WithTheFlag_AlsoEndsTheContactsTheAddressesDoNotReach_Test()
+    {
+        var options = NewOptions();
+        var orgId = Guid.NewGuid();
+        var guest = new Guest { OrgId = orgId, FirstName = "Mario", LastName = "Rossi", Email = "mario.rossi@example.com", MarketingConsent = true };
+        await using (var seed = new AppDbContext(options))
+        {
+            seed.Guests.Add(guest);
+            seed.GuestContacts.AddRange(
+                ContactOf(orgId, guest.Id, GuestContactChannel.Email, "mario.digitato@example.it"),
+                ContactOf(orgId, guest.Id, GuestContactChannel.WhatsApp, "+393331112222"));
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = new AppDbContext(options))
+        {
+            var suppression = new SuppressionService(db, Index, NullLogger<SuppressionService>.Instance);
+            await NewService(db, suppression, crmContacts: CrmTestWorld.Contacts(db, TimeProvider.System))
+                .UpdateMarketingConsentAsync(orgId, guest.Id, false, "Email dell'ospite del 03/11", "auth0|host");
+        }
+
+        await using var verify = new AppDbContext(options);
+        Assert.False((await verify.Guests.SingleAsync(g => g.Id == guest.Id)).MarketingConsent);
+        Assert.All(await verify.GuestContacts.ToListAsync(), contact => Assert.True(contact.IsSuppressed));
+        var entries = await verify.SuppressionListEntries.Where(e => e.OrgId == orgId).ToListAsync();
+        Assert.Contains(entries, entry => entry.EmailHash == Index.Hash("mario.digitato@example.it"));
+        Assert.Contains(entries, entry => entry.EmailHash == Index.Hash("mario.rossi@example.com"));
+        Assert.Contains(
+            await verify.GuestConsentRecords.Where(r => r.GuestId == guest.Id).ToListAsync(),
+            record => record is { Action: GuestConsentAction.Withdrawn, Source: GuestConsentSource.HostOnGuestRequest, RecordedByUserId: "auth0|host" });
+    }
+
+    /// <summary>
+    /// Proof test (the withdrawal never depends on the key): with the flag set and no key of the index the withdrawal is recorded as before, the
+    /// contacts of the guest are left as they are, and the log has an error for the contacts besides the one for the addresses, with ids only.
+    /// </summary>
+    [Fact]
+    public async Task GdprWithdrawalByHost_WithoutTheKey_LeavesTheContactsAndSaysSo_Test()
+    {
+        var options = NewOptions();
+        var orgId = Guid.NewGuid();
+        var guest = new Guest { OrgId = orgId, FirstName = "Mario", LastName = "Rossi", Email = "mario.rossi@example.com", MarketingConsent = true };
+        await using (var seed = new AppDbContext(options))
+        {
+            seed.Guests.Add(guest);
+            seed.GuestContacts.Add(ContactOf(orgId, guest.Id, GuestContactChannel.WhatsApp, "+393331112222"));
+            await seed.SaveChangesAsync();
+        }
+
+        var log = new CapturingLogger<GdprService>();
+        await using (var db = new AppDbContext(options))
+        {
+            var keyless = new SuppressionService(db, CrmTestIndex.Create(key: null), NullLogger<SuppressionService>.Instance);
+            await NewService(db, keyless, log, CrmTestWorld.Contacts(db, TimeProvider.System))
+                .UpdateMarketingConsentAsync(orgId, guest.Id, false, "Email dell'ospite del 03/11", "auth0|host");
+        }
+
+        await using var verify = new AppDbContext(options);
+        Assert.False((await verify.Guests.SingleAsync(g => g.Id == guest.Id)).MarketingConsent);
+        Assert.Equal(GuestConsentAction.Withdrawn, (await verify.GuestConsentRecords.SingleAsync(r => r.GuestId == guest.Id)).Action);
+        Assert.False((await verify.GuestContacts.SingleAsync()).IsSuppressed);
+        Assert.Equal(2, log.Entries.Count(entry => entry.Level == LogLevel.Error && entry.Message.Contains("Crm__ContactIndexKey", StringComparison.Ordinal)));
+        Assert.DoesNotContain("example", log.AllOutput, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Mario", log.AllOutput, StringComparison.OrdinalIgnoreCase);
     }
 }

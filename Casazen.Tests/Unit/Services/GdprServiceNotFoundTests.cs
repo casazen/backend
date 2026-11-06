@@ -69,7 +69,7 @@ public class GdprServiceNotFoundTests
     private static Func<Task> Act(GdprService service, string operation, Guid orgId, Guid guestId) => operation switch
     {
         "summary" => () => service.GetGuestPrivacySummaryAsync(orgId, guestId),
-        "export" => () => service.ExportGuestDataAsync(orgId, guestId, "auth0|host"),
+        "export" => () => service.ExportGuestDataAsync(orgId, guestId, new HostScope(orgId), true, "auth0|host"),
         "delete" => () => service.EraseGuestDataAsync(orgId, guestId, "User request", "auth0|host"),
         "anonymize" => () => service.AnonymizeGuestDataAsync(orgId, guestId, "auth0|host"),
         "files" => () => service.EraseStoredFilesBeforeRemovalAsync(orgId, guestId, "auth0|host"),

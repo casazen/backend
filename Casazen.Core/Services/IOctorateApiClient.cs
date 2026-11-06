@@ -65,6 +65,15 @@ public interface IOctorateApiClient
     Task<OctorateReservation> GetReservationAsync(string accommodationId, string reservationId, CancellationToken ct);
 
     /// <summary>
+    /// The e-mail address and the phone number of one guest of the guest registry of an accommodation (<c>POST /rest/v1/guests/{acc}/{guestId}/contactInfo</c>,
+    /// E07/F06/US02/T02, S24). Sensitive data: Octorate gives it only to an application with the dedicated permission and, even in the sandbox, only from the
+    /// static IP addresses registered with it (S7, S18, D24), and logs every read. So it is asked for one guest of one booking at a time, never in bulk
+    /// (<see cref="IOctorateContactsService"/>), and nothing of the answer is ever logged. A 401 or a 403 (no static IP, no permission) is
+    /// <c>OctorateSensitiveDataNotAllowedException</c>, never an empty result: a caller must not read "no contact" into a refusal.
+    /// </summary>
+    Task<OctorateGuestContactInfo> GetGuestContactInfoAsync(string accommodationId, string guestId, CancellationToken ct);
+
+    /// <summary>
     /// The calendar of the given products of an accommodation from <paramref name="from"/> to <paramref name="to"/>, both included
     /// (<c>GET /rest/v1/calendar/{acc}</c>, E02/F02/US01/T03; at most 20 products a call, more are asked in several calls). An answer that
     /// holds no recognizable day for a non-empty range is <c>OctorateServerException</c>, never an empty calendar: a caller that deprecates
@@ -161,4 +170,31 @@ public interface IOctorateApiClient
     /// <c>OctorateNotFoundException</c>: no record is created. Data with no member to write is refused (<see cref="ArgumentException"/>).
     /// </summary>
     Task UpsertBookerBillingDataAsync(string accommodationId, string reservationId, OctorateBillingData data, CancellationToken ct);
+
+    /// <summary>
+    /// Every connection of a channel the org's token sees, in one call (<c>GET /rest/v1/connection?fields=id,channelId,hotelId,status,
+    /// userLogged,loginAt,accommodationId</c>, E02/F01/US03): how the import finds, after the person gave the access in the Octorate panel, the
+    /// connection of each listing to a channel, whether it was authorized and when the person logged in. Only those fields are asked, so the
+    /// portal credentials a connection holds never reach CasaZen. An item without a numeric id, a channel or an accommodation is left out.
+    /// </summary>
+    Task<OctorateConnectionSummary[]> GetOrgConnectionsAsync(CancellationToken ct);
+
+    /// <summary>
+    /// <c>IMPORT_ROOMS</c> on one connection (<c>POST /rest/v1/connection/IMPORT_ROOMS/{acc}/{connection}</c>, E02/F01/US03, D6): Octorate
+    /// reads the rooms of the existing listing on the channel, ready to be mapped. It creates and publishes nothing on the channel. An
+    /// answer that cannot be read as the list of mappings the operation documents is <c>OctorateServerException</c>, never a success.
+    /// </summary>
+    Task<OctorateConnectionActionResult> ImportRoomsAsync(string accommodationId, string connectionId, CancellationToken ct);
+
+    /// <summary><c>IMPORT_RESERVATIONS</c> on one connection (the future reservations of the channel, inside Octorate): same shape and errors as <see cref="ImportRoomsAsync"/>.</summary>
+    Task<OctorateConnectionActionResult> ImportReservationsAsync(string accommodationId, string connectionId, CancellationToken ct);
+
+    /// <summary><c>IMPORT_CALENDAR</c> on one connection (the calendar of the channel, inside Octorate): same shape and errors as <see cref="ImportRoomsAsync"/>.</summary>
+    Task<OctorateConnectionActionResult> ImportCalendarAsync(string accommodationId, string connectionId, CancellationToken ct);
+
+    /// <summary>
+    /// <c>MARK_CONNECTED</c> on one connection (tells Octorate, and the channel when needed, that the connection is ready): same shape and
+    /// errors as <see cref="ImportRoomsAsync"/>. Called only for a listing a person confirmed.
+    /// </summary>
+    Task<OctorateConnectionActionResult> MarkConnectedAsync(string accommodationId, string connectionId, CancellationToken ct);
 }

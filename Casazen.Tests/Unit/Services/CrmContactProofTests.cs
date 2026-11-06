@@ -233,6 +233,82 @@ public class CrmContactProofTests
         Assert.Equal(before, after);
     }
 
+    /// <summary>
+    /// Privacy rule: the privacy history says on which channel a consent was given. A guest who consents on the e-mail and on WhatsApp at the same
+    /// moment leaves two rows that differ only by their note; without it the register could not prove which of the two the person agreed to.
+    /// </summary>
+    [Fact]
+    public async Task CrmContact_ConsentHistory_NamesTheChannelOfEachConsent_Test()
+    {
+        await using var db = CrmTestWorld.Open(CrmTestWorld.NewStore());
+        var contacts = CrmTestWorld.Contacts(db, CrmTestWorld.Clock());
+        var orgId = Guid.NewGuid();
+        var guest = CrmTestWorld.AddGuest(db, orgId, "Anna", "Verdi", "anna@example.com");
+        await db.SaveChangesAsync(Ct);
+
+        await contacts.RecordConsentAsync(
+            new CrmConsentInput(orgId, GuestContactChannel.Email, "anna@example.com", GuestContactOrigin.CheckIn, "consent-v1", GuestConsentSource.GuestPortal, GuestId: guest.Id),
+            Ct);
+        await contacts.RecordConsentAsync(
+            new CrmConsentInput(orgId, GuestContactChannel.WhatsApp, "+393331112222", GuestContactOrigin.CheckIn, "consent-v1", GuestConsentSource.GuestPortal, GuestId: guest.Id),
+            Ct);
+
+        var notes = await db.GuestConsentRecords.AsNoTracking()
+            .Where(r => r.Purpose == GuestConsentPurpose.Marketing && r.Action == GuestConsentAction.Granted)
+            .Select(r => r.Note ?? string.Empty)
+            .ToListAsync(Ct);
+        Assert.Equal(new[] { GuestConsentChannelNote.Email, GuestConsentChannelNote.WhatsApp }, notes.Order().ToArray());
+    }
+
+    /// <summary>
+    /// Privacy rule: the proof of a consent the person confirmed is not rewritten by a later consent nobody confirmed. The person consents at the
+    /// check-in and confirms the address; later somebody types the same address on the welcome page, with another text version and another
+    /// connection: the contact keeps the version, the source, the time and the address of the connection of the act that was confirmed, and stays
+    /// marketable. A consent that was not confirmed yet has nothing to protect, and the newer act takes its place.
+    /// </summary>
+    [Fact]
+    public async Task CrmContact_ConfirmedConsent_KeepsItsEvidenceAgainstALaterUnconfirmedOne_Test()
+    {
+        await using var db = CrmTestWorld.Open(CrmTestWorld.NewStore());
+        var clock = CrmTestWorld.Clock();
+        var contacts = CrmTestWorld.Contacts(db, clock);
+        var orgId = Guid.NewGuid();
+
+        var confirmedFirst = await contacts.RecordConsentAsync(
+            new CrmConsentInput(orgId, GuestContactChannel.Email, "ospite@example.com", GuestContactOrigin.CheckIn, "consent-v1", GuestConsentSource.GuestPortal, IpAddress: "203.0.113.5"),
+            Ct);
+        Assert.NotNull(confirmedFirst);
+        var confirmed = await contacts.MarkConfirmedAsync(orgId, confirmedFirst.Id, Ct);
+        Assert.NotNull(confirmed);
+        var recordedAt = confirmed.BasisRecordedAt;
+        var waiting = await contacts.RecordConsentAsync(
+            new CrmConsentInput(orgId, GuestContactChannel.Email, "in-attesa@example.com", GuestContactOrigin.CheckIn, "consent-v1", GuestConsentSource.GuestPortal, IpAddress: "203.0.113.5"),
+            Ct);
+        Assert.NotNull(waiting);
+
+        // Three days later the same two addresses are typed on the welcome page, with the current text.
+        clock.Advance(TimeSpan.FromDays(3));
+        foreach (var address in new[] { "ospite@example.com", "in-attesa@example.com" })
+        {
+            await contacts.RecordConsentAsync(
+                new CrmConsentInput(orgId, GuestContactChannel.Email, address, GuestContactOrigin.WelcomePage, "consent-v2", GuestConsentSource.WelcomePage, IpAddress: "198.51.100.7"),
+                Ct);
+        }
+
+        db.ChangeTracker.Clear();
+        var kept = await db.GuestContacts.AsNoTracking().SingleAsync(c => c.Id == confirmedFirst.Id, Ct);
+        Assert.Equal(
+            ("consent-v1", GuestConsentSource.GuestPortal, "203.0.113.5", GuestContactConfirmation.Confirmed),
+            (kept.BasisVersion, kept.ConsentSource, kept.ConsentIpAddress, kept.Confirmation));
+        Assert.Equal(recordedAt, kept.BasisRecordedAt);
+        Assert.True(CrmContactRules.CanReceiveMarketing(kept));
+
+        var replaced = await db.GuestContacts.AsNoTracking().SingleAsync(c => c.Id == waiting.Id, Ct);
+        Assert.Equal(
+            ("consent-v2", GuestConsentSource.WelcomePage, "198.51.100.7", GuestContactConfirmation.Unconfirmed),
+            (replaced.BasisVersion, replaced.ConsentSource, replaced.ConsentIpAddress, replaced.Confirmation));
+    }
+
     private static MarketingConsentRecord ConsentOf(Booking booking, Guest guest, bool confirmed) => new()
     {
         OrgId = booking.OrgId,

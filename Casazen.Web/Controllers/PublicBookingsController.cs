@@ -195,7 +195,10 @@ public class PublicBookingsController(
     /// <c>booking_too_many_guests</c>, <c>direct_booking_consent_outdated</c>, <c>direct_booking_invalid_payment_option</c>,
     /// <c>direct_booking_deferred_payment_unavailable</c>, <c>tourist_tax_child_ages_required</c>,
     /// <c>onsite_request_too_many_nights</c>, <c>direct_booking_min_nights_not_met</c> (DB-03),
-    /// <c>direct_booking_marketing_consent_unavailable</c> (DB-03: <c>marketingConsent</c> without a versioned text),
+    /// <c>direct_booking_marketing_consent_unavailable</c> (DB-03: <c>marketingConsent</c>, <c>marketingConsentEmail</c> or
+    /// <c>marketingConsentWhatsApp</c> without a versioned text), <c>direct_booking_whatsapp_requires_phone</c> (E07/F04/US01/T02: the WhatsApp
+    /// consent without a phone number that can be reached), <c>direct_booking_soft_opt_in_notice_outdated</c> (409, T02: the
+    /// <c>softOptInNoticeVersion</c> is not the current one),
     /// <c>direct_booking_arrival_time_invalid</c> (DB-03b: <c>expectedArrivalTime</c> is neither <c>HH:mm</c> nor <c>late</c>),
     /// <c>property_not_bookable_in_long_mode</c> (the property is let long-term,
     /// PM-01); 503 <c>payment_provider_error</c>. The answer carries the
@@ -238,7 +241,10 @@ public class PublicBookingsController(
             request.PaymentOption,
             request.ChildrenAges,
             request.MarketingConsent ?? false,
-            request.ExpectedArrivalTime));
+            request.ExpectedArrivalTime,
+            request.MarketingConsentEmail ?? false,
+            request.MarketingConsentWhatsApp ?? false,
+            request.SoftOptInNoticeVersion));
 
         return Ok(new DirectBookingResponse
         {

@@ -360,6 +360,21 @@
   <data name="GuestNotFound" xml:space="preserve">
     <value>Guest not found</value>
   </data>
+  <data name="CrmProfileNotFound" xml:space="preserve">
+    <value>Guest profile not found.</value>
+  </data>
+  <data name="CrmTagsInvalid" xml:space="preserve">
+    <value>Invalid tags: at most 50, 1 to 40 characters each, no duplicates, and no more than 2,000 characters in all.</value>
+  </data>
+  <data name="CrmMergeCandidateNotFound" xml:space="preserve">
+    <value>Merge proposal not found.</value>
+  </data>
+  <data name="CrmMergeNotProposed" xml:space="preserve">
+    <value>This merge proposal has already been decided: there is nothing left to do.</value>
+  </data>
+  <data name="CrmMergeSurvivorInvalid" xml:space="preserve">
+    <value>The profile to keep must be one of the two profiles of the proposal.</value>
+  </data>
   <data name="GuestEmailAlreadyExists" xml:space="preserve">
     <value>A guest with this email already exists.</value>
   </data>
@@ -4232,6 +4247,9 @@
   <data name="OctorateAuthFailed" xml:space="preserve">
     <value>The channel manager refused CasaZen's access. Try again later; if it happens again, connect the account again.</value>
   </data>
+  <data name="OctorateSensitiveDataNotAllowed" xml:space="preserve">
+    <value>The channel manager did not give the contact details of the guests: this data is only released to the registered CasaZen server addresses and with a dedicated permission, which are not active yet.</value>
+  </data>
   <data name="OctorateUnavailable" xml:space="preserve">
     <value>The channel manager is not answering right now. Try again in a few minutes.</value>
   </data>
@@ -4300,6 +4318,72 @@
   </data>
   <data name="OctorateRoomRequired" xml:space="preserve">
     <value>Say which room of the listing it is.</value>
+  </data>
+  <data name="ExistingInventoryChannelsRequired" xml:space="preserve">
+    <value>Choose at least one channel to connect.</value>
+  </data>
+  <data name="ExistingInventoryTooManyChannels" xml:space="preserve">
+    <value>You chose too many channels at once: {0} at most.</value>
+  </data>
+  <data name="ExistingInventoryChannelNotSupported" xml:space="preserve">
+    <value>One of the channels you chose cannot be connected: choose among the ones in the list.</value>
+  </data>
+  <data name="ExistingInventoryScopeInvalid" xml:space="preserve">
+    <value>Say which properties to connect: all of them, some of them or a group.</value>
+  </data>
+  <data name="ExistingInventoryNeedsWholeOrg" xml:space="preserve">
+    <value>Connecting all the listings needs access to every property of the organization.</value>
+  </data>
+  <data name="ExistingInventoryGroupNotFound" xml:space="preserve">
+    <value>Property group not found.</value>
+  </data>
+  <data name="ExistingInventoryGroupScenarioMismatch" xml:space="preserve">
+    <value>This group is not one of the groups whose listings are already on OTAs.</value>
+  </data>
+  <data name="ExistingInventoryBatchNotFound" xml:space="preserve">
+    <value>Channel connection not found.</value>
+  </data>
+  <data name="ExistingInventoryChannelNotFound" xml:space="preserve">
+    <value>This channel is not part of the connection.</value>
+  </data>
+  <data name="ExistingInventoryAccessPending" xml:space="preserve">
+    <value>First complete the channel access in the channel manager panel.</value>
+  </data>
+  <data name="ExistingInventoryMappingPending" xml:space="preserve">
+    <value>First confirm, import or postpone every listing found: {0} are left to decide.</value>
+  </data>
+  <data name="ExistingInventoryNotReady" xml:space="preserve">
+    <value>No channel is ready yet: the rooms are imported first.</value>
+  </data>
+  <data name="ChannelAccessVerificationRequired" xml:space="preserve">
+    <value>CasaZen must first try to verify the access: confirm only if it cannot.</value>
+  </data>
+  <data name="ChannelAccessNotValid" xml:space="preserve">
+    <value>The channel access is not valid: do the connection again in the channel manager panel.</value>
+  </data>
+  <data name="OctoratePanelUrlMissing" xml:space="preserve">
+    <value>The address of the channel manager panel is not configured: contact support.</value>
+  </data>
+  <data name="InventoryScenarioInvalid" xml:space="preserve">
+    <value>Choose where the listings are: already on the channel manager, already on OTAs, or not published yet.</value>
+  </data>
+  <data name="InventoryIntentAssignmentsInvalid" xml:space="preserve">
+    <value>Give 1 to {0} properties or groups.</value>
+  </data>
+  <data name="InventoryGroupRequired" xml:space="preserve">
+    <value>Give the name of the group (100 characters at most).</value>
+  </data>
+  <data name="InventoryIntentDuplicate" xml:space="preserve">
+    <value>The same property or group is given twice.</value>
+  </data>
+  <data name="InventoryIntentChangeRefused" xml:space="preserve">
+    <value>This property already has a connection or a mapping in progress: it cannot be declared as not published yet.</value>
+  </data>
+  <data name="InventoryIntentConflict" xml:space="preserve">
+    <value>Someone else has just said where the listings are: reload the page and check.</value>
+  </data>
+  <data name="OctorateExistingInventoryMustImport" xml:space="preserve">
+    <value>The listings of this property already exist on the channel manager or on OTAs: they are imported and mapped, not created again.</value>
   </data>
   <data name="BookingOtaAmountsReadonly" xml:space="preserve">
     <value>The channel amounts (commission, net, paid and balance) come from the channel manager and cannot be changed.</value>
@@ -4643,6 +4727,72 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="OnboardingFlowStateUnknown" xml:space="preserve">
     <value>Unknown flow state.</value>
+  </data>
+  <data name="ContactIdMissing" xml:space="preserve">
+    <value>The contact identifier is required.</value>
+  </data>
+  <data name="ContactNotFound" xml:space="preserve">
+    <value>The link does not match any subscription.</value>
+  </data>
+  <data name="MarketingContactSuppressed" xml:space="preserve">
+    <value>This address has opted out of promotional messages: confirming cannot switch it back on.</value>
+  </data>
+  <data name="MarketingConfirmationUnavailable" xml:space="preserve">
+    <value>The confirmation message could not be queued: try again in a few minutes.</value>
+  </data>
+  <data name="CrmContactNotFound" xml:space="preserve">
+    <value>Contact not found.</value>
+  </data>
+  <data name="CrmConfirmationNotRequired" xml:space="preserve">
+    <value>This contact does not need a confirmation: it is not an email address with a consent, or it is already confirmed.</value>
+  </data>
+  <data name="CrmConfirmationLimitReached" xml:space="preserve">
+    <value>The confirmation message has already been sent to this contact the maximum number of times.</value>
+  </data>
+  <data name="CrmContactSuppressed" xml:space="preserve">
+    <value>The contact asked not to receive promotional messages: no confirmation can be sent to them.</value>
+  </data>
+  <data name="DirectBookingWhatsAppRequiresPhone" xml:space="preserve">
+    <value>To receive messages on WhatsApp a valid phone number is needed: enter one and try again.</value>
+  </data>
+  <data name="DirectBookingSoftOptInNoticeOutdated" xml:space="preserve">
+    <value>The notice you read has been updated: reload the page, read the new version and try again.</value>
+  </data>
+  <data name="WelcomeLinkInvalid" xml:space="preserve">
+    <value>This link is not valid or has been replaced: ask the host for the updated QR code.</value>
+  </data>
+  <data name="WelcomeAdultRequired" xml:space="preserve">
+    <value>To leave a consent you must declare that you are of age.</value>
+  </data>
+  <data name="WelcomeChannelRequired" xml:space="preserve">
+    <value>Choose at least one channel on which you want to receive messages.</value>
+  </data>
+  <data name="WelcomeEmailInvalid" xml:space="preserve">
+    <value>Enter a valid email address where you want to receive messages.</value>
+  </data>
+  <data name="WelcomePhoneInvalid" xml:space="preserve">
+    <value>Enter a valid phone number to receive messages on WhatsApp.</value>
+  </data>
+  <data name="WelcomeConsentUnavailable" xml:space="preserve">
+    <value>Consent cannot be given from this page at the moment.</value>
+  </data>
+  <data name="WelcomeConsentOutdated" xml:space="preserve">
+    <value>The consent text has been updated: reload the page, read it and try again.</value>
+  </data>
+  <data name="GuestMarketingConsentUnavailable" xml:space="preserve">
+    <value>Your preferences about promotional messages cannot be changed at the moment.</value>
+  </data>
+  <data name="GuestMarketingConsentOutdated" xml:space="preserve">
+    <value>The consent text has been updated: reload the page, read it and try saving your preferences again.</value>
+  </data>
+  <data name="GuestMarketingEmailInvalid" xml:space="preserve">
+    <value>Enter a valid email address where you want to receive messages.</value>
+  </data>
+  <data name="GuestMarketingPhoneInvalid" xml:space="preserve">
+    <value>Enter a valid phone number to receive messages on WhatsApp.</value>
+  </data>
+  <data name="GuestMarketingEnabledRequired" xml:space="preserve">
+    <value>Say whether you want to turn this channel on or off: without a choice we change nothing.</value>
   </data>
   <data name="PaymentLinkUnavailable" xml:space="preserve">
     <value>The payment link cannot be created: it needs a Stripe account ready to take payments, a balance to pay and a booking you entered that is not cancelled. If a payment is already in progress, wait for its outcome.</value>

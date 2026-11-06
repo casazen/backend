@@ -82,6 +82,26 @@ public static class HostScopeQueryExtensions
     }
 
     /// <summary>
+    /// The CRM profiles of the scope (E07/F01/US03/T01, NF-88). A profile belongs to no property, so it is reached through its guests: in a
+    /// restricted scope it is one of which a guest has a booking at a property the scope reaches (whatever the status of the booking, as for the
+    /// guests above), as one <c>EXISTS</c> in the same statement. A lead from the welcome page has no guest and so no booking: it is in an
+    /// org-wide scope only, which returns the query as it is. <paramref name="bookings"/> is where the stays are read from, as for the guests.
+    /// </summary>
+    public static IQueryable<GuestCrmProfile> InScope(this IQueryable<GuestCrmProfile> source, HostScope scope, IQueryable<Booking> bookings)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(bookings);
+
+        if (scope.IsOrgWide)
+            return source;
+
+        var orgId = scope.OrgId;
+        var stays = bookings.Where(booking => booking.OrgId == orgId).InScope(scope);
+        return source.Where(profile => stays.Any(stay => stay.Guest.GuestCrmProfileId == profile.Id));
+    }
+
+    /// <summary>
     /// The rows of <paramref name="source"/> bound to a property the scope reaches, the property being what
     /// <paramref name="property"/> selects. For an org-wide scope the query is returned as it is.
     /// </summary>

@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Models;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
@@ -21,7 +22,8 @@ namespace Casazen.Infrastructure.Services;
 /// date without bookings); deletes the scan object and its reference.</item>
 /// <item><see cref="GuestDataCategory.AlloggiatiData"/>: every guest of a stay after that stay's check-out (all kinds, CO-12
 /// rule), then the booker's own birth, citizenship, sex, document and scan after its latest check-out.</item>
-/// <item><see cref="GuestDataCategory.Marketing"/>: the consent ends after the period from the day it was given.</item>
+/// <item><see cref="GuestDataCategory.Marketing"/>: the consent ends after the period from the day it was given, and the guest's CRM contacts
+/// on consent go back to service only (not suppressed: an expiry is not an opt-out).</item>
 /// <item><see cref="GuestDataCategory.FiscalData"/>: after the latest check-out the whole record is anonymized, as by an
 /// erasure but without marking it deleted.</item>
 /// </list>
@@ -209,6 +211,18 @@ public sealed class GuestDataRetentionService(
                 });
                 AddAudit(guest.OrgId, guest.Id, GuestDataCategory.Marketing, now, 0, 0);
                 guests++;
+            }
+
+            // E07/F06/US02/T01 (AC-NF95-7): the consent of a contact ends with the consent of its guest. An expiry is not an opt-out: the
+            // contact goes back to service only (what a stay needs) and is NOT suppressed, so a new consent can be given. A soft opt-in, a
+            // suppression and the evidence of the consent that ended stay as they are.
+            var consentContacts = await db.GuestContacts
+                .Where(c => c.GuestId != null && chunk.Contains(c.GuestId.Value) && c.LegalBasis == GuestContactLegalBasis.Consent)
+                .ToListAsync(cancellationToken);
+            foreach (var contact in consentContacts)
+            {
+                contact.LegalBasis = GuestContactLegalBasis.ServiceOnly;
+                contact.UpdatedAt = now;
             }
 
             await db.SaveChangesAsync(cancellationToken);

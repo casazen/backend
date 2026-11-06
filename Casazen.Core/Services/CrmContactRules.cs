@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 
@@ -93,6 +94,18 @@ public static class CrmContactRules
 
         return source == BookingSource.Direct ? GuestContactOrigin.DirectBooking : GuestContactOrigin.Manual;
     }
+
+    /// <summary>
+    /// <see cref="CanReceiveMarketing"/> for an e-mail contact, as a condition a query can run in SQL: the profile list asks it to keep the
+    /// profiles that can (or cannot) be written to by e-mail (E07/F01/US03/T01). The same rule, written over the columns: not suppressed, not an
+    /// OTA forward, and either soft opt-in or a consent that was confirmed.
+    /// </summary>
+    public static readonly Expression<Func<GuestContact, bool>> MarketableEmail = contact =>
+        contact.Channel == GuestContactChannel.Email
+        && !contact.IsSuppressed
+        && contact.Origin != GuestContactOrigin.OtaForward
+        && (contact.LegalBasis == GuestContactLegalBasis.SoftOptIn
+            || (contact.LegalBasis == GuestContactLegalBasis.Consent && contact.Confirmation == GuestContactConfirmation.Confirmed));
 
     /// <summary>
     /// Whether the contact may receive marketing, by the law and not by what is installed: an e-mail address needs to be not suppressed, not an OTA
