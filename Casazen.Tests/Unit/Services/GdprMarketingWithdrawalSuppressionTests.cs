@@ -48,18 +48,18 @@ public class GdprMarketingWithdrawalSuppressionTests
         GuestContactChannel channel,
         string value,
         GuestContactLegalBasis basis = GuestContactLegalBasis.Consent) => new()
-    {
-        OrgId = orgId,
-        GuestId = guestId,
-        Channel = channel,
-        Value = value,
-        ValueHash = Index.Hash(value),
-        Origin = GuestContactOrigin.GuestPage,
-        LegalBasis = basis,
-        BasisVersion = "consent-v1",
-        BasisRecordedAt = DateTime.UtcNow,
-        ConsentSource = GuestConsentSource.GuestPage,
-    };
+        {
+            OrgId = orgId,
+            GuestId = guestId,
+            Channel = channel,
+            Value = value,
+            ValueHash = Index.Hash(value),
+            Origin = GuestContactOrigin.GuestPage,
+            LegalBasis = basis,
+            BasisVersion = "consent-v1",
+            BasisRecordedAt = DateTime.UtcNow,
+            ConsentSource = GuestConsentSource.GuestPage,
+        };
 
     private static MarketingConsentRecord Consent(Guid orgId, Guid guestId, string marketingEmail) => new()
     {
