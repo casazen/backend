@@ -427,6 +427,9 @@ public sealed class OnboardingPanelStepService(
     internal static PanelStepView ViewOf(OnboardingPanelStep step)
     {
         var info = PanelStepCatalog.Of(step.Kind);
+
+        // The "To do" stands for the step while it is open: a step that is done has closed it, and the page is not given a link to it.
+        var activityId = step.Status is PanelStepStatus.Verified or PanelStepStatus.Confirmed ? null : step.ActivityId;
         return new PanelStepView(
             step.Id,
             step.Kind,
@@ -435,7 +438,7 @@ public sealed class OnboardingPanelStepService(
             step.PropertyId,
             step.ChannelCode,
             info.Context,
-            step.ActivityId,
+            activityId,
             IsOpen(step) ? step.NextVerificationAt : null,
             step.LastVerificationOutcome,
             step.Status == PanelStepStatus.Started && step.LastVerificationOutcome == PanelVerificationOutcomes.Unverifiable,

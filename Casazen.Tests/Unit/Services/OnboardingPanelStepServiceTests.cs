@@ -97,6 +97,7 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         // The "To do": created after the step, found on it, with codes and ids only.
         var todo = await _db.InternalActivities.AsNoTracking().SingleAsync();
         Assert.Equal(todo.Id, row.ActivityId);
+        Assert.Equal(todo.Id, started.Step.ActivityId);
         Assert.Equal(nameof(ActivityType.WizardResume), todo.ActivityType);
         Assert.Equal(ActivityAction.ResumeWizard, todo.Action);
         Assert.Equal(OnboardingPanelStepCodes.TodoEntityType, todo.EntityType);
@@ -272,6 +273,10 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
 
         Assert.Equal((PanelStepStatus.Verified, PanelVerificationOutcomes.Verified, false), (done.Status, done.LastVerificationOutcome, done.CanConfirm));
         Assert.Null(done.NextCheckAt);
+
+        // The "To do" is closed: the page is given no link to it (the row keeps the reference, the "To do" keeps its own).
+        Assert.NotNull(step.ActivityId);
+        Assert.Null(done.ActivityId);
         Assert.Equal(_clock.GetUtcNow().UtcDateTime, done.CompletedAt);
         var row = await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync();
         Assert.Equal(_clock.GetUtcNow().UtcDateTime, row.VerifiedAt);
@@ -279,6 +284,7 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Null(row.NextVerificationAt);
         var todo = await _db.InternalActivities.AsNoTracking().SingleAsync();
         Assert.Equal((InternalActivity.StatusCompleted, InternalActivity.ClosedBySystem), (todo.Status, todo.ClosedBy));
+        Assert.Equal(todo.Id, row.ActivityId);
 
         // Nothing is asked again, a start of a step already done restarts nothing, and the host cannot be made to confirm it twice.
         _clock.Advance(TimeSpan.FromHours(2));
@@ -287,6 +293,7 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         var restarted = await service.StartAsync(_world.OrgWide, _world.OwnerUserId, new PanelStepStartRequest(PanelStepKind.PoliceConnection, _world.Granted.Id), Ct);
         Assert.Equal(1, police.Calls);
         Assert.Equal(PanelStepStatus.Verified, restarted.Step.Status);
+        Assert.Null(restarted.Step.ActivityId);
         Assert.Equal(PanelStepStatus.Verified, (await service.ConfirmAsync(_world.OrgWide, _world.OwnerUserId, step.Id, Ct)).Status);
     }
 
@@ -323,6 +330,8 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         var confirmed = await service.ConfirmAsync(_world.OrgWide, owner, step.Id, Ct);
         Assert.Equal((PanelStepStatus.Confirmed, false), (confirmed.Status, confirmed.CanConfirm));
         Assert.Null(confirmed.NextCheckAt);
+        Assert.NotNull(open.ActivityId);
+        Assert.Null(confirmed.ActivityId);
         var row = await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync();
         Assert.Equal((owner, (DateTime?)_clock.GetUtcNow().UtcDateTime), (row.CompletedByUserId, row.CompletedAt));
         Assert.Null(row.VerifiedAt);
