@@ -90,6 +90,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.TouristTaxRemittances.Select(tt => tt.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplacePartners.Select(partner => partner.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplaceActivations.Select(activation => activation.Scenario))
+            .Concat(DemoShowcaseCatalog.MessageThreads.Select(thread => thread.Scenario))
             .Concat(DemoShowcaseCatalog.TouristTaxChannelRules.Select(rule => rule.Scenario))
             .Concat(DemoShowcaseCatalog.WelcomeLinks.Select(link => link.Scenario))
             .ToHashSet(StringComparer.Ordinal);
@@ -98,6 +99,64 @@ public class DemoShowcaseTests
         Assert.Contains(DemoShowcaseCatalog.Properties, p => p.Publish);
         Assert.Contains(DemoShowcaseCatalog.Properties, p => p.Key == DemoShowcaseCatalog.DraftKey && !p.Publish);
         Assert.All(DemoShowcaseCatalog.Properties, p => Assert.Equal(6, p.Place.IstatCode.Length));
+    }
+
+    /// <summary>
+    /// NF-61, NF-64 (E05/F02/US01/T01): the hub of messages has a demo conversation in each of its three shapes (a direct stay that waits for an
+    /// answer, a conversation of Airbnb about a booking, a request of Booking.com with no booking), each about a house and a stay that exist in the
+    /// catalog, the direct one on a booking the public checkout makes, the one of a channel on a booking that came from a channel; invented words that
+    /// say TEST, the guests of the stays at example.com. The template names no connection to a channel manager: they are rows of the hub only.
+    /// </summary>
+    [Fact]
+    public void MessageHub_TheDemoHasADirectConversation_ABookingOfAChannel_AndARequest_AllSayingTest()
+    {
+        var threads = DemoShowcaseCatalog.MessageThreads;
+        Assert.Contains(DemoShowcaseCatalog.Scenario.MessageHub, DemoShowcaseCatalog.Scenarios);
+        Assert.All(threads, t => Assert.Equal(DemoShowcaseCatalog.Scenario.MessageHub, t.Scenario));
+        Assert.Equal(threads.Count, threads.Select(t => t.Key).Distinct(StringComparer.Ordinal).Count());
+
+        var direct = Assert.Single(threads, t => t.Kind == DemoMessageThreadKind.Direct);
+        var reservation = Assert.Single(threads, t => t.Kind == DemoMessageThreadKind.OtaReservation);
+        var request = Assert.Single(threads, t => t.Kind == DemoMessageThreadKind.OtaRequest);
+        Assert.Null(request.BookingKey);
+        Assert.NotNull(request.Channel);
+        Assert.NotNull(reservation.Channel);
+        Assert.Null(direct.Channel);
+
+        foreach (var thread in threads)
+        {
+            var property = Assert.Single(DemoShowcaseCatalog.Properties, p => p.Key == thread.PropertyKey);
+            Assert.NotEmpty(thread.Messages);
+            Assert.All(thread.Messages, m => Assert.Contains("TEST", m.Text, StringComparison.Ordinal));
+            if (thread.Kind != DemoMessageThreadKind.Direct)
+                Assert.Contains("TEST", thread.GuestName, StringComparison.Ordinal);
+
+            if (thread.BookingKey is null)
+                continue;
+
+            var booking = Assert.Single(property.Bookings, b => b.Key == thread.BookingKey);
+            Assert.EndsWith("@example.com", booking.Email, StringComparison.Ordinal);
+            if (thread.Kind == DemoMessageThreadKind.Direct)
+            {
+                // A direct conversation exists only for a booking of the public checkout that was confirmed (GuestMessageRules.StateOf).
+                Assert.Equal(BookingSource.Direct, booking.Source);
+                Assert.Contains(booking.Status, new[] { BookingStatus.Confirmed, BookingStatus.CheckedIn, BookingStatus.CheckedOut });
+                Assert.True(thread.Messages[^1].FromGuest, "the direct conversation of the demo waits for an answer");
+            }
+            else
+            {
+                Assert.True(FiscalCopy.IsOtaBookingSource(booking.Source));
+            }
+        }
+
+        // The messages of every conversation are in the order they were written: the minutes ago fall, and what the host read comes first.
+        foreach (var thread in threads)
+        {
+            var minutes = thread.Messages.Select(m => m.MinutesAgo).ToList();
+            Assert.Equal(minutes.OrderByDescending(m => m), minutes);
+            var guestMessages = thread.Messages.Where(m => m.FromGuest).ToList();
+            Assert.Equal(guestMessages.OrderByDescending(m => m.Read), guestMessages);
+        }
     }
 
     /// <summary>
