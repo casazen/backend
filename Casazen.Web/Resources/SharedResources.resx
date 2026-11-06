@@ -4328,6 +4328,9 @@
   <data name="OctorateRequestRejected" xml:space="preserve">
     <value>Il channel manager ha rifiutato la richiesta.</value>
   </data>
+  <data name="OctoratePartnerFailed" xml:space="preserve">
+    <value>Il canale o lo strumento a cui ti stai collegando non ha accettato la richiesta: il problema non è di CasaZen. Controlla i dati di accesso e riprova più tardi.</value>
+  </data>
   <data name="OctorateChatNotLicensed" xml:space="preserve">
     <value>La chat non è disponibile per questo immobile nel channel manager (di solito il modulo chat non è incluso nella licenza): i messaggi degli ospiti non si possono leggere.</value>
   </data>

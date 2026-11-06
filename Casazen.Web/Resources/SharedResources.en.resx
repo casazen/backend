@@ -4328,6 +4328,9 @@
   <data name="OctorateRequestRejected" xml:space="preserve">
     <value>The channel manager refused the request.</value>
   </data>
+  <data name="OctoratePartnerFailed" xml:space="preserve">
+    <value>The channel or tool you are connecting did not accept the request: the problem is not on CasaZen's side. Check your login details and try again later.</value>
+  </data>
   <data name="OctorateChatNotLicensed" xml:space="preserve">
     <value>Chat is not available for this property in the channel manager (usually the chat module is not included in the license): guest messages cannot be read.</value>
   </data>

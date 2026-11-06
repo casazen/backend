@@ -1163,6 +1163,17 @@ Runbook and evidence matrix per channel: `docs/runbooks/octorate-existing-invent
   `ImportRoomsAsync`, `ImportReservationsAsync`, `ImportCalendarAsync`, `MarkConnectedAsync` (`POST /rest/v1/connection/{action}/{acc}/{connection}`).
   The answer must be a JSON list, or the documented wrapper (a `data` array with `additionalInfo.actionPerformed` equal to the action asked); anything
   else (`{}`, an error that came with HTTP 200, a wrapper without `data` or naming another action) is `OctorateServerException`, never a success.
+- *Operations on a connection (E09/F02/US01/T01).* The same client has one method for each connection operation of the OpenAPI of 2026-10-31, in
+  `OctorateApiClient.Connections.cs`: `ListConnectionsAsync` (`GET /rest/v1/connection?accommodation=&fields=`, never the portal username or password),
+  `CreateConnectionAsync` (`POST /rest/v1/connection/{acc}`: `channelId` and `portal` as numbers, the access data the portal asked for, and a connection that
+  pulls and pushes nothing yet: `updateCalendar` and `pullReservations` off, `pullMappedOnly` on, no content, D6), `UpdateConnectionAsync` (`PATCH`),
+  `DeleteConnectionAsync` (`DELETE`), `RunConnectionActionAsync` (`POST /rest/v1/connection/{action}/{acc}/{connection}` with `IMPORT_ROOMS`,
+  `IMPORT_RESERVATIONS`, `IMPORT_CALENDAR`, `MARK_CONNECTED` or `COMMIT_MAPPING_AS_COMPLETED`, same answer rule as above), `GetConnectionMappingAsync`
+  (`GET .../connection/external/...` joined with `GET .../connection/mapping/...`) and `SaveConnectionMappingAsync` (`POST .../connection/mapping/...?product=&externalProduct=`
+  for each room). They use the same HTTPS client, timeout, tenant isolation, rate-limit gate and typed errors as the rest of the client; only for these seven
+  does a 550 («the partner fails») become `OctoratePartnerFailureException` (`octorate_partner_failed`, 502), so the calls of the other epics keep their mapping.
+  The portal username and password travel in the body of one create (or change) and are never logged or put in a message (`OctorateConnectionLoggingTests`).
+  **Not run against a real channel:** the sandbox has none connected, so the shapes are the specification's, not a proven answer.
 
 **Bookings of the connector (E02/F02/US01/T01, ADR-031, ADR-033).** `BookingImportService` (`IBookingImportService`) keeps one `Booking` for each
 reservation of the room of a property, found through the confirmed `OctorateListingMapping`; no endpoint, the work is done by the daily job

@@ -278,6 +278,58 @@ public interface IOctorateApiClient
     Task<OctorateConnectionActionResult> MarkConnectedAsync(string accommodationId, string connectionId, CancellationToken ct);
 
     /// <summary>
+    /// The connections of one accommodation (<c>GET /rest/v1/connection?accommodation={acc}</c>, E09/F02/US01/T01, NF-56, NF-57): the status, the
+    /// access given on the channel and the last update of each, which is what the activation wizard and the health panel read. Only the
+    /// members that are needed are asked for, so the portal username and password a connection holds never reach CasaZen; a connection of
+    /// another accommodation that Octorate lets slip into the answer is left out. Same HTTPS client, 30 s timeout, tenant isolation, rate-limit
+    /// gate and typed errors as the other calls; 550 («the partner fails») is <c>OctoratePartnerFailureException</c> for this and the six
+    /// operations below. The paths and bodies are the ones of the OpenAPI of 2026-10-31 (S13); the sandbox has no channel connected, so none of
+    /// the seven was run against a real one.
+    /// </summary>
+    Task<OctorateConnectionInfo[]> ListConnectionsAsync(string accommodationCode, CancellationToken ct);
+
+    /// <summary>
+    /// Creates the connection of an accommodation to a channel or a tool (<c>POST /rest/v1/connection/{acc}</c>) with the portal data of
+    /// <paramref name="request"/>. The connection is made with the pulls <b>off</b> (<c>updateCalendar</c>, <c>pullReservations</c>), no content
+    /// push and <c>pullMappedOnly</c> on: nothing is read from or written to the channel before the rooms are mapped (D6). The credentials go in
+    /// that one body and nowhere else: never logged, never in a message. An answer without a connection id is <c>OctorateServerException</c>: the
+    /// connection is then looked up with <see cref="ListConnectionsAsync"/>, never assumed. Octorate has no idempotency key: after a timeout
+    /// the caller lists the connections before it creates another.
+    /// </summary>
+    Task<OctorateConnectionInfo> CreateConnectionAsync(string accommodationCode, OctorateConnectionCreate request, CancellationToken ct);
+
+    /// <summary>Changes the members of <paramref name="patch"/> that are set, and nothing else (<c>PATCH /rest/v1/connection/{acc}/{connection}</c>).</summary>
+    Task UpdateConnectionAsync(string accommodationCode, string connectionId, OctorateConnectionPatch patch, CancellationToken ct);
+
+    /// <summary>Deletes the connection (<c>DELETE /rest/v1/connection/{acc}/{connection}</c>); a connection Octorate does not know is <c>OctorateNotFoundException</c>.</summary>
+    Task DeleteConnectionAsync(string accommodationCode, string connectionId, CancellationToken ct);
+
+    /// <summary>
+    /// Runs one operation on a connection (<c>POST /rest/v1/connection/{action}/{acc}/{connection}</c>) and returns the mappings the answer lists. An
+    /// answer that is not the list the operation documents, or that names another action than the one asked, is <c>OctorateServerException</c>:
+    /// the result is unknown and is never read as a success.
+    /// </summary>
+    Task<IReadOnlyList<OctorateRoomMapping>> RunConnectionActionAsync(
+        string accommodationCode,
+        string connectionId,
+        OctorateConnectionAction action,
+        CancellationToken ct);
+
+    /// <summary>
+    /// The rooms of the listing on the channel with the Octorate product each is mapped to (<c>GET /rest/v1/connection/external/{acc}/{connection}</c>
+    /// and <c>GET /rest/v1/connection/mapping/{acc}/{connection}</c>, two calls). A room Octorate cannot manage is listed with
+    /// <see cref="OctorateChannelRoom.Manageable"/> false.
+    /// </summary>
+    Task<OctorateChannelRoom[]> GetConnectionMappingAsync(string accommodationCode, string connectionId, CancellationToken ct);
+
+    /// <summary>
+    /// Maps rooms of the channel to Octorate products (<c>POST /rest/v1/connection/mapping/{acc}/{connection}?product=&amp;externalProduct=</c>, one call
+    /// for each mapping, all checked before the first leaves). The mapping is complete when <see cref="OctorateConnectionAction.CommitMappingAsCompleted"/>
+    /// has been run. An empty list is refused (<see cref="ArgumentException"/>), never taken for «all».
+    /// </summary>
+    Task SaveConnectionMappingAsync(string accommodationCode, string connectionId, IReadOnlyList<OctorateRoomMapping> mappings, CancellationToken ct);
+
+    /// <summary>
     /// Creates an accommodation for the application (<c>POST /rest/v2/accommodation</c>, E02/F03/US01/T06, PO-19): a partner-level call, made with
     /// the partner token (<see cref="IOctorateTokenService.GetPartnerAccessTokenAsync"/>) because the accommodation does not exist yet. The answer
     /// carries the id of the accommodation and its refresh token, <b>once</b>: the caller saves the token before anything else
