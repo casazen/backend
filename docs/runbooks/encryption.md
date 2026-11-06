@@ -48,7 +48,8 @@ document number is only read for a known guest). The e-mail address of a private
 that is not in the database (`suppliers.md` section 23.7); the same column on the holds counts the bookings of one address.
 A CRM contact is found by `GuestContacts.ValueHash`, the HMAC-SHA256 of the normalized address or number keyed by
 `Crm__ContactIndexKey`, also a secret that is not in the database (unique with the org and the channel). The table only stores
-the hash: the key and the service that computes it (`ICrmContactIndex`) come with E07/F06/US01/T01.
+the hash: the key and the service that computes it (`ICrmContactIndex`) are those of E07/F06/US01/T01, and the marketing suppression list
+(`SuppressionListEntries.EmailHash`) uses the same index since E07/F06/US01/T02 ([`crm-marketing.md`](crm-marketing.md) § 3 and § 5).
 If another exact lookup is ever needed, do the same; never compare payloads (the same value encrypts differently every time).
 The comune and the postal code of a showcase request, the language and the consent (notice version, time, client address) of
 a customer are not encrypted: the supplier sees the first two before it takes the request, the rest is consent evidence.

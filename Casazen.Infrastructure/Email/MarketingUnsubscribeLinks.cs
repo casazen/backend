@@ -1,7 +1,8 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using Casazen.Infrastructure.Services;
+using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Microsoft.Extensions.Configuration;
 
 namespace Casazen.Infrastructure.Email;
@@ -27,11 +28,17 @@ public enum MarketingUnsubscribeCheck
 /// <summary>
 /// The signed one-click unsubscribe link of the marketing e-mails (NF-05, ADR-007-R18 and R20; DEB-01): HMAC-SHA256, with the secret shared
 /// by the signed links (<c>SIGNED_LINK_SECRET</c>), of <c>emailHash + "." + expiresAt</c>, hex lowercase, valid 30 days. <c>emailHash</c> is
-/// the SHA-256 blind index of the address, the one <see cref="SuppressionService"/> stores and checks: the link never carries the address.
-/// The org names the suppression list and, as ADR-007-R18 says, is not part of the signature. Built here for the campaigns
+/// the keyed HMAC-SHA256 index of the address (<see cref="ICrmContactIndex"/>, since E07/F06/US01/T02), the one the suppression list stores
+/// and checks: the link never carries the address. The links issued before carry the plain SHA-256 of the address; <see cref="Verify"/> does
+/// not care, because the hash is opaque to it, and the suppression list still honors that form, so they keep working for their 30 days. The
+/// org names the suppression list and, as ADR-007-R18 says, is not part of the signature. Built here for the campaigns
 /// (<see cref="Create"/>) and checked here by <c>POST api/public/marketing/unsubscribe</c> (<see cref="Verify"/>), so the two never drift.
 /// </summary>
-public sealed class MarketingUnsubscribeLinks(IConfiguration configuration, PublicSiteLinks publicSiteLinks, TimeProvider timeProvider)
+public sealed class MarketingUnsubscribeLinks(
+    IConfiguration configuration,
+    PublicSiteLinks publicSiteLinks,
+    TimeProvider timeProvider,
+    ICrmContactIndex contactIndex)
 {
     /// <summary>The variable of the secret of the signed links (ADR-007-R20), read through the configuration.</summary>
     public const string SecretVariable = "SIGNED_LINK_SECRET";
@@ -52,13 +59,14 @@ public sealed class MarketingUnsubscribeLinks(IConfiguration configuration, Publ
 
     /// <summary>The link that stops the marketing of <paramref name="orgId"/> to <paramref name="email"/>, valid for <see cref="Validity"/>.</summary>
     /// <exception cref="EmailConfigurationException">The secret or the public URL of the web app is missing.</exception>
+    /// <exception cref="InvalidOperationException"><c>Crm:ContactIndexKey</c> is not configured outside Development and Testing.</exception>
     public MarketingUnsubscribeLink Create(Guid orgId, string email)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         var secret = Secret ?? throw new EmailConfigurationException(
             $"{SecretVariable} is missing: the unsubscribe link of a marketing e-mail cannot be signed.");
 
-        var emailHash = SuppressionService.ComputeEmailHash(email);
+        var emailHash = contactIndex.Hash(ShowcaseBookingRules.NormalizeEmail(email));
         var expiresAt = timeProvider.GetUtcNow().UtcDateTime.Add(Validity).ToString(ExpiresAtFormat, CultureInfo.InvariantCulture);
         var query = $"orgId={orgId:D}&emailHash={emailHash}&expiresAt={Uri.EscapeDataString(expiresAt)}" +
                     $"&signature={Sign(secret, emailHash, expiresAt)}";

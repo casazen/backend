@@ -142,6 +142,20 @@ public static class FeatureFlags
     public const string OctorateConnector = "OctorateConnector";
 
     /// <summary>
+    /// E07/F06/US01/T01 (NF-95, CRM-08, Q1-29): the unfinished marketing module, <b>off by default</b> until it is safe to send. It closes the
+    /// CRM profiles (<c>api/crm/*</c>), the segments and the campaigns (<c>api/campaigns/*</c>), and the menu entries of the web app that open
+    /// them (the frontend reads the key <c>crmMarketing</c>). Off, every endpoint of <c>CrmController</c> and <c>CampaignsController</c> answers
+    /// 404 like a route that does not exist, before authentication, and the Hangfire job that sends a campaign scheduled before
+    /// (<c>CampaignSendJob</c>) sends nothing: it logs a warning, ends without a retry and puts the campaign back to <c>Approved</c>.
+    /// <b>Not behind it, on purpose</b>: the public consent, confirmation, unsubscribe and welcome endpoints, the GDPR endpoints, and the
+    /// collection of contacts and consents at the check-in and at the checkout: a legal record is made whatever the flag says, also without
+    /// the key (the withdrawal the host records is saved and its suppression is skipped, with an error in the log). On, outside Development and
+    /// Testing, <c>Crm:ContactIndexKey</c> is required at startup (<c>CrmOptionsValidator</c>), and only then. Runbook
+    /// <c>docs/runbooks/crm-marketing.md</c>.
+    /// </summary>
+    public const string CrmMarketing = "CrmMarketing";
+
+    /// <summary>
     /// E10/F01/US01/T02 (NF-104..NF-107): the activation of CasaZen with Octorate, <b>off by default</b> until the plan, the flows and the
     /// panel steps are ready to be shown. Off, every endpoint of epic E10 answers 404 before authentication
     /// (<c>api/onboarding/flows/*</c> and the ones the later tasks of E10 add) <b>except</b> <c>GET api/onboarding/status</c>, which stays
@@ -167,6 +181,7 @@ public static class FeatureFlags
         SupplierRequestBackups,
         CheckInIdentityVerification,
         OctorateConnector,
+        CrmMarketing,
         OctorateOnboarding,
     ];
 }

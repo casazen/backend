@@ -83,6 +83,8 @@ public class ConfigurationFeatureFlagsTests
                 "CheckInIdentityVerification",
                 // E02/F01/US02/T01: the Octorate connector (connection, mapping, webhook), off until the sandbox is validated.
                 "OctorateConnector",
+                // E07/F06/US01/T01: the unfinished marketing module (CRM profiles, segments, campaigns), off until it is safe to send.
+                "CrmMarketing",
                 // E10/F01/US01/T02: the activation of CasaZen with Octorate (flow status, plan, panel steps), off until it is ready to be shown.
                 "OctorateOnboarding",
             },
