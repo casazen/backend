@@ -2,15 +2,12 @@ using System.Text.Json;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
-using Casazen.Core.Multitenancy;
 using Casazen.Core.Services;
-using Casazen.Infrastructure.Data;
-using Casazen.Infrastructure.Events;
 using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
+using static Casazen.Tests.Unit.Octorate.BookingImportTestKit;
 
 namespace Casazen.Tests.Unit.Octorate;
 
@@ -22,23 +19,12 @@ namespace Casazen.Tests.Unit.Octorate;
 /// </summary>
 public class BookingImportProofTests
 {
-    private const string Accommodation = "585492";
-    private const string Room = "956528";
-    private static readonly Guid OrgA = Guid.Parse("4f1e2d3c-6b5a-4978-8a1b-2c3d4e5f6a11");
-    private static readonly Guid OrgB = Guid.Parse("9a8b7c6d-5e4f-4a3b-9c2d-1e0f2a3b4c22");
-
-    /// <summary>2026-11-06 09:00 in Rome: the stays below start on 20 November.</summary>
-    private static readonly DateTimeOffset Now = new(2026, 11, 6, 8, 0, 0, TimeSpan.Zero);
-
-    private static readonly DateTime FirstVersion = new(2026, 11, 5, 10, 0, 0, DateTimeKind.Utc);
-    private static readonly DateTime SecondVersion = new(2026, 11, 5, 12, 0, 0, DateTimeKind.Utc);
-
     // ─── Money ───────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task BookingImport_PaymentAmounts_Accurate_Test()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         var withCommission = Res("7001") with
         {
             RoomGross = 300.10m,
@@ -92,7 +78,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_AReservationInAnotherCurrencyThanTheProperty_StoresNoFigure()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         var inFrancs = Res("7001") with
         {
             Currency = "CHF",
@@ -117,7 +103,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_TheFiguresOfABookingCasaZenOwns_AreNotOverwrittenByTheRead()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         var bookingId = await h.SeedBookingAsync(
             "7003", source: BookingSource.Manual, status: BookingStatus.Confirmed, total: 500m, updatedAt: FirstVersion.AddDays(-1));
         h.Serve(Res("7003") with { TotalGross = 999m, RoomGross = 900m, TotalPaid = 5m, UpdatedAt = SecondVersion });
@@ -136,7 +122,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_ABookingCasaZenCancelled_IsNotBroughtBackByAnOlderRead()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         var bookingId = await h.SeedBookingAsync(
             "7004", source: BookingSource.Manual, status: BookingStatus.Cancelled, total: 100m, updatedAt: FirstVersion.AddDays(-1));
         h.Serve(Res("7004", OctorateBookingStatus.Confirmed) with { UpdatedAt = SecondVersion });
@@ -153,7 +139,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_UniqueKey_NoDuplicates_Test()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         h.Serve(Res("7001"));
         await using var db = h.NewDb();
         var service = h.Service(db);
@@ -180,7 +166,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_AnOlderVersionNeverUndoesANewerOne_WhateverTheOrderOfArrival()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         var newer = Res("7001") with { UpdatedAt = SecondVersion, CheckIn = "2026-11-24", CheckOut = "2026-11-27", TotalGuests = 3 };
         var older = Res("7001") with { UpdatedAt = FirstVersion };
         await using var db = h.NewDb();
@@ -200,7 +186,7 @@ public class BookingImportProofTests
         Assert.Equal(SecondVersion, booking.OctorateUpdatedAt);
 
         // Out of order, even when the older one is read first and the newer is a later read: the newer one wins.
-        var h2 = new Harness();
+        var h2 = new BookingImportHarness();
         await using var db2 = h2.NewDb();
         var service2 = h2.Service(db2);
         h2.Serve(older);
@@ -215,7 +201,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_AReservationThatChangedNothingIsNotReadAgain()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         h.Serve(Res("7001"));
         await using var db = h.NewDb();
         var service = h.Service(db);
@@ -232,7 +218,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_TenantIsolation_Test()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         var foreignId = await h.SeedBookingAsync(
             "7001", orgId: OrgB, propertyId: Guid.NewGuid(), source: BookingSource.Airbnb, status: BookingStatus.Confirmed, total: 77m, updatedAt: FirstVersion);
         h.Serve(Res("7001") with { TotalGross = 330m });
@@ -263,7 +249,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_ARequestOfAnotherOrgCannotImportThePropertyOfThisOne()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         h.Serve(Res("7001"));
 
         // Inside a request of org B the Octorate calls are org B's: the property is org A's, so the run is refused before any call.
@@ -281,7 +267,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_OnlyTheRoomOfThePropertyIsImported_TheOthersAreReported()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         h.Serve(Res("7001"), Res("7002", product: "111111"), Res("7003", product: "222222"));
         await using var db = h.NewDb();
 
@@ -306,7 +292,7 @@ public class BookingImportProofTests
     [InlineData(OctorateMappingStatus.Rejected)]
     public async Task BookingImport_ANotConfirmedListingIsNeverRead(OctorateMappingStatus status)
     {
-        var h = new Harness(status: status);
+        var h = new BookingImportHarness(status: status);
         h.Serve(Res("7001"));
         await using var db = h.NewDb();
 
@@ -322,7 +308,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_AListingWithoutAChosenRoomIsNotRead_AndNothingIsGuessed()
     {
-        var h = new Harness(room: null);
+        var h = new BookingImportHarness(room: null);
         h.Serve(Res("7001"));
         await using var db = h.NewDb();
 
@@ -337,8 +323,8 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_TheStayDatesAreTheLocalDatesOfTheProperty()
     {
-        var rome = new Harness();
-        var swiss = new Harness(timezone: "Europe/Zurich", currency: "CHF");
+        var rome = new BookingImportHarness();
+        var swiss = new BookingImportHarness(timezone: "Europe/Zurich", currency: "CHF");
         foreach (var h in new[] { rome, swiss })
         {
             h.Serve(Res("7001") with { CheckIn = "2026-11-19T23:00:00Z", CheckOut = "2026-11-22T09:30:00Z" });
@@ -358,7 +344,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_TheBookingTakesTheChannelAndTheStateOfTheReservation()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         h.Serve(
             Res("7001"),
             Res("7002", OctorateBookingStatus.Waiting) with { ChannelId = "142", ChannelName = "Booking.com" },
@@ -385,7 +371,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_AGuestIsMadeForTheBooking_WithTheStayContractAsItsBasis()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         h.Serve(Res("7001") with { FirstName = "Giulia", LastName = "Rossi", TotalGuests = 3, Notes = "Arriviamo tardi" });
         await using var db = h.NewDb();
 
@@ -412,7 +398,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_AGuestWithTheSameEmailAndNameIsTheSameGuest_AnotherNameIsNot()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         var existing = await h.SeedGuestAsync("Giulia", "Rossi", "giulia.rossi@example.com");
         await h.SeedGuestAsync("Marco", "Rossi", "giulia.rossi@example.com");
         h.Serve(
@@ -436,7 +422,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_RecordsTheEventsOfEachChangeOnce_WithIdsEnumsAndDatesOnly()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         await using var db = h.NewDb();
         var service = h.Service(db);
 
@@ -446,13 +432,13 @@ public class BookingImportProofTests
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         Assert.Equal(
             [DomainEventType.BookingCreated, DomainEventType.BookingConfirmed],
-            (await Events(h)).Select(e => e.EventType).Order());
+            (await h.ReadEventsAsync()).Select(e => e.EventType).Order());
 
         // New dates: modified, once.
         h.Serve(Res("7001") with { UpdatedAt = SecondVersion, CheckIn = "2026-11-24", CheckOut = "2026-11-27", Notes = "Allergica ai gatti" });
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
-        Assert.Equal(1, (await Events(h)).Count(e => e.EventType == DomainEventType.BookingModified));
+        Assert.Equal(1, (await h.ReadEventsAsync()).Count(e => e.EventType == DomainEventType.BookingModified));
 
         // Cancelled on the channel: cancelled, once, and not modified as well.
         var thirdVersion = SecondVersion.AddHours(3);
@@ -460,7 +446,7 @@ public class BookingImportProofTests
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
         await service.ImportAllAsync(h.PropertyId, CancellationToken.None);
 
-        var events = await Events(h);
+        var events = await h.ReadEventsAsync();
         Assert.Equal(1, events.Count(e => e.EventType == DomainEventType.BookingCancelled));
         Assert.Equal(1, events.Count(e => e.EventType == DomainEventType.BookingModified));
         Assert.Equal(4, events.Count);
@@ -485,7 +471,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_AStayThatIsOverAndAReservationFirstSeenCancelled_RaiseNoEvent()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         h.Serve(
             Res("7001") with { CheckIn = "2026-10-01", CheckOut = "2026-10-04" },
             Res("7002", OctorateBookingStatus.Cancelled));
@@ -495,7 +481,7 @@ public class BookingImportProofTests
 
         // Both are stored, for the record; nothing is told, scheduled or cleaned for them.
         Assert.Equal(2, result.Created);
-        Assert.Empty(await Events(h));
+        Assert.Empty(await h.ReadEventsAsync());
     }
 
     // ─── Where the run stops ─────────────────────────────────────────────────────────────────────────────
@@ -503,7 +489,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_ACompleteFullReadMarksTheListing_AWindowMarksItOnlyIfItReachesBack()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         h.Serve(Res("7001"));
         await using var db = h.NewDb();
         var service = h.Service(db);
@@ -530,7 +516,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_ARunThatFailsOnAReservationIsIncomplete_AndLeavesTheMarkAlone()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         h.Serve(Res("7001"), Res("7002"));
         h.Client.Setup(c => c.GetReservationAsync(Accommodation, "7001", It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateServerException(500));
         await using var db = h.NewDb();
@@ -546,7 +532,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_TheRateLimitStopsTheRun_WhatWasReadIsKept_AndTheMarkDoesNotMove()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         h.Serve(Res("7001"), Res("7002"));
         h.Client.Setup(c => c.GetReservationAsync(Accommodation, "7002", It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateRateLimitException(429));
         await using var db = h.NewDb();
@@ -563,7 +549,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_AReservationThatVanishedBetweenTheListAndTheReadIsSkipped()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         h.Serve(Res("7001"));
         h.Client.Setup(c => c.GetReservationAsync(Accommodation, "7001", It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateNotFoundException());
         await using var db = h.NewDb();
@@ -577,7 +563,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task BookingImport_ABookingChangedInCasaZenWithinTheWindowIsLeftAlone_ByTheReconciliation()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         var recent = Now.UtcDateTime.AddMinutes(-3);
         var bookingId = await h.SeedBookingAsync("7001", source: BookingSource.Airbnb, status: BookingStatus.Confirmed, total: 100m, updatedAt: recent, octorateUpdatedAt: FirstVersion.AddDays(-1));
         h.Serve(Res("7001", OctorateBookingStatus.Cancelled) with { UpdatedAt = SecondVersion });
@@ -601,7 +587,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task SyncBookingState_ArrivalAndDeparture_UseTheCheckInStatusOperation()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         var bookingId = await h.SeedBookingAsync("7001", source: BookingSource.Direct, status: BookingStatus.CheckedIn, total: 100m, updatedAt: FirstVersion);
         await using var db = h.NewDb();
         var service = h.Service(db);
@@ -620,7 +606,7 @@ public class BookingImportProofTests
     [Fact]
     public async Task SyncBookingState_ACancellationIsADelete_ForAReservationMadeInCasaZen_NeverForAPortalsOne()
     {
-        var h = new Harness();
+        var h = new BookingImportHarness();
         var mine = await h.SeedBookingAsync("7001", source: BookingSource.Direct, status: BookingStatus.Cancelled, total: 100m, updatedAt: FirstVersion);
         var portals = await h.SeedBookingAsync("7002", source: BookingSource.Airbnb, status: BookingStatus.Cancelled, total: 100m, updatedAt: FirstVersion);
         await using var db = h.NewDb();
@@ -638,13 +624,13 @@ public class BookingImportProofTests
     [Fact]
     public async Task SyncBookingState_NothingIsSentForABookingThatIsNotMirrored_OrWhoseMappingIsNotConfirmed()
     {
-        var notMirrored = new Harness();
+        var notMirrored = new BookingImportHarness();
         var local = await notMirrored.SeedBookingAsync(null, source: BookingSource.Manual, status: BookingStatus.CheckedOut, total: 10m, updatedAt: FirstVersion);
         await using (var db = notMirrored.NewDb())
             await notMirrored.Service(db).SyncBookingStateAsync(local, BookingStatus.CheckedOut, CancellationToken.None);
         notMirrored.Client.VerifyNoOtherCalls();
 
-        var proposed = new Harness(status: OctorateMappingStatus.Proposed);
+        var proposed = new BookingImportHarness(status: OctorateMappingStatus.Proposed);
         var booking = await proposed.SeedBookingAsync("7001", source: BookingSource.Direct, status: BookingStatus.CheckedOut, total: 10m, updatedAt: FirstVersion);
         await using (var db = proposed.NewDb())
             await proposed.Service(db).SyncBookingStateAsync(booking, BookingStatus.CheckedOut, CancellationToken.None);
@@ -652,183 +638,5 @@ public class BookingImportProofTests
 
         await using var any = proposed.NewDb();
         await Assert.ThrowsAsync<NotFoundException>(() => proposed.Service(any).SyncBookingStateAsync(Guid.NewGuid(), BookingStatus.CheckedOut, CancellationToken.None));
-    }
-
-    // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────
-
-    private static async Task<List<OutboxEvent>> Events(Harness h)
-    {
-        await using var read = h.NewDb();
-        return await read.OutboxEvents.AsNoTracking().ToListAsync();
-    }
-
-    private static OctorateReservation Res(
-        string id,
-        OctorateBookingStatus status = OctorateBookingStatus.Confirmed,
-        string? product = Room) => new()
-        {
-            Id = id,
-            Status = status,
-            Product = product,
-            ChannelId = "274",
-            ChannelName = "Airbnb",
-            CheckIn = "2026-11-19T23:00:00Z",
-            CheckOut = "2026-11-22T10:00:00Z",
-            UpdatedAt = FirstVersion,
-            FirstName = "Giulia",
-            LastName = "Rossi",
-            TotalGuests = 2,
-            RoomGross = 300m,
-            TotalGross = 330m,
-            TouristTax = 6m,
-            TotalPaid = 100m,
-            PriceBreakdown = [new OctoratePriceComponent("COMMISSION", 45m)],
-        };
-
-    /// <summary>The tenant of an authenticated request of one org.</summary>
-    private sealed class RequestTenant(Guid orgId) : ITenantContext
-    {
-        public Guid? OrgId { get; } = orgId;
-
-        public bool FilterEnabled => true;
-    }
-
-    /// <summary>A property of org A with a listing mapped to it, an Octorate client that answers what the test serves, and a clock.</summary>
-    private sealed class Harness
-    {
-        private readonly string _database = $"octorate-import-{Guid.NewGuid():N}";
-
-        public Harness(
-            string? room = Room,
-            OctorateMappingStatus status = OctorateMappingStatus.Confirmed,
-            string timezone = "Europe/Rome",
-            string currency = "EUR")
-        {
-            using var seed = NewDb();
-            var connection = new OctorateConnection
-            {
-                OrgId = OrgA,
-                Environment = OctorateEnvironment.Test,
-                Status = OctorateConnectionStatus.Connected,
-            };
-            var property = new Property
-            {
-                OrgId = OrgA,
-                OwnerId = "auth0|owner-a",
-                Name = "Casa del Lago",
-                Address = "Via del Lago 1",
-                City = "Como",
-                MaxGuests = 4,
-                Timezone = timezone,
-                Currency = currency,
-            };
-            seed.OctorateConnections.Add(connection);
-            seed.Properties.Add(property);
-            seed.OctorateListingMappings.Add(new OctorateListingMapping
-            {
-                OrgId = OrgA,
-                ConnectionId = connection.Id,
-                OctorateAccommodationId = Accommodation,
-                OctorateProductId = room,
-                PropertyId = property.Id,
-                Status = status,
-                SnapshotName = "Casa del Lago",
-            });
-            seed.SaveChanges();
-            PropertyId = property.Id;
-        }
-
-        public Guid PropertyId { get; }
-
-        public FakeTimeProvider Clock { get; } = new(Now);
-
-        public Mock<IOctorateApiClient> Client { get; } = new();
-
-        public AppDbContext NewDb(ITenantContext? tenant = null) =>
-            new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, tenant ?? NullTenantContext.Instance);
-
-        public BookingImportService Service(AppDbContext db, ITenantContext? tenant = null) =>
-            new(
-                db,
-                Client.Object,
-                new OctorateOrgScope(tenant ?? NullTenantContext.Instance),
-                new OctorateRateLimiter(Clock),
-                new BookingStateMapper(),
-                new DomainEventRecorder(db, tenant ?? NullTenantContext.Instance, Clock),
-                Clock,
-                NullLogger<BookingImportService>.Instance);
-
-        /// <summary>The list answers these reservations on its first page (and nothing after it); the single read answers each one.</summary>
-        public void Serve(params OctorateReservation[] reservations)
-        {
-            Client.Reset();
-            Client
-                .Setup(c => c.GetReservationsAsync(Accommodation, It.IsAny<OctorateReservationQuery>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((string _, OctorateReservationQuery query, CancellationToken _) => query.Page == 0 ? reservations : []);
-            foreach (var reservation in reservations)
-            {
-                var served = reservation;
-                Client
-                    .Setup(c => c.GetReservationAsync(Accommodation, served.Id, It.IsAny<CancellationToken>()))
-                    .ReturnsAsync(served);
-            }
-        }
-
-        public async Task<Guid> SeedBookingAsync(
-            string? octorateId,
-            Guid? orgId = null,
-            Guid? propertyId = null,
-            BookingSource source = BookingSource.Airbnb,
-            BookingStatus status = BookingStatus.Confirmed,
-            decimal total = 100m,
-            DateTime? updatedAt = null,
-            DateTime? octorateUpdatedAt = null)
-        {
-            await using var db = NewDb();
-            var org = orgId ?? OrgA;
-            var guest = new Guest { OrgId = org, FirstName = "Seed", LastName = "Guest", Email = $"{Guid.NewGuid():N}@example.com" };
-            var booking = new Booking
-            {
-                OrgId = org,
-                PropertyId = propertyId ?? PropertyId,
-                GuestId = guest.Id,
-                CheckInDate = new DateTime(2026, 11, 20, 0, 0, 0, DateTimeKind.Utc),
-                CheckOutDate = new DateTime(2026, 11, 22, 0, 0, 0, DateTimeKind.Utc),
-                NumberOfGuests = 2,
-                NumberOfAdults = 2,
-                Status = status,
-                Source = source,
-                OctorateReservationId = octorateId,
-                OctorateUpdatedAt = octorateUpdatedAt,
-                BasePrice = total,
-                TotalPrice = total,
-                UpdatedAt = updatedAt ?? FirstVersion,
-            };
-            db.Guests.Add(guest);
-            db.Bookings.Add(booking);
-            await db.SaveChangesAsync();
-            return booking.Id;
-        }
-
-        public async Task<Guid> SeedGuestAsync(string firstName, string lastName, string email)
-        {
-            await using var db = NewDb();
-            var guest = new Guest { OrgId = OrgA, FirstName = firstName, LastName = lastName, Email = email, CreatedAt = FirstVersion.AddDays(-30) };
-            db.Guests.Add(guest);
-            await db.SaveChangesAsync();
-            return guest.Id;
-        }
-
-        public async Task<Booking> ReadBookingAsync(string octorateId)
-        {
-            await using var db = NewDb();
-            return await db.Bookings.AsNoTracking().SingleAsync(b => b.OctorateReservationId == octorateId && b.OrgId == OrgA);
-        }
-
-        public async Task<DateTime?> ReadCheckpointAsync()
-        {
-            await using var db = NewDb();
-            return (await db.OctorateListingMappings.AsNoTracking().SingleAsync()).BookingsImportedThrough;
-        }
     }
 }

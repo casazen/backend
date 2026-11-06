@@ -1,3 +1,4 @@
+using Casazen.Core.Events;
 using Casazen.Core.Options;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Jobs;
@@ -48,6 +49,17 @@ public static class OctorateServiceCollectionExtensions
         services.AddSingleton<BookingStateMapper>();
         services.AddScoped<IBookingImportService, BookingImportService>();
         services.AddScoped<OctorateBookingImportJob>();
+
+        // The notifications and the reconciliation of the bookings (E02/F02/US01/T02): one handler for each kind of notification of a
+        // reservation (they re-read through the import service, the event bus runs each in its own scope under the org of the event), the
+        // reconciliation every six hours, and the push of the arrival and the departure CasaZen owns (a handler of the check-in and check-out
+        // events that queues the job, which sends the state).
+        services.AddScoped<IEventHandler<OctorateWebhookReceivedEvent>, BookingCreatedHandler>();
+        services.AddScoped<IEventHandler<OctorateWebhookReceivedEvent>, BookingModifiedHandler>();
+        services.AddScoped<IEventHandler<OctorateWebhookReceivedEvent>, BookingCancelledHandler>();
+        services.AddScoped<OctorateBookingSyncJob>();
+        services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingStatePushHandler>();
+        services.AddScoped<OctorateBookingStatePushJob>();
 
         return services;
     }
