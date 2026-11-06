@@ -26,7 +26,7 @@ namespace Casazen.Tests.Integration;
 /// The web host with the text of the marketing consent and the soft opt-in notice versioned (the product owner's legal texts), the secret of the
 /// signed links set and the e-mails recorded instead of queued, so a test can read the double opt-in message a guest would receive.
 /// </summary>
-public sealed class ConsentCollectionFactory : CasazenWebApplicationFactory
+public class ConsentCollectionFactory : CasazenWebApplicationFactory
 {
     public const string MarketingVersion = "marketing-2026-10-test";
     public const string NoticeVersion = "notice-2026-10-test";
@@ -35,6 +35,13 @@ public sealed class ConsentCollectionFactory : CasazenWebApplicationFactory
 
     /// <summary>What was queued so far: recipient, content and template name.</summary>
     public IReadOnlyList<(string? To, EmailContent Content, string Template)> SentEmails() => _emails.Snapshot();
+
+    /// <summary>While true the queue refuses every e-mail, like the real one when the e-mail provider is not configured.</summary>
+    public bool RefuseEmails
+    {
+        get => _emails.Refuse;
+        set => _emails.Refuse = value;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -170,6 +177,43 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
     }
 
     /// <summary>
+    /// Data rule: a consent on a channel needs the address of that channel. The WhatsApp box with no phone number, or with one the CRM cannot store,
+    /// is 422 <c>direct_booking_whatsapp_requires_phone</c> and nothing is stored; the same box with a number goes through.
+    /// </summary>
+    [Fact]
+    public async Task DirectCheckout_WhatsAppWithoutAPhone_Is422_AndStoresNothing_Test()
+    {
+        var property = await SeedPropertyAsync();
+        using var client = _factory.CreateClient();
+
+        var withoutPhone = await PostAsync(
+            client, Payload(property.Id, $"nophone.{Guid.NewGuid():N}@example.com", 70, consentWhatsApp: true, phone: null));
+        var shortNumber = await PostAsync(
+            client, Payload(property.Id, $"short.{Guid.NewGuid():N}@example.com", 70, consentWhatsApp: true, phone: "12"));
+
+        foreach (var refused in new[] { withoutPhone, shortNumber })
+        {
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, refused.StatusCode);
+            var problem = JsonDocument.Parse(await refused.Content.ReadAsStringAsync()).RootElement;
+            Assert.Equal("direct_booking_whatsapp_requires_phone", problem.GetProperty("code").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("detail").GetString()));
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.False(await db.Bookings.IgnoreQueryFilters().AnyAsync(b => b.PropertyId == property.Id));
+            Assert.False(await db.GuestConsentRecords.IgnoreQueryFilters().AnyAsync(r => r.OrgId == property.OrgId));
+            Assert.False(await db.GuestContacts.IgnoreQueryFilters().AnyAsync(c => c.OrgId == property.OrgId));
+        }
+
+        var withPhone = await PostAsync(
+            client, Payload(property.Id, $"phone.{Guid.NewGuid():N}@example.com", 70, consentWhatsApp: true));
+
+        Assert.Equal(HttpStatusCode.OK, withPhone.StatusCode);
+    }
+
+    /// <summary>
     /// Privacy rule: minors stay excluded from marketing. A check-in whose booker is a minor and who ticks the e-mail channel is refused, and no
     /// consent row, no privacy history and no contact is made.
     /// </summary>
@@ -282,7 +326,8 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
         int daysAhead,
         bool consentEmail = false,
         bool consentWhatsApp = false,
-        string? notice = null)
+        string? notice = null,
+        string? phone = "+393331234567")
     {
         var checkIn = TimeProvider.System.TodayInRome().AddDays(daysAhead);
         var fields = new Dictionary<string, object?>
@@ -297,7 +342,7 @@ public class CrmConsentCollectionIntegrationTests : IClassFixture<ConsentCollect
                 firstName = "Mario",
                 lastName = "Rossi",
                 email = guestEmail,
-                phone = "+393331234567",
+                phone,
                 country = "IT",
             },
             ["consent"] = new { dataProcessing = true, consentVersion = ConsentVersion },
