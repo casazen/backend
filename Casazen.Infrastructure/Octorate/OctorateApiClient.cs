@@ -44,6 +44,9 @@ public sealed class OctorateApiClient(
     /// <summary>The pages of accommodations read at most in one listing (pages are numbered from 0).</summary>
     private const int MaxAccommodationPages = 50;
 
+    /// <summary>The most products one call of the calendar read names (Octorate answers at most 20 products a call).</summary>
+    internal const int MaxCalendarProducts = 20;
+
     /// <summary>The <c>type</c> of Octorate's 403 for an access token that is not valid (any more): refresh and retry once.</summary>
     private const string ApiLoginInvalidType = "ApiLoginInvalid";
 
@@ -161,6 +164,102 @@ public sealed class OctorateApiClient(
         return [.. items.Select(ReadConnection).OfType<OctorateChannelConnection>()];
     }
 
+    public async Task<OctorateReservationPage> GetReservationsAsync(string accommodationId, OctorateReservationQuery query, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        var id = CheckedAccommodationId(accommodationId);
+        if (query.Page is < 0 or > OctorateReservationQuery.MaxPage)
+            throw new ArgumentOutOfRangeException(nameof(query), query.Page, $"The page is 0 to {OctorateReservationQuery.MaxPage}.");
+        if (query.PageSize is < 1 or > OctorateReservationQuery.MaxPageSize)
+            throw new ArgumentOutOfRangeException(nameof(query), query.PageSize, $"A page has 1 to {OctorateReservationQuery.MaxPageSize} reservations.");
+        if (query.To < query.From)
+            throw new ArgumentException("The last day of the list is not before its first day.", nameof(query));
+
+        var path = string.Create(
+            CultureInfo.InvariantCulture,
+            $"/rest/v1/reservation/{Uri.EscapeDataString(id)}?type={ReservationListTypeName(query.Type)}&startDate={query.From:yyyy-MM-dd}&endDate={query.To:yyyy-MM-dd}&size={query.PageSize}&page={query.Page}");
+        using var document = await GetJsonAsync(path, "reservations", ct);
+
+        // An answer that is not a list is an answer CasaZen cannot read, not a list with nothing in it: the caller must not read "no
+        // reservation" into it and mark a listing as read. An item that cannot be read is left out of the page but counted in it.
+        return OctorateReservationReader.ReadPage(document.RootElement) ?? throw new OctorateServerException(null);
+    }
+
+    public async Task<OctorateReservation> GetReservationAsync(string accommodationId, string reservationId, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+        using var document = await GetJsonAsync(
+            $"/rest/v1/reservation/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}", "reservation", ct);
+        return OctorateReservationReader.Read(Unwrap(document.RootElement), reservation) ?? throw new OctorateServerException(null);
+    }
+
+    public async Task<OctorateCalendarDay[]> GetCalendarAsync(
+        string accommodationId,
+        IReadOnlyCollection<string> productIds,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(productIds);
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var products = productIds.Select(p => CheckedId(p, nameof(productIds))).Distinct(StringComparer.Ordinal).ToList();
+        if (products.Count == 0)
+            throw new ArgumentException("A calendar read names at least one product.", nameof(productIds));
+        if (to < from)
+            throw new ArgumentException("The last day of the calendar is before its first day.", nameof(to));
+
+        var days = new List<OctorateCalendarDay>();
+        foreach (var chunk in products.Chunk(MaxCalendarProducts))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // `dateTo` is included, as Octorate documents it.
+            var path = string.Create(
+                CultureInfo.InvariantCulture,
+                $"/rest/v1/calendar/{Uri.EscapeDataString(accommodation)}?dateFrom={from:yyyy-MM-dd}&dateTo={to:yyyy-MM-dd}&products={Uri.EscapeDataString(string.Join(',', chunk))}");
+            using var document = await GetJsonAsync(path, "calendar", ct);
+
+            var read = OctorateCalendarReader.Read(document.RootElement, chunk);
+            if (read.Count == 0)
+            {
+                // A calendar with no day for a range that is not empty is an answer that was not understood: never an empty calendar.
+                logger.LogWarning(
+                    "Octorate calendar of org {OrgId}: no day could be read from the answer for {Products} products", orgScope.OrgId, chunk.Length);
+                throw new OctorateServerException(null);
+            }
+
+            days.AddRange(read);
+        }
+
+        return [.. days];
+    }
+
+    public async Task CancelReservationAsync(string accommodationId, string reservationId, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+        await SendAsync(
+            () => new HttpRequestMessage(
+                HttpMethod.Delete,
+                Address($"/rest/v1/reservation/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}")),
+            "reservation-cancel",
+            ct);
+    }
+
+    public async Task SetCheckInStatusAsync(string accommodationId, string reservationId, OctorateCheckInStatus status, CancellationToken ct)
+    {
+        var accommodation = CheckedAccommodationId(accommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+        var name = CheckInStatusName(status);
+        await SendAsync(
+            () => new HttpRequestMessage(
+                HttpMethod.Put,
+                Address($"/rest/v1/checkin/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}?status={name}")),
+            "checkin-status",
+            ct);
+    }
+
     public async Task<OctoratePortal[]> GetPortalsAsync(CancellationToken ct)
     {
         // A partner-level call: no org, the partner token, the bucket "platform". The answer is a bare array (v1) or {data: [...]}.
@@ -239,7 +338,8 @@ public sealed class OctorateApiClient(
                 var status = (int)response.StatusCode;
                 var body = await OctorateHttp.ReadBodyAsync(response, ct);
                 var elapsedMs = (long)timeProvider.GetElapsedTime(started).TotalMilliseconds;
-                if (response.IsSuccessStatusCode)
+                // 304: a PATCH or a PUT whose content is identical to what Octorate holds answers "not modified" (S25, D13): it is done.
+                if (response.IsSuccessStatusCode || status == 304)
                 {
                     logger.LogDebug(
                         "Octorate {Operation} for {Caller}: HTTP {StatusCode} in {ElapsedMs} ms", operation, caller.Label, status, elapsedMs);
@@ -321,6 +421,35 @@ public sealed class OctorateApiClient(
 
         return id;
     }
+
+    /// <summary>The id of a reservation or of a product, trimmed: never empty, never longer than <see cref="MaxAccommodationIdLength"/>.</summary>
+    internal static string CheckedId(string value, string parameterName)
+    {
+        var id = value?.Trim();
+        if (string.IsNullOrEmpty(id) || id.Length > MaxAccommodationIdLength)
+            throw new ArgumentException($"An id has 1 to {MaxAccommodationIdLength} characters.", parameterName);
+
+        return id;
+    }
+
+    /// <summary>The <c>type</c> of the list of reservations, as Octorate spells it.</summary>
+    internal static string ReservationListTypeName(OctorateReservationListType type) => type switch
+    {
+        OctorateReservationListType.ModifiedBetween => "MODIFIED_BETWEEN",
+        OctorateReservationListType.CreateTime => "CREATETIME",
+        OctorateReservationListType.Cancellation => "CANCELLATION",
+        OctorateReservationListType.Stay => "STAY",
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Not a kind of list of reservations."),
+    };
+
+    /// <summary>The <c>status</c> of the check-in status operation, as Octorate spells it.</summary>
+    internal static string CheckInStatusName(OctorateCheckInStatus status) => status switch
+    {
+        OctorateCheckInStatus.CheckInEnd => "CHECKIN_END",
+        OctorateCheckInStatus.CheckOutEnd => "CHECKOUT_END",
+        OctorateCheckInStatus.NoShow => "NO_SHOW",
+        _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Not a check-in status."),
+    };
 
     /// <summary>An accommodation of an answer, or <c>null</c> when the item has no usable id.</summary>
     internal static OctorateProperty? ReadProperty(JsonElement item)

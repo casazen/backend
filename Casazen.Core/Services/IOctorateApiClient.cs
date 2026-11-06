@@ -43,6 +43,37 @@ public interface IOctorateApiClient
     Task<OctorateChannelConnection[]> GetConnectionsAsync(string accommodationId, CancellationToken ct);
 
     /// <summary>
+    /// One page of the reservations of an accommodation (<c>GET /rest/v1/reservation/{acc}</c>, E02/F02/US01/T01): the kind of list,
+    /// the Rome dates, the page (from 0) and its size (at most 200). The list has the identification, the dates, the state and
+    /// <c>updateTime</c> of each reservation, not the payments nor the price breakdown (<see cref="GetReservationAsync"/> has them). An
+    /// item without a usable id is left out of the reservations of the page but counted in its <see cref="OctorateReservationPage.ItemCount"/>.
+    /// The list ends with a page that has no item at all, not with a short one: a server may serve fewer reservations than the size asked for.
+    /// </summary>
+    Task<OctorateReservationPage> GetReservationsAsync(string accommodationId, OctorateReservationQuery query, CancellationToken ct);
+
+    /// <summary>One reservation with its payments and price breakdown (<c>GET /rest/v1/reservation/{acc}/{id}</c>); 404 is <c>OctorateNotFoundException</c>.</summary>
+    Task<OctorateReservation> GetReservationAsync(string accommodationId, string reservationId, CancellationToken ct);
+
+    /// <summary>
+    /// The calendar of the given products of an accommodation from <paramref name="from"/> to <paramref name="to"/>, both included
+    /// (<c>GET /rest/v1/calendar/{acc}</c>, E02/F02/US01/T03; at most 20 products a call, more are asked in several calls). An answer that
+    /// holds no recognizable day for a non-empty range is <c>OctorateServerException</c>, never an empty calendar: a caller that deprecates
+    /// something after a successful read must not do it on an answer it could not read.
+    /// </summary>
+    Task<OctorateCalendarDay[]> GetCalendarAsync(
+        string accommodationId,
+        IReadOnlyCollection<string> productIds,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken ct);
+
+    /// <summary>Cancels a reservation (<c>DELETE /rest/v1/reservation/{acc}/{id}</c>): a change of the status to <c>CANCELLED</c> with <c>PATCH</c> answers 400.</summary>
+    Task CancelReservationAsync(string accommodationId, string reservationId, CancellationToken ct);
+
+    /// <summary>The state of the stay CasaZen owns (<c>PUT /rest/v1/checkin/{acc}/{id}?status=</c>): arrival, departure, no-show.</summary>
+    Task SetCheckInStatusAsync(string accommodationId, string reservationId, OctorateCheckInStatus status, CancellationToken ct);
+
+    /// <summary>
     /// The catalog of portals and tools Octorate offers (<c>GET /rest/v1/meta/portals</c>, E09/F01/US01/T02). A partner-level call: it acts
     /// for the application and carries no property data, so it needs no org in <see cref="IOctorateOrgScope"/>, uses the partner token
     /// (<see cref="IOctorateTokenService.GetPartnerAccessTokenAsync"/>) and takes its call from the rate-limit bucket <c>platform</c>, not an

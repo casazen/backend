@@ -50,6 +50,16 @@ public class PropertyIcalFeedDto
 
     /// <summary>Blocks imported by this feed.</summary>
     public int BlockCount { get; set; }
+
+    /// <summary>
+    /// The Octorate calendar of this feed's channel replaced the iCal import (E02/F02/US01/T03, ADR-002-R11, R12, R14): the feed is no longer
+    /// synced and its blocks are kept as they were, so the channels page can tell the host and advise removing CasaZen's iCal link in that
+    /// channel's own settings. The iCal export of the property goes on.
+    /// </summary>
+    public bool Deprecated { get; set; }
+
+    /// <summary>When the feed was deprecated (UTC); null while it is not.</summary>
+    public DateTime? DeprecatedAt { get; set; }
 }
 
 /// <summary>iCal state of a property: export link, all blocks, and the import feeds (PC-11).</summary>
@@ -123,6 +133,12 @@ public sealed class HostCalendarOverviewFeedDto
 
     /// <summary>A sync of the feed is queued or running (<c>LastImportStatus</c> is <c>Syncing</c>).</summary>
     public bool Syncing { get; init; }
+
+    /// <summary>
+    /// The Octorate calendar of the channel replaced this import (<see cref="PropertyIcalFeedDto.Deprecated"/>): the feed is no longer synced,
+    /// so the page does not mark it "to check" for a last try that is old.
+    /// </summary>
+    public bool Deprecated { get; init; }
 }
 
 /// <summary>
@@ -158,7 +174,10 @@ public class CalendarItemDto
     /// <summary><c>ical-block</c> only: label the host gave to the feed (e.g. "Booking.com - camera 2"), or null.</summary>
     public string? FeedLabel { get; set; }
 
-    /// <summary><c>ical-block</c> only: <c>ICalImport</c> or <c>Manual</c> (CO-21).</summary>
+    /// <summary>
+    /// <c>ical-block</c> only: <c>ICalImport</c>, <c>Manual</c> (CO-21) or <c>Octorate</c>, the nights the Octorate calendar holds closed
+    /// (E02/F02/US01/T03): it has no feed and no channel, the host cannot remove it and it is never turned into a stay.
+    /// </summary>
     public string? BlockSource { get; set; }
 
     /// <summary>

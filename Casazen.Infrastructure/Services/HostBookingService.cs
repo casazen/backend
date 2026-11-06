@@ -51,9 +51,16 @@ public sealed class HostBookingService(
 
         var current = await db.Bookings.AsNoTracking()
             .Where(b => b.Id == update.BookingId)
-            .Select(b => new { b.PropertyId, b.CheckInDate, b.CheckOutDate })
+            .Select(b => new { b.PropertyId, b.CheckInDate, b.CheckOutDate, b.OtaCommission, b.OtaNetAmount, b.OtaPaidAmount, b.OtaBalanceAmount })
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw BookingNotFound(update.BookingId);
+
+        // The amounts of the channel come from the channel manager and are never edited here (ADR-033-R3): refused before anything else is done.
+        if (update.OtaAmounts is { } sentAmounts
+            && sentAmounts.Edits(new OtaAmountsInput(current.OtaCommission, current.OtaNetAmount, current.OtaPaidAmount, current.OtaBalanceAmount)))
+        {
+            throw new DomainRuleException(BookingErrorCodes.OtaAmountsReadonly, "BookingOtaAmountsReadonly");
+        }
 
         // Abandoned checkout holds of the new dates are released first, as for a new booking (BK-21). Outside the
         // booking lock: the expiry takes its own locks and may call Stripe.

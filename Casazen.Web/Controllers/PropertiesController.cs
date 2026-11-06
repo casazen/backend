@@ -1231,6 +1231,7 @@ public class PropertiesController(
             LastErrorCode = code,
             LastError = message,
             Syncing = feed.LastImportStatus == PropertyICalImportStatus.Syncing,
+            Deprecated = feed.Deprecated,
         };
     }
 
@@ -1490,6 +1491,8 @@ public class PropertiesController(
             LastErrorCode = lastErrorCode,
             LastError = lastErrorMessage,
             BlockCount = blockCount,
+            Deprecated = feed.Deprecated,
+            DeprecatedAt = feed.DeprecatedAt,
         };
     }
 
