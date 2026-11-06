@@ -281,6 +281,50 @@ public sealed class OctorateApiClient(
             ct);
     }
 
+    public async Task CancelReservationAsync(OctorateBookingTarget target, string reservationId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        var accommodation = CheckedAccommodationId(target.AccommodationId);
+        var reservation = CheckedId(reservationId, nameof(reservationId));
+        var path = $"/rest/v1/reservation/{Uri.EscapeDataString(accommodation)}/{Uri.EscapeDataString(reservation)}";
+
+        // What Octorate holds now. A reservation that is cancelled already is done: the retry of a cancellation whose answer was lost sends
+        // nothing (Octorate has no idempotency key, D13). Otherwise this document is what the PUT sends back, with only its status changed.
+        string body;
+        using (var document = await GetJsonAsync(path, "reservation", ct))
+        {
+            var current = Unwrap(document.RootElement);
+            var held = OctorateReservationReader.Read(current, reservation) ?? throw new OctorateServerException(null);
+            if (held.Status == OctorateBookingStatus.Cancelled)
+                return;
+
+            body = OctorateReservationRequests.CancelBody(current, target);
+        }
+
+        // The documented path: PUT with the status CANCELLED (PATCH cannot move a confirmed reservation to cancelled).
+        try
+        {
+            await SendAsync(
+                () => new HttpRequestMessage(HttpMethod.Put, Address(path))
+                {
+                    Content = new StringContent(body, Encoding.UTF8, "application/json"),
+                },
+                "reservation-cancel",
+                ct);
+            return;
+        }
+        catch (OctorateRequestRejectedException refused)
+        {
+            // Octorate says the reservation cannot be cancelled that way (a refusal of the request itself): the way the sandbox proved is next.
+            logger.LogInformation(
+                "Octorate reservation-cancel for org {OrgId}: the status change was refused (HTTP {StatusCode}), the reservation is deleted instead",
+                orgScope.OrgId,
+                refused.OctorateStatusCode);
+        }
+
+        await SendAsync(() => new HttpRequestMessage(HttpMethod.Delete, Address(path)), "reservation-delete", ct);
+    }
+
     public async Task SetCheckInStatusAsync(string accommodationId, string reservationId, OctorateCheckInStatus status, CancellationToken ct)
     {
         var accommodation = CheckedAccommodationId(accommodationId);
