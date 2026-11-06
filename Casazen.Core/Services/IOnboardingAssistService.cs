@@ -26,7 +26,8 @@ public interface IOnboardingAssistService
     /// <summary>
     /// The host asks for help. Stores the request with the reference to the draft, marks the panel step (a panel context) as asked for, raises the
     /// "To do" and writes the line of the log. 409 <see cref="OnboardingAssistCodes.AlreadyOpen"/> when a request of the same part and property is
-    /// open; 409 <see cref="OnboardingAssistCodes.StepAlreadyDone"/> when the panel step is already done; 422 for a context that does not fit.
+    /// open (one that a failed call left without its "To do" gets it on that answer); 409 <see cref="OnboardingAssistCodes.StepAlreadyDone"/> when
+    /// the panel step is already done; 422 for a context that does not fit.
     /// </summary>
     Task<AssistRequestView> RequestAsync(HostScope scope, string userId, AssistRequestInput input, CancellationToken ct);
 

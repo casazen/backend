@@ -239,6 +239,47 @@ public class OnboardingAssistServiceTests : IAsyncLifetime
         Assert.Equal(3, await _db.OnboardingAssistRequests.CountAsync());
     }
 
+    /// <summary>
+    /// Proof (data): a request saved without its "To do" (the call failed between the two saves) is not left like that. The host that asks again is
+    /// told 409 as before and the "To do" is raised then, so the status is read behind it (AC-NF107-5); a "To do" that exists is linked again, never
+    /// a second one is made, and a request that has its "To do" is left alone.
+    /// </summary>
+    [Fact]
+    public async Task Request_AgainForARequestSavedWithoutItsTodo_Is409_AndRaisesTheTodo()
+    {
+        var service = HostService();
+        var input = Input(OnboardingPartKey.Channels, OnboardingAssistContexts.Part, _world.Granted.Id);
+        var first = await service.RequestAsync(_world.OrgWide, _world.OwnerUserId, input, Ct);
+
+        // The call failed after the first save: the request is there, its "To do" is not.
+        _db.InternalActivities.Remove(await _db.InternalActivities.SingleAsync(a => a.Id == first.ActivityId));
+        (await _db.OnboardingAssistRequests.SingleAsync()).ActivityId = null;
+        await _db.SaveChangesAsync();
+
+        var again = await Assert.ThrowsAsync<DomainConflictException>(() => service.RequestAsync(_world.OrgWide, _world.OwnerUserId, input, Ct));
+
+        Assert.Equal(OnboardingAssistCodes.AlreadyOpen, again.Code);
+        var healed = await _db.OnboardingAssistRequests.AsNoTracking().SingleAsync();
+        var todo = await _db.InternalActivities.AsNoTracking().SingleAsync();
+        Assert.Equal(todo.Id, healed.ActivityId);
+        Assert.Equal(OnboardingAssistCodes.TodoEntityType, todo.EntityType);
+        Assert.Equal(healed.Id, todo.EntityId);
+        Assert.Equal(OnboardingAssistCodes.ReasonRequested, todo.Reason);
+        Assert.Null(todo.CompletedAt);
+
+        // The link lost and the "To do" there: it is linked again, not duplicated.
+        (await _db.OnboardingAssistRequests.SingleAsync()).ActivityId = null;
+        await _db.SaveChangesAsync();
+        await Assert.ThrowsAsync<DomainConflictException>(() => service.RequestAsync(_world.OrgWide, _world.OwnerUserId, input, Ct));
+        Assert.Equal(todo.Id, (await _db.OnboardingAssistRequests.AsNoTracking().SingleAsync()).ActivityId);
+        Assert.Single(await _db.InternalActivities.ToListAsync());
+
+        // A request that has its "To do" is refused as before and changes nothing.
+        await Assert.ThrowsAsync<DomainConflictException>(() => service.RequestAsync(_world.OrgWide, _world.OwnerUserId, input, Ct));
+        Assert.Equal(todo.Id, (await _db.OnboardingAssistRequests.AsNoTracking().SingleAsync()).ActivityId);
+        Assert.Single(await _db.InternalActivities.ToListAsync());
+    }
+
     /// <summary>The draft of the host is referenced when it exists, by the wizard and the entity it edits, and never when it is another person's, expired or about another entity.</summary>
     [Fact]
     public async Task Request_ReferencesOnlyTheDraftOfTheHostThatExists()

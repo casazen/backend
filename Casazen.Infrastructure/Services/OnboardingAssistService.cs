@@ -81,11 +81,17 @@ public sealed class OnboardingAssistService(
         string? channelCode,
         CancellationToken ct)
     {
-        var opened = await db.OnboardingAssistRequests
-            .AsNoTracking()
-            .AnyAsync(r => r.OrgId == orgId && r.PartKey == part && r.PropertyId == propertyId && OpenStatuses.Contains(r.Status), ct);
-        if (opened)
+        var open = await db.OnboardingAssistRequests
+            .FirstOrDefaultAsync(r => r.OrgId == orgId && r.PartKey == part && r.PropertyId == propertyId && OpenStatuses.Contains(r.Status), ct);
+        if (open is not null)
+        {
+            // A request saved without its "To do" (the call failed between the two saves) gets it now: the host that asks again is told the request
+            // exists, as before, and finds its status behind a "To do" from then on. CreateAsync is idempotent: a "To do" that exists is linked.
+            if (open.ActivityId is null)
+                await RaiseTodoAsync(open, ct);
+
             throw AlreadyOpen();
+        }
 
         var now = Now();
 
@@ -150,6 +156,17 @@ public sealed class OnboardingAssistService(
         activityLog.Record(LogLine(orgId, OrgActivityType.OnboardingAssistRequested, userId, part, context, OnboardingAssistStatus.Requested));
         await db.SaveChangesAsync(ct);
 
+        await RaiseTodoAsync(request, ct);
+
+        logger.LogInformation(
+            "Assist request {RequestId} of org {OrgId} for part {Part} ({Context}) stored, To do {ActivityId}",
+            request.Id, orgId, OnboardingPartCatalog.Of(part).Code, context, request.ActivityId);
+        return ViewOf(request);
+    }
+
+    /// <summary>The host's "To do" of a request (codes and ids only), found again when it exists, and its id stored on the request (saved here).</summary>
+    private async Task RaiseTodoAsync(OnboardingAssistRequest request, CancellationToken ct)
+    {
         request.ActivityId = await activities.CreateAsync(
             new CreateTodoRequest
             {
@@ -158,17 +175,12 @@ public sealed class OnboardingAssistService(
                 EntityType = OnboardingAssistCodes.TodoEntityType,
                 EntityId = request.Id,
                 Urgency = ActivityUrgency.Medium,
-                PropertyId = propertyId,
-                OrgId = orgId,
+                PropertyId = request.PropertyId,
+                OrgId = request.OrgId,
                 Reason = OnboardingAssistCodes.ReasonRequested,
             },
             ct);
         await db.SaveChangesAsync(ct);
-
-        logger.LogInformation(
-            "Assist request {RequestId} of org {OrgId} for part {Part} ({Context}) stored, To do {ActivityId}",
-            request.Id, orgId, OnboardingPartCatalog.Of(part).Code, context, request.ActivityId);
-        return ViewOf(request);
     }
 
     public async Task<IReadOnlyList<AssistRequestView>> ListAsync(HostScope scope, CancellationToken ct)
