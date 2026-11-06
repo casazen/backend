@@ -31,7 +31,7 @@ namespace Casazen.Infrastructure.Octorate;
 /// whitelisted is an <see cref="OctorateAuthException"/>.</para>
 /// <para><b>Logs.</b> The operation, the org, Octorate's status and error type, the time: never a body, a token or a code.</para>
 /// </remarks>
-public sealed class OctorateApiClient(
+public sealed partial class OctorateApiClient(
     HttpClient httpClient,
     IOctorateTokenService tokenService,
     OctorateRateLimiter rateLimiter,
@@ -497,7 +497,8 @@ public sealed class OctorateApiClient(
         Func<HttpRequestMessage> createRequest,
         string operation,
         CancellationToken ct,
-        int? answerStatus = null)
+        int? answerStatus = null,
+        Func<int, string, OctorateException?>? translateError = null)
     {
         var orgId = orgScope.OrgId;
         var caller = new Caller(
@@ -505,21 +506,25 @@ public sealed class OctorateApiClient(
             token => tokenService.GetAccessTokenAsync(orgId, token),
             (rejected, token) => tokenService.RefreshRejectedTokenAsync(orgId, rejected, token),
             () => rateLimiter.TryAcquireAsync(orgId));
-        return await SendAsync(createRequest, operation, caller, ct, answerStatus);
+        return await SendAsync(createRequest, operation, caller, ct, answerStatus, translateError);
     }
 
     /// <summary>
     /// One partner-level call (the application's own, no org): the partner token, a refused partner token renewed once, and a call from the
     /// bucket <see cref="OctorateRateLimiter.PlatformKey"/>. Otherwise the same as <see cref="SendAsync(Func{HttpRequestMessage}, string, CancellationToken)"/>.
     /// </summary>
-    private Task<OctorateAnswer> SendAsPlatformAsync(Func<HttpRequestMessage> createRequest, string operation, CancellationToken ct)
+    private Task<OctorateAnswer> SendAsPlatformAsync(
+        Func<HttpRequestMessage> createRequest,
+        string operation,
+        CancellationToken ct,
+        Func<int, string, OctorateException?>? translateError = null)
     {
         var caller = new Caller(
             OctorateRateLimiter.PlatformKey,
             tokenService.GetPartnerAccessTokenAsync,
             tokenService.RefreshRejectedPartnerTokenAsync,
             rateLimiter.TryAcquirePlatformAsync);
-        return SendAsync(createRequest, operation, caller, ct);
+        return SendAsync(createRequest, operation, caller, ct, translateError: translateError);
     }
 
     /// <summary>The call itself, for whoever <paramref name="caller"/> is: its token, its bucket, its refresh of a refused token.</summary>
@@ -528,7 +533,8 @@ public sealed class OctorateApiClient(
         string operation,
         Caller caller,
         CancellationToken ct,
-        int? answerStatus = null)
+        int? answerStatus = null,
+        Func<int, string, OctorateException?>? translateError = null)
     {
         var token = await caller.GetTokenAsync(ct);
         var tokenRefreshed = false;
@@ -594,6 +600,10 @@ public sealed class OctorateApiClient(
                     tokenRefreshed = true;
                     continue;
                 }
+
+                // An operation may give a status its own meaning (the refused data of a new accommodation, an unknown network) before the generic mapping.
+                if (translateError?.Invoke(status, body) is { } translated)
+                    throw translated;
 
                 throw ErrorOf(status, errorType, body);
             }

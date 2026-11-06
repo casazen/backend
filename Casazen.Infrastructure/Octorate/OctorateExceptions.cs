@@ -1,3 +1,4 @@
+using Casazen.Core.Services;
 using Microsoft.AspNetCore.Http;
 
 namespace Casazen.Infrastructure.Octorate;
@@ -119,3 +120,22 @@ public sealed class OctorateOAuthStateInvalidException()
 /// </summary>
 public sealed class OctorateExchangeFailedException(int? octorateStatusCode, Exception? innerException = null)
     : OctorateException("octorate_exchange_failed", "OctorateExchangeFailed", StatusCodes.Status502BadGateway, octorateStatusCode, innerException);
+
+/// <summary>
+/// Octorate refused the data of an accommodation CasaZen asked it to create (E02/F03/US01/T06): 400 <c>ApiParamsExemption</c>, with the fields it
+/// names (<c>machine_name</c> and message). The creator turns it into 422 <c>octorate_property_invalid</c> with the fields, so the wizard shows them
+/// on the step that owns each one. The message of the exception names the code only: the fields carry the names Octorate gave, never a value.
+/// </summary>
+public sealed class OctoratePropertyRejectedException(IReadOnlyList<OctorateFieldError> fields)
+    : OctorateException("octorate_property_invalid", "OctoratePropertyInvalid", StatusCodes.Status422UnprocessableEntity, StatusCodes.Status400BadRequest)
+{
+    /// <summary>The fields Octorate refused.</summary>
+    public IReadOnlyList<OctorateFieldError> Fields { get; } = fields;
+}
+
+/// <summary>
+/// The network named for a new accommodation is not one Octorate knows (E02/F03/US01/T06): 412. The new accommodation was not created; the host
+/// connects the account again.
+/// </summary>
+public sealed class OctorateNetworkUnknownException()
+    : OctorateException("octorate_network_unknown", "OctorateNetworkUnknown", StatusCodes.Status409Conflict, StatusCodes.Status412PreconditionFailed);
