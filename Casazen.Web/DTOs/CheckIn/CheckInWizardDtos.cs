@@ -10,6 +10,8 @@ namespace Casazen.Web.DTOs.CheckIn;
 /// <summary>
 /// The host wizard "Guest check-in" (<c>GET api/bookings/{id}/checkin-wizard</c>, E03/F01/US01/T04): the six steps from one answer. The
 /// document numbers are masked; the full ones stay on <c>GET api/alloggiati/{bookingId}/stay-guests/document-numbers</c> (guest.read, audited).
+/// The reason of a tourist tax exemption (on the guests and on the tax) is shown only to a caller who holds <c>guest.read</c>: it can reveal a
+/// health condition (art. 9 GDPR), and the accountant role reads the bookings without it.
 /// </summary>
 public sealed class CheckInWizardStateDto
 {
@@ -39,7 +41,12 @@ public sealed class CheckInWizardStateDto
     /// <summary><c>guests</c>, <c>documents</c>, <c>checks</c>, <c>tax</c>, <c>send</c> or <c>result</c>: the first step with something to do.</summary>
     public string SuggestedStep { get; init; } = CheckInWizardSteps.Guests;
 
-    public static CheckInWizardStateDto From(CheckInState state) => new()
+    /// <param name="state">What the six steps show.</param>
+    /// <param name="includeExemptionCodes">
+    /// False for a caller who does not hold <c>guest.read</c>: the reason of a tourist tax exemption (on the guests and on the tax) can reveal a
+    /// health condition (art. 9 GDPR), so it is <c>null</c>, as the full document numbers are not shown either.
+    /// </param>
+    public static CheckInWizardStateDto From(CheckInState state, bool includeExemptionCodes) => new()
     {
         Booking = new CheckInWizardBookingDto
         {
@@ -55,10 +62,10 @@ public sealed class CheckInWizardStateDto
             NoShowAt = state.Booking.NoShowAt,
         },
         Attendance = state.Attendance,
-        Guests = state.Guests.Select(CheckInWizardGuestDto.From).ToList(),
+        Guests = state.Guests.Select(guest => CheckInWizardGuestDto.From(guest, includeExemptionCodes)).ToList(),
         RequiredGuestFields = state.RequiredGuestFields,
         Issues = state.Issues.Select(CheckInIssueDto.From).ToList(),
-        Tax = state.Tax is { } tax ? StayTouristTaxDto.From(tax) : null,
+        Tax = state.Tax is { } tax ? StayTouristTaxDto.From(tax, includeExemptionCodes) : null,
         Sender = new CheckInWizardSenderDto
         {
             AlloggiatiSender = state.Sender.AlloggiatiSender,
@@ -141,12 +148,12 @@ public sealed class CheckInWizardGuestDto
     public string? TravelWay { get; init; }
     public string? EducationLevel { get; init; }
 
-    /// <summary>The host's exemption of the tourist tax (a reason code), if any.</summary>
+    /// <summary>The host's exemption of the tourist tax (a reason code), if any; <c>null</c> for a caller without <c>guest.read</c>.</summary>
     public string? TaxExemptionCode { get; init; }
 
     public StayGuestDataSource DataSource { get; init; }
 
-    public static CheckInWizardGuestDto From(StayGuest guest) => new()
+    public static CheckInWizardGuestDto From(StayGuest guest, bool includeExemptionCode) => new()
     {
         Saved = guest.Id != Guid.Empty,
         Position = guest.Position,
@@ -179,7 +186,7 @@ public sealed class CheckInWizardGuestDto
         TourismType = guest.TourismType,
         TravelWay = guest.TravelWay,
         EducationLevel = guest.EducationLevel,
-        TaxExemptionCode = guest.TaxExemptionCode,
+        TaxExemptionCode = includeExemptionCode ? guest.TaxExemptionCode : null,
         DataSource = guest.DataSource,
     };
 }
@@ -272,7 +279,9 @@ public sealed class CheckInConfirmationDto
     public CheckInAlloggiatiNextDto Alloggiati { get; init; } = new();
     public CheckInWizardStateDto State { get; init; } = new();
 
-    public static CheckInConfirmationDto From(CheckInConfirmation confirmation) => new()
+    /// <param name="confirmation">What the confirmation did.</param>
+    /// <param name="includeExemptionCodes">As in <see cref="CheckInWizardStateDto.From"/>: false for a caller without <c>guest.read</c>.</param>
+    public static CheckInConfirmationDto From(CheckInConfirmation confirmation, bool includeExemptionCodes) => new()
     {
         Tax = new CheckInTaxOutcomeDto { Saved = confirmation.Tax.Saved, Reason = confirmation.Tax.Reason },
         Octorate = new CheckInOctorateOutcomeDto
@@ -284,7 +293,7 @@ public sealed class CheckInConfirmationDto
             Guests = confirmation.Octorate.Guests,
         },
         Alloggiati = new CheckInAlloggiatiNextDto { Step = confirmation.Alloggiati.Step, Sender = confirmation.Alloggiati.Sender },
-        State = CheckInWizardStateDto.From(confirmation.State),
+        State = CheckInWizardStateDto.From(confirmation.State, includeExemptionCodes),
     };
 }
 

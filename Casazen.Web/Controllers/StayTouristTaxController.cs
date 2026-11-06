@@ -32,7 +32,8 @@ public class StayTouristTaxController(
         if (!await CanUseBookingAsync(bookingId, BookingOperations.Read, cancellationToken))
             return BookingNotFound();
 
-        return Ok(StayTouristTaxDto.From(await stayTouristTax.GetAsync(bookingId, cancellationToken)));
+        var view = await stayTouristTax.GetAsync(bookingId, cancellationToken);
+        return Ok(StayTouristTaxDto.From(view, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
     /// <summary>The exemptions the host chooses for the guests (a null code clears one); 422 for an unknown reason or position.</summary>
@@ -56,7 +57,7 @@ public class StayTouristTaxController(
             request.Exemptions.Select(e => new GuestExemption(e.Position, e.Code)).ToList(),
             userId,
             cancellationToken);
-        return Ok(StayTouristTaxDto.From(view));
+        return Ok(StayTouristTaxDto.From(view, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
     /// <summary>Who collected the tax of a channel stay whose comune has no channel rule; 422 <c>tax_collector_not_applicable</c> otherwise.</summary>
@@ -75,7 +76,8 @@ public class StayTouristTaxController(
         if (User.GetUserId() is not { Length: > 0 } userId)
             return Unauthorized();
 
-        return Ok(StayTouristTaxDto.From(await stayTouristTax.SetCollectorAsync(bookingId, request.Collector, userId, cancellationToken)));
+        var view = await stayTouristTax.SetCollectorAsync(bookingId, request.Collector, userId, cancellationToken);
+        return Ok(StayTouristTaxDto.From(view, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
     /// <summary>Confirms the tax of the stay (the record kept 10 years); 422 <c>tax_not_calculable</c> while no amount is known.</summary>
@@ -92,7 +94,8 @@ public class StayTouristTaxController(
         if (User.GetUserId() is not { Length: > 0 } userId)
             return Unauthorized();
 
-        return Ok(StayTouristTaxDto.From(await stayTouristTax.ConfirmAsync(bookingId, userId, cancellationToken)));
+        var view = await stayTouristTax.ConfirmAsync(bookingId, userId, cancellationToken);
+        return Ok(StayTouristTaxDto.From(view, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
     /// <summary>The comune of the property for its tourist tax and the rate the org declared for it.</summary>
@@ -142,6 +145,17 @@ public class StayTouristTaxController(
         logger.LogWarning(
             "User {UserId} denied {Permission} on the tourist tax of booking {BookingId}", User.GetUserId(), operation.PermissionKey, bookingId);
         return false;
+    }
+
+    /// <summary>
+    /// Whether the caller holds <c>guest.read</c> on the property of the booking. The reason of an exemption can reveal a health condition (art. 9
+    /// GDPR): like the full document numbers it is shown only to them, and is <c>null</c> for the others (the accountant role holds
+    /// <c>booking.read</c> without <c>guest.read</c>).
+    /// </summary>
+    private async Task<bool> CanReadGuestsAsync(Guid bookingId, CancellationToken cancellationToken)
+    {
+        var resource = await hostResources.ForBookingAsync(bookingId, cancellationToken);
+        return resource is not null && await authorizationService.IsAuthorizedAsync(User, resource, GuestOperations.Read);
     }
 
     /// <summary>TN-3: the property is visible (tenant filter) and the caller has <paramref name="operation"/> on it.</summary>

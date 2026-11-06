@@ -50,7 +50,8 @@ public class CheckInWizardController(
         if (!await CanUseBookingAsync(bookingId, BookingOperations.Read, cancellationToken))
             return BookingNotFound();
 
-        return Ok(CheckInWizardStateDto.From(await wizard.GetStateAsync(bookingId, cancellationToken)));
+        var state = await wizard.GetStateAsync(bookingId, cancellationToken);
+        return Ok(CheckInWizardStateDto.From(state, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
     /// <summary>
@@ -83,7 +84,7 @@ public class CheckInWizardController(
             return ValidationProblem(ModelState);
         }
 
-        return Ok(CheckInWizardStateDto.From(result.State!));
+        return Ok(CheckInWizardStateDto.From(result.State!, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
     /// <summary>
@@ -135,7 +136,8 @@ public class CheckInWizardController(
         if (User.GetUserId() is not { Length: > 0 } userId)
             return Unauthorized();
 
-        return Ok(CheckInConfirmationDto.From(await wizard.ConfirmAsync(bookingId, userId, cancellationToken)));
+        var confirmation = await wizard.ConfirmAsync(bookingId, userId, cancellationToken);
+        return Ok(CheckInConfirmationDto.From(confirmation, await CanReadGuestsAsync(bookingId, cancellationToken)));
     }
 
     /// <summary>
@@ -167,6 +169,17 @@ public class CheckInWizardController(
         logger.LogWarning(
             "User {UserId} denied {Permission} on the check-in wizard of booking {BookingId}", User.GetUserId(), operation.PermissionKey, bookingId);
         return false;
+    }
+
+    /// <summary>
+    /// Whether the caller holds <c>guest.read</c> on the property of the booking. The reason of a tourist tax exemption can reveal a health
+    /// condition (art. 9 GDPR): like the full document numbers it is shown only to them, and is <c>null</c> for the others (the accountant role
+    /// holds <c>booking.read</c> without <c>guest.read</c>).
+    /// </summary>
+    private async Task<bool> CanReadGuestsAsync(Guid bookingId, CancellationToken cancellationToken)
+    {
+        var resource = await hostResources.ForBookingAsync(bookingId, cancellationToken);
+        return resource is not null && await authorizationService.IsAuthorizedAsync(User, resource, GuestOperations.Read);
     }
 
     private ObjectResult BookingNotFound() =>

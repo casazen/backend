@@ -48,7 +48,12 @@ public sealed class StayTouristTaxDto
     /// <summary>The confirmed tax no longer matches the stay (rates, guests, exemptions or collector changed since).</summary>
     public bool Stale { get; init; }
 
-    public static StayTouristTaxDto From(StayTouristTaxView view) => new()
+    /// <param name="view">The tax of the stay.</param>
+    /// <param name="includeExemptionCodes">
+    /// False for a caller who does not hold <c>guest.read</c>: the reason of an exemption can reveal a health condition (art. 9 GDPR), so its code
+    /// is <c>null</c> (the kind of the exemption and the amount stay).
+    /// </param>
+    public static StayTouristTaxDto From(StayTouristTaxView view, bool includeExemptionCodes) => new()
     {
         BookingId = view.BookingId,
         Status = view.Status,
@@ -70,7 +75,7 @@ public sealed class StayTouristTaxDto
             TaxableNights = g.TaxableNights,
             Amount = g.Amount,
             ExemptionKind = g.ExemptionKind,
-            ExemptionCode = g.ExemptionCode,
+            ExemptionCode = includeExemptionCodes ? g.ExemptionCode : null,
         }).ToList(),
         Reasons = view.Reasons.Select(r => new TouristTaxExemptionReasonDto { Code = r.Code, LabelKey = r.LabelKey }).ToList(),
         ConfirmedAt = view.ConfirmedAt,
@@ -91,6 +96,7 @@ public sealed class StayTouristTaxGuestDto
     /// <summary><c>None</c>, <c>Age</c> (automatic) or <c>Host</c> (a reason the host chose).</summary>
     public TouristTaxExemptionKind ExemptionKind { get; init; }
 
+    /// <summary>The reason of the exemption; <c>null</c> for a caller without <c>guest.read</c> (it can reveal a health condition).</summary>
     public string? ExemptionCode { get; init; }
 }
 
