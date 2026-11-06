@@ -403,6 +403,22 @@ public class ExistingInventoryImportServiceTests
     // ─── The rules around them ────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
+    public async Task ExistingInventoryImport_RoomImportStoresEachConnectionAsANewRow_Test()
+    {
+        // The items of a channel the context already tracks are inserted, not updated: a row that is not there cannot be updated.
+        var h = new Harness();
+        await h.SeedAsync(verified: true);
+        var view = await h.RunToRoomsAsync();
+
+        Assert.Equal(OctorateInventoryImportStatus.AwaitingMapping, view.Channels[0].Status);
+        await using var db = h.NewDb();
+        var items = await db.OctorateInventoryImportItems.AsNoTracking().OrderBy(i => i.OctorateConnectionId).ToListAsync();
+        Assert.Equal(new[] { "501", "502" }, items.Select(i => i.OctorateConnectionId).ToArray());
+        Assert.All(items, item => Assert.NotNull(item.RoomsImportedAt));
+        Assert.Equal(2, items.Select(i => i.Id).Distinct().Count());
+    }
+
+    [Fact]
     public async Task ExistingInventoryImport_LeftForLaterRowIsNeverMarkedConnected_Test()
     {
         var h = new Harness();

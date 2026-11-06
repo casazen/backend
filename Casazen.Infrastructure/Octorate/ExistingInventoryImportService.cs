@@ -763,7 +763,7 @@ public sealed class ExistingInventoryImportService(
             if (row is not null && Decide(probe, row, NoIds, intents, scopeIds) is ItemDecision.Rejected or ItemDecision.OutOfScope)
                 continue;
 
-            channel.Items.Add(new OctorateInventoryImportItem
+            var item = new OctorateInventoryImportItem
             {
                 OrgId = batch.OrgId,
                 ChannelId = channel.Id,
@@ -771,7 +771,13 @@ public sealed class ExistingInventoryImportService(
                 OctorateConnectionId = connection.Id,
                 CreatedAt = now,
                 UpdatedAt = now,
-            });
+            };
+
+            // The id is set before the save, so a row met only through the collection of a tracked channel would be taken for an existing
+            // one and saved as an UPDATE of a row that is not there: the item is added to the context itself, then to the collection.
+            db.OctorateInventoryImportItems.Add(item);
+            if (!channel.Items.Contains(item))
+                channel.Items.Add(item);
         }
 
         channel.UpdatedAt = now;
