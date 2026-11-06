@@ -113,6 +113,7 @@ internal static class OctorateReservationReader
             TouristTax = OctorateJson.Decimal(item, "touristTax"),
             TotalPaid = OctorateJson.Decimal(item, "totalPaid"),
             PaymentStatus = OctorateJson.Text(item, "paymentStatus"),
+            CompanyCollect = CompanyCollectOf(OctorateJson.Text(item, "companyCollect")),
             PriceBreakdown = PriceBreakdownOf(item),
             PaymentTransactions = PaymentTransactionsOf(item),
         };
@@ -149,6 +150,18 @@ internal static class OctorateReservationReader
         "WAITING" => OctorateBookingStatus.Waiting,
         "CONFIRMED" => OctorateBookingStatus.Confirmed,
         "CANCELLED" or "CANCELED" => OctorateBookingStatus.Cancelled,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The <c>companyCollect</c> Octorate wrote, in upper case (the OpenAPI spells one value <c>HOTEl</c>): one of <c>COMPANY</c>, <c>HOTEL</c>, <c>NONE</c>.
+    /// <c>null</c> for no value and for a word that is none of the three, so something CasaZen does not understand is never taken for an answer.
+    /// </summary>
+    internal static string? CompanyCollectOf(string? text) => text?.Trim().ToUpperInvariant() switch
+    {
+        OctorateReservation.CompanyCollectCompany => OctorateReservation.CompanyCollectCompany,
+        OctorateReservation.CompanyCollectHotel => OctorateReservation.CompanyCollectHotel,
+        "NONE" => "NONE",
         _ => null,
     };
 

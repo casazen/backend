@@ -726,6 +726,12 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)");
 
+                    b.Property<bool?>("OtaCommissionIncludedInPayments")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("OtaCompanyCollect")
+                        .HasColumnType("boolean");
+
                     b.Property<decimal?>("OtaNetAmount")
                         .HasPrecision(10, 2)
                         .HasColumnType("numeric(10,2)");
