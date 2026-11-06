@@ -27,7 +27,8 @@ While the flag is off `GET /api/public/features` answers `"crmMarketing": false`
 |---|---|---|---|
 | `Features__CrmMarketing` | no | unset (off) | The switch of § 1. Missing or anything but `true` is off. Test: the product owner turns it on when he wants to try the module; production: leave it unset |
 | `Crm__ContactIndexKey` | to turn the flag on (startup); advised before that on every environment but production (§ 3) | none | The secret of the keyed index of the contacts and of the suppression list: at least 32 random characters. With the flag on, outside Development and Testing, the application **does not start** without it, and **only then**: with the flag off it starts, and the withdrawal the host records is saved without its suppression (§ 3). A key that is set and shorter than 32 characters stops the startup whatever the flag. In Development and Testing a fixed public key stands in and the log says so once |
-| `Crm__OctorateContactsEnabled` | no | `false` | Reads the contacts of the guests from Octorate, one booking at a time (`crm-octorate-contacts.md`). The product owner turns it on once the static IP addresses are whitelisted by Octorate |
+| `Crm__OctorateContactsEnabled` | no | `false` | Reads the contacts of the guests from Octorate, one booking at a time (`crm-octorate-contacts.md`). The product owner turns it on once the static IP addresses are whitelisted by Octorate. It reads nothing while the module of this page is closed (`Features__CrmMarketing` off or no `Crm__ContactIndexKey`): the contacts are stored by the CRM |
+| `Crm__OctorateContactReadsPerHour` | no | `50` | The most bookings one org may have their guest contacts read from Octorate in an hour (1 to 500; out of range: startup fails). A booking over the cap is read by the next call that needs it, after the hour ([`crm-octorate-contacts.md`](crm-octorate-contacts.md) § 3). Counted in memory: **one API instance only** while `Crm__OctorateContactsEnabled` is on |
 | `Crm__BookingEngineSoftOptIn` | no | `false` | A customer of the booking engine of the agency's own site becomes a contact on soft opt-in for a confirmed booking. Turning it on is the product owner's declaration that the terms of Octorate allow it (D24) and that the privacy notice is shown at the booking (D34) |
 | `Crm__OtaForwardDomains__0`, `__1`… | no | empty | Bare host names (`guest.example.com`: no scheme, no path, no port, no address) of the relay addresses the OTAs give to their guests. An address on one of them is an OTA forward: service only, never marketing. **Empty on purpose**: no relay domain has been confirmed against the Octorate sandbox (it answers the flags `emailAvailable` and `phoneAvailable`, not the addresses). Add a domain only after seeing it in a real booking. An entry that is not a bare host name stops the startup outside Development and Testing |
 | `Crm__ConfirmationLinkValidityHours`, `Crm__ConfirmationMaxSends` | no | `72`, `3` | How long a double opt-in link works (1 to 720 hours) and how many confirmation messages one contact gets (1 to 10). Out of range: startup fails |
@@ -47,9 +48,9 @@ with `Suppliers__CustomerIndexKey`, [`suppliers.md`](suppliers.md) § 23).
 - **Never change it once a contact or a suppression entry exists.** Every hash already stored would stop matching: the same person would become a
   new contact, and **a person who opted out would stop being found by the suppression list and could be written to again**. There is no rotation;
   losing the key is losing the index (the legacy plain SHA-256 entries of the suppression list keep working, the keyed ones do not).
-- **Set it on every environment before turning the module on, and as soon as you can — except production, until E07/F06/US02/T01 (erasure and
-  anonymization of the CRM contacts) is delivered**: there neither the key nor the flag is set ([`crm-profiles.md`](crm-profiles.md) § 4.4,
-  [`deploy-checklist.md`](deploy-checklist.md)), and the known risk below stays open. The startup asks for it only with the flag on: a missing
+- **Set it on every environment before turning the module on, and as soon as you can — except production, until the product owner decides**
+  (the erasure and the anonymization of the CRM contacts, E07/F06/US02/T01, are delivered: [`gdpr.md`](gdpr.md) § 13): there neither the key nor
+  the flag is set for now ([`crm-profiles.md`](crm-profiles.md) § 4.4, [`deploy-checklist.md`](deploy-checklist.md)), and the known risk below stays open. The startup asks for it only with the flag on: a missing
   key must not stop production, where the module is off, and the legal record of a withdrawal is made whatever the flag and the key say. Without
   the key (flag off, outside Development and Testing):
   - **the withdrawal that the host records on a guest's request is saved as before**: `PUT api/gdpr/guests/{id}/consent` answers 204, with the
@@ -78,9 +79,9 @@ with `Suppliers__CustomerIndexKey`, [`suppliers.md`](suppliers.md) § 23).
 Production: leave `Features__CrmMarketing` unset until the product owner decides, after the checks of NF-95 on the test environment (the keyed
 suppression list, the signed link with its page, the GDPR export and erasure, the recipients from the per-channel consents). **Set
 `Crm__ContactIndexKey` in test and in production before turning `CrmMarketing` on** (with the flag on and no key the service does not start), and
-before that if you want the withdrawals the hosts record to enter the suppression list (§ 3). **Both rules wait for E07/F06/US02/T01** (erasure and
-anonymization of the CRM contacts): the CRM sync copies e-mail, phone, name and a keyed hash of the birth date of the bookers into tables that the
-erasure of the guests does not reach yet, so until that task is delivered production gets **neither the key nor the flag**.
+before that if you want the withdrawals the hosts record to enter the suppression list (§ 3). **Both rules wait for the product owner's decision**: the CRM
+sync copies e-mail, phone, name and a keyed hash of the birth date of the bookers into tables that the erasure of the guests reaches since
+E07/F06/US02/T01 ([`gdpr.md`](gdpr.md) § 13), and until he decides production gets **neither the key nor the flag**.
 
 ## 5. Suppression (E07/F06/US01/T02)
 

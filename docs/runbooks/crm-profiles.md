@@ -25,8 +25,8 @@ event handler, the job and the demo seed run only with `Features__CrmMarketing` 
 ([`crm-marketing.md`](crm-marketing.md) § 3), set (`CrmProfileSyncGate`); with either missing they do nothing and say so in the log (§ 4.4). The
 reason is privacy: the sync copies the e-mail, the phone and the name of the bookers, and a keyed hash of the birth date, into `GuestContacts`,
 `GuestCrmProfiles` and `GuestMergeCandidates`, which the erasure, the anonymization and the retention of the guests (`GdprService`,
-`GuestDataEraser`, `GuestDataRetentionService`) do not reach yet: that is task E07/F06/US02/T01. **Until it is delivered, neither the key nor the
-flag is set in production** ([`deploy-checklist.md`](deploy-checklist.md)).
+`GuestDataEraser`, `GuestDataRetentionService`) reach since task E07/F06/US02/T01 ([`gdpr.md`](gdpr.md) § 13). **Neither the key nor the flag is set
+in production until the product owner decides** ([`deploy-checklist.md`](deploy-checklist.md)).
 
 ## 2. Matching: who is the same guest (T01)
 
@@ -181,7 +181,9 @@ Builds the contacts of one guest from what CasaZen already has and links them to
 2. the **phone number** of the guest record, service only (a phone of an OTA booking is a number like another: only an e-mail address is a forward);
 3. the **per-channel consents of the check-in** (`MarketingConsentRecord`): the marketing e-mail is a consent (typed at the check-in, so it does not arrive
    with the booking: only its domain can make it a forward), **confirmed only when the guest confirmed it** (the record keeps a flag, not a time: the
-   time of the confirmation is the time the sync learned of it); WhatsApp is a consent on the phone of the guest;
+   time of the confirmation is the time the sync learned of it); WhatsApp is a consent on the phone of the guest. **A consent given before the last end of
+   the guest's marketing consent (an `Expired` event of the retention, a `Withdrawn` one) is not read again** (the record stays as proof, but the sync
+   would give back what the end took away); one given after it counts;
 4. the **old yes/no flag** (`Guest.MarketingConsent`, set by the old check-in and checkout): a consent on the e-mail of the guest, **unconfirmed**, so
    **not marketable until confirmed**, with the details of the latest marketing consent of the privacy history when there is one.
 
@@ -247,8 +249,9 @@ With `Features__CrmMarketing` off, or `Crm__ContactIndexKey` not configured (`Cr
 [`crm-marketing.md`](crm-marketing.md) § 3), the sync is closed: the job ends at once with one line (`CRM profile sync skipped: Features:CrmMarketing is
 off or Crm:ContactIndexKey is not configured`) and does not fail, the event handler does nothing, and the demo reset skips the CRM profiles. The gate is asked
 at every run and at every event. **No profile and no contact is created in an environment until its flag is on and its key is set**; neither alone opens it
-(the keyed index also serves the suppression list of a withdrawal, so a key can exist for that). **Production stays closed until E07/F06/US02/T01 (erasure
-and anonymization of the CRM contacts) is delivered**: no key and no flag there ([`deploy-checklist.md`](deploy-checklist.md)).
+(the keyed index also serves the suppression list of a withdrawal, so a key can exist for that). **Production stays closed until the product owner decides**
+(the erasure and the anonymization of the CRM contacts, E07/F06/US02/T01, are delivered: [`gdpr.md`](gdpr.md) § 13): no key and no flag there
+([`deploy-checklist.md`](deploy-checklist.md)).
 
 ### 4.5 The demo showcase
 
@@ -311,4 +314,6 @@ else: basis, confirmation, suppression, version and times are untouched, no cont
 computes the aggregates of the survivor again, leaves the other profile as a tombstone (`MergedIntoProfileId`; the lists, the scope and the segments
 skip it, the matching follows it) and moves the other open proposals of that profile to the survivor, or drops those that would repeat a pair. Both
 run under the advisory lock of the org, so a double click decides once; the second one is 409 `crm_merge_not_proposed` and changes nothing
-(`CrmMergeProofTests`). There is no undo: a wrong merge is fixed by hand in the database.
+(`CrmMergeProofTests`). There is no undo: a wrong merge is fixed by hand in the database. The tombstone keeps what the profile held, so **the
+erasure and the export of a guest follow it**, chains of merges included: it is deleted with the survivor, or emptied down to its pointer when other
+guests keep the survivor ([`gdpr.md`](gdpr.md) § 13).

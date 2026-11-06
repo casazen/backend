@@ -65,6 +65,15 @@ public interface IOctorateApiClient
     Task<OctorateReservation> GetReservationAsync(string accommodationId, string reservationId, CancellationToken ct);
 
     /// <summary>
+    /// The e-mail address and the phone number of one guest of the guest registry of an accommodation (<c>POST /rest/v1/guests/{acc}/{guestId}/contactInfo</c>,
+    /// E07/F06/US02/T02, S24). Sensitive data: Octorate gives it only to an application with the dedicated permission and, even in the sandbox, only from the
+    /// static IP addresses registered with it (S7, S18, D24), and logs every read. So it is asked for one guest of one booking at a time, never in bulk
+    /// (<see cref="IOctorateContactsService"/>), and nothing of the answer is ever logged. A 401 or a 403 (no static IP, no permission) is
+    /// <c>OctorateSensitiveDataNotAllowedException</c>, never an empty result: a caller must not read "no contact" into a refusal.
+    /// </summary>
+    Task<OctorateGuestContactInfo> GetGuestContactInfoAsync(string accommodationId, string guestId, CancellationToken ct);
+
+    /// <summary>
     /// The calendar of the given products of an accommodation from <paramref name="from"/> to <paramref name="to"/>, both included
     /// (<c>GET /rest/v1/calendar/{acc}</c>, E02/F02/US01/T03; at most 20 products a call, more are asked in several calls). An answer that
     /// holds no recognizable day for a non-empty range is <c>OctorateServerException</c>, never an empty calendar: a caller that deprecates

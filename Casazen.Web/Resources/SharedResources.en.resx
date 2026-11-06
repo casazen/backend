@@ -4247,6 +4247,9 @@
   <data name="OctorateAuthFailed" xml:space="preserve">
     <value>The channel manager refused CasaZen's access. Try again later; if it happens again, connect the account again.</value>
   </data>
+  <data name="OctorateSensitiveDataNotAllowed" xml:space="preserve">
+    <value>The channel manager did not give the contact details of the guests: this data is only released to the registered CasaZen server addresses and with a dedicated permission, which are not active yet.</value>
+  </data>
   <data name="OctorateUnavailable" xml:space="preserve">
     <value>The channel manager is not answering right now. Try again in a few minutes.</value>
   </data>
