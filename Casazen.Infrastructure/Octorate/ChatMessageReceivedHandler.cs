@@ -21,8 +21,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// the thread in the service, ADR-022-R7): one message and one event however many times it arrives.</item>
 /// <item><b>Failures.</b> An error of Octorate, a rate limit and a database error throw, so the dispatcher delivers the event again (ADR-022-R4) and the
 /// reconciliation catches whatever is left. The handler never waits for the calls of the org to refill (<see cref="MessageSyncPacing"/>): it runs in the
-/// dispatcher, which serves every org within a budget of seconds, so with the calls down to the reserve it throws the rate limit at once. An org that disconnected, and a listing whose license has no chat module (kept
-/// as the state of the listing, <c>chat_not_licensed</c>), end the handler quietly: a retry would find the same.</item>
+/// dispatcher, which serves every org within a budget of seconds, so with the calls down to the reserve it throws the rate limit at once. An org
+/// that disconnected, and a listing whose license has no chat module (kept as the state of the listing, <c>chat_not_licensed</c>), end the handler
+/// quietly: a retry would find the same.</item>
 /// <item>Off with <c>Features:OctorateConnector</c>: the connector is switched off, no call is made.</item>
 /// <item><b>Privacy.</b> The log line carries the event id, the kind of notification and how it went: never the body of the call.</item>
 /// </list>
