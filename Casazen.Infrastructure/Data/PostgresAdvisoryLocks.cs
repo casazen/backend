@@ -347,6 +347,15 @@ internal static class PostgresAdvisoryLocks
         OctorateBookingSync = 20_131,
 
         /// <summary>
+        /// The import of the existing inventory of one OTA channel of one org (key: org id and channel code, <c>orgId.ToString("N") + ":" + code</c>,
+        /// E02/F01/US03, session lock held for the whole step): two commands of the same channel, from two batches or two requests, never ask
+        /// Octorate for the same room import, reservation import, calendar import or «mark connected» at once. A command that does not get the
+        /// lock leaves the channel as it is: the one that holds it is doing the work, and the next command resumes from the stamps. The number is
+        /// 20_132 because 20_131 is <see cref="OctorateBookingSync"/>, and a number belongs to one scope only.
+        /// </summary>
+        OctorateInventoryImport = 20_132,
+
+        /// <summary>
         /// The CRM profile of one guest (key: the guest id, <c>guestId.ToString("N")</c>, E07/F01/US02/T03): the sync of the booker run by the event
         /// handler and the one run by the job can reach the same guest, with no profile yet, at the same moment. The profile is made and the guest
         /// linked to it one sync at a time, and the second reads the link again inside the lock and uses the profile the first made, so no profile is

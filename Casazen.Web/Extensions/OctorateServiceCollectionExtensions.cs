@@ -69,6 +69,13 @@ public static class OctorateServiceCollectionExtensions
         services.AddScoped<ICalMigrationService>();
         services.AddScoped<CalendarSyncJob>();
 
+        // The import of the listings that already exist on OTAs (E02/F01/US03, D6): the orchestrator, the guard that keeps existing inventory
+        // from being created again (consumed by E02/F03/US01/T06) and the minimal handoff of the person to the Octorate panel for the access to a
+        // channel, which the panel steps service of E10 replaces by registering its own IChannelAccessHandoff.
+        services.AddScoped<IChannelAccessHandoff, OnboardingChannelAccessHandoff>();
+        services.AddScoped<IExistingInventoryImportService, ExistingInventoryImportService>();
+        services.AddScoped<IInventoryScenarioGuard, InventoryScenarioGuard>();
+
         return services;
     }
 }
