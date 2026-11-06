@@ -4899,6 +4899,9 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OnboardingPartPrerequisite" xml:space="preserve">
     <value>The parts after this one need it: it cannot be put off, complete it first.</value>
   </data>
+  <data name="OnboardingPartNotOpen" xml:space="preserve">
+    <value>This part is already complete or not available: there is nothing to put off.</value>
+  </data>
   <data name="OnboardingRemindAtInvalid" xml:space="preserve">
     <value>Choose a reminder in the future, within {0} days.</value>
   </data>

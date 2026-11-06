@@ -105,6 +105,7 @@ public sealed class OnboardingPlanService(
         if (remind <= now || remind > now.AddDays(OnboardingPlanLimits.MaxRemindDays))
             throw new DomainRuleException(OnboardingPlanCodes.RemindAtInvalid, "OnboardingRemindAtInvalid", OnboardingPlanLimits.MaxRemindDays);
 
+        await EnsureOpenAsync(orgId, key, ct);
         var row = await StoreAsync(orgId, userId, key, OnboardingPartStatus.Deferred, now, remind, ct);
         row.ActivityId = await RaiseTodoAsync(orgId, row, OnboardingPlanCodes.ReasonDeferred, remind, ct);
         await db.SaveChangesAsync(ct);
@@ -121,6 +122,7 @@ public sealed class OnboardingPlanService(
         var now = Now();
         var remind = DefaultRemindAt();
 
+        await EnsureOpenAsync(orgId, key, ct);
         var row = await StoreAsync(orgId, userId, key, OnboardingPartStatus.Open, now, remind, ct);
         row.ActivityId = await RaiseTodoAsync(orgId, row, OnboardingPlanCodes.ReasonExit, remind, ct);
         await db.SaveChangesAsync(ct);
@@ -177,17 +179,15 @@ public sealed class OnboardingPlanService(
 
     /// <summary>
     /// The path of UX-10 from the states of the parts: a step is done when all its parts are, not available when all its parts are, and visible
-    /// only while there is something to do in it; the next step is the first visible one.
+    /// only while there is something to do in it; the next step is the first visible one that the host did not put off (a step set aside with
+    /// «Later» stays visible, with its state <see cref="OnboardingPartStates.Deferred"/>, but is not proposed again at once: its "To do" reminds).
     /// </summary>
     internal static OnboardingPath PathOf(IReadOnlyDictionary<OnboardingPartKey, string> states)
     {
         var steps = new List<OnboardingPathStep>(OnboardingPartCatalog.StartWithCasazenSteps.Count);
         foreach (var step in OnboardingPartCatalog.StartWithCasazenSteps.OrderBy(step => step.Order))
         {
-            var partStates = step.Parts.Select(part => states[part]).ToList();
-            var state = partStates.All(s => s == OnboardingPartStates.Done) ? OnboardingPartStates.Done
-                : partStates.All(s => s == OnboardingPartStates.NotAvailable) ? OnboardingPartStates.NotAvailable
-                : partStates.First(s => s is not (OnboardingPartStates.Done or OnboardingPartStates.NotAvailable));
+            var state = StateOfStep([.. step.Parts.Select(part => states[part])]);
             var visible = state is not (OnboardingPartStates.Done or OnboardingPartStates.NotAvailable);
             steps.Add(new OnboardingPathStep(
                 step.Code,
@@ -197,7 +197,24 @@ public sealed class OnboardingPlanService(
                 visible));
         }
 
-        return new OnboardingPath(OnboardingPartCatalog.StartWithCasazenPath, steps, steps.FirstOrDefault(step => step.Visible)?.Code);
+        return new OnboardingPath(
+            OnboardingPartCatalog.StartWithCasazenPath,
+            steps,
+            steps.FirstOrDefault(step => step.Visible && step.State != OnboardingPartStates.Deferred)?.Code);
+    }
+
+    /// <summary>
+    /// The state of a step from the states of its parts: not available when none is provided, otherwise the state of its first part that is neither
+    /// done nor not available; with no such part (done parts and parts nobody provides) nothing is left to do in the step, so it is done, never an
+    /// exception for that mix.
+    /// </summary>
+    private static string StateOfStep(IReadOnlyList<string> partStates)
+    {
+        if (partStates.All(state => state == OnboardingPartStates.NotAvailable))
+            return OnboardingPartStates.NotAvailable;
+
+        var firstToDo = partStates.FirstOrDefault(state => state is not (OnboardingPartStates.Done or OnboardingPartStates.NotAvailable));
+        return firstToDo ?? OnboardingPartStates.Done;
     }
 
     /// <summary>What the evaluator of the part with the highest order counts; with none, the part is not provided (never presumed done).</summary>
@@ -236,6 +253,20 @@ public sealed class OnboardingPlanService(
                     var latest = group.OrderByDescending(r => r.RequestedAt).ThenBy(r => r.Id).First();
                     return new OnboardingAssistInfo(latest.Id, latest.Status, latest.Context, latest.RequestedAt);
                 });
+    }
+
+    /// <summary>
+    /// A part that is done, or that nobody provides, has nothing to put off and nothing that remains: a deferral or an exit of it would raise a
+    /// "To do" for work that does not exist, and nothing would ever close it. The decision is the org's, so the state is the one over the whole
+    /// org (every property), not the reach of the caller.
+    /// </summary>
+    /// <exception cref="DomainRuleException"><see cref="OnboardingPlanCodes.PartNotOpen"/>: the part is done or not available.</exception>
+    private async Task EnsureOpenAsync(Guid orgId, OnboardingPartKey key, CancellationToken ct)
+    {
+        var plan = await GetPlanAsync(orgId, new HostScope(orgId), ct);
+        var state = plan.Parts.Single(part => part.Key == key).State;
+        if (state is OnboardingPartStates.Done or OnboardingPartStates.NotAvailable)
+            throw new DomainRuleException(OnboardingPlanCodes.PartNotOpen, "OnboardingPartNotOpen");
     }
 
     /// <summary>

@@ -76,7 +76,7 @@ public sealed class OnboardingPlanController(
     /// </summary>
     /// <response code="200">The part, now <c>deferred</c>, with its reminder and its "To do".</response>
     /// <response code="404"><c>onboarding_part_unknown</c>: the route names no part.</response>
-    /// <response code="422"><c>onboarding_part_prerequisite</c>: another part requires this one; <c>onboarding_remind_at_invalid</c>.</response>
+    /// <response code="422"><c>onboarding_part_prerequisite</c>: another part requires this one; <c>onboarding_remind_at_invalid</c>; <c>onboarding_part_not_open</c>: the part is done or not available.</response>
     [HttpPost("parts/{key}/defer")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     [ProducesResponseType(typeof(OnboardingPartChangeDto), StatusCodes.Status200OK)]
@@ -98,12 +98,14 @@ public sealed class OnboardingPlanController(
     /// <summary>«Save and exit»: the part stays open and one "To do" (tomorrow at 09:00 in Rome) keeps what remains from disappearing silently.</summary>
     /// <response code="200">The part, <c>open</c>, with its reminder and its "To do".</response>
     /// <response code="404"><c>onboarding_part_unknown</c>.</response>
+    /// <response code="422"><c>onboarding_part_not_open</c>: the part is done or not available, nothing remains.</response>
     [HttpPost("parts/{key}/exit")]
     [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
     [ProducesResponseType(typeof(OnboardingPartChangeDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<ActionResult<OnboardingPartChangeDto>> Exit(string key, CancellationToken cancellationToken)
     {
         return await MutateAsync(

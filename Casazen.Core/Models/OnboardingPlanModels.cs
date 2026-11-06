@@ -152,7 +152,10 @@ public sealed record OnboardingAssistInfo(Guid Id, OnboardingAssistStatus Status
 /// <summary>The connected path of UX-10 (NF-10): its steps mapped to the parts of the plan and the next step to do.</summary>
 /// <param name="Code">The code of the path.</param>
 /// <param name="Steps">The steps in order.</param>
-/// <param name="Next">The code of the first step that is visible; <c>null</c> when none is.</param>
+/// <param name="Next">
+/// The code of the first step that is visible and that the host did not put off (a step in state <see cref="OnboardingPartStates.Deferred"/> stays
+/// visible but is not proposed again); <c>null</c> when there is none.
+/// </param>
 public sealed record OnboardingPath(string Code, IReadOnlyList<OnboardingPathStep> Steps, string? Next);
 
 /// <summary>One step of the path (NF-10).</summary>

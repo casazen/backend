@@ -5,6 +5,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
+using Casazen.Core.TouristTax;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Authorization;
@@ -14,7 +15,9 @@ using Casazen.Web.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Services;
@@ -46,7 +49,7 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
     {
         var service = Service();
 
-        var deferred = await service.DeferAsync(_world.OrgId, _world.OwnerUserId, OnboardingPartKey.PricesRules, null, Ct);
+        var deferred = await service.DeferAsync(_world.OrgId, _world.OwnerUserId, OnboardingPartKey.Listings, null, Ct);
         var left = await service.ExitAsync(_world.OrgId, _world.OwnerUserId, OnboardingPartKey.Channels, Ct);
 
         var todos = await _db.InternalActivities.AsNoTracking().Where(a => a.OrgId == _world.OrgId).ToListAsync();
@@ -156,6 +159,104 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
         await Assert.ThrowsAsync<ArgumentException>(() => service.GetPlanAsync(_world.OtherOrgId, _world.OrgWide, Ct));
     }
 
+    /// <summary>
+    /// Proof (permission, data): every part counts, and the open «Do it for me» requests show, only what the scope reaches (AM-03). The collaborator
+    /// «Solo alcuni» counts its one property; an account that reaches what it created counts both houses but no org-level group and no org-level
+    /// request; the owner (the whole org) counts everything; nothing of the other org shows.
+    /// </summary>
+    [Fact]
+    public async Task GetPlan_EveryPart_AndTheAssistRequests_ReachOnlyWhatTheScopeReaches()
+    {
+        _db.OctorateConnections.Add(new OctorateConnection
+        {
+            OrgId = _world.OrgId,
+            Environment = OctorateEnvironment.Test,
+            Status = OctorateConnectionStatus.Connected,
+        });
+        _db.OctorateInventoryIntents.AddRange(Intent(_world.Granted.Id, null), Intent(_world.Hidden.Id, null), Intent(null, "lotto-a"));
+        _db.OnboardingAssistRequests.AddRange(
+            Assist(OnboardingPartKey.Listings, _world.Granted.Id),
+            Assist(OnboardingPartKey.Channels, _world.Hidden.Id),
+            Assist(OnboardingPartKey.Compliance, null));
+        await _db.SaveChangesAsync();
+        var service = ScopedService();
+
+        var restricted = await service.GetPlanAsync(_world.OrgId, _world.Restricted, Ct);
+        var owned = await service.GetPlanAsync(_world.OrgId, _world.OwnedByOwner, Ct);
+        var orgWide = await service.GetPlanAsync(_world.OrgId, _world.OrgWide, Ct);
+
+        static (int Done, int Total) Count(OnboardingPlan plan, OnboardingPartKey key)
+        {
+            var part = plan.Parts.Single(p => p.Key == key);
+            return (part.Done, part.Total);
+        }
+
+        // One assignment for each property reached; the group with no property is an org-level decision, counted by the whole org only.
+        Assert.Equal((1, 1), Count(restricted, OnboardingPartKey.OctorateConnection));
+        Assert.Equal((2, 2), Count(owned, OnboardingPartKey.OctorateConnection));
+        Assert.Equal((3, 3), Count(orgWide, OnboardingPartKey.OctorateConnection));
+
+        // The compliance and the activation count the properties reached (none is ready here: nothing to complete is hidden by the reach).
+        foreach (var key in new[] { OnboardingPartKey.Compliance, OnboardingPartKey.Activation })
+        {
+            Assert.Equal([1, 2, 2], new[] { restricted, owned, orgWide }.Select(plan => Count(plan, key).Total));
+            Assert.All(new[] { restricted, owned, orgWide }, plan => Assert.Equal(0, Count(plan, key).Done));
+        }
+
+        // The requests: the one about a property not reached is not shown, the one about the whole org only to a caller who reaches the whole org.
+        Assert.Equal(["listings"], AssistedParts(restricted));
+        Assert.Equal(["channels", "listings"], AssistedParts(owned));
+        Assert.Equal(["channels", "compliance", "listings"], AssistedParts(orgWide));
+    }
+
+    /// <summary>
+    /// A part that is done, or that nobody provides, has nothing to put off or to keep open: defer and exit refuse it (422) and write neither the
+    /// intent nor a "To do" that nothing would ever close.
+    /// </summary>
+    [Fact]
+    public async Task DeferAndExit_APartThatIsDoneOrNotAvailable_Are422AndWriteNothing()
+    {
+        var service = Service();
+
+        foreach (var part in new[] { OnboardingPartKey.PricesRules, OnboardingPartKey.MessagesAi })
+        {
+            var deferred = await Assert.ThrowsAsync<DomainRuleException>(
+                () => service.DeferAsync(_world.OrgId, _world.OwnerUserId, part, null, Ct));
+            var left = await Assert.ThrowsAsync<DomainRuleException>(() => service.ExitAsync(_world.OrgId, _world.OwnerUserId, part, Ct));
+            Assert.Equal(OnboardingPlanCodes.PartNotOpen, deferred.Code);
+            Assert.Equal(OnboardingPlanCodes.PartNotOpen, left.Code);
+        }
+
+        Assert.Empty(await _db.OnboardingPartStates.AsNoTracking().ToListAsync());
+        Assert.Empty(await _db.InternalActivities.AsNoTracking().ToListAsync());
+    }
+
+    /// <summary>
+    /// «Later» (AC-NF10-2): the next step is the first visible one the host did not put off. A step set aside stays visible, with its state, but is
+    /// not proposed again at once; with nothing but put-off steps left there is no next step.
+    /// </summary>
+    [Fact]
+    public void PathOf_NextSkipsTheStepsTheHostPutOff_WhichStayVisible()
+    {
+        var states = OnboardingPartCatalog.Parts.ToDictionary(part => part.Key, _ => OnboardingPartStates.Done);
+        states[OnboardingPartKey.Listings] = OnboardingPartStates.Deferred;
+        states[OnboardingPartKey.Compliance] = OnboardingPartStates.Open;
+
+        var path = OnboardingPlanService.PathOf(states);
+
+        var listings = Assert.Single(path.Steps, step => step.Code == "checkListings");
+        Assert.Equal((OnboardingPartStates.Deferred, true), (listings.State, listings.Visible));
+        Assert.Equal("checkInCompliance", path.Next);
+
+        states[OnboardingPartKey.Compliance] = OnboardingPartStates.Done;
+        Assert.Null(OnboardingPlanService.PathOf(states).Next);
+
+        // A step made of parts that are only done or that nobody provides has nothing left to do: it is done, and that mix is no exception.
+        states[OnboardingPartKey.Properties] = OnboardingPartStates.NotAvailable;
+        var connect = Assert.Single(OnboardingPlanService.PathOf(states).Steps, step => step.Code == "connectChannels");
+        Assert.Equal((OnboardingPartStates.Done, false), (connect.State, connect.Visible));
+    }
+
     [Fact]
     public async Task GetPlan_TheElevenPartsInOrder_WithTheStatesInTheirPrecedence()
     {
@@ -213,9 +314,9 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
     {
         var service = Service();
         var remindAt = HostScopeScenario.Now.UtcDateTime.AddDays(3);
-        var deferred = await service.DeferAsync(_world.OrgId, _world.OwnerUserId, OnboardingPartKey.PricesRules, remindAt, Ct);
+        var deferred = await service.DeferAsync(_world.OrgId, _world.OwnerUserId, OnboardingPartKey.Listings, remindAt, Ct);
 
-        var resumed = await service.ResumeAsync(_world.OrgId, _world.OwnerUserId, OnboardingPartKey.PricesRules, Ct);
+        var resumed = await service.ResumeAsync(_world.OrgId, _world.OwnerUserId, OnboardingPartKey.Listings, Ct);
 
         Assert.Equal((OnboardingPartStates.Open, (DateTime?)null, (Guid?)null), (resumed.State, resumed.RemindAt, resumed.TodoId));
         var closed = await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == deferred.TodoId);
@@ -223,7 +324,7 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
         var row = await _db.OnboardingPartStates.AsNoTracking().SingleAsync();
         Assert.Equal((OnboardingPartStatus.Open, (DateTime?)null, (Guid?)null), (row.Status, row.RemindAt, row.ActivityId));
 
-        var again = await service.DeferAsync(_world.OrgId, _world.OwnerUserId, OnboardingPartKey.PricesRules, remindAt, Ct);
+        var again = await service.DeferAsync(_world.OrgId, _world.OwnerUserId, OnboardingPartKey.Listings, remindAt, Ct);
         Assert.NotEqual(deferred.TodoId, again.TodoId);
         Assert.Equal(1, await _db.InternalActivities.CountAsync(a => a.CompletedAt == null));
     }
@@ -243,8 +344,74 @@ public class OnboardingPlanServiceTests : IAsyncLifetime
         return new OnboardingPlanService(_db, evaluators, activities, _clock, NullLogger<OnboardingPlanService>.Instance);
     }
 
+    /// <summary>The plan with the real evaluators of the connection, the compliance and the activation (the flow status of T02 underneath).</summary>
+    private OnboardingPlanService ScopedService()
+    {
+        var environment = new Mock<IHostEnvironment>();
+        environment.SetupGet(e => e.EnvironmentName).Returns("Testing");
+        var reader = new FlowPrerequisiteReader(
+            _db,
+            new StubMappingReader([_world.Granted.Id, _world.Hidden.Id]),
+            environment.Object,
+            NullLogger<FlowPrerequisiteReader>.Instance);
+        var touristTax = new Mock<ITouristTaxQuoteService>();
+        touristTax
+            .Setup(t => t.GetRatesInForceAsync(It.IsAny<TouristTaxComune>(), It.IsAny<DateOnly>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<TouristTaxRate>)[new TouristTaxRate { City = "Ostuni", RatePerPersonPerNight = 2m }]);
+        IFlowReadinessProvider[] providers =
+        [
+            new ListingsFlowProvider(_db, reader),
+            new BookingsFlowProvider(reader),
+            new CheckInComplianceFlowProvider(_db, reader, touristTax.Object, _clock),
+        ];
+        IOnboardingPartEvaluator[] evaluators =
+        [
+            new OctorateConnectionPartEvaluator(_db, reader),
+            new CompliancePartEvaluator(providers),
+            new ActivationPartEvaluator(new OnboardingFlowStatusService(_db, providers)),
+        ];
+        var activities = new InternalActivityService(_db, NullLogger<InternalActivityService>.Instance, _clock);
+        return new OnboardingPlanService(_db, evaluators, activities, _clock, NullLogger<OnboardingPlanService>.Instance);
+    }
+
+    private OctorateInventoryIntent Intent(Guid? propertyId, string? group) => new()
+    {
+        OrgId = _world.OrgId,
+        PropertyId = propertyId,
+        Scenario = propertyId is null ? OctorateInventoryScenario.NewInventory : OctorateInventoryScenario.OnOctorate,
+        WizardBatch = group,
+        ActorUserId = _world.OwnerUserId,
+    };
+
+    private OnboardingAssistRequest Assist(OnboardingPartKey part, Guid? propertyId) => new()
+    {
+        OrgId = _world.OrgId,
+        PartKey = part,
+        PropertyId = propertyId,
+        Context = OnboardingAssistContexts.PanelPolice,
+        RequestedByUserId = _world.OwnerUserId,
+    };
+
+    private static string[] AssistedParts(OnboardingPlan plan) =>
+        [.. plan.Parts.Where(part => part.Assist is not null).Select(part => part.Code).Order(StringComparer.Ordinal)];
+
     private static ClaimsPrincipal Principal(params string[] jwtRoles) =>
         OrgBillingAdminAuthorizationHandlerTests.Context(jwtRoles.Select(role => new Claim(ClaimTypes.Role, role))).User;
+
+    /// <summary>The confirmed mapping of the properties named, and no other.</summary>
+    private sealed class StubMappingReader(IReadOnlyCollection<Guid> confirmed) : IPropertyMappingReader
+    {
+        public bool IsProvided => true;
+
+        public Task<IReadOnlyDictionary<Guid, string>> GetConfirmedAccommodationIdsAsync(
+            Guid orgId,
+            IReadOnlyCollection<Guid> propertyIds,
+            CancellationToken ct)
+        {
+            IReadOnlyDictionary<Guid, string> answer = propertyIds.Where(confirmed.Contains).ToDictionary(id => id, id => $"acc-{id:N}");
+            return Task.FromResult(answer);
+        }
+    }
 
     /// <summary>An evaluator that always answers the same facts.</summary>
     private sealed class ConstantEvaluator(OnboardingPartKey part, PartFacts facts) : IOnboardingPartEvaluator

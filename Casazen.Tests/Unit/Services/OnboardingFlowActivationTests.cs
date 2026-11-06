@@ -254,6 +254,81 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
         Assert.Empty(await OpenTodosAsync());
     }
 
+    /// <summary>
+    /// The "To do" of a part the host put off closes by itself once the part is done (here the prices: both houses have a nightly price), and the
+    /// deferral is cleared as a resume does, so nothing is left standing for work that no longer exists; the one of a part still to do (no channel
+    /// yet) stays open, run after run.
+    /// </summary>
+    [Fact]
+    public async Task TodoSync_ClosesTheTodoOfAPartThatIsDone_AndKeepsTheOneOfAPartStillToDo()
+    {
+        await ConnectAsync(OctorateConnectionStatus.Connected);
+        var done = await DeferredPartAsync(OnboardingPartKey.PricesRules);
+        var open = await DeferredPartAsync(OnboardingPartKey.Channels);
+        var job = Job(new StubFlowStatus(), new TestFeatureFlags(FeatureFlags.OctorateOnboarding));
+
+        await job.ExecuteAsync(Ct);
+        await job.ExecuteAsync(Ct);
+
+        var closed = await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == done.TodoId);
+        Assert.Equal((InternalActivity.StatusCompleted, InternalActivity.ClosedBySystem), (closed.Status, closed.ClosedBy));
+        var cleared = await _db.OnboardingPartStates.AsNoTracking().SingleAsync(s => s.Id == done.PartStateId);
+        Assert.Equal((OnboardingPartStatus.Open, (DateTime?)null, (Guid?)null), (cleared.Status, cleared.RemindAt, cleared.ActivityId));
+
+        var kept = await _db.InternalActivities.AsNoTracking().SingleAsync(a => a.Id == open.TodoId);
+        Assert.Null(kept.CompletedAt);
+        var stillDeferred = await _db.OnboardingPartStates.AsNoTracking().SingleAsync(s => s.Id == open.PartStateId);
+        Assert.Equal((OnboardingPartStatus.Deferred, (Guid?)open.TodoId), (stillDeferred.Status, stillDeferred.ActivityId));
+    }
+
+    /// <summary>
+    /// Permission: a deactivation reaches what the caller reaches and the caller's org. The collaborator «Solo alcuni» (the first property only) and
+    /// the administrator of another org get <c>notFound</c> for the properties they do not reach, and the activation of those stays as it was, with
+    /// no event.
+    /// </summary>
+    [Fact]
+    public async Task Deactivation_ReachesOnlyTheCallersPropertiesAndOrg_TheOthersAreNotFound()
+    {
+        await ConnectAsync(OctorateConnectionStatus.Connected);
+        var both = new[] { _world.Granted.Id, _world.Hidden.Id };
+        await Activation(both).ActivateAsync(_world.OrgWide, _world.OwnerUserId, OnboardingFlow.Bookings, both, Ct);
+        Assert.Equal(2, await _db.PropertyFlowActivations.CountAsync(a => a.DeactivatedAt == null));
+        var events = await _db.OutboxEvents.CountAsync();
+
+        var otherOrg = await Activation().DeactivateAsync(new HostScope(_world.OtherOrgId), "auth0|altro", OnboardingFlow.Bookings, both, Ct);
+        Assert.Equal([FlowActivationOutcomes.NotFound, FlowActivationOutcomes.NotFound], otherOrg.Select(o => o.Outcome));
+        Assert.Equal(2, await _db.PropertyFlowActivations.CountAsync(a => a.DeactivatedAt == null));
+        Assert.Equal(events, await _db.OutboxEvents.CountAsync());
+
+        var restricted = await Activation().DeactivateAsync(_world.Restricted, _world.CollaboratorId, OnboardingFlow.Bookings, both, Ct);
+        Assert.Equal([FlowActivationOutcomes.Deactivated, FlowActivationOutcomes.NotFound], restricted.Select(o => o.Outcome));
+        var standing = await _db.PropertyFlowActivations.AsNoTracking().Where(a => a.DeactivatedAt == null).Select(a => a.PropertyId).ToListAsync();
+        Assert.Equal([_world.Hidden.Id], standing);
+        Assert.Equal(events + 1, await _db.OutboxEvents.CountAsync());
+    }
+
+    /// <summary>
+    /// The check of the bookings flow reads the state of the booking back through the mapper (derived from it, with no table of its own): every
+    /// CasaZen state maps both ways, and a booking of an OTA with none of the documented amounts fails on that alone.
+    /// </summary>
+    [Fact]
+    public async Task BookingsDryRunCheck_EveryBookingStatusMapsBothWays_AndAnOtaBookingWithoutAmountsFailsOnThatAlone()
+    {
+        var check = new BookingsDryRunCheck(new BookingStateMapper());
+
+        foreach (var status in Enum.GetValues<BookingStatus>())
+        {
+            var booking = new Booking { Status = status, Source = BookingSource.Airbnb, OtaCommission = 12m };
+            var result = await check.RunAsync(new FlowDryRunContext(_world.OrgId, _world.Granted.Id, booking), Ct);
+            Assert.Equal(FlowCheckOutcomes.Pass, result.Outcome);
+        }
+
+        var withoutAmounts = new Booking { Status = BookingStatus.Confirmed, Source = BookingSource.Airbnb };
+        var failed = await check.RunAsync(new FlowDryRunContext(_world.OrgId, _world.Granted.Id, withoutAmounts), Ct);
+        Assert.Equal(FlowCheckOutcomes.Fail, failed.Outcome);
+        Assert.Equal([FlowCheckReasons.OtaAmountsMissing], failed.Reasons);
+    }
+
     [Fact]
     public void TodoSyncJob_IsScheduledHourlyAtMinute20Utc_OnlyWithTheFlagOn_AndHoldsItsLock()
     {
@@ -314,13 +389,52 @@ public class OnboardingFlowActivationTests : IAsyncLifetime
     {
         var environment = new Mock<IHostEnvironment>();
         environment.SetupGet(e => e.EnvironmentName).Returns("Testing");
+        var activities = new InternalActivityService(_db, NullLogger<InternalActivityService>.Instance, _clock);
+        IOnboardingPartEvaluator[] evaluators = [new PricesRulesPartEvaluator(_db), new ChannelsPartEvaluator(_db)];
+        var plans = new OnboardingPlanService(_db, evaluators, activities, _clock, NullLogger<OnboardingPlanService>.Instance);
         return new OnboardingFlowTodoSyncJob(
             _db,
             statuses,
-            new InternalActivityService(_db, NullLogger<InternalActivityService>.Instance, _clock),
+            plans,
+            activities,
             flags,
             environment.Object,
             NullLogger<OnboardingFlowTodoSyncJob>.Instance);
+    }
+
+    /// <summary>A part the host put off, with its stored intent and its open "To do" (written as the plan writes them: a done part cannot be put off now).</summary>
+    private async Task<(Guid TodoId, Guid PartStateId)> DeferredPartAsync(OnboardingPartKey key)
+    {
+        var now = _clock.GetUtcNow().UtcDateTime;
+        var state = new OnboardingPartState
+        {
+            OrgId = _world.OrgId,
+            PartKey = key,
+            Status = OnboardingPartStatus.Deferred,
+            DeferredAt = now,
+            RemindAt = now.AddDays(1),
+            UpdatedByUserId = _world.OwnerUserId,
+        };
+        _db.OnboardingPartStates.Add(state);
+        await _db.SaveChangesAsync();
+
+        var activities = new InternalActivityService(_db, NullLogger<InternalActivityService>.Instance, _clock);
+        var todoId = await activities.CreateAsync(
+            new CreateTodoRequest
+            {
+                Type = ActivityType.WizardResume,
+                Action = ActivityAction.ResumeWizard,
+                EntityType = OnboardingPlanCodes.TodoEntityType,
+                EntityId = state.Id,
+                Urgency = ActivityUrgency.Medium,
+                OrgId = _world.OrgId,
+                Deadline = state.RemindAt,
+                Reason = OnboardingPlanCodes.ReasonDeferred,
+            },
+            Ct);
+        state.ActivityId = todoId;
+        await _db.SaveChangesAsync();
+        return (todoId, state.Id);
     }
 
     private async Task ConnectAsync(OctorateConnectionStatus status)

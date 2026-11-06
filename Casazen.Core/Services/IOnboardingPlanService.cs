@@ -32,11 +32,15 @@ public interface IOnboardingPlanService
     /// «Do it later»: stores the part as deferred and raises its "To do", due at <paramref name="remindAt"/> (UTC) or, without one, tomorrow at
     /// 09:00 in Rome. 422 <see cref="OnboardingPlanCodes.PartPrerequisite"/> for a part another part requires, 422
     /// <see cref="OnboardingPlanCodes.RemindAtInvalid"/> for a reminder that is not in the future or is more than
-    /// <see cref="OnboardingPlanLimits.MaxRemindDays"/> days away.
+    /// <see cref="OnboardingPlanLimits.MaxRemindDays"/> days away, 422 <see cref="OnboardingPlanCodes.PartNotOpen"/> for a part that is done or
+    /// not available (nothing to put off: no "To do" is raised for it).
     /// </summary>
     Task<OnboardingPartChange> DeferAsync(Guid orgId, string userId, OnboardingPartKey key, DateTime? remindAt, CancellationToken ct);
 
-    /// <summary>«Save and exit»: keeps the part open and raises the same "To do", due tomorrow at 09:00 in Rome, so what remains never disappears silently.</summary>
+    /// <summary>
+    /// «Save and exit»: keeps the part open and raises the same "To do", due tomorrow at 09:00 in Rome, so what remains never disappears silently.
+    /// 422 <see cref="OnboardingPlanCodes.PartNotOpen"/> for a part that is done or not available (nothing remains).
+    /// </summary>
     Task<OnboardingPartChange> ExitAsync(Guid orgId, string userId, OnboardingPartKey key, CancellationToken ct);
 
     /// <summary>Clears the deferral of the part and closes its "To do". Harmless on a part that was never deferred or left.</summary>
@@ -54,6 +58,9 @@ public static class OnboardingPlanCodes
 
     /// <summary>422: the reminder is not in the future, or too far in it.</summary>
     public const string RemindAtInvalid = "onboarding_remind_at_invalid";
+
+    /// <summary>422: the part is done or not available, so there is nothing to put off or to keep open: no "To do" is raised for it.</summary>
+    public const string PartNotOpen = "onboarding_part_not_open";
 
     /// <summary>The entity type of the "To do" of a part: its id is the id of the <c>OnboardingPartState</c> row.</summary>
     public const string TodoEntityType = "OnboardingPart";

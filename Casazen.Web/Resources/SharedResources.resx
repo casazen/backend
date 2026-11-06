@@ -4899,6 +4899,9 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OnboardingPartPrerequisite" xml:space="preserve">
     <value>Le parti successive hanno bisogno di questa: non si può rimandare, completala prima.</value>
   </data>
+  <data name="OnboardingPartNotOpen" xml:space="preserve">
+    <value>Questa parte è già completata o non è disponibile: non c'è nulla da rimandare.</value>
+  </data>
   <data name="OnboardingRemindAtInvalid" xml:space="preserve">
     <value>Scegli un promemoria nel futuro, entro {0} giorni.</value>
   </data>

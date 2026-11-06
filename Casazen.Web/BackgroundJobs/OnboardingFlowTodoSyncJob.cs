@@ -21,7 +21,10 @@ namespace Casazen.Web.BackgroundJobs;
 /// <see cref="ActivityAction.ResumeWizard"/>, entity <c>OnboardingFlow</c> with the id <see cref="OnboardingFlowTodo.EntityIdOf"/>, reason
 /// <c>flow_incomplete</c>), closed when none is;</item>
 /// <item>ONE <see cref="ActivityType.ReconnectChannelManager"/> "To do" of high urgency while the connection is disconnected or in error (entity
-/// <c>OctorateConnection</c>, reason <c>connection_lost</c>), closed when it is connected again.</item>
+/// <c>OctorateConnection</c>, reason <c>connection_lost</c>), closed when it is connected again;</item>
+/// <item>the "To do" of a part the host put off or left half way (<see cref="ActivityType.WizardResume"/>, entity <c>OnboardingPart</c>, raised by
+/// the plan) is closed, and the deferral cleared as a resume does, once the part is done for the whole org or nobody provides it any more: no
+/// event says a part is done, so this run is what closes it (<c>ActivityAutoCloseHandler</c> closes the "To do" that an event settles).</item>
 /// </list>
 /// </summary>
 /// <remarks>
@@ -36,6 +39,7 @@ namespace Casazen.Web.BackgroundJobs;
 public sealed class OnboardingFlowTodoSyncJob(
     AppDbContext db,
     IOnboardingFlowStatusService flowStatus,
+    IOnboardingPlanService plans,
     IInternalActivityService activities,
     IFeatureFlags featureFlags,
     IHostEnvironment hostEnvironment,
@@ -72,6 +76,7 @@ public sealed class OnboardingFlowTodoSyncJob(
             try
             {
                 await SyncFlowsAsync(connection.OrgId, cancellationToken);
+                await SyncPartsAsync(connection.OrgId, cancellationToken);
                 await SyncConnectionAsync(connection.OrgId, connection.Id, connection.Status, cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -114,6 +119,26 @@ public sealed class OnboardingFlowTodoSyncJob(
                 await CloseOpenAsync(orgId, ActivityType.WizardResume, OnboardingActivationCodes.FlowTodoEntityType, entityId, ct);
             }
         }
+    }
+
+    /// <summary>
+    /// The "To do" of a part the host put off or left half way, closed (and the deferral cleared, as a resume does) once the part is done for the
+    /// whole org or nobody provides it any more. A part still to do keeps its "To do".
+    /// </summary>
+    private async Task SyncPartsAsync(Guid orgId, CancellationToken ct)
+    {
+        var withTodo = await db.OnboardingPartStates
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .Where(s => s.OrgId == orgId && s.ActivityId != null)
+            .Select(s => s.PartKey)
+            .ToListAsync(ct);
+        if (withTodo.Count == 0)
+            return;
+
+        var plan = await plans.GetPlanAsync(orgId, new HostScope(orgId), ct);
+        foreach (var part in plan.Parts.Where(p => withTodo.Contains(p.Key) && (p.State is OnboardingPartStates.Done or OnboardingPartStates.NotAvailable)))
+            await plans.ResumeAsync(orgId, InternalActivity.ClosedBySystem, part.Key, ct);
     }
 
     /// <summary>The high-urgency "To do" of a connection that is disconnected or in error (ADR-023-R12), closed once it is connected again.</summary>
