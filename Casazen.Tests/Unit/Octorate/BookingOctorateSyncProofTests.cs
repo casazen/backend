@@ -1,3 +1,4 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
@@ -137,14 +138,64 @@ public class BookingOctorateSyncProofTests
             Assert.False(await read.OutboxEvents.AnyAsync(e => e.EntityId == foreign));
         }
 
-        // The control: the failed booking of org A is asked again, once.
+        // The control: the failed booking of org A is asked again; the push is queued as its own event and the row keeps its state until
+        // the push really starts.
         Assert.Equal(OctorateSyncState.Pending, await service.RequeueAsync(mine, overwrite: false, CancellationToken.None));
-        await Assert.ThrowsAsync<DomainConflictException>(() => service.RequeueAsync(mine, overwrite: false, CancellationToken.None));
         await using (var read = h.NewDb())
         {
             var requested = await read.OutboxEvents.AsNoTracking().SingleAsync(e => e.EntityId == mine);
             Assert.Equal(DomainEventType.OctorateSyncRequested, requested.EventType);
             Assert.Equal(OctorateSyncHarness.OrgA, requested.OrgId);
+            Assert.Equal(OctorateSyncState.Failed, (await read.OctorateBookingSyncs.AsNoTracking().SingleAsync(s => s.BookingId == mine)).State);
+        }
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule. A retry is queued but the push gives up (the booking was cancelled meanwhile, so nothing is sent): the row must
+    /// not be left <c>Pending</c> with nothing to complete it, where the next retry would answer 409 and the host would have no way out. It
+    /// keeps its failed state, the host can ask again, and a mirror that is not failed (here, synced) is still refused with the 409.
+    /// </summary>
+    [Fact]
+    public async Task BookingOctorateSyncRetry_PushThatGivesUp_LeavesARowTheHostCanAskAgain_Test()
+    {
+        var h = new OctorateSyncHarness();
+        var tenant = new RequestTenant(OctorateSyncHarness.OrgA);
+        var cancelled = await h.SeedBookingAsync(bookingCode: "C0NCEL0001");
+        var synced = await h.SeedBookingAsync(bookingCode: "S0SYNC0001");
+        await using (var seed = h.NewDb())
+        {
+            var done = FailedSync(OctorateSyncHarness.OrgA, synced);
+            done.State = OctorateSyncState.Synced;
+            done.ErrorCode = null;
+            seed.OctorateBookingSyncs.AddRange(FailedSync(OctorateSyncHarness.OrgA, cancelled), done);
+            await seed.SaveChangesAsync();
+        }
+
+        // The host asks again; before the event is delivered the booking is cancelled.
+        await using (var db = h.NewDb(tenant))
+        {
+            Assert.Equal(OctorateSyncState.Pending, await h.Service(db, tenant).RequeueAsync(cancelled, overwrite: false, CancellationToken.None));
+        }
+
+        await using (var db = h.NewDb())
+        {
+            (await db.Bookings.SingleAsync(b => b.Id == cancelled)).Status = BookingStatus.Cancelled;
+            await db.SaveChangesAsync();
+        }
+
+        // The push gives up without touching Octorate (the client is strict and has nothing set up for it).
+        await using (var db = h.NewDb(tenant))
+        {
+            Assert.Null(await h.Service(db, tenant).PushCreateAsync(cancelled, CancellationToken.None));
+        }
+
+        // The row is as it was, failed, so the host is not stuck: the retry is accepted again.
+        Assert.Equal(OctorateSyncState.Failed, (await h.ReadSyncAsync(cancelled))!.State);
+        await using (var db = h.NewDb(tenant))
+        {
+            var service = h.Service(db, tenant);
+            Assert.Equal(OctorateSyncState.Pending, await service.RequeueAsync(cancelled, overwrite: false, CancellationToken.None));
+            await Assert.ThrowsAsync<DomainConflictException>(() => service.RequeueAsync(synced, overwrite: false, CancellationToken.None));
         }
     }
 
@@ -177,6 +228,12 @@ public class BookingOctorateSyncProofTests
         h.Client.Verify(
             c => c.CreateReservationAsync(It.IsAny<OctorateBookingTarget>(), It.IsAny<OctorateReservationCreate>(), It.IsAny<CancellationToken>()),
             Times.Never);
+
+        // The host can ask again from the state he sees: a failed row is retryable.
+        await using (var db = h.NewDb(tenant))
+        {
+            Assert.Equal(OctorateSyncState.Pending, await h.Service(db, tenant).RequeueAsync(bookingId, overwrite: false, CancellationToken.None));
+        }
 
         // Octorate answers again: the next delivery creates the reservation, once.
         h.Client

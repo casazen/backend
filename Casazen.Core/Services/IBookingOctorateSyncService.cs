@@ -24,8 +24,10 @@ public interface IBookingOctorateSyncService
 
     /// <summary>
     /// Asks the push of a booking of the caller's org again (<c>POST /api/bookings/{id}/octorate-sync/retry</c>): only a <c>Failed</c> or
-    /// <c>Conflict</c> sync; it becomes <c>Pending</c> and the push runs again through the event bus. <paramref name="overwrite"/> is the host's
-    /// choice to write CasaZen's version over a reservation that changed on Octorate (a change of E08/F02); a create has nothing to overwrite.
+    /// <c>Conflict</c> sync; the push is queued through the event bus and the answer is <c>Pending</c>. The row itself keeps its state until the
+    /// push really starts (it is then <c>Pending</c>), so a push that gives up (the booking was cancelled, its stay is over, the property is no
+    /// longer mirrored) leaves a row the host can ask again. <paramref name="overwrite"/> is the host's choice to write CasaZen's version over a
+    /// reservation that changed on Octorate (a change of E08/F02); a create has nothing to overwrite.
     /// </summary>
     /// <exception cref="Exceptions.NotFoundException">The booking does not exist or is of another org (404).</exception>
     /// <exception cref="Exceptions.DomainConflictException">409 <see cref="OctorateSyncErrorCodes.NotRetryable"/>.</exception>

@@ -424,10 +424,10 @@ public sealed class BookingOctorateSyncService(
                 OctorateSyncErrorCodes.NotRetryable, OctorateSyncErrorCodes.MessageKeys[OctorateSyncErrorCodes.NotRetryable]);
         }
 
+        // The row keeps its state: the push marks it Pending when it really starts (MarkPendingAsync). A push that then gives up (the booking was
+        // cancelled, its stay is over, the property is no longer mirrored) leaves it Failed or Conflict, so the host can ask again and is never
+        // stuck on a Pending that nothing completes.
         var now = UtcNow;
-        sync.State = OctorateSyncState.Pending;
-        sync.ErrorCode = null;
-        sync.UpdatedAt = now;
 
         // Its own event, not a second BookingConfirmed: only the push runs again, no routine and no other consumer of the confirmation.
         recorder.Record(
