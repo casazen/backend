@@ -20,7 +20,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// with the baseline stored after the last accepted push. A difference sets <c>ExternalChangeAt</c> (when it is empty), keeps the groups that changed
 /// and raises one «To do» of the kind <see cref="ActivityType.ListingChangedOutside"/> for the property and channel. A channel being published
 /// (<c>Sending</c>) is not compared: its content is moving. Only the groups with a baseline can be compared: the rules of the stay, the prices and the
-/// discounts can be written but no read returns them, so a change made on them outside CasaZen is not seen.</item>
+/// discounts can be written but no read returns them, so a change made on them outside CasaZen is not seen. The same read confirms the <c>Published</c>
+/// channels of the property (<c>LastSyncedAt</c>, the clock of the 24-hour alert): it is the only recurring read of a channel that has no process to
+/// follow any more.</item>
 /// <item><b>Nothing is overwritten without a choice.</b> A publication over a flagged channel is refused until <c>keep</c> or <c>take</c> (the guard of
 /// <see cref="IContentPushService.PublishAsync"/>). <c>keep</c> publishes the channel again with <c>overwrite</c>: the push stores the new baseline,
 /// clears the change and closes the «To do». <c>take</c> adopts the descriptions the channel manager holds: the Italian description and house rules
@@ -53,11 +55,13 @@ public sealed class OutsideChangeService(
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(s => s.OrgId == orgId
                         && s.PropertyId == propertyId
-                        && (s.Status == ChannelPublishStatus.Accepted || s.Status == ChannelPublishStatus.Published)
-                        && s.ContentHashesJson != null)
+                        && (s.Status == ChannelPublishStatus.Accepted || s.Status == ChannelPublishStatus.Published))
             .ToListAsync(ct);
-        rows = [.. rows.Where(row => ListingChannelBaseline.Parse(row.ContentHashesJson).HasBaseline)];
-        if (rows.Count == 0)
+
+        // What the read can tell about a row: one with a baseline is compared with it, and a published one is confirmed by it (below).
+        var compared = rows.Where(row => ListingChannelBaseline.Parse(row.ContentHashesJson).HasBaseline).ToList();
+        var published = rows.Where(row => row.Status == ChannelPublishStatus.Published).ToList();
+        if (compared.Count == 0 && published.Count == 0)
             return [];
 
         var listing = await MappingAsync(orgId, propertyId, ct);
@@ -68,10 +72,16 @@ public sealed class OutsideChangeService(
         using (orgScope.Use(orgId))
             current = await reader.ReadAsync(listing.Value.Accommodation, product, ct);
 
+        // The channel manager answered for the listing: that is the confirmation of a published channel (a published row has no process left to
+        // read, so nothing else ever refreshes it; without this every healthy channel would go «silent» after 24 hours). An accepted row is
+        // confirmed only by the process of its push (ListingStatusService), so an answer CasaZen does not understand still confirms nothing.
         var now = Now();
+        foreach (var row in published)
+            row.LastSyncedAt = now;
+
         var flagged = new List<ListingChannelState>();
         var groups = new SortedSet<string>(StringComparer.Ordinal);
-        foreach (var row in rows)
+        foreach (var row in compared)
         {
             var baseline = ListingChannelBaseline.Parse(row.ContentHashesJson);
             var differences = baseline.Differences(current);
@@ -84,10 +94,10 @@ public sealed class OutsideChangeService(
             groups.UnionWith(differences);
         }
 
+        await db.SaveChangesAsync(ct);
         if (flagged.Count == 0)
             return [];
 
-        await db.SaveChangesAsync(ct);
         foreach (var row in flagged)
             await todos.RaiseAsync(ActivityType.ListingChangedOutside, row, ActivityUrgency.Medium, "listing_changed_outside", ct);
 

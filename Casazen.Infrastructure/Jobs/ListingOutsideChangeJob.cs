@@ -14,7 +14,8 @@ namespace Casazen.Infrastructure.Jobs;
 /// Looks for the changes made on Octorate outside CasaZen, every hour (E02/F03/US01/T07, NF-27, ADR-027-R1, R2, R4): for each property with a channel
 /// that was pushed (<c>Accepted</c> or <c>Published</c>) and has a baseline, it asks <see cref="IOutsideChangeService.DetectAsync"/> to read the
 /// groups of the content again and compare them with the baseline. A difference flags the channel and raises a «To do»; nothing is ever written to
-/// Octorate. Behind <c>Features:OctorateConnector</c> (the registration removes it while the flag is off).
+/// Octorate. The same read confirms the published channels (<c>LastSyncedAt</c>), so a healthy channel is never reported silent. Behind
+/// <c>Features:OctorateConnector</c> (the registration removes it while the flag is off).
 /// </summary>
 public class ListingOutsideChangeJob(
     AppDbContext db,
@@ -38,10 +39,11 @@ public class ListingOutsideChangeJob(
         if (!featureFlags.IsEnabled(FeatureFlags.OctorateConnector))
             return;
 
+        // A published channel is read whatever it keeps (the read also confirms it); an accepted one only when it has a baseline to compare.
         var pushed = await db.ListingChannelStates
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .Where(s => (s.Status == ChannelPublishStatus.Accepted || s.Status == ChannelPublishStatus.Published) && s.ContentHashesJson != null)
+            .Where(s => s.Status == ChannelPublishStatus.Published || (s.Status == ChannelPublishStatus.Accepted && s.ContentHashesJson != null))
             .Select(s => s.PropertyId)
             .Distinct()
             .ToListAsync(cancellationToken);

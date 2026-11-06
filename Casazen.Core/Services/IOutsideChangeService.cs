@@ -10,7 +10,9 @@ public interface IOutsideChangeService
     /// <summary>
     /// Re-reads the groups of the content of the property from the channel manager and compares them with the baseline of each channel row that
     /// was pushed (<c>Accepted</c> or <c>Published</c>): a difference sets <c>ExternalChangeAt</c> (when it is empty) and the groups that changed, and
-    /// raises one «To do» for the property and channel. Returns the groups that changed (distinct). Never writes to Octorate.
+    /// raises one «To do» for the property and channel. Returns the groups that changed (distinct). Never writes to Octorate. A read that works
+    /// also confirms the <c>Published</c> channels of the property (<c>LastSyncedAt</c>): nothing else reads them again, and a channel not
+    /// confirmed for 24 hours is the one that went silent.
     /// </summary>
     Task<IReadOnlyList<string>> DetectAsync(Guid orgId, Guid propertyId, CancellationToken ct);
 

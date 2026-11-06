@@ -957,15 +957,16 @@ answered with their own code (`octorate_not_connected` 409, `octorate_auth_faile
   the property in the same save (outbox). The 15-minute `ListingStatusSyncJob` (and `CONTENT_NOTIFICATION` at once) reads the process
   (`GET /rest/v1/content/products/{acc}/process/{processId}`: the path has no product) and moves the row to `Published` or `ToFix` with Octorate's reason; a state
   it does not understand changes nothing. A pushed channel not confirmed for 24 hours raises `syncAlert`, and the daily `ListingChannelHealthJob` one `IntegrationError`
-  «To do», closed when the row is fresh again.
+  «To do», closed when the row is fresh again. An accepted channel is confirmed by the process of its push (every answer it understands sets `LastSyncedAt`); a
+  published one has no process left, so it is confirmed by the hourly read of its content (`ListingOutsideChangeJob`, below).
 - *Photos (ADR-036).* Only the entries of `Property.PhotoUrls` that are objects of the property's own `properties/{id}/photos/` folder go out
   (`PublicPhotoUrlService`); each gets a `PhotoUploadTask` and is sent once (`POST /rest/v1/accommodation/{acc}/photos`, form `url`, 202) and followed in the queue;
   a photo that leaves the gallery is marked `RemovePending` by `PropertyPhotoService.DeleteAsync` and deleted on Octorate. Every photo a host uploads is rewritten
   without its metadata (`ShowcaseImageSanitizer`: GPS, camera, time; only the orientation stays) before it is stored.
 - *Changes made outside CasaZen (NF-27).* The hourly `ListingOutsideChangeJob` (and `CONTENT_NOTIFICATION`) re-reads the groups (`property`, `descriptions`, `rooms`)
   and compares their hashes with the baseline; a difference sets `ExternalChangeAt`, keeps the groups and raises one «To do» `ListingChangedOutside`. It never writes
-  to Octorate, and the rules of the stay, prices and discounts have no read, so they have no baseline. A publication over a flagged channel is refused (409) until
-  `keep` or `take` (`POST .../outside-change/resolve`).
+  to Octorate, and the rules of the stay, prices and discounts have no read, so they have no baseline. A read that works also sets `LastSyncedAt` of the
+  `Published` channels of the property. A publication over a flagged channel is refused (409) until `keep` or `take` (`POST .../outside-change/resolve`).
 - *Codes of a row.* `listing_cin_missing`, `listing_photos_below_minimum`, `listing_content_rejected`, `listing_channel_refused`, `listing_channel_push_failed`,
   `listing_channel_not_connected`, `octorate_room_required` and the `octorate_*` codes of the client; each has a message in simple words (`ListingChannelErrors`).
 

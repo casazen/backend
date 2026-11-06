@@ -122,6 +122,49 @@ public class ListingStatusProofTests
     }
 
     [Fact]
+    public async Task DetectAsync_AReadThatWorks_ConfirmsThePublishedChannels_AndOnlyThem()
+    {
+        // The alert of the 24 hours (ADR-034-R3): a published channel has no process left to follow, so the hourly read of the content is what keeps it
+        // confirmed; an accepted one is confirmed only by the process of its push, so a read of the content does not hide that it never was.
+        var propertyId = await SeedPropertyAsync(OrgA);
+        var (baseline, propertyOnOctorate, descriptions) = UnchangedOnOctorate();
+        await SeedRowAsync(propertyId, "homeaway", ChannelPublishStatus.Published, baseline: baseline, lastSyncedHoursAgo: 30);
+        await SeedRowAsync(propertyId, "airbnb_xml", ChannelPublishStatus.Published, lastSyncedHoursAgo: 30);
+        await SeedRowAsync(propertyId, "booking_xml", ChannelPublishStatus.Accepted, baseline: baseline, lastSyncedHoursAgo: 30);
+        SetUpOctorate(propertyOnOctorate, descriptions);
+        await using (var db = NewDb())
+            Assert.Empty(await Outside(db).DetectAsync(OrgA, propertyId, CancellationToken.None));
+
+        await using var check = NewDb(new FixedTenant(OrgA));
+        var rows = await check.ListingChannelStates.AsNoTracking().ToDictionaryAsync(s => s.ChannelCode);
+        Assert.Equal(Now.UtcDateTime, rows["homeaway"].LastSyncedAt);
+        Assert.Equal(Now.UtcDateTime, rows["airbnb_xml"].LastSyncedAt);
+        Assert.Equal(Now.UtcDateTime.AddHours(-30), rows["booking_xml"].LastSyncedAt);
+        Assert.All(rows.Values, row => Assert.Null(row.ExternalChangeAt));
+
+        var view = await Status(check).GetAsync(propertyId, CancellationToken.None);
+        Assert.NotNull(view);
+        Assert.False(view.Channels.Single(c => c.ChannelCode == "homeaway").SyncAlert);
+        Assert.False(view.Channels.Single(c => c.ChannelCode == "airbnb_xml").SyncAlert);
+        Assert.True(view.Channels.Single(c => c.ChannelCode == "booking_xml").SyncAlert);
+    }
+
+    [Fact]
+    public async Task DetectAsync_WhenTheReadFails_ConfirmsNothing_SoASilentChannelIsStillSeen()
+    {
+        var propertyId = await SeedPropertyAsync(OrgA);
+        await SeedRowAsync(propertyId, "homeaway", ChannelPublishStatus.Published, lastSyncedHoursAgo: 30);
+        _client.Setup(c => c.GetPropertyAsync(Accommodation, It.IsAny<CancellationToken>())).ThrowsAsync(new OctorateServerException(500));
+        await using (var db = NewDb())
+            await Assert.ThrowsAsync<OctorateServerException>(() => Outside(db).DetectAsync(OrgA, propertyId, CancellationToken.None));
+
+        await using var check = NewDb(new FixedTenant(OrgA));
+        Assert.Equal(Now.UtcDateTime.AddHours(-30), (await check.ListingChannelStates.AsNoTracking().SingleAsync()).LastSyncedAt);
+        var view = await Status(check).GetAsync(propertyId, CancellationToken.None);
+        Assert.True(Assert.Single(view!.Channels).SyncAlert);
+    }
+
+    [Fact]
     public async Task ResolveAsync_TakeOfAGroupOtherThanTheDescriptions_IsRefusedWithTheGroups_AndKeepRepublishesWithOverwrite()
     {
         var propertyId = await SeedPropertyAsync(OrgA);
@@ -194,6 +237,30 @@ public class ListingStatusProofTests
         Assert.False(expedia.SyncAlert);
         Assert.Equal(100, expedia.Completeness);
         Assert.Equal(["booking_xml"], view.CinNotSentTo);
+    }
+
+    /// <summary>The listing as Octorate holds it, and the baseline a push of exactly that content left: a read finds no change.</summary>
+    private static (ListingChannelBaseline Baseline, OctorateProperty Property, OctorateDescriptions Descriptions) UnchangedOnOctorate()
+    {
+        var property = new OctorateProperty { Id = Accommodation, Name = "Casa del Lago", Address = "Via del Lago 1", City = "Como", PostalCode = "22100" };
+        var descriptions = new OctorateDescriptions { Description = new Dictionary<string, string> { ["IT"] = "Un appartamento luminoso." } };
+        var baseline = new ListingChannelBaseline(
+            new Dictionary<string, string>
+            {
+                [ListingContentGroups.Property] = OctorateContentReader.HashOf(OctorateContentReader.PropertyForm(property)),
+                [ListingContentGroups.Descriptions] = OctorateContentReader.HashOf(OctorateContentReader.DescriptionsForm(descriptions)),
+                [ListingContentGroups.Rooms] = OctorateContentReader.HashOf(OctorateContentReader.RoomsForm([])),
+            },
+            null,
+            []);
+        return (baseline, property, descriptions);
+    }
+
+    private void SetUpOctorate(OctorateProperty property, OctorateDescriptions descriptions)
+    {
+        _client.Setup(c => c.GetPropertyAsync(Accommodation, It.IsAny<CancellationToken>())).ReturnsAsync(property);
+        _client.Setup(c => c.GetContentRoomsAsync(Accommodation, Product, It.IsAny<CancellationToken>())).ReturnsAsync(new List<OctorateContentRoom>());
+        _client.Setup(c => c.GetDescriptionsAsync(Accommodation, Product, It.IsAny<CancellationToken>())).ReturnsAsync(descriptions);
     }
 
     private ListingStatusService Status(AppDbContext db)
