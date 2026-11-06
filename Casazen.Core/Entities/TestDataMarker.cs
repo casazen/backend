@@ -170,6 +170,12 @@ public static class TestDataEntities
     public const string GuestThread = "GuestThread";
 
     /// <summary>
+    /// A message template of the demo host (<see cref="Entities.MessageTemplate"/>, E05/F02/US02/T02): invented words that say TEST. It points at no house and no
+    /// stay, so the reset deletes it by its marker, together with the marker; a template the host wrote has no marker and is never touched.
+    /// </summary>
+    public const string MessageTemplate = "MessageTemplate";
+
+    /// <summary>
     /// The mirror of a showcase booking on the channel manager (<see cref="Entities.OctorateBookingSync"/>, E08/F03/US03/T02, NF-74): the state of the last operation of
     /// an invented reservation, nothing is sent. It goes with its booking (cascade) and the reset deletes its marker with the other showcase markers.
     /// </summary>

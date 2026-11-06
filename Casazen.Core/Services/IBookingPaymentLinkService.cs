@@ -58,14 +58,17 @@ public static class BookingPaymentLinkErrorCodes
 public static class HostPaymentLinks
 {
     /// <summary>
-    /// A booking the host entered whose guest pays with a link: source <see cref="BookingSource.Manual"/> and arrangement
-    /// <see cref="HostPaymentArrangement.PaymentLink"/>. Only these open the checkout page with a link of the host.
+    /// A booking whose guest pays a balance with a link: a booking the host entered (<see cref="BookingSource.Manual"/>) or a confirmed one of the
+    /// booking site whose price was raised by an edit (<see cref="BookingSource.Direct"/>, E08/F02/US01/T01), with the arrangement
+    /// <see cref="HostPaymentArrangement.PaymentLink"/>. Only these open the checkout page with a link of the host: a hold of the booking site
+    /// (a booking that is not confirmed yet) never has the arrangement, so it keeps the checkout of the booking site.
     /// </summary>
     public static bool IsHostPaymentLink(Booking booking)
     {
         ArgumentNullException.ThrowIfNull(booking);
 
-        return booking.Source == BookingSource.Manual && booking.HostPaymentArrangement == HostPaymentArrangement.PaymentLink;
+        return booking.Source is BookingSource.Manual or BookingSource.Direct
+               && booking.HostPaymentArrangement == HostPaymentArrangement.PaymentLink;
     }
 
     /// <summary>What is still to pay: the total minus what came in (refunds taken off), never below zero; the figure of "Registra incasso".</summary>

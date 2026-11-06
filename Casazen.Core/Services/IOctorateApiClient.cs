@@ -159,6 +159,31 @@ public interface IOctorateApiClient
     Task<OctorateReservation> CreateReservationAsync(OctorateBookingTarget target, OctorateReservationCreate request, CancellationToken ct);
 
     /// <summary>
+    /// The reservation as Octorate holds it now, read for the accommodation of <paramref name="target"/> (<c>GET /rest/v1/reservation/{acc}/{id}</c>,
+    /// E08/F02/US01/T02): the re-read after a change was refused with a 409, so the host sees both versions. The same read as
+    /// <see cref="GetReservationAsync(string, string, CancellationToken)"/>; 404 is <c>OctorateNotFoundException</c>.
+    /// </summary>
+    Task<OctorateReservation> GetReservationAsync(OctorateBookingTarget target, string reservationId, CancellationToken ct);
+
+    /// <summary>
+    /// Changes the reservation of a CasaZen booking (<c>PATCH /rest/v1/reservation/{acc}/{id}</c>, E08/F02/US01/T02, NF-75): the dates, the guests, the
+    /// price of the stay and the notes of <paramref name="update"/>, with the PMS room of <paramref name="target"/> as <c>pmsProduct</c> (the sandbox answers
+    /// 400 to a <c>PATCH</c> without it). A change is never written over a reservation that changed on Octorate since the version it is based on
+    /// (<see cref="OctorateReservationUpdate.BasedOnUpdateTime"/>): that, and a 409 of Octorate, are <c>OctorateConflictException</c>, and the
+    /// caller re-reads the reservation. Except when the other version already holds the stay and the guests of the change (an earlier attempt made it
+    /// and its answer was lost): that is done, the reservation as it is is returned and nothing is written. A 2xx is not the proof (Octorate leaves out, without saying so, what it does not write): the reservation is read
+    /// again and returned, and a stay or guests that are not the ones sent are <c>OctorateRequestRejectedException</c>, never a success. A <c>PATCH</c> whose
+    /// content is what Octorate holds answers 304: done. Octorate has no idempotency key (D13) but the change is idempotent: sent again after a lost answer it
+    /// writes the same values. Any other answer is the typed error of the client.
+    /// </summary>
+    /// <returns>The reservation as Octorate holds it after the change, with its new <c>updateTime</c>.</returns>
+    Task<OctorateReservation> UpdateReservationAsync(
+        OctorateBookingTarget target,
+        string reservationId,
+        OctorateReservationUpdate update,
+        CancellationToken ct);
+
+    /// <summary>
     /// Records a payment on a reservation (<c>POST /rest/v1/reservation/{acc}/{id}/payment</c>, E08/F01/US01/T02): income CasaZen collected,
     /// "not a card charge" (D9): <c>transaction</c>, <c>paymentMode</c>, <c>amount</c> to the cent, <c>referenceTime</c>. Never a card, a
     /// pre-authorization or a scheduled charge.
@@ -218,6 +243,50 @@ public interface IOctorateApiClient
     /// <c>OctorateServerException</c>.
     /// </summary>
     Task<OctorateChatMessage[]> GetRecentChatMessagesAsync(string accommodationId, CancellationToken ct);
+
+    /// <summary>
+    /// Sends a message to the guest of a conversation of a channel (<c>POST /rest/v1/chat/{property}/messages</c>, E05/F02/US02/T01): processor
+    /// <c>CHANNEL</c>, the words as the attribute <c>TEXT</c> and <c>OTA_FLOW_DIRECTION</c> = <c>TO</c>, written as the person of the host side that
+    /// the thread names (<see cref="OctorateChatThread.HostPersonId"/>) on the thread the channel gave (<see cref="OctorateChatThread.ExternalThreadId"/>),
+    /// both read from the thread first; a thread that names none of them is <c>OctorateChatNotSendableException</c> and nothing is sent. Answers the id
+    /// Octorate gave the message and the state it reports; a 2xx answer without an id is <c>OctorateServerException</c>, because the message may exist
+    /// all the same. A failure of the read of the thread, which comes first (no answer, a 5xx, an answer that cannot be read), is
+    /// <c>OctorateChatNotReadException</c>: nothing was posted, and the message can be sent again. <b>The send is never repeated by the client</b>
+    /// (OCT-13): a timeout, a 5xx or an answer that cannot be read of the POST itself leaves the outcome
+    /// unknown, and only the caller, after the copy of the conversation (<see cref="IMessageSyncService"/>) has shown whether the message arrived,
+    /// decides about a second send. The words are personal data and are never logged. A license without the <c>chat</c> module is
+    /// <c>OctorateAuthException</c> with the code <c>chat_not_licensed</c>, as for the reads. <b>Documented, not proven:</b> the sandbox has no chat
+    /// license, so the body follows the OpenAPI (<c>ChatMessageDTO</c>) and the examples of the collection of Octorate.
+    /// </summary>
+    Task<OctorateChatSendResult> SendChatMessageAsync(string accommodationId, string threadId, string text, CancellationToken ct);
+
+    /// <summary>
+    /// The e-mail address and the phone number of the booker of ONE reservation (<c>POST /rest/v2/reservation/{accommodation}/{refer}/contactInfo</c>,
+    /// E05/F02/US02/T01, S7, D24); <paramref name="refer"/> is the <c>refer</c> of the reservation (<see cref="OctorateReservation.Refer"/>). Sensitive
+    /// data: Octorate gives it only to an application with the dedicated permission and, even in the sandbox, only from the static IP addresses
+    /// registered with it, and records every read in its own log, so it is asked for one booking at a time, when a person needs it, never in bulk, and
+    /// nothing of the answer is ever logged. A 401 or a 403 (no static IP, no permission) is <c>OctorateSensitiveDataNotAllowedException</c>, never an
+    /// empty result: a caller must not read "no contact" into a refusal. The answer has the same shape as <see cref="GetGuestContactInfoAsync"/>
+    /// (<c>email</c>, <c>phone</c>), and <see cref="OctorateGuestContactInfo.Recognized"/> says whether it was understood.
+    /// </summary>
+    Task<OctorateGuestContactInfo> GetReservationContactInfoAsync(string accommodationId, string refer, CancellationToken ct);
+
+    /// <summary>
+    /// The message templates the channel manager keeps for a thread (<c>GET /rest/v1/chat/{property}/threads/{thread}/templates</c>, E05/F02/US02/T02,
+    /// <c>MailTemplateDTO</c>): read only, to be copied into the composer. An item without a usable id or a body is left out; an answer that is not a
+    /// list is <c>OctorateServerException</c>, never an empty list. The same refusals as the other chat reads (<c>chat_not_licensed</c>).
+    /// </summary>
+    Task<OctorateChatTemplate[]> GetChatTemplatesAsync(string accommodationId, string threadId, CancellationToken ct);
+
+    /// <summary>
+    /// The text of a message of a thread in <paramref name="language"/> (<c>PATCH /rest/v1/chat/{property}/threads/{threadId}/messages/{messageId}/translate/{language}</c>,
+    /// E05/F02/US02/T02), translated by the channel manager: the fallback of CasaZen's own translation. Octorate keeps the translation on its message
+    /// (the attribute <c>TRANSLATION_MAP</c>); CasaZen reads it from the answer and stores nothing. A message is translated by its id, never a text of
+    /// CasaZen's, so no words leave CasaZen. An answer that holds no translation in that language is <c>OctorateServerException</c>.
+    /// <b>Documented, not proven:</b> the wire shape of the translation map is not seen in the sandbox (no chat license). <paramref name="language"/> is
+    /// one of the 14 languages of the channel manager (<c>IT</c>, <c>EN</c>, ...).
+    /// </summary>
+    Task<string> TranslateChatMessageAsync(string accommodationId, string threadId, string messageId, string language, CancellationToken ct);
 
     /// <summary>
     /// The catalog of portals and tools Octorate offers (<c>GET /rest/v1/meta/portals</c>, E09/F01/US01/T02). A partner-level call: it acts

@@ -1770,6 +1770,24 @@
   <data name="HostContact_Why" xml:space="preserve">
     <value>Ricevi questa email perché il tuo sito di prenotazione ha un modulo per scriverti. Il visitatore ha accettato che il messaggio e il suo indirizzo email ti vengano inviati. Se non ti sembra un contatto vero, ignoralo.</value>
   </data>
+  <data name="HostGuestMessage_Subject" xml:space="preserve">
+    <value>Un messaggio da {0} per il tuo soggiorno</value>
+  </data>
+  <data name="HostGuestMessage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti scrive a proposito del tuo soggiorno a &lt;strong&gt;{1}&lt;/strong&gt;, dal {2} al {3}.</value>
+  </data>
+  <data name="HostGuestMessage_MessageLabel" xml:space="preserve">
+    <value>Messaggio</value>
+  </data>
+  <data name="HostGuestMessage_Reply" xml:space="preserve">
+    <value>Per rispondere, rispondi a questa email: la risposta arriva direttamente a &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostGuestMessage_NoReply" xml:space="preserve">
+    <value>Questa email è stata inviata da CasaZen per conto della struttura: per rispondere contatta direttamente la struttura.</value>
+  </data>
+  <data name="HostGuestMessage_Why" xml:space="preserve">
+    <value>Ricevi questa email perché hai una prenotazione presso questa struttura: il messaggio lo ha scritto la struttura e CasaZen lo ha inviato per suo conto. Se non riconosci la prenotazione, ignora questa email.</value>
+  </data>
   <data name="GuestNewPhotoRequest_Subject" xml:space="preserve">
     <value>Nuova foto richiesta per il tuo soggiorno — {0}</value>
   </data>
@@ -2402,5 +2420,26 @@
   </data>
   <data name="TodoReason_OctorateDatesTaken" xml:space="preserve">
     <value>La prenotazione non è stata creata nel channel manager: le date sono già occupate</value>
+  </data>
+  <data name="GuestBookingModified_Subject" xml:space="preserve">
+    <value>Prenotazione modificata - {0}</value>
+  </data>
+  <data name="GuestBookingModified_Body" xml:space="preserve">
+    <value>il tuo host ha modificato la prenotazione presso &lt;strong&gt;{0}&lt;/strong&gt;: ora il soggiorno è dal &lt;strong&gt;{1}&lt;/strong&gt; al &lt;strong&gt;{2}&lt;/strong&gt;, per &lt;strong&gt;{3}&lt;/strong&gt; ospiti.</value>
+  </data>
+  <data name="GuestBookingModified_Total" xml:space="preserve">
+    <value>Nuovo totale del soggiorno: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="GuestBookingModified_Refund" xml:space="preserve">
+    <value>Il nuovo prezzo è più basso: ti rimborsiamo &lt;strong&gt;{0}&lt;/strong&gt; sul metodo di pagamento che hai usato.</value>
+  </data>
+  <data name="GuestBookingModified_Charged" xml:space="preserve">
+    <value>Il nuovo prezzo è più alto: la differenza di &lt;strong&gt;{0}&lt;/strong&gt; è stata addebitata sulla carta che hai salvato.</value>
+  </data>
+  <data name="GuestBookingModified_PaymentLink" xml:space="preserve">
+    <value>Il nuovo prezzo è più alto: per pagare la differenza ti arriva a parte un'email con il link di pagamento.</value>
+  </data>
+  <data name="TodoReason_BookingSyncConflict" xml:space="preserve">
+    <value>La prenotazione è stata modificata nel tuo channel manager: scegli quale versione tenere</value>
   </data>
 </root>

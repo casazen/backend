@@ -26,6 +26,36 @@ public class MessagesHubRegistrationTests
         Assert.Single(services, d => d.ServiceType == typeof(IOtaAttachmentFetcher));
     }
 
+    /// <summary>
+    /// E05/F02/US02: the write side of the hub and the helpers of the composer are registered, each once, scoped (they hold the database of the request).
+    /// The exact list of what <c>AddMessagesHub</c> registers is photographed here: a service added to it is added to this test.
+    /// </summary>
+    [Fact]
+    public void AddMessagesHub_RegistersTheReplyTheTemplatesAndTheTranslation_AsTheWholeListOfServices()
+    {
+        var services = new ServiceCollection();
+
+        services.AddMessagesHub();
+
+        Assert.Equal(typeof(MessageReplyService), Assert.Single(services, d => d.ServiceType == typeof(IMessageReplyService)).ImplementationType);
+        Assert.Equal(typeof(MessageTemplateService), Assert.Single(services, d => d.ServiceType == typeof(IMessageTemplateService)).ImplementationType);
+        Assert.Equal(typeof(MessageTranslationService), Assert.Single(services, d => d.ServiceType == typeof(IMessageTranslationService)).ImplementationType);
+        Assert.All(
+            new[] { typeof(IMessageHubService), typeof(IMessageReplyService), typeof(IMessageTemplateService), typeof(IMessageTranslationService) },
+            type => Assert.Equal(ServiceLifetime.Scoped, Assert.Single(services, d => d.ServiceType == type).Lifetime));
+
+        // Of the types of the application, these five and no other (the rest of the descriptors are the framework's: the typed client).
+        Assert.Equal(
+            [
+                nameof(IMessageHubService),
+                nameof(IMessageReplyService),
+                nameof(IMessageTemplateService),
+                nameof(IMessageTranslationService),
+                nameof(IOtaAttachmentFetcher),
+            ],
+            services.Select(d => d.ServiceType).Where(t => t.Namespace?.StartsWith("Casazen.", StringComparison.Ordinal) == true).Select(t => t.Name).Order());
+    }
+
     [Fact]
     public void TheAttachmentFetcher_IsResolvedFromTheContainer_WithItsOwnClient()
     {

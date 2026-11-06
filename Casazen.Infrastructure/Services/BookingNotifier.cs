@@ -202,6 +202,35 @@ public sealed class BookingNotifier(
     }
 
     /// <summary>
+    /// The host changed the dates or the guests of a confirmed booking of the booking site (E08/F02/US01/T01, NF-75): one email to the guest with the
+    /// stay as it is now, the new total and what happens to the money (<paramref name="settlement"/>: a refund, a charge of the saved card, or a payment
+    /// link that follows in its own email). The notes of the host are never in it. Called once the edit is committed: a failure is logged with the
+    /// booking id only and never undoes it.
+    /// </summary>
+    public async Task BookingModifiedAsync(Guid bookingId, BookingEditSettlement settlement, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(settlement);
+
+        var data = await TryLoadAsync(bookingId, "Booking change", cancellationToken);
+        if (data is null)
+            return;
+
+        // A booking cancelled in the meantime has nothing to tell.
+        if (data.Status is not (BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut))
+            return;
+
+        Queue(bookingId, EmailTemplates.Names.GuestBookingModified, data.GuestEmail, () =>
+            EmailTemplates.GuestBookingModified(
+                EmailTemplates.DefaultCulture,
+                data.GuestFirstName,
+                data.Summary,
+                settlement.Action == BookingSettlementAction.Refund ? settlement.Amount : 0m,
+                settlement.Action == BookingSettlementAction.ChargeSavedCard ? settlement.Amount : 0m,
+                settlement.Action == BookingSettlementAction.PaymentLink,
+                data.HostContact));
+    }
+
+    /// <summary>
     /// The deferred charge failed and needs the guest (BK-08, A3-14): the guest gets the link to pay on the checkout outcome
     /// page (<paramref name="checkoutToken"/>, the raw token whose hash was just stored), the host is told. The last day to
     /// pay is the day before <paramref name="cancellationDay"/> when an automatic cancellation applies.

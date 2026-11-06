@@ -87,6 +87,12 @@ public static class OrgActivityDetailKeys
     /// <summary>The random id of a handoff, returned to the client and kept with the line so the two can be matched (E03/F05/US01/T01).</summary>
     public const string Handoff = "handoff";
 
+    /// <summary>
+    /// What a read of the contact of a guest was for: a code of the closed list <see cref="ContactReadPurposes"/> (E05/F02/US02/T01). It is not called
+    /// «reason» because a free text must have no key to sit under; the value is always one of the codes of the list.
+    /// </summary>
+    public const string Purpose = "purpose";
+
     /// <summary>The code of the part of the activation plan a «Do it for me» request is about (<c>compliance</c>, <c>channels</c>...): a code of a closed list (E10/F01/US03/T01).</summary>
     public const string Part = "part";
 
@@ -105,7 +111,17 @@ public static class OrgActivityDetailKeys
         FromAreas, ToAreas, Reminders, FromSender, ToSender, DelegationVersion,
         Topic, Booking, Period, Handoff,
         Part, Context, Status,
+        Purpose,
     ];
+}
+
+/// <summary>The purposes a read of the contact of a guest can have (the <c>purpose</c> detail of <see cref="OrgActivityType.ContactInfoRead"/>): a closed list of codes.</summary>
+public static class ContactReadPurposes
+{
+    /// <summary>The host writes to the guest of a booking that has no conversation, by e-mail (E05/F02/US02/T01).</summary>
+    public const string MessageToGuest = "message_to_guest";
+
+    public static IReadOnlyList<string> All { get; } = [MessageToGuest];
 }
 
 /// <summary>Who or what changed the plan of an org (the <c>source</c> detail of <see cref="OrgActivityType.PlanChanged"/>).</summary>
@@ -228,6 +244,10 @@ public static partial class OrgActivityCatalog
             [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status]),
         new(OrgActivityType.OnboardingAssistUpdated, OrgActivityArea.Account, OrgActivitySubjectType.Org,
             [OrgActivityDetailKeys.Part, OrgActivityDetailKeys.Context, OrgActivityDetailKeys.Status]),
+
+        // The read of the contact of the guest of one booking, to write to it (E05/F02/US02/T01): Octorate records every read, so CasaZen records who
+        // asked and what for (the booking is the subject, the person is the actor). Never the address, the number or a word of the message.
+        new(OrgActivityType.ContactInfoRead, OrgActivityArea.ShortRent, OrgActivitySubjectType.Booking, [OrgActivityDetailKeys.Purpose]),
     ];
 
     /// <summary>Every event the log can record, in the order of the runbook.</summary>

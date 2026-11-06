@@ -1770,6 +1770,24 @@
   <data name="HostContact_Why" xml:space="preserve">
     <value>You receive this email because your booking site has a form to write to you. The visitor agreed that the message and their email address are sent to you. If it does not look like a real contact, ignore it.</value>
   </data>
+  <data name="HostGuestMessage_Subject" xml:space="preserve">
+    <value>A message from {0} about your stay</value>
+  </data>
+  <data name="HostGuestMessage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; is writing to you about your stay at &lt;strong&gt;{1}&lt;/strong&gt;, from {2} to {3}.</value>
+  </data>
+  <data name="HostGuestMessage_MessageLabel" xml:space="preserve">
+    <value>Message</value>
+  </data>
+  <data name="HostGuestMessage_Reply" xml:space="preserve">
+    <value>To answer, reply to this email: your reply goes straight to &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostGuestMessage_NoReply" xml:space="preserve">
+    <value>This email was sent by CasaZen on behalf of the property: to answer, contact the property directly.</value>
+  </data>
+  <data name="HostGuestMessage_Why" xml:space="preserve">
+    <value>You receive this email because you have a booking at this property: the property wrote the message and CasaZen sent it on its behalf. If you do not recognize the booking, ignore this email.</value>
+  </data>
   <data name="GuestNewPhotoRequest_Subject" xml:space="preserve">
     <value>New photo requested for your stay — {0}</value>
   </data>
@@ -2402,5 +2420,26 @@
   </data>
   <data name="TodoReason_OctorateDatesTaken" xml:space="preserve">
     <value>The booking could not be created in your channel manager: the dates are taken</value>
+  </data>
+  <data name="GuestBookingModified_Subject" xml:space="preserve">
+    <value>Booking changed - {0}</value>
+  </data>
+  <data name="GuestBookingModified_Body" xml:space="preserve">
+    <value>your host has changed your booking at &lt;strong&gt;{0}&lt;/strong&gt;: your stay is now from &lt;strong&gt;{1}&lt;/strong&gt; to &lt;strong&gt;{2}&lt;/strong&gt;, for &lt;strong&gt;{3}&lt;/strong&gt; guests.</value>
+  </data>
+  <data name="GuestBookingModified_Total" xml:space="preserve">
+    <value>New total for your stay: &lt;strong&gt;{0}&lt;/strong&gt;</value>
+  </data>
+  <data name="GuestBookingModified_Refund" xml:space="preserve">
+    <value>The new price is lower: we are refunding &lt;strong&gt;{0}&lt;/strong&gt; to the payment method you used.</value>
+  </data>
+  <data name="GuestBookingModified_Charged" xml:space="preserve">
+    <value>The new price is higher: the difference of &lt;strong&gt;{0}&lt;/strong&gt; has been charged to the card you saved.</value>
+  </data>
+  <data name="GuestBookingModified_PaymentLink" xml:space="preserve">
+    <value>The new price is higher: you will get a separate email with the payment link for the difference.</value>
+  </data>
+  <data name="TodoReason_BookingSyncConflict" xml:space="preserve">
+    <value>The booking was changed in your channel manager: choose which version to keep</value>
   </data>
 </root>

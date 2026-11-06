@@ -1514,7 +1514,7 @@
     <value>Il soggiorno è già iniziato o concluso: date e ospiti non si possono più cambiare.</value>
   </data>
   <data name="BookingUpdateSourceLocked" xml:space="preserve">
-    <value>Date e ospiti si possono cambiare solo nelle prenotazioni inserite da te: questa arriva dal sito di prenotazione o da un canale, con prezzo e pagamento già definiti. Puoi modificare le note.</value>
+    <value>Date e ospiti si possono cambiare nelle prenotazioni inserite da te e in quelle confermate del sito di prenotazione: questa è una richiesta ancora in attesa, oppure arriva da un canale, con prezzo e pagamento già definiti. Puoi modificare le note.</value>
   </data>
   <data name="BookingCheckInInPast" xml:space="preserve">
     <value>Il check-in non può essere spostato a un giorno già passato.</value>
@@ -3724,6 +3724,45 @@
   <data name="AttachmentUnavailable" xml:space="preserve">
     <value>L’allegato non è più disponibile.</value>
   </data>
+  <data name="MessageMappingNotConfirmed" xml:space="preserve">
+    <value>Questa conversazione non è collegata a un immobile confermato: finché non confermi il collegamento dell’annuncio nel channel manager non puoi rispondere da CasaZen.</value>
+  </data>
+  <data name="MessageChannelRuleViolation" xml:space="preserve">
+    <value>Prima della prenotazione il canale non permette di scrivere link, indirizzi e-mail o numeri di telefono: toglili dal messaggio.</value>
+  </data>
+  <data name="MessageContactInfoUnavailable" xml:space="preserve">
+    <value>Non è possibile leggere il recapito dell’ospite: il channel manager non lo rilascia (servono gli indirizzi dei server di CasaZen registrati e un permesso dedicato) oppure non ne ha uno. Scrivi all’ospite dal canale da cui ha prenotato.</value>
+  </data>
+  <data name="MessageNoContactChannel" xml:space="preserve">
+    <value>Da CasaZen non c’è modo di scrivere a questo ospite: il canale su cui ha prenotato non permette di iniziare una conversazione.</value>
+  </data>
+  <data name="OctorateChatNotSendable" xml:space="preserve">
+    <value>Questa conversazione non si può scrivere da CasaZen: il channel manager non indica chi scrive o l’identificativo della conversazione sul canale. Rispondi dal canale.</value>
+  </data>
+  <data name="MessageTemplateVariableUnknown" xml:space="preserve">
+    <value>Il modello usa «{0}», che non è una variabile valida. Quelle valide sono guest_name, property_name, booking_code, check_in_date, check_out_date, check_in_time, check_out_time e host_name, scritte tra doppie parentesi graffe.</value>
+  </data>
+  <data name="MessageTemplateVariableMissing" xml:space="preserve">
+    <value>Per questa conversazione non c’è un valore per «{0}»: scegli un altro modello o completa il testo a mano.</value>
+  </data>
+  <data name="MessageTemplateNotFound" xml:space="preserve">
+    <value>Modello non trovato.</value>
+  </data>
+  <data name="MessageTemplateInvalid" xml:space="preserve">
+    <value>Il modello deve avere un nome (fino a 100 caratteri), una lingua tra quelle disponibili e un testo (fino a 2000 caratteri).</value>
+  </data>
+  <data name="MessageTemplateExists" xml:space="preserve">
+    <value>Esiste già un modello con questo nome e questa lingua.</value>
+  </data>
+  <data name="MessageTranslationUnavailable" xml:space="preserve">
+    <value>La traduzione non è disponibile in questo momento: né il traduttore di CasaZen né quello del channel manager possono tradurre questo testo.</value>
+  </data>
+  <data name="MessageTranslationLanguageInvalid" xml:space="preserve">
+    <value>La lingua della traduzione non è tra quelle disponibili.</value>
+  </data>
+  <data name="MessageTranslationInputInvalid" xml:space="preserve">
+    <value>Indica un messaggio da tradurre oppure un testo, non entrambi e non nessuno dei due.</value>
+  </data>
   <data name="LeaseDocumentInvalid" xml:space="preserve"><value>Carica un PDF valido fino a 20 MB.</value></data>
   <data name="ApeIncomplete" xml:space="preserve">
     <value>Dati APE mancanti o non leggibili: {0}. Aggiungi tutte le pagine o sostituisci le foto poco nitide.</value>
@@ -5151,6 +5190,18 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OtaChannelCancelGuidanceAgoda" xml:space="preserve">
     <value>Per cancellare questa prenotazione di Agoda chiedi all'ospite di annullarla su Agoda.</value>
   </data>
+  <data name="BookingSettlementFailed" xml:space="preserve">
+    <value>Il pagamento della differenza di prezzo non è andato a buon fine: la prenotazione non è stata modificata. Puoi riprovare, lo stesso rimborso non viene mai fatto due volte.</value>
+  </data>
+  <data name="BookingEditPaymentInProgress" xml:space="preserve">
+    <value>Un pagamento di questa prenotazione è ancora in corso, oppure aspetta che sia il cliente a completarlo: attendi che sia concluso prima di cambiare date od ospiti.</value>
+  </data>
+  <data name="BookingEditPaymentPermissionRequired" xml:space="preserve">
+    <value>Questa modifica muove denaro (un rimborso, l'addebito della carta salvata o un link di pagamento): serve il permesso di gestire i pagamenti della struttura. La prenotazione non è stata modificata.</value>
+  </data>
+  <data name="BookingTouristTaxUnavailable" xml:space="preserve">
+    <value>Non riusciamo a calcolare la tassa di soggiorno per le nuove date: il prezzo scenderebbe della tassa che l'ospite ha già pagato e il rimborso partirebbe da solo. La prenotazione non è stata modificata: scegli altre date o chiedi assistenza.</value>
+  </data>
   <data name="PanelStepKindInvalid" xml:space="preserve">
     <value>Questo tipo di passaggio guidato non esiste.</value>
   </data>
@@ -5201,5 +5252,8 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="AssistStepAlreadyDone" xml:space="preserve">
     <value>Questo passaggio è già completato: non c'è nulla da chiedere all'assistenza.</value>
+  </data>
+  <data name="OnboardingPartNotReopenable" xml:space="preserve">
+    <value>Questa parte non è disponibile: non c'è nessun passaggio da riaprire.</value>
   </data>
 </root>
