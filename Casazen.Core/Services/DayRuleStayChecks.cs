@@ -74,6 +74,20 @@ public static class DayRuleStayChecks
         if (onArrival?.MaxNights is { } maximum && nights > maximum)
             return new DayRuleViolation(DayRuleViolationKind.MaxNights, arrival, maximum);
 
+        return AdvanceViolation(arrival, todayOfProperty, onArrival);
+    }
+
+    /// <summary>
+    /// Whether a stay can start on <paramref name="night"/> at all, whatever its length and its departure: the night is not closed to arrival and
+    /// it is inside the advance limits of its rule (<paramref name="rule"/>, <c>null</c> for a night with none). It is what the days of the whole
+    /// site (the date picker of the home) ask of each night; the checks of a whole stay are <see cref="FirstViolation"/>.
+    /// </summary>
+    public static bool CanArriveOn(DateOnly night, DateOnly todayOfProperty, DayRuleValues? rule) =>
+        rule is not { ClosedToArrival: true } && AdvanceViolation(night, todayOfProperty, rule) is null;
+
+    // The advance is the number of days from today of the property to the arrival, read against the rule of the arrival night.
+    private static DayRuleViolation? AdvanceViolation(DateOnly arrival, DateOnly todayOfProperty, DayRuleValues? onArrival)
+    {
         var advance = arrival.DayNumber - todayOfProperty.DayNumber;
         if (onArrival?.MinAdvanceDays is { } minAdvance && advance < minAdvance)
             return new DayRuleViolation(DayRuleViolationKind.AdvanceTooShort, arrival, minAdvance);

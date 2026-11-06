@@ -305,6 +305,79 @@ public class DayRulesBookingSiteTests
         Assert.Equal(1, accepted.Nights);
     }
 
+    /// <summary>
+    /// The search, the public calendar and the checkout agree (E08/F05/US01/T04, AC-NF36-2): for every arrival and every length tried, with rules of
+    /// every kind scattered over the days, the search offers a house exactly when the quote of the checkout accepts the stay, and the first free date
+    /// it proposes is a stay the quote accepts.
+    /// </summary>
+    [Fact]
+    public async Task Search_OffersAStayExactlyWhenTheCheckoutAcceptsIt_AndItsFirstFreeDateIsOneToo()
+    {
+        _property.MinNights = 2;
+        await _db.SaveChangesAsync();
+        var first = new DateOnly(2026, 12, 8);
+        await ApplyAsync(new DateOnly(2026, 12, 11), new DateOnly(2026, 12, 11), new DayRulePatch(ClosedToArrival: FieldPatch<bool>.Set(true)));
+        await ApplyAsync(new DateOnly(2026, 12, 12), new DateOnly(2026, 12, 12), new DayRulePatch(ClosedToArrival: FieldPatch<bool>.Set(true)));
+        await ApplyAsync(new DateOnly(2026, 12, 15), new DateOnly(2026, 12, 15), new DayRulePatch(ClosedToDeparture: FieldPatch<bool>.Set(true)));
+        await ApplyAsync(new DateOnly(2026, 12, 17), new DateOnly(2026, 12, 18), new DayRulePatch(MinNights: FieldPatch<int>.Set(4)));
+        await ApplyAsync(new DateOnly(2026, 12, 20), new DateOnly(2026, 12, 21), new DayRulePatch(MaxNights: FieldPatch<int>.Set(2)));
+        await ApplyAsync(new DateOnly(2026, 12, 22), new DateOnly(2026, 12, 22), new DayRulePatch(MinAdvanceDays: FieldPatch<int>.Set(100)));
+        await ApplyAsync(new DateOnly(2026, 12, 24), new DateOnly(2026, 12, 24), new DayRulePatch(MaxAdvanceDays: FieldPatch<int>.Set(40)));
+        await ApplyAsync(new DateOnly(2026, 12, 26), new DateOnly(2026, 12, 26), new DayRulePatch(MinNights: FieldPatch<int>.Set(1), Price: FieldPatch<decimal>.Set(90m)));
+
+        var rules = await _rules.GetRulesForSiteAsync([_property.Id], first, first.AddDays(80));
+        var house = new PublicStayHouse(
+            _property.Id, "casa-regole", "Casa Regole", "Como", null, 45.8m, 9.08m, [], 2, 1, 4, 60, 100m, 0m, 20m, _property.MinNights, null, null, null, []);
+        var data = new PublicStayData(
+            new DateOnly(2026, 10, 9),
+            true,
+            new Dictionary<Guid, IReadOnlySet<DateOnly>>(),
+            new Dictionary<Guid, IReadOnlyDictionary<DateOnly, decimal>>(),
+            [],
+            new Dictionary<Guid, PublicRatingSummary>(),
+            rules);
+        async Task<bool> CheckoutAcceptsAsync(DateOnly arrival, int nights)
+        {
+            try
+            {
+                await _booking.QuoteDirectBookingAsync(QuoteInput(arrival, nights));
+                return true;
+            }
+            catch (DomainRuleException)
+            {
+                return false;
+            }
+        }
+
+        var tried = 0;
+        var refused = 0;
+        for (var arrival = first; arrival < first.AddDays(24); arrival = arrival.AddDays(1))
+        {
+            for (var nights = 1; nights <= 5; nights++)
+            {
+                var criteria = new PublicStaysCriteria(
+                    arrival, arrival.AddDays(nights), 2, 0, false, null, null, null, null, null, null, [], [], [], PublicSiteSearch.Recommended, 1, null, []);
+                var card = Assert.Single(PublicStayPlanner.Search([house], data, criteria, Now.UtcDateTime).Items);
+                var accepted = await CheckoutAcceptsAsync(arrival, nights);
+
+                Assert.True(accepted == card.Availability.Available, $"{arrival:yyyy-MM-dd} for {nights} night(s): the search says {card.Availability.Available} ({card.Availability.Reason}), the checkout {accepted}.");
+                tried++;
+                if (!accepted)
+                    refused++;
+
+                // The first free date the search proposes is a stay the checkout accepts too (as long as the stay asked, or the minimum of that night).
+                if (card.Availability.FirstFreeCheckIn is { } proposed && !card.Availability.Available)
+                {
+                    var length = Math.Max(nights, DayRuleDefaults.MinNightsOf(rules[_property.Id].GetValueOrDefault(proposed), _property.MinNights));
+                    Assert.True(await CheckoutAcceptsAsync(proposed, length), $"{arrival:yyyy-MM-dd}: the first free date {proposed:yyyy-MM-dd} for {length} night(s) is refused by the checkout.");
+                }
+            }
+        }
+
+        // The scenario really has stays on both sides, or the comparison proves nothing.
+        Assert.InRange(refused, 20, tried - 20);
+    }
+
     // --- Helpers -----------------------------------------------------------------------------------------------
 
     private async Task ApplyAsync(DateOnly from, DateOnly to, DayRulePatch patch)

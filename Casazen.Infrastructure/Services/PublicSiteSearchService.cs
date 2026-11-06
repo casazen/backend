@@ -17,9 +17,11 @@ namespace Casazen.Infrastructure.Services;
 /// <inheritdoc cref="IPublicSiteSearchService"/>
 /// <remarks>
 /// <para>Reads, whatever the number of houses (at most 50): the published houses of the org, the taken nights of all of them
-/// (<see cref="PublicOccupancyReader"/>, two queries), the prices the hosts confirmed (one), the tourist tax rates of the period (one) and
-/// the ratings (one). The decisions are <see cref="PublicStayPlanner"/>: no price or availability rule lives here, so the list, the
-/// calendar and the quote of the checkout cannot disagree.</para>
+/// (<see cref="PublicOccupancyReader"/>, two queries), the prices the hosts confirmed (one), the rules of the nights of all of them
+/// (<see cref="IPropertyDayRuleService.GetRulesForSiteAsync"/>, one read for the whole search, never one per house; the prices a host wrote in its
+/// calendar are the ones of these rules), the tourist tax rates of the period (one) and the ratings (one). The decisions are
+/// <see cref="PublicStayPlanner"/>: no price or availability rule lives here, so the list, the calendar and the quote of the checkout
+/// cannot disagree.</para>
 /// <para>Anonymous: the tenant filter is off, so every query names the org (a signed-in host of another org who looks at a site must get the
 /// answer everybody gets). The search and the calendar are kept for a few seconds in <see cref="PublicReadCache"/>.</para>
 /// </remarks>
@@ -28,7 +30,8 @@ public sealed class PublicSiteSearchService(
     ITouristTaxRateRepository taxRates,
     IConfiguration configuration,
     PublicReadCache cache,
-    TimeProvider? timeProvider = null) : IPublicSiteSearchService
+    TimeProvider? timeProvider = null,
+    IPropertyDayRuleService? dayRules = null) : IPublicSiteSearchService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly PublicOccupancyReader _occupancy = new(db, configuration, timeProvider);
@@ -153,13 +156,18 @@ public sealed class PublicSiteSearchService(
 
         var today = _clock.TodayInRomeAsDateOnly();
         var ids = houses.Select(house => house.Id).ToList();
+
+        // The «from» price of a card is the lowest night of the next days, the prices the hosts wrote in their calendar included.
+        var until = today.AddDays(PublicSiteSearch.FromPriceDays);
+        var rules = await LoadDayRulesAsync(ids, today, until, cancellationToken);
         var data = new PublicStayData(
             today,
             AcceptsBookings: true,
             Taken: new Dictionary<Guid, IReadOnlySet<DateOnly>>(),
-            await LoadHostPricesAsync(ids, today, today.AddDays(PublicSiteSearch.FromPriceDays), cancellationToken),
+            await LoadHostPricesAsync(ids, today, until, rules, cancellationToken),
             TaxRates: [],
-            await LoadRatingsAsync(orgId, ids, cancellationToken));
+            await LoadRatingsAsync(orgId, ids, cancellationToken),
+            rules);
         return PublicStayPlanner.Similar(target, houses, data, max);
     }
 
@@ -177,10 +185,13 @@ public sealed class PublicSiteSearchService(
         DateOnly from;
         DateOnly to;
         var taxRatesOfPeriod = new List<TouristTaxRate>();
-        if (criteria.CheckIn is { } checkIn && criteria.CheckOut is { } checkOut)
+        var asked = criteria.CheckIn is { } && criteria.CheckOut is { };
+        var nightsAsked = asked ? criteria.CheckOut!.Value.DayNumber - criteria.CheckIn!.Value.DayNumber : 0;
+        var length = Math.Max(nightsAsked, houses.Count == 0 ? 1 : houses.Max(house => house.MinNights ?? 1));
+        if (asked)
         {
-            var nights = checkOut.DayNumber - checkIn.DayNumber;
-            var length = Math.Max(nights, houses.Count == 0 ? 1 : houses.Max(house => house.MinNights ?? 1));
+            var checkIn = criteria.CheckIn!.Value;
+            var checkOut = criteria.CheckOut!.Value;
             from = Max(today, checkIn.AddDays(-AlternativeLookBehindDays));
             to = Max(from, checkIn.AddDays(PublicSiteSearch.FirstFreeHorizonDays + length + 1));
             if (checkIn >= today && ids.Count > 0)
@@ -195,6 +206,15 @@ public sealed class PublicSiteSearchService(
             to = today.AddDays(PublicSiteSearch.FromPriceDays);
         }
 
+        // The rules of the nights (NF-36) of all the houses in one read, from the first day to the day after the last the search looks at.
+        var rules = await LoadDayRulesAsync(ids, from, to.AddDays(1), CancellationToken.None);
+        if (asked && LongestMinimumStay(rules) is var longest && longest > length)
+        {
+            // A rule can ask for a longer minimum stay than any house does: the window the first free date is looked for in must hold that stay.
+            to = Max(from, criteria.CheckIn!.Value.AddDays(PublicSiteSearch.FirstFreeHorizonDays + longest + 1));
+            rules = await LoadDayRulesAsync(ids, from, to.AddDays(1), CancellationToken.None);
+        }
+
         var taken = criteria.CheckIn is null
             ? new Dictionary<Guid, IReadOnlySet<DateOnly>>()
             : await LoadTakenAsync(ids, from, to);
@@ -203,9 +223,10 @@ public sealed class PublicSiteSearchService(
             today,
             org?.CanTakeDirectPayments ?? true,
             taken,
-            await LoadHostPricesAsync(ids, from, to, CancellationToken.None),
+            await LoadHostPricesAsync(ids, from, to, rules, CancellationToken.None),
             taxRatesOfPeriod,
-            await LoadRatingsAsync(org?.Id, ids, CancellationToken.None));
+            await LoadRatingsAsync(org?.Id, ids, CancellationToken.None),
+            rules);
 
         return PublicStayPlanner.Search(houses, data, criteria, _clock.GetUtcNow().UtcDateTime);
     }
@@ -229,13 +250,15 @@ public sealed class PublicSiteSearchService(
         var days = new List<PublicSiteCalendarDay>();
         if (first < end)
         {
+            var rules = await LoadDayRulesAsync(ids, first, end, CancellationToken.None);
             var data = new PublicStayData(
                 today,
                 org?.CanTakeDirectPayments ?? true,
                 await LoadTakenAsync(ids, first, end),
-                await LoadHostPricesAsync(ids, first, end, CancellationToken.None),
+                await LoadHostPricesAsync(ids, first, end, rules, CancellationToken.None),
                 TaxRates: [],
-                Ratings: new Dictionary<Guid, PublicRatingSummary>());
+                Ratings: new Dictionary<Guid, PublicRatingSummary>(),
+                DayRules: rules);
             days.AddRange(PublicStayPlanner.SiteDays(houses, data, first, end, adults + children));
         }
 
@@ -404,11 +427,17 @@ public sealed class PublicSiteSearchService(
         return result;
     }
 
-    /// <summary>The prices the hosts confirmed for dates of <paramref name="from"/> (included) to <paramref name="to"/> (excluded): what the quote reads for one house, for all of them.</summary>
+    /// <summary>
+    /// The prices the hosts set for dates of <paramref name="from"/> (included) to <paramref name="to"/> (excluded): what the quote reads for one
+    /// house (<see cref="IPricingAdapterService.GetAppliedNightlyPricesAsync"/>), for all of them. The seasonal prices the hosts confirmed are read
+    /// in one query; the price a host wrote for a night in its calendar (<paramref name="rules"/>, NF-36) overrides it, by the same function
+    /// (<see cref="DayRulePricing.HostPrices"/>), so a card and the quote of the same stay never disagree.
+    /// </summary>
     private async Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, decimal>>> LoadHostPricesAsync(
         IReadOnlyCollection<Guid> ids,
         DateOnly from,
         DateOnly to,
+        IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>> rules,
         CancellationToken cancellationToken)
     {
         var result = new Dictionary<Guid, IReadOnlyDictionary<DateOnly, decimal>>();
@@ -421,11 +450,42 @@ public sealed class PublicSiteSearchService(
             .Where(s => ids.Contains(s.PropertyId) && s.AppliedPrice != null && s.StayDate >= from && s.StayDate < to)
             .Select(s => new { s.PropertyId, s.StayDate, Price = s.AppliedPrice!.Value })
             .ToListAsync(cancellationToken);
-        foreach (var group in rows.GroupBy(row => row.PropertyId))
-            result[group.Key] = group.ToDictionary(row => row.StayDate, row => row.Price);
+        var seasonal = rows
+            .GroupBy(row => row.PropertyId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyDictionary<DateOnly, decimal>)group.ToDictionary(row => row.StayDate, row => row.Price));
+
+        foreach (var id in seasonal.Keys.Concat(rules.Keys).Distinct())
+        {
+            seasonal.TryGetValue(id, out var ofSeason);
+            rules.TryGetValue(id, out var ofRules);
+            var prices = DayRulePricing.HostPrices(ofSeason, ofRules);
+            if (prices.Count > 0)
+                result[id] = prices;
+        }
 
         return result;
     }
+
+    /// <summary>
+    /// The rules of the nights of all the houses from <paramref name="from"/> (included) to <paramref name="toExclusive"/> (excluded), in one read
+    /// (<see cref="IPropertyDayRuleService.GetRulesForSiteAsync"/>, a public read of the site): never one read per house. None when the service is not
+    /// there or there is nothing to read.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>>> LoadDayRulesAsync(
+        IReadOnlyCollection<Guid> ids,
+        DateOnly from,
+        DateOnly toExclusive,
+        CancellationToken cancellationToken)
+    {
+        if (dayRules is null || ids.Count == 0 || toExclusive <= from)
+            return new Dictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>>();
+
+        return await dayRules.GetRulesForSiteAsync(ids, from, toExclusive, cancellationToken);
+    }
+
+    // The longest minimum stay any night of any house asks for (0 when no night has one).
+    private static int LongestMinimumStay(IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>> rules) =>
+        rules.Values.SelectMany(house => house.Values).Select(rule => rule.MinNights ?? 0).DefaultIfEmpty(0).Max();
 
     /// <param name="orgId">The org of the site; <c>null</c> across all the sites (the houses named by <paramref name="ids"/> are the limit).</param>
     private async Task<IReadOnlyDictionary<Guid, PublicRatingSummary>> LoadRatingsAsync(

@@ -59,22 +59,32 @@ public sealed record PublicStayHouse(
 }
 
 /// <summary>
-/// What the search reads about the houses of one site, loaded for all of them together: the taken nights, the prices the hosts confirmed,
-/// the tourist tax rates of the period and the ratings.
+/// What the search reads about the houses of one site, loaded for all of them together: the taken nights, the prices the hosts set, the rules
+/// of the nights, the tourist tax rates of the period and the ratings.
 /// </summary>
 /// <param name="Today">Today in Europe/Rome.</param>
 /// <param name="AcceptsBookings">The host can take a booking on the site (<see cref="Org.CanTakeDirectPayments"/>).</param>
 /// <param name="Taken">The taken nights of each house (<see cref="PublicOccupancyReader"/> in the Infrastructure).</param>
-/// <param name="HostPrices">The prices the host confirmed for dates, of each house (<see cref="IPricingAdapterService.GetAppliedNightlyPricesAsync"/> for many).</param>
+/// <param name="HostPrices">
+/// The prices the host set for dates, of each house, for many houses at once: the seasonal prices it confirmed, overridden by the prices written
+/// in its calendar (<see cref="DayRulePricing.HostPrices"/>, the same prices <see cref="IPricingAdapterService.GetAppliedNightlyPricesAsync"/>
+/// gives the quote of one house).
+/// </param>
 /// <param name="TaxRates">The active tourist tax rates of every comune that overlap the stay: the planner picks the ones of each house.</param>
 /// <param name="Ratings">The public rating of each house that has reviews.</param>
+/// <param name="DayRules">
+/// The rules of the nights of each house that has any (E08/F05/US01/T04, NF-36), by date: the closed arrival and departure, the minimum and the
+/// maximum stay, the advance. The planner judges a stay with <see cref="DayRuleStayChecks"/>, the check of the quote and the checkout, so a
+/// house it offers is a house the checkout accepts. <c>null</c> (or a house with no entry) means no rule: the minimum stay of the house alone.
+/// </param>
 public sealed record PublicStayData(
     DateOnly Today,
     bool AcceptsBookings,
     IReadOnlyDictionary<Guid, IReadOnlySet<DateOnly>> Taken,
     IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, decimal>> HostPrices,
     IReadOnlyList<TouristTaxRate> TaxRates,
-    IReadOnlyDictionary<Guid, PublicRatingSummary> Ratings);
+    IReadOnlyDictionary<Guid, PublicRatingSummary> Ratings,
+    IReadOnlyDictionary<Guid, IReadOnlyDictionary<DateOnly, DayRuleValues>>? DayRules = null);
 
 /// <summary>
 /// The decisions of the search of the site (DB-07a), as pure functions of the houses and of what was read about them: which house is free
@@ -324,14 +334,22 @@ public static class PublicStayPlanner
     {
         var taken = TakenOf(data, house.Id);
         var hostPrices = HostPricesOf(data, house.Id);
+        var rules = RulesOf(data, house.Id);
         var party = criteria.Adults + criteria.Children;
 
-        var reason = ReasonNotFree(house, data, criteria, party, checkIn, checkOut, nights, taken);
+        // The rules of the nights (NF-36) are judged by the check the quote and the checkout use, so what the list offers the checkout accepts.
+        var violation = DayRuleStayChecks.FirstViolation(checkIn, checkOut, data.Today, house.MinNights, rules);
+        var reason = ReasonNotFree(house, data, criteria, party, checkIn, checkOut, taken, violation);
         DateOnly? firstFree = reason switch
         {
             null => checkIn,
-            PublicStayReasons.Busy or PublicStayReasons.MinNights => NextFreeCheckIn(
-                taken, checkIn < data.Today ? data.Today : checkIn, nights, house.MinNights),
+            PublicStayReasons.Busy
+                or PublicStayReasons.MinNights
+                or PublicStayReasons.ArrivalClosed
+                or PublicStayReasons.DepartureClosed
+                or PublicStayReasons.MaxNights
+                or PublicStayReasons.Advance => NextFreeCheckIn(
+                    taken, checkIn < data.Today ? data.Today : checkIn, nights, house, rules, data.Today),
             _ => null,
         };
 
@@ -340,11 +358,12 @@ public static class PublicStayPlanner
         string? includes = null;
 
         // A total only for a stay the quote of the checkout would price: in the future, not longer than the longest priced, for a party
-        // the house sleeps, not shorter than its minimum stay. Busy or not, the price of the stay is still the price of the stay.
+        // the house sleeps, respecting the rules of its nights (the minimum stay among them). Busy or not, the price of the stay is still the
+        // price of the stay.
         var quotable = checkIn >= data.Today
             && nights <= TouristTaxCalculator.MaxNights
             && party <= house.MaxGuests
-            && (house.MinNights is not { } minimum || nights >= minimum);
+            && violation is null;
         if (quotable)
         {
             var tax = TouristTaxOf(house, data, rateCache, checkIn, checkOut, criteria, lodging);
@@ -362,15 +381,21 @@ public static class PublicStayPlanner
                 checkIn.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
                 data.Today);
 
+        // The minimum stay the card shows is the one of the night the stay arrives on: the rule of that night, else the minimum of the house.
+        var minNightsOfArrival = rules.TryGetValue(checkIn, out var onArrival) && onArrival.MinNights is { } ruled ? ruled : house.MinNights;
         return Card(
             house,
             data,
-            new PublicStayAvailability(reason is null, reason, house.MinNights, firstFree),
+            new PublicStayAvailability(reason is null, reason, minNightsOfArrival, firstFree),
             new PublicStayPrice(house.Currency, StayPricing.ToCents(lodging.Total / nights), total, includes),
             cancellation);
     }
 
-    /// <summary>Why the house is not free for the stay, in the order of the design (<c>stayEval</c>); <c>null</c> when it is.</summary>
+    /// <summary>
+    /// Why the house is not free for the stay, in the order of the design (<c>stayEval</c>); <c>null</c> when it is. The rules of the nights
+    /// come after the nights taken: <paramref name="violation"/> is what <see cref="DayRuleStayChecks.FirstViolation"/> found, with the
+    /// minimum stay among them (<see cref="PublicStayReasons.MinNights"/>).
+    /// </summary>
     private static string? ReasonNotFree(
         PublicStayHouse house,
         PublicStayData data,
@@ -378,8 +403,8 @@ public static class PublicStayPlanner
         int party,
         DateOnly checkIn,
         DateOnly checkOut,
-        int nights,
-        IReadOnlySet<DateOnly> taken)
+        IReadOnlySet<DateOnly> taken,
+        DayRuleViolation? violation)
     {
         if (checkIn < data.Today)
             return PublicStayReasons.Past;
@@ -391,11 +416,19 @@ public static class PublicStayPlanner
             return PublicStayReasons.Pets;
         if (AnyTaken(taken, checkIn, checkOut))
             return PublicStayReasons.Busy;
-        if (house.MinNights is { } minimum && nights < minimum)
-            return PublicStayReasons.MinNights;
 
-        return null;
+        return violation is null ? null : ReasonOf(violation);
     }
+
+    /// <summary>The stable reason of a rule of the nights that a stay breaks.</summary>
+    private static string ReasonOf(DayRuleViolation violation) => violation.Kind switch
+    {
+        DayRuleViolationKind.ArrivalClosed => PublicStayReasons.ArrivalClosed,
+        DayRuleViolationKind.DepartureClosed => PublicStayReasons.DepartureClosed,
+        DayRuleViolationKind.MinNights => PublicStayReasons.MinNights,
+        DayRuleViolationKind.MaxNights => PublicStayReasons.MaxNights,
+        _ => PublicStayReasons.Advance,
+    };
 
     private static TouristTaxQuote TouristTaxOf(
         PublicStayHouse house,
@@ -431,17 +464,29 @@ public static class PublicStayPlanner
     }
 
     /// <summary>
-    /// The first day, from <paramref name="after"/> on, a stay as long as the one asked (and at least the minimum stay) can start in the
-    /// next <see cref="PublicSiteSearch.FirstFreeHorizonDays"/> days, or <c>null</c> (<c>nextFree</c> of the design).
+    /// The first day, from <paramref name="after"/> on, a stay as long as the one asked (and at least the minimum stay of the night it starts
+    /// on) can start in the next <see cref="PublicSiteSearch.FirstFreeHorizonDays"/> days, or <c>null</c> (<c>nextFree</c> of the design). A
+    /// day is proposed only when no night of the stay is taken <b>and</b> the stay breaks no rule of its nights (<see cref="DayRuleStayChecks"/>,
+    /// NF-36): the first free date never falls on a day the checkout would refuse.
     /// </summary>
-    private static DateOnly? NextFreeCheckIn(IReadOnlySet<DateOnly> taken, DateOnly after, int nights, int? minNights)
+    private static DateOnly? NextFreeCheckIn(
+        IReadOnlySet<DateOnly> taken,
+        DateOnly after,
+        int nights,
+        PublicStayHouse house,
+        IReadOnlyDictionary<DateOnly, DayRuleValues> rules,
+        DateOnly today)
     {
-        var length = Math.Max(nights, minNights ?? 1);
         for (var offset = 0; offset < PublicSiteSearch.FirstFreeHorizonDays; offset++)
         {
             var start = after.AddDays(offset);
-            if (!AnyTaken(taken, start, start.AddDays(length)))
+            rules.TryGetValue(start, out var onStart);
+            var end = start.AddDays(Math.Max(nights, DayRuleDefaults.MinNightsOf(onStart, house.MinNights)));
+            if (!AnyTaken(taken, start, end)
+                && DayRuleStayChecks.FirstViolation(start, end, today, house.MinNights, rules) is null)
+            {
                 return start;
+            }
         }
 
         return null;
@@ -566,8 +611,13 @@ public static class PublicStayPlanner
             var lowest = long.MaxValue;
             foreach (var house in candidates)
             {
-                if ((house.MinNights is { } minimum && nights < minimum) || AnyTaken(TakenOf(data, house.Id), start, end))
+                // Another date helps a house only when its nights are free and the stay breaks no rule of its nights (NF-36), the minimum stay
+                // among them: the dates proposed are dates the checkout accepts.
+                if (AnyTaken(TakenOf(data, house.Id), start, end)
+                    || DayRuleStayChecks.FirstViolation(start, end, data.Today, house.MinNights, RulesOf(data, house.Id)) is not null)
+                {
                     continue;
+                }
 
                 count++;
                 var lodging = StayPricing.Lodging(start, nights, house.NightlyRate, house.WeekendSurchargePercent, HostPricesOf(data, house.Id));
@@ -588,7 +638,9 @@ public static class PublicStayPlanner
 
     /// <summary>
     /// For each day from <paramref name="first"/> to <paramref name="to"/> (excluded): whether some house that sleeps the party is free for
-    /// the night, the cheapest night among those houses and the shortest minimum stay (the "more houses" mode of the date picker of the home).
+    /// the night and can start a stay on it, the cheapest night among those houses and the shortest minimum stay of that night (the "more
+    /// houses" mode of the date picker of the home). A house is left out of a night that is closed to arrival or out of the advance limits of
+    /// its rules (<see cref="DayRuleStayChecks.CanArriveOn"/>, NF-36), and its minimum stay is the one of that night.
     /// </summary>
     public static IReadOnlyList<PublicSiteCalendarDay> SiteDays(
         IReadOnlyList<PublicStayHouse> houses,
@@ -608,13 +660,15 @@ public static class PublicStayPlanner
             int? minNights = null;
             foreach (var house in candidates)
             {
-                if (TakenOf(data, house.Id).Contains(day))
+                RulesOf(data, house.Id).TryGetValue(day, out var rule);
+                if (TakenOf(data, house.Id).Contains(day) || !DayRuleStayChecks.CanArriveOn(day, data.Today, rule))
                     continue;
 
                 var price = StayPricing.ToCents(StayPricing.NightPrice(
                     day, house.NightlyRate, house.WeekendSurchargePercent, HostPricesOf(data, house.Id)));
+                var minimum = DayRuleDefaults.MinNightsOf(rule, house.MinNights);
                 lowest = lowest is { } current ? Math.Min(current, price) : price;
-                minNights = minNights is { } shortest ? Math.Min(shortest, house.MinNights ?? 1) : house.MinNights ?? 1;
+                minNights = minNights is { } shortest ? Math.Min(shortest, minimum) : minimum;
             }
 
             days.Add(new PublicSiteCalendarDay(day, lowest is not null, lowest, minNights));
@@ -685,6 +739,10 @@ public static class PublicStayPlanner
 
     private static IReadOnlyDictionary<DateOnly, decimal>? HostPricesOf(PublicStayData data, Guid houseId) =>
         data.HostPrices.TryGetValue(houseId, out var prices) ? prices : null;
+
+    /// <summary>The rules of the nights of a house; none for a house that has none (or when the search read none).</summary>
+    private static IReadOnlyDictionary<DateOnly, DayRuleValues> RulesOf(PublicStayData data, Guid houseId) =>
+        data.DayRules is not null && data.DayRules.TryGetValue(houseId, out var rules) ? rules : DayRuleStayChecks.NoRules;
 
     private static bool AnyTaken(IReadOnlySet<DateOnly> taken, DateOnly from, DateOnly to)
     {
