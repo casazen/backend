@@ -391,8 +391,7 @@ public sealed class GuestBookingCancellationService(
             .Where(r => r.Origin == PaymentRefundOrigin.BookingCancellation && r.Payment.BookingId == bookingId)
             .ToListAsync(cancellationToken);
 
-    private static bool IsCancellableByGuest(BookingStatus status) =>
-        status is BookingStatus.Pending or BookingStatus.Confirmed or BookingStatus.CheckedIn;
+    private static bool IsCancellableByGuest(BookingStatus status) => BookingEditRules.IsCancellable(status);
 
     private async Task<Booking> LoadBookingAsync(Guid bookingId, CancellationToken cancellationToken) =>
         await db.Bookings
