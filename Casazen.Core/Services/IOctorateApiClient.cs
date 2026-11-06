@@ -134,6 +134,38 @@ public interface IOctorateApiClient
     Task<OctoratePmsRoom[]> GetPmsRoomsAsync(string accommodationId, CancellationToken ct);
 
     /// <summary>
+    /// One page of the chat threads of an accommodation (<c>GET /rest/v1/chat/{property}/threads?offset=&amp;filterReadStatus=false</c>,
+    /// E05/F01/US01/T02): the threads of the OTA conversations, read and unread. The list has no page size: <paramref name="offset"/> is the number
+    /// of threads already read, and the list ends with a page that has no item at all. The chat API is per accommodation, so there is no coarse
+    /// "messages since" read: this one, <see cref="GetChatThreadAsync"/>, <see cref="GetChatMessagesAsync"/> and
+    /// <see cref="GetRecentChatMessagesAsync"/> are the reads of the copy; the send operation is E05/F02's. An answer that is not a list is
+    /// <c>OctorateServerException</c>, never an empty page. A 403 that is not an error of Octorate's API, which is what a license without the
+    /// <c>chat</c> module gets, is <c>OctorateAuthException</c> with the code <c>chat_not_licensed</c> (decided by the code and the shape of the
+    /// answer, never its text), the same for the other three reads.
+    /// </summary>
+    Task<OctorateChatThreadPage> GetChatThreadsAsync(string accommodationId, int offset, CancellationToken ct);
+
+    /// <summary>
+    /// One chat thread (<c>GET /rest/v1/chat/{property}/threads/{id}</c>, E05/F01/US01/T02): its default processor, the reservation it is linked to,
+    /// the connection it comes through and the flag of Octorate's own assistant for the thread (<c>aiDriven</c>). 404 is <c>OctorateNotFoundException</c>.
+    /// </summary>
+    Task<OctorateChatThread> GetChatThreadAsync(string accommodationId, string threadId, CancellationToken ct);
+
+    /// <summary>
+    /// The messages of a thread, all pages (<c>GET /rest/v1/chat/{property}/threads/{thread}/messages?createdAfter=</c>, E05/F01/US01/T02): the ones
+    /// created after <paramref name="createdAfter"/>, or all of them when it is <c>null</c>. A thread that says it has more pages and does not give them
+    /// is <c>OctorateServerException</c>, never a short thread read as a whole one.
+    /// </summary>
+    Task<OctorateChatMessage[]> GetChatMessagesAsync(string accommodationId, string threadId, DateTime? createdAfter, CancellationToken ct);
+
+    /// <summary>
+    /// The messages created in the last 24 hours in an accommodation (<c>GET /rest/v1/accommodation/recentMessages?property=</c>, E05/F01/US01/T02):
+    /// how the reconciliation finds the threads that had news, whatever the webhook missed. The operation is per accommodation in the OpenAPI
+    /// (the sandbox call carries <c>property</c>), so it takes the accommodation.
+    /// </summary>
+    Task<OctorateChatMessage[]> GetRecentChatMessagesAsync(string accommodationId, CancellationToken ct);
+
+    /// <summary>
     /// The catalog of portals and tools Octorate offers (<c>GET /rest/v1/meta/portals</c>, E09/F01/US01/T02). A partner-level call: it acts
     /// for the application and carries no property data, so it needs no org in <see cref="IOctorateOrgScope"/>, uses the partner token
     /// (<see cref="IOctorateTokenService.GetPartnerAccessTokenAsync"/>) and takes its call from the rate-limit bucket <c>platform</c>, not an

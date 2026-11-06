@@ -46,4 +46,11 @@ public enum DomainEventType
     /// message, an alert) runs a second time.
     /// </summary>
     OctorateSyncRequested = 20,
+
+    /// <summary>
+    /// A thread of an OTA conversation was read from the channel manager (E05/F01/US01/T02): about the thread (<c>EntityId</c>), with the payload
+    /// <c>OtaThreadSyncedPayload</c> (ids and the flag of Octorate's own assistant for the thread). Starts no routine; the guard of E05/F05
+    /// consumes it to keep that assistant off (OCT-11).
+    /// </summary>
+    OtaThreadSynced = 21,
 }

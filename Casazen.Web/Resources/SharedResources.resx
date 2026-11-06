@@ -4265,6 +4265,9 @@
   <data name="OctorateRequestRejected" xml:space="preserve">
     <value>Il channel manager ha rifiutato la richiesta.</value>
   </data>
+  <data name="OctorateChatNotLicensed" xml:space="preserve">
+    <value>La chat non è inclusa nella licenza del channel manager per questo immobile: i messaggi degli ospiti non si possono leggere. Chiedi di attivare il modulo chat.</value>
+  </data>
   <data name="OctorateWebhookNotConfigured" xml:space="preserve">
     <value>Il webhook del channel manager non è configurato su questo ambiente.</value>
   </data>
