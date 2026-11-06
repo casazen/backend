@@ -2265,6 +2265,27 @@
   <data name="SupplierAlternative_Unit_PerSquareMeter" xml:space="preserve">
     <value>per m²</value>
   </data>
+  <data name="MarketingConfirmation_Subject" xml:space="preserve">
+    <value>Confirm your subscription to the news of {0}</value>
+  </data>
+  <data name="MarketingConfirmation_Greeting" xml:space="preserve">
+    <value>Hello,</value>
+  </data>
+  <data name="MarketingConfirmation_Body" xml:space="preserve">
+    <value>someone asked, with this email address, to receive offers and news from &lt;strong&gt;{0}&lt;/strong&gt;. To start the subscription please confirm that the address is yours: until you do, we will not write anything promotional to you.</value>
+  </data>
+  <data name="MarketingConfirmation_Cta" xml:space="preserve">
+    <value>Confirm my subscription</value>
+  </data>
+  <data name="MarketingConfirmation_LinkFallback" xml:space="preserve">
+    <value>If the button does not work, copy this link into your browser:</value>
+  </data>
+  <data name="MarketingConfirmation_Validity" xml:space="preserve">
+    <value>The link is personal and valid until {0} (Italian time).</value>
+  </data>
+  <data name="MarketingConfirmation_Ignore" xml:space="preserve">
+    <value>If it was not you, ignore this message: nothing happens and nothing will be sent to you. You can always unsubscribe from every message you receive.</value>
+  </data>
   <data name="BookingPaymentLink_Subject" xml:space="preserve">
     <value>Payment for your stay - {0}</value>
   </data>

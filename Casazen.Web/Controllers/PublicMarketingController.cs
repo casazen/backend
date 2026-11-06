@@ -24,8 +24,61 @@ public class PublicMarketingController(
     AppDbContext db,
     MarketingUnsubscribeLinks unsubscribeLinks,
     ISuppressionService suppressionService,
+    IMarketingConfirmationService confirmation,
     ILogger<PublicMarketingController> logger) : ControllerBase
 {
+    /// <summary>
+    /// Confirms a marketing consent by the signed link of the double opt-in e-mail (E07/F04/US01/T01, NF-90, AC-NF90-5): the page
+    /// <c>/marketing/confirm</c> reads the values from the fragment of its address and posts them here unchanged. The link names the contact
+    /// (<c>contactId</c>), not the address, and the org is the contact's. HMAC-SHA256 of <c>contactId.expiresAt</c> with the secret of the
+    /// signed links, checked in constant time by <see cref="IMarketingConfirmationService.ConfirmAsync"/>. 200 <c>{ confirmed: true,
+    /// alreadyConfirmed }</c> (a second click changes nothing); 400 <c>contact_id_missing</c>, <c>expires_at_missing</c>,
+    /// <c>signature_missing</c>; 422 <c>invalid_timestamp</c>, <c>link_expired</c>, <c>invalid_signature</c>; 404 <c>contact_not_found</c> only
+    /// after a valid signature; 409 <c>contact_suppressed</c> (the address opted out: nothing is confirmed and the opt-out stands); 429.
+    /// The old <c>confirm-email</c> endpoint stays as it is for links already out (none was ever sent).
+    /// </summary>
+    /// <param name="contactId">The contact the link was made for.</param>
+    /// <param name="expiresAt">Link expiration timestamp in format yyyy-MM-ddTHH:mm:ssZ</param>
+    /// <param name="signature">HMAC-SHA256 signature (hex lowercase)</param>
+    [HttpPost("confirm")]
+    [EnableRateLimiting(RateLimitPolicies.PublicMarketingConsent)]
+    public async Task<IActionResult> Confirm(
+        [FromQuery] Guid contactId,
+        [FromQuery] string? expiresAt,
+        [FromQuery] string? signature)
+    {
+        if (contactId == Guid.Empty)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "contact_id_missing", "ContactIdMissing");
+
+        if (string.IsNullOrWhiteSpace(expiresAt))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "expires_at_missing", "ExpiresAtMissing");
+
+        if (string.IsNullOrWhiteSpace(signature))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "signature_missing", "SignatureMissing");
+
+        switch (await confirmation.ConfirmAsync(contactId, expiresAt, signature, HttpContext.RequestAborted))
+        {
+            case MarketingConfirmationOutcome.Confirmed:
+                return Ok(new { confirmed = true, alreadyConfirmed = false });
+            case MarketingConfirmationOutcome.AlreadyConfirmed:
+                return Ok(new { confirmed = true, alreadyConfirmed = true });
+            case MarketingConfirmationOutcome.InvalidTimestamp:
+                return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "invalid_timestamp", "InvalidTimestamp");
+            case MarketingConfirmationOutcome.LinkExpired:
+                return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "link_expired", "LinkExpired");
+            case MarketingConfirmationOutcome.NotConfigured:
+                logger.LogError("{Variable} is not configured: confirmation links cannot be checked", MarketingConfirmationLinks.SecretVariable);
+                return this.ApiProblem(StatusCodes.Status500InternalServerError, "configuration_error", "ConfigurationError");
+            case MarketingConfirmationOutcome.ContactNotFound:
+                return this.ApiProblem(StatusCodes.Status404NotFound, "contact_not_found", "ContactNotFound");
+            case MarketingConfirmationOutcome.ContactSuppressed:
+                return this.ApiProblem(StatusCodes.Status409Conflict, "contact_suppressed", "MarketingContactSuppressed");
+            default:
+                logger.LogWarning("Invalid HMAC signature for marketing confirmation: contactId={ContactId}", contactId);
+                return this.ApiProblem(StatusCodes.Status422UnprocessableEntity, "invalid_signature", "InvalidSignature");
+        }
+    }
+
     /// <summary>
     /// Confirms a guest's marketing email via HMAC-signed link (double opt-in).
     /// ADR-007-R17: HMAC-SHA256 of guestId.toLowerCase() + "." + marketingEmail.toLowerCase() + "." + expiresAt

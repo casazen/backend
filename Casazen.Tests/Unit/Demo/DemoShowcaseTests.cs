@@ -91,6 +91,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.MarketplacePartners.Select(partner => partner.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplaceActivations.Select(activation => activation.Scenario))
             .Concat(DemoShowcaseCatalog.TouristTaxChannelRules.Select(rule => rule.Scenario))
+            .Concat(DemoShowcaseCatalog.WelcomeLinks.Select(link => link.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -179,6 +180,27 @@ public class DemoShowcaseTests
             Enum.GetValues<DemoHostInviteState>().Order(),
             invites.Select(i => i.State).Distinct().Order());
         Assert.Contains(DemoShowcaseCatalog.Scenario.HostInvitePending, DemoShowcaseCatalog.Scenarios);
+    }
+
+    [Fact]
+    public void WelcomeLinks_TheDemoLink_IsAFixedTestTokenOfAShowcaseHouse_WithOneLinkForEachHouse()
+    {
+        var links = DemoShowcaseCatalog.WelcomeLinks;
+
+        Assert.Contains(DemoShowcaseCatalog.Scenario.CrmWelcomeLink, DemoShowcaseCatalog.Scenarios);
+        Assert.NotEmpty(links);
+        Assert.Equal(links.Count, links.Select(link => link.Key).Distinct(StringComparer.Ordinal).Count());
+        // The token is unique in the whole table, and a house has one active link.
+        Assert.Equal(links.Count, links.Select(link => link.Token).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(links.Count, links.Select(link => link.PropertyKey).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(links, link =>
+        {
+            Assert.Contains(DemoShowcaseCatalog.Properties, property => property.Key == link.PropertyKey);
+            Assert.Contains("TEST", link.Token, StringComparison.Ordinal);
+            Assert.InRange(link.Token.Length, 1, PropertyWelcomeLink.TokenMaxLength);
+            Assert.Matches("^[A-Za-z0-9_-]+$", link.Token);
+        });
+        Assert.Contains(DemoShowcaseCatalog.CrmWelcomeToken, links.Select(link => link.Token));
     }
 
     [Fact]

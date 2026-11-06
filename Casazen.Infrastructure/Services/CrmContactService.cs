@@ -68,7 +68,7 @@ public class CrmContactService(
             async () =>
             {
                 var contact = await StageAsync(contactInput, new ConsentToApply(evidence, null, Fresh: true), cancellationToken);
-                if (contact is not null && input.GuestId is { } guestId && !historyStaged)
+                if (contact is not null && input.RecordHistory && input.GuestId is { } guestId && !historyStaged)
                 {
                     db.GuestConsentRecords.Add(new GuestConsentRecord
                     {
@@ -79,6 +79,7 @@ public class CrmContactService(
                         Version = evidence.Version,
                         Source = input.Source,
                         IpAddress = evidence.IpAddress,
+                        Note = GuestConsentChannelNote.For(input.Channel),
                         RecordedAt = recordedAt,
                     });
                     historyStaged = true;
@@ -521,12 +522,18 @@ public class CrmContactService(
 
     /// <summary>
     /// Puts a consent on the contact. A new consent of the person (<see cref="ConsentToApply.Fresh"/>) starts unconfirmed, unless it renews a
-    /// consent that was confirmed; a confirmation the check-in recorded is read as confirmed.
+    /// consent that was confirmed; a confirmation the check-in recorded is read as confirmed. <b>A consent the person confirmed keeps its
+    /// evidence</b> (the version of the text, the time, the source and the address of the connection of the act they confirmed): a later consent
+    /// that is not confirmed does not replace it, because anybody can type an address on a public page and the proof of a double opt-in is worth
+    /// what the person confirmed. A consent that is not confirmed yet has nothing to protect: the newer act takes its place.
     /// </summary>
     private static bool ApplyConsent(GuestContact contact, ConsentToApply consent, DateTime now)
     {
         var wasConsent = contact.LegalBasis == GuestContactLegalBasis.Consent;
-        var changed = ApplyBasis(contact, GuestContactLegalBasis.Consent, consent.Evidence, now);
+        var keepsConfirmedEvidence = wasConsent
+            && contact.Confirmation == GuestContactConfirmation.Confirmed
+            && consent.ConfirmedAt is null;
+        var changed = !keepsConfirmedEvidence && ApplyBasis(contact, GuestContactLegalBasis.Consent, consent.Evidence, now);
 
         if (consent.Fresh
             && !wasConsent

@@ -2,6 +2,7 @@ using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Options;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
@@ -29,7 +30,11 @@ public class GuestCheckInService(
     IOptions<GuestCheckInOptions>? options = null,
     TimeProvider? timeProvider = null,
     IOptions<GdprOptions>? gdprOptions = null,
-    IPushNotificationService? pushNotifications = null) : IGuestCheckInService
+    IPushNotificationService? pushNotifications = null,
+    ICrmContactService? crmContacts = null,
+    IMarketingConfirmationService? marketingConfirmation = null,
+    ICrmContactIndex? contactIndex = null,
+    IOptions<CrmOptions>? crmOptions = null) : IGuestCheckInService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly GuestCheckInOptions _options = options?.Value ?? new GuestCheckInOptions();
@@ -358,6 +363,10 @@ public class GuestCheckInService(
             "Guest check-in submitted for session {SessionId}, booking {BookingId}: {GuestCount} guests",
             session.Id, session.BookingId, saved.Guests.Count);
 
+        // NF-90: the consent the guest ticked becomes a contact of the CRM and its double opt-in e-mail goes out. After the check-in is saved
+        // and never fatal for it: the record of the consent is already in the check-in.
+        await RecordCrmConsentsAsync(session.Booking, guest, request, marketingVersion, marketingEmail, now);
+
         PushToHosts(session);
 
         return new GuestCheckInSubmitResult
@@ -628,6 +637,85 @@ public class GuestCheckInService(
                 ConsentTextVersion = marketingVersion,
                 IpAddress = ip,
             });
+        }
+    }
+
+    /// <summary>
+    /// Makes the contacts of the per-channel marketing consent of the check-in and sends the double opt-in e-mail (E07/F04/US01/T02, NF-90,
+    /// CRM-03). A ticked e-mail channel makes the consent contact of the marketing address the guest typed (origin
+    /// <see cref="GuestContactOrigin.CheckIn"/>, source <see cref="GuestConsentSource.GuestPortal"/>, the version, the IP, the time and the
+    /// default language of the org) and queues its confirmation; a ticked WhatsApp channel makes a contact only when the phone number of the
+    /// booker is known: otherwise the consent stays in the <see cref="MarketingConsentRecord"/> and the CRM sync picks it up when a phone
+    /// exists. A box left unticked does nothing, not even to an earlier consent. Minors never get here: a submission whose booker is a minor
+    /// is refused before. <b>Best effort and never fatal</b>: the check-in is saved, and without the key of the contact index (the CRM is closed in
+    /// this environment) nothing is made; a failure is logged by id and error type, never by address, and the sync of the CRM makes the contact.
+    /// </summary>
+    private async Task RecordCrmConsentsAsync(
+        Booking booking,
+        Guest guest,
+        GuestCheckInSubmitRequest request,
+        string? marketingVersion,
+        string? marketingEmail,
+        DateTime now)
+    {
+        var email = request.MarketingConsentEmail && marketingEmail is not null;
+        var whatsApp = request.MarketingConsentWhatsApp;
+        if ((!email && !whatsApp) || marketingVersion is null || crmContacts is null || contactIndex is not { IsConfigured: true })
+            return;
+
+        try
+        {
+            var ip = request.ConsentIpAddress.Length > 50 ? request.ConsentIpAddress[..50] : request.ConsentIpAddress;
+            var ipAddress = string.IsNullOrWhiteSpace(ip) ? null : ip;
+            var language = await db.Orgs.AsNoTracking()
+                .Where(o => o.Id == booking.OrgId)
+                .Select(o => o.DefaultLanguage)
+                .FirstOrDefaultAsync();
+            var displayName = $"{guest.FirstName} {guest.LastName}".Trim();
+
+            if (email)
+            {
+                var contact = await crmContacts.RecordConsentAsync(new CrmConsentInput(
+                    booking.OrgId,
+                    GuestContactChannel.Email,
+                    marketingEmail,
+                    GuestContactOrigin.CheckIn,
+                    marketingVersion,
+                    GuestConsentSource.GuestPortal,
+                    ipAddress,
+                    now,
+                    language,
+                    displayName,
+                    guest.GuestCrmProfileId,
+                    guest.Id));
+
+                if (contact is not null && marketingConfirmation is not null)
+                    await marketingConfirmation.SendConfirmationAsync(booking.OrgId, contact.Id);
+            }
+
+            if (whatsApp && CrmNormalizer.NormalizePhone(guest.PhoneNumber, crmOptions?.Value.DefaultCallingCode) is { } phone)
+            {
+                await crmContacts.RecordConsentAsync(new CrmConsentInput(
+                    booking.OrgId,
+                    GuestContactChannel.WhatsApp,
+                    phone,
+                    GuestContactOrigin.CheckIn,
+                    marketingVersion,
+                    GuestConsentSource.GuestPortal,
+                    ipAddress,
+                    now,
+                    language,
+                    displayName,
+                    guest.GuestCrmProfileId,
+                    guest.Id));
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(
+                "The CRM contact of the marketing consent of the check-in of booking {BookingId} could not be made ({Error}); the check-in holds the consent and the CRM sync makes the contact",
+                booking.Id,
+                CrmDatabaseErrors.Describe(ex));
         }
     }
 

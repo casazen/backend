@@ -4791,6 +4791,72 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OnboardingFlowStateUnknown" xml:space="preserve">
     <value>Stato del flusso sconosciuto.</value>
   </data>
+  <data name="ContactIdMissing" xml:space="preserve">
+    <value>L'identificativo del contatto è obbligatorio.</value>
+  </data>
+  <data name="ContactNotFound" xml:space="preserve">
+    <value>Il link non corrisponde a nessuna iscrizione.</value>
+  </data>
+  <data name="MarketingContactSuppressed" xml:space="preserve">
+    <value>Questo indirizzo risulta cancellato dalle comunicazioni promozionali: la conferma non può riattivarlo.</value>
+  </data>
+  <data name="MarketingConfirmationUnavailable" xml:space="preserve">
+    <value>Non è stato possibile mettere in coda il messaggio di conferma: riprova tra qualche minuto.</value>
+  </data>
+  <data name="CrmContactNotFound" xml:space="preserve">
+    <value>Contatto non trovato.</value>
+  </data>
+  <data name="CrmConfirmationNotRequired" xml:space="preserve">
+    <value>Questo contatto non ha bisogno di una conferma: non è un indirizzo email con un consenso oppure è già confermato.</value>
+  </data>
+  <data name="CrmConfirmationLimitReached" xml:space="preserve">
+    <value>Il messaggio di conferma è già stato inviato a questo contatto il numero massimo di volte.</value>
+  </data>
+  <data name="CrmContactSuppressed" xml:space="preserve">
+    <value>Il contatto ha chiesto di non ricevere comunicazioni promozionali: non gli si può inviare la conferma.</value>
+  </data>
+  <data name="DirectBookingWhatsAppRequiresPhone" xml:space="preserve">
+    <value>Per ricevere messaggi su WhatsApp serve un numero di telefono valido: indicalo e riprova.</value>
+  </data>
+  <data name="DirectBookingSoftOptInNoticeOutdated" xml:space="preserve">
+    <value>L'informativa che hai letto è stata aggiornata: ricarica la pagina, leggi la nuova versione e riprova.</value>
+  </data>
+  <data name="WelcomeLinkInvalid" xml:space="preserve">
+    <value>Questo link non è valido o è stato sostituito: chiedi all'host il codice QR aggiornato.</value>
+  </data>
+  <data name="WelcomeAdultRequired" xml:space="preserve">
+    <value>Per lasciare un consenso devi dichiarare di essere maggiorenne.</value>
+  </data>
+  <data name="WelcomeChannelRequired" xml:space="preserve">
+    <value>Scegli almeno un canale su cui vuoi ricevere le comunicazioni.</value>
+  </data>
+  <data name="WelcomeEmailInvalid" xml:space="preserve">
+    <value>Indica un indirizzo email valido a cui vuoi ricevere le comunicazioni.</value>
+  </data>
+  <data name="WelcomePhoneInvalid" xml:space="preserve">
+    <value>Indica un numero di telefono valido per ricevere i messaggi su WhatsApp.</value>
+  </data>
+  <data name="WelcomeConsentUnavailable" xml:space="preserve">
+    <value>Al momento non è possibile lasciare il consenso da questa pagina.</value>
+  </data>
+  <data name="WelcomeConsentOutdated" xml:space="preserve">
+    <value>Il testo del consenso è stato aggiornato: ricarica la pagina, leggilo e riprova.</value>
+  </data>
+  <data name="GuestMarketingConsentUnavailable" xml:space="preserve">
+    <value>Al momento non è possibile modificare le preferenze sulle comunicazioni promozionali.</value>
+  </data>
+  <data name="GuestMarketingConsentOutdated" xml:space="preserve">
+    <value>Il testo del consenso è stato aggiornato: ricarica la pagina, leggilo e riprova a salvare le tue preferenze.</value>
+  </data>
+  <data name="GuestMarketingEmailInvalid" xml:space="preserve">
+    <value>Indica un indirizzo email valido a cui vuoi ricevere le comunicazioni.</value>
+  </data>
+  <data name="GuestMarketingPhoneInvalid" xml:space="preserve">
+    <value>Indica un numero di telefono valido per ricevere i messaggi su WhatsApp.</value>
+  </data>
+  <data name="GuestMarketingEnabledRequired" xml:space="preserve">
+    <value>Indica se vuoi attivare o disattivare questo canale: senza una scelta non cambiamo nulla.</value>
+  </data>
   <data name="PaymentLinkUnavailable" xml:space="preserve">
     <value>Non è possibile creare il link di pagamento: servono un account Stripe pronto a ricevere pagamenti, un saldo da pagare e una prenotazione inserita da te e non cancellata. Se un pagamento è già in corso, attendi il suo esito.</value>
   </data>

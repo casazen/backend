@@ -83,6 +83,28 @@ public class CreateDirectBookingRequest : IValidatableObject
     public bool? MarketingConsent { get; set; }
 
     /// <summary>
+    /// The guest ticked the optional box for offers by e-mail (E07/F04/US01/T02, NF-90). Optional, <c>false</c> when left out or <c>null</c>,
+    /// never required, never preselected. The legacy <see cref="MarketingConsent"/> still works and counts as this channel. Recorded in the
+    /// register of the guest's consents and as a consent contact of the CRM; the double opt-in e-mail follows. Like every consent it needs the
+    /// <c>marketingConsentVersion</c> of the public org (422 <c>direct_booking_marketing_consent_unavailable</c> without one).
+    /// </summary>
+    public bool? MarketingConsentEmail { get; set; }
+
+    /// <summary>
+    /// The guest ticked the optional box for offers on WhatsApp (E07/F04/US01/T02, NF-90). Same rules as <see cref="MarketingConsentEmail"/>,
+    /// and it needs the guest's phone number: 422 <c>direct_booking_whatsapp_requires_phone</c> without one that can be reached.
+    /// </summary>
+    public bool? MarketingConsentWhatsApp { get; set; }
+
+    /// <summary>
+    /// The version of the soft opt-in notice (art. 130 c. 4 Codice privacy) the checkout showed, as the public org gave it
+    /// (<c>softOptInNoticeVersion</c>); left out when it showed none. Recorded as «notice presented» only when it is the current one: any other
+    /// is 409 <c>direct_booking_soft_opt_in_notice_outdated</c>. It is not a consent and the guest ticks nothing for it.
+    /// </summary>
+    [MaxLength(100)]
+    public string? SoftOptInNoticeVersion { get; set; }
+
+    /// <summary>
     /// When the guest thinks they will arrive (DB-03b), optional (step 2 of the checkout): <c>HH:mm</c> (<c>15:30</c>) or <c>late</c> for after
     /// the check-in window; left out, <c>null</c> or blank when they do not say. Only a note for the host (their booking shows
     /// <c>expectedArrivalTime</c>): it changes no price and no check, and the check-in window of the property is not enforced. Anything

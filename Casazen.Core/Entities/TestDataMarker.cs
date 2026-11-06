@@ -138,4 +138,10 @@ public static class TestDataEntities
 
     /// <summary>The per-channel marketing consent of the online check-in of a showcase guest (<see cref="MarketingConsentRecord"/>); it goes with its booking at the reset.</summary>
     public const string MarketingConsent = "MarketingConsentRecord";
+
+    /// <summary>
+    /// The welcome link of a showcase house (<see cref="PropertyWelcomeLink"/>, E07/F04/US01/T03, NF-90): the QR code of the demo house, with a fixed
+    /// test token. It follows its house (cascade) and the reset deletes its marker with the other showcase markers.
+    /// </summary>
+    public const string WelcomeLink = "PropertyWelcomeLink";
 }
