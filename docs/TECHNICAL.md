@@ -634,6 +634,25 @@ and `trend` compare, and only with the same days one year earlier.
   only when the report compared. File names: `casazen-prestazioni-per-immobile-competenza-20261001-20261031.csv`,
   `casazen-andamento-competenza-...`.
 
+#### Tourist tax per guest (NF-46, ADR-037, E03/F01/US07)
+
+`IStayTouristTaxService` serves the tax of a stay guest by guest on the engine `TouristTaxCalculator.CalculatePerGuest` (the same loop as the stay
+total) and the reference data `TouristTaxExemptionReasons` (seeded, Octorate code null until an admin sets it) and `TouristTaxChannelRules` (no seed,
+an official source required). A comune with no official rate is calculated only from the rate the org declared (`OrgTouristTaxRates`, private to the
+org); an official rate in force always wins. No answer carries a name, an age or a document: positions only. Another org's booking or property is
+404, and so is one the caller may not use on its property (the pattern of `BookingLifecycleController`).
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/bookings/{bookingId}/tourist-tax` | short-rent booking.read + row check | The tax of the stay now: `{ bookingId, status, rateSource (Official\|HostDeclared\|None), missingRate, nights, taxableNights, ageRulesApply, categories, total, amountDue, collector (Channel\|Host\|null), collectorSource (ChannelRule\|HostDeclared\|Default), collectorNeeded, guests [{ position, nights, taxableNights, amount, exemptionKind (None\|Age\|Host), exemptionCode }], reasons [{ code, labelKey }], confirmedAt, stale }`. With no rate known `missingRate` is true and the amounts are `null`, never 0; `amountDue` is 0 when the channel collects (the amounts per guest are kept) |
+| `PUT` | `/api/bookings/{bookingId}/tourist-tax/exemptions` | short-rent booking.write + row check | `{ exemptions: [{ position, code }] }` (a null code clears it) writes the host's exemption on the registered guests; 422 `tax_exemption_unknown` (unknown, inactive or automatic reason: `minor_age` is never chosen), `tax_guest_unknown` (a position with no registered guest). A confirmed tax becomes `stale` |
+| `PUT` | `/api/bookings/{bookingId}/tourist-tax/collector` | short-rent booking.write + row check | `{ collector: Channel\|Host\|null }`: who collected the tax of a channel stay whose comune has no channel rule; 422 `tax_collector_not_applicable` for any other stay |
+| `POST` | `/api/bookings/{bookingId}/tourist-tax/confirm` | short-rent booking.write + row check | Confirms the tax (the record `StayTouristTaxes` with a line per guest, kept until the check-out plus 10 years, ADR-037-R4); idempotent; 422 `tax_not_calculable` while the rate, an age, the category or the night price is missing; 409 `tax_confirm_conflict` for two first confirmations at once |
+| `GET` | `/api/properties/{propertyId}/tourist-tax-rate` | short-rent property.read + row check | `{ propertyId, istatCode, city, officialRateInForce, rate }`: the rate the org declared for the comune of the property (`rate` null when none) |
+| `PUT` | `/api/properties/{propertyId}/tourist-tax-rate` | short-rent property.write + row check | `{ ratePerPersonPerNight, maxNights, minimumAge, seasonStart, seasonEnd, effectiveFrom, sourceNote }` declares the org's rate: 409 `tax_rate_official_exists` when an official rate is in force today, 422 `tax_rate_source_required`, 422 `tax_rate_invalid` (amount outside 0.01-50 or with more than two decimals, cap under 1, age outside 0-18, one season bound, no comune) |
+| `PUT` | `/api/admin/tourist-tax/channel-rules` | Admin | `{ channel, istatCode, collector, sourceUrl, isActive, verifiedAt, notes }` adds or changes the rule of a channel in a comune; the source must be an absolute https address (422 `tax_rule_source_invalid`); stamps the time and the admin |
+| `PUT` | `/api/admin/tourist-tax/exemption-reasons/{code}` | Admin | `{ octorateExemptionCode, isActive }` sets the Octorate code of a reason (null: no known match); 404 `tax_exemption_reason_not_found` |
+
 #### Tourist tax summary (NF-100, REP-05)
 
 | Method | Path | Auth | Description |

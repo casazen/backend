@@ -90,12 +90,43 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.TouristTaxRemittances.Select(tt => tt.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplacePartners.Select(partner => partner.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplaceActivations.Select(activation => activation.Scenario))
+            .Concat(DemoShowcaseCatalog.TouristTaxChannelRules.Select(rule => rule.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
         Assert.Contains(DemoShowcaseCatalog.Properties, p => p.Publish);
         Assert.Contains(DemoShowcaseCatalog.Properties, p => p.Key == DemoShowcaseCatalog.DraftKey && !p.Publish);
         Assert.All(DemoShowcaseCatalog.Properties, p => Assert.Equal(6, p.Place.IstatCode.Length));
+    }
+
+    /// <summary>
+    /// NF-46: the demo shows a stay taxed guest by guest (a minor exempt by age, an adult the host exempted as resident, one who pays) and a channel
+    /// stay in a comune whose demo channel rule makes the channel collect; the rule is for an invented comune only, with an example source.
+    /// </summary>
+    [Fact]
+    public void TouristTax_TheDemoStays_ShowEveryCase_AndTheChannelRuleTouchesNoRealComune()
+    {
+        var bookings = DemoShowcaseCatalog.Properties.SelectMany(p => p.Bookings.Select(b => (Property: p, Booking: b))).ToList();
+
+        var perGuest = Assert.Single(bookings, b => b.Booking.Scenario == DemoShowcaseCatalog.Scenario.TouristTaxPerGuest);
+        var guests = perGuest.Booking.Guests!;
+        Assert.Contains(guests, g => g.AgeAtCheckIn < 14 && g.TaxExemptionCode is null);
+        Assert.Contains(guests, g => g.AgeAtCheckIn >= 18 && g.TaxExemptionCode == TouristTaxExemptionReason.ResidentCode);
+        Assert.Contains(guests, g => g.AgeAtCheckIn >= 18 && g.TaxExemptionCode is null);
+        Assert.Empty(AlloggiatiRecordRules.CompositionErrors(guests.Select(g => g.Type).ToList()));
+
+        var channelStay = Assert.Single(bookings, b => b.Booking.Scenario == DemoShowcaseCatalog.Scenario.TouristTaxChannelCollected);
+        var rule = Assert.Single(DemoShowcaseCatalog.TouristTaxChannelRules);
+        Assert.Equal(channelStay.Property.Key, rule.PropertyKey);
+        Assert.Equal(channelStay.Booking.Source, rule.Channel);
+        Assert.Equal(TouristTaxCollector.Channel, rule.Collector);
+        Assert.StartsWith("https://example.com/", rule.SourceUrl, StringComparison.Ordinal);
+        Assert.Contains("TEST", rule.Notes, StringComparison.Ordinal);
+        Assert.StartsWith("999", channelStay.Property.Place.IstatCode, StringComparison.Ordinal);
+        Assert.NotNull(channelStay.Property.DeclaredTouristTaxRate);
+        Assert.Contains("TEST", channelStay.Property.DeclaredTouristTaxRate!.SourceNote, StringComparison.Ordinal);
+        Assert.All(bookings.Where(b => b.Booking.Guests is not null), b =>
+            Assert.EndsWith("@example.com", b.Booking.Email, StringComparison.Ordinal));
     }
 
     [Fact]

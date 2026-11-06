@@ -48,6 +48,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         guest.MarketingConsent = false;
 
         var stayGuests = await AnonymizeStayGuestsOfBookerAsync(guest.Id, now, cancellationToken);
+        var taxReasons = await ClearTaxExemptionReasonsAsync(
+            await db.Bookings.Where(b => b.GuestId == guest.Id).Select(b => b.Id).ToListAsync(cancellationToken), cancellationToken);
         var consentEvidence = await ClearConsentEvidenceAsync(guest.Id, cancellationToken);
         var marketingConsents = await ClearMarketingConsentRecordsAsync(guest.Id, cancellationToken);
         var specialRequests = await ClearSpecialRequestsAsync(guest.Id, now, cancellationToken);
@@ -56,8 +58,8 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         var threads = await DeleteMessageThreadsAsync(guest.Id, cancellationToken);
 
         var changed = Fingerprint(guest) != before
-            || filesDeleted > 0 || stayGuests > 0 || consentEvidence > 0 || marketingConsents > 0 || specialRequests > 0
-            || reviews > 0 || threads > 0
+            || filesDeleted > 0 || stayGuests > 0 || taxReasons > 0 || consentEvidence > 0 || marketingConsents > 0
+            || specialRequests > 0 || reviews > 0 || threads > 0
             || guest.DataAnonymizedDate is null;
         guest.AlloggiatiDataErasedAt ??= now;
         guest.DataAnonymizedDate ??= now;
@@ -147,7 +149,33 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
             perBooker[booker] = perBooker.GetValueOrDefault(booker) + 1;
         }
 
+        await ClearTaxExemptionReasonsAsync(bookingIds, cancellationToken);
         return perBooker;
+    }
+
+    /// <summary>
+    /// NF-46, CO-15 (art. 17 and 9 GDPR): the reason of a tourist tax exemption can reveal a health condition, so it is not kept with an erased
+    /// guest. The lines of the confirmed tax of the stays keep their kind and amount (fiscal retention, art. 6.1.c) and lose the reason code.
+    /// Returns the lines changed (none when already clear).
+    /// </summary>
+    public async Task<int> ClearTaxExemptionReasonsAsync(IReadOnlyCollection<Guid> bookingIds, CancellationToken cancellationToken)
+    {
+        if (bookingIds.Count == 0)
+            return 0;
+
+        var ids = bookingIds.ToList();
+        var records = await db.StayTouristTaxes
+            .Include(t => t.Guests)
+            .Where(t => ids.Contains(t.BookingId) && t.Guests.Any(g => g.ExemptionCode != null))
+            .ToListAsync(cancellationToken);
+        var cleared = 0;
+        foreach (var line in records.SelectMany(t => t.Guests).Where(g => g.ExemptionCode is not null))
+        {
+            line.ExemptionCode = null;
+            cleared++;
+        }
+
+        return cleared;
     }
 
     /// <summary>

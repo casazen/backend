@@ -396,6 +396,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICinDeadlineAlertService, CinDeadlineAlertService>();
         services.AddScoped<ITouristTaxService, TouristTaxService>();
         services.AddScoped<ITouristTaxQuoteService, TouristTaxQuoteService>();
+        // NF-46, ADR-037: the tourist tax of a stay guest by guest, the exemptions, the collector and the rate an org declares.
+        services.AddScoped<IStayTouristTaxService, StayTouristTaxService>();
         services.AddScoped<IGdprService, GdprService>();
         // CO-15: guest data rights and retention per category (docs/runbooks/gdpr.md); no period has a default.
         services.AddScoped<GuestDataEraser>();

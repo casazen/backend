@@ -4605,4 +4605,43 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.rateChecker" xml:space="preserve">
     <value>Checks that your prices are consistent on every channel and flags the differences.</value>
   </data>
+  <data name="TouristTaxNotCalculable" xml:space="preserve">
+    <value>The tourist tax of this stay cannot be calculated yet: the rate, the age of a guest, the category or the price per night is missing.</value>
+  </data>
+  <data name="TouristTaxExemptionUnknown" xml:space="preserve">
+    <value>This tourist tax exemption reason cannot be chosen.</value>
+  </data>
+  <data name="TouristTaxGuestUnknown" xml:space="preserve">
+    <value>This guest is not one of the registered guests of the stay.</value>
+  </data>
+  <data name="TouristTaxCollectorNotApplicable" xml:space="preserve">
+    <value>Who collects the tax of this stay is already known: there is nothing to declare.</value>
+  </data>
+  <data name="TouristTaxRateOfficialExists" xml:space="preserve">
+    <value>This comune already has an official rate in force: that one applies.</value>
+  </data>
+  <data name="TouristTaxRateSourceRequired" xml:space="preserve">
+    <value>Say where the amount comes from (the resolution, the comune's page or its tax office).</value>
+  </data>
+  <data name="TouristTaxRateInvalid" xml:space="preserve">
+    <value>The rate is not valid: an amount from 0.01 to 50 euros, at least one night, an age from 0 to 18 and a season with a start and an end.</value>
+  </data>
+  <data name="TouristTaxConfirmConflict" xml:space="preserve">
+    <value>The tourist tax was updated at the same moment by another request. Reload and try again.</value>
+  </data>
+  <data name="TouristTaxRuleSourceInvalid" xml:space="preserve">
+    <value>The source of the rule must be a full https address.</value>
+  </data>
+  <data name="TouristTaxExemptionReasonNotFound" xml:space="preserve">
+    <value>Exemption reason not found.</value>
+  </data>
+  <data name="TouristTaxFieldRequired" xml:space="preserve">
+    <value>Required field.</value>
+  </data>
+  <data name="TouristTaxFieldMaxLength" xml:space="preserve">
+    <value>Enter at most {1} characters.</value>
+  </data>
+  <data name="TouristTaxFieldInvalid" xml:space="preserve">
+    <value>Invalid value.</value>
+  </data>
 </root>
