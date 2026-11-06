@@ -45,31 +45,59 @@ public sealed class ComplianceStatusService(
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
-    public async Task<ComplianceStatusResult> EvaluateAsync(HostScope scope, CancellationToken ct)
+    public Task<ComplianceStatusResult> EvaluateAsync(HostScope scope, CancellationToken ct) =>
+        EvaluateCoreAsync(scope, null, ct);
+
+    public Task<ComplianceStatusResult> EvaluateAsync(HostScope scope, ComplianceStatusWindow window, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        return EvaluateCoreAsync(scope, window, ct);
+    }
+
+    /// <summary>
+    /// The evaluation. With no <paramref name="window"/> it is the one of the cockpit (the lookback, the identity of the arriving guests, the
+    /// checks of each property). With a window it is the one of the coverage report of the archive: the stays that arrived in the window, the
+    /// closed months inside it, the Alloggiati, ISTAT and tourist tax items only, no read of Octorate, and the properties deleted since still
+    /// counted (the history of compliance is kept; <c>IgnoreQueryFilters([SoftDelete])</c> keeps the tenant filter).
+    /// </summary>
+    private async Task<ComplianceStatusResult> EvaluateCoreAsync(HostScope scope, ComplianceStatusWindow? window, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(scope);
+        var forReport = window is not null;
         var orgId = scope.OrgId;
         var settings = options.Value;
         var nowUtc = _clock.GetUtcNow().UtcDateTime;
         var today = _clock.TodayInRome();
         var todayDate = _clock.TodayInRomeAsDateOnly();
         var lookbackDays = Math.Max(1, settings.StatusLookbackDays);
-        var windowStart = today.AddDays(-lookbackDays);
+        var windowStart = window is null ? today.AddDays(-lookbackDays) : StoredDate(window.From);
+        var propertyFilter = window?.PropertyId;
         var connectorOn = featureFlags.IsEnabled(FeatureFlags.OctorateConnector);
 
         // The properties and the stays of the caller's reach: everything below is read for these ids only.
-        var properties = await db.Properties
-            .AsNoTracking()
+        var propertyQuery = db.Properties.AsNoTracking();
+        if (forReport)
+            propertyQuery = propertyQuery.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]);
+
+        var properties = await propertyQuery
             .Where(PropertyRentalModeRules.IsShortRent)
             .Where(p => p.OrgId == orgId)
+            .Where(p => propertyFilter == null || p.Id == propertyFilter)
             .InScope(scope)
             .Select(p => new PropertyRow(p.Id, p.Name, p.Country, p.City, p.ComuneIstatCode, p.CinCode))
             .ToListAsync(ct);
 
-        var arrivalHorizon = today.AddDays(ComplianceLightRules.IdentityLookaheadDays);
-        var stays = await db.Bookings
-            .AsNoTracking()
+        // The cockpit looks a week ahead (the arriving guests' identity); a report looks at the stays that have arrived, up to its last day.
+        var arrivalHorizon = window is null
+            ? today.AddDays(ComplianceLightRules.IdentityLookaheadDays)
+            : Earlier(StoredDate(window.To), today);
+        var stayQuery = db.Bookings.AsNoTracking();
+        if (forReport)
+            stayQuery = stayQuery.IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter]);
+
+        var stays = await stayQuery
             .Where(b => b.OrgId == orgId)
+            .Where(b => propertyFilter == null || b.PropertyId == propertyFilter)
             .InScope(scope)
             .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
             .Where(b => b.CheckInDate >= windowStart && b.CheckInDate <= arrivalHorizon)
@@ -101,9 +129,10 @@ public sealed class ComplianceStatusService(
                 : info.AlloggiatiSender;
         }
 
-        // The state of the send of the channel manager, read once per property (cached, bounded per call).
+        // The state of the send of the channel manager, read once per property (cached, bounded per call). A report reads none: it is about the
+        // obligations of the past and must not depend on Octorate answering now.
         var channelManagerProperties = propertyIds.Where(id => SenderOf(id) == ComplianceSenderType.ChannelManager).ToList();
-        var connections = channelManagerProperties.Count == 0
+        var connections = channelManagerProperties.Count == 0 || forReport
             ? new Dictionary<Guid, ComplianceConnectionHealth>()
             : (await health.GetManyAsync(channelManagerProperties, ct)).ToDictionary(pair => pair.Key, pair => pair.Value);
 
@@ -134,13 +163,17 @@ public sealed class ComplianceStatusService(
         var reads = await ReadAlloggiatiAsync(orgId, dueStays, SenderOf, ct);
         AddAlloggiati(items, universe, reads, proofs, dueStays, SenderOf, connections, propertyNames, nowUtc, today, todayDate);
 
-        if (featureFlags.IsEnabled(FeatureFlags.CheckInIdentityVerification))
+        if (!forReport && featureFlags.IsEnabled(FeatureFlags.CheckInIdentityVerification))
         {
             var upcoming = stays.Where(s => s.CheckInDate >= today && s.ArrivedAt == null).ToList();
             await AddIdentityAsync(items, universe, upcoming, propertyNames, settings.IdentityRedHoursBeforeArrival, nowUtc, ct);
         }
 
-        await AddPropertyItemsAsync(items, universe, properties, stays, proofs, SenderOf, connections, settings, todayDate, orgId, ct);
+        var months = window is null
+            ? ClosedMonths(todayDate, settings.StatusLookbackDays)
+            : ClosedMonthsWithin(todayDate, window.From, window.To);
+        await AddPropertyItemsAsync(
+            items, universe, properties, stays, proofs, SenderOf, connections, settings, months, propertyChecks: !forReport, todayDate, orgId, ct);
 
         logger.LogDebug(
             "Compliance status of org {OrgId}: {Items} items over {Stays} stays and {Properties} properties",
@@ -415,6 +448,8 @@ public sealed class ComplianceStatusService(
         Func<Guid, ComplianceSenderType> senderOf,
         IReadOnlyDictionary<Guid, ComplianceConnectionHealth> connections,
         ComplianceOptions settings,
+        IReadOnlyList<DateOnly> months,
+        bool propertyChecks,
         DateOnly todayDate,
         Guid orgId,
         CancellationToken ct)
@@ -423,28 +458,32 @@ public sealed class ComplianceStatusService(
         foreach (var id in scopedIds)
             universe.Properties.Add(id);
 
-        var months = ClosedMonths(todayDate, settings.StatusLookbackDays);
         foreach (var month in months)
             universe.Periods.Add(ComplianceLightRules.PeriodKey(month));
 
         if (properties.Count == 0)
             return;
 
-        // The credentials kept in CasaZen: only the outcome of the last verification is read, never the encrypted values.
-        var verified = (await db.PropertyQuesturaCredentials
-                .AsNoTracking()
-                .Where(c => scopedIds.Contains(c.PropertyId))
-                .Select(c => new { c.PropertyId, c.LastVerificationOk })
-                .ToListAsync(ct))
-            .ToDictionary(c => c.PropertyId, c => c.LastVerificationOk);
+        // The credentials kept in CasaZen: only the outcome of the last verification is read, never the encrypted values. The checks of
+        // the present of a property (CIN, connection, credentials, tax rate) are the cockpit's; a coverage report does not make them.
+        var verified = !propertyChecks
+            ? new Dictionary<Guid, bool?>()
+            : (await db.PropertyQuesturaCredentials
+                    .AsNoTracking()
+                    .Where(c => scopedIds.Contains(c.PropertyId))
+                    .Select(c => new { c.PropertyId, c.LastVerificationOk })
+                    .ToListAsync(ct))
+                .ToDictionary(c => c.PropertyId, c => c.LastVerificationOk);
 
         var regionOf = settings.IstatDeadlineDays.Count == 0
             ? new Dictionary<string, string?>()
             : await RegionsOfAsync(properties, ct);
-        var declaredRates = await db.OrgTouristTaxRates
-            .AsNoTracking()
-            .Where(r => r.OrgId == orgId && r.EffectiveFrom <= todayDate)
-            .ToListAsync(ct);
+        var declaredRates = !propertyChecks
+            ? []
+            : await db.OrgTouristTaxRates
+                .AsNoTracking()
+                .Where(r => r.OrgId == orgId && r.EffectiveFrom <= todayDate)
+                .ToListAsync(ct);
         var rateKnown = new Dictionary<string, bool>(StringComparer.Ordinal);
         var staysOf = stays.ToLookup(s => s.PropertyId);
 
@@ -465,10 +504,11 @@ public sealed class ComplianceStatusService(
             var sender = senderOf(property.Id);
             var italian = TouristTaxComune.IsItalianCountry(property.Country);
 
-            if (italian)
+            if (propertyChecks && italian)
                 items.Add(PropertyItem(ComplianceItemKind.Cin, ComplianceCockpitAction.ActivateProperty, property, null, ComplianceLightRules.Cin(property.CinCode), null));
 
-            if (sender == ComplianceSenderType.ChannelManager
+            if (propertyChecks
+                && sender == ComplianceSenderType.ChannelManager
                 && connections.TryGetValue(property.Id, out var connection)
                 && ComplianceLightRules.Connection(new ConnectionFacts
                 {
@@ -479,7 +519,8 @@ public sealed class ComplianceStatusService(
                 items.Add(PropertyItem(ComplianceItemKind.Connection, ComplianceCockpitAction.ActivateOctorateSend, property, null, connectionVerdict, null));
             }
 
-            if (ComplianceLightRules.Credentials(new CredentialsFacts { LastVerificationOk = verified.GetValueOrDefault(property.Id) }) is { } credentialsVerdict)
+            if (propertyChecks
+                && ComplianceLightRules.Credentials(new CredentialsFacts { LastVerificationOk = verified.GetValueOrDefault(property.Id) }) is { } credentialsVerdict)
                 items.Add(PropertyItem(ComplianceItemKind.Credentials, ComplianceCockpitAction.RenewPoliceCredentials, property, null, credentialsVerdict, null));
 
             var propertyStays = staysOf[property.Id].ToList();
@@ -488,7 +529,7 @@ public sealed class ComplianceStatusService(
 
             // The tourist tax rate of the comune: known from the official table or declared by the org, never presumed zero.
             var comune = new TouristTaxComune(property.ComuneIstatCode, property.City);
-            if (!comune.IsEmpty)
+            if (propertyChecks && !comune.IsEmpty)
             {
                 var comuneKey = $"{comune.IstatCode}|{TouristTaxComune.NormalizeName(comune.Name)}";
                 if (!rateKnown.TryGetValue(comuneKey, out var known))
@@ -637,6 +678,26 @@ public sealed class ComplianceStatusService(
 
         return months;
     }
+
+    /// <summary>
+    /// The closed months a coverage report looks at: the months that lie wholly between <paramref name="from"/> and <paramref name="to"/> and
+    /// are over (before the month of <paramref name="today"/>). A month cut by the window is not looked at: its stays would be partial.
+    /// </summary>
+    internal static IReadOnlyList<DateOnly> ClosedMonthsWithin(DateOnly today, DateOnly from, DateOnly to)
+    {
+        var first = from.Day == 1 ? from : new DateOnly(from.Year, from.Month, 1).AddMonths(1);
+        var current = new DateOnly(today.Year, today.Month, 1);
+        var months = new List<DateOnly>();
+        for (var month = first; month < current && month.AddMonths(1).AddDays(-1) <= to; month = month.AddMonths(1))
+            months.Add(month);
+
+        return months;
+    }
+
+    /// <summary>A Europe/Rome day as the stays store it: midnight UTC of that date.</summary>
+    private static DateTime StoredDate(DateOnly date) => date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+    private static DateTime Earlier(DateTime first, DateTime second) => first <= second ? first : second;
 
     private static DateOnly MonthOf(DateTime checkInDate)
     {

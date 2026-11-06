@@ -193,8 +193,9 @@ public static class FeatureFlags
     /// feed of the red and yellow items into the «Da fare» list (<c>ComplianceActivityFeeder</c>) writes nothing. On, every item says whether the host
     /// is compliant and the «Da fare» list is kept in step with the cockpit. Why it is off: nothing in the application archives the proofs that turn
     /// an item green yet (the receipts and tax proofs of <c>ManualComplianceProof</c>, the receipt a report points to), so on, every stay of the last 90
-    /// days would get a red To do nobody can close. Not behind it: <c>GET api/properties/{propertyId}/compliance/connection-health</c>, which writes
-    /// nothing. It needs no variable to start. This task owns the flag: the other tasks of epic E03 only read it.
+    /// days would get a red To do nobody can close. Also behind it (E03/F02/US03/T01): the coverage report of the proof archive (<c>GET api/compliance/report</c> and
+    /// <c>report/export</c>, 404 while off) and the coverage CSV of the ZIP of the proofs. Not behind it: <c>GET api/properties/{propertyId}/compliance/connection-health</c>,
+    /// which writes nothing, and the archive of the proofs itself (list, download, export, upload, the log of a stay). It needs no variable to start. This task owns the flag: the other tasks of epic E03 only read it.
     /// </summary>
     public const string ComplianceTrafficLight = "ComplianceTrafficLight";
 

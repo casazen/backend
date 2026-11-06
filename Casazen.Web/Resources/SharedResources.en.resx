@@ -5211,4 +5211,40 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="AssistStepAlreadyDone" xml:space="preserve">
     <value>This step is already done: there is nothing to ask support.</value>
   </data>
+  <data name="ComplianceProofNotFound" xml:space="preserve">
+    <value>Proof not found among those of your organization.</value>
+  </data>
+  <data name="ComplianceBookingNotFound" xml:space="preserve">
+    <value>Stay not found among those of your organization.</value>
+  </data>
+  <data name="ComplianceProofFileInvalid" xml:space="preserve">
+    <value>The proof has no file, or the file is empty.</value>
+  </data>
+  <data name="ComplianceProofTypeUnsupported" xml:space="preserve">
+    <value>The file must be a PDF, a JPEG photo or a PNG image.</value>
+  </data>
+  <data name="ComplianceProofTooLarge" xml:space="preserve">
+    <value>The file is too large: the limit is {0} MB.</value>
+  </data>
+  <data name="ComplianceProofDayInvalid" xml:space="preserve">
+    <value>The day of the proof is not valid: it cannot be in the future or before 2000.</value>
+  </data>
+  <data name="ComplianceProofKindInvalid" xml:space="preserve">
+    <value>The kind of proof is not valid: use AlloggiatiReceipt, IstatProof, TouristTaxDeclaration or TouristTaxPayment.</value>
+  </data>
+  <data name="ComplianceExportTooLarge" xml:space="preserve">
+    <value>The proofs of the period are too many for a single export: choose a shorter period or a single property.</value>
+  </data>
+  <data name="ComplianceProofPropertyRequired" xml:space="preserve">
+    <value>Say which property the proof is about.</value>
+  </data>
+  <data name="ComplianceProofKindRequired" xml:space="preserve">
+    <value>Say what the file proves.</value>
+  </data>
+  <data name="ComplianceProofDayRequired" xml:space="preserve">
+    <value>Say the day the proof is about (YYYY-MM-DD).</value>
+  </data>
+  <data name="ComplianceReportInvalidFormat" xml:space="preserve">
+    <value>Invalid format: use pdf or csv.</value>
+  </data>
 </root>

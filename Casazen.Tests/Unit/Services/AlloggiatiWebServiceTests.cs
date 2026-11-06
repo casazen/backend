@@ -484,6 +484,38 @@ public class AlloggiatiWebServiceTests
         Assert.Equal(AlloggiatiWebService.AlreadySentCode, ex.Code);
     }
 
+    /// <summary>
+    /// NF-47, AC-NF47-2 (E03/F02/US03/T01): the host's declaration that it sent the communication on the portal writes one line of the log of what
+    /// was sent, in the same save as the declaration: sender «Manual», the day it declared, the person, no reference (CasaZen holds no receipt) and no
+    /// guest. A declaration that is refused, or that finds the communication already sent, writes none.
+    /// </summary>
+    [Fact]
+    public async Task MarkSentManually_WritesOneLineOfTheSendLog_ARefusedDeclarationWritesNone()
+    {
+        await using var db = CreateDb();
+        var booking = await SeedBookingAsync(db);
+
+        await Assert.ThrowsAsync<DomainRuleException>(() =>
+            CreateService(db, RomeMidnightOfCheckIn.AddHours(10)).MarkSentManuallyAsync(booking.Id, CheckIn.AddDays(-1), "auth0|host"));
+        await Assert.ThrowsAsync<DomainRuleException>(() =>
+            CreateService(db, RomeMidnightOfCheckIn.AddHours(10)).MarkSentManuallyAsync(booking.Id, CheckIn.AddDays(1), "auth0|host"));
+        Assert.Empty(db.ComplianceSendLogEntries);
+
+        await CreateService(db, RomeMidnightOfCheckIn.AddHours(30)).MarkSentManuallyAsync(booking.Id, CheckIn, "auth0|host");
+
+        var line = Assert.Single(db.ComplianceSendLogEntries);
+        Assert.Equal((booking.OrgId, booking.PropertyId, booking.Id), (line.OrgId, line.PropertyId, line.BookingId));
+        Assert.Equal((ComplianceSendKind.AlloggiatiGuests, ComplianceSender.Manual), (line.Kind, line.Sender));
+        Assert.Equal(CheckIn, line.SentAt);
+        Assert.Equal("auth0|host", line.ByUserId);
+        Assert.Null(line.Reference);
+        Assert.Equal(AlloggiatiWebStatus.InviatoManualmente, (await db.AlloggiatiWebReports.SingleAsync()).Status);
+
+        await Assert.ThrowsAsync<DomainConflictException>(() =>
+            CreateService(db, RomeMidnightOfCheckIn.AddHours(30)).MarkSentManuallyAsync(booking.Id, CheckIn, "auth0|host"));
+        Assert.Single(db.ComplianceSendLogEntries);
+    }
+
     [Fact]
     public async Task GetGuestSummary_RegisteredSingleGuest_ReturnsTheRecordFieldsAndCodesToComplete()
     {
