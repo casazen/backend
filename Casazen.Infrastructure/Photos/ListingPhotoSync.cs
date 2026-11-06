@@ -47,6 +47,9 @@ public sealed class ListingPhotoSync(
     /// <summary>What the task of a photo keeps when the photo was removed in CasaZen and could not be removed on the channel manager; it is not tried again.</summary>
     internal const string NotRemovedMessage = "The photo could not be removed on the channel manager: remove it there by hand.";
 
+    /// <summary>What the task of a photo keeps when the channel manager no longer knows the entry of the queue it was waiting on (a note for the logs and the support, never shown to the host).</summary>
+    internal const string QueueEntryUnknownMessage = "The channel manager does not know the entry of the photo queue.";
+
     /// <summary>Sends the photos not sent yet, and removes the ones that left the gallery.</summary>
     public async Task SendAsync(Property property, string accommodationId, CancellationToken ct)
     {
@@ -109,7 +112,7 @@ public sealed class ListingPhotoSync(
             if (entry is null)
             {
                 task.Status = PhotoUploadStatus.Error;
-                task.ErrorMessage = "The channel manager does not know the entry of the photo queue.";
+                task.ErrorMessage = QueueEntryUnknownMessage;
                 task.CompletedAt = Now();
             }
             else if (entry.State == OctoratePhotoQueueState.Waiting)
