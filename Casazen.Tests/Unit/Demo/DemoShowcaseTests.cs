@@ -91,6 +91,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.MarketplacePartners.Select(partner => partner.Scenario))
             .Concat(DemoShowcaseCatalog.MarketplaceActivations.Select(activation => activation.Scenario))
             .Concat(DemoShowcaseCatalog.MessageThreads.Select(thread => thread.Scenario))
+            .Concat(DemoShowcaseCatalog.FiscalIssuerProfiles.Select(profile => profile.Scenario))
             .Concat(DemoShowcaseCatalog.TouristTaxChannelRules.Select(rule => rule.Scenario))
             .Concat(DemoShowcaseCatalog.WelcomeLinks.Select(link => link.Scenario))
             .ToHashSet(StringComparer.Ordinal);
@@ -562,5 +563,68 @@ public class DemoShowcaseTests
         Assert.Equal(2, sharing.Select(s => CrmNormalizer.NormalizeName(s.Booking.FirstName, s.Booking.LastName)).Distinct(StringComparer.Ordinal).Count());
         Assert.NotNull(CrmNormalizer.NormalizePhone(DemoShowcaseCatalog.CrmSharedPhone));
         Assert.Null(CrmNormalizer.NormalizePhone("+390000000000"));
+    }
+
+    [Fact]
+    public void InvoiceData_TheDemoHasAFinishedDirectStayWithAnInvoiceRecipientThatPassesTheRulesOfARealOne_AllInvented()
+    {
+        var stays = DemoShowcaseCatalog.Properties
+            .SelectMany(p => p.Bookings.Where(b => b.Scenario == DemoShowcaseCatalog.Scenario.InvoiceData))
+            .ToList();
+
+        // NF-81: the booking of the host has an invoice recipient to show, so the scenario has template data and a scenario without it fails.
+        Assert.Contains(DemoShowcaseCatalog.Scenario.InvoiceData, DemoShowcaseCatalog.Scenarios);
+        var stay = Assert.Single(stays);
+        var data = stay.InvoiceData;
+        Assert.NotNull(data);
+        Assert.Equal(BookingSource.Direct, stay.Source);
+        Assert.Equal(BookingStatus.CheckedOut, stay.Status);
+        Assert.EndsWith("@example.com", stay.Email, StringComparison.Ordinal);
+
+        // Invented and obviously so: TEST in the name, an address at example.com (the PEC is at a subdomain of it, pec.example.com).
+        Assert.Contains("TEST", data.Name, StringComparison.Ordinal);
+        Assert.EndsWith(".example.com", data.Pec!, StringComparison.Ordinal);
+        Assert.Equal(InvoiceDataSource.Host, data.Source);
+
+        // Valid for the rules a recipient saved through the service obeys: no failure, and the recipient is identified.
+        var state = new SaveInvoiceDataCommand
+        {
+            RecipientKind = data.Kind,
+            Name = data.Name,
+            FiscalCode = data.FiscalCode,
+            VatNumber = data.VatNumber,
+            AddressStreet = data.AddressStreet,
+            AddressCivic = data.AddressCivic,
+            PostalCode = data.PostalCode,
+            City = data.City,
+            Province = data.Province,
+            CountryCode = BookingInvoiceData.DefaultCountryCode,
+            SdiRecipientCode = data.SdiRecipientCode,
+            Pec = data.Pec,
+        };
+        Assert.Empty(InvoiceDataFormats.Validate(state, requireIdentification: true));
+    }
+
+    [Fact]
+    public void FiscalIssuerProfile_TheDemoOrgHasACompleteProfileOfItsIssuer_InventedAndNeedingNeitherTheFlagNorAConnection()
+    {
+        // FIS-02, NF-82: a scenario without template data fails (the coverage test above), and the profile is complete and obviously test data.
+        Assert.Contains(DemoShowcaseCatalog.Scenario.FiscalIssuerProfile, DemoShowcaseCatalog.Scenarios);
+        var profile = Assert.Single(DemoShowcaseCatalog.FiscalIssuerProfiles);
+        Assert.Equal(DemoShowcaseCatalog.Scenario.FiscalIssuerProfile, profile.Scenario);
+        Assert.Contains("TEST", profile.LegalName, StringComparison.Ordinal);
+        Assert.True(profile.ConfirmedOffsetDays <= 0);
+
+        // The accountant is the one mode that needs no flag and no Octorate connection, so the demo works in every environment.
+        Assert.Equal(DocumentIssuerMode.Accountant, profile.Mode);
+        Assert.True(Enum.IsDefined(profile.Regime));
+        var issuer = new IssuerData(
+            profile.LegalName, profile.AddressStreet, profile.AddressCivic, profile.PostalCode, profile.City, profile.Province, "IT",
+            profile.FatturaPaRegimeCode, null, null, null);
+
+        // Complete for the mode CasaZen too, once the organization has its VAT number on its tax profile: nothing of the profile itself is missing.
+        Assert.Empty(FiscalDocumentRules.MissingIssuerFields(issuer, profile.Regime, profile.FatturaPaRegimeCode, "12345678903", null));
+        Assert.Equal(5, profile.PostalCode.Length);
+        Assert.Equal(2, profile.Province.Length);
     }
 }

@@ -113,6 +113,13 @@ public static class EncryptedColumns
     public const string GuestContactPurpose = "Casazen.GuestContact";
 
     /// <summary>
+    /// Purpose of the invoice data of a booking (FIS-01, NF-81, E06/F02/US01/T01): the name, the fiscal code, the VAT number, the address and the PEC
+    /// of <see cref="BookingInvoiceData"/>, who an invoice is made out to. Personal data of a guest or of a company's contact; nothing is searched in
+    /// it. Never change it: stored values would become unreadable.
+    /// </summary>
+    public const string BookingInvoiceDataPurpose = "Casazen.BookingInvoiceData";
+
+    /// <summary>
     /// Purpose of the words of the OTA conversations (ADR-032-R3, E05/F01/US01/T01): <see cref="OtaMessage.Text"/>, free text a guest or a
     /// host wrote on a channel, copied from the channel manager. Read by the hosts who reach the property of the thread and by nobody else,
     /// never searched, never logged. Never change it: stored values would become unreadable.
@@ -234,6 +241,19 @@ public static class EncryptedColumns
             GuestContactPurpose,
             nameof(GuestContact.Value),
             nameof(GuestContact.DisplayName)),
+        // NF-81: who an invoice of a booking is made out to (E06/F02/US01/T01); the code of the SDI and the province are not personal data.
+        new EncryptedEntity<BookingInvoiceData>(
+            BookingInvoiceDataPurpose,
+            nameof(BookingInvoiceData.Name),
+            nameof(BookingInvoiceData.FiscalCode),
+            nameof(BookingInvoiceData.VatNumber),
+            nameof(BookingInvoiceData.AddressStreet),
+            nameof(BookingInvoiceData.AddressCivic),
+            nameof(BookingInvoiceData.PostalCode),
+            nameof(BookingInvoiceData.City),
+            nameof(BookingInvoiceData.Pec),
+            // E06/F02/US01/T04: the hash of the billing data last written to Octorate is a hash of the personal data above.
+            nameof(BookingInvoiceData.OctorateBillingHash)),
         // ADR-032-R3: the words of the OTA conversations of the guests (E05/F01/US01/T01).
         new EncryptedEntity<OtaMessage>(
             OtaMessageTextPurpose,

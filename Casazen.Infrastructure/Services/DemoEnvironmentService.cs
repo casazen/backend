@@ -136,6 +136,7 @@ public class DemoEnvironmentService(
         await RemoveShowcaseTouristTaxRulesAsync(orgId, cancellationToken);
         await RemoveShowcaseMessageThreadsAsync(orgId, cancellationToken);
         await RemoveShowcaseCrmAsync(orgId, cancellationToken);
+        await RemoveShowcaseFiscalIssuerProfilesAsync(orgId, cancellationToken);
         var removed = await RemoveShowcaseAsync(orgId, cancellationToken);
         await RemoveShowcaseHostInvitesAsync(orgId, cancellationToken);
         var unpublished = removeUnpublished ? await RemoveUnpublishedAsync(orgId, cancellationToken) : 0;
@@ -167,6 +168,10 @@ public class DemoEnvironmentService(
         // NF-100: the tourist tax payments of the demo host name the comune of a house just created, so they come after the houses.
         foreach (var remittance in DemoShowcaseCatalog.TouristTaxRemittances)
             await CreateTouristTaxRemittanceAsync(orgId, ownerId, remittance, cancellationToken);
+
+        // FIS-02, NF-82: the profile of the issuer of the demo org (one for each org, skipped when the org has its own).
+        foreach (var profile in DemoShowcaseCatalog.FiscalIssuerProfiles)
+            await CreateFiscalIssuerProfileAsync(orgId, ownerId, profile, cancellationToken);
 
         // NF-08: the popup alerts of the demo host point at the stays and houses just created, so they come last.
         foreach (var alert in DemoShowcaseCatalog.PopupAlerts)
@@ -415,6 +420,58 @@ public class DemoEnvironmentService(
         db.PopupAlerts.Add(alert);
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.PopupAlert, alert.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
+    }
+
+    /// <summary>Deletes the profile of the issuer the showcase wrote for the org, found by its marker (FIS-02). A real profile has no marker and is never touched.</summary>
+    private async Task RemoveShowcaseFiscalIssuerProfilesAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var profileIds = await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.FiscalIssuerProfile)
+            .Select(m => m.EntityId)
+            .ToListAsync(cancellationToken);
+        if (profileIds.Count == 0)
+            return;
+
+        await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters([Tenant]).Where(p => p.OrgId == orgId && profileIds.Contains(p.Id)).ExecuteDeleteAsync(cancellationToken);
+        await Markers()
+            .Where(m => m.OrgId == orgId && m.Origin == TestDataOrigins.Showcase && m.EntityType == TestDataEntities.FiscalIssuerProfile)
+            .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The profile of the issuer of the demo org, complete and invented (FIS-02, NF-82). There is one for each org: it is skipped, with a line in the
+    /// log, when the org already has one (a real one, which the showcase never touches or replaces).
+    /// </summary>
+    private async Task CreateFiscalIssuerProfileAsync(
+        Guid orgId, string ownerId, DemoFiscalIssuerProfileTemplate template, CancellationToken cancellationToken)
+    {
+        if (await db.OrgFiscalIssuerProfiles.IgnoreQueryFilters([Tenant]).AnyAsync(p => p.OrgId == orgId, cancellationToken))
+        {
+            logger.LogInformation("Demo issuer profile {Key} skipped: org {OrgId} already has a profile of its own", template.Key, orgId);
+            return;
+        }
+
+        var now = UtcNow();
+        var profile = new OrgFiscalIssuerProfile
+        {
+            OrgId = orgId,
+            IssuerMode = template.Mode,
+            DocumentRegime = template.Regime,
+            LegalName = template.LegalName,
+            AddressStreet = template.AddressStreet,
+            AddressCivic = template.AddressCivic,
+            PostalCode = template.PostalCode,
+            City = template.City,
+            Province = template.Province,
+            CountryCode = OrgFiscalIssuerProfile.DefaultCountryCode,
+            FatturaPaRegimeCode = template.FatturaPaRegimeCode,
+            ConfirmedAt = now.AddDays(template.ConfirmedOffsetDays),
+            UpdatedAt = now,
+            UpdatedByUserId = ownerId,
+        };
+        db.OrgFiscalIssuerProfiles.Add(profile);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.FiscalIssuerProfile, profile.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
     }
 
     /// <summary>
@@ -1303,6 +1360,8 @@ public class DemoEnvironmentService(
         await db.SaveChangesAsync(cancellationToken);
         await MarkAsync(orgId, TestDataEntities.Booking, booking.Id, TestDataOrigins.Showcase, template.Key, cancellationToken);
         await CreateCrmConsentsAsync(orgId, guest.Id, booking.Id, template, madeAt, cancellationToken);
+        if (template.InvoiceData is { } invoiceData)
+            await CreateInvoiceDataAsync(orgId, booking.Id, invoiceData, template.Key, madeAt, cancellationToken);
 
         // NF-40, NF-46: the registered guests of the stay, with complete data of the right shape (they go with the booking at the next reset).
         if (template.Guests is { Count: > 0 } guests)
@@ -1317,6 +1376,40 @@ public class DemoEnvironmentService(
                     orgId, TestDataEntities.StayGuest, rows[position].Id, TestDataOrigins.Showcase, $"{template.Key}/{position}", cancellationToken);
             }
         }
+    }
+
+    /// <summary>
+    /// Who the invoice of a showcase stay is made out to (NF-81): the guest's «yes» of the online check-in and the data of the recipient, in the
+    /// row the real flows write (encrypted by the context). It goes with its booking when the reset deletes it (the table cascades).
+    /// </summary>
+    private async Task CreateInvoiceDataAsync(
+        Guid orgId, Guid bookingId, DemoInvoiceData template, string templateKey, DateTime madeAt, CancellationToken cancellationToken)
+    {
+        var row = new BookingInvoiceData
+        {
+            OrgId = orgId,
+            BookingId = bookingId,
+            InvoiceRequested = true,
+            InvoiceRequestedAt = madeAt,
+            RecipientKind = template.Kind,
+            Name = template.Name,
+            FiscalCode = template.FiscalCode,
+            VatNumber = template.VatNumber,
+            AddressStreet = template.AddressStreet,
+            AddressCivic = template.AddressCivic,
+            PostalCode = template.PostalCode,
+            City = template.City,
+            Province = template.Province,
+            CountryCode = BookingInvoiceData.DefaultCountryCode,
+            SdiRecipientCode = template.SdiRecipientCode,
+            Pec = template.Pec,
+            Source = template.Source,
+            CreatedAt = madeAt,
+            UpdatedAt = madeAt,
+        };
+        db.BookingInvoiceData.Add(row);
+        await db.SaveChangesAsync(cancellationToken);
+        await MarkAsync(orgId, TestDataEntities.BookingInvoiceData, row.Id, TestDataOrigins.Showcase, templateKey, cancellationToken);
     }
 
     /// <summary>
