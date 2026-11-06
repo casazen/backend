@@ -112,6 +112,28 @@ public class OctorateReservationReaderTests
         Assert.Equal(expected, OctorateReservationReader.Read(document.RootElement)!.Status);
     }
 
+    // E06/F02/US01/T04: the customer record of the address book that holds the invoice is the invoiceHolderId of the reservation and nothing else. A
+    // guestId, or the id of a guest of the stay, is another table (the record it picks could be another customer's); zero, a sign, a fraction or a word
+    // is no id at all.
+    [Theory]
+    [InlineData("""{ "id": "1", "invoiceHolderId": 77001 }""", "77001")]
+    [InlineData("""{ "id": "1", "invoiceHolderId": "77001" }""", "77001")]
+    [InlineData("""{ "id": "1", "InvoiceHolderId": 5 }""", "5")]
+    [InlineData("""{ "id": "1", "invoiceHolderId": 0 }""", null)]
+    [InlineData("""{ "id": "1", "invoiceHolderId": -4 }""", null)]
+    [InlineData("""{ "id": "1", "invoiceHolderId": 12.5 }""", null)]
+    [InlineData("""{ "id": "1", "invoiceHolderId": "abc" }""", null)]
+    [InlineData("""{ "id": "1", "invoiceHolderId": null }""", null)]
+    [InlineData("""{ "id": "1", "invoiceHolderId": 123456789012345678901234567890123456789012345678901234567890123456789 }""", null)]
+    [InlineData("""{ "id": "1", "guestId": 77001, "guests": [ { "id": 67152873 } ] }""", null)]
+    [InlineData("""{ "id": "1" }""", null)]
+    public void Read_TheCustomerRecordOfTheInvoiceIsTheInvoiceHolderIdAndNothingElse(string json, string? expected)
+    {
+        using var document = JsonDocument.Parse(json);
+
+        Assert.Equal(expected, OctorateReservationReader.Read(document.RootElement)!.InvoiceHolderId);
+    }
+
     [Fact]
     public void Read_TheContactOfTheGuestOnlyWhenTheAnswerCarriesOne()
     {

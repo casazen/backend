@@ -367,6 +367,15 @@ public sealed record OctorateReservation
     public string? GuestId { get; init; }
 
     /// <summary>
+    /// The id of the customer record of the address book that holds the invoice of the reservation (<c>invoiceHolderId</c> of
+    /// <c>ApiReservationRespDTO</c>, E06/F02/US01/T04): the key of the billing data (<see cref="IOctorateApiClient.GetBookerBillingDataAsync"/>). It is
+    /// <b>not</b> <see cref="GuestId"/>: the guests of a stay are another table than the address book, and a record picked by their id could be another
+    /// customer's. <c>null</c> when the reservation names none, which is the usual case (the sandbox leaves the address book empty after a check-in).
+    /// The name is the OpenAPI's; the sandbox has not shown a reservation that carries one.
+    /// </summary>
+    public string? InvoiceHolderId { get; init; }
+
+    /// <summary>
     /// Octorate holds an e-mail address for the first guest (<c>emailAvailable</c>): a flag, the address itself is not in the answer. <c>null</c>
     /// when the answer does not say.
     /// </summary>

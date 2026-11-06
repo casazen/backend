@@ -87,6 +87,10 @@ public class ConfigurationFeatureFlagsTests
                 "CrmMarketing",
                 // E10/F01/US01/T02: the activation of CasaZen with Octorate (flow status, plan, panel steps), off until it is ready to be shown.
                 "OctorateOnboarding",
+                // E06/F02/US02/T02: the issuance of fiscal documents by CasaZen (and the mode «CasaZen issues» of the issuer setting), off until the accountant approves the rules.
+                "FiscalDocumentIssuance",
+                // E06/F02/US01/T04: the sync of the billing data with Octorate (pre-fill of the invoice data, write-back), off until the customer endpoints are proven.
+                "OctorateBillingSync",
             },
             FeatureFlags.All);
     }

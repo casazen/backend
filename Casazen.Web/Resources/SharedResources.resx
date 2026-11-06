@@ -4959,6 +4959,45 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OctorateSyncLinkedElsewhere" xml:space="preserve">
     <value>La prenotazione esiste nel channel manager, ma in CasaZen è già collegata a un'altra prenotazione: controlla se è un duplicato.</value>
   </data>
+  <data name="InvoiceDataFiscalCodeInvalid" xml:space="preserve">
+    <value>Il codice fiscale non è valido: controllalo e riprova.</value>
+  </data>
+  <data name="InvoiceDataVatNumberInvalid" xml:space="preserve">
+    <value>La partita IVA non è valida: sono 11 cifre, con il prefisso IT davanti, e l'ultima è di controllo.</value>
+  </data>
+  <data name="InvoiceDataRecipientCodeInvalid" xml:space="preserve">
+    <value>Il codice destinatario non è valido: sono 7 tra lettere maiuscole e cifre.</value>
+  </data>
+  <data name="InvoiceDataPecInvalid" xml:space="preserve">
+    <value>La PEC non è un indirizzo email valido.</value>
+  </data>
+  <data name="InvoiceDataRecipientRequired" xml:space="preserve">
+    <value>Per la fattura servono il codice fiscale o la partita IVA di chi la riceve.</value>
+  </data>
+  <data name="InvoiceDataFieldInvalid" xml:space="preserve">
+    <value>Un dato della fattura non è valido o è troppo lungo: controllalo e riprova.</value>
+  </data>
+  <data name="DocumentIssuanceNotAvailable" xml:space="preserve">
+    <value>L'emissione dei documenti da parte di CasaZen non è ancora disponibile: scegli un altro modo.</value>
+  </data>
+  <data name="IssuerProfileIncomplete" xml:space="preserve">
+    <value>Mancano dei dati dell'emittente per emettere con CasaZen: completali e riprova.</value>
+  </data>
+  <data name="DocumentBookingNotDirect" xml:space="preserve">
+    <value>CasaZen non emette documenti per le prenotazioni che arrivano da un portale, solo per quelle dirette.</value>
+  </data>
+  <data name="DocumentIssuerConflict" xml:space="preserve">
+    <value>I documenti di questa prenotazione sono già di un altro emittente: una prenotazione ha un solo emittente.</value>
+  </data>
+  <data name="DocumentRuleNotConfigured" xml:space="preserve">
+    <value>Le regole del documento per il tuo regime non sono ancora state approvate: finché non lo sono, non si può emettere.</value>
+  </data>
+  <data name="IssuerFieldInvalid" xml:space="preserve">
+    <value>Un dato dell'emittente non è valido o è troppo lungo: controllalo e riprova.</value>
+  </data>
+  <data name="FiscalSettingsNeedWholeOrg" xml:space="preserve">
+    <value>Solo chi gestisce tutti gli immobili dell'organizzazione può cambiare chi emette i documenti.</value>
+  </data>
   <data name="OctorateSyncNotMirrored" xml:space="preserve">
     <value>La struttura non è collegata al channel manager in questo momento (connessione interrotta o mappatura da confermare): l'annullamento non è stato inviato. Ricollega o conferma la mappatura, poi riprova.</value>
   </data>
