@@ -1,4 +1,5 @@
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 
 namespace Casazen.Core.Services;
@@ -90,6 +91,11 @@ public sealed record ManualBookingGuest(string FirstName, string? LastName, stri
 /// <param name="PriceNote">The host's note on that price (<see cref="ManualBookingRules.PriceNoteMaxLength"/> characters at most).</param>
 /// <param name="BlockId">The block of a portal's calendar the booking completes; null for a booking by direct contact.</param>
 /// <param name="Source">The portal of the block, only when the feed of the block is of a channel that is not Airbnb or Booking.com.</param>
+/// <param name="PaymentArrangement">
+/// How the guest of a booking by direct contact is to pay it (the payment step of the new-booking wizard, NF-74, E08/F01/US01/T05): a payment
+/// link of the balance sent to the guest, at the property or by bank transfer (the host records the income by hand). Not for a block: the
+/// portal collects, so a payment link is refused there and the other arrangements are not recorded.
+/// </param>
 public sealed record ManualBookingInput(
     Property Property,
     DateTime CheckInDate,
@@ -102,12 +108,23 @@ public sealed record ManualBookingInput(
     decimal? TotalPrice,
     string? PriceNote,
     Guid? BlockId,
-    BookingSource? Source);
+    BookingSource? Source,
+    HostPaymentArrangement PaymentArrangement = HostPaymentArrangement.None);
 
 /// <summary>A manual booking, created, and whether its stay is shorter than the minimum stay of the property.</summary>
 /// <param name="BelowMinimum">The stay is shorter than <paramref name="MinNights"/>: allowed, the host enters it, but it is said.</param>
 /// <param name="MinNights">The minimum stay of the property, when it has one.</param>
-public sealed record ManualBookingResult(Booking Booking, bool BelowMinimum, int? MinNights);
+/// <param name="PaymentLinkUrl">
+/// The payment link sent to the guest, given once for the host to copy (E08/F01/US01/T05); <c>null</c> for the other arrangements, and when the
+/// link could not be made after the booking was written (<paramref name="PaymentLinkError"/> says why: the host sends it again from the booking).
+/// </param>
+/// <param name="PaymentLinkError">The code of the error that stopped the link after the booking was written; <c>null</c> otherwise.</param>
+public sealed record ManualBookingResult(
+    Booking Booking,
+    bool BelowMinimum,
+    int? MinNights,
+    string? PaymentLinkUrl = null,
+    string? PaymentLinkError = null);
 
 /// <summary>
 /// The booking the host enters by hand with only what it needs (SR-06a). A direct-contact booking is created

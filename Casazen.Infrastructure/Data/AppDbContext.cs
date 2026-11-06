@@ -333,6 +333,9 @@ public class AppDbContext(
     public DbSet<OctorateInventoryImportChannel> OctorateInventoryImportChannels { get; set; } = null!;
     public DbSet<OctorateInventoryImportItem> OctorateInventoryImportItems { get; set; } = null!;
 
+    // The mirror of the CasaZen bookings on Octorate: the state of the last operation sent for each booking (E08/F01/US01/T01, ADR-031)
+    public DbSet<OctorateBookingSync> OctorateBookingSyncs { get; set; } = null!;
+
     public DbSet<GuestPrivacyAuditEntry> GuestPrivacyAuditEntries { get; set; } = null!;
     public DbSet<SignupAttribution> SignupAttributions { get; set; } = null!;
     public DbSet<SeoEvent> SeoEvents { get; set; } = null!;
@@ -1674,6 +1677,29 @@ public class AppDbContext(
                 .HasDatabaseName(OctorateOAuthState.StateHashIndexName);
             entity.HasIndex(s => s.ExpiresAt);
         });
+
+        // The mirror of a CasaZen booking on Octorate (E08/F01/US01/T01, ADR-031): one row per booking, gone with its booking (CASCADE);
+        // the list of the failures of an org reads (OrgId, State). The dates Octorate holds after a 409 are jsonb.
+        modelBuilder.Entity<OctorateBookingSync>(entity =>
+        {
+            entity.HasOne<Booking>()
+                .WithMany()
+                .HasForeignKey(s => s.BookingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.Property(s => s.OctorateVersionJson).HasColumnType("jsonb");
+            entity.HasIndex(s => s.BookingId)
+                .IsUnique()
+                .HasDatabaseName(OctorateBookingSync.BookingIndexName);
+            entity.HasIndex(s => new { s.OrgId, s.State });
+        });
+
+        // A payment is recorded on its Octorate reservation once (E08/F01/US01/T01, AC-NF74-4): its transaction is unique in the org. Only
+        // the payments recorded there are in the index.
+        modelBuilder.Entity<Payment>()
+            .HasIndex(p => new { p.OrgId, p.OctorateTransactionId })
+            .IsUnique()
+            .HasFilter("\"OctorateTransactionId\" IS NOT NULL")
+            .HasDatabaseName(Payment.OctorateTransactionIndexName);
 
         // ─── Internal activities: the staff work (NF-22) and the "To do" list (ADR-026) ───
         // An organization-level To do has no property, so the property is optional; deleting a property still deletes its

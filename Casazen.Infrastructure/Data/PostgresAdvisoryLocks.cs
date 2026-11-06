@@ -339,11 +339,19 @@ internal static class PostgresAdvisoryLocks
         OctorateReservation = 20_121,
 
         /// <summary>
+        /// The mirror of one CasaZen booking on Octorate (key: booking id, <c>bookingId.ToString("N")</c>, E08/F01/US01/T03): the create and the
+        /// payments of a booking are sent one at a time, so a reservation is created once and a payment recorded once even when two deliveries
+        /// of an event, or a retry of the host, run together. A session lock (<see cref="TryAcquireSessionLockAsync"/>): held across the
+        /// commit of the attempt, the call to Octorate and the commit of its outcome; a holder that finds it taken leaves and is delivered again.
+        /// </summary>
+        OctorateBookingSync = 20_131,
+
+        /// <summary>
         /// The import of the existing inventory of one OTA channel of one org (key: org id and channel code, <c>orgId.ToString("N") + ":" + code</c>,
         /// E02/F01/US03, session lock held for the whole step): two commands of the same channel, from two batches or two requests, never ask
         /// Octorate for the same room import, reservation import, calendar import or «mark connected» at once. A command that does not get the
         /// lock leaves the channel as it is: the one that holds it is doing the work, and the next command resumes from the stamps. The number is
-        /// 20_132 because 20_131 is the scope of other branches of the connector, and a number belongs to one scope only.
+        /// 20_132 because 20_131 is <see cref="OctorateBookingSync"/>, and a number belongs to one scope only.
         /// </summary>
         OctorateInventoryImport = 20_132,
 

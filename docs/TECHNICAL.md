@@ -293,6 +293,8 @@ Property record choices (PC-02):
 | `POST` | `/api/bookings/{id}/check-in` | Perform check-in: records `ArrivedAt`, schedules the Alloggiati Web job (idempotent) |
 | `POST` | `/api/bookings/{id}/check-out` | Perform check-out |
 | `GET` | `/api/bookings/{id}/alloggiati-status` | Alloggiati Web status (same as `/api/alloggiati/{id}/status`) |
+| `POST` | `/api/bookings/manual` | SR-06a, the booking the host enters by hand (`booking.write`); since E08/F01/US01/T05 (NF-74) it takes `paymentArrangement` (`none` default, `paymentLink`, `onSite`, `bankTransfer`), stored on the booking (`HostPaymentArrangement`). `onSite` and `bankTransfer` only record the arrangement: the balance stays to collect with "Registra incasso" and nothing is sent. `paymentLink` also needs `payment.write` on the property (403 otherwise) and a Stripe account ready (422 `payment_link_unavailable`, checked before the booking is written; also for a block or a total of zero): the answer carries `paymentLinkUrl` once (the guest is e-mailed it), or `paymentLinkError` when the booking was written but the link could not be made (the host sends it again with the endpoint below) |
+| `POST` | `/api/bookings/{id}/payment-link` | E08/F01/US01/T05 (NF-74): a new payment link of the balance of a booking the host entered, e-mailed to the guest (`BookingWrite` and `PaymentWrite`, the booking authorized on its property; 404 for another org's booking). The PaymentIntent of the balance on the host's connected account (no application fee; the open one of the previous link is kept when it still pays the balance, cancelled otherwise), a new 256-bit token whose SHA-256 replaces `CheckoutTokenHash` (the previous link stops working), `PaymentLinkSentAt`. 200 `{ bookingId, paymentLinkUrl, amount, currency, sentAt, emailSent }`, the link given once; 422 `payment_link_unavailable` (not a host booking, cancelled, nothing to pay, a payment in progress, Stripe account not ready); 503 `payment_provider_error`. The guest pays on the checkout page of the booking site (`POST /api/public/bookings/{id}/outcome` and `.../payment-session`, which answer for such a booking with no expiry and the PaymentIntent of the balance; 409 `checkout_payment_not_resumable` when nothing is left to pay or the booking is cancelled); the payment webhook records the payment as completed without confirming or announcing the booking again |
 
 **Booking code and the searchable list (SR-03).** Every booking answer carries `bookingCode`, the code the guest knows,
 as `XXXXX-XXXXX` (`BookingCodes.Format`; stored without the dash, unique per org). `GET /api/bookings/search` is the list
@@ -1003,6 +1005,54 @@ reservation of the room of a property, found through the confirmed `OctorateList
   any more (its mapping is not confirmed, or its connection is not connected) `ReinstateFeedsAsync` clears the flags and the feeds are imported again.
   `GET /api/properties/{id}/ical/feeds`, the calendar
   overview and `GET /api/dashboard/ical-feeds` answer `deprecated` (the first also `deprecatedAt`); details in `docs/runbooks/ical.md` § Octorate.
+
+**CasaZen's bookings on the connector (E08/F01/US01, ADR-031, NF-74, D9, D13).** A booking confirmed in CasaZen (host wizard, phone entry, booking
+site) on a property whose mapping is confirmed is created on Octorate once, by `OctorateBookingCreateHandler` (consumer of `BookingConfirmed`, behind
+`Features:OctorateConnector`) and `BookingOctorateSyncService`; its state is `OctorateBookingSync` (one row per booking: `Pending`, `Synced`, `Failed`,
+`Conflict`, `NotAllowedByChannel`, a stable `ErrorCode`, no personal data). No row means "not mirrored".
+- *Where.* `IOctorateBookingTargets` gives the accommodation, the room (`OctorateProductId` of the mapping, the only room kept when the mapping has
+  none) and the PMS room of the unit (`GET /rest/v1/pms/{acc}`, the `pmsProduct` the sandbox wants) only for a `Connected` connection, a mapping that is
+  `Confirmed` and not write-blocked; otherwise nothing is written and no row is made. A confirmed mapping without a single room records `Failed`
+  `octorate_room_not_chosen`.
+- *Never back.* A booking with `Origin = Octorate`, of a channel (Airbnb, Booking.com, Expedia, Vrbo, TripAdvisor, Agoda, another portal), not confirmed or
+  in the house, over, or that already has an `OctorateReservationId` sends nothing.
+- *The create* (`POST /rest/v1/reservation/{acc}?availability=true`): channel `Octorate:DirectChannelId` (270 on the sandbox, no default: missing, the
+  push records `Failed` `octorate_unavailable` and logs the variable), `refer` = the booking code, the Rome days as UTC instants, `totalGuest`,
+  `totalChildren`, `roomGross` = `BasePrice` to the cent, the booker by name (and sex when known; no contact), never an automatic charge field (D9).
+- *Once* (D13, ADR-022-R4/R5). Under the session advisory lock `OctorateBookingSync` of the booking; the attempt is committed (`Pending`) before the call.
+  Octorate has no idempotency key: an attempt that follows another one looks the reservation up by its `refer` (`CREATETIME` list of the last 30 days)
+  before creating, and a create with no answer, 429 or 5xx is looked up at once. Found: success. Dates refused (409, 406): `Conflict`
+  `octorate_dates_unavailable`, one urgent To do `BookingOverlap` on the booking, not retried. Another 4xx: `Failed` `octorate_rejected`, not retried. No
+  answer and not found: `Failed` `octorate_unavailable` and the exception propagates (the dispatcher delivers the event again). The read of the
+  target on Octorate (the rooms of the accommodation) is part of the push: when it fails the row is `Failed` too (`octorate_unavailable` and the
+  exception for no answer, 429 or 5xx; `octorate_rejected` and no exception for another refusal), never a booking with no trace. Success writes
+  `OctorateReservationId`, `OctorateUpdatedAt`, `Synced` and `LastSyncedAt` in one save. The import matches the echo of a reservation CasaZen made
+  (its `refer` is the booking code) to the booking of the same org and property that has no Octorate id yet and links it (id and version): no
+  second booking is made on the same dates. If another booking holds the id when the push saves it, the row is `Failed`
+  `octorate_reservation_linked_elsewhere`, never a `Pending` that nothing completes.
+- *Payments* (E08/F01/US01/T04, D9). `PaymentSucceeded` (payload `PaymentEventPayload`: ids, amount, currency, method; dedup key
+  `payment-succeeded:{paymentId}`) is recorded with the status change by the payment webhook (a payment that confirms or pays a confirmed
+  booking; not one refunded at once), the deferred charge and "Registra incasso". `OctoratePaymentHandler` records the payment of a
+  booking whose reservation exists (its mirror `Synced`; or `Failed` on its payments, and then every payment still to be recorded, like the
+  confirmation does) and whose property still has a target, on its reservation (`POST /rest/v1/reservation/{acc}/{id}/payment`): `transaction` = the
+  PaymentIntent id or `casazen-{paymentId}`, `paymentMode` from `Octorate:PaymentModes` (`Stripe`, `CashOnArrival`, `BankTransfer`), the amount,
+  income and never a card charge. Once: `Payment.OctorateTransactionId` (unique per org) and `OctorateRegisteredAt`; the reservation is read first,
+  so a registration whose answer was lost is not sent again. The payment of a reservation that exists needs only the accommodation: the rooms
+  (and the PMS rooms) are not read. A payment that arrives while the create is `Pending`, or before the confirmation of a mirrored booking (the
+  booking site records the payment first and the confirmation still waits in the outbox), is delivered again, never consumed with no effect. The
+  create, and every later delivery of the confirmation or retry of the host once the reservation exists, records the payments paid before it or
+  whose recording failed, and swallows no error: the row is `Failed` `octorate_payments_not_recorded` and the exception goes up where the outbox
+  must deliver again. **Tourist tax.** The reservation holds the stay (`roomGross` = `BasePrice`) and Octorate works the tax out itself (its
+  create has no tourist tax member), while the guest pays `TotalPrice` to CasaZen: the amount recorded leaves out the part of the payments that is
+  tourist tax, taken as the last `TouristTax` of the price in the order the payments came in, so the payments recorded never pass the price of the
+  reservation (a payment that pays tax only is not sent). Nothing for a channel's booking or a booking that is not mirrored; refunds are not
+  mirrored. "Registra incasso" cancels on Stripe the open PaymentIntent of the payment link of the booking (its row becomes Canceled) before it
+  writes the receipt, so an open page cannot collect the balance again; while the guest is paying (processing, or succeeded and not recorded yet)
+  it answers 409 `payment_in_progress`.
+
+| Method | Path | Policy | Description |
+|---|---|---|---|
+| `POST` | `/api/bookings/{id}/octorate-sync/retry` | `BookingWrite` + row check `BookingOperations.Write` | Asks the push again (`?overwrite=true` is for a change refused with 409, E08/F02; a create has nothing to overwrite): only a `Failed` or `Conflict` sync (409 `octorate_sync_not_retryable`); records `OctorateSyncRequested` (not a second `BookingConfirmed`, so no routine or other consumer of the confirmation runs again) and the same handler runs the push, which marks the row `Pending` when it really starts (a push that gives up leaves the row `Failed` or `Conflict`, so the host can ask again). 202 `{ bookingId, state }` (`Pending`: the push is queued); 404 for a booking of another org or out of the caller's reach; 404 while `Features:OctorateConnector` is off |
 
 #### Marketplace (epic E09, NF-54 to NF-59)
 
