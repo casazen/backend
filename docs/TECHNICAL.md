@@ -286,8 +286,10 @@ Property record choices (PC-02):
 | `GET` | `/api/bookings/{id}` | Get a single booking; SR-05a adds `paymentState`, `paidAmount` and `guestDataComplete` (below) |
 | `GET` | `/api/bookings/{id}/timeline` | SR-05a: the history of the booking, derived from its timestamps and the rows tied to it (below); `booking.read` on its property, 404 outside the caller's scope |
 | `POST` | `/api/bookings` | Create a booking (availability check + tourist tax calculation) |
-| `PUT` | `/api/bookings/{id}` | Update a booking |
+| `PUT` | `/api/bookings/{id}` | Update a booking. 422 `ota_booking_change_not_allowed` for a booking that came from a channel whose channel is closed (every channel unless `Octorate:ChannelActions` opens it; nothing is changed, E08/F02/US02), 422 `ota_amounts_readonly` for a changed amount of the channel (below) |
 | `DELETE` | `/api/bookings/{id}` | Cancel a booking |
+| `GET` | `/api/bookings/{id}/cancellation` | What cancelling now would do (paid and refundable amounts, the minimum refund, `cancellable`); `booking.read` and `payment.read`. For a booking of a channel `cancellable` also follows the rule of its channel |
+| `POST` | `/api/bookings/{id}/cancel` | `BookingWrite`. A direct or manual booking: Stripe intents cancelled and the refund as always, then Octorate follows (below). A booking that came from a channel: Octorate first, 200 only after it confirmed, no refund; 422 `ota_booking_cancel_not_allowed` (closed channel), 422 `octorate_cancel_failed` (Octorate refuses or cannot be asked), 503 `octorate_unavailable` (no answer); the booking is unchanged in the three (E08/F02/US02, below) |
 | `GET` | `/api/bookings/calendar` | Calendar view of one property (`?propertyId&startDate&endDate&timezone`); unchanged |
 | `GET` | `/api/calendar` | SR-02a: the calendar of all the host's properties in one read (below): `?from&to&propertyIds&timezone` |
 | `POST` | `/api/bookings/{id}/check-in` | Perform check-in: records `ArrivedAt`, schedules the Alloggiati Web job (idempotent) |
@@ -501,7 +503,7 @@ arrival day, `DaInviareManualmente` from then on, `Inviato`, `InviatoManualmente
 `AlloggiatiStatusRules`) and, until it is sent, its legal term in UTC (`AlloggiatiTerms`). Every `departures` row carries
 `cleaning { serviceRequestId, status }`, the latest cleaning request tied to the stay whoever made it (`null` when there is none).
 `checkIn`, `alloggiati` and `cleaning` are `null` where they make no sense: a departure has no check-in nor Alloggiati, an arrival
-no cleaning. Three reads more, whatever the number of rows: the links, the reports and the guests of all the arrivals listed
+no cleaning, and a no-show (NF-45) no Alloggiati. Three reads more, whatever the number of rows: the links, the reports and the guests of all the arrivals listed
 together, the cleaning of all the departures listed together, and one page for the interventions.
 
 `todo` is in order of priority (`HostTodoPriority`; inside the same priority the nearest `dueAt` first, then the label):
@@ -636,6 +638,50 @@ and `trend` compare, and only with the same days one year earlier.
   and a `Totale` row (the trend: a row for each bucket of each line). The columns of the year before and of the differences are there
   only when the report compared. File names: `casazen-prestazioni-per-immobile-competenza-20261001-20261031.csv`,
   `casazen-andamento-competenza-...`.
+
+#### Tourist tax per guest (NF-46, ADR-037, E03/F01/US07)
+
+`IStayTouristTaxService` serves the tax of a stay guest by guest on the engine `TouristTaxCalculator.CalculatePerGuest` (the same loop as the stay
+total) and the reference data `TouristTaxExemptionReasons` (seeded, Octorate code null until an admin sets it) and `TouristTaxChannelRules` (no seed,
+an official source required). A comune with no official rate is calculated only from the rate the org declared (`OrgTouristTaxRates`, private to the
+org); an official rate in force always wins. No answer carries a name, an age or a document: positions only. Another org's booking or property is
+404, and so is one the caller may not use on its property (the pattern of `BookingLifecycleController`).
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/bookings/{bookingId}/tourist-tax` | short-rent booking.read + row check | The tax of the stay now: `{ bookingId, status, rateSource (Official\|HostDeclared\|None), missingRate, nights, taxableNights, ageRulesApply, categories, total, amountDue, collector (Channel\|Host\|null), collectorSource (ChannelRule\|HostDeclared\|Default), collectorNeeded, guests [{ position, nights, taxableNights, amount, exemptionKind (None\|Age\|Host), exemptionCode }], reasons [{ code, labelKey }], confirmedAt, stale }`. `exemptionCode` (the reason of the exemption, which can reveal a health condition) is `null` for a caller without `guest.read`, on every answer of these endpoints and of the wizard; the kind and the amounts stay. With no rate known `missingRate` is true and the amounts are `null`, never 0; `amountDue` is 0 when the channel collects (the amounts per guest are kept) |
+| `PUT` | `/api/bookings/{bookingId}/tourist-tax/exemptions` | short-rent booking.write + row check | `{ exemptions: [{ position, code }] }` (a null code clears it) writes the host's exemption on the registered guests; 422 `tax_exemption_unknown` (unknown, inactive or automatic reason: `minor_age` is never chosen), `tax_guest_unknown` (a position with no registered guest). A confirmed tax becomes `stale` |
+| `PUT` | `/api/bookings/{bookingId}/tourist-tax/collector` | short-rent booking.write + row check | `{ collector: Channel\|Host\|null }`: who collected the tax of a channel stay whose comune has no channel rule; 422 `tax_collector_not_applicable` for any other stay |
+| `POST` | `/api/bookings/{bookingId}/tourist-tax/confirm` | short-rent booking.write + row check | Confirms the tax (the record `StayTouristTaxes` with a line per guest, kept until the check-out plus 10 years, ADR-037-R4); idempotent; 422 `tax_not_calculable` while the rate, an age, the category or the night price is missing; 409 `tax_confirm_conflict` for two first confirmations at once |
+| `GET` | `/api/properties/{propertyId}/tourist-tax-rate` | short-rent property.read + row check | `{ propertyId, istatCode, city, officialRateInForce, rate }`: the rate the org declared for the comune of the property (`rate` null when none) |
+| `PUT` | `/api/properties/{propertyId}/tourist-tax-rate` | short-rent property.write + row check | `{ ratePerPersonPerNight, maxNights, minimumAge, seasonStart, seasonEnd, effectiveFrom, sourceNote }` declares the org's rate: 409 `tax_rate_official_exists` when an official rate is in force today, 422 `tax_rate_source_required`, 422 `tax_rate_invalid` (amount outside 0.01-50 or with more than two decimals, cap under 1, age outside 0-18, one season bound, no comune) |
+| `PUT` | `/api/admin/tourist-tax/channel-rules` | Admin | `{ channel, istatCode, collector, sourceUrl, isActive, verifiedAt, notes }` adds or changes the rule of a channel in a comune; the source must be an absolute https address (422 `tax_rule_source_invalid`); stamps the time and the admin |
+| `PUT` | `/api/admin/tourist-tax/exemption-reasons/{code}` | Admin | `{ octorateExemptionCode, isActive }` sets the Octorate code of a reason (null: no known match); 404 `tax_exemption_reason_not_found` |
+
+#### Guest check-in wizard and no-show (NF-40, NF-45, E03/F01/US01/T04)
+
+`ICheckInWizardService` composes the host wizard "Guest check-in" (guests, documents, checks, tax, send, result) from the services that own each
+rule: the guests and the record rules (`IStayGuestService`, `AlloggiatiRecordRules` through `CheckInReadinessRules`), the tax
+(`IStayTouristTaxService`), the sender (`IPropertySenderStore`) and the check-in on Octorate (`ICheckInOctorateSyncService`). It records no
+`CheckInCompleted`/`CheckOutCompleted`, changes no booking status and sends nothing to the police (the arrival and the check-out keep their
+endpoints; CasaZen as sender and the regional ISTAT fields are deferred, so `requiredGuestFields` is empty). Another org's booking, and one the caller
+may not act on, is 404. The document photo is read in memory only (`IDocumentReadingService`: MRZ, then OCR; ADR-013-R6) and never stored or logged.
+A no-show sets `Bookings.NoShowAt` (the status stays `Confirmed`), sends `NO_SHOW` to Octorate for a mirrored booking (the job reads the stay again
+before the call: a retry after a late arrival is dropped and its row closed) and is cleared by a late arrival. The arrival and the departure reach
+Octorate only through the booking-state push of E02 (`CHECKIN_END`, `CHECKOUT_END`), never a second time from the check-in sync. The guests never came, so the stay owes no police communication anywhere: it leaves the Alloggiati list and job, the hourly stay alerts (no
+Alloggiati alert, no check-out reminder), the cockpit and the Home (`alloggiati` is `null` on its row), the booking list (`alloggiatiStatus`
+`null`) and the booking timeline; `GET /api/bookings/{id}/alloggiati-status` and the Alloggiati guest summary read `NotDue` (derived by
+`AlloggiatiStatusRules.Effective`, never stored, not overdue), unless the communication was sent or declared sent anyway; and the wizard says
+`NotApplicable` for the police step. The check-in of a stay that does not owe the communication (a no-show, a request still waiting, a cancelled
+booking) is not sent to Octorate either (`booking_not_active`).
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/bookings/{bookingId}/checkin-wizard` | short-rent booking.read + row check | `{ booking { bookingId, propertyId, propertyName, checkIn, checkOut, nights, source, declaredGuests, status, noShowAt }, attendance (Expected\|Arrived\|Departed\|NoShow\|Inactive), guests [the host summary: names, birth, citizenship, residence, document type, `documentNumberMasked`, issue and expiry dates, statistical fields, `taxExemptionCode` (`null` without `guest.read`, like `tax.guests[].exemptionCode`), `saved`, `dataSource`], requiredGuestFields, issues [{ position, code, field, blocking }], tax (as `GET …/tourist-tax`, null when not available), sender { alloggiatiSender, source, applies }, octorate { mirrored, guests, states }, alloggiati { status, dataComplete, deadlineAt, isOverdue, reportedAt }, capabilities { documentReading, canRegisterArrival, canMarkNoShow, octorateTaxValues }, suggestedStep (guests\|documents\|checks\|tax\|send\|result) }`. Issue codes: `guest_field_missing`, `octorate_field_missing`, `guest_field_required` (blocking), `guest_code_missing`, `document_expired`, `guests_count_mismatch` (warnings). Full document numbers stay on `GET /api/alloggiati/{bookingId}/stay-guests/document-numbers` |
+| `PUT` | `/api/bookings/{bookingId}/checkin-wizard/guests` | short-rent alloggiati.submit + row check | `{ guests: [...] }` as `PUT /api/alloggiati/{bookingId}/stay-guests` (the exemption code of the tourist tax with each guest): the host is the author; 400 keyed `Guests[i].Field`; answers the new state. Complete data schedules the Alloggiati communication like the host entry |
+| `POST` | `/api/bookings/{bookingId}/checkin-wizard/document-reading` | short-rent alloggiati.submit + row check, `Features:CheckInIdentityVerification` (404 while off) | Multipart `document` (JPEG or PNG, at most 10 MB): `{ method (Mrz\|Ocr\|None), confidence, checkDigitsValid, requiresManualReview, fields }`; 400 `document_required`, `document_type_unsupported` |
+| `POST` | `/api/bookings/{bookingId}/checkin-wizard/confirm` | short-rent alloggiati.submit + row check | 422 `checkin_not_ready` with the blocking issues (`issues`); otherwise `{ tax { saved, reason }, octorate { state, reason, draft, correctionAfterSend, guests }, alloggiati { step (ChannelManagerSends\|Manual\|AlreadySent\|NotApplicable), sender }, state }`. The tax is confirmed only when calculable (never blocking: `tax_not_calculable`); the guests go to Octorate by the rules of the sender |
+| `POST` | `/api/bookings/{bookingId}/no-show` | short-rent booking.write + row check | `{ bookingId, status, noShowAt }`; idempotent; 409 `booking_not_confirmed`, 422 `no_show_too_early` (before the check-in day in Rome), 409 `no_show_alloggiati_sent` (an attempt sending or accepted, or a report sent or declared sent) |
 
 #### Tourist tax summary (NF-100, REP-05)
 
@@ -1147,6 +1193,59 @@ site) on a property whose mapping is confirmed is created on Octorate once, by `
 |---|---|---|---|
 | `POST` | `/api/bookings/{id}/octorate-sync/retry` | `BookingWrite` + row check `BookingOperations.Write` | Asks the push again (`?overwrite=true` is for a change refused with 409, E08/F02; a create has nothing to overwrite): only a `Failed` or `Conflict` sync (409 `octorate_sync_not_retryable`); records `OctorateSyncRequested` (not a second `BookingConfirmed`, so no routine or other consumer of the confirmation runs again) and the same handler runs the push, which marks the row `Pending` when it really starts (a push that gives up leaves the row `Failed` or `Conflict`, so the host can ask again). 202 `{ bookingId, state }` (`Pending`: the push is queued); 404 for a booking of another org or out of the caller's reach; 404 while `Features:OctorateConnector` is off |
 
+**Changing and cancelling a booking (E08/F02/US02, D8, NF-75, NF-76).** Which channels let a channel manager change or cancel a confirmed reservation
+that came from them is unconfirmed (D8), so the answer is a configuration, **closed by default**: `Octorate:ChannelActions:{Airbnb,BookingCom,Expedia,Vrbo,
+TripAdvisor,Agoda}` with `CanModify`, `CanCancel` (both `false`) and the keys of the one sentence about each action (`ModifyGuidanceKey`, `CancelGuidanceKey`,
+keys of `SharedResources` in Italian and English); a channel that is not listed, a portal with no source of its own (`OtherChannel`) and every source that is
+no channel are closed (`OtaChannelActionPolicy.For`). A *booking of a channel* is one with a channel source **and** an `OctorateReservationId`
+(`OtaChannelActionPolicy.IsChannelBooking`): a stay made from the iCal feed of a channel has no reservation and is CasaZen's own record.
+- *`changeOptions`* (`BookingEditRules.ChangeOptionsOf(booking, policy)`, the rule every booking answer will carry): `{ canEdit, canCancel, reasonCode,
+  guidanceKey, channel, cancelReasonCode, cancelGuidanceKey }`. `canEdit` is what `PUT /api/bookings/{id}` accepts (a booking entered by the host, not
+  started, not cancelled); `canCancel` is the status (waiting, confirmed or in the house) and, for a booking of a channel, the rule of the channel.
+  `reasonCode` and `guidanceKey` explain the first thing that is not allowed (the change, else the cancellation); `cancelReasonCode` and `cancelGuidanceKey`
+  are always the cancellation's, so a screen that cancels shows the right sentence even when the change is refused too. The codes are `booking_not_editable`
+  (cancelled), `booking_stay_locked` (started), `booking_update_source_locked` (a booking the host did not enter), `ota_booking_change_not_allowed` and
+  `ota_booking_cancel_not_allowed` (the channel is closed), `booking_already_cancelled` and `booking_not_cancellable` (checked out). `guidanceKey` is only
+  there for a booking of a channel, and `channel` is its source (`BookingCom`); both are `null` for every other booking.
+- *Errors* (422, `application/problem+json`, `detail` is the one sentence of the channel in the language of the request, `guidanceKey` and `channel` are
+  members of the problem): `ota_booking_change_not_allowed` (`PUT /api/bookings/{id}` for a booking of a channel whose channel is closed: nothing is
+  changed, whatever the body carries, an amount of the channel excepted: `ota_amounts_readonly` comes first); `ota_booking_cancel_not_allowed`
+  (`POST /api/bookings/{id}/cancel`, closed channel; also the answer of `IBookingCancellationService` to any booking of a channel, which it never cancels
+  itself); `octorate_cancel_failed` (the channel is open but Octorate refuses, or cannot be asked: the connector is off, the property is not mirrored, its
+  mapping is write-blocked or its room is not chosen). 503 `octorate_unavailable` when Octorate does not answer (or answers 429 or 5xx), with the same
+  members. In every one the booking is as it was.
+- *Cancelling a booking of a channel* (`IOtaBookingCancellationService`, used by `POST /api/bookings/{id}/cancel`): **Octorate first, CasaZen after**.
+  Under the advisory lock `BookingCancellation` of the booking (a double click waits and then gets 409 `booking_already_cancelled`) the booking is read again;
+  a closed channel is refused before Octorate is asked; an open one is asked with `CancelReservationAsync` through the target of `IOctorateBookingTargets`
+  (never a property whose mapping is write-blocked). Only when Octorate confirms the booking is set `Cancelled` (`CancelledAt`, the host's reason kept as
+  the note and never sent to the guest, `CancellationReason` null as for every host cancellation) and `BookingCancelled` is recorded with
+  `Origin = Octorate`, so the push below skips it and the webhook that follows finds nothing to change. 200 `{ bookingId, status, refunds: [],
+  canceledIntents: 0 }`: the channel collects its own bookings, so there is no refund, no PaymentIntent and no e-mail to the guest. The quote
+  (`GET /api/bookings/{id}/cancellation`) keeps its shape; for a booking of a channel `cancellable` also follows the rule of the channel.
+- *Cancelling a booking CasaZen holds* (a direct or a manual one with an `OctorateReservationId`): **CasaZen first, Octorate after**.
+  `BookingCancellationService` decides the policy, the refund and the intents as always; `OctorateBookingCancelHandler` (consumer of `BookingCancelled`,
+  behind `Features:OctorateConnector`) then cancels the reservation, so the refund of the guest never waits for Octorate. It sends nothing for an event with
+  `Origin = Octorate` (a cancellation that came from the channel manager is never pushed back), for a booking of a channel, for a booking that is no longer
+  cancelled. A property that is not mirrored now (the connection was lost or is in error, the mapping is still to decide or write-blocked) is never written
+  to, but a booking that already has its reservation on Octorate is not left with no trace: its row is `Failed` `octorate_not_mirrored` (nothing was sent) and
+  the host asks again once the connection or the mapping is back. The state is the `OctorateBookingSync` row (`LastOperation = Cancel`)
+  under the session lock of the booking: `Pending` before the call, then `Synced`; 409: `Conflict` `octorate_reservation_changed`; another refusal (4xx):
+  `Failed` `octorate_rejected`; neither is tried again by itself. No answer, 429 or 5xx: `Failed` `octorate_unavailable` and the exception propagates, so the
+  dispatcher delivers the event again (ADR-022-R4, R5). The host's «ask again» (`POST /api/bookings/{id}/octorate-sync/retry`, `OctorateSyncRequested`) is
+  consumed by the same handler for a row whose last operation is the cancellation. A cancellation that finds the create of the reservation under way (the
+  lock taken) is delivered again after it; the create of a booking that was cancelled while its target was read makes no reservation. A booking with no
+  reservation id whose create was tried (its row has attempts: the answer may have been lost after Octorate made the reservation, D13) is looked up on
+  Octorate by its reference (the booking code, as the create does), also when it is cancelled, which the create gives up on: found, the reservation is linked
+  to the booking and cancelled; nothing found after the whole list was read, it was never made; no answer, `Failed` `octorate_unavailable` and the event is
+  delivered again. A booking with no create tried has nothing on Octorate and sends nothing.
+- *The client* (`IOctorateApiClient.CancelReservationAsync(target, reservationId)`): reads the reservation (a reservation that is `CANCELLED` already is
+  done: the retry of a cancellation whose answer was lost sends nothing, D13), sends the same document back with `PUT /rest/v1/reservation/{acc}/{id}` and
+  only its `status` changed to `CANCELLED` (the documented way: `PATCH` cannot move a confirmed reservation to cancelled). A 2xx of the PUT is not the
+  proof (the sandbox ignores, without saying so, the fields it does not write): the reservation is read again and only a `CANCELLED` one is a success; one
+  that is still alive is `DELETE`d, as it is when Octorate refuses the request itself (`OctorateRequestRejectedException`: 400, 405, 406, 415, 422...), the
+  way the sandbox proved on 2026-11-04. Any other answer, the read that checks the PUT included, is the typed error of the client, never a delete and never
+  a success. The answers of the PUT are **not proven on the sandbox yet**: check them, and then the channels one by one, before opening a flag.
+
 #### Marketplace (epic E09, NF-54 to NF-59)
 
 One catalog of five groups and the Active tab, read from CasaZen's own database: nothing here calls Octorate while a page loads (the portals are the
@@ -1440,8 +1539,11 @@ never a link to the dashboard.
 | `POST` | `/api/public/service-payments/{id}` | Anonymous (link token in the body) | The payment page of a service a supplier completed: who asks, the lines, the state; 404 `service_payment_link_invalid` for anything wrong; no commission shown (SP-15a, rate-limited) |
 | `POST` | `/api/public/service-payments/{id}/payment-session` | Anonymous (link token in the body) | The PaymentIntent on the supplier's connected account to confirm with Stripe.js (SP-15a, rate-limited) |
 | `GET` | `/api/public/ical/{exportToken}` | Anonymous | Property iCal export feed |
-| `GET` | `/api/public/checkin/{token}` | Anonymous | Public guest check-in session. Carries `invoiceRequested` and `hasInvoiceData` (booleans, absent once the check-in is completed) and nothing else of the invoice data: the link is anonymous, so the stored fiscal code, VAT number, address and PEC are never returned (FIS-01, E06/F02/US01/T03) |
-| `POST` | `/api/public/checkin/{token}` | Anonymous | Submit public guest check-in; optional marketing consent, legacy `marketingConsent` or per channel (`marketingConsentEmail`, `marketingConsentWhatsApp`, `marketingEmail`, NF-05; `docs/runbooks/gdpr.md`). Since E07/F04/US01/T02 a ticked e-mail channel also makes the consent contact of the CRM (origin `CheckIn`) and queues its double opt-in message, a ticked WhatsApp channel a contact when the booker's phone is known; a booker who is a minor cannot tick a channel; a failure here never fails the check-in ([crm-consent.md](runbooks/crm-consent.md) § 4.2). Optional `invoice` block, the answer to «Ti serve la fattura?» (FIS-01, E06/F02/US01/T03): `{ needInvoice, recipientKind, name, fiscalCode, vatNumber, addressStreet, addressCivic, postalCode, city, province, countryCode, sdiRecipientCode, pec }`. Without the block, or with `needInvoice` false, nothing changes and the check-in is never blocked. With `needInvoice` true the «yes» is recorded (`invoiceRequested`) and, when the guest typed anything about the recipient, saved as the invoice data of the booking with the source `CheckIn` (it fills what the host did not write and never overwrites it), in the same unit of work as the check-in. A data that is not valid answers 422 `invoice_data_fiscal_code_invalid` / `invoice_data_vat_number_invalid` / `invoice_data_recipient_code_invalid` / `invoice_data_pec_invalid` / `invoice_data_recipient_required` / `invoice_data_field_invalid` with the `field` and the list of `errors`, and saves nothing, the check-in included |
+| `GET` | `/api/public/checkin/{token}` | Anonymous | Public guest check-in session. Carries `invoiceRequested` and `hasInvoiceData` (booleans, absent once the check-in is completed) and nothing else of the invoice data: the link is anonymous, so the stored fiscal code, VAT number, address and PEC are never returned (FIS-01, E06/F02/US01/T03). NF-40: `language` (the one the guest saved on the session, otherwise the first supported language of `Accept-Language`, otherwise `it`), `supportedLanguages` (`it`, `en`, `de`, `fr`, `es`), `requiredGuestFields` (the statistical fields the region requires: empty in this release, the regional coverage is deferred) and the new optional guest fields in the prefill (residence, document issue and expiry dates, `tourismType`, `travelWay`, `educationLevel`; never the tourist tax exemption) |
+| `PUT` | `/api/public/checkin/{token}/language` | Anonymous | NF-40: `{ language }` saves the guest's choice on the session (the page and the emails of the session use it) → `{ language }`; 400 `language_unsupported`, 404 for an unknown or expired link, 409 `checkin_already_completed` once submitted; rate limit `GuestCheckIn` |
+| `POST` | `/api/public/checkin/{token}` | Anonymous | Submit public guest check-in; optional marketing consent, legacy `marketingConsent` or per channel (`marketingConsentEmail`, `marketingConsentWhatsApp`, `marketingEmail`, NF-05; `docs/runbooks/gdpr.md`). Since E07/F04/US01/T02 a ticked e-mail channel also makes the consent contact of the CRM (origin `CheckIn`) and queues its double opt-in message, a ticked WhatsApp channel a contact when the booker's phone is known; a booker who is a minor cannot tick a channel; a failure here never fails the check-in ([crm-consent.md](runbooks/crm-consent.md) § 4.2). The 400 of the guest rules keeps its field keys (`Guests[1].DocumentNumber`) and adds the extension `codes`, a map from each field key to the message key (`CheckInDocumentNumberInvalid`, …) that the page translates in its own language (NF-40). The guests take the optional residence, document dates and statistical fields (shape checks only); a `taxExemptionCode` sent by the guest portal is ignored (the host's decision). Optional `invoice` block, the answer to «Ti serve la fattura?» (FIS-01, E06/F02/US01/T03): `{ needInvoice, recipientKind, name, fiscalCode, vatNumber, addressStreet, addressCivic, postalCode, city, province, countryCode, sdiRecipientCode, pec }`. Without the block, or with `needInvoice` false, nothing changes and the check-in is never blocked. With `needInvoice` true the «yes» is recorded (`invoiceRequested`) and, when the guest typed anything about the recipient, saved as the invoice data of the booking with the source `CheckIn` (it fills what the host did not write and never overwrites it), in the same unit of work as the check-in. A data that is not valid answers 422 `invoice_data_fiscal_code_invalid` / `invoice_data_vat_number_invalid` / `invoice_data_recipient_code_invalid` / `invoice_data_pec_invalid` / `invoice_data_recipient_required` / `invoice_data_field_invalid` with the `field` and the list of `errors`, and saves nothing, the check-in included |
+
+The daily job `GuestCheckInSendJob` (08:00 UTC) also sends, once per stay, the reminder of the check-in data still missing just before arrival (NF-40): a confirmed stay arriving within `CheckIn:ReminderDaysBefore` days (default 1, today included, 0 turns it off) with incomplete data, no communication sent or declared sent, no completed check-in and a link issued before today gets a new link (the old one expires) and the reminder e-mail in the language of the session, to the booker's contact e-mail only (transactional, no promotion). The link and reminder e-mails are written in Italian, English, German, French or Spanish (`EmailTexts.*.resx`; the German, French and Spanish files hold only these two e-mails).
 
 #### Admin
 

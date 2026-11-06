@@ -201,7 +201,35 @@ public class GuestCheckInService(
             AvailableCodeTables = tables.Where(t => t.RowCount > 0).Select(t => t.Table).ToList(),
             PrivacyNoticeVersion = GdprOptions.Normalize(_gdpr.PrivacyNoticeVersion),
             MarketingConsentVersion = GdprOptions.Normalize(_gdpr.MarketingConsentVersion),
+
+            // Data minimization (ADR-030-R1): the page asks a statistical field only where the region requires it. The regional coverage is
+            // deferred in this release (E03/F01/US08), so no region requires one and the list is empty.
+            RequiredGuestFields = [],
+            Language = session.Language,
         };
+    }
+
+    public async Task<GuestCheckInLanguageOutcome> SetLanguageAsync(string token, string language)
+    {
+        var normalized = GuestLanguages.Normalize(language);
+        if (normalized is null)
+            return GuestCheckInLanguageOutcome.Unsupported;
+
+        var session = await GetUsableSessionByTokenAsync(token);
+        if (session is null)
+            return GuestCheckInLanguageOutcome.NotFound;
+        if (IsCompleted(session.Status))
+            return GuestCheckInLanguageOutcome.Completed;
+
+        if (session.Language != normalized)
+        {
+            session.Language = normalized;
+            session.UpdatedAt = UtcNow();
+            await db.SaveChangesAsync();
+        }
+
+        logger.LogInformation("Language of check-in session {SessionId} set to {Language}", session.Id, normalized);
+        return GuestCheckInLanguageOutcome.Saved;
     }
 
     private static StayGuestPrefill ToPrefill(StayGuest guest) => new()
@@ -224,6 +252,19 @@ public class GuestCheckInService(
         DocumentNumberMasked = MaskDocumentNumber(guest.DocumentNumber),
         DocumentIssuePlaceCode = guest.DocumentIssuePlaceCode,
         DocumentIssuePlaceName = guest.DocumentIssuePlaceName,
+        DocumentIssuedOn = guest.DocumentIssuedOn,
+        DocumentExpiresOn = guest.DocumentExpiresOn,
+        ResidenceInItaly = guest.ResidenceInItaly,
+        ResidenceComuneCode = guest.ResidenceComuneCode,
+        ResidenceComuneName = guest.ResidenceComuneName,
+        ResidenceProvince = guest.ResidenceProvince,
+        ResidenceCountryCode = guest.ResidenceCountryCode,
+        ResidenceCountryName = guest.ResidenceCountryName,
+        TourismType = guest.TourismType,
+        TravelWay = guest.TravelWay,
+        EducationLevel = guest.EducationLevel,
+
+        // Never the tourist tax exemption: the host's decision, not shown on the guest page.
     };
 
     /// <summary>

@@ -37,6 +37,12 @@ public static class OctorateSyncErrorCodes
     /// </summary>
     public const string ReservationLinkedElsewhere = "octorate_reservation_linked_elsewhere";
 
+    /// <summary>
+    /// The booking has its reservation on Octorate but its property is not mirrored now (E08/F02/US02/T02): the connection was lost or is in error,
+    /// or the mapping is still to decide or write-blocked. Nothing was written to Octorate; the host asks again once the connection or the mapping is back.
+    /// </summary>
+    public const string NotMirrored = "octorate_not_mirrored";
+
     /// <summary>The resource key of the message of each code (Italian and English).</summary>
     public static IReadOnlyDictionary<string, string> MessageKeys { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -48,5 +54,6 @@ public static class OctorateSyncErrorCodes
         [NotRetryable] = "OctorateSyncNotRetryable",
         [PaymentsNotRecorded] = "OctorateSyncPaymentsNotRecorded",
         [ReservationLinkedElsewhere] = "OctorateSyncLinkedElsewhere",
+        [NotMirrored] = "OctorateSyncNotMirrored",
     };
 }

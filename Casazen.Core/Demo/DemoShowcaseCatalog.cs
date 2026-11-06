@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.5";
+    public const string Version = "2026-11-06.7";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -96,6 +96,15 @@ public static class DemoShowcaseCatalog
         public const string TouristTaxPaid = "tourist-tax-paid";
         public const string MarketplacePartnersVisible = "marketplace-partners-visible";
         public const string MarketplaceActivationDeclared = "marketplace-activation-declared";
+        public const string TouristTaxPerGuest = "tourist-tax-per-guest";
+        public const string TouristTaxChannelCollected = "tourist-tax-channel-collected";
+
+        // NF-40, NF-45 (E03/F01/US01/T04): the host wizard "Guest check-in" in the four states of a stay, and a stay with data to complete.
+        public const string CheckInWizardExpected = "checkin-wizard-expected";
+        public const string CheckInWizardArrived = "checkin-wizard-arrived";
+        public const string CheckInWizardDeparted = "checkin-wizard-departed";
+        public const string CheckInWizardNoShow = "checkin-wizard-no-show";
+        public const string CheckInWizardIncomplete = "checkin-wizard-incomplete";
 
         /// <summary>
         /// Who an invoice of a booking is made out to (E06/F02/US01, FIS-01, NF-81): a finished direct stay for which the guest asked for an invoice
@@ -174,6 +183,13 @@ public static class DemoShowcaseCatalog
         Scenario.TouristTaxPaid,
         Scenario.MarketplacePartnersVisible,
         Scenario.MarketplaceActivationDeclared,
+        Scenario.TouristTaxPerGuest,
+        Scenario.TouristTaxChannelCollected,
+        Scenario.CheckInWizardExpected,
+        Scenario.CheckInWizardArrived,
+        Scenario.CheckInWizardDeparted,
+        Scenario.CheckInWizardNoShow,
+        Scenario.CheckInWizardIncomplete,
         Scenario.CrmProfiles,
         Scenario.InvoiceData,
         Scenario.FiscalIssuerProfile,
@@ -397,6 +413,24 @@ public static class DemoShowcaseCatalog
                 new("anno-prima-diretta", "Chiara", "Neri", "ospite.demo.anno-prima-1@example.com", -351, 4, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Direct),
                 new("anno-prima-airbnb", "Pietro", "Gallo", "ospite.demo.anno-prima-2@example.com", -344, 3, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Airbnb),
                 new("anno-prima-booking", "Sofie", "Peeters", "ospite.demo.anno-prima-3@example.com", -325, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.BookingCom),
+                // NF-46: the tourist tax of a family, guest by guest, at the official rate of Como (3,00 a night from the 14th birthday): the mother
+                // pays, the father is exempt as a resident (the host's choice) and the girl of ten is exempt by age.
+                new(
+                    "tassa-per-ospite",
+                    "Laura",
+                    "Conti",
+                    "ospite.demo.tassa-ospiti@example.com",
+                    30,
+                    3,
+                    BookingStatus.Confirmed,
+                    Scenario.TouristTaxPerGuest,
+                    BookingSource.Direct,
+                    Guests:
+                    [
+                        new("Laura", "Conti", StayGuestType.HeadOfFamily, 45),
+                        new("Paolo", "Conti", StayGuestType.FamilyMember, 47, TouristTaxExemptionReason.ResidentCode),
+                        new("Sara", "Conti", StayGuestType.FamilyMember, 10),
+                    ]),
                 // NF-88 (Scenario.CrmProfiles): a guest who comes back. This stay is over; the next one is at Casa Trastevere. Another record of the
                 // guest, the same address: one profile, one stay counted, two houses.
                 new(
@@ -489,6 +523,41 @@ public static class DemoShowcaseCatalog
                 new("past-guest-roma", "Francesca", "Romano", "francesca.demo@example.com", -15, 5, BookingStatus.CheckedOut, Scenario.AlloggiatiRegistered),
                 // NF-96: the same months one year earlier (see the villa).
                 new("anno-prima-roma", "Elisa", "Fontana", "ospite.demo.anno-prima-4@example.com", -380, 5, BookingStatus.CheckedOut, Scenario.ReportYearOverYear, BookingSource.Direct),
+                // NF-40, NF-45: the check-in wizard in the four states of a stay (departed, no-show, arrived, expected) and one stay whose data
+                // the host still has to complete (a birth place missing, a document expired before the arrival: a warning, never a block).
+                new(
+                    "checkin-partito", "Sara", "Galli", "ospite.demo.checkin-1@example.com", -7, 2, BookingStatus.CheckedOut,
+                    Scenario.CheckInWizardDeparted, BookingSource.Direct,
+                    Guests: [new("Sara", "Galli", StayGuestType.SingleGuest, 41)]),
+                new(
+                    "checkin-mancato-arrivo", "Tomas", "Lind", "ospite.demo.checkin-2@example.com", -4, 1, BookingStatus.Confirmed,
+                    Scenario.CheckInWizardNoShow, BookingSource.Direct,
+                    Guests: [new("Tomas", "Lind", StayGuestType.SingleGuest, 29)],
+                    NoShow: true),
+                new(
+                    "checkin-arrivato", "Bianca", "Ferri", "ospite.demo.checkin-3@example.com", -1, 3, BookingStatus.CheckedIn,
+                    Scenario.CheckInWizardArrived, BookingSource.Direct,
+                    Guests:
+                    [
+                        new("Bianca", "Ferri", StayGuestType.HeadOfFamily, 38),
+                        new("Leo", "Ferri", StayGuestType.FamilyMember, 9),
+                    ]),
+                new(
+                    "checkin-atteso", "Nina", "Russo", "ospite.demo.checkin-4@example.com", 4, 2, BookingStatus.Confirmed,
+                    Scenario.CheckInWizardExpected, BookingSource.Direct,
+                    Guests:
+                    [
+                        new("Nina", "Russo", StayGuestType.HeadOfGroup, 45),
+                        new("Ada", "Conti", StayGuestType.GroupMember, 44),
+                    ]),
+                new(
+                    "checkin-da-completare", "Piet", "Jansen", "ospite.demo.checkin-5@example.com", 9, 2, BookingStatus.Confirmed,
+                    Scenario.CheckInWizardIncomplete, BookingSource.Direct,
+                    Guests:
+                    [
+                        new("Piet", "Jansen", StayGuestType.HeadOfFamily, 52, DocumentExpired: true),
+                        new("Mila", "Jansen", StayGuestType.FamilyMember, 50, BirthPlaceMissing: true),
+                    ]),
                 // NF-88 (Scenario.CrmProfiles): the guest of the villa comes back, to a second house.
                 new(
                     "crm-ritorno-in-arrivo",
@@ -708,6 +777,46 @@ public static class DemoShowcaseCatalog
                     PaymentOption: PaymentOption.OnSite,
                     CheckInMarketingConsent: true),
             ]),
+        // NF-46, ADR-037-R3: a house in an invented comune (ISTAT 999990, a code no real comune has, so the demo channel rule below touches
+        // no stay of a real comune). The comune has no official rate: the demo host declared one (with an invented source), and an Airbnb stay
+        // there is collected by the channel, so the host has nothing to collect while the amounts per guest are kept.
+        new(
+            Key: "casa-borgo-prova",
+            Name: "Casa Borgo di Prova (demo)",
+            Place: new DemoPlace("Borgo di Prova (TEST)", "999990", "LOM", "20000", "Via di Prova 1"),
+            Description: "Casa di dimostrazione in un comune inventato, per l'imposta di soggiorno riscossa dal canale. Tutto è segnato come test.",
+            Mode: RentalMode.Short,
+            Publish: false,
+            Bedrooms: 1,
+            Bathrooms: 1,
+            MaxGuests: 2,
+            NightlyRate: 95m,
+            CleaningFee: 25m,
+            Cadastral: null,
+            Scenarios: [Scenario.TouristTaxChannelCollected],
+            Bookings:
+            [
+                new(
+                    "canale-riscuote",
+                    "Jonas",
+                    "Berg",
+                    "ospite.demo.canale@example.com",
+                    45,
+                    2,
+                    BookingStatus.Confirmed,
+                    Scenario.TouristTaxChannelCollected,
+                    BookingSource.Airbnb,
+                    Guests:
+                    [
+                        new("Jonas", "Berg", StayGuestType.HeadOfGroup, 34),
+                        new("Emma", "Berg", StayGuestType.GroupMember, 33),
+                    ]),
+            ],
+            DeclaredTouristTaxRate: new DemoDeclaredTouristTaxRate(
+                2.00m,
+                MaxNights: 5,
+                MinimumAge: 14,
+                SourceNote: "Delibera di prova del comune (TEST): importo inventato per la dimostrazione.")),
     ];
 
     /// <summary>
@@ -915,6 +1024,24 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
+    /// The channel rules of the tourist tax (NF-46, ADR-037-R3): platform data like every rule, so the showcase writes only the one of the
+    /// invented comune of <c>casa-borgo-prova</c> (ISTAT 999990, which no real comune has: no real stay is ever touched), with an example source
+    /// and a note that says it is test data. Created only when no rule exists for the channel and the comune, deleted by the reset of the org
+    /// that created it.
+    /// </summary>
+    public static IReadOnlyList<DemoTouristTaxChannelRuleTemplate> TouristTaxChannelRules { get; } =
+    [
+        new(
+            "airbnb-borgo-prova",
+            "casa-borgo-prova",
+            BookingSource.Airbnb,
+            TouristTaxCollector.Channel,
+            "https://example.com/tassa-di-soggiorno-borgo-di-prova",
+            "Regola di prova (TEST): fonte inventata, il comune non esiste.",
+            Scenario.TouristTaxChannelCollected),
+    ];
+
+    /// <summary>
     /// The welcome link of the demo house (E07/F04/US01/T03, NF-90): the lake villa has an active link with the fixed test token
     /// <see cref="CrmWelcomeToken"/>, so the host sees the QR code of a house that has one and a client can open the public welcome page. Written
     /// for the org at reset, marked as showcase data (<c>TestDataEntities.WelcomeLink</c>), deleted with its house by the next reset.
@@ -967,6 +1094,8 @@ public sealed record DemoBookingTemplate(
     PaymentOption PaymentOption = PaymentOption.Immediate,
     BookingCancellationReason? CancellationReason = null,
     decimal? TouristTax = null,
+    IReadOnlyList<DemoStayGuestTemplate>? Guests = null,
+    bool NoShow = false,
     string? Phone = null,
     bool SoftOptInNotice = false,
     bool CheckInMarketingConsent = false,
@@ -990,6 +1119,50 @@ public sealed record DemoInvoiceData(
     string? Pec,
     InvoiceDataSource Source);
 
+/// <summary>
+/// A registered guest of a demo stay (NF-40, NF-46): invented like the rest of the demo, with complete Alloggiati data of the right shape (an
+/// Italian identity card for a single guest or a head, the document number says TEST). The date of birth is set so the guest has
+/// <paramref name="AgeAtCheckIn"/> years on the arrival day.
+/// </summary>
+/// <param name="FirstName">First name.</param>
+/// <param name="LastName">Last name.</param>
+/// <param name="Type">Kind of guest of the Alloggiati record.</param>
+/// <param name="AgeAtCheckIn">Age on the check-in day.</param>
+/// <param name="TaxExemptionCode">The tourist tax exemption the host chose (a non-automatic reason), if any.</param>
+/// <param name="DocumentExpired">The document of the guest expired before the arrival (the check-in wizard warns, never blocks).</param>
+/// <param name="BirthPlaceMissing">The comune of birth is not entered yet (the check-in wizard asks for it).</param>
+public sealed record DemoStayGuestTemplate(
+    string FirstName,
+    string LastName,
+    StayGuestType Type,
+    int AgeAtCheckIn,
+    string? TaxExemptionCode = null,
+    bool DocumentExpired = false,
+    bool BirthPlaceMissing = false);
+
+/// <summary>
+/// The rate the demo host declared for the comune of a demo house with no official one (NF-46, AC-NF46-6): a fixed amount per person per night,
+/// with an invented source note that says so. Tenant data of the demo org, deleted by the reset.
+/// </summary>
+public sealed record DemoDeclaredTouristTaxRate(
+    decimal RatePerPersonPerNight,
+    int? MaxNights,
+    int MinimumAge,
+    string SourceNote);
+
+/// <summary>
+/// A channel rule of the tourist tax written by the showcase (NF-46, ADR-037-R3): platform data, for the comune of the demo house
+/// <paramref name="PropertyKey"/> only.
+/// </summary>
+public sealed record DemoTouristTaxChannelRuleTemplate(
+    string Key,
+    string PropertyKey,
+    BookingSource Channel,
+    TouristTaxCollector Collector,
+    string SourceUrl,
+    string Notes,
+    string Scenario);
+
 public sealed record DemoPropertyTemplate(
     string Key,
     string Name,
@@ -1010,7 +1183,8 @@ public sealed record DemoPropertyTemplate(
     IReadOnlyList<DemoPoi>? Pois = null,
     IReadOnlyList<DemoChannelState>? ChannelStates = null,
     IReadOnlyList<DemoRoom>? Rooms = null,
-    IReadOnlyList<DemoStayDiscount>? StayDiscounts = null);
+    IReadOnlyList<DemoStayDiscount>? StayDiscounts = null,
+    DemoDeclaredTouristTaxRate? DeclaredTouristTaxRate = null);
 
 /// <summary>
 /// A room of a demo property with its beds (NF-34): invented like the rest of the demo. The counters of the property (<c>Bedrooms</c>, <c>Beds</c>)

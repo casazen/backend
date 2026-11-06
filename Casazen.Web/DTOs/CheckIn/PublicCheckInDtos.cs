@@ -61,6 +61,37 @@ public class PublicCheckInContextResponse
     /// <summary>The booking already has the data of an invoice recipient (the host entered it, or Octorate had it); never its content. Absent once the check-in is completed.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? HasInvoiceData { get; set; }
+
+    /// <summary>
+    /// Statistical fields the region of the property requires (<c>TourismType</c>, <c>TravelWay</c>, <c>EducationLevel</c>): the page asks
+    /// only these (data minimization). Empty when the comune is unknown or the region requires none.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? RequiredGuestFields { get; set; }
+
+    /// <summary>
+    /// The language to open the page in (NF-40): the one the guest saved, otherwise the first supported language of the browser
+    /// (<c>Accept-Language</c>), otherwise <c>it</c>. Sent with an open session only.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Language { get; set; }
+
+    /// <summary>The languages the guest can choose: <c>it</c>, <c>en</c>, <c>de</c>, <c>fr</c>, <c>es</c>. Sent with an open session only.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<string>? SupportedLanguages { get; set; }
+}
+
+/// <summary>The language the guest chooses on the check-in page (<c>PUT api/public/checkin/{token}/language</c>).</summary>
+public class PublicCheckInLanguageRequest
+{
+    /// <summary>One of <c>it</c>, <c>en</c>, <c>de</c>, <c>fr</c>, <c>es</c>; anything else (none included) is 400 <c>language_unsupported</c>.</summary>
+    public string? Language { get; set; }
+}
+
+/// <summary>The language saved on the session.</summary>
+public class PublicCheckInLanguageResponse
+{
+    public string Language { get; set; } = string.Empty;
 }
 
 /// <summary>A guest on file. The document number is never returned in full.</summary>
@@ -87,6 +118,17 @@ public class PublicCheckInGuestPrefill
 
     public string? DocumentIssuePlaceCode { get; set; }
     public string DocumentIssuePlaceName { get; set; } = string.Empty;
+    public DateOnly? DocumentIssuedOn { get; set; }
+    public DateOnly? DocumentExpiresOn { get; set; }
+    public bool? ResidenceInItaly { get; set; }
+    public string? ResidenceComuneCode { get; set; }
+    public string? ResidenceComuneName { get; set; }
+    public string? ResidenceProvince { get; set; }
+    public string? ResidenceCountryCode { get; set; }
+    public string? ResidenceCountryName { get; set; }
+    public string? TourismType { get; set; }
+    public string? TravelWay { get; set; }
+    public string? EducationLevel { get; set; }
 
     public static PublicCheckInGuestPrefill From(StayGuestPrefill prefill) => new()
     {
@@ -108,6 +150,17 @@ public class PublicCheckInGuestPrefill
         DocumentNumberMasked = prefill.DocumentNumberMasked,
         DocumentIssuePlaceCode = prefill.DocumentIssuePlaceCode,
         DocumentIssuePlaceName = prefill.DocumentIssuePlaceName,
+        DocumentIssuedOn = prefill.DocumentIssuedOn,
+        DocumentExpiresOn = prefill.DocumentExpiresOn,
+        ResidenceInItaly = prefill.ResidenceInItaly,
+        ResidenceComuneCode = prefill.ResidenceComuneCode,
+        ResidenceComuneName = prefill.ResidenceComuneName,
+        ResidenceProvince = prefill.ResidenceProvince,
+        ResidenceCountryCode = prefill.ResidenceCountryCode,
+        ResidenceCountryName = prefill.ResidenceCountryName,
+        TourismType = prefill.TourismType,
+        TravelWay = prefill.TravelWay,
+        EducationLevel = prefill.EducationLevel,
     };
 }
 
@@ -345,6 +398,49 @@ public class StayGuestSubmitDto
     [MaxLength(StayGuestFieldLimits.Label, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
     public string? DocumentIssuePlaceName { get; set; }
 
+    /// <summary>Optional (NF-40): not after today and not before 1900. Single guests and heads only, like the document.</summary>
+    public DateOnly? DocumentIssuedOn { get; set; }
+
+    /// <summary>Optional (NF-40): not before the issue day. An expired document is accepted (the check-in only warns).</summary>
+    public DateOnly? DocumentExpiresOn { get; set; }
+
+    /// <summary>Optional residence (NF-40): in Italy comune and province, abroad the state; codes when the tables are imported.</summary>
+    public bool? ResidenceInItaly { get; set; }
+
+    [MaxLength(9, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? ResidenceComuneCode { get; set; }
+
+    [MaxLength(StayGuestFieldLimits.Label, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? ResidenceComuneName { get; set; }
+
+    [MaxLength(2, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? ResidenceProvince { get; set; }
+
+    [MaxLength(9, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? ResidenceCountryCode { get; set; }
+
+    [MaxLength(StayGuestFieldLimits.Label, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? ResidenceCountryName { get; set; }
+
+    /// <summary>Optional statistical fields (NF-40), codes of the closed lists: <c>holiday</c>, <c>business</c>, <c>other</c>.</summary>
+    [MaxLength(IstatGuestFieldLists.MaxCodeLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? TourismType { get; set; }
+
+    /// <summary><c>car</c>, <c>train</c>, <c>plane</c>, <c>bus</c>, <c>ship</c>, <c>other</c>.</summary>
+    [MaxLength(IstatGuestFieldLists.MaxCodeLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? TravelWay { get; set; }
+
+    /// <summary><c>none</c>, <c>primary</c>, <c>lower_secondary</c>, <c>upper_secondary</c>, <c>degree</c>, <c>postgraduate</c>.</summary>
+    [MaxLength(IstatGuestFieldLists.MaxCodeLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? EducationLevel { get; set; }
+
+    /// <summary>
+    /// The tourist tax exemption the host chose (an active, non-automatic reason code, NF-46). Read only on the host's entries; the guest
+    /// portal never changes it, whatever it sends.
+    /// </summary>
+    [MaxLength(TouristTaxExemptionReason.CodeMaxLength, ErrorMessage = CheckInValidationKeys.FieldMaxLength)]
+    public string? TaxExemptionCode { get; set; }
+
     public StayGuestInput ToInput() => new()
     {
         Type = Type,
@@ -365,6 +461,18 @@ public class StayGuestSubmitDto
         DocumentNumber = DocumentNumber,
         DocumentIssuePlaceCode = DocumentIssuePlaceCode,
         DocumentIssuePlaceName = DocumentIssuePlaceName,
+        DocumentIssuedOn = DocumentIssuedOn,
+        DocumentExpiresOn = DocumentExpiresOn,
+        ResidenceInItaly = ResidenceInItaly,
+        ResidenceComuneCode = ResidenceComuneCode,
+        ResidenceComuneName = ResidenceComuneName,
+        ResidenceProvince = ResidenceProvince,
+        ResidenceCountryCode = ResidenceCountryCode,
+        ResidenceCountryName = ResidenceCountryName,
+        TourismType = TourismType,
+        TravelWay = TravelWay,
+        EducationLevel = EducationLevel,
+        TaxExemptionCode = TaxExemptionCode,
     };
 }
 

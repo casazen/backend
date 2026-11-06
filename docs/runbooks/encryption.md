@@ -19,6 +19,7 @@ value through EF; the database only ever holds the encrypted payload.
 | `PropertyICalFeeds.ImportUrl` | `Casazen.PropertyICalFeed.ImportUrl` | PC-11 |
 | `Guests.DocumentNumber`, `Guests.DocumentIssuingCountry` | `Casazen.Guest.Document` | CO-14 |
 | `StayGuests.DocumentNumber`, `StayGuests.DocumentIssuePlaceName` | `Casazen.Guest.Document` | CO-14 |
+| `StayGuests.TaxExemptionCode`, `StayTouristTaxGuests.ExemptionCode` (the reason of a tourist tax exemption, which can reveal a health condition, art. 9 GDPR: on the guest and on the confirmed tax of the stay, kept 10 years; no length, the payload is longer than the text; both are cleared with the guest's data, the kind of the exemption and the amount stay) | `Casazen.Guest.Document` | NF-46 |
 | `PropertyQuesturaCredentials.Username`, `Password`, `WsKey` | `Casazen.PropertyQuesturaCredentials` | CO-14 |
 | `ServiceCustomers.FullName`, `Email`, `Phone` and `ShowcaseBookingHolds.PayloadEncrypted` (property `Payload`: the same data before the e-mail check) | `Casazen.ServiceCustomer` | SP-10 |
 | `ServiceRequests.LocationAddress`, `LocationFloor`, `LocationAccessNotes` (requests from a supplier's showcase only) | `Casazen.ServiceRequest.Location` | SP-10 |

@@ -59,6 +59,8 @@ public class TenantQueryFilterArchitectureTests
         [typeof(MarketplacePortal)] = "Platform catalog of the portals and tools of the channel manager (E09/F01, NF-54): the same for every org, cached once a day from Octorate's portal list by the refresh job and read by the marketplace of every org. It holds no org, person or booking data; which portal an org uses is MarketplaceActivation, which is tenant-owned.",
         [typeof(MarketplacePartner)] = "Platform catalog of the marketplace partners (E09/F01, PO-11, NF-59): curated by the platform admin and read by the marketplace of every org, with the visibility by plan and country as data. It holds no tenant data; which partner an org uses is MarketplaceActivation, which is tenant-owned.",
         [typeof(MarketplacePartnerText)] = "Platform catalog texts (Italian and English) of a marketplace partner (E09/F01, NF-59), a child of MarketplacePartner reached only through it: the same words for every org, no tenant data.",
+        [typeof(TouristTaxExemptionReason)] = "Platform reference data: the reasons of a tourist tax exemption (NF-46), seeded, the same for every org; an administrator sets their Octorate code. No org, person or stay data.",
+        [typeof(TouristTaxChannelRule)] = "Platform reference data: which channel collects the tourist tax in which comune (ADR-037-R3), added by an administrator from an official source and read for the stays of every org. No org, person or stay data.",
         [typeof(CfSimulatedPractice)] = "Test environments only (CF-SIM): the practices of the simulated ConcordatoFacile module, which is an outside service's data and not an org's. Written and read only by CfSimulatorService behind the anonymous api/cf-simulator endpoints (404 unless ConcordatoFacile:FormMode=Simulated, which production refuses at startup) and by SimulatedConcordatoFacileApiClient; no personal data, empty and inert with FormMode=Real.",
 
         // Supplier marketplace: the supplier acts as User.SupplierOrgId, the tenant filter uses User.OrgId.
@@ -98,6 +100,7 @@ public class TenantQueryFilterArchitectureTests
         [typeof(Party)] = "Reached only through its LeaseContract (tenant-filtered and owner-verified by LeaseWorkflowService); no endpoint addresses a party by its own id.",
         [typeof(LeaseRegistration)] = "Reached only through its LeaseContract (tenant-filtered, then authorized by the controller and RliRegistrationService); the provider polling job runs without tenant.",
         [typeof(LeaseEvent)] = "Append-only log reached only through its LeaseContract (tenant-filtered and owner-verified); written by services and jobs for an already verified lease.",
+        [typeof(StayTouristTaxGuest)] = "A line of a confirmed stay tourist tax (NF-46): a position, an exemption and an amount, no person. No DbSet: reached only through its StayTouristTax (tenant-filtered, found by the booking the caller was authorized for), written and erased with it.",
     };
 
     private static readonly Guid CallerOrgId = Guid.Parse("7a3c1d52-9f0e-4b8a-8d65-2c4e1f0b9a11");

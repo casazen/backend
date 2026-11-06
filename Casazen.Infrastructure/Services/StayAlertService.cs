@@ -20,11 +20,12 @@ namespace Casazen.Infrastructure.Services;
 /// <list type="bullet">
 /// <item>Alloggiati Web: bookings confirmed, checked in or checked out whose communication is neither sent nor declared
 /// sent get the stages of <see cref="StayAlertSchedule.DueAlloggiatiStep"/>; a failed or rejected communication gets its
-/// own alert once instead of the "guest data missing" one. Cancelled and pending bookings get nothing.</item>
+/// own alert once instead of the "guest data missing" one. Cancelled and pending bookings get nothing, and neither does a
+/// no-show (NF-45): its guests never came, so there is nothing to communicate.</item>
 /// <item>Check-out: every booking confirmed or checked in, whether or not its arrival was registered, gets one reminder
 /// at <see cref="ComplianceOptions.CheckoutReminderHourLocal"/> of its check-out day, property time
 /// (<see cref="StayAlertSchedule.DueCheckoutReminder"/>). The reminder follows the booking as it is now: moved dates
-/// move it, a cancellation or a check-out drops it; nothing is scheduled per booking.</item>
+/// move it, a cancellation, a no-show or a check-out drops it; nothing is scheduled per booking.</item>
 /// <item>Each stage is claimed before it is sent with a compare-and-set on <see cref="StayAlertState"/> (unique per
 /// booking and type): a stage is delivered at most once, even with retries, a manual trigger or two runs at once. A
 /// delivery that fails after the claim is logged and not repeated: an alert is never sent twice.</item>
@@ -42,13 +43,6 @@ public sealed class StayAlertService(
     TimeProvider? timeProvider = null) : IStayAlertService
 {
     private const string RunLockKey = "stay-alerts";
-
-    private static readonly BookingStatus[] AlloggiatiStatuses =
-    [
-        BookingStatus.Confirmed,
-        BookingStatus.CheckedIn,
-        BookingStatus.CheckedOut,
-    ];
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -81,7 +75,8 @@ public sealed class StayAlertService(
 
         var bookings = await db.Bookings
             .AsNoTracking()
-            .Where(b => AlloggiatiStatuses.Contains(b.Status)
+            .Where(b => AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status)
+                && b.NoShowAt == null
                 && b.CheckInDate >= firstCheckIn
                 && b.CheckInDate <= lastCheckIn)
             .OrderBy(b => b.CheckInDate)
@@ -134,6 +129,7 @@ public sealed class StayAlertService(
             .AsNoTracking()
             .Include(b => b.Property)
             .Where(b => (b.Status == BookingStatus.Confirmed || b.Status == BookingStatus.CheckedIn)
+                && b.NoShowAt == null
                 && b.CheckOutDate >= firstCheckOut
                 && b.CheckOutDate <= lastCheckOut)
             .OrderBy(b => b.CheckOutDate)

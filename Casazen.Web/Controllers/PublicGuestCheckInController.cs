@@ -40,6 +40,15 @@ public class PublicGuestCheckInController(
     /// <summary>Problem code of a submit on a session the guest has already completed (409).</summary>
     public const string AlreadySubmittedCode = "checkin_already_submitted";
 
+    /// <summary>Problem code of a language the page does not offer (400).</summary>
+    public const string LanguageUnsupportedCode = "language_unsupported";
+
+    /// <summary>
+    /// Extension of the 400 of the submit (NF-40): a map from each field key (<c>Guests[1].DocumentNumber</c>) to the message key of
+    /// <see cref="CheckInValidationKeys"/>, so the page, in five languages, translates the error itself.
+    /// </summary>
+    public const string ValidationCodesExtension = "codes";
+
     /// <summary>
     /// Largest request of <c>/document</c> and <c>/selfie</c> (10 MB). Their multipart body is buffered in memory up to this size
     /// (<see cref="RequestFormLimitsAttribute.MemoryBufferThreshold"/>), so an image is never spilled to a temporary file on disk
@@ -79,9 +88,36 @@ public class PublicGuestCheckInController(
             // Two booleans, never the data (E06/F02/US01/T03): the link is anonymous.
             InvoiceRequested = view.InvoiceRequested,
             HasInvoiceData = view.HasInvoiceData,
+            RequiredGuestFields = view.RequiredGuestFields ?? [],
+            Language = GuestLanguages.Resolve(view.Language, Request.Headers.AcceptLanguage.ToString()),
+            SupportedLanguages = GuestLanguages.Supported,
         };
 
         return Ok(response);
+    }
+
+    /// <summary>
+    /// Saves the language the guest chose on the page (NF-40: <c>it</c>, <c>en</c>, <c>de</c>, <c>fr</c>, <c>es</c>); the page and the emails
+    /// of the session use it. 400 <c>language_unsupported</c> for another language, 404 for an unknown or expired link, 409
+    /// <c>checkin_already_completed</c> once the guest submitted.
+    /// </summary>
+    [HttpPut("{token}/language")]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
+    public async Task<ActionResult<PublicCheckInLanguageResponse>> SetLanguage(
+        string token,
+        [FromBody] PublicCheckInLanguageRequest request)
+    {
+        var outcome = await checkInService.SetLanguageAsync(token, request.Language ?? string.Empty);
+        return outcome switch
+        {
+            GuestCheckInLanguageOutcome.Saved =>
+                Ok(new PublicCheckInLanguageResponse { Language = GuestLanguages.Normalize(request.Language)! }),
+            GuestCheckInLanguageOutcome.Unsupported =>
+                this.ApiProblem(StatusCodes.Status400BadRequest, LanguageUnsupportedCode, "CheckInLanguageUnsupported"),
+            GuestCheckInLanguageOutcome.Completed =>
+                this.ApiProblem(StatusCodes.Status409Conflict, "checkin_already_completed", "CheckInAlreadyCompleted"),
+            _ => NotFound(),
+        };
     }
 
     /// <summary>
@@ -112,7 +148,7 @@ public class PublicGuestCheckInController(
     /// contract is on <see cref="PublicCheckInSubmitRequest"/>); the privacy notice shown is
     /// recorded with its version (CO-15), no consent is asked for the Alloggiati registration. On success schedules the Alloggiati job for
     /// the arrival day. Invalid data → 400 ValidationProblem with the errors keyed by request property
-    /// (<c>Guests[1].DocumentNumber</c>, <c>MarketingEmail</c>);
+    /// (<c>Guests[1].DocumentNumber</c>, <c>MarketingEmail</c>) and the extension <c>codes</c> (the message key of each field, NF-40);
     /// duplicate submission → 409 <c>checkin_already_submitted</c>. The optional <c>invoice</c> block («Ti serve la fattura?», FIS-01) is saved as the
     /// invoice data of the booking in the same unit of work; one that is not valid → 422 <c>invoice_data_*</c> with the <c>field</c>, and nothing is
     /// saved, the check-in included.
@@ -144,14 +180,19 @@ public class PublicGuestCheckInController(
 
         if (result.ValidationErrors.Count > 0)
         {
+            // The field keys stay as before; "codes" adds the message key of each, which the page translates in its own language.
+            var codes = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var error in result.ValidationErrors)
             {
-                ModelState.AddModelError(
-                    error.ModelStateKey(nameof(request.Guests)),
-                    localizer[error.MessageKey, error.MessageArgs]);
+                var key = error.ModelStateKey(nameof(request.Guests));
+                ModelState.AddModelError(key, localizer[error.MessageKey, error.MessageArgs]);
+                codes.TryAdd(key, error.MessageKey);
             }
 
-            return ValidationProblem(ModelState);
+            var invalid = ValidationProblem(ModelState);
+            if (invalid is ObjectResult { Value: ValidationProblemDetails problem })
+                problem.Extensions[ValidationCodesExtension] = codes;
+            return invalid;
         }
 
         if (!result.Success)

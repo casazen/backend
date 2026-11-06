@@ -44,6 +44,29 @@ public interface IGuestCheckInService
 
     /// <summary>Expires active sessions for the booking except the session matching the raw token.</summary>
     Task ExpireOtherActiveSessionsAsync(Guid bookingId, string tokenToKeep);
+
+    /// <summary>
+    /// Saves the language the guest chose on the check-in page (NF-40, one of <c>GuestLanguages.Supported</c>) on the session of the raw
+    /// token: the page and the emails of the session use it. Refused for a language that is not supported, an unknown or expired token and a
+    /// check-in already completed.
+    /// </summary>
+    Task<GuestCheckInLanguageOutcome> SetLanguageAsync(string token, string language);
+}
+
+/// <summary>Outcome of <see cref="IGuestCheckInService.SetLanguageAsync"/>.</summary>
+public enum GuestCheckInLanguageOutcome
+{
+    /// <summary>The language is saved on the session.</summary>
+    Saved = 0,
+
+    /// <summary>Not one of the supported languages (400 <c>language_unsupported</c>).</summary>
+    Unsupported = 1,
+
+    /// <summary>The token is unknown or expired, or the booking no longer takes a check-in (404).</summary>
+    NotFound = 2,
+
+    /// <summary>The guest already completed the check-in (409 <c>checkin_already_completed</c>).</summary>
+    Completed = 3,
 }
 
 /// <summary>A link just issued: the raw token exists only here (the session stores its hash).</summary>
@@ -121,6 +144,18 @@ public static class CheckInValidationKeys
     public const string CodeInvalid = "CheckInCodeInvalid";
     public const string CodeUnknown = "CheckInCodeUnknown";
     public const string DocumentNumberInvalid = "CheckInDocumentNumberInvalid";
+
+    /// <summary>The document issue day is after today (Europe/Rome) or before 1900 (NF-40).</summary>
+    public const string DocumentIssuedOnInvalid = "CheckInDocumentIssuedOnInvalid";
+
+    /// <summary>The document expires before the day it was issued (NF-40).</summary>
+    public const string DocumentExpiresBeforeIssue = "CheckInDocumentExpiresBeforeIssue";
+
+    /// <summary>A statistical field holds a value outside its closed list (NF-40, <c>IstatGuestFieldLists</c>).</summary>
+    public const string StatisticalValueInvalid = "CheckInStatisticalValueInvalid";
+
+    /// <summary>The tourist tax exemption is not an active reason the host may choose (NF-46).</summary>
+    public const string TaxExemptionInvalid = "CheckInTaxExemptionInvalid";
 }
 
 public class GuestCheckInSubmitResult
@@ -171,6 +206,16 @@ public sealed class GuestCheckInPublicView
 
     /// <summary>The booking already has the data of an invoice recipient (the page can say so); its content is never given.</summary>
     public bool HasInvoiceData { get; init; }
+
+    /// <summary>
+    /// The statistical fields (<c>IstatGuestFieldLists</c> names) the region of the property requires, so the page asks nothing more than
+    /// the region needs (data minimization, ADR-030-R1). Empty when the comune is unknown or the region requires none; empty in this
+    /// release, where the regional coverage is deferred (E03/F01/US08).
+    /// </summary>
+    public IReadOnlyList<string>? RequiredGuestFields { get; init; }
+
+    /// <summary>The language the guest saved on the session (NF-40); null until the guest chooses one.</summary>
+    public string? Language { get; init; }
 }
 
 /// <summary>A guest already on file, shown to prefill the portal form before completion.</summary>
@@ -197,4 +242,18 @@ public sealed class StayGuestPrefill
 
     public string? DocumentIssuePlaceCode { get; init; }
     public string DocumentIssuePlaceName { get; init; } = string.Empty;
+
+    public DateOnly? DocumentIssuedOn { get; init; }
+    public DateOnly? DocumentExpiresOn { get; init; }
+    public bool? ResidenceInItaly { get; init; }
+    public string? ResidenceComuneCode { get; init; }
+    public string? ResidenceComuneName { get; init; }
+    public string? ResidenceProvince { get; init; }
+    public string? ResidenceCountryCode { get; init; }
+    public string? ResidenceCountryName { get; init; }
+    public string? TourismType { get; init; }
+    public string? TravelWay { get; init; }
+    public string? EducationLevel { get; init; }
+
+    // No tourist tax exemption: it is the host's decision and never shown on the guest page.
 }
