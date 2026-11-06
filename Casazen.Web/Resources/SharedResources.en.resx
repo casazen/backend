@@ -1129,6 +1129,9 @@
   <data name="PaymentExceedsBalance" xml:space="preserve">
     <value>The amount is more than what is still to be collected ({0} €).</value>
   </data>
+  <data name="PaymentInProgress" xml:space="preserve">
+    <value>The guest is paying with the payment link, or has just paid: wait for the payment to be confirmed before recording a receipt by hand.</value>
+  </data>
   <data name="PaymentRefundAccountMissing" xml:space="preserve">
     <value>The host's Stripe account is not available: complete or reconnect Stripe in the payment settings and try again.</value>
   </data>
@@ -4703,5 +4706,35 @@ Once active, the function works on the data the channel manager already holds.</
   </data>
   <data name="GuestMarketingPhoneInvalid" xml:space="preserve">
     <value>Enter a valid phone number to receive messages on WhatsApp.</value>
+  </data>
+  <data name="PaymentLinkUnavailable" xml:space="preserve">
+    <value>The payment link cannot be created: it needs a Stripe account ready to take payments, a balance to pay and a booking you entered that is not cancelled. If a payment is already in progress, wait for its outcome.</value>
+  </data>
+  <data name="PaymentLinkPermissionRequired" xml:space="preserve">
+    <value>Sending a payment link needs the permission to manage the payments of this property.</value>
+  </data>
+  <data name="OctorateSyncDatesUnavailable" xml:space="preserve">
+    <value>The booking was not created in the channel manager: the dates are already taken. Check the calendar of your channels.</value>
+  </data>
+  <data name="OctorateSyncUnavailable" xml:space="preserve">
+    <value>The channel manager did not answer: the booking is not created there yet. It is tried again.</value>
+  </data>
+  <data name="OctorateSyncRejected" xml:space="preserve">
+    <value>The channel manager refused the booking. Check its details and try again.</value>
+  </data>
+  <data name="OctorateSyncReservationChanged" xml:space="preserve">
+    <value>The booking was changed in the channel manager after it was last read: check the differences before trying again.</value>
+  </data>
+  <data name="OctorateSyncRoomNotChosen" xml:space="preserve">
+    <value>Choose the room of the channel manager for this property, then try again.</value>
+  </data>
+  <data name="OctorateSyncNotRetryable" xml:space="preserve">
+    <value>This booking has no send to the channel manager to try again.</value>
+  </data>
+  <data name="OctorateSyncPaymentsNotRecorded" xml:space="preserve">
+    <value>The booking is in the channel manager, but not every payment has been recorded there. Check and try again.</value>
+  </data>
+  <data name="OctorateSyncLinkedElsewhere" xml:space="preserve">
+    <value>The booking exists in the channel manager, but CasaZen already links it to another booking: check whether it is a duplicate.</value>
   </data>
 </root>

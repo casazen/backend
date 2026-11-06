@@ -1,4 +1,5 @@
 using Casazen.Core.Authorization;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Web.Authorization;
 using Casazen.Web.DTOs;
@@ -66,6 +67,14 @@ public class ManualBookingsController(
             return this.ApiProblem(StatusCodes.Status404NotFound, ProblemCodes.NotFound, "PropertyNotFound");
         }
 
+        // A payment link starts a payment on the host's Stripe account: it also needs payment.write on the property (NF-74).
+        var arrangement = request.PaymentArrangement ?? HostPaymentArrangement.None;
+        if (arrangement == HostPaymentArrangement.PaymentLink
+            && !await authorizationService.IsAuthorizedAsync(User, HostResource.ForProperty(property), PaymentOperations.Write))
+        {
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "PaymentLinkPermissionRequired");
+        }
+
         var result = await manualBookings.CreateAsync(
             new ManualBookingInput(
                 property,
@@ -84,7 +93,8 @@ public class ManualBookingsController(
                 request.TotalPrice,
                 request.PriceNote,
                 request.BlockId,
-                request.Source),
+                request.Source,
+                arrangement),
             cancellationToken);
 
         // The booking as every other answer shows it: with its property and its guest.
@@ -93,6 +103,8 @@ public class ManualBookingsController(
         response.BelowMinimum = result.BelowMinimum;
         response.MinNights = result.MinNights;
         response.GuestDataComplete = await alloggiatiWebService.IsStayDataCompleteAsync(booking.Id);
+        response.PaymentLinkUrl = result.PaymentLinkUrl;
+        response.PaymentLinkError = result.PaymentLinkError;
         return Created($"/api/bookings/{booking.Id}", response);
     }
 }

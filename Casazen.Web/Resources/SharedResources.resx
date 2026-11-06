@@ -1129,6 +1129,9 @@
   <data name="PaymentExceedsBalance" xml:space="preserve">
     <value>L'importo supera quello che resta da incassare ({0} €).</value>
   </data>
+  <data name="PaymentInProgress" xml:space="preserve">
+    <value>Il cliente sta pagando con il link di pagamento, oppure ha appena pagato: attendi la conferma del pagamento prima di registrare un incasso a mano.</value>
+  </data>
   <data name="PaymentRefundAccountMissing" xml:space="preserve">
     <value>L'account Stripe dell'host non è disponibile: completa o ricollega Stripe nelle impostazioni dei pagamenti e riprova.</value>
   </data>
@@ -4703,5 +4706,35 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="GuestMarketingPhoneInvalid" xml:space="preserve">
     <value>Indica un numero di telefono valido per ricevere i messaggi su WhatsApp.</value>
+  </data>
+  <data name="PaymentLinkUnavailable" xml:space="preserve">
+    <value>Non è possibile creare il link di pagamento: servono un account Stripe pronto a ricevere pagamenti, un saldo da pagare e una prenotazione inserita da te e non cancellata. Se un pagamento è già in corso, attendi il suo esito.</value>
+  </data>
+  <data name="PaymentLinkPermissionRequired" xml:space="preserve">
+    <value>Per inviare un link di pagamento serve il permesso di gestire i pagamenti di questo immobile.</value>
+  </data>
+  <data name="OctorateSyncDatesUnavailable" xml:space="preserve">
+    <value>La prenotazione non è stata creata nel channel manager: le date risultano già occupate. Controlla il calendario dei canali.</value>
+  </data>
+  <data name="OctorateSyncUnavailable" xml:space="preserve">
+    <value>Il channel manager non ha risposto: la prenotazione non è ancora stata creata. Il tentativo viene ripetuto.</value>
+  </data>
+  <data name="OctorateSyncRejected" xml:space="preserve">
+    <value>Il channel manager ha rifiutato la prenotazione. Controlla i dati e riprova.</value>
+  </data>
+  <data name="OctorateSyncReservationChanged" xml:space="preserve">
+    <value>La prenotazione è stata modificata nel channel manager dopo l'ultima lettura: controlla le differenze prima di riprovare.</value>
+  </data>
+  <data name="OctorateSyncRoomNotChosen" xml:space="preserve">
+    <value>Scegli la camera del channel manager per questo immobile, poi riprova.</value>
+  </data>
+  <data name="OctorateSyncNotRetryable" xml:space="preserve">
+    <value>Questa prenotazione non ha un invio al channel manager da ripetere.</value>
+  </data>
+  <data name="OctorateSyncPaymentsNotRecorded" xml:space="preserve">
+    <value>La prenotazione è nel channel manager, ma non tutti gli incassi sono stati registrati. Controlla e riprova.</value>
+  </data>
+  <data name="OctorateSyncLinkedElsewhere" xml:space="preserve">
+    <value>La prenotazione esiste nel channel manager, ma in CasaZen è già collegata a un'altra prenotazione: controlla se è un duplicato.</value>
   </data>
 </root>
