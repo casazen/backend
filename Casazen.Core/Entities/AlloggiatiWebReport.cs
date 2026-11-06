@@ -60,6 +60,12 @@ public class AlloggiatiWebReport : ITenantOwned
     /// <summary>UTC instant the job is scheduled for: the start of the arrival day in Europe/Rome, or later.</summary>
     public DateTime? ScheduledFor { get; set; }
 
+    /// <summary>
+    /// The daily receipt of the Questura account that covers this communication (AW-R05), once retrieved and stored; <c>null</c> until
+    /// then. FK to <see cref="AlloggiatiReceipt"/>, SET NULL: a receipt removed at the end of its retention never removes the communication.
+    /// </summary>
+    public Guid? ReceiptId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -93,4 +99,18 @@ public enum AlloggiatiWebStatus
 
     /// <summary>Transmitted via SOAP client, awaiting receipt retrieval (ADR-015). Set by <c>AlloggiatiSendJob</c> on successful send; moved to <c>Inviato</c> by <c>AlloggiatiReceiptJob</c> when the receipt is retrieved.</summary>
     SentReceiptPending = 7,
+
+    // AW-R04 (E03/F01/US05/T01): the values below are appended, never renumbered; nothing writes them yet.
+
+    /// <summary>The transmission is in progress: its attempt is reserved and the call may have reached the service.</summary>
+    Sending = 8,
+
+    /// <summary>The service acquired some of the guests and rejected the others: the stay is not complete.</summary>
+    PartiallyAccepted = 9,
+
+    /// <summary>
+    /// The outcome of the transmission is unknown (timeout, connection lost, crash after a possible acquisition): the agency checks it on
+    /// the portal; never sent again by itself.
+    /// </summary>
+    ToVerify = 10,
 }

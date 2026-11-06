@@ -290,4 +290,36 @@ public class Org
     /// <summary>Label for <c>{Subdomain}.casazen.it</c>; falls back to <see cref="Slug"/> when null.</summary>
     [MaxLength(63)]
     public string? Subdomain { get; set; }
+
+    // ─── Delegation of the Alloggiati transmission (AW-R02, ADR-015-R10) ─────────
+
+    /// <summary>Longest user id of the delegation columns (the Auth0 subject).</summary>
+    public const int AlloggiatiDelegationUserIdMaxLength = 255;
+
+    /// <summary>Longest <see cref="AlloggiatiDelegationTextVersion"/>.</summary>
+    public const int AlloggiatiDelegationTextVersionMaxLength = 50;
+
+    /// <summary>
+    /// When the org delegated the transmission of its Alloggiati communications to CasaZen, its tool (AW-R02: the agency or the host
+    /// stays responsible); <c>null</c> when never granted. Written only by <c>IAlloggiatiDelegationService</c>.
+    /// </summary>
+    public DateTime? AlloggiatiDelegationGrantedAt { get; set; }
+
+    /// <summary>Who granted the delegation: the Auth0 subject of the account, not a foreign key.</summary>
+    [MaxLength(AlloggiatiDelegationUserIdMaxLength)]
+    public string? AlloggiatiDelegationGrantedByUserId { get; set; }
+
+    /// <summary>The version of the delegation text accepted with the grant (a code of the legal documents), never the text itself.</summary>
+    [MaxLength(AlloggiatiDelegationTextVersionMaxLength)]
+    public string? AlloggiatiDelegationTextVersion { get; set; }
+
+    /// <summary>
+    /// When the delegation was revoked; <c>null</c> while it stands. A revocation blocks new sends, not the retrieval of the receipts of
+    /// the transmissions already acquired.
+    /// </summary>
+    public DateTime? AlloggiatiDelegationRevokedAt { get; set; }
+
+    /// <summary>Who revoked the delegation: the Auth0 subject of the account, not a foreign key.</summary>
+    [MaxLength(AlloggiatiDelegationUserIdMaxLength)]
+    public string? AlloggiatiDelegationRevokedByUserId { get; set; }
 }

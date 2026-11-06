@@ -4,6 +4,8 @@ using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+// The receipt the SOAP client reads, not the stored daily receipt (the entity Casazen.Core.Entities.AlloggiatiReceipt, AW-R05).
+using AlloggiatiReceipt = Casazen.Infrastructure.Services.AlloggiatiReceipt;
 
 namespace Casazen.Infrastructure.Jobs;
 
