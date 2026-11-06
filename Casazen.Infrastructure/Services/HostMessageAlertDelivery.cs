@@ -285,7 +285,7 @@ public sealed class HostMessageAlertDelivery(
             Type = TypeOf(alert),
             EntityId = EntityOf(alert, subject),
             DeliveryKey = key,
-            CreatedAt = UtcDateTime.TruncateToMicroseconds(alert.OccurredAtUtc),
+            CreatedAt = UtcDateTime.TruncateToMicroseconds(UtcDateTime.Normalize(alert.OccurredAtUtc)),
         };
         db.InAppNotifications.Add(row);
         try
@@ -321,7 +321,7 @@ public sealed class HostMessageAlertDelivery(
     /// </summary>
     private async Task<bool> ClaimEmailSlotAsync(HostMessageAlert alert, string userId, DateTime atUtc, CancellationToken ct)
     {
-        var at = UtcDateTime.TruncateToMicroseconds(atUtc);
+        var at = UtcDateTime.TruncateToMicroseconds(UtcDateTime.Normalize(atUtc));
         var cutoff = at.AddMinutes(-GuestMessageRules.NotifyIntervalMinutes);
         var threadKey = alert.ThreadKey;
         var slots = db.NotificationEmailSlots.IgnoreQueryFilters([Tenant]);
@@ -375,7 +375,7 @@ public sealed class HostMessageAlertDelivery(
     /// <summary>Gives the slot back after an email that could not be queued: the row of this very claim goes, so the next message is free.</summary>
     private async Task ReleaseEmailSlotAsync(HostMessageAlert alert, string userId, DateTime atUtc, CancellationToken ct)
     {
-        var at = UtcDateTime.TruncateToMicroseconds(atUtc);
+        var at = UtcDateTime.TruncateToMicroseconds(UtcDateTime.Normalize(atUtc));
         var threadKey = alert.ThreadKey;
         var claimed = db.NotificationEmailSlots
             .IgnoreQueryFilters([Tenant])

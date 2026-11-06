@@ -12,6 +12,7 @@ using Casazen.Tests.Unit.Push;
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.States;
+using Hangfire.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -311,6 +312,24 @@ public class MessageReceivedNotifierTests : IDisposable
         Assert.Equal(2, scheduled.Count);
         Assert.Equal(NotificationChannels.MobilePush | NotificationChannels.Email, scheduled[0].Args.Channels);
         Assert.Equal(NotificationChannels.MobilePush, scheduled[1].Args.Channels);
+    }
+
+    [Fact]
+    public async Task Handle_TheArgumentsOfTheScheduledJob_SurviveTheSerializationOfHangfire()
+    {
+        var world = await SeedAsync();
+        await ChooseAsync(Owner, NotificationEventType.NewGuestMessage, NotificationChannels.MobilePush | NotificationChannels.Email | NotificationChannels.CounterOnly);
+        await Notifier().HandleAsync(Received(world.OrgId, world.OnA, Night), CancellationToken.None);
+        var job = _created.Select(c => c.Job).First(j => j.Type == typeof(HostMessageAlertDueJob) && ((QueuedMessageAlert)j.Args[0]).UserId == Owner);
+
+        var stored = InvocationData.SerializeJob(job).DeserializeJob();
+
+        var args = Assert.IsType<QueuedMessageAlert>(stored.Args[0]);
+        Assert.Equal((QueuedMessageAlert)job.Args[0], args);
+        Assert.Equal(HostMessageSource.Ota, args.Source);
+        Assert.Equal(NotificationChannels.MobilePush | NotificationChannels.Email, args.Channels);
+        Assert.Equal(MorningDue, args.DueAtUtc);
+        Assert.Equal(nameof(HostMessageAlertDueJob.DeliverAsync), stored.Method.Name);
     }
 
     [Fact]
