@@ -690,6 +690,9 @@ namespace Casazen.Infrastructure.Migrations
                     b.Property<Guid>("GuestId")
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("HostPaymentArrangement")
+                        .HasColumnType("integer");
+
                     b.Property<Guid?>("ICalFeedId")
                         .HasColumnType("uuid");
 
@@ -733,6 +736,9 @@ namespace Casazen.Infrastructure.Migrations
 
                     b.Property<int?>("OtaReviewReason")
                         .HasColumnType("integer");
+
+                    b.Property<DateTime?>("PaymentLinkSentAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("PaymentOption")
                         .HasColumnType("integer");
@@ -3535,6 +3541,63 @@ namespace Casazen.Infrastructure.Migrations
                     b.ToTable("MarketplacePortals");
                 });
 
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateBookingSync", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("LastAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LastOperation")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("OctorateUpdateTime")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OctorateVersionJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("OrgId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_OctorateBookingSyncs_BookingId");
+
+                    b.HasIndex("OrgId", "State");
+
+                    b.ToTable("OctorateBookingSyncs");
+                });
+
             modelBuilder.Entity("Casazen.Core.Entities.OctorateConnection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5030,6 +5093,13 @@ namespace Casazen.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<DateTime?>("OctorateRegisteredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OctorateTransactionId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<Guid>("OrgId")
                         .HasColumnType("uuid");
 
@@ -5077,6 +5147,11 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasIndex("BookingId");
 
                     b.HasIndex("OrgId");
+
+                    b.HasIndex("OrgId", "OctorateTransactionId")
+                        .IsUnique()
+                        .HasDatabaseName("UIX_Payments_OrgId_OctorateTransactionId")
+                        .HasFilter("\"OctorateTransactionId\" IS NOT NULL");
 
                     b.ToTable("Payments");
                 });
@@ -12060,6 +12135,15 @@ namespace Casazen.Infrastructure.Migrations
                     b.HasOne("Casazen.Core.Entities.MarketplacePartner", null)
                         .WithMany("Texts")
                         .HasForeignKey("PartnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Casazen.Core.Entities.OctorateBookingSync", b =>
+                {
+                    b.HasOne("Casazen.Core.Entities.Booking", null)
+                        .WithMany()
+                        .HasForeignKey("BookingId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

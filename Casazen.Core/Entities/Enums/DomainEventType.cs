@@ -38,4 +38,12 @@ public enum DomainEventType
     /// booking (<c>EntityId</c>); it closes the cleaning "To do" of that stay. Starts no routine.
     /// </summary>
     PropertyReadyDeclared = 19,
+
+    /// <summary>
+    /// The host asked again for the push of a booking to the channel manager (E08/F01/US01/T03,
+    /// <c>POST /api/bookings/{id}/octorate-sync/retry</c>): about the booking (<c>EntityId</c>), with the payload of a booking event (origin
+    /// System). Runs the push of the booking again and nothing else: no routine and no other consumer of <c>BookingConfirmed</c> (a welcome
+    /// message, an alert) runs a second time.
+    /// </summary>
+    OctorateSyncRequested = 20,
 }

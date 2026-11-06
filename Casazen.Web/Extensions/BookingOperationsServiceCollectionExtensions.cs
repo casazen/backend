@@ -1,6 +1,8 @@
 using Casazen.Core.Events;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Events;
+using Casazen.Infrastructure.Octorate;
+using Casazen.Infrastructure.Services;
 
 namespace Casazen.Web.Extensions;
 
@@ -20,6 +22,19 @@ public static class BookingOperationsServiceCollectionExtensions
         services.AddScoped<IEventHandler<DomainEvent>, BookingCleaningActivityHandler>();
         services.AddScoped<IEventHandler<DomainEvent>, BookingSpecialRequestActivityHandler>();
         services.AddScoped<IEventHandler<DomainEvent>, ChannelBookingAlertHandler>();
+
+        // E08/F01/US01/T02 (NF-74): where in Octorate a property books; every writer of a booking to Octorate asks it first.
+        services.AddScoped<IOctorateBookingTargets, OctorateBookingTargets>();
+
+        // E08/F01/US01/T03 (NF-74, NF-80): a confirmed booking is created on Octorate once, with a state the host sees, and asked again on retry.
+        services.AddScoped<IBookingOctorateSyncService, BookingOctorateSyncService>();
+        services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingCreateHandler>();
+
+        // E08/F01/US01/T04 (NF-74, D9): a payment of a mirrored booking that became paid is recorded on its Octorate reservation once.
+        services.AddScoped<IEventHandler<DomainEvent>, OctoratePaymentHandler>();
+
+        // E08/F01/US01/T05 (NF-74): the payment link of a booking the host entered (the checkout page and the webhook are the checkout's).
+        services.AddScoped<IBookingPaymentLinkService, BookingPaymentLinkService>();
         return services;
     }
 }
