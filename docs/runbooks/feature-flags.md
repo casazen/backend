@@ -215,7 +215,7 @@ their suppression (an error in the log each time; `crm-marketing.md` § 3), a kn
 `Features__OctorateOnboarding` (E10/F01/US01/T02) is the switch of the activation of CasaZen with Octorate: leave it **unset in production** and unset on the
 test environment until the screens of epic E10 (E10/F03) are deployed. It needs no other variable. With it on, `GET api/onboarding/status` also computes the
 status of the six flows over every property the caller reaches (a handful of queries for each batch of 200 properties). It also opens the endpoints of the plan and of
-the activation (`GET api/onboarding/plan|path`, `POST api/onboarding/parts/{key}/defer|exit|resume`, `POST api/onboarding/flows/{flow}/activate|deactivate`,
+the activation (`GET api/onboarding/plan|path|integration`, `POST api/onboarding/parts/{key}/defer|exit|resume|reopen`, `POST api/onboarding/flows/{flow}/activate|deactivate`,
 `POST api/onboarding/test-run`) and schedules the hourly job `onboarding-flow-todo-sync` (E10/F01/US01/T03, T04), so with the flag on **something is written**: the host's
 own choices (a part put off with its "To do", a flow activated on a property with its outbox event) and, for every org that has an Octorate connection in the
 environment, the "To do" of the flows still to complete and of a lost connection (high urgency), and the closing of the "To do" of a part put off that is done by now.

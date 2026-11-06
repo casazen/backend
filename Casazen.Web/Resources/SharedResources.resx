@@ -5148,6 +5148,27 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OtaChannelCancelGuidanceAgoda" xml:space="preserve">
     <value>Per cancellare questa prenotazione di Agoda chiedi all'ospite di annullarla su Agoda.</value>
   </data>
+  <data name="ArchiveTypeForbidden" xml:space="preserve">
+    <value>Non hai accesso a questo tipo di documento.</value>
+  </data>
+  <data name="ArchiveDocumentNotFound" xml:space="preserve">
+    <value>Documento non trovato.</value>
+  </data>
+  <data name="ArchiveDocumentHasNoFile" xml:space="preserve">
+    <value>Questo documento non ha un file da scaricare.</value>
+  </data>
+  <data name="ArchiveExportTooLarge" xml:space="preserve">
+    <value>Troppi documenti per un solo archivio: ne risultano {0}, e un'esportazione ne contiene al massimo {1} per {2} MB (un documento di cui non si conosce la dimensione conta {3} MB). Restringi il periodo o scegli un tipo di documento o un immobile.</value>
+  </data>
+  <data name="ArchiveInvalidType" xml:space="preserve">
+    <value>Tipo di documento non valido.</value>
+  </data>
+  <data name="ArchiveInvalidPeriod" xml:space="preserve">
+    <value>Periodo non valido: indica i giorni nel formato AAAA-MM-GG, con il primo non dopo l'ultimo.</value>
+  </data>
+  <data name="ArchiveInvalidPage" xml:space="preserve">
+    <value>Pagina non valida: le pagine partono da 1 e ognuna ha da 1 a {0} documenti.</value>
+  </data>
   <data name="BookingSettlementFailed" xml:space="preserve">
     <value>Il pagamento della differenza di prezzo non è andato a buon fine: la prenotazione non è stata modificata. Puoi riprovare, lo stesso rimborso non viene mai fatto due volte.</value>
   </data>
@@ -5246,5 +5267,8 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="ComplianceReportInvalidFormat" xml:space="preserve">
     <value>Formato non valido: usa pdf o csv.</value>
+  </data>
+  <data name="OnboardingPartNotReopenable" xml:space="preserve">
+    <value>Questa parte non è disponibile: non c'è nessun passaggio da riaprire.</value>
   </data>
 </root>

@@ -667,6 +667,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFiscalReportingService>(sp => (FiscalService)sp.GetRequiredService<IFiscalRegimeService>());
         // NF-100: the tourist tax owed, paid and receipted per comune, over the tourist tax report above (GET /api/tourist-tax/summary).
         services.AddScoped<ITouristTaxSummaryService, TouristTaxSummaryService>();
+        // NF-99: the document archive, a read model over the tables of its sources (GET /api/documents).
+        services.AddDocumentArchive();
         services.AddSingleton<ILegalDocumentService, LegalDocumentService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
         // AM-02: the people of an org: seats of the plan, invitations and their acceptance, the members and the hourly
@@ -985,6 +987,27 @@ public static class ServiceCollectionExtensions
                             (int)outcome.Result.StatusCode, retryCount, timespan.TotalSeconds);
                     }
                 });
+    }
+
+    /// <summary>
+    /// The document archive (NF-99, E07/F03/US03): the service, the sources it reads and the caps of the export (<c>DocumentArchive</c>, checked at
+    /// startup). A source is a class that knows one table and who may read it: the property documents, the files of the leases and the receipts
+    /// of the tourist tax payments are here; the Alloggiati receipts and the ISTAT proofs, and the documents of the fiscal epic, add theirs when
+    /// their tasks come. The guest identity documents and selfies are never a source.
+    /// </summary>
+    public static IServiceCollection AddDocumentArchive(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddOptions<DocumentArchiveOptions>()
+            .BindConfiguration(DocumentArchiveOptions.SectionName)
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<DocumentArchiveOptions>, DocumentArchiveOptionsValidator>();
+        services.AddScoped<IDocumentArchiveSource, PropertyDocumentArchiveSource>();
+        services.AddScoped<IDocumentArchiveSource, LeaseDocumentArchiveSource>();
+        services.AddScoped<IDocumentArchiveSource, TouristTaxRemittanceArchiveSource>();
+        services.AddScoped<IDocumentArchiveService, DocumentArchiveService>();
+        return services;
     }
 
     public static IServiceCollection AddCasazenOtaIntegrations(this IServiceCollection services, IConfiguration configuration)

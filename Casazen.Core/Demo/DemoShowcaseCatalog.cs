@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.17";
+    public const string Version = "2026-11-06.21";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -177,6 +177,15 @@ public static class DemoShowcaseCatalog
         /// (green: an archived proof, an invented one-page PDF). Invented; nothing is sent to Octorate or to the police.
         /// </summary>
         public const string ComplianceTrafficLight = "compliance-traffic-light";
+
+        /// <summary>
+        /// The document archive (NF-99, E07/F03/US03): no row of its own, because the archive is a read model over the tables the showcase already fills.
+        /// Appartamento Brera carries the scenario: the TEST certificates the compliance fill writes for a published house (real PDF bytes,
+        /// <c>TestDataEntities.PropertyDocument</c>) and the invented receipt of its tourist tax payment (<see cref="TouristTaxPaid"/>) are the
+        /// documents the host sees under Documents. The showcase has no lease (its reset refuses to run when a showcase house has one), so no lease
+        /// document is shown.
+        /// </summary>
+        public const string DocumentArchive = "document-archive";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -243,6 +252,7 @@ public static class DemoShowcaseCatalog
         Scenario.BookingOtaAmounts,
         Scenario.OnboardingActivation,
         Scenario.ComplianceTrafficLight,
+        Scenario.DocumentArchive,
     ];
 
     /// <summary>
@@ -508,7 +518,7 @@ public static class DemoShowcaseCatalog
             NightlyRate: 140m,
             CleaningFee: 30m,
             Cadastral: null,
-            Scenarios: [Scenario.PublishedLombardia, Scenario.TouristTaxPaid],
+            Scenarios: [Scenario.PublishedLombardia, Scenario.TouristTaxPaid, Scenario.DocumentArchive],
             Profile: new DemoPropertyProfile(
                 AccommodationType.Apartment, 2, 55, null,
                 new TimeOnly(14, 0), new TimeOnly(11, 0), SmokingPolicy.OutdoorsOnly, PetsPolicy.No, PartiesPolicy.No,
