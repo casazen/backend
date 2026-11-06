@@ -72,7 +72,10 @@ deploy and what the admin still has to do.
   paid: per comune, the tax **owed** (the amounts recorded on the stays, exactly the report's, with the stays that have none
   counted apart and never taken as zero), the tax **paid** (the payments recorded with `POST /api/tourist-tax/remittances`
   whose own period lies inside the period asked), the balance (negative when overpaid) and the status
-  (`NothingOwed`, `ToPay`, `Paid`, `Overpaid`). Cents, not floats; the same org and property reach as the report. `NothingOwed`
+  (`NothingOwed`, `ToPay`, `Paid`, `Overpaid`). Cents, not floats; the same org and property reach as the report, with one
+  difference: a payment belongs to the org and to no property, so a caller who reaches only some of the properties gets the owed side
+  of those properties and no payment (`paymentsHidden: true`, paid, balance and status `null`) and cannot record, delete or open
+  one (403 `tourist_tax_payments_need_whole_org`). `NothingOwed`
   means that no amount is recorded, not that nothing is due: the CSV says `Nessun importo registrato` for it and writes
   `Importo incompleto` in the note column of every row that counts stays with no amount.
 - A payment is the host's declaration, not a bank record: comune (one of the comuni of its properties), period, amount, day,

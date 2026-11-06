@@ -20,9 +20,18 @@ public sealed class TouristTaxSummaryDto
     /// <summary>Always EUR.</summary>
     public string Currency { get; init; } = "EUR";
 
+    /// <summary>
+    /// True when the caller reaches only some of the properties of the org. A payment belongs to the org and to no property, so the summary
+    /// then shows only what is owed on the properties reached: <c>paid</c>, <c>paidCents</c>, <c>balance</c>, <c>balanceCents</c>,
+    /// <c>status</c> and <c>remittances</c> are <c>null</c> in every comune, <c>paid</c>, <c>paidCents</c>, <c>balance</c> and
+    /// <c>balanceCents</c> in the total. Recording a payment, deleting one and opening a receipt answer 403
+    /// <c>tourist_tax_payments_need_whole_org</c>.
+    /// </summary>
+    public bool PaymentsHidden { get; init; }
+
     public TouristTaxPeriodDto Period { get; init; } = new();
 
-    /// <summary>The comuni with stays (check-in in the period) or with payments (whose period lies inside it), by name.</summary>
+    /// <summary>The comuni with stays (check-in in the period) or, when the payments are shown, with payments (whose period lies inside it), by name.</summary>
     public IReadOnlyList<ComuneTaxSummaryDto> Comuni { get; init; } = [];
 
     public TouristTaxSummaryTotalsDto Total { get; init; } = new();
@@ -34,6 +43,7 @@ public sealed class TouristTaxSummaryDto
         return new TouristTaxSummaryDto
         {
             Title = title,
+            PaymentsHidden = summary.PaymentsHidden,
             Period = new TouristTaxPeriodDto { From = summary.Period.From, To = summary.Period.To },
             Comuni = summary.Comuni.Select(ComuneTaxSummaryDto.From).ToList(),
             Total = TouristTaxSummaryTotalsDto.From(summary.Total),
@@ -69,22 +79,30 @@ public sealed class ComuneTaxSummaryDto
     /// <summary>Stays with no tax recorded: counted apart, never taken as a tax of zero. Above zero, <see cref="Owed"/> may be incomplete.</summary>
     public int StaysWithoutAmount { get; init; }
 
-    /// <summary>The payments of the comune whose period lies inside the period of the summary, euros to the cent.</summary>
-    public decimal Paid { get; init; }
+    /// <summary>
+    /// The payments of the comune whose period lies inside the period of the summary, euros to the cent; <c>null</c> when the payments are
+    /// hidden (<see cref="TouristTaxSummaryDto.PaymentsHidden"/>).
+    /// </summary>
+    public decimal? Paid { get; init; }
 
-    /// <summary><see cref="Paid"/> in cents of euro, exact.</summary>
-    public long PaidCents { get; init; }
+    /// <summary><see cref="Paid"/> in cents of euro, exact; <c>null</c> when the payments are hidden.</summary>
+    public long? PaidCents { get; init; }
 
-    /// <summary><see cref="Owed"/> minus <see cref="Paid"/>; negative when more was paid than is owed.</summary>
-    public decimal Balance { get; init; }
+    /// <summary><see cref="Owed"/> minus <see cref="Paid"/>; negative when more was paid than is owed; <c>null</c> when the payments are hidden.</summary>
+    public decimal? Balance { get; init; }
 
-    /// <summary><see cref="Balance"/> in cents of euro, exact.</summary>
-    public long BalanceCents { get; init; }
+    /// <summary><see cref="Balance"/> in cents of euro, exact; <c>null</c> when the payments are hidden.</summary>
+    public long? BalanceCents { get; init; }
 
-    /// <summary><c>NothingOwed</c>, <c>ToPay</c>, <c>Paid</c> or <c>Overpaid</c>.</summary>
-    public TouristTaxSummaryStatus Status { get; init; }
+    /// <summary>
+    /// <c>NothingOwed</c>, <c>ToPay</c>, <c>Paid</c> or <c>Overpaid</c>; <c>null</c> when the payments are hidden. <c>NothingOwed</c> means that
+    /// no amount is recorded, not that nothing is due: label it «Nessun importo registrato», and show the incomplete-amount note whenever
+    /// <see cref="StaysWithoutAmount"/> is above zero, also for <c>Paid</c>.
+    /// </summary>
+    public TouristTaxSummaryStatus? Status { get; init; }
 
-    public IReadOnlyList<TouristTaxRemittanceDto> Remittances { get; init; } = [];
+    /// <summary>The payments of the comune, oldest period first; <c>null</c> when the payments are hidden.</summary>
+    public IReadOnlyList<TouristTaxRemittanceDto>? Remittances { get; init; }
 
     public static ComuneTaxSummaryDto From(ComuneTaxSummary comune)
     {
@@ -100,16 +118,19 @@ public sealed class ComuneTaxSummaryDto
             OwedCents = PaymentCashRules.ToCents(comune.Owed),
             StaysWithoutAmount = comune.StaysWithoutAmount,
             Paid = comune.Paid,
-            PaidCents = PaymentCashRules.ToCents(comune.Paid),
+            PaidCents = comune.Paid is { } paid ? PaymentCashRules.ToCents(paid) : null,
             Balance = comune.Balance,
-            BalanceCents = PaymentCashRules.ToCents(comune.Balance),
+            BalanceCents = comune.Balance is { } balance ? PaymentCashRules.ToCents(balance) : null,
             Status = comune.Status,
-            Remittances = comune.Remittances.Select(TouristTaxRemittanceDto.From).ToList(),
+            Remittances = comune.Remittances?.Select(TouristTaxRemittanceDto.From).ToList(),
         };
     }
 }
 
-/// <summary>The sums of the comuni of a summary; <c>balance</c> is the difference of the two totals.</summary>
+/// <summary>
+/// The sums of the comuni of a summary; <c>balance</c> is the difference of the two totals. <c>paid</c>, <c>paidCents</c>, <c>balance</c> and
+/// <c>balanceCents</c> are <c>null</c> when the payments are hidden (<see cref="TouristTaxSummaryDto.PaymentsHidden"/>).
+/// </summary>
 public sealed class TouristTaxSummaryTotalsDto
 {
     public int Stays { get; init; }
@@ -124,13 +145,13 @@ public sealed class TouristTaxSummaryTotalsDto
 
     public int StaysWithoutAmount { get; init; }
 
-    public decimal Paid { get; init; }
+    public decimal? Paid { get; init; }
 
-    public long PaidCents { get; init; }
+    public long? PaidCents { get; init; }
 
-    public decimal Balance { get; init; }
+    public decimal? Balance { get; init; }
 
-    public long BalanceCents { get; init; }
+    public long? BalanceCents { get; init; }
 
     public static TouristTaxSummaryTotalsDto From(TouristTaxSummaryTotals total)
     {
@@ -145,9 +166,9 @@ public sealed class TouristTaxSummaryTotalsDto
             OwedCents = PaymentCashRules.ToCents(total.Owed),
             StaysWithoutAmount = total.StaysWithoutAmount,
             Paid = total.Paid,
-            PaidCents = PaymentCashRules.ToCents(total.Paid),
+            PaidCents = total.Paid is { } paid ? PaymentCashRules.ToCents(paid) : null,
             Balance = total.Balance,
-            BalanceCents = PaymentCashRules.ToCents(total.Balance),
+            BalanceCents = total.Balance is { } balance ? PaymentCashRules.ToCents(balance) : null,
         };
     }
 }

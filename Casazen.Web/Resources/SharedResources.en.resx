@@ -4220,6 +4220,9 @@
   <data name="TouristTaxOwedIncomplete" xml:space="preserve">
     <value>Incomplete amount</value>
   </data>
+  <data name="TouristTaxPaymentsNeedWholeOrg" xml:space="preserve">
+    <value>Recording a tourist tax payment, deleting it or opening its receipt needs access to all the properties: your access is limited to some.</value>
+  </data>
   <data name="OctorateNotConnected" xml:space="preserve">
     <value>The connection to the channel manager is not active: connect it again from the channel settings.</value>
   </data>

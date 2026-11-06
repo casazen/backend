@@ -4220,6 +4220,9 @@
   <data name="TouristTaxOwedIncomplete" xml:space="preserve">
     <value>Importo incompleto</value>
   </data>
+  <data name="TouristTaxPaymentsNeedWholeOrg" xml:space="preserve">
+    <value>Registrare un versamento della tassa di soggiorno, eliminarlo o aprirne la ricevuta richiede l'accesso a tutti gli immobili: il tuo accesso è limitato ad alcuni.</value>
+  </data>
   <data name="OctorateNotConnected" xml:space="preserve">
     <value>Il collegamento con il channel manager non è attivo: collegalo di nuovo dalle impostazioni dei canali.</value>
   </data>

@@ -10,14 +10,17 @@ namespace Casazen.Core.Services;
 /// </summary>
 /// <remarks>
 /// The services never check roles: the web layer decides with the policies <c>payment.read</c> (summary, receipt) and <c>payment.write</c>
-/// (record, delete). They work inside the org and the reach of the <see cref="HostScope"/> given: a payment has no property, so a caller
-/// who reaches only some properties sees and records payments only for the comuni of those properties.
+/// (record, delete). They work inside the org and the reach of the <see cref="HostScope"/> given. A payment belongs to the org and to no
+/// property, so a caller who reaches only some properties gets the owed side of those properties and no payment at all
+/// (<see cref="TouristTaxSummary.PaymentsHidden"/>), and has no part in recording, deleting or opening one (403
+/// <see cref="TouristTaxErrorCodes.PaymentsNeedWholeOrg"/>).
 /// </remarks>
 public interface ITouristTaxSummaryService
 {
     /// <summary>
     /// The summary of <paramref name="period"/>: for each comune with stays (check-in in the period) or with payments (whose period lies
-    /// inside it), the tax owed, the tax paid, the balance, the status and the payments; and the totals.
+    /// inside it), the tax owed, the tax paid, the balance, the status and the payments; and the totals. For a scope that does not reach the
+    /// whole org only the owed side of the properties it reaches (<see cref="TouristTaxSummary.PaymentsHidden"/>).
     /// </summary>
     /// <exception cref="FiscalValidationException">The period is not valid for a report (400 <c>fiscal_report_period_invalid</c>).</exception>
     Task<TouristTaxSummary> GetSummaryAsync(HostScope scope, FiscalReportPeriod period, CancellationToken cancellationToken = default);
@@ -31,15 +34,24 @@ public interface ITouristTaxSummaryService
     /// <see cref="TouristTaxErrorCodes.DateInFuture"/>, <see cref="TouristTaxErrorCodes.PeriodInvalid"/>,
     /// <see cref="TouristTaxErrorCodes.ReceiptInvalid"/> or <see cref="TouristTaxErrorCodes.TextTooLong"/>.
     /// </exception>
+    /// <exception cref="Casazen.Core.Exceptions.DomainForbiddenException">
+    /// 403 <see cref="TouristTaxErrorCodes.PaymentsNeedWholeOrg"/>: the scope does not reach the whole org. Nothing is read or stored.
+    /// </exception>
     Task<TouristTaxRemittanceLine> RecordRemittanceAsync(
         HostScope scope,
         RecordRemittanceRequest request,
         Stream? receipt,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Deletes a wrong entry: the row and its receipt. A payment of another org is the same <c>NotFoundException</c> as a missing one.</summary>
+    /// <summary>
+    /// Deletes a wrong entry: the row and its receipt. A payment of another org is the same <c>NotFoundException</c> as a missing one. 403
+    /// <see cref="TouristTaxErrorCodes.PaymentsNeedWholeOrg"/> when the scope does not reach the whole org.
+    /// </summary>
     Task DeleteRemittanceAsync(HostScope scope, Guid remittanceId, CancellationToken cancellationToken = default);
 
-    /// <summary>The receipt of a payment, from the private bucket; the caller disposes the content. 404 when the payment, or its receipt, is not there.</summary>
+    /// <summary>
+    /// The receipt of a payment, from the private bucket; the caller disposes the content. 404 when the payment, or its receipt, is not there;
+    /// 403 <see cref="TouristTaxErrorCodes.PaymentsNeedWholeOrg"/> when the scope does not reach the whole org.
+    /// </summary>
     Task<TouristTaxReceiptFile> OpenReceiptAsync(HostScope scope, Guid remittanceId, CancellationToken cancellationToken = default);
 }

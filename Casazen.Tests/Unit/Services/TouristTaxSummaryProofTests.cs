@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text;
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
@@ -74,7 +75,7 @@ public sealed class TouristTaxSummaryProofTests
         Assert.Equal(66.90m, milano.Paid);
         Assert.Equal(0m, milano.Balance);
         Assert.Equal(TouristTaxSummaryStatus.Paid, milano.Status);
-        Assert.Equal([40.01m, 26.89m], milano.Remittances.Select(r => r.Amount));
+        Assert.Equal([40.01m, 26.89m], milano.Remittances!.Select(r => r.Amount));
 
         var romaRow = summary.Comuni[2];
         Assert.Equal(72.10m, romaRow.Owed);
@@ -157,17 +158,84 @@ public sealed class TouristTaxSummaryProofTests
         Assert.Equal(25.50m, stored.PaidAmount);
     }
 
+    /// <summary>
+    /// PROOF TEST: permission and data rule. A payment belongs to the org, not to a property. A caller whose scope reaches only some of the
+    /// properties sees what is owed on those properties and nothing about the payments (no paid, balance, status or list; the summary says so,
+    /// the CSV too), and it can neither record a payment, nor delete one, nor open its receipt: 403, and nothing is stored or deleted. The
+    /// payments of Milano cover the stays of two properties, so against the one the caller reaches they would show an overpayment that is false.
+    /// The caller that reaches the whole org sees and does everything, as before.
+    /// </summary>
+    [Fact]
+    public async Task TouristTaxSummary_ScopeLimitedToSomeProperties_SeesOnlyWhatIsOwedAndTouchesNoPayment_Test()
+    {
+        var orgId = Guid.NewGuid();
+        await using var db = CreateDb();
+        SeedOrg(db, orgId);
+        var mine = SeedProperty(db, orgId, "Loft Milano", "Milano", ownerId: "auth0|member");
+        var sibling = SeedProperty(db, orgId, "Bilocale Milano", "Milano");
+        var roma = SeedProperty(db, orgId, "Casa Roma", "Roma");
+        SeedStay(db, mine, Day(2026, 3, 2), nights: 3, touristTax: 20m);
+        SeedStay(db, sibling, Day(2026, 3, 20), nights: 2, touristTax: 30m);
+        SeedStay(db, roma, Day(2026, 2, 10), nights: 4, touristTax: 72.10m);
+
+        // The org paid Milano for both of its properties (20 + 30) and Roma.
+        var payment = SeedPayment(db, orgId, "Milano", FirstQuarter.From, FirstQuarter.To, 50m, new DateOnly(2026, 4, 10));
+        SeedPayment(db, orgId, "Roma", FirstQuarter.From, FirstQuarter.To, 72.10m, new DateOnly(2026, 4, 12));
+        await db.SaveChangesAsync();
+        var sut = CreateService(db);
+        var limited = new HostScope(orgId, OwnerId: "auth0|member");
+
+        var summary = await sut.GetSummaryAsync(limited, FirstQuarter);
+
+        // Only Milano, and only what its property owes: the 50.00 paid by the org, and the overpayment of 30.00 it would give, are not shown.
+        Assert.True(summary.PaymentsHidden);
+        var milano = Assert.Single(summary.Comuni);
+        Assert.Equal(("Milano", 1, 3, 20.00m), (milano.Comune, milano.Stays, milano.Nights, milano.Owed));
+        Assert.Null(milano.Paid);
+        Assert.Null(milano.Balance);
+        Assert.Null(milano.Status);
+        Assert.Null(milano.Remittances);
+        Assert.Equal(20.00m, summary.Total.Owed);
+        Assert.Null(summary.Total.Paid);
+        Assert.Null(summary.Total.Balance);
+
+        var file = Encoding.UTF8.GetString(TouristTaxSummaryDocuments.Csv(summary, new TouristTaxCsvTexts("Nessun importo registrato", "Importo incompleto")));
+        Assert.Contains("Comune;Soggiorni;Notti;Ospiti;Imposta dovuta (€);Soggiorni senza importo;Nota\r\n", file);
+        Assert.Contains("Milano;1;3;2;20,00;0;\r\n", file);
+        Assert.DoesNotContain("Versamenti registrati", file);
+
+        // Recording, deleting and opening a receipt are refused before anything is read, stored or deleted.
+        foreach (var attempt in new Func<Task>[]
+        {
+            () => sut.RecordRemittanceAsync(limited, NewRequest("Milano"), receipt: null),
+            () => sut.DeleteRemittanceAsync(limited, payment.Id),
+            () => sut.OpenReceiptAsync(limited, payment.Id),
+        })
+        {
+            var refused = await Assert.ThrowsAsync<DomainForbiddenException>(attempt);
+            Assert.Equal(TouristTaxErrorCodes.PaymentsNeedWholeOrg, refused.Code);
+        }
+
+        Assert.Equal(2, await db.TouristTaxRemittances.CountAsync());
+
+        // The caller that reaches the whole org sees both properties of Milano, the payments and the balance.
+        var whole = await sut.GetSummaryAsync(new HostScope(orgId), FirstQuarter);
+        Assert.False(whole.PaymentsHidden);
+        Assert.Equal(["Milano", "Roma"], whole.Comuni.Select(c => c.Comune));
+        Assert.Equal((50.00m, 50.00m, TouristTaxSummaryStatus.Paid), (whole.Comuni[0].Owed, whole.Comuni[0].Paid, whole.Comuni[0].Status));
+    }
+
     private static IEnumerable<string?> PoliciesOf(MemberInfo member) =>
         member.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(a => a.Policy);
 
     private static RecordRemittanceRequest NewRequest(string comune) =>
         new(comune, FirstQuarter.From, FirstQuarter.To, 25.50m, new DateOnly(2026, 4, 15), "Bonifico di prova", null, "auth0|host");
 
-    private static TouristTaxSummaryService CreateService(AppDbContext db)
+    private static TouristTaxSummaryService CreateService(AppDbContext db, IFileStorage? storage = null)
     {
         var clock = new FakeTimeProvider(Now);
         var fiscal = new FiscalService(db, new MigraDocPdfDocumentRenderer(), Options.Create(new ShortStayFiscalOptions()), clock);
-        return new TouristTaxSummaryService(db, fiscal, Mock.Of<IFileStorage>(), NullLogger<TouristTaxSummaryService>.Instance, clock);
+        return new TouristTaxSummaryService(db, fiscal, storage ?? Mock.Of<IFileStorage>(), NullLogger<TouristTaxSummaryService>.Instance, clock);
     }
 
     private static AppDbContext CreateDb() =>
@@ -185,12 +253,17 @@ public sealed class TouristTaxSummaryProofTests
             ContactEmail = "h@example.com",
         });
 
-    private static Property SeedProperty(AppDbContext db, Guid orgId, string name, string city)
+    private static Property SeedProperty(
+        AppDbContext db,
+        Guid orgId,
+        string name,
+        string city,
+        string ownerId = "auth0|host")
     {
         var property = new Property
         {
             OrgId = orgId,
-            OwnerId = "auth0|host",
+            OwnerId = ownerId,
             Name = name,
             Address = "Via Test 1",
             City = city,
@@ -222,8 +295,16 @@ public sealed class TouristTaxSummaryProofTests
         });
     }
 
-    private static void SeedPayment(AppDbContext db, Guid orgId, string comune, DateOnly from, DateOnly to, decimal amount, DateOnly paidOn) =>
-        db.TouristTaxRemittances.Add(new TouristTaxRemittance
+    private static TouristTaxRemittance SeedPayment(
+        AppDbContext db,
+        Guid orgId,
+        string comune,
+        DateOnly from,
+        DateOnly to,
+        decimal amount,
+        DateOnly paidOn)
+    {
+        var payment = new TouristTaxRemittance
         {
             OrgId = orgId,
             Comune = comune,
@@ -233,5 +314,8 @@ public sealed class TouristTaxSummaryProofTests
             PaidAmount = amount,
             PaidOn = paidOn,
             RecordedByUserId = "auth0|host",
-        });
+        };
+        db.TouristTaxRemittances.Add(payment);
+        return payment;
+    }
 }

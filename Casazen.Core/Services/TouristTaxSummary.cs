@@ -58,9 +58,11 @@ public sealed record TouristTaxRemittanceLine(
 /// <param name="Owed">The tax the engine recorded on those stays (BK-03), to the cent. The sum of the recorded amounts, nothing estimated.</param>
 /// <param name="StaysWithoutAmount">Stays with no tax recorded (rate not available, exempt guests, a booking from a channel...). Counted apart: the
 /// owed amount may be incomplete.</param>
-/// <param name="Paid">The sum of the payments of the comune whose period lies inside the period asked.</param>
-/// <param name="Balance"><see cref="Owed"/> minus <see cref="Paid"/>, negative when more was paid than is owed.</param>
-/// <param name="Remittances">Those payments, oldest period first.</param>
+/// <param name="Paid">The sum of the payments of the comune whose period lies inside the period asked; <c>null</c> when the summary does not show
+/// the payments (<see cref="TouristTaxSummary.PaymentsHidden"/>).</param>
+/// <param name="Balance"><see cref="Owed"/> minus <see cref="Paid"/>, negative when more was paid than is owed; <c>null</c> when the payments are hidden.</param>
+/// <param name="Status">Where the comune stands; <c>null</c> when the payments are hidden, because the owed amount alone says nothing about it.</param>
+/// <param name="Remittances">Those payments, oldest period first; <c>null</c> when the payments are hidden.</param>
 public sealed record ComuneTaxSummary(
     string Comune,
     int Stays,
@@ -68,14 +70,15 @@ public sealed record ComuneTaxSummary(
     int Guests,
     decimal Owed,
     int StaysWithoutAmount,
-    decimal Paid,
-    decimal Balance,
-    TouristTaxSummaryStatus Status,
-    IReadOnlyList<TouristTaxRemittanceLine> Remittances);
+    decimal? Paid,
+    decimal? Balance,
+    TouristTaxSummaryStatus? Status,
+    IReadOnlyList<TouristTaxRemittanceLine>? Remittances);
 
 /// <summary>
 /// The sums of the comuni of a summary. <see cref="Balance"/> is the difference of the two totals: an overpayment to one comune is set
-/// against what is owed to another in this one figure, so the rows are what says what is due to each comune.
+/// against what is owed to another in this one figure, so the rows are what says what is due to each comune. <see cref="Paid"/> and
+/// <see cref="Balance"/> are <c>null</c> when the summary does not show the payments (<see cref="TouristTaxSummary.PaymentsHidden"/>).
 /// </summary>
 public sealed record TouristTaxSummaryTotals(
     int Stays,
@@ -83,14 +86,23 @@ public sealed record TouristTaxSummaryTotals(
     int Guests,
     decimal Owed,
     int StaysWithoutAmount,
-    decimal Paid,
-    decimal Balance);
+    decimal? Paid,
+    decimal? Balance);
 
 /// <summary>The tourist tax owed, paid and receipted per comune for a period (NF-100, REP-05).</summary>
+/// <param name="Period">The days the summary covers.</param>
+/// <param name="Comuni">The comuni with stays or, when the payments are shown, with payments in the period.</param>
+/// <param name="Total">The sums of the comuni.</param>
+/// <param name="PaymentsHidden">
+/// True when the caller reaches only some of the properties of the org. A payment belongs to the org and to no property, so the summary then
+/// shows what is owed on the properties reached and nothing about the payments: paid, balance, status and payments are <c>null</c>. A balance
+/// of every payment of the org against the tax of some of its properties would be false.
+/// </param>
 public sealed record TouristTaxSummary(
     FiscalReportPeriod Period,
     IReadOnlyList<ComuneTaxSummary> Comuni,
-    TouristTaxSummaryTotals Total);
+    TouristTaxSummaryTotals Total,
+    bool PaymentsHidden = false);
 
 /// <summary>
 /// What a payment is recorded with. The org is the caller's (the <see cref="Casazen.Core.Authorization.HostScope"/>), never part of the request.
@@ -154,6 +166,12 @@ public static class TouristTaxErrorCodes
 
     /// <summary>404: the payment has no receipt, or its file is no longer in the bucket.</summary>
     public const string ReceiptNotFound = "tourist_tax_receipt_not_found";
+
+    /// <summary>
+    /// 403: recording a payment, deleting one and opening its receipt need a scope that reaches the whole org. A payment belongs to the org and to
+    /// no property, so a caller who reaches only some properties has no part in them.
+    /// </summary>
+    public const string PaymentsNeedWholeOrg = "tourist_tax_payments_need_whole_org";
 }
 
 /// <summary>The kind of file a receipt really is, read from its content (<see cref="TouristTaxReceiptRules.Sniff"/>).</summary>

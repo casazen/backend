@@ -28,54 +28,59 @@ public static class TouristTaxSummaryDocuments
     public const string SummaryTitle =
         "Tassa di soggiorno per comune: dovuta sui soggiorni con check-in nel periodo, versata con periodo compreso nel periodo";
 
+    /// <summary>
+    /// The name of the summary of a caller who reaches only some of the properties: the tax owed on the stays of those properties and nothing
+    /// about the payments, which belong to the org and not to a property (<see cref="TouristTaxSummary.PaymentsHidden"/>).
+    /// </summary>
+    public const string OwedOnlyTitle =
+        "Tassa di soggiorno per comune: dovuta sui soggiorni con check-in nel periodo, solo degli immobili dell'ambito di accesso (versamenti non mostrati)";
+
     private const string Total = "Totale";
+
+    /// <summary>The name of <paramref name="summary"/> with its base: with the payments, or without them when they are hidden.</summary>
+    public static string TitleOf(TouristTaxSummary summary)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+
+        return summary.PaymentsHidden ? OwedOnlyTitle : SummaryTitle;
+    }
 
     /// <summary>
     /// The summary as a file: the title with its base and the days on the first row, the header, a row for each comune with what is owed,
     /// what was paid and the balance, the <c>Totale</c> row; then, after an empty row, the payments (a row for each, with its comune).
     /// The last column is the note: «Importo incompleto» on every row (and on the total) that counts stays with no amount recorded, because
-    /// then the owed amount, and so the balance and the status, may be incomplete.
+    /// then the owed amount, and so the balance and the status, may be incomplete. When the payments are hidden (a caller who reaches only
+    /// some of the properties) the file has the owed side only: no paid, balance and status columns and no list of payments.
     /// </summary>
     public static byte[] Csv(TouristTaxSummary summary, TouristTaxCsvTexts texts)
     {
         ArgumentNullException.ThrowIfNull(summary);
         ArgumentNullException.ThrowIfNull(texts);
 
+        var hidden = summary.PaymentsHidden;
+        var header = new List<object?> { "Comune", "Soggiorni", "Notti", "Ospiti", "Imposta dovuta (€)", "Soggiorni senza importo" };
+        if (!hidden)
+            header.AddRange(["Imposta versata (€)", "Saldo (€)", "Stato"]);
+        header.Add("Nota");
+
         var rows = new List<IReadOnlyList<object?>>
         {
-            Row($"{SummaryTitle}, dal {Date(summary.Period.From)} al {Date(summary.Period.To)}"),
-            Row(
-                "Comune",
-                "Soggiorni",
-                "Notti",
-                "Ospiti",
-                "Imposta dovuta (€)",
-                "Soggiorni senza importo",
-                "Imposta versata (€)",
-                "Saldo (€)",
-                "Stato",
-                "Nota"),
+            Row($"{TitleOf(summary)}, dal {Date(summary.Period.From)} al {Date(summary.Period.To)}"),
+            header,
         };
-        rows.AddRange(summary.Comuni.Select(c => Row(
-            c.Comune,
-            c.Stays,
-            c.Nights,
-            c.Guests,
-            c.Owed,
-            c.StaysWithoutAmount,
-            c.Paid,
-            c.Balance,
-            StatusLabel(c.Status, texts),
-            IncompleteNote(c.StaysWithoutAmount, texts))));
-        var t = summary.Total;
-        rows.Add(Row(Total, t.Stays, t.Nights, t.Guests, t.Owed, t.StaysWithoutAmount, t.Paid, t.Balance, null, IncompleteNote(t.StaysWithoutAmount, texts)));
+        rows.AddRange(summary.Comuni.Select(c => ComuneRow(c, hidden, texts)));
+        rows.Add(TotalRow(summary.Total, hidden, texts));
+
+        // The payments belong to the org: a summary that hides them has no list of them either.
+        if (hidden)
+            return CsvWriter.Write(rows);
 
         rows.Add(Row());
         rows.Add(Row("Versamenti registrati"));
         rows.Add(Row("Comune", "Periodo dal", "Periodo al", "Importo versato (€)", "Data del versamento", "Riferimento", "Note", "Ricevuta"));
         foreach (var comune in summary.Comuni)
         {
-            rows.AddRange(comune.Remittances.Select(r => Row(
+            rows.AddRange((comune.Remittances ?? []).Select(r => Row(
                 comune.Comune,
                 Date(r.PeriodFrom),
                 Date(r.PeriodTo),
@@ -118,6 +123,52 @@ public static class TouristTaxSummaryDocuments
     /// <summary>The note of a row: the incomplete-amount text when it counts stays with no amount, empty otherwise.</summary>
     private static string? IncompleteNote(int staysWithoutAmount, TouristTaxCsvTexts texts) =>
         staysWithoutAmount > 0 ? texts.IncompleteAmount : null;
+
+    /// <summary>A comune of the file: what is owed and, unless the payments are hidden, what was paid, the balance and the status; then the note.</summary>
+    private static IReadOnlyList<object?> ComuneRow(ComuneTaxSummary comune, bool paymentsHidden, TouristTaxCsvTexts texts)
+    {
+        var cells = new List<object?>
+        {
+            comune.Comune,
+            comune.Stays,
+            comune.Nights,
+            comune.Guests,
+            comune.Owed,
+            comune.StaysWithoutAmount,
+        };
+        if (!paymentsHidden)
+        {
+            cells.Add(comune.Paid);
+            cells.Add(comune.Balance);
+            cells.Add(comune.Status is { } status ? StatusLabel(status, texts) : null);
+        }
+
+        cells.Add(IncompleteNote(comune.StaysWithoutAmount, texts));
+        return cells;
+    }
+
+    /// <summary>The <c>Totale</c> row: the sums, no status (a total has none), and the note.</summary>
+    private static IReadOnlyList<object?> TotalRow(TouristTaxSummaryTotals total, bool paymentsHidden, TouristTaxCsvTexts texts)
+    {
+        var cells = new List<object?>
+        {
+            Total,
+            total.Stays,
+            total.Nights,
+            total.Guests,
+            total.Owed,
+            total.StaysWithoutAmount,
+        };
+        if (!paymentsHidden)
+        {
+            cells.Add(total.Paid);
+            cells.Add(total.Balance);
+            cells.Add(null);
+        }
+
+        cells.Add(IncompleteNote(total.StaysWithoutAmount, texts));
+        return cells;
+    }
 
     private static IReadOnlyList<object?> Row(params object?[] cells) => cells;
 
