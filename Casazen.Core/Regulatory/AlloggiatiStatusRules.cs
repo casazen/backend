@@ -10,6 +10,28 @@ namespace Casazen.Core.Regulatory;
 public static class AlloggiatiStatusRules
 {
     /// <summary>
+    /// The statuses of a booking that owes a police communication: confirmed, checked in or checked out. A request, a hold and a cancelled
+    /// booking owe none. The one definition of the Alloggiati job, the lists, the alerts and the check-in sent to the channel manager.
+    /// </summary>
+    public static readonly BookingStatus[] ActiveBookingStatuses =
+    [
+        BookingStatus.Confirmed,
+        BookingStatus.CheckedIn,
+        BookingStatus.CheckedOut,
+    ];
+
+    /// <summary>
+    /// True when the booking owes a police communication: a status of <see cref="ActiveBookingStatuses"/> and no no-show mark (NF-45: the
+    /// guests of a no-show never came, there is nobody to communicate). Queries repeat it as
+    /// <c>ActiveBookingStatuses.Contains(b.Status) &amp;&amp; b.NoShowAt == null</c>.
+    /// </summary>
+    public static bool IsDue(Booking booking)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        return ActiveBookingStatuses.Contains(booking.Status) && booking.NoShowAt is null;
+    }
+
+    /// <summary>
     /// The report that stands for a booking: the one of the booking's guest, or else the latest report of the booking (the same
     /// guest slot, CO-11). The Home (SR-03b) and the summary of the Alloggiati page read the same one.
     /// </summary>

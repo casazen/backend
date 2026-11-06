@@ -83,6 +83,37 @@ public class CheckInOctorateSyncServiceTests
     }
 
     [Fact]
+    public async Task OctorateCheckIn_OnlyAStayThatOwesACommunicationSendsGuests_Test()
+    {
+        // A request still waiting (WAITING on Octorate), a cancelled booking and a no-show owe no police communication: nothing leaves, even with
+        // the channel manager as sender, and no row is created.
+        foreach (var (status, noShow) in new[] { (BookingStatus.Pending, false), (BookingStatus.Cancelled, false), (BookingStatus.Confirmed, true) })
+        {
+            var h = await Harness.CreateAsync(ComplianceSenderType.ChannelManager, status: status, noShow: noShow);
+
+            var result = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
+
+            Assert.Equal(OctorateCheckInSendState.NotApplicable, result.State);
+            Assert.Equal(CheckInOctorateSyncService.ReasonBookingNotActive, result.Reason);
+            Assert.Empty(result.Guests);
+            h.Client.VerifyNoOtherCalls();
+            await using var db = h.NewDb();
+            Assert.Empty(await db.StayGuestOctorateLinks.ToListAsync());
+        }
+
+        // The stays that do owe it, the set of the Alloggiati job: confirmed, checked in and checked out send their two guests.
+        foreach (var status in new[] { BookingStatus.Confirmed, BookingStatus.CheckedIn, BookingStatus.CheckedOut })
+        {
+            var h = await Harness.CreateAsync(ComplianceSenderType.ChannelManager, status: status);
+
+            var result = await h.Service().SendGuestsAsync(h.BookingId, CancellationToken.None);
+
+            Assert.Equal(OctorateCheckInSendState.Sent, result.State);
+            Assert.Equal(2, h.Sent.Count);
+        }
+    }
+
+    [Fact]
     public async Task OctorateCheckIn_NoWriteWithoutConfirmedMapping_Test()
     {
         // A listing only proposed, ambiguous or rejected: not mirrored.
@@ -153,10 +184,12 @@ public class CheckInOctorateSyncServiceTests
             ComplianceSenderType sender,
             bool sendWhenNotChannelManager = false,
             OctorateMappingStatus mappingStatus = OctorateMappingStatus.Confirmed,
-            bool writesBlocked = false)
+            bool writesBlocked = false,
+            BookingStatus status = BookingStatus.Confirmed,
+            bool noShow = false)
         {
             var h = new Harness { _sender = sender, _sendWhenNotChannelManager = sendWhenNotChannelManager, _writesBlocked = writesBlocked };
-            await h.SeedAsync(mappingStatus);
+            await h.SeedAsync(mappingStatus, status, noShow);
             return h;
         }
 
@@ -201,7 +234,7 @@ public class CheckInOctorateSyncServiceTests
                 new FixedTimeProvider(Now));
         }
 
-        private async Task SeedAsync(OctorateMappingStatus mappingStatus)
+        private async Task SeedAsync(OctorateMappingStatus mappingStatus, BookingStatus status, bool noShow)
         {
             await using var db = NewDb();
             db.Orgs.Add(new OrgEntity { Id = OrgA, Name = "Org", Slug = $"org-{OrgA:N}", DisplayName = "Org" });
@@ -230,7 +263,8 @@ public class CheckInOctorateSyncServiceTests
                 GuestId = booker.Id,
                 CheckInDate = CheckIn,
                 CheckOutDate = CheckIn.AddDays(3),
-                Status = BookingStatus.Confirmed,
+                Status = status,
+                NoShowAt = noShow ? Now.UtcDateTime : null,
                 Source = BookingSource.Airbnb,
                 NumberOfGuests = 2,
                 BasePrice = 300m,

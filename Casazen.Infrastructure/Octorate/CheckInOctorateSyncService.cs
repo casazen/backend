@@ -4,6 +4,7 @@ using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
 using Casazen.Core.Octorate;
 using Casazen.Core.Options;
+using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
@@ -48,7 +49,9 @@ public static class CheckInErrorCodes
 /// never create the same guest twice; a send that finds the lock taken answers <c>send_in_progress</c>. The attempt is on record
 /// (<see cref="OctorateSyncStatus.Pending"/>) before the call and each Octorate answer is saved at once, so an id Octorate gave is never lost
 /// and a send cut short is taken again by the retry job.</para>
-/// <para><b>Stays that will not happen.</b> A cancelled booking or a no-show sends no guest (<c>booking_not_active</c>), a retry included.</para>
+/// <para><b>Stays that owe no communication.</b> Only a confirmed, checked-in or checked-out stay that is not a no-show sends its guests
+/// (<see cref="AlloggiatiStatusRules.IsDue"/>, the set of the Alloggiati job); a request still waiting, a cancelled booking and a no-show send
+/// none (<c>booking_not_active</c>), a retry included.</para>
 /// <para><b>Failures.</b> A typed Octorate error is a stable code on the row; the attempts are counted per payload and, at
 /// <c>Octorate:CheckInMaxAttempts</c>, one "To do" is raised for the booking (closed when a later attempt succeeds). Logs carry ids and codes,
 /// never a name or a document.</para>
@@ -94,8 +97,9 @@ public sealed class CheckInOctorateSyncService(
         if (target.Reason is { } notMirrored)
             return Nothing(OctorateCheckInSendState.NotMirrored, notMirrored);
 
-        // Police data of a stay that will not happen never leaves (a retry after a cancellation or a no-show included).
-        if (booking.Status == BookingStatus.Cancelled || booking.NoShowAt is not null)
+        // Police data leaves only for a stay that owes a communication: confirmed, checked in or checked out, never a no-show (the one definition
+        // of the Alloggiati job). A request still waiting (WAITING on Octorate), a cancelled booking and a no-show send nothing, a retry included.
+        if (!AlloggiatiStatusRules.IsDue(booking))
             return Nothing(OctorateCheckInSendState.NotApplicable, ReasonBookingNotActive);
 
         PropertySenderInfo sender;

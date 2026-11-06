@@ -55,13 +55,6 @@ public class AlloggiatiWebService(
     /// </summary>
     public static readonly TimeSpan LostJobGrace = TimeSpan.FromHours(1);
 
-    private static readonly BookingStatus[] ActiveBookingStatuses =
-    [
-        BookingStatus.Confirmed,
-        BookingStatus.CheckedIn,
-        BookingStatus.CheckedOut,
-    ];
-
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     private readonly IAlloggiatiCodeTableService _codeTables =
@@ -92,7 +85,7 @@ public class AlloggiatiWebService(
             .Include(b => b.Guest)
             .Include(b => b.Property)
             // A no-show (NF-45) has nothing to send: it leaves the list of the communications.
-            .Where(b => b.OrgId == scope.OrgId && ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
+            .Where(b => b.OrgId == scope.OrgId && AlloggiatiStatusRules.ActiveBookingStatuses.Contains(b.Status) && b.NoShowAt == null)
             .InScope(scope);
 
         if (propertyId.HasValue)
@@ -251,7 +244,7 @@ public class AlloggiatiWebService(
     public async Task<AlloggiatiReportReservation?> ReserveReportAsync(Guid bookingId)
     {
         var booking = await context.Bookings.FirstOrDefaultAsync(b => b.Id == bookingId);
-        if (booking is null || !ActiveBookingStatuses.Contains(booking.Status))
+        if (booking is null || !AlloggiatiStatusRules.ActiveBookingStatuses.Contains(booking.Status))
         {
             logger.LogInformation("Alloggiati report not scheduled: booking {BookingId} missing or not active", bookingId);
             return null;
@@ -329,7 +322,7 @@ public class AlloggiatiWebService(
             return AlloggiatiProcessOutcome.AlreadyHandled;
 
         // A no-show (NF-45) has nobody to communicate: it never reads "to send manually".
-        if (!ActiveBookingStatuses.Contains(booking.Status) || booking.NoShowAt is not null)
+        if (!AlloggiatiStatusRules.IsDue(booking))
             return AlloggiatiProcessOutcome.BookingInactive;
 
         if (!AlloggiatiTerms.IsArrivalDayReached(booking.CheckInDate, _clock.TodayInRome()))

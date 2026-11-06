@@ -36,7 +36,7 @@ public enum OctorateCheckInSendState
     /// <summary>The booking is not mirrored on Octorate (see the reason): nothing written, no row.</summary>
     NotMirrored = 0,
 
-    /// <summary>The sender of the property does not send through Octorate, or the stay is cancelled or a no-show (see the reason): nothing written.</summary>
+    /// <summary>The sender of the property does not send through Octorate, or the stay owes no communication (see the reason): nothing written.</summary>
     NotApplicable = 1,
 
     /// <summary>Every guest is already on Octorate as it is now.</summary>
@@ -71,7 +71,7 @@ public sealed record OctorateGuestSendResult(int Position, OctorateGuestSendOutc
 /// <summary>The outcome of a send of the guests.</summary>
 /// <param name="State">What happened overall.</param>
 /// <param name="Reason">A stable code when nothing was sent and the state says why (<c>no_reservation</c>, <c>not_connected</c>,
-/// <c>mapping_not_confirmed</c>, <c>writes_blocked</c>, <c>connector_off</c>, <c>booking_not_active</c> (cancelled or no-show),
+/// <c>mapping_not_confirmed</c>, <c>writes_blocked</c>, <c>connector_off</c>, <c>booking_not_active</c> (a request still waiting, cancelled or a no-show),
 /// <c>sender_not_applicable</c>, <c>sender_not_channel_manager</c>, <c>no_guests</c>, <c>send_in_progress</c>); null otherwise.</param>
 /// <param name="Draft">The guests were sent as drafts (the sender is not the channel manager).</param>
 /// <param name="Guests">One entry per guest of the stay.</param>
