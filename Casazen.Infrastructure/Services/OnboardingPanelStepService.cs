@@ -309,8 +309,9 @@ public sealed class OnboardingPanelStepService(
             throw StateInvalid();
 
         var now = Now();
+        var presentedHash = HashOf(presented);
         var matches = step.HandoffNonceHash is { Length: OnboardingPanelStep.HandoffNonceHashLength } stored
-                      && CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(stored), Encoding.ASCII.GetBytes(HashOf(presented)));
+                      && CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(stored), Encoding.ASCII.GetBytes(presentedHash));
         var alive = step.CallbackConsumedAt is null && step.HandoffExpiresAt is { } expires && expires > now;
         if (!matches || !alive)
         {
@@ -318,20 +319,28 @@ public sealed class OnboardingPanelStepService(
             throw StateInvalid();
         }
 
-        if (!await ClaimStateAsync(step, now, ct))
+        if (!await ClaimStateAsync(step, presentedHash, now, ct))
         {
             logger.LogInformation("Panel step {StepId} callback refused: the state was consumed by another request meanwhile", step.Id);
             throw StateInvalid();
         }
     }
 
-    /// <summary>Marks the state consumed. On PostgreSQL one statement that only passes while it is not consumed; on EF InMemory a tracked save.</summary>
-    private async Task<bool> ClaimStateAsync(OnboardingPanelStep step, DateTime now, CancellationToken ct)
+    /// <summary>
+    /// Marks the state consumed. On PostgreSQL one statement that only passes while the row still holds the presented state (its hash), not consumed
+    /// and not expired: a parallel presentation of the same state, a new hand-over that replaced the nonce and the expiry between the check in memory
+    /// and the claim all find it refused. On EF InMemory a tracked save.
+    /// </summary>
+    internal async Task<bool> ClaimStateAsync(OnboardingPanelStep step, string presentedHash, DateTime now, CancellationToken ct)
     {
         if (db.Database.IsRelational())
         {
             var claimed = await db.OnboardingPanelSteps
-                .Where(s => s.Id == step.Id && s.OrgId == step.OrgId && s.CallbackConsumedAt == null)
+                .Where(s => s.Id == step.Id
+                            && s.OrgId == step.OrgId
+                            && s.CallbackConsumedAt == null
+                            && s.HandoffNonceHash == presentedHash
+                            && s.HandoffExpiresAt > now)
                 .ExecuteUpdateAsync(set => set.SetProperty(s => s.CallbackConsumedAt, (DateTime?)now), ct);
             if (claimed != 1)
                 return false;
