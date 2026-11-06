@@ -175,6 +175,13 @@ public static class TestDataEntities
     /// </summary>
     public const string OctorateBookingSync = "OctorateBookingSync";
 
+    /// <summary>
+    /// The price and the rules of one night of a showcase house (<see cref="Entities.PropertyDayRule"/>, E08/F05/US01/T01, NF-36): the nights of the demo house
+    /// that have their own price, a minimum stay or a closed arrival. The rows go with their house (cascade) and the reset deletes their markers
+    /// with the other showcase markers; a rule the host wrote has no marker and is never touched.
+    /// </summary>
+    public const string PropertyDayRule = "PropertyDayRule";
+
     // E10/F01/US01/T04: the tables of the activation of CasaZen with Octorate. The reset deletes only the rows of these tables that carry a showcase
     // marker of the org (before its houses), so a real row has no marker and is never touched.
 
