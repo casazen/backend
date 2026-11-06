@@ -634,7 +634,8 @@ public sealed class MessageReplyService(
             clean,
             string.IsNullOrWhiteSpace(facts.ContactEmail) ? null : facts.ContactEmail.Trim());
 
-        // The address goes to the queue and nowhere else: not in the answer, not in a log, not in a row of ours.
+        // The address goes to the queue and nowhere else: not in the answer, not in a log, not in a row of ours. The job of the queue holds it, with the text,
+        // for the life of the job (Hangfire keeps a delivered job 24 hours by default).
         if (!emailQueue.Enqueue(address, content, EmailTemplates.Names.HostGuestMessage))
         {
             logger.LogWarning("The e-mail to the guest of booking {BookingId} (org {OrgId}) could not be queued", bookingId, scope.OrgId);

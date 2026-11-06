@@ -226,7 +226,9 @@ a pending or cancelled booking and a no-show get `no_conversation`, and the cont
 guest's address (`emailAvailable`: a flag; the address is not asked for to answer the options), else `None` with the reason. The e-mail reads the contact of **that one booking** (`POST /rest/v2/reservation/{acc}/{refer}/contactInfo`, a special
 permission that Octorate gives only to the registered static IP addresses of CasaZen, S7/D24, and logs on every read): until they are registered the answer is
 **409** `contact_info_unavailable` and nothing is queued. A read that Octorate answered is recorded as `ContactInfoRead` in the activity log (booking, person,
-purpose `message_to_guest`); the address and the phone number are in no answer, no log line and no row, and go only to the queue of the e-mails
+purpose `message_to_guest`); the address and the phone number are in no answer, no log line and no row of CasaZen's tables, and go only to the queue of the e-mails
+(where the Hangfire job holds the address, with the text of the e-mail, for the life of the job: it is removed after the last failed attempt, and a delivered job
+is kept 24 hours by default)
 (`EmailTemplates.HostGuestMessage`, Italian or English by the guest's country, the text of the host HTML-encoded, reply-to the organization's contact address).
 
 **Templates** (`api/message-templates`, `booking.read` to list and render, `booking.write` to change): name, language (one of the 14 of the listing), a body of up

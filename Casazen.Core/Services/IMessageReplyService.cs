@@ -23,8 +23,8 @@ namespace Casazen.Core.Services;
 /// <para><b>Nothing written to a channel that is not confirmed (OCT-04).</b> A conversation with no property, or whose property sits in a row of the
 /// mapping nobody decided, is not written to: 409 <c>mapping_not_confirmed</c> and nothing leaves. With the Octorate connector off nothing leaves either.</para>
 /// <para><b>Personal data.</b> The words of a message are never logged, and the e-mail address and the phone number that the channel manager gives for a
-/// booking never leave this service: they are not in an answer, a log or a stored row (the audit line <c>ContactInfoRead</c> holds the booking, the person
-/// who asked and the purpose).</para>
+/// booking never leave this service but for the queue of the e-mails: they are not in an answer, a log or a row of CasaZen's tables (the audit line
+/// <c>ContactInfoRead</c> holds the booking, the person who asked and the purpose); the job of the queue holds the address for as long as the job lives.</para>
 /// </remarks>
 public interface IMessageReplyService
 {
@@ -54,8 +54,9 @@ public interface IMessageReplyService
     /// <summary>
     /// Through which channel the guest of a booking is reached now (NF-63, AC-NF63-3): the conversation the booking has on a channel
     /// (<see cref="MessageContactChannel.Ota"/>), else the conversation with the guest of a direct booking while it is open
-    /// (<see cref="MessageContactChannel.Direct"/>, the host may write first), else, for a booking of a channel that has no chat, an e-mail when the
-    /// channel manager says it holds the guest's address (<see cref="MessageContactChannel.Email"/>), else <see cref="MessageContactChannel.None"/>
+    /// (<see cref="MessageContactChannel.Direct"/>, the host may write first), else, for an active stay (confirmed, checked in or checked out, not a no-show:
+    /// a pending or cancelled booking and a no-show get <c>no_conversation</c> and their contact is not read) of a channel that has no chat, an e-mail when
+    /// the channel manager says it holds the guest's address (<see cref="MessageContactChannel.Email"/>), else <see cref="MessageContactChannel.None"/>
     /// with the reason. A conversation whose mapping is not confirmed is never chosen. It reads <c>emailAvailable</c> and <c>phoneAvailable</c>, which are
     /// flags: it never asks for the address or the number, and never returns them. 404 <c>booking_not_found</c> for a booking out of the reach of the scope.
     /// </summary>

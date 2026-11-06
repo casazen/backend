@@ -21,7 +21,7 @@ namespace Casazen.Tests.Unit.Messages;
 
 /// <summary>
 /// E05/F02/US02/T01: the write side of the hub, on the real service over a database. The proofs the brief asks for (a send with one key reaches Octorate
-/// once; an outcome nobody knows is never sent again by the call; the address and the number of a guest are in no answer, no log and no row) and the rules
+/// once; an outcome nobody knows is never sent again by the call; the address and the number of a guest are in no answer, no log and no row of CasaZen's tables: only the queue of the e-mails holds the address, for the life of its job) and the rules
 /// that cost data or trust if they are wrong: a conversation the caller does not reach is a 404 and nothing leaves, a listing nobody decided is never written
 /// to, the first contact of Airbnb is kept inside Airbnb.
 /// </summary>
@@ -122,7 +122,8 @@ public class MessageReplyProofTests : IAsyncLifetime
 
     /// <summary>
     /// PROOF TEST: privacy rule (S7, D24, NF-63). The e-mail address and the phone number the channel manager gives for ONE booking are in no answer of the
-    /// API, no log line, no row of the database and no line of the activity log: they reach the queue of the e-mails and nothing else. The read is recorded as
+    /// API, no log line, no row of CasaZen's tables and no line of the activity log: they reach the queue of the e-mails and nothing else (the job of the queue
+    /// holds the address, with the text of the e-mail, for the life of the job: Hangfire keeps a delivered job 24 hours by default). The read is recorded as
     /// <c>ContactInfoRead</c> with the booking, the person and the purpose; the options of the channel carry flags, never the values.
     /// </summary>
     [Fact]
