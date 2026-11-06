@@ -341,9 +341,10 @@ internal static class PostgresAdvisoryLocks
         /// <summary>
         /// The check-in of one booking to Octorate (E03/F01/US01/T03; key: <c>{bookingId:N}:guests</c> for the send of its guests,
         /// <c>{bookingId:N}:state:{state}</c> for the push of one state): each runs one at a time (session lock, held for the whole send), so two
-        /// runs never create the same guest twice nor push the same state twice.
+        /// runs never create the same guest twice nor push the same state twice. The values 20_131 and 20_132 belong to other scopes of the
+        /// Octorate connector (epic E02), so this one is 20_133.
         /// </summary>
-        OctorateCheckInSync = 20_131,
+        OctorateCheckInSync = 20_133,
 
         /// <summary>
         /// The CRM profile of one guest (key: the guest id, <c>guestId.ToString("N")</c>, E07/F01/US02/T03): the sync of the booker run by the event
