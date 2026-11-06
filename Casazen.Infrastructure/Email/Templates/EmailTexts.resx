@@ -1770,6 +1770,24 @@
   <data name="HostContact_Why" xml:space="preserve">
     <value>Ricevi questa email perché il tuo sito di prenotazione ha un modulo per scriverti. Il visitatore ha accettato che il messaggio e il suo indirizzo email ti vengano inviati. Se non ti sembra un contatto vero, ignoralo.</value>
   </data>
+  <data name="HostGuestMessage_Subject" xml:space="preserve">
+    <value>Un messaggio da {0} per il tuo soggiorno</value>
+  </data>
+  <data name="HostGuestMessage_Body" xml:space="preserve">
+    <value>&lt;strong&gt;{0}&lt;/strong&gt; ti scrive a proposito del tuo soggiorno a &lt;strong&gt;{1}&lt;/strong&gt;, dal {2} al {3}.</value>
+  </data>
+  <data name="HostGuestMessage_MessageLabel" xml:space="preserve">
+    <value>Messaggio</value>
+  </data>
+  <data name="HostGuestMessage_Reply" xml:space="preserve">
+    <value>Per rispondere, rispondi a questa email: la risposta arriva direttamente a &lt;strong&gt;{0}&lt;/strong&gt;.</value>
+  </data>
+  <data name="HostGuestMessage_NoReply" xml:space="preserve">
+    <value>Questa email è stata inviata da CasaZen per conto della struttura: per rispondere contatta direttamente la struttura.</value>
+  </data>
+  <data name="HostGuestMessage_Why" xml:space="preserve">
+    <value>Ricevi questa email perché hai una prenotazione presso questa struttura: il messaggio lo ha scritto la struttura e CasaZen lo ha inviato per suo conto. Se non riconosci la prenotazione, ignora questa email.</value>
+  </data>
   <data name="GuestNewPhotoRequest_Subject" xml:space="preserve">
     <value>Nuova foto richiesta per il tuo soggiorno — {0}</value>
   </data>

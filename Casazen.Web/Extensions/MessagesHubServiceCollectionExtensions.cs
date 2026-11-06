@@ -19,6 +19,9 @@ public static class MessagesHubServiceCollectionExtensions
         // E05/F02/US01/T01 (NF-61, NF-64): the list, the thread detail, the read mark, the badges and the attachment of the hub.
         services.AddScoped<IMessageHubService, MessageHubService>();
 
+        // E05/F02/US02/T01 (NF-63): the write side of the hub, a reply to a conversation, the channel through which a guest is reached and the first message.
+        services.AddScoped<IMessageReplyService, MessageReplyService>();
+
         // The proxy of the attachments (ADR-032-R5): its own client, with no automatic redirect and a connection that goes to public addresses only
         // (the address was read from a channel, so it is untrusted); the 30 seconds and the 20 MB are kept by the fetcher itself, which reads the body.
         // RemoveAllLoggers: the logging handlers every client of the factory gets by default write «Sending HTTP request GET https://host/path» (the query

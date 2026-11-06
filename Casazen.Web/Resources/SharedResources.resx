@@ -3724,6 +3724,21 @@
   <data name="AttachmentUnavailable" xml:space="preserve">
     <value>L’allegato non è più disponibile.</value>
   </data>
+  <data name="MessageMappingNotConfirmed" xml:space="preserve">
+    <value>Questa conversazione non è collegata a un immobile confermato: finché non confermi il collegamento dell’annuncio nel channel manager non puoi rispondere da CasaZen.</value>
+  </data>
+  <data name="MessageChannelRuleViolation" xml:space="preserve">
+    <value>Prima della prenotazione il canale non permette di scrivere link, indirizzi e-mail o numeri di telefono: toglili dal messaggio.</value>
+  </data>
+  <data name="MessageContactInfoUnavailable" xml:space="preserve">
+    <value>Non è possibile leggere il recapito dell’ospite: il channel manager non lo rilascia (servono gli indirizzi dei server di CasaZen registrati e un permesso dedicato) oppure non ne ha uno. Scrivi all’ospite dal canale da cui ha prenotato.</value>
+  </data>
+  <data name="MessageNoContactChannel" xml:space="preserve">
+    <value>Da CasaZen non c’è modo di scrivere a questo ospite: il canale su cui ha prenotato non permette di iniziare una conversazione.</value>
+  </data>
+  <data name="OctorateChatNotSendable" xml:space="preserve">
+    <value>Questa conversazione non si può scrivere da CasaZen: il channel manager non indica chi scrive o l’identificativo della conversazione sul canale. Rispondi dal canale.</value>
+  </data>
   <data name="LeaseDocumentInvalid" xml:space="preserve"><value>Carica un PDF valido fino a 20 MB.</value></data>
   <data name="ApeIncomplete" xml:space="preserve">
     <value>Dati APE mancanti o non leggibili: {0}. Aggiungi tutte le pagine o sostituisci le foto poco nitide.</value>

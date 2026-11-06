@@ -3724,6 +3724,21 @@
   <data name="AttachmentUnavailable" xml:space="preserve">
     <value>The attachment is no longer available.</value>
   </data>
+  <data name="MessageMappingNotConfirmed" xml:space="preserve">
+    <value>This conversation is not linked to a confirmed property: until you confirm the link of the listing in the channel manager you cannot answer from CasaZen.</value>
+  </data>
+  <data name="MessageChannelRuleViolation" xml:space="preserve">
+    <value>Before the booking the channel does not allow links, email addresses or phone numbers: remove them from the message.</value>
+  </data>
+  <data name="MessageContactInfoUnavailable" xml:space="preserve">
+    <value>The contact details of the guest cannot be read: the channel manager does not release them (it needs the registered CasaZen server addresses and a dedicated permission) or the guest has none. Write to the guest on the channel they booked from.</value>
+  </data>
+  <data name="MessageNoContactChannel" xml:space="preserve">
+    <value>There is no way to write to this guest from CasaZen: the channel they booked on does not let you start a conversation.</value>
+  </data>
+  <data name="OctorateChatNotSendable" xml:space="preserve">
+    <value>This conversation cannot be written to from CasaZen: the channel manager does not say who writes or the identifier of the conversation on the channel. Answer on the channel.</value>
+  </data>
   <data name="LeaseDocumentInvalid" xml:space="preserve"><value>Upload a valid PDF up to 20 MB.</value></data>
   <data name="ApeIncomplete" xml:space="preserve">
     <value>Missing or unreadable certificate data: {0}. Add all pages or replace unclear photos.</value>

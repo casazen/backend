@@ -194,6 +194,40 @@ guests at `@example.com`): a direct stay of the lake villa waiting for an answer
 Booking.com request for the villa with no booking. They are rows of the hub only (marked `TestDataEntities.OtaMessageThread` / `GuestThread`); there is no
 connection to a channel manager behind them.
 
+## The hub, write side (E05/F02/US02, ADR-032, ADR-023, NF-63)
+
+**Reply** (`POST api/messages/threads/{threadKey}/reply`, policy `booking.write`, header `Idempotency-Key` 8 to 64 characters, body `{ text }`, rate limited
+per person like the direct reply). Answer `{ channel, threadKey, message, state, replayed, errorCode }`; `state` is the delivery state of the message:
+
+| State | Meaning | HTTP |
+|---|---|---|
+| `Sent` | the channel manager accepted it (also a direct message, and an e-mail that was queued) | 200 |
+| `Created`, `WaitingAuthorization` | the channel manager has it and sends it (it reports the next state; the copy of the conversation completes the row) | 200 |
+| `Error` | a typed refusal (a token it does not take, the chat module not in the license, a request it rejects), with its `errorCode`; the guest got nothing | 200 |
+| `ManualVerify` | no answer, a 5xx or an answer that cannot be read: the message **may** have gone. **This call never sends it again**; the copy of the conversation matches it with the message that arrived (same text, within ten minutes), or a person checks on the channel | 202 |
+
+The checks, in order: the conversation within the reach of the caller (**404** `thread_not_found`, also for another org's and for the unassigned one when the
+caller does not reach every property), the guest not erased (**409** `thread_closed`; also a direct thread past the seventh day after the check-out), a
+property whose mapping is decided and the connector on (**409** `mapping_not_confirmed`, OCT-04: nothing is sent; with the connector off **409**
+`octorate_not_connected`), the key (**422** `idempotency_key_invalid`), the rules of the channel (**422** `message_text_invalid`; **422** `channel_rule_violation`
+for a link, an e-mail address or a phone number on an Airbnb request, OCT-11, `MessageChannelRules`), and then the message with the same key, which is
+answered with `replayed: true` and sends nothing (OCT-10). A message that went out marks the inbound messages as read and the conversation as answered.
+
+**What is stored and when.** The outbound row (`OtaMessages`: `Direction` Outbound, `Origin` Person or Assistant, `RuleCode`, `SentByUserId`, the key) is written
+**before** the call and committed under the advisory lock of the thread; the call is made with no lock held; the outcome (the Octorate id, the state) is stored
+under the lock again. If the copy of the conversation read the thread in between and stored the message as one of the host side, that twin is removed (same
+Octorate id): the row that knows the key and the person stays. A row left in `Created` with no id for more than two minutes (the process stopped) is turned into
+`ManualVerify` by the next send with its key. A 429 (Octorate's, or the empty bucket of the org) removes the row and answers 429: the same key can be sent later.
+
+**First message** (`GET api/bookings/{id}/contact-options`, `POST api/bookings/{id}/messages/new`): the channel is the conversation the booking has on a channel
+(never one whose mapping is undecided), else the direct conversation while it is open, else, for a booking of a channel with no chat (Agoda, TripAdvisor,
+another portal), an **e-mail** when the channel manager says it holds the guest's address (`emailAvailable`: a flag; the address is not asked for to answer the
+options), else `None` with the reason. The e-mail reads the contact of **that one booking** (`POST /rest/v2/reservation/{acc}/{refer}/contactInfo`, a special
+permission that Octorate gives only to the registered static IP addresses of CasaZen, S7/D24, and logs on every read): until they are registered the answer is
+**409** `contact_info_unavailable` and nothing is queued. A read that Octorate answered is recorded as `ContactInfoRead` in the activity log (booking, person,
+purpose `message_to_guest`); the address and the phone number are in no answer, no log line and no row, and go only to the queue of the e-mails
+(`EmailTemplates.HostGuestMessage`, Italian or English by the guest's country, the text of the host HTML-encoded, reply-to the organization's contact address).
+
 ## Not here (deferred)
 
 Automatic answers and the keyword router, the disclosure line, emergencies, `GuestMessageDecision`, `responseTimeMinutes`, the guest's unread badge, the guest's language (the emails are Italian), attachments, the "Scrivi" shortcut from the

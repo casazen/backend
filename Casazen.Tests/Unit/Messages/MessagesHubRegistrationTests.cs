@@ -26,6 +26,32 @@ public class MessagesHubRegistrationTests
         Assert.Single(services, d => d.ServiceType == typeof(IOtaAttachmentFetcher));
     }
 
+    /// <summary>
+    /// E05/F02/US02/T01: the write side of the hub is registered once, scoped (it holds the database of the request). The exact list of what
+    /// <c>AddMessagesHub</c> registers is photographed here: a service added to it is added to this test.
+    /// </summary>
+    [Fact]
+    public void AddMessagesHub_RegistersTheReply_AsTheWholeListOfServices()
+    {
+        var services = new ServiceCollection();
+
+        services.AddMessagesHub();
+
+        Assert.Equal(typeof(MessageReplyService), Assert.Single(services, d => d.ServiceType == typeof(IMessageReplyService)).ImplementationType);
+        Assert.All(
+            new[] { typeof(IMessageHubService), typeof(IMessageReplyService) },
+            type => Assert.Equal(ServiceLifetime.Scoped, Assert.Single(services, d => d.ServiceType == type).Lifetime));
+
+        // Of the types of the application, these three and no other (the rest of the descriptors are the framework's: the typed client).
+        Assert.Equal(
+            [
+                nameof(IMessageHubService),
+                nameof(IMessageReplyService),
+                nameof(IOtaAttachmentFetcher),
+            ],
+            services.Select(d => d.ServiceType).Where(t => t.Namespace?.StartsWith("Casazen.", StringComparison.Ordinal) == true).Select(t => t.Name).Order());
+    }
+
     [Fact]
     public void TheAttachmentFetcher_IsResolvedFromTheContainer_WithItsOwnClient()
     {
