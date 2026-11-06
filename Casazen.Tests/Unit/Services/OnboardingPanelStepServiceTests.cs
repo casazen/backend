@@ -414,6 +414,49 @@ public class OnboardingPanelStepServiceTests : IAsyncLifetime
         Assert.Equal(TimeSpan.FromSeconds(60), again.NextCheckAt - _clock.GetUtcNow().UtcDateTime);
     }
 
+    /// <summary>
+    /// Proof (quota): starting again a window in which a check already ran does not give back the first check. Start and verify taken in turns
+    /// (the host opens the panel again, comes back, opens it again...) ask the verifier once within the gap, the attempts and the schedule are those
+    /// of the check, the status stays what the check found, and only the nonce is renewed. After the gap the explicit trigger runs again.
+    /// </summary>
+    [Fact]
+    public async Task Start_AgainWhileTheChecksRun_KeepsTheScheduleAndTheGap_SoStartAndVerifyInTurnsDoNotAskEveryTime()
+    {
+        var police = new ScriptedVerifier(PanelStepKind.PoliceConnection).Always(PanelVerificationOutcome.NotValid);
+        var service = Service(police);
+        var request = new PanelStepStartRequest(PanelStepKind.PoliceConnection, _world.Granted.Id);
+        var step = (await service.StartAsync(_world.OrgWide, _world.OwnerUserId, request, Ct)).Step;
+
+        // The first check, at once: nothing was checked yet. It found the step not valid.
+        await service.VerifyAsync(_world.OrgWide, step.Id, Ct);
+        Assert.Equal(1, police.Calls);
+        var checkedRow = await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync();
+        Assert.Equal((PanelStepStatus.NotValid, 1), (checkedRow.Status, checkedRow.VerificationAttempts));
+        var nonce = checkedRow.HandoffNonceHash;
+
+        for (var turn = 0; turn < 4; turn++)
+        {
+            _clock.Advance(TimeSpan.FromSeconds(2));
+            var again = await service.StartAsync(_world.OrgWide, _world.OwnerUserId, request, Ct);
+            Assert.Equal(PanelStepStatus.NotValid, again.Step.Status);
+            Assert.Equal(checkedRow.NextVerificationAt, again.Step.NextCheckAt);
+            await service.VerifyAsync(_world.OrgWide, step.Id, Ct);
+        }
+
+        Assert.Equal(1, police.Calls);
+        var stillRunning = await _db.OnboardingPanelSteps.AsNoTracking().SingleAsync();
+        Assert.Equal((1, checkedRow.NextVerificationAt, PanelVerificationOutcomes.NotValid), (stillRunning.VerificationAttempts, stillRunning.NextVerificationAt, stillRunning.LastVerificationOutcome));
+        Assert.Matches("^[0-9a-f]{64}$", stillRunning.HandoffNonceHash);
+        Assert.NotEqual(nonce, stillRunning.HandoffNonceHash);
+        Assert.Single(await _db.InternalActivities.ToListAsync());
+
+        // Ten seconds after the check the explicit trigger asks again, and the wait doubles as it would have.
+        _clock.Advance(TimeSpan.FromSeconds(3));
+        var later = await service.VerifyAsync(_world.OrgWide, step.Id, Ct);
+        Assert.Equal(2, police.Calls);
+        Assert.Equal(TimeSpan.FromSeconds(60), later.NextCheckAt - _clock.GetUtcNow().UtcDateTime);
+    }
+
     /// <summary>The verifier with the highest order of the kind is the only one that runs; the default of order 0 stays out of it.</summary>
     [Fact]
     public async Task TheVerifierWithTheHighestOrderOfTheKind_IsTheOneThatRuns()

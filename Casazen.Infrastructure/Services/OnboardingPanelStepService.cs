@@ -434,21 +434,31 @@ public sealed class OnboardingPanelStepService(
 
     // ─── Start ───────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>A new window of checks and a new hand-over for a step that is started again or found not valid.</summary>
+    /// <summary>
+    /// A new hand-over (the nonce, its expiry, the mode) for a step that is started again, and a new window of checks when none is running. A window
+    /// in which a check already ran, with its next check still scheduled, goes on as it is: the new hand-over only replaces the nonce, so starting
+    /// again never gives back the first check at once (start and verify taken in turns would otherwise ask Octorate every time, with no wait and no gap).
+    /// </summary>
     private static void Restart(OnboardingPanelStep step, PanelHandoffMode mode, string state, DateTime now, PanelStepResume? resume)
     {
-        step.Status = PanelStepStatus.Started;
+        var running = IsOpen(step) && step.VerificationAttempts > 0 && step.NextVerificationAt is not null;
+
         step.HandoffMode = mode;
         step.HandoffNonceHash = HashOf(state);
         step.HandoffExpiresAt = now.AddMinutes(PanelStepLimits.StateLifetimeMinutes);
         step.CallbackConsumedAt = null;
         step.StartedAt = now;
-        step.VerificationAttempts = 0;
-        step.NextVerificationAt = now + PanelStepLimits.BackoffAfter(1);
-        step.LastVerificationOutcome = null;
-        step.VerifiedAt = null;
-        step.CompletedAt = null;
-        step.CompletedByUserId = null;
+        if (!running)
+        {
+            step.Status = PanelStepStatus.Started;
+            step.VerificationAttempts = 0;
+            step.NextVerificationAt = now + PanelStepLimits.BackoffAfter(1);
+            step.LastVerificationOutcome = null;
+            step.VerifiedAt = null;
+            step.CompletedAt = null;
+            step.CompletedByUserId = null;
+        }
+
         if (resume is not null)
         {
             step.ResumeWizardType = resume.WizardType;

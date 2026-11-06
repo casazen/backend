@@ -27,8 +27,9 @@ public interface IOnboardingPanelStepService
 {
     /// <summary>
     /// Starts, or starts again, the step. Idempotent: one row for each org, property, kind and channel. A step already verified or confirmed, or that
-    /// support is handling, is answered as it is and nothing is restarted. A step started or found not valid gets a fresh window of checks and a new
-    /// hand-over. 409 <c>octorate_panel_url_missing</c> when the address of the panel is not configured.
+    /// support is handling, is answered as it is and nothing is restarted. A step started or found not valid gets a new hand-over (a new nonce) and a
+    /// fresh window of checks, unless a check already ran in its window: then the attempts, the wait and the status go on as they were, so starting
+    /// again never gives back the first check at once. 409 <c>octorate_panel_url_missing</c> when the address of the panel is not configured.
     /// </summary>
     Task<PanelStepStart> StartAsync(HostScope scope, string userId, PanelStepStartRequest request, CancellationToken ct);
 
