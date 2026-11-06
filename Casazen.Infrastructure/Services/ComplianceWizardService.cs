@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
 using Casazen.Core.Exceptions;
+using Casazen.Core.Features;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 using Casazen.Core.TouristTax;
@@ -22,7 +23,8 @@ public class ComplianceWizardService(
     ILogger<ComplianceWizardService> logger,
     TimeProvider? timeProvider = null,
     IComplianceStatusService? statusService = null,
-    IComplianceActivityFeeder? activityFeeder = null) : IComplianceWizardService
+    IComplianceActivityFeeder? activityFeeder = null,
+    IFeatureFlags? featureFlags = null) : IComplianceWizardService
 {
     /// <summary>The most items listed in each section of the compliance status (the count covers all of the ones that need attention).</summary>
     internal const int StatusSectionMaxItems = 50;
@@ -131,9 +133,12 @@ public class ComplianceWizardService(
             })
             .ToList();
 
-        // E03/F02/US01/T03 (NF-52): the traffic light of every item, from the one rule class. Without the status service (a caller that
-        // builds the wizard without it) the items carry the light of an item the host has to act on, and the new sections stay empty.
-        var status = statusService is null ? null : await statusService.EvaluateAsync(scope, cancellationToken);
+        // E03/F02/US01/T03 (NF-52): the traffic light of every item, from the one rule class, and the feed of the «Da fare» list. Behind
+        // Features:ComplianceTrafficLight, OFF by default (nothing in the application writes the proofs that turn an item green yet, so on it would
+        // give every stay of the last 90 days a red To do nobody can close). Off, the status is not even evaluated and the cockpit is what it was
+        // before: the items carry no light, the new sections are empty, the "to send by hand" section keeps every stay and nothing is written.
+        var lights = statusService is not null && featureFlags is not null && featureFlags.IsEnabled(FeatureFlags.ComplianceTrafficLight);
+        var status = lights ? await statusService!.EvaluateAsync(scope, cancellationToken) : null;
         var statusOfStay = (status?.Items ?? [])
             .Where(i => i.Kind == ComplianceItemKind.Alloggiati && i.BookingId is not null)
             .ToDictionary(i => i.BookingId!.Value);
@@ -143,22 +148,25 @@ public class ComplianceWizardService(
             .ToHashSet();
 
         var (alloggiatiFailures, alloggiatiManualRequired) =
-            await GetAlloggiatiSectionsAsync(scope, today, statusOfStay, supersededByStatus, cancellationToken);
+            await GetAlloggiatiSectionsAsync(scope, today, status is null ? null : statusOfStay, supersededByStatus, cancellationToken);
         var turnoversPending = await GetTurnoversPendingAsync(scope, cancellationToken);
+
+        // An item of the sections that existed: red with the code of its action when the traffic light is on, as it was (no light) when it is off.
+        ComplianceSummaryItem Lit(ComplianceSummaryItem item) => status is null ? item : WithOpenVerdict(item);
 
         var summary = new ComplianceSummaryResult(
             new ComplianceSummarySection(
                 pendingProperties.Count,
                 // Pending and suspended alike: the activation wizard opens on the first blocking step still open.
-                pendingProperties.Select(p => WithOpenVerdict(ComplianceSummaryItem.ForProperty(
+                pendingProperties.Select(p => Lit(ComplianceSummaryItem.ForProperty(
                     ComplianceCockpitAction.ActivateProperty, p.Id, p.Name))).ToList()),
-            new ComplianceSummarySection(incompleteCheckIns.Count, incompleteCheckIns.Select(WithOpenVerdict).ToList()),
-            new ComplianceSummarySection(checkoutDue.Count, checkoutDue.Select(WithOpenVerdict).ToList()),
+            new ComplianceSummarySection(incompleteCheckIns.Count, incompleteCheckIns.Select(Lit).ToList()),
+            new ComplianceSummarySection(checkoutDue.Count, checkoutDue.Select(Lit).ToList()),
             alloggiatiFailures,
             alloggiatiManualRequired,
             new ComplianceSummarySection(
                 turnoversPending.Count,
-                turnoversPending.Items.Select(WithOpenVerdict).ToList()))
+                turnoversPending.Items.Select(Lit).ToList()))
         {
             IdentityPending = StatusSection(status, i => i.Kind == ComplianceItemKind.Identity),
             ReceiptsToUpload = StatusSection(status, i => i.Kind == ComplianceItemKind.Alloggiati && i.Action == ComplianceCockpitAction.UploadAlloggiatiReceipt),
@@ -198,10 +206,12 @@ public class ComplianceWizardService(
     /// </summary>
     private static ComplianceSummaryItem WithStayVerdict(
         ComplianceSummaryItem item,
-        IReadOnlyDictionary<Guid, ComplianceStatusItem> statusOfStay) =>
-        item.BookingId is { } bookingId && statusOfStay.TryGetValue(bookingId, out var stayStatus) && stayStatus.Action == item.Action
-            ? WithVerdict(item, stayStatus.Verdict, null)
-            : WithOpenVerdict(item);
+        IReadOnlyDictionary<Guid, ComplianceStatusItem>? statusOfStay) =>
+        statusOfStay is null
+            ? item // the traffic light is off: the item is what it was
+            : item.BookingId is { } bookingId && statusOfStay.TryGetValue(bookingId, out var stayStatus) && stayStatus.Action == item.Action
+                ? WithVerdict(item, stayStatus.Verdict, null)
+                : WithOpenVerdict(item);
 
     private static ComplianceSummaryItem WithVerdict(ComplianceSummaryItem item, ComplianceVerdict verdict, string? period) =>
         item with
@@ -316,7 +326,7 @@ public class ComplianceWizardService(
     private async Task<(ComplianceSummarySection Failures, ComplianceSummarySection ManualRequired)> GetAlloggiatiSectionsAsync(
         HostScope scope,
         DateTime today,
-        IReadOnlyDictionary<Guid, ComplianceStatusItem> statusOfStay,
+        IReadOnlyDictionary<Guid, ComplianceStatusItem>? statusOfStay,
         IReadOnlySet<Guid> supersededByStatus,
         CancellationToken cancellationToken)
     {

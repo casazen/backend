@@ -2,6 +2,7 @@ using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Enums;
+using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
@@ -109,13 +110,14 @@ public class ComplianceWizardStatusTests
         var plain = await Wizard(db, world, withStatus: false).GetSummaryAsync(world.OrgWide);
         var lit = await Wizard(db, world).GetSummaryAsync(world.OrgWide);
 
-        // Without the status service: the same six sections, red with the code of the item, and nothing in the new ones.
+        // Without the status service: the same six sections, as they were (no light), and nothing in the new ones.
         Assert.Empty(plain.IdentityPending.Items);
         Assert.Empty(plain.ReceiptsToUpload.Items);
         Assert.Empty(plain.ManualSendsRequired.Items);
         Assert.Empty(plain.ConnectionsToFix.Items);
         Assert.Empty(plain.PeriodItems.Items);
-        Assert.All(plain.AlloggiatiManualRequired.Items, i => Assert.Equal((ComplianceLight.Red, ComplianceReasonCodes.AlloggiatiNotSent), (i.Light!.Value, i.Reason)));
+        Assert.All(plain.AlloggiatiManualRequired.Items, i => Assert.Null(i.Light));
+        Assert.All(lit.AlloggiatiManualRequired.Items, i => Assert.Equal(ComplianceLight.Red, i.Light!.Value));
 
         // With it: the same items in the same sections (the id, the label, the action, the target, the deadline), the light aside.
         static IEnumerable<(Guid Id, string Label, ComplianceCockpitAction Action, Guid? PropertyId, Guid? BookingId, DateTime? DueAt)> Shape(ComplianceSummarySection s) =>
@@ -152,9 +154,64 @@ public class ComplianceWizardStatusTests
         await Assert.ThrowsAsync<OperationCanceledException>(() => Wizard(db, world, feeder: feeder.Object).GetSummaryAsync(world.OrgWide));
     }
 
+    [Fact]
+    public async Task Summary_WithTheTrafficLightFlagOff_IsWhatItWasBefore_NothingEvaluatedAndNothingWritten()
+    {
+        var world = await World.SeedAsync();
+        world.Senders[world.Granted.Id] = ComplianceSenderType.ChannelManager;
+        var (toSend, _) = await world.AddStayAsync(world.Hidden, checkInOffset: -2);
+        var (longStay, _) = await world.AddStayAsync(world.Granted, checkInOffset: -1, nights: 40, guests: 1);
+        var (failed, _) = await world.AddStayAsync(world.Hidden, checkInOffset: -2, report: AlloggiatiWebStatus.Rifiutato);
+        await world.AddSessionAsync((await world.AddStayAsync(world.Granted, checkInOffset: 1)).Stay);
+        world.IdentityOn = true;
+
+        var status = new Mock<IComplianceStatusService>(MockBehavior.Strict);
+        var feeder = new Mock<IComplianceActivityFeeder>(MockBehavior.Strict);
+
+        await using var db = world.Db();
+        var off = await Wizard(db, world, feeder: feeder.Object, flagOn: false, status: status.Object).GetSummaryAsync(world.OrgWide);
+
+        // The status is not evaluated and the feed is not run (a strict mock fails on any call), and nothing is in the To do list.
+        status.VerifyNoOtherCalls();
+        feeder.VerifyNoOtherCalls();
+        Assert.Empty(await db.InternalActivities.AsNoTracking().ToListAsync());
+
+        // The items carry no light, reason or evidence; the new sections are empty; the stay that would be left to its own section by the traffic
+        // light (over 30 nights with the channel manager) is still in the one it was in.
+        var everyItem = new[]
+            {
+                off.PropertiesPending, off.GuestCheckInsIncomplete, off.CheckoutsDue, off.AlloggiatiFailures, off.AlloggiatiManualRequired,
+                off.TurnoversPending, off.IdentityPending, off.ReceiptsToUpload, off.ManualSendsRequired, off.ConnectionsToFix, off.PeriodItems,
+            }
+            .SelectMany(section => section.Items)
+            .ToList();
+        Assert.NotEmpty(everyItem);
+        Assert.All(everyItem, item =>
+        {
+            Assert.Null(item.Light);
+            Assert.Null(item.Reason);
+            Assert.Null(item.Period);
+            Assert.Null(item.EvidenceClass);
+            Assert.Null(item.EvidenceSource);
+            Assert.Null(item.LastVerifiedAt);
+            Assert.Null(item.HandoffTopic);
+        });
+        foreach (var section in new[] { off.IdentityPending, off.ReceiptsToUpload, off.ManualSendsRequired, off.ConnectionsToFix, off.PeriodItems })
+            Assert.Equal((0, 0), (section.Count, section.Items.Count));
+
+        Assert.Equal(new[] { toSend.Id, longStay.Id }.Order(), off.AlloggiatiManualRequired.Items.Select(i => i.BookingId!.Value).Order());
+        Assert.Equal(failed.Id, Assert.Single(off.AlloggiatiFailures.Items).BookingId);
+    }
+
     // ─── Helpers ────────────────────────────────────────────────────────────────────────────────────────
 
-    private static ComplianceWizardService Wizard(AppDbContext db, World world, bool withStatus = true, IComplianceActivityFeeder? feeder = null)
+    private static ComplianceWizardService Wizard(
+        AppDbContext db,
+        World world,
+        bool withStatus = true,
+        IComplianceActivityFeeder? feeder = null,
+        bool flagOn = true,
+        IComplianceStatusService? status = null)
     {
         var alloggiati = new Mock<IAlloggiatiWebService>();
         // The data of every guest is complete: this cockpit is about the traffic light, not about the check-in link.
@@ -168,12 +225,14 @@ public class ComplianceWizardStatusTests
             Mock.Of<IPropertyComplianceStatusService>(),
             NullLogger<ComplianceWizardService>.Instance,
             world.Clock,
-            withStatus ? world.StatusService(db) : null,
+            withStatus ? status ?? world.StatusService(db) : null,
             withStatus
                 ? feeder ?? new ComplianceActivityFeeder(
                     new InternalActivityService(db, NullLogger<InternalActivityService>.Instance, world.Clock),
+                    db,
                     new MemoryCache(new MemoryCacheOptions()),
                     NullLogger<ComplianceActivityFeeder>.Instance)
-                : null);
+                : null,
+            flagOn ? new TestFeatureFlags(FeatureFlags.ComplianceTrafficLight) : new TestFeatureFlags());
     }
 }

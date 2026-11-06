@@ -1476,7 +1476,10 @@ nothing compliant. The destination is configuration (`Octorate:FrontendBaseUrl` 
 and `:Istat` may add a deep link, used only once `Verified` is on; `AllowedHosts` widens the allowlist to named hosts), always https, without
 credentials and on an allowlisted host, and no booking, guest or period data is ever put in it (`docs/runbooks/deploy-checklist.md` § 2.11).
 
-**Traffic light (NF-52, CHK-12, E03/F02/US01/T03).** The light of every compliance item is decided in one place, `ComplianceLightRules`
+**Traffic light (NF-52, CHK-12, E03/F02/US01/T03).** All of it is behind `Features:ComplianceTrafficLight`, **off by default**: nothing in the application archives the
+proofs that turn an item green yet, so on, every stay of the last 90 days would get a red «Da fare» item nobody can close. Off, `GET /api/compliance/summary`, the Home of the
+day (`GET /api/dashboard/today`) and «Gestisci con AI», which read the same summary, get exactly what they got before (no light on the items, the five new sections empty,
+every stay to send by hand in `alloggiatiManualRequired`), the status is not evaluated and nothing is written. On, the light of every compliance item is decided in one place, `ComplianceLightRules`
 (`Casazen.Core/Services/IComplianceStatusService.cs`), from facts read by `IComplianceStatusService.EvaluateAsync(HostScope)` (`ComplianceStatusService`:
 about a dozen reads, all by the ids of the caller's properties and stays, so a collaborator «Solo alcuni» gets the lights of its properties and nothing of
 the others). **Green only ever comes from an archived proof** (a receipt CasaZen downloaded itself, live, or a `ManualComplianceProof` the host uploaded for
@@ -1508,14 +1511,19 @@ missing identity of an arriving guest is red), `Compliance:StatusLookbackDays` (
 (`docs/runbooks/deploy-checklist.md` § 2). The state the light needs to remember lives in four tables (`ComplianceAlertStates`, `ComplianceMonthlySummaryLogs`,
 `ComplianceSendLogEntries`, `ManualComplianceProofs`); the connection of a property is read by `GET /api/properties/{propertyId}/compliance/connection-health`.
 
-**The "To do" feed (AC-NF52-13, ADR-026).** Reading the summary also keeps the unified «Da fare» list in step (`ComplianceActivityFeeder`, not more than once a
-minute for the same caller): every red or yellow item that needs a person becomes **one** `InternalActivity` with the same action and id as the cockpit item
+**The "To do" feed (AC-NF52-13, ADR-026).** With the flag on, reading the summary also keeps the unified «Da fare» list in step (`ComplianceActivityFeeder`: the run of a
+caller holds its throttle of a minute from the start, so a parallel read does not repeat it, and does at most 50 changes, the most urgent first): every red or yellow item that needs a person becomes **one** `InternalActivity` with the same action and id as the cockpit item
 (`ActivityAction`: `SendAlloggiatiManually`, `ActivateOctorateSend`, `EnterMunicipalityTaxRate`, `DeclareTouristTax`, `RenewPoliceCredentials`, besides the existing
 `UploadAlloggiatiProof`, `VerifyIdentity` and `UploadIstatProof`; `ActivityType.TouristTaxDeadline` and `MunicipalityTaxRateMissing` are the new kinds), deduplicated
-by (action, entity type, entity id), and closed by the system when the item turns green or is not an item any more. The feeder reconciles only the activities of the
-stays, properties and months the evaluation looked at, that is the caller's reach; an item of a month is about its property and carries the month in its entity type
-(`PropertyPeriod:yyyy-MM`). `IInternalActivityService.FindOpenAsync(orgId, action, entityType, entityId)` (and a batch overload) finds the open activity of an
-action on an entity; an action name that is not a member of `ActivityAction` is an error, not a quiet «none».
+by (action, entity type, entity id), and closed by the system when the item turns green or is not an item any more. The feeder reconciles the activities of the
+stays, properties and months the evaluation looked at, that is the caller's reach; it also closes, in the same reach, the open activity of a stay the evaluation no longer
+looks at because the stay owes nothing any more (cancelled, a request, a no-show, not there, or arrived before the lookback), and leaves an active stay that simply arrives
+later alone. An open activity this feed raised whose type, urgency or reason no longer say what its item says (the receipt to upload instead of the communication to send, a
+yellow that turned red) is closed and raised again; an activity another producer raised (its reason is a text, not a code) is never rewritten. The connection activity of a
+property whose send was not read in the evaluation (over the five live reads of a call) is neither raised nor closed. An item of a month is about its property and carries the
+month in its entity type (`PropertyPeriod:yyyy-MM`). `IInternalActivityService.FindOpenAsync(orgId, action, entityType, entityId)` (and a batch overload) finds the open
+activity of an action on an entity, `FindOpenInScopeAsync(scope, action, entityType, exceptEntityIds)` the open ones of a caller's reach; an action name that is not a member
+of `ActivityAction` is an error, not a quiet «none».
 
 | `action` | Section | Web screen |
 |---|---|---|
