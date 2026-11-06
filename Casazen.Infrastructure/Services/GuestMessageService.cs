@@ -406,14 +406,15 @@ public sealed class GuestMessageService(
     /// <summary>
     /// The alert to the hosts of the booking, through the decision point of the preferences (NF-65): the people who reach the property and chose
     /// it get the counter, a push for every message of the guest (unlike the email, which is throttled) and an email to their own address at most
-    /// once every ten minutes. The texts name the property only, never the guest's words. Best effort after the message is saved: whatever goes
-    /// wrong here is logged and never fails the send.
+    /// once every ten minutes. The texts name the property only, never the guest's words. After the message is saved, whatever goes wrong here
+    /// never fails the send: somebody who could not be alerted is alerted by a job that delivers the alert again
+    /// (<see cref="HostMessageAlertDelivery.DeliverOrRetryAsync"/>), and only a failure to queue that job is logged and lost.
     /// </summary>
     private async Task AlertHostsAsync(Booking booking, Guid threadId, Guid messageId, DateTime now, CancellationToken cancellationToken)
     {
         try
         {
-            await hostAlerts.DeliverAsync(
+            await hostAlerts.DeliverOrRetryAsync(
                 new HostMessageAlert(booking.OrgId, HostMessageSource.Direct, NotificationEventType.NewGuestMessage, threadId, messageId, now),
                 cancellationToken);
         }

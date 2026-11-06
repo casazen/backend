@@ -48,4 +48,13 @@ public sealed class HostMessageAlertDueJob(HostMessageAlertDelivery delivery)
     [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
     public Task DeliverAsync(QueuedMessageAlert queued, CancellationToken cancellationToken) =>
         delivery.DeliverDeferredAsync(queued, cancellationToken);
+
+    /// <summary>
+    /// Delivers again the whole alert of a message of a direct booking that failed for somebody (<see cref="HostMessageAlertDelivery.DeliverOrRetryAsync"/>):
+    /// the message has no event of the outbox to be delivered again. Ids and an instant only, like the alert itself. Everything the first run
+    /// did is not done twice (the keys of the notification and of the push, the slot of the email), and a failure here is retried by Hangfire.
+    /// </summary>
+    [AutomaticRetry(Attempts = MaxAttempts, OnAttemptsExceeded = AttemptsExceededAction.Delete)]
+    public Task RetryAsync(HostMessageAlert alert, CancellationToken cancellationToken) =>
+        delivery.DeliverAsync(alert, cancellationToken);
 }

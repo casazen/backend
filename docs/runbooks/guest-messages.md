@@ -70,7 +70,9 @@ for a conversation not mapped to a property. The quiet hours of the person (22:0
 they end (`HostMessageAlertDueJob`, which asks the service again before it sends), never the counter. **No text, no guest name (channel) and no
 address of the guest is in a push, an email or a notification.** An urgent message (`UrgentGuestMessage`) is alerted by the assistant (E05/F05)
 through the same delivery. The OTA handler throws when a person could not be told, and the bus delivers the event again (nobody is told twice); the
-send of a direct message never fails for it.
+send of a direct message never fails for it: it has no event to be delivered again, so a failure is logged and the whole alert is handed to a
+Hangfire job (`HostMessageAlertDueJob.RetryAsync`, 30 seconds later, with the retries of Hangfire), which delivers it again without telling anybody
+twice. An error while the permissions are read is not taken for «no»: it is thrown (`HasPermissionOrThrowAsync`), so the bus or the job tries again.
 
 ## Emails (the only writes to a third party)
 

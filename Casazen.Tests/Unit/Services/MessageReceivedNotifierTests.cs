@@ -539,6 +539,68 @@ public class MessageReceivedNotifierTests : IDisposable
         Assert.Equal(2, await _db.InAppNotifications.CountAsync());
     }
 
+    [Fact]
+    public async Task DeliverOrRetry_APersonCannotBeAlerted_TheAlertGoesToAJob_AndNothingIsThrown()
+    {
+        // A message of a direct booking has no event of the outbox to be delivered again, and its send must not fail.
+        var world = await SeedAsync();
+        var alert = AlertOnA(world);
+        var refusing = new Mock<IPushNotificationService>();
+        refusing
+            .Setup(p => p.Enqueue(It.IsAny<string>(), It.Is<PushAudience>(a => a.UserId == Collaborator), It.IsAny<PushNotificationPayload>()))
+            .Returns(false);
+        refusing
+            .Setup(p => p.Enqueue(It.IsAny<string>(), It.Is<PushAudience>(a => a.UserId == Owner), It.IsAny<PushNotificationPayload>()))
+            .Returns(true);
+
+        await Delivery(refusing.Object).DeliverOrRetryAsync(alert, CancellationToken.None);
+
+        var retry = Assert.Single(_created, c => c.Job.Type == typeof(HostMessageAlertDueJob));
+        Assert.Equal(nameof(HostMessageAlertDueJob.RetryAsync), retry.Job.Method.Name);
+        Assert.Equal(alert, retry.Job.Args[0]);
+        Assert.IsType<ScheduledState>(retry.State);
+        Assert.Equal(2, await _db.InAppNotifications.CountAsync());
+
+        // The job delivers the alert again: the collaborator is told now, and what was done is not done twice.
+        await new HostMessageAlertDueJob(Delivery()).RetryAsync(alert, CancellationToken.None);
+
+        Assert.Contains(_push.Queued, p => p.Audience == PushAudience.User(world.OrgId, Collaborator));
+        Assert.Equal(2, await _db.InAppNotifications.CountAsync());
+        _publisher.Verify(p => p.PublishAsync(Collaborator, PushTypes.OtaMessage, world.OnA.Thread.Id, It.IsAny<CancellationToken>()), Times.Once);
+        _publisher.Verify(p => p.PublishAsync(Owner, PushTypes.OtaMessage, world.OnA.Thread.Id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeliverOrRetry_TheArgumentsOfTheRetryJob_SurviveTheSerializationOfHangfire()
+    {
+        var world = await SeedAsync();
+        var alert = AlertOnA(world);
+        var refusing = new Mock<IPushNotificationService>();
+        refusing.Setup(p => p.Enqueue(It.IsAny<string>(), It.IsAny<PushAudience>(), It.IsAny<PushNotificationPayload>())).Returns(false);
+
+        await Delivery(refusing.Object).DeliverOrRetryAsync(alert, CancellationToken.None);
+        var job = Assert.Single(_created, c => c.Job.Type == typeof(HostMessageAlertDueJob)).Job;
+
+        var stored = InvocationData.SerializeJob(job).DeserializeJob();
+
+        Assert.Equal(nameof(HostMessageAlertDueJob.RetryAsync), stored.Method.Name);
+        Assert.Equal(alert, Assert.IsType<HostMessageAlert>(stored.Args[0]));
+    }
+
+    [Fact]
+    public async Task DeliverOrRetry_EverybodyIsAlerted_NoJobIsQueued()
+    {
+        var world = await SeedAsync();
+
+        await Delivery().DeliverOrRetryAsync(AlertOnA(world), CancellationToken.None);
+
+        Assert.DoesNotContain(_created, c => c.Job.Type == typeof(HostMessageAlertDueJob));
+        Assert.Equal(2, _push.Queued.Count);
+    }
+
+    private static HostMessageAlert AlertOnA(World world) =>
+        new(world.OrgId, HostMessageSource.Ota, NotificationEventType.NewGuestMessage, world.OnA.Thread.Id, world.OnA.Message.Id, Noon);
+
     // ─── Privacy (ADR-022-R21, ADR-032-R13) ───
 
     /// <summary>

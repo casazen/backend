@@ -5,6 +5,7 @@ using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.Email.Templates;
+using Casazen.Infrastructure.Jobs;
 using Casazen.Infrastructure.Services;
 using Casazen.Tests.Integration.Postgres;
 using Casazen.Tests.Unit;
@@ -177,6 +178,14 @@ public class GuestMessageNotificationsPostgresTests : IAsyncLifetime
         Assert.False(sent.Replayed);
         await using var db = NewDb();
         Assert.Equal(1, await db.GuestMessages.CountAsync());
+
+        // The alert is not lost: a job delivers it again (the keys of the notification and of the push and the slot of the email are idempotent).
+        var retry = Assert.Single(_jobs.Invocations, i => i.Method.Name == "Create");
+        var job = Assert.IsType<Hangfire.Common.Job>(retry.Arguments[0]);
+        Assert.Equal(typeof(HostMessageAlertDueJob), job.Type);
+        Assert.Equal(nameof(HostMessageAlertDueJob.RetryAsync), job.Method.Name);
+        var alert = Assert.IsType<HostMessageAlert>(job.Args[0]);
+        Assert.Equal((HostMessageSource.Direct, sent.Message.Id), (alert.Source, alert.MessageId));
     }
 
     // ─── Reading clears the notifications ───

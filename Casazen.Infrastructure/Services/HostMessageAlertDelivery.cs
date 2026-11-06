@@ -67,7 +67,8 @@ public sealed record HostMessageAlert(
 /// </list>
 /// A failure of one person does not stop the others; after all of them were tried the call throws, so the event bus delivers the event again: what
 /// was done is not done twice (the delivery keys of the notification and of the push, and the slot of the email, which a redelivery finds taken: an
-/// email is at most once, never twice). The caller that must not fail (the send of a message) catches.
+/// email is at most once, never twice). The send of a message of a direct booking, which must not fail and has no event to be delivered again,
+/// calls <see cref="DeliverOrRetryAsync"/>: a failure is handed to a job that delivers the alert again.
 /// </remarks>
 public sealed class HostMessageAlertDelivery(
     AppDbContext db,
@@ -89,6 +90,9 @@ public sealed class HostMessageAlertDelivery(
 
     /// <summary>How long an email slot is kept after its last use before the next claim of the person deletes it.</summary>
     private static readonly TimeSpan SlotRetention = TimeSpan.FromDays(7);
+
+    /// <summary>How long a failed alert of a direct message waits before the job delivers it again (a passing error has time to pass).</summary>
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
 
     /// <summary>Alerts every host the preferences select. Throws, after trying everybody, when a person could not be alerted.</summary>
     public async Task DeliverAsync(HostMessageAlert alert, CancellationToken ct)
@@ -132,6 +136,28 @@ public sealed class HostMessageAlertDelivery(
             throw new AggregateException(
                 $"{failures.Count} of {recipients.Count} people could not be alerted about {alert.ThreadKey}",
                 failures);
+        }
+    }
+
+    /// <summary>
+    /// <see cref="DeliverAsync"/> for the alert of a message of a direct booking, which has no event of the outbox behind it to be delivered
+    /// again and must never fail the send of the message: when somebody could not be alerted (or the audience could not be read) the failure is
+    /// logged and the whole alert is handed to a job (<see cref="HostMessageAlertDueJob.RetryAsync"/>) that delivers it again with the retries
+    /// of Hangfire. What the first run did is not done twice: the keys of the notification and of the push and the slot of the email are
+    /// idempotent. Only a failure to queue the job itself is thrown (the caller logs it).
+    /// </summary>
+    public async Task DeliverOrRetryAsync(HostMessageAlert alert, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+
+        try
+        {
+            await DeliverAsync(alert, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Message alert {ThreadKey} of org {OrgId} failed: it is tried again by a job", alert.ThreadKey, alert.OrgId);
+            jobs.Schedule<HostMessageAlertDueJob>(job => job.RetryAsync(alert, CancellationToken.None), RetryDelay);
         }
     }
 
