@@ -1129,10 +1129,11 @@ no channel are closed (`OtaChannelActionPolicy.For`). A *booking of a channel* i
   (row `Pending`, or the lock taken) is delivered again after it; the create of a booking that was cancelled while its target was read makes no reservation.
 - *The client* (`IOctorateApiClient.CancelReservationAsync(target, reservationId)`): reads the reservation (a reservation that is `CANCELLED` already is
   done: the retry of a cancellation whose answer was lost sends nothing, D13), sends the same document back with `PUT /rest/v1/reservation/{acc}/{id}` and
-  only its `status` changed to `CANCELLED` (the documented way: `PATCH` cannot move a confirmed reservation to cancelled), and, when Octorate refuses the
-  request itself (`OctorateRequestRejectedException`: 400, 405, 406, 415, 422...), `DELETE`s the reservation, the way the sandbox proved on 2026-11-04.
-  Any other answer is the typed error of the client. The answers of the PUT are **not proven on the sandbox yet**: check them, and then the channels one by
-  one, before opening a flag.
+  only its `status` changed to `CANCELLED` (the documented way: `PATCH` cannot move a confirmed reservation to cancelled). A 2xx of the PUT is not the
+  proof (the sandbox ignores, without saying so, the fields it does not write): the reservation is read again and only a `CANCELLED` one is a success; one
+  that is still alive is `DELETE`d, as it is when Octorate refuses the request itself (`OctorateRequestRejectedException`: 400, 405, 406, 415, 422...), the
+  way the sandbox proved on 2026-11-04. Any other answer, the read that checks the PUT included, is the typed error of the client, never a delete and never
+  a success. The answers of the PUT are **not proven on the sandbox yet**: check them, and then the channels one by one, before opening a flag.
 
 #### Marketplace (epic E09, NF-54 to NF-59)
 

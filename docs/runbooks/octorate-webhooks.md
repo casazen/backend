@@ -106,7 +106,7 @@ times (after 1, 5 and 15 minutes) and then stays failed in the Hangfire dashboar
 
 **Cancellation (E08/F02/US02).** A booking CasaZen holds (a direct one, one the host entered) that is cancelled in CasaZen is cancelled on
 Octorate after it: `OctorateBookingCancelHandler` (consumer of `BookingCancelled`, under the session lock `OctorateBookingSync` of the
-booking) marks its row `Pending`, cancels the reservation (`PUT` with the status `CANCELLED`, `DELETE` when Octorate refuses that way) and
+booking) marks its row `Pending`, cancels the reservation (`PUT` with the status `CANCELLED`, read again to check it, `DELETE` when Octorate refuses that way or leaves the reservation alive) and
 marks it `Synced`; no answer, 429 or 5xx leave it `Failed` and the dispatcher delivers the event again. The `RESERVATION_CANCELLED`
 notification that follows is the echo of that write: the import finds the booking cancelled and changes nothing. A cancellation that came
 from Octorate (`Origin = Octorate`) is never sent back. A booking of a channel goes the other way round: `POST /api/bookings/{id}/cancel`

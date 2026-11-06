@@ -43,11 +43,14 @@ public class OctorateCancelReservationClientTests
         var h = new ClientHarness();
         h.Answer(HttpStatusCode.OK, ConfirmedReservation);
         h.Answer(HttpStatusCode.OK, ConfirmedReservation.Replace("CONFIRMED", "CANCELLED", StringComparison.Ordinal));
+        h.Answer(HttpStatusCode.OK, ConfirmedReservation.Replace("CONFIRMED", "CANCELLED", StringComparison.Ordinal));
 
         using (h.Scope.Use(OrgA))
             await h.Client.CancelReservationAsync(Target, "7001", CancellationToken.None);
 
-        Assert.Equal([HttpMethod.Get, HttpMethod.Put], h.Requests.Select(r => r.Method).ToList());
+        // The read, the PUT, and the read that proves the reservation is cancelled: no delete.
+        Assert.Equal([HttpMethod.Get, HttpMethod.Put, HttpMethod.Get], h.Requests.Select(r => r.Method).ToList());
+        Assert.EndsWith("/rest/v1/reservation/585492/7001", h.Requests[2].Uri.PathAndQuery);
         var put = h.Requests[1];
         Assert.EndsWith("/rest/v1/reservation/585492/7001", put.Uri.PathAndQuery);
         using var document = JsonDocument.Parse(put.Body);
@@ -78,6 +81,60 @@ public class OctorateCancelReservationClientTests
 
         Assert.Equal([HttpMethod.Get, HttpMethod.Put, HttpMethod.Delete], h.Requests.Select(r => r.Method).ToList());
         Assert.EndsWith("/rest/v1/reservation/585492/7001", h.Requests[2].Uri.PathAndQuery);
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule (NF-76, "never a success Octorate did not confirm"). A PUT that Octorate answers 200 and that leaves the reservation
+    /// as it was (the status is ignored, as the sandbox ignores the fields it does not write) is no cancellation: the reservation is read again
+    /// and, still alive, it is deleted, the way the sandbox proved. Its answer is not the proof, nor is the status of the answer of the PUT.
+    /// </summary>
+    [Fact]
+    public async Task CancelReservationAsync_APutOctorateAcceptsAndDoesNotApply_DeletesTheReservation()
+    {
+        foreach (var heldAfterThePut in new[] { ConfirmedReservation, """{ "id": 7001, "status": "WAITING" }""", """{ "id": 7001 }""" })
+        {
+            var h = new ClientHarness();
+            h.Answer(HttpStatusCode.OK, ConfirmedReservation);
+
+            // The PUT answers 200 with a document that says CANCELLED (an echo of what was sent) and the read that follows says it is not.
+            h.Answer(HttpStatusCode.OK, ConfirmedReservation.Replace("CONFIRMED", "CANCELLED", StringComparison.Ordinal));
+            h.Answer(HttpStatusCode.OK, heldAfterThePut);
+            h.Answer(HttpStatusCode.OK, "{}");
+
+            using (h.Scope.Use(OrgA))
+                await h.Client.CancelReservationAsync(Target, "7001", CancellationToken.None);
+
+            Assert.Equal(
+                [HttpMethod.Get, HttpMethod.Put, HttpMethod.Get, HttpMethod.Delete],
+                h.Requests.Select(r => r.Method).ToList());
+            Assert.EndsWith("/rest/v1/reservation/585492/7001", h.Requests[3].Uri.PathAndQuery);
+        }
+    }
+
+    [Fact]
+    public async Task CancelReservationAsync_TheReadThatChecksThePutFails_IsTheTypedError_AndNeverDeletes()
+    {
+        foreach (var (status, expected) in new (HttpStatusCode, Type)[]
+                 {
+                     (HttpStatusCode.InternalServerError, typeof(OctorateServerException)),
+                     (HttpStatusCode.NotFound, typeof(OctorateNotFoundException)),
+                     (HttpStatusCode.BadRequest, typeof(OctorateRequestRejectedException)),
+                 })
+        {
+            var h = new ClientHarness();
+            h.Answer(HttpStatusCode.OK, ConfirmedReservation);
+            h.Answer(HttpStatusCode.OK, "{}");
+            h.Answer(status, "{}");
+
+            using (h.Scope.Use(OrgA))
+            {
+                var error = await Assert.ThrowsAnyAsync<OctorateException>(() => h.Client.CancelReservationAsync(Target, "7001", CancellationToken.None));
+                Assert.IsType(expected, error);
+            }
+
+            // Nothing is deleted on a read that failed, and nothing is reported as cancelled.
+            Assert.Equal([HttpMethod.Get, HttpMethod.Put, HttpMethod.Get], h.Requests.Select(r => r.Method).ToList());
+        }
     }
 
     [Fact]
