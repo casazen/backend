@@ -395,7 +395,7 @@ One read for the properties and one each for the bookings, their payments, the b
 `GET /api/bookings/calendar` is not touched. The Home puts the nights taken twice among its things to do (`ResolveCalendarConflict`,
 below), from `CalendarAlertRules`, the calculation the future alerts of the calendar will share.
 
-**The price and the rules of the nights (E08/F05/US01, NF-36, NF-78; `IPropertyDayRuleService`, table `PropertyDayRules`).** CasaZen had one
+**The price and the rules of the nights (E08/F05/US01, NF-36, NF-78; `IPropertyDayRuleService`, tables `PropertyDayRules`, `CalendarChangeProcesses` and `CalendarChangeChunks`, migration `AddPropertyDayRulesAndCalendarChanges`, no flag: nothing writes a rule until the changes API of E08/F05/US02 ships).** CasaZen had one
 minimum stay per property (`Property.MinNights`) and a price for a date only through the seasonal proposals the host confirmed; a
 night can now have its own price, a minimum and a maximum stay, an arrival or a departure closed, and a minimum and a maximum advance.
 One row per property and stay date (unique `(PropertyId, StayDate)`), written only while a value is set (a row left with no value is
