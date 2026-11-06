@@ -1,9 +1,6 @@
-using Casazen.Core.Entities;
-using Casazen.Core.Entities.Enums;
 using Casazen.Core.Features;
 using Casazen.Core.Services;
 using Casazen.Core.Utilities;
-using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
 using Casazen.Web.DTOs.Alloggiati;
 using Casazen.Web.DTOs.CheckIn;
@@ -12,9 +9,7 @@ using Casazen.Web.Resources;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
-using System.Text.Json;
 
 namespace Casazen.Web.Controllers;
 
@@ -29,11 +24,8 @@ public class PublicGuestCheckInController(
     IGuestCheckInService checkInService,
     IAlloggiatiCodeTableService codeTableService,
     IAlloggiatiReportScheduler alloggiatiReportScheduler,
-    IMrzExtractionService mrzService,
-    IDocumentOcrService ocrService,
-    IBiometricVerificationService biometricService,
-    AppDbContext dbContext,
-    TimeProvider timeProvider,
+    IIdentityVerificationFlowService verificationFlow,
+    IFeatureFlags featureFlags,
     IStringLocalizer<SharedResources> localizer,
     ILogger<PublicGuestCheckInController> logger) : ControllerBase
 {
@@ -42,6 +34,9 @@ public class PublicGuestCheckInController(
 
     /// <summary>Problem code of a language the page does not offer (400).</summary>
     public const string LanguageUnsupportedCode = "language_unsupported";
+
+    /// <summary>Problem code of a selfie without a recorded biometric consent (409, ADR-013-R9).</summary>
+    public const string BiometricConsentRequiredCode = "biometric_consent_required";
 
     /// <summary>
     /// Extension of the 400 of the submit (NF-40): a map from each field key (<c>Guests[1].DocumentNumber</c>) to the message key of
@@ -56,10 +51,14 @@ public class PublicGuestCheckInController(
     /// </summary>
     public const int MaxImageRequestBytes = 10_000_000;
 
+    private static readonly string[] AllowedImageTypes = ["image/jpeg", "image/jpg", "image/png"];
+
     /// <summary>
     /// Returns booking context for the guest form. Transitions session Inviato→InCompilazione on first open.
     /// Before completion the guests on file are returned with masked document numbers; after completion only the status is
-    /// returned (no booking data, no PII), so the guest still sees that the check-in is done (A5-28).
+    /// returned (no booking data, no PII), so the guest still sees that the check-in is done (A5-28). While
+    /// <see cref="FeatureFlags.CheckInIdentityVerification"/> is on, an open session also says whether the property keeps no document
+    /// (<c>documentNotArchived</c>, ADR-013-R15) and where the identity verification stands (E03/F04/US02/T04).
     /// </summary>
     [HttpGet("{token}")]
     [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
@@ -89,6 +88,14 @@ public class PublicGuestCheckInController(
             Language = GuestLanguages.Resolve(view.Language, Request.Headers.AcceptLanguage.ToString()),
             SupportedLanguages = GuestLanguages.Supported,
         };
+
+        if (featureFlags.IsEnabled(FeatureFlags.CheckInIdentityVerification)
+            && await checkInService.GetSessionByTokenAsync(token) is { } session)
+        {
+            var state = await verificationFlow.GetStateAsync(session, HttpContext.RequestAborted);
+            response.DocumentNotArchived = state.DocumentNotArchived;
+            response.IdentityVerification = PublicIdentityVerificationStateDto.From(state);
+        }
 
         return Ok(response);
     }
@@ -217,10 +224,50 @@ public class PublicGuestCheckInController(
     }
 
     /// <summary>
+    /// The guest's answer to the biometric consent (E03/F04/US02/T04, ADR-013-R9): explicit, separate from the privacy notice and refusable.
+    /// <c>{ consentGiven: true, consentVersion }</c> records the time and the version of the text; <c>{ consentGiven: false }</c> records the
+    /// refusal and hands the verification to an operator, alerted at once. When the biometric verification is not offered (switched off for the
+    /// organization, a minor) nothing is recorded and the answer is <c>operator</c>. 400 <c>biometric_consent_answer_required</c> without
+    /// <c>consentGiven</c>, 400 <c>biometric_consent_version_required</c> for a consent without its version (at most 50 characters); 404 for an
+    /// unknown, expired or completed link. Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default.
+    /// </summary>
+    [HttpPost("{token}/biometric-consent")]
+    [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
+    public async Task<ActionResult<BiometricConsentResponse>> RecordBiometricConsent(
+        string token,
+        [FromBody] BiometricConsentRequest request)
+    {
+        if (request.ConsentGiven is not { } consentGiven)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "biometric_consent_answer_required", "CheckInBiometricConsentAnswerRequired");
+
+        var session = await checkInService.GetSessionByTokenAsync(token);
+        if (session is null)
+            return NotFound();
+
+        var result = await verificationFlow.RecordConsentAsync(session, consentGiven, request.ConsentVersion, HttpContext.RequestAborted);
+        if (result.Status == BiometricConsentStatus.VersionRequired)
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "biometric_consent_version_required", "CheckInBiometricConsentVersionRequired");
+
+        return Ok(new BiometricConsentResponse
+        {
+            ConsentRecorded = result.Status == BiometricConsentStatus.Recorded,
+            Result = result.Status == BiometricConsentStatus.Recorded
+                ? BiometricConsentResponse.RecordedResult
+                : IdentityVerificationGuestResults.Operator,
+            BiometricOffered = result.State.BiometricOffered,
+            OperatorPathOpen = result.State.OperatorPathOpen,
+            State = PublicIdentityVerificationStateDto.From(result.State),
+        });
+    }
+
+    /// <summary>
     /// Uploads identity document image and extracts data via MRZ or OCR (NF-10, ADR-009-R22).
-    /// Returns extracted fields for guest confirmation. Does NOT store the image (Ticino compliance,
-    /// ADR-013-R6). Supports passport (TD-3), ID card (TD-1), and residence permit.
-    /// Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default (DEB-01): MRZ and OCR are placeholders.
+    /// Returns extracted fields for guest confirmation, with the capture guidance of the verification agent (E03/F04/US02/T04:
+    /// <c>acceptable</c>, <c>guidanceCodes</c>). The checks of the document against the check-in data of the guest who verifies are kept on the
+    /// session as flags. Outside Ticino, after the biometric consent, the photo is kept encrypted for the comparison with the selfie
+    /// (<c>documentStored</c>) until the verification is over; in Ticino nothing is kept (ADR-013-R6, <c>documentNotArchived</c>). Supports
+    /// passport (TD-3), ID card (TD-1), and residence permit. Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default.
     /// </summary>
     [HttpPost("{token}/document")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
@@ -231,120 +278,74 @@ public class PublicGuestCheckInController(
         string token,
         [FromForm] IFormFile document)
     {
-        // Validate session exists and is not completed
         var session = await checkInService.GetSessionByTokenAsync(token);
         if (session is null)
             return NotFound();
 
-        if (session.IsCompleted)
-            return this.ApiProblem(
-                StatusCodes.Status409Conflict,
-                "checkin_already_completed",
-                "CheckInAlreadyCompleted");
-
-        // Validate file
         if (document == null || document.Length == 0)
             return this.ApiProblem(StatusCodes.Status400BadRequest, "document_required", "CheckInDocumentRequired");
 
-        // Validate content type (images only)
-        var allowedTypes = new[] { "image/jpeg", "image/jpg", "image/png" };
-        if (!allowedTypes.Contains(document.ContentType.ToLowerInvariant()))
+        if (!IsImage(document))
             return this.ApiProblem(StatusCodes.Status400BadRequest, "document_type_unsupported", "CheckInDocumentTypeUnsupported");
 
         try
         {
-            // Process in-memory only (ADR-013-R6: Ticino zero retention, ADR-013-R2: never written to disk)
-            using var imageStream = document.OpenReadStream();
-
-            // Try MRZ extraction first (ADR-009-R22, ADR-013-R10)
-            var mrzResult = await mrzService.ExtractAsync(imageStream, HttpContext.RequestAborted);
-
-            if (mrzResult != null)
-            {
-                logger.LogInformation(
-                    "MRZ extraction succeeded for session {SessionId}, confidence {Confidence}",
-                    session.Id, mrzResult.Confidence);
-
-                var response = new DocumentUploadResponse
-                {
-                    Success = true,
-                    ExtractionMethod = "MRZ",
-                    Confidence = mrzResult.Confidence,
-                    CheckDigitsValid = mrzResult.CheckDigitsValid,
-                    RequiresManualReview = !mrzResult.CheckDigitsValid || mrzResult.Confidence < 0.80,
-                    Fields = new ExtractedDocumentFields
-                    {
-                        DocumentType = mrzResult.DocumentType,
-                        Surname = mrzResult.Surname,
-                        GivenNames = mrzResult.GivenNames,
-                        DocumentNumber = mrzResult.DocumentNumber,
-                        DateOfBirth = mrzResult.DateOfBirth,
-                        Nationality = mrzResult.Nationality,
-                        ExpirationDate = mrzResult.ExpirationDate,
-                        Sex = mrzResult.Sex,
-                        IssuingState = mrzResult.IssuingState,
-                    }
-                };
-
-                return Ok(response);
-            }
-
-            // MRZ failed or not present, try OCR fallback (AC-NF10-2, ADR-009-R22)
-            imageStream.Position = 0; // Reset stream for OCR
-            var ocrResult = await ocrService.ExtractAsync(imageStream, HttpContext.RequestAborted);
-
-            if (ocrResult != null)
-            {
-                logger.LogInformation(
-                    "OCR extraction succeeded for session {SessionId}, confidence {Confidence}",
-                    session.Id, ocrResult.Confidence);
-
-                var response = new DocumentUploadResponse
-                {
-                    Success = true,
-                    ExtractionMethod = "OCR",
-                    Confidence = ocrResult.Confidence,
-                    CheckDigitsValid = null, // OCR has no check digits
-                    RequiresManualReview = ocrResult.Confidence < 0.80,
-                    Fields = new ExtractedDocumentFields
-                    {
-                        FullName = ocrResult.FullName,
-                        DocumentNumber = ocrResult.DocumentNumber,
-                        DateOfBirth = ocrResult.DateOfBirth,
-                        Nationality = ocrResult.Nationality,
-                        ExpirationDate = ocrResult.ExpirationDate,
-                        Sex = ocrResult.Sex,
-                    }
-                };
-
-                return Ok(response);
-            }
-
-            // Both MRZ and OCR failed
-            logger.LogWarning("Document extraction failed (MRZ and OCR) for session {SessionId}", session.Id);
+            // Read in memory only (ADR-013-R2): the multipart body is buffered in memory, the service zeroes its copy.
+            await using var image = document.OpenReadStream();
+            var result = await verificationFlow.SubmitDocumentAsync(session, image, HttpContext.RequestAborted);
+            var reading = result.Reading;
+            var fields = reading.Fields;
 
             return Ok(new DocumentUploadResponse
             {
-                Success = false,
-                ExtractionMethod = "None",
-                Confidence = 0.0,
-                RequiresManualReview = true,
+                Success = reading.Method != DocumentReadingMethod.None,
+                ExtractionMethod = reading.Method switch
+                {
+                    DocumentReadingMethod.Mrz => "MRZ",
+                    DocumentReadingMethod.Ocr => "OCR",
+                    _ => "None",
+                },
+                Confidence = reading.Confidence,
+                CheckDigitsValid = reading.CheckDigitsValid,
+                RequiresManualReview = reading.RequiresManualReview,
+                Fields = fields is null
+                    ? null
+                    : new ExtractedDocumentFields
+                    {
+                        DocumentType = fields.DocumentType,
+                        Surname = fields.Surname,
+                        GivenNames = fields.GivenNames,
+                        FullName = fields.FullName,
+                        DocumentNumber = fields.DocumentNumber,
+                        DateOfBirth = fields.DateOfBirth?.ToDateTime(TimeOnly.MinValue),
+                        Nationality = fields.Nationality,
+                        ExpirationDate = fields.ExpirationDate?.ToDateTime(TimeOnly.MinValue),
+                        Sex = fields.Sex,
+                        IssuingState = fields.IssuingState,
+                    },
+                Acceptable = result.Acceptable,
+                GuidanceCodes = result.GuidanceCodes,
+                DocumentStored = result.DocumentStored,
+                DocumentNotArchived = result.DocumentNotArchived,
             });
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "Error processing document upload for session {SessionId}", session.Id);
+            // The type only: a message could carry what was being read.
+            logger.LogError("Error processing document upload for session {SessionId} ({ErrorType})", session.Id, ex.GetType().Name);
             return this.ApiProblem(StatusCodes.Status500InternalServerError, "document_processing_failed", "CheckInDocumentProcessingFailed");
         }
     }
 
     /// <summary>
-    /// Uploads selfie for biometric verification (NF-11, ADR-013).
-    /// Runs synchronously (NOT Hangfire) per ADR-013-R1 and returns outcome within 3s.
-    /// All image processing is in-memory only with immediate deletion (ADR-013-R2).
-    /// Max 3 attempts per session, then auto-escalates to operator queue (ADR-013-R5).
-    /// Minors (DOB &lt; 18 years) are excluded from biometric verification (ADR-013-R9).
-    /// Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default (DEB-01): liveness and face match are placeholders.
+    /// The selfie of the guest who leaves the document, compared with the photo of the document by the verification agent in the request
+    /// (ADR-013-R1, E03/F04/US02/T04): <c>{ result: ok | retry | operator, guidanceCodes, attemptsRemaining, operatorPathOpen, lockCode? }</c>.
+    /// Only on <c>ok</c> the lock code is in the answer and e-mailed to the guest at once; a retry, a review, the last failed attempt, a refusal or
+    /// an error release nothing, and a review, the last failed attempt or an error alert the operators. Nothing of the selfie is kept or logged
+    /// (ADR-013-R2). 409 <c>biometric_consent_required</c> without the consent, 409 <c>document_check_required</c> before the document (or when
+    /// its kept photo is gone), 400 <c>document_photo_required</c> for a property in Ticino without the photo of the document, 409
+    /// <c>document_photo_mismatch</c> when that photo is not the one read. A minor, an organization that does not offer it and a session already
+    /// with the operator answer <c>operator</c>. Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default.
     /// </summary>
     [HttpPost("{token}/selfie")]
     [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
@@ -356,185 +357,77 @@ public class PublicGuestCheckInController(
         [FromForm] IFormFile selfie,
         [FromForm] IFormFile? documentPhoto = null)
     {
-        // Validate session exists and is not completed
         var session = await checkInService.GetSessionByTokenAsync(token);
-
         if (session is null)
             return NotFound();
 
-        if (session.IsCompleted)
-            return this.ApiProblem(
-                StatusCodes.Status409Conflict,
-                "checkin_already_completed",
-                "CheckInAlreadyCompleted");
-
-        // Load booking with guest for minor check
-        var booking = await dbContext.Bookings
-            .Include(b => b.Guest)
-            .FirstOrDefaultAsync(b => b.Id == session.BookingId);
-
-        if (booking is null)
-            return NotFound();
-
-        // Validate files
         if (selfie == null || selfie.Length == 0)
             return this.ApiProblem(StatusCodes.Status400BadRequest, "selfie_required", "CheckInSelfieRequired");
 
-        // Validate content types (images only)
-        var allowedTypes = new[] { "image/jpeg", "image/jpg", "image/png" };
-        if (!allowedTypes.Contains(selfie.ContentType.ToLowerInvariant()))
+        if (!IsImage(selfie))
             return this.ApiProblem(StatusCodes.Status400BadRequest, "selfie_type_unsupported", "CheckInSelfieTypeUnsupported");
 
-        // ADR-013-R9: Minors (DOB < 18 years) excluded from biometric verification
-        var guestDateOfBirth = booking.Guest?.DateOfBirth;
-        if (guestDateOfBirth.HasValue)
-        {
-            var today = timeProvider.TodayInRomeAsDateOnly();
-            var dob = DateOnly.FromDateTime(guestDateOfBirth.Value);
-            var age = today.Year - dob.Year;
-            if (dob > today.AddYears(-age))
-                age--;
+        if (documentPhoto is not null && (documentPhoto.Length == 0 || !IsImage(documentPhoto)))
+            return this.ApiProblem(StatusCodes.Status400BadRequest, "document_photo_type_unsupported", "CheckInDocumentPhotoTypeUnsupported");
 
-            if (age < 18)
-            {
-                logger.LogWarning(
-                    "Biometric verification rejected for minor guest (age {Age}) in session {SessionId}",
-                    age, session.Id);
-
-                return this.ApiProblem(
-                    StatusCodes.Status400BadRequest,
-                    "biometric_minor_excluded",
-                    "CheckInBiometricMinorExcluded");
-            }
-        }
-
-        // ADR-013-R5: Check max attempts (3)
-        const int maxAttempts = 3;
-        if (session.BiometricAttempts >= maxAttempts)
-        {
-            return Ok(new SelfieUploadResponse
-            {
-                Outcome = BiometricOutcome.Escalate.ToString(),
-                Attempts = session.BiometricAttempts,
-                MaxAttempts = maxAttempts,
-                AutoEscalated = true,
-                MessageKey = "CheckInBiometricMaxAttemptsReached",
-            });
-        }
-
+        SelfieStepResult result;
         try
         {
-            // ADR-013-R1: Process synchronously (NOT Hangfire), return outcome within 3s
-            // ADR-013-R2: In-memory only processing, deleted in finally blocks inside the service
-
-            BiometricVerificationResult? verificationResult = null;
-
-            // For now, we need a document photo to compare against
-            // In a real scenario, this would come from a previously uploaded document
-            if (documentPhoto == null || documentPhoto.Length == 0)
-            {
-                // Placeholder: In production, we'd retrieve the document photo from previous upload
-                // For now, return escalate if no document photo is provided
-                logger.LogWarning(
-                    "No document photo provided for biometric verification in session {SessionId}",
-                    session.Id);
-
-                session.BiometricAttempts++;
-                session.BiometricOutcome = BiometricOutcome.Escalate;
-                session.UpdatedAt = DateTime.UtcNow;
-                await dbContext.SaveChangesAsync();
-
-                return Ok(new SelfieUploadResponse
-                {
-                    Outcome = BiometricOutcome.Escalate.ToString(),
-                    Attempts = session.BiometricAttempts,
-                    MaxAttempts = maxAttempts,
-                    AutoEscalated = false,
-                    MessageKey = "CheckInBiometricDocumentPhotoRequired",
-                });
-            }
-
-            // Validate document photo content type
-            if (!allowedTypes.Contains(documentPhoto.ContentType.ToLowerInvariant()))
-                return this.ApiProblem(StatusCodes.Status400BadRequest, "document_photo_type_unsupported", "CheckInDocumentPhotoTypeUnsupported");
-
-            // Process biometric verification
-            using var selfieStream = selfie.OpenReadStream();
-            using var documentPhotoStream = documentPhoto.OpenReadStream();
-
-            // Configurable thresholds (placeholder values, should come from configuration or BiometricSettings)
-            const double acceptThreshold = 0.85;
-            const double escalateThreshold = 0.70;
-
-            verificationResult = await biometricService.VerifyAsync(
-                selfieStream,
-                documentPhotoStream,
-                acceptThreshold,
-                escalateThreshold,
-                HttpContext.RequestAborted);
-
-            // Update session
-            session.BiometricAttempts++;
-            session.BiometricOutcome = verificationResult.Outcome;
-            session.UpdatedAt = DateTime.UtcNow;
-
-            // ADR-013-R5: Auto-escalate after max attempts
-            var autoEscalated = session.BiometricAttempts >= maxAttempts &&
-                               verificationResult.Outcome != BiometricOutcome.Accept;
-
-            if (autoEscalated)
-            {
-                session.BiometricOutcome = BiometricOutcome.Escalate;
-            }
-
-            // ADR-013-R3: Create BiometricVerificationLog (NO images, embeddings, or PII per ADR-013-R2)
-            var log = new BiometricVerificationLog
-            {
-                OrgId = session.OrgId,
-                BookingId = session.BookingId,
-                GuestId = booking.GuestId,
-                Outcome = session.BiometricOutcome ?? BiometricOutcome.Reject,
-                Attempts = session.BiometricAttempts,
-                ModelName = verificationResult.ModelName,
-                ModelVersion = verificationResult.ModelVersion,
-                ThresholdsJson = JsonSerializer.Serialize(new
-                {
-                    AcceptThreshold = acceptThreshold,
-                    EscalateThreshold = escalateThreshold,
-                    Similarity = verificationResult.Similarity,
-                    IsLive = verificationResult.IsLive,
-                }),
-                CreatedAt = DateTime.UtcNow,
-            };
-
-            dbContext.BiometricVerificationLogs.Add(log);
-            await dbContext.SaveChangesAsync();
-
-            logger.LogInformation(
-                "Biometric verification completed for session {SessionId}: outcome={Outcome}, attempts={Attempts}/{Max}, similarity={Similarity}",
-                session.Id, verificationResult.Outcome, session.BiometricAttempts, maxAttempts, verificationResult.Similarity);
-
-            var messageKey = verificationResult.Outcome switch
-            {
-                BiometricOutcome.Accept => "CheckInBiometricAccepted",
-                BiometricOutcome.Escalate => autoEscalated ? "CheckInBiometricMaxAttemptsReached" : "CheckInBiometricEscalated",
-                BiometricOutcome.Reject => session.BiometricAttempts >= maxAttempts ? "CheckInBiometricMaxAttemptsReached" : "CheckInBiometricRejected",
-                _ => "CheckInBiometricEscalated",
-            };
-
-            return Ok(new SelfieUploadResponse
-            {
-                Outcome = session.BiometricOutcome?.ToString() ?? BiometricOutcome.Escalate.ToString(),
-                Attempts = session.BiometricAttempts,
-                MaxAttempts = maxAttempts,
-                AutoEscalated = autoEscalated,
-                MessageKey = messageKey,
-            });
+            // ADR-013-R1: in the request, not in a job. ADR-013-R2: in memory only, zeroed by the agent and the pipeline.
+            await using var selfieStream = selfie.OpenReadStream();
+            await using var documentStream = documentPhoto?.OpenReadStream();
+            result = await verificationFlow.SubmitSelfieAsync(session, selfieStream, documentStream, HttpContext.RequestAborted);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogError(ex, "Error processing selfie upload for session {SessionId}", session.Id);
+            logger.LogError("Error processing selfie upload for session {SessionId} ({ErrorType})", session.Id, ex.GetType().Name);
             return this.ApiProblem(StatusCodes.Status500InternalServerError, "selfie_processing_failed", "CheckInSelfieProcessingFailed");
         }
+
+        return result.Status switch
+        {
+            SelfieStepStatus.ConsentRequired =>
+                this.ApiProblem(StatusCodes.Status409Conflict, BiometricConsentRequiredCode, "CheckInBiometricConsentRequired"),
+            SelfieStepStatus.DocumentRequired =>
+                this.ApiProblem(StatusCodes.Status409Conflict, "document_check_required", "CheckInDocumentCheckRequired"),
+            SelfieStepStatus.DocumentPhotoRequired =>
+                this.ApiProblem(StatusCodes.Status400BadRequest, "document_photo_required", "CheckInBiometricDocumentPhotoRequired"),
+            SelfieStepStatus.DocumentPhotoMismatch =>
+                this.ApiProblem(StatusCodes.Status409Conflict, "document_photo_mismatch", "CheckInDocumentPhotoMismatch"),
+            _ => Ok(new SelfieUploadResponse
+            {
+                Result = result.Result,
+                GuidanceCodes = result.GuidanceCodes,
+                AttemptsRemaining = result.AttemptsRemaining,
+                OperatorPathOpen = result.OperatorPathOpen,
+                LockCode = result.LockCode,
+            }),
+        };
     }
+
+    /// <summary>
+    /// The guest asks for a person (E03/F04/US02/T04, GDPR art. 22, AC-NF51-11): at any step, also after a retry or a failed attempt. The
+    /// operators who decide the verifications of the property are alerted at once; a photo of the document kept for the comparison is deleted.
+    /// 404 for an unknown, expired or completed link. Behind <see cref="FeatureFlags.CheckInIdentityVerification"/>, off by default.
+    /// </summary>
+    [HttpPost("{token}/request-operator")]
+    [FeatureGate(FeatureFlags.CheckInIdentityVerification)]
+    [EnableRateLimiting(RateLimitPolicies.GuestCheckIn)]
+    public async Task<ActionResult<OperatorRequestResponse>> RequestOperator(string token)
+    {
+        var session = await checkInService.GetSessionByTokenAsync(token);
+        if (session is null)
+            return NotFound();
+
+        var state = await verificationFlow.RequestOperatorAsync(session, HttpContext.RequestAborted);
+        return Ok(new OperatorRequestResponse
+        {
+            Result = state.Result ?? IdentityVerificationGuestResults.Operator,
+            OperatorPathOpen = state.OperatorPathOpen,
+            State = PublicIdentityVerificationStateDto.From(state),
+        });
+    }
+
+    private static bool IsImage(IFormFile file) =>
+        AllowedImageTypes.Contains(file.ContentType.ToLowerInvariant(), StringComparer.Ordinal);
 }

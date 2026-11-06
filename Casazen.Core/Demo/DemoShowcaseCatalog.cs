@@ -77,6 +77,12 @@ public static class DemoShowcaseCatalog
         public const string CheckInBiometricPassed = "checkin-biometric-passed";
         public const string CheckInOperatorVerified = "checkin-operator-verified";
         public const string CheckInRejected = "checkin-rejected";
+
+        /// <summary>
+        /// E03/F04/US02/T04: a stay whose identity verification passed online, by the agent, before the arrival: the consent recorded with its
+        /// version, only the head of group verified, the lock code released on the check-in page and by e-mail. Test data, no real person.
+        /// </summary>
+        public const string CheckInIdentityVerified = "checkin-identity-verified";
         public const string AlloggiatiSentReceiptPending = "alloggiati-sent-receipt-pending";
         public const string AlloggiatiRegistered = "alloggiati-registered";
         public const string StatementPublished = "statement-published";
@@ -150,6 +156,7 @@ public static class DemoShowcaseCatalog
         Scenario.CheckInBiometricPassed,
         Scenario.CheckInOperatorVerified,
         Scenario.CheckInRejected,
+        Scenario.CheckInIdentityVerified,
         Scenario.AlloggiatiSentReceiptPending,
         Scenario.AlloggiatiRegistered,
         Scenario.StatementPublished,
@@ -804,6 +811,22 @@ public static class DemoShowcaseCatalog
         new("biometric-passed", "attico-firenze", "airbnb-ical", "Completed", BiometricOutcome.Accept, true, false, Scenario.CheckInBiometricPassed),
         new("operator-verified", "villa-amalfi", "booking-com-ical", "Completed", BiometricOutcome.Escalate, true, true, Scenario.CheckInOperatorVerified),
         new("rejected", "loft-torino", "rejected-guest", "Rejected", BiometricOutcome.Reject, false, false, Scenario.CheckInRejected),
+
+        // E03/F04/US02/T04: the online flow passed by the agent for the head of group of the expected stay (the member skips the step); the
+        // lock code went to the check-in page and to the guest's e-mail. The consent version is a test value.
+        new(
+            "identity-verified",
+            "casa-trastevere",
+            "checkin-atteso",
+            "Completed",
+            BiometricOutcome.Accept,
+            true,
+            false,
+            Scenario.CheckInIdentityVerified,
+            Method: VerificationMethod.Biometric,
+            ConsentVersion: "TEST-biometric-consent-v1",
+            LockCodeChannels: [Services.AccessCodeReleaseChannels.CheckInScreen, Services.AccessCodeReleaseChannels.Email],
+            VerifiedGuestPosition: 0),
     ];
 
     /// <summary>
@@ -1239,7 +1262,11 @@ public sealed record DemoCheckInTemplate(
     BiometricOutcome? BiometricOutcome,
     bool HasConsent,
     bool OperatorVerified,
-    string Scenario);
+    string Scenario,
+    VerificationMethod Method = VerificationMethod.Biometric,
+    string? ConsentVersion = null,
+    IReadOnlyList<string>? LockCodeChannels = null,
+    int VerifiedGuestPosition = 0);
 
 /// <summary>An alloggiati report demo: demonstrates report states including SentReceiptPending with fake receipt.</summary>
 public sealed record DemoAlloggiatiTemplate(
