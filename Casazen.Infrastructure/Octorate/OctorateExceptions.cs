@@ -71,6 +71,19 @@ public sealed class OctorateAuthException : OctorateException
         new(RefusedCode, "OctorateAuthFailed", StatusCodes.Status502BadGateway, octorateStatusCode);
 }
 
+/// <summary>
+/// Octorate refused the sensitive data of the guests (E07/F06/US02/T02): the read of a guest's contacts answered 401 or 403, because the static
+/// IP addresses of CasaZen are not registered with Octorate yet (S7, S18, D24) or the application lacks the <c>contactInfo</c> permission. Its own
+/// type, so that no caller turns a refusal into "the guest has no contact": 409, the product owner has to complete the registration, a retry
+/// does not help.
+/// </summary>
+public sealed class OctorateSensitiveDataNotAllowedException(int? octorateStatusCode)
+    : OctorateException(
+        "octorate_sensitive_data_not_allowed",
+        "OctorateSensitiveDataNotAllowed",
+        StatusCodes.Status409Conflict,
+        octorateStatusCode);
+
 /// <summary>Octorate failed (5xx), did not answer in time, or answered something that cannot be read: 502, worth a later retry.</summary>
 public sealed class OctorateServerException(int? octorateStatusCode, Exception? innerException = null)
     : OctorateException("octorate_unavailable", "OctorateUnavailable", StatusCodes.Status502BadGateway, octorateStatusCode, innerException);

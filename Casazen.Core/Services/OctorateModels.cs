@@ -356,6 +356,25 @@ public sealed record OctorateReservation
 
     public string? LastName { get; init; }
 
+    /// <summary>Longest <see cref="GuestId"/> CasaZen keeps: the limit of every id of a call to Octorate.</summary>
+    public const int GuestIdMaxLength = 64;
+
+    /// <summary>
+    /// The id of the first guest of the reservation in the guest registry of the accommodation (<c>guests[0].id</c>, E07/F06/US02/T02): the
+    /// key of the contact read (<see cref="IOctorateApiClient.GetGuestContactInfoAsync"/>). <c>null</c> when the answer names none. Which member
+    /// of the guest holds the id is not proven by the sandbox (it answers flags, not contacts): to confirm when the contact read is possible.
+    /// </summary>
+    public string? GuestId { get; init; }
+
+    /// <summary>
+    /// Octorate holds an e-mail address for the first guest (<c>emailAvailable</c>): a flag, the address itself is not in the answer. <c>null</c>
+    /// when the answer does not say.
+    /// </summary>
+    public bool? GuestEmailAvailable { get; init; }
+
+    /// <summary>Octorate holds a phone number for the first guest (<c>phoneAvailable</c>): a flag. <c>null</c> when the answer does not say.</summary>
+    public bool? GuestPhoneAvailable { get; init; }
+
     /// <summary>The e-mail of the guest, only when the answer carries one (it normally does not).</summary>
     public string? GuestEmail { get; init; }
 
@@ -497,6 +516,27 @@ public sealed record OctorateCheckInGuestResult(int Position, string? OctorateGu
 /// <param name="EffectiveCheckin">When the arrival was registered (<c>effectiveCheckin</c>, UTC); null when Octorate has none.</param>
 /// <param name="ArrivalTime">The expected arrival time of the reservation (<c>arrivalTime</c>, at most 10 characters); null when none.</param>
 public sealed record OctorateReservationArrival(DateTime? EffectiveCheckin, string? ArrivalTime);
+
+/// <summary>
+/// The contact data of one guest of the guest registry (<c>POST /rest/v1/guests/{acc}/{guestId}/contactInfo</c>, E07/F06/US02/T02): the e-mail
+/// address and the phone number, as Octorate holds them, each <c>null</c> when it has none (an Airbnb guest has none). <b>Sensitive</b>: it is
+/// never logged, and <see cref="ToString"/> says nothing of it, so a log line that formats the record cannot leak it.
+/// </summary>
+/// <param name="Email">The e-mail address; for a booking made through a portal it is a forward address.</param>
+/// <param name="Phone">The phone number.</param>
+/// <param name="Recognized">
+/// False when the answer was not understood: it was not an object, or it had none of the members that hold an address or a number (another
+/// wrapper, other names). Then <paramref name="Email"/> and <paramref name="Phone"/> are <c>null</c> because nothing could be read, not because
+/// Octorate holds nothing: the caller must not take it for "the guest has no contact". An answer that has the members and leaves them empty is
+/// recognized.
+/// </param>
+public sealed record OctorateGuestContactInfo(string? Email, string? Phone, bool Recognized = true)
+{
+    /// <summary>True when Octorate gave neither an address nor a number.</summary>
+    public bool IsEmpty => string.IsNullOrWhiteSpace(Email) && string.IsNullOrWhiteSpace(Phone);
+
+    public override string ToString() => nameof(OctorateGuestContactInfo) + " { contact data not shown }";
+}
 
 /// <summary>The states CasaZen sends with the check-in status operation (<c>PUT /rest/v1/checkin/{acc}/{id}?status=</c>).</summary>
 public enum OctorateCheckInStatus
