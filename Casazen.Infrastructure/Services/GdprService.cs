@@ -1,5 +1,6 @@
 using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Models;
 using Casazen.Core.Options;
@@ -20,13 +21,17 @@ namespace Casazen.Infrastructure.Services;
 /// audited in <see cref="GuestPrivacyAuditEntry"/>, and the logs carry ids only, never personal data.
 /// </summary>
 /// <remarks>
-/// <para><c>suppressionService</c> is the last parameter and optional only so that the tests that build the service for the other
-/// operations keep compiling: the container always supplies it, and the withdrawal of a marketing consent refuses to run without it
-/// (a wiring error that cannot happen in the running application).</para>
+/// <para><c>suppressionService</c> and <c>crmContacts</c> are the last parameters and optional only so that the tests that build the service for
+/// the other operations keep compiling: the container always supplies them, and the withdrawal of a marketing consent refuses to run without
+/// the suppression service (a wiring error that cannot happen in the running application).</para>
 /// <para>The withdrawal of a marketing consent is a legal record and never depends on the key of the suppression index: the consent record,
 /// the audit entry and the flag are saved whatever the state of <c>Crm:ContactIndexKey</c>. With the key the guest's addresses enter the
 /// suppression list in the same unit of work; without it (the application starts without it while <c>Features:CrmMarketing</c> is off)
 /// the suppression is skipped and an error in the log names the withdrawal and the variable.</para>
+/// <para>The withdrawal the host records ends <b>every consent the guest gave</b>, not only the one the flag <see cref="Guest.MarketingConsent"/>
+/// says: the open CRM contacts of the guest (<see cref="GuestContact.GuestId"/>) are suppressed too through <c>crmContacts</c> (E07/F04/US01):
+/// a consent on WhatsApp alone, or on an address typed on the guest page, leaves the flag unset and is a contact of the guest. A guest with no
+/// flag and no open contact has nothing to withdraw.</para>
 /// </remarks>
 public class GdprService(
     AppDbContext db,
@@ -35,7 +40,8 @@ public class GdprService(
     IOptions<GdprOptions> gdprOptions,
     TimeProvider timeProvider,
     ILogger<GdprService> logger,
-    ISuppressionService? suppressionService = null) : IGdprService
+    ISuppressionService? suppressionService = null,
+    ICrmContactService? crmContacts = null) : IGdprService
 {
     public const string HostGrantForbiddenCode = "gdpr_marketing_consent_host_grant_forbidden";
     public const string WithdrawalNoteRequiredCode = "gdpr_marketing_withdrawal_note_required";
@@ -266,37 +272,110 @@ public class GdprService(
         if (string.IsNullOrEmpty(documentedRequest))
             throw new DomainRuleException("gdpr_marketing_withdrawal_note_required", "GdprMarketingWithdrawalNoteRequired");
 
-        if (!guest.MarketingConsent)
+        // What the guest consented to is the flag (the yes/no of the checkout and of the portal) and the contacts of the CRM the guest gave: a
+        // consent on WhatsApp alone leaves the flag unset, and an address typed on the guest page is a contact of the guest and no more.
+        var openContacts = await OpenContactsOfAsync(guest, cancellationToken);
+
+        // The contacts are suppressed through the service of the contacts, which needs the key of the index like the addresses of the guest.
+        // Without it they are left, and an error in the log says so (a guest with contacts has them only where the key was set).
+        var endContacts = openContacts.Count > 0 && crmContacts is not null && suppressionService is { CanIndexAddresses: true };
+        if (openContacts.Count > 0 && !endContacts)
         {
-            logger.LogInformation("Marketing consent of guest {GuestId} is not in force: nothing to withdraw", guest.Id);
+            logger.LogError(
+                "Marketing withdrawal of guest {GuestId} cannot suppress its {ContactCount} CRM contacts: Crm__ContactIndexKey is not configured " +
+                "(docs/runbooks/crm-marketing.md, section 3)",
+                guest.Id,
+                openContacts.Count);
+        }
+
+        if (!guest.MarketingConsent && !endContacts)
+        {
+            if (openContacts.Count == 0)
+                logger.LogInformation("Marketing consent of guest {GuestId} is not in force: nothing to withdraw", guest.Id);
+
             return;
         }
 
         var now = UtcNow();
-        var withdrawal = new GuestConsentRecord
+        if (guest.MarketingConsent)
         {
-            OrgId = guest.OrgId,
-            GuestId = guest.Id,
-            Purpose = GuestConsentPurpose.Marketing,
-            Action = GuestConsentAction.Withdrawn,
-            Version = await LatestMarketingGrantVersionAsync(guest.Id, cancellationToken),
-            Source = GuestConsentSource.HostOnGuestRequest,
-            Note = Truncate(documentedRequest, WithdrawalNoteMaxLength),
-            RecordedByUserId = actorUserId,
-            RecordedAt = now,
-        };
-        db.GuestConsentRecords.Add(withdrawal);
-        guest.MarketingConsent = false;
-        guest.MarketingConsentDate = now;
-        guest.UpdatedAt = now;
-        AddAudit(guest, GuestPrivacyAuditAction.MarketingConsentWithdrawn, actorUserId, now);
+            var withdrawal = new GuestConsentRecord
+            {
+                OrgId = guest.OrgId,
+                GuestId = guest.Id,
+                Purpose = GuestConsentPurpose.Marketing,
+                Action = GuestConsentAction.Withdrawn,
+                Version = await LatestMarketingGrantVersionAsync(guest.Id, cancellationToken),
+                Source = GuestConsentSource.HostOnGuestRequest,
+                Note = Truncate(documentedRequest, WithdrawalNoteMaxLength),
+                RecordedByUserId = actorUserId,
+                RecordedAt = now,
+            };
+            db.GuestConsentRecords.Add(withdrawal);
+            guest.MarketingConsent = false;
+            guest.MarketingConsentDate = now;
+            guest.UpdatedAt = now;
+            AddAudit(guest, GuestPrivacyAuditAction.MarketingConsentWithdrawn, actorUserId, now);
 
-        // AC-NF95-6: the guest asked to stop, so every address it gave enters the suppression list, in the same unit of work as the
-        // withdrawal. The withdrawal is a legal record and does not wait for the key of the index: without it the suppression is skipped
-        // (and logged as an error) and the record, the audit entry and the flag are saved as they were before the index had a key.
-        await StageSuppressionOfTheGuestAsync(guest, withdrawal.Id, cancellationToken);
+            // AC-NF95-6: the guest asked to stop, so every address it gave enters the suppression list, in the same unit of work as the
+            // withdrawal. The withdrawal is a legal record and does not wait for the key of the index: without it the suppression is skipped
+            // (and logged as an error) and the record, the audit entry and the flag are saved as they were before the index had a key.
+            await StageSuppressionOfTheGuestAsync(guest, withdrawal.Id, cancellationToken);
+        }
+        else
+        {
+            // The flag was not set: the consents in force are the contacts, each of which writes its own row of the history below.
+            guest.UpdatedAt = now;
+            AddAudit(guest, GuestPrivacyAuditAction.MarketingConsentWithdrawn, actorUserId, now);
+        }
+
+        if (endContacts)
+            await WithdrawContactsAsync(guest, openContacts, documentedRequest, actorUserId, cancellationToken);
+
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Marketing consent of guest {GuestId} withdrawn by user {ActorUserId} on the guest's request", guest.Id, actorUserId);
+    }
+
+    /// <summary>
+    /// The contacts of the CRM that the guest gave (<see cref="GuestContact.GuestId"/>) and that are not suppressed yet, with a basis a message
+    /// of marketing can rest on (soft opt-in or consent): the ones a withdrawal on the guest's request has to end. Read, not tracked; the
+    /// service of the contacts changes them. Of the guest's org only.
+    /// </summary>
+    private async Task<List<GuestContact>> OpenContactsOfAsync(Guest guest, CancellationToken cancellationToken) =>
+        await db.GuestContacts
+            .AsNoTracking()
+            .Where(c => c.OrgId == guest.OrgId
+                && c.GuestId == guest.Id
+                && !c.IsSuppressed
+                && c.LegalBasis > GuestContactLegalBasis.ServiceOnly)
+            .ToListAsync(cancellationToken);
+
+    /// <summary>
+    /// Suppresses each contact through the service of the contacts (source <c>manual</c>, consent source <see cref="GuestConsentSource.HostOnGuestRequest"/>,
+    /// the documented request as the note): the contact is flagged, goes back to service only, its address enters the suppression list and the
+    /// withdrawal is written in the privacy history. The caller has checked that the service exists and that the key of the index is there.
+    /// </summary>
+    private async Task WithdrawContactsAsync(
+        Guest guest,
+        List<GuestContact> contacts,
+        string documentedRequest,
+        string? actorUserId,
+        CancellationToken cancellationToken)
+    {
+        if (crmContacts is null)
+            return;
+
+        foreach (var contact in contacts)
+        {
+            await crmContacts.WithdrawAsync(
+                guest.OrgId,
+                contact.Id,
+                SuppressionSourceManual,
+                GuestConsentSource.HostOnGuestRequest,
+                actorUserId,
+                documentedRequest,
+                cancellationToken);
+        }
     }
 
     /// <summary>
