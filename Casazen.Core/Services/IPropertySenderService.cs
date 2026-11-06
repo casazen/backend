@@ -34,14 +34,18 @@ public interface IPropertySenderService
 
     /// <summary>
     /// Changes the sender of the property. In order: 422 <see cref="SenderErrorCodes.IstatMismatch"/> when <paramref name="istatSender"/> is given and is
-    /// not <paramref name="newSender"/> (ISTAT always follows Alloggiati); 404 <c>property_not_found</c>; 422 <c>sender_not_applicable</c> outside Italy;
-    /// 422 <see cref="SenderErrorCodes.CasaZenNotAvailable"/> for CasaZen; 422 <see cref="SenderErrorCodes.ChannelManagerNotAvailable"/> for a channel manager
-    /// the property cannot use; 409 <see cref="SenderErrorCodes.SwitchConfirmationRequired"/> when the sender really changes and
+    /// not <paramref name="newSender"/> (ISTAT always follows Alloggiati); when <paramref name="delegationConsent"/> is true, 422
+    /// <see cref="SenderErrorCodes.DelegationTextVersionRequired"/> without <paramref name="delegationTextVersion"/> and 409
+    /// <see cref="SenderErrorCodes.DelegationTextOutdated"/> when it is not <see cref="AlloggiatiDelegationTexts.CurrentVersion"/> (the consent
+    /// proves the text the person read, so it names it, and it has to be the text in force); 404 <c>property_not_found</c>; 422
+    /// <c>sender_not_applicable</c> outside Italy; 422 <see cref="SenderErrorCodes.CasaZenNotAvailable"/> for CasaZen; 422
+    /// <see cref="SenderErrorCodes.ChannelManagerNotAvailable"/> for a channel manager the property cannot use; 409
+    /// <see cref="SenderErrorCodes.SwitchConfirmationRequired"/> when the sender really changes and
     /// <paramref name="confirmed"/> is false (the problem carries <c>currentSender</c> and <c>newSender</c>); 403
     /// <see cref="SenderErrorCodes.DelegationRequired"/> when an automatic sender is asked and the org has not accepted the current delegation text and
-    /// <paramref name="delegationConsent"/> is false. Only then are the consent recorded (<c>IAlloggiatiDelegationService.GrantAsync</c>) and the sender
-    /// written (<c>IPropertySenderStore.SetAsync</c>, which records the audit line of the change in the same transaction). A repeat of the sender
-    /// already in effect changes and records nothing.
+    /// <paramref name="delegationConsent"/> is false. Only then are the consent recorded (<c>IAlloggiatiDelegationService.GrantAsync</c>, with
+    /// the version the person read) and the sender written (<c>IPropertySenderStore.SetAsync</c>, which records the audit line of the change
+    /// in the same transaction). A repeat of the sender already in effect changes and records nothing.
     /// </summary>
     Task<PropertySenderView> SwitchAsync(
         Guid propertyId,
@@ -50,7 +54,8 @@ public interface IPropertySenderService
         bool delegationConsent,
         string userId,
         CancellationToken ct,
-        ComplianceSenderType? istatSender = null);
+        ComplianceSenderType? istatSender = null,
+        string? delegationTextVersion = null);
 
     /// <summary>
     /// Tests the sender. Channel manager: reads the police account of the accommodation on Octorate (bounded in time, like the read of the
@@ -194,6 +199,15 @@ public static class SenderErrorCodes
     /// <summary>403: an automatic sender needs the delegation of the transmission accepted first (ADR-015-R10).</summary>
     public const string DelegationRequired = "alloggiati_delegation_required";
 
+    /// <summary>422: the consent to the delegation does not say which version of the text the person read.</summary>
+    public const string DelegationTextVersionRequired = "alloggiati_delegation_text_version_required";
+
+    /// <summary>
+    /// 409: the consent is about another version than the text in force (it changed since the screen was loaded, or the client is old): the
+    /// client reads the sender again and shows the text of <see cref="PropertySenderView.DelegationTextVersion"/>.
+    /// </summary>
+    public const string DelegationTextOutdated = "alloggiati_delegation_text_outdated";
+
     /// <summary>422: the sender «CasaZen sends» is not available in this release.</summary>
     public const string CasaZenNotAvailable = "sender_casazen_not_available";
 
@@ -232,10 +246,14 @@ public static class SenderReasonCodes
 /// <summary>
 /// The delegation text the sender wizard shows (E03/F01/US02/T02, AW-R02, ADR-015-R10). The text itself belongs to the legal documents; the
 /// code of its version is what an org accepts and what the audit line keeps. Raise it when the text changes: every org is then asked
-/// to accept it again before the next automatic sender is set.
+/// to accept it again before the next automatic sender is set, and a client that still shows the old text is refused (409
+/// <see cref="SenderErrorCodes.DelegationTextOutdated"/>) instead of recording a consent to a text the person did not read.
 /// </summary>
 public static class AlloggiatiDelegationTexts
 {
     /// <summary>The version of the delegation text in force (a code of at most 40 characters, see <see cref="IAlloggiatiDelegationService"/>).</summary>
     public const string CurrentVersion = "2026-11-v1";
+
+    /// <summary>The longest version code a client may send back with the consent (the limit the delegation service puts on a version).</summary>
+    public const int VersionMaxLength = 40;
 }

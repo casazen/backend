@@ -55,7 +55,8 @@ public sealed class PropertySenderService(
         bool delegationConsent,
         string userId,
         CancellationToken ct,
-        ComplianceSenderType? istatSender = null)
+        ComplianceSenderType? istatSender = null,
+        string? delegationTextVersion = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(userId);
         if (!Enum.IsDefined(newSender))
@@ -64,6 +65,11 @@ public sealed class PropertySenderService(
         // ISTAT follows Alloggiati (ADR-029-R5): a request that names another sender for it is refused before anything is read.
         if (istatSender is { } istat && istat != newSender)
             throw new DomainRuleException(SenderErrorCodes.IstatMismatch, "SenderIstatMismatch");
+
+        // The consent is the proof of what the person read: it names the version of the delegation text it was shown, and that has to be
+        // the text in force. The front end and the back end are released apart, so a screen can show a text that is no longer the current one.
+        if (delegationConsent)
+            RequireDelegationTextInForce(delegationTextVersion);
 
         var current = await store.GetAsync(propertyId, ct);
         if (!current.Applies)
@@ -100,6 +106,7 @@ public sealed class PropertySenderService(
             grantDelegation = !accepted;
         }
 
+        // The version recorded is the one the person read: it was checked to be the text in force when the consent came in.
         if (grantDelegation)
             await delegation.GrantAsync(current.OrgId, userId, AlloggiatiDelegationTexts.CurrentVersion, ct);
 
@@ -355,6 +362,25 @@ public sealed class PropertySenderService(
     /// <summary>The channel manager and CasaZen send on their own; manual is the host's hand.</summary>
     private static bool IsAutomatic(ComplianceSenderType sender) =>
         sender is ComplianceSenderType.ChannelManager or ComplianceSenderType.CasaZen;
+
+    /// <summary>
+    /// The version of the delegation text a consent says the person read has to be the one in force, so the consent recorded is the consent
+    /// to that text. Missing: 422. Another version (the text changed since the screen was loaded, or the client is old): 409, and the
+    /// problem carries the version in force so the client can show it. Nothing has been read or written yet.
+    /// </summary>
+    private static void RequireDelegationTextInForce(string? seenVersion)
+    {
+        if (string.IsNullOrWhiteSpace(seenVersion))
+            throw new DomainRuleException(SenderErrorCodes.DelegationTextVersionRequired, "AlloggiatiDelegationTextVersionRequired");
+
+        if (!string.Equals(seenVersion, AlloggiatiDelegationTexts.CurrentVersion, StringComparison.Ordinal))
+        {
+            throw new DomainConflictException(SenderErrorCodes.DelegationTextOutdated, "AlloggiatiDelegationTextOutdated")
+            {
+                Extensions = new Dictionary<string, object?> { ["delegationTextVersion"] = AlloggiatiDelegationTexts.CurrentVersion },
+            };
+        }
+    }
 
     private static SenderConnectionTestResult Result(
         PropertySenderInfo info,

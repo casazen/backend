@@ -4382,6 +4382,12 @@
   <data name="AlloggiatiDelegationRequired" xml:space="preserve">
     <value>Prima di attivare un invio automatico devi accettare la delega della trasmissione: il responsabile delle comunicazioni resti tu (o la tua agenzia), CasaZen è lo strumento a cui affidi l'invio. Accettala e riprova.</value>
   </data>
+  <data name="AlloggiatiDelegationTextVersionRequired" xml:space="preserve">
+    <value>Per registrare la delega serve la versione del testo che hai letto e accettato. Ricarica la pagina e riprova.</value>
+  </data>
+  <data name="AlloggiatiDelegationTextOutdated" xml:space="preserve">
+    <value>Il testo della delega è cambiato da quando lo hai letto. Ricarica la pagina, leggi il testo aggiornato e accettalo di nuovo.</value>
+  </data>
   <data name="SenderGuidancePoliceAccountInvalid" xml:space="preserve">
     <value>Il channel manager dice che il collegamento con Alloggiati Web non è attivo. Nel suo pannello controlla le credenziali, la chiave del web service e il numero della struttura per camera, fai il «Test di connessione» e attiva l'invio automatico giornaliero; poi rifai la prova qui.</value>
   </data>

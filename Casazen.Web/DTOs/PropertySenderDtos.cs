@@ -24,7 +24,7 @@ namespace Casazen.Web.DTOs;
 /// <param name="ChannelManagerAvailable">False without a confirmed listing on a connected Octorate account, or while the Octorate connector is off.</param>
 /// <param name="AvailableSenders">The senders the host can choose now; empty outside Italy.</param>
 /// <param name="DelegationAccepted">True when the org accepted the current delegation text.</param>
-/// <param name="DelegationTextVersion">The version of the delegation text to show and to accept before an automatic sender is set.</param>
+/// <param name="DelegationTextVersion">The version of the delegation text to show and to accept before an automatic sender is set; the client sends it back as <c>delegationTextVersion</c> with <c>delegationConsent</c>.</param>
 /// <param name="DeclaredAt">When the host declared the channel manager activated (UTC); <c>null</c> when it did not or a later change voided it.</param>
 /// <param name="LastChangedAt">When a person last chose the sender (UTC); <c>null</c> for a default.</param>
 public sealed record PropertySenderDto(
@@ -131,4 +131,13 @@ public sealed class SwitchSenderRequest
 
     /// <summary>The host accepts the delegation of the transmission (the text of <c>delegationTextVersion</c>). Needed once for an automatic sender.</summary>
     public bool DelegationConsent { get; set; }
+
+    /// <summary>
+    /// The version of the delegation text the host read and accepted: the <c>delegationTextVersion</c> of the sender the screen was loaded
+    /// from. Optional, but required when <see cref="DelegationConsent"/> is true: 422 <c>alloggiati_delegation_text_version_required</c> without
+    /// it, 409 <c>alloggiati_delegation_text_outdated</c> when it is not the version in force (the problem carries the current
+    /// <c>delegationTextVersion</c>). The consent recorded is the consent to the text the person saw.
+    /// </summary>
+    [MaxLength(AlloggiatiDelegationTexts.VersionMaxLength, ErrorMessage = "AlloggiatiDelegationVersionInvalid")]
+    public string? DelegationTextVersion { get; set; }
 }

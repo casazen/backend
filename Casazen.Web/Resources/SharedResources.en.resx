@@ -4382,6 +4382,12 @@
   <data name="AlloggiatiDelegationRequired" xml:space="preserve">
     <value>Before you turn on an automatic sender you must accept the delegation of the transmission: you (or your agency) stay responsible for the communications, and CasaZen is the tool you entrust the sending to. Accept it and try again.</value>
   </data>
+  <data name="AlloggiatiDelegationTextVersionRequired" xml:space="preserve">
+    <value>To record the delegation we need the version of the text you read and accepted. Reload the page and try again.</value>
+  </data>
+  <data name="AlloggiatiDelegationTextOutdated" xml:space="preserve">
+    <value>The delegation text has changed since you read it. Reload the page, read the updated text and accept it again.</value>
+  </data>
   <data name="SenderGuidancePoliceAccountInvalid" xml:space="preserve">
     <value>The channel manager says the link with Alloggiati Web is not active. In its panel check the credentials, the web service key and the room number of the property, run the «Connection test» and turn on the daily automatic send; then run the test again here.</value>
   </data>

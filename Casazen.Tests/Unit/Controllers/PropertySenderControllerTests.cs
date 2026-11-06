@@ -45,7 +45,8 @@ public class PropertySenderControllerTests
                 It.IsAny<bool>(),
                 It.IsAny<string>(),
                 It.IsAny<CancellationToken>(),
-                It.IsAny<ComplianceSenderType?>()))
+                It.IsAny<ComplianceSenderType?>(),
+                It.IsAny<string?>()))
             .ReturnsAsync(View(PropertyOfOrgA));
         senders
             .Setup(s => s.TestConnectionAsync(PropertyOfOrgA, It.IsAny<CancellationToken>()))
@@ -70,7 +71,12 @@ public class PropertySenderControllerTests
             .Setup(l => l.ForPropertyAsync(PropertyOfOrgB, It.IsAny<CancellationToken>()))
             .ReturnsAsync((HostResource?)null);
 
-        var change = new SwitchSenderRequest { Sender = ComplianceSenderType.Manual, Confirmed = true };
+        var change = new SwitchSenderRequest
+        {
+            Sender = ComplianceSenderType.Manual,
+            Confirmed = true,
+            DelegationTextVersion = AlloggiatiDelegationTexts.CurrentVersion,
+        };
 
         // A member of the org with no org-wide role and no grant reaches only the properties it created: nothing of this one, no call.
         var outsider = Controller(senders, lookup, HostAuthorizationTestHarness.User("auth0|staff-a", "Staff"));
@@ -88,7 +94,8 @@ public class PropertySenderControllerTests
 
         Assert.Empty(senders.Invocations);
 
-        // Whoever reaches the property reads and changes its sender, and the change is made in the name of the caller.
+        // Whoever reaches the property reads and changes its sender, and the change is made in the name of the caller, with the version of
+        // the delegation text the request names.
         var owner = Controller(senders, lookup, HostAuthorizationTestHarness.User(Owner, "PropertyOwner"));
         var read = Assert.IsType<OkObjectResult>((await owner.Get(PropertyOfOrgA, CancellationToken.None)).Result);
         Assert.Equal(PropertyOfOrgA, Assert.IsType<PropertySenderDto>(read.Value).PropertyId);
@@ -103,7 +110,8 @@ public class PropertySenderControllerTests
                 false,
                 Owner,
                 It.IsAny<CancellationToken>(),
-                It.IsAny<ComplianceSenderType?>()),
+                It.IsAny<ComplianceSenderType?>(),
+                AlloggiatiDelegationTexts.CurrentVersion),
             Times.Once);
         senders.Verify(s => s.DeclareActivatedAsync(PropertyOfOrgA, Owner, It.IsAny<CancellationToken>()), Times.Once);
 

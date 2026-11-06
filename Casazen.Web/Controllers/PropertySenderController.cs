@@ -59,14 +59,14 @@ public class PropertySenderController(
 
     /// <summary>
     /// Changes the sender of the property. ChannelManager or Manual; the host confirms that the sender in effect goes off, and for an automatic
-    /// sender it accepts the delegation of the transmission (recorded on the organization before the sender is set). The change is audited
-    /// once, by the store that writes it.
+    /// sender it accepts the delegation of the transmission, naming the version of the text it read (recorded on the organization before
+    /// the sender is set). The change is audited once, by the store that writes it.
     /// </summary>
     /// <response code="200">The sender after the change.</response>
     /// <response code="403"><c>alloggiati_delegation_required</c>: an automatic sender needs the delegation accepted; or the caller may not write the property.</response>
     /// <response code="404"><c>property_not_found</c>.</response>
-    /// <response code="409"><c>sender_switch_confirmation_required</c> (the problem carries <c>currentSender</c> and <c>newSender</c>); <c>sender_changed_concurrently</c>.</response>
-    /// <response code="422"><c>sender_istat_mismatch</c>, <c>sender_not_applicable</c> (outside Italy), <c>sender_casazen_not_available</c>, <c>sender_channel_manager_not_available</c>.</response>
+    /// <response code="409"><c>sender_switch_confirmation_required</c> (the problem carries <c>currentSender</c> and <c>newSender</c>); <c>alloggiati_delegation_text_outdated</c> (the consent names another version than the one in force; the problem carries the current <c>delegationTextVersion</c>); <c>sender_changed_concurrently</c>.</response>
+    /// <response code="422"><c>sender_istat_mismatch</c>, <c>alloggiati_delegation_text_version_required</c> (a consent without the version of the text), <c>sender_not_applicable</c> (outside Italy), <c>sender_casazen_not_available</c>, <c>sender_channel_manager_not_available</c>.</response>
     [HttpPut]
     [Authorize(Policy = CasazenPolicies.PropertyWrite)]
     [ProducesResponseType(typeof(PropertySenderDto), StatusCodes.Status200OK)]
@@ -93,7 +93,8 @@ public class PropertySenderController(
             request.DelegationConsent,
             userId,
             cancellationToken,
-            request.IstatSender);
+            request.IstatSender,
+            request.DelegationTextVersion);
         logger.LogInformation("User {UserId} set the sender of property {PropertyId} to {Sender}", userId, propertyId, view.Sender);
         return Answer(view);
     }
