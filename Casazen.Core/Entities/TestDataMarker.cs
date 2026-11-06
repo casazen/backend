@@ -160,6 +160,16 @@ public static class TestDataEntities
     public const string WelcomeLink = "PropertyWelcomeLink";
 
     /// <summary>
+    /// A conversation of a channel (<see cref="OtaMessageThread"/>, E05/F02/US01/T01) that the showcase wrote for the hub of messages: invented guests
+    /// and words that say TEST, no Octorate behind them. It points at the demo house and stay by id with a foreign key that lets go (SET NULL), so the
+    /// reset deletes it by its marker before it deletes the houses, or it would stay behind as an unassigned conversation; its messages go with it.
+    /// </summary>
+    public const string OtaMessageThread = "OtaMessageThread";
+
+    /// <summary>The conversation with the guest of a demo stay (<see cref="GuestThread"/>, E05/F02/US01/T01); it goes with its booking at the reset, which also drops its marker.</summary>
+    public const string GuestThread = "GuestThread";
+
+    /// <summary>
     /// The mirror of a showcase booking on the channel manager (<see cref="Entities.OctorateBookingSync"/>, E08/F03/US03/T02, NF-74): the state of the last operation of
     /// an invented reservation, nothing is sent. It goes with its booking (cascade) and the reset deletes its marker with the other showcase markers.
     /// </summary>

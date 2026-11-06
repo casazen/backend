@@ -99,6 +99,13 @@ public static class DemoShowcaseCatalog
         public const string TouristTaxPerGuest = "tourist-tax-per-guest";
         public const string TouristTaxChannelCollected = "tourist-tax-channel-collected";
 
+        /// <summary>
+        /// The hub of messages (E05/F02/US01/T01, NF-61, NF-64): the conversations of the guests in one list. Three invented conversations, all saying
+        /// TEST: one with the guest of a direct stay waiting for an answer, one of Airbnb about a booking, and a request of Booking.com with no booking
+        /// yet. They are rows of the hub only: nothing is read from, or sent to, a channel manager.
+        /// </summary>
+        public const string MessageHub = "message-hub";
+
         // NF-40, NF-45 (E03/F01/US01/T04): the host wizard "Guest check-in" in the four states of a stay, and a stay with data to complete.
         public const string CheckInWizardExpected = "checkin-wizard-expected";
         public const string CheckInWizardArrived = "checkin-wizard-arrived";
@@ -201,6 +208,7 @@ public static class DemoShowcaseCatalog
         Scenario.MarketplaceActivationDeclared,
         Scenario.TouristTaxPerGuest,
         Scenario.TouristTaxChannelCollected,
+        Scenario.MessageHub,
         Scenario.CheckInWizardExpected,
         Scenario.CheckInWizardArrived,
         Scenario.CheckInWizardDeparted,
@@ -1137,6 +1145,53 @@ public static class DemoShowcaseCatalog
     ];
 
     /// <summary>
+    /// The conversations of the hub of messages (E05/F02/US01/T01, NF-61, NF-64), written for the org at reset next to the stays they are about:
+    /// the guest of a direct stay of the villa who asks to arrive early and has had no answer (a conversation to answer, one message unread); a guest
+    /// of Airbnb about the stay at Casa Borgo di Prova, who got an answer and wrote again (a conversation of a channel, linked to its booking); and a
+    /// request of Booking.com for the villa, with no booking yet. Everything in them is invented and says TEST; the conversations of the channels are
+    /// rows of the copy that the sync would write (<c>OtaMessageThread</c>, <c>OtaMessage</c>), with no connection to a channel manager behind them.
+    /// Marked as showcase data (<c>TestDataEntities.OtaMessageThread</c>, <c>GuestThread</c>), deleted by the next reset.
+    /// </summary>
+    public static IReadOnlyList<DemoMessageThreadTemplate> MessageThreads { get; } =
+    [
+        new(
+            "diretta-arrivo-anticipato",
+            DemoMessageThreadKind.Direct,
+            "villa-lago",
+            "tassa-per-ospite",
+            null,
+            null,
+            [
+                new(true, 190, "Buongiorno (TEST): possiamo arrivare un’ora prima del check-in? Grazie."),
+            ],
+            Scenario.MessageHub),
+        new(
+            "airbnb-prenotazione",
+            DemoMessageThreadKind.OtaReservation,
+            "casa-borgo-prova",
+            "canale-riscuote",
+            OtaChannel.Airbnb,
+            "Jonas B. (TEST)",
+            [
+                new(true, 2900, "Hello (TEST)! Is there a parking space near the house?", Read: true),
+                new(false, 2800, "Hello Jonas (TEST), yes: there is free parking right in front of the house."),
+                new(true, 75, "Perfect, thank you (TEST)! What time can we check in?"),
+            ],
+            Scenario.MessageHub),
+        new(
+            "booking-richiesta",
+            DemoMessageThreadKind.OtaRequest,
+            "villa-lago",
+            null,
+            OtaChannel.Booking,
+            "Marta R. (TEST)",
+            [
+                new(true, 1500, "Buonasera (TEST): la villa è libera dal 3 al 10 agosto? Siamo in quattro."),
+            ],
+            Scenario.MessageHub),
+    ];
+
+    /// <summary>
     /// The profile of the issuer of the documents of the demo organization (E06/F02/US02, FIS-02, NF-82): complete, so the wizard «Come emetti i
     /// documenti?» opens on an answered setting and the settings page has data to show. Invented like the rest (TEST in the name, a plausible address
     /// in Milano), with the choice «the accountant takes care of the documents»: it needs neither the flag of the issuance nor an Octorate connection.
@@ -1624,6 +1679,44 @@ public sealed record DemoRoutineTemplate(
     RoutineActionType ActionType,
     bool IsTestMode,
     string Scenario);
+
+/// <summary>Which of the two sources of the hub of messages a demo conversation is kept in, and what it is about.</summary>
+public enum DemoMessageThreadKind
+{
+    /// <summary>The conversation with the guest of a direct stay (<c>GuestThread</c>).</summary>
+    Direct = 0,
+
+    /// <summary>A conversation of a channel about a booking (<c>OtaMessageThread</c> of kind Reservation, linked to the booking).</summary>
+    OtaReservation = 1,
+
+    /// <summary>A conversation of a channel with no booking yet (<c>OtaMessageThread</c> of kind Request).</summary>
+    OtaRequest = 2,
+}
+
+/// <summary>
+/// A conversation of the hub of messages (E05/F02/US01/T01, NF-61, NF-64): invented like the rest of the demo, written for the org at reset next
+/// to the stay it is about and marked as showcase data (<c>TestDataEntities.OtaMessageThread</c> or <c>GuestThread</c>), so the next reset deletes it.
+/// </summary>
+/// <param name="Key">Stable key of the conversation inside the template.</param>
+/// <param name="Kind">Where it is kept and what it is about.</param>
+/// <param name="PropertyKey">The demo property (<see cref="DemoPropertyTemplate.Key"/>) it belongs to.</param>
+/// <param name="BookingKey">The demo stay (<see cref="DemoBookingTemplate.Key"/>) of that property it is about; <c>null</c> for a request.</param>
+/// <param name="Channel">The channel of a conversation of a channel; <c>null</c> for a direct one.</param>
+/// <param name="GuestName">The name the channel gives for the guest of a conversation of a channel (it says TEST); <c>null</c> for a direct one, which takes the guest of the stay.</param>
+/// <param name="Messages">The messages, in the order they were written.</param>
+/// <param name="Scenario">The scenario it exercises.</param>
+public sealed record DemoMessageThreadTemplate(
+    string Key,
+    DemoMessageThreadKind Kind,
+    string PropertyKey,
+    string? BookingKey,
+    OtaChannel? Channel,
+    string? GuestName,
+    IReadOnlyList<DemoMessageTemplate> Messages,
+    string Scenario);
+
+/// <summary>A message of a demo conversation: who wrote it, how long before the reset, what it says (it says TEST) and whether the host read it.</summary>
+public sealed record DemoMessageTemplate(bool FromGuest, int MinutesAgo, string Text, bool Read = false);
 
 /// <summary>
 /// A popup alert of the demo host (NF-08, ADR-025): invented like the rest of the demo, written for the owner of the org at reset and

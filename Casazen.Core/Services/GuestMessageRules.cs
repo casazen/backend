@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.Text;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
@@ -62,6 +63,18 @@ public static partial class GuestMessageRules
 
         return nowUtc >= ClosesAtUtc(checkOutDate) ? GuestThreadState.Closed : GuestThreadState.Open;
     }
+
+    /// <summary>
+    /// The threads that exist, in the form a query needs: the thread of a booking of the public checkout (<see cref="BookingSource.Direct"/>) that was
+    /// confirmed and not cancelled. It is the SQL twin of <see cref="StateOf"/> (which is <see cref="GuestThreadState.Unavailable"/> for every other
+    /// booking) and the one definition the three queries that read the threads of the host share: the list of the threads, the badges and the hub of
+    /// messages. A test pins it to <see cref="StateOf"/> for every source and status.
+    /// </summary>
+    public static readonly Expression<Func<GuestThread, bool>> IsThreadOfADirectBooking = thread =>
+        thread.Booking.Source == BookingSource.Direct
+        && (thread.Booking.Status == BookingStatus.Confirmed
+            || thread.Booking.Status == BookingStatus.CheckedIn
+            || thread.Booking.Status == BookingStatus.CheckedOut);
 
     /// <summary>The UTC instant from which the thread is closed: the start, in Europe/Rome, of the day after the last day to write.</summary>
     public static DateTime ClosesAtUtc(DateTime checkOutDate) =>
