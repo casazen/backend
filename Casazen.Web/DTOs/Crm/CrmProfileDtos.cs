@@ -11,7 +11,7 @@ public class CrmProfileListItemDto
 {
     public Guid Id { get; set; }
 
-    /// <summary>The name of the primary guest (or of the first guest the caller reaches); empty for a lead with no name.</summary>
+    /// <summary>The name of the primary guest (or of the first guest the caller reaches); for a lead the name it gave on the welcome page; empty when there is none.</summary>
     public string DisplayName { get; set; } = string.Empty;
 
     public string Country { get; set; } = string.Empty;

@@ -64,6 +64,10 @@ public class CrmProfileApiProofTests
             var rival = CrmProfileApiWorld.AddPerson(seed, orgId, "Bruno", "Verdi", hidden);
             var lead = CrmProfileApiWorld.NewProfile(orgId, null, stays: 0, spend: 0m);
             seed.GuestCrmProfiles.Add(lead);
+            var leadContact = CrmProfileApiWorld.NewContact(
+                orgId, lead.Id, GuestContactChannel.Email, "lea.gialli@example.com", GuestContactOrigin.WelcomePage, GuestContactLegalBasis.None);
+            leadContact.DisplayName = "Lea Gialli";
+            seed.GuestContacts.Add(leadContact);
             CrmProfileApiWorld.AddPerson(seed, otherOrgId, "Carla", "Neri");
             await seed.SaveChangesAsync(Ct);
 
@@ -97,6 +101,10 @@ public class CrmProfileApiProofTests
         Assert.Equal("Annamaria Segreta", wholeShared.DisplayName);
         Assert.Equal(2, wholeShared.TotalStays);
         Assert.Equal(500m, wholeShared.TotalSpend);
+        var wholeLead = whole.Items.Single(i => i.Id == leadId);
+        Assert.Equal("Lea Gialli", wholeLead.DisplayName);
+        Assert.Equal("l***@example.com", wholeLead.EmailMasked);
+        Assert.Equal(GuestContactLegalBasis.None, wholeLead.EmailBasis);
 
         // A collaborator with no property is never widened to the org.
         var none = await service.ListAsync(noProperty, NoFilter, 1, 50, Ct);

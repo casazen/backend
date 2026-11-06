@@ -123,6 +123,8 @@ public sealed class CrmProfileReadService(
         var guests = await GuestNamesAsync(scope, profileIds, cancellationToken);
         var contacts = await CrmProfileContactReader.LoadAsync(db, orgId, profileIds, cancellationToken);
         var (guestId, name) = ChooseName(guests.Where(guest => guest.ProfileId == profileId), profile.PrimaryGuestId);
+        if (name.Length == 0 && scope.IsOrgWide)
+            name = LeadName(contacts);
 
         var stayRows = await BookingsInScope(scope)
             .AsNoTracking()
@@ -475,9 +477,12 @@ public sealed class CrmProfileReadService(
             if (!byId.TryGetValue(id, out var row))
                 continue;
 
-            var (_, name) = ChooseName(guests[id], row.PrimaryGuestId);
-            var bookingsOfProfile = bookings[id].ToList();
             var contactsOfProfile = contacts[id].ToList();
+            var (_, name) = ChooseName(guests[id], row.PrimaryGuestId);
+            if (name.Length == 0 && scope.IsOrgWide)
+                name = LeadName(contactsOfProfile);
+
+            var bookingsOfProfile = bookings[id].ToList();
             var email = BestContact(contactsOfProfile, GuestContactChannel.Email);
             var whatsapp = BestContact(contactsOfProfile, GuestContactChannel.WhatsApp);
 
@@ -637,6 +642,18 @@ public sealed class CrmProfileReadService(
     }
 
     /// <summary>
+    /// The name a lead gave on the welcome page, for a profile that has no guest to take a name from: the oldest contact that has a name. Asked
+    /// for a caller who reaches the whole org only, the only scope a lead is in.
+    /// </summary>
+    private static string LeadName(IEnumerable<GuestContact> contacts) =>
+        contacts
+            .Where(contact => !string.IsNullOrWhiteSpace(contact.DisplayName))
+            .OrderBy(contact => contact.CreatedAt)
+            .ThenBy(contact => contact.Id)
+            .Select(contact => contact.DisplayName!.Trim())
+            .FirstOrDefault() ?? string.Empty;
+
+    /// <summary>
     /// The contact of the channel the profile is shown by: the one that may receive marketing, else a contact that is not suppressed, not an
     /// OTA forward, with the strongest basis, the oldest first. <c>null</c> without a contact on the channel.
     /// </summary>
@@ -687,7 +704,7 @@ public sealed class CrmProfileReadService(
         return new CrmProfileTotals(
             stays.Count,
             spend,
-            Math.Round(spend / stays.Count, 2),
+            Math.Round(spend / stays.Count, 2, MidpointRounding.AwayFromZero),
             advances.Count > 0 ? Math.Round(advances.Average(), 1) : null,
             stays
                 .GroupBy(stay => stay.Source)

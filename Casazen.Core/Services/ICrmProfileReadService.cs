@@ -119,7 +119,7 @@ public sealed record CrmProfilePage(IReadOnlyList<CrmProfileListItem> Items, int
 /// may decide (the other profile is in the caller's scope too).
 /// </summary>
 /// <param name="Id">The profile.</param>
-/// <param name="DisplayName">The name of the primary guest, or of the first guest the caller reaches when it does not reach the primary one; empty for a lead with no name.</param>
+/// <param name="DisplayName">The name of the primary guest, or of the first guest the caller reaches when it does not reach the primary one; for a lead (no guest) the name it gave on the welcome page; empty when there is none.</param>
 /// <param name="Country">The country, as stored.</param>
 /// <param name="Language">The language, as stored.</param>
 /// <param name="TotalStays">The stays: of the whole org for a caller who reaches it all, over the bookings the caller reaches otherwise.</param>
