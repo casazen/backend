@@ -60,27 +60,27 @@ public sealed class BookingsDryRunCheck(BookingStateMapper mapper) : IFlowDryRun
         return Task.FromResult(reasons.Count == 0 ? FlowCheckResult.Pass(Flow) : FlowCheckResult.Fail(Flow, [.. reasons]));
     }
 
-    /// <summary>The Octorate state the CasaZen state stands for, read back through the mapper, is the same state; and its outbound operation is known.</summary>
+    /// <summary>
+    /// The state maps both ways when the mapper answers for it going out (the operation CasaZen sends, which may be none) and some Octorate state
+    /// comes back as this very state. Derived from the mapper, with no table of its own: it follows the mapper when it changes. A booking in the
+    /// house or over (<see cref="BookingStatus.CheckedIn"/>, <see cref="BookingStatus.CheckedOut"/>) is CasaZen's own state, which the mapper keeps
+    /// whatever Octorate says.
+    /// </summary>
     private bool MapsBothWays(BookingStatus status)
     {
-        OctorateBookingStatus? remote = status switch
-        {
-            BookingStatus.Pending => OctorateBookingStatus.Waiting,
-            BookingStatus.Confirmed or BookingStatus.CheckedIn or BookingStatus.CheckedOut => OctorateBookingStatus.Confirmed,
-            BookingStatus.Cancelled => OctorateBookingStatus.Cancelled,
-            _ => null,
-        };
-        if (remote is null)
-            return false;
+        _ = mapper.ToOutbound(status);
+        return Enum.GetValues<OctorateBookingStatus>().Any(remote => ReadsBack(remote, status));
+    }
 
+    private bool ReadsBack(OctorateBookingStatus remote, BookingStatus status)
+    {
         try
         {
-            _ = mapper.ToOutbound(status);
-            return mapper.ToBookingStatus(remote.Value, status) == status;
+            return mapper.ToBookingStatus(remote, status) == status;
         }
         catch (ArgumentOutOfRangeException)
         {
-            // The mapper refuses the state: that is the answer of the check (the mapper is pure, nothing external failed).
+            // An Octorate state the mapper does not read is no way back for this state.
             return false;
         }
     }
