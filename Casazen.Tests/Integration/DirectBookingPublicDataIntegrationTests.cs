@@ -527,7 +527,14 @@ public class DirectBookingPublicDataIntegrationTests : IClassFixture<CasazenWebA
             var quote = await ReadAsync(await PostQuoteAsync(client, property.Id, date, date.AddDays(1)));
             var night = quote.GetProperty("lines").EnumerateArray().First();
             Assert.Equal(night.GetProperty("amountCents").GetInt64(), day.GetProperty("nightlyPriceCents").GetInt64());
-            Assert.Equal(["date", "available", "nightlyPriceCents", "minNights"], day.EnumerateObject().Select(p => p.Name));
+            // Dates, numbers and flags only (the rules of the day, E08/F05/US01/T03): never a name, an address or a source. This property has no
+            // rule of its own, so no maximum stay, no advance limit and nothing closed.
+            Assert.Equal(
+                ["date", "available", "nightlyPriceCents", "minNights", "maxNights", "closedToArrival", "closedToDeparture", "minAdvanceDays", "maxAdvanceDays"],
+                day.EnumerateObject().Select(p => p.Name));
+            Assert.All(new[] { "maxNights", "minAdvanceDays", "maxAdvanceDays" }, name => Assert.Equal(JsonValueKind.Null, day.GetProperty(name).ValueKind));
+            Assert.False(day.GetProperty("closedToArrival").GetBoolean());
+            Assert.False(day.GetProperty("closedToDeparture").GetBoolean());
             Assert.Equal(date != sunday && date != tuesday, day.GetProperty("available").GetBoolean());
         }
 
