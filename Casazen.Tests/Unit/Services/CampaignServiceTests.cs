@@ -3,6 +3,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Models;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Email;
 using Casazen.Infrastructure.External;
@@ -38,7 +39,8 @@ public class CampaignServiceTests
                 ["App:ApiBaseUrl"] = Api,
             }).Build(),
             new PublicSiteLinks(Options.Create(new PublicSiteOptions { PublicSiteBaseUrl = WebApp })),
-            TimeProvider.System);
+            TimeProvider.System,
+            CrmTestIndex.Create());
 
     /// <summary>
     /// Proof test for DEB-01: the unsubscribe link of a campaign e-mail is the signed link of ADR-007-R18 on the web app (no address in
@@ -64,7 +66,9 @@ public class CampaignServiceTests
         Assert.DoesNotContain("example.com", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("%40", html);
 
-        var emailHash = SuppressionService.ComputeEmailHash(to);
+        // E07/F06/US01/T02: the hash in the link is the keyed one (HMAC of the normalized address), never the plain SHA-256.
+        var emailHash = CrmTestIndex.Create().Hash(ShowcaseBookingRules.NormalizeEmail(to));
+        Assert.NotEqual(SuppressionService.LegacyEmailHash(to), emailHash);
         var page = $"{WebApp}/unsubscribe#orgId={orgId:D}&amp;emailHash={emailHash}&amp;expiresAt=";
         Assert.Contains($"href=\"{page}", html);
 
@@ -80,7 +84,7 @@ public class CampaignServiceTests
         Assert.Equal(MarketingUnsubscribeCheck.Valid, links.Verify(emailHash, expiresAt, signature));
         Assert.Equal(
             MarketingUnsubscribeCheck.InvalidSignature,
-            links.Verify(SuppressionService.ComputeEmailHash("someone.else@example.com"), expiresAt, signature));
+            links.Verify(CrmTestIndex.Create().Hash("someone.else@example.com"), expiresAt, signature));
 
         await using var verify = new AppDbContext(options);
         var campaign = await verify.Campaigns.SingleAsync(c => c.Id == campaignId);
@@ -108,7 +112,7 @@ public class CampaignServiceTests
         new(
             context,
             new ConditionEvaluator(Mock.Of<ILogger<ConditionEvaluator>>()),
-            new SuppressionService(context, Mock.Of<ILogger<SuppressionService>>()),
+            new SuppressionService(context, CrmTestIndex.Create(), Mock.Of<ILogger<SuppressionService>>()),
             email,
             links,
             Mock.Of<IBackgroundJobClient>(),
@@ -222,7 +226,7 @@ public class CampaignServiceTests
         {
             var logger = Mock.Of<ILogger<CampaignService>>();
             var conditionEvaluator = new ConditionEvaluator(Mock.Of<ILogger<ConditionEvaluator>>());
-            var suppressionService = new SuppressionService(context, Mock.Of<ILogger<SuppressionService>>());
+            var suppressionService = new SuppressionService(context, CrmTestIndex.Create(), Mock.Of<ILogger<SuppressionService>>());
             var backgroundJobClient = Mock.Of<IBackgroundJobClient>();
             var timeProvider = TimeProvider.System;
 
@@ -307,7 +311,7 @@ public class CampaignServiceTests
             await context.SaveChangesAsync();
 
             // Add suppressed email to suppression list (one-click unsubscribe)
-            var suppressionService = new SuppressionService(context, Mock.Of<ILogger<SuppressionService>>());
+            var suppressionService = new SuppressionService(context, CrmTestIndex.Create(), Mock.Of<ILogger<SuppressionService>>());
             await suppressionService.AddToSuppressionListAsync(orgId, suppressedEmail, "unsubscribe");
         }
 
@@ -316,7 +320,7 @@ public class CampaignServiceTests
         {
             var logger = Mock.Of<ILogger<CampaignService>>();
             var conditionEvaluator = new ConditionEvaluator(Mock.Of<ILogger<ConditionEvaluator>>());
-            var suppressionService = new SuppressionService(context, Mock.Of<ILogger<SuppressionService>>());
+            var suppressionService = new SuppressionService(context, CrmTestIndex.Create(), Mock.Of<ILogger<SuppressionService>>());
             var backgroundJobClient = Mock.Of<IBackgroundJobClient>();
             var timeProvider = TimeProvider.System;
 
@@ -372,7 +376,7 @@ public class CampaignServiceTests
         {
             var logger = Mock.Of<ILogger<CampaignService>>();
             var conditionEvaluator = new ConditionEvaluator(Mock.Of<ILogger<ConditionEvaluator>>());
-            var suppressionService = new SuppressionService(context, Mock.Of<ILogger<SuppressionService>>());
+            var suppressionService = new SuppressionService(context, CrmTestIndex.Create(), Mock.Of<ILogger<SuppressionService>>());
             var backgroundJobClient = Mock.Of<IBackgroundJobClient>();
             var timeProvider = TimeProvider.System;
 

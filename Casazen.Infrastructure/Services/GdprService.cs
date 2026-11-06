@@ -5,6 +5,7 @@ using Casazen.Core.Models;
 using Casazen.Core.Options;
 using Casazen.Core.Repositories;
 using Casazen.Core.Services;
+using Casazen.Core.Suppliers;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -18,17 +19,26 @@ namespace Casazen.Infrastructure.Services;
 /// anonymization (<see cref="GuestDataEraser"/>), marketing consent that only the guest can give. Every operation is
 /// audited in <see cref="GuestPrivacyAuditEntry"/>, and the logs carry ids only, never personal data.
 /// </summary>
+/// <remarks>
+/// <c>suppressionService</c> is the last parameter and optional only so that the tests that build the service for the other
+/// operations keep compiling: the container always supplies it, and the withdrawal of a marketing consent refuses to run without it
+/// (a revocation that does not enter the suppression list is not recorded).
+/// </remarks>
 public class GdprService(
     AppDbContext db,
     IGuestRepository guestRepository,
     GuestDataEraser eraser,
     IOptions<GdprOptions> gdprOptions,
     TimeProvider timeProvider,
-    ILogger<GdprService> logger) : IGdprService
+    ILogger<GdprService> logger,
+    ISuppressionService? suppressionService = null) : IGdprService
 {
     public const string HostGrantForbiddenCode = "gdpr_marketing_consent_host_grant_forbidden";
     public const string WithdrawalNoteRequiredCode = "gdpr_marketing_withdrawal_note_required";
     public const int WithdrawalNoteMaxLength = 500;
+
+    /// <summary>The source of the suppression entries a host's withdrawal makes (<c>SuppressionListEntry.Source</c>).</summary>
+    private const string SuppressionSourceManual = "manual";
 
     private DateTime UtcNow() => timeProvider.GetUtcNow().UtcDateTime;
 
@@ -275,8 +285,44 @@ public class GdprService(
         guest.MarketingConsentDate = now;
         guest.UpdatedAt = now;
         AddAudit(guest, GuestPrivacyAuditAction.MarketingConsentWithdrawn, actorUserId, now);
+
+        // AC-NF95-6: the guest asked to stop, so every address it gave enters the suppression list, in the same unit of work as the
+        // withdrawal: either both are recorded or neither is.
+        await StageSuppressionOfTheGuestAsync(guest, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Marketing consent of guest {GuestId} withdrawn by user {ActorUserId} on the guest's request", guest.Id, actorUserId);
+    }
+
+    /// <summary>
+    /// Adds to the unit of work (not saved here) the suppression, with source <c>manual</c>, of the e-mail of the guest and of every marketing
+    /// e-mail of its per-channel consents (<see cref="MarketingConsentRecord.MarketingEmail"/>), each address once however it is spelled.
+    /// The placeholder of an anonymized guest and an empty address are not addresses. The suppression service flags the CRM contacts with the same
+    /// keyed hash in the same unit of work.
+    /// </summary>
+    private async Task StageSuppressionOfTheGuestAsync(Guest guest, CancellationToken cancellationToken)
+    {
+        var suppression = suppressionService
+            ?? throw new InvalidOperationException("ISuppressionService is not available: a withdrawal recorded by the host must enter the suppression list.");
+
+        var addresses = await db.MarketingConsentRecords.AsNoTracking()
+            .Where(r => r.GuestId == guest.Id && r.OrgId == guest.OrgId)
+            .Select(r => r.MarketingEmail)
+            .ToListAsync(cancellationToken);
+        addresses.Add(guest.Email);
+
+        var placeholder = ShowcaseBookingRules.NormalizeEmail(GuestDataEraser.AnonymizedEmail(guest.Id));
+        var staged = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var address in addresses)
+        {
+            if (string.IsNullOrWhiteSpace(address))
+                continue;
+
+            var normalized = ShowcaseBookingRules.NormalizeEmail(address);
+            if (normalized == placeholder || !staged.Add(normalized))
+                continue;
+
+            await suppression.StageSuppressionAsync(guest.OrgId, address, SuppressionSourceManual, cancellationToken);
+        }
     }
 
     private static NotFoundException GuestNotFound(Guid guestId) =>

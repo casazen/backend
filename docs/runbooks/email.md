@@ -233,7 +233,9 @@ The e-mails of a campaign (NF-24, `CampaignService.SendCampaignAsync`, Hangfire 
 guest's address in the query, on a hard-coded host (`https://app.casazen.com/unsubscribe?org=…&email=…`). Since DEB-01 (2026-10-31):
 
 - **The link is signed** (`MarketingUnsubscribeLinks`, ADR-007-R18): HMAC-SHA256 with `SIGNED_LINK_SECRET` of `emailHash + "." + expiresAt`, valid 30 days.
-  `emailHash` is the SHA-256 index of the normalized address, the one of the suppression list: **no address in any URL**. The same class checks the link in
+  `emailHash` is the index of the normalized address, the one of the suppression list: since E07/F06/US01/T02 the **keyed** HMAC-SHA256 of `ICrmContactIndex`
+  (`Crm__ContactIndexKey`), before it the plain SHA-256 (a link issued before keeps working for its 30 days and the list still honors that form;
+  [`crm-marketing.md`](crm-marketing.md) § Suppression): **no address in any URL**. The same class checks the link in
   `POST api/public/marketing/unsubscribe` (constant-time comparison), so building and checking cannot drift.
 - **In the body**: `App__PublicSiteBaseUrl/unsubscribe#orgId=…&emailHash=…&expiresAt=…&signature=…`, the values in the fragment (never sent to a server, so in no
   access log). **The page `/unsubscribe` of the web app is a frontend follow-up**: it reads the fragment and posts it unchanged as the query of
@@ -244,7 +246,10 @@ guest's address in the query, on a hard-coded host (`https://app.casazen.com/uns
 - **Variables**: `SIGNED_LINK_SECRET` (a long random secret, shared by the signed links of ADR-007-R20; the unsubscribe endpoint already needed it) and
   `App__PublicSiteBaseUrl` on every environment that sends campaigns. Without them **no campaign e-mail leaves**: the job fails with
   `EmailConfigurationException` and Hangfire retries it. Rotating the secret invalidates the links already sent.
-- **Logs**: `CampaignService` and `PublicMarketingController` never log an address (the unsubscribe logs carry the org and the hash only).
+- **Logs**: `CampaignService`, `PublicMarketingController` and `SuppressionService` never log an address **nor the hash that stands for it** (the unsubscribe
+  logs carry the org and the source only, E07/F06/US01/T02, AC-NF95-5).
+- **Key**: the link of a campaign needs `Crm__ContactIndexKey` too (it is the key of the hash in the link); without it outside Development and Testing the
+  job fails with `InvalidOperationException` and nothing is sent ([`crm-marketing.md`](crm-marketing.md)).
 
 ## Adding a new email
 

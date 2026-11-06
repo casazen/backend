@@ -38,7 +38,9 @@ public interface IGdprService
     /// check-in portal or at the checkout of the booking site): <paramref name="marketingConsent"/> true raises <c>DomainRuleException</c>
     /// (<c>gdpr_marketing_consent_host_grant_forbidden</c>, 422). A withdrawal needs the guest's documented request in
     /// <paramref name="note"/> (<c>gdpr_marketing_withdrawal_note_required</c>); withdrawing a consent that is not in
-    /// force changes nothing.
+    /// force changes nothing. A withdrawal that is recorded also puts the e-mail of the guest and every marketing e-mail of its per-channel
+    /// consents in the suppression list (<see cref="ISuppressionService"/>, source <c>manual</c>), and flags the CRM contacts with the same
+    /// keyed hash, in the same unit of work (E07/F06/US01/T02, AC-NF95-6).
     /// </summary>
     Task UpdateMarketingConsentAsync(
         Guid orgId,
