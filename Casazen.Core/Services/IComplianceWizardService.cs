@@ -284,9 +284,10 @@ public interface IComplianceWizardService
 
 /// <summary>
 /// An item of the compliance cockpit (CO-04, A5-09): what to do (<see cref="Action"/>) and on what, never a front-end
-/// path. <see cref="Id"/> is the target of the action: the property for
-/// <see cref="ComplianceCockpitAction.ActivateProperty"/> (<see cref="PropertyId"/>), the booking for every other
-/// action (<see cref="BookingId"/>).
+/// path. <see cref="Id"/> is the target of the action: the property for the actions that target one
+/// (<see cref="TargetsProperty"/>: <see cref="ComplianceCockpitAction.ActivateProperty"/> and the property actions of CHK-12), the
+/// booking for every other action (<see cref="BookingId"/>). Since E03/F02/US01/T03 every item also says whether the host is compliant:
+/// its <see cref="Light"/> and a stable <see cref="Reason"/>, add-only like the other new members.
 /// </summary>
 public sealed record ComplianceSummaryItem
 {
@@ -322,8 +323,42 @@ public sealed record ComplianceSummaryItem
     /// </summary>
     public DateTime? DueAt { get; init; }
 
-    /// <summary>True when the target of <paramref name="action"/> is a property, false when it is a booking.</summary>
-    public static bool TargetsProperty(ComplianceCockpitAction action) => action == ComplianceCockpitAction.ActivateProperty;
+    /// <summary>
+    /// The traffic light (NF-52): green only with an archived proof, yellow while in progress, red when the host has to act. <c>null</c> only
+    /// for an item built by a reader that did not ask for the status.
+    /// </summary>
+    public ComplianceLight? Light { get; init; }
+
+    /// <summary>A stable snake_case code that says why the item has its light (<see cref="ComplianceReasonCodes"/>); the client translates it.</summary>
+    public string? Reason { get; init; }
+
+    /// <summary>The month (<c>yyyy-MM</c>) of an item about an ISTAT or tourist tax period; <c>null</c> for the others.</summary>
+    public string? Period { get; init; }
+
+    /// <summary>What backs the light: an archived proof, the outcome held only by Octorate, nothing yet.</summary>
+    public ComplianceEvidenceClass? EvidenceClass { get; init; }
+
+    /// <summary>Where the evidence comes from (<see cref="ComplianceEvidenceSources"/>); <c>null</c> when there is none.</summary>
+    public string? EvidenceSource { get; init; }
+
+    /// <summary>When the proof was archived or the verification passed (UTC); <c>null</c> when there is none.</summary>
+    public DateTime? LastVerifiedAt { get; init; }
+
+    /// <summary>The Octorate handoff topic of an outcome CasaZen cannot see (the client starts <c>POST api/compliance/octorate-handoffs</c> with it); <c>null</c> when none applies.</summary>
+    public OctorateHandoffTopic? HandoffTopic { get; init; }
+
+    /// <summary>
+    /// True when the target of <paramref name="action"/> is a property, false when it is a booking. The property actions are
+    /// <see cref="ComplianceCockpitAction.ActivateProperty"/> and, since CHK-12, the ones that fix a connection, a credential, a period
+    /// or a rate.
+    /// </summary>
+    public static bool TargetsProperty(ComplianceCockpitAction action) =>
+        action is ComplianceCockpitAction.ActivateProperty
+            or ComplianceCockpitAction.ActivateOctorateSend
+            or ComplianceCockpitAction.UploadIstatProof
+            or ComplianceCockpitAction.EnterMunicipalityTaxRate
+            or ComplianceCockpitAction.DeclareTouristTax
+            or ComplianceCockpitAction.RenewPoliceCredentials;
 
     public static ComplianceSummaryItem ForProperty(ComplianceCockpitAction action, Guid propertyId, string label) =>
         TargetsProperty(action)
@@ -354,7 +389,11 @@ public static class ComplianceDeadlines
     };
 }
 
-public record ComplianceSummarySection(int Count, IReadOnlyList<ComplianceSummaryItem> Items);
+public record ComplianceSummarySection(int Count, IReadOnlyList<ComplianceSummaryItem> Items)
+{
+    /// <summary>A section with nothing in it: the default of the sections a reader did not fill.</summary>
+    public static ComplianceSummarySection Empty { get; } = new(0, []);
+}
 
 /// <param name="AlloggiatiFailures">Alloggiati communications in error or rejected.</param>
 /// <param name="AlloggiatiManualRequired">
@@ -371,4 +410,34 @@ public record ComplianceSummaryResult(
     ComplianceSummarySection CheckoutsDue,
     ComplianceSummarySection AlloggiatiFailures,
     ComplianceSummarySection AlloggiatiManualRequired,
-    ComplianceSummarySection TurnoversPending);
+    ComplianceSummarySection TurnoversPending)
+{
+    // The sections of CHK-12 (E03/F02/US01/T03) come after the six above and are empty by default (a positional record cannot give a section
+    // a default value, so they are init members): no caller or test that builds a result with six sections breaks, and a reader that does
+    // not ask for the status simply has them empty. They list, for the stays and properties the caller reaches, every item of the kind with its
+    // light, the green ones too; the count of a section is the number of items that need attention (not green).
+
+    /// <summary>
+    /// The identity of the guest who leaves the document, for the stays arriving soon (CHK-11, NF-50): green when verified, yellow while the
+    /// selfie is awaited, red close to the arrival or when an operator has to decide. Empty while the identity verification is off.
+    /// </summary>
+    public ComplianceSummarySection IdentityPending { get; init; } = ComplianceSummarySection.Empty;
+
+    /// <summary>
+    /// The Alloggiati communications that were sent, entrusted to the channel manager or declared sent, with the receipt archived (green) or
+    /// awaited (yellow, then red the day after). A stay here is not in <see cref="AlloggiatiManualRequired"/>: the host does not send it by hand.
+    /// </summary>
+    public ComplianceSummarySection ReceiptsToUpload { get; init; } = ComplianceSummarySection.Empty;
+
+    /// <summary>
+    /// The stays the channel manager does not send by itself (over 30 nights, a short stay not entrusted, a connection that is not active): the
+    /// host sends them by hand. A stay here is not in <see cref="AlloggiatiManualRequired"/> either.
+    /// </summary>
+    public ComplianceSummarySection ManualSendsRequired { get; init; } = ComplianceSummarySection.Empty;
+
+    /// <summary>The police send of the channel manager that is not active or cannot be verified, and the police credentials that were refused.</summary>
+    public ComplianceSummarySection ConnectionsToFix { get; init; } = ComplianceSummarySection.Empty;
+
+    /// <summary>The ISTAT and tourist tax of the closed months, and the tourist tax rates that are not known.</summary>
+    public ComplianceSummarySection PeriodItems { get; init; } = ComplianceSummarySection.Empty;
+}

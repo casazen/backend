@@ -603,6 +603,12 @@ public static class ServiceCollectionExtensions
         services.AddOptions<OfficialReferenceDataOptions>()
             .BindConfiguration(OfficialReferenceDataOptions.SectionName);
         services.AddScoped<IStayGuestService, StayGuestService>();
+        // The compliance traffic light of the cockpit "am I compliant?" and the feed of its red and yellow items into the unified To do
+        // (E03/F02/US01/T03, NF-52): the status reads facts and hands them to ComplianceLightRules, the one rule class, which returns green
+        // only with an archived proof; the feeder keeps one To do per item and closes it when the item turns green. Both are read-side of the
+        // cockpit (ComplianceWizardService.GetSummaryAsync); nothing is sent to an authority or to Octorate.
+        services.AddScoped<IComplianceStatusService, ComplianceStatusService>();
+        services.AddScoped<IComplianceActivityFeeder, ComplianceActivityFeeder>();
         services.AddScoped<IComplianceWizardService, ComplianceWizardService>();
         // «Gestisci con AI» of the page of the adempimenti: asks the guests for their data (e-mail with the check-in link, chat messages the
         // host sends, written by the AI when one is in effect) and closes the departures that are over; the rest stays the host's.

@@ -20,8 +20,13 @@ public class ComplianceWizardService(
     ITouristTaxQuoteService touristTaxQuoteService,
     IPropertyComplianceStatusService complianceStatus,
     ILogger<ComplianceWizardService> logger,
-    TimeProvider? timeProvider = null) : IComplianceWizardService
+    TimeProvider? timeProvider = null,
+    IComplianceStatusService? statusService = null,
+    IComplianceActivityFeeder? activityFeeder = null) : IComplianceWizardService
 {
+    /// <summary>The most items listed in each section of the compliance status (the count covers all of the ones that need attention).</summary>
+    internal const int StatusSectionMaxItems = 50;
+
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
     public async Task<(Property Property, IReadOnlyList<ComplianceActivationStep> Steps)> GetActivationWizardAsync(
@@ -126,21 +131,137 @@ public class ComplianceWizardService(
             })
             .ToList();
 
-        var (alloggiatiFailures, alloggiatiManualRequired) = await GetAlloggiatiSectionsAsync(scope, today, cancellationToken);
+        // E03/F02/US01/T03 (NF-52): the traffic light of every item, from the one rule class. Without the status service (a caller that
+        // builds the wizard without it) the items carry the light of an item the host has to act on, and the new sections stay empty.
+        var status = statusService is null ? null : await statusService.EvaluateAsync(scope, cancellationToken);
+        var statusOfStay = (status?.Items ?? [])
+            .Where(i => i.Kind == ComplianceItemKind.Alloggiati && i.BookingId is not null)
+            .ToDictionary(i => i.BookingId!.Value);
+        var supersededByStatus = statusOfStay.Values
+            .Where(i => i.Action is ComplianceCockpitAction.UploadAlloggiatiReceipt or ComplianceCockpitAction.SendAlloggiatiManually)
+            .Select(i => i.BookingId!.Value)
+            .ToHashSet();
+
+        var (alloggiatiFailures, alloggiatiManualRequired) =
+            await GetAlloggiatiSectionsAsync(scope, today, statusOfStay, supersededByStatus, cancellationToken);
         var turnoversPending = await GetTurnoversPendingAsync(scope, cancellationToken);
 
-        return new ComplianceSummaryResult(
+        var summary = new ComplianceSummaryResult(
             new ComplianceSummarySection(
                 pendingProperties.Count,
                 // Pending and suspended alike: the activation wizard opens on the first blocking step still open.
-                pendingProperties.Select(p => ComplianceSummaryItem.ForProperty(
-                    ComplianceCockpitAction.ActivateProperty, p.Id, p.Name)).ToList()),
-            new ComplianceSummarySection(incompleteCheckIns.Count, incompleteCheckIns),
-            new ComplianceSummarySection(checkoutDue.Count, checkoutDue),
+                pendingProperties.Select(p => WithOpenVerdict(ComplianceSummaryItem.ForProperty(
+                    ComplianceCockpitAction.ActivateProperty, p.Id, p.Name))).ToList()),
+            new ComplianceSummarySection(incompleteCheckIns.Count, incompleteCheckIns.Select(WithOpenVerdict).ToList()),
+            new ComplianceSummarySection(checkoutDue.Count, checkoutDue.Select(WithOpenVerdict).ToList()),
             alloggiatiFailures,
             alloggiatiManualRequired,
-            turnoversPending);
+            new ComplianceSummarySection(
+                turnoversPending.Count,
+                turnoversPending.Items.Select(WithOpenVerdict).ToList()))
+        {
+            IdentityPending = StatusSection(status, i => i.Kind == ComplianceItemKind.Identity),
+            ReceiptsToUpload = StatusSection(status, i => i.Kind == ComplianceItemKind.Alloggiati && i.Action == ComplianceCockpitAction.UploadAlloggiatiReceipt),
+            ManualSendsRequired = StatusSection(status, i => i.Kind == ComplianceItemKind.Alloggiati && i.Action == ComplianceCockpitAction.SendAlloggiatiManually),
+            ConnectionsToFix = StatusSection(status, i => i.Kind is ComplianceItemKind.Connection or ComplianceItemKind.Credentials),
+            PeriodItems = StatusSection(
+                status, i => i.Kind is ComplianceItemKind.Istat or ComplianceItemKind.TouristTax or ComplianceItemKind.MunicipalityRate),
+        };
+
+        // AC-NF52-13: the red and yellow items feed the unified "To do". The summary is the cockpit of the host: if the list cannot be
+        // kept in step it must still be answered, and the next read tries again.
+        if (activityFeeder is not null && status is not null)
+        {
+            try
+            {
+                await activityFeeder.FeedAsync(scope, status, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "The To do list of org {OrgId} could not be kept in step with the compliance cockpit", scope.OrgId);
+            }
+        }
+
+        return summary;
     }
+
+    /// <summary>
+    /// An item of the cockpit that exists today and is not computed from a proof (a property to activate, guest data to complete, a
+    /// check-out, a turnover): the host has something to do, so it is red with the code that says what (<see cref="ComplianceLightRules.OpenAction"/>).
+    /// </summary>
+    private static ComplianceSummaryItem WithOpenVerdict(ComplianceSummaryItem item) =>
+        WithVerdict(item, ComplianceLightRules.OpenAction(item.Action), null);
+
+    /// <summary>
+    /// An Alloggiati item of the cockpit that exists today (to send, to resolve) with the light the status gives its stay when the status asks
+    /// for the same action; otherwise the light of an item the host has to act on.
+    /// </summary>
+    private static ComplianceSummaryItem WithStayVerdict(
+        ComplianceSummaryItem item,
+        IReadOnlyDictionary<Guid, ComplianceStatusItem> statusOfStay) =>
+        item.BookingId is { } bookingId && statusOfStay.TryGetValue(bookingId, out var stayStatus) && stayStatus.Action == item.Action
+            ? WithVerdict(item, stayStatus.Verdict, null)
+            : WithOpenVerdict(item);
+
+    private static ComplianceSummaryItem WithVerdict(ComplianceSummaryItem item, ComplianceVerdict verdict, string? period) =>
+        item with
+        {
+            Light = verdict.Light,
+            Reason = verdict.Reason,
+            Period = period,
+            EvidenceClass = verdict.EvidenceClass,
+            EvidenceSource = verdict.EvidenceSource,
+            LastVerifiedAt = verdict.LastVerifiedAt,
+            HandoffTopic = verdict.HandoffTopic,
+        };
+
+    /// <summary>
+    /// A new section of the cockpit (CHK-12): the items of the status that <paramref name="belongs"/> says, the red ones first, then the
+    /// yellow, then the green, each group by its deadline. The count is the number that need attention (not green); the list is capped at
+    /// <see cref="StatusSectionMaxItems"/>. Empty when the status was not asked for.
+    /// </summary>
+    private static ComplianceSummarySection StatusSection(ComplianceStatusResult? status, Func<ComplianceStatusItem, bool> belongs)
+    {
+        if (status is null)
+            return ComplianceSummarySection.Empty;
+
+        var matching = status.Items
+            .Where(belongs)
+            .OrderByDescending(i => i.Verdict.Light)
+            .ThenBy(i => i.DueAt ?? DateTime.MaxValue)
+            .ThenBy(i => i.Label, StringComparer.CurrentCultureIgnoreCase)
+            .ThenBy(i => i.Period, StringComparer.Ordinal)
+            .ToList();
+
+        return new ComplianceSummarySection(
+            matching.Count(i => i.Verdict.NeedsAttention),
+            matching.Take(StatusSectionMaxItems).Select(ToSummaryItem).ToList());
+    }
+
+    private static ComplianceSummaryItem ToSummaryItem(ComplianceStatusItem item)
+    {
+        var summaryItem = item.BookingId is { } bookingId
+            ? ComplianceSummaryItem.ForBooking(item.Action, bookingId, item.Label)
+            : ComplianceSummaryItem.ForProperty(item.Action, item.PropertyId, item.Label);
+
+        // What the item still lacks: the reason, under the field it is about (nothing for a green item).
+        IReadOnlyList<ComplianceMissing> missing = item.Verdict.NeedsAttention
+            ? [new ComplianceMissing(item.Verdict.Reason, MissingFieldOf(item.Kind))]
+            : [];
+        return WithVerdict(summaryItem with { DueAt = item.DueAt, Missing = missing }, item.Verdict, item.Period);
+    }
+
+    private static string MissingFieldOf(ComplianceItemKind kind) => kind switch
+    {
+        ComplianceItemKind.Alloggiati => "alloggiati",
+        ComplianceItemKind.Identity => "identity",
+        ComplianceItemKind.Connection => "connection",
+        ComplianceItemKind.Credentials => "credentials",
+        ComplianceItemKind.Istat => "istat",
+        ComplianceItemKind.TouristTax => "touristTax",
+        ComplianceItemKind.MunicipalityRate => "municipalityRate",
+        _ => "compliance",
+    };
 
     /// <summary>Most recent turnovers listed; the count covers all of them.</summary>
     internal const int TurnoverSectionMaxItems = 10;
@@ -195,6 +316,8 @@ public class ComplianceWizardService(
     private async Task<(ComplianceSummarySection Failures, ComplianceSummarySection ManualRequired)> GetAlloggiatiSectionsAsync(
         HostScope scope,
         DateTime today,
+        IReadOnlyDictionary<Guid, ComplianceStatusItem> statusOfStay,
+        IReadOnlySet<Guid> supersededByStatus,
         CancellationToken cancellationToken)
     {
         var stays = await db.Bookings
@@ -232,21 +355,24 @@ public class ComplianceWizardService(
             var status = AlloggiatiStatusRules.Effective(report?.Status, stay.CheckInDate, today);
             if (AlloggiatiStatusRules.IsFailure(status))
             {
-                failures.Add((stay.CheckInDate, ComplianceSummaryItem.ForBooking(
-                    ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.Id, stay.GuestName) with
-                {
-                    DueAt = ComplianceDeadlines.Of(
-                        ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.CheckInDate, stay.CheckOutDate, stay.ArrivedAt),
-                }));
+                failures.Add((stay.CheckInDate, WithStayVerdict(
+                    ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.Id, stay.GuestName) with
+                    {
+                        DueAt = ComplianceDeadlines.Of(
+                            ComplianceCockpitAction.ResolveAlloggiatiFailure, stay.CheckInDate, stay.CheckOutDate, stay.ArrivedAt),
+                    },
+                    statusOfStay)));
             }
-            else if (status == AlloggiatiWebStatus.DaInviareManualmente)
+            else if (status == AlloggiatiWebStatus.DaInviareManualmente && !supersededByStatus.Contains(stay.Id))
             {
-                manual.Add((stay.CheckInDate, ComplianceSummaryItem.ForBooking(
-                    ComplianceCockpitAction.SendAlloggiati, stay.Id, stay.GuestName) with
-                {
-                    DueAt = ComplianceDeadlines.Of(
-                        ComplianceCockpitAction.SendAlloggiati, stay.CheckInDate, stay.CheckOutDate, stay.ArrivedAt),
-                }));
+                // A stay the status lists elsewhere (entrusted to the channel manager, sent by hand, with its receipt) is not one the host sends by hand.
+                manual.Add((stay.CheckInDate, WithStayVerdict(
+                    ComplianceSummaryItem.ForBooking(ComplianceCockpitAction.SendAlloggiati, stay.Id, stay.GuestName) with
+                    {
+                        DueAt = ComplianceDeadlines.Of(
+                            ComplianceCockpitAction.SendAlloggiati, stay.CheckInDate, stay.CheckOutDate, stay.ArrivedAt),
+                    },
+                    statusOfStay)));
             }
         }
 

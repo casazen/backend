@@ -242,6 +242,55 @@ public class InternalActivityService(
         await MarkClosedAsync(activity, closer, ct);
     }
 
+    public async Task<InternalActivity?> FindOpenAsync(Guid orgId, string action, string entityType, Guid entityId, CancellationToken ct = default)
+    {
+        var found = await FindOpenAsync(orgId, action, entityType, [entityId], ct);
+        return found.GetValueOrDefault(entityId);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, InternalActivity>> FindOpenAsync(
+        Guid orgId,
+        string action,
+        string entityType,
+        IReadOnlyCollection<Guid> entityIds,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(entityIds);
+        var parsed = ParseAction(action);
+        var type = Bounded(entityType, TodoLimits.EntityTypeMaxLength, nameof(entityType))
+                   ?? throw new ArgumentException("A To do names the type of the entity it is about.", nameof(entityType));
+        if (entityIds.Count == 0)
+            return new Dictionary<Guid, InternalActivity>();
+
+        var ids = entityIds.Distinct().ToList();
+        var rows = await context.InternalActivities
+            .AsNoTracking()
+            .Where(a => a.OrgId == orgId
+                        && a.Action == parsed
+                        && a.CompletedAt == null
+                        && a.EntityType == type
+                        && a.EntityId != null
+                        && ids.Contains(a.EntityId.Value))
+            .OrderBy(a => a.CreatedAt)
+            .ThenBy(a => a.Id)
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(a => a.EntityId!.Value)
+            .ToDictionary(g => g.Key, g => g.First());
+    }
+
+    /// <summary>The member of <see cref="ActivityAction"/> named <paramref name="action"/> (exactly, not a number); anything else is a programming error.</summary>
+    private static ActivityAction ParseAction(string action)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(action);
+        return Enum.TryParse<ActivityAction>(action, ignoreCase: false, out var parsed)
+               && Enum.IsDefined(parsed)
+               && string.Equals(parsed.ToString(), action, StringComparison.Ordinal)
+            ? parsed
+            : throw new ArgumentException($"'{action}' is not an action of the To do list.", nameof(action));
+    }
+
     /// <summary>
     /// The rows of the staff work, as the staff screens always read them: no <see cref="InternalActivity.Action"/>, on a live
     /// property (while the property was a required navigation the join dropped the activities of a soft-deleted property, PC-05).

@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.8";
+    public const string Version = "2026-11-06.9";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -143,6 +143,14 @@ public static class DemoShowcaseCatalog
         /// invented and marked as showcase data; nothing is sent to Octorate.
         /// </summary>
         public const string BookingOtaAmounts = "booking-ota-amounts";
+
+        /// <summary>
+        /// The compliance traffic light on two stays (E03/F02/US01/T03, NF-52): a stay whose guests the host entrusted to the channel manager (yellow: the
+        /// channel manager sends them and only the host can upload the receipt, which is awaited; it needs <c>Features:OctorateConnector</c> on, otherwise
+        /// the same stay reads as one the host sends by hand) and a finished stay for which the host uploaded the receipt of the Alloggiati communication
+        /// (green: an archived proof, an invented one-page PDF). Invented; nothing is sent to Octorate or to the police.
+        /// </summary>
+        public const string ComplianceTrafficLight = "compliance-traffic-light";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -204,6 +212,7 @@ public static class DemoShowcaseCatalog
         Scenario.FiscalIssuerProfile,
         Scenario.CrmWelcomeLink,
         Scenario.BookingOtaAmounts,
+        Scenario.ComplianceTrafficLight,
     ];
 
     /// <summary>
@@ -821,6 +830,21 @@ public static class DemoShowcaseCatalog
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
                     Phone: CrmSharedPhone),
+                // NF-52 (Scenario.ComplianceTrafficLight): a finished stay for which the host uploaded the receipt of the Alloggiati communication of the
+                // arrival day (an invented one-page PDF): the proof is archived, so the stay reads green.
+                new(
+                    "semaforo-ricevuta",
+                    "Hana",
+                    "Sato",
+                    "ospite.demo.semaforo-2@example.com",
+                    -10,
+                    2,
+                    BookingStatus.CheckedOut,
+                    Scenario.ComplianceTrafficLight,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    Guests: [new("Hana", "Sato", StayGuestType.SingleGuest, 34)],
+                    Compliance: new DemoComplianceTemplate(ReceiptArchived: true)),
             ]),
         new(
             Key: "villa-amalfi",
@@ -855,7 +879,30 @@ public static class DemoShowcaseCatalog
                     BookingSource.Direct,
                     PaymentOption: PaymentOption.OnSite,
                     CheckInMarketingConsent: true),
-            ]),
+                // NF-52 (Scenario.ComplianceTrafficLight): the guests of this stay are entrusted to the channel manager, which sends them to the police;
+                // the receipt is awaited, so the stay reads yellow. The guests arrived a few hours before the reset (the template sets the arrival), so the
+                // legal term is open at whatever time of the day the showcase is reset.
+                new(
+                    "semaforo-affidato",
+                    "Greta",
+                    "Lindqvist",
+                    "ospite.demo.semaforo-1@example.com",
+                    0,
+                    3,
+                    BookingStatus.CheckedIn,
+                    Scenario.ComplianceTrafficLight,
+                    BookingSource.Direct,
+                    PaymentOption: PaymentOption.OnSite,
+                    Guests:
+                    [
+                        new("Greta", "Lindqvist", StayGuestType.HeadOfFamily, 39),
+                        new("Olof", "Lindqvist", StayGuestType.FamilyMember, 41),
+                    ],
+                    Compliance: new DemoComplianceTemplate(GuestsEntrusted: true)),
+            ],
+            // NF-52: the host chose the channel manager as the sender of the police and ISTAT communications of this house and said it saw «Activated» in
+            // the Octorate panel, so the connection reads as declared and the yellow stay above is the only item to look at.
+            ComplianceSender: new DemoComplianceSenderTemplate(ComplianceSenderType.ChannelManager)),
         // NF-46, ADR-037-R3: a house in an invented comune (ISTAT 999990, a code no real comune has, so the demo channel rule below touches
         // no stay of a real comune). The comune has no official rate: the demo host declared one (with an invented source), and an Airbnb stay
         // there is collected by the channel, so the host has nothing to collect while the amounts per guest are kept.
@@ -1179,7 +1226,34 @@ public sealed record DemoBookingTemplate(
     bool SoftOptInNotice = false,
     bool CheckInMarketingConsent = false,
     DemoOtaTemplate? Ota = null,
-    DemoInvoiceData? InvoiceData = null);
+    DemoInvoiceData? InvoiceData = null,
+    DemoComplianceTemplate? Compliance = null);
+
+/// <summary>
+/// What the compliance traffic light finds on a demo stay (E03/F02/US01/T03, NF-52): invented like the rest of the demo, nothing is sent to Octorate or
+/// to the police. The registered guests of the stay (<see cref="DemoBookingTemplate.Guests"/>) are the ones it works on.
+/// </summary>
+/// <param name="GuestsEntrusted">
+/// Every registered guest is on Octorate for good (a <c>StayGuestOctorateLink</c> accepted two hours before the reset), as the channel manager holds
+/// them when the house is sent by it: the stay reads yellow while the receipt is awaited. The booking must be checked in; its arrival is set a few hours
+/// before the reset, so the legal term is open whatever time the showcase is reset.
+/// </param>
+/// <param name="ReceiptArchived">
+/// The host uploaded the receipt of the Alloggiati communication of the arrival day (a <c>ManualComplianceProof</c> with an invented one-page PDF in the
+/// private bucket): the proof is archived, so the stay reads green.
+/// </param>
+public sealed record DemoComplianceTemplate(bool GuestsEntrusted = false, bool ReceiptArchived = false);
+
+/// <summary>
+/// Who sends the police and ISTAT communications of a demo house (a row of <c>PropertyComplianceSender</c>, E03/F02/US01/T03, NF-52): the stored choice,
+/// the same for both (ISTAT follows Alloggiati, ADR-029-R5).
+/// </summary>
+/// <param name="Sender">Who sends.</param>
+/// <param name="ActivationDeclared">
+/// The host said it saw «Activated» in the Octorate panel (its word, never a verification), so the connection of the channel manager does not read as
+/// «to verify» beside the stay the showcase wants to show.
+/// </param>
+public sealed record DemoComplianceSenderTemplate(ComplianceSenderType Sender, bool ActivationDeclared = true);
 
 /// <summary>
 /// The reservation of a demo stay on the channel manager (E08/F03/US03/T02, NF-74, NF-77): invented like the rest of the demo, nothing is sent to
@@ -1303,7 +1377,8 @@ public sealed record DemoPropertyTemplate(
     IReadOnlyList<DemoChannelState>? ChannelStates = null,
     IReadOnlyList<DemoRoom>? Rooms = null,
     IReadOnlyList<DemoStayDiscount>? StayDiscounts = null,
-    DemoDeclaredTouristTaxRate? DeclaredTouristTaxRate = null);
+    DemoDeclaredTouristTaxRate? DeclaredTouristTaxRate = null,
+    DemoComplianceSenderTemplate? ComplianceSender = null);
 
 /// <summary>
 /// A room of a demo property with its beds (NF-34): invented like the rest of the demo. The counters of the property (<c>Bedrooms</c>, <c>Beds</c>)

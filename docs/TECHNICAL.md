@@ -1397,7 +1397,7 @@ code: they are rows, and the words of the cards are rows and resource keys (`Mar
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `GET` | `/api/compliance/summary` | short-rent booking.read | Compliance cockpit summary (pending properties, check-ins, checkouts, Alloggiati errors, Alloggiati to send manually); items carry an action and its target, never a path (see below), and `missing`, what they still lack (SR-03, above) |
+| `GET` | `/api/compliance/summary` | short-rent booking.read | Compliance cockpit summary (pending properties, check-ins, checkouts, Alloggiati errors, Alloggiati to send manually, turnovers and, since E03/F02/US01/T03, identity pending, receipts to upload, sends by hand, connections to fix and ISTAT/tourist tax periods); items carry an action and its target, never a path (see below), the traffic light (`light`, `reason`, `evidenceClass`, ... see «Traffic light» below) and `missing`, what they still lack (SR-03, above) |
 | `GET` | `/api/compliance/autopilot` | short-rent booking.read | «Gestisci con AI»: what the assistant would do now for the items of the cockpit that have a stay, each `Ready` (it does it), `Waiting` or `Host` (only the host can), with a stable `reason`; nothing is changed and nobody is contacted (`docs/runbooks/compliance-autopilot.md`) |
 | `POST` | `/api/compliance/autopilot/run` | short-rent booking.write + booking.write on the property of each stay | Runs the items that are `Ready` now (only the `keys` the host was shown): asks the guests for their data (check-in link by e-mail, and a message for the host to send by WhatsApp/SMS, written by the AI when one is in effect) and closes the departures that are over. One unit per item; at most 20 guests and 30 departures per run; a permit of the AI limits only when the AI is called |
 | `POST` | `/api/compliance/octorate-handoffs` | short-rent booking.read + `HostScope`, behind `Features:OctorateConnector` (404 before authentication while off) | CHK-15, E03/F05/US01/T01: prepares the passage of the host from CasaZen to the Octorate area that holds an Alloggiati or ISTAT outcome («Verifica nel tuo Cassetto Compliance»). Body `{ topic, propertyId, bookingId?, period?, returnPath }`: `topic` is `Alloggiati` or `Istat`, `period` a month `yyyy-MM` or a day `yyyy-MM-dd`, `returnPath` a relative CasaZen route (one leading `/`; no scheme, host, backslash, space or `://`); there is **no address in the request**. 200 `{ handoffId, startedAt, expiresAt, topic, destinationUrl, destinationKind, returnPath, context, guide }` (`Cache-Control: private, no-store`): `destinationUrl` is the only address the client opens, in the **same tab** (never an iframe, `window.open` or `target="_blank"`), read from the configuration (`Octorate:ComplianceHandoff`, `Octorate:FrontendBaseUrl`), checked against the allowlist and never built from the booking, the guest or the period; `destinationKind` is `Home` (the authenticated home of the panel, the guide gives the menu steps) or `DeepLink` (configured and verified); `context` is `{ propertyId, propertyName, octorateListingName?, bookingId?, bookingCode?, period? }`; `guide` is `{ code, menuPath, check }` with the texts in the language of the request, `code` being `alloggiati_daily`, `alloggiati_short_stay` (a stay of at most one night), `alloggiati_long_stay` (over 30 nights) or `istat_period`; `handoffId` is opaque, random and valid until `expiresAt` (`Octorate:ComplianceHandoff:LifetimeMinutes`, 60). 404 `octorate_handoff_target_not_found` (the property or the booking is not the org's, is out of the caller's `HostScope`, or the booking is not the property's: one answer for all of them), 409 `octorate_handoff_property_not_mapped` (no confirmed Octorate mapping for the property), 409 `octorate_handoff_destination_unavailable` (no valid destination configured; the problem carries `guideCode`, so the client can still show the guide and offer a retry), 422 `octorate_handoff_return_path_invalid` / `octorate_handoff_period_invalid`. It writes one line of the activity log (`OctorateComplianceHandoffStarted`: org, person, property, topic, handoff id, booking and period when given) and **nothing else**: no proof, no status, no outcome and no guest data; there is no completion or result endpoint and no Octorate callback, the host returns with the browser's back or a normal CasaZen navigation |
@@ -1451,6 +1451,47 @@ nothing compliant. The destination is configuration (`Octorate:FrontendBaseUrl` 
 and `:Istat` may add a deep link, used only once `Verified` is on; `AllowedHosts` widens the allowlist to named hosts), always https, without
 credentials and on an allowlisted host, and no booking, guest or period data is ever put in it (`docs/runbooks/deploy-checklist.md` § 2.11).
 
+**Traffic light (NF-52, CHK-12, E03/F02/US01/T03).** The light of every compliance item is decided in one place, `ComplianceLightRules`
+(`Casazen.Core/Services/IComplianceStatusService.cs`), from facts read by `IComplianceStatusService.EvaluateAsync(HostScope)` (`ComplianceStatusService`:
+about a dozen reads, all by the ids of the caller's properties and stays, so a collaborator «Solo alcuni» gets the lights of its properties and nothing of
+the others). **Green only ever comes from an archived proof** (a receipt CasaZen downloaded itself, live, or a `ManualComplianceProof` the host uploaded for
+that property, kind and day; a simulated receipt, a declaration, an active connection or a visit to Octorate prove nothing); yellow is «in progress» (sent or
+entrusted and the receipt awaited, the selfie awaited, the connection not verifiable, the period still open); red is «the host has to act» (a failure, a deadline
+that passed, a receipt missing the day after the send, a connection Octorate says does not send, credentials the service refused). Where the outcome is held
+only by Octorate the item is yellow with `evidenceClass: ExternalVerificationRequired` and a `handoffTopic` (`Alloggiati` or `Istat`), never an inferred success
+or failure: a handoff (CHK-15) changes no light. Every item carries, besides `{ id, label, action, propertyId, bookingId, dueAt, missing }`:
+
+- `light`: `Green`, `Yellow` or `Red`;
+- `reason`: a stable code (`ComplianceReasonCodes`: `receipt_archived`, `identity_verified`, `awaiting_receipt`, `entrusted_to_channel_manager`,
+  `external_verification_required`, `alloggiati_sending`, `selfie_awaited`, `period_open`, `connection_unverified`, `evidence_missing`, `deadline_overdue`,
+  `receipt_missing`, `alloggiati_not_sent`, `alloggiati_failed`, `alloggiati_incomplete`, `over_thirty_nights_not_sent`, `short_stay_at_risk`,
+  `connection_inactive`, `identity_missing`, `operator_decision_required`, `municipality_rate_missing`, `credentials_refused`, `cin_missing`, `cin_invalid`,
+  `activation_incomplete`, `guest_data_missing`, `checkout_due`, `property_ready_not_confirmed`, `action_required`), a key the client translates;
+- `period`: `yyyy-MM` for an ISTAT or tourist tax month, otherwise `null`;
+- `evidenceClass`: `OfficialProof`, `ExternalVerificationRequired`, `Missing` or `NotApplicable`;
+- `evidenceSource`: where the proof comes from (`casazen_receipt`, `manual_upload`, `cin_format`, `biometric_log`, `operator_decision`) or `octorate`; `null` without a proof;
+- `lastVerifiedAt`: when the proof was archived (UTC), `null` without one;
+- `handoffTopic`: `Alloggiati`, `Istat` or `null`.
+
+The five new sections are lists of the same items (`{ count, items }`, `count` being the items that are not green, the list capped at 50, red first, then
+yellow, then green, each by deadline): `identityPending` (only while `Features:CheckInIdentityVerification` is on), `receiptsToUpload`, `manualSendsRequired`,
+`connectionsToFix` and `periodItems`. A stay listed in `receiptsToUpload` or `manualSendsRequired` (entrusted to the channel manager, sent with the receipt
+awaited, with its receipt archived) is not also in `alloggiatiManualRequired`, which keeps the stays the host sends on the portal (`SendAlloggiati`), as
+`alloggiatiFailures` keeps the failures; the older sections' items carry the light too. The channel manager counts as a sender only while `Features:OctorateConnector` is on; an
+ISTAT item needs the region's deadline in `Compliance:IstatDeadlineDays` (none is guessed). Options: `Compliance:IdentityRedHoursBeforeArrival` (24: from then the
+missing identity of an arriving guest is red), `Compliance:StatusLookbackDays` (90: how far back the stays are read), `Compliance:IstatDeadlineDays:{region}`
+(`docs/runbooks/deploy-checklist.md` § 2). The state the light needs to remember lives in four tables (`ComplianceAlertStates`, `ComplianceMonthlySummaryLogs`,
+`ComplianceSendLogEntries`, `ManualComplianceProofs`); the connection of a property is read by `GET /api/properties/{propertyId}/compliance/connection-health`.
+
+**The "To do" feed (AC-NF52-13, ADR-026).** Reading the summary also keeps the unified «Da fare» list in step (`ComplianceActivityFeeder`, not more than once a
+minute for the same caller): every red or yellow item that needs a person becomes **one** `InternalActivity` with the same action and id as the cockpit item
+(`ActivityAction`: `SendAlloggiatiManually`, `ActivateOctorateSend`, `EnterMunicipalityTaxRate`, `DeclareTouristTax`, `RenewPoliceCredentials`, besides the existing
+`UploadAlloggiatiProof`, `VerifyIdentity` and `UploadIstatProof`; `ActivityType.TouristTaxDeadline` and `MunicipalityTaxRateMissing` are the new kinds), deduplicated
+by (action, entity type, entity id), and closed by the system when the item turns green or is not an item any more. The feeder reconciles only the activities of the
+stays, properties and months the evaluation looked at, that is the caller's reach; an item of a month is about its property and carries the month in its entity type
+(`PropertyPeriod:yyyy-MM`). `IInternalActivityService.FindOpenAsync(orgId, action, entityType, entityId)` (and a batch overload) finds the open activity of an
+action on an entity; an action name that is not a member of `ActivityAction` is an error, not a quiet «none».
+
 | `action` | Section | Web screen |
 |---|---|---|
 | `ActivateProperty` | `propertiesPending` (pending or suspended) | `/app/short-rent/properties/{id}/activation`, first blocking step still open (CO-05); property detail without `property.write` |
@@ -1458,6 +1499,14 @@ credentials and on an allowlisted host, and no booking, guest or period data is 
 | `CheckOut` | `checkoutsDue` | `/app/short-rent/bookings/{id}/checkout`; booking detail without `booking.write` |
 | `SendAlloggiati` | `alloggiatiManualRequired` | `/app/short-rent/bookings/{id}?tab=alloggiati` (CO-11) |
 | `ResolveAlloggiatiFailure` | `alloggiatiFailures` | `/app/short-rent/bookings/{id}?tab=alloggiati` |
+| `VerifyIdentity` | `identityPending` (`id` = booking; only while `Features:CheckInIdentityVerification` is on) | none yet: the identity check of the guest who leaves the document, for the stays arriving within 7 days |
+| `UploadAlloggiatiReceipt` | `receiptsToUpload` (`id` = booking; the green stays with an archived receipt are listed too) | none yet: the receipt of the Alloggiati communication of the arrival day, which the host uploads (CasaZen downloads none in this release) |
+| `SendAlloggiatiManually` | `manualSendsRequired` (`id` = booking) | none yet: what the channel manager does not send by itself (over 30 nights, a short stay not entrusted before the arrival, a connection that is not active); the host sends it on the portal |
+| `ActivateOctorateSend` | `connectionsToFix` (`id` = property) | none yet: the daily police send of the channel manager is not confirmed active in the Octorate panel |
+| `RenewPoliceCredentials` | `connectionsToFix` (`id` = property) | none yet: the police credentials kept in CasaZen were refused by the service (no item in this release: the verification of the credentials is postponed) |
+| `UploadIstatProof` | `periodItems` (`id` = property, `period` = the closed month) | none yet: the proof of the ISTAT communication of the month, only for a region whose deadline is configured |
+| `EnterMunicipalityTaxRate` | `periodItems` (`id` = property) | none yet: the comune has no tourist tax rate, neither official nor declared by the host (never presumed zero) |
+| `DeclareTouristTax` | `periodItems` (`id` = property, `period` = the closed month) | none yet: the declaration and the payment receipt of the tourist tax of the month |
 
 A new action is added to the enum and to the clients together: until then the web app shows the item without a link,
 never a link to the dashboard.

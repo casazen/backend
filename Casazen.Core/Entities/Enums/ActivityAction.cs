@@ -50,4 +50,25 @@ public enum ActivityAction
 
     /// <summary>The «Check imported listing» wizard of the property created from the channel manager (LST-03).</summary>
     CheckImportedListing = 13,
+
+    // E03/F02/US01/T03 (NF-52, CHK-12): the cockpit actions that feed the To do list under the same name, so the action and the id of an item
+    // are the ones of the compliance cockpit (ComplianceCockpitAction). The numbers leave room for the values other tasks append after 13.
+
+    /// <summary>
+    /// A stay the channel manager does not send by itself (over 30 nights, a short stay not entrusted, a connection not active): the booking's
+    /// Alloggiati tab, where the host sends it by hand. About the booking.
+    /// </summary>
+    SendAlloggiatiManually = 20,
+
+    /// <summary>The police send of the channel manager of the property is not active or cannot be verified: the sender page of the property. About the property.</summary>
+    ActivateOctorateSend = 21,
+
+    /// <summary>The tourist tax rate of the property's comune is not known: where the host enters it. About the property.</summary>
+    EnterMunicipalityTaxRate = 22,
+
+    /// <summary>The tourist tax of a closed month is not declared and paid with its receipts archived: the proof archive of the period. About the property and the month.</summary>
+    DeclareTouristTax = 23,
+
+    /// <summary>The police credentials kept in CasaZen were refused: the Alloggiati dashboard, where the host sets them again. About the property.</summary>
+    RenewPoliceCredentials = 24,
 }

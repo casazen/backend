@@ -123,6 +123,26 @@ public interface IInternalActivityService
     /// same answer as an id that does not exist.
     /// </summary>
     Task CloseInScopeAsync(Guid activityId, HostScope scope, string closedBy, CancellationToken ct);
+
+    /// <summary>
+    /// The open "To do" of an org with this <paramref name="action"/> (an <see cref="ActivityAction"/> member name) on this entity, or
+    /// <c>null</c> when there is none (E03/F02/US01/T03): how a producer that keeps the list in step with a condition (the compliance cockpit) finds
+    /// the item to close when the condition clears, without creating one. A closed item is not found. No scope is applied: the caller names the
+    /// org and the entity, and the web layer decides who may ask. An action that is not a member of <see cref="ActivityAction"/> is an
+    /// <see cref="ArgumentException"/>, never a quiet <c>null</c>.
+    /// </summary>
+    Task<InternalActivity?> FindOpenAsync(Guid orgId, string action, string entityType, Guid entityId, CancellationToken ct = default);
+
+    /// <summary>
+    /// <see cref="FindOpenAsync(Guid, string, string, Guid, CancellationToken)"/> for several entities of one type in one read: the open items
+    /// keyed by the entity id (the oldest, should the list ever hold two). An empty list of entities is an empty answer, never "all of them".
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, InternalActivity>> FindOpenAsync(
+        Guid orgId,
+        string action,
+        string entityType,
+        IReadOnlyCollection<Guid> entityIds,
+        CancellationToken ct = default);
 }
 
 /// <summary>

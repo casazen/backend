@@ -164,4 +164,24 @@ public static class TestDataEntities
     /// an invented reservation, nothing is sent. It goes with its booking (cascade) and the reset deletes its marker with the other showcase markers.
     /// </summary>
     public const string OctorateBookingSync = "OctorateBookingSync";
+
+    /// <summary>
+    /// Who sends the police and ISTAT communications of a showcase house (<see cref="Entities.PropertyComplianceSender"/>, E03/F02/US01/T03, NF-52):
+    /// the choice the demo host stored, so the traffic light reads the stay of that house as entrusted to the channel manager. It follows its house
+    /// (cascade) and the reset deletes its marker with the other showcase markers; a real choice has no marker and is never touched.
+    /// </summary>
+    public const string PropertyComplianceSender = "PropertyComplianceSender";
+
+    /// <summary>
+    /// A guest of a showcase stay as sent to Octorate (<see cref="Entities.StayGuestOctorateLink"/>, E03/F02/US01/T03, NF-52): the row that says the
+    /// channel manager holds the guest for good, invented like the rest and never sent anywhere. It goes with its booking (cascade).
+    /// </summary>
+    public const string StayGuestOctorateLink = "StayGuestOctorateLink";
+
+    /// <summary>
+    /// The receipt of the Alloggiati communication that the demo host uploaded (<see cref="Entities.ManualComplianceProof"/>, E03/F02/US01/T03,
+    /// NF-52), with its invented one-page PDF in the private bucket. The row follows its house (cascade) and the reset removes the file; a real proof
+    /// has no marker and is never touched.
+    /// </summary>
+    public const string ManualComplianceProof = "ManualComplianceProof";
 }
