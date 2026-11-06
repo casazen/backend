@@ -1827,9 +1827,6 @@
   <data name="GuestAccessCode_Body" xml:space="preserve">
     <value>your identity verification is complete. Here is the access code of &lt;strong&gt;{0}&lt;/strong&gt; for your arrival on &lt;strong&gt;{1}&lt;/strong&gt;:</value>
   </data>
-  <data name="GuestAccessCode_Code" xml:space="preserve">
-    <value>&lt;strong style="font-size:22px;letter-spacing:2px;"&gt;{0}&lt;/strong&gt;</value>
-  </data>
   <data name="GuestAccessCode_Keep" xml:space="preserve">
     <value>Do not forward this e-mail to anyone: the code opens the property.</value>
   </data>

@@ -1827,9 +1827,6 @@
   <data name="GuestAccessCode_Body" xml:space="preserve">
     <value>la verifica della tua identità è completata. Ecco il codice di accesso di &lt;strong&gt;{0}&lt;/strong&gt; per il tuo arrivo del &lt;strong&gt;{1}&lt;/strong&gt;:</value>
   </data>
-  <data name="GuestAccessCode_Code" xml:space="preserve">
-    <value>&lt;strong style="font-size:22px;letter-spacing:2px;"&gt;{0}&lt;/strong&gt;</value>
-  </data>
   <data name="GuestAccessCode_Keep" xml:space="preserve">
     <value>Non inoltrare questa e-mail a nessuno: il codice apre l'alloggio.</value>
   </data>

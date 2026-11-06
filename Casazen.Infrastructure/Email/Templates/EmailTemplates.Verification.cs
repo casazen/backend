@@ -102,7 +102,7 @@ public static partial class EmailTemplates
         new EmailHtmlBuilder(culture)
             .Paragraph("GuestAccessCode_Greeting", guestName)
             .Paragraph("GuestAccessCode_Body", propertyName, checkInDate)
-            .Paragraph("GuestAccessCode_Code", lockCode)
+            .Code(lockCode)
             .Muted("GuestAccessCode_Keep")
             .Build("GuestAccessCode_Subject", propertyName);
 
