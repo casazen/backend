@@ -35,8 +35,10 @@ namespace Casazen.Infrastructure.Services;
 /// <see cref="OtaMessageDeliveryState.Created"/> with no id. A second send with its key, after <see cref="StaleSendWindow"/>, finds it and turns it into
 /// <see cref="OtaMessageDeliveryState.ManualVerify"/>: it may or may not have left, and it is never shown as sent.</item>
 /// <item><b>The e-mail to a guest with no conversation</b> is not a conversation of the hub and has no row: the key is remembered in memory for an hour
-/// (<see cref="EmailKeyMemory"/>, per replica, like the limits of the AI), so a double click or a retry sends one e-mail. The contact is read only after the
-/// checks of the booking, once, and its address goes to the queue of the e-mails and nowhere else.</item>
+/// (<see cref="EmailKeyMemory"/>, per process, like the limits of the AI) and is taken with a gate BEFORE the contact is read, so a double click (two
+/// requests at once) or a retry sends one e-mail from the same replica. <b>The limit</b>: another replica, or a restart within the hour, does not know the
+/// key and can queue a second e-mail. The contact is read only after the checks of the booking, once, and its address goes to the queue of the e-mails
+/// (the Hangfire job holds it until the job expires, 24 hours by default) and to nothing of ours: no answer, no log, no row of the database of CasaZen.</item>
 /// <item><b>Logs</b> carry ids, states and codes: never a word of a message, a name, an address or a number.</item>
 /// </list>
 /// </remarks>
@@ -74,6 +76,9 @@ public sealed class MessageReplyService(
 
     /// <summary>How long the key of an e-mail to a guest is remembered.</summary>
     public static readonly TimeSpan EmailKeyMemory = TimeSpan.FromHours(1);
+
+    /// <summary>Taken for a moment to find or make the gate of a key of an e-mail (never across an await).</summary>
+    private static readonly object EmailGatesLock = new();
 
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
 
@@ -516,7 +521,52 @@ public sealed class MessageReplyService(
         // The same key is the same e-mail: nothing is read from the channel manager and nothing is queued twice.
         var memory = new EmailSendKey(scope.OrgId, bookingId, idempotency);
         if (cache.TryGetValue(memory, out _))
-            return new MessageReplyResult(MessageContactChannel.Email, null, null, OtaMessageDeliveryState.Sent, true, null);
+            return EmailAlreadySent();
+
+        // One request at a time for one key, taken BEFORE the contact is read. A double click is two requests at once: the second waits for the first and
+        // then finds the key remembered (it answers «replayed»), or, when the first failed and remembered nothing, it sends the e-mail itself.
+        var gate = EmailGateOf(memory);
+        await gate.WaitAsync(ct);
+        try
+        {
+            return cache.TryGetValue(memory, out _)
+                ? EmailAlreadySent()
+                : await ReadAndQueueEmailAsync(scope, choice, clean, userId, memory, ct);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    private static MessageReplyResult EmailAlreadySent() =>
+        new(MessageContactChannel.Email, null, null, OtaMessageDeliveryState.Sent, true, null);
+
+    /// <summary>The gate of the key of an e-mail: one for each key, made once under a lock and kept in memory as long as the key is.</summary>
+    private SemaphoreSlim EmailGateOf(EmailSendKey key)
+    {
+        var gateKey = new EmailGateKey(key);
+        lock (EmailGatesLock)
+        {
+            if (cache.TryGetValue(gateKey, out SemaphoreSlim? existing) && existing is not null)
+                return existing;
+
+            var created = new SemaphoreSlim(1, 1);
+            cache.Set(gateKey, created, EmailKeyMemory);
+            return created;
+        }
+    }
+
+    /// <summary>Reads the contact of the booking, records the read, writes the e-mail and hands it to the queue; the key is remembered only if the queue took it.</summary>
+    private async Task<MessageReplyResult> ReadAndQueueEmailAsync(
+        HostScope scope,
+        Choice choice,
+        string clean,
+        string? userId,
+        EmailSendKey memory,
+        CancellationToken ct)
+    {
+        var bookingId = choice.BookingId;
 
         // The contact of THIS booking, asked for once, because a person is writing to it now; Octorate records the read and so does the activity log.
         OctorateGuestContactInfo contact;
@@ -670,4 +720,7 @@ public sealed class MessageReplyService(
         string GuestCountry);
 
     private readonly record struct EmailSendKey(Guid OrgId, Guid BookingId, string Key);
+
+    /// <summary>The key under which the gate of an e-mail is kept in memory.</summary>
+    private readonly record struct EmailGateKey(EmailSendKey Send);
 }

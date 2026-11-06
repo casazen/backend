@@ -4,6 +4,7 @@ using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Features;
+using Casazen.Core.Multitenancy;
 using Casazen.Core.OrgTeam;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
@@ -12,6 +13,7 @@ using Casazen.Infrastructure.Services;
 using Casazen.Tests.Unit.Services;
 using Casazen.Web.DTOs.Messages;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Moq;
 using Xunit;
 
@@ -757,6 +759,54 @@ public class MessageReplyProofTests : IAsyncLifetime
         Assert.Equal(OtaMessageDeliveryState.Sent, second.State);
         Assert.Single(rig.Emails.Sent);
         rig.Client.Verify(c => c.GetReservationContactInfoAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Single(await _db.OrgActivityEntries.AsNoTracking().ToListAsync());
+    }
+
+    /// <summary>
+    /// PROOF TEST: data rule (OCT-10). A double click is two requests AT ONCE, not one after the other: they meet in the gate of the key, the second waits for the
+    /// first and answers «replayed», so the guest gets ONE e-mail, the contact of the booking is read ONCE and the activity log has ONE line. The two services
+    /// have each its own context of the same database, as two requests of one process do, and share the memory and the queue.
+    /// </summary>
+    [Fact]
+    public async Task StartConversation_EmailPath_TwoRequestsAtOnceWithOneKey_QueueOneEmail_Test()
+    {
+        var (rig, booking) = await EmailRigAsync();
+        var reads = 0;
+        rig.Client
+            .Setup(c => c.GetReservationContactInfoAsync("ACC-1", "REF-77", It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                Interlocked.Increment(ref reads);
+
+                // The window in which the second request used to pass the check of the key.
+                await Task.Delay(300);
+                return new OctorateGuestContactInfo(MessageReplyScenario.GuestEmail, null);
+            });
+        await using var otherDb = new AppDbContext((DbContextOptions<AppDbContext>)_db.GetService<IDbContextOptions>());
+        var other = new MessageReplyService(
+            otherDb,
+            rig.Direct.Object,
+            rig.Mapping.Object,
+            rig.Client.Object,
+            new OctorateOrgScope(NullTenantContext.Instance),
+            rig.Targets.Object,
+            rig.Flags,
+            rig.Emails,
+            new ActivityLog(otherDb),
+            rig.Cache,
+            rig.Log,
+            new FixedTimeProvider(MessageHubTestKit.Now));
+        var scope = _world.Scope.OrgWide;
+
+        var results = await Task.WhenAll(
+            Task.Run(() => rig.Service.StartConversationAsync(scope, booking.Id, "Buongiorno", Key, UserId)),
+            Task.Run(() => other.StartConversationAsync(scope, booking.Id, "Buongiorno", Key, UserId)));
+
+        Assert.Single(rig.Emails.Sent);
+        Assert.Equal(1, reads);
+        Assert.Single(results, r => r.Replayed);
+        Assert.Single(results, r => !r.Replayed);
+        Assert.All(results, r => Assert.Equal(OtaMessageDeliveryState.Sent, r.State));
         Assert.Single(await _db.OrgActivityEntries.AsNoTracking().ToListAsync());
     }
 
