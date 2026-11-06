@@ -53,4 +53,12 @@ public enum DomainEventType
     /// leaves room for the values other tasks of the same wave append after 20.
     /// </summary>
     ListingPublished = 30,
+
+    /// <summary>
+    /// A thread of an OTA conversation was read from the channel manager (E05/F01/US01/T02): about the thread (<c>EntityId</c>), with the payload
+    /// <c>OtaThreadSyncedPayload</c> (ids and the flag of Octorate's own assistant for the thread). Starts no routine; the guard of E05/F05
+    /// consumes it to keep that assistant off (OCT-11). The numbers 50 to 59 are the messages hub (epic E05): the tasks of the waves run in parallel
+    /// and each picked a number of its own, so that two of them never pick the same one.
+    /// </summary>
+    OtaThreadSynced = 50,
 }

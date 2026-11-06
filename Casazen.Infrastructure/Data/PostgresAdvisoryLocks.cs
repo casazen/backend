@@ -339,6 +339,14 @@ internal static class PostgresAdvisoryLocks
         OctorateReservation = 20_121,
 
         /// <summary>
+        /// One thread of an OTA conversation in one org (key: org id and Octorate thread id, <c>orgId.ToString("N") + ":" + threadId</c>,
+        /// E05/F01/US01/T02): the webhook handler, the reconciliations and the import apply a thread one at a time, so it is one row and a
+        /// message delivered by two of them at once is stored, and its event recorded, once. The values 20_500 to 20_599 are the messages hub
+        /// (epic E05).
+        /// </summary>
+        OtaMessageThread = 20_511,
+
+        /// <summary>
         /// The mirror of one CasaZen booking on Octorate (key: booking id, <c>bookingId.ToString("N")</c>, E08/F01/US01/T03): the create and the
         /// payments of a booking are sent one at a time, so a reservation is created once and a payment recorded once even when two deliveries
         /// of an event, or a retry of the host, run together. A session lock (<see cref="TryAcquireSessionLockAsync"/>): held across the

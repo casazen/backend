@@ -144,6 +144,10 @@ builder.Services.AddCasazenBookingOperations();
 // Octorate connector (epic E02, ADR-023): its services, clients, handlers and jobs, all registered in AddCasazenOctorate.
 builder.Services.AddCasazenOctorate(builder.Configuration);
 
+// The copy of the OTA conversations read from the channel manager (epic E05, feature F01, NF-62, NF-64): the sync service, its webhook handler,
+// the reconciliation jobs and the retention of the copy, all registered in AddMessageSync.
+builder.Services.AddMessageSync();
+
 // Marketplace (epic E09, NF-54 to NF-59): the catalog of channels, tools, license functions and partners; every task of the epic registers in AddCasazenMarketplace.
 builder.Services.AddCasazenMarketplace(builder.Configuration);
 
