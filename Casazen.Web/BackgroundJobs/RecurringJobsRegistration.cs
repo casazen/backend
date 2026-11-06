@@ -344,7 +344,7 @@ public static class RecurringJobsRegistration
             new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
         // E02/F03/US01/T07: the follow-up of the publications of the listings (every 15 minutes), the channels that went silent (daily) and the
-        // changes made on Octorate outside CasaZen (hourly). None of them writes to Octorate but the removal of a photo that left the gallery.
+        // changes made on Octorate outside CasaZen (hourly). None of them writes to Octorate but the sending of the photos a run left unsent and the removal of a photo that left the gallery.
         recurringJobManager.AddOrUpdate<ListingStatusSyncJob>(
             ListingStatusSyncJob.RecurringJobId,
             job => job.ExecuteAsync(CancellationToken.None),

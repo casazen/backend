@@ -99,7 +99,7 @@ public class ListingPublishProofTests
             .Setup(c => c.UploadPhotoAsync(Accommodation, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Callback<string, string, CancellationToken>((_, url, _) => uploaded.Add(url))
             .ReturnsAsync((string _, string url, CancellationToken _) => new OctoratePhotoQueueEntry($"q-{uploaded.Count}", OctoratePhotoQueueState.Waiting, null, null));
-        var sync = new ListingPhotoSync(db, _client.Object, new PublicPhotoUrlService(_storage.Object), _clock, NullLogger<ListingPhotoSync>.Instance);
+        var sync = new ListingPhotoSync(db, _client.Object, new PublicPhotoUrlService(_storage.Object), new ListingTodos(db, _activities.Object), _clock, NullLogger<ListingPhotoSync>.Instance);
 
         await sync.SendAsync(property, Accommodation, CancellationToken.None);
         await sync.SendAsync(property, Accommodation, CancellationToken.None);
@@ -390,7 +390,7 @@ public class ListingPublishProofTests
             _recorder.Object,
             _jobs.Object,
             new OctorateContentReader(_client.Object),
-            new ListingPhotoSync(db, _client.Object, urls, _clock, NullLogger<ListingPhotoSync>.Instance),
+            new ListingPhotoSync(db, _client.Object, urls, new ListingTodos(db, _activities.Object), _clock, NullLogger<ListingPhotoSync>.Instance),
             urls,
             new ListingTodos(db, _activities.Object),
             Microsoft.Extensions.Options.Options.Create(Channels()),

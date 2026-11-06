@@ -965,7 +965,11 @@ answered with their own code (`octorate_not_connected` 409, `octorate_auth_faile
 - *Photos (ADR-036).* Only the entries of `Property.PhotoUrls` that are objects of the property's own `properties/{id}/photos/` folder go out
   (`PublicPhotoUrlService`); each gets a `PhotoUploadTask` and is sent once (`POST /rest/v1/accommodation/{acc}/photos`, form `url`, 202) and followed in the queue;
   a photo that leaves the gallery is marked `RemovePending` by `PropertyPhotoService.DeleteAsync` and deleted on Octorate. Every photo a host uploads is rewritten
-  without its metadata (`ShowcaseImageSanitizer`: GPS, camera, time; only the orientation stays) before it is stored.
+  without its metadata (`ShowcaseImageSanitizer`: GPS, camera, time; only the orientation stays) before it is stored. A photo is deleted by the name the queue
+  gives it: a `DONE` entry with no name leaves the task `Done` (never sent again) and raises one «To do» for the property, and a photo that has to be removed
+  and has no name to be deleted with is never marked removed: its task is an error that is not tried again and the host gets one «To do» for it (a photo the
+  channel manager never took is removed with no call). A photo a run left unsent (`Pending` for more than 10 minutes, e.g. after the rate limit of the org) is
+  sent by the 15-minute follow-up.
 - *Changes made outside CasaZen (NF-27).* The hourly `ListingOutsideChangeJob` (and `CONTENT_NOTIFICATION`) re-reads the groups (`property`, `descriptions`, `rooms`)
   and compares their hashes with the baseline; a difference sets `ExternalChangeAt`, keeps the groups and raises one «To do» `ListingChangedOutside`. It never writes
   to Octorate, and the rules of the stay, prices and discounts have no read, so they have no baseline. A read that works also sets `LastSyncedAt` of the

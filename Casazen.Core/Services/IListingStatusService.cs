@@ -21,7 +21,7 @@ public interface IListingStatusService
 
     /// <summary>
     /// Reads the publication process of each channel of the property waiting for it (<c>Sending</c> or <c>Accepted</c>) and the photo queue, and moves
-    /// the rows and the photo tasks accordingly. Every successful read sets <c>LastSyncedAt</c>. A row that becomes <c>ToFix</c> gets one «To do»,
+    /// the rows and the photo tasks accordingly; the photos a run left unsent are sent. Every successful read sets <c>LastSyncedAt</c>. A row that becomes <c>ToFix</c> gets one «To do»,
     /// closed when it recovers. Called by the job every 15 minutes and at once by the notification of the channel manager, for the org of the property.
     /// Returns how many rows and tasks changed.
     /// </summary>

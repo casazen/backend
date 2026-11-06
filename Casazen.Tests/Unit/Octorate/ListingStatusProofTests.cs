@@ -26,6 +26,7 @@ public class ListingStatusProofTests
     private const string Accommodation = "585492";
     private const string Product = "956528";
     private const string Host = "auth0|host-a";
+    private const string PublicBase = "https://storage.test/public/";
 
     private static readonly Guid OrgA = Guid.Parse("4f1e2d3c-6b5a-4978-8a1b-2c3d4e5f6a21");
     private static readonly Guid OrgB = Guid.Parse("9a8b7c6d-5e4f-4a3b-9c2d-1e0f2a3b4c22");
@@ -43,6 +44,9 @@ public class ListingStatusProofTests
     public ListingStatusProofTests()
     {
         _activities.Setup(a => a.CreateAsync(It.IsAny<CreateTodoRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(Guid.NewGuid());
+        _storage
+            .Setup(s => s.TryGetPublicKey(It.IsAny<string>()))
+            .Returns<string>(url => url.StartsWith(PublicBase, StringComparison.Ordinal) ? url[PublicBase.Length..] : null);
         _scope
             .Setup(s => s.CanReachPropertyAsync(Host, It.IsAny<IReadOnlySet<string>>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -217,6 +221,50 @@ public class ListingStatusProofTests
     }
 
     [Fact]
+    public async Task SyncPropertyAsync_APhotoLeftUnsentByARunThatStopped_IsSentOnceItHasWaited_NotBefore()
+    {
+        // The rate limit of the org stops the sending of the photos of a publication and leaves the rest Pending; only the follow-up reads them again,
+        // and not while a publication may still be sending them.
+        var propertyId = await SeedPropertyAsync(OrgA);
+        var photos = await AddPhotosAsync(propertyId, 2);
+        await SeedPhotoTaskAsync(propertyId, photos[0], PhotoUploadStatus.Pending, minutesOld: 30);
+        await SeedPhotoTaskAsync(propertyId, photos[1], PhotoUploadStatus.Pending, minutesOld: 2);
+        _client
+            .Setup(c => c.UploadPhotoAsync(Accommodation, photos[0], It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OctoratePhotoQueueEntry("q-1", OctoratePhotoQueueState.Waiting, null, null));
+        await using var db = NewDb();
+
+        var changed = await Status(db).SyncPropertyAsync(OrgA, propertyId, CancellationToken.None);
+
+        Assert.Equal(1, changed);
+        await using var check = NewDb();
+        var tasks = await check.PhotoUploadTasks.AsNoTracking().ToDictionaryAsync(t => t.PhotoUrl);
+        Assert.Equal(PhotoUploadStatus.Uploading, tasks[photos[0]].Status);
+        Assert.Equal("q-1", tasks[photos[0]].OctorateQueueId);
+        Assert.Equal(PhotoUploadStatus.Pending, tasks[photos[1]].Status);
+        _client.Verify(c => c.UploadPhotoAsync(Accommodation, photos[1], It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SyncPropertyAsync_APhotoLeftUnsentOfADeletedProperty_IsNotSent()
+    {
+        var propertyId = await SeedPropertyAsync(OrgA);
+        var photos = await AddPhotosAsync(propertyId, 1);
+        await SeedPhotoTaskAsync(propertyId, photos[0], PhotoUploadStatus.Pending, minutesOld: 30);
+        await using (var seed = NewDb())
+        {
+            (await seed.Properties.SingleAsync(p => p.Id == propertyId)).IsDeleted = true;
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = NewDb();
+        var changed = await Status(db).SyncPropertyAsync(OrgA, propertyId, CancellationToken.None);
+
+        Assert.Equal(0, changed);
+        _client.Verify(c => c.UploadPhotoAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task GetAsync_ShowsTheCompletenessTheMissingStepsTheAlertAndWhereTheCinIsNotSent()
     {
         var propertyId = await SeedPropertyAsync(OrgA, englishTexts: false);
@@ -270,7 +318,7 @@ public class ListingStatusProofTests
             db,
             _client.Object,
             new OctorateOrgScope(NullTenantContext.Instance),
-            new ListingPhotoSync(db, _client.Object, urls, _clock, NullLogger<ListingPhotoSync>.Instance),
+            new ListingPhotoSync(db, _client.Object, urls, new ListingTodos(db, _activities.Object), _clock, NullLogger<ListingPhotoSync>.Instance),
             urls,
             new ListingTodos(db, _activities.Object),
             Microsoft.Extensions.Options.Options.Create(Channels()),
@@ -342,6 +390,32 @@ public class ListingStatusProofTests
         });
         await db.SaveChangesAsync();
         return property.Id;
+    }
+
+    /// <summary>Puts <paramref name="count"/> photos in the folder of the property's own photos of the public bucket and returns their addresses.</summary>
+    private async Task<List<string>> AddPhotosAsync(Guid propertyId, int count)
+    {
+        await using var db = NewDb();
+        var property = await db.Properties.SingleAsync(p => p.Id == propertyId);
+        var photos = Enumerable.Range(1, count).Select(i => $"{PublicBase}properties/{propertyId}/photos/p{i}.jpg").ToList();
+        property.PhotoUrls = [.. photos];
+        await db.SaveChangesAsync();
+        return photos;
+    }
+
+    private async Task SeedPhotoTaskAsync(Guid propertyId, string url, PhotoUploadStatus status, int minutesOld)
+    {
+        await using var db = NewDb();
+        var orgId = (await db.Properties.AsNoTracking().SingleAsync(p => p.Id == propertyId)).OrgId;
+        db.PhotoUploadTasks.Add(new PhotoUploadTask
+        {
+            OrgId = orgId,
+            PropertyId = propertyId,
+            PhotoUrl = url,
+            Status = status,
+            CreatedAt = Now.UtcDateTime.AddMinutes(-minutesOld),
+        });
+        await db.SaveChangesAsync();
     }
 
     private async Task SeedRowAsync(

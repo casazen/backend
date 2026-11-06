@@ -25,7 +25,8 @@ namespace Casazen.Infrastructure.Octorate;
 /// for more than 24 hours raises <c>syncAlert</c>. The CIN is not sent to any content channel until D2 is answered, and every content channel says so.</item>
 /// <item><b>Follow-up.</b> An accepted row is not a published one: the process of the push (<c>GET .../process/{id}</c>) moves it to <c>Published</c>
 /// or <c>ToFix</c> with Octorate's reason; a state CasaZen does not understand changes nothing. Every successful read sets <c>LastSyncedAt</c>. A photo
-/// still waiting is read in the photo queue. Nothing here writes to Octorate but the removal of a photo that left the gallery.</item>
+/// still waiting is read in the photo queue, and a photo a run left unsent is sent once it has waited <see cref="ListingPhotoSync.PendingGrace"/>.
+/// Nothing here writes to Octorate but the sending of those photos and the removal of a photo that left the gallery.</item>
 /// <item>The web layer decides who may read a property (<c>property.read</c> and the row check); the lists narrow by <c>InScope</c>, so a
 /// collaborator «Solo alcuni» sees only the properties it reaches.</item>
 /// </list>
@@ -106,11 +107,15 @@ public sealed class ListingStatusService(
                         && s.PropertyId == propertyId
                         && (s.Status == ChannelPublishStatus.Sending || s.Status == ChannelPublishStatus.Accepted))
             .ToListAsync(ct);
+        // The photos waiting in the queue or to be removed, and the ones a run that stopped left unsent (those a publication is not still sending).
+        var unsentBefore = Now() - ListingPhotoSync.PendingGrace;
         var tasks = await db.PhotoUploadTasks
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .Where(t => t.OrgId == orgId
                         && t.PropertyId == propertyId
-                        && (t.Status == PhotoUploadStatus.Uploading || t.Status == PhotoUploadStatus.RemovePending))
+                        && (t.Status == PhotoUploadStatus.Uploading
+                            || t.Status == PhotoUploadStatus.RemovePending
+                            || (t.Status == PhotoUploadStatus.Pending && t.CreatedAt < unsentBefore)))
             .ToListAsync(ct);
 
         var changed = 0;
@@ -120,7 +125,17 @@ public sealed class ListingStatusService(
                 changed += await FollowProcessAsync(row, accommodation, ct);
 
             if (tasks.Count > 0)
+            {
                 changed += await photoSync.ReadQueueAsync(tasks, accommodation, ct);
+
+                // A photo a run left unsent is sent now: the publication the host asked for is finished. A property that was deleted is left alone.
+                if (tasks.Any(t => t.Status == PhotoUploadStatus.Pending)
+                    && await db.Properties.IgnoreQueryFilters([AppDbContext.TenantQueryFilter]).AsNoTracking()
+                        .FirstOrDefaultAsync(p => p.Id == propertyId && p.OrgId == orgId, ct) is { } property)
+                {
+                    changed += await photoSync.ResumeAsync(property, tasks, accommodation, ct);
+                }
+            }
         }
 
         return changed;

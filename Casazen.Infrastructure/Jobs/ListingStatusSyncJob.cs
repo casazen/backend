@@ -12,9 +12,9 @@ namespace Casazen.Infrastructure.Jobs;
 
 /// <summary>
 /// Follows the publications of the listings every 15 minutes (E02/F03/US01/T07, ADR-034, NF-27, NF-32): for each property with a channel waiting for
-/// its publication (<c>Sending</c> or <c>Accepted</c>) or a photo waiting in the queue of the channel manager, it asks
-/// <see cref="IListingStatusService.SyncPropertyAsync"/> to read the process and the queue and to move the rows and the photo tasks. Behind
-/// <c>Features:OctorateConnector</c> (the registration removes it while the flag is off).
+/// its publication (<c>Sending</c> or <c>Accepted</c>), a photo waiting in the queue of the channel manager, to be removed there, or left unsent by a
+/// run that stopped, it asks <see cref="IListingStatusService.SyncPropertyAsync"/> to read the process and the queue, to move the rows and the photo
+/// tasks and to send the photos left behind. Behind <c>Features:OctorateConnector</c> (the registration removes it while the flag is off).
 /// </summary>
 /// <remarks>
 /// A system read over every org: which properties are read is the single definition of the connector (a confirmed mapping with its room, of an org whose
@@ -53,7 +53,7 @@ public class ListingStatusSyncJob(
         var photoTargets = await db.PhotoUploadTasks
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .AsNoTracking()
-            .Where(t => t.Status == PhotoUploadStatus.Uploading || t.Status == PhotoUploadStatus.RemovePending)
+            .Where(t => t.Status == PhotoUploadStatus.Uploading || t.Status == PhotoUploadStatus.RemovePending || t.Status == PhotoUploadStatus.Pending)
             .Select(t => new { t.OrgId, t.PropertyId })
             .Distinct()
             .ToListAsync(cancellationToken);
