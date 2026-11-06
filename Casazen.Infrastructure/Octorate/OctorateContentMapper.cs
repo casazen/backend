@@ -108,7 +108,9 @@ internal static class OctorateContentMapper
 
     /// <summary>
     /// The structured rules: children, pets, smoking and the hours. A policy the host never declared is not sent, so it stays as it is on the channel
-    /// manager. A policy «on request» is not a yes: a flag cannot say it, and the text of the rules does.
+    /// manager. A policy «on request» is not a yes: a flag cannot say it, and the text of the rules does. The rule about children is
+    /// <see cref="Property.ChildrenPolicy"/> and nothing else: <see cref="Property.ChildrenWelcome"/> is the label of the public page, its own
+    /// answer (<see cref="PropertyHouseRules"/>), and «not suited to children» there does not say that children are not allowed on a channel.
     /// </summary>
     internal static OctorateReservationRules ReservationRules(Property property)
     {
@@ -116,7 +118,7 @@ internal static class OctorateContentMapper
 
         return new OctorateReservationRules
         {
-            ChildrenAllowed = property.ChildrenPolicy is { } children ? children == ChildrenPolicy.Yes : property.ChildrenWelcome,
+            ChildrenAllowed = property.ChildrenPolicy is { } children ? children == ChildrenPolicy.Yes : null,
             PetsAllowed = property.PetsPolicy is { } pets ? pets == PetsPolicy.Yes : null,
             SmokersAllowed = property.SmokingPolicy is { } smoking ? smoking == SmokingPolicy.Yes : null,
             CheckinTimeStart = property.CheckInFrom?.Hour,

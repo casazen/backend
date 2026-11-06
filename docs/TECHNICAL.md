@@ -947,7 +947,7 @@ answered with their own code (`octorate_not_connected` 409, `octorate_auth_faile
   creates the connection), then `RefreshAsync` and `ConfirmAsync` make the new accommodation a Confirmed mapping. Octorate's `ApiParamsExemption` is 422 `octorate_property_invalid` with the fields; a 412 on the network is 409 `octorate_network_unknown`.
 - *What is sent.* The accommodation (`PATCH /rest/v2/accommodation/{acc}`), the unit once (`POST /rest/v3/roomrates/{acc}`, then `SetRoomAsync`), the
   descriptions in every language (`description`, `houseRules`, `directions`), the rooms with their beds, the structured rules (`reservation`: children, pets,
-  smoking, hours) and the photos by their public address; the amenities and the cancellation policy only with `ListingChannels:SendAmenities` and
+  smoking, hours; only what the host declared, the children from `ChildrenPolicy` and never from the label of the public page) and the photos by their public address; the amenities and the cancellation policy only with `ListingChannels:SendAmenities` and
   `SendCancellationPolicy` (not proven on the sandbox, off by default). Not sent: the CIN (D2), the spaces, access and surroundings texts, parties and quiet
   hours as structured members (no proven field), and nothing through `addTextToHouseRules` or `addTextToField` (NF-37). Each channel then gets its push
   (`pushQueue/{portal}` for `booking_xml`, `airbnb_xml`, `homeaway`; `.../content/connections/{connection}/push` for the others).

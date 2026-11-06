@@ -158,6 +158,21 @@ public class OctorateContentRequestsTests
         Assert.Equal(10, declared.CheckoutTime);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void MapperRules_TheChildrenLabelOfThePublicPage_IsNeverTheRuleOfAChannel(bool welcome)
+    {
+        // ChildrenWelcome is the label of the public page, its own answer: a host who never declared the rule about children has declared none, and
+        // «not suited to children» on the page does not become «children not allowed» on Booking.com or Airbnb.
+        var rules = OctorateContentMapper.ReservationRules(new Property { ChildrenWelcome = welcome });
+
+        Assert.Null(rules.ChildrenAllowed);
+        Assert.True(rules.IsEmpty);
+        Assert.False(OctorateContentMapper.ReservationRules(new Property { ChildrenWelcome = welcome, ChildrenPolicy = ChildrenPolicy.No }).ChildrenAllowed);
+        Assert.True(OctorateContentMapper.ReservationRules(new Property { ChildrenWelcome = welcome, ChildrenPolicy = ChildrenPolicy.Yes }).ChildrenAllowed);
+    }
+
     [Fact]
     public void MapperDescriptions_SendEveryLanguageTheHostWrote_AndNeverTheCin()
     {
