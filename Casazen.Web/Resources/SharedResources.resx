@@ -4430,4 +4430,149 @@
   <data name="Marketplace.Licensed.rateChecker.Benefit" xml:space="preserve">
     <value>Controlla che i tuoi prezzi siano allineati su tutti i canali.</value>
   </data>
+  <data name="Marketplace.Detail.Requirement.hotelId" xml:space="preserve">
+    <value>L'identificativo della tua struttura sul canale.</value>
+  </data>
+  <data name="Marketplace.Detail.Requirement.credentials" xml:space="preserve">
+    <value>Nome utente e password del tuo account sul canale.</value>
+  </data>
+  <data name="Marketplace.Detail.Requirement.panelAccess" xml:space="preserve">
+    <value>Il consenso all'accesso, da dare nel pannello del tuo channel manager.</value>
+  </data>
+  <data name="Marketplace.Detail.Requirement.licenseRequest" xml:space="preserve">
+    <value>Una richiesta al tuo channel manager: la funzione risulta attiva quando compare nella tua licenza.</value>
+  </data>
+  <data name="Marketplace.Detail.Channel.WhatItDoes" xml:space="preserve">
+    <value>CasaZen riceve le prenotazioni di {0} e tiene allineati disponibilità e prezzi.</value>
+  </data>
+  <data name="Marketplace.Detail.Channel.WhatItDoesWithContent" xml:space="preserve">
+    <value>CasaZen riceve le prenotazioni di {0} e tiene allineati disponibilità e prezzi. Questo canale può portare anche i contenuti e le tariffe del tuo annuncio.</value>
+  </data>
+  <data name="Marketplace.Detail.Channel.Audience" xml:space="preserve">
+    <value>Per chi vende le proprie strutture su {0} e vuole gestire tutto da CasaZen.</value>
+  </data>
+  <data name="Marketplace.Detail.Channel.DataShared" xml:space="preserve">
+    <value>Dati dell'immobile e dell'annuncio: indirizzo, descrizione, foto, disponibilità e prezzi.
+Prenotazioni ricevute da {0} e dati degli ospiti che il canale rende disponibili.
+I dati vengono scambiati con il tuo channel manager, che li trasmette al canale.</value>
+  </data>
+  <data name="Marketplace.Detail.Channel.Deactivation" xml:space="preserve">
+    <value>Se scolleghi {0}, le nuove prenotazioni di {0} non arriveranno più in CasaZen. Il tuo annuncio su {0} resta pubblicato finché non lo chiudi tu sul canale.</value>
+  </data>
+  <data name="Marketplace.Detail.Channel.Faq1.Q" xml:space="preserve">
+    <value>Il mio annuncio su {0} cambia quando lo collego?</value>
+  </data>
+  <data name="Marketplace.Detail.Channel.Faq1.A" xml:space="preserve">
+    <value>No: CasaZen riconosce l'annuncio che hai già e ne mantiene gli identificativi, quindi recensioni e storico restano dove sono.</value>
+  </data>
+  <data name="Marketplace.Detail.Channel.Faq2.Q" xml:space="preserve">
+    <value>Chi mi addebita i costi di {0}?</value>
+  </data>
+  <data name="Marketplace.Detail.Channel.Faq2.A" xml:space="preserve">
+    <value>Le commissioni di {0} sono quelle dell'accordo che hai con il canale. CasaZen non le conosce in anticipo: le trovi nei report quando le prenotazioni le comunicano.</value>
+  </data>
+  <data name="Marketplace.Detail.Channel.Faq3.Q" xml:space="preserve">
+    <value>Posso scollegare il canale più avanti?</value>
+  </data>
+  <data name="Marketplace.Detail.Channel.Faq3.A" xml:space="preserve">
+    <value>Sì, in qualsiasi momento dalla scheda del canale: ti spieghiamo cosa cambia prima di confermare.</value>
+  </data>
+  <data name="Marketplace.Detail.Tool.WhatItDoes" xml:space="preserve">
+    <value>Collega lo strumento {0} a CasaZen tramite il channel manager.</value>
+  </data>
+  <data name="Marketplace.Detail.Tool.WhatItDoesWithContent" xml:space="preserve">
+    <value>Collega lo strumento {0} a CasaZen tramite il channel manager e può portare anche contenuti e tariffe.</value>
+  </data>
+  <data name="Marketplace.Detail.Tool.Audience" xml:space="preserve">
+    <value>Per chi usa {0} e vuole che lavori insieme a CasaZen.</value>
+  </data>
+  <data name="Marketplace.Detail.Tool.DataShared" xml:space="preserve">
+    <value>I dati che servono allo strumento per funzionare: immobile, disponibilità, prezzi e prenotazioni.
+I dati passano dal tuo channel manager allo strumento {0}.</value>
+  </data>
+  <data name="Marketplace.Detail.Tool.Deactivation" xml:space="preserve">
+    <value>Se scolleghi {0}, lo strumento smette di ricevere i dati da CasaZen. Quello che hai già impostato nello strumento resta com'è finché non lo cambi tu.</value>
+  </data>
+  <data name="Marketplace.Detail.Tool.Faq1.Q" xml:space="preserve">
+    <value>A cosa serve collegare {0}?</value>
+  </data>
+  <data name="Marketplace.Detail.Tool.Faq1.A" xml:space="preserve">
+    <value>Lo strumento riceve da CasaZen i dati che gli servono, senza che tu debba copiarli a mano.</value>
+  </data>
+  <data name="Marketplace.Detail.Tool.Faq2.Q" xml:space="preserve">
+    <value>Chi mi addebita i costi di {0}?</value>
+  </data>
+  <data name="Marketplace.Detail.Tool.Faq2.A" xml:space="preserve">
+    <value>Lo strumento ha un suo listino e te lo addebita direttamente. CasaZen non conosce il costo in anticipo.</value>
+  </data>
+  <data name="Marketplace.Detail.Tool.Faq3.Q" xml:space="preserve">
+    <value>Posso scollegarlo più avanti?</value>
+  </data>
+  <data name="Marketplace.Detail.Tool.Faq3.A" xml:space="preserve">
+    <value>Sì, in qualsiasi momento dalla scheda: ti spieghiamo cosa cambia prima di confermare.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.Audience" xml:space="preserve">
+    <value>Per chi vuole aggiungere questa funzione alla licenza del proprio channel manager.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.DataShared" xml:space="preserve">
+    <value>La richiesta contiene il nome della funzione e i dati del tuo account sul channel manager.
+Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.Deactivation" xml:space="preserve">
+    <value>Per spegnere la funzione prepariamo una richiesta di modifica al tuo channel manager. La funzione resta attiva finché la modifica non risulta nella tua licenza.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.Faq1.Q" xml:space="preserve">
+    <value>Come si attiva questa funzione?</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.Faq1.A" xml:space="preserve">
+    <value>Con una richiesta guidata: CasaZen la prepara e la funzione risulta «Richiesta» finché non compare nella tua licenza.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.Faq2.Q" xml:space="preserve">
+    <value>Quanto costa?</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.Faq2.A" xml:space="preserve">
+    <value>Il costo non è indicato qui: dipende dalla licenza che hai con il tuo channel manager.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.Faq3.Q" xml:space="preserve">
+    <value>Posso chiedere di spegnerla?</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.Faq3.A" xml:space="preserve">
+    <value>Sì: dalla scheda prepari una richiesta di modifica e il channel manager la applica alla tua licenza.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.chat" xml:space="preserve">
+    <value>Riunisce in un'unica casella i messaggi degli ospiti dei tuoi canali, così rispondi da un solo posto.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.invoice" xml:space="preserve">
+    <value>Prepara le fatture dei soggiorni a partire dai dati delle prenotazioni.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.fiscalPrinter" xml:space="preserve">
+    <value>Collega una stampante fiscale per rilasciare lo scontrino dei pagamenti ricevuti in struttura.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.smartOffer" xml:space="preserve">
+    <value>Propone sconti mirati agli ospiti che stanno per prenotare, per aumentare le prenotazioni dirette.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.octoDaily" xml:space="preserve">
+    <value>Invia ogni giorno un riepilogo di arrivi, partenze e incassi.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.rms" xml:space="preserve">
+    <value>Adegua i prezzi alla domanda in modo automatico, secondo regole che scegli tu.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.businessIntelligence" xml:space="preserve">
+    <value>Mostra grafici e confronti sui risultati dei tuoi canali e delle tue strutture.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.bookingEngine" xml:space="preserve">
+    <value>Aggiunge al tuo sito un modulo per ricevere prenotazioni dirette, collegato alle tue disponibilità.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.octoSite" xml:space="preserve">
+    <value>Crea un sito web per la tua struttura, collegato alle disponibilità e ai prezzi.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.webConcierge" xml:space="preserve">
+    <value>Offre agli ospiti informazioni e servizi sulla struttura prima e durante il soggiorno.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.metaSearch" xml:space="preserve">
+    <value>Pubblica i tuoi prezzi nei siti di confronto, per portare prenotazioni dirette.</value>
+  </data>
+  <data name="Marketplace.Detail.LicensedFunction.WhatItDoes.rateChecker" xml:space="preserve">
+    <value>Controlla che i tuoi prezzi siano allineati su tutti i canali e segnala le differenze.</value>
+  </data>
 </root>

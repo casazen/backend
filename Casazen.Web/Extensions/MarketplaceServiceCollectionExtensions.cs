@@ -25,6 +25,9 @@ public static class MarketplaceServiceCollectionExtensions
         services.AddSingleton<IMarketplaceTexts, ResxMarketplaceTexts>();
         services.AddScoped<IMarketplaceCatalogService, MarketplaceCatalogService>();
 
+        // The detail card of an entry (E09/F01/US01/T04).
+        services.AddScoped<IMarketplaceEntryDetailService, MarketplaceEntryDetailService>();
+
         return services;
     }
 }
