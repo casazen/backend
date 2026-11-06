@@ -23,7 +23,9 @@ namespace Casazen.Infrastructure.Octorate;
 /// of the person; its stored scenario is <c>newInventory</c> (<see cref="IInventoryScenarioGuard"/>: <c>onOctorate</c>, <c>onOtas</c> and no declaration
 /// at all are refused, because a missing mapping is not proof that the inventory is new); it has no confirmed mapping; it sits in no proposed or
 /// ambiguous mapping row (the accommodation may already exist on Octorate and has to be confirmed or rejected first, so the import never meets a
-/// duplicate). The org needs no connection yet: a new host has none, and the creation returns the token.</item>
+/// duplicate). The org needs no connection yet: a new host has none, and the creation returns the token. An org that already has the connection reads
+/// its listings again first (<see cref="IChannelMappingService.RefreshAsync"/>): an accommodation an earlier creation made and lost track of is then
+/// proposed for the property and blocks a second creation, and a refresh that fails stops the creation.</item>
 /// <item><b>The refresh token comes once.</b> Octorate answers the creation with the refresh token and no access token: it is saved through
 /// <see cref="IOctorateTokenService.SaveTokensAsync"/> first, before the mapping can fail, and never logged. A new accommodation is created with
 /// the partner token, since it does not exist yet to have a token of its own.</item>
@@ -78,11 +80,18 @@ public sealed class OctoratePropertyCreator(
             throw new DomainConflictException("octorate_property_exists", "OctoratePropertyExists");
         }
 
+        // The org already has the connection: an accommodation an earlier creation made and then lost track of (Octorate answered, the refresh or the
+        // confirmation after it did not work) is read again now and proposed for this property, so the block below stops a second creation of it. A
+        // refresh that fails stops the creation too: nothing is created that could not be checked first.
+        var connected = await IsConnectedAsync(orgId, ct);
+        if (connected)
+            await mappings.RefreshAsync(orgId, ct);
+
         // It may already exist on Octorate: confirmed or rejected first, so the import never meets a duplicate.
         if (await mappings.IsWriteBlockedAsync(propertyId, ct))
             throw new DomainConflictException("octorate_mapping_unconfirmed", "OctorateMappingUnconfirmed");
 
-        var request = await BuildRequestAsync(property, userId, ct);
+        var request = await BuildRequestAsync(property, userId, connected, ct);
 
         OctoratePropertyCreated created;
         try
@@ -114,7 +123,7 @@ public sealed class OctoratePropertyCreator(
     /// The data of the new accommodation, checked before the call: the country, the position, the address and the contact of the organization.
     /// Every field that is missing is named, so the wizard shows them all at once on their steps.
     /// </summary>
-    private async Task<OctoratePropertyCreate> BuildRequestAsync(Property property, string userId, CancellationToken ct)
+    private async Task<OctoratePropertyCreate> BuildRequestAsync(Property property, string userId, bool connected, CancellationToken ct)
     {
         var org = await db.Orgs.AsNoTracking().FirstOrDefaultAsync(o => o.Id == property.OrgId, ct);
         var person = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
@@ -170,7 +179,7 @@ public sealed class OctoratePropertyCreator(
             ContactFirstName = firstName!,
             ContactLastName = lastName!,
             AlternativeEmail = $"octorate-{property.OrgId:N}@{domain}",
-            NetworkName = await NetworkOfAsync(property.OrgId, ct),
+            NetworkName = await NetworkOfAsync(property.OrgId, connected, ct),
             CheckinStart = property.CheckInFrom?.Hour,
             CheckinEnd = property.CheckInTo?.Hour,
             Checkout = property.CheckOutBy?.Hour,
@@ -181,13 +190,8 @@ public sealed class OctoratePropertyCreator(
     /// The network of the org's connection when it has one (an agency: the same refresh token then covers the new property); <c>null</c> for a new
     /// host with no connection. The network must exist, otherwise Octorate answers 412.
     /// </summary>
-    private async Task<string?> NetworkOfAsync(Guid orgId, CancellationToken ct)
+    private async Task<string?> NetworkOfAsync(Guid orgId, bool connected, CancellationToken ct)
     {
-        var environment = OctorateEnvironments.Of(hostEnvironment);
-        var connected = await db.OctorateConnections
-            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
-            .AsNoTracking()
-            .AnyAsync(c => c.OrgId == orgId && c.Environment == environment && c.Status == OctorateConnectionStatus.Connected, ct);
         if (!connected)
             return null;
 
@@ -196,6 +200,16 @@ public sealed class OctoratePropertyCreator(
             var listings = await client.GetPropertiesAsync(ct);
             return listings.Select(listing => listing.NetworkId).FirstOrDefault(network => !string.IsNullOrWhiteSpace(network));
         }
+    }
+
+    /// <summary>Whether the org has a usable connection to Octorate in this environment (a new host has none, and the creation returns the token).</summary>
+    private Task<bool> IsConnectedAsync(Guid orgId, CancellationToken ct)
+    {
+        var environment = OctorateEnvironments.Of(hostEnvironment);
+        return db.OctorateConnections
+            .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
+            .AsNoTracking()
+            .AnyAsync(c => c.OrgId == orgId && c.Environment == environment && c.Status == OctorateConnectionStatus.Connected, ct);
     }
 
     private static DomainRuleException PropertyInvalid(IReadOnlyList<OctorateFieldError> fields) =>

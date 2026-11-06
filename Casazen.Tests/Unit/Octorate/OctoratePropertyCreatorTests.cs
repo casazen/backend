@@ -96,7 +96,9 @@ public class OctoratePropertyCreatorTests
             await db.SaveChangesAsync();
         }
 
-        // The real rule of the mapping, not a stub: the property may already exist on Octorate and has to be confirmed or rejected first.
+        // The real rule of the mapping, not a stub: the property may already exist on Octorate and has to be confirmed or rejected first. The org has
+        // the connection, so its listings are read again first (they show nothing new here).
+        _client.Setup(c => c.GetPropertiesAsync(It.IsAny<CancellationToken>())).ReturnsAsync(Array.Empty<OctorateProperty>());
         await using var rules = NewDb();
         var creator = Creator(mappings: MappingService(rules));
 
@@ -105,6 +107,61 @@ public class OctoratePropertyCreatorTests
         Assert.Equal("octorate_mapping_unconfirmed", ex.Code);
         _client.Verify(c => c.CreatePropertyAsync(It.IsAny<OctoratePropertyCreate>(), It.IsAny<CancellationToken>()), Times.Never);
         _tokens.Verify(t => t.SaveTokensAsync(It.IsAny<Guid>(), It.IsAny<OctorateTokenResponse>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task OctoratePropertyCreator_AnAccommodationOfAnEarlierCreation_IsFoundBeforeCreatingAgain_Test()
+    {
+        // The first creation worked on Octorate and then the refresh failed: nothing remembers the accommodation (the id was in the answer only). The
+        // org has the connection by now, so the next creation reads its listings first, finds the accommodation, and the real rule of the mapping
+        // proposes it for the property: the write block refuses a second creation (a duplicate on Octorate), whatever the message told the host.
+        var propertyId = await SeedAsync(OctorateInventoryScenario.NewInventory);
+        await SeedConnectionAsync();
+        _client
+            .Setup(c => c.GetPropertiesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new OctorateProperty { Id = "585492", Name = "Casa del Lago", Address = "Via del Lago 1", City = "Como", PostalCode = "22100", Latitude = 45.4642m, Longitude = 9.19m }]);
+        _client.Setup(c => c.GetRoomsAsync("585492", It.IsAny<CancellationToken>())).ReturnsAsync([new OctorateRoom { Id = "956528", Name = "Casa", Adults = 4 }]);
+        await using var rules = NewDb();
+
+        var ex = await Assert.ThrowsAsync<DomainConflictException>(
+            () => Creator(mappings: MappingService(rules)).CreateAsync(propertyId, Publisher, CancellationToken.None));
+
+        Assert.Equal("octorate_mapping_unconfirmed", ex.Code);
+        _client.Verify(c => c.CreatePropertyAsync(It.IsAny<OctoratePropertyCreate>(), It.IsAny<CancellationToken>()), Times.Never);
+        _tokens.Verify(t => t.SaveTokensAsync(It.IsAny<Guid>(), It.IsAny<OctorateTokenResponse>(), It.IsAny<CancellationToken>()), Times.Never);
+        await using var check = NewDb();
+        var found = await check.OctorateListingMappings.SingleAsync();
+        Assert.Equal("585492", found.OctorateAccommodationId);
+        Assert.Equal(OctorateMappingStatus.Proposed, found.Status);
+        Assert.Equal(propertyId, found.PropertyId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_AnOrgThatIsAlreadyConnected_ReadsItsListingsFirst_AndCreatesInItsNetwork()
+    {
+        var propertyId = await SeedAsync(OctorateInventoryScenario.NewInventory);
+        await SeedConnectionAsync();
+        OctoratePropertyCreate? sent = null;
+        _mappings.Setup(m => m.RefreshAsync(OrgId, It.IsAny<CancellationToken>())).Callback(() => _order.Add("refresh")).ReturnsAsync(new List<ChannelMappingRow>());
+        _mappings.Setup(m => m.IsWriteBlockedAsync(propertyId, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+        _client.Setup(c => c.GetPropertiesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([new OctorateProperty { Id = "111", Name = "Altra casa", NetworkId = "agency-network" }]);
+        _client
+            .Setup(c => c.CreatePropertyAsync(It.IsAny<OctoratePropertyCreate>(), It.IsAny<CancellationToken>()))
+            .Callback<OctoratePropertyCreate, CancellationToken>((request, _) =>
+            {
+                _order.Add("create");
+                sent = request;
+            })
+            .ReturnsAsync(new OctoratePropertyCreated("585492", "refresh-token-once"));
+        _tokens.Setup(t => t.SaveTokensAsync(OrgId, It.IsAny<OctorateTokenResponse>(), It.IsAny<CancellationToken>())).Callback(() => _order.Add("save-token")).Returns(Task.CompletedTask);
+        _mappings
+            .Setup(m => m.ConfirmAsync(OrgId, "585492", propertyId, null, Publisher, It.IsAny<CancellationToken>(), It.IsAny<IReadOnlySet<string>?>()))
+            .Returns(Task.CompletedTask);
+
+        await Creator().CreateAsync(propertyId, Publisher, CancellationToken.None);
+
+        Assert.Equal(["refresh", "create", "save-token", "refresh"], _order);
+        Assert.Equal("agency-network", sent?.NetworkName);
     }
 
     [Theory]
@@ -278,6 +335,14 @@ public class OctoratePropertyCreatorTests
 
     private AppDbContext NewDb() =>
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(_database).Options, NullTenantContext.Instance);
+
+    /// <summary>The connection of the org to Octorate in this environment (the host of the tests is a staging one).</summary>
+    private async Task SeedConnectionAsync()
+    {
+        await using var db = NewDb();
+        db.OctorateConnections.Add(new OctorateConnection { OrgId = OrgId, Environment = OctorateEnvironment.Test, Status = OctorateConnectionStatus.Connected });
+        await db.SaveChangesAsync();
+    }
 
     /// <summary>An org with a contact, the person who publishes, and a property with all the data Octorate asks for, declared as <paramref name="scenario"/>.</summary>
     private async Task<Guid> SeedAsync(

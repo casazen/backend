@@ -941,8 +941,9 @@ answered with their own code (`octorate_not_connected` 409, `octorate_auth_faile
 - *Creation (T06).* `OctoratePropertyCreator` is the `newInventory` entry of the connect flow: only for a property a person declared never published
   (`IInventoryScenarioGuard`), with no confirmed mapping and in no proposed or ambiguous row. `POST /rest/v2/accommodation` is made with the partner token;
   `welcome_user` is false and the credentials Octorate would send go to `octorate-{orgId}@{Octorate:OwnerEmailDomain}` (PO-19), never to the owner.
-  The refresh token is saved first (`SaveTokensAsync`, which creates the connection), then `RefreshAsync` and `ConfirmAsync` make the new accommodation a
-  Confirmed mapping. Octorate's `ApiParamsExemption` is 422 `octorate_property_invalid` with the fields; a 412 on the network is 409 `octorate_network_unknown`.
+  An org that already has the connection reads its listings again first (`RefreshAsync`), so an accommodation an earlier creation made and lost track of is
+  proposed for the property and blocks a second one (a refresh that fails stops the creation). The refresh token is saved first (`SaveTokensAsync`, which
+  creates the connection), then `RefreshAsync` and `ConfirmAsync` make the new accommodation a Confirmed mapping. Octorate's `ApiParamsExemption` is 422 `octorate_property_invalid` with the fields; a 412 on the network is 409 `octorate_network_unknown`.
 - *What is sent.* The accommodation (`PATCH /rest/v2/accommodation/{acc}`), the unit once (`POST /rest/v3/roomrates/{acc}`, then `SetRoomAsync`), the
   descriptions in every language (`description`, `houseRules`, `directions`), the rooms with their beds, the structured rules (`reservation`: children, pets,
   smoking, hours) and the photos by their public address; the amenities and the cancellation policy only with `ListingChannels:SendAmenities` and
