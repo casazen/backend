@@ -1,8 +1,54 @@
+using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Xunit;
 
 namespace Casazen.Tests.Unit.Messages;
+
+/// <summary>
+/// The three queries that read the threads of the host (the list, the badges, the hub) share one expression for which bookings have a direct thread
+/// (<see cref="GuestMessageRules.IsThreadOfADirectBooking"/>); this pins it to the pure rule of the thread, <see cref="GuestMessageRules.StateOf"/>.
+/// </summary>
+public class DirectThreadQueryRuleTests
+{
+    public static TheoryData<BookingSource, BookingStatus> EverySourceAndStatus()
+    {
+        var data = new TheoryData<BookingSource, BookingStatus>();
+        foreach (var source in Enum.GetValues<BookingSource>())
+        {
+            foreach (var status in Enum.GetValues<BookingStatus>())
+                data.Add(source, status);
+        }
+
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(EverySourceAndStatus))]
+    public void TheExpressionOfTheQueries_AgreesWithTheStateOfTheThread_ForEverySourceAndStatus(BookingSource source, BookingStatus status)
+    {
+        var thread = new GuestThread { Booking = new Booking { Source = source, Status = status } };
+        var checkOut = new DateTime(2026, 11, 10, 0, 0, 0, DateTimeKind.Utc);
+        var now = new DateTime(2026, 11, 6, 12, 0, 0, DateTimeKind.Utc);
+
+        var hasThread = GuestMessageRules.IsThreadOfADirectBooking.Compile()(thread);
+
+        Assert.Equal(GuestMessageRules.StateOf(source, status, checkOut, now) != GuestThreadState.Unavailable, hasThread);
+    }
+
+    [Fact]
+    public void OnlyABookingOfThePublicCheckoutThatWasConfirmedAndNotCancelled_HasAThread()
+    {
+        var withThread = new[] { BookingStatus.Confirmed, BookingStatus.CheckedIn, BookingStatus.CheckedOut };
+        var compiled = GuestMessageRules.IsThreadOfADirectBooking.Compile();
+
+        foreach (var status in Enum.GetValues<BookingStatus>())
+        {
+            Assert.Equal(withThread.Contains(status), compiled(new GuestThread { Booking = new Booking { Source = BookingSource.Direct, Status = status } }));
+            Assert.False(compiled(new GuestThread { Booking = new Booking { Source = BookingSource.Manual, Status = status } }));
+        }
+    }
+}
 
 /// <summary>E05/F02/US01/T01: the opaque key of a conversation of the hub, and the table of what the host may do in a conversation of a channel.</summary>
 public class MessageThreadKeyTests

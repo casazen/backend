@@ -107,6 +107,27 @@ public class MessageHubServiceTests : IAsyncLifetime
         Assert.All(others.Items, i => Assert.False(i.NeedsReply));
     }
 
+    [Theory]
+    [InlineData(BookingSource.Direct, BookingStatus.Confirmed, true)]
+    [InlineData(BookingSource.Direct, BookingStatus.CheckedIn, true)]
+    [InlineData(BookingSource.Direct, BookingStatus.CheckedOut, true)]
+    [InlineData(BookingSource.Direct, BookingStatus.Pending, false)]
+    [InlineData(BookingSource.Direct, BookingStatus.Cancelled, false)]
+    [InlineData(BookingSource.Manual, BookingStatus.Confirmed, false)]
+    [InlineData(BookingSource.Airbnb, BookingStatus.Confirmed, false)]
+    public async Task List_ADirectThread_IsListedOnlyForABookingOfThePublicCheckoutThatWasConfirmedAndNotCancelled(
+        BookingSource source, BookingStatus status, bool listed)
+    {
+        var booking = await _db.Bookings.FirstAsync(b => b.Id == _world.GrantedDirectBooking.Id);
+        booking.Source = source;
+        booking.Status = status;
+        await _db.SaveChangesAsync();
+
+        var page = await Service().ListAsync(OrgWide, new MessageHubFilter(), 1, 20);
+
+        Assert.Equal(listed, page.Items.Any(i => i.Key == MessageThreadKey.ForDirect(booking.Id)));
+    }
+
     [Fact]
     public async Task List_AnArchivedConversationOfAChannel_DoesNotNeedAnAnswer()
     {

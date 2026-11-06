@@ -215,11 +215,8 @@ public sealed class MessageHubService(
 
         var direct = db.GuestThreads
             .AsNoTracking()
-            .Where(t => t.OrgId == orgId
-                && t.Booking.Source == BookingSource.Direct
-                && (t.Booking.Status == BookingStatus.Confirmed
-                    || t.Booking.Status == BookingStatus.CheckedIn
-                    || t.Booking.Status == BookingStatus.CheckedOut))
+            .Where(t => t.OrgId == orgId)
+            .Where(GuestMessageRules.IsThreadOfADirectBooking)
             .InScope(scope)
             .Select(t => new HubRow
             {
