@@ -1514,7 +1514,7 @@
     <value>Il soggiorno è già iniziato o concluso: date e ospiti non si possono più cambiare.</value>
   </data>
   <data name="BookingUpdateSourceLocked" xml:space="preserve">
-    <value>Date e ospiti si possono cambiare solo nelle prenotazioni inserite da te: questa arriva dal sito di prenotazione o da un canale, con prezzo e pagamento già definiti. Puoi modificare le note.</value>
+    <value>Date e ospiti si possono cambiare nelle prenotazioni inserite da te e in quelle confermate del sito di prenotazione: questa è una richiesta ancora in attesa, oppure arriva da un canale, con prezzo e pagamento già definiti. Puoi modificare le note.</value>
   </data>
   <data name="BookingCheckInInPast" xml:space="preserve">
     <value>Il check-in non può essere spostato a un giorno già passato.</value>
@@ -5108,6 +5108,18 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="OtaChannelCancelGuidanceAgoda" xml:space="preserve">
     <value>Per cancellare questa prenotazione di Agoda chiedi all'ospite di annullarla su Agoda.</value>
+  </data>
+  <data name="BookingSettlementFailed" xml:space="preserve">
+    <value>Il pagamento della differenza di prezzo non è andato a buon fine: la prenotazione non è stata modificata. Puoi riprovare, lo stesso rimborso non viene mai fatto due volte.</value>
+  </data>
+  <data name="BookingEditPaymentInProgress" xml:space="preserve">
+    <value>Un pagamento di questa prenotazione è ancora in corso, oppure aspetta che sia il cliente a completarlo: attendi che sia concluso prima di cambiare date od ospiti.</value>
+  </data>
+  <data name="BookingEditPaymentPermissionRequired" xml:space="preserve">
+    <value>Questa modifica muove denaro (un rimborso, l'addebito della carta salvata o un link di pagamento): serve il permesso di gestire i pagamenti della struttura. La prenotazione non è stata modificata.</value>
+  </data>
+  <data name="BookingTouristTaxUnavailable" xml:space="preserve">
+    <value>Non riusciamo a calcolare la tassa di soggiorno per le nuove date: il prezzo scenderebbe della tassa che l'ospite ha già pagato e il rimborso partirebbe da solo. La prenotazione non è stata modificata: scegli altre date o chiedi assistenza.</value>
   </data>
   <data name="PanelStepKindInvalid" xml:space="preserve">
     <value>Questo tipo di passaggio guidato non esiste.</value>

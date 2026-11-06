@@ -46,6 +46,10 @@ public static class BookingOperationsServiceCollectionExtensions
         services.AddScoped<IOtaBookingCancellationService, OtaBookingCancellationService>();
         services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingCancelHandler>();
 
+        // E08/F02/US01/T02 (NF-75, ADR-022-R4, R5): the edit of a booking CasaZen holds is written to its reservation after the local one; a conflict
+        // on Octorate is kept with both versions and never overwritten silently.
+        services.AddScoped<IEventHandler<DomainEvent>, OctorateBookingUpdateHandler>();
+
         // E08/F01/US02/T01 (NF-74, NF-80): whether the channel manager can take a stay, asked before a booking of CasaZen is written and when the
         // host looks at the dates (the public calendar and availability never ask it).
         services.AddScoped<IChannelManagerAvailability, ChannelManagerAvailabilityService>();

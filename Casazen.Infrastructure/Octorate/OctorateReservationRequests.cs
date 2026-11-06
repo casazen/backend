@@ -122,6 +122,48 @@ internal static class OctorateReservationRequests
         return body.ToJsonString();
     }
 
+    /// <summary>The longest note CasaZen sends as <c>privateNotes</c> (the notes of a booking are at most 1000 characters).</summary>
+    public const int MaxNotesLength = 1000;
+
+    /// <summary>
+    /// The body of <c>PATCH /rest/v1/reservation/{acc}/{id}</c> for <paramref name="update"/> on <paramref name="target"/> (E08/F02/US01/T02, NF-75): only
+    /// what an edit of a booking changes, the members of the sandbox's partial <c>PATCH</c> (<c>checkin</c>, <c>checkout</c>, <c>totalGuest</c>,
+    /// <c>privateNotes</c>) and the price of the stay; the room as <c>pmsProduct</c> when the target has one (a <c>PATCH</c> without it answers 400).
+    /// Never a status, a guest, a payment or a field of Octorate's automatic charge (D9). The dates are the instants the Rome days start, as the create sends them.
+    /// </summary>
+    /// <exception cref="ArgumentException">A change Octorate could not take: no night, no guest, a negative price.</exception>
+    public static string UpdateBody(OctorateBookingTarget target, OctorateReservationUpdate update)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(update);
+
+        if (update.CheckOut <= update.CheckIn)
+            throw new ArgumentException("A stay has at least one night.", nameof(update));
+        if (update.Guests < 1 || update.Children < 0 || update.Children >= update.Guests)
+            throw new ArgumentException("A reservation has at least one adult, and the children are counted among the guests.", nameof(update));
+        if (update.RoomGross < 0m)
+            throw new ArgumentException("The price of a stay is not negative.", nameof(update));
+
+        var body = new JsonObject
+        {
+            ["checkin"] = Instant(RomeCalendar.StartOfDayUtc(update.CheckIn)),
+            ["checkout"] = Instant(RomeCalendar.StartOfDayUtc(update.CheckOut)),
+            ["totalGuest"] = update.Guests,
+            ["totalChildren"] = update.Children,
+            ["roomGross"] = Money(update.RoomGross),
+        };
+
+        // The PMS room of the unit, only when the target knows it: any other pmsProduct answers 500 on the sandbox.
+        if (!string.IsNullOrWhiteSpace(target.PmsProductId))
+            body["pmsProduct"] = IdValue(target.PmsProductId);
+
+        var notes = update.Notes?.Trim();
+        if (!string.IsNullOrEmpty(notes))
+            body["privateNotes"] = notes.Length > MaxNotesLength ? notes[..MaxNotesLength] : notes;
+
+        return body.ToJsonString();
+    }
+
     /// <summary>The <c>status</c> of a cancelled reservation, as Octorate spells it.</summary>
     public const string CancelledStatus = "CANCELLED";
 

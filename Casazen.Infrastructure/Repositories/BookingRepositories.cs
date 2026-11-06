@@ -238,6 +238,30 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         HoldExpiryCutoff? pendingCutoff = null,
         Guid? excludeBookingId = null)
     {
+        return await BookingsTakingNights(context, propertyId, checkInDate, checkOutDate, pendingCutoff, excludeBookingId).AnyAsync();
+    }
+
+    /// <summary>
+    /// Whether a booking other than <paramref name="bookingId"/> takes a night of the stay: the check <see cref="UpdateAsync"/> makes under the
+    /// property lock, readable before it, so the edit of a booking can refuse dates that are taken before any money moves (E08/F02/US01/T01).
+    /// </summary>
+    internal static Task<bool> TakesNightsOfAnotherBookingAsync(
+        AppDbContext context,
+        Guid bookingId,
+        Guid propertyId,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        CancellationToken cancellationToken) =>
+        BookingsTakingNights(context, propertyId, checkInDate.Date, checkOutDate.Date, pendingCutoff: null, bookingId).AnyAsync(cancellationToken);
+
+    private static IQueryable<Booking> BookingsTakingNights(
+        AppDbContext context,
+        Guid propertyId,
+        DateTime checkInDate,
+        DateTime checkOutDate,
+        HoldExpiryCutoff? pendingCutoff,
+        Guid? excludeBookingId)
+    {
         // With a cutoff, expired checkout holds do not count (availability); without one (the final check under the
         // property lock before an insert or update) every booking that is not cancelled does. The nights are those of the
         // public availability (PropertyOccupancy, BK-05).
@@ -248,7 +272,7 @@ public class BookingRepository(AppDbContext context) : IBookingRepository
         if (excludeBookingId.HasValue)
             query = query.Where(b => b.Id != excludeBookingId.Value);
 
-        return await query.AnyAsync();
+        return query;
     }
 
     /// <summary>
