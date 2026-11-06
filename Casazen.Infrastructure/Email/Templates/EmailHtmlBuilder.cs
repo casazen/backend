@@ -14,6 +14,7 @@ namespace Casazen.Infrastructure.Email.Templates;
 public sealed class EmailHtmlBuilder(CultureInfo culture)
 {
     private const string MutedStyle = "font-size:13px;color:#71717a;";
+    private const string CodeStyle = "font-size:22px;letter-spacing:2px;";
 
     // Keeps accented letters readable; still encodes <, >, &, quotes and control characters.
     private static readonly HtmlEncoder Encoder = HtmlEncoder.Create(UnicodeRanges.All);
@@ -32,6 +33,12 @@ public sealed class EmailHtmlBuilder(CultureInfo culture)
 
     public EmailHtmlBuilder Muted(string key, params object?[] args) =>
         Append($"<p style=\"{MutedStyle}\">{Format(key, args)}</p>");
+
+    /// <summary>
+    /// A short value the reader has to type or copy (a lock code), large and spaced, in a paragraph of its own. It has no words of its own, so
+    /// it is not a text of <see cref="EmailTexts"/> (it would be the same in Italian and English). The value is HTML-encoded.
+    /// </summary>
+    public EmailHtmlBuilder Code(string? value) => Append($"<p><strong style=\"{CodeStyle}\">{Encode(value)}</strong></p>");
 
     /// <summary>A highlighted free-text value (host notes, invite message) under a label; skipped when empty.</summary>
     public EmailHtmlBuilder Quote(string labelKey, string? value)

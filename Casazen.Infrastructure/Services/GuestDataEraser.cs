@@ -49,6 +49,7 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     {
         var before = Fingerprint(guest);
         var filesDeleted = await DeleteDocumentScanAsync(guest, cancellationToken);
+        filesDeleted += await DeleteVerificationDocumentImagesAsync(guest, cancellationToken);
         EraseAlloggiatiFields(guest);
         EraseIdentity(guest);
         guest.MarketingConsent = false;
@@ -291,6 +292,7 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
     {
         var before = Fingerprint(guest);
         var filesDeleted = await DeleteDocumentScanAsync(guest, cancellationToken);
+        filesDeleted += await DeleteVerificationDocumentImagesAsync(guest, cancellationToken);
         EraseAlloggiatiFields(guest);
         var changed = Fingerprint(guest) != before || filesDeleted > 0;
         guest.AlloggiatiDataErasedAt ??= now;
@@ -337,6 +339,29 @@ public sealed class GuestDataEraser(AppDbContext db, IFileStorage fileStorage, I
         await fileStorage.DeleteAsync(StorageBucket.Private, key, cancellationToken);
         logger.LogInformation("Document scan of guest {GuestId} deleted from the private storage", guest.Id);
         return 1;
+    }
+
+    /// <summary>
+    /// Deletes the photos of identity documents that an identity verification of the bookings of <paramref name="guest"/> kept (E03/F04/US02/T04,
+    /// art. 17 GDPR): the encrypted objects of the private bucket and their <see cref="DocumentImage"/> rows (<see cref="DocumentImageCleaner"/>),
+    /// also those a verification that ended already deleted from the bucket and marked. The objects go before the caller saves. Returns the photos
+    /// (rows) removed.
+    /// </summary>
+    public async Task<int> DeleteVerificationDocumentImagesAsync(Guest guest, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(guest);
+
+        // IgnoreQueryFilters: whichever org the caller works in, the guest's own photos go; the org of the guest is named.
+        var images = await db.DocumentImages
+            .IgnoreQueryFilters()
+            .Where(i => i.OrgId == guest.OrgId && i.GuestId == guest.Id)
+            .ToListAsync(cancellationToken);
+        if (images.Count == 0)
+            return 0;
+
+        await DocumentImageCleaner.DeleteAsync(db, fileStorage, logger, images, cancellationToken);
+        logger.LogInformation("{Count} document photo(s) of guest {GuestId} deleted from the private storage", images.Count, guest.Id);
+        return images.Count;
     }
 
     /// <summary>

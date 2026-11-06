@@ -29,4 +29,12 @@ public static class HostPermissions
 
     /// <summary>What the short-rent owner and the property manager hold on top of the permissions they always had.</summary>
     public static IReadOnlyList<string> ShortRentFine { get; } = [ServiceRequestWrite, GuestManage, AlloggiatiSubmit];
+
+    /// <summary>
+    /// Decide the identity verification of a guest from the operator queue (NF-50, NF-24, ADR-013-R9, E03/F04/US02/T01): see the reasons of the
+    /// automatic outcome, approve (which releases the lock code to the guest) or reject. Given to the owner, the administrators and the property
+    /// managers, never to the collaborator nor to the accountant (AC-NF24-3). It is not one of <see cref="ShortRentFine"/>: those are the ones
+    /// the migration of AM-03 added, this one comes with the migration <c>AddIdentityVerificationFields</c>.
+    /// </summary>
+    public const string VerificationDecision = "verification.decision";
 }

@@ -1378,6 +1378,21 @@
   <data name="CheckInBiometricMinorExcluded" xml:space="preserve">
     <value>Biometric verification is not available for minors.</value>
   </data>
+  <data name="CheckInBiometricConsentAnswerRequired" xml:space="preserve">
+    <value>Say whether you consent to the biometric verification.</value>
+  </data>
+  <data name="CheckInBiometricConsentVersionRequired" xml:space="preserve">
+    <value>The version of the biometric consent text is missing (50 characters at most).</value>
+  </data>
+  <data name="CheckInBiometricConsentRequired" xml:space="preserve">
+    <value>Before the selfie we need your consent to the biometric verification. You can also ask a person to verify you.</value>
+  </data>
+  <data name="CheckInDocumentCheckRequired" xml:space="preserve">
+    <value>Take a photo of your identity document before the selfie.</value>
+  </data>
+  <data name="CheckInDocumentPhotoMismatch" xml:space="preserve">
+    <value>The photo of the document is not the one read before: take a photo of the same document again.</value>
+  </data>
   <data name="CheckInProvinceInvalid" xml:space="preserve">
     <value>Enter the two-letter province code (e.g. RM).</value>
   </data>
@@ -3850,6 +3865,9 @@
   </data>
   <data name="VerificationReasonRequired" xml:space="preserve">
     <value>A rejection reason is required</value>
+  </data>
+  <data name="VerificationMetricsPeriodInvalid" xml:space="preserve">
+    <value>The period is not valid: the start date must come before the end date and the period cannot be longer than 366 days.</value>
   </data>
   <data name="BatchAlreadyDownloadedOrPaid" xml:space="preserve">
     <value>The batch has already been downloaded or paid</value>

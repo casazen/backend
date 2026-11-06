@@ -119,9 +119,10 @@ public static class CasazenPolicies
 
     /// <summary>
     /// Decide on manual biometric verification (NF-12, ADR-013): approve or reject guest check-in after biometric
-    /// escalation. Owner, admins, and property managers only (NOT staff per D-08). Short-rent context.
+    /// escalation. Owner, admins, and property managers only (NOT staff per D-08). Short-rent context. The permission is
+    /// <see cref="HostPermissions.VerificationDecision"/>, seeded since E03/F04/US02/T01.
     /// </summary>
-    public const string VerificationDecision = ShortRent + "verification.decision";
+    public const string VerificationDecision = ShortRent + HostPermissions.VerificationDecision;
 
     /// <summary>
     /// Read a property's long-term side that is not a lease: the long-rent service requests (D2, SU-07). Long-rent

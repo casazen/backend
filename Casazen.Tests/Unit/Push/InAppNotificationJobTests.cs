@@ -1,4 +1,5 @@
 using System.Reflection;
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
@@ -171,11 +172,21 @@ public class InAppNotificationJobTests : IDisposable
         // The tripwire: a new PushAudienceKind is resolved into devices by PushDeliveryJob; without a case in this job its
         // notifications would silently never be written. Add the rule to InAppNotificationJob and the audience below.
         var world = await _kit.SeedWorldAsync();
+        // E03/F04/US02/T03: the manager decides the identity verifications (its short-rent role holds verification.decision).
+        _kit.Db.RolePermissions.Add(new RolePermission { RoleId = 7, PermissionKey = HostPermissions.VerificationDecision });
+        _kit.Db.UserContextMemberships.Add(new UserContextMembership
+        {
+            UserId = InAppNotificationTestKit.World.ManagerId,
+            ContextKey = OrgRoleCatalog.ShortRent,
+            RoleId = 7,
+        });
+        await _kit.Db.SaveChangesAsync();
         var audiences = new Dictionary<PushAudienceKind, PushAudience>
         {
             [PushAudienceKind.BookingHosts] = PushAudience.BookingHosts(world.BookingId),
             [PushAudienceKind.PropertyHosts] = PushAudience.PropertyHosts(world.PropertyId),
             [PushAudienceKind.SupplierOrg] = PushAudience.SupplierOrg(world.SupplierOrgId),
+            [PushAudienceKind.VerificationOperators] = PushAudience.VerificationOperators(world.BookingId),
         };
 
         // NF-65: a push to one user is the push channel of that user's choice. The counter of the bell is another channel, which the caller

@@ -86,7 +86,8 @@ public class AccessCodeController : ControllerBase
     /// <summary>
     /// Gets the access code for a booking (verification required).
     /// Logs the access and blocks if verification not passed.
-    /// Requires booking.read permission.
+    /// Requires booking.read permission, and the booking of a property the caller reaches (AM-03: a collaborator «Solo alcuni» reads the code of
+    /// the properties it was given only; another property is a 404, like a booking that does not exist).
     /// </summary>
     [HttpGet("bookings/{id}/access-code")]
     [Authorize(Policy = CasazenPolicies.BookingRead)]
@@ -94,11 +95,16 @@ public class AccessCodeController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<AccessCodeResponse>> GetAccessCode(Guid id)
+    public async Task<ActionResult<AccessCodeResponse>> GetAccessCode(Guid id, CancellationToken cancellationToken = default)
     {
         var userId = User.FindFirst("sub")?.Value ?? string.Empty;
 
-        var code = await _accessCodeService.GetAccessCodeAsync(id, userId);
+        var orgId = await _orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
+        var scope = orgId is null ? null : await _hostScopeResolver.ResolveHostScopeAsync(User, orgId.Value, cancellationToken);
+        if (scope is null)
+            return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
+
+        var code = await _accessCodeService.GetAccessCodeAsync(id, userId, scope, cancellationToken);
 
         if (code == null)
             return this.ApiProblem(StatusCodes.Status404NotFound, "AccessCodeUnavailable", "Errors.AccessCodeUnavailable");

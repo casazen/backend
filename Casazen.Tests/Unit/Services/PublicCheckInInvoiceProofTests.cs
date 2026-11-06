@@ -69,7 +69,7 @@ public class PublicCheckInInvoiceProofTests
 
         var svc = new GuestCheckInService(seed.Db, NullLogger<GuestCheckInService>.Instance, invoiceDataService: invoices);
         var token = await svc.CreateSessionAsync(seed.BookingId, seed.OrgId);
-        var controller = Controller(svc, seed.Db);
+        var controller = Controller(svc);
 
         var open = Assert.IsType<OkObjectResult>((await controller.GetContext(token)).Result);
         var json = JsonSerializer.Serialize(open.Value, new JsonSerializerOptions(JsonSerializerDefaults.Web));
@@ -91,7 +91,7 @@ public class PublicCheckInInvoiceProofTests
             var blank = new GuestCheckInService(noData.Db, NullLogger<GuestCheckInService>.Instance);
             var blankToken = await blank.CreateSessionAsync(noData.BookingId, noData.OrgId);
             var blankJson = JsonSerializer.Serialize(
-                Assert.IsType<OkObjectResult>((await Controller(blank, noData.Db).GetContext(blankToken)).Result).Value,
+                Assert.IsType<OkObjectResult>((await Controller(blank).GetContext(blankToken)).Result).Value,
                 new JsonSerializerOptions(JsonSerializerDefaults.Web));
             Assert.Contains("\"invoiceRequested\":false", blankJson, StringComparison.Ordinal);
             Assert.Contains("\"hasInvoiceData\":false", blankJson, StringComparison.Ordinal);
@@ -243,16 +243,13 @@ public class PublicCheckInInvoiceProofTests
         ],
     };
 
-    private static PublicGuestCheckInController Controller(IGuestCheckInService checkIn, AppDbContext db) =>
+    private static PublicGuestCheckInController Controller(IGuestCheckInService checkIn) =>
         new(
             checkIn,
             Mock.Of<IAlloggiatiCodeTableService>(),
             Mock.Of<IAlloggiatiReportScheduler>(),
-            Mock.Of<IMrzExtractionService>(),
-            Mock.Of<IDocumentOcrService>(),
-            Mock.Of<IBiometricVerificationService>(),
-            db,
-            TimeProvider.System,
+            Mock.Of<IIdentityVerificationFlowService>(),
+            Mock.Of<Casazen.Core.Features.IFeatureFlags>(),
             Mock.Of<IStringLocalizer<SharedResources>>(),
             NullLogger<PublicGuestCheckInController>.Instance)
         {

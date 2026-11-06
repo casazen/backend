@@ -191,6 +191,33 @@ public class DemoShowcaseTests
     }
 
     /// <summary>
+    /// E03/F04/US02/T04: the demo has a stay whose identity verification passed online: the agent's Accept, the consent with a test version, the
+    /// verified guest is the one who leaves the document (the head of group; the member skips the step), the lock code went to the check-in page
+    /// and by e-mail. Invented guests, @example.com addresses.
+    /// </summary>
+    [Fact]
+    public void IdentityVerification_TheDemoHasAStayWhoseVerificationPassed()
+    {
+        var template = Assert.Single(DemoShowcaseCatalog.CheckIns, c => c.Scenario == DemoShowcaseCatalog.Scenario.CheckInIdentityVerified);
+        var property = Assert.Single(DemoShowcaseCatalog.Properties, p => p.Key == template.PropertyKey);
+        var booking = Assert.Single(property.Bookings, b => b.Key == template.BookingKey);
+
+        Assert.Equal(BiometricOutcome.Accept, template.BiometricOutcome);
+        Assert.Equal(VerificationMethod.Biometric, template.Method);
+        Assert.True(template.HasConsent);
+        Assert.False(template.OperatorVerified);
+        Assert.Contains("TEST", template.ConsentVersion, StringComparison.Ordinal);
+        Assert.Equal([AccessCodeReleaseChannels.CheckInScreen, AccessCodeReleaseChannels.Email], template.LockCodeChannels);
+
+        Assert.NotNull(booking.Guests);
+        var verified = booking.Guests![template.VerifiedGuestPosition];
+        Assert.True(AlloggiatiRecordRules.RequiresDocument(verified.Type));
+        Assert.True(verified.AgeAtCheckIn >= 18);
+        Assert.All(booking.Guests.Where((_, position) => position != template.VerifiedGuestPosition), g => Assert.False(AlloggiatiRecordRules.RequiresDocument(g.Type)));
+        Assert.EndsWith("@example.com", booking.Email, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// NF-40, NF-45 (E03/F01/US01/T04): the check-in wizard has a demo stay in each of the four states (expected, arrived, departed, no-show), all
     /// with registered guests of a valid composition, and one stay with data to complete (a birth place missing) and a document expired before
     /// the arrival. Invented guests, @example.com addresses.
