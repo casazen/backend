@@ -1028,6 +1028,17 @@ reservation of the room of a property, found through the confirmed `OctorateList
   any more (its mapping is not confirmed, or its connection is not connected) `ReinstateFeedsAsync` clears the flags and the feeds are imported again.
   `GET /api/properties/{id}/ical/feeds`, the calendar
   overview and `GET /api/dashboard/ical-feeds` answer `deprecated` (the first also `deprecatedAt`); details in `docs/runbooks/ical.md` § Octorate.
+- *The copy of the OTA conversations (E05/F01/US01, ADR-032, NF-62, NF-64).* The conversations of the guests with Airbnb, Booking.com, Vrbo and
+  Expedia are copied from the chat of the channel manager into `OtaMessageThreads` (unique `(OrgId, OctorateThreadId)`, `PropertyId` null while the
+  mapping of the listing is not confirmed: *unassigned*, visible only to a caller who reaches every property), `OtaMessages` (unique `(OrgId,
+  OctorateMessageId)`, the text in `TextEncrypted`, purpose `Casazen.Message.Content`) and `OtaMessageSyncStates` (per listing: `ImportCursor`,
+  `InitialImportCompletedAt`, `LastRecentPassAt`, `LastDeepPassAt`, `LastError`, a code: `chat_not_licensed` when the `chat` module is not in the
+  license, never an empty inbox). `IMessageSyncService` (`ImportPropertyAsync`, `SyncThreadAsync`, `ReconcileRecentAsync`, `ReconcileDeepAsync`) reads
+  through the four chat operations of `IOctorateApiClient` and applies a thread under the advisory lock `OtaMessageThread`, in one transaction with
+  its events (`GuestMessageReceived` for a new inbound message of the last 48 hours, `OtaThreadSynced` with the flag of Octorate's own assistant).
+  `ChatMessageReceivedHandler` handles `CHAT_MESSAGE_RECEIVED`; the jobs `ota-message-reconcile` (every 10 minutes) and `ota-message-deep-reconcile`
+  (02:30 UTC) back it, behind the flag. The words and the names leave with the guest (`GuestDataEraser`) and with the retention of the guest data
+  (`OtaMessageRetentionService`); details in `docs/runbooks/octorate-webhooks.md` § 4c and `docs/runbooks/gdpr.md` § 13.
 
 **CasaZen's bookings on the connector (E08/F01/US01, ADR-031, NF-74, D9, D13).** A booking confirmed in CasaZen (host wizard, phone entry, booking
 site) on a property whose mapping is confirmed is created on Octorate once, by `OctorateBookingCreateHandler` (consumer of `BookingConfirmed`, behind
