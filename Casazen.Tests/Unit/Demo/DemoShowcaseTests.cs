@@ -88,6 +88,8 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.PopupAlerts.Select(alert => alert.Scenario))
             .Concat(DemoShowcaseCatalog.WizardDrafts.Select(wd => wd.Scenario))
             .Concat(DemoShowcaseCatalog.TouristTaxRemittances.Select(tt => tt.Scenario))
+            .Concat(DemoShowcaseCatalog.MarketplacePartners.Select(partner => partner.Scenario))
+            .Concat(DemoShowcaseCatalog.MarketplaceActivations.Select(activation => activation.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -313,6 +315,47 @@ public class DemoShowcaseTests
         Assert.NotEmpty(inside);
         Assert.Equal(payment.PaidAmount, inside.Sum(s => s.TouristTax ?? 0m));
         Assert.True(taxed.Count > inside.Count);
+    }
+
+    [Fact]
+    public void MarketplacePartners_TheDemoPartner_IsObviouslyTestData_InBothLanguages_AndTheHostDeclaredItActivatedInThePast()
+    {
+        var partners = DemoShowcaseCatalog.MarketplacePartners;
+        var activations = DemoShowcaseCatalog.MarketplaceActivations;
+
+        // E09/F01, NF-54, NF-56: the Partners group of a test environment has a card, and the Active tab a declared activation of it.
+        Assert.Contains(DemoShowcaseCatalog.Scenario.MarketplacePartnersVisible, DemoShowcaseCatalog.Scenarios);
+        Assert.Contains(DemoShowcaseCatalog.Scenario.MarketplaceActivationDeclared, DemoShowcaseCatalog.Scenarios);
+        Assert.NotEmpty(partners);
+        Assert.NotEmpty(activations);
+        Assert.Equal(partners.Count, partners.Select(p => p.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(partners.Count, partners.Select(p => p.Code).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(partners, partner =>
+        {
+            // Named TEST, pointing at an example address, a lowercase slug as the table requires, texts in both languages that say it is a test.
+            Assert.Contains("TEST", partner.Name, StringComparison.Ordinal);
+            Assert.Equal("https://example.com/", partner.WebsiteUrl);
+            Assert.Matches("^[a-z0-9]+(-[a-z0-9]+)*$", partner.Code);
+            Assert.True(partner.Code.Length <= MarketplacePartner.CodeMaxLength && partner.Name.Length <= MarketplacePartner.NameMaxLength);
+            Assert.True(Enum.IsDefined(partner.Job) && Enum.IsDefined(partner.InvoicedBy));
+            Assert.Equal(DemoShowcaseCatalog.Scenario.MarketplacePartnersVisible, partner.Scenario);
+            foreach (var text in new[] { partner.Italian, partner.English })
+            {
+                Assert.InRange(text.Benefit.Length, 1, MarketplacePartnerText.BenefitMaxLength);
+                Assert.Contains("TEST", text.Benefit, StringComparison.Ordinal);
+                Assert.NotEmpty(text.Faq);
+            }
+
+            Assert.NotEqual(partner.Italian.Benefit, partner.English.Benefit);
+        });
+
+        // The activation names a partner of the template and was declared before the reset, never in the future.
+        Assert.All(activations, activation =>
+        {
+            Assert.Contains(partners, partner => partner.Key == activation.PartnerKey);
+            Assert.True(activation.DeclaredOffsetDays < 0, $"{activation.Key} is not declared in the past.");
+            Assert.Equal(DemoShowcaseCatalog.Scenario.MarketplaceActivationDeclared, activation.Scenario);
+        });
     }
 
     [Fact]
