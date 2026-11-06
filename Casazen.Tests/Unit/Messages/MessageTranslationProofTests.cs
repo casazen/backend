@@ -140,6 +140,26 @@ public class MessageTranslationProofTests : IAsyncLifetime
         Assert.DoesNotContain("EN:", _log.AllOutput, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// PROOF TEST: privacy rule (FD-21). A name of short words, «Xu Ma», is not left to the provider because its words are short: the person who hosts is called
+    /// by it, the draft names it, and the prompt holds a token; the lone «ma» (but) of the draft is still a word.
+    /// </summary>
+    [Fact]
+    public async Task MessageTranslation_AShortNameOfTheConversation_NeverReachesTheProvider_Test()
+    {
+        AiRepeatsWhatItGets();
+        var org = await _db.Orgs.FirstAsync(o => o.Id == _world.Scope.OrgId);
+        org.HostName = "Xu Ma";
+        await _db.SaveChangesAsync();
+
+        var translation = await Service().TranslateAsync(_world.Scope.OrgWide, Key, null, "Ciao, sono Xu Ma e vi aspetto, ma arrivate tardi?", "en");
+
+        var prompt = Assert.Single(_requests).Prompt;
+        Assert.DoesNotContain("Xu Ma", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("sono [[N1]] e vi aspetto, ma arrivate", prompt, StringComparison.Ordinal);
+        Assert.Equal("EN: Ciao, sono Xu Ma e vi aspetto, ma arrivate tardi?", translation.Text);
+    }
+
     // ---- The AI only behind its own flag ------------------------------------------------------------------------------------------------------
 
     /// <summary>

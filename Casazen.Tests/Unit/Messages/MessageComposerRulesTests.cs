@@ -196,13 +196,44 @@ public class MessageComposerRulesTests
     }
 
     [Fact]
-    public void Scrub_ShortWordsOfAName_AreLeftAlone_AndOnlyWholeWordsAreTaken()
+    public void Scrub_TheParticlesOfAName_AreLeftAlone_AndOnlyWholeWordsAreTaken()
     {
         var scrubbed = MessageTranslationPrompt.Scrub("Al mare con Albert e Li Albertini", ["Al Albert", "Li"]);
 
-        // «Al» and «Li» are shorter than three letters: articles and prepositions go with them otherwise. «Albertini» is not «Albert».
-        Assert.Equal("Al mare con [[N1]] e Li Albertini", scrubbed.Text);
-        Assert.Equal(["Albert"], scrubbed.Names);
+        // «Al» is a particle (it is a word of the text, not a name): left alone. «Li» is a name of two letters: taken, as a name on its own. «Albertini» is not «Albert».
+        Assert.Equal("Al mare con [[N1]] e [[N2]] Albertini", scrubbed.Text);
+        Assert.Equal(["Albert", "Li"], scrubbed.Names);
+
+        var particles = MessageTranslationPrompt.Scrub("Sono Maria de Luca e vengo da Roma, Marco E. Rossi", ["Maria de Luca", "Marco E. Rossi"]);
+
+        Assert.Equal("Sono [[N1]] de [[N2]] e vengo da Roma, [[N3]] E. [[N4]]", particles.Text);
+        Assert.Equal(["Maria", "Luca", "Marco", "Rossi"], particles.Names);
+    }
+
+    /// <summary>
+    /// PROOF TEST: privacy rule (FD-21). A name whose words are all short never goes to the provider: «Li Wu», «Xu Ma» (any spacing and case) are replaced as a whole
+    /// name, and the lone «ma» (but) or «li» (them) of the text is not taken for it.
+    /// </summary>
+    [Theory]
+    [InlineData("Li Wu", "Mi chiamo Li Wu, arrivo domani. Li aspetto", "Mi chiamo [[N1]], arrivo domani. Li aspetto", "Li Wu")]
+    [InlineData("Xu Ma", "Sono XU  ma, ma arrivo tardi", "Sono [[N1]], ma arrivo tardi", "XU  ma")]
+    public void Scrub_AShortName_IsReplacedAsAWholeName(string name, string text, string expected, string kept)
+    {
+        var scrubbed = MessageTranslationPrompt.Scrub(text, [name]);
+
+        Assert.Equal(expected, scrubbed.Text);
+        Assert.Equal([kept], scrubbed.Names);
+        Assert.Equal(text, MessageTranslationPrompt.Restore(scrubbed.Text, scrubbed));
+    }
+
+    [Fact]
+    public void Scrub_ANameOfOneShortWord_AndANameWithOneShortWord_AreTakenWhole()
+    {
+        var alone = MessageTranslationPrompt.Scrub("Ciao Bo, sono Anna Li di Roma", ["Bo", "Anna Li"]);
+
+        // The long word of «Anna Li» is taken by itself too, and the whole name first when the two words are together.
+        Assert.Equal("Ciao [[N1]], sono [[N2]] di Roma", alone.Text);
+        Assert.Equal(["Bo", "Anna Li"], alone.Names);
     }
 
     [Fact]

@@ -16,8 +16,9 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>What goes to the provider</b> is the text after <see cref="PiiScrubber"/> (e-mail addresses, phone numbers and fiscal codes become
 /// <c>[email]</c>, <c>[tel]</c>, <c>[cf]</c>) and after the names the conversation knows (the guest, the host) were replaced, each occurrence, by a token
 /// <c>[[N1]]</c>, <c>[[N2]]</c>…, which <see cref="Scrub"/> remembers and <see cref="Restore"/> puts back in the translation: the reader sees the names, the
-/// provider never does. The contact data is not put back: the translation holds the placeholder, and the original is one click away. Other names in the
-/// free text cannot be told from words and are not recognized.</para>
+/// provider never does. The contact data is not put back: the translation holds the placeholder, and the original is one click away. <b>Not recognized</b>:
+/// other names in the free text (they cannot be told from words), the number of a document, an IBAN, a street address, a date of stay: this is why the AI
+/// translation is behind its own flag, off by default (<c>Features:MessageTranslationAi</c>, <c>docs/runbooks/ai.md</c>).</para>
 /// <para>The text is material, not instructions: the rules say so, the markers of the block are taken out of it, and the answer is only ever shown as text.</para>
 /// </remarks>
 public static partial class MessageTranslationPrompt
@@ -25,8 +26,20 @@ public static partial class MessageTranslationPrompt
     /// <summary>Version of the prompt: stored in the cache key.</summary>
     public const string Version = "message-translation-2026-11-v1";
 
-    /// <summary>The longest word of a name that is looked for and replaced: shorter ones («Al», «De») would take articles and prepositions with them.</summary>
+    /// <summary>
+    /// The shortest word of a name that is looked for and replaced <b>by itself</b>: a shorter one («Li», «Wu», «Xu», «Ma») would take words of the text with it,
+    /// so a name that has one is replaced as a whole name (or on its own, when it is a name of one such word).
+    /// </summary>
     public const int MinNamePartLength = 3;
+
+    /// <summary>
+    /// The particles of a name (de, da, di, van, von, al, el…): words of the text far more than names, left alone whatever the name they join. Only these;
+    /// every other short word of a name is a name.
+    /// </summary>
+    private static readonly HashSet<string> NameParticles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "de", "da", "di", "del", "della", "dei", "dal", "dalla", "van", "von", "der", "den", "des", "al", "el", "bin", "ibn",
+    };
 
     private const double Temperature = 0.1;
 
@@ -59,26 +72,23 @@ public static partial class MessageTranslationPrompt
     /// The text as the provider may be given it, and the names that were taken out of it. The contact data goes first (a name inside an address is no longer
     /// found as a name once the address is a placeholder), then the names of <paramref name="names"/>, whole words only and in any case.
     /// </summary>
-    /// <param name="names">Names the conversation knows: of the guest and of the host. A name is split into words; words shorter than <see cref="MinNamePartLength"/> are left alone.</param>
+    /// <param name="names">
+    /// Names the conversation knows: of the guest and of the host. A name is split into words; the particles of <see cref="NameParticles"/> (de, da, di, van,
+    /// von, al, el…) are left alone, a word of <see cref="MinNamePartLength"/> letters or more is replaced by itself, and a name with a shorter word
+    /// («Li Wu», «Xu Ma», «Anna Li», or a name of one such word) is replaced as a whole name, so a short name never goes to the provider.
+    /// </param>
     public static ScrubbedText Scrub(string text, IEnumerable<string?> names)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(names);
 
         var scrubbed = PiiScrubber.Scrub(text);
-        var words = names
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .SelectMany(name => name!.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            .Select(word => word.Trim(',', '.', ';', ':', '(', ')', '"', '\''))
-            .Where(word => word.Length >= MinNamePartLength)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderByDescending(word => word.Length)
-            .ToList();
-        if (words.Count == 0)
+        var fragments = NameFragments(names);
+        if (fragments.Count == 0)
             return new ScrubbedText(scrubbed, []);
 
         var pattern = new Regex(
-            @"(?<![\p{L}\p{N}])(?:" + string.Join('|', words.Select(Regex.Escape)) + @")(?![\p{L}\p{N}])",
+            @"(?<![\p{L}\p{N}])(?:" + string.Join('|', fragments) + @")(?![\p{L}\p{N}])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         var kept = new List<string>();
         scrubbed = pattern.Replace(scrubbed, match =>
@@ -87,6 +97,38 @@ public static partial class MessageTranslationPrompt
             return Token(kept.Count);
         });
         return new ScrubbedText(scrubbed, kept);
+    }
+
+    /// <summary>
+    /// The patterns that find the names in a text, the longest first (a whole name before the word of it). A word of at least
+    /// <see cref="MinNamePartLength"/> letters is a pattern by itself; a name that has a shorter word is also a pattern as a whole, its words in the order they
+    /// are written with any space between them. A word of one letter (an initial) and a particle are never a name.
+    /// </summary>
+    private static List<string> NameFragments(IEnumerable<string?> names)
+    {
+        var found = new List<(string Literal, string Fragment)>();
+        foreach (var name in names.Where(name => !string.IsNullOrWhiteSpace(name)))
+        {
+            var parts = name!
+                .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(word => word.Trim(',', '.', ';', ':', '(', ')', '"', '\''))
+                .Where(word => word.Length >= 2 && !NameParticles.Contains(word))
+                .ToList();
+            if (parts.Count == 0)
+                continue;
+
+            foreach (var word in parts.Where(word => word.Length >= MinNamePartLength))
+                found.Add((word, Regex.Escape(word)));
+
+            if (parts.Any(word => word.Length < MinNamePartLength))
+                found.Add((string.Join(' ', parts), string.Join(@"\s+", parts.Select(Regex.Escape))));
+        }
+
+        return found
+            .DistinctBy(item => item.Literal, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(item => item.Literal.Length)
+            .Select(item => item.Fragment)
+            .ToList();
     }
 
     /// <summary>Puts the names back where the tokens of <paramref name="scrubbed"/> are in <paramref name="translated"/>; a token the model dropped is not missed.</summary>
