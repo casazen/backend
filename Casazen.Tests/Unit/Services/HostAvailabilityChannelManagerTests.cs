@@ -1,6 +1,9 @@
+using Casazen.Core.Entities;
+using Casazen.Core.Entities.Enums;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Moq;
 using Xunit;
@@ -96,6 +99,36 @@ public class HostAvailabilityChannelManagerTests : IAsyncLifetime
         Assert.Equal(HostAvailabilityState.Invalid, backwards.State);
         Assert.Null(past.ChannelManagerChecked);
         Assert.Null(backwards.ChannelManagerChecked);
+        _channelManager.Verify(
+            c => c.CheckAsync(
+                It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task CheckAsync_TheReservationOfAPortalTheHostIsAboutToComplete_IsNotAskedToOctorate()
+    {
+        Answers(new ChannelManagerAvailability(ChannelManagerAnswer.NotAvailable));
+        _db.ChangeTracker.Clear();
+        var feed = await _db.PropertyICalFeeds.AsNoTracking().FirstAsync(f => f.PropertyId == _world.Granted.Id);
+        _db.CalendarBlocks.Add(new CalendarBlock
+        {
+            OrgId = _world.OrgId,
+            PropertyId = _world.Granted.Id,
+            Source = CalendarBlockSource.ICalImport,
+            FeedId = feed.Id,
+            StartUtc = HostScopeScenario.Day(2026, 10, 20),
+            EndUtc = HostScopeScenario.Day(2026, 10, 22),
+            Summary = "Reserved",
+        });
+        await _db.SaveChangesAsync();
+
+        var result = await Service().CheckAsync(_world.Granted, new DateOnly(2026, 10, 20), new DateOnly(2026, 10, 22), cancellationToken: Ct);
+
+        // Exactly the dates of the block: the host completes it with the guest's name, and that reservation is what Octorate would answer with.
+        Assert.Equal(HostAvailabilityState.LinkableBlock, result.State);
+        Assert.Null(result.ChannelManagerChecked);
+        Assert.Equal(HostAvailabilityConflictType.Ical, Assert.Single(result.Conflicts).Type);
         _channelManager.Verify(
             c => c.CheckAsync(
                 It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<DateOnly>(), It.IsAny<DateOnly>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
