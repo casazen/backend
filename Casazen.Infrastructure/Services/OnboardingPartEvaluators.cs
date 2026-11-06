@@ -24,7 +24,7 @@ namespace Casazen.Infrastructure.Services;
 /// connection of a new host.</item>
 /// <item>A property with no declaration is never taken for new inventory (<see cref="OnboardingPartReasons.InventoryScenarioMissing"/>), and a missing
 /// connection never turns <c>onOtas</c> into <c>newInventory</c>. A connection that exists and no longer works stops every scenario
-/// (<see cref="OnboardingPartReasons.ConnectionLost"/>).</item>
+/// (<see cref="OnboardingPartReasons.ConnectionLost"/>), also for a property with no declaration: the reconnection comes first (AC-NF108-4).</item>
 /// </list>
 /// </remarks>
 public sealed class OctorateConnectionPartEvaluator(AppDbContext db, FlowPrerequisiteReader prerequisites) : IOnboardingPartEvaluator
@@ -89,10 +89,12 @@ public sealed class OctorateConnectionPartEvaluator(AppDbContext db, FlowPrerequ
     /// <summary>Why one assignment is not done; <c>null</c> when it is.</summary>
     private static string? ReasonOf(IntentRow? intent, bool connected, bool lost, ImportFacts imports)
     {
-        if (intent is null)
-            return OnboardingPartReasons.InventoryScenarioMissing;
+        // A connection that exists and no longer works stops every scenario, also for a property that has declared none yet: the reason is the
+        // reconnection (AC-NF108-4), never a declaration the host could not make useful until it connects again.
         if (lost)
             return OnboardingPartReasons.ConnectionLost;
+        if (intent is null)
+            return OnboardingPartReasons.InventoryScenarioMissing;
 
         return intent.Scenario switch
         {
