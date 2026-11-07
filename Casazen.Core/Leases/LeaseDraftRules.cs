@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
+using Casazen.Core.Exceptions;
 using Casazen.Core.Regulatory;
 using Casazen.Core.Services;
 
@@ -137,12 +138,31 @@ public static partial class LeaseDraftRules
             problems.Add("residence");
         if (Clean(party.ContactEmail) is { } email && (email.Length > 255 || !EmailRule.IsValid(email)))
             problems.Add("contactEmail");
-        if (Clean(party.ContactPhone) is { } phone
-            && (!InternationalPhoneCharactersRule().IsMatch(phone) || !InternationalPhoneRule().IsMatch(NormalizePhone(phone))))
-        {
+        if (Clean(party.ContactPhone) is { } phone && !IsInternationalPhone(phone))
             problems.Add("contactPhone");
-        }
         return problems;
+    }
+
+    /// <summary>
+    /// True when <paramref name="phone"/> is an international number: a leading <c>+</c>, then only digits and separators, and
+    /// 8 to 15 digits not starting with 0 once the separators are dropped (<c>+39 333 1234567</c>).
+    /// </summary>
+    public static bool IsInternationalPhone(string phone) =>
+        InternationalPhoneCharactersRule().IsMatch(phone) && InternationalPhoneRule().IsMatch(NormalizePhone(phone));
+
+    /// <summary>
+    /// The phone as stored, or <c>null</c> when absent. Separators are dropped. A present number must be one
+    /// <see cref="IsInternationalPhone"/> accepts. Throws <see cref="DomainRuleException"/>
+    /// (<see cref="LeasePartyErrorCodes.PhoneInvalid"/>) otherwise.
+    /// </summary>
+    public static string? NormalizeContactPhone(string? phone)
+    {
+        if (Clean(phone) is not { } text)
+            return null;
+        if (!IsInternationalPhone(text))
+            throw new DomainRuleException(LeasePartyErrorCodes.PhoneInvalid, "LeasePartyPhoneInvalid");
+
+        return NormalizePhone(text);
     }
 
     /// <summary>Normalizes a phone for storage and WhatsApp: leading plus and digits only.</summary>

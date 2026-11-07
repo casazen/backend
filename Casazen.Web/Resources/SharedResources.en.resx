@@ -2317,6 +2317,9 @@
   <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
     <value>The same fiscal code is given for more than one party of the lease.</value>
   </data>
+  <data name="LeasePartyPhoneInvalid" xml:space="preserve">
+    <value>The phone number of a party is not valid: it needs the international prefix and 8 to 15 digits, not starting with zero.</value>
+  </data>
   <data name="PropertyAddressTaken" xml:space="preserve">
     <value>An active property of your organization already has this address. If it is another apartment in the same building, enter the unit or staircase.</value>
   </data>

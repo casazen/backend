@@ -19,33 +19,46 @@ public sealed class WhatsAppCloudSender(HttpClient httpClient, IOptions<WhatsApp
         if (!settings.Enabled || string.IsNullOrWhiteSpace(settings.PhoneNumberId) || string.IsNullOrWhiteSpace(settings.AccessToken))
             return new WhatsAppSendResult(false);
 
-        var digits = string.Concat(phone.Where(char.IsDigit));
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.ApiVersion}/{settings.PhoneNumberId}/messages");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.AccessToken);
-        request.Content = JsonContent.Create(new
+        try
         {
-            messaging_product = "whatsapp",
-            recipient_type = "individual",
-            to = digits,
-            type = "template",
-            template = new
+            var digits = string.Concat(phone.Where(char.IsDigit));
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.ApiVersion}/{settings.PhoneNumberId}/messages");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.AccessToken);
+            request.Content = JsonContent.Create(new
             {
-                name = template,
-                language = new { code = language },
-                components = new[] { new { type = "body", parameters = body.Select(p => new { type = "text", text = p.Value }) } },
-            },
-        });
+                messaging_product = "whatsapp",
+                recipient_type = "individual",
+                to = digits,
+                type = "template",
+                template = new
+                {
+                    name = template,
+                    language = new { code = language },
+                    components = new[] { new { type = "body", parameters = body.Select(p => new { type = "text", text = p.Value }) } },
+                },
+            });
 
-        using var response = await httpClient.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+            using var response = await httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("WhatsApp template send rejected with status {StatusCode}", (int)response.StatusCode);
+                return new WhatsAppSendResult(false);
+            }
+
+            using var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
+            var id = json.RootElement.TryGetProperty("messages", out var messages) && messages.GetArrayLength() > 0
+                && messages[0].TryGetProperty("id", out var value) ? value.GetString() : null;
+            return new WhatsAppSendResult(!string.IsNullOrWhiteSpace(id), id);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            logger.LogWarning("WhatsApp template send rejected with status {StatusCode}", (int)response.StatusCode);
+            throw;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            // A timeout or a success body that is not JSON is a failed send, not an exception that drops the lease lock's record.
+            logger.LogWarning("WhatsApp template send failed ({ExceptionType})", ex.GetType().Name);
             return new WhatsAppSendResult(false);
         }
-
-        using var json = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
-        var id = json.RootElement.TryGetProperty("messages", out var messages) && messages.GetArrayLength() > 0
-            && messages[0].TryGetProperty("id", out var value) ? value.GetString() : null;
-        return new WhatsAppSendResult(!string.IsNullOrWhiteSpace(id), id);
     }
 }

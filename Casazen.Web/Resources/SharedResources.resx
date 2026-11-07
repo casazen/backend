@@ -2317,6 +2317,9 @@
   <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
     <value>Lo stesso codice fiscale è indicato per più parti del contratto.</value>
   </data>
+  <data name="LeasePartyPhoneInvalid" xml:space="preserve">
+    <value>Il numero di telefono di una parte non è valido: serve il prefisso internazionale e da 8 a 15 cifre, senza lo zero iniziale.</value>
+  </data>
   <data name="PropertyAddressTaken" xml:space="preserve">
     <value>Esiste già un immobile attivo della tua organizzazione con questo indirizzo. Se è un altro appartamento dello stesso edificio, indica l'interno o la scala.</value>
   </data>

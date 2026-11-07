@@ -881,7 +881,7 @@ public record CreatePartyDto(
     [param: Required, MaxLength(16), MinLength(1)] string FiscalCode,
     [param: Required, MaxLength(2), MinLength(2), RegularExpression("^[A-Za-z]{2}$", ErrorMessage = "LeasePartyCitizenshipInvalid")] string Citizenship,
     [param: Required, EmailAddress] string ContactEmail,
-    [param: MaxLength(32), RegularExpression(@"^\+[0-9\s().-]+$", ErrorMessage = "InvalidPhone")] string? ContactPhone = null);
+    [param: MaxLength(32), InternationalPhone] string? ContactPhone = null);
 
 /// <summary>Stipula date of a lease already signed (calendar date, not after today).</summary>
 public record DeclareStipulaDto([param: Required] DateTime? StipulaDate);

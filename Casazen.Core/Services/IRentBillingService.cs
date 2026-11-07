@@ -202,7 +202,11 @@ public interface IRentBillingService
     Task<RentReminderResult> SendReminderAsync(
         Guid leaseId, Guid installmentId, string? note, CancellationToken cancellationToken = default);
 
-    /// <summary>Sends the approved rent-reminder template through WhatsApp Business and records only accepted sends.</summary>
+    /// <summary>
+    /// Sends the approved rent-reminder template through WhatsApp Business to every tenant with a phone (an email is not
+    /// required). Meta is called after the lease lock is released. The reminder is kept when at least one message is
+    /// accepted and taken back when none is.
+    /// </summary>
     Task<RentWhatsAppReminderResult> SendWhatsAppReminderAsync(
         Guid leaseId, Guid installmentId, string? note, CancellationToken cancellationToken = default);
 

@@ -74,7 +74,7 @@ public class LeaseWorkflowService(
                 FiscalCode = ItalianFiscalCode.Normalize(p.FiscalCode),
                 Citizenship = EuMemberStates.NormalizeCode(p.Citizenship),
                 ContactEmail = p.ContactEmail,
-                ContactPhone = LeaseDraftRules.Clean(p.ContactPhone) is { } phone ? LeaseDraftRules.NormalizePhone(phone) : null,
+                ContactPhone = LeaseDraftRules.NormalizeContactPhone(p.ContactPhone),
                 // Not an EU citizen (27 member states, EuMemberStates): the Questura communication applies (LT-07).
                 IsExtraEU = !EuMemberStates.IsEuCitizenship(p.Citizenship)
             }).ToList()
