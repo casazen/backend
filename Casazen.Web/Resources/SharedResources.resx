@@ -2839,6 +2839,30 @@
   <data name="RentOnlinePaymentsUnavailable" xml:space="preserve">
     <value>Per chiedere il pagamento online collega un account Stripe abilitato agli incassi (Impostazioni > Pagamenti).</value>
   </data>
+  <data name="BankLinkAccountIdInvalid" xml:space="preserve">
+    <value>L'identificativo del conto collegato non è valido. CasaZen salva solo l'id Stripe del conto, non l'IBAN.</value>
+  </data>
+  <data name="BankLinkNotLinked" xml:space="preserve">
+    <value>Nessun conto è collegato. Il bonifico manuale resta disponibile.</value>
+  </data>
+  <data name="BankLinkAccountHolderMismatch" xml:space="preserve">
+    <value>Il conto collegato non appartiene a questo cliente Stripe.</value>
+  </data>
+  <data name="BankLinkDebitUnavailable" xml:space="preserve">
+    <value>L'addebito SEPA di questo conto collegato non è partito. Il bonifico manuale resta disponibile.</value>
+  </data>
+  <data name="BankLinkAmountInvalid" xml:space="preserve">
+    <value>L'importo del pagamento non è valido.</value>
+  </data>
+  <data name="BankLinkCurrencyInvalid" xml:space="preserve">
+    <value>La valuta del pagamento non è valida.</value>
+  </data>
+  <data name="BankLinkInstallmentMismatch" xml:space="preserve">
+    <value>La rata non appartiene al contratto indicato.</value>
+  </data>
+  <data name="BankLinkIdempotencyKeyInvalid" xml:space="preserve">
+    <value>La chiave di idempotenza non è valida.</value>
+  </data>
   <data name="RentNoTenantEmail" xml:space="preserve">
     <value>Nessun conduttore ha un indirizzo email a cui inviare la richiesta di pagamento.</value>
   </data>

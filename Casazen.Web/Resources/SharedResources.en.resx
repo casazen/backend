@@ -2839,6 +2839,30 @@
   <data name="RentOnlinePaymentsUnavailable" xml:space="preserve">
     <value>To request online payments, connect a Stripe account enabled for charges (Settings > Payments).</value>
   </data>
+  <data name="BankLinkAccountIdInvalid" xml:space="preserve">
+    <value>The linked account id is not valid. CasaZen stores the Stripe account id, not the IBAN.</value>
+  </data>
+  <data name="BankLinkNotLinked" xml:space="preserve">
+    <value>No bank account is linked. The manual bank transfer is still available.</value>
+  </data>
+  <data name="BankLinkAccountHolderMismatch" xml:space="preserve">
+    <value>The linked account does not belong to this Stripe customer.</value>
+  </data>
+  <data name="BankLinkDebitUnavailable" xml:space="preserve">
+    <value>The SEPA debit of this linked account did not start. The manual bank transfer is still available.</value>
+  </data>
+  <data name="BankLinkAmountInvalid" xml:space="preserve">
+    <value>The payment amount is not valid.</value>
+  </data>
+  <data name="BankLinkCurrencyInvalid" xml:space="preserve">
+    <value>The payment currency is not valid.</value>
+  </data>
+  <data name="BankLinkInstallmentMismatch" xml:space="preserve">
+    <value>The installment does not belong to the given lease.</value>
+  </data>
+  <data name="BankLinkIdempotencyKeyInvalid" xml:space="preserve">
+    <value>The idempotency key is not valid.</value>
+  </data>
   <data name="RentNoTenantEmail" xml:space="preserve">
     <value>No tenant has an email address to send the payment request to.</value>
   </data>

@@ -50,12 +50,24 @@ public static class DemoShowcaseCatalog
     /// </summary>
     public const string CrmWelcomeToken = "TEST-benvenuto-villa-lago-demo-01";
 
+    /// <summary>
+    /// Invented Financial Connections id stored on the demo org (<see cref="Scenario.LandlordBankLink"/>). It contains
+    /// TEST and is not a bank number. A real link replaces it; the reset does not overwrite one that is already set.
+    /// </summary>
+    public const string BankLinkAccountId = "fca_TEST_showcase_landlord";
+
     public static class Scenario
     {
         public const string PublishedLombardia = "short-stay-published-lombardia";
         public const string PublishedLazio = "short-stay-published-lazio";
         public const string ActivationPending = "short-stay-activation-pending";
         public const string LongStayCadastral = "long-stay-cadastral";
+
+        /// <summary>
+        /// The demo landlord has an optional Financial Connections account id (invented, marked TEST). The manual bank
+        /// transfer of a rent due is still the fallback: the id is not an IBAN.
+        /// </summary>
+        public const string LandlordBankLink = "landlord-bank-link";
         public const string BookingUpcoming = "booking-upcoming";
         public const string BookingPast = "booking-past";
         public const string BookingManualLight = "booking-manual-light";
@@ -210,6 +222,7 @@ public static class DemoShowcaseCatalog
         Scenario.PublishedLazio,
         Scenario.ActivationPending,
         Scenario.LongStayCadastral,
+        Scenario.LandlordBankLink,
         Scenario.BookingUpcoming,
         Scenario.BookingPast,
         Scenario.BookingManualLight,
@@ -742,7 +755,7 @@ public static class DemoShowcaseCatalog
             NightlyRate: 0m,
             CleaningFee: 0m,
             Cadastral: new DemoCadastral("12", "345", "6", "A/2", 450m),
-            Scenarios: [Scenario.LongStayCadastral],
+            Scenarios: [Scenario.LongStayCadastral, Scenario.LandlordBankLink],
             Bookings: []),
         new(
             Key: DraftKey,

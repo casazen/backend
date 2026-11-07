@@ -928,4 +928,17 @@ public class DemoShowcaseTests
         var components = RentLedgerLine.FixedContract(example.Rent, example.CondominiumAdvance);
         Assert.Equal(1_050m, RentLedgerLine.Sum(components));
     }
+
+    [Fact]
+    public void LandlordBankLink_HasTemplateData_ThatIsNotABankNumber()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.LandlordBankLink, DemoShowcaseCatalog.Scenarios);
+        var house = Assert.Single(
+            DemoShowcaseCatalog.Properties,
+            p => p.Scenarios.Contains(DemoShowcaseCatalog.Scenario.LandlordBankLink));
+        Assert.Equal(RentalMode.Long, house.Mode);
+        Assert.Contains("TEST", DemoShowcaseCatalog.BankLinkAccountId, StringComparison.Ordinal);
+        Assert.StartsWith("fca_", DemoShowcaseCatalog.BankLinkAccountId, StringComparison.Ordinal);
+        Assert.DoesNotContain("IT", DemoShowcaseCatalog.BankLinkAccountId, StringComparison.Ordinal);
+    }
 }

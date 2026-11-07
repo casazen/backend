@@ -274,6 +274,13 @@ public interface IRentBillingService
     /// </summary>
     Task<RentPaymentNotice?> ApplyPaymentIntentEventAsync(RentPaymentIntentEvent paymentEvent, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Applies a platform PaymentIntent that debits a linked bank account (<c>metadata.kind = bank-link-payment</c>).
+    /// The installment is paid only when the event is <c>payment_intent.succeeded</c> and the PaymentIntent is the
+    /// current one. A missing connected account is expected: the charge is not a card on the Connect account.
+    /// </summary>
+    Task<RentPaymentNotice?> ApplyLinkedBankPaymentAsync(RentPaymentIntentEvent paymentEvent, CancellationToken cancellationToken = default);
+
     /// <summary>Queues the emails of a committed change; a failure is logged and never undoes the change.</summary>
     Task CompleteAsync(RentPaymentNotice notice, CancellationToken cancellationToken = default);
 

@@ -295,6 +295,7 @@ public class AppDbContext(
     public DbSet<RentLedgerComponent> RentLedgerComponents { get; set; } = null!;
     public DbSet<LeaseCondominiumTerms> LeaseCondominiumTerms { get; set; } = null!;
     public DbSet<RentBankMovement> RentBankMovements { get; set; } = null!;
+    public DbSet<BankLinkPayment> BankLinkPayments { get; set; } = null!;
 
     // ConcordatoFacile integration (NF-02, NF-03, ADR-004)
     public DbSet<ConcordatoFacilePurchase> ConcordatoFacilePurchases { get; set; } = null!;
@@ -967,6 +968,19 @@ public class AppDbContext(
 
         modelBuilder.Entity<RentLedgerEntry>()
             .HasIndex(e => e.OrgId);
+
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasIndex(p => p.StripePaymentIntentId)
+            .IsUnique();
+
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasIndex(p => p.OrgId);
+
+        modelBuilder.Entity<BankLinkPayment>()
+            .HasOne<Org>()
+            .WithMany()
+            .HasForeignKey(p => p.OrgId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         // The rent register of the long-term area (LR-01): the installments of an org by month of due date, in due date order.
         modelBuilder.Entity<RentLedgerEntry>()
