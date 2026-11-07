@@ -227,7 +227,7 @@ public class BankLinkServiceTests : IDisposable
         Assert.Equal(AccountId, (await _db.LeaseContracts.SingleAsync()).FinancialConnectionsAccountId);
         Assert.Null((await _db.Orgs.SingleAsync()).FinancialConnectionsAccountId);
 
-            var started = await _service.StartLeasePaymentAsync(seeded.Entry.Id, Token, new BankLinkCaller("203.0.113.5", "CasaZen"));
+        var started = await _service.StartLeasePaymentAsync(seeded.Entry.Id, Token, new BankLinkCaller("203.0.113.5", "CasaZen"));
         Assert.Equal(BankLinkCharges.SepaDebit, started.PaymentMethodType);
         Assert.Equal(RentLedgerStatus.Processing, (await _db.RentLedgerEntries.SingleAsync()).Status);
         await Assert.ThrowsAsync<NotFoundException>(() =>
