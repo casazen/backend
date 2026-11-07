@@ -10,10 +10,13 @@ using Casazen.Tests.Unit.Authorization;
 using Casazen.Web.Authorization;
 using Casazen.Web.Controllers;
 using Casazen.Web.DTOs.Onboarding;
+using Casazen.Web.Extensions;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
@@ -218,6 +221,27 @@ public class OnboardingBulkControllersTests
             .ReturnsAsync(new BulkImportResult(true, new BulkImportSummary(0, 0, 0, 0), [], []));
         var atTheLimit = await controller.Import(Upload("x.csv", new byte[BulkImportLimits.MaxFileBytes]));
         Assert.IsType<OkObjectResult>(atTheLimit.Result);
+    }
+
+    // ---------------------------------------------------------------- the rate limit
+
+    /// <summary>
+    /// The import is rate limited per signed-in person, like the import of a bank statement it is modelled on: each call parses a file of up to
+    /// 2 MB (20 MB once unzipped) and, without <c>dryRun</c>, writes up to a thousand rows. Thirty calls in ten minutes, set by
+    /// <c>RateLimiting:OnboardingBulkImport:*</c>, no queue.
+    /// </summary>
+    [Fact]
+    public void Import_IsRateLimitedPerSignedInPerson_ThirtyEveryTenMinutes()
+    {
+        Assert.Equal(RateLimitPolicies.OnboardingBulkImport, typeof(OnboardingBulkImportController).GetCustomAttribute<EnableRateLimitingAttribute>()?.PolicyName);
+
+        var policy = Assert.Single(RateLimitingServiceCollectionExtensions.Policies, p => p.Name == RateLimitPolicies.OnboardingBulkImport);
+        var model = Assert.Single(RateLimitingServiceCollectionExtensions.Policies, p => p.Name == RateLimitPolicies.RentBankImport);
+        Assert.Equal((true, false), (policy.PartitionByUser, policy.PartitionByToken));
+        Assert.Equal((model.DefaultPermitLimit, model.DefaultWindow), (policy.DefaultPermitLimit, policy.DefaultWindow));
+
+        var options = RateLimitingServiceCollectionExtensions.ResolveOptions(policy, new ConfigurationBuilder().Build());
+        Assert.Equal((30, TimeSpan.FromMinutes(10), 0), (options.PermitLimit, options.Window, options.QueueLimit));
     }
 
     // ---------------------------------------------------------------- the policy and the flag

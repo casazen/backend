@@ -6,6 +6,7 @@ using Casazen.Web.DTOs.Onboarding;
 using Casazen.Web.Infrastructure;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Casazen.Web.Controllers;
 
@@ -26,6 +27,7 @@ namespace Casazen.Web.Controllers;
 [Route("api/onboarding/bulk/import")]
 [FeatureGate(FeatureFlags.OctorateOnboarding)]
 [Authorize(Policy = CasazenPolicies.OrgBillingAdmin)]
+[EnableRateLimiting(RateLimitPolicies.OnboardingBulkImport)]
 [PrivateAnswer]
 public sealed class OnboardingBulkImportController(
     IOnboardingBulkImportService import,
