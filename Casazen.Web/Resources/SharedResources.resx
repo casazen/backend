@@ -5094,6 +5094,33 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OnboardingImportColumnsUnrecognized" xml:space="preserve">
     <value>Nell'intestazione manca la colonna dell'immobile (propertyId o cinCode) oppure una colonna con i dati da importare.</value>
   </data>
+  <data name="OwnerImportColumnsUnrecognized" xml:space="preserve">
+    <value>Nell'intestazione manca una colonna che identifichi il proprietario (ownerId, ownerKey, fiscalCode o vatNumber): l'email da sola non basta.</value>
+  </data>
+  <data name="OwnerInvitationEmailNotVerified" xml:space="preserve">
+    <value>L'email del tuo account non è verificata: verificala e riprova.</value>
+  </data>
+  <data name="OwnerInvitationNotFound" xml:space="preserve">
+    <value>Invito non trovato.</value>
+  </data>
+  <data name="OwnerInvitationNotLive" xml:space="preserve">
+    <value>L'invito non è più in corso: non c'è nulla da revocare.</value>
+  </data>
+  <data name="OwnerInvitationNothingToSend" xml:space="preserve">
+    <value>Nessun proprietario da invitare: controlla le esclusioni dell'anteprima.</value>
+  </data>
+  <data name="OwnerInvitationOwnerNotInvitable" xml:space="preserve">
+    <value>Questo proprietario non può essere invitato: completa prima i suoi dati.</value>
+  </data>
+  <data name="OwnerInvitationPreviewRequired" xml:space="preserve">
+    <value>La conferma richiede l'anteprima: manca la sua impronta.</value>
+  </data>
+  <data name="OwnerInvitationPreviewStale" xml:space="preserve">
+    <value>L'anteprima non è più valida: i dati dei proprietari sono cambiati. Ripeti l'anteprima e conferma di nuovo.</value>
+  </data>
+  <data name="OwnerInvitationSelectionEmpty" xml:space="preserve">
+    <value>Scegli almeno un proprietario da invitare.</value>
+  </data>
   <data name="ContactIdMissing" xml:space="preserve">
     <value>L'identificativo del contatto è obbligatorio.</value>
   </data>

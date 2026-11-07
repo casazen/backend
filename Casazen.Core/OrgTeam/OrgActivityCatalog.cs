@@ -102,8 +102,23 @@ public static class OrgActivityDetailKeys
     /// </summary>
     public const string Context = "context";
 
-    /// <summary>Where a «Do it for me» request stands after the event (<c>requested</c>, <c>inProgress</c>, <c>done</c>, <c>cancelled</c>), a code (E10/F01/US03/T01).</summary>
+    /// <summary>
+    /// Where a «Do it for me» request stands after the event (<c>requested</c>, <c>inProgress</c>, <c>done</c>, <c>cancelled</c>), a code (E10/F01/US03/T01); or
+    /// what happened to an invitation of a property owner (<c>sent</c>, <c>resent</c>, <c>accepted</c>, <c>revoked</c>, E10/F02/US02).
+    /// </summary>
     public const string Status = "status";
+
+    /// <summary>How many rows an owner file had (a count, E10/F02/US02).</summary>
+    public const string Rows = "rows";
+
+    /// <summary>How many of the rows of an owner file changed something (a count, E10/F02/US02).</summary>
+    public const string Applied = "applied";
+
+    /// <summary>
+    /// The first 32 characters (lower case hex) of the fingerprint of an owner file: a hash of the org and of the normalized content, which says
+    /// nothing of what the file holds and lets two lines of the log be matched to the same file (E10/F02/US02).
+    /// </summary>
+    public const string Fingerprint = "fingerprint";
 
     public static IReadOnlyList<string> All { get; } =
     [
@@ -112,6 +127,7 @@ public static class OrgActivityDetailKeys
         Topic, Booking, Period, Handoff,
         Part, Context, Status,
         Purpose,
+        Rows, Applied, Fingerprint,
     ];
 }
 
@@ -248,6 +264,12 @@ public static partial class OrgActivityCatalog
         // The read of the contact of the guest of one booking, to write to it (E05/F02/US02/T01): Octorate records every read, so CasaZen records who
         // asked and what for (the booking is the subject, the person is the actor). Never the address, the number or a word of the message.
         new(OrgActivityType.ContactInfoRead, OrgActivityArea.ShortRent, OrgActivitySubjectType.Booking, [OrgActivityDetailKeys.Purpose]),
+
+        // The owner portfolio of an agency (E10/F02/US02): an owner file that changed something, and every change of an owner invitation
+        // (ADR-011-R11). Counts, a hash and a status code: never a name, an address, an identifier or a link.
+        new(OrgActivityType.OwnerImportApplied, OrgActivityArea.Account, OrgActivitySubjectType.Org,
+            [OrgActivityDetailKeys.Rows, OrgActivityDetailKeys.Applied, OrgActivityDetailKeys.Fingerprint]),
+        new(OrgActivityType.OwnerInvitationChanged, OrgActivityArea.Account, OrgActivitySubjectType.OwnerInvitation, [OrgActivityDetailKeys.Status]),
     ];
 
     /// <summary>Every event the log can record, in the order of the runbook.</summary>

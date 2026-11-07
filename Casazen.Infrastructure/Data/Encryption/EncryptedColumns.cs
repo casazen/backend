@@ -171,11 +171,14 @@ public static class EncryptedColumns
             nameof(PropertyQuesturaCredentials.Username),
             nameof(PropertyQuesturaCredentials.Password),
             nameof(PropertyQuesturaCredentials.WsKey)),
-        // ADR-012: property owner financial data (IBAN and fiscal code).
+        // ADR-012: property owner financial data (IBAN and fiscal code) and, since the owner import (E10/F02/US02/T01), the VAT number and the BIC
+        // of the owner profile: the same purpose, never shared with the guests' or the channels'.
         new EncryptedEntity<PropertyOwner>(
             PropertyOwnerEncryptionPurpose.Purpose,
             nameof(PropertyOwner.Iban),
-            nameof(PropertyOwner.FiscalCode)),
+            nameof(PropertyOwner.FiscalCode),
+            nameof(PropertyOwner.VatNumber),
+            nameof(PropertyOwner.Bic)),
         // SP-10: the private customers of the suppliers and the booking that waits for their e-mail check.
         new EncryptedEntity<ServiceCustomer>(
             ServiceCustomerPurpose,

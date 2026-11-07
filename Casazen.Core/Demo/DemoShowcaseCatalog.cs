@@ -70,6 +70,7 @@ public static class DemoShowcaseCatalog
         public const string AgencyPropertiesCrossRegion = "agency-properties-cross-region";
         public const string OwnerShares = "owner-shares";
         public const string OwnerMandate = "owner-mandate";
+        public const string OwnerOnboarding = "owner-onboarding";
         public const string StaffCollaborator = "staff-collaborator";
         public const string TrustedSupplier = "trusted-supplier";
         public const string BookingOtaIcal = "booking-ota-ical";
@@ -216,6 +217,7 @@ public static class DemoShowcaseCatalog
         Scenario.AgencyPropertiesCrossRegion,
         Scenario.OwnerShares,
         Scenario.OwnerMandate,
+        Scenario.OwnerOnboarding,
         Scenario.StaffCollaborator,
         Scenario.TrustedSupplier,
         Scenario.BookingOtaIcal,
@@ -281,13 +283,18 @@ public static class DemoShowcaseCatalog
     public static IReadOnlyList<DemoPropertyOwnerTemplate> PropertyOwners { get; } =
     [
         new("mario-rossi", "Mario", "Rossi", "proprietario.demo@example.com", "+39 333 1234567",
-            "RSSMRA70A01H501X", "IT60X0542811101000000123456", OwnerTaxRegime.Private, 100m, 15m, Scenario.PropertyOwnerAgency),
+            "RSSMRA70A01H501X", "IT60X0542811101000000123456", OwnerTaxRegime.Private, 100m, 15m, Scenario.PropertyOwnerAgency,
+            OwnerEntityKind.NaturalPerson, "IT", "EUR"),
         new("giulia-bianchi", "Giulia", "Bianchi", "giulia.proprietario@example.com", "+39 334 9876543",
             "BNCGLI75C42F205Z", "IT28W8000000292100645211151", OwnerTaxRegime.Private, 50m, 12m, Scenario.OwnerShares),
         new("luca-verdi", "Luca", "Verdi", "luca.proprietario@example.com", "+39 335 1122334",
             "VRDLCU80D15F205A", "IT10J0200805017000105432100", OwnerTaxRegime.Private, 50m, 12m, Scenario.OwnerShares),
         new("anna-ferrari", "Anna", "Ferrari", "anna.proprietario@example.com", "+39 336 5544332",
             "FRRNNA85E50H501B", "IT07X0300203280284975071923", OwnerTaxRegime.VatHolder, 100m, 18m, Scenario.OwnerMandate),
+        // E10/F02/US02: an owner of the portfolio import with the registry only (no kind, no residence, no currency, no ownership): the readiness of
+        // the owner accounting lists what is missing, and the portal invitation waits for an ownership.
+        new("paolo-gialli", "Paolo", "Gialli", "paolo.proprietario.com", null,
+            "RSSMRA80A01H501U", "IT21Q0542811101000000654321", OwnerTaxRegime.Private, 100m, 15m, Scenario.OwnerOnboarding),
     ];
 
     /// <summary>
@@ -1707,7 +1714,8 @@ public sealed record DemoHostInviteTemplate(
 
 /// <summary>
 /// A property owner of the agency demo (ADR-012): fiscal code and IBAN are test data, encrypted at rest.
-/// Includes ownership share percentage and mandate commission rate.
+/// Includes ownership share percentage and mandate commission rate; the kind, the residence and the currency are the registry facts the
+/// owner readiness asks (E10/F02/US02): an owner without them shows what is still to complete.
 /// </summary>
 public sealed record DemoPropertyOwnerTemplate(
     string Key,
@@ -1720,7 +1728,10 @@ public sealed record DemoPropertyOwnerTemplate(
     OwnerTaxRegime TaxRegime,
     decimal OwnershipSharePercent,
     decimal CommissionRate,
-    string Scenario);
+    string Scenario,
+    OwnerEntityKind? EntityKind = null,
+    string? TaxResidenceCountry = null,
+    string? SettlementCurrency = null);
 
 /// <summary>
 /// The share of a demo property an owner holds (ADR-012-R4): <paramref name="SharePercent"/> of <paramref name="PropertyKey"/>, from the

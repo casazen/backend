@@ -396,6 +396,14 @@ internal static class PostgresAdvisoryLocks
         OnboardingPanelAssist = 21_011,
 
         /// <summary>
+        /// The owner portfolio of one org (key: <c>orgId.ToString("N")</c>, E10/F02/US02): the write of the owner import (the owners and the
+        /// ownership periods of the properties it names) and every change of the invitations of the owners (the confirm of a batch, a resend, a
+        /// revoke), one at a time. Two imports of the same file never create the same owner twice, and two confirms of the same preview never
+        /// send two invitations to the same owner: the second waits and then finds what the first wrote. Held until the commit.
+        /// </summary>
+        OwnerOnboarding = 21_041,
+
+        /// <summary>
         /// The start of the activation of one channel or tool for one property (key: <c>orgId.ToString("N")</c> + ":" + <c>propertyId.ToString("N")</c> + ":" + portal
         /// code, E09/F02/US01/T02): two clicks, or two instances, never create two connections on the channel manager for the same property and portal,
         /// because the second waits and then finds the activation of the first. Held until the commit, the calls to the channel manager included, as the
