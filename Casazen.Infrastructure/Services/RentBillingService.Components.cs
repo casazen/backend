@@ -160,20 +160,39 @@ public sealed partial class RentBillingService
 
     private void ApplyBreakdown(RentLedgerEntry entry, decimal monthlyRent, RentCadence cadence, LeaseCondominiumTerms? terms)
     {
+        var kept = entry.Components.Where(c => c.Kind == RentLedgerComponentKind.CondominiumSettlement).ToList();
+        var settlementSum = kept.Sum(c => c.Amount);
+        var recorded = entry.Components.Sum(c => c.Amount);
+        var planAmount = entry.Components.Count > 0 && entry.AmountDue == recorded
+            ? entry.AmountDue - settlementSum
+            : entry.AmountDue;
         var drafts = RentLedgerLine.ForStoredTotal(
-            entry.AmountDue,
+            planAmount,
             RentInstallmentPlan.DefaultAmount(monthlyRent, cadence),
             ChargeableUniformAdvance(terms, cadence));
-        ReplaceComponents(entry, drafts);
+        entry.AmountDue = RentLedgerLine.Sum(drafts) + settlementSum;
+        ReplaceComponents(entry, drafts, kept);
     }
 
-    private void ReplaceComponents(RentLedgerEntry entry, IReadOnlyList<RentComponentDraft> drafts)
+    private static bool IsSettlementOnly(RentLedgerEntry entry) =>
+        entry.Components.Count > 0
+        && entry.Components.All(c => c.Kind == RentLedgerComponentKind.CondominiumSettlement);
+
+    private void ReplaceComponents(
+        RentLedgerEntry entry, IReadOnlyList<RentComponentDraft> drafts, IReadOnlyList<RentLedgerComponent>? keep = null)
     {
-        RentLedgerLine.EnsureAmountDue(entry.AmountDue, drafts);
-        // Delete the previous parts. Clearing the collection would null the required foreign key and the save would fail
-        // the next time the plan is written (the installment already has components).
-        if (entry.Components.Count > 0)
-            db.RentLedgerComponents.RemoveRange(entry.Components.ToList());
+        keep ??= [];
+        var keptIds = keep.Select(c => c.Id).ToHashSet();
+        var keptSum = keep.Sum(c => c.Amount);
+        RentLedgerLine.EnsureAmountDue(entry.AmountDue, drafts.Concat(keep.Select(c => new RentComponentDraft(c.Kind, c.Amount, c.Description))).ToList());
+        if (entry.AmountDue != RentLedgerLine.Sum(drafts) + keptSum)
+            throw new InvalidOperationException("The installment total does not keep the condominium settlement.");
+
+        // Delete the previous parts, except a settlement already posted. Clearing the collection would null the required
+        // foreign key and the save would fail the next time the plan is written (the installment already has components).
+        var remove = entry.Components.Where(c => !keptIds.Contains(c.Id)).ToList();
+        if (remove.Count > 0)
+            db.RentLedgerComponents.RemoveRange(remove);
 
         foreach (var draft in drafts)
         {

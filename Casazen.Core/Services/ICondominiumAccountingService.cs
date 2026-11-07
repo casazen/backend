@@ -20,6 +20,38 @@ public interface ICondominiumAccountingService
 
     Task<FinalConfirmation> ConfirmFinalAsync(HostScope scope, Guid condominiumId, Guid periodId, ConfirmFinalCommand command, string userId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The confirmed consuntivo of <paramref name="periodId"/> for one property. The rent ledger calls this instead of
+    /// reading the condominium tables. Lines of another unit are left out. A building-wide line is included only when
+    /// the condominium has this single unit, because nothing is split by thousandths.
+    /// </summary>
+    Task<TenantFinalStatementView> GetConfirmedFinalForPropertyAsync(
+        HostScope scope, Guid propertyId, Guid periodId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether <paramref name="propertyId"/> already has a condominium year, and the tenant-chargeable total of its
+    /// confirmed budget. Extraordinary lines still in review are not included. Null budget means the year exists but
+    /// nothing chargeable is confirmed.
+    /// </summary>
+    Task<TenantBudgetBasis> GetTenantBudgetBasisAsync(HostScope scope, Guid propertyId, CancellationToken cancellationToken = default);
+
+    /// <summary>The amount still due on one owner installment. The bank-link payments API debits this, not the contract.</summary>
+    Task<CondominiumInstallmentDue> GetInstallmentDueAsync(
+        HostScope scope, Guid condominiumId, Guid installmentId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records a SEPA debit that Stripe has confirmed, once. The same <paramref name="externalSourceHash"/> does not
+    /// post a second payment.
+    /// </summary>
+    Task<CondominiumPaymentView> RecordBankLinkInstallmentPaymentAsync(
+        HostScope scope,
+        Guid installmentId,
+        decimal amount,
+        DateOnly paidOn,
+        string externalSourceHash,
+        string userId,
+        CancellationToken cancellationToken = default);
+
     Task<PriorYearBalanceView> RecordPriorYearBalanceAsync(HostScope scope, Guid condominiumId, Guid periodId, RecordPriorYearBalanceCommand command, string userId, CancellationToken cancellationToken = default);
 
     Task<CondominiumPaymentView> RecordPaymentAsync(HostScope scope, Guid condominiumId, Guid periodId, RecordCondominiumPaymentCommand command, string userId, CancellationToken cancellationToken = default);
@@ -57,7 +89,50 @@ public sealed record ConfirmBudgetCommand(
     IReadOnlyList<ExtraordinaryExpenseCommand>? Extraordinary,
     CondominiumInstallmentCadence Cadence);
 
-public sealed record ConfirmFinalCommand(decimal Amount, PriorYearBalanceDisposition Settlement);
+public sealed record FinalExpenseLineCommand(
+    string Description,
+    decimal Amount,
+    CondominiumExpenseNature Nature,
+    TenantRecoverability? Recoverability,
+    decimal? RecoverablePercentage,
+    decimal? Confidence,
+    ExpenseClassificationSource Source,
+    DateOnly? CompetenceStart,
+    DateOnly? CompetenceEnd,
+    ExpenseReviewStatus? ReviewStatus);
+
+public sealed record ConfirmFinalCommand(
+    decimal Amount,
+    PriorYearBalanceDisposition Settlement,
+    IReadOnlyList<FinalExpenseLineCommand>? Lines = null);
+
+public sealed record TenantFinalLineView(
+    Guid LineId,
+    string Description,
+    CondominiumExpenseNature Nature,
+    TenantRecoverability Recoverability,
+    ExpenseReviewStatus ReviewStatus,
+    ExpenseClassificationSource Source,
+    decimal? Confidence,
+    decimal Amount,
+    decimal RecoverableAmount,
+    DateOnly CompetenceStart,
+    DateOnly CompetenceEnd,
+    bool ChargesTenant);
+
+public sealed record TenantBudgetBasis(bool HasFiscalYear, Guid? PeriodId, string? Label, decimal? RecoverableAnnual);
+
+public sealed record CondominiumInstallmentDue(Guid CondominiumId, Guid PeriodId, Guid InstallmentId, decimal AmountDue);
+
+public sealed record TenantFinalStatementView(
+    Guid CondominiumId,
+    Guid PeriodId,
+    string Label,
+    DateOnly PeriodStart,
+    DateOnly PeriodEnd,
+    Guid StatementId,
+    int RevisionNumber,
+    IReadOnlyList<TenantFinalLineView> Lines);
 
 public sealed record RecordPriorYearBalanceCommand(
     decimal Amount,
@@ -123,5 +198,6 @@ public static class CondominiumErrorCodes
     public const string FileUnsupported = "condominium_statement_file_unsupported";
     public const string FileInvalid = "condominium_statement_file_invalid";
     public const string PeriodClosed = "condominium_period_closed";
+    public const string FinalNotConfirmed = "condominium_final_not_confirmed";
     public const string NeedsWholeOrg = "condominium_needs_whole_org";
 }

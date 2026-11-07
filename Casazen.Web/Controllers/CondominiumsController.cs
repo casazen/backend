@@ -20,6 +20,7 @@ namespace Casazen.Web.Controllers;
 [Authorize(Policy = CasazenPolicies.LongRentPropertyRead)]
 public class CondominiumsController(
     ICondominiumAccountingService condominiums,
+    ITenantCondominiumSettlementService settlements,
     IOrgContextResolver orgContextResolver,
     IHostScopeResolver hostScopeResolver) : ControllerBase
 {
@@ -93,8 +94,10 @@ public class CondominiumsController(
         var (scope, userId) = await ScopeAsync(cancellationToken);
         if (scope is null || userId is null)
             return Unauthorized();
-        return Ok(await condominiums.ConfirmFinalAsync(
-            scope, condominiumId, periodId, new ConfirmFinalCommand(dto.Amount, dto.Settlement), userId, cancellationToken));
+        var final = await condominiums.ConfirmFinalAsync(
+            scope, condominiumId, periodId, new ConfirmFinalCommand(dto.Amount, dto.Settlement, dto.Lines?.Select(ToLine).ToList()), userId, cancellationToken);
+        await settlements.ReplacePostedForPeriodAsync(scope, periodId, userId, cancellationToken);
+        return Ok(final);
     }
 
     [HttpPost("{condominiumId:guid}/periods/{periodId:guid}/prior-balance")]
@@ -184,6 +187,19 @@ public class CondominiumsController(
             scope, condominiumId, new StatementFileUpload(file.FileName, buffer.ToArray()), userId, cancellationToken));
     }
 
+    private static FinalExpenseLineCommand ToLine(FinalExpenseLineDto line) =>
+        new(
+            line.Description,
+            line.Amount,
+            line.Nature,
+            line.Recoverability,
+            line.RecoverablePercentage,
+            line.Confidence,
+            line.Source,
+            line.CompetenceStart,
+            line.CompetenceEnd,
+            line.ReviewStatus);
+
     private async Task<(HostScope? Scope, string? UserId)> ScopeAsync(CancellationToken cancellationToken)
     {
         var orgId = await orgContextResolver.GetOrProvisionOrgIdAsync(cancellationToken);
@@ -248,6 +264,31 @@ public sealed class ConfirmFinalDto
     public decimal Amount { get; set; }
 
     public PriorYearBalanceDisposition Settlement { get; set; }
+
+    public List<FinalExpenseLineDto>? Lines { get; set; }
+}
+
+public sealed class FinalExpenseLineDto
+{
+    public string Description { get; set; } = string.Empty;
+
+    public decimal Amount { get; set; }
+
+    public CondominiumExpenseNature Nature { get; set; }
+
+    public TenantRecoverability? Recoverability { get; set; }
+
+    public decimal? RecoverablePercentage { get; set; }
+
+    public decimal? Confidence { get; set; }
+
+    public ExpenseClassificationSource Source { get; set; } = ExpenseClassificationSource.Manual;
+
+    public DateOnly? CompetenceStart { get; set; }
+
+    public DateOnly? CompetenceEnd { get; set; }
+
+    public ExpenseReviewStatus? ReviewStatus { get; set; }
 }
 
 public sealed class RecordPriorBalanceDto

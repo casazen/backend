@@ -5520,4 +5520,34 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="CondominiumNeedsWholeOrg" xml:space="preserve">
     <value>Un condominio non ancora collegato a un immobile è dell'intera organizzazione: serve l'accesso a tutti gli immobili.</value>
   </data>
+  <data name="CondominiumFinalNotConfirmed" xml:space="preserve">
+    <value>Il consuntivo di questo esercizio non è confermato.</value>
+  </data>
+  <data name="TenantSettlementNotFound" xml:space="preserve">
+    <value>Conguaglio non trovato.</value>
+  </data>
+  <data name="TenantSettlementLeaseNotFound" xml:space="preserve">
+    <value>Contratto non trovato.</value>
+  </data>
+  <data name="TenantSettlementInvalid" xml:space="preserve">
+    <value>Il conguaglio non è valido: controlla destinazione, regola e importi.</value>
+  </data>
+  <data name="TenantSettlementNotConfirmed" xml:space="preserve">
+    <value>Conferma il conguaglio prima di contabilizzarlo.</value>
+  </data>
+  <data name="TenantSettlementNoOpenInstallment" xml:space="preserve">
+    <value>Non c'è una rata ancora da emettere. Scegli una rata separata, un rimborso o un riporto.</value>
+  </data>
+  <data name="TenantSettlementNoSchedule" xml:space="preserve">
+    <value>Il contratto non ha un piano canoni su cui contabilizzare il conguaglio.</value>
+  </data>
+  <data name="TenantSettlementRefundNotCredit" xml:space="preserve">
+    <value>Il rimborso vale solo per un credito del conduttore.</value>
+  </data>
+  <data name="TenantSettlementCreditExceedsInstallment" xml:space="preserve">
+    <value>Il credito è più grande della prossima rata. Scegli un rimborso, un riporto o una rata separata.</value>
+  </data>
+  <data name="TenantExpenseProposalInvalid" xml:space="preserve">
+    <value>Indica l'acconto del contratto, oppure il consuntivo dell'anno scorso e il preventivo del nuovo anno, oppure un importo che si conguaglia al consuntivo.</value>
+  </data>
 </root>

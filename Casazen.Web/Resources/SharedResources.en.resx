@@ -5520,4 +5520,34 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="CondominiumNeedsWholeOrg" xml:space="preserve">
     <value>A condominium that is not linked to a property belongs to the whole organization: access to all the properties is needed.</value>
   </data>
+  <data name="CondominiumFinalNotConfirmed" xml:space="preserve">
+    <value>The final statement of this year is not confirmed.</value>
+  </data>
+  <data name="TenantSettlementNotFound" xml:space="preserve">
+    <value>Settlement not found.</value>
+  </data>
+  <data name="TenantSettlementLeaseNotFound" xml:space="preserve">
+    <value>Lease not found.</value>
+  </data>
+  <data name="TenantSettlementInvalid" xml:space="preserve">
+    <value>The settlement is not valid: check the destination, the rule and the amounts.</value>
+  </data>
+  <data name="TenantSettlementNotConfirmed" xml:space="preserve">
+    <value>Confirm the settlement before posting it.</value>
+  </data>
+  <data name="TenantSettlementNoOpenInstallment" xml:space="preserve">
+    <value>There is no installment still to issue. Choose a separate installment, a refund or a carry-forward.</value>
+  </data>
+  <data name="TenantSettlementNoSchedule" xml:space="preserve">
+    <value>The lease has no rent plan to post the settlement on.</value>
+  </data>
+  <data name="TenantSettlementRefundNotCredit" xml:space="preserve">
+    <value>A refund is only for a credit of the tenant.</value>
+  </data>
+  <data name="TenantSettlementCreditExceedsInstallment" xml:space="preserve">
+    <value>The credit is larger than the next installment. Choose a refund, a carry-forward or a separate installment.</value>
+  </data>
+  <data name="TenantExpenseProposalInvalid" xml:space="preserve">
+    <value>Give the contractual advance, or last year's final statement and the new year's budget, or an amount that is settled at the final statement.</value>
+  </data>
 </root>

@@ -32,10 +32,38 @@ namespace Casazen.Web.Controllers;
 public class LeaseDraftsController(
     ILeaseDraftService drafts,
     IHostResourceLookup hostResources,
-    IAuthorizationService authorizationService) : ControllerBase
+    IAuthorizationService authorizationService,
+    ITenantExpenseProposalService expenses) : ControllerBase
 {
     private const string LeaseNotFoundCode = "lease_not_found";
     private const string PropertyNotFoundCode = "property_not_found";
+
+    /// <summary>
+    /// The condominium expense the wizard proposes for this lease. A year already on the property uses the confirmed
+    /// budget, or the fixed advance when the contract says that. With nothing loaded, send the previous consuntivo and
+    /// the new preventivo, or a manual amount that is settled at the consuntivo. This does not take a payment.
+    /// </summary>
+    [HttpPost("{id:guid}/draft/condominium-expense")]
+    [ProducesResponseType(typeof(TenantExpenseProposalView), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ProposeExpense(
+        Guid id, [FromBody] ProposeTenantExpenseDto dto, CancellationToken cancellationToken)
+    {
+        if (await AuthorizeLeaseAsync(id, cancellationToken) is { } denied)
+            return denied;
+
+        var proposal = await expenses.ProposeAsync(
+            id,
+            new ProposeTenantExpenseCommand(
+                dto.AdvanceMode,
+                dto.ContractualAdvance,
+                dto.Cadence,
+                dto.PreviousConsuntivo,
+                dto.Preventivo,
+                dto.ManualAmount),
+            cancellationToken);
+        NoStore();
+        return Ok(proposal);
+    }
 
     /// <summary>The values of one save: a few kilobytes at most (ten landlords and ten tenants of a few hundred characters each).</summary>
     private const long SaveRequestLimit = 256 * 1024;
@@ -364,6 +392,25 @@ public sealed class ImportContractForm
 
 /// <summary>A new draft: the property and, optionally, how the lease came to be (<c>Created</c> by default).</summary>
 public sealed record CreateLeaseDraftDto([param: Required] Guid PropertyId, LeaseOrigin? Origin = null);
+
+/// <summary>
+/// The expense the wizard asks for. A payment does not belong here: the tenant pays on the rent APIs, and the landlord
+/// pays the condominium from <c>POST /api/orgs/me/bank-links/payments</c>.
+/// </summary>
+public sealed class ProposeTenantExpenseDto
+{
+    public CondominiumAdvanceMode? AdvanceMode { get; set; }
+
+    public decimal? ContractualAdvance { get; set; }
+
+    public RentCadence? Cadence { get; set; }
+
+    public decimal? PreviousConsuntivo { get; set; }
+
+    public decimal? Preventivo { get; set; }
+
+    public decimal? ManualAmount { get; set; }
+}
 
 /// <summary>
 /// One save of the draft: the <c>version</c> it was made on, the <c>step</c> (1 to 5) and its <c>values</c>. The values are an object

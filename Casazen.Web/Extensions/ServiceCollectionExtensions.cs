@@ -565,6 +565,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBillingEntryGate, BillingEntryGate>();
         services.AddScoped<IRentBillingService, RentBillingService>();
         services.AddScoped<ICondominiumAccountingService, CondominiumAccountingService>();
+        services.AddScoped<ITenantCondominiumSettlementService, TenantCondominiumSettlementService>();
+        services.AddScoped<ITenantExpenseProposalService, TenantExpenseProposalService>();
         services.AddScoped<IStripeBankLinkGateway, StripeBankLinkGateway>();
         services.AddScoped<IBankLinkService, BankLinkService>();
         // ConcordatoFacile one-time payment (ADR-005): Stripe Checkout with validated Price ID configuration.

@@ -47,6 +47,7 @@ public class BankLinkServiceTests : IDisposable
                 EmailTestHelpers.Links(),
                 new ConfigurationBuilder().Build(),
                 NullLogger<RentBillingService>.Instance),
+            Mock.Of<ICondominiumAccountingService>(),
             NullLogger<BankLinkService>.Instance);
         _gateway.RowIsSaved = () => _db.BankLinkPayments.Any(p => p.StripePaymentIntentId == "pi_linked");
         _rent = new RentBillingService(

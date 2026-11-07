@@ -116,6 +116,8 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.OnboardingActivations.Select(activation => activation.Scenario))
             .Concat(DemoShowcaseCatalog.RentLedgerComponentExamples.Select(example => example.Scenario))
             .Concat(DemoShowcaseCatalog.CondominiumCoreExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.TenantCondominiumSettlementExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.TenantExpenseProposalExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -947,6 +949,35 @@ public class DemoShowcaseTests
         Assert.Equal(example.ExpectedSettlement, settlement.Amount);
         Assert.Equal(Conguaglio.Direction.Debit, settlement.Direction);
         Assert.Equal(0m, example.Extraordinary);
+    }
+
+    [Fact]
+    public void TenantSettlement_RecoverableMinusPostedAdvances_IsTheDebit()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.TenantCondominiumSettlement, DemoShowcaseCatalog.Scenarios);
+        var example = Assert.Single(DemoShowcaseCatalog.TenantCondominiumSettlementExamples);
+        var totals = TenantSettlementMath.Settle(example.RecoverableFinal, example.PriorBalance, example.AdvancesPosted);
+        Assert.Equal(example.ExpectedSettlement, totals.Amount);
+        Assert.Equal(TenantSettlementDirection.Debit, totals.Direction);
+    }
+
+    [Fact]
+    public void TenantExpenseProposal_WithoutAYear_SplitsThePreventivoAndKeepsTheConsuntivo()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.TenantExpenseProposal, DemoShowcaseCatalog.Scenarios);
+        var example = Assert.Single(DemoShowcaseCatalog.TenantExpenseProposalExamples);
+        var proposal = TenantExpenseProposal.Resolve(
+            false,
+            null,
+            null,
+            null,
+            new TenantExpenseProposal.Request(null, null, RentCadence.Monthly, example.PreviousConsuntivo, example.Preventivo, null));
+        Assert.Equal(TenantExpenseProposal.Source.Statements, proposal.Source);
+        Assert.Equal(example.ExpectedInstallment, proposal.InstallmentAmount);
+        Assert.Equal(example.Installments, proposal.Installments);
+        Assert.Equal(example.Preventivo, proposal.AnnualAmount);
+        Assert.True(proposal.SettledAtConsuntivo);
+        Assert.Equal(example.PreviousConsuntivo, proposal.PreviousConsuntivo);
     }
 
     [Fact]

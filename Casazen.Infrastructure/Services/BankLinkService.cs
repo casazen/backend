@@ -1,7 +1,9 @@
+using Casazen.Core.Authorization;
 using Casazen.Core.Entities;
 using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
+using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Casazen.Infrastructure.External;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +23,7 @@ public sealed class BankLinkService(
     IStripeBankLinkGateway gateway,
     IStripeService stripe,
     IRentBillingService rent,
+    ICondominiumAccountingService condominiums,
     ILogger<BankLinkService> logger) : IBankLinkService
 {
     private const long MaxAmountCents = 100_000_000;
@@ -89,6 +92,9 @@ public sealed class BankLinkService(
             }
         }
 
+        if (request.CondominiumInstallmentId is Guid condominiumInstallmentId)
+            return await StartCondominiumPaymentAsync(org, request, condominiumInstallmentId, caller, cancellationToken);
+
         var (resolvedLeaseId, installment, amount, currency) = await ResolveAmountAsync(org.Id, request, cancellationToken);
         return await StartAsync(
             org.Id,
@@ -102,7 +108,42 @@ public sealed class BankLinkService(
             currency,
             IdempotencyKey(request.IdempotencyKey, installment),
             caller,
-            cancellationToken);
+            cancellationToken,
+            condominiumInstallmentId: null);
+    }
+
+    private async Task<BankLinkPaymentStarted> StartCondominiumPaymentAsync(
+        Org org,
+        StartBankLinkPayment request,
+        Guid condominiumInstallmentId,
+        BankLinkCaller caller,
+        CancellationToken cancellationToken)
+    {
+        if (request.InstallmentId is not null || request.LeaseId is not null || request.CondominiumId is not Guid condominiumId)
+            throw new DomainRuleException(BankLinkErrorCodes.InstallmentMismatch, "BankLinkInstallmentMismatch");
+        if (request.Currency is not null && !string.Equals(NormalizeCurrency(request.Currency), BankLinkCharges.Currency, StringComparison.Ordinal))
+            throw new DomainRuleException(BankLinkErrorCodes.CurrencyInvalid, "BankLinkCurrencyInvalid");
+
+        var due = await condominiums.GetInstallmentDueAsync(
+            new HostScope(org.Id), condominiumId, condominiumInstallmentId, cancellationToken);
+        var cents = RentCharges.ToCents(due.AmountDue);
+        if (request.AmountCents is long given && given != cents)
+            throw new DomainRuleException(BankLinkErrorCodes.AmountInvalid, "BankLinkAmountInvalid");
+
+        return await StartAsync(
+            org.Id,
+            leaseId: null,
+            installment: null,
+            org.StripeCustomerId,
+            org.FinancialConnectionsAccountId,
+            org.DisplayName,
+            BankLinkPayer.Landlord,
+            cents,
+            BankLinkCharges.Currency,
+            $"bank-link-condo:{condominiumInstallmentId:N}",
+            caller,
+            cancellationToken,
+            condominiumInstallmentId);
     }
 
     public async Task<BankLinkSession> CreateLeaseSessionAsync(
@@ -213,6 +254,18 @@ public sealed class BankLinkService(
                     paymentEvent.FailureCode),
                 cancellationToken);
         }
+        else if (row.CondominiumInstallmentId is Guid condominiumInstallmentId
+            && row.Status == BankLinkPaymentStatus.Succeeded)
+        {
+            await condominiums.RecordBankLinkInstallmentPaymentAsync(
+                new HostScope(row.OrgId),
+                condominiumInstallmentId,
+                row.AmountCents / 100m,
+                RomeCalendar.DateInRome(row.CreatedAt),
+                row.StripePaymentIntentId,
+                "bank-link",
+                cancellationToken);
+        }
 
         await db.SaveChangesAsync(cancellationToken);
         return notice;
@@ -230,7 +283,8 @@ public sealed class BankLinkService(
         string currency,
         string idempotencyKey,
         BankLinkCaller caller,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? condominiumInstallmentId = null)
     {
         if (installment is not null)
         {
@@ -267,7 +321,7 @@ public sealed class BankLinkService(
                 billingName,
                 caller.IpAddress,
                 caller.UserAgent,
-                Metadata(orgId, leaseId, installment, payer)),
+                Metadata(orgId, leaseId, installment, payer, condominiumInstallmentId)),
             cancellationToken);
 
         var row = await db.BankLinkPayments
@@ -279,6 +333,7 @@ public sealed class BankLinkService(
                 OrgId = orgId,
                 LeaseContractId = leaseId,
                 RentLedgerEntryId = installment?.Id,
+                CondominiumInstallmentId = condominiumInstallmentId,
                 Payer = payer,
                 FinancialConnectionsAccountId = linked.Id,
                 StripePaymentIntentId = created.PaymentIntentId,
@@ -542,7 +597,8 @@ public sealed class BankLinkService(
         return value;
     }
 
-    private Dictionary<string, string> Metadata(Guid orgId, Guid? leaseId, RentLedgerEntry? installment, BankLinkPayer payer)
+    private Dictionary<string, string> Metadata(
+        Guid orgId, Guid? leaseId, RentLedgerEntry? installment, BankLinkPayer payer, Guid? condominiumInstallmentId = null)
     {
         var metadata = new Dictionary<string, string>
         {
@@ -554,6 +610,8 @@ public sealed class BankLinkService(
             metadata["leaseId"] = lease.ToString();
         if (installment is not null)
             metadata[RentCharges.InstallmentMetadataKey] = installment.Id.ToString();
+        if (condominiumInstallmentId is Guid condominiumInstallment)
+            metadata["condominiumInstallmentId"] = condominiumInstallment.ToString();
         return metadata;
     }
 

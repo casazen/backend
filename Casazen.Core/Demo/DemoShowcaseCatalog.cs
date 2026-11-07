@@ -220,6 +220,18 @@ public static class DemoShowcaseCatalog
         /// on a showcase house, and these rows are not written.
         /// </summary>
         public const string CondominiumCore = "condominium-core";
+
+        /// <summary>
+        /// The tenant settlement after a confirmed consuntivo (CondoLedger phase 3): recoverable € 1,920, advances posted
+        /// € 1,800, debit € 120. Template only: the showcase reset still refuses a lease on a showcase house.
+        /// </summary>
+        public const string TenantCondominiumSettlement = "tenant-condominium-settlement";
+
+        /// <summary>
+        /// The contract wizard's condominium expense when no year is loaded: previous consuntivo € 1,800 and new
+        /// preventivo € 1,920 become twelve advances of € 160. Template only.
+        /// </summary>
+        public const string TenantExpenseProposal = "tenant-expense-proposal";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -292,6 +304,8 @@ public static class DemoShowcaseCatalog
         Scenario.DocumentArchive,
         Scenario.RentLedgerComponents,
         Scenario.CondominiumCore,
+        Scenario.TenantCondominiumSettlement,
+        Scenario.TenantExpenseProposal,
     ];
 
     /// <summary>
@@ -321,6 +335,24 @@ public static class DemoShowcaseCatalog
     public static IReadOnlyList<DemoCondominiumCoreTemplate> CondominiumCoreExamples { get; } =
     [
         new("casa-a-2024", 6, 490.30m, 0m, 490.30m, 412.80m, 0m, 77.50m, Scenario.CondominiumCore),
+    ];
+
+    /// <summary>
+    /// The tenant's consuntivo: recoverable final € 1,920, advances already posted € 1,800, debit € 120.
+    /// Not written as a lease.
+    /// </summary>
+    public static IReadOnlyList<DemoTenantSettlementTemplate> TenantCondominiumSettlementExamples { get; } =
+    [
+        new("consuntivo-1920-acconti-1800", 1920m, 0m, 1800m, 120m, Scenario.TenantCondominiumSettlement),
+    ];
+
+    /// <summary>
+    /// Nothing is loaded yet: the wizard takes last year's final and this year's budget and proposes the advance.
+    /// Not written as a lease, and it does not start a payment.
+    /// </summary>
+    public static IReadOnlyList<DemoTenantExpenseProposalTemplate> TenantExpenseProposalExamples { get; } =
+    [
+        new("preventivo-1920", 1800m, 1920m, 12, 160m, Scenario.TenantExpenseProposal),
     ];
 
     /// <summary>
@@ -1637,6 +1669,27 @@ public sealed record DemoRentLedgerComponentTemplate(
     decimal Rent,
     decimal CondominiumAdvance,
     int Months,
+    string Scenario);
+
+/// <summary>The tenant settlement the showcase calculates: recoverable final + prior balance − advances already posted.</summary>
+public sealed record DemoTenantSettlementTemplate(
+    string Key,
+    decimal RecoverableFinal,
+    decimal PriorBalance,
+    decimal AdvancesPosted,
+    decimal ExpectedSettlement,
+    string Scenario);
+
+/// <summary>
+/// The wizard proposal when the property has no condominium year yet: the advance is the new preventivo split into
+/// <see cref="Installments"/>, and <see cref="PreviousConsuntivo"/> is kept for the settlement.
+/// </summary>
+public sealed record DemoTenantExpenseProposalTemplate(
+    string Key,
+    decimal PreviousConsuntivo,
+    decimal Preventivo,
+    int Installments,
+    decimal ExpectedInstallment,
     string Scenario);
 
 /// <summary>
