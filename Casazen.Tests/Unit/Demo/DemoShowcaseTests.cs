@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Casazen.Core.Condominium;
 using Casazen.Core.Demo;
 using Casazen.Core.Entities;
 using Casazen.Core.Leases;
@@ -114,6 +115,7 @@ public class DemoShowcaseTests
             .Concat(DemoShowcaseCatalog.WelcomeLinks.Select(link => link.Scenario))
             .Concat(DemoShowcaseCatalog.OnboardingActivations.Select(activation => activation.Scenario))
             .Concat(DemoShowcaseCatalog.RentLedgerComponentExamples.Select(example => example.Scenario))
+            .Concat(DemoShowcaseCatalog.CondominiumCoreExamples.Select(example => example.Scenario))
             .ToHashSet(StringComparer.Ordinal);
 
         Assert.All(DemoShowcaseCatalog.Scenarios, scenario => Assert.Contains(scenario, covered));
@@ -927,6 +929,24 @@ public class DemoShowcaseTests
 
         var components = RentLedgerLine.FixedContract(example.Rent, example.CondominiumAdvance);
         Assert.Equal(1_050m, RentLedgerLine.Sum(components));
+    }
+
+    [Fact]
+    public void CondominiumCore_CasaA_SettlesTheYearWithoutMixingExtraordinaryIntoOrdinary()
+    {
+        Assert.Contains(DemoShowcaseCatalog.Scenario.CondominiumCore, DemoShowcaseCatalog.Scenarios);
+        var example = Assert.Single(DemoShowcaseCatalog.CondominiumCoreExamples);
+        Assert.Equal(DemoShowcaseCatalog.Scenario.CondominiumCore, example.Scenario);
+        Assert.Equal(6, example.FiscalStartMonth);
+        var year = FiscalYear.ForStartYear(2024, example.FiscalStartMonth);
+        Assert.Equal(new DateOnly(2024, 6, 1), year.Start);
+        Assert.Equal(new DateOnly(2025, 5, 31), year.End);
+
+        var settlement = Conguaglio.Compute(example.FinalAmount, example.Extraordinary, example.Prior, example.Paid);
+        Assert.NotNull(settlement);
+        Assert.Equal(example.ExpectedSettlement, settlement.Amount);
+        Assert.Equal(Conguaglio.Direction.Debit, settlement.Direction);
+        Assert.Equal(0m, example.Extraordinary);
     }
 
     [Fact]

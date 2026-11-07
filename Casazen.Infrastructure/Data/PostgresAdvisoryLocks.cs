@@ -410,6 +410,12 @@ internal static class PostgresAdvisoryLocks
         /// checkout of a service is. The values 20_900 to 20_999 are the marketplace (epic E09).
         /// </summary>
         MarketplaceChannelActivation = 20_931,
+
+        /// <summary>
+        /// One condominium (key: condominium id): preventivo, consuntivo, rates and the prior-year balance are decided
+        /// one request at a time, so two confirms cannot issue two plans or two balances.
+        /// </summary>
+        Condominium = 21_042,
     }
 
     public static bool IsSupported(DbContext context) => context.Database.IsNpgsql();
