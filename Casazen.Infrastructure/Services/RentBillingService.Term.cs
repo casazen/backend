@@ -26,7 +26,7 @@ public sealed partial class RentBillingService
         var lease = await db.LeaseContracts
             .AsNoTracking()
             .Where(l => l.Id == leaseId)
-            .Select(l => new { l.OrgId, l.StartDate, l.CurrentTermEndDate })
+            .Select(l => new { l.OrgId, l.StartDate, l.CurrentTermEndDate, l.MonthlyRent })
             .FirstOrDefaultAsync(cancellationToken)
             ?? throw new NotFoundException("Lease not found") { Code = "lease_not_found", MessageKey = "LeaseNotFound" };
         var schedule = await db.RentSchedules.SingleOrDefaultAsync(s => s.LeaseContractId == leaseId, cancellationToken);
@@ -49,11 +49,14 @@ public sealed partial class RentBillingService
         // is never touched. The plan is built from the lease start with the cadence of the schedule, so the new periods continue the old ones,
         // and from the day the plan is tracked from (LR-04a): a plan that skipped the past of a lease already running never gets it back.
         var plan = RentInstallmentPlan.Build(start, end, schedule.Cadence, schedule.BillingDayOfMonth, schedule.Amount, schedule.TrackFrom);
+        var terms = await db.LeaseCondominiumTerms
+            .AsNoTracking()
+            .SingleOrDefaultAsync(t => t.LeaseContractId == leaseId, cancellationToken);
         var now = UtcNow;
         var added = 0;
         foreach (var installment in plan.Installments.Where(i => !existing.Contains(i.PeriodStart)))
         {
-            db.RentLedgerEntries.Add(new RentLedgerEntry
+            var created = new RentLedgerEntry
             {
                 OrgId = lease.OrgId,
                 LeaseContractId = leaseId,
@@ -65,7 +68,9 @@ public sealed partial class RentBillingService
                 Status = RentLedgerStatus.Scheduled,
                 CreatedAt = now,
                 UpdatedAt = now,
-            });
+            };
+            ApplyBreakdown(created, lease.MonthlyRent, schedule.Cadence, terms);
+            db.RentLedgerEntries.Add(created);
             added++;
         }
 

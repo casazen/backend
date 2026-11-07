@@ -85,6 +85,10 @@ public sealed class RentRegisterService(
                     e.PaymentRequestedAt,
                     e.LastReminderAt,
                     e.ReminderCount,
+                    Rent = e.Components.Where(c => c.Kind == RentLedgerComponentKind.Rent).Sum(c => (decimal?)c.Amount),
+                    Advance = e.Components.Where(c => c.Kind == RentLedgerComponentKind.CondominiumAdvance).Sum(c => (decimal?)c.Amount),
+                    Settlement = e.Components.Where(c => c.Kind == RentLedgerComponentKind.CondominiumSettlement).Sum(c => (decimal?)c.Amount),
+                    Other = e.Components.Where(c => c.Kind == RentLedgerComponentKind.Other).Sum(c => (decimal?)c.Amount),
                 })
                 .ToListAsync(cancellationToken);
 
@@ -97,30 +101,40 @@ public sealed class RentRegisterService(
 
         var reminderAllowedFrom = now.AddHours(-intervalHours);
         var items = rows
-            .Select(r => new RentRegisterRow(
-                r.Id,
-                r.LeaseContractId,
-                r.PropertyId,
-                r.PropertyName,
-                r.TenantAnonymized ? null : r.TenantFirstName,
-                r.TenantAnonymized ? null : r.TenantLastName,
-                r.TenantAnonymized,
-                r.PeriodStart,
-                r.PeriodEnd,
-                r.DueDate,
-                r.AmountDue,
-                RentCharges.Currency.ToUpperInvariant(),
-                r.Status,
-                RentInstallmentRules.IsOverdue(r.Status, r.DueDate, today),
-                RentInstallmentRules.DaysOverdue(r.Status, r.DueDate, today),
-                r.PaidVia,
-                r.PaidOn,
-                r.PaymentRequestedAt,
-                r.LastReminderAt,
-                r.ReminderCount,
-                RentInstallmentRules.IsRemindable(r.Status)
-                    && r.HasTenantEmail
-                    && (r.LastReminderAt is null || r.LastReminderAt <= reminderAllowedFrom)))
+            .Select(r =>
+            {
+                var parts = ComponentAmounts(r.AmountDue, r.Rent, r.Advance, r.Settlement, r.Other);
+                return new RentRegisterRow(
+                    r.Id,
+                    r.LeaseContractId,
+                    r.PropertyId,
+                    r.PropertyName,
+                    r.TenantAnonymized ? null : r.TenantFirstName,
+                    r.TenantAnonymized ? null : r.TenantLastName,
+                    r.TenantAnonymized,
+                    r.PeriodStart,
+                    r.PeriodEnd,
+                    r.DueDate,
+                    r.AmountDue,
+                    RentCharges.Currency.ToUpperInvariant(),
+                    r.Status,
+                    RentInstallmentRules.IsOverdue(r.Status, r.DueDate, today),
+                    RentInstallmentRules.DaysOverdue(r.Status, r.DueDate, today),
+                    r.PaidVia,
+                    r.PaidOn,
+                    r.PaymentRequestedAt,
+                    r.LastReminderAt,
+                    r.ReminderCount,
+                    RentInstallmentRules.IsRemindable(r.Status)
+                        && r.HasTenantEmail
+                        && (r.LastReminderAt is null || r.LastReminderAt <= reminderAllowedFrom),
+                    parts.Rent,
+                    parts.Advance,
+                    parts.Settlement,
+                    parts.Other,
+                    RentInstallmentRules.AmountPaid(r.Status, r.AmountDue),
+                    RentInstallmentRules.AmountOutstanding(r.Status, r.AmountDue));
+            })
             .ToList();
 
         return new RentRegisterPage(
@@ -149,6 +163,16 @@ public sealed class RentRegisterService(
             .Select(e => new RentInstallmentRef(e.Id, e.LeaseContractId, e.LeaseContract.PropertyId))
             .ToListAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// A line with no components yet (written before the breakdown existed) is all rent. SQL <c>SUM</c> of no rows is null,
+    /// which is that case.
+    /// </summary>
+    private static (decimal Rent, decimal Advance, decimal Settlement, decimal Other) ComponentAmounts(
+        decimal amountDue, decimal? rent, decimal? advance, decimal? settlement, decimal? other) =>
+        rent is null && advance is null && settlement is null && other is null
+            ? (amountDue, 0m, 0m, 0m)
+            : (rent ?? 0m, advance ?? 0m, settlement ?? 0m, other ?? 0m);
 }
 
 /// <summary>

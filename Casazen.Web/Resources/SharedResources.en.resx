@@ -2812,6 +2812,12 @@
   <data name="RentAmountInvalid" xml:space="preserve">
     <value>The installment amount must be greater than zero, with at most two decimals.</value>
   </data>
+  <data name="RentCondominiumTermsInvalid" xml:space="preserve">
+    <value>The condominium terms are not valid: a fixed advance needs an amount and a cadence, the dates must be in order and the confidence between 0 and 1.</value>
+  </data>
+  <data name="RentCondominiumSourceNotFound" xml:space="preserve">
+    <value>The document given does not belong to this lease.</value>
+  </data>
   <data name="RentCadenceLocked" xml:space="preserve">
     <value>The cadence cannot change: some installments are paid or have a payment in progress.</value>
   </data>

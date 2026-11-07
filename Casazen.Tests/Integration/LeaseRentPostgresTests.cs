@@ -83,6 +83,33 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
     }
 
     [PostgresFact]
+    public async Task ConfirmCondominiumTerms_ChangedOrClearedAdvance_RewritesTheOpenInstallments()
+    {
+        var seeded = await SignedLeaseAsync("condo-correct");
+        (await seeded.Client.PutAsJsonAsync(
+            $"{RentPath(seeded)}/schedule", new { cadence = "Monthly", billingDayOfMonth = 5 })).EnsureSuccessStatusCode();
+
+        // Rent is € 1.200. The first confirm adds the advance; a later confirm has to replace it, and None removes it.
+        var first = await ConfirmTermsAsync(seeded, new { advanceMode = "FixedContractAmount", advanceAmount = 150m, cadence = "Monthly" });
+        AssertCondominiumPlan(first, 1_350m, "FixedContractAmount", 150m, rent: 1_200m, advance: 150m);
+
+        var corrected = await ConfirmTermsAsync(seeded, new { advanceMode = "FixedContractAmount", advanceAmount = 200m, cadence = "Monthly" });
+        AssertCondominiumPlan(corrected, 1_400m, "FixedContractAmount", 200m, rent: 1_200m, advance: 200m);
+
+        var cleared = await ConfirmTermsAsync(seeded, new { advanceMode = "None" });
+        AssertCondominiumPlan(cleared, 1_200m, "None", advanceAmount: null, rent: 1_200m, advance: null);
+
+        // An installment the landlord set to their own amount is not the rent or the previous rent-plus-advance, so it stays.
+        var custom = await ReadJson(await seeded.Client.PutAsJsonAsync(
+            $"{RentPath(seeded)}/schedule", new { cadence = "Monthly", billingDayOfMonth = 5, amount = 1_500m }));
+        Assert.Equal(1_500m, custom.GetProperty("schedule").GetProperty("amount").GetDecimal());
+        var kept = await ConfirmTermsAsync(seeded, new { advanceMode = "FixedContractAmount", advanceAmount = 200m, cadence = "Monthly" });
+        Assert.Equal(1_500m, kept.GetProperty("schedule").GetProperty("amount").GetDecimal());
+        Assert.All(kept.GetProperty("installments").EnumerateArray(), installment =>
+            Assert.Equal(1_500m, installment.GetProperty("amount").GetDecimal()));
+    }
+
+    [PostgresFact]
     public async Task RentEndpoints_OtherOrgOrAnonymous_NotFoundOrUnauthorized()
     {
         var seeded = await SignedLeaseAsync("access");
@@ -333,6 +360,46 @@ public class LeaseRentPostgresTests(LeaseRentPostgresTests.RentFactory factory) 
     // ---------------------------------------------------------------- helpers
 
     private static string RentPath(SeededLease seeded) => $"/api/leases/{seeded.LeaseId}/rent";
+
+    private async Task<JsonElement> ConfirmTermsAsync(SeededLease seeded, object body)
+    {
+        var response = await seeded.Client.PutAsJsonAsync($"{RentPath(seeded)}/condominium-terms", body);
+        var payload = await response.Content.ReadAsStringAsync();
+        Assert.True(response.StatusCode == HttpStatusCode.OK, payload);
+        return JsonSerializer.Deserialize<JsonElement>(payload, JsonOpts);
+    }
+
+    private static void AssertCondominiumPlan(
+        JsonElement ledger, decimal total, string mode, decimal? advanceAmount, decimal rent, decimal? advance)
+    {
+        Assert.Equal(total, ledger.GetProperty("schedule").GetProperty("amount").GetDecimal());
+        var terms = ledger.GetProperty("condominiumTerms");
+        Assert.Equal(mode, terms.GetProperty("advanceMode").GetString());
+        var storedAdvance = terms.GetProperty("advanceAmount");
+        if (advanceAmount is null)
+            Assert.Equal(JsonValueKind.Null, storedAdvance.ValueKind);
+        else
+            Assert.Equal(advanceAmount.Value, storedAdvance.GetDecimal());
+
+        Assert.All(ledger.GetProperty("installments").EnumerateArray(), installment =>
+        {
+            Assert.Equal(total, installment.GetProperty("amount").GetDecimal());
+            var components = installment.GetProperty("components").EnumerateArray().ToList();
+            Assert.Equal(
+                rent,
+                Assert.Single(components, c => c.GetProperty("kind").GetString() == "Rent").GetProperty("amount").GetDecimal());
+            if (advance is null)
+            {
+                Assert.DoesNotContain(components, c => c.GetProperty("kind").GetString() == "CondominiumAdvance");
+            }
+            else
+            {
+                Assert.Equal(
+                    advance.Value,
+                    Assert.Single(components, c => c.GetProperty("kind").GetString() == "CondominiumAdvance").GetProperty("amount").GetDecimal());
+            }
+        });
+    }
 
     private sealed record SeededLease(HttpClient Client, Guid LeaseId, string Account, string OrgName);
 

@@ -26,6 +26,51 @@ public sealed record ConfigureRentScheduleRequest(
 /// <summary>An installment declared paid by the landlord outside CasaZen (bank transfer, cash…).</summary>
 public sealed record MarkRentPaidOfflineRequest(DateOnly PaidOn, string? Note);
 
+/// <summary>One part of an installment. <c>Amount</c> is in euros; the installment's <c>Amount</c> is the sum of these.</summary>
+public sealed record RentLedgerComponentView(
+    Guid Id,
+    RentLedgerComponentKind Kind,
+    decimal Amount,
+    DateOnly CompetenceStart,
+    DateOnly CompetenceEnd,
+    Guid? TenantSettlementId,
+    Guid? SourceId,
+    string? Description);
+
+/// <summary>
+/// Condominium terms confirmed (or stored) for the lease. <c>Confirmed</c> is set once a person accepts the values;
+/// only a confirmed fixed amount is added to the rent plan.
+/// </summary>
+public sealed record LeaseCondominiumTermsView(
+    Guid Id,
+    CondominiumAdvanceMode AdvanceMode,
+    decimal? AdvanceAmount,
+    RentCadence? Cadence,
+    bool SettlementRequired,
+    string? ProrationRule,
+    DateOnly? EffectiveFrom,
+    DateOnly? EffectiveTo,
+    Guid? SourceDocumentId,
+    decimal? ExtractionConfidence,
+    DateTime? ConfirmedAt,
+    string? ConfirmedByUserId);
+
+/// <summary>
+/// What the landlord confirms for the condominium clause of a lease: the advance, whether a settlement is required, and
+/// where the values came from. Saving confirms them (<c>ConfirmedAt</c>). A fixed contractual advance is then part of
+/// the rent plan and wins over a budget.
+/// </summary>
+public sealed record ConfirmLeaseCondominiumTermsRequest(
+    CondominiumAdvanceMode AdvanceMode,
+    decimal? AdvanceAmount,
+    RentCadence? Cadence,
+    bool SettlementRequired,
+    string? ProrationRule,
+    DateOnly? EffectiveFrom,
+    DateOnly? EffectiveTo,
+    Guid? SourceDocumentId,
+    decimal? ExtractionConfidence);
+
 /// <summary>One installment as the landlord sees it. <c>IsOverdue</c>: not paid and past its due date (Europe/Rome).</summary>
 public sealed record RentInstallmentView(
     Guid Id,
@@ -41,7 +86,10 @@ public sealed record RentInstallmentView(
     string? OfflinePaymentNote,
     DateTime? PaymentRequestedAt,
     string? FailureCode,
-    DateTime? LastFailedAt);
+    DateTime? LastFailedAt,
+    decimal AmountPaid,
+    decimal AmountOutstanding,
+    IReadOnlyList<RentLedgerComponentView> Components);
 
 /// <summary>
 /// The rent schedule of a lease, null while the landlord has not set it up. <c>TrackFrom</c>: the day the rents are tracked from
@@ -72,7 +120,8 @@ public sealed record RentLedgerView(
     bool HasTenantEmail,
     RentScheduleView? Schedule,
     IReadOnlyList<RentInstallmentView> Installments,
-    RentPeriod? PartialFinalPeriod);
+    RentPeriod? PartialFinalPeriod,
+    LeaseCondominiumTermsView? CondominiumTerms);
 
 /// <summary>
 /// A reminder the landlord sent for an installment (LR-01, B1): when, how many times so far, to how many tenants, whether the
@@ -176,6 +225,19 @@ public interface IRentBillingService
 
     Task<RentLedgerView> DisableScheduleAsync(Guid leaseId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Stores the condominium terms of the lease and confirms them. An active plan whose installment is still the rent,
+    /// still the rent plus the advance already confirmed, or already the new rent plus advance, takes the new total (the
+    /// rent alone when the clause charges nothing). A different amount is left as the landlord set it. 422
+    /// <c>rent_condominium_terms_invalid</c> when the values cannot be charged, <c>rent_condominium_source_not_found</c>
+    /// when the source document is not one of this lease.
+    /// </summary>
+    Task<RentLedgerView> ConfirmCondominiumTermsAsync(
+        Guid leaseId,
+        ConfirmLeaseCondominiumTermsRequest request,
+        string userId,
+        CancellationToken cancellationToken = default);
+
     Task<RentInstallmentView> MarkPaidOfflineAsync(
         Guid leaseId,
         Guid installmentId,
@@ -264,4 +326,6 @@ public static class RentBillingErrorCodes
     public const string PaymentLinkInvalid = "rent_payment_link_invalid";
     public const string LeaseOutsidePlan = "rent_lease_dates_invalid";
     public const string TrackFromInvalid = "rent_track_from_invalid";
+    public const string CondominiumTermsInvalid = "rent_condominium_terms_invalid";
+    public const string CondominiumSourceNotFound = "rent_condominium_source_not_found";
 }

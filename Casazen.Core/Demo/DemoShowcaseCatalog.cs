@@ -16,7 +16,7 @@ namespace Casazen.Core.Demo;
 /// </remarks>
 public static class DemoShowcaseCatalog
 {
-    public const string Version = "2026-11-06.21";
+    public const string Version = "2026-11-07.1";
 
     /// <summary>The body of a reset must carry this word. It is not a password: it only stops an accidental click.</summary>
     public const string ResetConfirmation = "RESET";
@@ -206,6 +206,13 @@ public static class DemoShowcaseCatalog
         /// document is shown.
         /// </summary>
         public const string DocumentArchive = "document-archive";
+
+        /// <summary>
+        /// The rent installment shows its parts (CondoLedger phase 1): rent € 900, condominium advance € 150, total € 1.050,
+        /// for twelve months. The showcase has no lease — its reset refuses to run when a showcase house has one — so this
+        /// template is the example the domain posts, not a row of <c>RentLedgerEntries</c>.
+        /// </summary>
+        public const string RentLedgerComponents = "rent-ledger-components";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -276,6 +283,7 @@ public static class DemoShowcaseCatalog
         Scenario.CalendarDayRules,
         Scenario.ComplianceTrafficLight,
         Scenario.DocumentArchive,
+        Scenario.RentLedgerComponents,
     ];
 
     /// <summary>
@@ -287,6 +295,15 @@ public static class DemoShowcaseCatalog
         new("in-attesa", "host.demo.in-attesa@example.com", "Ciao, provaci anche tu (invito di dimostrazione).", -1, DemoHostInviteState.Pending, Scenario.HostInvitePending),
         new("accettato", "host.demo.accettato@example.com", null, -10, DemoHostInviteState.Used, Scenario.HostInviteUsed),
         new("scaduto", "host.demo.scaduto@example.com", null, -20, DemoHostInviteState.Expired, Scenario.HostInviteExpired),
+    ];
+
+    /// <summary>
+    /// The fixed contractual advance the rent ledger posts (CondoLedger phase 1): twelve months of rent € 900 plus condominium
+    /// advance € 150, total € 1.050. Not written as a lease: the showcase reset refuses a lease on a showcase house.
+    /// </summary>
+    public static IReadOnlyList<DemoRentLedgerComponentTemplate> RentLedgerComponentExamples { get; } =
+    [
+        new("canone-900-acconto-150", 900m, 150m, 12, Scenario.RentLedgerComponents),
     ];
 
     /// <summary>
@@ -1593,6 +1610,17 @@ public sealed record DemoStayGuestTemplate(
     string? TaxExemptionCode = null,
     bool DocumentExpired = false,
     bool BirthPlaceMissing = false);
+
+/// <summary>
+/// One rent line of the showcase example: <see cref="Rent"/> plus <see cref="CondominiumAdvance"/> for
+/// <see cref="Months"/> months. The total of each month is their sum.
+/// </summary>
+public sealed record DemoRentLedgerComponentTemplate(
+    string Key,
+    decimal Rent,
+    decimal CondominiumAdvance,
+    int Months,
+    string Scenario);
 
 /// <summary>
 /// The rate the demo host declared for the comune of a demo house with no official one (NF-46, AC-NF46-6): a fixed amount per person per night,
