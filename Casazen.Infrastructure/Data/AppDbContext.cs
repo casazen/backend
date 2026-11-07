@@ -305,6 +305,9 @@ public class AppDbContext(
     public DbSet<CondominiumInstallment> CondominiumInstallments { get; set; } = null!;
     public DbSet<CondominiumPriorBalance> CondominiumPriorBalances { get; set; } = null!;
     public DbSet<CondominiumPayment> CondominiumPayments { get; set; } = null!;
+    public DbSet<CondominiumImportBatch> CondominiumImportBatches { get; set; } = null!;
+    public DbSet<CondominiumImportHouse> CondominiumImportHouses { get; set; } = null!;
+    public DbSet<CondominiumImportYear> CondominiumImportYears { get; set; } = null!;
     public DbSet<RentBankMovement> RentBankMovements { get; set; } = null!;
     public DbSet<BankLinkPayment> BankLinkPayments { get; set; } = null!;
 
@@ -2225,6 +2228,31 @@ public class AppDbContext(
             entity.Property(allocation => allocation.Status).HasConversion<int>();
             entity.HasIndex(allocation => allocation.TenantCondominiumSettlementId);
             entity.HasIndex(allocation => allocation.OrgId);
+        });
+
+        modelBuilder.Entity<CondominiumImportBatch>(entity =>
+        {
+            entity.HasOne(batch => batch.Org).WithMany().HasForeignKey(batch => batch.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(batch => batch.Status).HasConversion<int>();
+            entity.HasIndex(batch => new { batch.OrgId, batch.ContentHash }).IsUnique();
+        });
+
+        modelBuilder.Entity<CondominiumImportHouse>(entity =>
+        {
+            entity.HasOne(house => house.Batch).WithMany(batch => batch.Houses).HasForeignKey(house => house.BatchId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(house => house.Property).WithMany().HasForeignKey(house => house.PropertyId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(house => house.Org).WithMany().HasForeignKey(house => house.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(house => house.Status).HasConversion<int>();
+            entity.HasIndex(house => house.BatchId);
+            entity.HasIndex(house => new { house.OrgId, house.PropertyId });
+        });
+
+        modelBuilder.Entity<CondominiumImportYear>(entity =>
+        {
+            entity.HasOne(year => year.House).WithMany(house => house.Years).HasForeignKey(year => year.HouseId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(year => year.Org).WithMany().HasForeignKey(year => year.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(year => year.Cadence).HasConversion<int>();
+            entity.HasIndex(year => year.HouseId);
         });
     }
 
