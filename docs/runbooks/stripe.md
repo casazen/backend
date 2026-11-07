@@ -1073,7 +1073,8 @@ requires the caller's `Idempotency-Key`; a missing key is refused, so a retry ca
 changes a bank-link payment only while it is still processing, and does not reopen the due. Starting the debit sets the
 installment to in flight; it does not mark it paid.
 
-The session asks Stripe for institutions in Italy (`filters[countries][]=IT`), so the list is Italian banks, not US
+The session asks Stripe for institutions in Italy (`filters[country]=IT`, the parameter Stripe accepts now; the old
+`filters[countries]` list is rejected). The list is Italian banks, not US
 banks. The debit is a platform PaymentIntent of type `sepa_debit` in EUR. Stripe builds that PaymentMethod from the
 linked account (its `pm_…`, or the IBAN token on the account). CasaZen stores the Financial Connections id and the
 PaymentMethod id. It does not store or log a full IBAN. An EUR rent installment can be paid this way. It is marked
