@@ -382,9 +382,11 @@ public class OwnerInvitationService(
         if (orgId is null)
             throw new DomainGoneException(OwnerInvitationErrors.Invalid, "OwnerInvitationInvalid");
 
-        await using var transaction = await LockAsync(orgId.Value, cancellationToken);
+        // Two locks, always in this order: the org of the invitation (a second acceptance of the same token waits and finds what the first did) and
+        // the account (an owner who accepts the invitations of two orgs at once gets one identity, not two: OwnerUsers has no unique key of its own).
+        await using var transaction = await LockAsync(orgId.Value, cancellationToken, $"owner-user:{command.Auth0Sub}");
 
-        // Read again, under the lock: a second acceptance of the same token waits and finds what the first did.
+        // Read again, under the lock.
         var invitation = await dbContext.OwnerInvitations
             .IgnoreQueryFilters([AppDbContext.TenantQueryFilter])
             .FirstOrDefaultAsync(i => i.TokenHash == tokenHash && i.OrgId == orgId.Value, cancellationToken);
@@ -531,9 +533,15 @@ public class OwnerInvitationService(
                          && propertyIds.Contains(po.PropertyId));
     }
 
-    private Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?> LockAsync(Guid orgId, CancellationToken cancellationToken) =>
-        PostgresAdvisoryLocks.BeginLockedTransactionAsync(
-            dbContext, cancellationToken, (PostgresAdvisoryLocks.Scope.OwnerOnboarding, orgId.ToString("N")));
+    private Task<Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction?> LockAsync(Guid orgId, CancellationToken cancellationToken, string? account = null) =>
+        account is null
+            ? PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+                dbContext, cancellationToken, (PostgresAdvisoryLocks.Scope.OwnerOnboarding, orgId.ToString("N")))
+            : PostgresAdvisoryLocks.BeginLockedTransactionAsync(
+                dbContext,
+                cancellationToken,
+                (PostgresAdvisoryLocks.Scope.OwnerOnboarding, orgId.ToString("N")),
+                (PostgresAdvisoryLocks.Scope.OwnerOnboarding, account));
 
     /// <summary>How many invitations the org sent in the last 24 hours: the instants of every send kept on its invitations.</summary>
     private async Task<int> UsedTodayAsync(Guid orgId, DateTime now, CancellationToken cancellationToken)
