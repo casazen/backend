@@ -12,8 +12,9 @@ internal readonly record struct MarketplaceCardState(MarketplaceCardStatus Statu
 /// <summary>
 /// The activations of one org, read once, from which every card of a catalog (or one detail card) takes its state. Only the org's own rows
 /// are read, whatever the tenant filter says: the activations of another org are never looked at. The rows of a property are those of the
-/// properties inside the caller's scope (a collaborator limited to some properties counts only those); the org-level rows (a partner, and the
-/// rows of a licensed function written before its license was a property's) belong to the org and are read whole.
+/// properties inside the caller's scope (a collaborator limited to some properties counts only those); the org-level rows (a partner declared for
+/// the whole org, and the rows of a licensed function written before its license was a property's) belong to the org and are read whole. A partner
+/// may also have a row of a property (E09/F02/US03/T01): that one is read only when the property is inside the caller's scope.
 /// </summary>
 internal sealed class MarketplaceCardStates
 {
