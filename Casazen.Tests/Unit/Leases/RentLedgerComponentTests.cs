@@ -92,4 +92,43 @@ public class RentLedgerComponentTests
         Assert.Equal(150m, confirmed.UniformAdvanceFor(RentCadence.Monthly));
         Assert.Equal(450m, confirmed.UniformAdvanceFor(RentCadence.Quarterly));
     }
+
+    [Fact]
+    public void InstallmentTotalAfterTerms_ChangedFixedAdvance_ReplacesThePreviousOne()
+    {
+        var previous = new RentCondominiumTerms(
+            CondominiumAdvanceMode.FixedContractAmount, 150m, RentCadence.Monthly, Confirmed: true);
+        var next = previous with { AdvanceAmount = 200m };
+
+        var total = RentLedgerLine.InstallmentTotalAfterTerms(
+            1_050m,
+            900m,
+            previous.UniformAdvanceFor(RentCadence.Monthly),
+            next.UniformAdvanceFor(RentCadence.Monthly));
+
+        Assert.Equal(1_100m, total);
+        Assert.Equal(
+            1_200m,
+            RentLedgerLine.InstallmentTotalAfterTerms(1_200m, 900m, 150m, 200m));
+    }
+
+    [Fact]
+    public void InstallmentTotalAfterTerms_None_DropsTheAdvanceFromThePlanTotal()
+    {
+        var previous = new RentCondominiumTerms(
+            CondominiumAdvanceMode.FixedContractAmount, 150m, RentCadence.Monthly, Confirmed: true);
+        var none = new RentCondominiumTerms(
+            CondominiumAdvanceMode.None, AdvanceAmount: null, Cadence: null, Confirmed: true);
+
+        var total = RentLedgerLine.InstallmentTotalAfterTerms(
+            1_050m,
+            900m,
+            previous.UniformAdvanceFor(RentCadence.Monthly),
+            none.UniformAdvanceFor(RentCadence.Monthly));
+
+        Assert.Equal(0m, none.ChargeableAdvance(budgetAmount: 200m));
+        Assert.Equal(900m, total);
+        Assert.Equal(900m, RentLedgerLine.Sum(RentLedgerLine.ForStoredTotal(total, 900m, none.UniformAdvanceFor(RentCadence.Monthly))));
+        Assert.Equal(RentLedgerComponentKind.Rent, Assert.Single(RentLedgerLine.ForStoredTotal(total, 900m, 0m)).Kind);
+    }
 }

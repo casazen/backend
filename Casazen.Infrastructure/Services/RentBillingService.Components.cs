@@ -42,6 +42,7 @@ public sealed partial class RentBillingService
         var now = UtcNow;
         var terms = await db.LeaseCondominiumTerms
             .SingleOrDefaultAsync(t => t.LeaseContractId == leaseId, cancellationToken);
+        var previousTerms = ToTerms(terms);
         if (terms is null)
         {
             terms = new LeaseCondominiumTerms
@@ -75,7 +76,8 @@ public sealed partial class RentBillingService
                 .Include(e => e.Components)
                 .Where(e => e.LeaseContractId == leaseId)
                 .ToListAsync(cancellationToken);
-            var amount = AmountAfterTerms(schedule.Amount, lease.MonthlyRent, schedule.Cadence, terms);
+            var previousAdvance = previousTerms is null ? 0m : PreviousUniformAdvance(previousTerms, schedule.Cadence);
+            var amount = AmountAfterTerms(schedule.Amount, lease.MonthlyRent, schedule.Cadence, previousAdvance, terms);
             if (amount <= 0 || amount > MaxInstallmentAmount || decimal.Round(amount, 2) != amount)
                 throw new DomainRuleException(RentBillingErrorCodes.AmountInvalid, "RentAmountInvalid");
 
@@ -116,12 +118,24 @@ public sealed partial class RentBillingService
         RentInstallmentPlan.DefaultAmount(monthlyRent, cadence) + ChargeableUniformAdvance(terms, cadence);
 
     private static decimal AmountAfterTerms(
-        decimal current, decimal monthlyRent, RentCadence cadence, LeaseCondominiumTerms terms)
+        decimal current, decimal monthlyRent, RentCadence cadence, decimal previousAdvance, LeaseCondominiumTerms terms)
     {
         var rent = RentInstallmentPlan.DefaultAmount(monthlyRent, cadence);
-        var advance = ChargeableUniformAdvance(terms, cadence);
-        var composed = rent + advance;
-        return advance > 0m && (current == rent || current == composed) ? composed : current;
+        var nextAdvance = ChargeableUniformAdvance(terms, cadence);
+        return RentLedgerLine.InstallmentTotalAfterTerms(current, rent, previousAdvance, nextAdvance);
+    }
+
+    /// <summary>The advance the plan already charged. A clause that does not scale onto the rent cadence charged nothing.</summary>
+    private static decimal PreviousUniformAdvance(RentCondominiumTerms terms, RentCadence rentCadence)
+    {
+        try
+        {
+            return terms.UniformAdvanceFor(rentCadence);
+        }
+        catch (Exception ex) when (ex is ArgumentOutOfRangeException or InvalidOperationException)
+        {
+            return 0m;
+        }
     }
 
     private static decimal ChargeableUniformAdvance(LeaseCondominiumTerms? terms, RentCadence rentCadence)

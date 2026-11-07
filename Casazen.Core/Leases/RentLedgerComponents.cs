@@ -122,6 +122,31 @@ public static class RentLedgerLine
         FixedContract(amountDue, 0m);
 
     /// <summary>
+    /// The installment total after the condominium terms change. When <paramref name="currentTotal"/> is the rent, the rent
+    /// plus <paramref name="previousAdvance"/>, or already the rent plus <paramref name="nextAdvance"/>, it becomes the rent
+    /// plus <paramref name="nextAdvance"/>. A next advance of zero (no advance, or a clause that charges nothing) drops the
+    /// previous one. Any other total was chosen by the landlord and stays.
+    /// </summary>
+    public static decimal InstallmentTotalAfterTerms(
+        decimal currentTotal, decimal rentPortion, decimal previousAdvance, decimal nextAdvance)
+    {
+        _ = RentLedgerMoney.ToCents(currentTotal);
+        _ = RentLedgerMoney.ToCents(rentPortion);
+        _ = RentLedgerMoney.ToCents(previousAdvance);
+        _ = RentLedgerMoney.ToCents(nextAdvance);
+        if (rentPortion < 0m || previousAdvance < 0m || nextAdvance < 0m)
+            throw new ArgumentOutOfRangeException(nameof(rentPortion), "Rent and advances cannot be negative.");
+
+        var nextTotal = rentPortion + nextAdvance;
+        if (currentTotal == rentPortion
+            || currentTotal == rentPortion + previousAdvance
+            || currentTotal == nextTotal)
+            return nextTotal;
+
+        return currentTotal;
+    }
+
+    /// <summary>
     /// Fits <paramref name="rentPortion"/> and <paramref name="chargeableAdvance"/> into an installment whose total is already
     /// <paramref name="amountDue"/>. When the total is exactly rent plus advance, those two components are the line. A larger
     /// total keeps the difference as <see cref="RentLedgerComponentKind.Other"/>. A smaller total keeps the rent first and the
