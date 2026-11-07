@@ -8,8 +8,9 @@ namespace Casazen.Core.Entities;
 /// <summary>
 /// The "general connection model" of the marketplace (E09/F01/US01, NF-54, NF-56, NF-57): what an org has activated, and where it stands. One
 /// row per org, property (when the kind is per property), kind and target; a channel, a tool and a licensed function (its license is the
-/// accommodation's, D14, E09/F02/US02) are per property, a partner is per org (<see cref="PropertyId"/> is <c>null</c>). The status is what the
-/// cards and the Active list show.
+/// accommodation's, D14, E09/F02/US02) are per property; a partner is activated on its own site, so it is the org's (<see cref="PropertyId"/> is
+/// <c>null</c>) or, when the host declares it for one property (E09/F02/US03/T01), that property's (<see cref="PropertyId"/> is the property).
+/// The status is what the cards and the Active list show.
 /// </summary>
 /// <remarks>
 /// <para><b>Uniqueness.</b> Two partial unique indexes reject a second activation of the same kind and target: one for the org-level rows
@@ -40,7 +41,10 @@ public class MarketplaceActivation : ITenantOwned
     /// <summary>Tenant: the org that activated it.</summary>
     public Guid OrgId { get; set; }
 
-    /// <summary>The property it is activated for; <c>null</c> for an org-level activation (a partner). FK, cascade.</summary>
+    /// <summary>
+    /// The property it is activated for; <c>null</c> for an org-level activation (a partner declared for the whole org, and the rows of a licensed
+    /// function written before its license was a property's). A partner may also have a row for a property. FK, cascade.
+    /// </summary>
     public Guid? PropertyId { get; set; }
 
     public MarketplaceActivationKind Kind { get; set; } = MarketplaceActivationKind.Channel;

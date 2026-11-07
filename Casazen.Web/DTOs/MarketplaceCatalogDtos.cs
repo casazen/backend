@@ -103,7 +103,9 @@ public sealed record MarketplaceActiveResponse(IReadOnlyList<MarketplaceIntegrat
 /// <summary>
 /// One activation of the Active tab: what it is (<c>kind</c>, <c>code</c>, <c>name</c>), the property it is for (<c>null</c> for an org-level
 /// one), where it stands (<c>status</c>), whether the host declared it and Octorate did not prove it (<c>isDeclared</c>), and when CasaZen last read
-/// its state (<c>lastSyncedAt</c>).
+/// its state (<c>lastSyncedAt</c>). <c>declaredAt</c> is the day the host gave when it declared it (a partner: midnight UTC of that day, show its
+/// date) and <c>verifiedAt</c> is when a connection or the license first showed it; each is <c>null</c> when the row has no such fact, and a client
+/// says «declared by you on …» from the first and «verified» only when the second is set.
 /// </summary>
 public sealed record MarketplaceIntegrationDto(
     MarketplaceActivationKind Kind,
@@ -112,7 +114,9 @@ public sealed record MarketplaceIntegrationDto(
     MarketplaceIntegrationPropertyDto? Property,
     MarketplaceCardStatus Status,
     bool IsDeclared,
-    DateTime? LastSyncedAt)
+    DateTime? LastSyncedAt,
+    DateTime? DeclaredAt = null,
+    DateTime? VerifiedAt = null)
 {
     public static MarketplaceIntegrationDto From(MarketplaceIntegration integration, IMarketplaceTexts texts, string language)
     {
@@ -130,7 +134,9 @@ public sealed record MarketplaceIntegrationDto(
             integration.Property is { } property ? new MarketplaceIntegrationPropertyDto(property.Id, property.Name) : null,
             integration.Status,
             integration.IsDeclared,
-            integration.LastSyncedAt);
+            integration.LastSyncedAt,
+            integration.DeclaredAt,
+            integration.VerifiedAt);
     }
 }
 

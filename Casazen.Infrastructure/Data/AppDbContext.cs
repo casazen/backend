@@ -1909,7 +1909,8 @@ public class AppDbContext(
             entity.ToTable(t => t.HasCheckConstraint(MarketplacePartnerText.LanguageCheckName, "\"Language\" IN ('it', 'en')"));
         });
 
-        // What an org activated. A channel or a tool is per property, a licensed function and a partner per org: two partial unique indexes
+        // What an org activated. A channel, a tool and a licensed function are per property; a partner is the org's or, when the host declares it
+        // for one property, that property's: two partial unique indexes
         // (the database takes two NULLs for different values, so one index would let a second org-level row in). An activation goes with its
         // property (CASCADE; a property is soft-deleted, so in practice it stays). xmin is the concurrency token. The tenant query filter
         // is applied below, to every ITenantOwned entity.

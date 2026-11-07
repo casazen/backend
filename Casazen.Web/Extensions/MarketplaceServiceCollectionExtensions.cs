@@ -37,6 +37,9 @@ public static class MarketplaceServiceCollectionExtensions
         // active integrations calls (E09/F02/US02/T01). It keeps the plan and the room limit of the last read in the memory cache (AddMemoryCache).
         services.AddScoped<IMarketplaceLicensedFunctionService, MarketplaceLicensedFunctionService>();
 
+        // The hand-off of a partner activated on its own site: the brief the host takes there and the record that it did it (E09/F02/US03/T01). It calls no one.
+        services.AddScoped<IMarketplacePartnerActivationService, MarketplacePartnerActivationService>();
+
         return services;
     }
 }

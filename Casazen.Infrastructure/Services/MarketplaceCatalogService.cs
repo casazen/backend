@@ -91,7 +91,9 @@ public sealed class MarketplaceCatalogService(
                     : null,
                 MarketplaceCardRules.CardStatusOf(row.Status),
                 row.IsDeclared,
-                row.LastSyncedAt))
+                row.LastSyncedAt,
+                row.DeclaredAt,
+                row.VerifiedAt))
             .OrderBy(integration => integration.Kind)
             .ThenBy(integration => integration.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(integration => integration.Property?.Name, StringComparer.OrdinalIgnoreCase)
