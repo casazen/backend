@@ -195,7 +195,7 @@ public sealed class CondominiumAccountingService(
         {
             var lines = new List<CondominiumExpenseLine>
             {
-                Line(period, unitId, string.IsNullOrWhiteSpace(command.Description) ? "Preventivo ordinario" : command.Description.Trim(), "ordinario", command.OrdinaryAmount, CondominiumExpenseNature.Ordinary, null),
+                Line(period, unitId, string.IsNullOrWhiteSpace(command.Description) ? "Preventivo ordinario" : command.Description.Trim(), "ordinario", command.OrdinaryAmount, CondominiumExpenseNature.Ordinary, command.OrdinaryNeedsReview ? TenantRecoverability.NeedsReview : null),
             };
             lines.AddRange(extraordinary.Select(item =>
                 Line(period, unitId, item.Description, "straordinario", item.Amount, CondominiumExpenseNature.Extraordinary, null)));

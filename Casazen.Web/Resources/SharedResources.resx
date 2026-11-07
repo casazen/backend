@@ -5559,4 +5559,10 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="CondominiumImportMismatch" xml:space="preserve">
     <value>L'esercizio {0} non torna al centesimo ({1}). La riga resta in staging e i saldi non cambiano.</value>
   </data>
+  <data name="CondominiumStatementUnreadable" xml:space="preserve">
+    <value>Dal PDF non si leggono esercizio e importo. L'inserimento a mano resta disponibile.</value>
+  </data>
+  <data name="CondominiumStatementProposalNotFound" xml:space="preserve">
+    <value>Proposta non trovata.</value>
+  </data>
 </root>

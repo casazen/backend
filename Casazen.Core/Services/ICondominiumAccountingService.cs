@@ -87,7 +87,8 @@ public sealed record ConfirmBudgetCommand(
     decimal OrdinaryAmount,
     string? Description,
     IReadOnlyList<ExtraordinaryExpenseCommand>? Extraordinary,
-    CondominiumInstallmentCadence Cadence);
+    CondominiumInstallmentCadence Cadence,
+    bool OrdinaryNeedsReview = false);
 
 public sealed record FinalExpenseLineCommand(
     string Description,

@@ -308,6 +308,7 @@ public class AppDbContext(
     public DbSet<CondominiumImportBatch> CondominiumImportBatches { get; set; } = null!;
     public DbSet<CondominiumImportHouse> CondominiumImportHouses { get; set; } = null!;
     public DbSet<CondominiumImportYear> CondominiumImportYears { get; set; } = null!;
+    public DbSet<CondominiumStatementProposal> CondominiumStatementProposals { get; set; } = null!;
     public DbSet<RentBankMovement> RentBankMovements { get; set; } = null!;
     public DbSet<BankLinkPayment> BankLinkPayments { get; set; } = null!;
 
@@ -2253,6 +2254,20 @@ public class AppDbContext(
             entity.HasOne(year => year.Org).WithMany().HasForeignKey(year => year.OrgId).OnDelete(DeleteBehavior.Restrict);
             entity.Property(year => year.Cadence).HasConversion<int>();
             entity.HasIndex(year => year.HouseId);
+        });
+
+        modelBuilder.Entity<CondominiumStatementProposal>(entity =>
+        {
+            entity.HasOne(proposal => proposal.Condominium).WithMany().HasForeignKey(proposal => proposal.CondominiumId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(proposal => proposal.Org).WithMany().HasForeignKey(proposal => proposal.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(proposal => proposal.Kind).HasConversion<int>();
+            entity.Property(proposal => proposal.Settlement).HasConversion<int>();
+            entity.Property(proposal => proposal.Status).HasConversion<int>();
+            entity.Property(proposal => proposal.OrdinaryAmount).HasPrecision(18, 2);
+            entity.Property(proposal => proposal.ExtraordinaryAmount).HasPrecision(18, 2);
+            entity.Property(proposal => proposal.FinalAmount).HasPrecision(18, 2);
+            entity.Property(proposal => proposal.Confidence).HasPrecision(5, 4);
+            entity.HasIndex(proposal => new { proposal.OrgId, proposal.CondominiumId, proposal.ContentHash });
         });
     }
 
