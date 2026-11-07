@@ -221,8 +221,8 @@ the activation (`GET api/onboarding/plan|path|integration`, `POST api/onboarding
 own choices (a part put off with its "To do", a flow activated on a property with its outbox event), the pilot group, the data of an imported file (comune and region, room numbers, the encrypted lock code of a property) and
 the sender of the properties of a bulk apply (through the sender switch of E03, which records its own audit line) and, for every org that has an Octorate connection in the
 environment, the "To do" of the flows still to complete and of a lost connection (high urgency), and the closing of the "To do" of a part put off that is done by now.
-Nothing calls Octorate, except that a bulk apply of the sender «channel manager» goes through the sender switch of E03, which reads (read only, bounded in time) the police account of each property it
-switches. With the flag off nothing is read or written, the endpoints answer 404 and the job is removed from the schedule at the next start.
+Nothing calls Octorate: a bulk apply of the sender goes through the sender switch of E03 without its view (`SwitchWithoutViewAsync`), and the view is what reads the police account on Octorate, so
+switching 500 properties to the channel manager makes no call. With the flag off nothing is read or written, the endpoints answer 404 and the job is removed from the schedule at the next start.
 
 What the functions without a flag ask of an operator is in their runbooks: [org-team.md](org-team.md) (§ 42: the authorization cache with
 several instances; § 35: the privacy notice), [property-rental-mode.md](property-rental-mode.md) § 8 (the calendar block, the draft leases
