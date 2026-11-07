@@ -4838,6 +4838,15 @@
   <data name="Marketplace.Detail.Requirement.licenseRequest" xml:space="preserve">
     <value>A request to your channel manager: the function is active once it appears in your license.</value>
   </data>
+  <data name="MarketplaceFunctionAlreadyActive" xml:space="preserve">
+    <value>This function is already on in the license of the property: there is nothing to ask for.</value>
+  </data>
+  <data name="MarketplaceFunctionUnknown" xml:space="preserve">
+    <value>Channel manager function not found.</value>
+  </data>
+  <data name="Marketplace.Function.RequestGuidance" xml:space="preserve">
+    <value>Hello, I would like to switch on the “{0}” function for my property “{1}”. Could you add it to the license of the property and confirm when it is done? Thank you.</value>
+  </data>
   <data name="Marketplace.Detail.Channel.WhatItDoes" xml:space="preserve">
     <value>CasaZen receives the bookings from {0} and keeps availability and prices in line.</value>
   </data>

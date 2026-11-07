@@ -70,10 +70,10 @@ public enum MarketplaceCardStatus
 /// <summary>Whether the status of a card is the org's or a property's.</summary>
 public enum MarketplaceStatusScope
 {
-    /// <summary>The org as a whole (a partner, a licensed function, or a channel asked about without a property).</summary>
+    /// <summary>The org as a whole (a partner, or a channel, a tool or a licensed function asked about without a property).</summary>
     Org = 1,
 
-    /// <summary>One property (a channel or a tool asked about with a property).</summary>
+    /// <summary>One property (a channel, a tool or a licensed function asked about with a property).</summary>
     Property = 2,
 }
 

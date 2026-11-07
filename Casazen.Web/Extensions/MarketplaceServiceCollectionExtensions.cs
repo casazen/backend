@@ -33,6 +33,10 @@ public static class MarketplaceServiceCollectionExtensions
         services.AddScoped<IMarketplaceChannelActivationService, MarketplaceChannelActivationService>();
         services.AddScoped<IPanelStepVerifier, ChannelAccessPanelVerifier>();
 
+        // The functions of the channel manager's license for a property: the list, the guided request and the reconciliation that the health sync of the
+        // active integrations calls (E09/F02/US02/T01). It keeps the plan and the room limit of the last read in the memory cache (AddMemoryCache).
+        services.AddScoped<IMarketplaceLicensedFunctionService, MarketplaceLicensedFunctionService>();
+
         return services;
     }
 }
