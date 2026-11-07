@@ -429,6 +429,124 @@ public class OwnerOnboardingServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Import_AFiscalCodeOfAnotherOwner_IsAnIdentityConflict_WhateverFoundTheOwnerOfTheRow()
+    {
+        const string BrunosFiscalCode = "VRDGLI85B42F205E";
+        var anna = await AddOwnerAsync("Anna Verdi", "anna@example.com", key: "A-1");
+        var bruno = await AddOwnerAsync("Bruno Neri", "bruno@example.com", fiscalCode: BrunosFiscalCode, key: "B-1");
+        var columns = "propertyId,ownerKey,ownerId,fiscalCode,sharePercent,ownershipStart";
+
+        // The key says Anna, or the ownerId says Anna, and the fiscal code is Bruno's: the row would give Bruno's fiscal code to a second owner.
+        var byKey = await ImportAsync(Csv(columns, $"{Granted},A-1,,{BrunosFiscalCode},100,2026-01-01"), dryRun: false);
+        var byId = await ImportAsync(Csv(columns, $"{Granted},,{anna},{BrunosFiscalCode},100,2026-01-01"), dryRun: false);
+
+        foreach (var result in new[] { byKey, byId })
+        {
+            var row = Assert.Single(result.Rows);
+            Assert.Equal((OwnerImportRowCodes.OwnerIdentityConflict, OwnerImportActions.Conflict, false), (row.Status, row.OwnerAction, row.Applied));
+            Assert.Equal(OwnerImportColumns.FiscalCode, Assert.Single(row.Errors).Column);
+        }
+
+        Assert.Null((await _db.PropertyOwners.AsNoTracking().SingleAsync(o => o.Id == anna)).FiscalCode);
+        Assert.Equal(BrunosFiscalCode, (await _db.PropertyOwners.AsNoTracking().SingleAsync(o => o.Id == bruno)).FiscalCode);
+        Assert.Empty(await _db.PropertyOwnerships.AsNoTracking().ToListAsync());
+
+        // Bruno's own row is no conflict: he holds the fiscal code already.
+        var own = await ImportAsync(Csv(columns, $"{Granted},B-1,,{BrunosFiscalCode},100,2026-01-01"), dryRun: false);
+        Assert.Equal(OwnerImportRowCodes.Ok, Assert.Single(own.Rows).Status);
+    }
+
+    [Fact]
+    public async Task Import_TheSameKeyForTwoOwnersOfTheRegistry_IsRefusedForTheSecond_InTheCheckAndInTheImport()
+    {
+        // Two owners from before the import have no key: the file gives both of them the same one.
+        var anna = await AddOwnerAsync("Anna Verdi", "anna@example.com", fiscalCode: "RSSMRA85T10A562S");
+        var bruno = await AddOwnerAsync("Bruno Neri", "bruno@example.com", fiscalCode: "VRDGLI85B42F205E");
+        var csv = Csv(
+            "propertyId,ownerKey,fiscalCode,sharePercent,ownershipStart",
+            $"{Granted},K-1,RSSMRA85T10A562S,100,2026-01-01",
+            $"{Hidden},K-1,VRDGLI85B42F205E,100,2026-01-01");
+
+        // The check and the import say the same: the unique index of the keys never answers with a 500 after a clean check.
+        var dry = await ImportAsync(csv, dryRun: true);
+        var applied = await ImportAsync(csv, dryRun: false);
+
+        foreach (var result in new[] { dry, applied })
+        {
+            Assert.Equal([OwnerImportRowCodes.Ok, OwnerImportRowCodes.OwnerIdentityConflict], result.Rows.Select(r => r.Status));
+            Assert.Equal(OwnerImportColumns.OwnerKey, Assert.Single(result.Rows[1].Errors).Column);
+        }
+
+        Assert.Equal("K-1", (await _db.PropertyOwners.AsNoTracking().SingleAsync(o => o.Id == anna)).ExternalKey);
+        Assert.Null((await _db.PropertyOwners.AsNoTracking().SingleAsync(o => o.Id == bruno)).ExternalKey);
+    }
+
+    [Fact]
+    public async Task Import_TheSameFiscalCodeForTwoOwnersOfTheRegistry_IsRefusedForTheSecond_InTheCheckAndInTheImport()
+    {
+        var anna = await AddOwnerAsync("Anna Verdi", "anna@example.com", key: "A-1");
+        var bruno = await AddOwnerAsync("Bruno Neri", "bruno@example.com", key: "B-1");
+        var csv = Csv(
+            "propertyId,ownerKey,fiscalCode,sharePercent,ownershipStart",
+            $"{Granted},A-1,RSSMRA85T10A562S,100,2026-01-01",
+            $"{Hidden},B-1,RSSMRA85T10A562S,100,2026-01-01");
+
+        var dry = await ImportAsync(csv, dryRun: true);
+        var applied = await ImportAsync(csv, dryRun: false);
+
+        foreach (var result in new[] { dry, applied })
+        {
+            Assert.Equal([OwnerImportRowCodes.Ok, OwnerImportRowCodes.OwnerIdentityConflict], result.Rows.Select(r => r.Status));
+            Assert.Equal(OwnerImportColumns.FiscalCode, Assert.Single(result.Rows[1].Errors).Column);
+        }
+
+        Assert.Equal("RSSMRA85T10A562S", (await _db.PropertyOwners.AsNoTracking().SingleAsync(o => o.Id == anna)).FiscalCode);
+        Assert.Null((await _db.PropertyOwners.AsNoTracking().SingleAsync(o => o.Id == bruno)).FiscalCode);
+    }
+
+    [Fact]
+    public async Task Import_ACollaboratorWithSomePropertiesCannotGiveAnOwnerTheFiscalCodeOfOneItDoesNotSee()
+    {
+        var hiddenOwner = await AddOwnerAsync("Bruno Neri", "bruno@example.com", fiscalCode: "VRDGLI85B42F205E", key: "B-1");
+        await AddPeriodAsync(Hidden, hiddenOwner, 100m, new DateOnly(2025, 1, 1));
+        var columns = "propertyId,ownerKey,legalName,fiscalCode,sharePercent,ownershipStart";
+
+        var result = await ImportAsync(Csv(columns, $"{Granted},N-1,Nuovo Proprietario,VRDGLI85B42F205E,100,2026-01-01"), dryRun: false, scope: _world.Restricted);
+
+        // The owner it cannot see is not named: the identifier is simply not free.
+        var row = Assert.Single(result.Rows);
+        Assert.Equal((OwnerImportRowCodes.OwnerIdentityConflict, false), (row.Status, row.Applied));
+        Assert.Equal(OwnerImportColumns.FiscalCode, Assert.Single(row.Errors).Column);
+        Assert.Empty(row.Candidates);
+        Assert.Single(await _db.PropertyOwners.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
+    public async Task Import_ANewOwnerWhoseRowWithTheNameIsDropped_IsNotCreatedNameless()
+    {
+        // Granted is Bruno's whole: 60 more is an excess, so the row with the name of the new owner is dropped, and the other row (no name) must
+        // not create the owner without it.
+        var bruno = await AddOwnerAsync("Bruno Neri", "bruno@example.com", key: "B-1");
+        await AddPeriodAsync(Granted, bruno, 100m, new DateOnly(2025, 1, 1));
+        var csv = Csv(
+            "propertyId,ownerKey,legalName,sharePercent,ownershipStart",
+            $"{Granted},N-1,Nuovo Proprietario,60,2026-01-01",
+            $"{Hidden},N-1,,100,2026-01-01");
+
+        var dry = await ImportAsync(csv, dryRun: true);
+        var applied = await ImportAsync(csv, dryRun: false);
+
+        foreach (var result in new[] { dry, applied })
+        {
+            Assert.Equal([OwnerImportRowCodes.OwnershipSharesInvalid, OwnerImportRowCodes.LegalNameRequired], result.Rows.Select(r => r.Status));
+            Assert.All(result.Rows, row => Assert.False(row.Applied));
+        }
+
+        Assert.Equal(bruno, Assert.Single(await _db.PropertyOwners.AsNoTracking().ToListAsync()).Id);
+        Assert.Single(await _db.PropertyOwnerships.AsNoTracking().ToListAsync());
+    }
+
+    [Fact]
     public async Task Import_AMandateOfTheAgencyMustStayInsideThePeriod()
     {
         var owner = await AddOwnerAsync("Anna Verdi", "anna@example.com", key: "A-1");

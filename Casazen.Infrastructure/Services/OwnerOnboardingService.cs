@@ -66,6 +66,31 @@ public sealed partial class OwnerOnboardingService(
         return await query.ToListAsync(ct);
     }
 
+    /// <summary>
+    /// For a caller with a partial reach: the owners among <paramref name="ownerIds"/> that also hold a period on a property it does not reach (the
+    /// import does not complete them, the invitations do not offer them). Empty for an org-wide scope. Shared by the import and the invitations so
+    /// that both draw the line in the same place.
+    /// </summary>
+    internal static async Task<HashSet<Guid>> OwnersWithPeriodsOutsideReachAsync(
+        AppDbContext db,
+        HostScope scope,
+        IReadOnlyCollection<Guid> ownerIds,
+        CancellationToken ct)
+    {
+        if (scope.IsOrgWide || ownerIds.Count == 0)
+            return [];
+
+        var ids = ownerIds.ToList();
+        var reachable = db.Properties.Where(p => p.OrgId == scope.OrgId).InScope(scope).Select(p => p.Id);
+        var outside = await db.PropertyOwnerships
+            .AsNoTracking()
+            .Where(po => po.OrgId == scope.OrgId && ids.Contains(po.PropertyOwnerId) && !reachable.Contains(po.PropertyId))
+            .Select(po => po.PropertyOwnerId)
+            .Distinct()
+            .ToListAsync(ct);
+        return [.. outside];
+    }
+
     private static OwnershipPeriod ToPeriod(PeriodRow row) =>
         new(row.OwnerId, row.SharePercent, RomeCalendar.DateInRome(row.Start), row.End is { } end ? RomeCalendar.DateInRome(end) : null);
 

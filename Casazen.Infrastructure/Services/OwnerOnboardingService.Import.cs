@@ -128,6 +128,25 @@ public sealed partial class OwnerOnboardingService
 
         /// <summary>The keys of the org that belong to an owner outside the reach of the caller: a key the caller cannot take.</summary>
         public HashSet<string> HiddenKeys { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>The fiscal codes of the owners outside the reach of the caller: identifiers the caller cannot give to another owner.</summary>
+        public HashSet<string> HiddenFiscal { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>The VAT numbers of the owners outside the reach of the caller.</summary>
+        public HashSet<string> HiddenVat { get; } = new(StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// The key, the fiscal code and the VAT number the rows of the file have given to each owner so far, the owners that already exist included: one
+    /// identifier belongs to one owner, in the file as in the registry.
+    /// </summary>
+    private sealed class PlanIndexes
+    {
+        public Dictionary<string, OwnerPlan> ByKey { get; } = new(StringComparer.Ordinal);
+
+        public Dictionary<string, OwnerPlan> ByFiscal { get; } = new(StringComparer.Ordinal);
+
+        public Dictionary<string, OwnerPlan> ByVat { get; } = new(StringComparer.Ordinal);
     }
 
     private async Task<Judged> JudgeAsync(HostScope scope, ParsedOwnerImport parsed, CancellationToken ct)
@@ -153,7 +172,7 @@ public sealed partial class OwnerOnboardingService
 
         var owners = await LoadVisibleOwnersAsync(scope, ct);
         var lookups = new OwnerLookups(owners);
-        await CollectHiddenKeysAsync(scope, judged.Rows, lookups, ct);
+        await CollectHiddenAsync(scope, judged.Rows, lookups, owners, ct);
         var sharedOutsideReach = await OwnersSharedOutsideReachAsync(scope, owners, ct);
 
         var propertyIds = judged.Rows.Where(r => r.PropertyId is not null).Select(r => r.PropertyId!.Value).Distinct().ToList();
@@ -183,9 +202,7 @@ public sealed partial class OwnerOnboardingService
         // The owners of the file, row after row: the same owner named twice is one owner, and what a row gives is checked against what the
         // owner holds and against what the earlier valid rows gave it.
         var plansByExisting = new Dictionary<Guid, OwnerPlan>();
-        var newByKey = new Dictionary<string, OwnerPlan>(StringComparer.Ordinal);
-        var newByFiscal = new Dictionary<string, OwnerPlan>(StringComparer.Ordinal);
-        var newByVat = new Dictionary<string, OwnerPlan>(StringComparer.Ordinal);
+        var indexes = new PlanIndexes();
         var seenPeriods = new HashSet<(Guid Property, Guid Owner, DateOnly Start)>();
 
         foreach (var row in judged.Rows)
@@ -196,14 +213,45 @@ public sealed partial class OwnerOnboardingService
             if (!row.Valid)
                 continue;
 
-            if (!AssignPlan(row, plansByExisting, newByKey, newByFiscal, newByVat, sharedOutsideReach))
+            if (!AssignPlan(row, plansByExisting, indexes, sharedOutsideReach))
                 continue;
 
             ClassifyOwnership(row, today, periodsByProperty, mandatesByOwnership, seenPeriods);
         }
 
-        CheckShares(judged, today, periodsByProperty);
+        // The shares and the names are judged together: a row dropped for its name leaves its property short, and a row dropped for its shares
+        // may have been the one that carried the name of the owner the other rows create. Each pass fails more rows, never fewer.
+        do
+        {
+            CheckShares(judged, today, periodsByProperty);
+        }
+        while (RequireNames(judged));
+
         return judged;
+    }
+
+    /// <summary>
+    /// An owner the file creates needs the legal name from one of the rows that are still valid: the row that carried it may have been dropped
+    /// since (its shares were wrong, its period overlapped), and the owner must not be created nameless from the rows that remain. Fails them;
+    /// true when it failed any.
+    /// </summary>
+    private static bool RequireNames(Judged judged)
+    {
+        var failed = false;
+        foreach (var group in judged.Rows.Where(r => r.Valid && r.Plan is { IsNew: true }).GroupBy(r => r.Plan!))
+        {
+            if (group.Any(r => r.Values.LegalName is not null))
+                continue;
+
+            foreach (var row in group)
+            {
+                row.Fail(OwnerImportColumns.LegalName, OwnerImportRowCodes.LegalNameRequired);
+                row.OwnerAction = OwnerImportActions.Conflict;
+                failed = true;
+            }
+        }
+
+        return failed;
     }
 
     /// <summary>
@@ -278,45 +326,58 @@ public sealed partial class OwnerOnboardingService
     }
 
     /// <summary>
-    /// For a caller with a partial reach: the keys of the org that belong to an owner it cannot see. A row that tries to take one is a conflict of
-    /// identity, not a key that is free (the unique index would refuse it anyway).
+    /// For a caller with a partial reach: the keys, the fiscal codes and the VAT numbers of the org that belong to an owner it cannot see. A row
+    /// that tries to take one is a conflict of identity, not an identifier that is free (for a key the unique index would refuse it anyway). The
+    /// fiscal code and the VAT number are encrypted, so those owners are read and compared in memory like the visible ones, and never named.
     /// </summary>
-    private async Task CollectHiddenKeysAsync(HostScope scope, List<OwnerRowState> rows, OwnerLookups lookups, CancellationToken ct)
+    private async Task CollectHiddenAsync(
+        HostScope scope,
+        List<OwnerRowState> rows,
+        OwnerLookups lookups,
+        IReadOnlyCollection<PropertyOwner> visible,
+        CancellationToken ct)
     {
         if (scope.IsOrgWide)
             return;
 
         var keys = rows.Where(r => r.Values.Key is not null && !lookups.ByKey.ContainsKey(r.Values.Key)).Select(r => r.Values.Key!).Distinct().ToList();
-        if (keys.Count == 0)
+        if (keys.Count > 0)
+        {
+            var taken = await db.PropertyOwners
+                .AsNoTracking()
+                .Where(o => o.OrgId == scope.OrgId && o.ExternalKey != null && keys.Contains(o.ExternalKey))
+                .Select(o => o.ExternalKey!)
+                .ToListAsync(ct);
+            foreach (var key in taken)
+                lookups.HiddenKeys.Add(key);
+        }
+
+        if (!rows.Any(r => r.Values.FiscalCode is not null || r.Values.Vat is not null))
             return;
 
-        var taken = await db.PropertyOwners
+        var visibleIds = visible.Select(o => o.Id).ToList();
+        var hidden = await db.PropertyOwners
             .AsNoTracking()
-            .Where(o => o.OrgId == scope.OrgId && o.ExternalKey != null && keys.Contains(o.ExternalKey))
-            .Select(o => o.ExternalKey!)
+            .Where(o => o.OrgId == scope.OrgId && o.AnonymizedAt == null && !visibleIds.Contains(o.Id))
+            .Select(o => new { o.FiscalCode, o.VatNumber })
             .ToListAsync(ct);
-        foreach (var key in taken)
-            lookups.HiddenKeys.Add(key);
+        foreach (var owner in hidden)
+        {
+            var fiscal = OwnerFieldRules.NormalizeFiscalCode(owner.FiscalCode);
+            if (fiscal.Length > 0)
+                lookups.HiddenFiscal.Add(fiscal);
+
+            var vat = OwnerFieldRules.NormalizeVat(owner.VatNumber);
+            if (vat.Length > 0)
+                lookups.HiddenVat.Add(vat);
+        }
     }
 
     /// <summary>
     /// For a caller with a partial reach: the owners it sees that also hold a period on a property it does not reach. Empty for an org-wide scope.
     /// </summary>
-    private async Task<HashSet<Guid>> OwnersSharedOutsideReachAsync(HostScope scope, List<PropertyOwner> visible, CancellationToken ct)
-    {
-        if (scope.IsOrgWide)
-            return [];
-
-        var ids = visible.Select(o => o.Id).ToList();
-        var reachable = db.Properties.Where(p => p.OrgId == scope.OrgId).InScope(scope).Select(p => p.Id);
-        var outside = await db.PropertyOwnerships
-            .AsNoTracking()
-            .Where(po => po.OrgId == scope.OrgId && ids.Contains(po.PropertyOwnerId) && !reachable.Contains(po.PropertyId))
-            .Select(po => po.PropertyOwnerId)
-            .Distinct()
-            .ToListAsync(ct);
-        return [.. outside];
-    }
+    private Task<HashSet<Guid>> OwnersSharedOutsideReachAsync(HostScope scope, List<PropertyOwner> visible, CancellationToken ct) =>
+        OwnersWithPeriodsOutsideReachAsync(db, scope, [.. visible.Select(o => o.Id)], ct);
 
     /// <summary>
     /// Who in the registry the row is about, in this order: the <c>ownerId</c> of the row, the key, the fiscal identifier. The e-mail address is
@@ -376,8 +437,18 @@ public sealed partial class OwnerOnboardingService
             }
         }
 
+        // The fiscal code and the VAT number of the row cannot be ones another owner holds, whatever found the owner of the row (a key, an ownerId
+        // or the other identifier): not even one held by an owner outside the reach of the caller. Two owners with one identifier are what the
+        // ambiguity above refuses to guess.
+        FailIdentifiersOfOthers(row, found, lookups);
+
         if (found is null)
+        {
+            if (!row.Valid)
+                row.OwnerAction = OwnerImportActions.Conflict;
+
             return;
+        }
 
         row.ExistingOwner = found;
         row.MatchedBy = matchedBy;
@@ -396,21 +467,42 @@ public sealed partial class OwnerOnboardingService
             row.OwnerAction = OwnerImportActions.Conflict;
     }
 
+    /// <summary>Fails the fiscal code and the VAT number of the row that another owner (visible or not) holds already.</summary>
+    private static void FailIdentifiersOfOthers(OwnerRowState row, PropertyOwner? found, OwnerLookups lookups)
+    {
+        var values = row.Values;
+        if (values.FiscalCode is { } fiscal && HeldByAnother(lookups.ByFiscal, lookups.HiddenFiscal, fiscal, found))
+            row.Fail(OwnerImportColumns.FiscalCode, OwnerImportRowCodes.OwnerIdentityConflict);
+
+        if (values.Vat is { } vat && HeldByAnother(lookups.ByVat, lookups.HiddenVat, vat, found))
+            row.Fail(OwnerImportColumns.VatNumber, OwnerImportRowCodes.OwnerIdentityConflict);
+    }
+
+    private static bool HeldByAnother(Dictionary<string, List<PropertyOwner>> holders, HashSet<string> hidden, string token, PropertyOwner? found)
+    {
+        holders.TryGetValue(token, out var owners);
+
+        // The owner the row names holds it already: the row adds no second holder (a duplicate that was there before is not this file's).
+        if (found is not null && owners is not null && owners.Any(o => o.Id == found.Id))
+            return false;
+
+        return hidden.Contains(token) || owners is { Count: > 0 };
+    }
+
     /// <summary>
     /// Gives the row its owner of the file: the stored one, or one that the file creates (found again by key or fiscal identifier in a later
-    /// row), and merges what the row says into what the owner holds, refusing a different value. False when the row cannot go on.
+    /// row), and merges what the row says into what the owner holds, refusing a different value. One identifier belongs to one owner: a key, a
+    /// fiscal code or a VAT number that an earlier row gave to another owner, a stored one included, is an identity conflict. False when the row
+    /// cannot go on.
     /// </summary>
     private static bool AssignPlan(
         OwnerRowState row,
         Dictionary<Guid, OwnerPlan> plansByExisting,
-        Dictionary<string, OwnerPlan> newByKey,
-        Dictionary<string, OwnerPlan> newByFiscal,
-        Dictionary<string, OwnerPlan> newByVat,
+        PlanIndexes indexes,
         ISet<Guid> sharedOutsideReach)
     {
         var values = row.Values;
         OwnerPlan plan;
-        OwnerValues held;
 
         if (row.ExistingOwner is { } existing)
         {
@@ -419,19 +511,6 @@ public sealed partial class OwnerOnboardingService
                 plan = new OwnerPlan(existing.Id, existing) { FirstRow = row.Source.Number };
                 plansByExisting[existing.Id] = plan;
             }
-
-            // An owner that also holds properties outside the reach of the caller is not the caller's to complete: the row may add a period, nothing
-            // the owner lacks.
-            if (sharedOutsideReach.Contains(existing.Id) && OwnerRowRules.Fill(OwnerRowRules.ValuesOf(existing), values))
-            {
-                row.Fail(OwnerImportColumns.OwnerId, OwnerImportRowCodes.OwnerSharedOutsideReach);
-                row.OwnerAction = OwnerImportActions.Conflict;
-                return false;
-            }
-
-            // What the owner holds is what is stored, then what earlier rows of the file gave it.
-            held = OwnerRowRules.ValuesOf(existing);
-            OwnerRowRules.Fill(held, plan.Given);
         }
         else
         {
@@ -443,10 +522,12 @@ public sealed partial class OwnerOnboardingService
                 return false;
             }
 
+            // An owner an earlier row of the file gave this key or identifier to (one that exists already or one the file creates) is this owner
+            // again; two of them are two owners the row cannot be.
             var found = new List<OwnerPlan>();
-            AddPlan(found, values.Key, newByKey);
-            AddPlan(found, values.FiscalCode, newByFiscal);
-            AddPlan(found, values.Vat, newByVat);
+            AddPlan(found, values.Key, indexes.ByKey);
+            AddPlan(found, values.FiscalCode, indexes.ByFiscal);
+            AddPlan(found, values.Vat, indexes.ByVat);
             if (found.Count > 1)
             {
                 row.Fail(OwnerImportColumns.OwnerKey, OwnerImportRowCodes.OwnerIdentityConflict);
@@ -457,7 +538,8 @@ public sealed partial class OwnerOnboardingService
             if (found.Count == 1)
             {
                 plan = found[0];
-                row.MatchedBy = values.Key is not null && newByKey.TryGetValue(values.Key, out var byKey) && byKey == plan
+                row.ExistingOwner = plan.Existing;
+                row.MatchedBy = values.Key is not null && indexes.ByKey.TryGetValue(values.Key, out var byKey) && byKey == plan
                     ? OwnerMatchKinds.ExternalKey
                     : OwnerMatchKinds.FiscalIdentifier;
                 row.OwnerAction = OwnerImportActions.MatchOwner;
@@ -473,11 +555,25 @@ public sealed partial class OwnerOnboardingService
                 plan = new OwnerPlan(Guid.NewGuid(), null) { FirstRow = row.Source.Number };
                 row.OwnerAction = OwnerImportActions.CreateOwner;
             }
-
-            held = plan.Given;
         }
 
-        foreach (var (column, code) in OwnerRowRules.Conflicts(held, values))
+        // An owner that also holds properties outside the reach of the caller is not the caller's to complete: the row may add a period, nothing
+        // the owner lacks.
+        if (plan.Existing is { } stored && sharedOutsideReach.Contains(stored.Id) && OwnerRowRules.Fill(OwnerRowRules.ValuesOf(stored), values))
+        {
+            row.Fail(OwnerImportColumns.OwnerId, OwnerImportRowCodes.OwnerSharedOutsideReach);
+            row.OwnerAction = OwnerImportActions.Conflict;
+            return false;
+        }
+
+        // One identifier, one owner: the key, the fiscal code or the VAT number of the row cannot be one an earlier row gave to another owner.
+        if (TakenByAnotherOwner(row, plan, indexes))
+        {
+            row.OwnerAction = OwnerImportActions.Conflict;
+            return false;
+        }
+
+        foreach (var (column, code) in OwnerRowRules.Conflicts(HeldBy(plan), values))
             row.Fail(column, code);
 
         if (!row.Valid)
@@ -488,15 +584,56 @@ public sealed partial class OwnerOnboardingService
 
         // Nothing of a row that was refused reaches the owner: its values are merged only now.
         OwnerRowRules.Fill(plan.Given, values);
-        if (plan.IsNew)
-        {
-            Index(newByKey, plan.Given.Key, plan);
-            Index(newByFiscal, plan.Given.FiscalCode, plan);
-            Index(newByVat, plan.Given.Vat, plan);
-        }
-
+        Index(indexes, plan);
         row.Plan = plan;
         return true;
+    }
+
+    /// <summary>What the owner holds: what is stored (for an owner that exists), then what earlier rows of the file gave it.</summary>
+    private static OwnerValues HeldBy(OwnerPlan plan)
+    {
+        if (plan.Existing is not { } stored)
+            return plan.Given;
+
+        var held = OwnerRowRules.ValuesOf(stored);
+        OwnerRowRules.Fill(held, plan.Given);
+        return held;
+    }
+
+    /// <summary>Fails the key, the fiscal code and the VAT number of the row that an earlier row of the file gave to another owner.</summary>
+    private static bool TakenByAnotherOwner(OwnerRowState row, OwnerPlan plan, PlanIndexes indexes)
+    {
+        var values = row.Values;
+        var taken = false;
+        if (HeldByOther(indexes.ByKey, values.Key, plan))
+        {
+            row.Fail(OwnerImportColumns.OwnerKey, OwnerImportRowCodes.OwnerIdentityConflict);
+            taken = true;
+        }
+
+        if (HeldByOther(indexes.ByFiscal, values.FiscalCode, plan))
+        {
+            row.Fail(OwnerImportColumns.FiscalCode, OwnerImportRowCodes.OwnerIdentityConflict);
+            taken = true;
+        }
+
+        if (HeldByOther(indexes.ByVat, values.Vat, plan))
+        {
+            row.Fail(OwnerImportColumns.VatNumber, OwnerImportRowCodes.OwnerIdentityConflict);
+            taken = true;
+        }
+
+        return taken;
+    }
+
+    private static bool HeldByOther(Dictionary<string, OwnerPlan> index, string? token, OwnerPlan plan) =>
+        token is not null && index.TryGetValue(token, out var holder) && holder != plan;
+
+    private static void Index(PlanIndexes indexes, OwnerPlan plan)
+    {
+        Index(indexes.ByKey, plan.Given.Key, plan);
+        Index(indexes.ByFiscal, plan.Given.FiscalCode, plan);
+        Index(indexes.ByVat, plan.Given.Vat, plan);
     }
 
     private static void AddPlan(List<OwnerPlan> found, string? token, Dictionary<string, OwnerPlan> index)
