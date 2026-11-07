@@ -5049,6 +5049,51 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OnboardingTestBookingNotFound" xml:space="preserve">
     <value>Per questo immobile non c'è una prenotazione importata da Octorate su cui fare la prova finale.</value>
   </data>
+  <data name="OnboardingSelectionInvalid" xml:space="preserve">
+    <value>La selezione degli immobili non è valida: scegli tutti gli immobili, un elenco di immobili o almeno un criterio del filtro.</value>
+  </data>
+  <data name="OnboardingSelectionTooLarge" xml:space="preserve">
+    <value>La selezione contiene troppi immobili: al massimo {0} alla volta. Restringi il filtro.</value>
+  </data>
+  <data name="OnboardingChoiceInvalid" xml:space="preserve">
+    <value>La scelta da applicare non è valida.</value>
+  </data>
+  <data name="OnboardingPilotGroupTooLarge" xml:space="preserve">
+    <value>Il gruppo pilota può avere al massimo {0} immobili.</value>
+  </data>
+  <data name="OnboardingPilotGroupNotActive" xml:space="preserve">
+    <value>Prima di attivare gli altri immobili il gruppo pilota deve essere attivo in tutti i flussi scelti.</value>
+  </data>
+  <data name="OnboardingPilotGroupEmpty" xml:space="preserve">
+    <value>Il gruppo pilota non è stato ancora scelto.</value>
+  </data>
+  <data name="OnboardingCohortInvalid" xml:space="preserve">
+    <value>Il gruppo da attivare non è valido: scegli il gruppo pilota o gli altri immobili.</value>
+  </data>
+  <data name="OnboardingFlowsEmpty" xml:space="preserve">
+    <value>Scegli almeno un flusso da attivare.</value>
+  </data>
+  <data name="OnboardingImportFileMissing" xml:space="preserve">
+    <value>Scegli il file CSV o Excel da importare.</value>
+  </data>
+  <data name="OnboardingImportFileTypeUnsupported" xml:space="preserve">
+    <value>Il file deve essere un CSV (.csv) o un Excel (.xlsx).</value>
+  </data>
+  <data name="OnboardingImportFileTooLarge" xml:space="preserve">
+    <value>Il file è troppo grande: al massimo {0} MB.</value>
+  </data>
+  <data name="OnboardingImportTooManyRows" xml:space="preserve">
+    <value>Il file ha troppe righe: al massimo {0} alla volta.</value>
+  </data>
+  <data name="OnboardingImportFileUnreadable" xml:space="preserve">
+    <value>Non riusciamo a leggere il file: controlla che sia un CSV o un Excel (.xlsx) valido.</value>
+  </data>
+  <data name="OnboardingImportFileEmpty" xml:space="preserve">
+    <value>Il file non ha righe da importare sotto l'intestazione.</value>
+  </data>
+  <data name="OnboardingImportColumnsUnrecognized" xml:space="preserve">
+    <value>Nell'intestazione manca la colonna dell'immobile (propertyId o cinCode) oppure una colonna con i dati da importare.</value>
+  </data>
   <data name="ContactIdMissing" xml:space="preserve">
     <value>L'identificativo del contatto è obbligatorio.</value>
   </data>

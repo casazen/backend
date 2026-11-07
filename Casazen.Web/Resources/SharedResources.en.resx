@@ -5049,6 +5049,51 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OnboardingTestBookingNotFound" xml:space="preserve">
     <value>This property has no booking imported from Octorate to run the final test on.</value>
   </data>
+  <data name="OnboardingSelectionInvalid" xml:space="preserve">
+    <value>The selection of properties is not valid: choose all the properties, a list of properties or at least one criterion of the filter.</value>
+  </data>
+  <data name="OnboardingSelectionTooLarge" xml:space="preserve">
+    <value>The selection holds too many properties: at most {0} at a time. Narrow the filter.</value>
+  </data>
+  <data name="OnboardingChoiceInvalid" xml:space="preserve">
+    <value>The choice to apply is not valid.</value>
+  </data>
+  <data name="OnboardingPilotGroupTooLarge" xml:space="preserve">
+    <value>The pilot group can have at most {0} properties.</value>
+  </data>
+  <data name="OnboardingPilotGroupNotActive" xml:space="preserve">
+    <value>Before the other properties are activated, the pilot group must be active in every flow you chose.</value>
+  </data>
+  <data name="OnboardingPilotGroupEmpty" xml:space="preserve">
+    <value>The pilot group has not been chosen yet.</value>
+  </data>
+  <data name="OnboardingCohortInvalid" xml:space="preserve">
+    <value>The group to activate is not valid: choose the pilot group or the other properties.</value>
+  </data>
+  <data name="OnboardingFlowsEmpty" xml:space="preserve">
+    <value>Choose at least one flow to activate.</value>
+  </data>
+  <data name="OnboardingImportFileMissing" xml:space="preserve">
+    <value>Choose the CSV or Excel file to import.</value>
+  </data>
+  <data name="OnboardingImportFileTypeUnsupported" xml:space="preserve">
+    <value>The file must be a CSV (.csv) or an Excel file (.xlsx).</value>
+  </data>
+  <data name="OnboardingImportFileTooLarge" xml:space="preserve">
+    <value>The file is too large: at most {0} MB.</value>
+  </data>
+  <data name="OnboardingImportTooManyRows" xml:space="preserve">
+    <value>The file has too many rows: at most {0} at a time.</value>
+  </data>
+  <data name="OnboardingImportFileUnreadable" xml:space="preserve">
+    <value>We cannot read the file: check that it is a valid CSV or Excel (.xlsx) file.</value>
+  </data>
+  <data name="OnboardingImportFileEmpty" xml:space="preserve">
+    <value>The file has no rows to import under the header.</value>
+  </data>
+  <data name="OnboardingImportColumnsUnrecognized" xml:space="preserve">
+    <value>The header has no column for the property (propertyId or cinCode), or no column with data to import.</value>
+  </data>
   <data name="ContactIdMissing" xml:space="preserve">
     <value>The contact identifier is required.</value>
   </data>

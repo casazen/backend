@@ -216,10 +216,13 @@ their suppression (an error in the log each time; `crm-marketing.md` § 3), a kn
 test environment until the screens of epic E10 (E10/F03) are deployed. It needs no other variable. With it on, `GET api/onboarding/status` also computes the
 status of the six flows over every property the caller reaches (a handful of queries for each batch of 200 properties). It also opens the endpoints of the plan and of
 the activation (`GET api/onboarding/plan|path|integration`, `POST api/onboarding/parts/{key}/defer|exit|resume|reopen`, `POST api/onboarding/flows/{flow}/activate|deactivate`,
-`POST api/onboarding/test-run`) and schedules the hourly job `onboarding-flow-todo-sync` (E10/F01/US01/T03, T04), so with the flag on **something is written**: the host's
-own choices (a part put off with its "To do", a flow activated on a property with its outbox event) and, for every org that has an Octorate connection in the
+`POST api/onboarding/test-run`) and, since E10/F02/US01, the bulk configuration of an agency (`POST api/onboarding/bulk/preview|apply|activate|import`,
+`GET api/onboarding/bulk/progress|pilot`, `PUT api/onboarding/bulk/pilot`) and schedules the hourly job `onboarding-flow-todo-sync` (E10/F01/US01/T03, T04), so with the flag on **something is written**: the host's
+own choices (a part put off with its "To do", a flow activated on a property with its outbox event), the pilot group, the data of an imported file (comune and region, room numbers, the encrypted lock code of a property) and
+the sender of the properties of a bulk apply (through the sender switch of E03, which records its own audit line) and, for every org that has an Octorate connection in the
 environment, the "To do" of the flows still to complete and of a lost connection (high urgency), and the closing of the "To do" of a part put off that is done by now.
-Nothing calls Octorate. With the flag off nothing is read or written, the endpoints answer 404 and the job is removed from the schedule at the next start.
+Nothing calls Octorate: a bulk apply of the sender goes through the sender switch of E03 without its view (`SwitchWithoutViewAsync`), and the view is what reads the police account on Octorate, so
+switching 500 properties to the channel manager makes no call. With the flag off nothing is read or written, the endpoints answer 404 and the job is removed from the schedule at the next start.
 
 What the functions without a flag ask of an operator is in their runbooks: [org-team.md](org-team.md) (§ 42: the authorization cache with
 several instances; § 35: the privacy notice), [property-rental-mode.md](property-rental-mode.md) § 8 (the calendar block, the draft leases
