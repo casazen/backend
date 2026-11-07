@@ -8,8 +8,9 @@ namespace Casazen.Core.Services;
 /// </summary>
 /// <remarks>
 /// <para><b>Stateless, in two calls.</b> The same call validates and answers each row; with <c>dryRun</c> it stops there and writes nothing, without it
-/// it validates again and writes ONLY the valid rows, each in its own unit of work: an invalid row never blocks a valid one. The file is read from
-/// memory and never stored.</para>
+/// it validates again and writes ONLY the valid rows, each in its own unit of work: an invalid row never blocks a valid one. A valid row writes only
+/// what differs from the stored value: one that repeats what the property holds already, or that has only its key, writes nothing and is not
+/// counted as applied, so a second import of the same file answers no applied row. The file is read from memory and never stored.</para>
 /// <para><b>The file.</b> <c>.csv</c> (UTF-8; <c>,</c> or <c>;</c> found on the header) or <c>.xlsx</c>, at most 2 MB and 1,000 rows. Another type
 /// is 415, a larger file 413, more rows 422. The first row is the header; the columns are named in Italian or English (see
 /// <see cref="BulkImportColumns"/>) and an unknown one is reported once, not on every row. An Excel file is read with the framework only: its first
@@ -156,7 +157,10 @@ public sealed record BulkImportRowError(string Column, string Code);
 /// <param name="Status">One of <see cref="BulkImportRowCodes"/>.</param>
 /// <param name="Errors">Every error of the row, by column.</param>
 /// <param name="LockCodeProvided">True when the row has a lock code. The code itself is never answered.</param>
-/// <param name="Applied">True when the row was valid and was written (never in a dry run).</param>
+/// <param name="Applied">
+/// True when the row was valid and changed something on the property (never in a dry run). A valid row that holds what the property has already,
+/// or that has only its key, writes nothing and is not applied.
+/// </param>
 public sealed record BulkImportRow(
     int RowNumber,
     string? PropertyRef,
@@ -166,7 +170,7 @@ public sealed record BulkImportRow(
     bool LockCodeProvided,
     bool Applied);
 
-/// <summary>How many rows the file has, how many are valid, how many are not and how many were written.</summary>
+/// <summary>How many rows the file has, how many are valid, how many are not and how many changed something (were applied).</summary>
 public sealed record BulkImportSummary(int Rows, int Valid, int Invalid, int Applied);
 
 /// <summary>The answer of an import.</summary>

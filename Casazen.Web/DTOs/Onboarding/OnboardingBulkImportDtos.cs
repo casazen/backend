@@ -44,7 +44,7 @@ public sealed class BulkImportResultDto
     };
 }
 
-/// <summary>How many rows the file has, how many are valid, how many are not and how many were written.</summary>
+/// <summary>How many rows the file has, how many are valid, how many are not and how many changed something (<c>applied</c>: a valid row that repeats what the property holds, or has only its key, is not).</summary>
 public sealed class BulkImportSummaryDto
 {
     public int Rows { get; set; }
@@ -59,7 +59,8 @@ public sealed class BulkImportSummaryDto
 /// <summary>
 /// One row of the file. <c>status</c> is <c>ok</c> or the code of its first error (<c>property_not_found</c>, <c>property_ambiguous</c>,
 /// <c>comune_unknown</c>, <c>region_mismatch</c>, <c>room_numbers_invalid</c>, <c>lock_code_invalid</c>, <c>duplicate_row</c>); <c>errors</c> lists every
-/// error with its column. <c>rowNumber</c> is the row of the sheet (the header is row 1).
+/// error with its column. <c>rowNumber</c> is the row of the sheet (the header is row 1). <c>applied</c> is true only when the row changed something
+/// (never in a dry run): a valid row that holds what the property has already, or that has only its key, is <c>ok</c> and not applied.
 /// </summary>
 public sealed class BulkImportRowDto
 {

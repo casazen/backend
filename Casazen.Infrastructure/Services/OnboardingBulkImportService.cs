@@ -62,9 +62,11 @@ public sealed class OnboardingBulkImportService(
             var now = UtcDateTime.TruncateToMicroseconds(timeProvider.GetUtcNow().UtcDateTime);
             foreach (var row in rows.Where(r => r.Errors.Count == 0))
             {
-                if (await ApplyAsync(scope, actorUserId, row, now, ct))
+                // Applied is what changed something: a valid row that holds what is stored already, or that has only its key, writes nothing.
+                var written = await ApplyAsync(scope, actorUserId, row, now, ct);
+                if (written == RowWrite.Written)
                     applied.Add(row.Number);
-                else
+                else if (written == RowWrite.PropertyGone)
                     row.Errors.Add(new BulkImportRowError(row.KeyColumn, BulkImportRowCodes.PropertyNotFound));
             }
         }
@@ -308,9 +310,10 @@ public sealed class OnboardingBulkImportService(
 
     /// <summary>
     /// Writes one valid row in one unit of work: the property (comune and region), its onboarding data (room numbers) and its access code (lock
-    /// code). The property is looked up again, tracked, in the same reach; <c>false</c> when it is not there any more.
+    /// code). The property is looked up again, tracked, in the same reach. Only what differs from the stored value is written: a row that repeats
+    /// what the property holds already, or that has only its key, writes nothing (no save, not even a date) and is <see cref="RowWrite.Unchanged"/>.
     /// </summary>
-    private async Task<bool> ApplyAsync(HostScope scope, string actorUserId, EvaluatedRow row, DateTime now, CancellationToken ct)
+    private async Task<RowWrite> ApplyAsync(HostScope scope, string actorUserId, EvaluatedRow row, DateTime now, CancellationToken ct)
     {
         var propertyId = row.Property!.Id;
         var property = await db.Properties
@@ -318,19 +321,22 @@ public sealed class OnboardingBulkImportService(
             .InScope(scope)
             .FirstOrDefaultAsync(ct);
         if (property is null)
-            return false;
+            return RowWrite.PropertyGone;
 
-        if (row.Comune is not null)
+        var changed = false;
+        if (row.Comune is not null
+            && (!string.Equals(property.ComuneIstatCode, row.Comune.IstatCode, StringComparison.Ordinal)
+                || !string.Equals(property.RegionCode, row.Comune.RegionCode, StringComparison.Ordinal)))
         {
             // The region follows the comune, as in the wizard (Property.RegionCode is set together with Property.ComuneIstatCode).
             property.ComuneIstatCode = row.Comune.IstatCode;
             property.RegionCode = row.Comune.RegionCode;
             property.UpdatedAt = now;
+            changed = true;
         }
 
         if (row.Rooms is not null)
         {
-            var json = JsonSerializer.Serialize(row.Rooms);
             var data = await db.PropertyOnboardingData.FirstOrDefaultAsync(d => d.OrgId == scope.OrgId && d.PropertyId == propertyId, ct);
             if (data is null)
             {
@@ -339,16 +345,18 @@ public sealed class OnboardingBulkImportService(
                 {
                     OrgId = scope.OrgId,
                     PropertyId = propertyId,
-                    AlloggiatiRoomNumbersJson = json,
+                    AlloggiatiRoomNumbersJson = JsonSerializer.Serialize(row.Rooms),
                     UpdatedAt = now,
                     UpdatedByUserId = actorUserId,
                 });
+                changed = true;
             }
-            else if (!string.Equals(data.AlloggiatiRoomNumbersJson, json, StringComparison.Ordinal))
+            else if (!SameRoomNumbers(data.AlloggiatiRoomNumbersJson, row.Rooms))
             {
-                data.AlloggiatiRoomNumbersJson = json;
+                data.AlloggiatiRoomNumbersJson = JsonSerializer.Serialize(row.Rooms);
                 data.UpdatedAt = now;
                 data.UpdatedByUserId = actorUserId;
+                changed = true;
             }
         }
 
@@ -365,19 +373,57 @@ public sealed class OnboardingBulkImportService(
                     EncryptedCode = row.LockCode,
                     UpdatedAt = now,
                 });
+                changed = true;
             }
             else if (!string.Equals(access.EncryptedCode, row.LockCode, StringComparison.Ordinal))
             {
                 access.EncryptedCode = row.LockCode;
                 access.UpdatedAt = now;
+                changed = true;
             }
         }
 
-        await db.SaveChangesAsync(ct);
+        if (changed)
+            await db.SaveChangesAsync(ct);
 
         // One unit of work for each row: nothing of this one stays tracked for the next.
         db.ChangeTracker.Clear();
-        return true;
+        return changed ? RowWrite.Written : RowWrite.Unchanged;
+    }
+
+    /// <summary>
+    /// True when the stored JSON array holds exactly these room numbers, in this order. The values are compared, not the text: PostgreSQL's
+    /// <c>jsonb</c> gives an array back normalized (<c>["101", "102"]</c>, with a space after the comma), which is never the text
+    /// <see cref="JsonSerializer"/> writes, so comparing the text would rewrite an unchanged row (and its date and author) at every import.
+    /// A value that is not an array of strings (or is not JSON at all) is different, and is replaced.
+    /// </summary>
+    private static bool SameRoomNumbers(string? stored, IReadOnlyList<string> rooms)
+    {
+        if (string.IsNullOrWhiteSpace(stored))
+            return false;
+
+        try
+        {
+            var current = JsonSerializer.Deserialize<string[]>(stored);
+            return current is not null && current.SequenceEqual(rooms, StringComparer.Ordinal);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>What <see cref="ApplyAsync"/> did with a valid row.</summary>
+    private enum RowWrite
+    {
+        /// <summary>The property is not there any more (or no longer within the reach of the caller): nothing was written.</summary>
+        PropertyGone,
+
+        /// <summary>The property holds what the row says already, or the row says nothing but the key: nothing was written.</summary>
+        Unchanged,
+
+        /// <summary>At least one value differed from the stored one and was written.</summary>
+        Written,
     }
 
     private sealed record PropertyFacts(Guid Id, string? CinCode, string? RegionCode);

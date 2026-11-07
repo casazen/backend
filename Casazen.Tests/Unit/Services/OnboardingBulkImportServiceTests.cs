@@ -294,9 +294,13 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         Assert.Equal(["4821", "9999"], new[] { codes[_world.Granted.Id].EncryptedCode, codes[terza.Id].EncryptedCode });
         Assert.Equal(2, codes.Count);
 
-        // The same file again: the rows are valid again and the data is what it was; nothing is added twice.
+        // The same file again: the rows are valid again and the data is what it was; nothing is added twice, nothing is written (no save) and no
+        // row is «applied», because none of them changed anything.
+        var savedBefore = _saves.Count;
         var again = await Service().ImportAsync(_world.OrgWide, _world.OwnerUserId, "file.csv", csv, dryRun: false, Ct);
-        Assert.Equal((3, 3), (again.Summary.Valid, again.Summary.Applied));
+        Assert.Equal((3, 0), (again.Summary.Valid, again.Summary.Applied));
+        Assert.All(again.Rows, row => Assert.False(row.Applied));
+        Assert.Equal(savedBefore, _saves.Count);
         Assert.Equal(2, await _db.PropertyOnboardingData.CountAsync());
         Assert.Equal(2, await _db.PropertyAccessCodes.CountAsync());
         Assert.Equal("[\"101\",\"102\"]", (await _db.PropertyOnboardingData.AsNoTracking().SingleAsync(d => d.PropertyId == _world.Granted.Id)).AlloggiatiRoomNumbersJson);
@@ -306,6 +310,63 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
             _world.OrgWide, _world.OwnerUserId, "file.csv", Csv("propertyId,alloggiatiRoomNumbers,lockCode", $"{_world.Granted.Id},201,0000"), dryRun: false, Ct);
         Assert.Equal("[\"201\"]", (await _db.PropertyOnboardingData.AsNoTracking().SingleAsync(d => d.PropertyId == _world.Granted.Id)).AlloggiatiRoomNumbersJson);
         Assert.Equal("0000", (await _db.PropertyAccessCodes.AsNoTracking().SingleAsync(a => a.PropertyId == _world.Granted.Id)).EncryptedCode);
+    }
+
+    /// <summary>
+    /// PostgreSQL gives a <c>jsonb</c> array back normalized, with a space after each comma (<c>["101", "102"]</c>), which is not the text the import
+    /// serializes (<c>["101","102"]</c>). The room numbers are compared as values, so a second import of the same file writes nothing: no save, and
+    /// neither the date nor the author of the row moves (which would credit the importer with a change nobody made). Another list, or a stored value
+    /// that is not an array of strings, is a change: it is written, by the importer, now.
+    /// </summary>
+    [Fact]
+    public async Task Import_RoomNumbersStoredAsJsonbGivesThemBack_AreNotRewrittenByTheSameFile()
+    {
+        var earlier = new DateTime(2026, 11, 1, 8, 0, 0, DateTimeKind.Utc);
+        _db.PropertyOnboardingData.AddRange(
+            new PropertyOnboardingData
+            {
+                OrgId = _world.OrgId,
+                PropertyId = _world.Granted.Id,
+                AlloggiatiRoomNumbersJson = "[\"101\", \"102\"]",
+                UpdatedAt = earlier,
+                UpdatedByUserId = "auth0|earlier",
+            },
+            new PropertyOnboardingData
+            {
+                OrgId = _world.OrgId,
+                PropertyId = _world.Hidden.Id,
+                AlloggiatiRoomNumbersJson = "this is not json",
+                UpdatedAt = earlier,
+                UpdatedByUserId = "auth0|earlier",
+            });
+        await _db.SaveChangesAsync();
+        var saves = _saves.Count;
+
+        // The same numbers as stored: nothing to write.
+        var same = await Service().ImportAsync(
+            _world.OrgWide, _world.OwnerUserId, "file.csv", Csv("propertyId,alloggiatiRoomNumbers", $"{_world.Granted.Id},\"101;102\""), dryRun: false, Ct);
+        Assert.Equal((BulkImportRowCodes.Ok, false), (Assert.Single(same.Rows).Status, same.Rows[0].Applied));
+        Assert.Equal((1, 0), (same.Summary.Valid, same.Summary.Applied));
+        Assert.Equal(saves, _saves.Count);
+        var kept = await _db.PropertyOnboardingData.AsNoTracking().SingleAsync(d => d.PropertyId == _world.Granted.Id);
+        Assert.Equal(("[\"101\", \"102\"]", earlier, "auth0|earlier"), (kept.AlloggiatiRoomNumbersJson, kept.UpdatedAt, kept.UpdatedByUserId));
+
+        // Other numbers, and a stored value that is not an array: both are written, with the importer and the time of the import.
+        var changed = await Service().ImportAsync(
+            _world.OrgWide,
+            _world.OwnerUserId,
+            "file.csv",
+            Csv("propertyId,alloggiatiRoomNumbers", $"{_world.Granted.Id},\"101;103\"", $"{_world.Hidden.Id},A1"),
+            dryRun: false,
+            Ct);
+        Assert.Equal([true, true], changed.Rows.Select(r => r.Applied));
+        Assert.Equal(saves + 2, _saves.Count);
+        var rewritten = await _db.PropertyOnboardingData.AsNoTracking().ToDictionaryAsync(d => d.PropertyId);
+        Assert.Equal("[\"101\",\"103\"]", rewritten[_world.Granted.Id].AlloggiatiRoomNumbersJson);
+        Assert.Equal("[\"A1\"]", rewritten[_world.Hidden.Id].AlloggiatiRoomNumbersJson);
+        Assert.All(
+            rewritten.Values,
+            data => Assert.Equal((HostScopeScenario.Now.UtcDateTime, _world.OwnerUserId), (data.UpdatedAt, data.UpdatedByUserId)));
     }
 
     /// <summary>The header goes by Italian or English names in any case, with accents or separators; the delimiter is found on the header; a quoted cell may hold the separator.</summary>
@@ -325,6 +386,13 @@ public class OnboardingBulkImportServiceTests : IAsyncLifetime
         Assert.Equal(BulkImportRowCodes.RegionMismatch, result.Rows[0].Status); // «lazio» is not a region code (LAZ is)
         Assert.Equal(BulkImportRowCodes.Ok, result.Rows[1].Status);
         Assert.Equal(_world.Hidden.Id, result.Rows[1].PropertyId);
+
+        // Written for real, a row with only its key is valid and changes nothing: it is not «applied» and nothing is saved.
+        var saves = _saves.Count;
+        var written = await Service().ImportAsync(_world.OrgWide, _world.OwnerUserId, "file.CSV", csv, dryRun: false, Ct);
+        Assert.Equal((BulkImportRowCodes.Ok, false), (written.Rows[1].Status, written.Rows[1].Applied));
+        Assert.Equal((1, 0), (written.Summary.Valid, written.Summary.Applied));
+        Assert.Equal(saves, _saves.Count);
 
         var english = Csv("Property ID,Comune ISTAT Code,Region Code,Room Numbers,Lock Code", $"{_world.Granted.Id},058091,laz,\"A1;A2\",4821");
         var ok = await Service().ImportAsync(_world.OrgWide, _world.OwnerUserId, "x.csv", english, dryRun: true, Ct);
