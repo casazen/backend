@@ -315,6 +315,13 @@ public static partial class LeaseContractTextParser
 
     // ---- all together ----------------------------------------------------------------------------------------------------
 
+    /// <summary>
+    /// How many characters may lie between the fiscal code of a person with no role of its own and the introduction of the next person, whose
+    /// «di seguito congiuntamente conduttore» then says the role for both: the identity document of the first (a passport or an identity
+    /// card with its number, the office that issued it and two dates) fits in it. No role word may be in between.
+    /// </summary>
+    private const int SharedRoleReach = 200;
+
     private static IReadOnlyList<ReadParty> ReadParties(string flat)
     {
         var codes = ContractFiscalCodes.Find(flat);
@@ -343,6 +350,7 @@ public static partial class LeaseContractTextParser
             roles[i] = ResolveRole(flat, intros[i], windowEnds[i]);
 
         // "Mario Rossi (...) e Anna Rossi (...), di seguito congiuntamente Locatori": the first has no role of its own, the next says it for both.
+        // What lies between the two is the first one's identity document (number, issuer, dates), which can run to a hundred characters or more.
         for (var i = 0; i + 1 < intros.Count; i++)
         {
             if (roles[i].Role is not null || roles[i + 1].Role is not { } shared || !roles[i + 1].Plural)
@@ -350,7 +358,7 @@ public static partial class LeaseContractTextParser
 
             var codeEnd = intros[i].Code.Index + intros[i].Code.Length;
             var between = intros[i + 1].Start > codeEnd ? flat[codeEnd..intros[i + 1].Start] : string.Empty;
-            if (between.Length <= 60 && !Regex.IsMatch(between, RolePattern, Options))
+            if (between.Length <= SharedRoleReach && !Regex.IsMatch(between, RolePattern, Options))
                 roles[i] = new RoleEvidence(shared, 85, true);
         }
 
