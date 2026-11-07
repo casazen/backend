@@ -430,6 +430,43 @@ public class MarketplaceChannelActivationTests
     }
 
     [Fact]
+    public async Task ChannelAccessPanelVerifier_AReadTheChannelManagerRefused_IsUnverifiable_AndOnlyAFailureWorthARetryIsRaised()
+    {
+        var w = await World.CreateAsync();
+        await w.StartAsync();
+
+        // A retry would not change the refusal of the token, of an accommodation it does not know, of a request it will not take, of the other
+        // environment, of the channel itself: the person may confirm.
+        var refusals = new OctorateException[]
+        {
+            OctorateAuthException.Refused(403),
+            OctorateAuthException.NotConnected(),
+            new OctorateNotFoundException(),
+            new OctorateRequestRejectedException(400),
+            new OctorateWrongEnvironmentException(403),
+            new OctoratePartnerFailureException(),
+        };
+        foreach (var refusal in refusals)
+        {
+            w.ListFailure = refusal;
+            await using var db = w.NewDb();
+            var verifier = new ChannelAccessPanelVerifier(db, w.Service(db));
+            Assert.Equal(PanelVerificationOutcome.Unverifiable, await verifier.VerifyAsync(w.Step(w.PropertyId, "142"), CancellationToken.None));
+        }
+
+        // What is worth a retry is raised: the step counts it as an attempt and decides nothing.
+        var retries = new OctorateException[] { new OctorateServerException(503), new OctorateServerException(null), new OctorateRateLimitException(429) };
+        foreach (var retry in retries)
+        {
+            w.ListFailure = retry;
+            await using var db = w.NewDb();
+            var verifier = new ChannelAccessPanelVerifier(db, w.Service(db));
+            var raised = await Assert.ThrowsAnyAsync<OctorateException>(() => verifier.VerifyAsync(w.Step(w.PropertyId, "142"), CancellationToken.None));
+            Assert.Same(retry, raised);
+        }
+    }
+
+    [Fact]
     public async Task GetMappingAsync_ProposesOnlyAnExactNormalisedName()
     {
         var w = await World.CreateAsync();

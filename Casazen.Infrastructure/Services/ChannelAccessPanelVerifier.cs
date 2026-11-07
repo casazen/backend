@@ -3,6 +3,7 @@ using Casazen.Core.Entities.Enums;
 using Casazen.Core.Exceptions;
 using Casazen.Core.Services;
 using Casazen.Infrastructure.Data;
+using Casazen.Infrastructure.Octorate;
 using Microsoft.EntityFrameworkCore;
 
 namespace Casazen.Infrastructure.Services;
@@ -17,8 +18,9 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <para><b>Never «not valid».</b> Any other case is <see cref="PanelVerificationOutcome.Unverifiable"/>: no activation (the step is not one of the
 /// marketplace's), a property that is no longer linked, a connector that is off, a connection that is not listed yet, an access not given yet. The
-/// result on the panel may not be readable yet, and the person can then confirm it. A failure worth a later retry (the channel manager down, the quota
-/// used) is raised: the step counts it as an attempt and decides nothing.</para>
+/// result on the panel may not be readable yet, and the person can then confirm it. So is a read the channel manager refused and a retry would not
+/// change (the token, the accommodation unknown, a request it will not take, the other environment, the channel itself). Only a failure worth a later
+/// retry (the channel manager down or silent, the quota used) is raised: the step counts it as an attempt and decides nothing.</para>
 /// <para><b>Only reads.</b> It never starts, changes or completes an activation. The scope of the step was checked when the step was started and on
 /// every read of it, so the state is read with the scope of the whole org the step belongs to, and for no other org.</para>
 /// </remarks>
@@ -54,7 +56,15 @@ public sealed class ChannelAccessPanelVerifier(AppDbContext db, IMarketplaceChan
         }
         catch (Exception ex) when (ex is DomainException or NotFoundException)
         {
-            // The connector is off, the org is not connected, the property is no longer linked, the activation is gone: «cannot tell», not a verdict.
+            // The connector is off, the org is not connected, the property is no longer linked, the activation is gone, an operation of the D6
+            // sequence is not verified for the channel: «cannot tell», not a verdict.
+            return PanelVerificationOutcome.Unverifiable;
+        }
+        catch (OctorateException ex) when (ex is not (OctorateServerException or OctorateRateLimitException))
+        {
+            // The channel manager refused the read (the token, the accommodation unknown, a request it will not take, the other environment, the
+            // channel itself): a retry will not change it, so the answer is «cannot tell» and the person may confirm. Only a failure worth a retry
+            // (no answer, a 5xx, the quota used) is raised, as the contract of the verifiers says.
             return PanelVerificationOutcome.Unverifiable;
         }
     }
