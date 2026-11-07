@@ -261,6 +261,19 @@ public class LeaseContract : ITenantOwned
     /// </summary>
     public string? TransitoryDocumentation { get; set; }
 
+    /// <summary>
+    /// Stripe customer of the tenant's bank link for this lease only (<c>cus_…</c>). Not the landlord's billing customer.
+    /// </summary>
+    [MaxLength(255)]
+    public string? StripeCustomerId { get; set; }
+
+    /// <summary>
+    /// Financial Connections account (<c>fca_…</c>) the tenant linked for this lease. A Stripe account id, never an IBAN.
+    /// Null while the tenant pays by card or by the manual bank transfer.
+    /// </summary>
+    [MaxLength(255)]
+    public string? FinancialConnectionsAccountId { get; set; }
+
     public virtual ICollection<Party> Parties { get; set; } = [];
     public virtual ICollection<LeaseSigner> Signers { get; set; } = [];
     public virtual LeaseRegistration? Registration { get; set; }

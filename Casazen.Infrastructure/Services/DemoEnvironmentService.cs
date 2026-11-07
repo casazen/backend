@@ -201,6 +201,8 @@ public class DemoEnvironmentService(
         foreach (var rule in DemoShowcaseCatalog.TouristTaxChannelRules)
             await CreateTouristTaxChannelRuleAsync(orgId, rule, cancellationToken);
 
+        await ApplyShowcaseBankLinkAsync(orgId, cancellationToken);
+
         settings.LastResetAt = UtcNow();
         settings.LastResetBy = actorUserId;
         settings.TemplateVersion = DemoShowcaseCatalog.Version;
@@ -2441,6 +2443,19 @@ public class DemoEnvironmentService(
         while (await Properties(orgId).AnyAsync(p => p.Slug == candidate, cancellationToken))
             candidate = $"{slug}-{suffix++}";
         return candidate;
+    }
+
+    /// <summary>
+    /// The demo landlord can show a linked bank without a raw account number. A link the org already stored is left as it is.
+    /// </summary>
+    private async Task ApplyShowcaseBankLinkAsync(Guid orgId, CancellationToken cancellationToken)
+    {
+        var org = await db.Orgs.SingleOrDefaultAsync(o => o.Id == orgId, cancellationToken);
+        if (org is null || !string.IsNullOrWhiteSpace(org.FinancialConnectionsAccountId))
+            return;
+
+        org.FinancialConnectionsAccountId = DemoShowcaseCatalog.BankLinkAccountId;
+        org.UpdatedAt = UtcNow();
     }
 
     private async Task RequireOrgAsync(Guid orgId, CancellationToken cancellationToken)

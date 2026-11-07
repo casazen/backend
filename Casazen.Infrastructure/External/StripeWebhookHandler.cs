@@ -40,7 +40,8 @@ public class StripeWebhookHandler(
     ISupplierShowcaseContentService? showcaseContent = null,
     IShowcaseBookingService? showcaseBookings = null,
     IServiceRequestOfferCompletion? offerCompletion = null,
-    IDomainEventRecorder? domainEvents = null)
+    IDomainEventRecorder? domainEvents = null,
+    IBankLinkService? bankLinks = null)
 {
     private const string DirectBookingKind = "direct-booking";
 
@@ -126,6 +127,12 @@ public class StripeWebhookHandler(
                 case "payment_intent.canceled" when IsRentCharge(stripeEvent.Data.Object as PaymentIntent):
                     rentNotice = await HandleRentChargeAsync(
                         (PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type, source, stripeEvent.Account);
+                    break;
+                case "payment_intent.succeeded" when IsBankLink(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.processing" when IsBankLink(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.payment_failed" when IsBankLink(stripeEvent.Data.Object as PaymentIntent):
+                case "payment_intent.canceled" when IsBankLink(stripeEvent.Data.Object as PaymentIntent):
+                    rentNotice = await HandleBankLinkAsync((PaymentIntent)stripeEvent.Data.Object, stripeEvent.Type);
                     break;
                 // ConcordatoFacile one-time payment (ADR-005): BEFORE the generic payment_intent.succeeded, like rent and service charges.
                 // CF payments are identified by leaseId in metadata without a "kind" field.
@@ -969,6 +976,27 @@ public class StripeWebhookHandler(
             .SqlQuery<Guid>($"""SELECT "Id" AS "Value" FROM "Bookings" WHERE "Id" = {bookingId} FOR UPDATE""")
             .ToListAsync();
     }
+
+    private async Task<RentPaymentNotice?> HandleBankLinkAsync(PaymentIntent paymentIntent, string eventType)
+    {
+        if (bankLinks is null)
+            throw new InvalidOperationException("Bank-link payments are not registered.");
+
+        logger.LogInformation(
+            "Bank-link payment intent {PaymentIntentId}: {EventType}",
+            paymentIntent.Id,
+            eventType);
+        return await bankLinks.ApplyStripeEventAsync(new BankLinkStripeEvent(
+            paymentIntent.Id,
+            eventType,
+            paymentIntent.Amount,
+            paymentIntent.LastPaymentError?.Code));
+    }
+
+    private static bool IsBankLink(PaymentIntent? paymentIntent) =>
+        paymentIntent is not null &&
+        TryGetMetadataKind(paymentIntent, out var kind) &&
+        string.Equals(kind, BankLinkCharges.Kind, StringComparison.Ordinal);
 
     private static bool IsRentCharge(PaymentIntent? paymentIntent) =>
         paymentIntent is not null &&
