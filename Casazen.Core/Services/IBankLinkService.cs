@@ -46,7 +46,10 @@ public sealed record BankLinkAccount(
     string? Last4,
     string? DisplayName);
 
-/// <summary>A transfer the landlord starts. An installment is optional; its amount and currency are the due's.</summary>
+/// <summary>
+/// A transfer the landlord starts. An installment is optional; its amount and currency are the due's.
+/// Without an installment, <see cref="IdempotencyKey"/> is required so a retry cannot start a second debit.
+/// </summary>
 public sealed record StartBankLinkPayment(long? AmountCents, string? Currency, Guid? LeaseId, Guid? InstallmentId, string? IdempotencyKey);
 
 /// <summary>The caller address Stripe stores on an online mandate. Not a bank detail.</summary>

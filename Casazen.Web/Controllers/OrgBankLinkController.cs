@@ -51,7 +51,8 @@ public class OrgBankLinkController(IOrgContextResolver orgContextResolver, IBank
 
     /// <summary>
     /// Starts the debit Stripe supports for the linked account. A rent installment is left in flight and is paid only
-    /// when Stripe confirms, or by the existing offline declaration.
+    /// when Stripe confirms, or by the existing offline declaration. An ad-hoc debit (no installment) requires the
+    /// <c>Idempotency-Key</c> header: a retry with that key is the same PaymentIntent.
     /// </summary>
     [HttpPost("payments")]
     [ProducesResponseType(typeof(BankLinkPaymentStarted), StatusCodes.Status200OK)]

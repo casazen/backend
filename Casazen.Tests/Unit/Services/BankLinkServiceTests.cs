@@ -93,6 +93,20 @@ public class BankLinkServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AdHocDebit_WithoutAnIdempotencyKey_DoesNotStartAPayment()
+    {
+        var seeded = await SeedAsync(linked: true);
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.StartOrgPaymentAsync(
+            seeded.Org.Id,
+            new StartBankLinkPayment(90_000, "eur", null, null, null),
+            new BankLinkCaller("203.0.113.5", "CasaZen")));
+
+        Assert.Equal(BankLinkErrorCodes.IdempotencyKeyInvalid, ex.Code);
+        Assert.Empty(_gateway.CreatedKeys);
+        Assert.Empty(_db.BankLinkPayments);
+    }
+
+    [Fact]
     public async Task EurInstallment_StartsSepa_AndStaysUnpaidUntilStripeConfirms()
     {
         var seeded = await SeedAsync(linked: true);
@@ -158,8 +172,10 @@ public class BankLinkServiceTests : IDisposable
         await _db.SaveChangesAsync();
 
         await _service.ApplyStripeEventAsync(new BankLinkStripeEvent("pi_failed", "payment_intent.processing", 90_000, null));
+        await _service.ApplyStripeEventAsync(new BankLinkStripeEvent("pi_failed", "payment_intent.succeeded", 90_000, null));
 
         Assert.Equal(BankLinkPaymentStatus.Failed, (await _db.BankLinkPayments.SingleAsync()).Status);
+        Assert.Equal(RentLedgerStatus.Failed, (await _db.RentLedgerEntries.SingleAsync()).Status);
     }
 
     [Fact]

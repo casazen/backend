@@ -170,10 +170,23 @@ public sealed class BankLinkService(
             return null;
         }
 
-        if (StatusOf(paymentEvent.EventType) is { } status && CanMove(row.Status, status))
+        if (StatusOf(paymentEvent.EventType) is { } status)
         {
-            row.Status = status;
-            row.UpdatedAt = UtcNow;
+            // Only a debit still in Processing may change. A late event must not reopen a finished one, nor the due.
+            if (row.Status == BankLinkPaymentStatus.Processing)
+            {
+                row.Status = status;
+                row.UpdatedAt = UtcNow;
+            }
+            else if (row.Status != status)
+            {
+                logger.LogWarning(
+                    "Ignoring late webhook for bank-link payment {PaymentId} in state {Status} ({EventType})",
+                    row.Id,
+                    row.Status,
+                    paymentEvent.EventType);
+                return null;
+            }
         }
 
         RentPaymentNotice? notice = null;
@@ -403,8 +416,10 @@ public sealed class BankLinkService(
     {
         if (installment is not null)
             return DueKey(installment);
+        if (string.IsNullOrWhiteSpace(requested))
+            throw new DomainRuleException(BankLinkErrorCodes.IdempotencyKeyInvalid, "BankLinkIdempotencyKeyInvalid");
         ValidateIdempotencyKey(requested);
-        return string.IsNullOrWhiteSpace(requested) ? $"bank-link:{Guid.NewGuid():N}" : requested.Trim();
+        return requested.Trim();
     }
 
     private static void ValidateIdempotencyKey(string? key)
@@ -439,15 +454,6 @@ public sealed class BankLinkService(
     }
 
     private static string DueKey(RentLedgerEntry installment) => $"bank-link:{installment.Id:N}";
-
-    /// <summary>Failed and canceled stay there. A later <c>processing</c> event must not reopen them.</summary>
-    private static bool CanMove(BankLinkPaymentStatus current, BankLinkPaymentStatus next)
-    {
-        if (current == BankLinkPaymentStatus.Succeeded)
-            return false;
-        return !(current is BankLinkPaymentStatus.Failed or BankLinkPaymentStatus.Canceled
-                 && next == BankLinkPaymentStatus.Processing);
-    }
 
     private static BankLinkPaymentStatus? StatusOf(string eventType) => eventType switch
     {

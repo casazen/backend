@@ -1068,8 +1068,10 @@ not store an IBAN or account number. The manual bank transfer is unchanged: owne
 in the wire file, and the landlord's offline declaration (`POST /api/leases/{leaseId}/rent/installments/{id}/mark-paid`)
 stay. A rent installment is paid only when Stripe reports `payment_intent.succeeded` for the current PaymentIntent, or
 when that offline declaration is recorded. The PaymentIntent is saved on `BankLinkPayments` before it is confirmed, with one
-idempotency key per due (`bank-link:{installmentId}`), so a retry confirms the same debit. A later `processing` event
-does not reopen a failed or canceled payment. Starting the debit sets the installment to in flight; it does not mark it paid.
+idempotency key per due (`bank-link:{installmentId}`), so a retry confirms the same debit. An ad-hoc debit (no installment)
+requires the caller's `Idempotency-Key`; a missing key is refused, so a retry cannot open a second PaymentIntent. A webhook
+changes a bank-link payment only while it is still processing, and does not reopen the due. Starting the debit sets the
+installment to in flight; it does not mark it paid.
 
 The session asks Stripe for institutions in Italy (`filters[countries][]=IT`), so the list is Italian banks, not US
 banks. The debit is a platform PaymentIntent of type `sepa_debit` in EUR. Stripe builds that PaymentMethod from the
@@ -1082,7 +1084,7 @@ paid only when Stripe confirms. With no linked account, the manual transfer rema
 | `POST /api/orgs/me/bank-links/sessions` | Landlord. Returns the session client secret. |
 | `POST /api/orgs/me/bank-links` | Landlord. Body `{ "accountId": "fca_…" }`. |
 | `GET /api/orgs/me/bank-links` | Landlord. Id, institution, last4. No IBAN. |
-| `POST /api/orgs/me/bank-links/payments` | Landlord. SEPA debit in EUR, including a rent installment. |
+| `POST /api/orgs/me/bank-links/payments` | Landlord. SEPA debit in EUR, including a rent installment. An ad-hoc debit requires `Idempotency-Key`. |
 | `POST /api/public/rent-payments/{id}/bank-link/session` | Tenant of that installment, payment-link token in the body. |
 | `POST /api/public/rent-payments/{id}/bank-link` | Tenant. Stores the account id on the lease. |
 | `POST /api/public/rent-payments/{id}/bank-link/payment` | Tenant. Same debit rules, amount of the installment. |
