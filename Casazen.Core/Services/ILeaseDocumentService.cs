@@ -87,6 +87,12 @@ public interface ILeaseDocumentService
     Task<LeaseDocumentDto> UploadAsync(Guid leaseId, IFormFile file, LeaseDocumentKind kind, string uploadedBy, CancellationToken ct = default);
     Task<LeaseDocumentDownload?> DownloadAsync(Guid leaseId, Guid documentId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Deletes the document when it belongs to <paramref name="leaseId"/>, and removes its file. False when no such
+    /// document exists (another lease's document is left untouched).
+    /// </summary>
+    Task<bool> DeleteAsync(Guid leaseId, Guid documentId, CancellationToken ct = default);
+
     /// <summary>Where the reading of the contract documents of a lease is (NL-DOCS).</summary>
     Task<LeaseReadingDto> GetReadingAsync(Guid leaseId, CancellationToken ct = default);
 }

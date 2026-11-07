@@ -91,8 +91,9 @@ public interface ILeaseDraftService
     /// lease, through the same evaluation and the same writer of the columns and the parties, one version up. Only what is still empty is
     /// filled and nothing typed is overwritten (<see cref="LeaseDraftContractFill"/>). 409 <c>lease_not_draft</c> when the lease is no
     /// longer a draft, 409 <c>lease_draft_conflict</c> when it is busy; a lease that is not an imported draft is not touched (<c>Applied</c> false).
+    /// 404 <c>document_not_found</c> when <paramref name="documentId"/> is no longer a document of this lease: nothing is written.
     /// </summary>
-    Task<LeaseDraftFillResult> ApplyContractReadingAsync(Guid leaseId, LeaseContractReading reading, CancellationToken cancellationToken = default);
+    Task<LeaseDraftFillResult> ApplyContractReadingAsync(Guid leaseId, LeaseContractReading reading, Guid documentId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
