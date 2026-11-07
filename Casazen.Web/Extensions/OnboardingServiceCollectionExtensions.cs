@@ -75,8 +75,10 @@ public static class OnboardingServiceCollectionExtensions
         services.AddScoped<IOnboardingIntegrationService, OnboardingIntegrationService>();
 
         // The bulk configuration of an agency (E10/F02/US01/T01, NF-105): a choice applied to many properties through the sender switch of E03, the
-        // progress («142 of 250 ready»), the pilot group and the progressive activation through the activation service above.
+        // progress («142 of 250 ready»), the pilot group and the progressive activation through the activation service above; and the import of
+        // the data that changes per property from a CSV or Excel file (T02), read and validated, never stored.
         services.AddScoped<IOnboardingBulkService, OnboardingBulkService>();
+        services.AddScoped<IOnboardingBulkImportService, OnboardingBulkImportService>();
 
         return services;
     }

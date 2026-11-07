@@ -4992,6 +4992,27 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OnboardingFlowsEmpty" xml:space="preserve">
     <value>Choose at least one flow to activate.</value>
   </data>
+  <data name="OnboardingImportFileMissing" xml:space="preserve">
+    <value>Choose the CSV or Excel file to import.</value>
+  </data>
+  <data name="OnboardingImportFileTypeUnsupported" xml:space="preserve">
+    <value>The file must be a CSV (.csv) or an Excel file (.xlsx).</value>
+  </data>
+  <data name="OnboardingImportFileTooLarge" xml:space="preserve">
+    <value>The file is too large: at most {0} MB.</value>
+  </data>
+  <data name="OnboardingImportTooManyRows" xml:space="preserve">
+    <value>The file has too many rows: at most {0} at a time.</value>
+  </data>
+  <data name="OnboardingImportFileUnreadable" xml:space="preserve">
+    <value>We cannot read the file: check that it is a valid CSV or Excel (.xlsx) file.</value>
+  </data>
+  <data name="OnboardingImportFileEmpty" xml:space="preserve">
+    <value>The file has no rows to import under the header.</value>
+  </data>
+  <data name="OnboardingImportColumnsUnrecognized" xml:space="preserve">
+    <value>The header has no column for the property (propertyId or cinCode), or no column with data to import.</value>
+  </data>
   <data name="ContactIdMissing" xml:space="preserve">
     <value>The contact identifier is required.</value>
   </data>

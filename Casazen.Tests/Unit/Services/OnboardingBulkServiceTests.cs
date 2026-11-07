@@ -549,8 +549,11 @@ public class OnboardingBulkServiceTests : IAsyncLifetime
         var services = new ServiceCollection();
         services.AddCasazenOnboarding(new ConfigurationBuilder().Build());
 
-        var registration = Assert.Single(services, d => d.ServiceType == typeof(IOnboardingBulkService));
-        Assert.Equal((typeof(OnboardingBulkService), ServiceLifetime.Scoped), (registration.ImplementationType, registration.Lifetime));
+        Assert.Equal(typeof(OnboardingBulkService), Assert.Single(services, d => d.ServiceType == typeof(IOnboardingBulkService)).ImplementationType);
+        Assert.Equal(typeof(OnboardingBulkImportService), Assert.Single(services, d => d.ServiceType == typeof(IOnboardingBulkImportService)).ImplementationType);
+        Assert.All(
+            services.Where(d => d.ServiceType == typeof(IOnboardingBulkService) || d.ServiceType == typeof(IOnboardingBulkImportService)),
+            d => Assert.Equal(ServiceLifetime.Scoped, d.Lifetime));
 
         var bound = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Onboarding:PilotGroupMaxSize"] = "7" })

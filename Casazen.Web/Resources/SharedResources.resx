@@ -4992,6 +4992,27 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OnboardingFlowsEmpty" xml:space="preserve">
     <value>Scegli almeno un flusso da attivare.</value>
   </data>
+  <data name="OnboardingImportFileMissing" xml:space="preserve">
+    <value>Scegli il file CSV o Excel da importare.</value>
+  </data>
+  <data name="OnboardingImportFileTypeUnsupported" xml:space="preserve">
+    <value>Il file deve essere un CSV (.csv) o un Excel (.xlsx).</value>
+  </data>
+  <data name="OnboardingImportFileTooLarge" xml:space="preserve">
+    <value>Il file è troppo grande: al massimo {0} MB.</value>
+  </data>
+  <data name="OnboardingImportTooManyRows" xml:space="preserve">
+    <value>Il file ha troppe righe: al massimo {0} alla volta.</value>
+  </data>
+  <data name="OnboardingImportFileUnreadable" xml:space="preserve">
+    <value>Non riusciamo a leggere il file: controlla che sia un CSV o un Excel (.xlsx) valido.</value>
+  </data>
+  <data name="OnboardingImportFileEmpty" xml:space="preserve">
+    <value>Il file non ha righe da importare sotto l'intestazione.</value>
+  </data>
+  <data name="OnboardingImportColumnsUnrecognized" xml:space="preserve">
+    <value>Nell'intestazione manca la colonna dell'immobile (propertyId o cinCode) oppure una colonna con i dati da importare.</value>
+  </data>
   <data name="ContactIdMissing" xml:space="preserve">
     <value>L'identificativo del contatto è obbligatorio.</value>
   </data>
