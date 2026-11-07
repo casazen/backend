@@ -45,6 +45,7 @@ public class BankLinkServiceTests : IDisposable
                 new ConfigurationBuilder().Build(),
                 NullLogger<RentBillingService>.Instance),
             NullLogger<BankLinkService>.Instance);
+        _gateway.RowIsSaved = () => _db.BankLinkPayments.Any(p => p.StripePaymentIntentId == "pi_linked");
         _rent = new RentBillingService(
             _db,
             Mock.Of<IStripeService>(),
@@ -75,34 +76,131 @@ public class BankLinkServiceTests : IDisposable
         var seeded = await SeedAsync(linked: true);
         var started = await _service.StartOrgPaymentAsync(
             seeded.Org.Id,
-            new StartBankLinkPayment(2_500, "usd", null, null, "idem-key-1"),
+            new StartBankLinkPayment(90_000, "eur", null, null, "idem-key-1"),
             new BankLinkCaller("203.0.113.5", "CasaZen"));
 
         Assert.False(started.DueSettled);
-        Assert.Equal(BankLinkCharges.AchDebit, started.PaymentMethodType);
+        Assert.Equal(BankLinkCharges.SepaDebit, started.PaymentMethodType);
         var row = await _db.BankLinkPayments.SingleAsync();
         Assert.Equal(BankLinkPaymentStatus.Processing, row.Status);
         Assert.Equal(AccountId, row.FinancialConnectionsAccountId);
 
-        await _service.ApplyStripeEventAsync(new BankLinkStripeEvent(started.PaymentIntentId, "payment_intent.processing", 2_500, null));
+        await _service.ApplyStripeEventAsync(new BankLinkStripeEvent(started.PaymentIntentId, "payment_intent.processing", 90_000, null));
         Assert.Equal(BankLinkPaymentStatus.Processing, (await _db.BankLinkPayments.SingleAsync()).Status);
 
-        await _service.ApplyStripeEventAsync(new BankLinkStripeEvent(started.PaymentIntentId, "payment_intent.succeeded", 2_500, null));
+        await _service.ApplyStripeEventAsync(new BankLinkStripeEvent(started.PaymentIntentId, "payment_intent.succeeded", 90_000, null));
         Assert.Equal(BankLinkPaymentStatus.Succeeded, (await _db.BankLinkPayments.SingleAsync()).Status);
     }
 
     [Fact]
-    public async Task EurInstallment_StaysUnpaid_AndTheManualDeclarationStillPaysIt()
+    public async Task EurInstallment_StartsSepa_AndStaysUnpaidUntilStripeConfirms()
     {
         var seeded = await SeedAsync(linked: true);
-        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => _service.StartOrgPaymentAsync(
+        var started = await _service.StartOrgPaymentAsync(
+            seeded.Org.Id,
+            new StartBankLinkPayment(null, null, seeded.Lease.Id, seeded.Entry.Id, null),
+            new BankLinkCaller("203.0.113.5", "CasaZen"));
+
+        Assert.False(started.DueSettled);
+        Assert.Equal(BankLinkCharges.SepaDebit, started.PaymentMethodType);
+        var entry = await _db.RentLedgerEntries.SingleAsync();
+        Assert.Equal(RentLedgerStatus.Processing, entry.Status);
+        Assert.NotEqual(RentLedgerStatus.Paid, entry.Status);
+        var row = await _db.BankLinkPayments.SingleAsync();
+        Assert.Equal("eur", row.Currency);
+        Assert.Equal(AccountId, row.FinancialConnectionsAccountId);
+        Assert.DoesNotContain("IT60", row.FinancialConnectionsAccountId);
+
+        await _service.ApplyStripeEventAsync(new BankLinkStripeEvent(started.PaymentIntentId, "payment_intent.succeeded", 90_000, null));
+        var paid = await _db.RentLedgerEntries.SingleAsync();
+        Assert.Equal(RentLedgerStatus.Paid, paid.Status);
+        Assert.Equal(RentPaymentChannel.Stripe, paid.PaidVia);
+    }
+
+    [Fact]
+    public async Task RetryOfADue_ConfirmsTheSavedPayment_AndDoesNotCreateASecondDebit()
+    {
+        var seeded = await SeedAsync(linked: true);
+        var caller = new BankLinkCaller("203.0.113.5", "CasaZen");
+        await _service.StartOrgPaymentAsync(
+            seeded.Org.Id,
+            new StartBankLinkPayment(null, null, seeded.Lease.Id, seeded.Entry.Id, null),
+            caller);
+        await _service.StartOrgPaymentAsync(
+            seeded.Org.Id,
+            new StartBankLinkPayment(null, null, seeded.Lease.Id, seeded.Entry.Id, null),
+            caller);
+
+        var key = Assert.Single(_gateway.CreatedKeys);
+        Assert.Equal($"bank-link:{seeded.Entry.Id:N}", key);
+        Assert.Equal(1, await _db.BankLinkPayments.CountAsync());
+    }
+
+    [Fact]
+    public async Task ProcessingEvent_DoesNotReopenAFailedPayment()
+    {
+        var seeded = await SeedAsync(linked: true);
+        _db.BankLinkPayments.Add(new BankLinkPayment
+        {
+            OrgId = seeded.Org.Id,
+            LeaseContractId = seeded.Lease.Id,
+            RentLedgerEntryId = seeded.Entry.Id,
+            Payer = BankLinkPayer.Landlord,
+            FinancialConnectionsAccountId = AccountId,
+            StripePaymentIntentId = "pi_failed",
+            PaymentMethodType = BankLinkCharges.SepaDebit,
+            AmountCents = 90_000,
+            Currency = "eur",
+            Status = BankLinkPaymentStatus.Failed,
+        });
+        seeded.Entry.StripePaymentIntentId = "pi_failed";
+        seeded.Entry.Status = RentLedgerStatus.Failed;
+        await _db.SaveChangesAsync();
+
+        await _service.ApplyStripeEventAsync(new BankLinkStripeEvent("pi_failed", "payment_intent.processing", 90_000, null));
+
+        Assert.Equal(BankLinkPaymentStatus.Failed, (await _db.BankLinkPayments.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task CanceledPayment_DoesNotStayProcessing_AfterTheIntentIdIsCleared()
+    {
+        var seeded = await SeedAsync(linked: true);
+        seeded.Entry.Status = RentLedgerStatus.Processing;
+        seeded.Entry.StripePaymentIntentId = "pi_cancel";
+        _db.BankLinkPayments.Add(new BankLinkPayment
+        {
+            OrgId = seeded.Org.Id,
+            LeaseContractId = seeded.Lease.Id,
+            RentLedgerEntryId = seeded.Entry.Id,
+            Payer = BankLinkPayer.Landlord,
+            FinancialConnectionsAccountId = AccountId,
+            StripePaymentIntentId = "pi_cancel",
+            PaymentMethodType = BankLinkCharges.SepaDebit,
+            AmountCents = 90_000,
+            Currency = "eur",
+            Status = BankLinkPaymentStatus.Processing,
+        });
+        await _db.SaveChangesAsync();
+
+        await _rent.ApplyLinkedBankPaymentAsync(new RentPaymentIntentEvent(
+            "pi_cancel", "payment_intent.canceled", null, seeded.Entry.Id, 90_000, null));
+
+        var entry = await _db.RentLedgerEntries.SingleAsync();
+        Assert.Null(entry.StripePaymentIntentId);
+        Assert.NotEqual(RentLedgerStatus.Processing, entry.Status);
+        Assert.Equal(BankLinkPaymentStatus.Canceled, (await _db.BankLinkPayments.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task WithoutALinkedAccount_TheManualDeclarationStillPaysTheDue()
+    {
+        var seeded = await SeedAsync();
+        await Assert.ThrowsAsync<DomainRuleException>(() => _service.StartOrgPaymentAsync(
             seeded.Org.Id,
             new StartBankLinkPayment(null, null, seeded.Lease.Id, seeded.Entry.Id, null),
             new BankLinkCaller(null, null)));
-
-        Assert.Equal(BankLinkErrorCodes.DebitUnavailable, ex.Code);
         Assert.Equal(RentLedgerStatus.Scheduled, (await _db.RentLedgerEntries.SingleAsync()).Status);
-        Assert.Empty(_db.BankLinkPayments);
 
         await _rent.MarkPaidOfflineAsync(
             seeded.Lease.Id,
@@ -129,9 +227,9 @@ public class BankLinkServiceTests : IDisposable
         Assert.Equal(AccountId, (await _db.LeaseContracts.SingleAsync()).FinancialConnectionsAccountId);
         Assert.Null((await _db.Orgs.SingleAsync()).FinancialConnectionsAccountId);
 
-        await Assert.ThrowsAsync<DomainRuleException>(() =>
-            _service.StartLeasePaymentAsync(seeded.Entry.Id, Token, new BankLinkCaller("203.0.113.5", "CasaZen")));
-        Assert.Equal(RentLedgerStatus.Scheduled, (await _db.RentLedgerEntries.SingleAsync()).Status);
+            var started = await _service.StartLeasePaymentAsync(seeded.Entry.Id, Token, new BankLinkCaller("203.0.113.5", "CasaZen"));
+        Assert.Equal(BankLinkCharges.SepaDebit, started.PaymentMethodType);
+        Assert.Equal(RentLedgerStatus.Processing, (await _db.RentLedgerEntries.SingleAsync()).Status);
         await Assert.ThrowsAsync<NotFoundException>(() =>
             _service.AttachLeaseAccountAsync(seeded.Entry.Id, "wrong-token", AccountId));
 
@@ -145,7 +243,7 @@ public class BankLinkServiceTests : IDisposable
             Payer = BankLinkPayer.Tenant,
             FinancialConnectionsAccountId = AccountId,
             StripePaymentIntentId = "pi_confirmed",
-            PaymentMethodType = BankLinkCharges.AchDebit,
+            PaymentMethodType = BankLinkCharges.SepaDebit,
             AmountCents = 90_000,
             Currency = "eur",
         });
@@ -155,7 +253,7 @@ public class BankLinkServiceTests : IDisposable
         var paid = await _db.RentLedgerEntries.SingleAsync();
         Assert.Equal(RentLedgerStatus.Paid, paid.Status);
         Assert.Equal(RentPaymentChannel.Stripe, paid.PaidVia);
-        Assert.Equal(BankLinkPaymentStatus.Succeeded, (await _db.BankLinkPayments.SingleAsync()).Status);
+        Assert.Equal(BankLinkPaymentStatus.Succeeded, (await _db.BankLinkPayments.SingleAsync(p => p.StripePaymentIntentId == "pi_confirmed")).Status);
     }
 
     private async Task<Seed> SeedAsync(bool linked = false)
@@ -202,7 +300,7 @@ public class BankLinkServiceTests : IDisposable
 
     private sealed class FakeGateway : IStripeBankLinkGateway
     {
-        public List<string> Supported { get; set; } = [BankLinkCharges.AchDebit];
+        public List<string> Supported { get; set; } = [BankLinkCharges.SepaDebit];
 
         public string Holder { get; set; } = "cus_org";
 
@@ -216,11 +314,24 @@ public class BankLinkServiceTests : IDisposable
         public Task<LinkedFinancialAccount> GetAccountAsync(string accountId, CancellationToken cancellationToken = default) =>
             Task.FromResult(new LinkedFinancialAccount(accountId, Holder, "Test Bank", "6789", "Checking", "active", Supported));
 
-        public Task<StartedBankDebit> StartDebitAsync(BankDebitCommand command, CancellationToken cancellationToken = default)
+        public List<string> CreatedKeys { get; } = [];
+
+        public Func<bool>? RowIsSaved { get; set; }
+
+        public Task<StartedBankDebit> CreateDebitAsync(BankDebitCommand command, CancellationToken cancellationToken = default)
         {
-            if (!StripeBankLinkGateway.CanDebit(command.SupportedPaymentMethodTypes, command.Currency))
-                throw new DomainRuleException(BankLinkErrorCodes.DebitUnavailable, "BankLinkDebitUnavailable");
-            return Task.FromResult(new StartedBankDebit("pi_linked", "secret", "processing", BankLinkCharges.AchDebit, "pm_linked"));
+            if (!string.Equals(command.Currency, BankLinkCharges.Currency, StringComparison.Ordinal))
+                throw new DomainRuleException(BankLinkErrorCodes.CurrencyInvalid, "BankLinkCurrencyInvalid");
+            CreatedKeys.Add(command.IdempotencyKey);
+            return Task.FromResult(new StartedBankDebit("pi_linked", "secret", "requires_confirmation", BankLinkCharges.SepaDebit, "pm_sepa"));
+        }
+
+        public Task<StartedBankDebit> ConfirmDebitAsync(
+            string paymentIntentId, string idempotencyKey, string? ipAddress, string? userAgent, CancellationToken cancellationToken = default)
+        {
+            if (RowIsSaved is not null && !RowIsSaved())
+                throw new InvalidOperationException("PaymentIntent confirmed before the bank-link row was saved.");
+            return Task.FromResult(new StartedBankDebit(paymentIntentId, "secret", "processing", BankLinkCharges.SepaDebit, "pm_sepa"));
         }
     }
 }

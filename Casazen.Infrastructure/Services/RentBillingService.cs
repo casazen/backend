@@ -542,7 +542,7 @@ public sealed partial class RentBillingService(
         }
 
         var notice = ApplyEvent(entry, paymentEvent);
-        await AlignBankLinkAsync(entry, cancellationToken);
+        await AlignBankLinkAsync(entry, paymentEvent.PaymentIntentId, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return notice;
     }
@@ -733,8 +733,9 @@ public sealed partial class RentBillingService(
             if (current.Status == "processing")
                 return false;
 
+            var intentId = entry.StripePaymentIntentId;
             notice = ApplyStripeStatus(entry, current);
-            await AlignBankLinkAsync(entry, cancellationToken);
+            await AlignBankLinkAsync(entry, intentId, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
@@ -865,14 +866,18 @@ public sealed partial class RentBillingService(
     /// <summary>
     /// The bank-link row follows the installment. Succeeded is written only when the installment is paid from this PaymentIntent.
     /// </summary>
-    private async Task AlignBankLinkAsync(RentLedgerEntry entry, CancellationToken cancellationToken)
+    private async Task AlignBankLinkAsync(RentLedgerEntry entry, string? paymentIntentId, CancellationToken cancellationToken)
     {
-        if (entry.StripePaymentIntentId is null)
+        // Cancellation clears StripePaymentIntentId before this runs. The id of the event is what finds the row.
+        if (paymentIntentId is null)
             return;
 
         var row = await db.BankLinkPayments
-            .SingleOrDefaultAsync(p => p.StripePaymentIntentId == entry.StripePaymentIntentId, cancellationToken);
+            .SingleOrDefaultAsync(p => p.StripePaymentIntentId == paymentIntentId, cancellationToken);
         if (row is null || row.Status == BankLinkPaymentStatus.Succeeded)
+            return;
+        if (row.Status is BankLinkPaymentStatus.Failed or BankLinkPaymentStatus.Canceled
+            && entry.Status == RentLedgerStatus.Processing)
             return;
 
         row.Status = entry.Status switch
@@ -880,6 +885,7 @@ public sealed partial class RentBillingService(
             RentLedgerStatus.Paid => BankLinkPaymentStatus.Succeeded,
             RentLedgerStatus.Failed => BankLinkPaymentStatus.Failed,
             RentLedgerStatus.Scheduled => BankLinkPaymentStatus.Canceled,
+            RentLedgerStatus.Processing when row.Status is BankLinkPaymentStatus.Failed or BankLinkPaymentStatus.Canceled => row.Status,
             _ => BankLinkPaymentStatus.Processing,
         };
         row.UpdatedAt = UtcNow;

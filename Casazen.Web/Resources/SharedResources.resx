@@ -2843,7 +2843,7 @@
     <value>Il conto collegato non appartiene a questo cliente Stripe.</value>
   </data>
   <data name="BankLinkDebitUnavailable" xml:space="preserve">
-    <value>Questo conto non può essere addebitato nella valuta richiesta senza un IBAN, che CasaZen non conserva. Il bonifico SEPA in uscita non è disponibile da Financial Connections: resta il bonifico manuale. L'addebito che Stripe consente da un conto collegato è un PaymentIntent ACH in dollari (us_bank_account).</value>
+    <value>L'addebito SEPA di questo conto collegato non è partito. Il bonifico manuale resta disponibile.</value>
   </data>
   <data name="BankLinkAmountInvalid" xml:space="preserve">
     <value>L'importo del pagamento non è valido.</value>

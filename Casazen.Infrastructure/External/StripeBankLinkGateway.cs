@@ -8,9 +8,9 @@ using Stripe.FinancialConnections;
 namespace Casazen.Infrastructure.External;
 
 /// <summary>
-/// Financial Connections and the PaymentIntent debit of a linked account, on the platform Stripe client already used
-/// for billing. SEPA Direct Debit needs an IBAN, which is not stored. A Financial Connections account does not offer
-/// a SEPA credit transfer. The debit this gateway starts is <c>us_bank_account</c> when the linked account lists it.
+/// Financial Connections and the SEPA debit of a linked account, on the platform Stripe client already used for billing.
+/// The session offers Italian banks. The PaymentIntent is <c>sepa_debit</c> in EUR. A full IBAN is never stored or logged:
+/// the PaymentMethod is the one Stripe already attached, or it is created from the IBAN token on the account.
 /// </summary>
 public interface IStripeBankLinkGateway
 {
@@ -25,10 +25,22 @@ public interface IStripeBankLinkGateway
 
     Task<LinkedFinancialAccount> GetAccountAsync(string accountId, CancellationToken cancellationToken = default);
 
-    Task<StartedBankDebit> StartDebitAsync(BankDebitCommand command, CancellationToken cancellationToken = default);
+    /// <summary>Creates the SEPA PaymentIntent without confirming it. The row is saved before <see cref="ConfirmDebitAsync"/>.</summary>
+    Task<StartedBankDebit> CreateDebitAsync(BankDebitCommand command, CancellationToken cancellationToken = default);
+
+    /// <summary>Confirms a PaymentIntent that already has a <c>BankLinkPayments</c> row. The idempotency key is the due's.</summary>
+    Task<StartedBankDebit> ConfirmDebitAsync(
+        string paymentIntentId,
+        string idempotencyKey,
+        string? ipAddress,
+        string? userAgent,
+        CancellationToken cancellationToken = default);
 }
 
-/// <summary>A Financial Connections account read back from Stripe. Account numbers are not copied.</summary>
+/// <summary>
+/// A Financial Connections account read back from Stripe. <see cref="IbanToken"/> is set only when Stripe returned a
+/// token, never a full IBAN. A raw IBAN stays inside the gateway for the Stripe call and is not on this record.
+/// </summary>
 public sealed record LinkedFinancialAccount(
     string Id,
     string? CustomerId,
@@ -36,7 +48,9 @@ public sealed record LinkedFinancialAccount(
     string? Last4,
     string? DisplayName,
     string? Status,
-    IReadOnlyList<string> SupportedPaymentMethodTypes);
+    IReadOnlyList<string> SupportedPaymentMethodTypes,
+    string? SepaPaymentMethodId = null,
+    string? IbanToken = null);
 
 /// <summary>What is needed to debit the linked account.</summary>
 public sealed record BankDebitCommand(
@@ -109,6 +123,11 @@ public sealed class StripeBankLinkGateway(
                 {
                     AccountHolder = new SessionAccountHolderOptions { Type = "customer", Customer = customerId },
                     Permissions = [PaymentMethodPermission],
+                    Filters = new SessionFiltersOptions
+                    {
+                        Countries = [BankLinkCharges.InstitutionCountry],
+                        AccountSubcategories = ["checking", "savings"],
+                    },
                 },
                 cancellationToken: cancellationToken);
             if (string.IsNullOrWhiteSpace(session.Id) || string.IsNullOrWhiteSpace(session.ClientSecret))
@@ -132,14 +151,7 @@ public sealed class StripeBankLinkGateway(
         try
         {
             var account = await new Stripe.FinancialConnections.AccountService(Client).GetAsync(accountId, cancellationToken: cancellationToken);
-            return new LinkedFinancialAccount(
-                account.Id,
-                account.AccountHolder?.CustomerId,
-                account.InstitutionName,
-                account.Last4,
-                account.DisplayName,
-                account.Status,
-                account.SupportedPaymentMethodTypes ?? []);
+            return MapAccount(account);
         }
         catch (StripeException ex) when (ex.StripeError?.Code == "resource_missing")
         {
@@ -151,38 +163,83 @@ public sealed class StripeBankLinkGateway(
         }
     }
 
-    public async Task<StartedBankDebit> StartDebitAsync(BankDebitCommand command, CancellationToken cancellationToken = default)
+    public async Task<StartedBankDebit> CreateDebitAsync(BankDebitCommand command, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
-        EnsureApiKey();
-        if (!CanDebit(command.SupportedPaymentMethodTypes, command.Currency))
-            throw new DomainRuleException(BankLinkErrorCodes.DebitUnavailable, "BankLinkDebitUnavailable");
+        if (!string.Equals(command.Currency, BankLinkCharges.Currency, StringComparison.Ordinal))
+            throw new DomainRuleException(BankLinkErrorCodes.CurrencyInvalid, "BankLinkCurrencyInvalid");
 
+        EnsureApiKey();
         try
         {
-            var paymentMethod = await new PaymentMethodService(Client).CreateAsync(
-                new PaymentMethodCreateOptions
+            var account = await new Stripe.FinancialConnections.AccountService(Client).GetAsync(
+                command.FinancialConnectionsAccountId, cancellationToken: cancellationToken);
+            var instrument = ReadInstrument(account);
+            var paymentMethodId = instrument.PaymentMethodId;
+            if (paymentMethodId is null)
+            {
+                var options = new PaymentMethodCreateOptions
                 {
-                    Type = BankLinkCharges.AchDebit,
+                    Type = BankLinkCharges.SepaDebit,
                     Customer = command.CustomerId,
                     BillingDetails = new PaymentMethodBillingDetailsOptions { Name = Trim(command.BillingName, 200) },
-                    UsBankAccount = new PaymentMethodUsBankAccountOptions
-                    {
-                        FinancialConnectionsAccount = command.FinancialConnectionsAccountId,
-                    },
-                },
-                new RequestOptions { IdempotencyKey = $"{command.IdempotencyKey}:pm" },
-                cancellationToken);
+                    SepaDebit = new PaymentMethodSepaDebitOptions(),
+                };
+                if (!string.IsNullOrWhiteSpace(instrument.IbanOrToken))
+                    options.SepaDebit.Iban = instrument.IbanOrToken;
+                else
+                    options.AddExtraParam("sepa_debit[financial_connections_account]", command.FinancialConnectionsAccountId);
+
+                var created = await new PaymentMethodService(Client).CreateAsync(
+                    options,
+                    new RequestOptions { IdempotencyKey = $"{command.IdempotencyKey}:pm" },
+                    cancellationToken);
+                paymentMethodId = created.Id;
+            }
 
             var intent = await new PaymentIntentService(Client).CreateAsync(
                 new PaymentIntentCreateOptions
                 {
                     Amount = command.AmountCents,
-                    Currency = command.Currency,
+                    Currency = BankLinkCharges.Currency,
                     Customer = command.CustomerId,
-                    PaymentMethod = paymentMethod.Id,
-                    PaymentMethodTypes = [BankLinkCharges.AchDebit],
-                    Confirm = true,
+                    PaymentMethod = paymentMethodId,
+                    PaymentMethodTypes = [BankLinkCharges.SepaDebit],
+                    Confirm = false,
+                    Metadata = new Dictionary<string, string>(command.Metadata),
+                },
+                new RequestOptions { IdempotencyKey = $"{command.IdempotencyKey}:pi" },
+                cancellationToken);
+
+            logger.LogInformation(
+                "Bank-link payment intent {PaymentIntentId} created unconfirmed ({PaymentMethodType})",
+                intent.Id,
+                BankLinkCharges.SepaDebit);
+            return new StartedBankDebit(intent.Id, intent.ClientSecret, intent.Status, BankLinkCharges.SepaDebit, paymentMethodId);
+        }
+        catch (StripeException ex)
+        {
+            // The Stripe message can echo an IBAN. Keep the code only.
+            throw ProviderFailure(ex);
+        }
+    }
+
+    public async Task<StartedBankDebit> ConfirmDebitAsync(
+        string paymentIntentId,
+        string idempotencyKey,
+        string? ipAddress,
+        string? userAgent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(paymentIntentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(idempotencyKey);
+        EnsureApiKey();
+        try
+        {
+            var intent = await new PaymentIntentService(Client).ConfirmAsync(
+                paymentIntentId,
+                new PaymentIntentConfirmOptions
+                {
                     MandateData = new PaymentIntentMandateDataOptions
                     {
                         CustomerAcceptance = new PaymentIntentMandateDataCustomerAcceptanceOptions
@@ -190,25 +247,28 @@ public sealed class StripeBankLinkGateway(
                             Type = "online",
                             Online = new PaymentIntentMandateDataCustomerAcceptanceOnlineOptions
                             {
-                                IpAddress = string.IsNullOrWhiteSpace(command.IpAddress) ? "127.0.0.1" : command.IpAddress,
-                                UserAgent = string.IsNullOrWhiteSpace(command.UserAgent) ? "CasaZen" : Trim(command.UserAgent, 255),
+                                IpAddress = string.IsNullOrWhiteSpace(ipAddress) ? "127.0.0.1" : ipAddress,
+                                UserAgent = string.IsNullOrWhiteSpace(userAgent) ? "CasaZen" : Trim(userAgent, 255),
                             },
                         },
                     },
-                    Metadata = new Dictionary<string, string>(command.Metadata),
                 },
-                new RequestOptions { IdempotencyKey = $"{command.IdempotencyKey}:pi" },
+                new RequestOptions { IdempotencyKey = $"{idempotencyKey}:confirm" },
                 cancellationToken);
 
             if (intent.Status is "canceled" or "requires_payment_method")
                 throw new DomainRuleException(BankLinkErrorCodes.DebitUnavailable, "BankLinkDebitUnavailable");
 
             logger.LogInformation(
-                "Bank-link payment intent {PaymentIntentId} created ({Status}, {PaymentMethodType})",
+                "Bank-link payment intent {PaymentIntentId} confirmed ({Status})",
                 intent.Id,
+                intent.Status);
+            return new StartedBankDebit(
+                intent.Id,
+                intent.ClientSecret,
                 intent.Status,
-                BankLinkCharges.AchDebit);
-            return new StartedBankDebit(intent.Id, intent.ClientSecret, intent.Status, BankLinkCharges.AchDebit, paymentMethod.Id);
+                BankLinkCharges.SepaDebit,
+                intent.PaymentMethodId ?? string.Empty);
         }
         catch (StripeException ex)
         {
@@ -216,14 +276,78 @@ public sealed class StripeBankLinkGateway(
         }
     }
 
+    internal static LinkedFinancialAccount MapAccount(Stripe.FinancialConnections.Account account)
+    {
+        var instrument = ReadInstrument(account);
+        var token = instrument.PaymentMethodId is null && !IsFullIban(instrument.IbanOrToken) ? instrument.IbanOrToken : null;
+        return new LinkedFinancialAccount(
+            account.Id,
+            account.AccountHolder?.CustomerId,
+            account.InstitutionName,
+            account.Last4,
+            account.DisplayName,
+            account.Status,
+            account.SupportedPaymentMethodTypes ?? [],
+            instrument.PaymentMethodId,
+            token);
+    }
+
     /// <summary>
-    /// True only for an ACH debit of a linked account that lists <c>us_bank_account</c>, in USD. EUR (including a SEPA
-    /// credit transfer) is not a method this account can start without an IBAN.
+    /// A SEPA payment method id (<c>pm_…</c>) or the account-number token Stripe returned. A full IBAN is included only
+    /// so the PaymentMethod can be created; callers that keep the result must drop it.
     /// </summary>
-    internal static bool CanDebit(IReadOnlyList<string>? supportedTypes, string? currency) =>
-        string.Equals(currency, BankLinkCharges.AchCurrency, StringComparison.Ordinal)
-        && supportedTypes is not null
-        && supportedTypes.Any(type => string.Equals(type, BankLinkCharges.AchDebit, StringComparison.Ordinal));
+    internal readonly record struct SepaInstrument(string? PaymentMethodId, string? IbanOrToken);
+
+    internal static SepaInstrument ReadInstrument(Stripe.FinancialConnections.Account account)
+    {
+        var paymentMethod = account.RawJObject?["payment_method"]?.ToString();
+        if (paymentMethod is not null && paymentMethod.StartsWith("pm_", StringComparison.Ordinal))
+            return new SepaInstrument(paymentMethod, null);
+
+        if (account.AccountNumbers is null)
+            return default;
+
+        foreach (var number in account.AccountNumbers)
+        {
+            if (number.Status is not null && !string.Equals(number.Status, "transactable", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var value = FirstValue(number.RawJObject, "token", "iban_token", "tokenized_account_number", "iban", "account_number");
+            if (!string.IsNullOrWhiteSpace(value))
+                return new SepaInstrument(null, value);
+        }
+
+        return default;
+    }
+
+    internal static bool IsFullIban(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var compact = value.Replace(" ", "", StringComparison.Ordinal).ToUpperInvariant();
+        return compact.Length is >= 15 and <= 34
+            && char.IsLetter(compact[0])
+            && char.IsLetter(compact[1])
+            && char.IsDigit(compact[2])
+            && char.IsDigit(compact[3])
+            && compact.All(char.IsLetterOrDigit);
+    }
+
+    private static string? FirstValue(Newtonsoft.Json.Linq.JObject? raw, params string[] keys)
+    {
+        if (raw is null)
+            return null;
+
+        foreach (var key in keys)
+        {
+            var value = raw[key]?.ToString();
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
+    }
 
     internal static bool IsAccountId(string? accountId) =>
         !string.IsNullOrWhiteSpace(accountId)
@@ -251,7 +375,7 @@ public sealed class StripeBankLinkGateway(
     private static PaymentProcessingException ProviderFailure(StripeException ex)
     {
         var code = ex.StripeError?.Code ?? ex.HttpStatusCode.ToString();
-        return new PaymentProcessingException($"Stripe bank-link call failed ({code}).", ex);
+        return new PaymentProcessingException($"Stripe bank-link call failed ({code}).");
     }
 
     private static string Trim(string? value, int max)

@@ -76,10 +76,18 @@ public sealed class BankLinkService(
     {
         ArgumentNullException.ThrowIfNull(request);
         var org = await LoadOrgAsync(orgId, cancellationToken);
-        var (leaseId, installment, amount, currency) = await ResolveAmountAsync(org.Id, request, cancellationToken);
+        if (request.InstallmentId is Guid installmentId && request.LeaseId is Guid leaseId)
+        {
+            var open = await db.RentLedgerEntries.SingleOrDefaultAsync(
+                e => e.Id == installmentId && e.LeaseContractId == leaseId && e.OrgId == org.Id, cancellationToken);
+            if (open is not null && await ResumeDueAsync(open, caller, cancellationToken) is { } resumed)
+                return resumed;
+        }
+
+        var (resolvedLeaseId, installment, amount, currency) = await ResolveAmountAsync(org.Id, request, cancellationToken);
         return await StartAsync(
             org.Id,
-            leaseId,
+            resolvedLeaseId,
             installment,
             org.StripeCustomerId,
             org.FinancialConnectionsAccountId,
@@ -131,6 +139,8 @@ public sealed class BankLinkService(
         Guid installmentId, string token, BankLinkCaller caller, CancellationToken cancellationToken = default)
     {
         var entry = await LoadByTokenAsync(installmentId, token, cancellationToken);
+        if (await ResumeDueAsync(entry, caller, cancellationToken) is { } resumed)
+            return resumed;
         EnsureOpen(entry);
         var lease = entry.LeaseContract;
         return await StartAsync(
@@ -143,7 +153,7 @@ public sealed class BankLinkService(
             BankLinkPayer.Tenant,
             RentCharges.ToCents(entry.AmountDue),
             RentCharges.Currency,
-            $"bank-link:{entry.Id:N}:{entry.PaymentIntentCount + 1}",
+            DueKey(entry),
             caller,
             cancellationToken);
     }
@@ -160,7 +170,7 @@ public sealed class BankLinkService(
             return null;
         }
 
-        if (row.Status != BankLinkPaymentStatus.Succeeded && StatusOf(paymentEvent.EventType) is { } status)
+        if (StatusOf(paymentEvent.EventType) is { } status && CanMove(row.Status, status))
         {
             row.Status = status;
             row.UpdatedAt = UtcNow;
@@ -204,13 +214,15 @@ public sealed class BankLinkService(
         var linked = await gateway.GetAccountAsync(accountId, cancellationToken);
         if (!string.Equals(linked.CustomerId, customerId, StringComparison.Ordinal))
             throw new DomainRuleException(BankLinkErrorCodes.AccountHolderMismatch, "BankLinkAccountHolderMismatch");
-        if (!StripeBankLinkGateway.CanDebit(linked.SupportedPaymentMethodTypes, currency))
-            throw new DomainRuleException(BankLinkErrorCodes.DebitUnavailable, "BankLinkDebitUnavailable");
+        if (!string.Equals(currency, BankLinkCharges.Currency, StringComparison.Ordinal))
+            throw new DomainRuleException(BankLinkErrorCodes.CurrencyInvalid, "BankLinkCurrencyInvalid");
 
         if (installment is not null)
             await CancelOpenCardIntentAsync(installment, cancellationToken);
 
-        var debit = await gateway.StartDebitAsync(
+        // The PaymentIntent is created unconfirmed. The row is saved before confirm, under one key per due,
+        // so a retry returns the same debit instead of starting another.
+        var created = await gateway.CreateDebitAsync(
             new BankDebitCommand(
                 customerId,
                 linked.Id,
@@ -224,46 +236,68 @@ public sealed class BankLinkService(
                 Metadata(orgId, leaseId, installment, payer)),
             cancellationToken);
 
-        var existing = await db.BankLinkPayments
-            .SingleOrDefaultAsync(p => p.StripePaymentIntentId == debit.PaymentIntentId, cancellationToken);
-        if (existing is not null)
-            return Started(existing, debit.ClientSecret, debit.Status);
+        var row = await db.BankLinkPayments
+            .SingleOrDefaultAsync(p => p.StripePaymentIntentId == created.PaymentIntentId, cancellationToken);
+        if (row is null)
+        {
+            row = new BankLinkPayment
+            {
+                OrgId = orgId,
+                LeaseContractId = leaseId,
+                RentLedgerEntryId = installment?.Id,
+                Payer = payer,
+                FinancialConnectionsAccountId = linked.Id,
+                StripePaymentIntentId = created.PaymentIntentId,
+                StripePaymentMethodId = created.PaymentMethodId,
+                PaymentMethodType = created.PaymentMethodType,
+                AmountCents = amountCents,
+                Currency = currency,
+                Status = BankLinkPaymentStatus.Processing,
+                CreatedAt = UtcNow,
+                UpdatedAt = UtcNow,
+            };
+            db.BankLinkPayments.Add(row);
+            if (installment is not null)
+            {
+                installment.StripePaymentIntentId = created.PaymentIntentId;
+                installment.ConnectedAccountId = null;
+                installment.Status = RentLedgerStatus.Processing;
+                installment.ChargedAt ??= UtcNow;
+                installment.UpdatedAt = UtcNow;
+            }
 
-        var row = new BankLinkPayment
-        {
-            OrgId = orgId,
-            LeaseContractId = leaseId,
-            RentLedgerEntryId = installment?.Id,
-            Payer = payer,
-            FinancialConnectionsAccountId = linked.Id,
-            StripePaymentIntentId = debit.PaymentIntentId,
-            StripePaymentMethodId = debit.PaymentMethodId,
-            PaymentMethodType = debit.PaymentMethodType,
-            AmountCents = amountCents,
-            Currency = currency,
-            Status = BankLinkPaymentStatus.Processing,
-            CreatedAt = UtcNow,
-            UpdatedAt = UtcNow,
-        };
-        db.BankLinkPayments.Add(row);
-        if (installment is not null)
-        {
-            installment.PaymentIntentCount++;
-            installment.StripePaymentIntentId = debit.PaymentIntentId;
-            installment.ConnectedAccountId = null;
-            installment.Status = RentLedgerStatus.Processing;
-            installment.ChargedAt ??= UtcNow;
-            installment.UpdatedAt = UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        var confirmed = await gateway.ConfirmDebitAsync(
+            created.PaymentIntentId, idempotencyKey, caller.IpAddress, caller.UserAgent, cancellationToken);
         logger.LogInformation(
-            "Bank-link payment {PaymentId} started for org {OrgId} ({PaymentIntentId}, {PaymentMethodType})",
+            "Bank-link payment {PaymentId} confirmed for org {OrgId} ({PaymentIntentId}, {PaymentMethodType})",
             row.Id,
             orgId,
-            debit.PaymentIntentId,
-            debit.PaymentMethodType);
-        return Started(row, debit.ClientSecret, debit.Status);
+            confirmed.PaymentIntentId,
+            confirmed.PaymentMethodType);
+        return Started(row, confirmed.ClientSecret, confirmed.Status);
+    }
+
+    /// <summary>
+    /// A due already has an unconfirmed or in-flight debit. Confirm that PaymentIntent again; do not create another.
+    /// </summary>
+    private async Task<BankLinkPaymentStarted?> ResumeDueAsync(
+        RentLedgerEntry entry, BankLinkCaller caller, CancellationToken cancellationToken)
+    {
+        if (entry.Status != RentLedgerStatus.Processing || entry.StripePaymentIntentId is null)
+            return null;
+
+        var row = await db.BankLinkPayments.SingleOrDefaultAsync(
+            p => p.RentLedgerEntryId == entry.Id && p.StripePaymentIntentId == entry.StripePaymentIntentId,
+            cancellationToken);
+        if (row is null || row.Status != BankLinkPaymentStatus.Processing)
+            throw new DomainConflictException(RentBillingErrorCodes.InstallmentInFlight, "RentInstallmentInFlight");
+
+        var confirmed = await gateway.ConfirmDebitAsync(
+            row.StripePaymentIntentId, DueKey(entry), caller.IpAddress, caller.UserAgent, cancellationToken);
+        return Started(row, confirmed.ClientSecret, confirmed.Status);
     }
 
     private async Task CancelOpenCardIntentAsync(RentLedgerEntry entry, CancellationToken cancellationToken)
@@ -368,7 +402,7 @@ public sealed class BankLinkService(
     private static string IdempotencyKey(string? requested, RentLedgerEntry? installment)
     {
         if (installment is not null)
-            return $"bank-link:{installment.Id:N}:{installment.PaymentIntentCount + 1}";
+            return DueKey(installment);
         ValidateIdempotencyKey(requested);
         return string.IsNullOrWhiteSpace(requested) ? $"bank-link:{Guid.NewGuid():N}" : requested.Trim();
     }
@@ -402,6 +436,17 @@ public sealed class BankLinkService(
         if (installment is not null)
             metadata[RentCharges.InstallmentMetadataKey] = installment.Id.ToString();
         return metadata;
+    }
+
+    private static string DueKey(RentLedgerEntry installment) => $"bank-link:{installment.Id:N}";
+
+    /// <summary>Failed and canceled stay there. A later <c>processing</c> event must not reopen them.</summary>
+    private static bool CanMove(BankLinkPaymentStatus current, BankLinkPaymentStatus next)
+    {
+        if (current == BankLinkPaymentStatus.Succeeded)
+            return false;
+        return !(current is BankLinkPaymentStatus.Failed or BankLinkPaymentStatus.Canceled
+                 && next == BankLinkPaymentStatus.Processing);
     }
 
     private static BankLinkPaymentStatus? StatusOf(string eventType) => eventType switch

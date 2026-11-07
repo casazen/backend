@@ -4,6 +4,7 @@ using Casazen.Infrastructure.External;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Newtonsoft.Json.Linq;
 using Stripe;
 using Stripe.FinancialConnections;
 using Xunit;
@@ -11,13 +12,13 @@ using Xunit;
 namespace Casazen.Tests.Unit.Infrastructure;
 
 /// <summary>
-/// The linked-account debit uses the existing Stripe client. A Financial Connections account id is sent; an IBAN is not.
-/// SEPA credit transfer is not requested. USD ACH (<c>us_bank_account</c>) is the debit Stripe can create from that id.
+/// The linked-account debit is SEPA in EUR. The session asks for Italian banks. A full IBAN is not kept on the account
+/// CasaZen stores; a token is sent to Stripe only to create the PaymentMethod.
 /// </summary>
 public class StripeBankLinkGatewayTests
 {
+    private const string Iban = "IT60X0542811101000000123456";
     private readonly Mock<IStripeClient> _client = new();
-    private readonly List<BaseOptions> _sent = [];
 
     public StripeBankLinkGatewayTests()
     {
@@ -25,103 +26,155 @@ public class StripeBankLinkGatewayTests
     }
 
     [Fact]
-    public async Task CreateSessionAsync_AsksForThePaymentMethodPermission_OfTheCustomer()
+    public async Task CreateSessionAsync_AsksForItalianBanks_NotUs()
     {
+        SessionCreateOptions? sent = null;
         _client.Setup(c => c.RequestAsync<Session>(
                 HttpMethod.Post,
                 "/v1/financial_connections/sessions",
                 It.IsAny<BaseOptions>(),
                 It.IsAny<RequestOptions>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<HttpMethod, string, BaseOptions, RequestOptions, CancellationToken>((_, _, options, _, _) => _sent.Add(options))
+            .Callback<HttpMethod, string, BaseOptions, RequestOptions, CancellationToken>((_, _, options, _, _) => sent = (SessionCreateOptions)options)
             .ReturnsAsync(new Session { Id = "fcsess_1", ClientSecret = "fcsess_secret" });
 
         var session = await Gateway().CreateSessionAsync("cus_landlord");
 
         Assert.Equal("fcsess_1", session.SessionId);
-        Assert.Equal("fcsess_secret", session.ClientSecret);
-        var options = Assert.IsType<SessionCreateOptions>(_sent.Single());
-        Assert.Equal("customer", options.AccountHolder.Type);
-        Assert.Equal("cus_landlord", options.AccountHolder.Customer);
-        Assert.Equal("payment_method", Assert.Single(options.Permissions));
+        Assert.Equal("customer", sent!.AccountHolder.Type);
+        Assert.Equal("cus_landlord", sent.AccountHolder.Customer);
+        Assert.Equal("payment_method", Assert.Single(sent.Permissions));
+        Assert.Equal(BankLinkCharges.InstitutionCountry, Assert.Single(sent.Filters.Countries));
+        Assert.DoesNotContain("US", sent.Filters.Countries);
+        Assert.Contains("checking", sent.Filters.AccountSubcategories);
     }
 
     [Fact]
-    public async Task StartDebitAsync_CreatesUsBankAccountPaymentIntent_FromTheLinkedAccountId()
+    public async Task StartDebitAsync_UsesTheIbanToken_ForASepaPaymentIntent()
     {
         PaymentMethodCreateOptions? method = null;
         PaymentIntentCreateOptions? intent = null;
-        _client.Setup(c => c.RequestAsync<PaymentMethod>(
-                HttpMethod.Post, "/v1/payment_methods", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
-            .Callback<HttpMethod, string, BaseOptions, RequestOptions, CancellationToken>((_, _, options, _, _) => method = (PaymentMethodCreateOptions)options)
-            .ReturnsAsync(new PaymentMethod { Id = "pm_linked" });
-        _client.Setup(c => c.RequestAsync<PaymentIntent>(
-                HttpMethod.Post, "/v1/payment_intents", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
-            .Callback<HttpMethod, string, BaseOptions, RequestOptions, CancellationToken>((_, _, options, _, _) => intent = (PaymentIntentCreateOptions)options)
-            .ReturnsAsync(new PaymentIntent { Id = "pi_linked", Status = "processing", ClientSecret = "pi_secret" });
+        SetupAccount(TokenNumber("iban_tok_test"));
+        SetupPayment(methodOptions => method = methodOptions, intentOptions => intent = intentOptions);
 
-        var started = await Gateway().StartDebitAsync(Command("usd", [BankLinkCharges.AchDebit]));
+        var started = await Gateway().CreateDebitAsync(Command());
 
         Assert.Equal("pi_linked", started.PaymentIntentId);
-        Assert.Equal(BankLinkCharges.AchDebit, started.PaymentMethodType);
-        Assert.Equal("processing", started.Status);
-        Assert.Equal("fca_linked", method!.UsBankAccount.FinancialConnectionsAccount);
-        Assert.Null(method.SepaDebit);
-        Assert.Equal("us_bank_account", method.Type);
-        Assert.Equal(2_500, intent!.Amount);
-        Assert.Equal("usd", intent.Currency);
-        Assert.True(intent.Confirm);
-        Assert.Equal("us_bank_account", Assert.Single(intent.PaymentMethodTypes));
-        Assert.Equal("bank-link-payment", intent.Metadata["kind"]);
+        Assert.Equal(BankLinkCharges.SepaDebit, started.PaymentMethodType);
+        Assert.Equal("sepa_debit", method!.Type);
+        Assert.Equal("iban_tok_test", method.SepaDebit.Iban);
+        Assert.Null(method.UsBankAccount);
+        Assert.Equal(90_000, intent!.Amount);
+        Assert.Equal("eur", intent.Currency);
+        Assert.Equal("sepa_debit", Assert.Single(intent.PaymentMethodTypes));
+        Assert.False(intent.Confirm);
+        Assert.DoesNotContain(Iban, started.PaymentIntentId);
     }
 
     [Fact]
-    public async Task StartDebitAsync_EurRent_DoesNotCallStripe()
+    public async Task StartDebitAsync_WithoutAToken_PassesTheLinkedAccount_NotAnIban()
     {
-        var ex = await Assert.ThrowsAsync<DomainRuleException>(() =>
-            Gateway().StartDebitAsync(Command("eur", [BankLinkCharges.AchDebit, "sepa_debit"])));
+        PaymentMethodCreateOptions? method = null;
+        SetupAccount(new Stripe.FinancialConnections.Account { Id = "fca_linked" });
+        SetupPayment(methodOptions => method = methodOptions, _ => { });
 
-        Assert.Equal(BankLinkErrorCodes.DebitUnavailable, ex.Code);
+        await Gateway().CreateDebitAsync(Command());
+
+        Assert.Equal("sepa_debit", method!.Type);
+        Assert.Null(method.SepaDebit.Iban);
+        Assert.Null(method.UsBankAccount);
+        Assert.Equal("fca_linked", method.ExtraParams["sepa_debit[financial_connections_account]"]);
+    }
+
+    [Fact]
+    public async Task GetAccountAsync_DoesNotReturnAFullIban()
+    {
+        SetupAccount(TokenNumber(Iban));
+
+        var account = await Gateway().GetAccountAsync("fca_linked");
+
+        Assert.Equal("fca_linked", account.Id);
+        Assert.Null(account.IbanToken);
+        Assert.Null(account.SepaPaymentMethodId);
+        Assert.DoesNotContain(Iban, $"{account.Id}{account.DisplayName}{account.Last4}{account.IbanToken}");
+    }
+
+    [Fact]
+    public void ReadInstrument_KeepsAToken_AndRecognisesAFullIban()
+    {
+        var token = StripeBankLinkGateway.ReadInstrument(TokenNumber("iban_tok_test"));
+        var iban = StripeBankLinkGateway.ReadInstrument(TokenNumber(Iban));
+
+        Assert.Equal("iban_tok_test", token.IbanOrToken);
+        Assert.False(StripeBankLinkGateway.IsFullIban(token.IbanOrToken));
+        Assert.Equal(Iban, iban.IbanOrToken);
+        Assert.True(StripeBankLinkGateway.IsFullIban(iban.IbanOrToken));
+        var mapped = StripeBankLinkGateway.MapAccount(TokenNumber(Iban));
+        Assert.Null(mapped.IbanToken);
+        Assert.False(StripeBankLinkGateway.IsAccountId(Iban));
+    }
+
+    [Fact]
+    public async Task StartDebitAsync_Usd_IsRefusedBeforeStripe()
+    {
+        var ex = await Assert.ThrowsAsync<DomainRuleException>(() => Gateway().CreateDebitAsync(Command() with { Currency = "usd" }));
+
+        Assert.Equal(BankLinkErrorCodes.CurrencyInvalid, ex.Code);
         _client.Verify(
             c => c.RequestAsync<PaymentIntent>(
                 It.IsAny<HttpMethod>(), It.IsAny<string>(), It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
-    [Fact]
-    public void CanDebit_IsUsdAchOnly()
+    private void SetupAccount(Stripe.FinancialConnections.Account account) =>
+        _client.Setup(c => c.RequestAsync<Stripe.FinancialConnections.Account>(
+                HttpMethod.Get,
+                "/v1/financial_connections/accounts/fca_linked",
+                It.IsAny<BaseOptions>(),
+                It.IsAny<RequestOptions>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(account);
+
+    private void SetupPayment(Action<PaymentMethodCreateOptions> method, Action<PaymentIntentCreateOptions> intent)
     {
-        Assert.True(StripeBankLinkGateway.CanDebit([BankLinkCharges.AchDebit], "usd"));
-        Assert.False(StripeBankLinkGateway.CanDebit([BankLinkCharges.AchDebit], "eur"));
-        Assert.False(StripeBankLinkGateway.CanDebit(["sepa_debit"], "eur"));
-        Assert.False(StripeBankLinkGateway.CanDebit(["link"], "eur"));
-        Assert.False(StripeBankLinkGateway.IsAccountId("IT60X0542811101000000123456"));
-        Assert.True(StripeBankLinkGateway.IsAccountId("fca_1Nlinked"));
+        _client.Setup(c => c.RequestAsync<PaymentMethod>(
+                HttpMethod.Post, "/v1/payment_methods", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .Callback<HttpMethod, string, BaseOptions, RequestOptions, CancellationToken>((_, _, options, _, _) => method((PaymentMethodCreateOptions)options))
+            .ReturnsAsync(new PaymentMethod { Id = "pm_sepa" });
+        _client.Setup(c => c.RequestAsync<PaymentIntent>(
+                HttpMethod.Post, "/v1/payment_intents", It.IsAny<BaseOptions>(), It.IsAny<RequestOptions>(), It.IsAny<CancellationToken>()))
+            .Callback<HttpMethod, string, BaseOptions, RequestOptions, CancellationToken>((_, _, options, _, _) => intent((PaymentIntentCreateOptions)options))
+            .ReturnsAsync(new PaymentIntent { Id = "pi_linked", Status = "processing", ClientSecret = "pi_secret" });
     }
 
-    [Fact]
-    public async Task CreateSessionAsync_WithoutAKey_FailsBeforeStripe()
+    private static Stripe.FinancialConnections.Account TokenNumber(string value)
     {
-        var gateway = new StripeBankLinkGateway(
-            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Stripe:SecretKey"] = "sk_test_YOUR_KEY" }).Build(),
-            NullLogger<StripeBankLinkGateway>.Instance);
-
-        await Assert.ThrowsAsync<PaymentProcessingException>(() => gateway.CreateSessionAsync("cus_landlord"));
+        var number = new AccountAccountNumber
+        {
+            IdentifierType = "tokenized_account_number",
+            Status = "transactable",
+        };
+        typeof(StripeEntity).GetProperty(nameof(StripeEntity.RawJObject))!
+            .SetValue(number, new JObject { ["token"] = value });
+        return new Stripe.FinancialConnections.Account
+        {
+            Id = "fca_linked",
+            InstitutionName = "Intesa Sanpaolo",
+            Last4 = "3456",
+            AccountNumbers = [number],
+        };
     }
 
     private StripeBankLinkGateway Gateway() =>
-        new(
-            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Stripe:SecretKey"] = "sk_test_unit" }).Build(),
-            NullLogger<StripeBankLinkGateway>.Instance,
-            _client.Object);
+        new(new ConfigurationBuilder().Build(), NullLogger<StripeBankLinkGateway>.Instance, _client.Object);
 
-    private static BankDebitCommand Command(string currency, IReadOnlyList<string> types) =>
+    private static BankDebitCommand Command() =>
         new(
             "cus_landlord",
             "fca_linked",
-            types,
-            2_500,
-            currency,
+            [BankLinkCharges.SepaDebit],
+            90_000,
+            "eur",
             "bank-link-key",
             "Casa Rossi",
             "203.0.113.5",

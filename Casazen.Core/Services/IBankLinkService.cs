@@ -89,8 +89,11 @@ public static class BankLinkCharges
 {
     public const string Kind = "bank-link-payment";
 
-    /// <summary>The debit Stripe can create from a Financial Connections account id, without an IBAN.</summary>
-    public const string AchDebit = "us_bank_account";
+    /// <summary>SEPA Direct Debit. The euro method used for a linked Italian or EU account. Not <c>us_bank_account</c>.</summary>
+    public const string SepaDebit = "sepa_debit";
 
-    public const string AchCurrency = "usd";
+    public const string Currency = "eur";
+
+    /// <summary>Institutions offered in the link flow: Italy, so the list is Intesa and the other Italian banks, not US banks.</summary>
+    public const string InstitutionCountry = "IT";
 }

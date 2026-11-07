@@ -39,7 +39,7 @@ public class BankLinkPayment : ITenantOwned
     [MaxLength(StripeIdMaxLength)]
     public string? StripePaymentMethodId { get; set; }
 
-    /// <summary>Stripe PaymentMethod type used for the debit (<c>us_bank_account</c>).</summary>
+    /// <summary>Stripe PaymentMethod type used for the debit (<c>sepa_debit</c>).</summary>
     [Required, MaxLength(PaymentMethodTypeMaxLength)]
     public string PaymentMethodType { get; set; } = string.Empty;
 

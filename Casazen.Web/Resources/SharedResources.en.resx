@@ -2843,7 +2843,7 @@
     <value>The linked account does not belong to this Stripe customer.</value>
   </data>
   <data name="BankLinkDebitUnavailable" xml:space="preserve">
-    <value>This account cannot be debited in the requested currency without an IBAN, which CasaZen does not store. A SEPA credit transfer is not available from Financial Connections; the manual bank transfer remains. The debit Stripe can start from a linked account is a USD ACH PaymentIntent (us_bank_account).</value>
+    <value>The SEPA debit of this linked account did not start. The manual bank transfer is still available.</value>
   </data>
   <data name="BankLinkAmountInvalid" xml:space="preserve">
     <value>The payment amount is not valid.</value>
