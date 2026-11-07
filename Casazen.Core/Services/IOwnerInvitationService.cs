@@ -33,9 +33,6 @@ public static class OwnerInvitationErrors
     /// <summary>409: the invitation is not in force any more, so there is nothing to withdraw.</summary>
     public const string NotLive = "owner_invitation_not_live";
 
-    /// <summary>422: the owner has no ownership or no address, so the portal has nothing to show it or nowhere to write.</summary>
-    public const string OwnerNotInvitable = "owner_invitation_owner_not_invitable";
-
     /// <summary>422: the e-mail could not be queued (the provider is not configured, or there is no address); the invitation was withdrawn.</summary>
     public const string EmailNotQueued = "owner_invitation_email_not_queued";
 }

@@ -5112,9 +5112,6 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OwnerInvitationNothingToSend" xml:space="preserve">
     <value>Nessun proprietario da invitare: controlla le esclusioni dell'anteprima.</value>
   </data>
-  <data name="OwnerInvitationOwnerNotInvitable" xml:space="preserve">
-    <value>Questo proprietario non può essere invitato: completa prima i suoi dati.</value>
-  </data>
   <data name="OwnerInvitationPreviewRequired" xml:space="preserve">
     <value>La conferma richiede l'anteprima: manca la sua impronta.</value>
   </data>
