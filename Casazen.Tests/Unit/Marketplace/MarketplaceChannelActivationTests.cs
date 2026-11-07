@@ -544,7 +544,11 @@ public class MarketplaceChannelActivationTests
         {
             var lost = await gone.Service(db).ActivateAsync(gone.OrgA, gone.OrgWide, goneStart.ActivationId);
             Assert.Equal((MarketplaceActivationStatus.ToFix, "connection_missing"), (lost.Status, lost.LastErrorCode));
+            Assert.False(lost.ConnectionFound);
         }
+
+        // Gone after «mark connected»: the activation is freed (no id), so that the next start makes a connection.
+        Assert.Null(Assert.Single(await gone.ActivationsAsync()).OctorateConnectionId);
 
         // No room mapped yet: «mark connected» is never sent (D6), the activation stays as it is.
         var unmapped = await World.CreateAsync();
@@ -612,6 +616,79 @@ public class MarketplaceChannelActivationTests
         Assert.Equal((first.ActivationId, MarketplaceActivationStatus.Pending), (restarted.ActivationId, restarted.Status));
         Assert.Equal("7002", Assert.Single(await w.ActivationsAsync()).OctorateConnectionId);
         Assert.Equal(2, w.Created.Count);
+    }
+
+    // ─── A connection that is gone, a create the caller abandoned, a refused read, the D6 flags ───────────────
+
+    [Fact]
+    public async Task EveryStep_ThatFindsTheConnectionGone_FreesTheActivation_AndTheNextStartMakesAConnectionOnTheSameRow()
+    {
+        foreach (var step in new[] { "import", "mapping", "save", "activate" })
+        {
+            var w = await World.CreateAsync();
+            var first = await w.StartAsync();
+            w.Rooms.Add(new OctorateChannelRoom("3301", "Camera", "956528"));
+
+            // The connection was removed on the channel manager: the step answers the 409 and the row stops pointing at it.
+            w.Connections.Clear();
+            w.Calls.Clear();
+            await using (var db = w.NewDb())
+            {
+                var service = w.Service(db);
+                Func<Task> run = step switch
+                {
+                    "import" => () => service.ImportAsync(w.OrgA, w.OrgWide, first.ActivationId),
+                    "mapping" => () => service.GetMappingAsync(w.OrgA, w.OrgWide, first.ActivationId),
+                    "save" => () => service.SaveMappingAsync(w.OrgA, w.OrgWide, first.ActivationId, [new MarketplaceRoomChoice("3301", "956528")]),
+                    _ => () => service.ActivateAsync(w.OrgA, w.OrgWide, first.ActivationId),
+                };
+                Assert.Equal("marketplace_connection_missing", (await Assert.ThrowsAsync<DomainConflictException>(run)).Code);
+            }
+
+            var freed = Assert.Single(await w.ActivationsAsync());
+            Assert.Equal((first.ActivationId, MarketplaceActivationStatus.ToFix, "connection_missing"), (freed.Id, freed.Status, freed.LastErrorCode));
+            Assert.Null(freed.OctorateConnectionId);
+            Assert.Empty(w.Calls);
+
+            // The start goes through the list and makes a connection on the same row.
+            var restarted = await w.StartAsync();
+            Assert.Equal((first.ActivationId, MarketplaceActivationStatus.Pending, true), (restarted.ActivationId, restarted.Status, restarted.ConnectionFound));
+            Assert.Equal(2, w.Created.Count);
+            var row = Assert.Single(await w.ActivationsAsync());
+            Assert.NotNull(row.OctorateConnectionId);
+            Assert.Null(row.LastErrorCode);
+        }
+
+        // An activation the host turned off stays turned off when its connection is found gone: it only forgets the id.
+        var off = await World.CreateAsync();
+        var offStart = await off.StartAsync();
+        await using (var db = off.NewDb())
+        {
+            var row = await db.MarketplaceActivations.SingleAsync();
+            row.Status = MarketplaceActivationStatus.Deactivated;
+            await db.SaveChangesAsync();
+        }
+
+        off.Connections.Clear();
+        await using (var db = off.NewDb())
+            await Assert.ThrowsAsync<DomainConflictException>(() => off.Service(db).ImportAsync(off.OrgA, off.OrgWide, offStart.ActivationId));
+
+        var turnedOff = Assert.Single(await off.ActivationsAsync());
+        Assert.Equal(MarketplaceActivationStatus.Deactivated, turnedOff.Status);
+        Assert.Null(turnedOff.OctorateConnectionId);
+
+        // The list of the channel manager may lag just after a create: a second start (a double click) gets the row it has and makes no second
+        // connection, and a read of the state changes nothing.
+        var lag = await World.CreateAsync();
+        var created = await lag.StartAsync();
+        lag.Connections.Clear();
+        var again = await lag.StartAsync(hotelId: null, username: null, password: null);
+        Assert.Equal((created.ActivationId, false), (again.ActivationId, again.ConnectionFound));
+        await using (var db = lag.NewDb())
+            Assert.False((await lag.Service(db).GetStateAsync(lag.OrgA, lag.OrgWide, created.ActivationId)).ConnectionFound);
+
+        Assert.Single(lag.Created);
+        Assert.Equal("7001", Assert.Single(await lag.ActivationsAsync()).OctorateConnectionId);
     }
 
     // ─── Registration and the proposer ────────────────────────────────────────────────────────────────────

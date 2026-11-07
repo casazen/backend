@@ -26,6 +26,10 @@ namespace Casazen.Infrastructure.Services;
 /// connection of the channel that already exists is never joined by a second one. If the activation row exists without its connection (an earlier
 /// start whose answer was lost) the connection found is taken; if there is no row, the connection was not made by CasaZen and is a 409. When the
 /// answer of the create is lost the row is kept without its id, so the next start finds the connection in the list.</para>
+/// <para><b>A connection that is gone.</b> A step that finds the connection of the activation no longer listed (removed on the channel manager) frees the
+/// activation: it forgets the connection id and is To fix with <c>connection_missing</c>, then answers the 409. The next start goes through the list and
+/// makes (or takes) a connection on the same row. The start itself never frees a row, because the list may lag just after a create, and a read of the
+/// state changes nothing.</para>
 /// <para><b>Only the channel manager decides.</b> Active is written only when it lists the connection as working after «mark connected»; the pulls of the
 /// connection are switched on after that, and only once at least one room is mapped (D6). A failure of the channel itself (550) leaves the activation To fix
 /// with its code and is raised again; a failure worth a retry (rate limit, no answer) changes nothing and is raised.</para>
@@ -258,9 +262,11 @@ public sealed class MarketplaceChannelActivationService(
 
     public async Task<MarketplaceActivationMapping> GetMappingAsync(Guid orgId, HostScope scope, Guid activationId, CancellationToken ct = default)
     {
-        var activation = await FindActivationAsync(orgId, scope, activationId, track: false, ct);
+        // Tracked: a connection that is gone frees the activation (RequireConnectionAsync).
+        var activation = await FindActivationAsync(orgId, scope, activationId, track: true, ct);
         var link = await RequireLinkAsync(orgId, activation.PropertyId!.Value, ct);
-        var connectionId = ConnectionIdOf(activation);
+        await RequireConnectionAsync(orgId, link, activation, ct);
+        var connectionId = activation.OctorateConnectionId!;
 
         OctorateChannelRoom[] rooms;
         OctorateRoom[] products;
@@ -300,13 +306,15 @@ public sealed class MarketplaceChannelActivationService(
             throw new DomainRuleException(MarketplaceActivationErrorCodes.MappingRequired, "MarketplaceMappingRequired");
 
         var link = await RequireLinkAsync(orgId, activation.PropertyId!.Value, ct);
-        var connectionId = ConnectionIdOf(activation);
 
         if (choices.Any(c => c is null || string.IsNullOrWhiteSpace(c.ChannelRoomId) || string.IsNullOrWhiteSpace(c.ProductId))
             || choices.Select(c => c.ChannelRoomId.Trim()).Distinct(StringComparer.Ordinal).Count() != choices.Count)
         {
             throw new DomainRuleException(MarketplaceActivationErrorCodes.MappingInvalid, "MarketplaceMappingInvalid");
         }
+
+        await RequireConnectionAsync(orgId, link, activation, ct);
+        var connectionId = activation.OctorateConnectionId!;
 
         await WithChannelManagerAsync(
             orgId,
@@ -410,11 +418,17 @@ public sealed class MarketplaceChannelActivationService(
                 ct);
             logger.LogInformation("Marketplace activation {ActivationId} of org {OrgId} is active", activation.Id, orgId);
         }
+        else if (verified is null)
+        {
+            // Listed when the step began and gone after «mark connected»: freed like the activation of any step that finds its connection gone.
+            await ForgetGoneConnectionAsync(activation, ct);
+        }
         else
         {
-            var code = verified is null ? MarketplaceActivationErrorCodes.ConnectionLost : MarketplaceActivationErrorCodes.ConnectionNotEnabled;
-            await SetToFixAsync(activation, code, ct, now);
-            logger.LogWarning("Marketplace activation {ActivationId} of org {OrgId} is not active: {Error}", activation.Id, orgId, code);
+            await SetToFixAsync(activation, MarketplaceActivationErrorCodes.ConnectionNotEnabled, ct, now);
+            logger.LogWarning(
+                "Marketplace activation {ActivationId} of org {OrgId} is not active: {Error}",
+                activation.Id, orgId, MarketplaceActivationErrorCodes.ConnectionNotEnabled);
         }
 
         return StateOf(activation, verified);
@@ -500,12 +514,57 @@ public sealed class MarketplaceChannelActivationService(
             ? id
             : throw new DomainConflictException(MarketplaceActivationErrorCodes.ConnectionMissing, "MarketplaceConnectionMissing");
 
-    /// <summary>The connection of the activation as the channel manager lists it; a connection that is not there is the 409 that leads to a new start.</summary>
+    /// <summary>
+    /// The connection of the activation as the channel manager lists it. One that is not there is the 409 that leads to a new start, and the
+    /// activation is freed first (<see cref="ForgetGoneConnectionAsync"/>), so that the start has something to do.
+    /// </summary>
     private async Task<OctorateConnectionInfo> RequireConnectionAsync(Guid orgId, Link link, MarketplaceActivation activation, CancellationToken ct)
     {
         _ = ConnectionIdOf(activation);
-        return await FindConnectionAsync(orgId, link, activation, ct)
-               ?? throw new DomainConflictException(MarketplaceActivationErrorCodes.ConnectionMissing, "MarketplaceConnectionMissing");
+        var connection = await FindConnectionAsync(orgId, link, activation, ct);
+        if (connection is null)
+        {
+            await ForgetGoneConnectionAsync(activation, ct);
+            throw new DomainConflictException(MarketplaceActivationErrorCodes.ConnectionMissing, "MarketplaceConnectionMissing");
+        }
+
+        return connection;
+    }
+
+    /// <summary>
+    /// The channel manager no longer lists the connection of the activation (it was removed there). The activation forgets its connection id and is To
+    /// fix with <c>connection_missing</c>, so that the next start goes through the list and makes (or takes) a connection on the same row, instead of
+    /// returning a row that points at nothing. An activation the host turned off stays turned off. Only a step does this: never the start (just after a
+    /// create the list may lag behind it) and never a read of the state.
+    /// </summary>
+    private async Task ForgetGoneConnectionAsync(MarketplaceActivation activation, CancellationToken ct)
+    {
+        var goneId = activation.OctorateConnectionId;
+        var now = Now();
+        await SaveAsync(
+            activation,
+            a =>
+            {
+                // Another request may have started the activation again meanwhile: its new connection is not the one that is gone.
+                if (!string.Equals(a.OctorateConnectionId, goneId, StringComparison.Ordinal))
+                    return;
+
+                a.OctorateConnectionId = null;
+                if (a.Status != MarketplaceActivationStatus.Deactivated)
+                {
+                    a.Status = MarketplaceActivationStatus.ToFix;
+                    a.LastErrorCode = MarketplaceActivationErrorCodes.ConnectionLost;
+                    a.LastErrorAt = now;
+                }
+
+                a.LastSyncedAt = now;
+                a.UpdatedAt = now;
+            },
+            ct);
+
+        logger.LogWarning(
+            "Marketplace activation {ActivationId} of org {OrgId}: its connection is no longer on the channel manager, the activation can be started again",
+            activation.Id, activation.OrgId);
     }
 
     private async Task<OctorateConnectionInfo?> FindConnectionAsync(Guid orgId, Link link, MarketplaceActivation activation, CancellationToken ct)
