@@ -26,6 +26,21 @@ public class DemoShowcaseTests
     }
 
     [Fact]
+    public void PropertyOwners_FiscalCodeAndIban_PassTheRulesOfTheOwnerRegistry_AndTheAddressIsATestOne()
+    {
+        // The demo owners are the registry that the owner readiness judges: a fiscal code or an IBAN that fails its check character or checksum
+        // would show a fault nobody made. Invented, but valid for the real rules (demo-seed.md).
+        foreach (var owner in DemoShowcaseCatalog.PropertyOwners)
+        {
+            Assert.True(
+                OwnerFieldRules.IsValidFiscalId(OwnerFieldRules.NormalizeFiscalCode(owner.FiscalCode), owner.TaxResidenceCountry),
+                $"{owner.Key}: the fiscal code fails its check character");
+            Assert.True(OwnerFieldRules.IsValidIban(OwnerFieldRules.NormalizeIban(owner.Iban)), $"{owner.Key}: the IBAN fails its checksum");
+            Assert.EndsWith("@example.com", owner.Email, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
     public void Document_IsARealPdf_AndSaysItIsTestData()
     {
         var pdf = DemoDocumentPdf.Create("CERTIFICATO CIN DI TEST", DemoDocumentPdf.Marker + " CasaZen");
