@@ -108,6 +108,40 @@ public sealed class LeaseDocumentExtractionServiceTests
     }
 
     [Fact]
+    public async Task ADocumentDeletedWhileItIsRead_DoesNotFillTheDraft_AndALaterUploadStillCan()
+    {
+        using var harness = await new LeaseDraftHarness().SeedAsync();
+        var draft = await harness.CreateAsync(LeaseOrigin.Imported);
+        var document = await AddDocumentAsync(harness, draft.Id);
+        ServeBytes(harness);
+        var reader = new Mock<IContractTextReader>();
+        reader.Setup(r => r.ReadAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .Returns(async (byte[] _, CancellationToken token) =>
+            {
+                // The person removes the file while the pages are being read (the wrong contract, then another upload).
+                var row = await harness.Db.LeaseDocuments.SingleAsync(d => d.Id == document.Id, token);
+                harness.Db.LeaseDocuments.Remove(row);
+                await harness.Db.SaveChangesAsync(token);
+                return new ContractText(LeaseContractTextParserTests.Libero, 3, 0, false);
+            });
+
+        var gone = await Assert.ThrowsAsync<NotFoundException>(() => CreateSut(harness, reader).ExtractAsync(document.Id));
+
+        // DATA RULE PROOF: the reading of a file that is gone is not written. What was empty stays empty, so the next file can fill it.
+        Assert.Equal("document_not_found", gone.Code);
+        var untouched = await harness.Service.GetAsync(draft.Id);
+        Assert.Equal(draft.Version, untouched.Version);
+        Assert.Empty(untouched.Values.Landlords);
+        Assert.Null(untouched.Values.MonthlyRent);
+
+        var replacement = await AddDocumentAsync(harness, draft.Id);
+        await CreateSut(harness, Reads(LeaseContractTextParserTests.Libero)).ExtractAsync(replacement.Id);
+        var filled = await harness.Service.GetAsync(draft.Id);
+        Assert.Equal(800m, filled.Values.MonthlyRent);
+        Assert.Equal("Mario", Assert.Single(filled.Values.Landlords).FirstName);
+    }
+
+    [Fact]
     public async Task ADocumentThatCannotBeRead_SaysSoWithACode_AndWritesNothingToTheDraft()
     {
         using var harness = await new LeaseDraftHarness().SeedAsync();

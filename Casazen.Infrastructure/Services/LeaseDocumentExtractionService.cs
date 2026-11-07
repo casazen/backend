@@ -134,9 +134,10 @@ public sealed class LeaseDocumentExtractionService(
                 "Document read. DocumentId={DocumentId} LeaseId={LeaseId} Status={Status} Pages={Pages} PagesOcr={PagesOcr}",
                 documentId, leaseId, status, text.Pages, text.PagesOcr);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException && ex is not NotFoundException { Code: "document_not_found" })
         {
             // The type of the failure and the ids, never its message: the reader of a document may put a word of it there.
+            // A document deleted while it was being read is not a failure: there is no row left to mark, and the job stops.
             logger.LogError("Reading the document failed. DocumentId={DocumentId} LeaseId={LeaseId} Error={ErrorType}", documentId, document.LeaseContractId, ex.GetType().Name);
             await FailAsync(documentId, ContractReadingCodes.Error, CancellationToken.None);
             throw;
@@ -162,7 +163,7 @@ public sealed class LeaseDocumentExtractionService(
         LeaseDraftFillResult applied;
         try
         {
-            applied = await drafts.ApplyContractReadingAsync(lease.Id, reading, ct);
+            applied = await drafts.ApplyContractReadingAsync(lease.Id, reading, documentId, ct);
         }
         catch (DomainConflictException ex) when (ex.Code == LeaseDraftErrorCodes.NotDraft)
         {
@@ -228,10 +229,14 @@ public sealed class LeaseDocumentExtractionService(
             d.ExtractionCompletedAt = DateTime.UtcNow;
         }, ct);
 
-    /// <summary>Changes the document as it is in the database now and saves: the instance read at the start may have been detached since.</summary>
+    /// <summary>
+    /// Changes the document as it is in the database now and saves: the instance read at the start may have been detached since.
+    /// A row removed in the meantime is <see cref="NotFoundException"/> (<c>document_not_found</c>), which the extraction job does not retry.
+    /// </summary>
     private async Task UpdateAsync(Guid documentId, Action<LeaseDocument> change, CancellationToken ct)
     {
-        var current = await db.LeaseDocuments.FirstAsync(d => d.Id == documentId, ct);
+        var current = await db.LeaseDocuments.FirstOrDefaultAsync(d => d.Id == documentId, ct)
+            ?? throw new NotFoundException("Document not found") { Code = "document_not_found", MessageKey = "DocumentNotFound" };
         change(current);
         await db.SaveChangesAsync(ct);
     }

@@ -84,6 +84,26 @@ public sealed class LeaseDocumentServiceTests : IDisposable
         Assert.False(await Service.DeleteAsync(lease.Id, saved.Id));
     }
 
+    [Fact]
+    public async Task Delete_DropsTheRowBeforeTheFile_SoAStorageFailureLeavesNothingListed()
+    {
+        var lease = await Seed();
+        var saved = await Service.UploadAsync(lease.Id, File(Pdf), LeaseDocumentKind.Attestation, "owner");
+        var rowCommittedBeforeStorageDelete = false;
+        _storage.Setup(s => s.DeleteAsync(StorageBucket.Private, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<StorageBucket, string, CancellationToken>((_, _, _) =>
+                rowCommittedBeforeStorageDelete = !_db.ChangeTracker.HasChanges() && !_db.LeaseDocuments.Any(d => d.Id == saved.Id))
+            .ThrowsAsync(new IOException("storage down"));
+
+        Assert.True(await Service.DeleteAsync(lease.Id, saved.Id));
+
+        // The list and the download follow the row. The blob may remain; the document must not.
+        Assert.True(rowCommittedBeforeStorageDelete);
+        Assert.Empty(await Service.ListAsync(lease.Id));
+        Assert.Null(await Service.DownloadAsync(lease.Id, saved.Id));
+        Assert.NotEmpty(_objects);
+    }
+
     [Theory]
     [InlineData("<html>not a PDF</html>")]
     [InlineData("")]

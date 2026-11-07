@@ -225,9 +225,13 @@ public sealed class LeaseDocumentService(AppDbContext db, IFileStorage storage, 
         if (document is null)
             return false;
 
-        await storage.DeleteAsync(StorageBucket.Private, document.StorageKey, ct);
+        // The row is what the list and the download read. It goes first, as for a property document: a save that fails
+        // leaves the file where it is, and a storage delete that fails can only leave an orphan blob.
+        var storageKey = document.StorageKey;
         db.LeaseDocuments.Remove(document);
         await db.SaveChangesAsync(ct);
+        try { await storage.DeleteAsync(StorageBucket.Private, storageKey, CancellationToken.None); }
+        catch (Exception cleanup) { logger.LogWarning(cleanup, "Could not remove orphan lease attachment {DocumentId}", documentId); }
         logger.LogInformation("Lease document {DocumentId} of lease {LeaseId} deleted", documentId, leaseId);
         return true;
     }
