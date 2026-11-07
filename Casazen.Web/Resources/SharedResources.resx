@@ -756,6 +756,27 @@
   <data name="CalendarTooManyProperties" xml:space="preserve">
     <value>Puoi chiedere al massimo {0} immobili alla volta.</value>
   </data>
+  <data name="CalendarDayRuleInvalidPrice" xml:space="preserve">
+    <value>Il prezzo di una notte deve essere tra {0} e {1}, con al massimo due decimali.</value>
+  </data>
+  <data name="CalendarDayRuleInvalidStay" xml:space="preserve">
+    <value>Il soggiorno deve essere tra {0} e {1} notti, e il massimo non può essere inferiore al minimo.</value>
+  </data>
+  <data name="CalendarDayRuleInvalidAdvance" xml:space="preserve">
+    <value>L'anticipo di prenotazione deve essere tra {0} e {1} giorni, e il massimo non può essere inferiore al minimo.</value>
+  </data>
+  <data name="CalendarDayRuleRangeInvalid" xml:space="preserve">
+    <value>L'ultimo giorno del periodo non può essere precedente al primo.</value>
+  </data>
+  <data name="CalendarDayRuleRangeTooLong" xml:space="preserve">
+    <value>Una modifica può riguardare al massimo {0} giorni: scegli un periodo più breve.</value>
+  </data>
+  <data name="CalendarDayRuleInPast" xml:space="preserve">
+    <value>I giorni scelti sono già passati: scegli giorni da oggi in poi.</value>
+  </data>
+  <data name="CalendarDayRuleNothingToChange" xml:space="preserve">
+    <value>Scegli almeno un valore da modificare e almeno un giorno.</value>
+  </data>
   <data name="CalendarInvalidRequest" xml:space="preserve">
     <value>Le date o gli immobili richiesti non sono validi: controlla le date (da 2000 a 2100) e gli identificativi degli immobili.</value>
   </data>
@@ -1314,6 +1335,21 @@
   </data>
   <data name="DirectBookingMinNightsNotMet" xml:space="preserve">
     <value>Il soggiorno minimo per questa casa è di {0} notti.</value>
+  </data>
+  <data name="DirectBookingArrivalClosed" xml:space="preserve">
+    <value>Non è possibile arrivare in questa data: scegli un altro giorno di arrivo.</value>
+  </data>
+  <data name="DirectBookingDepartureClosed" xml:space="preserve">
+    <value>Non è possibile partire in questa data: scegli un altro giorno di partenza.</value>
+  </data>
+  <data name="DirectBookingMaxNightsExceeded" xml:space="preserve">
+    <value>Il soggiorno massimo per questo arrivo è di {0} notti.</value>
+  </data>
+  <data name="DirectBookingAdvanceTooShort" xml:space="preserve">
+    <value>Questa data va prenotata con almeno {0} giorni di anticipo.</value>
+  </data>
+  <data name="DirectBookingAdvanceTooLong" xml:space="preserve">
+    <value>Questa data si può prenotare al massimo {0} giorni prima.</value>
   </data>
   <data name="DirectBookingMarketingConsentUnavailable" xml:space="preserve">
     <value>Il consenso a ricevere offerte non è disponibile in questo momento: riprova senza selezionarlo.</value>
@@ -2177,7 +2213,7 @@
     <value>Vista non valida: usa uno dei nomi all, toConfirm, upcoming, inProgress, completed o cancelled.</value>
   </data>
   <data name="BookingListInvalidChannel" xml:space="preserve">
-    <value>Canale non valido: usa i nomi Direct, Manual, Airbnb, BookingCom o Other, ripetuti o separati da virgole.</value>
+    <value>Canale non valido: usa i nomi Direct, Manual, Airbnb, BookingCom, Expedia, Vrbo, TripAdvisor, Agoda o Other (ogni altra origine), ripetuti o separati da virgole.</value>
   </data>
   <data name="BookingListInvalidCheckInStatus" xml:space="preserve">
     <value>Stato del check-in non valido: usa i nomi NotSent, Sent, InProgress, Completed o Expired, ripetuti o separati da virgole.</value>
@@ -5192,6 +5228,27 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   </data>
   <data name="OtaChannelCancelGuidanceAgoda" xml:space="preserve">
     <value>Per cancellare questa prenotazione di Agoda chiedi all'ospite di annullarla su Agoda.</value>
+  </data>
+  <data name="ArchiveTypeForbidden" xml:space="preserve">
+    <value>Non hai accesso a questo tipo di documento.</value>
+  </data>
+  <data name="ArchiveDocumentNotFound" xml:space="preserve">
+    <value>Documento non trovato.</value>
+  </data>
+  <data name="ArchiveDocumentHasNoFile" xml:space="preserve">
+    <value>Questo documento non ha un file da scaricare.</value>
+  </data>
+  <data name="ArchiveExportTooLarge" xml:space="preserve">
+    <value>Troppi documenti per un solo archivio: ne risultano {0}, e un'esportazione ne contiene al massimo {1} per {2} MB (un documento di cui non si conosce la dimensione conta {3} MB). Restringi il periodo o scegli un tipo di documento o un immobile.</value>
+  </data>
+  <data name="ArchiveInvalidType" xml:space="preserve">
+    <value>Tipo di documento non valido.</value>
+  </data>
+  <data name="ArchiveInvalidPeriod" xml:space="preserve">
+    <value>Periodo non valido: indica i giorni nel formato AAAA-MM-GG, con il primo non dopo l'ultimo.</value>
+  </data>
+  <data name="ArchiveInvalidPage" xml:space="preserve">
+    <value>Pagina non valida: le pagine partono da 1 e ognuna ha da 1 a {0} documenti.</value>
   </data>
   <data name="BookingSettlementFailed" xml:space="preserve">
     <value>Il pagamento della differenza di prezzo non è andato a buon fine: la prenotazione non è stata modificata. Puoi riprovare, lo stesso rimborso non viene mai fatto due volte.</value>

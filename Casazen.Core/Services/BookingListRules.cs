@@ -50,7 +50,19 @@ public enum BookingChannel
     /// <summary>Booking.com.</summary>
     BookingCom,
 
-    /// <summary>Any other channel: Expedia, Vrbo, Tripadvisor, Agoda, a local one.</summary>
+    /// <summary>Expedia (E08/F05/US01/T02, NF-78).</summary>
+    Expedia,
+
+    /// <summary>Vrbo (E08/F05/US01/T02, NF-78).</summary>
+    Vrbo,
+
+    /// <summary>Tripadvisor (E08/F05/US01/T02, NF-78).</summary>
+    TripAdvisor,
+
+    /// <summary>Agoda (E08/F05/US01/T02, NF-78).</summary>
+    Agoda,
+
+    /// <summary>Any other channel: a local one, or a portal of the channel manager that has no channel of its own here.</summary>
     Other,
 }
 
@@ -154,13 +166,20 @@ public static class BookingListRules
 
     // --- The channel --------------------------------------------------------------------------------
 
-    /// <summary>The channel of a source: the booking site, the host, Airbnb, Booking.com, or any other.</summary>
+    /// <summary>
+    /// The channel of a source: the booking site, the host, Airbnb, Booking.com, Expedia, Vrbo, Tripadvisor, Agoda, or any other (a local
+    /// source, or a portal of the channel manager that has no source of its own).
+    /// </summary>
     public static BookingChannel ChannelOf(BookingSource source) => source switch
     {
         BookingSource.Direct => BookingChannel.Direct,
         BookingSource.Manual => BookingChannel.Manual,
         BookingSource.Airbnb => BookingChannel.Airbnb,
         BookingSource.BookingCom => BookingChannel.BookingCom,
+        BookingSource.Expedia => BookingChannel.Expedia,
+        BookingSource.Vrbo => BookingChannel.Vrbo,
+        BookingSource.TripAdvisor => BookingChannel.TripAdvisor,
+        BookingSource.Agoda => BookingChannel.Agoda,
         _ => BookingChannel.Other,
     };
 

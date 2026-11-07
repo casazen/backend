@@ -537,7 +537,8 @@ public class DemoEnvironmentService(
     /// not created. The same rules as a payment recorded through the service: an amount above zero, a period that is not backwards, a day that is
     /// not after today in Europe/Rome (the template says so, and <c>DemoShowcaseTests</c> checks it).
     /// </summary>
-    private async Task CreateTouristTaxRemittanceAsync(
+    /// <remarks>Internal so that a test can seed the payment of one house of the catalog (<c>DemoDocumentArchiveSeedTests</c>).</remarks>
+    internal async Task CreateTouristTaxRemittanceAsync(
         Guid orgId, string ownerId, DemoTouristTaxRemittanceTemplate template, CancellationToken cancellationToken)
     {
         var propertyId = await Markers()
@@ -1462,7 +1463,9 @@ public class DemoEnvironmentService(
         return pending.Count;
     }
 
-    private async Task CreateShowcasePropertyAsync(
+    /// <summary>One house of the showcase with what its template says: its details, its listing rows, its documents and its stays.</summary>
+    /// <remarks>Internal so that a test can seed one house of the catalog without the rest of the showcase (<c>DemoDocumentArchiveSeedTests</c>).</remarks>
+    internal async Task CreateShowcasePropertyAsync(
         Guid orgId, string ownerId, DemoPropertyTemplate template, CancellationToken cancellationToken)
     {
         var place = await ResolvePlaceAsync(template.Place, cancellationToken);
@@ -1597,6 +1600,31 @@ public class DemoEnvironmentService(
             };
             db.PropertyStayDiscounts.Add(tier);
             listingRows.Add((TestDataEntities.PropertyStayDiscount, tier.Id, template.Key + "/discount-" + demoDiscount.MinNights));
+        }
+
+        // NF-36: the price and the rules of single nights of the house (invented). Like the rows above they go with their property (cascade) at the
+        // next reset and carry a marker of their own; the nights are counted from the day of the reset, on the calendar of the property.
+        var firstNight = DayRuleRules.TodayOf(property.Timezone, clock.GetUtcNow());
+        foreach (var demoRule in template.DayRules ?? [])
+        {
+            var rule = new PropertyDayRule
+            {
+                OrgId = orgId,
+                PropertyId = property.Id,
+                StayDate = firstNight.AddDays(demoRule.OffsetDays),
+                Price = demoRule.Price,
+                MinNights = demoRule.MinNights,
+                MaxNights = demoRule.MaxNights,
+                ClosedToArrival = demoRule.ClosedToArrival,
+                ClosedToDeparture = demoRule.ClosedToDeparture,
+                MinAdvanceDays = demoRule.MinAdvanceDays,
+                MaxAdvanceDays = demoRule.MaxAdvanceDays,
+                CreatedAt = now,
+                UpdatedAt = now,
+                UpdatedByUserId = ownerId,
+            };
+            db.PropertyDayRules.Add(rule);
+            listingRows.Add((TestDataEntities.PropertyDayRule, rule.Id, template.Key + "/day-rule-" + demoRule.OffsetDays));
         }
 
         await db.SaveChangesAsync(cancellationToken);

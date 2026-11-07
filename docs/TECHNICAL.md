@@ -322,6 +322,7 @@ Property record choices (PC-02):
 | `POST` | `/api/bookings/{id}/cancel` | `BookingWrite`. A direct or manual booking: Stripe intents cancelled and the refund as always, then Octorate follows (below). A booking that came from a channel: Octorate first, 200 only after it confirmed, no refund; 422 `ota_booking_cancel_not_allowed` (closed channel), 422 `octorate_cancel_failed` (Octorate refuses or cannot be asked), 503 `octorate_unavailable` (no answer); the booking is unchanged in the three (E08/F02/US02, below) |
 | `GET` | `/api/bookings/calendar` | Calendar view of one property (`?propertyId&startDate&endDate&timezone`); unchanged |
 | `GET` | `/api/calendar` | SR-02a: the calendar of all the host's properties in one read (below): `?from&to&propertyIds&timezone` |
+| `GET` | `/api/calendar/days` | short-rent property.read | E08/F05/US01/T02 (NF-36, NF-78): the price and the rules of every night of the properties the caller reaches (below): `?from&to&propertyIds`; `{ today, properties: [{ propertyId, timezone, currency, mirrored, days: [{ date, priceCents, priceSource, minNights, maxNights, closedToArrival, closedToDeparture, minAdvanceDays, maxAdvanceDays, hasRule, taken }] }] }` |
 | `POST` | `/api/bookings/{id}/check-in` | Perform check-in: records `ArrivedAt`, schedules the Alloggiati Web job (idempotent) |
 | `POST` | `/api/bookings/{id}/check-out` | Perform check-out |
 | `GET` | `/api/bookings/{id}/alloggiati-status` | Alloggiati Web status (same as `/api/alloggiati/{id}/status`) |
@@ -360,7 +361,11 @@ are gone). Everything below is optional and additive; nothing of the SR-03 answe
   booking is in one chip at most; a Confirmed stay of the past that nobody registered is in none yet (it is in `all`). 400
   `booking_list_invalid_view`.
 - `channel`, repeated or separated by commas: `Direct` (the booking site), `Manual` (entered by the host), `Airbnb`,
-  `BookingCom`, `Other` (every other source); 400 `booking_list_invalid_channel`.
+  `BookingCom`, `Expedia`, `Vrbo`, `TripAdvisor`, `Agoda`, `Other` (every other source: a local one, or a portal of the channel
+  manager that has no source of its own); 400 `booking_list_invalid_channel`. **Change of E08/F05/US01/T02 (NF-78):** the four
+  portals have a channel of their own (`BookingListRules.ChannelOf`), so `channel=Other` no longer returns the bookings of
+  Expedia, Vrbo, TripAdvisor and Agoda: ask for them by name (`channel=Other&channel=Expedia`). The `channel` of every booking
+  of the list, of the search and of the calendar (`GET /api/calendar`) tells them apart.
 - `checkInStatus`, repeated or separated by commas: the state of the online check-in link as `GET /api/dashboard/today`
   reads it (`NotSent`, `Sent`, `InProgress`, `Completed`, `Expired`), from the link alone, not from whether the guests' data are
   complete; filtered in SQL. 400 `booking_list_invalid_check_in_status`.
@@ -409,6 +414,37 @@ most 50, 422 `calendar_too_many_properties`; without it the first 50 by name, `p
 One read for the properties and one each for the bookings, their payments, the blocks and the interventions: none per property.
 `GET /api/bookings/calendar` is not touched. The Home puts the nights taken twice among its things to do (`ResolveCalendarConflict`,
 below), from `CalendarAlertRules`, the calculation the future alerts of the calendar will share.
+
+**The price and the rules of the nights (E08/F05/US01, NF-36, NF-78; `IPropertyDayRuleService`, tables `PropertyDayRules`, `CalendarChangeProcesses` and `CalendarChangeChunks`, migration `AddPropertyDayRulesAndCalendarChanges`, no flag: nothing writes a rule until the changes API of E08/F05/US02 ships).** CasaZen had one
+minimum stay per property (`Property.MinNights`) and a price for a date only through the seasonal proposals the host confirmed; a
+night can now have its own price, a minimum and a maximum stay, an arrival or a departure closed, and a minimum and a maximum advance.
+One row per property and stay date (unique `(PropertyId, StayDate)`), written only while a value is set (a row left with no value is
+deleted); `StayDate` is the calendar date of the property the night starts on (a `date`, never converted: only «today», which decides
+whether a night is over, is read on the time zone of the property, `DayRuleRules.TodayOf`). The check constraint
+`CK_PropertyDayRules_Values` refuses a price outside 0.01 to 100000, a stay outside 1 to 365 nights, an advance outside 0 to 730 days
+and a maximum below its minimum; the service refuses the same before it stages anything (422 `calendar_day_rule_invalid_price`,
+`calendar_day_rule_invalid_stay`, `calendar_day_rule_invalid_advance`, `calendar_day_rule_range_invalid`,
+`calendar_day_rule_range_too_long` (more than 366 days), `calendar_day_rule_in_past` when every night the change touches is already over on the clock of the property, `calendar_day_rule_nothing_to_change`); the price
+is rounded to the cent, half away from zero, as `StayPricing` rounds. No endpoint writes the rules here: the changes API
+(E08/F05/US02/T03) calls `IPropertyDayRuleService.ApplyAsync` with the `HostScope` of the caller (reading the rules of a property, `GetRulesAsync`, takes it too: a property outside the reach of the caller, another org's or one a collaborator limited to some properties was not given, is NotFound), which stages the rows (skipping and counting the nights before today of
+the property, and refusing the change with `calendar_day_rule_in_past` when every night it touches is already over) and never saves: the caller owns the transaction and, on a unique violation of the night
+(`IsDateConflict`), calls `DiscardStaged` and stages once more. The changes sent to the channel manager are `CalendarChangeProcesses`
+and `CalendarChangeChunks` (no personal data; the state of the process is derived from its chunks; accepted by the channel manager is
+not published on the portals).
+
+`GET /api/calendar/days` (policy `short-rent property.read`, the caller's `HostScope` in SQL like the calendar above): `from` and `to`
+(`yyyy-MM-dd`, both included; today and the 29 days after it when missing; at most 92 days, 422 `calendar_window_too_large`; `to` before
+`from` is 400 `booking_calendar_range_invalid`; years 2000 to 2100) and `propertyIds` (repeated or separated by commas, at most 50, 422
+`calendar_too_many_properties`; one the caller does not reach is left out as if it did not exist; without it the first 50 by name). The
+answer is `{ today, properties: [{ propertyId, timezone, currency, mirrored, days }] }`, `today` being Europe/Rome and `timezone` the
+IANA zone of the property. Each day: `date`; `priceCents` (the number of the quote of a one-night stay: `StayPricing.NightPrice` with
+the prices the host set, `DayRulePricing.HostPrices`); `priceSource` (`DayRule`, `Seasonal`, `Weekend` or `Base`); `minNights` (the rule,
+else `Property.MinNights`, else 1); `maxNights`, `minAdvanceDays`, `maxAdvanceDays` (absent when not set); `closedToArrival`,
+`closedToDeparture`; `hasRule`; `taken` (the nights `PublicOccupancyReader` says are taken, the definition of the public calendar).
+`mirrored` is true when `IOctorateBookingTargets.LookupAsync` finds a target (advice only: with the connector off, or when the channel
+manager cannot be asked or takes too long, it is false and the days are answered all the same; one read waits 3 seconds at most for all the properties, what the channel
+manager said about a property, a failure or a timeout included, is remembered for 60 seconds, and a property a spent wait left out is asked at the next read). One query per kind of data for all the
+properties: the properties, the rules, the confirmed seasonal prices and the taken nights.
 
 **The state and the history of one booking (SR-05a, SR-D17).** `Booking` keeps three more times, all nullable and never backfilled:
 `ConfirmedAt` (a payment that settled, the host's confirmation or acceptance, or a booking confirmed from the start: entered by the
@@ -773,6 +809,48 @@ record or delete, and the collaborator has neither. It works in the org and the 
   caller, because the rest of the file is Italian. For a caller who reaches only some of the properties (`paymentsHidden`) the file has the
   owed side only: a title that says the payments are not shown, no paid, balance and status columns and no list of payments. The file is
   `casazen-tassa-soggiorno-riepilogo-20260101-20261231.csv`.
+
+#### Document archive (NF-99, REP-04, E07/F03/US03)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/documents` | `property.read` in either rental context (the door), then the permission of each type | A page of the documents the caller may read: `{ items, totalCount, page, pageSize }`, an item `{ type, id, title, date, propertyId, propertyName, bookingId, bookingCode, contentType, sizeBytes }` (`type` is a key, never a text: `propertyDocument`, `contract`, `touristTax`, `invoice`, `receipt`, `creditNote`, `alloggiatiReceipt`, `istatProof`; `date` is the Europe/Rome day; `sizeBytes` is `null` when the source stores none). Newest day first, then by id. Query: `type` (repeatable), `from` and `to` (`yyyy-MM-dd`, both included, each optional), `propertyId`, `bookingId`, `q` (title, property name or booking code, at most 100 characters, case-insensitive), `page` (from 1) and `pageSize` (1 to 100, default 25). 400 `archive_invalid_type` (a word that is not a key), `archive_invalid_period` (`to` before `from`, or a year outside 2000-2100), `archive_invalid_page`; 403 without an org |
+| `GET` | `/api/documents/types` | same | `{ types: [{ type, count }] }`: every type the caller may read, with how many documents match the other filters of the request (`from`, `to`, `propertyId`, `bookingId`, `q`; the type is the one thing left out), zero included. A type the caller may not read is not there |
+| `GET` | `/api/documents/{type}/{id}/download` | same | The original file from the private bucket under its own name and content type, `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff`. 400 `archive_invalid_type`; 403 `archive_type_forbidden` (a type the caller may not read, or that has no source yet); 404 `archive_document_not_found` (missing, of another org, or of a property outside the scope: the same 404) and `archive_document_has_no_file` (no file, or the file is gone from the storage) |
+| `GET` | `/api/documents/export` | same | A ZIP of the documents of a period, `application/zip`, `casazen-documenti-{yyyyMMdd}-{yyyyMMdd}.zip`, streamed from the storage. `from` and `to` are required and cover at most 24 months (400 `report_invalid_period`, 422 `report_period_too_long`, as the reports); optional `type` (repeatable) and `propertyId`. Beyond `DocumentArchive:MaxExportFiles` (300) documents or `DocumentArchive:MaxExportBytes` (200 MB; a document that stores no size, every property document, counts as 10 MB) it answers 422 `archive_export_too_large` with the number found (`fileCount`, `maxFiles`, `maxBytes`) before the first byte |
+
+`DocumentArchiveController` carries the read of the property core on the class (`SharedPropertyRead`: `property.read` in the short-rent **or** the
+long-rent context, so a landlord with only the long-term area passes the door too) and each type is then opened by the permission of the area its
+documents belong to, asked for the caller as the context policies do (`IContextAuthorizationService.HasPermissionAsync`, through
+`DocumentArchiveAccessResolver`, which fails closed). It works in the org and the `HostScope` of the caller.
+- **The sources.** The archive is a read model: it owns no table and copies no file. A source (`IDocumentArchiveSource`) knows one table, the
+  context and the permission that read it, its rows as `ArchiveRow` (`Query(scope)`) and how to open a file (`OpenAsync`). Registered by
+  `AddDocumentArchive`: `PropertyDocumentArchiveSource` (type `propertyDocument`, `property.read` in `short-rent|long-rent`, the file name as
+  title, the day of the upload), `LeaseDocumentArchiveSource` (`contract`, `lease.read` in `long-rent`, every file attached to a lease) and
+  `TouristTaxRemittanceArchiveSource` (`touristTax`, `payment.read` in `short-rent`, the comune as title, the day of the payment, only the
+  payments recorded with a receipt). The Alloggiati receipts and the ISTAT proofs (`guest.read`) join with their tasks; the invoices, receipts and
+  credit notes with the fiscal epic, each by registering its own source. **The guest identity documents and the selfies are never a source.**
+- **One statement for the list.** The sources of the allowed types, each already narrowed to the org and to the reach of the caller and filtered by
+  the request, are concatenated (`UNION ALL`, the same member initialiser for all) and counted, ordered and paged by the database: two commands
+  (count and page) whatever the number of sources, and one more for `types`. A source that is not allowed, or not asked for, is not in the
+  statement. An empty `Types` list selects nothing, never everything. The day of an upload is worked out by PostgreSQL in Europe/Rome
+  (`AT TIME ZONE`), so the filter by days and the order are made in SQL on the day the host sees.
+- **Reach.** Every query names the org of the scope on the row and on each joined property; a row with a property is returned only if the
+  property is in the scope (`InScope`, an `EXISTS` in the same statement); a row with no property (a tourist tax receipt) only to a scope that
+  reaches the whole org, as the tourist tax summary does. The download looks the row up with the query of the list, and the export lists its
+  documents with it: what is not in the list for a caller cannot be downloaded or exported by it.
+- **The export.** A folder for each type (`fatture`, `ricevute`, `note-di-credito`, `ricevute-alloggiati`, `prove-istat`, `imposta-di-soggiorno`,
+  `contratti`, `documenti-immobile`), the files named `{yyyy-MM-dd}-{title}{extension}` (the title cut to 100 characters and made safe, `-2`, `-3` for
+  a name already taken) and `indice.csv` at the root (`CsvWriter`: `;`, UTF-8 with BOM; columns `Tipo`, `Data`, `Immobile`, `Codice prenotazione`,
+  `Titolo`, `File`, `Dimensione (byte)`, `SHA-256`), written last because the hash is known once a file was copied. A document with no file (or
+  whose file is gone) is in the index with an empty `File`. Each file is copied in chunks from the storage into its entry, so the archive is never held in memory and the files go one at a time (in production S3 copies the single object: 20 MB at most for a contract, 10 MB for a property document; the disk is never used),
+  and the destination needs no seek and no synchronous write (the response of Kestrel has neither; the ZIP writer finishes each
+  entry with a synchronous call, which is kept and sent with the next asynchronous one). The caps count the sizes the documents declare; a document that stores no size (every property
+  document) counts as 10 MB, the largest file an upload allows, never as zero: with the default 200 MB an export of property documents holds at most
+  20 files, and the 21st is refused with the 422 whatever the cap of files. The headers of the ZIP are set
+  when the first byte goes out and only for a 200, so the 422 is a plain problem.
+- **The log.** Each export writes one line with the org, the user and the counts (`Documents`, `Files`, `Bytes`), each download of a compliance
+  proof one line with the org, the user and the type: never a title, a file name, a property or a search text.
 
 #### Invoice data of a booking (FIS-01, NF-81, E06/F02/US01)
 
@@ -1818,12 +1896,12 @@ never a link to the dashboard.
 | `POST` | `/api/public/orgs/{slug}/contact` | Anonymous | «Scrivi a {host}»: a visitor's message as one email to the host with the visitor as `Reply-To`; always `202` (never says whether the org publishes or has a contact email), honeypot, 5 / 10 min per IP and 3 / day per address and org (DB-03b, [direct-booking.md](runbooks/direct-booking.md) § 11.10) |
 | `GET` | `/api/public/orgs/{slug}` | Anonymous | Public org landing by slug; `operator { legalName, vatNumber, registeredOffice }` (or `null`) for the footer, written by `PUT /api/orgs/me/settings` (DB-03b-a, [direct-booking.md](runbooks/direct-booking.md) § 12); `marketingConsentVersion` and `softOptInNoticeVersion` (`Gdpr__MarketingConsentVersion`, `Gdpr__SoftOptInNoticeVersion`, `null` while not configured: the checkout then offers no consent and shows no notice, E07/F04/US01/T02) |
 | `GET` | `/api/public/orgs/{slug}/properties` | Anonymous | Public property list for org |
-| `GET` | `/api/public/orgs/{slug}/stays` | Anonymous | The search of the site in one call (DB-07a): every published house with `availability` (or why not, the first free day) and the `price` of the stay as the quote adds it up; nearby `alternatives` when nothing is free; filters, sorts, paging ([direct-booking.md](runbooks/direct-booking.md) § 11.4a) |
-| `GET` | `/api/public/orgs/{slug}/calendar` | Anonymous | The days of the whole site for the «Quando» field: `anyAvailable`, `fromPriceCents`, `minNights` (DB-07a) |
+| `GET` | `/api/public/orgs/{slug}/stays` | Anonymous | The search of the site in one call (DB-07a): every published house with `availability` (or why not, the first free day) and the `price` of the stay as the quote adds it up; nearby `alternatives` when nothing is free; filters, sorts, paging ([direct-booking.md](runbooks/direct-booking.md) § 11.4a). The `reason` a house is not free is one of `past`, `not_bookable`, `guests`, `pets`, `busy`, `min_nights` and, since E08/F05/US01/T04 (NF-36), the rules of the nights, judged by the very check of the quote and the checkout (`DayRuleStayChecks`): `arrival_closed`, `departure_closed`, `max_nights`, `advance` (booked too close to, or too far ahead of, the arrival, the days counted from today on the clock of the house, as the quote and the checkout count them); `availability.minNights` is the minimum stay of the arrival date (the day rule's, else the house's). The first free date and the `alternatives` never fall on a day a rule refuses, and the prices include the ones the host wrote in its calendar. The rules of all the houses are read once for the whole search |
+| `GET` | `/api/public/orgs/{slug}/calendar` | Anonymous | The days of the whole site for the «Quando» field: `anyAvailable` (some house that sleeps the party is free and can start a stay that night: a night closed to arrival, or out of the advance limits of its rule, does not count, NF-36), `fromPriceCents`, `minNights` (the shortest minimum stay of that night among the houses, the day rule's or the house's) (DB-07a, E08/F05/US01/T04) |
 | `GET` | `/api/public/orgs/{slug}/destinations` | Anonymous | The comuni of the published houses `{ id, label, comune, count }` (DB-07a) |
 | `GET` | `/api/public/orgs/{slug}/properties/{propertySlugOrId}/similar` | Anonymous | Houses of the site that look like another (DB-07a) |
 | `GET` | `/api/public/orgs/{slug}/properties/{propertySlugOrId}` | Anonymous | Public property detail |
-| `GET` | `/api/public/properties/{propertyId}/calendar` | Anonymous | The night that starts on each day with `available`, `nightlyPriceCents` (the quote's own number) and `minNights`; `from`/`to`, 13 months at most (DB-03b, [direct-booking.md](runbooks/direct-booking.md) § 11.9) |
+| `GET` | `/api/public/properties/{propertyId}/calendar` | Anonymous | The night that starts on each day with `available` (the night is free: a night closed to arrival is free), `nightlyPriceCents` (the quote's own number, a price written in the host's calendar included) and the rules of the day (E08/F05/US01/T03, NF-36): `minNights` (the rule of the day, else the minimum of the property, else 1), `maxNights`, `closedToArrival`, `closedToDeparture`, `minAdvanceDays`, `maxAdvanceDays` (`null` for none; dates, numbers and flags only, no guest data); `from`/`to`, 13 months at most (DB-03b, [direct-booking.md](runbooks/direct-booking.md) § 11.9) |
 | `GET` | `/api/public/orgs/{slug}/properties/{propertySlugOrId}/calendar` | Anonymous | The same calendar, for a property of a site (DB-03b) |
 | `GET` | `/api/public/suppliers/{slug}` | Anonymous | Public supplier profile (with the published services and the measured response time when `SupplierShowcaseBooking` is on) |
 | `GET` | `/api/public/suppliers/{slug}/services` | Anonymous | Published services of a supplier (flag `SupplierShowcaseBooking`) |
@@ -1848,7 +1926,7 @@ never a link to the dashboard.
 | `POST` | `/api/public/supplier-bookings/quote/accept` \| `quote/reject` | Anonymous | The customer accepts the quote the supplier sent (the request is taken on the supplier's behalf at the total of the quote) or turns it down; `{ slug, code, email, quoteSentAt }` in the body; 409 `service_request_quote_changed`, 422 `supplier_booking_no_quote` / `supplier_booking_quote_expired` (SP-04b, flag `SupplierShowcaseBooking`) |
 | `GET` | `/api/public/bookings/property/{propertyId}/availability` | Anonymous | Booked dates for public calendar, and the `minNights` of the property (DB-03) |
 | `GET` | `/api/public/bookings/{bookingId}/status` | Anonymous | Booking status (payment option) |
-| `POST` | `/api/public/bookings/quote` | Anonymous | Price of a stay with its breakdown in cents (`lines`: nights, weekend nights, length-of-stay discount, cleaning, tourist tax, total); 422 `direct_booking_min_nights_not_met` below the minimum stay (DB-03, [direct-booking.md](runbooks/direct-booking.md) § 11). NF-35: when a length-of-stay tier of the property applies, the answer carries `lengthOfStayDiscount` (euros taken off the nights, `0` when none), `lengthOfStayDiscountPercent` and `lengthOfStayDiscountMinNights` (`null` when none) and a `LengthOfStayDiscount` line with a negative amount; `lodgingTotal` is before the discount and `basePrice = lodgingTotal - lengthOfStayDiscount + cleaningFee`; the cleaning fee and the tourist tax are never reduced. The checkout and the host's quote and manual booking price the stay the same way |
+| `POST` | `/api/public/bookings/quote` | Anonymous | Price of a stay with its breakdown in cents (`lines`: nights, weekend nights, length-of-stay discount, cleaning, tourist tax, total); 422 `direct_booking_min_nights_not_met` below the minimum stay of the arrival date (the day rule's, else the property's, DB-03, [direct-booking.md](runbooks/direct-booking.md) § 11); E08/F05/US01/T03 (NF-36) adds the other rules of the nights, each with its stable code and an IT and EN sentence, the same in the quote and in the checkout (`POST /api/public/bookings`): `direct_booking_arrival_closed`, `direct_booking_departure_closed`, `direct_booking_max_nights_exceeded`, `direct_booking_advance_too_short`, `direct_booking_advance_too_long` (the problem carries the `date` the rule is read on and, where there is one, the `limit`; the advance counts the days from today in the time zone of the property). The host's own quote and manual booking are not refused by them. NF-35: when a length-of-stay tier of the property applies, the answer carries `lengthOfStayDiscount` (euros taken off the nights, `0` when none), `lengthOfStayDiscountPercent` and `lengthOfStayDiscountMinNights` (`null` when none) and a `LengthOfStayDiscount` line with a negative amount; `lodgingTotal` is before the discount and `basePrice = lodgingTotal - lengthOfStayDiscount + cleaningFee`; the cleaning fee and the tourist tax are never reduced. The checkout and the host's quote and manual booking price the stay the same way |
 | `POST` | `/api/public/bookings/lookup` | Anonymous | Guest booking lookup by id + email (rate-limited) |
 | `POST` | `/api/public/guest/session` | Anonymous | The guest's session with no account (DB-06a): `{ orgSlug, bookingCode, email }` → `{ accessToken, expiresAt, bookingCode }`; a signed stateless token (Data Protection, 2 h by default, 24 h at most); one 404 `guest_booking_not_found` for everything that does not match; limits per IP, per email (shared with the lookup) and per code ([direct-booking.md](runbooks/direct-booking.md) § 8.4) |
 | `GET` / `POST` | `/api/public/guest/bookings/{code}/messages` | Guest session | The thread of the guest's booking and the guest's message to the host (DB-14a): `POST { text }` with `Idempotency-Key`, 409 `thread_closed` after the 7th day past the check-out, card numbers and IBANs replaced by «[rimosso]», the hosts alerted through the notification preferences (NF-65: the counter of the bell and a push by default, an email to the person's own address only if it chose it, never with the text; a failed alert is delivered again by a job); limits per IP and per session ([guest-messages.md](runbooks/guest-messages.md)) |

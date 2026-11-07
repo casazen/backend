@@ -68,7 +68,8 @@ public class BookingServiceChannelManagerTests
             new Mock<ICheckoutHoldExpiryService>().Object,
             new OnSiteRequestNotifier(_db, _emails, EmailTestHelpers.Links(), Mock.Of<ILogger<OnSiteRequestNotifier>>()),
             pricing.Object,
-            channelManager: _channelManager.Object);
+            channelManager: _channelManager.Object,
+            dayRules: NoDayRules.Instance);
     }
 
     // --- The host's manual booking -------------------------------------------------------------------------------------------------

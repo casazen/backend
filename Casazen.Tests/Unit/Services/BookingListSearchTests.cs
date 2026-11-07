@@ -324,7 +324,8 @@ public class BookingListSearchTests
     [InlineData(BookingChannel.Manual, "b3")]
     [InlineData(BookingChannel.Airbnb, "b2")]
     [InlineData(BookingChannel.BookingCom, "b4")]
-    [InlineData(BookingChannel.Other, "b5,b8")]
+    [InlineData(BookingChannel.Expedia, "b5")]
+    [InlineData(BookingChannel.Other, "b8")]
     public async Task Channel_EachChannelIsItsSources(BookingChannel channel, string expected)
     {
         var world = await SeedAsync();

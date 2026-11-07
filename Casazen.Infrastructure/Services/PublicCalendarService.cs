@@ -12,17 +12,20 @@ namespace Casazen.Infrastructure.Services;
 /// <remarks>
 /// <para>No rule of its own. The price of a night is <see cref="StayPricing.NightPrice"/>, the function the quote adds the nights up
 /// with, fed with what the quote is fed with (the nightly rate, the weekend surcharge of the property and the prices the host
-/// confirmed, <see cref="IPricingAdapterService.GetAppliedNightlyPricesAsync"/>): the price of the calendar and the line of the quote of a
-/// one-night stay are the same number. The taken nights are <see cref="PublicOccupancyReader"/>, the nights the availability shows and the
-/// booking checks refuse.</para>
+/// set for dates, <see cref="IPricingAdapterService.GetAppliedNightlyPricesAsync"/>: a confirmed seasonal price, overridden by the price of
+/// the day rule of the night): the price of the calendar and the line of the quote of a one-night stay are the same number. The rules of the
+/// day (the longest stay, the closed arrival and departure, the advance) are the ones the checkout applies, read with the rest of the site
+/// through <see cref="IPropertyDayRuleService.GetRulesForSiteAsync"/>. The taken nights are <see cref="PublicOccupancyReader"/>, the nights the
+/// availability shows and the booking checks refuse.</para>
 /// <para>Anonymous: the tenant filter is off, so every query names the property, and the properties are those of
-/// <see cref="PublicListing.IsPublished"/> of an active org. Four small reads for any range up to 13 months: the property, the
-/// bookings, the blocks, the host's prices.</para>
+/// <see cref="PublicListing.IsPublished"/> of an active org. Five small reads for any range up to 13 months: the property, the
+/// bookings, the blocks, the host's prices, the rules of the days.</para>
 /// </remarks>
 public sealed class PublicCalendarService(
     AppDbContext db,
     IPricingAdapterService pricing,
     IConfiguration configuration,
+    IPropertyDayRuleService dayRules,
     TimeProvider? timeProvider = null) : IPublicCalendarService
 {
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
@@ -87,12 +90,28 @@ public sealed class PublicCalendarService(
                 [property.Id], ToStoredDate(first), ToStoredDate(end), cancellationToken))[property.Id];
             var takenDates = taken.Select(DateOnly.FromDateTime).ToHashSet();
             var hostPrices = await pricing.GetAppliedNightlyPricesAsync(property.Id, first, end, cancellationToken);
-            var minNights = property.MinNights ?? 1;
+
+            // The rules of the days (NF-36): dates, numbers and flags of the property, public like its price; no guest data.
+            IReadOnlyDictionary<DateOnly, DayRuleValues> rules = DayRuleStayChecks.NoRules;
+            if ((await dayRules.GetRulesForSiteAsync([property.Id], first, end, cancellationToken)).TryGetValue(property.Id, out var ofProperty))
+            {
+                rules = ofProperty;
+            }
 
             for (var day = first; day < end; day = day.AddDays(1))
             {
+                rules.TryGetValue(day, out var rule);
                 var price = StayPricing.NightPrice(day, property.NightlyRate, property.WeekendSurchargePercent, hostPrices);
-                days.Add(new PublicCalendarDay(day, !takenDates.Contains(day), StayPricing.ToCents(price), minNights));
+                days.Add(new PublicCalendarDay(
+                    day,
+                    !takenDates.Contains(day),
+                    StayPricing.ToCents(price),
+                    DayRuleDefaults.MinNightsOf(rule, property.MinNights),
+                    rule?.MaxNights,
+                    rule?.ClosedToArrival ?? false,
+                    rule?.ClosedToDeparture ?? false,
+                    rule?.MinAdvanceDays,
+                    rule?.MaxAdvanceDays));
             }
         }
 
