@@ -168,6 +168,26 @@ public class LeaseDraftRulesTests
         Assert.False(LeaseDraftRules.IsCompany(LeaseDraftTestData.Tenant("not a code")));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("+393331234567")]
+    [InlineData("+39 333 1234567")]
+    [InlineData("+39 (333) 123-4567")]
+    public void PartyProblems_APhoneIsOptional_AndARealInternationalNumberIsValid(string? phone)
+    {
+        Assert.DoesNotContain("contactPhone", LeaseDraftRules.PartyProblems(LeaseDraftTestData.Tenant() with { ContactPhone = phone }));
+    }
+
+    [Theory]
+    [InlineData("+1")]
+    [InlineData("+0123456789")]
+    [InlineData("3331234567")]
+    public void PartyProblems_AShortOrNationalPhone_IsTheOnlyProblem(string phone)
+    {
+        Assert.Equal(["contactPhone"], LeaseDraftRules.PartyProblems(LeaseDraftTestData.Tenant() with { ContactPhone = phone }));
+    }
+
     [Fact]
     public void PartyProblems_EverythingMissing_NamesEveryRequiredField_NotTheOptionalEmail()
     {

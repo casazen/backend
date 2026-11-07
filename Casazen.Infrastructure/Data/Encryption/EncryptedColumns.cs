@@ -215,7 +215,8 @@ public static class EncryptedColumns
             nameof(LeaseContract.DraftData)),
         new EncryptedEntity<Party>(
             LeasePartyPurpose,
-            nameof(Party.Residence)),
+            nameof(Party.Residence),
+            nameof(Party.ContactPhone)),
         // TR: the need of a transitory lease and its documentation.
         new EncryptedEntity<LeaseContract>(
             LeaseTransitoryNeedPurpose,

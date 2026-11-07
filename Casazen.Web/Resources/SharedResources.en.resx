@@ -2317,6 +2317,9 @@
   <data name="LeasePartyFiscalCodeDuplicate" xml:space="preserve">
     <value>The same fiscal code is given for more than one party of the lease.</value>
   </data>
+  <data name="LeasePartyPhoneInvalid" xml:space="preserve">
+    <value>The phone number of a party is not valid: it needs the international prefix and 8 to 15 digits, not starting with zero.</value>
+  </data>
   <data name="PropertyAddressTaken" xml:space="preserve">
     <value>An active property of your organization already has this address. If it is another apartment in the same building, enter the unit or staircase.</value>
   </data>
@@ -2886,6 +2889,9 @@
   </data>
   <data name="RentReminderNotSent" xml:space="preserve">
     <value>The reminder was not sent: the email service is not available. Try again later.</value>
+  </data>
+  <data name="RentWhatsAppReminderNotSent" xml:space="preserve">
+    <value>The WhatsApp reminder was not sent: check the tenant's number and the WhatsApp Business configuration.</value>
   </data>
   <data name="RentReminderNoteTooLong" xml:space="preserve">
     <value>The note can have at most 300 characters.</value>

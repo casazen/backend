@@ -6372,6 +6372,9 @@ namespace Casazen.Infrastructure.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<string>("ContactPhone")
+                        .HasColumnType("text");
+
                     b.Property<DateOnly?>("DocumentsVerifiedOn")
                         .HasColumnType("date");
 

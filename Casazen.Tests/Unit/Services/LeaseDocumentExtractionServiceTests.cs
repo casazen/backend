@@ -50,9 +50,8 @@ public sealed class LeaseDocumentExtractionServiceTests
         Assert.Equal("2026-11-01", read.Values.StartDate);
         Assert.Equal(2, read.Version);
 
-        // The citizenship of the landlord is not in the contract: the wizard asks for it, and for nothing else of the parties.
-        var need = Assert.Single(read.Flow.Steps.Single(step => step.Step == 2).Needs);
-        Assert.Equal("landlord_incomplete", need.Code);
+        // Both Italian birthplaces are confirmed by their fiscal codes: the wizard has no party data left to ask for.
+        Assert.Empty(read.Flow.Steps.Single(step => step.Step == 2).Needs);
 
         var stored = await StoredAsync(harness, document.Id);
         Assert.Equal(LeaseDocumentExtractionStatus.Completed, stored.ExtractionStatus);

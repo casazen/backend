@@ -111,7 +111,7 @@ public sealed class LeaseContractTextParserTests
         Assert.Equal("Rossi", landlord.LastName);
         Assert.Equal("RSSMRA80A01H501U", landlord.FiscalCode);
         Assert.Equal("Roma (RM), Via dei Mille n. 5", landlord.Residence);
-        Assert.Null(landlord.Citizenship); // the contract does not say: the wizard asks
+        Assert.Equal("IT", landlord.Citizenship); // inferred from the Italian place of birth encoded by the fiscal code
         var tenant = Assert.Single(reading.Parties, p => p.Role == PartyRole.Tenant);
         Assert.Equal("Giulia", tenant.FirstName);
         Assert.Equal("Verdi", tenant.LastName);
@@ -312,5 +312,22 @@ public sealed class LeaseContractTextParserTests
         Assert.Equal("BNCPLA68L10F704T", Assert.Single(far.Parties, p => p.Role == PartyRole.Tenant).FiscalCode);
         var another = LeaseContractTextParser.Parse($"{head} {passport} garantita dal locatore, {tail}");
         Assert.Equal("BNCPLA68L10F704T", Assert.Single(another.Parties, p => p.Role == PartyRole.Tenant).FiscalCode);
+    }
+
+    [Fact]
+    public void ItalianBirthPlaces_PrefillCitizenshipForEveryCoTenant_ButAForeignBirthPlaceDoesNotGuessIt()
+    {
+        const string text = """
+            TRA il Sig. Mario Rossi, nato a Roma il 01/01/1980, C.F. RSSMRA80A01H501U, di seguito locatore,
+            la Sig.ra Giulia Verdi, nata a Milano il 02/02/1985, C.F. VRDGLI85B42F205E,
+            e il Sig. John Smith, nato negli Stati Uniti il 02/02/1985, C.F. SMTJHN85B02Z404T,
+            di seguito congiuntamente conduttori.
+            """;
+
+        var reading = LeaseContractTextParser.Parse(text);
+
+        Assert.Equal("IT", reading.Parties.Single(p => p.FiscalCode == "RSSMRA80A01H501U").Citizenship);
+        Assert.Equal("IT", reading.Parties.Single(p => p.FiscalCode == "VRDGLI85B42F205E").Citizenship);
+        Assert.Null(reading.Parties.Single(p => p.FiscalCode == "SMTJHN85B02Z404T").Citizenship);
     }
 }

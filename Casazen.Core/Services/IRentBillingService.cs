@@ -136,6 +136,9 @@ public sealed record RentReminderResult(
     bool IncludesPaymentLink,
     DateTime NextReminderAllowedAt);
 
+/// <summary>A WhatsApp reminder accepted by the provider.</summary>
+public sealed record RentWhatsAppReminderResult(Guid InstallmentId, DateTime SentAt, int RecipientCount, DateTime NextReminderAllowedAt);
+
 /// <summary>Where an installment stands for the tenant on the public payment page.</summary>
 public enum PublicRentPaymentState
 {
@@ -259,6 +262,14 @@ public interface IRentBillingService
     /// is being processed. No automatic reminder and no SMS or WhatsApp (decision D30).
     /// </summary>
     Task<RentReminderResult> SendReminderAsync(
+        Guid leaseId, Guid installmentId, string? note, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends the approved rent-reminder template through WhatsApp Business to every tenant with a phone (an email is not
+    /// required). Meta is called after the lease lock is released. The reminder is kept when at least one message is
+    /// accepted and taken back when none is.
+    /// </summary>
+    Task<RentWhatsAppReminderResult> SendWhatsAppReminderAsync(
         Guid leaseId, Guid installmentId, string? note, CancellationToken cancellationToken = default);
 
     /// <summary>Anonymous: the installment of a payment link; 404 <c>rent_payment_link_invalid</c> for a wrong id or token.</summary>

@@ -75,6 +75,8 @@ public sealed class RentRegisterService(
                     TenantAnonymized = e.LeaseContract.Parties.Where(p => p.Role == PartyRole.Tenant).OrderBy(p => p.Position).Select(p => p.AnonymizedAt != null).FirstOrDefault(),
                     HasTenantEmail = e.LeaseContract.Parties.Any(p =>
                         p.Role == PartyRole.Tenant && p.AnonymizedAt == null && p.ContactEmail != ""),
+                    HasTenantPhone = e.LeaseContract.Parties.Any(p =>
+                        p.Role == PartyRole.Tenant && p.AnonymizedAt == null && p.ContactPhone != null && p.ContactPhone != ""),
                     e.PeriodStart,
                     e.PeriodEnd,
                     e.DueDate,
@@ -104,6 +106,8 @@ public sealed class RentRegisterService(
             .Select(r =>
             {
                 var parts = ComponentAmounts(r.AmountDue, r.Rent, r.Advance, r.Settlement, r.Other);
+                var remindable = RentInstallmentRules.IsRemindable(r.Status)
+                    && (r.LastReminderAt is null || r.LastReminderAt <= reminderAllowedFrom);
                 return new RentRegisterRow(
                     r.Id,
                     r.LeaseContractId,
@@ -125,15 +129,15 @@ public sealed class RentRegisterService(
                     r.PaymentRequestedAt,
                     r.LastReminderAt,
                     r.ReminderCount,
-                    RentInstallmentRules.IsRemindable(r.Status)
-                        && r.HasTenantEmail
-                        && (r.LastReminderAt is null || r.LastReminderAt <= reminderAllowedFrom),
+                    remindable && r.HasTenantEmail,
                     parts.Rent,
                     parts.Advance,
                     parts.Settlement,
                     parts.Other,
                     RentInstallmentRules.AmountPaid(r.Status, r.AmountDue),
-                    RentInstallmentRules.AmountOutstanding(r.Status, r.AmountDue));
+                    RentInstallmentRules.AmountOutstanding(r.Status, r.AmountDue),
+                    r.HasTenantPhone,
+                    remindable && r.HasTenantPhone);
             })
             .ToList();
 
