@@ -25,6 +25,18 @@ public interface ITenantCondominiumSettlementService
     /// </summary>
     Task<IReadOnlyList<TenantSettlementView>> ReplacePostedForPeriodAsync(
         HostScope scope, Guid periodId, string userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Confirms the consuntivo and replaces every posted tenant settlement of that year in one transaction.
+    /// A failure rolls the new revision back with the settlements, so a retry does not open another revision.
+    /// </summary>
+    Task<FinalConfirmation> ConfirmFinalAndReplaceAsync(
+        HostScope scope,
+        Guid condominiumId,
+        Guid periodId,
+        ConfirmFinalCommand command,
+        string userId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record ExplicitSettlementLine(Guid LineId, decimal Amount);

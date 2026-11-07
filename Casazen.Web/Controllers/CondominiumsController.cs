@@ -94,10 +94,13 @@ public class CondominiumsController(
         var (scope, userId) = await ScopeAsync(cancellationToken);
         if (scope is null || userId is null)
             return Unauthorized();
-        var final = await condominiums.ConfirmFinalAsync(
-            scope, condominiumId, periodId, new ConfirmFinalCommand(dto.Amount, dto.Settlement, dto.Lines?.Select(ToLine).ToList()), userId, cancellationToken);
-        await settlements.ReplacePostedForPeriodAsync(scope, periodId, userId, cancellationToken);
-        return Ok(final);
+        return Ok(await settlements.ConfirmFinalAndReplaceAsync(
+            scope,
+            condominiumId,
+            periodId,
+            new ConfirmFinalCommand(dto.Amount, dto.Settlement, dto.Lines?.Select(ToLine).ToList()),
+            userId,
+            cancellationToken));
     }
 
     [HttpPost("{condominiumId:guid}/periods/{periodId:guid}/prior-balance")]

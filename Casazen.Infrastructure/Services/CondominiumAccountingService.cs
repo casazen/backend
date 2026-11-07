@@ -220,7 +220,7 @@ public sealed class CondominiumAccountingService(
             CondominiumStatementKind.Final,
             command.Amount,
             userId,
-            FinalLines(period, unitId, command),
+            await FinalLinesAsync(period, unitId, command, cancellationToken),
             cancellationToken);
         period.Status = CondominiumPeriodStatus.FinalStatementReceived;
 
@@ -815,10 +815,26 @@ public sealed class CondominiumAccountingService(
         return statement;
     }
 
-    private static IReadOnlyList<CondominiumExpenseLine> FinalLines(CondominiumPeriod period, Guid? unitId, ConfirmFinalCommand command)
+    /// <summary>
+    /// A correction that only sends the new total keeps the previous lines and their recoverability, scaled to that
+    /// total. Replacing them with one owner-only line would zero the tenant charge and credit every advance.
+    /// The first consuntivo, which has no previous lines, stays one owner-only line until a breakdown is given.
+    /// </summary>
+    private async Task<IReadOnlyList<CondominiumExpenseLine>> FinalLinesAsync(
+        CondominiumPeriod period, Guid? unitId, ConfirmFinalCommand command, CancellationToken cancellationToken)
     {
         if (command.Lines is not { Count: > 0 })
         {
+            var previous = await db.CondominiumExpenseLines
+                .AsNoTracking()
+                .Where(line => line.Statement.CondominiumPeriodId == period.Id
+                    && line.Statement.Kind == CondominiumStatementKind.Final
+                    && line.Statement.Status == CondominiumStatementStatus.Confirmed)
+                .OrderBy(line => line.Id)
+                .ToListAsync(cancellationToken);
+            if (previous.Count > 0 && previous.Sum(line => line.Amount) > 0m)
+                return ScaleLines(period, previous, command.Amount);
+
             return
             [
                 Line(period, unitId, $"Consuntivo {period.Label}", "consuntivo", command.Amount, CondominiumExpenseNature.Ordinary, TenantRecoverability.OwnerOnly, null, ExpenseClassificationSource.Manual, null, null, null, null),
@@ -862,6 +878,47 @@ public sealed class CondominiumAccountingService(
 
         if (sum != command.Amount)
             throw new DomainRuleException(CondominiumErrorCodes.StatementInvalid, "CondominiumStatementInvalid");
+        return lines;
+    }
+
+    private static IReadOnlyList<CondominiumExpenseLine> ScaleLines(
+        CondominiumPeriod period, IReadOnlyList<CondominiumExpenseLine> previous, decimal newTotal)
+    {
+        var oldCents = previous.Select(line => (long)(line.Amount * 100m)).ToArray();
+        var oldSum = oldCents.Sum();
+        var newCents = (long)(newTotal * 100m);
+        var scaled = new long[previous.Count];
+        long assigned = 0;
+        for (var i = 0; i < previous.Count - 1; i++)
+        {
+            scaled[i] = oldCents[i] * newCents / oldSum;
+            assigned += scaled[i];
+        }
+
+        scaled[^1] = newCents - assigned;
+        var lines = new List<CondominiumExpenseLine>(previous.Count);
+        for (var i = 0; i < previous.Count; i++)
+        {
+            if (scaled[i] <= 0)
+                continue;
+
+            var source = previous[i];
+            lines.Add(Line(
+                period,
+                source.CondominiumUnitId,
+                source.Description,
+                source.Category ?? "consuntivo",
+                scaled[i] / 100m,
+                source.ExpenseNature,
+                source.TenantRecoverability,
+                source.RecoverablePercentage,
+                source.ClassificationSource,
+                source.Confidence,
+                source.CompetenceStart,
+                source.CompetenceEnd,
+                source.ReviewStatus));
+        }
+
         return lines;
     }
 

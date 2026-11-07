@@ -7,7 +7,9 @@ using Casazen.Core.Services;
 using Casazen.Core.Utilities;
 using Casazen.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
+using System.Data;
 
 namespace Casazen.Infrastructure.Services;
 
@@ -94,7 +96,14 @@ public sealed class TenantCondominiumSettlementService(
             Disposition = disposition,
             Rule = allocationRule,
             Lines = allocations.Select(item => new TenantSettlementMath.SnapshotLine(
-                item.LineId, item.Rule, item.LineDays, item.OccupiedDays, item.BaseAmount, item.AllocatedAmount, item.Charged)).ToList(),
+                item.LineId,
+                item.Rule,
+                item.LineDays,
+                item.OccupiedDays,
+                item.BaseAmount,
+                item.AllocatedAmount,
+                item.Charged,
+                final.Lines.FirstOrDefault(line => line.LineId == item.LineId)?.Description)).ToList(),
             AdvancesDetail = advances.Select(item => new TenantSettlementMath.SnapshotAdvance(item.ComponentId, item.EntryId, item.Amount)).ToList(),
             PriorSettlementIds = priors.Select(item => item.Id).ToList(),
         };
@@ -243,7 +252,15 @@ public sealed class TenantCondominiumSettlementService(
             .Where(item => item.OrgId == scope.OrgId
                 && item.CondominiumPeriodId == periodId
                 && item.Status == TenantSettlementStatus.Posted)
-            .Select(item => new { item.Id, item.LeaseContractId, item.StatementId, item.Disposition, item.AllocationRule })
+            .Select(item => new
+            {
+                item.Id,
+                item.LeaseContractId,
+                item.StatementId,
+                item.Disposition,
+                item.AllocationRule,
+                item.CalculationSnapshotJson,
+            })
             .ToListAsync(cancellationToken);
         var views = new List<TenantSettlementView>(posted.Count);
         foreach (var row in posted)
@@ -269,7 +286,11 @@ public sealed class TenantCondominiumSettlementService(
             var calculated = await CalculateAsync(
                 scope,
                 row.LeaseContractId,
-                new CalculateTenantSettlementCommand(periodId, row.Disposition, row.AllocationRule, null),
+                new CalculateTenantSettlementCommand(
+                    periodId,
+                    row.Disposition,
+                    row.AllocationRule,
+                    ExplicitLinesFromSnapshot(row.CalculationSnapshotJson, final.Lines)),
                 userId,
                 cancellationToken);
             if (calculated.Status == TenantSettlementStatus.Draft)
@@ -280,6 +301,34 @@ public sealed class TenantCondominiumSettlementService(
         }
 
         return views;
+    }
+
+    public async Task<FinalConfirmation> ConfirmFinalAndReplaceAsync(
+        HostScope scope,
+        Guid condominiumId,
+        Guid periodId,
+        ConfirmFinalCommand command,
+        string userId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        ArgumentNullException.ThrowIfNull(command);
+        await using var transaction = await BeginUnitOfWorkAsync(cancellationToken);
+        try
+        {
+            var confirmation = await condominiums.ConfirmFinalAsync(
+                scope, condominiumId, periodId, command, userId, cancellationToken);
+            await ReplacePostedForPeriodAsync(scope, periodId, userId, cancellationToken);
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            return confirmation;
+        }
+        catch
+        {
+            if (transaction is not null)
+                await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     private async Task ApplyDispositionAsync(TenantCondominiumSettlement settlement, CancellationToken cancellationToken)
@@ -551,6 +600,47 @@ public sealed class TenantCondominiumSettlementService(
         if (end < start)
             throw Invalid();
         return new TenantSettlementMath.Occupancy(start, end);
+    }
+
+    /// <summary>
+    /// Consumption and explicit amounts are matched onto the new consuntivo by description, so a replacement
+    /// does not drop them and credit every advance.
+    /// </summary>
+    private static IReadOnlyList<ExplicitSettlementLine>? ExplicitLinesFromSnapshot(
+        string snapshotJson, IReadOnlyList<TenantFinalLineView> lines)
+    {
+        if (lines.Count == 0 || string.IsNullOrWhiteSpace(snapshotJson))
+            return null;
+
+        var snapshot = TenantSettlementMath.Replay(snapshotJson);
+        if (snapshot.Rule is not (TenantAllocationRule.Consumption or TenantAllocationRule.ExplicitAmount))
+            return null;
+
+        var remaining = lines.ToList();
+        var matched = new List<ExplicitSettlementLine>();
+        foreach (var old in snapshot.Lines.Where(line =>
+            line.Charged && line.Rule is TenantAllocationRule.Consumption or TenantAllocationRule.ExplicitAmount))
+        {
+            var index = remaining.FindIndex(line =>
+                !string.IsNullOrEmpty(old.Description)
+                && string.Equals(line.Description, old.Description, StringComparison.Ordinal));
+            if (index < 0)
+                continue;
+
+            var line = remaining[index];
+            remaining.RemoveAt(index);
+            matched.Add(new ExplicitSettlementLine(line.LineId, old.AllocatedAmount));
+        }
+
+        return matched.Count == 0 ? null : matched;
+    }
+
+    private async Task<IDbContextTransaction?> BeginUnitOfWorkAsync(CancellationToken cancellationToken)
+    {
+        if (!db.Database.IsRelational() || db.Database.CurrentTransaction is not null)
+            return null;
+
+        return await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
     }
 
     private static Dictionary<Guid, decimal>? ExplicitAmounts(

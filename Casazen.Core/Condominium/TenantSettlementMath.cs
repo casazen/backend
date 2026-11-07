@@ -48,7 +48,8 @@ public static class TenantSettlementMath
         int OccupiedDays,
         decimal BaseAmount,
         decimal AllocatedAmount,
-        bool Charged);
+        bool Charged,
+        string? Description = null);
 
     public sealed record SnapshotAdvance(Guid ComponentId, Guid EntryId, decimal Amount);
 

@@ -138,6 +138,73 @@ public class TenantCondominiumSettlementServiceTests
         Assert.Equal(TenantExpenseProposal.Source.FixedContract, fixedAdvance.Source);
     }
 
+    [Fact]
+    public async Task TotalOnlyCorrection_KeepsRecoverability_AndDoesNotCreditEveryAdvance()
+    {
+        await using var db = NewDb();
+        var (scope, lease, period, condo) = await SeedAsync(db);
+        var settlements = Settlements(db, Condo(db));
+        await LinkAndBudgetAsync(Condo(db), scope, condo, period, lease.PropertyId);
+        await settlements.ConfirmFinalAndReplaceAsync(
+            scope, condo.Id, period.Id,
+            new ConfirmFinalCommand(1920m, PriorYearBalanceDisposition.CarryForward, Recoverable(1920m)),
+            "user");
+        var first = await settlements.CalculateAsync(scope, lease.Id, new CalculateTenantSettlementCommand(period.Id, null, null, null), "user");
+        await settlements.ConfirmAsync(scope, lease.Id, first.Id, "user");
+        await settlements.PostAsync(scope, lease.Id, first.Id, "user");
+
+        await settlements.ConfirmFinalAndReplaceAsync(
+            scope, condo.Id, period.Id, new ConfirmFinalCommand(2000m, PriorYearBalanceDisposition.CarryForward), "user");
+
+        var line = await db.CondominiumExpenseLines
+            .SingleAsync(item => item.Statement.Status == CondominiumStatementStatus.Confirmed && item.Statement.Kind == CondominiumStatementKind.Final);
+        Assert.Equal(TenantRecoverability.Recoverable, line.TenantRecoverability);
+        Assert.Equal(2000m, line.Amount);
+        var current = await db.TenantCondominiumSettlements.SingleAsync(item => item.Status == TenantSettlementStatus.Posted);
+        Assert.Equal(1700m, current.SettlementAmount);
+        Assert.NotEqual(TenantSettlementDirection.Credit, current.Direction);
+    }
+
+    [Fact]
+    public async Task Replacement_KeepsExplicitLineAmounts()
+    {
+        await using var db = NewDb();
+        var (scope, lease, period, condo) = await SeedAsync(db);
+        var settlements = Settlements(db, Condo(db));
+        await LinkAndBudgetAsync(Condo(db), scope, condo, period, lease.PropertyId);
+        await settlements.ConfirmFinalAndReplaceAsync(
+            scope, condo.Id, period.Id,
+            new ConfirmFinalCommand(
+                500m,
+                PriorYearBalanceDisposition.CarryForward,
+                [new FinalExpenseLineCommand("Calore", 500m, CondominiumExpenseNature.Ordinary, TenantRecoverability.Recoverable, null, null, ExpenseClassificationSource.Manual, null, null, ExpenseReviewStatus.Accepted)]),
+            "user");
+        var lineId = await db.CondominiumExpenseLines
+            .Where(item => item.Statement.Status == CondominiumStatementStatus.Confirmed
+                && item.Statement.Kind == CondominiumStatementKind.Final)
+            .Select(item => item.Id)
+            .SingleAsync();
+        var draft = await settlements.CalculateAsync(
+            scope,
+            lease.Id,
+            new CalculateTenantSettlementCommand(
+                period.Id,
+                TenantSettlementDisposition.NextInstallment,
+                TenantAllocationRule.ExplicitAmount,
+                [new ExplicitSettlementLine(lineId, 400m)]),
+            "user");
+        Assert.Equal(100m, draft.SettlementAmount);
+        await settlements.ConfirmAsync(scope, lease.Id, draft.Id, "user");
+        await settlements.PostAsync(scope, lease.Id, draft.Id, "user");
+
+        await settlements.ConfirmFinalAndReplaceAsync(
+            scope, condo.Id, period.Id, new ConfirmFinalCommand(800m, PriorYearBalanceDisposition.CarryForward), "user");
+
+        var current = await db.TenantCondominiumSettlements.SingleAsync(item => item.Status == TenantSettlementStatus.Posted);
+        Assert.Equal(100m, current.SettlementAmount);
+        Assert.Equal(TenantSettlementDirection.Debit, current.Direction);
+    }
+
     private static IReadOnlyList<FinalExpenseLineCommand> Recoverable(decimal amount) =>
     [
         new("Consuntivo recuperabile", amount, CondominiumExpenseNature.Ordinary, TenantRecoverability.Recoverable, null, null, ExpenseClassificationSource.Manual, null, null, ExpenseReviewStatus.Accepted),
