@@ -506,6 +506,47 @@ public sealed partial class RentBillingService(
         return notice;
     }
 
+    public async Task<RentPaymentNotice?> ApplyLinkedBankPaymentAsync(
+        RentPaymentIntentEvent paymentEvent, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(paymentEvent);
+        if (paymentEvent.InstallmentId is not Guid installmentId)
+            return null;
+
+        var leaseId = await db.RentLedgerEntries
+            .Where(e => e.Id == installmentId)
+            .Select(e => (Guid?)e.LeaseContractId)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (leaseId is null)
+        {
+            logger.LogWarning("No rent installment {InstallmentId} for bank-link payment {PaymentIntentId}", installmentId, paymentEvent.PaymentIntentId);
+            return null;
+        }
+
+        var ownTransaction = await LockLeaseAsync(leaseId.Value, cancellationToken);
+        if (ownTransaction is not null)
+        {
+            await ownTransaction.DisposeAsync();
+            throw new InvalidOperationException("Rent payment events must be applied inside the webhook event transaction.");
+        }
+
+        var entry = await db.RentLedgerEntries.SingleAsync(e => e.Id == installmentId, cancellationToken);
+        await db.Entry(entry).ReloadAsync(cancellationToken);
+        if (!string.Equals(entry.StripePaymentIntentId, paymentEvent.PaymentIntentId, StringComparison.Ordinal))
+        {
+            logger.LogWarning(
+                "Bank-link payment intent {PaymentIntentId} is not the current intent of installment {InstallmentId}: the due is unchanged",
+                paymentEvent.PaymentIntentId,
+                installmentId);
+            return null;
+        }
+
+        var notice = ApplyEvent(entry, paymentEvent);
+        await AlignBankLinkAsync(entry, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return notice;
+    }
+
     private RentPaymentNotice? ApplyEvent(RentLedgerEntry entry, RentPaymentIntentEvent paymentEvent) =>
         _paymentEvents.Apply(entry, paymentEvent);
 
@@ -608,7 +649,9 @@ public sealed partial class RentBillingService(
 
         var inFlight = await db.RentLedgerEntries
             .AsNoTracking()
-            .Where(e => e.Status == RentLedgerStatus.Processing && e.StripePaymentIntentId != null && e.ConnectedAccountId != null)
+            .Where(e => e.Status == RentLedgerStatus.Processing && e.StripePaymentIntentId != null &&
+                        (e.ConnectedAccountId != null ||
+                         db.BankLinkPayments.Any(p => p.StripePaymentIntentId == e.StripePaymentIntentId)))
             .Select(e => new { e.Id, e.LeaseContractId })
             .ToListAsync(cancellationToken);
         foreach (var candidate in inFlight)
@@ -680,7 +723,10 @@ public sealed partial class RentBillingService(
         await using (var transaction = await LockLeaseAsync(leaseId, cancellationToken))
         {
             var entry = await db.RentLedgerEntries.SingleAsync(e => e.Id == installmentId, cancellationToken);
-            if (entry.Status != RentLedgerStatus.Processing || entry.StripePaymentIntentId is null || entry.ConnectedAccountId is null)
+            if (entry.Status != RentLedgerStatus.Processing || entry.StripePaymentIntentId is null)
+                return false;
+            if (entry.ConnectedAccountId is null &&
+                !await db.BankLinkPayments.AnyAsync(p => p.StripePaymentIntentId == entry.StripePaymentIntentId, cancellationToken))
                 return false;
 
             var current = await stripeService.GetPaymentIntentAsync(entry.StripePaymentIntentId, entry.ConnectedAccountId, cancellationToken);
@@ -688,6 +734,7 @@ public sealed partial class RentBillingService(
                 return false;
 
             notice = ApplyStripeStatus(entry, current);
+            await AlignBankLinkAsync(entry, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             if (transaction is not null)
                 await transaction.CommitAsync(cancellationToken);
@@ -813,6 +860,29 @@ public sealed partial class RentBillingService(
         {
             return await stripeService.GetPaymentIntentAsync(paymentIntentId, account, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// The bank-link row follows the installment. Succeeded is written only when the installment is paid from this PaymentIntent.
+    /// </summary>
+    private async Task AlignBankLinkAsync(RentLedgerEntry entry, CancellationToken cancellationToken)
+    {
+        if (entry.StripePaymentIntentId is null)
+            return;
+
+        var row = await db.BankLinkPayments
+            .SingleOrDefaultAsync(p => p.StripePaymentIntentId == entry.StripePaymentIntentId, cancellationToken);
+        if (row is null || row.Status == BankLinkPaymentStatus.Succeeded)
+            return;
+
+        row.Status = entry.Status switch
+        {
+            RentLedgerStatus.Paid => BankLinkPaymentStatus.Succeeded,
+            RentLedgerStatus.Failed => BankLinkPaymentStatus.Failed,
+            RentLedgerStatus.Scheduled => BankLinkPaymentStatus.Canceled,
+            _ => BankLinkPaymentStatus.Processing,
+        };
+        row.UpdatedAt = UtcNow;
     }
 
     /// <summary>Records the state Stripe reports for the installment's current PaymentIntent (read, not from an event).</summary>

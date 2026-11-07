@@ -1060,6 +1060,32 @@ The EUR 119,00 payment of the ConcordatoFacile service (the process, the configu
 - **Pending that is over** (CF-BE, CF-IMPORT-FU1 and CF-FIX-FU2). The Session is created with an explicit expiry of **2 hours** (`ConcordatoFacilePurchaseRules.CheckoutSessionLifetime`; Stripe accepts 30 minutes to 24 hours and defaults to 24). A purchase still `Pending` 2 hours and 10 minutes after its creation counts as **closed** (`Failed`, "payment failed or checkout session expired": no new state, no migration): it is not "already purchased", it is not reused and it does not keep the draft from being deleted (`LeaseDraftDeleter.IsDeletableAsync`, which takes the closed purchases with the draft). The checkout still asks Stripe for the state of every `Pending` purchase before opening a new Session, so a payment made and not yet recorded is completed, never charged twice. `payment_intent.payment_failed` and `payment_intent.canceled` of the service close the purchase **only if its Session can no longer succeed** (`expired`, or `complete` and not paid: a delayed method that failed); a card declined while the Session is `open` leaves it `Pending` (the customer tries another card), and a paid or refunded purchase is never touched. Not covered: a delayed payment method (SEPA) still in flight after 2 hours 10 minutes would count as closed for the deletion of the draft; the live account has none today.
 - **Try it** (test mode): pay with `4242 4242 4242 4242`; the PaymentIntent in the Dashboard shows the three metadata keys and no `kind`; the delivery of `payment_intent.succeeded` to the platform destination answers 200; a second click on "Paga" shows "Hai già accesso" and opens no Session. In live mode the test cards do not work: a test is a real payment of 119 €, refundable from the Dashboard.
 
+## Linked bank account (Financial Connections)
+
+Optional. The landlord (org billing admin) and, with the existing rent payment-link token, the tenant of one lease can
+link a bank account. CasaZen stores the Financial Connections account id (`fca_…`) on the org or on that lease. It does
+not store an IBAN or account number. The manual bank transfer is unchanged: owner and debit IBANs, the payment reference
+in the wire file, and the landlord's offline declaration (`POST /api/leases/{leaseId}/rent/installments/{id}/mark-paid`)
+stay. A rent installment is paid only when Stripe reports `payment_intent.succeeded` for the current PaymentIntent, or
+when that offline declaration is recorded. Starting the debit sets the installment to in flight; it does not mark it paid.
+
+The Financial Connections account object can create a `us_bank_account` or `link` PaymentMethod. It cannot send a SEPA
+credit transfer, and `sepa_debit` still needs an IBAN. The debit this API starts is therefore a platform PaymentIntent
+of type `us_bank_account`, confirmed with the linked account id, and only in USD. An EUR rent due is refused
+(`422 bank_link_debit_unavailable`) and stays on the card link or the manual transfer.
+
+| Call | Who |
+|---|---|
+| `POST /api/orgs/me/bank-links/sessions` | Landlord. Returns the session client secret. |
+| `POST /api/orgs/me/bank-links` | Landlord. Body `{ "accountId": "fca_…" }`. |
+| `GET /api/orgs/me/bank-links` | Landlord. Id, institution, last4. No IBAN. |
+| `POST /api/orgs/me/bank-links/payments` | Landlord. USD ACH debit, or a rent installment (EUR is refused until Stripe offers an EUR debit that does not need an IBAN). |
+| `POST /api/public/rent-payments/{id}/bank-link/session` | Tenant of that installment, payment-link token in the body. |
+| `POST /api/public/rent-payments/{id}/bank-link` | Tenant. Stores the account id on the lease. |
+| `POST /api/public/rent-payments/{id}/bank-link/payment` | Tenant. Same debit rules, amount of the installment. |
+
+Webhook `metadata.kind = bank-link-payment` on the platform endpoint. No Dashboard change.
+
 ## Operations
 
 | Situation | What to do |

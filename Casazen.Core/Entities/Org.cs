@@ -149,6 +149,13 @@ public class Org
     [MaxLength(255)]
     public string? StripeCustomerId { get; set; }
 
+    /// <summary>
+    /// Financial Connections account (<c>fca_…</c>) the landlord linked for an optional bank debit. A Stripe account id,
+    /// never an IBAN or account number. Null while the org pays by the manual bank transfer.
+    /// </summary>
+    [MaxLength(255)]
+    public string? FinancialConnectionsAccountId { get; set; }
+
     /// <summary>Stripe subscription id (<c>sub_xxx</c>) synced from platform webhooks.</summary>
     [MaxLength(255)]
     public string? SubscriptionId { get; set; }
