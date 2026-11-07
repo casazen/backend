@@ -33,6 +33,9 @@ public sealed class LeaseDocumentServiceTests : IDisposable
             { using var copy = new MemoryStream(); stream.CopyTo(copy); _objects[key] = copy.ToArray(); }).Returns(Task.CompletedTask);
         _storage.Setup(s => s.OpenReadAsync(StorageBucket.Private, It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((StorageBucket _, string key, CancellationToken _) => _objects.TryGetValue(key, out var bytes) ? new MemoryStream(bytes) : null);
+        _storage.Setup(s => s.DeleteAsync(StorageBucket.Private, It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<StorageBucket, string, CancellationToken>((_, key, _) => _objects.Remove(key))
+            .Returns(Task.CompletedTask);
     }
 
     [Fact]
@@ -63,7 +66,22 @@ public sealed class LeaseDocumentServiceTests : IDisposable
         var saved = await Service.UploadAsync(first.Id, File(Pdf), LeaseDocumentKind.Contract, "owner");
         Assert.Empty(await Service.ListAsync(second.Id));
         Assert.Null(await Service.DownloadAsync(second.Id, saved.Id));
-        _storage.Verify(s => s.OpenReadAsync(It.IsAny<StorageBucket>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        Assert.False(await Service.DeleteAsync(second.Id, saved.Id));
+        Assert.NotNull(await Service.DownloadAsync(first.Id, saved.Id));
+        _storage.Verify(s => s.DeleteAsync(It.IsAny<StorageBucket>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Delete_RemovesTheRowAndTheFile()
+    {
+        var lease = await Seed();
+        var saved = await Service.UploadAsync(lease.Id, File(Pdf), LeaseDocumentKind.Attestation, "owner");
+        Assert.True(await Service.DeleteAsync(lease.Id, saved.Id));
+        Assert.Empty(await _db.LeaseDocuments.ToListAsync());
+        Assert.Empty(_objects);
+        Assert.Empty(await Service.ListAsync(lease.Id));
+        Assert.Null(await Service.DownloadAsync(lease.Id, saved.Id));
+        Assert.False(await Service.DeleteAsync(lease.Id, saved.Id));
     }
 
     [Theory]
