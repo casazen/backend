@@ -24,7 +24,11 @@ namespace Casazen.Web.Controllers;
 /// accountant and the collaborator hold it), and every query is of the org of the caller and of the properties its <c>HostScope</c> reaches (AM-03): a
 /// proof, a stay or a property of another org, or one outside the reach of a collaborator «Solo alcuni», answers 404 exactly like one that does not
 /// exist. Uploading asks <see cref="CasazenPolicies.AlloggiatiSubmit"/> and, for a tax proof, <see cref="CasazenPolicies.PaymentWrite"/> too: the
-/// receipt of a tax payment is a record of money.</para>
+/// receipt of a tax declaration or payment is a record of money.</para>
+/// <para><b>Money.</b> Reading those receipts asks <see cref="CasazenPolicies.PaymentRead"/> too (the owner, the administrators, the property managers
+/// and the accountant hold it; the collaborator never does, AM-03). Whoever lacks it does not get a 403, which would tell that they exist: the
+/// receipts of a tax declaration or payment are simply not in the list, its total, the ZIP and its index, and the download of one is the 404 of a
+/// proof that does not exist. The coverage report (a state per obligation, no file and no amount) is not a record of money and is not cut.</para>
 /// <para><b>Files.</b> A download answers with a redirect to a short-lived signed address of the private bucket, never a public one; where the storage
 /// cannot sign (development) it streams the file. The exports are built on request and never stored; <c>Cache-Control: private, no-store</c> on
 /// every answer that carries a proof or a report.</para>
@@ -52,7 +56,8 @@ public sealed class ComplianceArchiveController(
 
     /// <summary>
     /// The proofs held, newest first, one page of them (<c>from</c> and <c>to</c> are days, both included, of the day or month a proof is about).
-    /// 404 for a property the caller does not reach.
+    /// 404 for a property the caller does not reach. The receipts of a tax declaration or payment are in it, and in its total, only for who holds
+    /// <c>payment.read</c>.
     /// </summary>
     [HttpGet("api/compliance/archive")]
     [ProducesResponseType(typeof(ComplianceArchivePageDto), StatusCodes.Status200OK)]
@@ -74,7 +79,9 @@ public sealed class ComplianceArchiveController(
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
         var result = await archive.ListAsync(
-            scope, new ComplianceArchiveQuery(propertyId, fromDay, toDay, kind, page, pageSize), cancellationToken);
+            scope,
+            new ComplianceArchiveQuery(propertyId, fromDay, toDay, kind, page, pageSize, await CanReadMoneyAsync()),
+            cancellationToken);
         Response.Headers.CacheControl = "private, no-store";
         return Ok(ComplianceArchivePageDto.From(result, options.Value.Archive.PortalUrl));
     }
@@ -96,7 +103,8 @@ public sealed class ComplianceArchiveController(
 
     /// <summary>
     /// A proof, from the private bucket: a redirect (302) to a short-lived signed address, never a public one; the file itself where the storage
-    /// cannot sign. 404 for a proof of another org, one outside the caller's reach, and one that does not exist.
+    /// cannot sign. 404 for a proof of another org, one outside the caller's reach, one that does not exist and, without <c>payment.read</c>, the
+    /// receipt of a tax declaration or payment.
     /// </summary>
     [HttpGet("api/compliance/archive/{id:guid}/download")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -108,7 +116,7 @@ public sealed class ComplianceArchiveController(
         if (await GetScopeAsync(cancellationToken) is not { } scope)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
-        var download = await archive.OpenDownloadAsync(scope, id, cancellationToken);
+        var download = await archive.OpenDownloadAsync(scope, id, await CanReadMoneyAsync(), cancellationToken);
         Response.Headers.CacheControl = "private, no-store";
         return download.SignedUrl is { } signed
             ? Redirect(signed.AbsoluteUri)
@@ -118,7 +126,8 @@ public sealed class ComplianceArchiveController(
     /// <summary>
     /// A ZIP of every proof of the period (<c>from</c> and <c>to</c>, both included, at most 24 months) and an <c>index.csv</c>, built now and
     /// never stored; with the traffic light on it also carries <c>rapporto-copertura.csv</c>, the coverage of the period. 422
-    /// <c>compliance_export_too_large</c> when the period holds more than one export carries.
+    /// <c>compliance_export_too_large</c> when the period holds more than one export carries. The receipts of a tax declaration or payment are in the
+    /// ZIP, its index and its count only for who holds <c>payment.read</c>.
     /// </summary>
     [HttpGet("api/compliance/archive/export")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -137,7 +146,8 @@ public sealed class ComplianceArchiveController(
         if (await GetScopeAsync(cancellationToken) is not { } scope)
             return this.ApiProblem(StatusCodes.Status403Forbidden, ProblemCodes.Forbidden, "Forbidden");
 
-        var export = await archive.ExportAsync(scope, new ComplianceArchiveExportQuery(from, to, propertyId), cancellationToken);
+        var export = await archive.ExportAsync(
+            scope, new ComplianceArchiveExportQuery(from, to, propertyId, await CanReadMoneyAsync()), cancellationToken);
         Response.Headers.CacheControl = "private, no-store";
         return File(export.Content, "application/zip", export.FileName);
     }
@@ -247,9 +257,15 @@ public sealed class ComplianceArchiveController(
         return StatusCode(StatusCodes.Status201Created, ComplianceArchiveEntryDto.From(entry));
     }
 
-    /// <summary>True for the receipts of the tourist tax (declaration and payment): the money kinds.</summary>
-    public static bool IsTaxProof(ManualProofKind kind) =>
-        kind is ManualProofKind.TouristTaxDeclaration or ManualProofKind.TouristTaxPayment;
+    /// <summary>True for the receipts of the tourist tax (declaration and payment): the money kinds (<see cref="ComplianceArchiveRules.MoneyKinds"/>).</summary>
+    public static bool IsTaxProof(ManualProofKind kind) => ComplianceArchiveRules.IsMoneyKind(kind);
+
+    /// <summary>
+    /// Whether the caller may read money (<c>payment.read</c>): the owner, the administrators, the property managers and the accountant; never the
+    /// collaborator. It decides whether the receipts of a tax declaration or payment are part of what it reads (AM-03).
+    /// </summary>
+    private async Task<bool> CanReadMoneyAsync() =>
+        (await authorizationService.AuthorizeAsync(User, CasazenPolicies.PaymentRead)).Succeeded;
 
     /// <summary><c>pdf</c> (the default) or <c>csv</c>, whatever the case; false for anything else.</summary>
     private static bool TryReadFormat(string? format, out ComplianceReportFormat reportFormat)

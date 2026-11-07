@@ -17,13 +17,20 @@ namespace Casazen.Core.Services;
 /// (404) exactly as one that does not exist. The service never checks roles.</para>
 /// <para><b>Retention.</b> A proof is kept <see cref="ManualComplianceProof.RetentionYears"/> years from its upload and shown until the retention
 /// job removes it: nothing here deletes a proof or a line of the log. A soft-deleted property keeps its proofs visible (compliance exports).</para>
+/// <para><b>Money.</b> The receipt of a tourist tax declaration or payment is a record of money (<see cref="ComplianceArchiveRules.MoneyKinds"/>). The
+/// service never checks roles, so the caller says whether its person may read money (<c>payment.read</c>, which the collaborator never holds):
+/// without it those kinds are not listed, not counted, not exported and not downloadable (404, as for a proof that does not exist). Asking for
+/// them is opt-in (<c>MoneyProofs</c> false by default, <c>moneyProofs</c> of the download has no default), so a new caller cannot read money by forgetting it.</para>
 /// <para><b>What is not here.</b> The Alloggiati receipts CasaZen would download itself, the ISTAT proofs of the regional service and the files
 /// of the Swiss municipalities belong to features postponed on 2026-11-05 (<c>kb/plan/deferred</c>): they join this list when those features
 /// return. Their rows do not exist today.</para>
 /// </remarks>
 public interface IComplianceArchiveService
 {
-    /// <summary>The proofs held, newest first, one page of them.</summary>
+    /// <summary>
+    /// The proofs held, newest first, one page of them. The receipts of a tourist tax declaration or payment are part of the list and of its
+    /// <see cref="ComplianceArchivePage.TotalCount"/> only when <see cref="ComplianceArchiveQuery.MoneyProofs"/> is true.
+    /// </summary>
     /// <exception cref="Exceptions.NotFoundException">A property is asked for that the caller does not reach.</exception>
     Task<ComplianceArchivePage> ListAsync(HostScope scope, ComplianceArchiveQuery query, CancellationToken ct);
 
@@ -35,13 +42,19 @@ public interface IComplianceArchiveService
     /// How to hand a proof to the caller: a short-lived signed address of the private bucket, or the content itself when the storage cannot
     /// sign (development and tests). Never a public address.
     /// </summary>
-    /// <exception cref="Exceptions.NotFoundException">The proof is not the caller's, is out of its reach, or its file is no longer there.</exception>
-    Task<ComplianceArchiveDownload> OpenDownloadAsync(HostScope scope, Guid proofId, CancellationToken ct);
+    /// <param name="scope">The reach of the caller.</param>
+    /// <param name="proofId">The proof.</param>
+    /// <param name="moneyProofs">Whether the caller may read money (<c>payment.read</c>): without it the receipt of a tourist tax declaration or payment is not found.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <exception cref="Exceptions.NotFoundException">The proof is not the caller's, is out of its reach, is a record of money the caller may not read, or its file is no longer there.</exception>
+    Task<ComplianceArchiveDownload> OpenDownloadAsync(HostScope scope, Guid proofId, bool moneyProofs, CancellationToken ct);
 
     /// <summary>
     /// A ZIP of every proof of the period plus an <c>index.csv</c>, built on request and never stored. Bounded by
     /// <c>Compliance:Archive:ExportMaxFiles</c> and <c>ExportMaxMegabytes</c>. With <c>Features:ComplianceTrafficLight</c> on it also carries
-    /// <c>rapporto-copertura.csv</c>, the coverage of the period (the rows held only by Octorate say «Da verificare nel Cassetto Compliance»).
+    /// <c>rapporto-copertura.csv</c>, the coverage of the period (the rows held only by Octorate say «Da verificare nel Cassetto Compliance»). The
+    /// receipts of a tourist tax declaration or payment are in the ZIP, in its index and in <see cref="ComplianceArchiveExportFile.FileCount"/> only
+    /// when <see cref="ComplianceArchiveExportQuery.MoneyProofs"/> is true.
     /// </summary>
     /// <exception cref="Exceptions.DomainRuleException">The proofs of the period are more than the export carries (422 <c>compliance_export_too_large</c>).</exception>
     Task<ComplianceArchiveExportFile> ExportAsync(HostScope scope, ComplianceArchiveExportQuery query, CancellationToken ct);
@@ -116,13 +129,18 @@ public static class ComplianceArchiveErrorCodes
 /// <param name="Kind">Only this kind of proof; <c>null</c> = every kind.</param>
 /// <param name="Page">The page, from 1.</param>
 /// <param name="PageSize">The proofs of a page, 1 to <see cref="ComplianceArchiveLimits.MaxPageSize"/>.</param>
+/// <param name="MoneyProofs">
+/// Whether the caller may read money (<c>payment.read</c>). Only then are the receipts of a tourist tax declaration or payment
+/// (<see cref="ComplianceArchiveRules.MoneyKinds"/>) in the list and in its total; false (the default) leaves them out, whatever <paramref name="Kind"/> asks.
+/// </param>
 public sealed record ComplianceArchiveQuery(
     Guid? PropertyId = null,
     DateOnly? From = null,
     DateOnly? To = null,
     ManualProofKind? Kind = null,
     int Page = 1,
-    int PageSize = ComplianceArchiveLimits.DefaultPageSize);
+    int PageSize = ComplianceArchiveLimits.DefaultPageSize,
+    bool MoneyProofs = false);
 
 /// <summary>
 /// One proof CasaZen holds. It names no guest and no person: a property, a kind, a day, where it comes from and until when it is kept.
@@ -196,7 +214,11 @@ public sealed record ComplianceArchiveDownload(Uri? SignedUrl, Stream? Content, 
 /// <param name="From">First day.</param>
 /// <param name="To">Last day.</param>
 /// <param name="PropertyId">Only this property; <c>null</c> = every property of the caller's reach.</param>
-public sealed record ComplianceArchiveExportQuery(DateOnly From, DateOnly To, Guid? PropertyId = null);
+/// <param name="MoneyProofs">
+/// Whether the caller may read money (<c>payment.read</c>). Only then are the receipts of a tourist tax declaration or payment in the ZIP, its
+/// index and its file count; false (the default) leaves them out.
+/// </param>
+public sealed record ComplianceArchiveExportQuery(DateOnly From, DateOnly To, Guid? PropertyId = null, bool MoneyProofs = false);
 
 /// <summary>An export built in memory: the ZIP, positioned at its start; the caller disposes it.</summary>
 /// <param name="Content">The ZIP.</param>
@@ -307,6 +329,16 @@ public sealed record ComplianceReportFile(byte[] Content, string ContentType, st
 /// <summary>The rules of the proofs of the archive, apart from any storage.</summary>
 public static class ComplianceArchiveRules
 {
+    /// <summary>
+    /// The kinds that are records of money: the receipt of a tourist tax declaration and of a tourist tax payment (the same rule that asks
+    /// <c>payment.write</c> to upload them). Reading them asks <c>payment.read</c>, which the collaborator never holds (AM-03). The one definition:
+    /// the web layer decides with it who uploads, and the service leaves them out of every read that was not granted money.
+    /// </summary>
+    public static readonly ManualProofKind[] MoneyKinds = [ManualProofKind.TouristTaxDeclaration, ManualProofKind.TouristTaxPayment];
+
+    /// <summary>True for a record of money (<see cref="MoneyKinds"/>).</summary>
+    public static bool IsMoneyKind(ManualProofKind kind) => MoneyKinds.Contains(kind);
+
     /// <summary>True for the kinds that are about a month (ISTAT and tourist tax), filed under the first day of the month.</summary>
     public static bool IsPeriodKind(ManualProofKind kind) =>
         kind is ManualProofKind.IstatProof or ManualProofKind.TouristTaxDeclaration or ManualProofKind.TouristTaxPayment;

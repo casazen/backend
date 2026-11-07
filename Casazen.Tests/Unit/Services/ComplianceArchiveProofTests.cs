@@ -86,14 +86,14 @@ public sealed class ComplianceArchiveProofTests
             () => service.ListAsync(world.OrgWide, new ComplianceArchiveQuery(PropertyId: world.Foreign.Id), CancellationToken.None));
 
         // The download: the proof of the property it reaches answers a signed address; the others, the same 404 as an id that never existed.
-        var download = await service.OpenDownloadAsync(world.Restricted, granted.Id, CancellationToken.None);
+        var download = await service.OpenDownloadAsync(world.Restricted, granted.Id, moneyProofs: true, CancellationToken.None);
         Assert.Null(download.Content);
         Assert.StartsWith("https://storage.example/private/compliance-proofs/", download.SignedUrl!.AbsoluteUri, StringComparison.Ordinal);
         Assert.Equal(TimeSpan.FromSeconds(120), storage.LastLifetime);
         Assert.Equal($"alloggiati-{ArrivalDay:yyyy-MM-dd}.pdf", download.FileName);
         foreach (var (scope, id) in new[] { (world.Restricted, hidden.Id), (world.OrgWide, foreign.Id), (world.OrgWide, Guid.NewGuid()) })
         {
-            var refused = await Assert.ThrowsAsync<NotFoundException>(() => service.OpenDownloadAsync(scope, id, CancellationToken.None));
+            var refused = await Assert.ThrowsAsync<NotFoundException>(() => service.OpenDownloadAsync(scope, id, moneyProofs: true, CancellationToken.None));
             Assert.Equal(ComplianceArchiveErrorCodes.ProofNotFound, refused.Code);
         }
 
@@ -139,6 +139,135 @@ public sealed class ComplianceArchiveProofTests
         });
         Assert.Empty(storage.Puts);
         Assert.Equal(3, await db.ManualComplianceProofs.CountAsync());
+    }
+
+    // ─── Records of money ───────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// PROOF TEST: money and permission rule (AM-03). The receipt of a tourist tax declaration or payment is a record of money: for a caller who may
+    /// not read money (the collaborator holds no <c>payment.read</c>) it is not in the list, not in its total, not in the ZIP, its index or its count,
+    /// and its download is the 404 of a proof that does not exist, signing nothing and opening no file; for a caller who may (the accountant) all
+    /// four kinds are there. The stay never carries a tax receipt, whoever asks. The cut is by the rule of the kinds, not by a list of the test.
+    /// </summary>
+    [Fact]
+    public async Task ComplianceArchive_TaxReceiptsAreRecordsOfMoney_OnlyForWhoMayReadMoney_Test()
+    {
+        var world = await World.SeedAsync();
+        var storage = new MemoryStorage { Signs = true };
+        var alloggiati = await AddProofAsync(world, world.Org.Id, world.Granted.Id, ManualProofKind.AlloggiatiReceipt, ArrivalDay, storage);
+        var istat = await AddProofAsync(world, world.Org.Id, world.Granted.Id, ManualProofKind.IstatProof, new DateOnly(2026, 10, 1), storage);
+        var declaration = await AddProofAsync(world, world.Org.Id, world.Granted.Id, ManualProofKind.TouristTaxDeclaration, new DateOnly(2026, 10, 1), storage);
+        var payment = await AddProofAsync(world, world.Org.Id, world.Granted.Id, ManualProofKind.TouristTaxPayment, new DateOnly(2026, 10, 1), storage);
+        var hiddenPayment = await AddProofAsync(world, world.Org.Id, world.Hidden.Id, ManualProofKind.TouristTaxPayment, new DateOnly(2026, 10, 1), storage);
+
+        // A tax receipt that carries the arrival day of a stay (it is filed under the first day of a month, so a stay arriving on it meets it).
+        var (stay, _) = await world.AddStayAsync(world.Granted, checkInOffset: -3);
+        var onArrivalDay = await AddProofAsync(world, world.Org.Id, world.Granted.Id, ManualProofKind.TouristTaxPayment, ArrivalDay, storage);
+        await using var db = world.Db();
+        var service = NewService(world, db, storage);
+        var period = new DateOnly(2026, 10, 1);
+
+        // The list and its total: without money only the kinds that are not money, whatever kind is asked, for the collaborator's reach as for the org's.
+        foreach (var scope in new[] { world.OrgWide, world.Restricted })
+        {
+            var withoutMoney = await service.ListAsync(scope, new ComplianceArchiveQuery(), CancellationToken.None);
+            Assert.All(withoutMoney.Items, item => Assert.False(ComplianceArchiveRules.IsMoneyKind(item.Kind)));
+            Assert.Equal(withoutMoney.Items.Count, withoutMoney.TotalCount);
+            Assert.Contains(withoutMoney.Items, item => item.Id == alloggiati.Id);
+            Assert.Contains(withoutMoney.Items, item => item.Id == istat.Id);
+
+            foreach (var money in ComplianceArchiveRules.MoneyKinds)
+            {
+                var asked = await service.ListAsync(scope, new ComplianceArchiveQuery(Kind: money), CancellationToken.None);
+                Assert.Empty(asked.Items);
+                Assert.Equal(0, asked.TotalCount);
+            }
+        }
+
+        var orgWithoutMoney = await service.ListAsync(world.OrgWide, new ComplianceArchiveQuery(), CancellationToken.None);
+        Assert.Equal(2, orgWithoutMoney.TotalCount);
+        var orgWithMoney = await service.ListAsync(world.OrgWide, new ComplianceArchiveQuery(MoneyProofs: true), CancellationToken.None);
+        Assert.Equal(
+            new[] { alloggiati.Id, istat.Id, declaration.Id, payment.Id, hiddenPayment.Id, onArrivalDay.Id }.Order(),
+            orgWithMoney.Items.Select(i => i.Id).Order());
+        Assert.Equal(6, orgWithMoney.TotalCount);
+        Assert.Equal(
+            ComplianceArchiveRules.MoneyKinds.Order(),
+            orgWithMoney.Items.Select(i => i.Kind).Where(ComplianceArchiveRules.IsMoneyKind).Distinct().Order());
+
+        // The same cut by the kinds the enum has: what is not a record of money is listed, what is, is not (a kind added later is decided by the rule).
+        var seenWithout = orgWithoutMoney.Items.Select(i => i.Kind).Distinct().Order().ToList();
+        Assert.Equal(Enum.GetValues<ManualProofKind>().Where(k => !ComplianceArchiveRules.IsMoneyKind(k)).Order(), seenWithout);
+
+        // The download: a record of money is the 404 of a proof that does not exist (same code), nothing is signed and no file is opened; with money it is signed.
+        var unknown = await Assert.ThrowsAsync<NotFoundException>(
+            () => service.OpenDownloadAsync(world.OrgWide, Guid.NewGuid(), moneyProofs: false, CancellationToken.None));
+        foreach (var record in new[] { declaration, payment, onArrivalDay })
+        {
+            var refused = await Assert.ThrowsAsync<NotFoundException>(
+                () => service.OpenDownloadAsync(world.Restricted, record.Id, moneyProofs: false, CancellationToken.None));
+            Assert.Equal((unknown.Code, unknown.MessageKey), (refused.Code, refused.MessageKey));
+            Assert.Equal(ComplianceArchiveErrorCodes.ProofNotFound, refused.Code);
+        }
+
+        Assert.Empty(storage.Signed);
+        Assert.Empty(storage.Opened);
+        foreach (var record in new[] { declaration, payment })
+        {
+            var granted = await service.OpenDownloadAsync(world.Restricted, record.Id, moneyProofs: true, CancellationToken.None);
+            Assert.StartsWith("https://storage.example/private/compliance-proofs/", granted.SignedUrl!.AbsoluteUri, StringComparison.Ordinal);
+        }
+
+        Assert.Equal([declaration.FileKey, payment.FileKey], storage.Signed);
+
+        // A receipt that is not money downloads without it.
+        Assert.NotNull((await service.OpenDownloadAsync(world.Restricted, alloggiati.Id, moneyProofs: false, CancellationToken.None)).SignedUrl);
+
+        // The ZIP, its index and its count: the files of the money kinds are neither opened nor counted nor named.
+        storage.Opened.Clear();
+        await using (var plain = await service.ExportAsync(world.OrgWide, new ComplianceArchiveExportQuery(period, new DateOnly(2026, 11, 30)), CancellationToken.None))
+        {
+            Assert.Equal(2, plain.FileCount);
+            Assert.Equal(new[] { alloggiati.FileKey, istat.FileKey }.Order(), storage.Opened.Order());
+            using var zip = new ZipArchive(plain.Content, ZipArchiveMode.Read);
+            var index = ReadEntry(zip, "index.csv").TrimStart((char)0xFEFF).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+            Assert.Equal(3, index.Length);
+            Assert.DoesNotContain(index, line => line.Contains("imposta di soggiorno", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(zip.Entries, e => e.FullName.Contains("imposta-soggiorno", StringComparison.Ordinal));
+            Assert.DoesNotContain(zip.Entries, e => e.FullName.Contains(declaration.Id.ToString("N")[..8], StringComparison.Ordinal));
+            Assert.DoesNotContain(zip.Entries, e => e.FullName.Contains(payment.Id.ToString("N")[..8], StringComparison.Ordinal));
+        }
+
+        storage.Opened.Clear();
+        await using (var withMoney = await service.ExportAsync(
+                         world.OrgWide, new ComplianceArchiveExportQuery(period, new DateOnly(2026, 11, 30), MoneyProofs: true), CancellationToken.None))
+        {
+            Assert.Equal(6, withMoney.FileCount);
+            using var zip = new ZipArchive(withMoney.Content, ZipArchiveMode.Read);
+            var index = ReadEntry(zip, "index.csv").TrimStart((char)0xFEFF).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+            Assert.Equal(7, index.Length);
+            Assert.Equal(1, index.Count(line => line.StartsWith("Ricevuta della dichiarazione dell'imposta di soggiorno", StringComparison.Ordinal)));
+            Assert.Equal(3, index.Count(line => line.StartsWith("Ricevuta del pagamento dell'imposta di soggiorno", StringComparison.Ordinal)));
+        }
+
+        // The limit counts what the caller may take: the two proofs that are not money fit a limit of two, and with money the same period has six
+        // and the whole export is refused.
+        world.Options.Archive.ExportMaxFiles = 2;
+        await using (var fits = await NewService(world, db, storage).ExportAsync(
+                         world.OrgWide, new ComplianceArchiveExportQuery(period, new DateOnly(2026, 11, 30)), CancellationToken.None))
+        {
+            Assert.Equal(2, fits.FileCount);
+        }
+
+        var tooMany = await Assert.ThrowsAsync<DomainRuleException>(
+            () => NewService(world, db, storage).ExportAsync(
+                world.OrgWide, new ComplianceArchiveExportQuery(period, new DateOnly(2026, 11, 30), MoneyProofs: true), CancellationToken.None));
+        Assert.Equal(ComplianceArchiveErrorCodes.ExportTooLarge, tooMany.Code);
+
+        // The stay carries its Alloggiati receipt and never a tax receipt, even one filed under its arrival day.
+        var ofStay = await service.GetBookingComplianceAsync(world.Restricted, stay.Id, CancellationToken.None);
+        Assert.Equal([alloggiati.Id], ofStay.Proofs.Select(p => p.Id));
+        Assert.DoesNotContain(ofStay.Proofs, p => p.Id == onArrivalDay.Id);
     }
 
     // ─── The report ─────────────────────────────────────────────────────────────────────────────────────
@@ -352,7 +481,7 @@ public sealed class ComplianceArchiveProofTests
         Assert.StartsWith($"compliance-proofs/{world.Org.Id}/{stored.Id}/", stored.FileKey, StringComparison.Ordinal);
         Assert.EndsWith(".pdf", stored.FileKey, StringComparison.Ordinal);
         Assert.Equal([(StorageBucket.Private, stored.FileKey)], storage.Puts.Select(key => (storage.LastBucket, key)));
-        Assert.Equal(stored.Id, Assert.Single((await service.ListAsync(world.OrgWide, new ComplianceArchiveQuery(Kind: ManualProofKind.TouristTaxPayment), CancellationToken.None)).Items).Id);
+        Assert.Equal(stored.Id, Assert.Single((await service.ListAsync(world.OrgWide, new ComplianceArchiveQuery(Kind: ManualProofKind.TouristTaxPayment, MoneyProofs: true), CancellationToken.None)).Items).Id);
 
         // A day-kind keeps its day; the traffic light finds it by property, kind and day.
         await using (var receipt = new MemoryStream(PdfBytes))
@@ -422,7 +551,7 @@ public sealed class ComplianceArchiveProofTests
         await using var db = world.Db();
         var service = NewService(world, db, storage, trafficLight: false);
 
-        await using (var export = await service.ExportAsync(world.OrgWide, new ComplianceArchiveExportQuery(new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 30)), CancellationToken.None))
+        await using (var export = await service.ExportAsync(world.OrgWide, new ComplianceArchiveExportQuery(new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 30), MoneyProofs: true), CancellationToken.None))
         {
             Assert.Equal(2, export.FileCount);
             Assert.Equal("prove-adempimenti-2026-10-01_2026-11-30.zip", export.FileName);
@@ -446,7 +575,7 @@ public sealed class ComplianceArchiveProofTests
 
         // With the traffic light on the pack also carries the coverage of the period, and nothing else changes.
         await using (var withCoverage = await NewService(world, db, storage).ExportAsync(
-                         world.OrgWide, new ComplianceArchiveExportQuery(new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 30)), CancellationToken.None))
+                         world.OrgWide, new ComplianceArchiveExportQuery(new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 30), MoneyProofs: true), CancellationToken.None))
         {
             using var zip = new ZipArchive(withCoverage.Content, ZipArchiveMode.Read);
             Assert.Equal(4, zip.Entries.Count);
@@ -456,7 +585,7 @@ public sealed class ComplianceArchiveProofTests
         // Beyond the limit: refused whole, before a file is read.
         world.Options.Archive.ExportMaxFiles = 2;
         var refused = await Assert.ThrowsAsync<DomainRuleException>(
-            () => NewService(world, db, storage).ExportAsync(world.OrgWide, new ComplianceArchiveExportQuery(new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 30)), CancellationToken.None));
+            () => NewService(world, db, storage).ExportAsync(world.OrgWide, new ComplianceArchiveExportQuery(new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 30), MoneyProofs: true), CancellationToken.None));
         Assert.Equal(ComplianceArchiveErrorCodes.ExportTooLarge, refused.Code);
     }
 
@@ -634,6 +763,9 @@ public sealed class ComplianceArchiveProofTests
 
         public List<string> Opened { get; } = [];
 
+        /// <summary>The keys a signed address was made for.</summary>
+        public List<string> Signed { get; } = [];
+
         public StorageBucket LastBucket { get; private set; }
 
         public TimeSpan LastLifetime { get; private set; }
@@ -673,6 +805,7 @@ public sealed class ComplianceArchiveProofTests
         public Task<Uri?> GetSignedReadUrlAsync(string key, TimeSpan lifetime, string? downloadFileName, CancellationToken cancellationToken = default)
         {
             LastLifetime = lifetime;
+            Signed.Add(key);
             return Task.FromResult<Uri?>(Signs ? new Uri($"https://storage.example/private/{key}?signature=test") : null);
         }
     }

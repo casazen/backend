@@ -21,7 +21,8 @@ namespace Casazen.Infrastructure.Services;
 /// <para><b>One boundary for every read.</b> A proof, a stay or a property is read with the org of the scope and <c>InScope(scope)</c>, and
 /// <c>IgnoreQueryFilters([SoftDelete])</c> so the history of a property deleted since stays reachable (the tenant filter stays). Anything that
 /// is another org's, out of the caller's reach, or unknown answers the same <see cref="NotFoundException"/>: the answer tells nothing about
-/// which check refused it.</para>
+/// which check refused it. The receipts of a tourist tax declaration or payment are records of money: every read leaves them out unless the caller
+/// says it may read money (<c>payment.read</c>), and then they are not listed, not counted, not exported and the download is that same 404.</para>
 /// <para><b>The report is the traffic light's.</b> The obligations and the proof of each are the ones <see cref="IComplianceStatusService"/> decides
 /// with <see cref="ComplianceLightRules"/>, over a window of days instead of the lookback of the cockpit; this service only reads them, names them
 /// and adds the stays that owe nothing (a no-show). It decides no state of its own.</para>
@@ -59,7 +60,7 @@ public sealed class ComplianceArchiveService(
 
         var page = Math.Clamp(query.Page, 1, MaxPage);
         var size = Math.Clamp(query.PageSize, 1, ComplianceArchiveLimits.MaxPageSize);
-        var proofs = ProofsInScope(scope, query.PropertyId, query.Kind, query.From, query.To);
+        var proofs = ProofsInScope(scope, query.PropertyId, query.Kind, query.From, query.To, query.MoneyProofs);
 
         var total = await proofs.CountAsync(ct);
         var rows = await proofs
@@ -87,9 +88,10 @@ public sealed class ComplianceArchiveService(
             .FirstOrDefaultAsync(ct)
             ?? throw BookingNotFound();
 
-        // The proofs of the stay are the receipts filed under its arrival day, for its property (the key the traffic light reads them by).
+        // The proofs of the stay are the receipts filed under its arrival day, for its property (the key the traffic light reads them by). They are
+        // the Alloggiati receipts and nothing else: a record of money (a tourist tax receipt) never belongs to a stay, whoever asks.
         var arrival = RomeCalendar.DateInRome(booking.CheckInDate);
-        var proofs = await ProofsInScope(scope, booking.PropertyId, ManualProofKind.AlloggiatiReceipt, arrival, arrival)
+        var proofs = await ProofsInScope(scope, booking.PropertyId, ManualProofKind.AlloggiatiReceipt, arrival, arrival, moneyProofs: false)
             .OrderByDescending(p => p.UploadedAt)
             .ThenByDescending(p => p.Id)
             .Select(p => new ProofRow(p.Id, p.Kind, p.PropertyId, p.Property.Name, p.Day, p.ContentType, p.UploadedAt))
@@ -118,16 +120,14 @@ public sealed class ComplianceArchiveService(
 
     // ---------------------------------------------------------------- download
 
-    public async Task<ComplianceArchiveDownload> OpenDownloadAsync(HostScope scope, Guid proofId, CancellationToken ct)
+    public async Task<ComplianceArchiveDownload> OpenDownloadAsync(HostScope scope, Guid proofId, bool moneyProofs, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(scope);
         var orgId = scope.OrgId;
 
-        var proof = await db.ManualComplianceProofs
-            .AsNoTracking()
-            .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
-            .Where(p => p.OrgId == orgId && p.Id == proofId)
-            .InScope(scope)
+        // The same boundary as the list: the org, the reach, the deleted properties kept, and a record of money only for who may read money.
+        var proof = await ProofsInScope(scope, null, null, null, null, moneyProofs)
+            .Where(p => p.Id == proofId)
             .Select(p => new { p.Kind, p.Day, p.FileKey, p.ContentType })
             .FirstOrDefaultAsync(ct)
             ?? throw ProofNotFound();
@@ -171,7 +171,7 @@ public sealed class ComplianceArchiveService(
         var byteLimit = settings.ExportByteLimit;
 
         // One more than the limit tells the export is too big without counting the rest.
-        var rows = await ProofsInScope(scope, query.PropertyId, null, query.From, query.To)
+        var rows = await ProofsInScope(scope, query.PropertyId, null, query.From, query.To, query.MoneyProofs)
             .OrderBy(p => p.Day)
             .ThenBy(p => p.UploadedAt)
             .ThenBy(p => p.Id)
@@ -441,13 +441,18 @@ public sealed class ComplianceArchiveService(
 
     // ---------------------------------------------------------------- reads
 
-    /// <summary>The proofs of the caller's org, in the reach of its scope, the history of deleted properties included, narrowed as asked.</summary>
+    /// <summary>
+    /// The proofs of the caller's org, in the reach of its scope, the history of deleted properties included, narrowed as asked. The one place
+    /// every read of the proofs goes through (list, download, export): the records of money (<see cref="ComplianceArchiveRules.MoneyKinds"/>) are
+    /// in it only when <paramref name="moneyProofs"/> says the caller may read money; otherwise they are not there, for any kind asked.
+    /// </summary>
     private IQueryable<ManualComplianceProof> ProofsInScope(
         HostScope scope,
         Guid? propertyId,
         ManualProofKind? kind,
         DateOnly? from,
-        DateOnly? to)
+        DateOnly? to,
+        bool moneyProofs)
     {
         var orgId = scope.OrgId;
         var proofs = db.ManualComplianceProofs
@@ -455,6 +460,9 @@ public sealed class ComplianceArchiveService(
             .IgnoreQueryFilters([AppDbContext.SoftDeleteQueryFilter])
             .Where(p => p.OrgId == orgId)
             .InScope(scope);
+
+        if (!moneyProofs)
+            proofs = proofs.Where(p => !ComplianceArchiveRules.MoneyKinds.Contains(p.Kind));
 
         if (propertyId is { } property)
             proofs = proofs.Where(p => p.PropertyId == property);

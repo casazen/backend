@@ -169,7 +169,7 @@ public class ComplianceArchiveNpgsqlTranslationTests
         var (service, statements) = Build();
         await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.ListAsync(
             Restricted, new ComplianceArchiveQuery(PropertyId, null, null, null), CancellationToken.None));
-        await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.OpenDownloadAsync(Restricted, ProofId, CancellationToken.None));
+        await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.OpenDownloadAsync(Restricted, ProofId, moneyProofs: true, CancellationToken.None));
 
         // The property filter is checked first, in the reach; the download names the proof, the org and the reach in one statement.
         Assert.Contains(statements, sql => sql.TrimStart().StartsWith("SELECT EXISTS", StringComparison.OrdinalIgnoreCase)
@@ -178,6 +178,36 @@ public class ComplianceArchiveNpgsqlTranslationTests
         Assert.Matches("\"OrgId\" = @", download);
         Assert.Matches("\"Id\" = @", download);
         Assert.Contains("PropertyMemberAccesses", download, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// PROOF TEST: money and permission rule (shape of the statement). The records of money (the receipts of a tourist tax declaration or payment) are
+    /// cut out by the statement of the list, of its total, of the download and of the export when the caller may not read money, and are not cut when
+    /// it may: the database never returns them, so no later step can forget to drop them.
+    /// </summary>
+    [Fact]
+    public async Task ComplianceArchive_RecordsOfMoney_AreCutInTheSql_ForWhoMayNotReadMoney_Test()
+    {
+        async Task<List<string>> Run(bool moneyProofs)
+        {
+            var (service, statements) = Build();
+            await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.ListAsync(
+                Restricted, new ComplianceArchiveQuery(MoneyProofs: moneyProofs), CancellationToken.None));
+            await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.OpenDownloadAsync(Restricted, ProofId, moneyProofs, CancellationToken.None));
+            await NpgsqlTranslationProbe.AssertTranslatesAsync(() => service.ExportAsync(
+                Restricted, new ComplianceArchiveExportQuery(new DateOnly(2026, 10, 1), new DateOnly(2026, 11, 30), PropertyId, moneyProofs), CancellationToken.None));
+            return statements.Where(sql => sql.Contains("FROM \"ManualComplianceProofs\"", StringComparison.Ordinal)).ToList();
+        }
+
+        var withoutMoney = await Run(false);
+        var withMoney = await Run(true);
+
+        // The total and the page of the list, the download, the export: four statements on the proofs, each of them cut (or none of them).
+        Assert.Equal(4, withoutMoney.Count);
+        Assert.Equal(4, withMoney.Count);
+        Assert.All(withoutMoney, sql => Assert.Matches("\"Kind\" NOT IN \\(", sql));
+        Assert.All(withMoney, sql => Assert.DoesNotMatch("\"Kind\" NOT IN \\(", sql));
+        Assert.All(withoutMoney.Concat(withMoney), sql => Assert.Matches("\"OrgId\" = @", sql));
     }
 
     [Fact]
