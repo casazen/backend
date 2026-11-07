@@ -5,8 +5,9 @@ namespace Casazen.Core.Services;
 
 /// <summary>
 /// The steps behind the activation wizard of a sales channel or a connected tool through the channel manager's API (E09/F02/US01/T02, NF-56,
-/// MKT-03, D6): plan, connection, import, mapping, activation. Verified against the real channel manager, with no mock adapter; the whole feature sits
-/// behind <c>Features:OctorateConnector</c>.
+/// MKT-03, D6): plan, connection, import, mapping, activation. Not yet proven on a real channel (pilot): the shapes are the ones of the OpenAPI and the
+/// tests use a stub of the client. The whole feature sits behind <c>Features:OctorateConnector</c>, and an operation of the D6 sequence is called only
+/// when its flag for the channel is on (<c>Octorate:ExistingInventory:Channels</c>, all off by default): otherwise the step is a 409 <c>d6_operation_unverified</c>.
 /// </summary>
 /// <remarks>
 /// <para><b>Every step</b> checks the same four things, in this order: the scope is the one of the org (<c>ArgumentException</c> otherwise: fail closed),
