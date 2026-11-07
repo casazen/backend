@@ -5478,4 +5478,46 @@ Once active, the function works on the data the channel manager already holds.</
   <data name="OnboardingPartNotReopenable" xml:space="preserve">
     <value>This part is not available: there is no step to reopen.</value>
   </data>
+  <data name="CondominiumNotFound" xml:space="preserve">
+    <value>Condominium not found.</value>
+  </data>
+  <data name="CondominiumPropertyNotFound" xml:space="preserve">
+    <value>Property not found.</value>
+  </data>
+  <data name="CondominiumPeriodNotFound" xml:space="preserve">
+    <value>Fiscal year not found.</value>
+  </data>
+  <data name="CondominiumPeriodInvalid" xml:space="preserve">
+    <value>That fiscal year is not valid. Use 2024/2025, or a single year when the year starts in January.</value>
+  </data>
+  <data name="CondominiumPeriodOverlap" xml:space="preserve">
+    <value>This period overlaps a year that is still open, or the property is already linked.</value>
+  </data>
+  <data name="CondominiumStatementInvalid" xml:space="preserve">
+    <value>The budget or final statement is not valid: check the amounts, the name and the starting month.</value>
+  </data>
+  <data name="CondominiumInstallmentNotFound" xml:space="preserve">
+    <value>Condominium installment not found.</value>
+  </data>
+  <data name="CondominiumPaymentInvalid" xml:space="preserve">
+    <value>That payment is not valid.</value>
+  </data>
+  <data name="CondominiumPaymentDuplicate" xml:space="preserve">
+    <value>This movement was already recorded.</value>
+  </data>
+  <data name="CondominiumPriorBalanceInvalid" xml:space="preserve">
+    <value>The prior-year balance is not valid. A refund applies only to a credit.</value>
+  </data>
+  <data name="CondominiumStatementFileUnsupported" xml:space="preserve">
+    <value>The file is not a condo-statement-v1 report. Administrator PDFs are not read on their own.</value>
+  </data>
+  <data name="CondominiumStatementFileInvalid" xml:space="preserve">
+    <value>The statement file is incomplete ({0}).</value>
+  </data>
+  <data name="CondominiumPeriodClosed" xml:space="preserve">
+    <value>This fiscal year is closed.</value>
+  </data>
+  <data name="CondominiumNeedsWholeOrg" xml:space="preserve">
+    <value>A condominium that is not linked to a property belongs to the whole organization: access to all the properties is needed.</value>
+  </data>
 </root>

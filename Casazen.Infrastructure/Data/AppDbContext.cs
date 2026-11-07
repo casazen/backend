@@ -294,6 +294,15 @@ public class AppDbContext(
     public DbSet<RentLedgerEntry> RentLedgerEntries { get; set; } = null!;
     public DbSet<RentLedgerComponent> RentLedgerComponents { get; set; } = null!;
     public DbSet<LeaseCondominiumTerms> LeaseCondominiumTerms { get; set; } = null!;
+
+    public DbSet<Condominium> Condominiums { get; set; } = null!;
+    public DbSet<CondominiumUnit> CondominiumUnits { get; set; } = null!;
+    public DbSet<CondominiumPeriod> CondominiumPeriods { get; set; } = null!;
+    public DbSet<CondominiumStatement> CondominiumStatements { get; set; } = null!;
+    public DbSet<CondominiumExpenseLine> CondominiumExpenseLines { get; set; } = null!;
+    public DbSet<CondominiumInstallment> CondominiumInstallments { get; set; } = null!;
+    public DbSet<CondominiumPriorBalance> CondominiumPriorBalances { get; set; } = null!;
+    public DbSet<CondominiumPayment> CondominiumPayments { get; set; } = null!;
     public DbSet<RentBankMovement> RentBankMovements { get; set; } = null!;
     public DbSet<BankLinkPayment> BankLinkPayments { get; set; } = null!;
 
@@ -1055,6 +1064,8 @@ public class AppDbContext(
             .ToTable(t => t.HasCheckConstraint(
                 "CK_LeaseCondominiumTerms_Confidence",
                 "\"ExtractionConfidence\" IS NULL OR (\"ExtractionConfidence\" >= 0 AND \"ExtractionConfidence\" <= 1)"));
+
+        ConfigureCondominium(modelBuilder);
 
         // The credits of a bank statement confirmed as rent payments (import of the statement of the Canoni page): the fingerprint is
         // unique per org, so the same movement is imported once; the payer hashes are looked up per org to recognize who paid before.
@@ -2066,6 +2077,109 @@ public class AppDbContext(
 
     private static readonly MethodInfo ApplyTenantQueryFilterMethod = typeof(AppDbContext)
         .GetMethod(nameof(ApplyTenantQueryFilter), BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+    private static void ConfigureCondominium(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Condominium>(entity =>
+        {
+            entity.HasOne(condominium => condominium.Org).WithMany().HasForeignKey(condominium => condominium.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(condominium => condominium.FiscalStartMonth).HasDefaultValue(6);
+            entity.HasIndex(condominium => condominium.OrgId);
+            entity.ToTable(table => table.HasCheckConstraint("CK_Condominiums_FiscalStartMonth", "\"FiscalStartMonth\" BETWEEN 1 AND 12"));
+        });
+
+        modelBuilder.Entity<CondominiumUnit>(entity =>
+        {
+            entity.HasOne(unit => unit.Condominium).WithMany(condominium => condominium.Units).HasForeignKey(unit => unit.CondominiumId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(unit => unit.Property).WithMany().HasForeignKey(unit => unit.PropertyId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(unit => unit.Org).WithMany().HasForeignKey(unit => unit.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(unit => unit.Millesimi).HasPrecision(8, 2);
+            entity.HasIndex(unit => unit.CondominiumId);
+            entity.HasIndex(unit => new { unit.OrgId, unit.PropertyId });
+        });
+
+        modelBuilder.Entity<CondominiumPeriod>(entity =>
+        {
+            entity.HasOne(period => period.Condominium).WithMany(condominium => condominium.Periods).HasForeignKey(period => period.CondominiumId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(period => period.Org).WithMany().HasForeignKey(period => period.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(period => period.Status).HasConversion<int>();
+            entity.HasIndex(period => new { period.CondominiumId, period.Label }).IsUnique();
+            entity.HasIndex(period => period.OrgId);
+            entity.ToTable(table => table.HasCheckConstraint("CK_CondominiumPeriods_Dates", "\"EndDate\" >= \"StartDate\""));
+        });
+
+        modelBuilder.Entity<CondominiumStatement>(entity =>
+        {
+            entity.HasOne(statement => statement.Period).WithMany(period => period.Statements).HasForeignKey(statement => statement.CondominiumPeriodId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(statement => statement.Org).WithMany().HasForeignKey(statement => statement.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(statement => statement.Kind).HasConversion<int>();
+            entity.Property(statement => statement.Status).HasConversion<int>();
+            entity.Property(statement => statement.TotalAmount).HasPrecision(18, 2);
+            entity.HasIndex(statement => new { statement.CondominiumPeriodId, statement.Kind, statement.RevisionNumber }).IsUnique();
+            entity.HasIndex(statement => new { statement.CondominiumPeriodId, statement.Kind })
+                .IsUnique()
+                .HasFilter("\"Status\" = 1");
+            entity.HasIndex(statement => statement.OrgId);
+        });
+
+        modelBuilder.Entity<CondominiumExpenseLine>(entity =>
+        {
+            entity.HasOne(line => line.Statement).WithMany(statement => statement.Lines).HasForeignKey(line => line.StatementId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(line => line.Unit).WithMany().HasForeignKey(line => line.CondominiumUnitId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(line => line.Org).WithMany().HasForeignKey(line => line.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(line => line.Amount).HasPrecision(18, 2);
+            entity.Property(line => line.RecoverableAmount).HasPrecision(18, 2);
+            entity.Property(line => line.RecoverablePercentage).HasPrecision(5, 2);
+            entity.Property(line => line.Confidence).HasPrecision(5, 4);
+            entity.Property(line => line.ExpenseNature).HasConversion<int>();
+            entity.Property(line => line.TenantRecoverability).HasConversion<int>();
+            entity.Property(line => line.ClassificationSource).HasConversion<int>();
+            entity.Property(line => line.ReviewStatus).HasConversion<int>();
+            entity.HasIndex(line => line.StatementId);
+            entity.HasIndex(line => line.OrgId);
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_CondominiumExpenseLines_Confidence",
+                "\"Confidence\" IS NULL OR (\"Confidence\" >= 0 AND \"Confidence\" <= 1)"));
+        });
+
+        modelBuilder.Entity<CondominiumInstallment>(entity =>
+        {
+            entity.HasOne(installment => installment.Period).WithMany(period => period.Installments).HasForeignKey(installment => installment.CondominiumPeriodId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(installment => installment.Org).WithMany().HasForeignKey(installment => installment.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(installment => installment.OrdinaryAmount).HasPrecision(18, 2);
+            entity.Property(installment => installment.PriorSettlementAmount).HasPrecision(18, 2);
+            entity.Property(installment => installment.ExtraordinaryAmount).HasPrecision(18, 2);
+            entity.Property(installment => installment.TotalAmount).HasPrecision(18, 2);
+            entity.Property(installment => installment.Status).HasConversion<int>();
+            entity.HasIndex(installment => new { installment.CondominiumPeriodId, installment.SlotIndex }).IsUnique();
+            entity.HasIndex(installment => installment.OrgId);
+        });
+
+        modelBuilder.Entity<CondominiumPriorBalance>(entity =>
+        {
+            entity.HasOne(balance => balance.Period).WithOne(period => period.PriorBalance).HasForeignKey<CondominiumPriorBalance>(balance => balance.CondominiumPeriodId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(balance => balance.SourcePeriod).WithMany().HasForeignKey(balance => balance.SourcePeriodId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(balance => balance.Org).WithMany().HasForeignKey(balance => balance.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(balance => balance.Amount).HasPrecision(18, 2);
+            entity.Property(balance => balance.Disposition).HasConversion<int>();
+            entity.HasIndex(balance => balance.CondominiumPeriodId).IsUnique();
+            entity.HasIndex(balance => balance.OrgId);
+        });
+
+        modelBuilder.Entity<CondominiumPayment>(entity =>
+        {
+            entity.HasOne(payment => payment.Period).WithMany().HasForeignKey(payment => payment.CondominiumPeriodId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(payment => payment.Installment).WithMany(installment => installment.Payments).HasForeignKey(payment => payment.CondominiumInstallmentId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(payment => payment.PriorBalance).WithMany().HasForeignKey(payment => payment.PriorBalanceId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(payment => payment.Org).WithMany().HasForeignKey(payment => payment.OrgId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(payment => payment.Amount).HasPrecision(18, 2);
+            entity.HasIndex(payment => new { payment.OrgId, payment.ExternalSourceHash })
+                .IsUnique()
+                .HasFilter("\"ExternalSourceHash\" IS NOT NULL");
+            entity.HasIndex(payment => payment.CondominiumPeriodId);
+            entity.HasIndex(payment => payment.CondominiumInstallmentId);
+        });
+    }
 
     /// <summary>
     /// Global tenant query filter (AC7, TN-2): every read of an <see cref="ITenantOwned"/> entity is scoped

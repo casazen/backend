@@ -213,6 +213,13 @@ public static class DemoShowcaseCatalog
         /// template is the example the domain posts, not a row of <c>RentLedgerEntries</c>.
         /// </summary>
         public const string RentLedgerComponents = "rent-ledger-components";
+
+        /// <summary>
+        /// The owner's condominium year (CondoLedger phase 2): Casa A, June fiscal year, ordinary and extraordinary kept apart,
+        /// prior-year balance on its own, installments left as issued. Template only: the showcase reset still refuses a lease
+        /// on a showcase house, and these rows are not written.
+        /// </summary>
+        public const string CondominiumCore = "condominium-core";
     }
 
     /// <summary>Scenarios the template must cover. A new feature appends its id and a property or booking that carries it.</summary>
@@ -284,6 +291,7 @@ public static class DemoShowcaseCatalog
         Scenario.ComplianceTrafficLight,
         Scenario.DocumentArchive,
         Scenario.RentLedgerComponents,
+        Scenario.CondominiumCore,
     ];
 
     /// <summary>
@@ -304,6 +312,15 @@ public static class DemoShowcaseCatalog
     public static IReadOnlyList<DemoRentLedgerComponentTemplate> RentLedgerComponentExamples { get; } =
     [
         new("canone-900-acconto-150", 900m, 150m, 12, Scenario.RentLedgerComponents),
+    ];
+
+    /// <summary>
+    /// Casa A from CondoLedger: fiscal year from June, consuntivo 490.30, paid 412.80, balance 77.50 carried forward.
+    /// Extraordinary stays a separate amount. Not written as rows.
+    /// </summary>
+    public static IReadOnlyList<DemoCondominiumCoreTemplate> CondominiumCoreExamples { get; } =
+    [
+        new("casa-a-2024", 6, 490.30m, 0m, 490.30m, 412.80m, 0m, 77.50m, Scenario.CondominiumCore),
     ];
 
     /// <summary>
@@ -1620,6 +1637,21 @@ public sealed record DemoRentLedgerComponentTemplate(
     decimal Rent,
     decimal CondominiumAdvance,
     int Months,
+    string Scenario);
+
+/// <summary>
+/// One CondoLedger year in the showcase: ordinary and extraordinary stay apart, and the settlement is
+/// consuntivo + extraordinary + prior − paid.
+/// </summary>
+public sealed record DemoCondominiumCoreTemplate(
+    string Key,
+    int FiscalStartMonth,
+    decimal Ordinary,
+    decimal Extraordinary,
+    decimal FinalAmount,
+    decimal Paid,
+    decimal Prior,
+    decimal ExpectedSettlement,
     string Scenario);
 
 /// <summary>

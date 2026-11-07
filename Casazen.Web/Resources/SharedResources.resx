@@ -5478,4 +5478,46 @@ Una volta attiva, la funzione lavora sui dati che il channel manager ha già.</v
   <data name="OnboardingPartNotReopenable" xml:space="preserve">
     <value>Questa parte non è disponibile: non c'è nessun passaggio da riaprire.</value>
   </data>
+  <data name="CondominiumNotFound" xml:space="preserve">
+    <value>Condominio non trovato.</value>
+  </data>
+  <data name="CondominiumPropertyNotFound" xml:space="preserve">
+    <value>Immobile non trovato.</value>
+  </data>
+  <data name="CondominiumPeriodNotFound" xml:space="preserve">
+    <value>Esercizio condominiale non trovato.</value>
+  </data>
+  <data name="CondominiumPeriodInvalid" xml:space="preserve">
+    <value>L'esercizio non è valido. Usa 2024/2025, oppure un anno solo se l'esercizio parte a gennaio.</value>
+  </data>
+  <data name="CondominiumPeriodOverlap" xml:space="preserve">
+    <value>Questo periodo si sovrappone a un esercizio già aperto, oppure l'immobile è già collegato.</value>
+  </data>
+  <data name="CondominiumStatementInvalid" xml:space="preserve">
+    <value>Preventivo o consuntivo non valido: controlla importi, nome e mese di inizio esercizio.</value>
+  </data>
+  <data name="CondominiumInstallmentNotFound" xml:space="preserve">
+    <value>Rata condominiale non trovata.</value>
+  </data>
+  <data name="CondominiumPaymentInvalid" xml:space="preserve">
+    <value>Pagamento non valido.</value>
+  </data>
+  <data name="CondominiumPaymentDuplicate" xml:space="preserve">
+    <value>Questo movimento è già stato registrato.</value>
+  </data>
+  <data name="CondominiumPriorBalanceInvalid" xml:space="preserve">
+    <value>Il saldo dell'anno precedente non è valido. Un rimborso vale solo per un credito.</value>
+  </data>
+  <data name="CondominiumStatementFileUnsupported" xml:space="preserve">
+    <value>Il file non è un rendiconto condo-statement-v1. I PDF dell'amministratore non vengono letti da soli.</value>
+  </data>
+  <data name="CondominiumStatementFileInvalid" xml:space="preserve">
+    <value>Il rendiconto non è completo ({0}).</value>
+  </data>
+  <data name="CondominiumPeriodClosed" xml:space="preserve">
+    <value>L'esercizio è chiuso.</value>
+  </data>
+  <data name="CondominiumNeedsWholeOrg" xml:space="preserve">
+    <value>Un condominio non ancora collegato a un immobile è dell'intera organizzazione: serve l'accesso a tutti gli immobili.</value>
+  </data>
 </root>
