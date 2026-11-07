@@ -1694,6 +1694,31 @@ has answered it. Two checks at once (the daily one and a click on «Check now»)
 the card states; the answer of a card with no `license` object is `OctorateServerException`, never an empty license. Not run on a licensed structure: the sandbox
 structures are born in plan `FREE` with `roomsLimit` 0 (S25), so the shape of a paid license follows the OpenAPI.
 
+##### Partner hand-off (E09/F02/US03, NF-56, MKT-03, S18, D16, Q-006)
+
+A Partner Hub partner is activated on its own site (there is no API to list or to activate it), so CasaZen calls nobody: `IMarketplacePartnerActivationService` prepares what the
+host takes there (the brief) and records that the host did it (the declaration). Not behind `Features:OctorateConnector`: the partners never depend on Octorate. The org and the
+`HostScope` come from the caller's membership, never from the request, and every answer is `private, no-store`. The partner must be visible to the org (`MarketplaceVisibility`: the
+admin made it visible, and the plan and the billing country of the org allow it): a hidden partner, one the org may not see and a code nobody has are the same 404
+`marketplace_entry_not_found`. A property that is not the org's, or is outside the caller's scope, is 404 `marketplace_property_not_found`.
+
+| Method | Path | Policy | Description |
+|---|---|---|---|
+| `GET` | `/api/marketplace/partners/{code}/brief?propertyId=&lang=` | `BookingRead` + `HostScope` | `{ code, name, websiteUrl, checklist, propertyData }`. `checklist` is the lines of the partner's activation guide (what to choose and what to authorise on its site) in `lang` (`it` or `en`, the language of the request when absent; Italian when the partner has no text in `lang`; empty when it has none). `propertyData` is `null` without a `propertyId`, otherwise the fixed list `{ name, address, city, postalCode, bedrooms, bathrooms, maxGuests, cinCode }` and nothing else of the property; `cinCode` is the normalized CIN only when `CinFormat` says it is valid (`null` for a missing or invalid one). Nothing about guests, bookings, prices or documents, and nothing is sent to the partner: the page only shows it to the host. 403 `no_org_context`; 404 `marketplace_entry_not_found`, `marketplace_property_not_found` |
+| `POST` | `/api/marketplace/partners/{code}/declare` | `OtaWrite` + `HostScope` | Body `{ propertyId?, declaredOn }` (`declaredOn` is `yyyy-MM-dd`). Records that the host activated the partner on its site: the activation (kind `Partner`, target = the partner's code, the property given or none) is `Active`, `isDeclared` true, `declaredAt` the day given (midnight UTC of that day). Answers `{ activationId, code, propertyId, status, isDeclared, declaredAt, verifiedAt }`. Idempotent: an activation that is already Active is returned as it is and nothing is written, whatever the day given; one that was turned off or is to fix becomes Active again. 403 `marketplace_partner_needs_whole_org` (no `propertyId` and the caller is limited to some properties: a declaration for the whole org is an org-level decision); 404 `marketplace_entry_not_found`, `marketplace_property_not_found`; 422 `marketplace_declared_date_invalid` (the day is missing or after today in Europe/Rome) |
+
+*Declared, then verified only by a connection (Q-006).* The status is the host's word until something proves it. When the partner has an `octoratePortalCode` (its portal in Octorate's
+catalog) and the same property has an `Active` channel or tool of that portal that Octorate proved (`IsDeclared` false), the activation is verified instead: `verifiedAt` is set and
+`isDeclared` is false (`declaredAt` keeps the host's day). Only CasaZen's own rows are read, never Octorate, and only while `Features:OctorateConnector` is on and the org is
+connected; a declaration without a property has nothing to compare and stays declared. A client never says «verified» on its own: only `verifiedAt` does.
+
+*Turning it off.* `UndeclareAsync(orgId, scope, partnerCode, propertyId, userId)`, for the guided deactivation of the change service (F03), sets the row to `Deactivated`: it is kept as
+history, the call is idempotent, the partner need not be visible any more, and the org having no such row is 404 `marketplace_activation_not_found`. The scope rules are those of the
+declaration.
+
+*The card.* A partner is the org's (`statusScope` `Org`): its card is Active when the org-level activation is, or when the property asked about has one (asked without a `propertyId`,
+when any property of the caller's scope has one). The Active tab lists an activation declared for a property with that property.
+
 #### Compliance / legal
 
 | Method | Path | Auth | Description |

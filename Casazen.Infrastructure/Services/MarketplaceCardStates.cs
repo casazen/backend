@@ -38,9 +38,9 @@ internal sealed class MarketplaceCardStates
     }
 
     /// <summary>
-    /// The state of the card of <paramref name="kind"/> and <paramref name="code"/>. A partner is the org's. A channel, a tool and a licensed
-    /// function (<see cref="LicensedFunctionOf"/>) are a property's when the catalog is asked about a property; asked without one, the card is
-    /// Active when any property of the scope has it on, with how many, otherwise To fix, Pending or Not active
+    /// The state of the card of <paramref name="kind"/> and <paramref name="code"/>. A partner is the org's (<see cref="PartnerOf"/>). A channel, a tool
+    /// and a licensed function (<see cref="LicensedFunctionOf"/>) are a property's when the catalog is asked about a property; asked without one, the
+    /// card is Active when any property of the scope has it on, with how many, otherwise To fix, Pending or Not active
     /// (<see cref="MarketplaceCardRules.Summarize"/>).
     /// </summary>
     public MarketplaceCardState Of(MarketplaceActivationKind kind, string code)
@@ -50,11 +50,7 @@ internal sealed class MarketplaceCardStates
             return LicensedFunctionOf(rows);
 
         if (kind == MarketplaceActivationKind.Partner)
-        {
-            var orgRow = rows.FirstOrDefault(row => row.PropertyId is null);
-            var status = orgRow is null ? MarketplaceCardStatus.NotActive : MarketplaceCardRules.CardStatusOf(orgRow.Status);
-            return new MarketplaceCardState(status, MarketplaceStatusScope.Org, null);
-        }
+            return PartnerOf(rows);
 
         if (_propertyId is { } propertyId)
         {
@@ -86,6 +82,19 @@ internal sealed class MarketplaceCardStates
         }
 
         var summary = MarketplaceCardRules.Summarize(rows.Select(r => MarketplaceCardRules.CardStatusOf(r.Status)));
+        return new MarketplaceCardState(summary, MarketplaceStatusScope.Org, null);
+    }
+
+    /// <summary>
+    /// A partner is activated on its own site for the whole org (its org-level row), and the host may also declare it for one property (E09/F02/US03/T01):
+    /// the card counts the org's row and, asked about a property, that property's row, or, asked without one, the rows of the properties inside the caller's
+    /// scope. Active when any of them is, otherwise To fix, Pending or Not active (<see cref="MarketplaceCardRules.Summarize"/>). The scope of the status
+    /// stays the org's: it is the partner's card, not a property's. With only the org's row this is the status of that row, as it always was.
+    /// </summary>
+    private MarketplaceCardState PartnerOf(List<ActivationRow> rows)
+    {
+        var counted = rows.Where(r => r.PropertyId is null || _propertyId is null || r.PropertyId == _propertyId);
+        var summary = MarketplaceCardRules.Summarize(counted.Select(r => MarketplaceCardRules.CardStatusOf(r.Status)));
         return new MarketplaceCardState(summary, MarketplaceStatusScope.Org, null);
     }
 

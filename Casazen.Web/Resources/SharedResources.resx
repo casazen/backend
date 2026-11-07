@@ -4847,6 +4847,12 @@
   <data name="Marketplace.Function.RequestGuidance" xml:space="preserve">
     <value>Buongiorno, vorrei attivare la funzione «{0}» sulla struttura «{1}». Potete aggiungerla alla licenza della struttura e confermarmelo quando è fatto? Grazie.</value>
   </data>
+  <data name="MarketplaceDeclaredDateInvalid" xml:space="preserve">
+    <value>Indica il giorno in cui hai fatto l'attivazione: non può essere una data futura.</value>
+  </data>
+  <data name="MarketplacePartnerNeedsWholeOrg" xml:space="preserve">
+    <value>Questa attivazione riguarda tutta l'organizzazione: puoi dichiararla solo se hai accesso a tutti gli immobili. Altrimenti scegli un immobile a cui hai accesso.</value>
+  </data>
   <data name="Marketplace.Detail.Channel.WhatItDoes" xml:space="preserve">
     <value>CasaZen riceve le prenotazioni di {0} e tiene allineati disponibilità e prezzi.</value>
   </data>

@@ -4847,6 +4847,12 @@
   <data name="Marketplace.Function.RequestGuidance" xml:space="preserve">
     <value>Hello, I would like to switch on the “{0}” function for my property “{1}”. Could you add it to the license of the property and confirm when it is done? Thank you.</value>
   </data>
+  <data name="MarketplaceDeclaredDateInvalid" xml:space="preserve">
+    <value>Enter the day you completed the activation: it cannot be a date in the future.</value>
+  </data>
+  <data name="MarketplacePartnerNeedsWholeOrg" xml:space="preserve">
+    <value>This activation covers the whole organization: you can declare it only if you have access to all the properties. Otherwise choose a property you have access to.</value>
+  </data>
   <data name="Marketplace.Detail.Channel.WhatItDoes" xml:space="preserve">
     <value>CasaZen receives the bookings from {0} and keeps availability and prices in line.</value>
   </data>
