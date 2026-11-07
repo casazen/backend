@@ -42,7 +42,8 @@ public sealed record OwnershipIssue(OwnershipIssueKind Kind, DateOnly From, Date
 /// <para><b>The timeline.</b> It starts at the later of <c>from</c> and the first start, and ends at the latest of today, the last
 /// finite end and the last start: a period still in force is checked up to there, and a property whose owners all left before today has
 /// a gap from the day after the last end up to today (nobody holds it now). A period that ends in the future with no successor is not a
-/// gap: the days after it are not checked.</para>
+/// gap: the days after it are not checked, unless a period is still open, which then holds the property alone: the day after the last planned
+/// end is judged too (a co-owner who leaves and takes his share with him is a shortfall, not a hand-over).</para>
 /// <para><b>Exact arithmetic.</b> The shares are <c>decimal(5,2)</c>, so the sums are exact: 33.33 + 33.33 + 33.33 is 99.99, a shortfall,
 /// never rounded to 100.</para>
 /// </remarks>
@@ -71,6 +72,13 @@ public static class OwnerOwnershipTimeline
         var first = periods.Min(p => p.Start);
         var start = from > first ? from : first;
         var last = Latest(today, periods.Where(p => p.End is not null).Select(p => p.End!.Value).DefaultIfEmpty(DateOnly.MinValue).Max(), periods.Max(p => p.Start));
+
+        // A period that ends on the last day of the timeline leaves the periods that are still open alone from the next day: that day is judged too,
+        // so that a planned departure which leaves the others short (or over) is seen now and not when the day comes. Only a total of 0 after the
+        // last planned end, nobody at all, is tolerated: no period is open then.
+        if (periods.Any(p => p.End == last) && periods.Any(p => p.End is null))
+            last = last.AddDays(1);
+
         if (start > last)
             return Ordered(issues);
 

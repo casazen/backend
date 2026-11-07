@@ -86,6 +86,24 @@ public class OwnerOwnershipTimelineTests
     }
 
     [Fact]
+    public void Analyze_ThePlannedEndOfACoOwner_LeavesTheOtherShort_TheFirstDayAfterIsAShortfall()
+    {
+        // B leaves on 30 June 2027 and A, open, stays with half: from 1 July the shares add up to 50, which is seen now.
+        var issues = OwnerOwnershipTimeline.Analyze([P(A, 50m, D(2024, 1, 1)), P(B, 50m, D(2024, 1, 1), D(2027, 6, 30))], D(2024, 1, 1), Today);
+
+        var issue = Assert.Single(issues);
+        Assert.Equal((OwnershipIssueKind.Shortfall, 50m, D(2027, 7, 1), (DateOnly?)D(2027, 7, 1)), (issue.Kind, issue.TotalPercent, issue.From, issue.To));
+    }
+
+    [Fact]
+    public void Analyze_ThePlannedEndOfACoOwner_WithASuccessorOnTheNextDay_IsComplete()
+    {
+        var c = Guid.NewGuid();
+
+        Assert.Empty(OwnerOwnershipTimeline.Analyze([P(A, 50m, D(2024, 1, 1)), P(B, 50m, D(2024, 1, 1), D(2027, 6, 30)), P(c, 50m, D(2027, 7, 1))], D(2024, 1, 1), Today));
+    }
+
+    [Fact]
     public void Analyze_TheDaysBeforeTheFirstOwner_AreNotChecked()
     {
         Assert.Empty(OwnerOwnershipTimeline.Analyze([P(A, 100m, D(2026, 1, 1))], D(2020, 1, 1), Today));
