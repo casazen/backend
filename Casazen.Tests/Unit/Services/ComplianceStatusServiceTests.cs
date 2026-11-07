@@ -675,23 +675,32 @@ public class ComplianceStatusServiceTests
             await db.SaveChangesAsync();
         }
 
-        public ComplianceStatusService StatusService(AppDbContext db)
+        /// <summary>
+        /// The status service over the real context. The senders are the ones of <see cref="Senders"/> (a double that answers for every id it is
+        /// asked) unless <paramref name="store"/> is given: then the real store reads them, as it does in production.
+        /// </summary>
+        public ComplianceStatusService StatusService(AppDbContext db, IPropertySenderStore? store = null)
         {
+            IReadOnlyDictionary<Guid, PropertySenderInfo> SendersOf(IReadOnlyCollection<Guid> ids) =>
+                ids.ToDictionary(
+                    id => id,
+                    id => new PropertySenderInfo(
+                        id,
+                        Org.Id,
+                        Senders.GetValueOrDefault(id, ComplianceSenderType.Manual),
+                        Senders.GetValueOrDefault(id, ComplianceSenderType.Manual),
+                        SenderSource.Stored,
+                        true,
+                        null,
+                        null));
+
             var senders = new Mock<IPropertySenderStore>();
             senders
                 .Setup(s => s.GetManyAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
-                .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) =>
-                    (IReadOnlyDictionary<Guid, PropertySenderInfo>)ids.ToDictionary(
-                        id => id,
-                        id => new PropertySenderInfo(
-                            id,
-                            Org.Id,
-                            Senders.GetValueOrDefault(id, ComplianceSenderType.Manual),
-                            Senders.GetValueOrDefault(id, ComplianceSenderType.Manual),
-                            SenderSource.Stored,
-                            true,
-                            null,
-                            null)));
+                .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) => SendersOf(ids));
+            senders
+                .Setup(s => s.GetManyForHistoryAsync(It.IsAny<IReadOnlyCollection<Guid>>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((IReadOnlyCollection<Guid> ids, CancellationToken _) => SendersOf(ids));
 
             var health = new Mock<IComplianceConnectionHealthService>();
             health
@@ -711,7 +720,7 @@ public class ComplianceStatusServiceTests
 
             return new ComplianceStatusService(
                 db,
-                senders.Object,
+                store ?? senders.Object,
                 health.Object,
                 quotes.Object,
                 flags.Object,

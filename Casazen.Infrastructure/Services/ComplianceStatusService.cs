@@ -116,9 +116,13 @@ public sealed class ComplianceStatusService(
 
         var propertyIds = properties.Select(p => p.Id).Concat(stays.Select(s => s.PropertyId)).Distinct().ToList();
         var propertyNames = properties.ToDictionary(p => p.Id, p => p.Name);
+
+        // A report on the past also knows who sent for a property deleted since (its history is kept, like its stays above); the cockpit, which is
+        // about the present, reads the senders of the properties that are still there, as it always did.
         var senderOf = propertyIds.Count == 0
             ? new Dictionary<Guid, PropertySenderInfo>()
-            : (await senders.GetManyAsync(propertyIds, ct)).ToDictionary(pair => pair.Key, pair => pair.Value);
+            : (await (forReport ? senders.GetManyForHistoryAsync(propertyIds, ct) : senders.GetManyAsync(propertyIds, ct)))
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
 
         // Who sends, as far as CasaZen can rely on it: the channel manager only while the connector is on, and nobody outside Italy.
         ComplianceSenderType SenderOf(Guid propertyId)

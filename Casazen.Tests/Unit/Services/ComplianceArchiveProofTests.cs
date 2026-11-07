@@ -446,6 +446,65 @@ public sealed class ComplianceArchiveProofTests
             ComplianceStatusService.ClosedMonthsWithin(new DateOnly(2026, 11, 6), new DateOnly(2026, 9, 1), new DateOnly(2026, 10, 30)));
     }
 
+    /// <summary>
+    /// PC-05 and AC9: the history of a property deleted since is kept, and so is who sent for it. A stay entrusted to Octorate at a property that sent
+    /// through the channel manager stays «external verification required» (source Octorate, the handoff topic, no outcome) in the report after the
+    /// property is deleted: it is not taken for a stay the host sends by hand («missing», send it on the portal). The read of the senders that does it
+    /// is the one of the history; the normal read, which the cockpit keeps using, has forgotten the deleted property.
+    /// </summary>
+    [Fact]
+    public async Task ComplianceReport_AStayEntrustedToOctorateAtAPropertyDeletedSince_StaysExternalVerificationRequired_Test()
+    {
+        var world = await World.SeedAsync();
+        var now = world.Clock.GetUtcNow().UtcDateTime;
+
+        // The property sends through the channel manager, as the host chose (a stored choice), and has a stay entrusted to Octorate today.
+        await using (var seed = world.Db())
+        {
+            seed.PropertyComplianceSenders.Add(new PropertyComplianceSender
+            {
+                OrgId = world.Org.Id,
+                PropertyId = world.Granted.Id,
+                AlloggiatiSender = ComplianceSenderType.ChannelManager,
+                IstatSender = ComplianceSenderType.ChannelManager,
+                LastChangedAt = now,
+                LastChangedByUserId = world.Owner.Id,
+                CreatedAt = now,
+            });
+            await seed.SaveChangesAsync();
+        }
+
+        var (entrusted, _) = await world.AddStayAsync(world.Granted, checkInOffset: 0, nights: 3, guests: 2);
+        await world.EntrustAsync(entrusted, positions: [0, 1]);
+
+        // And the property is deleted afterwards.
+        await using (var edit = world.Db())
+        {
+            (await edit.Properties.SingleAsync(p => p.Id == world.Granted.Id)).IsDeleted = true;
+            await edit.SaveChangesAsync();
+        }
+
+        await using var db = world.Db();
+        var store = new PropertySenderStore(db, Mock.Of<IActivityLog>(), Mock.Of<Microsoft.Extensions.Hosting.IHostEnvironment>(), world.Clock);
+
+        // The store: the normal read has forgotten the deleted property, the read of the history has not.
+        Assert.Empty(await store.GetManyAsync([world.Granted.Id], CancellationToken.None));
+        var history = await store.GetManyForHistoryAsync([world.Granted.Id], CancellationToken.None);
+        Assert.Equal(ComplianceSenderType.ChannelManager, history[world.Granted.Id].AlloggiatiSender);
+        Assert.Equal(SenderSource.Stored, history[world.Granted.Id].Source);
+
+        // The report, on the real store: the stay is still held by Octorate, and the report is incomplete because of it.
+        var service = NewService(world, db, new MemoryStorage(), status: world.StatusService(db, store));
+        var report = await service.GetCoverageReportAsync(world.OrgWide, new ComplianceReportQuery(DayOf(-30), DayOf(0)), CancellationToken.None);
+        var row = Assert.Single(report.Rows, r => r.BookingId == entrusted.Id);
+        Assert.Equal(ComplianceEvidenceClass.ExternalVerificationRequired, row.EvidenceClass);
+        Assert.Equal(ComplianceEvidenceSources.Octorate, row.EvidenceSource);
+        Assert.Equal(OctorateHandoffTopic.Alloggiati, row.HandoffTopic);
+        Assert.Null(row.ProofAt);
+        Assert.False(report.Complete);
+        Assert.Equal(new ComplianceCoverageCounts(0, 1, 0, 0), report.Counts);
+    }
+
     // ─── Uploads and exports ────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -692,14 +751,19 @@ public sealed class ComplianceArchiveProofTests
     private static IEnumerable<string?> PoliciesOf(MemberInfo member) =>
         member.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Select(a => a.Policy);
 
-    private static ComplianceArchiveService NewService(World world, AppDbContext db, IFileStorage storage, bool trafficLight = true)
+    private static ComplianceArchiveService NewService(
+        World world,
+        AppDbContext db,
+        IFileStorage storage,
+        bool trafficLight = true,
+        IComplianceStatusService? status = null)
     {
         var flags = new Mock<IFeatureFlags>();
         flags.Setup(f => f.IsEnabled(FeatureFlags.ComplianceTrafficLight)).Returns(trafficLight);
         return new ComplianceArchiveService(
             db,
             storage,
-            world.StatusService(db),
+            status ?? world.StatusService(db),
             new MigraDocPdfDocumentRenderer(),
             flags.Object,
             Options.Create(world.Options),

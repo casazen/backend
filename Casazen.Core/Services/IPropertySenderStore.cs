@@ -13,7 +13,8 @@ namespace Casazen.Core.Services;
 /// otherwise it is manual. A property outside Italy (the rule of <c>TouristTaxComune.ForProperty</c>: a country that is not <c>IT</c>)
 /// has no police sender to choose: manual, with <see cref="PropertySenderInfo.Applies"/> false (the Swiss files stay the host's,
 /// E03/F01/US09).</para>
-/// <para><b>Tenant and roles.</b> A property of another org is not found (the tenant query filter), nor a deleted one. The store never
+/// <para><b>Tenant and roles.</b> A property of another org is not found (the tenant query filter), nor a deleted one (but for
+/// <see cref="GetManyForHistoryAsync"/>, which keeps the history of the deleted ones). The store never
 /// checks roles: the web layer authorizes the property, and the caller (E03/F01/US02/T01) asks the confirmations and checks the
 /// delegation and Octorate before <see cref="SetAsync"/>. Nothing here calls Octorate or the Questura.</para>
 /// </remarks>
@@ -30,6 +31,14 @@ public interface IPropertySenderStore
     /// org) is left out of the answer.
     /// </summary>
     Task<IReadOnlyDictionary<Guid, PropertySenderInfo>> GetManyAsync(IReadOnlyCollection<Guid> propertyIds, CancellationToken ct);
+
+    /// <summary>
+    /// The sender of each property like <see cref="GetManyAsync"/>, the properties deleted since included (PC-05): the history of compliance is
+    /// kept, and a report on the past (the coverage report of the proof archive, E03/F02/US03/T01) has to know who sent for a stay of a property
+    /// that is no longer in the normal reads, or it would take every one of them for a property the host sends for. The tenant filter stays: an id
+    /// of another org is still left out. For reports and exports of the past only; what is about the present of a property uses <see cref="GetManyAsync"/>.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, PropertySenderInfo>> GetManyForHistoryAsync(IReadOnlyCollection<Guid> propertyIds, CancellationToken ct);
 
     /// <summary>
     /// The one write path. Stores <paramref name="sender"/> as the Alloggiati AND the ISTAT sender of the property, with the time and

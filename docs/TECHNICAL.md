@@ -1704,7 +1704,7 @@ missing identity of an arriving guest is red), `Compliance:StatusLookbackDays` (
 `IComplianceArchiveService` (`ComplianceArchiveService`; endpoints above, `ComplianceArchiveController`). Everything is of the caller's org and of the
 properties its `HostScope` reaches (`InScope` on `ManualComplianceProof` and `ComplianceSendLogEntry`); a proof, a stay or a property of another org or
 outside the reach answers the same 404 as one that does not exist. The history of a property deleted since stays reachable
-(`IgnoreQueryFilters([SoftDelete])`, the tenant filter stays). Nothing here deletes a proof: it is shown until the retention job removes it (five
+(`IgnoreQueryFilters([SoftDelete])`, the tenant filter stays), and so does who sent for it (the coverage report reads the senders with `IPropertySenderStore.GetManyForHistoryAsync`, so a stay entrusted to Octorate at a property deleted since is still «external verification required», not a stay the host sends by hand; the cockpit keeps `GetManyAsync`). Nothing here deletes a proof: it is shown until the retention job removes it (five
 years from the upload). The archive lists what CasaZen owns, the files of `ManualComplianceProof`; the Alloggiati receipts CasaZen would download itself
 (`AlloggiatiReceipt`), the ISTAT proofs of the regional service and the Swiss municipality files belong to features postponed on 2026-11-05
 (`kb/plan/deferred`): they join the list when they return, and today no such row exists. A file is stored in the private bucket and handed out by a
