@@ -241,4 +241,76 @@ public sealed class LeaseContractTextParserTests
         Assert.Empty(ContractFiscalCodes.Find("codice fiscale RSSMRA80A01H501X"));
         Assert.Empty(ContractFiscalCodes.Find("codice fiscale (novemilaseicento/00)"));
     }
+
+    [Fact]
+    public void AFiscalCodeWithOneCharacterTooMany_IsFoundWhenTakingOneOutLeavesExactlyOneValidCode()
+    {
+        // A stray letter the OCR put after, before or inside the code: seventeen characters, and one valid code once the stray one is out.
+        foreach (var printed in new[] { "RSSMRA80A01H501UA", "ARSSMRA80A01H501U", "RSSMRA80AI01H501U" })
+        {
+            var found = Assert.Single(ContractFiscalCodes.Find($"codice fiscale {printed}"));
+            Assert.Equal("RSSMRA80A01H501U", found.Code);
+            Assert.True(found.Repaired);
+        }
+
+        // Two different deletions that both leave a valid code (here the last digit of the place of birth may be an omocodia letter): nobody
+        // can tell which is the person's, so no code is guessed.
+        Assert.Empty(ContractFiscalCodes.Find("codice fiscale RSSMRA80A01H501UK"));
+
+        // Seventeen characters from which no deletion gives a valid code are no person; two characters too many are not looked at.
+        Assert.Empty(ContractFiscalCodes.Find("codice fiscale RSSMRA80A01H501XK"));
+        Assert.Empty(ContractFiscalCodes.Find("protocollo ABCDEFGHIJKLMNOPQ"));
+        Assert.Empty(ContractFiscalCodes.Find("codice fiscale RSSMRA80A01H501UKK"));
+
+        // The same person written once right and once with a stray letter is one code, at the place where it first appears.
+        var twice = Assert.Single(ContractFiscalCodes.Find("RSSMRA80A01H501U e poi, nel riepilogo, RSSMRA80A01H501UA"));
+        Assert.Equal(0, twice.Index);
+        Assert.False(twice.Repaired);
+    }
+
+    [Fact]
+    public void ACoTenantWhoseFiscalCodeTheOcrSpelledWithAStrayLetter_IsStillATenantOfTheContract()
+    {
+        // The first of the two tenants has a letter too many in her code, as in a real scan: without the repair she was not a person for
+        // the reading, and the draft got one tenant out of two.
+        const string text = """
+            TRA La Sig.ra NERI ANNA, nata a Milano il 05/04/1992, residente in Como, Via Roma n. 1, C.F. NRENNA92D45F205T, di seguito denominata locatore,
+            la Sig.ra Anna Maria De Luca, nata a Bari il 21/11/1971, residente in Bari, Via Argiro n. 7, C.F. DLCNMR71S61A662DK, passaporto n. 123456789,
+            e il Sig. Paolo Bianchi, nato a Monza il 10/07/1968, residente in Milano, Via Verdi n. 3, C.F. BNCPLA68L10F704T, di seguito congiuntamente conduttore.
+            """;
+
+        var reading = LeaseContractTextParser.Parse(text);
+
+        Assert.Equal("NRENNA92D45F205T", Assert.Single(reading.Parties, p => p.Role == PartyRole.Landlord).FiscalCode);
+        var tenants = reading.Parties.Where(p => p.Role == PartyRole.Tenant).ToList();
+        Assert.Equal(["BNCPLA68L10F704T", "DLCNMR71S61A662D"], tenants.Select(t => t.FiscalCode).Order());
+        var woman = tenants.Single(t => t.FiscalCode == "DLCNMR71S61A662D");
+        Assert.Equal(("Anna Maria", "De Luca"), (woman.FirstName, woman.LastName));
+        Assert.Equal("Bari, Via Argiro n. 7", woman.Residence);
+    }
+
+    [Fact]
+    public void TheJointRoleOfTheTenants_ReachesTheFirstOneAcrossHerIdentityDocument_ButNotFurtherNorPastAnotherRole()
+    {
+        // As in a real contract: the first tenant has no role of her own, her passport (number, office, two dates) lies between her and the
+        // second, and «di seguito congiuntamente conduttore» comes only after the second.
+        const string head = """
+            TRA La Sig.ra NERI ANNA, nata a Milano il 05/04/1992, residente in Como, Via Roma n. 1, C.F. NRENNA92D45F205T, di seguito denominata locatore,
+            la Sig.ra Anna Maria De Luca, nata a Bari il 21/11/1971, residente in Bari, Via Argiro n. 7, C.F. DLCNMR71S61A662D,
+            """;
+        const string tail = """
+            e il Sig. Paolo Bianchi, nato a Monza il 10/07/1968, residente in Milano, Via Verdi n. 3, C.F. BNCPLA68L10F704T, di seguito congiuntamente conduttore.
+            """;
+        const string passport = "titolare di passaporto n. 123456789, rilasciato dalla Questura di Bari il 03/05/2019, con scadenza il 02/05/2029,";
+
+        var near = LeaseContractTextParser.Parse($"{head} {passport} {tail}");
+
+        Assert.Equal(["BNCPLA68L10F704T", "DLCNMR71S61A662D"], near.Parties.Where(p => p.Role == PartyRole.Tenant).Select(p => p.FiscalCode).Order());
+
+        // Further than the reach of an identity document, or with another role named in between, her role is not guessed from the next one.
+        var far = LeaseContractTextParser.Parse($"{head} {string.Join(' ', Enumerable.Repeat("annotazione", 30))}, {tail}");
+        Assert.Equal("BNCPLA68L10F704T", Assert.Single(far.Parties, p => p.Role == PartyRole.Tenant).FiscalCode);
+        var another = LeaseContractTextParser.Parse($"{head} {passport} garantita dal locatore, {tail}");
+        Assert.Equal("BNCPLA68L10F704T", Assert.Single(another.Parties, p => p.Role == PartyRole.Tenant).FiscalCode);
+    }
 }
