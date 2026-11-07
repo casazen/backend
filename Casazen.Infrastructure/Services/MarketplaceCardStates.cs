@@ -12,8 +12,8 @@ internal readonly record struct MarketplaceCardState(MarketplaceCardStatus Statu
 /// <summary>
 /// The activations of one org, read once, from which every card of a catalog (or one detail card) takes its state. Only the org's own rows
 /// are read, whatever the tenant filter says: the activations of another org are never looked at. The rows of a property are those of the
-/// properties inside the caller's scope (a collaborator limited to some properties counts only those); the org-level rows (a partner, a licensed
-/// function) belong to the org and are read whole.
+/// properties inside the caller's scope (a collaborator limited to some properties counts only those); the org-level rows (a partner, and the
+/// rows of a licensed function written before its license was a property's) belong to the org and are read whole.
 /// </summary>
 internal sealed class MarketplaceCardStates
 {
@@ -38,14 +38,18 @@ internal sealed class MarketplaceCardStates
     }
 
     /// <summary>
-    /// The state of the card of <paramref name="kind"/> and <paramref name="code"/>. A licensed function and a partner are the org's. A channel
-    /// and a tool are a property's when the catalog is asked about a property; asked without one, the card is Active when any property of the
-    /// scope has it on, with how many, otherwise To fix, Pending or Not active (<see cref="MarketplaceCardRules.Summarize"/>).
+    /// The state of the card of <paramref name="kind"/> and <paramref name="code"/>. A partner is the org's. A channel, a tool and a licensed
+    /// function (<see cref="LicensedFunctionOf"/>) are a property's when the catalog is asked about a property; asked without one, the card is
+    /// Active when any property of the scope has it on, with how many, otherwise To fix, Pending or Not active
+    /// (<see cref="MarketplaceCardRules.Summarize"/>).
     /// </summary>
     public MarketplaceCardState Of(MarketplaceActivationKind kind, string code)
     {
         var rows = _rows[(kind, code)].ToList();
-        if (kind is MarketplaceActivationKind.LicensedFunction or MarketplaceActivationKind.Partner)
+        if (kind == MarketplaceActivationKind.LicensedFunction)
+            return LicensedFunctionOf(rows);
+
+        if (kind == MarketplaceActivationKind.Partner)
         {
             var orgRow = rows.FirstOrDefault(row => row.PropertyId is null);
             var status = orgRow is null ? MarketplaceCardStatus.NotActive : MarketplaceCardRules.CardStatusOf(orgRow.Status);
@@ -64,6 +68,25 @@ internal sealed class MarketplaceCardStates
         var active = ofProperties.Count(row => row.Status == MarketplaceActivationStatus.Active);
         return new MarketplaceCardState(
             summary, MarketplaceStatusScope.Org, summary == MarketplaceCardStatus.Active ? active : null);
+    }
+
+    /// <summary>
+    /// A licensed function is a property's, because the license is the accommodation's (D14, E09/F02/US02/T01): asked about a property, the card shows
+    /// that property's row (<see cref="MarketplaceStatusScope.Property"/>); asked without one, Active when any property of the caller's scope has it,
+    /// otherwise To fix, Pending or Not active (<see cref="MarketplaceCardRules.Summarize"/>). A row of the org (no property), which no code writes
+    /// for a licensed function any more, still counts: for the property that has no row of its own, and in the summary.
+    /// </summary>
+    private MarketplaceCardState LicensedFunctionOf(List<ActivationRow> rows)
+    {
+        if (_propertyId is { } propertyId)
+        {
+            var row = rows.FirstOrDefault(r => r.PropertyId == propertyId) ?? rows.FirstOrDefault(r => r.PropertyId is null);
+            var status = row is null ? MarketplaceCardStatus.NotActive : MarketplaceCardRules.CardStatusOf(row.Status);
+            return new MarketplaceCardState(status, MarketplaceStatusScope.Property, null);
+        }
+
+        var summary = MarketplaceCardRules.Summarize(rows.Select(r => MarketplaceCardRules.CardStatusOf(r.Status)));
+        return new MarketplaceCardState(summary, MarketplaceStatusScope.Org, null);
     }
 
     private sealed record ActivationRow(MarketplaceActivationKind Kind, string TargetCode, Guid? PropertyId, MarketplaceActivationStatus Status);

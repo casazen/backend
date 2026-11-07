@@ -46,6 +46,18 @@ public interface IOctorateApiClient
     /// </summary>
     Task<OctoratePoliceAccountStatus> GetPoliceAccountStatusAsync(string octorateAccommodationId, CancellationToken ct);
 
+    /// <summary>
+    /// The license of one accommodation (<c>GET /rest/v1/accommodation/{acc}?fields=all</c>, E09/F02/US02/T01, NF-56, D14, S25): the plan of the
+    /// channel manager, which modules are on (<c>chat</c>, <c>invoice</c>, <c>fiscalPrinter</c>, <c>smartOffer</c>, <c>octoDaily</c>, <c>rms</c>,
+    /// <c>businessIntelligence</c>, <c>bookingEngine</c>, <c>octoSite</c>, <c>webConcierge</c>, <c>metaSearch</c>, <c>rateChecker</c>), the room limit and the
+    /// day it expires, all from the <c>license</c> object (<c>ApiLicenseForm</c>) of the card. The short card has no <c>license</c>: the whole card is asked
+    /// for. <b>Read only</b>: the license is read-only for the partner (a write answers 400 «read only mode», S25) and no method of this client writes it.
+    /// Same HTTPS client, tenant isolation, rate-limit gate and typed errors as the other calls. A module the card does not state is absent from the
+    /// result, never «off». An answer that is not an accommodation, or that has no <c>license</c> object, is <c>OctorateServerException</c>, never an
+    /// empty license: a caller that flags a module as lost must not do it on an answer it could not read.
+    /// </summary>
+    Task<OctorateLicense> GetAccommodationLicenseAsync(string accommodationCode, CancellationToken ct);
+
     /// <summary>Changes the members of <paramref name="update"/> that are set, and nothing else (<c>PATCH /rest/v2/accommodation/{acc}</c>).</summary>
     Task UpdatePropertyAsync(string accommodationId, OctoratePropertyUpdate update, CancellationToken ct);
 

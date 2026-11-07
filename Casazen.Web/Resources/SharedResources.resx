@@ -4838,6 +4838,15 @@
   <data name="Marketplace.Detail.Requirement.licenseRequest" xml:space="preserve">
     <value>Una richiesta al tuo channel manager: la funzione risulta attiva quando compare nella tua licenza.</value>
   </data>
+  <data name="MarketplaceFunctionAlreadyActive" xml:space="preserve">
+    <value>Questa funzione risulta già attiva nella licenza della struttura: non c'è nulla da richiedere.</value>
+  </data>
+  <data name="MarketplaceFunctionUnknown" xml:space="preserve">
+    <value>Funzione del channel manager non trovata.</value>
+  </data>
+  <data name="Marketplace.Function.RequestGuidance" xml:space="preserve">
+    <value>Buongiorno, vorrei attivare la funzione «{0}» sulla struttura «{1}». Potete aggiungerla alla licenza della struttura e confermarmelo quando è fatto? Grazie.</value>
+  </data>
   <data name="Marketplace.Detail.Channel.WhatItDoes" xml:space="preserve">
     <value>CasaZen riceve le prenotazioni di {0} e tiene allineati disponibilità e prezzi.</value>
   </data>
